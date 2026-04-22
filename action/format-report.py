@@ -44,6 +44,15 @@ def _safe_float(val, fmt=".1f"):
         return f"{val:{fmt}}"
     return str(val) if val else "—"
 
+def _extract_rail_names(rails):
+    """Extract rail names from list that may contain strings or dicts."""
+    names = []
+    for rail in rails:
+        if isinstance(rail, dict):
+            names.append(rail.get('name', str(rail)))
+        else:
+            names.append(str(rail))
+    return names
 
 # ---------------------------------------------------------------------------
 # Top-Risk Summary
@@ -806,7 +815,7 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path, derating_
           f"{stats.get('total_no_connects', 0)} no-connects")
         if rails:
             a(f"")
-            a(f"Power rails: {', '.join(rails)}")
+            a(f"Power rails: {', '.join(_extract_rail_names(rails))}")
         a("")
 
     # === Critical Findings ===
