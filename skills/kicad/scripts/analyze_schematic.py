@@ -8717,6 +8717,11 @@ def analyze_schematic(path: str, project_root: str | None = None,
                             elif isinstance(bv, dict):
                                 parsed["bus_elements"].setdefault(bk, {}).update(bv)
                         parsed["sheets_parsed"].append(sheet_path)
+                    # Power symbols were extracted from root-sheet components
+                    # only; refresh from the merged list so peer-sheet ones are
+                    # included.
+                    parsed["power_symbols"] = extract_power_symbols(
+                        parsed["components"])
 
     all_components = parsed["components"]
     all_wires = parsed["wires"]
