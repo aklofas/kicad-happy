@@ -8650,6 +8650,74 @@ def analyze_schematic(path: str, project_root: str | None = None,
 
     parsed = parse_all_sheets(path, root_tree=root_tree)
 
+    # --- top_level_sheets support (Altium flat multi-page imports) ---
+    # KiCad's Altium importer registers all pages as top_level_sheets in
+    # .kicad_pro instead of creating (sheet ...) hierarchy references.
+    # When the root has no sub-sheets, check .kicad_pro for additional pages.
+    if len(parsed.get("sheets_parsed", [])) <= 1 and not no_hierarchy:
+        pro = load_kicad_pro(path)
+        if pro:
+            tls = pro.get("schematic", {}).get("top_level_sheets", [])
+            if len(tls) > 1:
+                root_abs = str(Path(path).resolve())
+                extra_sheets = []
+                for entry in tls:
+                    fn = entry.get("filename", "")
+                    if not fn:
+                        continue
+                    sheet_path = os.path.join(os.path.dirname(path), fn)
+                    if not os.path.isfile(sheet_path):
+                        continue
+                    abs_path = str(Path(sheet_path).resolve())
+                    if abs_path == root_abs:
+                        continue
+                    extra_sheets.append(sheet_path)
+
+                if extra_sheets:
+                    print(f"Note: discovered {len(extra_sheets)} additional "
+                          f"top-level sheets from .kicad_pro",
+                          file=sys.stderr)
+                    sym_inst = parsed.get("root_symbol_instances", {})
+                    base_idx = len(parsed["sheets_parsed"])
+                    for sheet_path in extra_sheets:
+                        try:
+                            (_, comps, wires, labels, junctions,
+                             no_connects, _, lib_syms, text_annot,
+                             bus_elems, title_blk) = \
+                                parse_single_sheet(
+                                    sheet_path,
+                                    symbol_instances=sym_inst)
+                        except Exception as exc:
+                            print(f"Warning: failed to parse "
+                                  f"{os.path.basename(sheet_path)}: {exc}",
+                                  file=sys.stderr)
+                            continue
+                        sheet_idx = base_idx
+                        base_idx += 1
+                        for c in comps:
+                            c["_sheet"] = sheet_idx
+                        for w in wires:
+                            w["_sheet"] = sheet_idx
+                        for lb in labels:
+                            lb["_sheet"] = sheet_idx
+                        for j in junctions:
+                            j["_sheet"] = sheet_idx
+                        for nc in no_connects:
+                            nc["_sheet"] = sheet_idx
+                        parsed["components"].extend(comps)
+                        parsed["wires"].extend(wires)
+                        parsed["labels"].extend(labels)
+                        parsed["junctions"].extend(junctions)
+                        parsed["no_connects"].extend(no_connects)
+                        parsed["lib_symbols"].update(lib_syms)
+                        parsed["text_annotations"].extend(text_annot)
+                        for bk, bv in bus_elems.items():
+                            if isinstance(bv, list):
+                                parsed["bus_elements"].setdefault(bk, []).extend(bv)
+                            elif isinstance(bv, dict):
+                                parsed["bus_elements"].setdefault(bk, {}).update(bv)
+                        parsed["sheets_parsed"].append(sheet_path)
+
     all_components = parsed["components"]
     all_wires = parsed["wires"]
     all_labels = parsed["labels"]
