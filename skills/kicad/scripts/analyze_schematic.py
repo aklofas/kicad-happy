@@ -8653,14 +8653,20 @@ def analyze_schematic(path: str, project_root: str | None = None,
     # --- top_level_sheets support (Altium flat multi-page imports) ---
     # KiCad's Altium importer registers all pages as top_level_sheets in
     # .kicad_pro instead of creating (sheet ...) hierarchy references.
-    # When the root has no sub-sheets, check .kicad_pro for additional pages.
-    if len(parsed.get("sheets_parsed", [])) <= 1 and not no_hierarchy:
+    # Trigger only when the root has zero (sheet ...) nodes — checking
+    # len(sheets_parsed) alone is fragile because parse_all_sheets silently
+    # drops (sheet ...) refs whose files are missing, which would otherwise
+    # cause us to mix in unrelated top_level_sheets. Runs regardless of
+    # no_hierarchy so the sub-sheet redirect path still picks up peers.
+    if (len(parsed.get("sheets_parsed", [])) <= 1
+            and find_first(root_tree, "sheet") is None):
         pro = load_kicad_pro(path)
         if pro:
             tls = pro.get("schematic", {}).get("top_level_sheets", [])
             if len(tls) > 1:
                 root_abs = str(Path(path).resolve())
                 extra_sheets = []
+                seen = {root_abs}
                 for entry in tls:
                     fn = entry.get("filename", "")
                     if not fn:
@@ -8669,9 +8675,10 @@ def analyze_schematic(path: str, project_root: str | None = None,
                     if not os.path.isfile(sheet_path):
                         continue
                     abs_path = str(Path(sheet_path).resolve())
-                    if abs_path == root_abs:
+                    if abs_path in seen:
                         continue
-                    extra_sheets.append(sheet_path)
+                    seen.add(abs_path)
+                    extra_sheets.append(abs_path)
 
                 if extra_sheets:
                     print(f"Note: discovered {len(extra_sheets)} additional "
