@@ -358,9 +358,9 @@ def compute_pin_positions(component: dict, lib_symbols: dict) -> list[dict]:
         else:
             # KiCad 6+: decomposed angle + mirror
             if mirror_x:
-                py = -py
-            if mirror_y:
                 px = -px
+            if mirror_y:
+                py = -py
             rpx, rpy = apply_rotation(px, py, angle)
 
         # Absolute position: Y-axis inversion (symbol coords are math-up, schematic is screen-down)
