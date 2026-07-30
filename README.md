@@ -420,6 +420,28 @@ Or set up the [GitHub Action](github-action.md) and get automated analysis on ev
 
 **Optional Python packages**: `requests` (better HTTP), `playwright` (JS-heavy datasheet sites), `pdftotext` (PDF text extraction).
 
+
+## Workflow Intelligence (methodology)
+
+These skills teach **review and ops methodology**. They hand off to `kicad` / `emc` / `jlcpcb` analyzers rather than duplicating parsers.
+
+| Skill | Purpose |
+|-------|---------|
+| [hw-architecture-review](skills/hw-architecture-review/SKILL.md) | System topology, interface ownership, dual-SoT |
+| [pcb-layout-review](skills/pcb-layout-review/SKILL.md) | Layout critique & ECO classes |
+| [power-tree](skills/power-tree/SKILL.md) / [clock-tree](skills/clock-tree/SKILL.md) | Power & clock domain reviews |
+| [constraint-management](skills/constraint-management/SKILL.md) | Freeze, SoT, write gates |
+| [dfm-review](skills/dfm-review/SKILL.md) / [si-review](skills/si-review/SKILL.md) | Fab GO & tiered SI |
+| [design-review](skills/design-review/SKILL.md) | Chartered reviews, honest score ceilings |
+| [schematic-presentation](skills/schematic-presentation/SKILL.md) | Industrial drawing polish |
+| [product-docs](skills/product-docs/SKILL.md) | Commercial / CEM documentation |
+| [verification-planning](skills/verification-planning/SKILL.md) | Lab & bring-up plans |
+| [eda-prompt-engineering](skills/eda-prompt-engineering/SKILL.md) | Grounded agent prompts |
+| [multi-agent-coordination](skills/multi-agent-coordination/SKILL.md) | Overnight / parallel HW agents |
+| [knowledge-management](skills/knowledge-management/SKILL.md) | Journals, scorecards, indexes |
+| [kidoc](skills/kidoc/SKILL.md) | Generate HDD/ICD/CE/manufacturing docs from CAD |
+
+
 ## ✅ KiCad version support
 
 | Version  | Schematic                     | PCB  | Gerber |

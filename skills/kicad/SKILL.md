@@ -31,6 +31,16 @@ description: >-
 | `pcbway` | Alternative PCB fabrication & assembly |
 | `spice` | SPICE simulation verification of detected subcircuits |
 | `emc` | EMC pre-compliance risk analysis — consumes schematic + PCB analyzer output |
+| `hw-architecture-review` | System topology, ownership, dual-SoT, reference match |
+| `pcb-layout-review` | Layout methodology / ECO classes beyond analyzer JSON |
+| `power-tree` / `clock-tree` | Rail and clock ownership methodology |
+| `constraint-management` | Copper freeze, SoT, agent write gates |
+| `dfm-review` / `si-review` | Manufacturing gate and tiered SI signoff |
+| `design-review` | Chartered review + honest EQ ceilings |
+| `schematic-presentation` / `product-docs` | Drawing polish + commercial docs |
+| `verification-planning` | Lab/bring-up gates |
+| `eda-prompt-engineering` / `multi-agent-coordination` / `knowledge-management` | Agent ops |
+| `kidoc` | Engineering documentation generation from CAD |
 
 **Handoff guidance:** Use this skill to parse schematics/PCBs and extract structured data. Hand off to `bom` for BOM enrichment, pricing, and ordering. Hand off to `digikey`/`mouser`/`lcsc`/`element14` for part searches and datasheet fetching. Hand off to `jlcpcb`/`pcbway` for fabrication ordering and DFM rule validation. **Always run `spice`** for simulation verification during design reviews when any SPICE simulator is installed (check with `which ngspice ltspice xyce`). **Always run `emc`** for EMC pre-compliance risk analysis during design reviews when both schematic and PCB analysis are available. These are not optional — skipping them leaves value-computation errors and EMC risks undetected.
 

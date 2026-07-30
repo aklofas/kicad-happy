@@ -2,7 +2,7 @@
 
 > AI-powered design review skills for KiCad electronics projects
 
-A suite of 11 skills that turn an AI coding agent into an electronics design assistant. Structured Python analysis scripts (zero dependencies, Python 3.10+ stdlib only) for KiCad 5-10 projects. Works with Claude Code, OpenAI Codex, Cursor, and Gemini CLI.
+A suite of 25+ skills that turn an AI coding agent into an electronics design assistant. Structured Python analysis scripts (zero dependencies, Python 3.10+ stdlib only) for KiCad 5-10 projects. Works with Claude Code, OpenAI Codex, Cursor, and Gemini CLI.
 
 Capabilities: schematic analysis (40+ subcircuit detectors), PCB layout review, EMC pre-compliance (44 rules), SPICE simulation, thermal analysis, component sourcing (DigiKey/Mouser/LCSC/element14), BOM management, manufacturing prep (JLCPCB/PCBWay), and professional documentation generation.
 
@@ -33,3 +33,17 @@ Install: `/plugin marketplace add aklofas/kicad-happy` (Claude Code), `gemini sk
 
 - [JLCPCB](https://github.com/aklofas/kicad-happy/blob/main/skills/jlcpcb/SKILL.md): BOM/CPL format, assembly constraints, basic vs extended parts
 - [PCBWay](https://github.com/aklofas/kicad-happy/blob/main/skills/pcbway/SKILL.md): Turnkey assembly rules, MPN-based sourcing
+
+
+## Workflow Intelligence Skills (methodology)
+
+- [Hardware Architecture Review](skills/hw-architecture-review/SKILL.md): Topology, ownership, dual-SoT, commercial reference match
+- [PCB Layout Review](skills/pcb-layout-review/SKILL.md): Placement/stackup/ECO classes beyond analyzer JSON
+- [Power Tree](skills/power-tree/SKILL.md) / [Clock Tree](skills/clock-tree/SKILL.md): Rail and REFCLK methodology
+- [Constraint Management](skills/constraint-management/SKILL.md): Copper freeze, SoT, agent write gates
+- [DFM Review](skills/dfm-review/SKILL.md) / [SI Review](skills/si-review/SKILL.md): Fab GO gate and tiered SI signoff
+- [Design Review](skills/design-review/SKILL.md): Chartered reviews and honest EQ ceilings
+- [Schematic Presentation](skills/schematic-presentation/SKILL.md) / [Product Docs](skills/product-docs/SKILL.md): Drawing polish and commercial manuals
+- [Verification Planning](skills/verification-planning/SKILL.md): Lab and bring-up gates
+- [EDA Prompt Engineering](skills/eda-prompt-engineering/SKILL.md) / [Multi-Agent Coordination](skills/multi-agent-coordination/SKILL.md) / [Knowledge Management](skills/knowledge-management/SKILL.md): Agent ops
+- [kidoc](skills/kidoc/SKILL.md): Engineering documentation generation from CAD

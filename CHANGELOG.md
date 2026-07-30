@@ -1,3 +1,14 @@
+## Unreleased — workflow intelligence skills
+
+### Added
+- Methodology skills for architecture, layout review, power/clock trees, constraint/SoT management, DFM/SI signoff, design-review charters, verification planning, schematic presentation, product docs, and agent ops (prompting, multi-agent, knowledge management)
+- `kidoc` engineering documentation skill
+- Cross-links from core `kicad` Related Skills table
+
+### Changed
+- `llms.txt` / README discoverability for methodology skills
+- Default remotes on TeinkBR fork: `origin` → TeinkBR, `upstream` → aklofas
+
 # Changelog
 
 All notable changes to kicad-happy are documented here.
