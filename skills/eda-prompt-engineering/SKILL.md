@@ -51,6 +51,15 @@ uncertainty — lessons from pcbGPT, PCBSchemaGen, PCBWorld, and MatriQ overnigh
 - Open-loop “route all nets” LLM dumps (PCBWorld: interactive wins)
 - Semantic validation without deterministic ERC/execution (pcbGPT stack)
 
+## Failure modes
+
+| Mode | Impact | Fix |
+|------|--------|-----|
+| Unbounded excellence targets | Agent hangs / false EQ | Cap to evidence unlocks |
+| Missing claim tags | Fake “verified” language | Require [ANALYZER]/[LAB]/… |
+| No SoT in prompt | Wrong file edited | Paste constraint card |
+| One-shot board generation | DRVs / unreviewable CAD | Force execute–repair loop |
+
 ## Acceptance criteria
 
 - Prompt includes SoT + freeze + claim tags
