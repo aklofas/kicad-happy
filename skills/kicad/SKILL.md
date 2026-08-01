@@ -13,8 +13,8 @@ description: >-
   tracing, power budget, DFM, or wants to understand, debug, compare, or
   review any hardware design. Also for "check my board", "review before fab",
   "what's wrong with my schematic", "is this ready to order", "check my power
-  supply", "verify this circuit", OSHWA/OSHWay certification, or open-source
-  hardware releases.
+  supply", "verify this circuit", OSHWA certification readiness, or any
+  electronics/PCB design question.
 ---
 
 # KiCad Project Analysis Skill
@@ -38,22 +38,6 @@ description: >-
 **Before analysis:** When the user asks to analyze or review a KiCad project, check whether a `datasheets/` directory exists in the project. If not, and DigiKey API keys are available (`DIGIKEY_CLIENT_ID`), offer to sync datasheets first: "I can download datasheets for your components before analysis — this enables pin-level verification and decoupling validation against manufacturer specs. Want me to sync them?" If the user declines or no API keys are set, proceed without datasheets — the analysis works without them but datasheet verification findings won't be available.
 
 **If you see a `DS-001` finding in the analyzer output** (severity `high`, detector `audit_datasheet_coverage`), the review cannot make any verified claim. Stop and either (a) run the datasheet sync via `digikey` / `mouser` / `lcsc` / `element14` (whichever has credentials/stock), (b) populate MPNs on the BOM parts, or (c) state explicitly in the report that every pin-level, electrical, and regulator finding is *consistency only* — do not use the words "verified", "confirmed", or "per datasheet" anywhere. `DS-002` (datasheets missing but MPNs set) and `DS-003` (partial MPN coverage) are softer variants with the same implication for the parts they cite.
-
-## OSHWA Certification
-
-When the user asks for OSHWA certification, an "OSHWay" review, or an
-open-source hardware release, read
-`references/oshwa-certification.md`. Treat this as a release-documentation and
-licensing audit, not as an electrical certification inferred from schematic
-topology.
-
-Inspect the editable KiCad sources, BOM, firmware, documentation, public
-release URLs, versioning, and license notices. Report missing or ambiguous
-items as certification gaps. Do not submit an OSHWA application, accept its
-license agreement, publish previously private design files, or add the
-certification mark unless the user explicitly authorizes that action. Add the
-mark only after OSHWA issues the project UID, then rerun the normal
-schematic/layout verification because placing the mark changes design files.
 
 ## Design Review Contract
 
@@ -756,7 +740,7 @@ Detailed methodology and format documentation lives in reference files. Read the
 | `manual-gerber-parsing.md` | 621 | Fallback when Gerber script fails |
 | `report-generation.md` | 614 | Report template (critical findings at top), analyzer output field reference (schematic/PCB/gerber), severity definitions, writing principles, domain-specific focus areas, known analyzer limitations |
 | `standards-compliance.md` | 638 | IPC/IEC standards tables: conductor spacing (IPC-2221A Table 6-1), current capacity (IPC-2221A/IPC-2152), annular rings, hole sizes, impedance, via protection (IPC-4761), creepage/clearance (ECMA-287/IEC 60664-1). Consider for all boards; auto-trigger for professional/industrial designs, high voltage, mains input, or safety isolation. |
-| `oshwa-certification.md` | — | OSHWA open-source hardware certification readiness: editable KiCad sources, public documentation, licensing, version registration, and certification-mark use |
+| `oshwa-certification.md` | — | OSHWA open-source hardware certification readiness: editable KiCad sources, public documentation, licensing, version registration, certification-mark use. Read when the user asks about OSHWA certification or an open-source hardware release — a documentation/licensing audit with explicit approval gates, not an electrical check |
 | `design-intent.md` | — | Design intent resolution, target market / certification / power constraints that gate findings by context |
 | `diff-analysis.md` | — | How `diff_analysis.py` compares two analyzer runs and emits severity-ranked change reports |
 | `what-if.md` | — | How `what_if.py` patches component values, recalculates derived fields, and suggests fixes for feedback dividers / crystal load caps / cap derating |

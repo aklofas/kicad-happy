@@ -1,8 +1,7 @@
 # OSHWA Certification Readiness
 
 Use this reference when preparing or auditing a KiCad project for the Open
-Source Hardware Association (OSHWA) certification program. Users may spell or
-pronounce the name "OSHWay"; use the official name OSHWA in deliverables.
+Source Hardware Association (OSHWA) certification program.
 
 Certification is a legal and publication workflow, not an electrical safety,
 EMC, radio, or manufacturing approval. Do not describe a board as OSHWA
@@ -28,10 +27,11 @@ certified until OSHWA has accepted the application and assigned a unique ID
 4. Publish a BOM with references, quantities, values, footprints, and enough
    manufacturer/part-number detail to reproduce the design. Ensure third-party
    components have publicly accessible datasheets.
-5. Apply compatible licenses to each creator-controlled element. Use an
-   OSHWA-approved open hardware license for hardware, an OSI-approved license
-   for required software, and an open documentation license. Do not use
-   NonCommercial or NoDerivatives restrictions for certification material.
+5. Apply compatible licenses to each creator-controlled element. Use a
+   recognized open hardware license for hardware (e.g. CERN-OHL, TAPR OHL,
+   Solderpad), an OSI-approved license for required software, and an open
+   documentation license. Do not use NonCommercial or NoDerivatives
+   restrictions for certification material.
    Record the selected license in the repository and, where practical, in the
    KiCad title block or schematic/PCB text.
 6. Test every public project and documentation URL in a logged-out session.
