@@ -146,12 +146,12 @@ description: One paragraph describing what this skill does and when to use it. I
 
 2. Add any scripts to `skills/<name>/scripts/`
 3. Add a symlink in `.agents/skills/`: `ln -s ../../skills/<name> .agents/skills/<name>`
-    *   **Gemini CLI:** Use `gemini skills link . --scope workspace` to link the whole repo.
+    *   **Antigravity CLI / Gemini:** Run `agy plugin install .` to install/update the local plugin.
     *   **opencode:** No per-skill registration needed — `.opencode/opencode.json` points the loader at the whole `skills/` tree, so new skills under `skills/<name>/SKILL.md` are auto-discovered.
-4. Update the manual install lists in `README.md` (Claude Code, Codex, Gemini, and opencode sections)
+4. Update the manual install lists in `README.md` (Claude Code, Codex, Antigravity/Gemini, and opencode sections)
 5. Validate:
     *   **Claude Code:** `claude plugin validate .`
-    *   **Gemini CLI:** Run `/skills reload` in an active session to verify discovery.
+    *   **Antigravity CLI:** Run `agy plugin validate .` to verify plugin structure and skills.
     *   **opencode:** Run `/skills list` in an active session to verify the new skill appears.
     *   **All skills:** `python3 .github/scripts/check_skill_metadata.py` (description ≤ 1024 chars; CI runs this on every PR).
 

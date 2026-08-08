@@ -303,94 +303,77 @@ Or `git pull` for symlink installs.
 
 ---
 
-## Google Gemini CLI
+## Google Antigravity CLI (`agy`) / Gemini
 
-kicad-happy is a monorepo with 12 skills under `skills/<name>/SKILL.md`. `gemini skills install <url>` does not recurse, so it fails at the repo root with "No valid skills found". Use one of the approaches below.
+`kicad-happy` is configured as a first-class **Antigravity CLI plugin** with a root `plugin.json` manifest that bundles all 11 skills (`kicad`, `spice`, `emc`, `datasheets`, `bom`, `digikey`, `mouser`, `lcsc`, `element14`, `jlcpcb`, `pcbway`).
 
-### Install (recommended: clone + `gemini skills link`)
+### Install (recommended: plugin mode for on-demand toggling)
 
-`gemini skills link` discovers `SKILL.md` or `*/SKILL.md` one level deep, so point it at the cloned `skills/` directory (not the repo root) to pick up all 12 at once:
+Install directly from GitHub:
+
+```bash
+agy plugin install https://github.com/aklofas/kicad-happy.git
+```
+
+Or clone locally and install:
 
 ```bash
 git clone https://github.com/aklofas/kicad-happy.git
-gemini skills link ./kicad-happy/skills
+agy plugin install kicad-happy
 ```
 
-Add `--scope workspace` to link into the repo-local `.gemini/skills` instead of the user-scope `~/.gemini/skills`.
-
-### Install (per-skill, from git URL)
-
-Use `--path` to install individual skills directly from the repo URL. Requires Gemini CLI from Jan 13 2026 or later (before that, `--path` was rejected with `Unknown arguments: path` — see [#16482](https://github.com/google-gemini/gemini-cli/issues/16482), fixed by [#16537](https://github.com/google-gemini/gemini-cli/pull/16537)).
+You can validate the plugin structure anytime:
 
 ```bash
-# Install all 12 skills:
-for skill in kicad spice emc datasheets bom digikey mouser lcsc element14 jlcpcb pcbway; do
-  gemini skills install https://github.com/aklofas/kicad-happy.git --path skills/$skill
-done
+agy plugin validate kicad-happy
 ```
 
-For repo-local (workspace scope):
+### On-Demand Toggling & Management
 
-```bash
-gemini skills install https://github.com/aklofas/kicad-happy.git --path skills/kicad --scope workspace
-```
+Manage the plugin via CLI commands, interactive chat slash commands, or the Antigravity desktop UI:
 
-### Install (manual symlinks)
+*   **List plugins**: `agy plugin list` / `/plugin list`
+*   **Disable plugin**: `agy plugin disable kicad-happy` / `/plugin disable kicad-happy`
+*   **Enable plugin**: `agy plugin enable kicad-happy` / `/plugin enable kicad-happy`
+*   **Uninstall plugin**: `agy plugin uninstall kicad-happy`
+*   **Desktop UI**: In Antigravity 2.0 / IDE, navigate to **Settings > Skills & Customizations > Plugins** to toggle **kicad-happy** on or off.
 
-If `gemini skills link` is unavailable, symlink directly:
+### Legacy Gemini CLI Migration (`gemini skills link`)
 
-```bash
-git clone https://github.com/aklofas/kicad-happy.git
-cd kicad-happy
-mkdir -p ~/.gemini/skills
-for skill in kicad spice emc datasheets bom digikey mouser lcsc element14 jlcpcb pcbway; do
-  ln -sf "$(pwd)/skills/$skill" ~/.gemini/skills/$skill
-done
-```
+If you previously installed `kicad-happy` using the deprecated `gemini skills link` command:
 
-### Management & Interactive Mode
-
-You can manage skills from the terminal or interactively using slash commands:
-
-*   **`gemini skills list`** / **`/skills list`**: List all discovered skills.
-*   **`gemini skills enable/disable <name>`** / **`/skills enable/disable <name>`**: Toggle a skill.
-*   **`/skills reload`**: Refresh the skill registry (use after editing `SKILL.md` or scripts).
-*   **`/skills link <path>`**: Link local skills during an active session.
+1. Unlink legacy skills from `~/.gemini/skills`:
+   ```bash
+   for skill in kicad spice emc datasheets bom digikey mouser lcsc element14 jlcpcb pcbway; do
+     unlink ~/.gemini/skills/$skill
+   done
+   ```
+2. Reinstall using `agy plugin install`:
+   ```bash
+   agy plugin install kicad-happy
+   ```
 
 ### Skill Tier Precedence
 
-Gemini CLI discovers skills in three tiers with the following precedence:
-1.  **Workspace Tier**: `.gemini/skills/` or `.agents/skills/` in the project root.
-2.  **User Tier**: `~/.gemini/skills/` or `~/.agents/skills/`.
-3.  **Extension Tier**: Bundled within installed extensions.
+Antigravity CLI discovers skills and plugins across three tiers with the following precedence:
+1.  **Workspace Tier**: `.gemini/plugins/` or `.agents/plugins/` in the project root.
+2.  **User Tier**: `~/.gemini/antigravity-cli/plugins/` or `~/.agents/plugins/`.
+3.  **Extension / Built-in Tier**: Bundled system plugins.
 
 ### Upgrade
 
-For `gemini skills link` installs, `git pull` in the cloned repo and run `/skills reload` — symlinks follow the live checkout.
-
-For `--path` installs, reinstall each skill:
+To update `kicad-happy`, run `git pull` in your local checkout and reinstall:
 
 ```bash
-for skill in kicad spice emc datasheets bom digikey mouser lcsc element14 jlcpcb pcbway; do
-  gemini skills uninstall $skill
-  gemini skills install https://github.com/aklofas/kicad-happy.git --path skills/$skill
-done
+cd kicad-happy
+git pull
+agy plugin install .
 ```
-
-### Known issues
-
-- Skill discovery is most stable in v0.25.0+. Ensure your CLI is up to date by running:
-  `npm install -g @google/gemini-cli@latest`
-- The `--path` flag was broken before Jan 13 2026
-  ([#16482](https://github.com/google-gemini/gemini-cli/issues/16482), fixed by
-  [#16537](https://github.com/google-gemini/gemini-cli/pull/16537)). Older CLI
-  versions reject it with `Unknown arguments: path` — upgrade, or fall back to
-  `gemini skills link` / manual symlinks.
-- Large skill directories may take a moment to index during initial startup.
 
 ### Gemini-specific notes
 
 <!-- Gemini maintainers: add platform-specific guidance below this line -->
+
 
 ---
 

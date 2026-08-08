@@ -6,7 +6,7 @@ A suite of 11 skills that turn an AI coding agent into an electronics design ass
 
 Capabilities: schematic analysis (40+ subcircuit detectors), PCB layout review, EMC pre-compliance (44 rules), SPICE simulation, thermal analysis, component sourcing (DigiKey/Mouser/LCSC/element14), BOM management, manufacturing prep (JLCPCB/PCBWay), and professional documentation generation.
 
-Install: `/plugin marketplace add aklofas/kicad-happy` (Claude Code), `gemini skills link ./kicad-happy/skills` after cloning (Gemini), or clone and symlink skills.
+Install: `/plugin marketplace add aklofas/kicad-happy` (Claude Code), `agy plugin install kicad-happy` after cloning (Antigravity / Gemini), or clone and symlink skills.
 
 ## Documentation
 
