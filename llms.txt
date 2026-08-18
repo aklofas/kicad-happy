@@ -2,7 +2,7 @@
 
 > AI-powered design review skills for KiCad electronics projects
 
-A suite of 11 skills that turn an AI coding agent into an electronics design assistant. Structured Python analysis scripts (zero dependencies, Python 3.10+ stdlib only) for KiCad 5-10 projects. Works with Claude Code, OpenAI Codex, Cursor, and Gemini CLI.
+A suite of 11 skills that turn an AI coding agent into an electronics design assistant. Structured Python analysis scripts (zero dependencies, Python 3.10+ stdlib only) for KiCad 5-10 projects. Works with Claude Code, OpenAI Codex, Cursor, and Google Antigravity.
 
 Capabilities: schematic analysis (40+ subcircuit detectors), PCB layout review, EMC pre-compliance (44 rules), SPICE simulation, thermal analysis, component sourcing (DigiKey/Mouser/LCSC/element14), BOM management, manufacturing prep (JLCPCB/PCBWay), and professional documentation generation.
 
