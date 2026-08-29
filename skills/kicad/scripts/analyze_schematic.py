@@ -1583,8 +1583,14 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
     if no_connects:
         for nc in no_connects:
             sheet = nc.get("_sheet", 0)
-            k = add_point(nc["x"], nc["y"], {"source": "no_connect"}, sheet)
-            union_with_overlapping_wires(k, nc["x"], nc["y"], sheet)
+            # A no-connect marker is an ERC annotation, never a connection.
+            # add_point() already shares the coordinate key with a pin or wire
+            # endpoint on the same point, which is all the absorption and NC
+            # tagging described above needs. Unioning the marker with every
+            # *overlapping* wire also caught wires passing mid-span beneath it,
+            # which KiCad does not connect, dragging the NC'd pin into that
+            # wire's net — a false-positive connection.
+            add_point(nc["x"], nc["y"], {"source": "no_connect"}, sheet)
 
     # Bus pass unions (GH #25). A bus member is joined into the coordinate
     # union-find through a synthetic slot key ("bus", sheet, cluster, member).
