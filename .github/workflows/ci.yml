@@ -76,6 +76,12 @@ jobs:
       - name: bom_manager.py --help
         run: python3 skills/bom/scripts/bom_manager.py --help > /dev/null
 
+      - name: search_lcsc.py --help
+        run: python3 skills/lcsc/scripts/search_lcsc.py --help > /dev/null
+
+      - name: search_lcsc unit tests
+        run: python3 -m unittest skills/lcsc/scripts/test_search_lcsc.py
+
       - name: datasheet_verify v1.4 cache round-trip smoke
         run: python3 skills/datasheets/scripts/_smoke_v14_roundtrip.py
 

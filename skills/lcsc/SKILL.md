@@ -33,6 +33,36 @@ Format: `Cxxxxx` (e.g., `C14663`). This is the universal identifier across both 
 - BOM matching in JLCPCB assembly (see `jlcpcb` skill)
 - Cross-referencing between platforms
 
+## Component Search
+
+Use `search_lcsc.py` to search LCSC and JLCPCB for electronic components, check live stock, inspect pricing tiers, identify basic vs. extended parts, and fetch parametric attributes. **No API key required.**
+
+```bash
+# Search by keyword or description
+python3 <skill-path>/scripts/search_lcsc.py "tactile switch"
+
+# Search for basic parts only (no JLCPCB extended loading fees)
+python3 <skill-path>/scripts/search_lcsc.py "0805 100R" --basic
+
+# Filter by package/footprint and stock
+python3 <skill-path>/scripts/search_lcsc.py "red led" --package 0805 --in-stock
+
+# Inspect full component details (parametric attributes, price breaks, warehouse stock)
+python3 <skill-path>/scripts/search_lcsc.py "C318884" --details
+
+# Output machine-readable JSON (for scripts and agent workflows)
+python3 <skill-path>/scripts/search_lcsc.py "ME2108" --limit 5 --json
+
+# Sort results by price or stock
+python3 <skill-path>/scripts/search_lcsc.py "microcontroller STM32" --sort price
+```
+
+The script:
+- Queries the free `jlcsearch` community API with automatic fallback to LCSC's direct product detail endpoint for exact `Cxxxxx` codes
+- Formats results into a clean terminal table highlighting `LCSC #`, `MPN`, `Package`, `Basic/Ext` status, `Stock`, `Price`, and `Description`
+- Supports `--basic` filtering to optimize PCB assembly BOM costs for JLCPCB manufacturing
+- Supports `--json` for automated BOM enrichment and agent workflows
+
 ## jlcsearch API Reference
 
 The jlcsearch community API is the recommended way to search LCSC. **No authentication required.**
