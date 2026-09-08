@@ -22,7 +22,7 @@ from kicad_utils import (
     parse_voltage_from_net_name as _parse_voltage_from_net_name,
 )
 from kicad_types import AnalysisContext
-from finding_schema import make_provenance
+from finding_schema import make_provenance, make_finding, Det
 from detector_helpers import index_two_pin_components, get_components_by_type, get_unique_ics
 
 from lookup_helpers import get_facts, has_data, best
@@ -3844,6 +3844,91 @@ def detect_design_observations(ctx: AnalysisContext, results: dict) -> list[dict
 # ---------------------------------------------------------------------------
 # Solder Jumper Inventory (SJ-DET)
 # ---------------------------------------------------------------------------
+
+def detect_shorted_two_pin_components(ctx: AnalysisContext) -> list[dict]:
+    """SH-001: Report two-pin components with both pins on the same net.
+
+    A resistor, capacitor, inductor or diode whose two pins land on one net
+    does nothing. It is almost always a wiring mistake, and the mistake is
+    invisible to ERC and DRC: the board is internally consistent, every pin is
+    connected, and the netlist is legal. Only the intent is wrong.
+
+    This condition was already being computed and thrown away.
+    ``index_two_pin_components()`` (detector_helpers.py) skips these parts so
+    downstream detectors do not divide by a degenerate topology, which is
+    correct for those detectors but meant a shorted part vanished from the
+    analysis instead of being reported. It is dropped from divider, RC,
+    pull-up and termination analysis at every call site, and nothing tells the
+    user why.
+
+    Deliberate shorts are excluded rather than reported: jumpers and net ties
+    exist to bridge a net, DNP parts are not fitted, and a zero-ohm link with
+    both ends on one net is a net tie by another name.
+
+    Severity is ``warning`` rather than ``error`` deliberately. A netlist-
+    building bug that over-unions two nets would surface here as a false
+    positive, so the finding should prompt a look rather than block a build
+    until its false-positive rate is measured across the corpus.
+    """
+    findings: list[dict] = []
+
+    # Types where one net across both pins is never useful. Jumpers and net
+    # ties are absent by design -- bridging is what they are for.
+    SHORTABLE = ("resistor", "capacitor", "inductor", "ferrite", "diode")
+
+    for comp in ctx.components:
+        if comp.get("type") not in SHORTABLE:
+            continue
+        if comp.get("dnp"):
+            continue
+
+        ref = comp.get("reference")
+        if not ref:
+            continue
+
+        n1, n2 = ctx.get_two_pin_nets(ref)
+        if not n1 or not n2 or n1 != n2:
+            continue
+
+        lib_id = (comp.get("lib_id") or "").lower()
+        if "nettie" in lib_id or "net_tie" in lib_id or "jumper" in lib_id:
+            continue
+
+        # A 0R link shorted to one net is a net tie spelled differently.
+        parsed = ctx.parsed_values.get(ref)
+        if comp.get("type") == "resistor" and parsed == 0:
+            continue
+
+        value = comp.get("value") or "?"
+        findings.append(make_finding(
+            detector=Det.SHORTED_TWO_PIN,
+            rule_id="SH-001",
+            category="signal",
+            severity="warning",
+            confidence="deterministic",
+            evidence_source="topology",
+            summary=(f"{ref} ({value}) has both pins on net '{n1}' -- the "
+                     f"component is shorted out and has no effect"),
+            description=(
+                f"{ref} is a {comp.get('type')} with pin 1 and pin 2 both "
+                f"connected to '{n1}'. Current bypasses the part entirely, so "
+                f"it contributes nothing to the circuit. ERC and DRC pass on "
+                f"this: every pin is connected and the netlist is internally "
+                f"consistent, so only intent distinguishes it from a "
+                f"deliberate link. Jumpers, net ties, zero-ohm links and DNP "
+                f"parts are excluded from this check."),
+            components=[ref],
+            nets=[n1],
+            recommendation=(
+                f"Confirm {ref} is meant to bridge '{n1}'. If not, one pin is "
+                f"on the wrong net -- check which node it should reach."),
+            net=n1,
+            component_type=comp.get("type"),
+            value=value,
+        ))
+
+    return findings
+
 
 def detect_solder_jumpers(ctx: AnalysisContext) -> list[dict]:
     """Enumerate every solder jumper in the design and report its default state.

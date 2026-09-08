@@ -71,6 +71,7 @@ from signal_detectors import (
     detect_power_regulators,
     detect_protection_devices,
     detect_rc_filters,
+    detect_shorted_two_pin_components,
     detect_solder_jumpers,
     detect_transistor_circuits,
     detect_voltage_dividers,
@@ -862,6 +863,7 @@ def analyze_signal_paths(ctx: AnalysisContext) -> dict:
     pwm_led_dimming = detect_pwm_led_dimming(ctx, transistor_circuits)
     headphone_jacks = detect_headphone_jack(ctx)
     solder_jumpers = detect_solder_jumpers(ctx)
+    shorted_two_pin_components = detect_shorted_two_pin_components(ctx)
     rail_source_audit = audit_rail_sources(
         ctx, power_regulators=power_regulators, solder_jumpers=solder_jumpers)
     label_aliases = detect_label_aliases(ctx)
@@ -1065,6 +1067,7 @@ def analyze_signal_paths(ctx: AnalysisContext) -> dict:
         "pwm_led_dimming": pwm_led_dimming,
         "headphone_jacks": headphone_jacks,
         "solder_jumpers": solder_jumpers,
+        "shorted_two_pin_components": shorted_two_pin_components,
         "rail_source_audit": rail_source_audit,
         "label_aliases": label_aliases,
         "power_pin_dc_paths": power_pin_dc_paths,
