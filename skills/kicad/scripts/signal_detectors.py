@@ -3865,6 +3865,14 @@ def detect_shorted_two_pin_components(ctx: AnalysisContext) -> list[dict]:
     exist to bridge a net, DNP parts are not fitted, and a zero-ohm link with
     both ends on one net is a net tie by another name.
 
+    Parts with more than two pins are excluded too. ``get_two_pin_nets()``
+    reads pins "1" and "2" without checking the pin count, so without a guard
+    this fires on rheostat-wired potentiometers, dual-anode diode symbols, ESD
+    arrays, passive packs and misclassified connectors. Unannotated references
+    ("R?") are skipped because they collide with each other in the pin-net map,
+    and findings are deduplicated by reference so a hierarchical sheet
+    instanced n times reports once rather than n times.
+
     Severity is ``warning`` rather than ``error`` deliberately. A netlist-
     building bug that over-unions two nets would surface here as a false
     positive, so the finding should prompt a look rather than block a build
@@ -3873,8 +3881,16 @@ def detect_shorted_two_pin_components(ctx: AnalysisContext) -> list[dict]:
     findings: list[dict] = []
 
     # Types where one net across both pins is never useful. Jumpers and net
-    # ties are absent by design -- bridging is what they are for.
-    SHORTABLE = ("resistor", "capacitor", "inductor", "ferrite", "diode")
+    # ties are absent by design -- bridging is what they are for. The type
+    # strings must match what classify_component() emits: it produces
+    # "ferrite_bead", never bare "ferrite", so the latter silently matched
+    # nothing.
+    SHORTABLE = ("resistor", "capacitor", "inductor", "ferrite_bead", "diode")
+
+    # One finding per reference. A hierarchical sheet instanced more than once
+    # puts the same reference in ctx.components once per instance, which would
+    # otherwise emit a duplicate finding per instance.
+    seen: set[str] = set()
 
     for comp in ctx.components:
         if comp.get("type") not in SHORTABLE:
@@ -3884,6 +3900,21 @@ def detect_shorted_two_pin_components(ctx: AnalysisContext) -> list[dict]:
 
         ref = comp.get("reference")
         if not ref:
+            continue
+
+        # Unannotated parts share a reference ("R?", "D?"), so they collide in
+        # the pin-net map and report each other's nets. Nothing useful can be
+        # said about them until the schematic is annotated.
+        if "?" in ref:
+            continue
+
+        # get_two_pin_nets() reads pins "1" and "2" without checking that the
+        # part only HAS two pins, so any multi-pin component whose first two
+        # pins share a net would fire: pots wired as rheostats (wiper tied to
+        # one end), dual-anode Schottky symbols, ESD arrays, resistor and
+        # capacitor packs, and connectors that the reference prefix
+        # misclassifies as a passive.
+        if len(ctx.ref_pins.get(ref, {})) != 2:
             continue
 
         n1, n2 = ctx.get_two_pin_nets(ref)
@@ -3898,6 +3929,10 @@ def detect_shorted_two_pin_components(ctx: AnalysisContext) -> list[dict]:
         parsed = ctx.parsed_values.get(ref)
         if comp.get("type") == "resistor" and parsed == 0:
             continue
+
+        if ref in seen:
+            continue
+        seen.add(ref)
 
         value = comp.get("value") or "?"
         findings.append(make_finding(
