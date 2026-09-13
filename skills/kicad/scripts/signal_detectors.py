@@ -4322,9 +4322,7 @@ def audit_power_pin_dc_paths(ctx: AnalysisContext,
     def _bridges_dc(ref: str) -> bool:
         c = components.get(ref) or {}
         t = (c.get("type") or c.get("category") or "").lower()
-        if t in ("inductor", "ferrite_bead", "fuse", "polyfuse"):
-            return True
-        if ref and ref[0] == "F" and ref[1:2].isdigit():
+        if t in ("inductor", "ferrite_bead", "fuse"):
             return True
         if t == "resistor":
             # Small value resistors count as DC-conductive.
