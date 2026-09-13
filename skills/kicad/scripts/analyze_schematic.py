@@ -6593,6 +6593,12 @@ def analyze_pdn_impedance(ctx: AnalysisContext, signal_analysis: dict | None = N
     return result
 
 
+# KH-374: below this, a resistor bridging a rail to ground/a signal net is a
+# current-shunt/sense element, not a pull or bleeder -- a 5 mOhm shunt on
+# VBAT computed a nonsensical 740 A "worst-case" pull-up current pre-floor.
+SLEEP_PULL_MIN_OHM = 100.0
+
+
 def analyze_sleep_current(ctx: AnalysisContext,
                           signal_analysis: dict | None = None,
                           power_sequencing: dict | None = None) -> dict:
@@ -6663,6 +6669,11 @@ def analyze_sleep_current(ctx: AnalysisContext,
             pwr_net, gnd_net = n2, n1
 
         if pwr_net and gnd_net:
+            if r_val < SLEEP_PULL_MIN_OHM:
+                # KH-374: a sub-100 Ohm resistor bridging a rail straight
+                # to ground is a shunt/sense element, not a bleeder --
+                # don't guess a current for it.
+                continue
             v_rail = _rail_voltage(pwr_net)
             if v_rail and v_rail > 0:
                 current_a = v_rail / r_val
@@ -6754,6 +6765,10 @@ def analyze_sleep_current(ctx: AnalysisContext,
                 "current_uA": 0.0,
                 "note": "series-R + shunt-C, no DC load — steady-state ~ 0",
             })
+        elif r_val < SLEEP_PULL_MIN_OHM:
+            # KH-374: a sub-100 Ohm resistor here is a shunt/sense
+            # element, not a pull -- don't guess a current for it.
+            pass
         else:
             # Pull-up: worst case current is V/R (pin driven low)
             current_a = v_rail / r_val
