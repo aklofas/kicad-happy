@@ -601,6 +601,12 @@ def classify_component(ref: str, lib_id: str, value: str, is_power: bool = False
                 return "switch"
             if any(x in val_low for x in ("mx-", "cherry", "kailh", "gateron")):
                 return "switch"
+        # An F-prefixed logic/analog IC (74LS32 as F1, seen in the corpus) is
+        # an IC, not a fuse — PP-001 must not bridge it.
+        if result == "fuse":
+            if (lib_low.startswith(("74xx", "4xxx", "logic", "amplifier", "interface"))
+                    or re.match(r'^(sn|mc|cd|hef|hc|hd|m)?(74|40|45)[a-z]{0,3}\d{2,}', val_low)):
+                return "ic"
         return result
 
     # --- No full-prefix match.  Try lib_id / value before single-char fallback ---
@@ -760,6 +766,11 @@ def classify_component(ref: str, lib_id: str, value: str, is_power: bool = False
                     return "filter"
                 if "ferrite" in lib_lower or "bead" in lib_lower:
                     return "ferrite_bead"
+                # An F-prefixed logic/analog IC (74LS32 as F1, seen in the
+                # corpus) is an IC, not a fuse — PP-001 must not bridge it.
+                if (lib_lower.startswith(("74xx", "4xxx", "logic", "amplifier", "interface"))
+                        or re.match(r'^(sn|mc|cd|hef|hc|hd|m)?(74|40|45)[a-z]{0,3}\d{2,}', val_lower)):
+                    return "ic"
             if result == "capacitor":
                 if "shield" in lib_lower or "clip" in lib_lower:
                     return "mechanical"
