@@ -4961,8 +4961,8 @@ def analyze_design_rule_compliance(
                 actual = None
                 if ctype == 'track_width' and min_track_width is not None:
                     actual = min_track_width
-                elif ctype == 'hole_size' and min_via_drill is not None:
-                    actual = min_via_drill
+                elif ctype == 'hole_size' and min_drill is not None:
+                    actual = min_drill
                 elif ctype == 'annular_width':
                     # Compute from via data
                     if all_vias:
