@@ -1062,6 +1062,15 @@ def is_power_net_name(net_name: str | None, power_rails: set[str] | None = None)
                       "VDDIO", "VCCIO", "VIN", "VOUT", "VREG", "POW",
                       "PWR", "VMOT", "VHEAT", "REGIN", "REGOUT"):
         return True
+    # xxx_nV or xxx_nVn patterns (RAW_5V, FUSED_5V, USB_5V, MAIN_3V3, VREG_12V)
+    # Split on _ and check if last segment matches voltage pattern or known power name
+    if "_" in nu:
+        last_seg = nu.split("_")[-1]
+        if re.match(r'^\d+V\d*$', last_seg):
+            return True
+        if last_seg in ("VCC", "VDD", "AVCC", "AVDD", "VBUS", "VIN", "VOUT",
+                        "VBAT", "VBATT", "VSYS", "VREG"):
+            return True
     return False
 
 
