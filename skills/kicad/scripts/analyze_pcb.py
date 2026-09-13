@@ -194,6 +194,27 @@ class ZoneFills:
         return [z["net_name"] for z in self.zones_at_point(x, y, layer, zones)
                 if z.get("net_name")]
 
+    def min_edge_distance(self, x: float, y: float, layer: str,
+                          zone_idxs: set | None = None) -> float:
+        """Distance from (x, y) to the nearest edge of any filled polygon on
+        `layer` (optionally only zones in zone_idxs). inf when none."""
+        best = float("inf")
+        for _fid, zidx, fl, coords, bbox in self._fills:
+            if fl != layer or (zone_idxs is not None and zidx not in zone_idxs):
+                continue
+            dx = max(bbox[0] - x, 0.0, x - bbox[2])
+            dy = max(bbox[1] - y, 0.0, y - bbox[3])
+            if math.hypot(dx, dy) >= best:
+                continue
+            n = len(coords)
+            for i in range(n):
+                x1, y1 = coords[i]
+                x2, y2 = coords[(i + 1) % n]
+                d = _dist_point_to_segment(x, y, x1, y1, x2, y2)
+                if d < best:
+                    best = d
+        return best
+
 
 def _dist_point_to_segment(px, py, x1, y1, x2, y2):
     """Distance from point (px, py) to line segment (x1,y1)-(x2,y2)."""
@@ -5421,15 +5442,46 @@ def analyze_thermal_pad_vias(footprints: list[dict], vias: dict,
 _PASSIVE_REF_RE = re.compile(r"^([A-Za-z0-9_]+/)?(C|R|L|FB)\d+$")
 
 
-def _nearest_zone_copper_distance(fx: float, fy: float, fp_layer: str,
-                                  gnd_zones: list) -> tuple:
-    """Distance from a point to the nearest same-layer GND zone copper.
+def _pad_sample_points(fp: dict, fp_layer: str) -> list[tuple[float, float]]:
+    """Corners + edge midpoints of every pad of `fp` on `fp_layer` (8 per pad,
+    rotated by the pad angle); footprint origin when no pad has geometry."""
+    pts: list[tuple[float, float]] = []
+    for pad in fp.get("pads", []):
+        layers = pad.get("layers") or [fp_layer]
+        if fp_layer not in layers or "abs_x" not in pad:
+            continue
+        cx, cy = pad["abs_x"], pad["abs_y"]
+        hw, hh = pad.get("width", 0) / 2.0, pad.get("height", 0) / 2.0
+        ang = math.radians(-(pad.get("angle") or 0))
+        for ox, oy in ((-hw, -hh), (0, -hh), (hw, -hh), (hw, 0), (hw, hh), (0, hh), (-hw, hh), (-hw, 0)):
+            pts.append((cx + ox * math.cos(ang) - oy * math.sin(ang),
+                        cy + ox * math.sin(ang) + oy * math.cos(ang)))
+    return pts or [(fp.get("x", 0), fp.get("y", 0))]
 
-    KH-339: prefers filled_bbox (actual copper) over outline_bbox — the
-    zone outline routinely overstates copper reach. Returns (distance,
-    basis) where basis is 'filled_bbox' or 'outline_bbox' (None if no
+
+def _nearest_zone_copper_distance(fp: dict, fp_layer: str, gnd_zones: list,
+                                  zones: list, zone_fills) -> tuple:
+    """Distance from a footprint's pad outline to the nearest same-layer GND
+    copper.
+
+    KH-373: prefers the filled polygon edge (actual copper shape, holes
+    included) over the zone bbox — the bbox was always 0.0 mm for any GND
+    pour enclosing the footprint, mislabelled 'deterministic'. Falls back
+    to KH-339's filled_bbox / outline_bbox approximation when polygon
+    data is unavailable. Returns (distance, basis) where basis is
+    'filled_polygon', 'filled_bbox', or 'outline_bbox' (None if no
     candidate zone).
     """
+    if zone_fills is not None and getattr(zone_fills, "has_data", False):
+        gnd_idxs = {i for i, z in enumerate(zones)
+                   if z in gnd_zones and fp_layer in z.get("layers", [])}
+        if gnd_idxs:
+            best = min(zone_fills.min_edge_distance(px, py, fp_layer, gnd_idxs)
+                       for px, py in _pad_sample_points(fp, fp_layer))
+            if best < float("inf"):
+                return best, "filled_polygon"
+
+    fx, fy = fp.get("x", 0), fp.get("y", 0)
     min_dist = float('inf')
     basis = None
     for gz in gnd_zones:
@@ -5665,15 +5717,17 @@ def analyze_copper_presence(footprints: list[dict], zones: list[dict],
                     or "touch" in lib or "capacitive" in lib)
         if not is_touch:
             continue
-        fx, fy = fp.get("x", 0), fp.get("y", 0)
         fp_layer = fp.get("layer", "F.Cu")
-        min_dist, _basis = _nearest_zone_copper_distance(fx, fy, fp_layer,
-                                                         gnd_zones)
+        min_dist, _basis = _nearest_zone_copper_distance(fp, fp_layer,
+                                                         gnd_zones, zones,
+                                                         zone_fills)
         if min_dist < float('inf'):
-            _conf = "deterministic" if _basis == "filled_bbox" else "heuristic"
-            _note = ("" if _basis == "filled_bbox" else
-                     " (zone outline basis — fill data unavailable; actual "
-                     "copper may be farther)")
+            _conf = "deterministic" if _basis == "filled_polygon" else "heuristic"
+            _note = ("" if _basis == "filled_polygon" else
+                     " (zone bbox basis — fill polygon data unavailable; "
+                     "actual clearance may be larger)")
+            _nets = sorted({p.get("net_name") for p in fp.get("pads", [])
+                          if p.get("net_name") and not is_ground_name(p["net_name"])})
             touch_clearances.append({
                 "ref": ref,
                 "layer": fp_layer,
@@ -5691,7 +5745,7 @@ def analyze_copper_presence(footprints: list[dict], zones: list[dict],
                     f"clearance to nearest GND zone copper{_note}."
                 ),
                 "components": [ref],
-                "nets": [],
+                "nets": _nets,
                 "pins": [],
                 "recommendation": "",
                 "report_context": {
