@@ -4165,6 +4165,22 @@ def _extract_package_code(footprint_name: str) -> str:
     return ""
 
 
+def _pad_effective_drill(pad: dict) -> float:
+    """Effective drill diameter (mm) for one pad, oval-drill aware.
+
+    An oval drill stores its two dimensions separately: `drill` (first,
+    "width") and `drill_h` (second, "height") — see the parser around
+    `pad_info["drill_h"]`. Whichever dimension is smaller is what actually
+    determines the smallest hole a fab has to drill (e.g. a polarized
+    connector's slotted mounting hole), so use the smaller of the two.
+    """
+    d = pad.get("drill", 0) or 0
+    h = pad.get("drill_h")
+    if isinstance(h, (int, float)) and h > 0 and (d <= 0 or h < d):
+        return h
+    return d
+
+
 def _pad_drills(footprints: list[dict]) -> list[float]:
     """Drill diameters (mm) of thru_hole/np_thru_hole pads across footprints.
 
@@ -4177,7 +4193,7 @@ def _pad_drills(footprints: list[dict]) -> list[float]:
         for pad in fp.get("pads", []):
             if pad.get("type") not in ("thru_hole", "np_thru_hole"):
                 continue
-            d = pad.get("drill", 0)
+            d = _pad_effective_drill(pad)
             if d and d > 0:
                 drills.append(d)
     return drills
@@ -4204,7 +4220,7 @@ def _min_drill_with_source(
         for pad in fp.get("pads", []):
             if pad.get("type") not in ("thru_hole", "np_thru_hole"):
                 continue
-            d = pad.get("drill", 0)
+            d = _pad_effective_drill(pad)
             if d and d > 0 and (min_pad is None or d < min_pad):
                 min_pad = d
                 min_pad_ref = ref
