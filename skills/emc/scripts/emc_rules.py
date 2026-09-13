@@ -2292,6 +2292,10 @@ def _point_to_edges_min_distance(px: float, py: float,
             d2 = point_to_segment_distance(px, py, mid[0], mid[1],
                                            end[0], end[1])
             d = min(d1, d2)
+        elif etype == 'circle' and edge.get('center'):
+            cx, cy = edge['center'][0], edge['center'][1]
+            r = math.hypot(end[0] - cx, end[1] - cy)
+            d = abs(math.hypot(px - cx, py - cy) - r)
         else:
             d = point_to_segment_distance(px, py, start[0], start[1],
                                           end[0], end[1])

@@ -441,10 +441,11 @@ def _compute_junction_temps(power_comps: list, pcb: dict,
             "rule_id": "TH-DET",
             "category": "thermal",
             "severity": "info",
-            "confidence": "heuristic" if rtheta_source == "default" else "deterministic",
+            "confidence": "heuristic" if rtheta_source in ("default", "package_table") else "deterministic",
             # rtheta_source is only ever "package_table" (footprint regex matched the
             # generic PACKAGE_THERMAL_RESISTANCE average) or "default" — neither is
             # per-MPN datasheet data, so neither may claim datasheet provenance.
+            # (KH-398: assessment-level twin of KH-387)
             "evidence_source": "heuristic_rule",
             "summary": f"Thermal: {ref} Tj={round(tj, 1)}C (margin {round(margin, 1)}C)",
             "description": f"Component {ref} in {pkg_name} package: Tj={round(tj, 1)}C, margin {round(margin, 1)}C to Tj_max ({tj_max}C).",
