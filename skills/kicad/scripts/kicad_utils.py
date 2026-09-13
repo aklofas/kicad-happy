@@ -1039,8 +1039,8 @@ def is_power_net_name(net_name: str | None, power_rails: set[str] | None = None)
     # Vnn, VnnV patterns (V3V3, V1V8, V5V0)
     if len(nu) >= 3 and nu[0] == "V" and nu[1].isdigit():
         return True
-    # nnVn patterns (3V3, 5V0, 12V0, 1V8) — industry-standard voltage naming
-    if re.match(r'^\d+V\d', nu):
+    # nnV, nnVn patterns (5V, 12V, 24V, 3V3, 5V0, 12V0, 1V8, 5VA, 3V3A)
+    if re.match(r'^\d+V\d*[A-Z]?$', nu):
         return True
     # Negative voltage rails (Neg6v, NEG12V)
     if re.match(r'^NEG\d+V', nu):
