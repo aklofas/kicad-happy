@@ -5449,7 +5449,12 @@ def _pad_sample_points(fp: dict, fp_layer: str) -> list[tuple[float, float]]:
             continue
         cx, cy = pad["abs_x"], pad["abs_y"]
         hw, hh = pad.get("width", 0) / 2.0, pad.get("height", 0) / 2.0
-        ang = math.radians(-(pad.get("angle") or 0))
+        # pad["angle"] is relative to the footprint; compose with the
+        # footprint's own board rotation before rotating the pad-local
+        # rectangle into board space (same fp_angle + pad_angle precedent
+        # as analyze_thermal_pad_vias ~5178-5180).
+        total_angle = fp.get("angle", 0) + (pad.get("angle") or 0)
+        ang = math.radians(-total_angle)
         for ox, oy in ((-hw, -hh), (0, -hh), (hw, -hh), (hw, 0), (hw, hh), (0, hh), (-hw, hh), (-hw, 0)):
             pts.append((cx + ox * math.cos(ang) - oy * math.sin(ang),
                         cy + ox * math.sin(ang) + oy * math.cos(ang)))
