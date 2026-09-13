@@ -7623,6 +7623,18 @@ def analyze_power_budget(ctx: AnalysisContext,
         "usb": 50, "uart": 5, "spi": 5, "i2c": 5,
     }
 
+    # Map regulators to output rails (built first: candidate_rails below
+    # needs it so a regulator's output rail counts even when its name
+    # doesn't look power-y and carries no #PWR symbol -- KH-375).
+    reg_by_rail: dict[str, dict] = {}
+    for reg in signal_analysis.get("power_regulators", []):
+        out_rail = reg.get("output_rail")
+        if out_rail:
+            reg_by_rail[out_rail] = reg
+
+    # Rails of interest: power-named nets, plus regulator output rails.
+    candidate_rails = {n for n in nets if is_power_net(n) and not is_ground(n)} | set(reg_by_rail)
+
     # Build power domain mapping: rail -> list of ICs
     rail_ics: dict[str, list[dict]] = {}
     for comp in components:
@@ -7630,33 +7642,36 @@ def analyze_power_budget(ctx: AnalysisContext,
             continue
         ref = comp["reference"]
         for pnum, (net_name, _) in ref_pins.get(ref, {}).items():
-            if net_name and is_power_net(net_name) and not is_ground(net_name):
-                # Check if this is a power pin (by pin type or name)
-                if net_name in nets:
-                    for p in nets[net_name]["pins"]:
-                        if p["component"] == ref:
-                            ptype = p.get("pin_type", "")
-                            pname = p.get("pin_name", "").upper()
-                            if ptype == "power_in" or pname in (
-                                "VCC", "VDD", "AVCC", "AVDD", "VDDIO", "DVDD",
-                                "VIN", "VCCA", "VCCB", "VDDQ", "VBUS"
-                            ):
-                                ic_entry = {
-                                    "ref": ref,
-                                    "value": comp["value"],
-                                }
-                                # Estimate current
-                                val_lower = comp.get("value", "").lower()
-                                lib_lower = comp.get("lib_id", "").lower()
-                                search_str = val_lower + " " + lib_lower
-                                est_ma = 10  # default
-                                for kw, ma in ic_current_estimates.items():
-                                    if kw in search_str:
-                                        est_ma = ma
-                                        break
-                                ic_entry["estimated_mA"] = est_ma
-                                rail_ics.setdefault(net_name, []).append(ic_entry)
-                            break
+            if net_name and net_name in candidate_rails:
+                # Look up THE ITERATED PIN specifically -- KH-375: this used
+                # to check the first pin `nets[net_name]["pins"]` listed for
+                # this component and `break`, which could be a non-power pin
+                # that happened to sort first (e.g. ~{SRCLR} before VCC).
+                pin = next((p for p in nets[net_name]["pins"]
+                           if p["component"] == ref
+                           and str(p.get("pin_number")) == str(pnum)), None)
+                if pin:
+                    ptype = pin.get("pin_type", "")
+                    pname = pin.get("pin_name", "").upper()
+                    if ptype == "power_in" or pname in (
+                        "VCC", "VDD", "AVCC", "AVDD", "VDDIO", "DVDD",
+                        "VIN", "VCCA", "VCCB", "VDDQ", "VBUS"
+                    ):
+                        ic_entry = {
+                            "ref": ref,
+                            "value": comp["value"],
+                        }
+                        # Estimate current
+                        val_lower = comp.get("value", "").lower()
+                        lib_lower = comp.get("lib_id", "").lower()
+                        search_str = val_lower + " " + lib_lower
+                        est_ma = 10  # default
+                        for kw, ma in ic_current_estimates.items():
+                            if kw in search_str:
+                                est_ma = ma
+                                break
+                        ic_entry["estimated_mA"] = est_ma
+                        rail_ics.setdefault(net_name, []).append(ic_entry)
 
     # Deduplicate ICs per rail (an IC may have multiple power pins on same rail)
     for rail in rail_ics:
@@ -7668,18 +7683,23 @@ def analyze_power_budget(ctx: AnalysisContext,
                 deduped.append(ic)
         rail_ics[rail] = deduped
 
-    # Map regulators to output rails
-    reg_by_rail: dict[str, dict] = {}
-    for reg in signal_analysis.get("power_regulators", []):
-        out_rail = reg.get("output_rail")
-        if out_rail:
-            reg_by_rail[out_rail] = reg
+    # Non-IC loads (KH-375): LEDs draw real current; 5 mA nominal each.
+    rail_other: dict[str, list[dict]] = {}
+    for comp in components:
+        if comp["type"] != "led":
+            continue
+        n1, n2 = ctx.get_two_pin_nets(comp["reference"])
+        for n in (n1, n2):
+            if n in candidate_rails and not is_ground(n):
+                rail_other.setdefault(n, []).append(
+                    {"ref": comp["reference"], "type": "led", "estimated_mA": 5})
+                break
 
-    if not rail_ics and not reg_by_rail:
+    if not rail_ics and not reg_by_rail and not rail_other:
         return {}
 
     # All rails of interest
-    all_rails = set(rail_ics.keys()) | set(reg_by_rail.keys())
+    all_rails = set(rail_ics.keys()) | set(reg_by_rail.keys()) | set(rail_other.keys())
 
     rails_result = {}
     observations = []
@@ -7687,12 +7707,15 @@ def analyze_power_budget(ctx: AnalysisContext,
     for rail in sorted(all_rails):
         ics = rail_ics.get(rail, [])
         total_ic_mA = sum(ic["estimated_mA"] for ic in ics)
+        other = rail_other.get(rail, [])
 
         rail_info: dict = {
             "ic_count": len(ics),
             "ics": ics,
-            "estimated_load_mA": total_ic_mA,
+            "estimated_load_mA": total_ic_mA + sum(o["estimated_mA"] for o in other),
         }
+        if other:
+            rail_info["other_loads"] = other
 
         reg = reg_by_rail.get(rail)
         if reg:
