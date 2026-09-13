@@ -1140,7 +1140,7 @@ def check_clock_routing(pcb: Dict, schematic: Optional[Dict] = None) -> List[Dic
         if _is_clock_net(net_name):
             clock_nets.add(net_name)
 
-    for net_name in clock_nets:
+    for net_name in sorted(clock_nets):
         nl = net_lengths_map.get(net_name, {})
         length_mm = nl.get('total_length_mm', nl.get('track_length_mm', 0))
         layer_dist = nl.get('layers', nl.get('layer_distribution', {}))
