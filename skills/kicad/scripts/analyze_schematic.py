@@ -1457,12 +1457,15 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
     # bare-name parent↔child union, both of which the bus pass replaces.
     bus_active = bool(bus_elements and bus_elements.get("bus_wires"))
     bus_graphs: dict[int, BusGraph] = {}
-    bus_aliases: dict = {}
+    # KH-395: KiCad scopes a bus_alias declaration to the schematic FILE that
+    # declares it. aliases_by_sheet keeps each sheet's aliases separate so a
+    # same-name alias declared on another sheet can never shadow this one.
+    aliases_by_sheet: dict[int, dict[str, list[str]]] = {}
     bus_label_idx: set[int] = set()
     bus_named_labels: list[tuple] = []  # (sheet, bare, x, y) for local/hier labels
     if bus_active:
-        bus_aliases = {a["name"]: a["members"]
-                       for a in bus_elements.get("bus_aliases", [])}
+        for a in bus_elements.get("bus_aliases", []):
+            aliases_by_sheet.setdefault(a.get("_sheet", 0), {})[a["name"]] = a["members"]
         wires_by_sheet: dict[int, list] = {}
         entries_by_sheet: dict[int, list] = {}
         for bw in bus_elements.get("bus_wires", []):
@@ -1471,7 +1474,8 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
             entries_by_sheet.setdefault(be_.get("_sheet", 0), []).append(be_)
         for s in wires_by_sheet:
             bus_graphs[s] = BusGraph(s, wires_by_sheet[s],
-                                     entries_by_sheet.get(s, []), bus_aliases)
+                                     entries_by_sheet.get(s, []),
+                                     aliases_by_sheet.get(s, {}))
         for idx, lbl in enumerate(labels):
             s = lbl.get("_sheet", 0)
             g = bus_graphs.get(s)
@@ -1481,7 +1485,7 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
             if isinstance(raw_name, list):
                 raw_name = str(raw_name[0]) if raw_name else ""
             bare = lbl.get("_bare_name", raw_name)
-            if expand_bus_name(bare, bus_aliases) is None:
+            if expand_bus_name(bare, aliases_by_sheet.get(s, {})) is None:
                 continue
             role = ("pin" if lbl.get("_is_sheet_pin")
                     else ("hier" if lbl["type"] == "hierarchical_label"
@@ -1637,7 +1641,7 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
         for s, bare, lx, ly in bus_named_labels:
             g = bus_graphs[s]
             cid = g.cluster_at(lx, ly)
-            expansion = expand_bus_name(bare, bus_aliases)
+            expansion = expand_bus_name(bare, aliases_by_sheet.get(s, {}))
             if not expansion:
                 continue
             for member in expansion:
@@ -5905,6 +5909,11 @@ def analyze_bus_topology(bus_elements: dict, labels: list[dict], nets: dict) -> 
         ),
     }
 
+    # KH-395: this walks the flat, project-wide alias list for reporting
+    # only -- each entry is inspected independently (coverage against ALL
+    # labels/nets in the project), so a same-name alias declared on two
+    # sheets simply produces two report entries rather than colliding.
+    # Actual net resolution is scoped per sheet in build_net_map.
     aliases = bus_elements.get("bus_aliases", [])
     if aliases:
         alias_info = []
@@ -6331,6 +6340,11 @@ def validate_hierarchical_labels(labels: list[dict], nets: dict,
     # members), so they legitimately never appear as a net under their own bus
     # name — In[0..7], {PHASES}, etc. Excluding them keeps this validation from
     # false-flagging every hierarchical bus as unconnected (GH #25).
+    # KH-395: this dict is a project-wide, last-wins fold used only to
+    # classify "is this label a bus name" for the exclusion above -- not to
+    # resolve net identity (that's per-sheet in build_net_map), so a
+    # same-name alias collision here only risks a label being classified
+    # as bus-like using another sheet's expansion, not a wrong net.
     aliases = {a["name"]: a["members"]
                for a in (bus_elements or {}).get("bus_aliases", [])}
 
@@ -9015,10 +9029,15 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
                 to_parse.append((sub_resolved, child_path))
 
     merged_bus = {"bus_wires": [], "bus_entries": [], "bus_aliases": []}
-    for be in all_bus_elements:
+    # KH-395: all_bus_elements[i] is sheet i's bus_elements (append order
+    # tracks sheet_idx above). Tag each alias with its declaring sheet so
+    # build_net_map can resolve bus_alias per schematic file, matching how
+    # bus_wires/bus_entries are already tagged in the parse loop above.
+    for sheet_idx, be in enumerate(all_bus_elements):
         merged_bus["bus_wires"].extend(be.get("bus_wires", []))
         merged_bus["bus_entries"].extend(be.get("bus_entries", []))
-        merged_bus["bus_aliases"].extend(be.get("bus_aliases", []))
+        merged_bus["bus_aliases"].extend(
+            {**a, "_sheet": sheet_idx} for a in be.get("bus_aliases", []))
 
     power_symbols = extract_power_symbols(all_components)
 
