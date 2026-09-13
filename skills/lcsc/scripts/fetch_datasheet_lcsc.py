@@ -194,7 +194,19 @@ def enrich_with_wmsc(component: dict) -> dict:
     if not direct:
         return component
     merged = dict(component)
-    merged["extra"] = {**(direct.get("extra") or {}), **(_parse_extra(component) or {})}
+    direct_extra = direct.get("extra") or {}
+    component_extra = _parse_extra(component) or {}
+    merged_extra = {**direct_extra, **component_extra}
+    # The shallow merge above lets component_extra['datasheet'] clobber
+    # wmsc's — including an empty {} block a stale jlcsearch hit carries
+    # (KH-405). Fall through to wmsc's datasheet block when the
+    # component's own has no pdf URL.
+    component_ds = component_extra.get("datasheet")
+    if not (isinstance(component_ds, dict) and component_ds.get("pdf")):
+        direct_ds = direct_extra.get("datasheet")
+        if isinstance(direct_ds, dict) and direct_ds.get("pdf"):
+            merged_extra["datasheet"] = direct_ds
+    merged["extra"] = merged_extra
     if not merged.get("datasheet") and direct.get("datasheet"):
         merged["datasheet"] = direct["datasheet"]
     return merged
