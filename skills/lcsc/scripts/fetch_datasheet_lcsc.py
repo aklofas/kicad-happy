@@ -181,6 +181,25 @@ def search_lcsc_direct(lcsc_code: str) -> dict | None:
     return component
 
 
+def enrich_with_wmsc(component: dict) -> dict:
+    """Fill datasheet URL / MPN / manufacturer from LCSC's product-detail
+    endpoint when a jlcsearch hit lacks them (jlcsearch dropped its `extra`
+    block in 2026-09 — KH-405). Keeps jlcsearch's stock/price."""
+    if not component or _get_datasheet_url(component):
+        return component
+    code = _get_lcsc_code(component)
+    if not code:
+        return component
+    direct = search_lcsc_direct(code)
+    if not direct:
+        return component
+    merged = dict(component)
+    merged["extra"] = {**(direct.get("extra") or {}), **(_parse_extra(component) or {})}
+    if not merged.get("datasheet") and direct.get("datasheet"):
+        merged["datasheet"] = direct["datasheet"]
+    return merged
+
+
 def _get_datasheet_url(component: dict) -> str:
     """Extract the best datasheet URL from a jlcsearch component.
 
@@ -466,6 +485,7 @@ def main():
 
     if args.search:
         component = search_lcsc(args.search)
+        component = enrich_with_wmsc(component)
         if not component and re.match(r"^C\d+$", args.search, re.IGNORECASE):
             print(f"jlcsearch returned no results for {args.search}, trying wmsc API...",
                   file=sys.stderr)
