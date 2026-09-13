@@ -1066,8 +1066,9 @@ def is_power_net_name(net_name: str | None, power_rails: set[str] | None = None)
     nu = net_name.upper()
     # Zero-volt ground spellings (0V, 0VA, 0VANA, 0VCC, 0V_A, +0V, ...) are
     # never rails, no matter what pattern rule below would otherwise match
-    # (KH-407).
-    if re.match(r'^\+?0+V', nu):
+    # (KH-407). Excludes 0V<digit> (0V9, 0V85, 0V95, 0V5) — those are
+    # sub-1V rails under the nnVn convention, not ground.
+    if re.match(r'^\+?0+V(?!\d)', nu):
         return False
     # Explicit known names
     if nu in ("GND", "VSS", "AGND", "DGND", "PGND", "GNDPWR", "GNDA", "GNDD",
@@ -1144,8 +1145,9 @@ def is_ground_name(net_name: str | None) -> bool:
               "SGND", "COM", "0V"):
         return True
     # Any zero-volt spelling (0VA, 0Vo, 0VANA, 0VCC, 0V_A, +0V, ...) is
-    # ground, not just the literal "0V" (KH-407).
-    if re.match(r'^\+?0+V([A-Z0-9_]*)$', nu):
+    # ground, not just the literal "0V" — but 0V<digit> (0V9, 0V85, 0V95,
+    # 0V5) is a sub-1V rail under the nnVn convention, not ground (KH-407).
+    if re.match(r'^\+?0+V(?!\d)([A-Z_][A-Z0-9_]*)?$', nu):
         return True
     # Battery-negative rails used as circuit ground in single-supply designs.
     # Narrow exact-match set — deliberately excludes V-/VEE which are
