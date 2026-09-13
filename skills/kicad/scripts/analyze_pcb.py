@@ -3196,6 +3196,13 @@ def analyze_vias(vias: dict, footprints: list[dict],
             })
         current_facts["ratings"] = ratings
 
+    # KH-383: footprint-embedded thru_hole/np_thru_hole pad drills (e.g. a
+    # thermal via pattern baked into a QFN footprint) aren't board vias, but
+    # can be smaller than any of them — surface separately as a fact.
+    pad_drills = _pad_drills(footprints)
+    if pad_drills:
+        current_facts["min_pad_drill_mm"] = min(pad_drills)
+
     result: dict = {
         "type_breakdown": type_breakdown,
     }
@@ -4128,6 +4135,57 @@ def _extract_package_code(footprint_name: str) -> str:
     return ""
 
 
+def _pad_drills(footprints: list[dict]) -> list[float]:
+    """Drill diameters (mm) of thru_hole/np_thru_hole pads across footprints.
+
+    Plated (thru_hole) and non-plated (np_thru_hole) through-hole pads
+    both go through a mechanical drill step, so both count toward the
+    board's smallest drill. SMD pads have no drill and are skipped.
+    """
+    drills: list[float] = []
+    for fp in footprints:
+        for pad in fp.get("pads", []):
+            if pad.get("type") not in ("thru_hole", "np_thru_hole"):
+                continue
+            d = pad.get("drill", 0)
+            if d and d > 0:
+                drills.append(d)
+    return drills
+
+
+def _min_drill_with_source(
+        via_drills: list[float],
+        footprints: list[dict] | None) -> tuple[float | None, str]:
+    """Smallest drill (mm) across via drills and footprint pad drills.
+
+    Board vias aren't the only mechanically-drilled holes — a footprint's
+    own thru_hole/np_thru_hole pads (e.g. a thermal via pattern baked into
+    a QFN footprint) are drilled too, and can be smaller than any via on
+    the board. Returns (None, "") when there are no drills at all,
+    (min, "via") when the minimum comes from a via, or (min, "pad <ref>")
+    when a footprint pad drill is the smallest.
+    """
+    min_via = min(via_drills) if via_drills else None
+
+    min_pad = None
+    min_pad_ref = ""
+    for fp in (footprints or []):
+        ref = fp.get("reference", "")
+        for pad in fp.get("pads", []):
+            if pad.get("type") not in ("thru_hole", "np_thru_hole"):
+                continue
+            d = pad.get("drill", 0)
+            if d and d > 0 and (min_pad is None or d < min_pad):
+                min_pad = d
+                min_pad_ref = ref
+
+    if min_pad is not None and (min_via is None or min_pad < min_via):
+        return min_pad, f"pad {min_pad_ref}"
+    if min_via is not None:
+        return min_via, "via"
+    return None, ""
+
+
 def analyze_dfm(footprints: list[dict], tracks: dict, vias: dict,
                 board_outline: dict, design_rules: dict | None = None,
                 net_classes: list[dict] | None = None,
@@ -4381,59 +4439,61 @@ def analyze_dfm(footprints: list[dict], tracks: dict, vias: dict,
                     "report_context": {"section": "DFM", "impact": "manufacturability", "standard_ref": ""},
                 })
 
-    # --- Via drill analysis ---
+    # --- Drill analysis (via drills + footprint pad drills, KH-383) ---
     all_vias = vias.get("vias", [])
-    if all_vias:
-        drills = [v["drill"] for v in all_vias if v.get("drill", 0) > 0]
-        if drills:
-            min_drill = min(drills)
-            metrics["min_drill_mm"] = min_drill
-            if min_drill < LIMITS_ADV["min_drill"]:
-                violations.append({
-                    "parameter": "via_drill",
-                    "actual_mm": min_drill,
-                    "standard_limit_mm": LIMITS_STD["min_drill"],
-                    "advanced_limit_mm": LIMITS_ADV["min_drill"],
-                    "tier_required": "challenging",
-                    "message": f"Via drill {min_drill}mm is below advanced process "
-                               f"minimum ({LIMITS_ADV['min_drill']}mm)",
-                    "detector": "analyze_dfm",
-                    "rule_id": "DFM-001",
-                    "category": "dfm",
-                    "severity": "error",
-                    "confidence": "deterministic",
-                    "evidence_source": "topology",
-                    "summary": f"Via drill {min_drill}mm below advanced minimum ({LIMITS_ADV['min_drill']}mm)",
-                    "description": f"Via drill {min_drill}mm is below the advanced process minimum of {LIMITS_ADV['min_drill']}mm, requiring a challenging fab tier.",
-                    "components": [],
-                    "nets": [],
-                    "pins": [],
-                    "recommendation": f"Via drill {min_drill}mm is below advanced process minimum ({LIMITS_ADV['min_drill']}mm)",
-                    "report_context": {"section": "DFM", "impact": "manufacturability", "standard_ref": ""},
-                })
-            elif min_drill < LIMITS_STD["min_drill"]:
-                violations.append({
-                    "parameter": "via_drill",
-                    "actual_mm": min_drill,
-                    "standard_limit_mm": LIMITS_STD["min_drill"],
-                    "advanced_limit_mm": LIMITS_ADV["min_drill"],
-                    "tier_required": "advanced",
-                    "message": f"Via drill {min_drill}mm requires advanced process "
-                               f"(standard: {LIMITS_STD['min_drill']}mm)",
-                    "detector": "analyze_dfm",
-                    "rule_id": "DFM-001",
-                    "category": "dfm",
-                    "severity": "warning",
-                    "confidence": "deterministic",
-                    "evidence_source": "topology",
-                    "summary": f"Via drill {min_drill}mm requires advanced process (standard: {LIMITS_STD['min_drill']}mm)",
-                    "description": f"Via drill {min_drill}mm is below the standard process minimum of {LIMITS_STD['min_drill']}mm, requiring an advanced fab tier.",
-                    "components": [],
-                    "nets": [],
-                    "pins": [],
-                    "recommendation": f"Via drill {min_drill}mm requires advanced process (standard: {LIMITS_STD['min_drill']}mm)",
-                    "report_context": {"section": "DFM", "impact": "manufacturability", "standard_ref": ""},
-                })
+    via_drills = [v["drill"] for v in all_vias if v.get("drill", 0) > 0]
+    min_drill, drill_source = _min_drill_with_source(via_drills, footprints)
+    if min_drill is not None:
+        metrics["min_drill_mm"] = min_drill
+        # A pad-sourced minimum is reported generically ("Drill") rather than
+        # "Via drill" — the smallest drilled hole isn't necessarily a via.
+        label = "Via drill" if drill_source == "via" else "Drill"
+        if min_drill < LIMITS_ADV["min_drill"]:
+            violations.append({
+                "parameter": "via_drill",
+                "actual_mm": min_drill,
+                "standard_limit_mm": LIMITS_STD["min_drill"],
+                "advanced_limit_mm": LIMITS_ADV["min_drill"],
+                "tier_required": "challenging",
+                "message": f"{label} {min_drill}mm is below advanced process "
+                           f"minimum ({LIMITS_ADV['min_drill']}mm)",
+                "detector": "analyze_dfm",
+                "rule_id": "DFM-001",
+                "category": "dfm",
+                "severity": "error",
+                "confidence": "deterministic",
+                "evidence_source": "topology",
+                "summary": f"{label} {min_drill}mm below advanced minimum ({LIMITS_ADV['min_drill']}mm)",
+                "description": f"{label} {min_drill}mm is below the advanced process minimum of {LIMITS_ADV['min_drill']}mm, requiring a challenging fab tier.",
+                "components": [],
+                "nets": [],
+                "pins": [],
+                "recommendation": f"{label} {min_drill}mm is below advanced process minimum ({LIMITS_ADV['min_drill']}mm)",
+                "report_context": {"section": "DFM", "impact": "manufacturability", "standard_ref": ""},
+            })
+        elif min_drill < LIMITS_STD["min_drill"]:
+            violations.append({
+                "parameter": "via_drill",
+                "actual_mm": min_drill,
+                "standard_limit_mm": LIMITS_STD["min_drill"],
+                "advanced_limit_mm": LIMITS_ADV["min_drill"],
+                "tier_required": "advanced",
+                "message": f"{label} {min_drill}mm requires advanced process "
+                           f"(standard: {LIMITS_STD['min_drill']}mm)",
+                "detector": "analyze_dfm",
+                "rule_id": "DFM-001",
+                "category": "dfm",
+                "severity": "warning",
+                "confidence": "deterministic",
+                "evidence_source": "topology",
+                "summary": f"{label} {min_drill}mm requires advanced process (standard: {LIMITS_STD['min_drill']}mm)",
+                "description": f"{label} {min_drill}mm is below the standard process minimum of {LIMITS_STD['min_drill']}mm, requiring an advanced fab tier.",
+                "components": [],
+                "nets": [],
+                "pins": [],
+                "recommendation": f"{label} {min_drill}mm requires advanced process (standard: {LIMITS_STD['min_drill']}mm)",
+                "report_context": {"section": "DFM", "impact": "manufacturability", "standard_ref": ""},
+            })
 
     # --- Annular ring analysis ---
     rings = []
@@ -4668,6 +4728,7 @@ def analyze_dfm(footprints: list[dict], tracks: dict, vias: dict,
 def analyze_design_rule_compliance(
     tracks: dict, vias: dict,
     project_settings: dict,
+    footprints: list[dict] | None = None,
 ) -> dict | None:
     """Check layout against project-defined design rules.
 
@@ -4679,6 +4740,10 @@ def analyze_design_rule_compliance(
     This is separate from DFM analysis — DFM checks fab capabilities
     (can this be manufactured?), while this checks design intent
     (did I follow my own rules?).
+
+    ``footprints`` (KH-383) lets the min-drill check also see
+    thru_hole/np_thru_hole pad drills, not just board vias — optional so
+    existing callers keep working unchanged.
     """
     design_rules = project_settings.get('design_rules', {})
     custom_rules = project_settings.get('custom_rules', [])
@@ -4702,13 +4767,14 @@ def analyze_design_rule_compliance(
     via_diameters = [v["size"] for v in all_vias if v.get("size", 0) > 0]
     via_drills = [v["drill"] for v in all_vias if v.get("drill", 0) > 0]
     min_via_diameter = min(via_diameters) if via_diameters else None
-    min_via_drill = min(via_drills) if via_drills else None
+    # KH-383: the smallest drilled hole may be a footprint pad, not a via.
+    min_drill, drill_source = _min_drill_with_source(via_drills, footprints)
 
     # --- Check .kicad_pro global minimums ---
     checks = [
         ('min_track_width', min_track_width, design_rules.get('min_track_width')),
         ('min_via_diameter', min_via_diameter, design_rules.get('min_via_diameter')),
-        ('min_via_drill', min_via_drill,
+        ('min_via_drill', min_drill,
          design_rules.get('min_through_hole_diameter')
          or design_rules.get('min_via_drill')),
     ]
@@ -4717,14 +4783,18 @@ def analyze_design_rule_compliance(
             continue
         rules_checked += 1
         if actual < required - 0.001:  # 1µm tolerance for float comparison
+            message = (f"{rule_name.replace('_', ' ').title()} "
+                       f"{actual:.3f}mm violates project minimum "
+                       f"({required:.3f}mm)")
+            if rule_name == 'min_via_drill' and drill_source.startswith('pad '):
+                message += (f" (smallest: pad drill {actual:.3f}mm on "
+                            f"{drill_source[4:]})")
             violations.append({
                 'rule': rule_name,
                 'source': 'project',
                 'required_mm': round(required, 4),
                 'actual_mm': round(actual, 4),
-                'message': (f"{rule_name.replace('_', ' ').title()} "
-                            f"{actual:.3f}mm violates project minimum "
-                            f"({required:.3f}mm)"),
+                'message': message,
             })
 
     # --- Net class summary (informational) ---
@@ -6753,7 +6823,7 @@ def analyze_pcb(path: str, *, proximity: bool = False,
     # at least an empty dict so the schema-required key is present.
     if project_settings:
         design_compliance = analyze_design_rule_compliance(
-            tracks, vias, project_settings)
+            tracks, vias, project_settings, footprints=footprints)
         result["design_rule_compliance"] = design_compliance or {}
     else:
         result["design_rule_compliance"] = {}
