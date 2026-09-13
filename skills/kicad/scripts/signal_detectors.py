@@ -2026,6 +2026,12 @@ def detect_power_regulators(ctx: AnalysisContext, voltage_dividers: list[dict]) 
                 comp = ctx.comp_lookup.get(cref)
                 if not comp or comp["type"] != "capacitor":
                     continue
+                # KH-377: the cap's other pin must be ground -- a
+                # feedforward cap wired rail->FB (or similar) isn't a
+                # decoupler and shouldn't be modeled as one.
+                other = [n for n in ctx.get_two_pin_nets(cref) if n != output_rail]
+                if not other or not ctx.is_ground(other[0]):
+                    continue
                 c_val = ctx.parsed_values.get(cref)
                 if not c_val or c_val <= 0:
                     continue
@@ -2061,6 +2067,10 @@ def detect_power_regulators(ctx: AnalysisContext, voltage_dividers: list[dict]) 
                     continue
                 comp = ctx.comp_lookup.get(cref)
                 if not comp or comp["type"] != "capacitor":
+                    continue
+                # KH-377: same shunt-only guard as the output-cap collector.
+                other = [n for n in ctx.get_two_pin_nets(cref) if n != input_rail]
+                if not other or not ctx.is_ground(other[0]):
                     continue
                 c_val = ctx.parsed_values.get(cref)
                 if not c_val or c_val <= 0:
