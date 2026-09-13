@@ -3846,7 +3846,7 @@ def detect_design_observations(ctx: AnalysisContext, results: dict) -> list[dict
 # ---------------------------------------------------------------------------
 
 def detect_shorted_two_pin_components(ctx: AnalysisContext) -> list[dict]:
-    """SH-001: Report two-pin components with both pins on the same net.
+    """SP-001: Report two-pin components with both pins on the same net.
 
     A resistor, capacitor, inductor or diode whose two pins land on one net
     does nothing. It is almost always a wiring mistake, and the mistake is
@@ -3873,6 +3873,10 @@ def detect_shorted_two_pin_components(ctx: AnalysisContext) -> list[dict]:
     and findings are deduplicated by reference so a hierarchical sheet
     instanced n times reports once rather than n times.
 
+    Five or more hits on one net collapse into one net-level finding (same
+    rule_id, confidence ``heuristic``): on the corpus that pattern is almost
+    always the net map having merged two rails, not N real shorts.
+
     Severity is ``warning`` rather than ``error`` deliberately. A netlist-
     building bug that over-unions two nets would surface here as a false
     positive, so the finding should prompt a look rather than block a build
@@ -3886,6 +3890,9 @@ def detect_shorted_two_pin_components(ctx: AnalysisContext) -> list[dict]:
     # "ferrite_bead", never bare "ferrite", so the latter silently matched
     # nothing.
     SHORTABLE = ("resistor", "capacitor", "inductor", "ferrite_bead", "diode")
+    # Five or more hits on one net collapse into a single net-level finding
+    # (see the end of this function).
+    MASS_SHORT_THRESHOLD = 5
 
     # One finding per reference. A hierarchical sheet instanced more than once
     # puts the same reference in ctx.components once per instance, which would
@@ -3937,7 +3944,7 @@ def detect_shorted_two_pin_components(ctx: AnalysisContext) -> list[dict]:
         value = comp.get("value") or "?"
         findings.append(make_finding(
             detector=Det.SHORTED_TWO_PIN,
-            rule_id="SH-001",
+            rule_id="SP-001",
             category="signal",
             severity="warning",
             confidence="deterministic",
@@ -3962,7 +3969,52 @@ def detect_shorted_two_pin_components(ctx: AnalysisContext) -> list[dict]:
             value=value,
         ))
 
-    return findings
+    # Collapse mass hits per net. When the net map has merged two rails
+    # (analyzer connectivity defect -- KH-403/404 class) every decoupling cap
+    # on the merged net reads as "shorted": the kicad-cli oracle refuted 205
+    # of 243 corpus findings for exactly that reason, essentially all on nets
+    # with five or more hits, while genuine shorts come one to four per net.
+    # One net-level finding keeps the signal (a tripwire for the net map, or a
+    # genuinely unfinished schematic) without N misleading per-part warnings.
+    by_net: dict[str, list[dict]] = {}
+    for f in findings:
+        by_net.setdefault(f["net"], []).append(f)
+    collapsed: list[dict] = []
+    for net, group in by_net.items():
+        if len(group) < MASS_SHORT_THRESHOLD:
+            collapsed.extend(group)
+            continue
+        refs = [f["components"][0] for f in group]
+        collapsed.append(make_finding(
+            detector=Det.SHORTED_TWO_PIN,
+            rule_id="SP-001",
+            category="signal",
+            severity="warning",
+            confidence="heuristic",
+            evidence_source="topology",
+            summary=(f"{len(group)} two-pin components have both pins on net "
+                     f"'{net}' ({refs[0]} .. {refs[-1]}) -- mass short or "
+                     f"net-map problem"),
+            description=(
+                f"{len(group)} two-pin parts ({', '.join(refs)}) each have pin "
+                f"1 and pin 2 on '{net}'. Either the schematic is unfinished "
+                f"(parts placed but not yet wired to their second node) or "
+                f"the extracted net map has merged two rails -- typically a "
+                f"power rail and ground -- so every decoupling capacitor "
+                f"between them reads as shorted. In the second case the "
+                f"other net-based findings on this net are suspect too."),
+            components=refs,
+            nets=[net],
+            recommendation=(
+                f"Check '{net}' in KiCad first: if it carries both a supply "
+                f"and ground, or far more pins than expected, the net map is "
+                f"wrong and the parts are fine (report the board). Otherwise "
+                f"wire each listed part to its second node."),
+            net=net,
+            component_count=len(group),
+        ))
+
+    return collapsed
 
 
 def detect_solder_jumpers(ctx: AnalysisContext) -> list[dict]:
