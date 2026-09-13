@@ -2057,6 +2057,28 @@ def _min_power_pad_distance(ic_fp: dict, cap_fp: dict) -> float:
     return min_dist
 
 
+def _nearby_decoupling_caps(ic: dict, caps: list[dict]) -> tuple[list[dict], list[str]]:
+    """Caps within 10 mm that share a non-ground net with the IC (KH-379).
+    Returns (nearby sorted by distance, refs of <=10 mm caps rejected as
+    ground-only)."""
+    ic_nets = {p.get("net_name") for p in ic.get("pads", []) if p.get("net_name")}
+    nearby, rejected = [], []
+    for cap in caps:
+        dist = _min_power_pad_distance(ic, cap)
+        if dist > 10.0:
+            continue
+        cap_nets = {p.get("net_name") for p in cap.get("pads", []) if p.get("net_name")}
+        shared = {n for n in (ic_nets & cap_nets) if n and not is_ground_name(n)}
+        if not shared:
+            rejected.append(cap["reference"])
+            continue
+        nearby.append({"cap": cap["reference"], "value": cap.get("value", ""),
+                       "distance_mm": round(dist, 2), "shared_nets": sorted(shared),
+                       "same_side": cap["layer"] == ic["layer"]})
+    nearby.sort(key=lambda n: (n["distance_mm"], n["cap"]))
+    return nearby, sorted(rejected)
+
+
 def analyze_decoupling_placement(footprints: list[dict]) -> list[dict]:
     """For each IC, find nearby capacitors and report distances.
 
@@ -2069,35 +2091,23 @@ def analyze_decoupling_placement(footprints: list[dict]) -> list[dict]:
                        for p in _ESD_TVS_PREFIXES)]
     caps = [fp for fp in footprints if re.match(r'^C\d', fp.get("reference", ""))]
 
-    if not ics or not caps:
+    if not caps:
         return []
 
     results = []
     for ic in ics:
-        nearby = []
-        for cap in caps:
-            dist = _min_power_pad_distance(ic, cap)
-            if dist <= 10.0:  # Within 10mm
-                # Check if cap shares a net with IC (likely decoupling)
-                ic_nets = {p.get("net_name") for p in ic.get("pads", []) if p.get("net_name")}
-                cap_nets = {p.get("net_name") for p in cap.get("pads", []) if p.get("net_name")}
-                shared = (ic_nets & cap_nets) - {""}
-                nearby.append({
-                    "cap": cap["reference"],
-                    "value": cap.get("value", ""),
-                    "distance_mm": round(dist, 2),
-                    "shared_nets": sorted(shared) if shared else [],
-                    "same_side": cap["layer"] == ic["layer"],
-                })
+        nearby, rejected = _nearby_decoupling_caps(ic, caps)
         if nearby:
-            nearby.sort(key=lambda n: n["distance_mm"])
-            results.append({
+            entry = {
                 "ic": ic["reference"],
                 "value": ic.get("value", ""),
                 "layer": ic["layer"],
                 "nearby_caps": nearby,
                 "closest_cap_mm": nearby[0]["distance_mm"],
-            })
+            }
+            if rejected:
+                entry["gnd_only_caps"] = rejected
+            results.append(entry)
 
     # ESD protection ICs need bypass caps within 3mm for clamping
     esd_ics = [fp for fp in footprints
@@ -2105,32 +2115,19 @@ def analyze_decoupling_placement(footprints: list[dict]) -> list[dict]:
                and any(fp.get("value", "").lower().startswith(p)
                        for p in _ESD_TVS_PREFIXES)]
     for ic in esd_ics:
-        nearby = []
-        for cap in caps:
-            dist = _min_power_pad_distance(ic, cap)
-            if dist <= 10.0:
-                ic_nets = {p.get("net_name") for p in ic.get("pads", [])
-                           if p.get("net_name")}
-                cap_nets = {p.get("net_name") for p in cap.get("pads", [])
-                            if p.get("net_name")}
-                shared = (ic_nets & cap_nets) - {""}
-                nearby.append({
-                    "cap": cap["reference"],
-                    "value": cap.get("value", ""),
-                    "distance_mm": round(dist, 2),
-                    "shared_nets": sorted(shared) if shared else [],
-                    "same_side": cap["layer"] == ic["layer"],
-                })
+        nearby, rejected = _nearby_decoupling_caps(ic, caps)
         if nearby:
-            nearby.sort(key=lambda n: n["distance_mm"])
-            results.append({
+            entry = {
                 "ic": ic["reference"],
                 "value": ic.get("value", ""),
                 "layer": ic["layer"],
                 "category": "esd_bypass",
                 "nearby_caps": nearby,
                 "closest_cap_mm": nearby[0]["distance_mm"],
-            })
+            }
+            if rejected:
+                entry["gnd_only_caps"] = rejected
+            results.append(entry)
 
     return results
 

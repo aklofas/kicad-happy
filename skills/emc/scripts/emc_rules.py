@@ -507,27 +507,33 @@ def check_decoupling_distance(pcb: Dict) -> List[Dict]:
             continue
 
         if closest > 8.0:
+            description = (
+                f'Nearest decoupling cap to {ic_ref} ({entry.get("value", "")}) '
+                f'is {closest:.1f}mm away. Each mm of trace adds 0.3-0.8 nH '
+                f'of loop inductance, reducing decoupling effectiveness '
+                f'at high frequencies.'
+            )
+            if nearby:
+                description += f' Shared net: {", ".join(nearby[0].get("shared_nets", []))}.'
             findings.append(_make_finding(
                 'decoupling', 'HIGH', 'DC-001',
                 title=f'Decoupling cap too far from {ic_ref}',
-                description=(
-                    f'Nearest decoupling cap to {ic_ref} ({entry.get("value", "")}) '
-                    f'is {closest:.1f}mm away. Each mm of trace adds 0.3-0.8 nH '
-                    f'of loop inductance, reducing decoupling effectiveness '
-                    f'at high frequencies.'
-                ),
+                description=description,
                 components=[ic_ref] + [c['cap'] for c in nearby[:2]],
                 recommendation=f'Move decoupling cap within 2-3mm of {ic_ref} power pins.',
             ))
         elif closest > 5.0:
+            description = (
+                f'Nearest decoupling cap to {ic_ref} ({entry.get("value", "")}) '
+                f'is {closest:.1f}mm away. Recommended: <3mm for best '
+                f'high-frequency performance.'
+            )
+            if nearby:
+                description += f' Shared net: {", ".join(nearby[0].get("shared_nets", []))}.'
             findings.append(_make_finding(
                 'decoupling', 'MEDIUM', 'DC-001',
                 title=f'Decoupling cap moderately far from {ic_ref}',
-                description=(
-                    f'Nearest decoupling cap to {ic_ref} ({entry.get("value", "")}) '
-                    f'is {closest:.1f}mm away. Recommended: <3mm for best '
-                    f'high-frequency performance.'
-                ),
+                description=description,
                 components=[ic_ref] + [c['cap'] for c in nearby[:2]],
                 recommendation=f'Move decoupling cap closer to {ic_ref} power pins if layout permits.',
             ))
