@@ -4874,7 +4874,7 @@ def _detect_differential_pairs(ctx: AnalysisContext) -> list:
                         entry["shared_ics"] = sorted(shared)
 
                     # Check for ESD protection
-                    esd_chips = [c for c in shared
+                    esd_chips = [c for c in sorted(shared)
                                  if comp_lookup.get(c, {}).get("type") == "ic"]
                     entry["has_esd"] = len(esd_chips) > 0
                     if esd_chips:

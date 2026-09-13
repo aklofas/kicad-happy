@@ -132,6 +132,16 @@ jobs:
           done
           cmp /tmp/det-guard/sch/run_1.norm.json /tmp/det-guard/sch/run_2.norm.json
 
+          SCH2=/tmp/harness/tests/fixtures/determinism/usb_dual_esd.kicad_sch
+          if [ -f "$SCH2" ]; then
+            mkdir -p /tmp/det-guard/sch2
+            for i in 1 2; do
+              python3 skills/kicad/scripts/analyze_schematic.py "$SCH2" --output /tmp/det-guard/sch2/run_$i.json
+              python3 -c "import json; d=json.load(open('/tmp/det-guard/sch2/run_$i.json')); d.pop('inputs', None); d.pop('capability_mode_ref', None); json.dump(d, open('/tmp/det-guard/sch2/run_$i.norm.json','w'), sort_keys=True)"
+            done
+            cmp /tmp/det-guard/sch2/run_1.norm.json /tmp/det-guard/sch2/run_2.norm.json
+          fi
+
           for i in 1 2; do
             python3 skills/kicad/scripts/analyze_pcb.py "$PCB" --full --output /tmp/det-guard/pcb/run_$i.json
             python3 -c "import json; d=json.load(open('/tmp/det-guard/pcb/run_$i.json')); d.pop('inputs', None); d.pop('capability_mode_ref', None); json.dump(d, open('/tmp/det-guard/pcb/run_$i.norm.json','w'), sort_keys=True)"
