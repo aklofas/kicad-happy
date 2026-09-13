@@ -7683,17 +7683,52 @@ def analyze_power_budget(ctx: AnalysisContext,
                 deduped.append(ic)
         rail_ics[rail] = deduped
 
+    # Resistor net index (built once): net -> [resistor refs with a pin
+    # there]. Used below so an LED one hop behind a series resistor
+    # (rail -> R -> LED -> GND, the common wiring on real boards) still
+    # gets attributed to its rail.
+    resistor_nets: dict[str, tuple[str | None, str | None]] = {}
+    net_to_resistors: dict[str, list[str]] = {}
+    for comp in components:
+        if comp["type"] != "resistor":
+            continue
+        rref = comp["reference"]
+        rn1, rn2 = ctx.get_two_pin_nets(rref)
+        resistor_nets[rref] = (rn1, rn2)
+        for n in (rn1, rn2):
+            if n:
+                net_to_resistors.setdefault(n, []).append(rref)
+
     # Non-IC loads (KH-375): LEDs draw real current; 5 mA nominal each.
     rail_other: dict[str, list[dict]] = {}
     for comp in components:
         if comp["type"] != "led":
             continue
         n1, n2 = ctx.get_two_pin_nets(comp["reference"])
+        direct_rail = next((n for n in (n1, n2)
+                            if n in candidate_rails and not is_ground(n)), None)
+        if direct_rail:
+            rail_other.setdefault(direct_rail, []).append(
+                {"ref": comp["reference"], "type": "led", "estimated_mA": 5})
+            continue
+        # One resistor hop away: rail -> R -> LED (or LED -> R -> rail).
+        # Neither LED pin sits on a candidate rail directly, so look past
+        # the series resistor(s) tied to either LED pin for one that lands
+        # on a candidate rail on its far end.
+        reachable_via: dict[str, str] = {}
         for n in (n1, n2):
-            if n in candidate_rails and not is_ground(n):
-                rail_other.setdefault(n, []).append(
-                    {"ref": comp["reference"], "type": "led", "estimated_mA": 5})
-                break
+            if not n:
+                continue
+            for rref in net_to_resistors.get(n, []):
+                rn1, rn2 = resistor_nets[rref]
+                other_net = rn2 if rn1 == n else rn1
+                if other_net and other_net in candidate_rails and not is_ground(other_net):
+                    reachable_via.setdefault(other_net, rref)
+        if reachable_via:
+            rail = sorted(reachable_via)[0]
+            rail_other.setdefault(rail, []).append(
+                {"ref": comp["reference"], "type": "led", "estimated_mA": 5,
+                 "via": reachable_via[rail]})
 
     if not rail_ics and not reg_by_rail and not rail_other:
         return {}
@@ -7729,12 +7764,14 @@ def analyze_power_budget(ctx: AnalysisContext,
             if v_out:
                 rail_info["regulator"]["output_voltage"] = v_out
 
-            # LDO thermal dissipation
+            # LDO thermal dissipation: uses the rail's total load (ICs +
+            # other loads like LEDs) -- KH-375/KH-386 need the same number.
             if reg.get("topology") == "LDO" and v_in_rail and v_out:
                 v_in = _estimate_rail_voltage(v_in_rail)
                 if v_in and v_in > v_out:
+                    total_load_mA = rail_info["estimated_load_mA"]
                     v_drop = v_in - v_out
-                    power_w = v_drop * (total_ic_mA / 1000.0)
+                    power_w = v_drop * (total_load_mA / 1000.0)
                     rail_info["ldo_dissipation"] = {
                         "input_voltage": v_in,
                         "dropout": round(v_drop, 2),
@@ -7743,7 +7780,7 @@ def analyze_power_budget(ctx: AnalysisContext,
                     if power_w > 0.5:
                         observations.append(
                             f"{rail}: LDO {reg['ref']} dissipates ~{power_w * 1000:.0f} mW "
-                            f"({v_drop:.1f}V drop x {total_ic_mA} mA) — verify thermal rating"
+                            f"({v_drop:.1f}V drop x {total_load_mA} mA) — verify thermal rating"
                         )
 
         rails_result[rail] = rail_info
