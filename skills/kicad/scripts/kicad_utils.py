@@ -1003,6 +1003,34 @@ def classify_jumper_default_state(value: str, lib_id: str = "",
 # they're signal nets, not rails.
 USB_DATA_NET_MARKERS = ("USB_D", "USBDP", "USBDM", "USBDN", "DPLUS", "DMINUS")
 
+# is_power_net_name() vocabulary for descriptive rail names (PR #44).
+# Control / monitor prefixes: <prefix>_<voltage> is a signal about a rail
+# (PWM_5V, EN_5V, SENSE_12V), not the rail itself.
+_SIGNAL_PREFIXES = frozenset({
+    "PWM", "EN", "ENABLE", "GATE", "SENSE", "SNS", "LEVEL", "TX", "RX",
+    "SDA", "SCL", "SCK", "MOSI", "MISO", "CS", "SS", "INT", "IRQ",
+    "RST", "RESET", "DIR", "STEP", "CLK", "CLOCK", "ALERT", "FAULT",
+    "FLAG", "IO", "GPIO", "INTR", "TRIG", "SYNC", "CTRL", "DATA", "SIG",
+    "DRV", "FB", "COMP", "ADC", "DAC",
+})
+# Prefixes that make <prefix>_<voltage> / <prefix>_VOUT a rail
+# (RAW_5V, USB_5V, ISO_3V3, SYS_VOUT, BOOST_VOUT).
+_POWER_PREFIXES = frozenset({
+    "RAW", "FUSED", "SW", "SWITCHED", "FILT", "FILTERED", "USB", "SYS",
+    "MAIN", "AUX", "BAT", "BATT", "DC", "EXT", "VREG", "REG", "CLEAN",
+    "ISO", "BACKUP", "PWR", "BOARD", "MCU", "BOOST", "BUCK", "LDO",
+})
+# <anything>_<tail> is a supply regardless of prefix (SERVO_VCC, ADC_AVDD).
+_SUPPLY_TAILS = frozenset({"VCC", "VDD", "AVCC", "AVDD", "DVCC", "DVDD",
+                           "VCCIO", "VDDIO"})
+# <tail>s that can also name a sense tap (ADC_VBUS, SNS_VIN) — gated on the
+# prefix not being a signal prefix.
+_RAIL_TAILS_GATED = frozenset({"VBUS", "VIN", "VBAT", "VBATT", "VSYS", "VREG"})
+# <voltage><suffix> with these suffixes is a control/monitor line (5VEN,
+# 12VPG, 5VOK), not a rail.
+_VOLTAGE_SIGNAL_SUFFIXES = frozenset({"EN", "ENABLE", "ON", "OFF", "FB", "PG",
+                                      "OK", "DET", "SENSE"})
+
 
 def is_usb_data_net_name(name_upper: str) -> bool:
     """True if an upper-cased net name looks like a USB data line."""
@@ -1042,6 +1070,12 @@ def is_power_net_name(net_name: str | None, power_rails: set[str] | None = None)
     # nnVn patterns (3V3, 5V0, 12V0, 1V8) — industry-standard voltage naming
     if re.match(r'^\d+V\d', nu):
         return True
+    # Plain and letter-suffixed voltages (5V, 12V, 24V, 5VSB, 12VIN, 5VUSB).
+    # 0V is a ground name (is_ground_name); a control suffix (5VEN, 12VPG,
+    # 5VOK) names a signal about the rail, not the rail.
+    m = re.match(r'^\d+V([A-Z][0-9A-Z]*)?$', nu)
+    if m and nu != "0V" and (m.group(1) or "") not in _VOLTAGE_SIGNAL_SUFFIXES:
+        return True
     # Negative voltage rails (Neg6v, NEG12V)
     if re.match(r'^NEG\d+V', nu):
         return True
@@ -1062,6 +1096,22 @@ def is_power_net_name(net_name: str | None, power_rails: set[str] | None = None)
                       "VDDIO", "VCCIO", "VIN", "VOUT", "VREG", "POW",
                       "PWR", "VMOT", "VHEAT", "REGIN", "REGOUT"):
         return True
+    # Descriptive rails: <power-prefix>_<voltage> (RAW_5V, USB_5V, ISO_3V3),
+    # <anything>_<supply-tail> (USB_VBUS, SERVO_VCC, LED_VIN) and
+    # <power-prefix>_VOUT (SYS_VOUT, BOOST_VOUT). Signal prefixes (PWM_5V,
+    # EN_5V, SENSE_12V, ADC_VBUS) stay signals so PU-001 & co. still see them;
+    # _VOUT needs the power prefix because about half the corpus's *_VOUT nets
+    # are op-amp / sensor outputs (OPAMP1_VOUT, MIC_VOUT, CURRENTSENSE_VOUT).
+    if first_seg:
+        last_seg = nu.rsplit("_", 1)[-1]
+        if last_seg in _SUPPLY_TAILS:
+            return True
+        if first_seg not in _SIGNAL_PREFIXES:
+            if last_seg in _RAIL_TAILS_GATED:
+                return True
+            if first_seg in _POWER_PREFIXES and (
+                    last_seg == "VOUT" or re.match(r'^\d+V[0-9A-Z]*$', last_seg)):
+                return True
     return False
 
 

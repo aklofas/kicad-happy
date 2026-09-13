@@ -4298,6 +4298,7 @@ def audit_power_pin_dc_paths(ctx: AnalysisContext,
       - wires on the same net                           (free)
       - resistors with parsed value <= 1 Ω              (bridge)
       - inductors / ferrite beads                       (bridge)
+      - fuses / polyfuses                               (bridge)
       - solder jumpers with default_state='bridged'    (bridge)
     and REJECT crossing capacitors. If no named power rail is reachable
     within 2 hops, emit PP-001 at severity=high.
@@ -4321,7 +4322,7 @@ def audit_power_pin_dc_paths(ctx: AnalysisContext,
     def _bridges_dc(ref: str) -> bool:
         c = components.get(ref) or {}
         t = (c.get("type") or c.get("category") or "").lower()
-        if t in ("inductor", "ferrite_bead"):
+        if t in ("inductor", "ferrite_bead", "fuse"):
             return True
         if t == "resistor":
             # Small value resistors count as DC-conductive.
@@ -4428,8 +4429,9 @@ def audit_power_pin_dc_paths(ctx: AnalysisContext,
                                 continue
                             visited.add(other_net)
                             next_frontier.add(other_net)
-                            if (ctx.is_power_net(other_net)
-                                    and not ctx.is_ground(other_net)):
+                            if ((ctx.is_power_net(other_net)
+                                    and not ctx.is_ground(other_net))
+                                    or other_net in nets_with_connector):
                                 reached_rail = True
                 frontier = next_frontier
                 if not frontier:
