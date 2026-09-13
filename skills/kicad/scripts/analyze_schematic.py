@@ -6594,7 +6594,8 @@ def analyze_pdn_impedance(ctx: AnalysisContext, signal_analysis: dict | None = N
 
 
 def analyze_sleep_current(ctx: AnalysisContext,
-                          signal_analysis: dict | None = None) -> dict:
+                          signal_analysis: dict | None = None,
+                          power_sequencing: dict | None = None) -> dict:
     """Sleep/quiescent current audit.
 
     Finds all always-on current paths: resistive dividers between power and
@@ -6610,6 +6611,33 @@ def analyze_sleep_current(ctx: AnalysisContext,
     is_ground = ctx.is_ground
     rail_currents: dict[str, list[dict]] = {}
     _get_two_pin_nets = ctx.get_two_pin_nets
+
+    # KH-374: rail voltage resolution that also knows about battery rails
+    # (VBAT/+BATT) and regulator estimated_vout, not just names
+    # _estimate_rail_voltage() can parse a number out of.
+    _battery_rail_re = re.compile(r'^\+?(BATT?|VBATT?|BATTERY|BAT\+)$', re.IGNORECASE)
+    _reg_vout_by_rail: dict[str, float] = {}
+    if signal_analysis:
+        for _reg in signal_analysis.get("power_regulators", []):
+            _out_rail = _reg.get("output_rail", "")
+            _vout = _reg.get("estimated_vout")
+            if _out_rail and _vout:
+                _reg_vout_by_rail.setdefault(_out_rail, _vout)
+
+    def _rail_voltage(name: str) -> float | None:
+        v = _estimate_rail_voltage(name)
+        if v is not None:
+            return v
+        if signal_analysis:
+            v = signal_analysis.get("rail_voltages", {}).get(_clean_hierarchical_name(name))
+            if v is not None:
+                return v
+        v = _reg_vout_by_rail.get(name)
+        if v is not None:
+            return v
+        if name and _battery_rail_re.match(name):
+            return 3.7
+        return None
 
     # --- Resistors between power and ground ---
     _seen_refs = set()
@@ -6635,7 +6663,7 @@ def analyze_sleep_current(ctx: AnalysisContext,
             pwr_net, gnd_net = n2, n1
 
         if pwr_net and gnd_net:
-            v_rail = _estimate_rail_voltage(pwr_net)
+            v_rail = _rail_voltage(pwr_net)
             if v_rail and v_rail > 0:
                 current_a = v_rail / r_val
                 entry = {
@@ -6666,7 +6694,7 @@ def analyze_sleep_current(ctx: AnalysisContext,
         else:
             continue
 
-        v_rail = _estimate_rail_voltage(pwr_net)
+        v_rail = _rail_voltage(pwr_net)
         if not v_rail or v_rail <= 0:
             continue
 
@@ -6768,7 +6796,7 @@ def analyze_sleep_current(ctx: AnalysisContext,
                 r_n1, r_n2 = _get_two_pin_nets(r_comp["reference"])
                 for rn in (r_n1, r_n2):
                     if rn and rn != net_name and is_power_net(rn) and not is_ground(rn):
-                        v_rail = _estimate_rail_voltage(rn)
+                        v_rail = _rail_voltage(rn)
                         if v_rail and v_rail > 0:
                             # LED forward voltage ~2V typical
                             v_led = 2.0
@@ -6871,20 +6899,36 @@ def analyze_sleep_current(ctx: AnalysisContext,
     if not rail_currents:
         return {}
 
-    # Build set of disableable rails (output of regulators with EN pins)
-    _disableable_rails: set[str] = set()
-    if signal_analysis:
-        for reg in signal_analysis.get("power_regulators", []):
-            out_rail = reg.get("output_rail", "")
-            if not out_rail:
-                continue
-            for comp in components:
-                if comp["reference"] == reg.get("ref", ""):
-                    for pin in comp.get("pins", []):
-                        if pin.get("name", "").upper() in (
-                                "EN", "ENABLE", "ON/OFF", "ON", "SHDN", "CE"):
-                            _disableable_rails.add(out_rail)
-                    break
+    # Build set of disableable rails. KH-374: when power_sequencing (real EN
+    # connectivity from analyze_power_sequencing) is available, a rail is
+    # only disableable if its regulator's EN pin is actually driven by
+    # something (en_source == "controlled") — not merely because the part
+    # happens to have an EN-named pin. Falls back to the old EN-pin-NAME
+    # heuristic when power_sequencing wasn't supplied (back-compat).
+    _controlled_rails: set[str] = set()
+    _controlled_regs: set[str] = set()
+    if power_sequencing:
+        for d in power_sequencing.get("dependencies", []):
+            if d.get("en_source") == "controlled":
+                _controlled_rails.add(d.get("output_rail", ""))
+                _controlled_regs.add(d.get("regulator", ""))
+
+    if power_sequencing:
+        _disableable_rails: set[str] = _controlled_rails
+    else:
+        _disableable_rails = set()
+        if signal_analysis:
+            for reg in signal_analysis.get("power_regulators", []):
+                out_rail = reg.get("output_rail", "")
+                if not out_rail:
+                    continue
+                for comp in components:
+                    if comp["reference"] == reg.get("ref", ""):
+                        for pin in comp.get("pins", []):
+                            if pin.get("name", "").upper() in (
+                                    "EN", "ENABLE", "ON/OFF", "ON", "SHDN", "CE"):
+                                _disableable_rails.add(out_rail)
+                        break
 
     # Add realistic state estimation to each entry
     for rail, entries in rail_currents.items():
@@ -6900,7 +6944,15 @@ def analyze_sleep_current(ctx: AnalysisContext,
                 e["likely_state"] = "GPIO off during sleep"
                 e["realistic_uA"] = 0.0
             elif etype == "regulator_iq":
-                if e.get("has_enable_pin"):
+                # KH-374: with real EN connectivity available, only a
+                # regulator whose EN is actually driven (en_source ==
+                # "controlled") counts as disableable — having an
+                # EN-named pin isn't enough on its own.
+                if power_sequencing:
+                    can_disable = e["ref"] in _controlled_regs
+                else:
+                    can_disable = bool(e.get("has_enable_pin"))
+                if can_disable:
                     e["likely_state"] = "can be disabled via EN"
                     e["realistic_uA"] = 0.0
                 else:
@@ -9647,11 +9699,14 @@ def analyze_schematic(path: str, project_root: str | None = None,
 
     # ---- Tier 3: High-level design analyses ----
     pdn_analysis = analyze_pdn_impedance(ctx, signal_analysis)
-    sleep_current = analyze_sleep_current(ctx, signal_analysis)
+    # KH-374: power_sequencing must run before sleep_current so the sleep
+    # audit can consult real EN connectivity (en_source) instead of just
+    # EN-pin-name presence.
+    power_sequencing = analyze_power_sequencing(ctx, signal_analysis)
+    sleep_current = analyze_sleep_current(ctx, signal_analysis, power_sequencing)
     voltage_derating = analyze_voltage_derating(ctx, signal_analysis,
                                                  project_dir=str(Path(path).parent))
     power_budget = analyze_power_budget(ctx, signal_analysis)
-    power_sequencing = analyze_power_sequencing(ctx, signal_analysis)
     bom_optimization = analyze_bom_optimization(all_components)
     test_coverage = analyze_test_coverage(ctx)
     assembly_complexity = analyze_assembly_complexity(all_components)
