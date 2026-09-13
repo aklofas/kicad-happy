@@ -1853,7 +1853,7 @@ def analyze_return_path_continuity(tracks, net_names, zones, zone_fills,
                                     signal_nets=None, ref_layer_map=None,
                                     footprints=None, radius_mm=0.5,
                                     debug_samples=None, vias=None,
-                                    power_rails=None):
+                                    power_rails=None, copper_order=None):
     """Check ground/power plane continuity under signal traces.
 
     For each signal net's trace segments, samples points along the trace
@@ -1880,9 +1880,16 @@ def analyze_return_path_continuity(tracks, net_names, zones, zone_fills,
             that misses copper on the opposite layer is still credited as
             a hit if it falls inside a via's own antipad — that void is
             expected (KiCad clears copper around a via for isolation), not
-            a reference-plane gap (KH-392).
+            a reference-plane gap (KH-392). The credit only applies when
+            the via's physical layer span actually reaches the probed
+            layer — a blind/buried via doesn't get credit for an antipad
+            on a layer it never touches (KH-397).
         power_rails: Optional set of net names to treat as power/ground
             regardless of naming heuristics (KH-393).
+        copper_order: Ordered list of copper layer names (from
+            `_copper_order_from_stackup`) used to test via layer span
+            (KH-397). Missing data falls back to the through-via
+            assumption (never reduces credit).
 
     Returns:
         List of gap findings: [{net, layer, gap_start_mm, gap_length_mm, ...}]
@@ -1923,20 +1930,21 @@ def analyze_return_path_continuity(tracks, net_names, zones, zone_fills,
     ANTIPAD_GRID = 2.0  # mm
     zone_clearances = [z.get("clearance") for z in zones if z.get("clearance")]
     antipad_clearance = max([ANTIPAD_CLEARANCE] + zone_clearances)
-    via_grid: dict[tuple[int, int], list[tuple[float, float, float]]] = {}
+    via_grid: dict[tuple[int, int], list[tuple[float, float, float, list]]] = {}
     for v in (vias or {}).get("vias", []):
         vr = v.get("size", 0) / 2.0
         if vr <= 0:
             continue
         gx, gy = int(v["x"] / ANTIPAD_GRID), int(v["y"] / ANTIPAD_GRID)
-        via_grid.setdefault((gx, gy), []).append((v["x"], v["y"], vr))
+        via_grid.setdefault((gx, gy), []).append((v["x"], v["y"], vr, v.get("layers") or []))
 
-    def _in_via_antipad(px: float, py: float) -> bool:
+    def _in_via_antipad(px: float, py: float, layer: str) -> bool:
         gx, gy = int(px / ANTIPAD_GRID), int(py / ANTIPAD_GRID)
         for dgx in (-1, 0, 1):
             for dgy in (-1, 0, 1):
-                for vx, vy, vr in via_grid.get((gx + dgx, gy + dgy), ()):
-                    if (px - vx) ** 2 + (py - vy) ** 2 <= (vr + antipad_clearance) ** 2:
+                for vx, vy, vr, vlayers in via_grid.get((gx + dgx, gy + dgy), ()):
+                    if (px - vx) ** 2 + (py - vy) ** 2 <= (vr + antipad_clearance) ** 2 \
+                            and _via_spans_layer(vlayers, layer, copper_order):
                         return True
         return False
 
@@ -1971,7 +1979,7 @@ def analyze_return_path_continuity(tracks, net_names, zones, zone_fills,
                 hit = cp.has_coverage_near(px, py, opp_layer,
                                            radius_mm=radius_mm)
                 antipad_credit = False
-                if not hit and _in_via_antipad(px, py):
+                if not hit and _in_via_antipad(px, py, opp_layer):
                     hit = True  # expected void — via's own antipad (KH-392)
                     antipad_credit = True
                 if not hit:
@@ -2193,6 +2201,28 @@ def _build_reference_layer_map(stackup: list[dict]) -> dict[str, str]:
             ref_map[name] = best_neighbor
 
     return ref_map
+
+
+def _copper_order_from_stackup(stackup: list[dict]) -> list[str]:
+    """Ordered copper layer names from the stackup (KH-397).
+
+    Falls back to simple F.Cu/B.Cu when no usable stackup is available.
+    """
+    names = [l.get("name", "") for l in (stackup or []) if l.get("type") == "copper" and l.get("name")]
+    return names if len(names) >= 2 else ["F.Cu", "B.Cu"]
+
+
+def _via_spans_layer(via_layers: list[str], layer: str, copper_order: list[str]) -> bool:
+    """True when `layer` is within the via's physical span (KH-397). Missing
+    data -> True (through-via assumption)."""
+    if not via_layers or len(via_layers) < 2 or not copper_order:
+        return True
+    try:
+        a, b, l = (copper_order.index(via_layers[0]), copper_order.index(via_layers[1]),
+                   copper_order.index(layer))
+    except ValueError:
+        return True
+    return min(a, b) <= l <= max(a, b)
 
 
 def _microstrip_impedance(width_mm, height_mm, thickness_mm, epsilon_r):
@@ -6696,7 +6726,8 @@ def analyze_pcb(path: str, *, proximity: bool = False,
             radius_mm=return_path_radius_mm,
             debug_samples=gp001_samples,
             vias=vias,
-            power_rails=_resolved_power_rails)
+            power_rails=_resolved_power_rails,
+            copper_order=_copper_order_from_stackup(setup.get("stackup", [])))
 
     # Compact footprint output — include pad-to-net mapping but omit pad geometry
     footprint_summary = []
