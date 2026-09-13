@@ -177,7 +177,7 @@ The script:
 - **Runs the kicad schematic analyzer** to extract components, MPNs, and LCSC codes
 - **Accepts any identifier** — MPN, LCSC code, or other distributor PNs from KiCad symbol properties
 - **Prefers LCSC code** for search (exact match) — falls back to MPN keyword search
-- **Falls back to wmsc.lcsc.com API** when jlcsearch has no results for an LCSC code (Cxxxxx)
+- **Falls back to wmsc.lcsc.com API** when jlcsearch has no results, or a hit has no datasheet URL, for an LCSC code (Cxxxxx)
 - **Downloads from LCSC CDN** — direct PDF URLs, no bot protection
 - **Writes `manifest.json` manifest** — same format as DigiKey/Mouser skills
 - **Verifies PDF content** — checks MPN, manufacturer, and description keywords

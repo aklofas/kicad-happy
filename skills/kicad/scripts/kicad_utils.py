@@ -601,6 +601,12 @@ def classify_component(ref: str, lib_id: str, value: str, is_power: bool = False
                 return "switch"
             if any(x in val_low for x in ("mx-", "cherry", "kailh", "gateron")):
                 return "switch"
+        # An F-prefixed logic/analog IC (74LS32 as F1, seen in the corpus) is
+        # an IC, not a fuse — PP-001 must not bridge it.
+        if result == "fuse":
+            if (lib_low.startswith(("74xx", "4xxx", "logic", "amplifier", "interface"))
+                    or re.match(r'^(sn|mc|cd|hef|hc|hd|m)?(74|40|45)[a-z]{0,3}\d{2,}(?!\s*m?a\b)', val_low)):
+                return "ic"
         return result
 
     # --- No full-prefix match.  Try lib_id / value before single-char fallback ---
@@ -760,6 +766,11 @@ def classify_component(ref: str, lib_id: str, value: str, is_power: bool = False
                     return "filter"
                 if "ferrite" in lib_lower or "bead" in lib_lower:
                     return "ferrite_bead"
+                # An F-prefixed logic/analog IC (74LS32 as F1, seen in the
+                # corpus) is an IC, not a fuse — PP-001 must not bridge it.
+                if (lib_lower.startswith(("74xx", "4xxx", "logic", "amplifier", "interface"))
+                        or re.match(r'^(sn|mc|cd|hef|hc|hd|m)?(74|40|45)[a-z]{0,3}\d{2,}(?!\s*m?a\b)', val_lower)):
+                    return "ic"
             if result == "capacitor":
                 if "shield" in lib_lower or "clip" in lib_lower:
                     return "mechanical"
@@ -1053,6 +1064,12 @@ def is_power_net_name(net_name: str | None, power_rails: set[str] | None = None)
     if "/" in net_name:
         net_name = net_name.rsplit("/", 1)[-1]
     nu = net_name.upper()
+    # Zero-volt ground spellings (0V, 0VA, 0VANA, 0VCC, 0V_A, +0V, ...) are
+    # never rails, no matter what pattern rule below would otherwise match
+    # (KH-407). Excludes 0V<digit> (0V9, 0V85, 0V95, 0V5) — those are
+    # sub-1V rails under the nnVn convention, not ground.
+    if re.match(r'^\+?0+V(?!\d)', nu):
+        return False
     # Explicit known names
     if nu in ("GND", "VSS", "AGND", "DGND", "PGND", "GNDPWR", "GNDA", "GNDD",
               "VCC", "VDD", "AVCC", "AVDD", "DVCC", "DVDD", "VBUS",
@@ -1073,8 +1090,8 @@ def is_power_net_name(net_name: str | None, power_rails: set[str] | None = None)
     # Plain and letter-suffixed voltages (5V, 12V, 24V, 5VSB, 12VIN, 5VUSB).
     # 0V is a ground name (is_ground_name); a control suffix (5VEN, 12VPG,
     # 5VOK) names a signal about the rail, not the rail.
-    m = re.match(r'^\d+V([A-Z][0-9A-Z]*)?$', nu)
-    if m and nu != "0V" and (m.group(1) or "") not in _VOLTAGE_SIGNAL_SUFFIXES:
+    m = re.match(r'^(\d+)V([A-Z][0-9A-Z]*)?$', nu)
+    if m and int(m.group(1)) != 0 and (m.group(2) or "") not in _VOLTAGE_SIGNAL_SUFFIXES:
         return True
     # Negative voltage rails (Neg6v, NEG12V)
     if re.match(r'^NEG\d+V', nu):
@@ -1126,6 +1143,11 @@ def is_ground_name(net_name: str | None) -> bool:
     # Exact matches
     if nu in ("GND", "VSS", "AGND", "DGND", "PGND", "GNDPWR", "GNDA", "GNDD",
               "SGND", "COM", "0V"):
+        return True
+    # Any zero-volt spelling (0VA, 0Vo, 0VANA, 0VCC, 0V_A, +0V, ...) is
+    # ground, not just the literal "0V" — but 0V<digit> (0V9, 0V85, 0V95,
+    # 0V5) is a sub-1V rail under the nnVn convention, not ground (KH-407).
+    if re.match(r'^\+?0+V(?!\d)([A-Z_][A-Z0-9_]*)?$', nu):
         return True
     # Battery-negative rails used as circuit ground in single-supply designs.
     # Narrow exact-match set — deliberately excludes V-/VEE which are
