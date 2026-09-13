@@ -1053,6 +1053,11 @@ def is_power_net_name(net_name: str | None, power_rails: set[str] | None = None)
     if "/" in net_name:
         net_name = net_name.rsplit("/", 1)[-1]
     nu = net_name.upper()
+    # Zero-volt ground spellings (0V, 0VA, 0VANA, 0VCC, 0V_A, +0V, ...) are
+    # never rails, no matter what pattern rule below would otherwise match
+    # (KH-407).
+    if re.match(r'^\+?0+V', nu):
+        return False
     # Explicit known names
     if nu in ("GND", "VSS", "AGND", "DGND", "PGND", "GNDPWR", "GNDA", "GNDD",
               "VCC", "VDD", "AVCC", "AVDD", "DVCC", "DVDD", "VBUS",
@@ -1073,8 +1078,8 @@ def is_power_net_name(net_name: str | None, power_rails: set[str] | None = None)
     # Plain and letter-suffixed voltages (5V, 12V, 24V, 5VSB, 12VIN, 5VUSB).
     # 0V is a ground name (is_ground_name); a control suffix (5VEN, 12VPG,
     # 5VOK) names a signal about the rail, not the rail.
-    m = re.match(r'^\d+V([A-Z][0-9A-Z]*)?$', nu)
-    if m and nu != "0V" and (m.group(1) or "") not in _VOLTAGE_SIGNAL_SUFFIXES:
+    m = re.match(r'^(\d+)V([A-Z][0-9A-Z]*)?$', nu)
+    if m and int(m.group(1)) != 0 and (m.group(2) or "") not in _VOLTAGE_SIGNAL_SUFFIXES:
         return True
     # Negative voltage rails (Neg6v, NEG12V)
     if re.match(r'^NEG\d+V', nu):
@@ -1126,6 +1131,10 @@ def is_ground_name(net_name: str | None) -> bool:
     # Exact matches
     if nu in ("GND", "VSS", "AGND", "DGND", "PGND", "GNDPWR", "GNDA", "GNDD",
               "SGND", "COM", "0V"):
+        return True
+    # Any zero-volt spelling (0VA, 0Vo, 0VANA, 0VCC, 0V_A, +0V, ...) is
+    # ground, not just the literal "0V" (KH-407).
+    if re.match(r'^\+?0+V([A-Z0-9_]*)$', nu):
         return True
     # Battery-negative rails used as circuit ground in single-supply designs.
     # Narrow exact-match set — deliberately excludes V-/VEE which are
