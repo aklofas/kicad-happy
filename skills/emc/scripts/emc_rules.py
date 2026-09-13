@@ -100,6 +100,28 @@ def _is_ground_net(name: str) -> bool:
     return False
 
 
+def _touch_nets(pcb: Dict) -> set:
+    """Nets belonging to capacitive-touch pads (from CP-003 findings — KH-378).
+
+    The top-level PCB analyzer output always strips the per-pad `pads` list
+    from footprint entries (analyze_pcb.py's compact footprint_summary pass)
+    in favor of `connected_nets` (sorted list of that footprint's pad net
+    names) — that's the fallback source for older pcb JSON where CP-003
+    carries `nets: []`.
+    """
+    nets, refs = set(), set()
+    for f in (pcb or {}).get('findings') or []:
+        if f.get('rule_id') == 'CP-003':
+            nets.update(n for n in f.get('nets') or [] if n)
+            refs.update(f.get('components') or [])
+    if refs:
+        for fp in (pcb or {}).get('footprints') or []:
+            if fp.get('reference') in refs:
+                nets.update(n for n in fp.get('connected_nets') or []
+                            if n and not _is_ground_net(n))
+    return nets
+
+
 def _is_clock_net(name: str) -> bool:
     """Heuristic: is this net name likely a clock signal?"""
     if not name:
@@ -359,12 +381,34 @@ def check_return_path_coverage(pcb: Dict, severity_threshold: str = 'all') -> Li
         ))
         return findings
 
+    touch = _touch_nets(pcb)
+
     for entry in rpc:
         net_name = entry.get('net', '')
         coverage = entry.get('reference_plane_coverage_pct', 100)
         trace_mm = entry.get('total_trace_mm', 0)
 
         if coverage >= 95:
+            continue
+
+        if net_name in touch:
+            findings.append(_make_finding(
+                'ground_plane', 'INFO', 'GP-001',
+                title='Touch/sense net has an intentional plane void',
+                description=(
+                    f'Net {net_name} has {coverage:.0f}% reference plane coverage — '
+                    f'expected: the ground pour is deliberately cleared under a '
+                    f'capacitive touch pad.'
+                ),
+                nets=[net_name],
+                recommendation='Keep the void; route no high-speed signals across it.',
+                confidence='heuristic',
+                signal_net=net_name,
+                coverage_pct=round(coverage, 1),
+                trace_mm=round(trace_mm, 2),
+                is_high_speed_or_clock=False,
+                is_touch_net=True,
+            ))
             continue
 
         is_hs = _is_high_speed_net(net_name) or _is_clock_net(net_name)
