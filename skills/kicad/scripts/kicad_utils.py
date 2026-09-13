@@ -1039,8 +1039,8 @@ def is_power_net_name(net_name: str | None, power_rails: set[str] | None = None)
     # Vnn, VnnV patterns (V3V3, V1V8, V5V0)
     if len(nu) >= 3 and nu[0] == "V" and nu[1].isdigit():
         return True
-    # nnV, nnVn patterns (5V, 12V, 24V, 3V3, 5V0, 12V0, 1V8, 5VA, 3V3A)
-    if re.match(r'^\d+V\d*[A-Z]?$', nu):
+    # nnV, nnVn, nnVxxxx patterns (5V, 12V, 24V, 3V3, 5V0, 12V0, 1V8, 3V3RAW, 5V0OUT)
+    if re.match(r'^\d+V[0-9A-Z]*$', nu):
         return True
     # Negative voltage rails (Neg6v, NEG12V)
     if re.match(r'^NEG\d+V', nu):
@@ -1062,15 +1062,30 @@ def is_power_net_name(net_name: str | None, power_rails: set[str] | None = None)
                       "VDDIO", "VCCIO", "VIN", "VOUT", "VREG", "POW",
                       "PWR", "VMOT", "VHEAT", "REGIN", "REGOUT"):
         return True
-    # xxx_nV or xxx_nVn patterns (RAW_5V, FUSED_5V, USB_5V, MAIN_3V3, VREG_12V)
-    # Split on _ and check if last segment matches voltage pattern or known power name
+    # xxx_nV or xxx_nVn patterns with power prefix (RAW_5V, FUSED_5V, USB_5V, MAIN_3V3, VREG_12V)
+    # Deliberately exclude signal prefixes (PWM_5V, EN_5V, GATE_12V, TX_3V3) to avoid
+    # suppressing pull-up checks (PU-001) or misclassifying signals as supply rails.
     if "_" in nu:
+        first_seg = nu.split("_")[0]
         last_seg = nu.split("_")[-1]
-        if re.match(r'^\d+V\d*$', last_seg):
-            return True
-        if last_seg in ("VCC", "VDD", "AVCC", "AVDD", "VBUS", "VIN", "VOUT",
-                        "VBAT", "VBATT", "VSYS", "VREG"):
-            return True
+        _SIGNAL_PREFIXES = {
+            "PWM", "EN", "ENABLE", "GATE", "SENSE", "SNS", "LEVEL", "TX", "RX",
+            "SDA", "SCL", "SCK", "MOSI", "MISO", "CS", "SS", "INT", "IRQ",
+            "RST", "RESET", "DIR", "STEP", "CLK", "CLOCK", "ALERT", "FAULT",
+            "FLAG", "IO", "GPIO", "INTR", "TRIG", "SYNC", "CTRL", "DATA", "SIG",
+            "DRV", "FB", "COMP", "ADC", "DAC"
+        }
+        if first_seg not in _SIGNAL_PREFIXES:
+            _POWER_PREFIXES = {
+                "RAW", "FUSED", "SW", "SWITCHED", "FILT", "FILTERED", "USB", "SYS",
+                "MAIN", "AUX", "BAT", "BATT", "DC", "EXT", "VREG", "REG", "CLEAN",
+                "ISO", "BACKUP", "PWR", "BOARD", "MCU"
+            }
+            if re.match(r'^\d+V[0-9A-Z]*$', last_seg) and first_seg in _POWER_PREFIXES:
+                return True
+            if last_seg in ("VCC", "VDD", "AVCC", "AVDD", "VBUS", "VIN", "VOUT",
+                            "VBAT", "VBATT", "VSYS", "VREG"):
+                return True
     return False
 
 
