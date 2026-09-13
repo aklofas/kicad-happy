@@ -15,6 +15,7 @@ Zero external dependencies beyond Python 3.8+ stdlib.
 """
 
 import math
+import os
 import re
 from typing import List, Dict, Optional, Any
 
@@ -45,6 +46,15 @@ try:
     from datasheet_features import get_mcu_features as _get_mcu_features
 except ImportError:
     def _get_mcu_features(mpn, **kw): return None
+
+
+def _schematic_project_dir(schematic):
+    """Project directory for datasheet-extraction lookups, from the schematic
+    analyzer's provenance block (the JSON carries no top-level `file` key)."""
+    for p in ((schematic or {}).get('inputs') or {}).get('source_files') or []:
+        if isinstance(p, str) and p.lower().endswith(('.kicad_sch', '.sch')):
+            return os.path.dirname(os.path.abspath(p))
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -2052,7 +2062,7 @@ def check_diff_pair_cm_radiation(pcb: Optional[Dict],
                              if c.get('reference') == ic_ref), None)
                 if comp and comp.get('type') not in ('connector',):
                     mcu_mpn = comp.get('mpn') or comp.get('value', '')
-                    mcu_feat = _get_mcu_features(mcu_mpn, analysis_json=schematic) if mcu_mpn else None
+                    mcu_feat = _get_mcu_features(mcu_mpn, project_dir=_schematic_project_dir(schematic)) if mcu_mpn else None
                     if mcu_feat and not mcu_feat.get('quality', {}).get('trusted', True):
                         mcu_feat = None   # deterministic detectors keep the v1.4 trust gate (v2.0 §3.A.1)
                     if mcu_feat:
