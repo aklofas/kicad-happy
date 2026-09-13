@@ -3462,6 +3462,7 @@ def parse_legacy_schematic(path: str, analysis_dir: str | Path | None = None) ->
         no_connects=all_no_connects,
         cache_dir=_cache_dir,
         design_context=_design_context,
+        project_dir=str(Path(path).parent),
     )
     ctx.source = ANALYZER_SOURCE
     from netlist_queries import NetlistQueries
@@ -9525,6 +9526,7 @@ def analyze_schematic(path: str, project_root: str | None = None,
         hierarchy_context=hierarchy_ctx,
         cache_dir=_cache_dir,
         design_context=_design_context,
+        project_dir=str(Path(path).parent),
     )
     ctx.source = ANALYZER_SOURCE
     from netlist_queries import NetlistQueries
