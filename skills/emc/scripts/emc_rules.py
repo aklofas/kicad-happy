@@ -108,15 +108,35 @@ def _touch_nets(pcb: Dict) -> set:
     in favor of `connected_nets` (sorted list of that footprint's pad net
     names) — that's the fallback source for older pcb JSON where CP-003
     carries `nets: []`.
+
+    KH-373: a CP-003 finding's component can be a real TestPoint:* library
+    part (bare "TP" refs are not touch-pad evidence) — never let one of
+    those demote GP-001 on its net, whether the net came from the finding's
+    own `nets` field or the `connected_nets` fallback.
     """
+    fp_by_ref: Dict[str, Dict] = {}
+    testpoint_refs = set()
+    for fp in (pcb or {}).get('footprints') or []:
+        ref = fp.get('reference')
+        if not ref:
+            continue
+        fp_by_ref[ref] = fp
+        lib = (fp.get('library') or '').lower()
+        if 'testpoint' in lib or 'test_point' in lib:
+            testpoint_refs.add(ref)
+
     nets, refs = set(), set()
     for f in (pcb or {}).get('findings') or []:
         if f.get('rule_id') == 'CP-003':
+            components = f.get('components') or []
+            if components and all(c in testpoint_refs for c in components):
+                continue
             nets.update(n for n in f.get('nets') or [] if n)
-            refs.update(f.get('components') or [])
+            refs.update(c for c in components if c not in testpoint_refs)
     if refs:
-        for fp in (pcb or {}).get('footprints') or []:
-            if fp.get('reference') in refs:
+        for ref in refs:
+            fp = fp_by_ref.get(ref)
+            if fp:
                 nets.update(n for n in fp.get('connected_nets') or []
                             if n and not _is_ground_net(n))
     return nets

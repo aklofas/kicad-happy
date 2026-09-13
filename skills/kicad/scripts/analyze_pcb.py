@@ -5830,8 +5830,18 @@ def analyze_copper_presence(footprints: list[dict], zones: list[dict],
         if ref not in opp_uncovered:
             continue
         lib = fp.get("library", "").lower()
-        is_touch = (ref.upper().startswith("TP")
-                    or "touch" in lib or "capacitive" in lib)
+        val = (fp.get("value") or "").lower()
+        # KH-373: a bare "TP" ref prefix is not evidence of a touch pad --
+        # 466/488 of the corpus's CP-003 "touch pad" refs were actually
+        # TestPoint:* library parts. Require positive evidence instead
+        # (a touch/capacitive-sensing library or value, or a TOUCH/TCH ref);
+        # a testpoint library is never touch even if it also matches those.
+        if "testpoint" in lib or "test_point" in lib:
+            is_touch = False
+        else:
+            is_touch = (any(k in lib for k in ("touch", "capacitive", "captouch", "cap_touch"))
+                        or any(k in val for k in ("touch", "capacitive", "captouch", "cap_touch"))
+                        or ref.upper().startswith(("TOUCH", "TCH")))
         if not is_touch:
             continue
         fp_layer = fp.get("layer", "F.Cu")
