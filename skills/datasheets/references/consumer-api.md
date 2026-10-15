@@ -12,11 +12,7 @@ This module provides typed accessors that abstract cache lookup, null safety, an
 
 Returns a dict of regulator-relevant fields from the extraction, or `None` if no extraction is available.
 
-Returns `None` when:
-- No extraction is cached for the MPN
-- Extraction is stale (below `EXTRACTION_VERSION`)
-- Extraction score is below `MIN_SCORE` (6.0)
-- Extraction topology is not one of: `'boost'`, `'buck'`, `'ldo'`
+Returns `None` only when no extraction is cached for the MPN or the cached file cannot be parsed. Quality is **described, not gated**: the returned dict carries `quality` (`high` / `medium` / `low`) and callers decide. Legacy v1.3 caches (score below `MIN_SCORE`, old `EXTRACTION_VERSION`) are still returned with `quality: "low"`.
 
 ```python
 from datasheet_features import get_regulator_features

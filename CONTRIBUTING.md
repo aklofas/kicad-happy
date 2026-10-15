@@ -247,6 +247,27 @@ For significant new features, write a test plan that the harness can execute:
 
 The harness agent executes test plans and reports results. After validation, the test plan file is deleted and results are archived.
 
+### Refactor checks (v3 arc)
+
+Before opening a PR run the product-side checks; they take well under a minute and need no corpus:
+
+```bash
+python3 -m unittest tools.tests.test_check_refactor
+python3 tools/check_refactor.py imports        # dependency direction (see ARCHITECTURE.md)
+python3 tools/check_refactor.py tags           # literal detector/rule_id/schema_era at emit sites
+python3 tools/check_refactor.py install-smoke  # every CLI --help/--schema from an isolated copy
+```
+
+With the harness checked out beside this repo you can also snapshot and compare analyzer output:
+
+```bash
+python3 tools/check_refactor.py snapshot --fixtures ../kicad-happy-testharness/tests/fixtures --out /tmp/base   # on main
+python3 tools/check_refactor.py snapshot --fixtures ../kicad-happy-testharness/tests/fixtures --out /tmp/cand   # on your branch
+python3 tools/check_refactor.py compare /tmp/base /tmp/cand
+```
+
+A refactor PR is expected to compare clean. An intended output change says so in the PR and lists the fields.
+
 ## Code style
 
 - **Python 3.10+ compatibility** — modern type hints (`X | None`, `list[int]`) are fine. Walrus operators and `match` statements are allowed. Avoid PEP 695 `type` aliases (3.12-only).
