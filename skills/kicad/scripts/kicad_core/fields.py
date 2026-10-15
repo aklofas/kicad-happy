@@ -4,7 +4,6 @@ Single source for the MPN / distributor part-number alias sets and the
 file-order-stable field pickers (KH-414, KH-418). Moved verbatim from
 kicad_utils.py in the v3 refactor; kicad_utils re-exports every name.
 """
-import re
 
 # ---------------------------------------------------------------------------
 # Part-number field aliases (KH-414, GitHub #46)
