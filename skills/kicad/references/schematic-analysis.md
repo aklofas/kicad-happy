@@ -99,7 +99,7 @@ The analyzer's `findings[]` array automatically identifies most subcircuits (fil
 python3 <digikey-skill-path>/scripts/sync_datasheets_digikey.py <file.kicad_sch>
 ```
 
-The mouser, element14 and lcsc skills ship the same command as sync_datasheets_<provider>.py.
+The mouser, element14 and lcsc skills ship the same command as `sync_datasheets_<provider>.py`.
 
 **Check for existing datasheets:** Before downloading, look for:
 - `<project>/datasheets/` with `manifest.json` (legacy name `index.json`) from a previous sync

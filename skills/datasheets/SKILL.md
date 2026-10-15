@@ -82,7 +82,7 @@ import sys, pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent / "datasheets"))
 from datasheet_types import lookup, has_data, best, trusted
 
-# Returns Optional[DatasheetFacts]. None on cache miss only; quality is reported on the object, not gated.
+# Returns Optional[DatasheetFacts]. None on cache miss or unreadable cache; quality is reported on the object, not gated.
 facts = lookup("TPS61023DRLR", cache_dir=pathlib.Path("datasheets/extracted"))
 if facts is None:
     return  # heuristic-only path; no datasheet evidence available
