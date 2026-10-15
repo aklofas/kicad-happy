@@ -8,12 +8,12 @@ This file records the few decisions a contributor needs that the code does not s
 - An optional skill may import the core. It never imports another optional skill.
 - Inside `skills/kicad/scripts/`, `kicad_core/` imports stdlib and itself only.
 - No module imports a CLI module (`analyze_*.py`, `cross_analysis.py`, `diff_analysis.py`, `what_if.py`, `lifecycle_audit.py`, `simulate_subcircuits.py`, `bom_manager.py`); shared code lives in a non-CLI module.
-- Existing violations are listed in `tools/import_baseline.json`. The list may only shrink; CI fails on a new entry.
+- Existing violations are listed in `tools/import_baseline.json`. The list may only shrink; CI fails on a new entry. A verbatim file move may relocate entries with `imports --update-baseline --moved-from FILE`, which accepts a new entry only when an entry of the same shape was retired from that file.
 - Deliberate, dated exceptions live in `tools/layer_rules.json` under `exceptions`, each with a reason and a retire-by round; they are listed on every `imports` run.
 
 ## Finding emit sites (enforced by `tools/check_refactor.py tags`)
 
-Every emit site carries literal string keywords `detector=`, `rule_id=` and `schema_era=`. An emit site is a `make_finding`/`_make_finding` call, or a caller of a dict-returning `_make_*` factory. A `_make_*` wrapper whose own inner `make_finding` call carries all three literals is itself the emit site, and its callers are not scanned. `_make_*` helpers that are not finding factories are ignored. Known legacy sites are in `tools/tag_baseline.json`; the list may only shrink. Emitted detector strings and rule IDs are public API and never change.
+Every emit site carries literal string keywords `detector=`, `rule_id=` and `schema_era=`. An emit site is a `make_finding`/`_make_finding` call, or a caller of a dict-returning `_make_*` factory. A `_make_*` wrapper whose own inner `make_finding` call carries all three literals is itself the emit site, and its callers are not scanned. `_make_*` helpers that are not finding factories are ignored. Known legacy sites are in `tools/tag_baseline.json`; the list may only shrink. Moving an emit site to another file uses `tags --update-baseline --moved-from FILE`, which never lets the count of untagged shapes grow. Emitted detector strings and rule IDs are public API and never change.
 
 ## Facade register
 

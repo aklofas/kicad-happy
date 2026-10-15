@@ -1,4 +1,4 @@
-import contextlib, importlib.util, io, json, sys, tempfile, unittest
+import contextlib, importlib.util, io, json, subprocess, sys, tempfile, unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -367,6 +367,26 @@ class StableKeys(unittest.TestCase):
 
 class Ratchet(unittest.TestCase):
     KEYS = ("file", "callee", "line")
+
+    def test_moved_from_accepts_relocated_shapes_only(self):
+        base = [{"file": "a.py", "function": "f", "callee": "make_finding", "ordinal": 0, "line": 1,
+                 "missing": ["schema_era"], "nonliteral": []}]
+        moved = [{"file": "b.py", "function": "f", "callee": "make_finding", "ordinal": 0, "line": 9,
+                  "missing": ["schema_era"], "nonliteral": []}]
+        grown = moved + [{"file": "b.py", "function": "g", "callee": "make_finding", "ordinal": 0, "line": 20,
+                          "missing": ["schema_era"], "nonliteral": []}]
+        with tempfile.TemporaryDirectory() as d, contextlib.redirect_stdout(io.StringIO()):
+            p = Path(d) / "tag_baseline.json"
+            p.write_text(json.dumps(base), encoding="utf-8")
+            self.assertEqual(cr._ratchet(moved, p, True, (), key_fn=cr._tag_key, moved_from=("a.py",)), 0)
+            self.assertEqual(json.loads(p.read_text())[0]["file"], "b.py")
+            p.write_text(json.dumps(base), encoding="utf-8")
+            self.assertEqual(cr._ratchet(grown, p, True, (), key_fn=cr._tag_key, moved_from=("a.py",)), 1)
+            self.assertEqual(cr._ratchet(moved, p, True, (), key_fn=cr._tag_key, moved_from=()), 1)
+
+    def test_moved_from_requires_update_baseline(self):
+        r = subprocess.run([sys.executable, str(cr.__file__), "tags", "--moved-from", "x.py"], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 2)
 
     def _site(self, line):
         return {"file": "a.py", "line": line, "callee": "make_finding", "missing": ["schema_era"], "nonliteral": []}

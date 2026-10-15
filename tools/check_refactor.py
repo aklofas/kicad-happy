@@ -472,7 +472,8 @@ def scan_tags(root: Path, errors: list | None = None) -> list[dict]:
     return sites
 
 
-def _ratchet(current: list[dict], baseline_path: Path, update: bool, key_fields: tuple[str, ...], key_fn=None) -> int:
+def _ratchet(current: list[dict], baseline_path: Path, update: bool, key_fields: tuple[str, ...], key_fn=None,
+             moved_from: tuple[str, ...] = ()) -> int:
     def key(d): return key_fn(d) if key_fn else tuple(d[k] for k in key_fields)
     baseline = json.loads(baseline_path.read_text(encoding="utf-8")) if baseline_path.exists() else []
     base_keys = {key(d) for d in baseline}
@@ -480,6 +481,20 @@ def _ratchet(current: list[dict], baseline_path: Path, update: bool, key_fields:
     gone = len(base_keys - {key(d) for d in current})
     if new and update and not baseline_path.exists():
         new = []  # first generation of a baseline
+    if new and update and moved_from:
+        from collections import Counter
+
+        cur_keys = {key(d) for d in current}
+
+        def shape(d):
+            return (d.get("callee") or d.get("rule"), tuple(d.get("missing", [])),
+                    tuple(d.get("nonliteral", [])), d.get("module", ""))
+        pool = Counter(shape(d) for d in baseline if key(d) not in cur_keys and d["file"] in moved_from)
+        need = Counter(shape(d) for d in new)
+        if not (need - pool):
+            print(f"{baseline_path.name}: {len(new)} relocated entries matched against "
+                  f"{sum(pool.values())} retired from moved files")
+            new = []
     for d in new:
         print(f"NEW {d['file']}:{d['line']} {d.get('rule') or d['callee']} {d.get('module','')} "
               f"{'missing=' + ','.join(d['missing']) if d.get('missing') else ''} "
@@ -502,6 +517,9 @@ def _report_parse_errors(errors: list) -> bool:
 
 
 def cmd_imports(args) -> int:
+    if args.moved_from and not args.update_baseline:
+        print("--moved-from requires --update-baseline", file=sys.stderr)
+        return 2
     rules = json.loads(LAYER_RULES.read_text(encoding="utf-8"))
     root = Path(args.product)
     errors: list = []
@@ -512,15 +530,20 @@ def cmd_imports(args) -> int:
     print(f"exceptions: {len(rules.get('exceptions', []))} listed in layer_rules.json (see retire_by)")
     for e in rules.get("exceptions", []):
         print(f"  exception: {e['file']} -> {e['module']} [{e['rule']}] retire_by={e['retire_by']}")
-    return _ratchet(v, IMPORT_BASELINE, args.update_baseline, (), key_fn=_import_key)
+    return _ratchet(v, IMPORT_BASELINE, args.update_baseline, (), key_fn=_import_key,
+                    moved_from=tuple(args.moved_from or ()))
 
 
 def cmd_tags(args) -> int:
+    if args.moved_from and not args.update_baseline:
+        print("--moved-from requires --update-baseline", file=sys.stderr)
+        return 2
     errors: list = []
     sites = scan_tags(Path(args.product), errors)
     if _report_parse_errors(errors):
         return 1
-    return _ratchet(sites, TAG_BASELINE, args.update_baseline, (), key_fn=_tag_key)
+    return _ratchet(sites, TAG_BASELINE, args.update_baseline, (), key_fn=_tag_key,
+                    moved_from=tuple(args.moved_from or ()))
 
 
 def install_smoke(product_root: Path, optional_skill: str | None, workdir: Path) -> list[str]:
@@ -717,7 +740,7 @@ def cmd_quick(args) -> int:
         return 1 if rc else 0
 
     rc = 0
-    ns = argparse.Namespace(product=args.product, update_baseline=False)
+    ns = argparse.Namespace(product=args.product, update_baseline=False, moved_from=None)
     rc |= timed("imports", lambda: cmd_imports(ns))
     rc |= timed("tags", lambda: cmd_tags(ns))
     rc |= timed("install-smoke", lambda: cmd_install_smoke(argparse.Namespace(product=args.product, skill=None)))
@@ -788,6 +811,9 @@ def build_parser() -> argparse.ArgumentParser:
         q = sub.add_parser(name)
         q.add_argument("--product", default=str(REPO_ROOT))
         q.add_argument("--update-baseline", action="store_true")
+        q.add_argument("--moved-from", action="append", metavar="FILE",
+                       help="root-relative POSIX path of a file whose entries moved; with --update-baseline, "
+                            "accept new entries whose shapes match entries retired from it")
         q.set_defaults(func=fn)
     i = sub.add_parser("install-smoke")
     i.add_argument("--product", default=str(REPO_ROOT))

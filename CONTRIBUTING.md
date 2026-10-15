@@ -270,7 +270,7 @@ python3 tools/check_refactor.py compare /tmp/base /tmp/cand
 
 A refactor PR is expected to compare clean. An intended output change says so in the PR and lists the fields.
 
-A deliberate change that retires or renames a known legacy site shrinks the baseline; run `python3 tools/check_refactor.py tags --update-baseline` (or `imports --update-baseline`) in the same commit. The update refuses to add entries; a new untagged site must be tagged, not baselined.
+A deliberate change that retires or renames a known legacy site shrinks the baseline; run `python3 tools/check_refactor.py tags --update-baseline` (or `imports --update-baseline`) in the same commit. The update refuses to add entries; a new untagged site must be tagged, not baselined. The one exception is a verbatim file move: add `--moved-from <root-relative path>` (repeatable) and the update accepts relocated entries only if each new entry's shape matches an entry retired from a moved file.
 
 ### Literal-tag scan policy (owned by the harness; copied from its `tools/SCANNER_POLICY.md` v1)
 
