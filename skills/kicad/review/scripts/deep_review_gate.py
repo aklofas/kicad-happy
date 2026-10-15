@@ -35,9 +35,8 @@ import unicodedata
 from difflib import SequenceMatcher
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-sys.path.insert(0, str(REPO_ROOT / "skills" / "kicad" / "scripts"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))   # skills/kicad/scripts
 
 from _mini_jsonschema import iter_errors            # noqa: E402
 from finding_schema import assign_deep_review_ids   # noqa: E402

@@ -24,9 +24,8 @@ import sys
 import tempfile
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-DS_SCRIPTS = REPO_ROOT / "skills" / "datasheets" / "scripts"
-EXAMPLE_FIXTURE = REPO_ROOT / "skills" / "datasheets" / "examples" / "lm2596-adj.json"
+DS_SCRIPTS = Path(__file__).resolve().parent
+EXAMPLE_FIXTURE = Path(__file__).resolve().parents[1] / "examples" / "lm2596-adj.json"
 
 sys.path.insert(0, str(DS_SCRIPTS))
 

@@ -28,8 +28,26 @@ from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
 
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-SCHEMA_DIR = REPO_ROOT / "skills/datasheets/schemas"
+SKILL_ROOT = Path(__file__).resolve().parents[1]          # skills/datasheets
+SCHEMA_DIR = SKILL_ROOT / "schemas"
+_LEGACY_PREFIX = "skills/datasheets/"
+
+
+def resolve_skill_resource(rel: str) -> Path:
+    """Map a resource reference to a path inside this skill.
+
+    Extraction plans persisted before v3 carry repo-relative strings such as
+    'skills/datasheets/schemas/base.schema.json'; a copied skill still owns
+    that file at SKILL_ROOT / 'schemas/base.schema.json'. Absolute paths pass
+    through unchanged (custom schema locations)."""
+    p = Path(rel)
+    if p.is_absolute():
+        return p
+    s = p.as_posix()
+    if s.startswith(_LEGACY_PREFIX):
+        s = s[len(_LEGACY_PREFIX):]
+    return SKILL_ROOT / s
+
 EXTRACTOR_SCHEMA_VERSION = "1.0"
 
 
@@ -213,7 +231,7 @@ def merge(cache: Path, mpn: str, *, retry_failed: bool = False) -> int:
     for task in plan["tasks"]:
         tid = task["task_id"]
         role = task["subagent_role"]
-        schema_path = REPO_ROOT / task["schema"]
+        schema_path = resolve_skill_resource(task["schema"])
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
         result = _read_result(cache, mpn, tid)
         status, err = _classify(result, schema)
@@ -272,7 +290,7 @@ def merge(cache: Path, mpn: str, *, retry_failed: bool = False) -> int:
             _record_outcome(plan, tid, 2, "partial", err)
 
     try:
-        sys.path.insert(0, str(REPO_ROOT / "skills/datasheets/scripts"))
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
         from datasheet_score import score_v14_extraction
         extraction["extraction"]["quality_score"] = score_v14_extraction(extraction)["score"]
     except Exception as exc:  # noqa: BLE001

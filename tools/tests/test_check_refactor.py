@@ -1,4 +1,4 @@
-import contextlib, io, json, sys, tempfile, unittest
+import contextlib, importlib.util, io, json, sys, tempfile, unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -685,6 +685,19 @@ class KicadUtilsFacade(unittest.TestCase):
         names = json.loads((Path(__file__).parent / "kicad_utils_names_6a91aaa.json").read_text(encoding="utf-8"))
         missing = [n for n in names if not hasattr(kicad_utils, n)]
         self.assertEqual(missing, [])
+
+
+class SkillLocalResources(unittest.TestCase):
+    """merge_results hard-imports jsonschema; run with the harness venv python if bare python3 lacks it."""
+
+    @unittest.skipUnless(importlib.util.find_spec("jsonschema"), "jsonschema not installed")
+    def test_merge_results_resolves_persisted_plan_paths_inside_the_skill(self):
+        sys.path.insert(0, str(cr.REPO_ROOT / "skills" / "datasheets" / "scripts"))
+        import merge_results as mr
+        p = mr.resolve_skill_resource("skills/datasheets/schemas/base.schema.json")
+        self.assertEqual(p, cr.REPO_ROOT / "skills" / "datasheets" / "schemas" / "base.schema.json")
+        self.assertTrue(p.exists())
+        self.assertEqual(mr.SCHEMA_DIR, cr.REPO_ROOT / "skills" / "datasheets" / "schemas")
 
 
 if __name__ == "__main__":

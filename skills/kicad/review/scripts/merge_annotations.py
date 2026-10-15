@@ -25,8 +25,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[4]
-SCHEMA_PATH = REPO_ROOT / "skills" / "kicad" / "review" / "schemas" / "review_annotations.schema.json"
+SCHEMA_PATH = Path(__file__).resolve().parents[1] / "schemas" / "review_annotations.schema.json"
 
 ANALYZER_FILES = ["schematic.json", "pcb.json", "emc.json", "thermal.json",
                    "gerber.json", "cross_analysis.json"]

@@ -31,8 +31,7 @@ from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
 
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-SCHEMA_DIR = REPO_ROOT / "skills/datasheets/schemas"
+SCHEMA_DIR = Path(__file__).resolve().parents[1] / "schemas"
 
 
 def _build_registry() -> Registry:
