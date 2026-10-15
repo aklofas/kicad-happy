@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -135,6 +137,102 @@ def cmd_compare(args) -> int:
     return 1 if bad else 0
 
 
+GERBER_EXTS = {".gbr", ".gbl", ".gtl", ".gm1", ".gko", ".drl", ".gbs", ".gts", ".gbo", ".gto", ".gbp", ".gtp"}
+ANALYZERS = {
+    "schematic": "skills/kicad/scripts/analyze_schematic.py",
+    "pcb": "skills/kicad/scripts/analyze_pcb.py",
+    "gerber": "skills/kicad/scripts/analyze_gerbers.py",
+    "thermal": "skills/kicad/scripts/analyze_thermal.py",
+    "emc": "skills/emc/scripts/analyze_emc.py",
+    "cross_analysis": "skills/kicad/scripts/cross_analysis.py",
+}
+
+
+def discover_fixtures(root: Path) -> list[dict]:
+    out = []
+    for p in sorted(root.rglob("*")):
+        if "__pycache__" in p.parts:
+            continue
+        rel = p.relative_to(root).as_posix()
+        if p.suffix == ".kicad_sch" and p.is_file():
+            out.append({"kind": "sch", "rel": rel, "path": p})
+        elif p.suffix == ".kicad_pcb" and p.is_file():
+            out.append({"kind": "pcb", "rel": rel, "path": p})
+        elif p.is_dir() and any(c.suffix.lower() in GERBER_EXTS for c in p.iterdir() if c.is_file()):
+            out.append({"kind": "gerber", "rel": rel, "path": p})
+    return out
+
+
+def _slot(out_dir: Path, rel: str) -> Path:
+    d = out_dir / rel.replace("/", "__")
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _run(cmd: list[str], env: dict, timeout: int = 300) -> tuple[int, str]:
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return 124, f"timeout after {timeout}s"
+    lines = (proc.stderr or "").strip().splitlines()
+    return proc.returncode, (lines[-1] if lines else "")
+
+
+def run_snapshot(fixtures_root: Path, out_dir: Path, product_root: Path, env: dict) -> dict:
+    py = sys.executable
+    stats = {"sch": 0, "pcb": 0, "gerber": 0, "chain": 0, "failures": []}
+    fixtures = discover_fixtures(fixtures_root)
+    by_dir: dict[str, dict] = {}
+    for fx in fixtures:
+        slot = _slot(out_dir, fx["rel"])
+        script = product_root / ANALYZERS["schematic" if fx["kind"] == "sch" else fx["kind"]]
+        if fx["kind"] == "sch":
+            rc, err = _run([py, str(script), str(fx["path"]), "-o", str(slot / "schematic.json")], env)
+            stats["sch"] += 1
+            by_dir.setdefault(str(fx["path"].parent), {})["sch"] = slot / "schematic.json"
+        elif fx["kind"] == "pcb":
+            rc, err = _run([py, str(script), str(fx["path"]), "-o", str(slot / "pcb.json")], env)
+            rc2, err2 = _run([py, str(script), str(fx["path"]), "--full", "-o", str(slot / "pcb_full.json")], env)
+            rc, err = (rc or rc2), (err or err2)
+            stats["pcb"] += 1
+            by_dir.setdefault(str(fx["path"].parent), {})["pcb"] = slot / "pcb.json"
+        else:
+            rc, err = _run([py, str(script), str(fx["path"]), "-o", str(slot / "gerber.json")], env)
+            stats["gerber"] += 1
+        expected = slot / ("schematic.json" if fx["kind"] == "sch" else "pcb.json" if fx["kind"] == "pcb" else "gerber.json")
+        if not expected.exists():
+            stats["failures"].append({"fixture": fx["rel"], "exit": rc, "stderr": err})
+    # Chained analyzers where a directory produced both schematic and pcb outputs.
+    for d, outs in sorted(by_dir.items()):
+        if "sch" in outs and "pcb" in outs:
+            slot = outs["sch"].parent
+            for kind in ("emc", "thermal", "cross_analysis"):
+                script = product_root / ANALYZERS[kind]
+                rc, err = _run([py, str(script), "--schematic", str(outs["sch"]), "--pcb", str(outs["pcb"]),
+                                "-o", str(slot / f"{kind}.json")], env)
+                if not (slot / f"{kind}.json").exists():
+                    stats["failures"].append({"fixture": f"{d}:{kind}", "exit": rc, "stderr": err})
+            stats["chain"] += 1
+    return stats
+
+
+def analyzer_env(seed: str) -> dict:
+    env = dict(os.environ)
+    if seed == "random":
+        env.pop("PYTHONHASHSEED", None)
+    else:
+        env["PYTHONHASHSEED"] = seed
+    return env
+
+
+def cmd_snapshot(args) -> int:
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    stats = run_snapshot(Path(args.fixtures), out, Path(args.product), analyzer_env(args.seed))
+    print(json.dumps(stats, indent=1, default=str))
+    return 1 if stats["failures"] else 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="check_refactor.py", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -145,6 +243,12 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--policy", default=str(DEFAULT_POLICY))
     c.add_argument("--json", action="store_true")
     c.set_defaults(func=cmd_compare)
+    s = sub.add_parser("snapshot", help="run analyzers over a fixture tree")
+    s.add_argument("--fixtures", required=True)
+    s.add_argument("--out", required=True)
+    s.add_argument("--product", default=str(REPO_ROOT))
+    s.add_argument("--seed", default="0", help="PYTHONHASHSEED value, or 'random'")
+    s.set_defaults(func=cmd_snapshot)
     return p
 
 

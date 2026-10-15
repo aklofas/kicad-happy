@@ -135,5 +135,20 @@ class CompareCli(unittest.TestCase):
         self.assertIn("policy", err)
 
 
+class DiscoverFixtures(unittest.TestCase):
+    def test_discovers_sch_pcb_and_gerber_dirs(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "p1").mkdir(); (root / "p1" / "a.kicad_sch").write_text("(kicad_sch)", encoding="utf-8")
+            (root / "p1" / "a.kicad_pcb").write_text("(kicad_pcb)", encoding="utf-8")
+            (root / "p1" / "gerbers").mkdir(); (root / "p1" / "gerbers" / "a-F_Cu.gbr").write_text("G04*", encoding="utf-8")
+            (root / "p2").mkdir(); (root / "p2" / "b.kicad_sch").write_text("(kicad_sch)", encoding="utf-8")
+            fx = cr.discover_fixtures(root)
+            kinds = sorted((f["kind"], f["rel"]) for f in fx)
+            self.assertEqual(kinds, [("gerber", "p1/gerbers"), ("pcb", "p1/a.kicad_pcb"),
+                                     ("sch", "p1/a.kicad_sch"), ("sch", "p2/b.kicad_sch")])
+
+
 if __name__ == "__main__":
     unittest.main()
