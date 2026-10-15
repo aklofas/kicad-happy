@@ -24,3 +24,21 @@ A facade is code kept only so a named consumer keeps working. Each entry names t
 | `make_finding(design_context=...)` ignored keyword | `skills/kicad/scripts/finding_schema.py` | harness contract tests (one real call: `tests/contract/test_finding_id.py:118`; two docstring mentions) | harness migrates per round-1 relocation map |
 | `AnalysisContext.design_context`, `AnalysisContext.hierarchy_context` fields | `skills/kicad/scripts/kicad_types.py` | harness fixtures (`tests/fixtures/_build_ctx.py`, 15 contract files, `tests/test_schema_drift.py`, `tools/generate_catalog.py`) | same |
 | `lookup_helpers.read_design_context` | `skills/kicad/scripts/lookup_helpers.py` | harness `tests/contract/test_lookup_helpers.py` | same |
+| `kicad_utils` (whole module, 72 re-exports) | `skills/kicad/scripts/kicad_utils.py` | harness (10 names), Action, any user script | round 9, after harness and Action import `kicad_core.*` |
+| `diff_analysis` re-exports of `diff_engine` names | `skills/kicad/scripts/diff_analysis.py` | harness `tests/test_diff_analysis.py`, `tests/test_analysis_cache.py` | same |
+| `_core_path` helpers | `skills/{emc,spice,bom}/scripts/_core_path.py` | the skills themselves | permanent (not a facade; listed for discoverability) |
+
+## `skills/kicad/scripts/kicad_core/` ownership (round 2)
+
+| Module | Owns | Imports |
+|---|---|---|
+| `fields.py` | property-field aliases, `pick_field`/`pick_mpn`/`get_mpn_property` | stdlib |
+| `values.py` | `parse_value`, tolerance, E-series, coordinate units | stdlib |
+| `parts.py` | regulator Vref and switching-frequency tables | stdlib |
+| `classify.py` | component / IC-function / connector / jumper classification | stdlib |
+| `netnames.py` | rail, ground, USB-net recognition; voltage-from-name | stdlib |
+| `passives.py` | capacitor package/ESR/ESL, dielectric, derating, inductor shielding | stdlib |
+| `project.py` | `.kicad_pro`/`.kicad_dru`/lib-table readers, root-schematic discovery | stdlib (+ two dated exceptions: project_config.load_jsonc, sexp_parser — see tools/layer_rules.json, retire in round 3) |
+| `netquery.py` | net helpers (`get_two_pin_nets`, `build_net_id_map`); grows into the typed index in round 3 | stdlib |
+
+`kicad_core` imports stdlib and itself only (CI-enforced).

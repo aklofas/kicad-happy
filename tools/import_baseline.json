@@ -8,7 +8,7 @@
  },
  {
   "file": "skills/element14/scripts/sync_datasheets_element14.py",
-  "line": 185,
+  "line": 184,
   "module": "analyze_schematic",
   "ordinal": 0,
   "rule": "no-cli-import"
@@ -49,22 +49,8 @@
   "rule": "optional-to-optional"
  },
  {
-  "file": "skills/kicad/scripts/analysis_cache.py",
-  "line": 554,
-  "module": "diff_analysis",
-  "ordinal": 0,
-  "rule": "no-cli-import"
- },
- {
-  "file": "skills/kicad/scripts/analysis_cache.py",
-  "line": 562,
-  "module": "diff_analysis",
-  "ordinal": 1,
-  "rule": "no-cli-import"
- },
- {
   "file": "skills/kicad/scripts/analyze_schematic.py",
-  "line": 9969,
+  "line": 9947,
   "module": "lifecycle_audit",
   "ordinal": 0,
   "rule": "no-cli-import"
@@ -78,14 +64,14 @@
  },
  {
   "file": "skills/lcsc/scripts/sync_datasheets_lcsc.py",
-  "line": 184,
+  "line": 183,
   "module": "analyze_schematic",
   "ordinal": 0,
   "rule": "no-cli-import"
  },
  {
   "file": "skills/mouser/scripts/sync_datasheets_mouser.py",
-  "line": 188,
+  "line": 187,
   "module": "analyze_schematic",
   "ordinal": 0,
   "rule": "no-cli-import"
