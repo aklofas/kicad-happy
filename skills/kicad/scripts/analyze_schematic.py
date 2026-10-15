@@ -9049,7 +9049,7 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
         symbol_instances_override: If provided, use these symbol_instances
             instead of extracting from root_tree. Required when parsing a
             sub-sheet that lacks (symbol_instances) — pass the root's
-            symbol_instances obtained from build_hierarchy_context().
+            symbol_instances collected during the peer-sheet traversal.
 
     Returns:
         dict with keys:
@@ -9173,265 +9173,6 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
     }
 
 
-def build_hierarchy_context(target_path: str, root_path: str) -> tuple:
-    """Build cross-sheet context for a sub-sheet file.
-
-    Parses the full project from root_path, builds the unified net map,
-    and extracts cross-sheet component/net information visible through
-    the target sheet's hierarchical labels.
-
-    Args:
-        target_path: Absolute path to the sub-sheet being analyzed.
-        root_path: Absolute path to the root .kicad_sch file.
-
-    Returns:
-        (hierarchy_context_dict, root_symbol_instances_dict)
-
-        hierarchy_context_dict contains:
-            root_schematic, target_sheet, sheets_in_project,
-            cross_sheet_nets, project_power_rails,
-            reference_corrections_applied
-
-        root_symbol_instances_dict is used by the caller to fix
-        component references on the target sheet.
-    """
-    from kicad_utils import is_power_net_name
-
-    target_abs = str(Path(target_path).resolve())
-    root_abs = str(Path(root_path).resolve())
-
-    # Phase A: parse entire project
-    parsed = parse_all_sheets(root_abs)
-    all_components = parsed["components"]
-    all_labels = parsed["labels"]
-    power_symbols = parsed["power_symbols"]
-    sheets_parsed = parsed["sheets_parsed"]
-    root_symbol_instances = parsed["root_symbol_instances"]
-
-    # Build unified net map for the full project
-    nets = build_net_map(
-        all_components, parsed["wires"], all_labels,
-        power_symbols, parsed["junctions"], parsed["no_connects"],
-        sheet_names=[Path(p).stem for p in sheets_parsed],
-        bus_elements=parsed["bus_elements"])
-
-    # Identify which sheet index corresponds to the target file
-    target_sheet_idx = None
-    for idx, sp in enumerate(sheets_parsed):
-        if str(Path(sp).resolve()) == target_abs:
-            target_sheet_idx = idx
-            break
-
-    if target_sheet_idx is None:
-        # Target file not found in the hierarchy — return minimal context
-        return {
-            "root_schematic": Path(root_abs).name,
-            "target_sheet": Path(target_abs).name,
-            "sheets_in_project": [Path(s).name for s in sheets_parsed],
-            "cross_sheet_nets": {},
-            "project_power_rails": [],
-            "reference_corrections_applied": 0,
-            "warning": "Target file not found in project hierarchy",
-        }, root_symbol_instances
-
-    # Find hierarchical labels belonging to the target sheet
-    target_hier_label_names = set()
-    for lbl in all_labels:
-        if (lbl.get("_sheet") == target_sheet_idx
-                and lbl["type"] == "hierarchical_label"):
-            target_hier_label_names.add(lbl["name"])
-
-    # Collect known power rails from power symbols
-    known_power_rails = set()
-    for net_name, net_info in nets.items():
-        for p in net_info.get("pins", []):
-            if p["component"].startswith("#PWR") or p["component"].startswith("#FLG"):
-                known_power_rails.add(net_name)
-                break
-
-    # Map component reference -> sheet index
-    comp_sheet = {}
-    for c in all_components:
-        comp_sheet[c["reference"]] = c.get("_sheet", 0)
-
-    # For each hierarchical label net, find components on OTHER sheets
-    cross_sheet_nets = {}
-
-    for label_name in sorted(target_hier_label_names):
-        # Find which net this label ended up in. KH-359: on a bare-name
-        # collision the net may carry a sheet-qualified key with the bare
-        # label name on display_name instead.
-        matching_net = None
-        for net_name, net_info in nets.items():
-            if net_name == label_name or net_info.get("display_name") == label_name:
-                matching_net = net_name
-                break
-        if matching_net is None:
-            continue
-
-        net_info = nets[matching_net]
-        external_components = []
-        connected_sheets = set()
-
-        for pin in net_info.get("pins", []):
-            comp_ref = pin["component"]
-            if comp_ref.startswith("#PWR") or comp_ref.startswith("#FLG"):
-                continue
-            sheet_idx = comp_sheet.get(comp_ref, 0)
-            if sheet_idx == target_sheet_idx:
-                continue  # skip components on the target sheet itself
-
-            comp_data = None
-            for c in all_components:
-                if c["reference"] == comp_ref:
-                    comp_data = c
-                    break
-            if comp_data is None:
-                continue
-
-            sheet_file = (Path(sheets_parsed[sheet_idx]).name
-                          if sheet_idx < len(sheets_parsed) else "unknown")
-            connected_sheets.add(sheet_file)
-            external_components.append({
-                "reference": comp_ref,
-                "value": comp_data.get("value", ""),
-                "lib_id": comp_data.get("lib_id", ""),
-                "type": comp_data.get("type", ""),
-                "sheet": sheet_file,
-            })
-
-        if external_components or connected_sheets:
-            # Strip instance path prefix for the display name
-            display_name = label_name
-            parts = label_name.rsplit("/", 1)
-            if len(parts) == 2 and parts[1]:
-                display_name = parts[1]
-
-            cross_sheet_nets[display_name] = {
-                "external_components": external_components,
-                "is_power_rail": is_power_net_name(matching_net, known_power_rails),
-                "connected_sheets": sorted(connected_sheets),
-                "_namespaced_net": matching_net,
-            }
-
-    # Collect project-wide power rails
-    project_power_rails = sorted(known_power_rails)
-
-    # Count reference corrections
-    correction_count = 0
-    si_refs = {si.get("reference", "") for si in root_symbol_instances.values()}
-    for c in all_components:
-        if c.get("_sheet") == target_sheet_idx and c.get("reference") in si_refs:
-            correction_count += 1
-
-    hierarchy_context = {
-        "root_schematic": Path(root_abs).name,
-        "target_sheet": Path(target_abs).name,
-        "target_instance_path": "",
-        "sheets_in_project": [Path(s).name for s in sheets_parsed],
-        "cross_sheet_nets": cross_sheet_nets,
-        "project_power_rails": project_power_rails,
-        "reference_corrections_applied": correction_count,
-    }
-
-    return hierarchy_context, root_symbol_instances
-
-
-def enrich_from_hierarchy(signal_analysis: dict, design_analysis: dict,
-                          ctx: AnalysisContext) -> None:
-    """Annotate detector results with cross-sheet context.
-
-    Called after all detectors run. Adds cross_sheet_* fields to existing
-    detections. Modifies signal_analysis and design_analysis dicts in place.
-    Tagged with _enriched_from_hierarchy: true for consumer disambiguation.
-
-    Only runs when ctx.hierarchy_context is not None.
-    """
-    hctx = ctx.hierarchy_context
-    if not hctx:
-        return
-
-    cross_nets = hctx.get("cross_sheet_nets", {})
-    if not cross_nets:
-        return
-
-    # Build a lookup: net_name -> cross-sheet info
-    # Map the namespaced net names back to local display names
-    net_lookup = {}
-    for display_name, info in cross_nets.items():
-        namespaced = info.get("_namespaced_net", display_name)
-        net_lookup[namespaced] = (display_name, info)
-        net_lookup[display_name] = (display_name, info)
-
-    # --- Power regulators: add cross-sheet loads ---
-    for reg in signal_analysis.get("power_regulators", []):
-        output_rail = reg.get("output_rail") or reg.get("output_net")
-        if not output_rail:
-            continue
-        entry = net_lookup.get(output_rail)
-        if entry:
-            display_name, info = entry
-            loads = [
-                f"{c['reference']} ({c['value']}, {c['sheet']})"
-                for c in info["external_components"]
-            ]
-            if loads:
-                reg["cross_sheet_loads"] = loads
-                reg["_enriched_from_hierarchy"] = True
-
-    # --- Bus protocols: add cross-sheet pull-ups ---
-    buses = design_analysis.get("buses", {})
-    for bus_type in ("i2c", "spi"):
-        for bus in buses.get(bus_type, []):
-            for signal_key in ("sda_net", "scl_net", "mosi_net", "miso_net", "sck_net"):
-                net_name = bus.get(signal_key)
-                if not net_name:
-                    continue
-                entry = net_lookup.get(net_name)
-                if entry:
-                    display_name, info = entry
-                    pullups = [
-                        {"reference": c["reference"], "value": c["value"], "sheet": c["sheet"]}
-                        for c in info["external_components"]
-                        if c.get("type") == "resistor"
-                    ]
-                    if pullups:
-                        bus.setdefault("cross_sheet_pull_ups", []).extend(pullups)
-                        bus["_enriched_from_hierarchy"] = True
-
-    # --- Voltage dividers: add cross-sheet load on midpoint ---
-    for vd in signal_analysis.get("voltage_dividers", []):
-        output_net = vd.get("output_net") or vd.get("mid_net")
-        if not output_net:
-            continue
-        entry = net_lookup.get(output_net)
-        if entry:
-            display_name, info = entry
-            loads = [
-                {"reference": c["reference"], "value": c["value"],
-                 "type": c["type"], "sheet": c["sheet"]}
-                for c in info["external_components"]
-            ]
-            if loads:
-                vd["cross_sheet_load"] = loads
-                vd["_enriched_from_hierarchy"] = True
-
-    # --- ESD coverage: add cross-sheet protection ---
-    for entry in signal_analysis.get("esd_coverage_audit", []):
-        for pin_net in entry.get("unprotected_nets", []):
-            xnet = net_lookup.get(pin_net)
-            if xnet:
-                display_name, info = xnet
-                esd_devices = [
-                    {"reference": c["reference"], "value": c["value"], "sheet": c["sheet"]}
-                    for c in info["external_components"]
-                    if c.get("type") in ("tvs", "esd", "protection")
-                ]
-                if esd_devices:
-                    entry.setdefault("cross_sheet_protection", []).extend(esd_devices)
-                    entry["_enriched_from_hierarchy"] = True
-
-
 def analyze_schematic(path: str, project_root: str | None = None,
                       no_hierarchy: bool = False,
                       analysis_dir: str | Path | None = None) -> dict:
@@ -9464,7 +9205,6 @@ def analyze_schematic(path: str, project_root: str | None = None,
     root_tree = parse_file(path)
 
     is_sub = detect_sub_sheet(root_tree, file_path=path)
-    hierarchy_ctx = None
     hierarchy_warning = None
 
     if is_sub and not no_hierarchy:
@@ -9665,7 +9405,6 @@ def analyze_schematic(path: str, project_root: str | None = None,
         pin_net=pin_net,
         no_connects=all_no_connects,
         generator_version=generator_version,
-        hierarchy_context=hierarchy_ctx,
         cache_dir=_cache_dir,
         design_context=_design_context,
         project_dir=str(Path(path).parent),
@@ -9692,9 +9431,6 @@ def analyze_schematic(path: str, project_root: str | None = None,
 
     # Deep EE analysis: power domains, buses, differential pairs, ERC
     design_analysis = analyze_design_rules(ctx, results_in=signal_analysis)
-
-    # Cross-sheet enrichment (no-op when hierarchy_context is None)
-    enrich_from_hierarchy(signal_analysis, design_analysis, ctx)
 
     # ---- New Tier 1 + Tier 2 analyses ----
 
@@ -9991,8 +9727,6 @@ def analyze_schematic(path: str, project_root: str | None = None,
         result["sheets"] = sheets_parsed
     if project_settings:
         result["project_settings"] = project_settings
-    if hierarchy_ctx:
-        result["hierarchy_context"] = hierarchy_ctx
     if hierarchy_warning:
         result["hierarchy_warning"] = hierarchy_warning
 
