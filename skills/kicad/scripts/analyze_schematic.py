@@ -21,6 +21,7 @@ import os
 import re
 import sys
 from pathlib import Path
+
 # Add scripts dir to path for sexp_parser and kicad_core
 sys.path.insert(0, str(Path(__file__).parent))
 from sexp_parser import (
@@ -62,7 +63,8 @@ from kicad_core.fields import (
     MPN_FIELD_ALIASES_PRIMARY, MPN_FIELD_ALIASES_GENERIC,
     DIGIKEY_FIELD_ALIASES, normalize_field_name, pick_field, pick_mpn,
 )
-from kicad_core.model import Component, Net, Pin, PinNetEntry, SheetData
+from kicad_core.model import Component, Net, Pin, SheetData
+from kicad_core.netquery import build_pin_to_net_map
 from kicad_types import AnalysisContext
 from bus_resolver import BusGraph, expand_bus_name, match_ports
 from signal_detectors import (
@@ -1980,15 +1982,6 @@ def compute_statistics(components: list[dict], nets: dict, bom: list[dict],
         "missing_mpn": missing_mpn,
         "missing_footprint": missing_footprint,
     }
-
-
-def build_pin_to_net_map(nets: dict[str, Net]) -> dict[tuple[str, str], PinNetEntry]:
-    """Build a reverse map: (component, pin_number) -> (net_name, net_info)."""
-    pin_net = {}
-    for net_name, net_info in nets.items():
-        for p in net_info["pins"]:
-            pin_net[(p["component"], p["pin_number"])] = (net_name, net_info)
-    return pin_net
 
 
 def get_net_neighbors(net_info: dict, exclude_ref: str) -> list[dict]:
