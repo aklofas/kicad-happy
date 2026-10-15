@@ -617,14 +617,14 @@ def cmd_aba(args) -> int:
     fx = discover_fixtures(Path(args.fixtures))
     spec = {}
     for kind in ("sch", "pcb"):
-        paths = [str(f["path"]) for f in fx if f["kind"] == kind][:2]
+        paths = [str(f["path"].resolve()) for f in fx if f["kind"] == kind][:2]
         if len(paths) == 2:
             spec[kind] = paths
     if not spec:
         print("aba: need at least two .kicad_sch or two .kicad_pcb fixtures", file=sys.stderr)
         return 2
     volatile = load_policy(Path(args.policy))
-    scripts = Path(args.product) / "skills" / "kicad" / "scripts"
+    scripts = Path(args.product).resolve() / "skills" / "kicad" / "scripts"
     bad = False
     with tempfile.TemporaryDirectory() as td:
         try:

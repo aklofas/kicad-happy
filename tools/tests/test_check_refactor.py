@@ -628,6 +628,17 @@ class AbaReal(unittest.TestCase):
         rc, out, err = _run_main(["aba", "--fixtures", str(FX_REAL)])
         self.assertEqual(rc, 0, out + err)
 
+    def test_aba_relative_paths(self):
+        import os
+        old = os.getcwd()
+        os.chdir("/tmp")
+        try:
+            rc, out, err = _run_main(["aba", "--product", os.path.relpath(str(cr.REPO_ROOT), "/tmp"),
+                                      "--fixtures", os.path.relpath(str(FX_REAL), "/tmp")])
+        finally:
+            os.chdir(old)
+        self.assertEqual(rc, 0, out + err)
+
     def test_aba_zero_input_exit_2(self):
         rc, _, _ = _run_main(["aba", "--fixtures", "/nonexistent/fx"])
         self.assertEqual(rc, 2)
