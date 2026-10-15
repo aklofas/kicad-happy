@@ -48,6 +48,7 @@ def resolve_skill_resource(rel: str) -> Path:
         s = s[len(_LEGACY_PREFIX):]
     return SKILL_ROOT / s
 
+
 EXTRACTOR_SCHEMA_VERSION = "1.0"
 
 

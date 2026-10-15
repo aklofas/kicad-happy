@@ -527,13 +527,13 @@ def should_create_new_run(analysis_dir: str,
                           diff_threshold: str = 'major') -> bool:
     """Decide whether new outputs warrant a new timestamped folder.
 
-    Runs diff_analysis.py on each matching output type between the
+    Runs the pure diff engine (diff_engine) on each matching output type between the
     current run and the new outputs. If any diff severity meets or
     exceeds the threshold, returns True.
 
     Returns True if:
       - No current run exists (first run)
-      - diff_analysis.py finds changes at or above the threshold
+      - diff_engine finds changes at or above the threshold
     Returns False if all diffs are below the threshold.
 
     Args:

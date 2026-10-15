@@ -21,7 +21,6 @@ import json
 import os
 import sys
 
-
 from finding_schema import group_findings_by_detection_type
 from diff_engine import (  # noqa: F401  (re-exported for callers written against pre-v3 diff_analysis)
     SIGNAL_REGISTRY, validate_signal_registry, _resolve, _diff_counts, _identity_key,

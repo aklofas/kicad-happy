@@ -630,6 +630,13 @@ class ProductShaAndParse(unittest.TestCase):
                 self.assertEqual(rc, 1)
                 self.assertIn("PARSE-ERROR skills/kicad/bad.py", out)
 
+    def test_imports_lists_each_exception(self):
+        with tempfile.TemporaryDirectory() as td:
+            (Path(td) / "skills").mkdir()
+            _, out, _ = _run_main(["imports", "--product", td])
+            self.assertIn("  exception: skills/kicad/scripts/kicad_core/project.py -> project_config "
+                          "[core-package-stdlib-only] retire_by=round 3", out)
+
     def test_install_smoke_core_skill_not_double_copied(self):
         with tempfile.TemporaryDirectory() as td:
             f = cr.install_smoke(cr.REPO_ROOT, "kicad", Path(td))

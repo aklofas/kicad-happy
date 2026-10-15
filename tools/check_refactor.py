@@ -510,6 +510,8 @@ def cmd_imports(args) -> int:
         return 1
     v = classify_edges(edges, rules, root)
     print(f"exceptions: {len(rules.get('exceptions', []))} listed in layer_rules.json (see retire_by)")
+    for e in rules.get("exceptions", []):
+        print(f"  exception: {e['file']} -> {e['module']} [{e['rule']}] retire_by={e['retire_by']}")
     return _ratchet(v, IMPORT_BASELINE, args.update_baseline, (), key_fn=_import_key)
 
 

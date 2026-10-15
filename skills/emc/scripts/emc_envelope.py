@@ -25,14 +25,11 @@ Mode gating:
 
 Sibling-module layout:
     This module lives in skills/emc/scripts/ alongside analyze_emc.py.
-    The analyzer already puts skills/kicad/scripts/ on sys.path before
-    importing; this envelope re-derives the path so it can also be
-    imported standalone (tests, generator tooling).
+    Importing _core_path puts the shared kicad scripts on sys.path, so
+    this envelope also imports standalone (tests, generator tooling).
 """
 from __future__ import annotations
 
-import os
-import sys
 from dataclasses import dataclass, field
 from typing import Optional
 

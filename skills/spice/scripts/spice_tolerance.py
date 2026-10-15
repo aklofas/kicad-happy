@@ -10,8 +10,6 @@ Zero external dependencies — uses only Python 3.8+ stdlib.
 import copy
 import math
 import random
-import sys
-import os
 
 import _core_path  # noqa: F401
 from kicad_core.values import parse_tolerance
