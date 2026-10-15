@@ -304,6 +304,53 @@ class TagScan(unittest.TestCase):
         self.assertEqual(sites[0]["missing"], ["detector", "rule_id", "schema_era"])
 
 
+class StableKeys(unittest.TestCase):
+    SRC = (
+        "class K:\n"
+        "    def m(self):\n"
+        "        make_finding(detector='d', rule_id='R')\n"
+        "        make_finding(detector='d', rule_id='R2')\n"
+        "def g():\n"
+        "    make_finding(detector='d', rule_id='R')\n"
+        "make_finding(detector='d')\n"
+    )
+
+    def _tags(self, src):
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "skills" / "kicad" / "scripts" / "x.py"; p.parent.mkdir(parents=True)
+            p.write_text(src, encoding="utf-8")
+            return cr.scan_tags(Path(td))
+
+    def test_tag_keys_survive_line_shift(self):
+        a = [cr._tag_key(s) for s in self._tags(self.SRC)]
+        b = [cr._tag_key(s) for s in self._tags("\n" * 10 + self.SRC)]
+        self.assertEqual(a, b)
+        self.assertEqual(len(a), 4)
+
+    def test_same_callee_in_one_function_gets_ordinals(self):
+        sites = self._tags(self.SRC)
+        k = [(s["function"], s["ordinal"]) for s in sites]
+        self.assertEqual(k, [("K.m", 0), ("K.m", 1), ("g", 0), ("<module>", 0)])
+
+    def test_import_repeat_gets_distinct_keys(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            for rel, body in {
+                "skills/aaa/scripts/a.py": "import os\n",
+                "skills/bbb/scripts/b.py": "import a\ndef f():\n    import a\n",
+            }.items():
+                p = root / rel; p.parent.mkdir(parents=True, exist_ok=True); p.write_text(body, encoding="utf-8")
+            rules = json.loads((cr.TOOLS_DIR / "layer_rules.json").read_text(encoding="utf-8"))
+            v = cr.classify_edges(cr.scan_imports(root), rules, root)
+            keys = [cr._import_key(x) for x in v]
+            self.assertEqual(len(keys), 2)
+            self.assertEqual(len(set(keys)), 2)
+            base = Path(td) / "b.json"
+            base.write_text(json.dumps(v[:1]), encoding="utf-8")
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(cr._ratchet(v, base, False, (), key_fn=cr._import_key), 1)
+
+
 class Ratchet(unittest.TestCase):
     KEYS = ("file", "callee", "line")
 

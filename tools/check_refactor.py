@@ -301,6 +301,24 @@ def _skill_of(rel: str) -> str | None:
     return parts[1] if len(parts) > 2 and parts[0] == "skills" else None
 
 
+def _assign_ordinals(items: list[dict], group) -> None:
+    """Sort by (file, line) and give each item its 0-based index within its group."""
+    items.sort(key=lambda d: (d["file"], d["line"]))
+    seen: dict[tuple, int] = {}
+    for d in items:
+        g = group(d)
+        d["ordinal"] = seen.get(g, 0)
+        seen[g] = d["ordinal"] + 1
+
+
+def _tag_key(d: dict) -> tuple:
+    return (d["file"], d["function"], d["callee"], d["ordinal"])
+
+
+def _import_key(d: dict) -> tuple:
+    return (d["file"], d["module"], d["rule"], d["ordinal"])
+
+
 def scan_imports(root: Path) -> list[dict]:
     edges = []
     for p in _py_files(root):
@@ -357,6 +375,7 @@ def classify_edges(edges: list[dict], rules: dict, root: Path) -> list[dict]:
             continue  # third-party or unknown: not a layering question
         if src_skill not in core and target_skill not in core and target_skill != src_skill:
             out.append({**e, "rule": "optional-to-optional"})
+    _assign_ordinals(out, lambda d: (d["file"], d["module"], d["rule"]))
     return out
 
 
@@ -397,24 +416,30 @@ def scan_tags(root: Path) -> list[dict]:
         except SyntaxError:
             continue
         wrappers, dict_factories = _classify_factories(tree)
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call):
-                continue
-            name = _call_name(node)
-            if name in ("make_finding", "_make_finding"):
-                pass
-            elif not (name and name in dict_factories):
-                continue  # wrappers' callers, non-factory _make_*, everything else
-            kws = {k.arg: k.value for k in node.keywords if k.arg}
-            missing = [k for k in TAG_KEYS if k not in kws]
-            nonliteral = [k for k in TAG_KEYS if k in kws and not (isinstance(kws[k], ast.Constant) and isinstance(kws[k].value, str))]
-            if missing or nonliteral:
-                sites.append({"file": rel, "line": node.lineno, "callee": name, "missing": missing, "nonliteral": nonliteral})
+
+        def visit(node, scope):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                scope = scope + [node.name]
+            if isinstance(node, ast.Call):
+                name = _call_name(node)
+                if name in ("make_finding", "_make_finding") or (name and name in dict_factories):
+                    kws = {k.arg: k.value for k in node.keywords if k.arg}
+                    missing = [k for k in TAG_KEYS if k not in kws]
+                    nonliteral = [k for k in TAG_KEYS if k in kws and not (isinstance(kws[k], ast.Constant) and isinstance(kws[k].value, str))]
+                    if missing or nonliteral:
+                        sites.append({"file": rel, "line": node.lineno, "callee": name,
+                                      "function": ".".join(scope) or "<module>",
+                                      "missing": missing, "nonliteral": nonliteral})
+            for child in ast.iter_child_nodes(node):
+                visit(child, scope)
+
+        visit(tree, [])
+    _assign_ordinals(sites, lambda d: (d["file"], d["function"], d["callee"]))
     return sites
 
 
-def _ratchet(current: list[dict], baseline_path: Path, update: bool, key_fields: tuple[str, ...]) -> int:
-    def key(d): return tuple(d[k] for k in key_fields)
+def _ratchet(current: list[dict], baseline_path: Path, update: bool, key_fields: tuple[str, ...], key_fn=None) -> int:
+    def key(d): return key_fn(d) if key_fn else tuple(d[k] for k in key_fields)
     baseline = json.loads(baseline_path.read_text(encoding="utf-8")) if baseline_path.exists() else []
     base_keys = {key(d) for d in baseline}
     new = [d for d in current if key(d) not in base_keys]
@@ -440,12 +465,12 @@ def cmd_imports(args) -> int:
     rules = json.loads(LAYER_RULES.read_text(encoding="utf-8"))
     root = Path(args.product)
     v = classify_edges(scan_imports(root), rules, root)
-    return _ratchet(v, IMPORT_BASELINE, args.update_baseline, ("file", "module", "rule"))
+    return _ratchet(v, IMPORT_BASELINE, args.update_baseline, (), key_fn=_import_key)
 
 
 def cmd_tags(args) -> int:
     sites = scan_tags(Path(args.product))
-    return _ratchet(sites, TAG_BASELINE, args.update_baseline, ("file", "callee", "line"))
+    return _ratchet(sites, TAG_BASELINE, args.update_baseline, (), key_fn=_tag_key)
 
 
 def install_smoke(product_root: Path, optional_skill: str | None, workdir: Path) -> list[str]:
