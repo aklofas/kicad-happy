@@ -73,6 +73,14 @@ class Bridges(unittest.TestCase):
         self.assertEqual(facts.by_ref["JP1"].nets, ("VIN", "VBUS"))
         self.assertEqual(facts.jumpers, [])
 
+    def test_later_non_bridge_duplicate_erases_earlier_bridge_fact(self):
+        comps = [{"reference": "R1", "type": "resistor", "value": "0R"},
+                 {"reference": "R1", "type": "diode", "value": "1N4148"}]
+        facts = nq.build_bridge_facts(comps, nq.build_ref_pins(_nets()), [])
+        self.assertNotIn("R1", facts.by_ref)
+        facts = nq.build_bridge_facts(comps[::-1], nq.build_ref_pins(_nets()), [])
+        self.assertIn("R1", facts.by_ref)
+
 
 if __name__ == "__main__":
     unittest.main()

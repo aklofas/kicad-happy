@@ -63,6 +63,16 @@ class PowerPinPaths(unittest.TestCase):
             f = audit_power_pin_dc_paths(self._board(jp), solder_jumpers=sj)
             self.assertEqual(len([x for x in f if x["rule_id"] == "PP-001"]), expect, sj)
 
+    def test_duplicate_ref_is_last_wins(self):
+        res = {"reference": "R1", "type": "resistor", "value": "0R"}
+        dio = {"reference": "R1", "type": "diode", "value": "1N4148"}
+        for comps, expect in (([U, C, res, dio], 1), ([U, C, dio, res], 0)):
+            ctx2 = _ctx(comps, {"+3V3": [("R1", "1", "passive")],
+                                "N_U1": [("U1", "1", "power_in"), ("R1", "2", "passive"), ("C1", "1", "passive")],
+                                "GND": [("C1", "2", "passive")]})
+            f = audit_power_pin_dc_paths(ctx2)
+            self.assertEqual(len([x for x in f if x["rule_id"] == "PP-001"]), expect, [c["type"] for c in comps])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -22,15 +22,14 @@ import json
 import os
 import re
 from fnmatch import fnmatch
+import sys
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+# standalone load by file path (harness spec_from_file_location, docs)
+if str(Path(__file__).parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).parent))
 from kicad_core.project import _strip_jsonc, load_jsonc  # noqa: F401 -- re-exported for project_config consumers
-
-
-# ---------------------------------------------------------------------------
-# JSONC loader (JSON with // and /* */ comments, trailing commas)
-# ---------------------------------------------------------------------------
-
 
 
 # ---------------------------------------------------------------------------

@@ -227,6 +227,7 @@ def get_model_for_part(mpn, component_type=None, context=None, options=None):
     Resolution order:
         1. Project cache — previously resolved models (instant)
         2. Distributor API parametric data — LCSC, DigiKey, element14, Mouser
+           (skipped when options.offline)
         3. Structured datasheet extraction — from datasheets/extracted/ cache
         4. Heuristic PDF regex extraction — from datasheets/ PDFs
         5. Built-in lookup table — ~100 common parts with verified specs

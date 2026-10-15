@@ -48,8 +48,8 @@ def index_ref_pins(pin_net: dict) -> dict[str, dict[str, PinNetEntry]]:
 class AnalysisContext:
     """Shared state passed to all 40+ signal and domain detector functions.
 
-    Built once in ``analyze_schematic()`` after components, nets, and pin_net
-    are fully resolved.  Provides indexed lookups and helper methods so
+    Built by ``build_analysis_context()`` for production runs (direct construction
+    is the harness/test path), after components, nets, and pin_net are fully resolved.  Provides indexed lookups and helper methods so
     detectors don't rebuild these structures individually.
 
     Attributes:
@@ -69,7 +69,7 @@ class AnalysisContext:
             successfully are included.  Auto-built in ``__post_init__``.
         known_power_rails: Net names connected to power symbols (``#PWR``, ``#FLG``).
             Used by ``is_power_net()`` to distinguish power rails from signal nets.
-        ref_pins: Per-component pin map.  ``{ref: {pin_number: (net_name, pin_info)}}``.
+        ref_pins: Per-component pin map.  ``{ref: {pin_number: (net_name, net_record)}}``.
             Derived from *pin_net* for quick per-component pin enumeration.
         no_connects: List of no-connect markers from the schematic.
         generator_version: KiCad version string (e.g., ``"9.0.1"``).
@@ -150,7 +150,8 @@ def build_analysis_context(components: list[dict], nets: dict[str, dict], lib_sy
 
     Builds ``pin_net`` and every index, installs the ``NetlistQueries`` layer and
     returns a context no detector has to complete. ``known_power_rails`` overrides
-    the power-symbol scan (synthetic fixtures); ``no_connects`` is kept by reference.
+    the power-symbol scan when non-empty (synthetic fixtures); an explicit empty
+    set is rescanned by ``__post_init__`` (kept for old-equivalence until the facade retires); ``no_connects`` is kept by reference.
     """
     pin_net = build_pin_to_net_map(nets)
     comp_lookup, parsed_values = index_components(components)

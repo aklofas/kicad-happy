@@ -124,6 +124,8 @@ def build_bridge_facts(components: list[dict],
         ref = c.get("reference") or ""
         t = (c.get("type") or c.get("category") or "").lower()
         if not ref or t not in _BRIDGE_KINDS:
+            if ref:
+                by_ref.pop(ref, None)   # duplicate refs: the last component wins, as the old dict did
             continue
         nets = tuple(dict.fromkeys(net for _pn, net, _pt in ref_pins.get(ref, [])))
         if t == "jumper":

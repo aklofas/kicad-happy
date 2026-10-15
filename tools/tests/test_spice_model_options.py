@@ -28,8 +28,10 @@ class ModelOptions(unittest.TestCase):
 
     def test_cli_flags_exist(self):
         import subprocess
-        out = subprocess.run([sys.executable, str(Path(__file__).resolve().parents[2] / "skills/spice/scripts/simulate_subcircuits.py"), "--help"],
-                             capture_output=True, text=True).stdout
+        r = subprocess.run([sys.executable, str(Path(__file__).resolve().parents[2] / "skills/spice/scripts/simulate_subcircuits.py"), "--help"],
+                           capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0)
+        out = r.stdout
         self.assertIn("--model-cache-dir", out); self.assertIn("--offline", out)
 
 

@@ -64,7 +64,8 @@ from kicad_core.fields import (
     DIGIKEY_FIELD_ALIASES, normalize_field_name, pick_field, pick_mpn,
 )
 from kicad_core.model import Component, Net, Pin, SheetData
-from kicad_core.netquery import build_bridge_facts, build_pin_to_net_map, build_ref_pins
+from kicad_core.netquery import build_bridge_facts, build_ref_pins
+from kicad_core.netquery import build_pin_to_net_map  # facade: kept for external importers (harness); retire round 9
 from kicad_types import AnalysisContext, build_analysis_context
 from bus_resolver import BusGraph, expand_bus_name, match_ports
 from signal_detectors import (
