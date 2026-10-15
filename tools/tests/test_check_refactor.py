@@ -443,6 +443,196 @@ class QuickJson(unittest.TestCase):
         self.assertTrue(buf.getvalue().rstrip("\n").splitlines()[-1].startswith("quick: "))
 
 
+FX_REAL = Path("/tmp/harness-pin/tests/fixtures")
+
+
+def _run_main(argv):
+    out, err = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        rc = cr.main(argv)
+    return rc, out.getvalue(), err.getvalue()
+
+
+class FailClosed(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.empty = self.root / "empty"
+        self.empty.mkdir()
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_snapshot_missing_fixtures_exit_2(self):
+        rc, _, err = _run_main(["snapshot", "--fixtures", str(self.root / "typo"), "--out", str(self.root / "o")])
+        self.assertEqual(rc, 2)
+        self.assertIn("fixtures", err)
+
+    def test_snapshot_empty_fixtures_exit_2(self):
+        rc, _, err = _run_main(["snapshot", "--fixtures", str(self.empty), "--out", str(self.root / "o")])
+        self.assertEqual(rc, 2)
+        self.assertIn("no fixtures", err)
+
+    def test_snapshot_bad_product_exit_2(self):
+        (self.empty / "a.kicad_sch").write_text("x", encoding="utf-8")
+        rc, _, err = _run_main(["snapshot", "--fixtures", str(self.empty), "--out", str(self.root / "o"),
+                                "--product", str(self.root / "nope")])
+        self.assertEqual(rc, 2)
+        self.assertIn("product", err)
+
+    def test_determinism_missing_and_empty_exit_2(self):
+        for fx in (self.root / "typo", self.empty):
+            rc, _, _ = _run_main(["determinism", "--fixtures", str(fx)])
+            self.assertEqual(rc, 2)
+
+    def test_quick_zero_input_reproduction_exit_2(self):
+        rc, out, err = _run_main(["quick", "--fixtures", "/nonexistent/fx", "--baseline", "/nonexistent/base", "--json"])
+        self.assertEqual(rc, 2)
+        self.assertIn("fixtures", err)
+
+    def test_quick_baseline_without_fixtures_exit_2(self):
+        rc, _, err = _run_main(["quick", "--baseline", str(self.empty)])
+        self.assertEqual(rc, 2)
+        self.assertIn("--baseline requires --fixtures", err)
+
+    def test_quick_empty_fixtures_exit_2(self):
+        rc, _, _ = _run_main(["quick", "--fixtures", str(self.empty)])
+        self.assertEqual(rc, 2)
+
+    def test_cmp_guard_missing_base_is_error(self):
+        rc, base_rc = cr._check_base_dir(self.root / "none"), None
+        self.assertIsNotNone(rc)
+        self.assertIsNotNone(cr._check_base_dir(self.empty))
+        (self.empty / "a.json").write_text("{}", encoding="utf-8")
+        self.assertIsNone(cr._check_base_dir(self.empty))
+
+
+class FixturesDigest(unittest.TestCase):
+    def _tree(self, root, payload=b"abc"):
+        (root / "a").mkdir(parents=True)
+        (root / "a" / "x.kicad_sch").write_bytes(payload)
+        g = root / "g"
+        g.mkdir()
+        (g / "t.gtl").write_bytes(b"gerber")
+
+    def test_content_identity_ignores_mtime(self):
+        import os
+        with tempfile.TemporaryDirectory() as t1, tempfile.TemporaryDirectory() as t2:
+            r1, r2 = Path(t1) / "f", Path(t2) / "f"
+            self._tree(r1)
+            self._tree(r2)
+            os.utime(r2 / "a" / "x.kicad_sch", (1, 1))
+            os.utime(r2 / "g" / "t.gtl", (5, 5))
+            self.assertEqual(cr._fixtures_digest(r1), cr._fixtures_digest(r2))
+            (r2 / "a" / "x.kicad_sch").write_bytes(b"abd")
+            self.assertNotEqual(cr._fixtures_digest(r1), cr._fixtures_digest(r2))
+            (r2 / "a" / "x.kicad_sch").write_bytes(b"abc")
+            (r2 / "g" / "t.gtl").write_bytes(b"gerbeR")
+            self.assertNotEqual(cr._fixtures_digest(r1), cr._fixtures_digest(r2))
+
+
+class NormPathAndRoot(unittest.TestCase):
+    def test_unbalanced_bracket_key_compares(self):
+        d = cr.compare_json({"FOO[": 1}, {"FOO[": 2}, set())
+        self.assertEqual(d, [("FOO[", "value", 1, 2)])
+        self.assertEqual(cr._norm_path("FOO["), "FOO[")
+
+    def test_key_with_digit_bracket_compares_without_policy(self):
+        d = cr.compare_json({"D[0]": 1}, {"D[0]": 2}, set())
+        self.assertEqual(d, [("D[0]", "value", 1, 2)])
+        self.assertEqual(cr._norm_path("a[12].b[x]"), "a[*].b[x]")
+
+    def test_substitute_requires_separator(self):
+        self.assertEqual(cr._substitute_root("/tmp/snap2/x", "/tmp/snap"), "/tmp/snap2/x")
+        self.assertEqual(cr._substitute_root("/tmp/snap/x", "/tmp/snap"), "<SNAP>/x")
+        self.assertEqual(cr._substitute_root("/tmp/snap", "/tmp/snap"), "<SNAP>")
+
+    def test_substitute_handles_resolved_form(self):
+        with tempfile.TemporaryDirectory() as td:
+            real = Path(td).resolve() / "real"
+            real.mkdir()
+            link = Path(td).resolve() / "link"
+            link.symlink_to(real)
+            a = cr._substitute_root({"p": str(real / "f")}, str(real))
+            b = cr._substitute_root({"p": str(real / "f")}, str(link), str(real))
+            self.assertEqual(a, b)
+            self.assertEqual(b, {"p": "<SNAP>/f"})
+            self.assertEqual(cr._substitute_root(str(link / "f"), str(link), str(real)), "<SNAP>/f")
+
+
+class QuickRobustness(unittest.TestCase):
+    def test_raising_check_recorded_as_error(self):
+        orig = cr.install_smoke
+        def boom(*a, **k):
+            raise FileNotFoundError("gone")
+        cr.install_smoke = boom
+        try:
+            rc, out, _ = _run_main(["quick", "--json"])
+        finally:
+            cr.install_smoke = orig
+        self.assertEqual(rc, 1)
+        data = json.loads(out)
+        self.assertEqual(data["status"], "fail")
+        smoke = [c for c in data["checks"] if c["name"] == "install-smoke"][0]
+        self.assertEqual(smoke["status"], "error")
+        self.assertIn("gone", smoke["detail"])
+
+    def test_install_smoke_timeout_is_failure_line(self):
+        import subprocess
+        orig = subprocess.run
+        def to(*a, **k):
+            raise subprocess.TimeoutExpired(a[0], 1)
+        subprocess.run = to
+        try:
+            with tempfile.TemporaryDirectory() as td:
+                f = cr.install_smoke(cr.REPO_ROOT, None, Path(td))
+        finally:
+            subprocess.run = orig
+        self.assertTrue(f and all("timeout" in x for x in f))
+
+
+class ProductShaAndParse(unittest.TestCase):
+    def test_sha_dirty_and_unknown(self):
+        import subprocess
+        with tempfile.TemporaryDirectory() as td:
+            self.assertEqual(cr._git_sha(Path(td)), "unknown")
+            subprocess.run(["git", "init", "-q", td], check=True)
+            subprocess.run(["git", "-C", td, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q",
+                            "--allow-empty", "-m", "x"], check=True)
+            clean = cr._git_sha(Path(td))
+            self.assertFalse(clean.endswith("-dirty"))
+            (Path(td) / "f.txt").write_text("x", encoding="utf-8")
+            self.assertEqual(cr._git_sha(Path(td)), clean + "-dirty")
+
+    def _tree(self, td):
+        (Path(td) / "skills" / "kicad").mkdir(parents=True)
+        (Path(td) / "skills" / "kicad" / "bad.py").write_text("def (:\n", encoding="utf-8")
+
+    def test_imports_and_tags_report_parse_errors(self):
+        with tempfile.TemporaryDirectory() as td:
+            self._tree(td)
+            for cmd in ("imports", "tags"):
+                rc, out, _ = _run_main([cmd, "--product", td])
+                self.assertEqual(rc, 1)
+                self.assertIn("PARSE-ERROR skills/kicad/bad.py", out)
+
+    def test_install_smoke_core_skill_not_double_copied(self):
+        with tempfile.TemporaryDirectory() as td:
+            f = cr.install_smoke(cr.REPO_ROOT, "kicad", Path(td))
+            self.assertEqual(f, [], "\n".join(f))
+
+
+@unittest.skipUnless(FX_REAL.is_dir(), "frozen fixtures not available")
+class AbaReal(unittest.TestCase):
+    def test_aba_passes_on_real_fixtures(self):
+        rc, out, err = _run_main(["aba", "--fixtures", str(FX_REAL)])
+        self.assertEqual(rc, 0, out + err)
+
+    def test_aba_zero_input_exit_2(self):
+        rc, _, _ = _run_main(["aba", "--fixtures", "/nonexistent/fx"])
+        self.assertEqual(rc, 2)
+
+
 class KeptCompatibilitySurfaces(unittest.TestCase):
     """Facade-register entries that must keep accepting the old keyword until the harness migrates."""
     def setUp(self):

@@ -12,7 +12,7 @@ This file records the few decisions a contributor needs that the code does not s
 
 ## Finding emit sites (enforced by `tools/check_refactor.py tags`)
 
-Every `make_finding(...)`, `_make_finding(...)` or `_make_*(...)` call carries literal string keywords `detector=`, `rule_id=` and `schema_era=`. Known legacy sites are in `tools/tag_baseline.json`; the list may only shrink. Emitted detector strings and rule IDs are public API and never change.
+Every emit site carries literal string keywords `detector=`, `rule_id=` and `schema_era=`. An emit site is a `make_finding`/`_make_finding` call, or a caller of a dict-returning `_make_*` factory. A `_make_*` wrapper whose own inner `make_finding` call carries all three literals is itself the emit site, and its callers are not scanned. `_make_*` helpers that are not finding factories are ignored. Known legacy sites are in `tools/tag_baseline.json`; the list may only shrink. Emitted detector strings and rule IDs are public API and never change.
 
 ## Facade register
 
@@ -20,6 +20,6 @@ A facade is code kept only so a named consumer keeps working. Each entry names t
 
 | Symbol | Location | Consumer | Retire when |
 |---|---|---|---|
-| `make_finding(design_context=...)` ignored keyword | `skills/kicad/scripts/finding_schema.py` | harness contract tests (4 call sites pass the keyword) | harness migrates per round-1 relocation map |
+| `make_finding(design_context=...)` ignored keyword | `skills/kicad/scripts/finding_schema.py` | harness contract tests (one real call: `tests/contract/test_finding_id.py:118`; two docstring mentions) | harness migrates per round-1 relocation map |
 | `AnalysisContext.design_context`, `AnalysisContext.hierarchy_context` fields | `skills/kicad/scripts/kicad_types.py` | harness fixtures (`tests/fixtures/_build_ctx.py`, 15 contract files, `tests/test_schema_drift.py`, `tools/generate_catalog.py`) | same |
 | `lookup_helpers.read_design_context` | `skills/kicad/scripts/lookup_helpers.py` | harness `tests/contract/test_lookup_helpers.py` | same |

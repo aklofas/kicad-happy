@@ -268,6 +268,8 @@ python3 tools/check_refactor.py compare /tmp/base /tmp/cand
 
 A refactor PR is expected to compare clean. An intended output change says so in the PR and lists the fields.
 
+A deliberate change that retires or renames a known legacy site shrinks the baseline; run `python3 tools/check_refactor.py tags --update-baseline` (or `imports --update-baseline`) in the same commit. The update refuses to add entries; a new untagged site must be tagged, not baselined.
+
 ## Code style
 
 - **Python 3.10+ compatibility** — modern type hints (`X | None`, `list[int]`) are fine. Walrus operators and `match` statements are allowed. Avoid PEP 695 `type` aliases (3.12-only).

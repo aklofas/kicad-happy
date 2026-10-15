@@ -8,7 +8,8 @@ Subcommands (added across round 1):
   tags      literal detector/rule_id/schema_era scan (tools/tag_baseline.json)
   install-smoke  copy core (+ one optional skill) to a temp dir, run CLIs from an unrelated cwd
   determinism    snapshot twice with random hash seeds and compare
-  quick     imports + tags + install-smoke + determinism (+ compare when --baseline given)
+  aba       in-process A/B/A: analyse two boards in one interpreter, A must not change
+  quick     imports + tags + install-smoke + determinism + aba (+ compare when --baseline given)
 
 Stdlib only. Exit 0 = pass, 1 = findings, 2 = usage/setup error.
 """
@@ -21,6 +22,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -65,16 +67,7 @@ def load_policy(path: Path = DEFAULT_POLICY) -> set[str]:
 
 def _norm_path(path: str) -> str:
     """Replace every [N] index with [*] so wildcards in the policy match."""
-    out, i = [], 0
-    while i < len(path):
-        if path[i] == "[":
-            j = path.index("]", i)
-            out.append("[*]")
-            i = j + 1
-        else:
-            out.append(path[i])
-            i += 1
-    return "".join(out)
+    return re.sub(r"\[\d+\]", "[*]", path)
 
 
 def _is_volatile(path: str, volatile: set[str]) -> bool:
@@ -91,15 +84,25 @@ def _is_volatile(path: str, volatile: set[str]) -> bool:
 SNAP_TOKEN = "<SNAP>"
 
 
-def _substitute_root(obj, root_str: str):
-    """Rewrite dict keys and string values starting with root_str to start with <SNAP> instead."""
-    if isinstance(obj, str):
-        return SNAP_TOKEN + obj[len(root_str):] if obj.startswith(root_str) else obj
-    if isinstance(obj, list):
-        return [_substitute_root(x, root_str) for x in obj]
-    if isinstance(obj, dict):
-        return {_substitute_root(k, root_str): _substitute_root(v, root_str) for k, v in obj.items()}
-    return obj
+def _substitute_root(obj, root_str: str, *alt_roots: str):
+    """Rewrite dict keys and string values under any given root to start with <SNAP> instead.
+
+    A root only matches at a path-separator boundary (or the end of the string).
+    """
+    roots = sorted({r for r in (root_str, *alt_roots) if r}, key=len, reverse=True)
+
+    def sub(x):
+        if isinstance(x, str):
+            for r in roots:
+                if x.startswith(r) and (len(x) == len(r) or x[len(r)] in "/\\"):
+                    return SNAP_TOKEN + x[len(r):]
+            return x
+        if isinstance(x, list):
+            return [sub(v) for v in x]
+        if isinstance(x, dict):
+            return {sub(k): sub(v) for k, v in x.items()}
+        return x
+    return sub(obj)
 
 
 def compare_json(base, cand, volatile: set[str], path: str = "") -> list[Delta]:
@@ -140,15 +143,15 @@ def compare_json(base, cand, volatile: set[str], path: str = "") -> list[Delta]:
 def compare_dirs(base_dir: Path, cand_dir: Path, volatile: set[str]) -> dict:
     """Compare every *.json under base_dir with its counterpart. Returns a report dict."""
     report = {"files": {}, "missing_in_candidate": [], "extra_in_candidate": [], "total_deltas": 0}
-    base_root, cand_root = str(base_dir.resolve()), str(cand_dir.resolve())
+    base_roots, cand_roots = (str(base_dir), str(base_dir.resolve())), (str(cand_dir), str(cand_dir.resolve()))
     base_files = {p.relative_to(base_dir).as_posix(): p for p in base_dir.rglob("*.json")}
     cand_files = {p.relative_to(cand_dir).as_posix(): p for p in cand_dir.rglob("*.json")}
     for rel in sorted(base_files):
         if rel not in cand_files:
             report["missing_in_candidate"].append(rel)
             continue
-        b = _substitute_root(json.loads(base_files[rel].read_text(encoding="utf-8")), base_root)
-        c = _substitute_root(json.loads(cand_files[rel].read_text(encoding="utf-8")), cand_root)
+        b = _substitute_root(json.loads(base_files[rel].read_text(encoding="utf-8")), *base_roots)
+        c = _substitute_root(json.loads(cand_files[rel].read_text(encoding="utf-8")), *cand_roots)
         deltas = compare_json(b, c, volatile)
         if deltas:
             report["files"][rel] = [list(d) for d in deltas]
@@ -157,14 +160,23 @@ def compare_dirs(base_dir: Path, cand_dir: Path, volatile: set[str]) -> dict:
     return report
 
 
+def _check_base_dir(base: Path) -> str | None:
+    """Error text when the baseline directory is missing or holds no *.json, else None."""
+    if not base.is_dir():
+        return f"base directory not found: {base}"
+    if not any(base.rglob("*.json")):
+        return f"base directory contains no *.json: {base}"
+    return None
+
+
 def cmd_compare(args) -> int:
     base, cand = Path(args.base), Path(args.cand)
-    for label, d in (("base", base), ("cand", cand)):
-        if not d.is_dir():
-            print(f"compare: {label} directory not found: {d}", file=sys.stderr)
-            return 2
-    if not any(base.rglob("*.json")):
-        print(f"compare: base directory contains no *.json: {base}", file=sys.stderr)
+    if not cand.is_dir():
+        print(f"compare: cand directory not found: {cand}", file=sys.stderr)
+        return 2
+    msg = _check_base_dir(base)
+    if msg:
+        print(f"compare: {msg}", file=sys.stderr)
         return 2
     try:
         volatile = load_policy(Path(args.policy))
@@ -223,7 +235,8 @@ def _slot(out_dir: Path, rel: str) -> Path:
 
 def _run(cmd: list[str], env: dict, timeout: int = 300) -> tuple[int, str]:
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=timeout)
+        proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                              env=env, timeout=timeout)
     except subprocess.TimeoutExpired:
         return 124, f"timeout after {timeout}s"
     lines = (proc.stderr or "").strip().splitlines()
@@ -282,7 +295,22 @@ def analyzer_env(seed: str) -> dict:
     return env
 
 
+def _check_inputs(label: str, fixtures, product) -> str | None:
+    """Error text when the fixtures/product paths cannot yield a meaningful run, else None."""
+    if not Path(product).is_dir():
+        return f"{label}: product is not a directory: {product}"
+    if not Path(fixtures).is_dir():
+        return f"{label}: fixtures path is not a directory: {fixtures}"
+    if not discover_fixtures(Path(fixtures)):
+        return f"{label}: no fixtures discovered under {fixtures}"
+    return None
+
+
 def cmd_snapshot(args) -> int:
+    msg = _check_inputs("snapshot", args.fixtures, args.product)
+    if msg:
+        print(msg, file=sys.stderr)
+        return 2
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     stats = run_snapshot(Path(args.fixtures), out, Path(args.product), analyzer_env(args.seed))
@@ -319,13 +347,15 @@ def _import_key(d: dict) -> tuple:
     return (d["file"], d["module"], d["rule"], d["ordinal"])
 
 
-def scan_imports(root: Path) -> list[dict]:
+def scan_imports(root: Path, errors: list | None = None) -> list[dict]:
     edges = []
     for p in _py_files(root):
         rel = p.relative_to(root).as_posix()
         try:
             tree = ast.parse(p.read_text(encoding="utf-8"))
-        except SyntaxError:
+        except (SyntaxError, ValueError, UnicodeDecodeError) as exc:
+            if errors is not None:
+                errors.append((rel, str(exc)))
             continue
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
@@ -407,13 +437,15 @@ def _classify_factories(tree: ast.AST) -> tuple[set[str], set[str]]:
     return wrappers, dict_factories - wrappers
 
 
-def scan_tags(root: Path) -> list[dict]:
+def scan_tags(root: Path, errors: list | None = None) -> list[dict]:
     sites = []
     for p in _py_files(root):
         rel = p.relative_to(root).as_posix()
         try:
             tree = ast.parse(p.read_text(encoding="utf-8"))
-        except SyntaxError:
+        except (SyntaxError, ValueError, UnicodeDecodeError) as exc:
+            if errors is not None:
+                errors.append((rel, str(exc)))
             continue
         wrappers, dict_factories = _classify_factories(tree)
 
@@ -461,15 +493,28 @@ def _ratchet(current: list[dict], baseline_path: Path, update: bool, key_fields:
     return 0
 
 
+def _report_parse_errors(errors: list) -> bool:
+    for rel, msg in errors:
+        print(f"PARSE-ERROR {rel}: {msg}")
+    return bool(errors)
+
+
 def cmd_imports(args) -> int:
     rules = json.loads(LAYER_RULES.read_text(encoding="utf-8"))
     root = Path(args.product)
-    v = classify_edges(scan_imports(root), rules, root)
+    errors: list = []
+    edges = scan_imports(root, errors)
+    if _report_parse_errors(errors):
+        return 1
+    v = classify_edges(edges, rules, root)
     return _ratchet(v, IMPORT_BASELINE, args.update_baseline, (), key_fn=_import_key)
 
 
 def cmd_tags(args) -> int:
-    sites = scan_tags(Path(args.product))
+    errors: list = []
+    sites = scan_tags(Path(args.product), errors)
+    if _report_parse_errors(errors):
+        return 1
     return _ratchet(sites, TAG_BASELINE, args.update_baseline, (), key_fn=_tag_key)
 
 
@@ -478,7 +523,9 @@ def install_smoke(product_root: Path, optional_skill: str | None, workdir: Path)
     (and --schema for envelope CLIs) with cwd = an unrelated empty directory."""
     plugin = workdir / "plugin" / "skills"
     plugin.mkdir(parents=True)
-    skills = ["kicad", "datasheets"] + ([optional_skill] if optional_skill else [])
+    skills = ["kicad", "datasheets"]
+    if optional_skill and optional_skill not in skills:
+        skills.append(optional_skill)
     for sk in skills:
         shutil.copytree(product_root / "skills" / sk, plugin / sk,
                         ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
@@ -487,17 +534,24 @@ def install_smoke(product_root: Path, optional_skill: str | None, workdir: Path)
     env = dict(os.environ)
     env.pop("PYTHONPATH", None)
     failures = []
+
+    def run(script, flag, rel):
+        try:
+            return subprocess.run([sys.executable, str(script), flag], cwd=cwd, env=env, capture_output=True,
+                                  text=True, encoding="utf-8", errors="replace", timeout=120)
+        except subprocess.TimeoutExpired:
+            failures.append(f"{rel} {flag} timeout after 120s")
+            return None
+
     clis = [c for sk in skills for c in SKILL_CLIS.get(sk, [])]
     for rel in clis:
         script = workdir / "plugin" / rel
-        proc = subprocess.run([sys.executable, str(script), "--help"], cwd=cwd, env=env,
-                              capture_output=True, text=True, timeout=120)
-        if proc.returncode != 0:
+        proc = run(script, "--help", rel)
+        if proc is not None and proc.returncode != 0:
             failures.append(f"{rel} --help exit {proc.returncode}: {(proc.stderr or '').strip().splitlines()[-1:]}")
         if rel in SCHEMA_CLIS:
-            proc = subprocess.run([sys.executable, str(script), "--schema"], cwd=cwd, env=env,
-                                  capture_output=True, text=True, timeout=120)
-            if proc.returncode != 0 or not proc.stdout.lstrip().startswith("{"):
+            proc = run(script, "--schema", rel)
+            if proc is not None and (proc.returncode != 0 or not proc.stdout.lstrip().startswith("{")):
                 failures.append(f"{rel} --schema exit {proc.returncode}")
     return failures
 
@@ -517,70 +571,187 @@ def cmd_install_smoke(args) -> int:
 
 
 def cmd_determinism(args) -> int:
+    msg = _check_inputs("determinism", args.fixtures, args.product)
+    if msg:
+        print(msg, file=sys.stderr)
+        return 2
     volatile = load_policy(Path(args.policy))
     with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
         sa = run_snapshot(Path(args.fixtures), Path(a), Path(args.product), analyzer_env("random"))
         sb = run_snapshot(Path(args.fixtures), Path(b), Path(args.product), analyzer_env("random"))
         rep = compare_dirs(Path(a), Path(b), volatile)
-    bad = rep["total_deltas"] or rep["missing_in_candidate"] or rep["extra_in_candidate"] or sa["failures"] != sb["failures"]
-    print("determinism: " + ("FAIL" if bad else "OK") + f" ({rep['total_deltas']} delta(s))")
+    args.snapshot_failures = sa["failures"]
+    bad = (rep["total_deltas"] or rep["missing_in_candidate"] or rep["extra_in_candidate"]
+           or sa["failures"] or sb["failures"])
+    print("determinism: " + ("FAIL" if bad else "OK") + f" ({rep['total_deltas']} delta(s), "
+          f"{len(sa['failures'])}+{len(sb['failures'])} snapshot failure(s))")
+    for f in sa["failures"] + sb["failures"]:
+        print(f"   snapshot failure: {f}")
     for rel, ds in rep["files"].items():
         for d in ds[:10]:
             print(f"   {rel} {d[1]} {d[0]}")
     return 1 if bad else 0
 
 
+ABA_PROGRAM = r"""
+import json, sys
+from pathlib import Path
+scripts, out, spec = sys.argv[1], Path(sys.argv[2]), json.loads(sys.argv[3])
+sys.path.insert(0, scripts)
+import analyze_schematic, analyze_pcb
+fn = {"sch": analyze_schematic.analyze_schematic, "pcb": analyze_pcb.analyze_pcb}
+for kind, (a, b) in spec.items():
+    r1 = fn[kind](a)
+    fn[kind](b)
+    r2 = fn[kind](a)
+    (out / f"{kind}_A1.json").write_text(json.dumps(r1, default=str), encoding="utf-8")
+    (out / f"{kind}_A2.json").write_text(json.dumps(r2, default=str), encoding="utf-8")
+"""
+
+
+def cmd_aba(args) -> int:
+    msg = _check_inputs("aba", args.fixtures, args.product)
+    if msg:
+        print(msg, file=sys.stderr)
+        return 2
+    fx = discover_fixtures(Path(args.fixtures))
+    spec = {}
+    for kind in ("sch", "pcb"):
+        paths = [str(f["path"]) for f in fx if f["kind"] == kind][:2]
+        if len(paths) == 2:
+            spec[kind] = paths
+    if not spec:
+        print("aba: need at least two .kicad_sch or two .kicad_pcb fixtures", file=sys.stderr)
+        return 2
+    volatile = load_policy(Path(args.policy))
+    scripts = Path(args.product) / "skills" / "kicad" / "scripts"
+    bad = False
+    with tempfile.TemporaryDirectory() as td:
+        try:
+            proc = subprocess.run([sys.executable, "-c", ABA_PROGRAM, str(scripts), td, json.dumps(spec)],
+                                  cwd=td, env=analyzer_env("0"), capture_output=True, text=True,
+                                  encoding="utf-8", errors="replace", timeout=900)
+        except subprocess.TimeoutExpired:
+            print("aba: FAIL (timeout after 900s)")
+            return 1
+        if proc.returncode != 0:
+            tail = (proc.stderr or "").strip().splitlines()[-3:]
+            print(f"aba: FAIL (in-process run exit {proc.returncode}): {' | '.join(tail)}")
+            return 1
+        for kind in spec:
+            a1 = json.loads((Path(td) / f"{kind}_A1.json").read_text(encoding="utf-8"))
+            a2 = json.loads((Path(td) / f"{kind}_A2.json").read_text(encoding="utf-8"))
+            deltas = compare_json(a1, a2, volatile)
+            for d in deltas[:20]:
+                print(f"   {kind} {d[1]:8} {d[0]}: {d[2]!r} -> {d[3]!r}")
+            bad = bad or bool(deltas)
+    print("aba: " + ("FAIL" if bad else "OK") + f" (kinds checked: {', '.join(sorted(spec))})")
+    return 1 if bad else 0
+
+
 def _git_sha(root: Path) -> str:
+    def git(*a):
+        return subprocess.run(["git", "-C", str(root), *a], capture_output=True, text=True,
+                              encoding="utf-8", errors="replace")
     try:
-        return subprocess.run(["git", "-C", str(root), "rev-parse", "--short", "HEAD"],
-                              capture_output=True, text=True).stdout.strip()
+        head = git("rev-parse", "--short", "HEAD")
+        if head.returncode != 0 or not head.stdout.strip():
+            return "unknown"
+        status = git("status", "--porcelain")
+        if status.returncode != 0:
+            return "unknown"
     except OSError:
         return "unknown"
+    return head.stdout.strip() + ("-dirty" if status.stdout.strip() else "")
 
 
 def _fixtures_digest(fixtures) -> str | None:
+    """sha256 over each fixture's relative path and bytes (gerber dirs: each member file)."""
     if not fixtures:
         return None
+    root = Path(fixtures)
     h = hashlib.sha256()
-    for f in discover_fixtures(Path(fixtures)):
-        st = f["path"].stat()
-        h.update(f"{f['rel']}\0{st.st_size}\0{st.st_mtime_ns}\n".encode("utf-8"))
+    for f in discover_fixtures(root):
+        members = ([(f["rel"], f["path"])] if f["kind"] != "gerber" else
+                   [(f"{f['rel']}/{c.name}", c) for c in sorted(f["path"].iterdir(), key=lambda c: c.name) if c.is_file()])
+        for rel, p in members:
+            data = p.read_bytes()
+            h.update(f"{rel}\0{len(data)}\0".encode("utf-8"))
+            h.update(data)
     return h.hexdigest()
 
 
 def cmd_quick(args) -> int:
+    if args.baseline and not args.fixtures:
+        print("quick: --baseline requires --fixtures", file=sys.stderr)
+        return 2
+    if args.fixtures:
+        msg = _check_inputs("quick", args.fixtures, args.product)
+        if msg:
+            print(msg, file=sys.stderr)
+            return 2
+    elif not Path(args.product).is_dir():
+        print(f"quick: product is not a directory: {args.product}", file=sys.stderr)
+        return 2
     checks = []
+    snapshot_failures: list = []
 
     def timed(name, fn):
         t0 = time.time()
         buf = io.StringIO()
-        with contextlib.redirect_stdout(buf):
-            rc = fn()
-        checks.append({"name": name, "status": "ok" if rc == 0 else "fail",
-                       "elapsed_s": round(time.time() - t0, 1), "detail": buf.getvalue()})
-        return rc
+        try:
+            with contextlib.redirect_stdout(buf):
+                rc = fn()
+            status = "ok" if rc == 0 else "error" if rc == 2 else "fail"
+            detail = buf.getvalue()
+        except Exception as exc:  # a crashing sub-check must still yield a report
+            rc, status = 1, "error"
+            detail = buf.getvalue() + f"{type(exc).__name__}: {exc}\n"
+        checks.append({"name": name, "status": status,
+                       "elapsed_s": round(time.time() - t0, 1), "detail": detail})
+        return 1 if rc else 0
 
     rc = 0
     ns = argparse.Namespace(product=args.product, update_baseline=False)
     rc |= timed("imports", lambda: cmd_imports(ns))
     rc |= timed("tags", lambda: cmd_tags(ns))
     rc |= timed("install-smoke", lambda: cmd_install_smoke(argparse.Namespace(product=args.product, skill=None)))
+    counts = None
     if args.fixtures:
-        rc |= timed("determinism", lambda: cmd_determinism(argparse.Namespace(
+        counts = {}
+        for f in discover_fixtures(Path(args.fixtures)):
+            counts[f["kind"]] = counts.get(f["kind"], 0) + 1
+        det_ns = argparse.Namespace(fixtures=args.fixtures, product=args.product, policy=args.policy)
+        rc |= timed("determinism", lambda: cmd_determinism(det_ns))
+        snapshot_failures = list(getattr(det_ns, "snapshot_failures", []))
+        rc |= timed("aba", lambda: cmd_aba(argparse.Namespace(
             fixtures=args.fixtures, product=args.product, policy=args.policy)))
         if args.baseline:
             def _cmp():
+                msg = _check_base_dir(Path(args.baseline))
+                if msg:
+                    print(f"compare-vs-baseline: {msg}")
+                    return 2
                 with tempfile.TemporaryDirectory() as td:
-                    run_snapshot(Path(args.fixtures), Path(td), Path(args.product), analyzer_env("0"))
+                    stats = run_snapshot(Path(args.fixtures), Path(td), Path(args.product), analyzer_env("0"))
+                    snapshot_failures[:] = stats["failures"]
                     rep = compare_dirs(Path(args.baseline), Path(td), load_policy(Path(args.policy)))
-                bad = rep["total_deltas"] or rep["missing_in_candidate"] or rep["extra_in_candidate"]
+                bad = (rep["total_deltas"] or rep["missing_in_candidate"] or rep["extra_in_candidate"]
+                       or stats["failures"])
                 print("compare-vs-baseline: " + ("FAIL" if bad else "OK") + f" ({rep['total_deltas']} delta(s))")
+                for rel in rep["missing_in_candidate"]:
+                    print(f"   MISSING in candidate: {rel}")
+                for rel in rep["extra_in_candidate"]:
+                    print(f"   EXTRA in candidate: {rel}")
+                for f in stats["failures"]:
+                    print(f"   snapshot failure: {f}")
                 for rel, ds in rep["files"].items():
                     for d in ds[:10]:
                         print(f"   {rel} {d[1]} {d[0]}: {d[2]!r} -> {d[3]!r}")
                 return 1 if bad else 0
             rc |= timed("compare-vs-baseline", _cmp)
     summary = {"product_sha": _git_sha(Path(args.product)), "fixtures_digest": _fixtures_digest(args.fixtures),
+               "fixtures": counts, "snapshot_failures": snapshot_failures,
                "policy": Path(args.policy).name, "checks": checks, "status": "ok" if rc == 0 else "fail"}
     if args.json:
         print(json.dumps(summary, indent=1))
@@ -622,6 +793,11 @@ def build_parser() -> argparse.ArgumentParser:
     d.add_argument("--product", default=str(REPO_ROOT))
     d.add_argument("--policy", default=str(DEFAULT_POLICY))
     d.set_defaults(func=cmd_determinism)
+    a = sub.add_parser("aba", help="in-process A/B/A state-leak check")
+    a.add_argument("--fixtures", required=True)
+    a.add_argument("--product", default=str(REPO_ROOT))
+    a.add_argument("--policy", default=str(DEFAULT_POLICY))
+    a.set_defaults(func=cmd_aba)
     q = sub.add_parser("quick")
     q.add_argument("--fixtures")
     q.add_argument("--baseline")
