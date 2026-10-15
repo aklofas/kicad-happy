@@ -34,12 +34,8 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+import _core_path  # noqa: F401
 from kicad_sexp import find_matching_paren, find_sub_sheets
-
-# Allow importing project_config from kicad skill
-_kicad_scripts = Path(__file__).resolve().parent.parent.parent / 'kicad' / 'scripts'
-if _kicad_scripts.is_dir() and str(_kicad_scripts) not in sys.path:
-    sys.path.insert(0, str(_kicad_scripts))
 
 from kicad_core.fields import (MPN_FIELD_ALIASES, MPN_FIELD_ALIASES_PRIMARY,
                                MPN_FIELD_ALIASES_GENERIC, DIGIKEY_FIELD_ALIASES,

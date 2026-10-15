@@ -39,11 +39,7 @@ from kicad_core.netquery import build_net_id_map
 from finding_schema import Det, get_findings
 
 try:
-    import os as _os, sys as _sys
-    _ds_scripts = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
-                                '..', '..', 'datasheets', 'scripts')
-    if _os.path.isdir(_ds_scripts):
-        _sys.path.insert(0, _os.path.abspath(_ds_scripts))
+    import _core_path  # noqa: F401
     from datasheet_features import get_mcu_features as _get_mcu_features
 except ImportError:
     def _get_mcu_features(mpn, **kw): return None

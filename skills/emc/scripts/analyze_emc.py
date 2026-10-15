@@ -20,12 +20,9 @@ import os
 import sys
 import time
 
-# Add this script's directory and kicad scripts to path for sibling imports
+# Add this script's directory to path for sibling imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-_kicad_scripts = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                              '..', '..', 'kicad', 'scripts')
-if os.path.isdir(_kicad_scripts):
-    sys.path.insert(0, os.path.abspath(_kicad_scripts))
+import _core_path  # noqa: F401
 
 from emc_rules import run_all_checks, generate_test_plan, analyze_regulatory_coverage
 from emc_formulas import STANDARDS, MARKET_STANDARDS

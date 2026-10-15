@@ -1210,12 +1210,7 @@ def build_report(simulation_runs):
     # Trust summary — populate through the shared helper so consumers get
     # the same shape they expect from every other v1.3 analyzer.
     try:
-        import os as _os, sys as _sys
-        _kicad_scripts = _os.path.join(
-            _os.path.dirname(_os.path.abspath(__file__)),
-            '..', '..', 'kicad', 'scripts')
-        if _os.path.isdir(_kicad_scripts):
-            _sys.path.insert(0, _os.path.abspath(_kicad_scripts))
+        import _core_path  # noqa: F401
         from finding_schema import compute_trust_summary
         report["trust_summary"] = compute_trust_summary(findings)
     except (ImportError, Exception):

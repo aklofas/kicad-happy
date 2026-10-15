@@ -36,13 +36,7 @@ import sys
 from dataclasses import dataclass, field
 from typing import Optional
 
-# Bridge to skills/kicad/scripts/ for shared primitives. emc_envelope.py
-# is a sibling of analyze_emc.py under skills/emc/scripts/, so reach up
-# two levels and across into skills/kicad/scripts/.
-_HERE = os.path.dirname(os.path.abspath(__file__))
-_KICAD_SCRIPTS = os.path.abspath(os.path.join(_HERE, "..", "..", "kicad", "scripts"))
-if _KICAD_SCRIPTS not in sys.path:
-    sys.path.insert(0, _KICAD_SCRIPTS)
+import _core_path  # noqa: F401
 
 from analyzer_envelope import (  # noqa: E402
     TrustSummary, Finding, Assessment, BySeverity, InputsBlock, CompatBlock,

@@ -15,11 +15,7 @@ import os
 import sys
 from typing import List, Tuple, Optional, Dict
 
-# Add kicad scripts to path for shared imports
-_kicad_scripts = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                              '..', '..', 'kicad', 'scripts')
-if os.path.isdir(_kicad_scripts) and os.path.abspath(_kicad_scripts) not in sys.path:
-    sys.path.insert(0, os.path.abspath(_kicad_scripts))
+import _core_path  # noqa: F401
 
 # Physical constants
 C_0 = 2.998e8          # Speed of light in vacuum (m/s)

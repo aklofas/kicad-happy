@@ -530,9 +530,7 @@ def main():
     workdir = args.workdir
     if args.analysis_dir:
         # analysis_cache lives in skills/kicad/scripts/
-        sys.path.insert(0, os.path.join(
-            os.path.dirname(os.path.abspath(__file__)),
-            '..', '..', 'kicad', 'scripts'))
+        import _core_path  # noqa: F401
         from analysis_cache import load_manifest, MANIFEST_FILENAME
         analysis_dir = os.path.abspath(args.analysis_dir)
         manifest = load_manifest(analysis_dir)
@@ -666,9 +664,7 @@ def main():
         print(f"SPICE simulation: {s.get('total', 0)} subcircuits — "
               f"{s.get('pass', 0)} pass, {s.get('warn', 0)} warn, "
               f"{s.get('fail', 0)} fail, {s.get('skip', 0)} skip{_suffix}")
-        sys.path.insert(0, os.path.join(
-            os.path.dirname(os.path.abspath(__file__)),
-            '..', '..', 'kicad', 'scripts'))
+        import _core_path  # noqa: F401
         from output_filters import format_text
         print(format_text(report.get("findings", []), "designer"))
         if args.output:
