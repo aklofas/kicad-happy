@@ -801,39 +801,6 @@
   "nonliteral": []
  },
  {
-  "callee": "_make_ex_001",
-  "file": "skills/kicad/scripts/lookup_detectors.py",
-  "line": 637,
-  "missing": [
-   "detector",
-   "rule_id",
-   "schema_era"
-  ],
-  "nonliteral": []
- },
- {
-  "callee": "_make_ex_001",
-  "file": "skills/kicad/scripts/lookup_detectors.py",
-  "line": 648,
-  "missing": [
-   "detector",
-   "rule_id",
-   "schema_era"
-  ],
-  "nonliteral": []
- },
- {
-  "callee": "_make_ex_001",
-  "file": "skills/kicad/scripts/lookup_detectors.py",
-  "line": 662,
-  "missing": [
-   "detector",
-   "rule_id",
-   "schema_era"
-  ],
-  "nonliteral": []
- },
- {
   "callee": "make_finding",
   "file": "skills/kicad/scripts/signal_detectors.py",
   "line": 3955,
@@ -941,17 +908,6 @@
   "file": "skills/kicad/scripts/validation_detectors.py",
   "line": 783,
   "missing": [
-   "schema_era"
-  ],
-  "nonliteral": []
- },
- {
-  "callee": "_make_label",
-  "file": "skills/spice/scripts/simulate_subcircuits.py",
-  "line": 240,
-  "missing": [
-   "detector",
-   "rule_id",
    "schema_era"
   ],
   "nonliteral": []

@@ -335,6 +335,34 @@ def classify_edges(edges: list[dict], rules: dict, root: Path) -> list[dict]:
     return out
 
 
+def _call_name(node: ast.Call) -> str | None:
+    fn = node.func
+    return fn.id if isinstance(fn, ast.Name) else fn.attr if isinstance(fn, ast.Attribute) else None
+
+
+def _classify_factories(tree: ast.AST) -> tuple[set[str], set[str]]:
+    """(wrappers, dict_factories) among the file's `_make_*` definitions.
+
+    wrapper: its body calls make_finding/_make_finding, so that inner call is the emit site.
+    dict_factory: returns a dict literal with a "detector" key, so its callers are the emit sites.
+    Any other `_make_*` definition is not a finding factory.
+    """
+    wrappers: set[str] = set()
+    dict_factories: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if not node.name.startswith("_make_") or node.name == "_make_finding":
+            continue
+        for sub in ast.walk(node):
+            if isinstance(sub, ast.Call) and _call_name(sub) in ("make_finding", "_make_finding"):
+                wrappers.add(node.name)
+            elif isinstance(sub, ast.Return) and isinstance(sub.value, ast.Dict) and any(
+                    isinstance(k, ast.Constant) and k.value == "detector" for k in sub.value.keys):
+                dict_factories.add(node.name)
+    return wrappers, dict_factories - wrappers
+
+
 def scan_tags(root: Path) -> list[dict]:
     sites = []
     for p in _py_files(root):
@@ -343,13 +371,15 @@ def scan_tags(root: Path) -> list[dict]:
             tree = ast.parse(p.read_text(encoding="utf-8"))
         except SyntaxError:
             continue
+        wrappers, dict_factories = _classify_factories(tree)
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
-            fn = node.func
-            name = fn.id if isinstance(fn, ast.Name) else fn.attr if isinstance(fn, ast.Attribute) else None
-            if not name or not (name in ("make_finding", "_make_finding") or name.startswith("_make_")):
-                continue
+            name = _call_name(node)
+            if name in ("make_finding", "_make_finding"):
+                pass
+            elif not (name and name in dict_factories):
+                continue  # wrappers' callers, non-factory _make_*, everything else
             kws = {k.arg: k.value for k in node.keywords if k.arg}
             missing = [k for k in TAG_KEYS if k not in kws]
             nonliteral = [k for k in TAG_KEYS if k in kws and not (isinstance(kws[k], ast.Constant) and isinstance(kws[k].value, str))]

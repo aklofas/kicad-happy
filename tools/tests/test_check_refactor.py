@@ -248,23 +248,125 @@ class ImportRules(unittest.TestCase):
 
 
 class TagScan(unittest.TestCase):
-    def test_flags_missing_and_nonliteral(self):
+    def _scan(self, body):
         import textwrap
         with tempfile.TemporaryDirectory() as td:
             p = Path(td) / "skills" / "kicad" / "scripts" / "x.py"; p.parent.mkdir(parents=True)
-            p.write_text(textwrap.dedent('''
-                def f():
-                    make_finding(detector="d", rule_id="R-001", category="c", summary="s", description="x", schema_era="v1.4")
-                    make_finding(detector=Det.X, rule_id="R-002", category="c", summary="s", description="x")
-                    _make_ex_001("a")
-                    helper_make("not a finding factory")
-            '''), encoding="utf-8")
-            sites = cr.scan_tags(Path(td))
-            self.assertEqual(len(sites), 2)
-            self.assertEqual(sites[0]["nonliteral"], ["detector"])
-            self.assertEqual(sites[0]["missing"], ["schema_era"])
-            self.assertEqual(sites[1]["callee"], "_make_ex_001")
-            self.assertEqual(sites[1]["missing"], ["detector", "rule_id", "schema_era"])
+            p.write_text(textwrap.dedent(body), encoding="utf-8")
+            return cr.scan_tags(Path(td))
+
+    def test_direct_make_finding_flagged(self):
+        sites = self._scan('''
+            def f():
+                make_finding(detector="d", rule_id="R-001", category="c", summary="s", schema_era="v1.4")
+                make_finding(detector=Det.X, rule_id="R-002", category="c", summary="s")
+        ''')
+        self.assertEqual(len(sites), 1)
+        self.assertEqual(sites[0]["nonliteral"], ["detector"])
+        self.assertEqual(sites[0]["missing"], ["schema_era"])
+
+    def test_literal_wrapper_and_callers_not_flagged(self):
+        sites = self._scan('''
+            def _make_ex(a):
+                return make_finding(detector="d", rule_id="R-1", schema_era="v1.4", summary=a)
+            def f():
+                _make_ex("a"); _make_ex("b")
+        ''')
+        self.assertEqual(sites, [])
+
+    def test_nonliteral_wrapper_flags_inner_not_callers(self):
+        sites = self._scan('''
+            def _make_ex(a):
+                return make_finding(detector=a, rule_id="R-1", schema_era="v1.4")
+            def f():
+                _make_ex("a")
+        ''')
+        self.assertEqual([(s["callee"], s["nonliteral"]) for s in sites], [("make_finding", ["detector"])])
+
+    def test_non_factory_make_never_flagged(self):
+        sites = self._scan('''
+            def _make_label(x):
+                return str(x)
+            def f():
+                _make_label("a")
+        ''')
+        self.assertEqual(sites, [])
+
+    def test_dict_factory_callers_are_scanned(self):
+        sites = self._scan('''
+            def _make_d(a):
+                return {"detector": a}
+            def f():
+                _make_d(detector="x", rule_id="R", schema_era="v1")
+                _make_d("a")
+        ''')
+        self.assertEqual(len(sites), 1)
+        self.assertEqual(sites[0]["missing"], ["detector", "rule_id", "schema_era"])
+
+
+class Ratchet(unittest.TestCase):
+    KEYS = ("file", "callee", "line")
+
+    def _site(self, line):
+        return {"file": "a.py", "line": line, "callee": "make_finding", "missing": ["schema_era"], "nonliteral": []}
+
+    def _run(self, current, path, update=False):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = cr._ratchet(current, path, update, self.KEYS)
+        return rc, buf.getvalue()
+
+    def _baseline(self, td, sites):
+        path = Path(td) / "b.json"
+        path.write_text(json.dumps(sites), encoding="utf-8")
+        return path
+
+    def test_no_change_passes(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = self._baseline(td, [self._site(1)])
+            rc, out = self._run([self._site(1)], path)
+            self.assertEqual(rc, 0); self.assertIn("OK (1 known, 0 retired", out)
+
+    def test_new_entry_fails_and_prints(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = self._baseline(td, [self._site(1)])
+            rc, out = self._run([self._site(1), self._site(2)], path)
+            self.assertEqual(rc, 1)
+            self.assertIn("NEW a.py:2 make_finding", out); self.assertIn("missing=schema_era", out)
+            self.assertIn("FAIL (1 new", out)
+
+    def test_new_entry_with_update_does_not_rewrite(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = self._baseline(td, [self._site(1)])
+            rc, _ = self._run([self._site(1), self._site(2)], path, update=True)
+            self.assertEqual(rc, 1)
+            self.assertEqual(len(json.loads(path.read_text(encoding="utf-8"))), 1)
+
+    def test_shrink_passes_and_counts_retired(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = self._baseline(td, [self._site(1), self._site(2)])
+            rc, out = self._run([self._site(1)], path)
+            self.assertEqual(rc, 0); self.assertIn("1 retired since baseline", out)
+            self.assertEqual(len(json.loads(path.read_text(encoding="utf-8"))), 2)  # not rewritten
+
+    def test_update_rewrites_when_nothing_new(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = self._baseline(td, [self._site(1), self._site(2)])
+            rc, out = self._run([self._site(1)], path, update=True)
+            self.assertEqual(rc, 0); self.assertIn("updated (1 entries, 1 retired)", out)
+            self.assertEqual(len(json.loads(path.read_text(encoding="utf-8"))), 1)
+
+    def test_first_generation_creates_baseline(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "new.json"
+            rc, _ = self._run([self._site(1)], path, update=True)
+            self.assertEqual(rc, 0)
+            self.assertEqual(len(json.loads(path.read_text(encoding="utf-8"))), 1)
+
+    def test_missing_baseline_without_update_fails(self):
+        with tempfile.TemporaryDirectory() as td:
+            rc, _ = self._run([self._site(1)], Path(td) / "none.json")
+            self.assertEqual(rc, 1)
 
 
 if __name__ == "__main__":
