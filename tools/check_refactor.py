@@ -405,6 +405,8 @@ def classify_edges(edges: list[dict], rules: dict, root: Path) -> list[dict]:
             continue  # third-party or unknown: not a layering question
         if src_skill not in core and target_skill not in core and target_skill != src_skill:
             out.append({**e, "rule": "optional-to-optional"})
+    excepted = {(x["file"], x["module"], x["rule"]) for x in rules.get("exceptions", [])}
+    out = [e for e in out if (e["file"], e["module"], e["rule"]) not in excepted]
     _assign_ordinals(out, lambda d: (d["file"], d["module"], d["rule"]))
     return out
 
@@ -507,6 +509,7 @@ def cmd_imports(args) -> int:
     if _report_parse_errors(errors):
         return 1
     v = classify_edges(edges, rules, root)
+    print(f"exceptions: {len(rules.get('exceptions', []))} listed in layer_rules.json (see retire_by)")
     return _ratchet(v, IMPORT_BASELINE, args.update_baseline, (), key_fn=_import_key)
 
 

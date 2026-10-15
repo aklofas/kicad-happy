@@ -9,6 +9,7 @@ This file records the few decisions a contributor needs that the code does not s
 - Inside `skills/kicad/scripts/`, `kicad_core/` imports stdlib and itself only.
 - No module imports a CLI module (`analyze_*.py`, `cross_analysis.py`, `diff_analysis.py`, `what_if.py`, `lifecycle_audit.py`, `simulate_subcircuits.py`, `bom_manager.py`); shared code lives in a non-CLI module.
 - Existing violations are listed in `tools/import_baseline.json`. The list may only shrink; CI fails on a new entry.
+- Deliberate, dated exceptions live in `tools/layer_rules.json` under `exceptions`, each with a reason and a retire-by round; they are listed on every `imports` run.
 
 ## Finding emit sites (enforced by `tools/check_refactor.py tags`)
 

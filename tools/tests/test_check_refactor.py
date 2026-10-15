@@ -246,6 +246,20 @@ class ImportRules(unittest.TestCase):
             rules = json.loads((cr.TOOLS_DIR / "layer_rules.json").read_text(encoding="utf-8"))
             self.assertEqual(cr.classify_edges(cr.scan_imports(root), rules, root), [])
 
+    def test_exception_suppresses_only_its_violation(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = self._tree(td)
+            rules = json.loads((cr.TOOLS_DIR / "layer_rules.json").read_text(encoding="utf-8"))
+            rules["exceptions"] = [{"file": "skills/kicad/scripts/kicad_core/bad.py",
+                                    "module": "kicad_utils", "rule": "core-package-stdlib-only"}]
+            got = sorted((x["file"], x["rule"]) for x in cr.classify_edges(cr.scan_imports(root), rules, root))
+            self.assertEqual(got, [
+                ("skills/bom/scripts/bom_manager.py", "no-cli-import"),
+                ("skills/emc/scripts/emc_spice.py", "optional-to-optional"),
+            ])
+            rules["exceptions"][0]["rule"] = "no-cli-import"  # wrong rule: must not suppress
+            self.assertEqual(len(cr.classify_edges(cr.scan_imports(root), rules, root)), 3)
+
 
 class TagScan(unittest.TestCase):
     def _scan(self, body):
