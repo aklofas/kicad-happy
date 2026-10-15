@@ -22,9 +22,9 @@ import re
 import sys
 from pathlib import Path
 
-# Add scripts dir to path for sexp_parser and kicad_core
+# Add scripts dir to path for kicad_core
 sys.path.insert(0, str(Path(__file__).parent))
-from sexp_parser import (
+from kicad_core.sexp import (
     find_all,
     find_deep,
     find_first,

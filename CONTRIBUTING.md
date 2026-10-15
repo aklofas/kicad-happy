@@ -40,7 +40,7 @@ Each skill has a `SKILL.md` with YAML frontmatter (name, description, triggers) 
 | `kicad/scripts/output_filters.py` | ~470 | Stage/audience filtering for all analyzers |
 | `kicad/scripts/kicad_utils.py` | ~2,000 | Shared utilities (component classification, value parsing, net detection, switching frequencies) |
 | `kicad/scripts/kicad_types.py` | ~120 | `AnalysisContext` dataclass — shared state for all detectors |
-| `kicad/scripts/sexp_parser.py` | ~230 | S-expression parser shared by schematic and PCB analyzers |
+| `kicad/scripts/kicad_core/sexp.py` | ~230 | S-expression parser shared by schematic and PCB analyzers (`sexp_parser.py` is a facade until round 9) |
 | `kicad/scripts/analyzer_envelope.py` | ~300 | Typed envelope dataclasses (Finding, Assessment, TrustSummary, InputsBlock, CompatBlock) — single source of truth for analyzer output shape |
 | `emc/scripts/emc_rules.py` | ~4,250 | 44 EMC rule implementations |
 | `emc/scripts/emc_formulas.py` | ~1,400 | Radiation formulas, harmonic analysis, PDN impedance |

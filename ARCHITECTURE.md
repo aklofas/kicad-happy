@@ -26,6 +26,8 @@ A facade is code kept only so a named consumer keeps working. Each entry names t
 | `lookup_helpers.read_design_context` | `skills/kicad/scripts/lookup_helpers.py` | harness `tests/contract/test_lookup_helpers.py` | same |
 | `kicad_utils` (whole module, 72 re-exports) | `skills/kicad/scripts/kicad_utils.py` | harness (10 names: is_power_net_name, is_ground_name, MPN_FIELD_ALIASES, MPN_FIELD_ALIASES_PRIMARY, normalize_field_name, lookup_regulator_vref, classify_component); user scripts | round 9, after harness and Action import `kicad_core.*` |
 | `diff_analysis` re-exports of `diff_engine` names | `skills/kicad/scripts/diff_analysis.py` | harness `tests/test_diff_analysis.py`, `tests/test_detection_schema.py` (`SIGNAL_REGISTRY`), `tests/contract/test_diff_deep_review.py` | same |
+| `sexp_parser` (whole module) | `skills/kicad/scripts/sexp_parser.py` | harness `validate/verify_parser.py`, `tests/...` (1 import), references docs | round 9, after the harness imports `kicad_core.sexp` |
+| `project_config.load_jsonc`, `project_config._strip_jsonc` re-exports | `skills/kicad/scripts/project_config.py` | harness `tests/test_kh368_jsonc.py`, `tests/test_kh400_jsonc_trailing_comma.py` | same |
 | `_core_path` helpers | `skills/{emc,spice,bom}/scripts/_core_path.py` | the skills themselves | permanent (not a facade; listed for discoverability) |
 | `AnalysisContext.__post_init__` fill-when-empty derivation | `skills/kicad/scripts/kicad_types.py` | harness: 26 direct `AnalysisContext(...)` constructions in 20 files + `tests/fixtures/_build_ctx.py` | harness builds contexts with `build_analysis_context` (round-3 relocation map) |
 | `signal_detectors._get_net_components` index-less branch | `skills/kicad/scripts/signal_detectors.py` | same harness contexts (no `nq`) | same |
@@ -42,7 +44,8 @@ A facade is code kept only so a named consumer keeps working. Each entry names t
 | `classify.py` | component / IC-function / connector / jumper classification | stdlib |
 | `netnames.py` | rail, ground, USB-net recognition; voltage-from-name | stdlib |
 | `passives.py` | capacitor package/ESR/ESL, dielectric, derating, inductor shielding | stdlib |
-| `project.py` | `.kicad_pro`/`.kicad_dru`/lib-table readers, root-schematic discovery | stdlib (+ two dated exceptions: project_config.load_jsonc, sexp_parser — see tools/layer_rules.json, retire in round 3) |
+| `project.py` | `.kicad_pro`/`.kicad_dru`/lib-table readers, root-schematic discovery | stdlib (+ kicad_core.sexp); also hosts `load_jsonc` / `_strip_jsonc` |
+| `sexp.py` | S-expression parser (parse/find/get helpers) | stdlib |
 | `netquery.py` | net helpers (`get_two_pin_nets`, `build_net_id_map`); grows into the typed index in round 3 | stdlib |
 
 `kicad_core` imports stdlib and itself only (CI-enforced).

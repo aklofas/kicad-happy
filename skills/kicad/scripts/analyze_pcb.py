@@ -24,7 +24,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import re
 
-from sexp_parser import (
+from kicad_core.sexp import (
     find_all,
     find_first,
     get_at,

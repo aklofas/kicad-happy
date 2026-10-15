@@ -634,8 +634,7 @@ class ProductShaAndParse(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             (Path(td) / "skills").mkdir()
             _, out, _ = _run_main(["imports", "--product", td])
-            self.assertIn("  exception: skills/kicad/scripts/kicad_core/project.py -> project_config "
-                          "[core-package-stdlib-only] retire_by=round 3", out)
+            self.assertIn("exceptions: 0 listed", out)
 
     def test_install_smoke_core_skill_not_double_copied(self):
         with tempfile.TemporaryDirectory() as td:
@@ -692,6 +691,15 @@ class KicadUtilsFacade(unittest.TestCase):
         names = json.loads((Path(__file__).parent / "kicad_utils_names_6a91aaa.json").read_text(encoding="utf-8"))
         missing = [n for n in names if not hasattr(kicad_utils, n)]
         self.assertEqual(missing, [])
+
+
+class SexpParserFacade(unittest.TestCase):
+    def test_sexp_parser_facade_exports_every_pre_v3_name(self):
+        names = json.loads((Path(__file__).parent / "sexp_parser_names_8912a5a.json").read_text(encoding="utf-8"))
+        sys.path.insert(0, str(cr.REPO_ROOT / "skills" / "kicad" / "scripts"))
+        import sexp_parser, kicad_core.sexp as core
+        for n in names:
+            self.assertIs(getattr(sexp_parser, n), getattr(core, n), n)
 
 
 class SkillLocalResources(unittest.TestCase):

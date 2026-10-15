@@ -9,12 +9,5 @@
     {"id": "core-package-stdlib-only", "description": "kicad_core imports stdlib and kicad_core only"},
     {"id": "no-cli-import", "description": "no module imports a CLI module"}
   ],
-  "exceptions": [
-    {"file": "skills/kicad/scripts/kicad_core/project.py", "module": "project_config",
-     "rule": "core-package-stdlib-only", "retire_by": "round 3",
-     "reason": "load_jsonc lives in project_config; move it into kicad_core/project.py (and import it back from there in project_config) in round 3"},
-    {"file": "skills/kicad/scripts/kicad_core/project.py", "module": "sexp_parser",
-     "rule": "core-package-stdlib-only", "retire_by": "round 3",
-     "reason": "sexp_parser is itself stdlib-only bottom-layer code; decide in round 3 whether it joins kicad_core behind a bare-name facade for the harness's one import"}
-  ]
+  "exceptions": []
 }

@@ -1,10 +1,91 @@
 """KiCad project discovery and project-file readers: .kicad_pro, .kicad_dru, lib tables, root-schematic resolution (kicad_core). Moved verbatim from kicad_utils.py."""
+import json
 import os
+
+from kicad_core.sexp import parse as _sexp_parse, parse_file as _sexp_parse_file, find_all, find_first, get_value
 
 
 # ======================================================================
 # .kicad_pro project file parsing
 # ======================================================================
+
+def _strip_jsonc(text: str) -> str:
+    """Strip JS-style comments and trailing commas from JSON text.
+
+    Single-pass, string-aware scanner: comments are only recognized
+    outside of JSON string literals, so `//` or `/* */` occurring
+    inside a string value (e.g. a URL) survives intact.
+    """
+    out = []
+    state = 'normal'  # normal | in_string | line_comment | block_comment
+    i, n = 0, len(text)
+    while i < n:
+        c = text[i]
+        if state == 'normal':
+            if c == '"':
+                state = 'in_string'
+                out.append(c)
+            elif c == '/' and text[i + 1:i + 2] == '/':
+                state = 'line_comment'
+                i += 1
+            elif c == '/' and text[i + 1:i + 2] == '*':
+                state = 'block_comment'
+                i += 1
+            else:
+                out.append(c)
+        elif state == 'in_string':
+            out.append(c)
+            if c == '\\':
+                i += 1
+                if i < n:
+                    out.append(text[i])
+            elif c == '"':
+                state = 'normal'
+        elif state == 'line_comment':
+            if c == '\n':
+                state = 'normal'
+                out.append(c)
+        elif state == 'block_comment':
+            if c == '*' and text[i + 1:i + 2] == '/':
+                state = 'normal'
+                i += 1
+        i += 1
+    stripped = ''.join(out)
+    # Second pass: drop a comma that is followed only by whitespace and then
+    # `}` or `]`, but never inside a string literal (KH-400).
+    res = []
+    in_str = False
+    i, n = 0, len(stripped)
+    while i < n:
+        c = stripped[i]
+        if in_str:
+            res.append(c)
+            if c == '\\' and i + 1 < n:
+                res.append(stripped[i + 1])
+                i += 1
+            elif c == '"':
+                in_str = False
+        elif c == '"':
+            in_str = True
+            res.append(c)
+        elif c == ',':
+            j = i + 1
+            while j < n and stripped[j] in ' \t\r\n':
+                j += 1
+            if not (j < n and stripped[j] in '}]'):
+                res.append(c)
+        else:
+            res.append(c)
+        i += 1
+    return ''.join(res)
+
+
+def load_jsonc(path: str) -> dict:
+    """Load a JSONC file, returning parsed dict."""
+    with open(path, 'r', encoding='utf-8') as f:
+        raw = f.read()
+    return json.loads(_strip_jsonc(raw))
+
 
 def find_project_settings_file(file_path: str, ext: str) -> str | None:
     """Find the ``ext`` file (e.g. ``.kicad_pro``, ``.kicad_dru``) matching
@@ -64,9 +145,6 @@ def load_kicad_pro(file_path: str) -> dict | None:
     if not pro_path:
         return None
     try:
-        # Local import: project_config has no kicad_utils dependency, so
-        # this doesn't introduce a cycle (KH-362 pre-flight check).
-        from project_config import load_jsonc
         return load_jsonc(pro_path)
     except (ValueError, OSError):
         return None
@@ -374,8 +452,6 @@ def load_kicad_dru(file_path: str) -> list[dict] | None:
     Discovery is stem-matched via `find_project_settings_file`, same rule
     as ``load_kicad_pro`` (KH-362).
     """
-    from sexp_parser import parse as _sexp_parse, find_all, find_first, get_value
-
     dru_path = find_project_settings_file(file_path, '.kicad_dru')
     if not dru_path:
         return None
@@ -440,8 +516,6 @@ def load_lib_tables(file_path: str) -> dict:
     Returns ``{'symbol_libs': [...], 'footprint_libs': [...]}``.
     Each lib entry is ``{'name': str, 'type': str, 'uri': str, 'descr': str}``.
     """
-    from sexp_parser import parse_file as _sexp_parse_file, find_all, get_value
-
     parent = os.path.dirname(os.path.abspath(file_path))
     result: dict = {'symbol_libs': [], 'footprint_libs': []}
 

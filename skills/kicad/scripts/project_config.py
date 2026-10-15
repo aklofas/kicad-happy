@@ -24,89 +24,13 @@ import re
 from fnmatch import fnmatch
 from typing import Any, Dict, List, Optional
 
+from kicad_core.project import _strip_jsonc, load_jsonc  # noqa: F401 -- re-exported for project_config consumers
+
 
 # ---------------------------------------------------------------------------
 # JSONC loader (JSON with // and /* */ comments, trailing commas)
 # ---------------------------------------------------------------------------
 
-
-
-def _strip_jsonc(text: str) -> str:
-    """Strip JS-style comments and trailing commas from JSON text.
-
-    Single-pass, string-aware scanner: comments are only recognized
-    outside of JSON string literals, so `//` or `/* */` occurring
-    inside a string value (e.g. a URL) survives intact.
-    """
-    out = []
-    state = 'normal'  # normal | in_string | line_comment | block_comment
-    i, n = 0, len(text)
-    while i < n:
-        c = text[i]
-        if state == 'normal':
-            if c == '"':
-                state = 'in_string'
-                out.append(c)
-            elif c == '/' and text[i + 1:i + 2] == '/':
-                state = 'line_comment'
-                i += 1
-            elif c == '/' and text[i + 1:i + 2] == '*':
-                state = 'block_comment'
-                i += 1
-            else:
-                out.append(c)
-        elif state == 'in_string':
-            out.append(c)
-            if c == '\\':
-                i += 1
-                if i < n:
-                    out.append(text[i])
-            elif c == '"':
-                state = 'normal'
-        elif state == 'line_comment':
-            if c == '\n':
-                state = 'normal'
-                out.append(c)
-        elif state == 'block_comment':
-            if c == '*' and text[i + 1:i + 2] == '/':
-                state = 'normal'
-                i += 1
-        i += 1
-    stripped = ''.join(out)
-    # Second pass: drop a comma that is followed only by whitespace and then
-    # `}` or `]`, but never inside a string literal (KH-400).
-    res = []
-    in_str = False
-    i, n = 0, len(stripped)
-    while i < n:
-        c = stripped[i]
-        if in_str:
-            res.append(c)
-            if c == '\\' and i + 1 < n:
-                res.append(stripped[i + 1])
-                i += 1
-            elif c == '"':
-                in_str = False
-        elif c == '"':
-            in_str = True
-            res.append(c)
-        elif c == ',':
-            j = i + 1
-            while j < n and stripped[j] in ' \t\r\n':
-                j += 1
-            if not (j < n and stripped[j] in '}]'):
-                res.append(c)
-        else:
-            res.append(c)
-        i += 1
-    return ''.join(res)
-
-
-def load_jsonc(path: str) -> dict:
-    """Load a JSONC file, returning parsed dict."""
-    with open(path, 'r', encoding='utf-8') as f:
-        raw = f.read()
-    return json.loads(_strip_jsonc(raw))
 
 
 # ---------------------------------------------------------------------------
