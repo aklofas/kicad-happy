@@ -493,7 +493,7 @@ def _parse_cap_recommendation(text: str) -> dict:
         "22uF ceramic x2" -> {min_farads: 22e-6, count: 2}
         "100nF" -> {min_farads: 100e-9, count: 1}
     """
-    from kicad_utils import parse_value
+    from kicad_core.values import parse_value
 
     result = {"min_farads": None, "count": 1, "dielectric": [], "max_distance_mm": None}
 

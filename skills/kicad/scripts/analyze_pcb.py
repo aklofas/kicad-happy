@@ -32,12 +32,12 @@ from sexp_parser import (
     get_value,
     parse_file,
 )
-from kicad_utils import (is_ground_name, is_power_net_name,
-                         load_kicad_pro, extract_pro_net_classes,
-                         extract_pro_design_rules, extract_pro_text_variables,
-                         load_kicad_dru, load_lib_tables,
-                         find_project_settings_file,
-                         get_mpn_property)
+from kicad_core.netnames import is_ground_name, is_power_net_name
+from kicad_core.project import (load_kicad_pro, extract_pro_net_classes,
+                                extract_pro_design_rules, extract_pro_text_variables,
+                                load_kicad_dru, load_lib_tables,
+                                find_project_settings_file)
+from kicad_core.fields import get_mpn_property
 from pcb_connectivity import build_connectivity_graph
 from finding_schema import compute_trust_summary, sort_findings, assign_finding_ids
 from envelopes.pcb import PCBEnvelope
@@ -1989,7 +1989,7 @@ def analyze_return_path_continuity(tracks, net_names, zones, zone_fills,
 
     cp = CopperPresence(zone_fills, tracks.get('segments', []), footprints)
 
-    from kicad_utils import is_power_net_name, is_ground_name
+    from kicad_core.netnames import is_power_net_name, is_ground_name
 
     findings = []
     # Only check signal nets (not power/ground — they ARE the reference)
@@ -7331,7 +7331,7 @@ def main():
         parser.error("the following arguments are required: pcb")
 
     # Resolve .kicad_pro or directory to the .kicad_pcb file
-    from kicad_utils import resolve_project_input
+    from kicad_core.project import resolve_project_input
     try:
         resolved, note = resolve_project_input(args.pcb, '.kicad_pcb')
         if note:

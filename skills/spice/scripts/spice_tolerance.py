@@ -16,7 +16,7 @@ import os
 # Allow importing from kicad scripts directory
 sys.path.insert(0, os.path.join(os.path.dirname(__file__),
                                  "..", "..", "kicad", "scripts"))
-from kicad_utils import parse_tolerance
+from kicad_core.values import parse_tolerance
 
 
 # Default tolerances when not specified in the component value string.

@@ -29,7 +29,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "..", "spice", "scripts"))
 
-from kicad_utils import parse_value
+from kicad_core.values import parse_value
 from finding_schema import group_findings_by_detection_type, is_old_schema
 
 
@@ -813,7 +813,7 @@ def _solve_fix(det: dict, det_type: str, target_field: str,
     E-series snapped alternatives.
     """
     from detection_schema import get_inverse_solver
-    from kicad_utils import snap_to_e_series
+    from kicad_core.values import snap_to_e_series
 
     inverse = get_inverse_solver(det_type, target_field)
     if inverse is None:
@@ -846,7 +846,7 @@ def _scan_fixable(signal_analysis: dict) -> list:
       'value_fix' — component value change via inverse solver
       'derating'  — package or voltage rating recommendation
     """
-    from kicad_utils import parse_voltage_from_net_name
+    from kicad_core.netnames import parse_voltage_from_net_name
 
     issues = []
 

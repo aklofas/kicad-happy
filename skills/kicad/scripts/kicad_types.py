@@ -11,7 +11,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from kicad_utils import is_ground_name, is_power_net_name, parse_value
+from kicad_core.netnames import is_ground_name, is_power_net_name
+from kicad_core.values import parse_value
 
 
 @dataclass

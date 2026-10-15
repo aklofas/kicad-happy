@@ -24,7 +24,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from finding_schema import make_finding, compute_trust_summary, assign_finding_ids
-from kicad_utils import build_net_id_map as _build_net_id_map
+from kicad_core.netquery import build_net_id_map as _build_net_id_map
 from envelopes.cross_analysis import CrossAnalysisEnvelope
 from schema_codec import emit_schema
 from inputs_builder import build_inputs, build_upstream_artifact, build_compat

@@ -22,7 +22,7 @@ import re
 import sys
 from pathlib import Path
 
-# Add scripts dir to path for sexp_parser and kicad_utils
+# Add scripts dir to path for sexp_parser and kicad_core
 sys.path.insert(0, str(Path(__file__).parent))
 from sexp_parser import (
     find_all,
@@ -35,23 +35,31 @@ from sexp_parser import (
     has_flag,
     parse_file,
 )
-from kicad_utils import (
+from kicad_core.values import (
     COORD_EPSILON,
     _MIL_MM,
-    _OUTPUT_DRIVE_KEYWORDS,
+    format_frequency as _format_frequency,
+    parse_value,
+    snap_to_mil_grid as _snap_mil,
+)
+from kicad_core.parts import _OUTPUT_DRIVE_KEYWORDS
+from kicad_core.classify import (
     classify_component,
     classify_connector,
     classify_ic_function,
+)
+from kicad_core.project import (
     extract_pro_text_variables,
-    format_frequency as _format_frequency,
     load_lib_tables,
+    load_kicad_pro,
+)
+from kicad_core.netnames import (
     is_ground_name as _is_ground_name,
     is_usb_data_net_name,
     is_power_net_name as _is_power_net_name,
-    load_kicad_pro,
-    parse_value,
     parse_voltage_from_net_name as _parse_voltage_from_net_name,
-    snap_to_mil_grid as _snap_mil,
+)
+from kicad_core.fields import (
     MPN_FIELD_ALIASES_PRIMARY, MPN_FIELD_ALIASES_GENERIC,
     DIGIKEY_FIELD_ALIASES, normalize_field_name, pick_field, pick_mpn,
 )
@@ -857,8 +865,9 @@ def analyze_signal_paths(ctx: AnalysisContext) -> dict:
         key and a 'ref' key, and adds derived fields from the component's footprint
         and value string.
         """
-        from kicad_utils import (extract_cap_package, estimate_cap_esr,
-                                 classify_dielectric, parse_rated_voltage)
+        from kicad_core.passives import (extract_cap_package, estimate_cap_esr,
+                                         classify_dielectric)
+        from kicad_core.values import parse_rated_voltage
 
         def _enrich(obj):
             if isinstance(obj, dict):
@@ -901,7 +910,7 @@ def analyze_signal_paths(ctx: AnalysisContext) -> dict:
         decoupling_analysis to compute effective_farads after DC bias derating.
         Only adds derating fields when both package and applied voltage are known.
         """
-        from kicad_utils import estimate_dc_bias_derating
+        from kicad_core.passives import estimate_dc_bias_derating
 
         # Build rail → voltage map from power regulators
         rail_voltage = {}
@@ -8973,7 +8982,7 @@ def detect_sub_sheet(root_tree: list, file_path: str = None) -> bool:
     has_sheet_blocks = len(find_all(root_tree, "sheet")) > 0
     if has_sheet_blocks:
         if file_path:
-            from kicad_utils import is_referenced_as_child
+            from kicad_core.project import is_referenced_as_child
             if is_referenced_as_child(file_path):
                 return True  # Intermediate node — has children but IS a child
         return False  # Has children, not referenced → root
@@ -9178,7 +9187,7 @@ def analyze_schematic(path: str, project_root: str | None = None,
     hierarchy_warning = None
 
     if is_sub and not no_hierarchy:
-        from kicad_utils import discover_root_schematic
+        from kicad_core.project import discover_root_schematic
         root_path = project_root or discover_root_schematic(path)
         if root_path:
             # Redirect: analyze the full project from the root schematic.
@@ -9806,7 +9815,7 @@ def main():
         parser.error("the following arguments are required: schematic")
 
     # Resolve .kicad_pro or directory to the root .kicad_sch
-    from kicad_utils import resolve_project_input
+    from kicad_core.project import resolve_project_input
     try:
         resolved, note = resolve_project_input(args.schematic, '.kicad_sch')
         if note:

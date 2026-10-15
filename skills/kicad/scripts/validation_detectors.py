@@ -12,7 +12,7 @@ returns a list of rich finding dicts via finding_schema.make_finding(
 from __future__ import annotations
 
 from kicad_types import AnalysisContext
-from kicad_utils import parse_voltage_from_net_name
+from kicad_core.netnames import parse_voltage_from_net_name
 
 try:
     import os as _os, sys as _sys

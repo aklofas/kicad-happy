@@ -41,9 +41,9 @@ _kicad_scripts = Path(__file__).resolve().parent.parent.parent / 'kicad' / 'scri
 if _kicad_scripts.is_dir() and str(_kicad_scripts) not in sys.path:
     sys.path.insert(0, str(_kicad_scripts))
 
-from kicad_utils import (MPN_FIELD_ALIASES, MPN_FIELD_ALIASES_PRIMARY,
-                         MPN_FIELD_ALIASES_GENERIC, DIGIKEY_FIELD_ALIASES,
-                         normalize_field_name)
+from kicad_core.fields import (MPN_FIELD_ALIASES, MPN_FIELD_ALIASES_PRIMARY,
+                               MPN_FIELD_ALIASES_GENERIC, DIGIKEY_FIELD_ALIASES,
+                               normalize_field_name)
 
 
 # ---------------------------------------------------------------------------
@@ -51,7 +51,7 @@ from kicad_utils import (MPN_FIELD_ALIASES, MPN_FIELD_ALIASES_PRIMARY,
 # ---------------------------------------------------------------------------
 
 FIELD_ALIASES: dict[str, list[str]] = {
-    # KH-414: shared with analyze_schematic / analyze_pcb (kicad_utils), plus
+    # KH-414: shared with analyze_schematic / analyze_pcb (kicad_core.fields), plus
     # the bom-local ambiguous extras the analyzers deliberately exclude.
     "mpn": sorted(MPN_FIELD_ALIASES | {"mp", "mfn"}),
     "manufacturer": [

@@ -14,7 +14,7 @@ import os
 import sys
 from dataclasses import dataclass, field
 
-# Allow importing kicad_utils from same directory
+# Allow importing kicad_core from same directory
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 

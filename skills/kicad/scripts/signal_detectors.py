@@ -8,17 +8,18 @@ Some detectors also take prior results for cross-references.
 import math
 import re
 
-from kicad_utils import (
+from kicad_core.parts import (
     _LOAD_TYPE_KEYWORDS,
-    classify_jumper_default_state,
-    format_frequency as _format_frequency,
-    is_ground_name,
-    is_power_net_name,
-    is_usb_data_net_name,
     lookup_regulator_vref as _lookup_regulator_vref,
     lookup_switching_freq,
     match_known_switching as _match_known_switching,
-    parse_value,
+)
+from kicad_core.classify import classify_jumper_default_state
+from kicad_core.values import format_frequency as _format_frequency, parse_value
+from kicad_core.netnames import (
+    is_ground_name,
+    is_power_net_name,
+    is_usb_data_net_name,
     parse_voltage_from_net_name as _parse_voltage_from_net_name,
 )
 from kicad_types import AnalysisContext

@@ -15,7 +15,9 @@ import re
 from collections import Counter
 
 from kicad_types import AnalysisContext
-from kicad_utils import lookup_regulator_vref, parse_value, parse_voltage_from_net_name
+from kicad_core.parts import lookup_regulator_vref
+from kicad_core.values import parse_value
+from kicad_core.netnames import parse_voltage_from_net_name
 from signal_detectors import _get_net_components
 from detector_helpers import match_ic_keywords, get_unique_ics
 from finding_schema import make_finding, make_provenance
@@ -4132,7 +4134,7 @@ def _infer_voltage(ctx: AnalysisContext, net_name: str | None) -> float | None:
     """Try to infer voltage from a power net name."""
     if not net_name:
         return None
-    from kicad_utils import parse_voltage_from_net_name
+    from kicad_core.netnames import parse_voltage_from_net_name
     return parse_voltage_from_net_name(net_name)
 
 

@@ -34,7 +34,8 @@ from emc_formulas import (
     distributed_pdn_impedance_sweep, cross_rail_transient_current,
     parallel_cap_impedance,
 )
-from kicad_utils import lookup_switching_freq as _estimate_switching_freq, build_net_id_map
+from kicad_core.parts import lookup_switching_freq as _estimate_switching_freq
+from kicad_core.netquery import build_net_id_map
 from finding_schema import Det, get_findings
 
 try:
@@ -3027,9 +3028,9 @@ def check_esd_protection_path(pcb: Dict,
 # Thermal-EMC Interaction
 # ---------------------------------------------------------------------------
 
-# MLCC DC bias derating — imported from kicad_utils (single source of truth)
-from kicad_utils import (classify_dielectric as _classify_dielectric,
-                         estimate_dc_bias_derating as _estimate_dc_bias_derating)
+# MLCC DC bias derating — imported from kicad_core (single source of truth)
+from kicad_core.passives import (classify_dielectric as _classify_dielectric,
+                                 estimate_dc_bias_derating as _estimate_dc_bias_derating)
 
 
 def check_thermal_emc(pcb: Optional[Dict],
@@ -4299,7 +4300,7 @@ def check_inductor_leakage(pcb: Dict, schematic: Dict) -> List[Dict]:
     if not pcb or not schematic:
         return findings
 
-    from kicad_utils import classify_inductor_shielding
+    from kicad_core.passives import classify_inductor_shielding
     from emc_formulas import estimate_inductor_h_field
 
     footprints = pcb.get('footprints', [])
