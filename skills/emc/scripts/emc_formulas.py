@@ -927,7 +927,7 @@ MARKET_STANDARDS = {
 # Full-Board PDN: Power Tree, Trace Parasitics, Distributed Impedance
 # ---------------------------------------------------------------------------
 
-# EQ-042: R_trace = rho * L / (W * T) — DC trace resistance
+# EQ-108: R_trace = rho * L / (W * T) — DC trace resistance
 COPPER_RESISTIVITY_OHM_MM = 1.724e-5  # ohm·mm at 20°C
 
 
