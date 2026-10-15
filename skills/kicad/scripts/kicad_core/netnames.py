@@ -173,3 +173,19 @@ def is_ground_name(net_name: str | None) -> bool:
     if nu.startswith("VSS"):
         return True
     return False
+
+
+_UUID_RE = re.compile(
+    r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}',
+    re.IGNORECASE,
+)
+
+
+def _clean_hierarchical_name(name: str) -> str:
+    """Strip UUID path prefixes from hierarchical net/rail names.
+
+    ``/201ab4ae-...-c6b37cf9a2b1/VIN`` → ``VIN``
+    """
+    if '/' in name and _UUID_RE.search(name):
+        return name.rsplit('/', 1)[-1]
+    return name
