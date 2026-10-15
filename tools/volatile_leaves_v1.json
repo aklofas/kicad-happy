@@ -1,0 +1,8 @@
+{
+  "name": "volatile-leaves-v1",
+  "description": "Leaf paths whose values legitimately differ between two runs of the same analyzer on the same input. Populated in Task 2 from an A/A run; every entry must be a run id, timestamp, elapsed time or absolute path. Anything else differing between A/A runs is a determinism bug.",
+  "volatile_leaves": [
+    "inputs.run_id",
+    "capability_mode_ref.run_id"
+  ]
+}
