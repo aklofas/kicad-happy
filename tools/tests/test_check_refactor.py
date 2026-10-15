@@ -443,5 +443,24 @@ class QuickJson(unittest.TestCase):
         self.assertTrue(buf.getvalue().rstrip("\n").splitlines()[-1].startswith("quick: "))
 
 
+class KeptCompatibilitySurfaces(unittest.TestCase):
+    """Facade-register entries that must keep accepting the old keyword until the harness migrates."""
+    def setUp(self):
+        sys.path.insert(0, str(cr.REPO_ROOT / "skills" / "kicad" / "scripts"))
+
+    def test_make_finding_ignores_design_context(self):
+        from finding_schema import make_finding
+        f = make_finding(detector="d", rule_id="X-001", category="c", summary="s", description="d",
+                         design_context={"severity_overrides": {"X-001": "info"}})
+        self.assertEqual(f["severity"], "warning")
+        self.assertNotIn("design_context", f)
+
+    def test_analysis_context_accepts_retired_fields(self):
+        from kicad_types import AnalysisContext
+        ctx = AnalysisContext(components=[], nets={}, lib_symbols={}, pin_net={},
+                              hierarchy_context=None, design_context={"x": 1})
+        self.assertIsNone(ctx.hierarchy_context)
+
+
 if __name__ == "__main__":
     unittest.main()

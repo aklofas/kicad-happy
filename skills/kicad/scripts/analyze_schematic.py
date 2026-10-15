@@ -142,29 +142,22 @@ from envelopes.schematic import SchematicEnvelope
 from schema_codec import emit_schema
 from inputs_builder import build_inputs, build_compat
 from capability_mode import get_capability_mode_ref
-from lookup_helpers import read_design_context
 
 
 def _resolve_lookup_paths(sch_path: str | Path,
-                           analysis_dir: str | Path | None) -> tuple[Path | None, dict | None]:
-    """Resolve (cache_dir, design_context) for AnalysisContext (Phase 4d-active).
+                           analysis_dir: str | Path | None) -> Path | None:
+    """Resolve the datasheets/extracted/ cache dir adjacent to the schematic.
 
-    cache_dir is the datasheets/extracted/ directory adjacent to the schematic
-    (matching the existing convention used by analyze_thermal.py and the
-    audit_datasheet_coverage check). Returns None when the directory doesn't
-    exist — `lookup()` already handles None gracefully.
-
-    design_context is the parsed design_context.json from the analysis dir,
-    or None when absent or analysis_dir is None.
+    Returns None when the directory doesn't exist — `lookup()` already handles
+    None gracefully. (The design_context severity channel this used to
+    resolve was retired in v2.0; v3 removed the plumbing.)
     """
     sch_dir = Path(sch_path).resolve().parent
     candidates = [
         sch_dir / "datasheets" / "extracted",
         sch_dir.parent / "datasheets" / "extracted",
     ]
-    cache_dir = next((c for c in candidates if c.is_dir()), None)
-    dc = read_design_context(analysis_dir) if analysis_dir else None
-    return cache_dir, dc
+    return next((c for c in candidates if c.is_dir()), None)
 
 ANALYZER_SOURCE = "sch"
 
@@ -3453,7 +3446,7 @@ def parse_legacy_schematic(path: str, analysis_dir: str | Path | None = None) ->
     pin_net = build_pin_to_net_map(nets)
 
     # Build shared analysis context for legacy path
-    _cache_dir, _design_context = _resolve_lookup_paths(path, analysis_dir)
+    _cache_dir = _resolve_lookup_paths(path, analysis_dir)
     ctx = AnalysisContext(
         components=all_components,
         nets=nets,
@@ -3461,7 +3454,6 @@ def parse_legacy_schematic(path: str, analysis_dir: str | Path | None = None) ->
         pin_net=pin_net,
         no_connects=all_no_connects,
         cache_dir=_cache_dir,
-        design_context=_design_context,
         project_dir=str(Path(path).parent),
     )
     ctx.source = ANALYZER_SOURCE
@@ -9397,7 +9389,7 @@ def analyze_schematic(path: str, project_root: str | None = None,
     pin_net = build_pin_to_net_map(nets)
 
     # Build shared analysis context (replaces repeated comp_lookup / parsed_values / known_power_rails)
-    _cache_dir, _design_context = _resolve_lookup_paths(path, analysis_dir)
+    _cache_dir = _resolve_lookup_paths(path, analysis_dir)
     ctx = AnalysisContext(
         components=all_components,
         nets=nets,
@@ -9406,7 +9398,6 @@ def analyze_schematic(path: str, project_root: str | None = None,
         no_connects=all_no_connects,
         generator_version=generator_version,
         cache_dir=_cache_dir,
-        design_context=_design_context,
         project_dir=str(Path(path).parent),
     )
     ctx.source = ANALYZER_SOURCE

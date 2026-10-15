@@ -239,8 +239,9 @@ def make_finding(
     Required fields: detector, rule_id, category, summary, description.
     All other fields have sensible defaults.
 
-    design_context: accepted for call-site compatibility; severity tuning
-        retired in v2.0 (spec §5) — the value is ignored.
+    design_context: ignored. Accepted so external callers written against
+        v1.4–v2.3 keep working; scheduled for removal when the harness
+        migrates (ARCHITECTURE.md facade register).
 
     Extra kwargs are merged into the finding (e.g., domain-specific data).
     """

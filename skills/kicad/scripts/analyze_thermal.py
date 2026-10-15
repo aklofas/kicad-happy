@@ -29,7 +29,6 @@ from schema_codec import emit_schema
 from inputs_builder import build_inputs, build_upstream_artifact, build_compat
 from capability_mode import get_capability_mode_ref
 from lookup_detectors import detect_tj_exceeds_max
-from lookup_helpers import read_design_context
 
 ANALYZER_SOURCE = "thermal"
 
@@ -1070,16 +1069,10 @@ def main():
     # TJ-001 (Phase 4c): recompute TJ via v1.4 facts.base.thermal[theta_ja]
     # and compare to facts.base.absolute_max[TJ_SYNONYMS]. Soft-skip when
     # cache miss or below trust gate.
-    _design_ctx = None
-    if args.output:
-        _design_ctx = read_design_context(_Path(args.output).parent)
-    elif hasattr(args, "analysis_dir") and args.analysis_dir:
-        _design_ctx = read_design_context(args.analysis_dir)
     findings.extend(detect_tj_exceeds_max(
         assessments,
         source=ANALYZER_SOURCE,
         cache_dir=extract_dir,
-        design_context=_design_ctx,
     ))
 
     # Apply suppressions

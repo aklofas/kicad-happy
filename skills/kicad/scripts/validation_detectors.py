@@ -262,7 +262,6 @@ def validate_pullups(ctx: AnalysisContext) -> list[dict]:
     checked_nets: set[str] = set()
 
     cache_dir = getattr(ctx, 'cache_dir', None)
-    design_context = getattr(ctx, 'design_context', None)
 
     for ic in ics:
         ref = ic['reference']
@@ -377,7 +376,6 @@ def validate_pullups(ctx: AnalysisContext) -> list[dict]:
                         report_section='Signal Integrity',
                         impact='Pin may float or bus may not function without pull-up',
                         provenance=make_provenance('pu_missing_pullup', 'deterministic'),
-                        design_context=design_context,
                         schema_era='v1.4',
                         source=ctx.source,))
                 else:
@@ -403,7 +401,6 @@ def validate_pullups(ctx: AnalysisContext) -> list[dict]:
                                     nets=[net],
                                     recommendation=f'Consider increasing {pu["ref"]} to 4.7k-10k.',
                                     provenance=make_provenance('pu_value_check', 'deterministic'),
-                                    design_context=design_context,
                                     schema_era='v1.4',
                                     source=ctx.source,))
                             elif pu['ohms'] > pu_max:
@@ -425,7 +422,6 @@ def validate_pullups(ctx: AnalysisContext) -> list[dict]:
                                     nets=[net],
                                     recommendation=f'Consider decreasing {pu["ref"]} to 4.7k-10k.',
                                     provenance=make_provenance('pu_weak_pullup', 'deterministic'),
-                                    design_context=design_context,
                                     schema_era='v1.4',
                                     source=ctx.source,))
 
@@ -458,7 +454,6 @@ def validate_pullups(ctx: AnalysisContext) -> list[dict]:
                         report_section='Signal Integrity',
                         impact='Pin floats at startup, undefined behavior',
                         provenance=make_provenance('pu_missing_pullup', 'deterministic'),
-                        design_context=design_context,
                         schema_era='v1.4',
                         source=ctx.source,))
 
@@ -519,7 +514,6 @@ def validate_voltage_levels(ctx: AnalysisContext, level_shifters: list[dict] | N
     """VM-001: Detect signal nets crossing power domain boundaries without level shifting."""
     findings: list[dict] = []
     cache_dir = getattr(ctx, 'cache_dir', None)
-    design_context = getattr(ctx, 'design_context', None)
 
     ic_voltages: dict[str, float] = {}
     for ic in get_unique_ics(ctx):
@@ -663,7 +657,6 @@ def validate_voltage_levels(ctx: AnalysisContext, level_shifters: list[dict] | N
             report_section='Signal Integrity',
             impact='Risk of damage or unreliable logic levels',
             provenance=make_provenance('vm_rail_mismatch', 'heuristic'),
-            design_context=design_context,
             schema_era='v1.4',
             source=ctx.source,))
 
@@ -1116,7 +1109,6 @@ def validate_led_resistors(ctx: AnalysisContext) -> list[dict]:
     resistor_nets, net_to_resistors = index_two_pin_components(ctx, resistors)
 
     cache_dir = getattr(ctx, 'cache_dir', None)
-    design_context = getattr(ctx, 'design_context', None)
 
     for led in leds:
         ref = led['reference']
@@ -1191,7 +1183,6 @@ def validate_led_resistors(ctx: AnalysisContext) -> list[dict]:
                     fix_params={'type': 'add_component', 'components': [{'type': 'resistor', 'value': '330', 'net_from': n1, 'net_to': n2}], 'basis': 'LED requires series current limiting'},
                     impact='LED overcurrent causes failure',
                     provenance=make_provenance('lr_resistor_check', 'deterministic'),
-                    design_context=design_context,
                     schema_era='v1.4',
                     source=ctx.source,))
             continue
@@ -1227,7 +1218,6 @@ def validate_led_resistors(ctx: AnalysisContext) -> list[dict]:
                     fix_params={'type': 'resistor_value_change', 'component': sr['ref'], 'current_value': sr['ohms'], 'target_metric': 'led_current_mA', 'target_value': _LED_IF_RECOMMENDED_MA, 'actual_value': current_ma, 'formula': f'R = (Vrail - Vf) / Iled = ({rail_v} - {vf}) / {_LED_IF_RECOMMENDED_MA/1000}'},
                     impact='LED overcurrent reduces lifespan',
                     provenance=make_provenance('lr_resistor_check', 'deterministic'),
-                    design_context=design_context,
                     schema_era='v1.4',
                     source=ctx.source,))
 
@@ -1241,7 +1231,6 @@ def validate_led_resistors(ctx: AnalysisContext) -> list[dict]:
                     components=[sr['ref']],
                     recommendation='Use a larger package resistor or increase resistance.',
                     provenance=make_provenance('lr_resistor_check', 'deterministic'),
-                    design_context=design_context,
                     schema_era='v1.4',
                     source=ctx.source,))
 
@@ -1267,7 +1256,6 @@ def validate_crystal_load_caps(
     Confidence/evidence_source tracks the target_load_source.
     """
     findings: list[dict] = []
-    design_context = getattr(ctx, 'design_context', None)
 
     for xc in crystal_circuits:
         status = xc.get('load_cap_status')
@@ -1317,7 +1305,6 @@ def validate_crystal_load_caps(
                 f'Typical C_stray is 3-5pF.'
             ),
             provenance=make_provenance('xtal_load_cap_check', xt_confidence),
-            design_context=design_context,
             schema_era='v1.4',
             source=ctx.source,
         ))
@@ -1362,7 +1349,6 @@ def validate_feedback_stability(
     """FS-001: Check regulator feedback networks for stability concerns."""
     findings: list[dict] = []
     cache_dir = getattr(ctx, 'cache_dir', None)
-    design_context = getattr(ctx, 'design_context', None)
 
     for reg in power_regulators:
         ref = reg.get('ref', reg.get('reference', ''))
@@ -1396,7 +1382,6 @@ def validate_feedback_stability(
                 components=[ref, fb_div['r_top'].get('ref', ''), fb_div['r_bottom'].get('ref', '')],
                 recommendation=f'Increase divider resistors to achieve >{_FB_IMPEDANCE_MIN} ohm parallel impedance.',
                 provenance=make_provenance('fs_stability_check', 'heuristic'),
-                design_context=design_context,
                 schema_era='v1.4',
                 source=ctx.source,))
 
@@ -1409,7 +1394,6 @@ def validate_feedback_stability(
                 components=[ref, fb_div['r_top'].get('ref', ''), fb_div['r_bottom'].get('ref', '')],
                 recommendation=f'Decrease divider resistors to below {_FB_IMPEDANCE_MAX/1000:.0f}k parallel impedance.',
                 provenance=make_provenance('fs_stability_check', 'heuristic'),
-                design_context=design_context,
                 schema_era='v1.4',
                 source=ctx.source,))
 
@@ -1433,7 +1417,6 @@ def validate_feedback_stability(
                         fix_params={'type': 'add_component', 'components': [{'type': 'capacitor', 'value': '10n', 'net_from': check_net, 'net_to': 'GND'}], 'basis': f'{comp.get("value", "")} requires external compensation'},
                         impact='Regulator may oscillate or have poor transient response',
                         provenance=make_provenance('fs_stability_check', 'heuristic'),
-                        design_context=design_context,
                         schema_era='v1.4',
                         source=ctx.source,))
 
