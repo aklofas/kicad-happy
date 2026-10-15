@@ -25,6 +25,7 @@ The model resolution cascade:
 """
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
 
 from spice_part_library import lookup_part_specs
@@ -208,7 +209,19 @@ _GENERATORS = {
 }
 
 
-def get_model_for_part(mpn, component_type=None, context=None):
+@dataclass(frozen=True)
+class ModelOptions:
+    """CLI-level model resolution options (v3 round 3, TH-059 product half).
+
+    cache_dir: directory under which spice/models/ is read and written
+               (default: beside the schematic named in the analysis JSON)
+    offline:   never query distributor APIs or datasheets; cache + lookup table only
+    """
+    cache_dir: str | None = None
+    offline: bool = False
+
+
+def get_model_for_part(mpn, component_type=None, context=None, options=None):
     """Resolve a SPICE model for a component, using the full cascade.
 
     Resolution order:
@@ -227,6 +240,8 @@ def get_model_for_part(mpn, component_type=None, context=None):
         mpn: Manufacturer part number (from det["value"])
         component_type: Hint — "opamp", "ldo", "comparator", "vref"
         context: Analysis JSON dict (for cache dir and project dir)
+        options: Optional ModelOptions; cache_dir overrides the cache location,
+                 offline skips the API/datasheet tier (cache + lookup table only)
 
     Returns:
         (subckt_string, source_note, specs_or_None)
@@ -236,45 +251,49 @@ def get_model_for_part(mpn, component_type=None, context=None):
     if not mpn or len(mpn) < 2:
         return None, "ideal", None
 
+    opts = options or ModelOptions()
+    use_cache = bool(context or opts.cache_dir)
+
     # --- Tier 0: Project cache ---
-    if context:
-        cache_dir = resolve_cache_dir(context)
+    if use_cache:
+        cache_dir = resolve_cache_dir(context or {}, override_dir=opts.cache_dir)
         cached_subckt, cached_specs = get_cached_model(cache_dir, mpn)
         if cached_subckt:
             return cached_subckt, f"cache:{mpn}", cached_specs
 
     # --- Tier 1: Distributor API parametric specs ---
-    try:
-        from spice_spec_fetcher import fetch_specs
-        # Derive project dir from context for datasheet fallback
-        project_dir = None
-        if context:
-            source_file = context.get("file", "")
-            if source_file:
-                from pathlib import Path
-                project_dir = str(Path(source_file).parent)
+    if not opts.offline:
+        try:
+            from spice_spec_fetcher import fetch_specs
+            # Derive project dir from context for datasheet fallback
+            project_dir = None
+            if context:
+                source_file = context.get("file", "")
+                if source_file:
+                    from pathlib import Path
+                    project_dir = str(Path(source_file).parent)
 
-        api_specs, api_source = fetch_specs(mpn, component_type, project_dir)
-        if api_specs:
-            # Determine component type from the specs we got
-            resolved_type = component_type
-            if not resolved_type:
-                if api_specs.get("gbw_hz"):
-                    resolved_type = "opamp"
-                elif api_specs.get("dropout_mv") or api_specs.get("iout_max_ma"):
-                    resolved_type = "ldo"
-            generator = _GENERATORS.get(resolved_type)
-            if generator:
-                subckt = generator(mpn, api_specs)
-                if context:
-                    cache_dir = resolve_cache_dir(context)
-                    cache_model(cache_dir, mpn, subckt, api_specs,
-                                api_source, resolved_type)
-                return subckt, f"{api_source}", api_specs
-    except ImportError:
-        pass  # spice_spec_fetcher not available
-    except Exception:
-        pass  # API/datasheet extraction failed — fall through
+            api_specs, api_source = fetch_specs(mpn, component_type, project_dir)
+            if api_specs:
+                # Determine component type from the specs we got
+                resolved_type = component_type
+                if not resolved_type:
+                    if api_specs.get("gbw_hz"):
+                        resolved_type = "opamp"
+                    elif api_specs.get("dropout_mv") or api_specs.get("iout_max_ma"):
+                        resolved_type = "ldo"
+                generator = _GENERATORS.get(resolved_type)
+                if generator:
+                    subckt = generator(mpn, api_specs)
+                    if use_cache:
+                        cache_dir = resolve_cache_dir(context or {}, override_dir=opts.cache_dir)
+                        cache_model(cache_dir, mpn, subckt, api_specs,
+                                    api_source, resolved_type)
+                    return subckt, f"{api_source}", api_specs
+        except ImportError:
+            pass  # spice_spec_fetcher not available
+        except Exception:
+            pass  # API/datasheet extraction failed — fall through
 
     # --- Tier 2: Built-in lookup table (offline fallback) ---
     specs, resolved_type = lookup_part_specs(mpn, component_type)
@@ -282,8 +301,8 @@ def get_model_for_part(mpn, component_type=None, context=None):
         generator = _GENERATORS.get(resolved_type)
         if generator:
             subckt = generator(mpn, specs)
-            if context:
-                cache_dir = resolve_cache_dir(context)
+            if use_cache:
+                cache_dir = resolve_cache_dir(context or {}, override_dir=opts.cache_dir)
                 cache_model(cache_dir, mpn, subckt, specs, "lookup", resolved_type)
             return subckt, f"lookup:{mpn}", specs
 

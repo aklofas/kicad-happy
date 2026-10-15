@@ -23,6 +23,7 @@ Requires: ngspice (install: apt install ngspice / brew install ngspice)
 """
 
 import argparse
+import inspect
 import json
 import os
 import sys
@@ -83,7 +84,7 @@ def run_ngspice(cir_file, timeout=5):
 def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
                          parasitics=None, simulator_backend=None,
                          monte_carlo_n=0, mc_distribution="gaussian",
-                         mc_seed=42):
+                         mc_seed=42, model_options=None):
     """Run SPICE simulations for all simulatable subcircuits in the analysis.
 
     Args:
@@ -96,6 +97,7 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
         monte_carlo_n: Number of Monte Carlo tolerance trials per subcircuit (0=disabled)
         mc_distribution: "gaussian" (3sigma=tolerance) or "uniform"
         mc_seed: Random seed for reproducible Monte Carlo runs
+        model_options: spice_model_cache.ModelOptions (cache dir / offline) or None
 
     Returns:
         Report dict with simulation results
@@ -182,10 +184,11 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
         nonlocal total_time
         out_file_spice = out_file.replace("\\", "/")
 
+        gen_kwargs = {"context": analysis_json, "parasitics": parasitics}
+        if model_options is not None and "model_options" in inspect.signature(generator).parameters:
+            gen_kwargs["model_options"] = model_options
         try:
-            cir_content = generator(det_run, out_file_spice,
-                                    context=analysis_json,
-                                    parasitics=parasitics)
+            cir_content = generator(det_run, out_file_spice, **gen_kwargs)
         except (KeyError, TypeError, ValueError) as e:
             return {"_generator_fail": True,
                     "note": f"testbench generation failed: {type(e).__name__}: {e}"}, 0
@@ -522,6 +525,18 @@ def main():
         default=42,
         help="Random seed for reproducible Monte Carlo runs (default: 42)",
     )
+    parser.add_argument(
+        "--model-cache-dir",
+        metavar="DIR",
+        help="Directory under which cached SPICE part models are kept as "
+             "DIR/spice/models/ (default: beside the schematic the analysis JSON names)",
+    )
+    parser.add_argument(
+        "--offline",
+        action="store_true",
+        help="Never query distributor APIs or datasheets for part models; use the "
+             "project cache and the built-in lookup table only",
+    )
 
     args = parser.parse_args()
 
@@ -591,6 +606,11 @@ def main():
         except (json.JSONDecodeError, OSError) as e:
             print(f"Warning: could not load parasitics: {e}", file=sys.stderr)
 
+    model_options = None
+    if args.model_cache_dir or args.offline:
+        from spice_model_cache import ModelOptions
+        model_options = ModelOptions(cache_dir=args.model_cache_dir, offline=args.offline)
+
     # Run simulations
     report = simulate_subcircuits(
         analysis,
@@ -602,6 +622,7 @@ def main():
         monte_carlo_n=args.monte_carlo,
         mc_distribution=args.mc_distribution,
         mc_seed=args.mc_seed,
+        model_options=model_options,
     )
 
     # Clean up file paths if compact mode

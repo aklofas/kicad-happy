@@ -352,7 +352,8 @@ VIN {top_net} 0 DC {vin}
     return SpiceTestbench(circuit, analyses, measurements, extra)
 
 
-def generate_opamp_circuit(det, output_file, context=None, parasitics=None):
+def generate_opamp_circuit(det, output_file, context=None, parasitics=None,
+                           model_options=None):
     """Generate testbench for an opamp circuit detection.
 
     Args:
@@ -470,7 +471,8 @@ def generate_opamp_circuit(det, output_file, context=None, parasitics=None):
     model_specs = None
     try:
         from spice_model_cache import get_model_for_part
-        part_model, source, specs = get_model_for_part(value, "opamp", context)
+        part_model, source, specs = get_model_for_part(value, "opamp", context,
+                                                       options=model_options)
         if part_model:
             model_str = part_model
             model_name = f"OPAMP_{_sanitize_mpn_for_spice(value)}"
