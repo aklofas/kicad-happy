@@ -1082,8 +1082,8 @@ def build_power_tree(regulators: list, power_budget: dict,
         topology = reg.get('topology', '').lower()
         if topology not in ('ldo', 'linear', ''):
             # Try to get from value/part number
-            from emc_rules import _estimate_switching_freq
-            sw_freq = _estimate_switching_freq(reg.get('value', ''))
+            from kicad_core.parts import lookup_switching_freq
+            sw_freq = lookup_switching_freq(reg.get('value', ''))
 
         tree[output_rail] = {
             'rail': output_rail,
