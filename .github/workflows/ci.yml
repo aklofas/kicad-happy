@@ -98,24 +98,17 @@ jobs:
         run: |
           git clone https://github.com/aklofas/kicad-happy-testharness.git /tmp/harness
           cd /tmp/harness
-          git checkout 45cee4c5b15
+          git checkout 7db2532ecb7
 
       - name: Install harness dev deps (pytest, jsonschema, referencing, pyyaml)
         run: python -m pip install --disable-pip-version-check -r /tmp/harness/requirements-dev.txt
 
-      - name: Run smoke tests (~30s, 565-test PR-gate subset, no corpus dep)
+      - name: Run harness unit + offline-contract tiers (pytest markers; no corpus dep)
         env:
           KICAD_HAPPY_DIR: ${{ github.workspace }}
         run: |
           cd /tmp/harness
-          python3 run_tests.py --smoke
-
-      - name: Run schema-contract suite (validates analyzer envelopes against declared schemas)
-        env:
-          KICAD_HAPPY_DIR: ${{ github.workspace }}
-        run: |
-          cd /tmp/harness
-          python -m pytest tests/contract/ -v
+          python -m pytest -m "unit or offline_contract" -q
 
       - name: Determinism guard (run twice, unpinned hash seed, diff minus inputs/capability_mode_ref)
         run: |
