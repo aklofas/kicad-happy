@@ -377,5 +377,24 @@ class InstallSmoke(unittest.TestCase):
             self.assertEqual(failures, [], "\n".join(failures))
 
 
+class QuickJson(unittest.TestCase):
+    def test_json_parseable_and_text_summary(self):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            cr.main(["quick", "--json"])
+        data = json.loads(buf.getvalue())
+        self.assertIn(data["status"], ("ok", "fail"))
+        self.assertEqual([c["name"] for c in data["checks"]], ["imports", "tags", "install-smoke"])
+        for c in data["checks"]:
+            self.assertIn(c["status"], ("ok", "fail"))
+            self.assertIsInstance(c["elapsed_s"], float)
+            self.assertIsInstance(c["detail"], str)
+        self.assertIsNone(data["fixtures_digest"])
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            cr.main(["quick"])
+        self.assertTrue(buf.getvalue().rstrip("\n").splitlines()[-1].startswith("quick: "))
+
+
 if __name__ == "__main__":
     unittest.main()

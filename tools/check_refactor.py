@@ -16,6 +16,9 @@ from __future__ import annotations
 
 import argparse
 import ast
+import contextlib
+import hashlib
+import io
 import json
 import os
 import shutil
@@ -510,13 +513,26 @@ def _git_sha(root: Path) -> str:
         return "unknown"
 
 
+def _fixtures_digest(fixtures) -> str | None:
+    if not fixtures:
+        return None
+    h = hashlib.sha256()
+    for f in discover_fixtures(Path(fixtures)):
+        st = f["path"].stat()
+        h.update(f"{f['rel']}\0{st.st_size}\0{st.st_mtime_ns}\n".encode("utf-8"))
+    return h.hexdigest()
+
+
 def cmd_quick(args) -> int:
     checks = []
 
     def timed(name, fn):
         t0 = time.time()
-        rc = fn()
-        checks.append({"name": name, "status": "ok" if rc == 0 else "fail", "elapsed_s": round(time.time() - t0, 1)})
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = fn()
+        checks.append({"name": name, "status": "ok" if rc == 0 else "fail",
+                       "elapsed_s": round(time.time() - t0, 1), "detail": buf.getvalue()})
         return rc
 
     rc = 0
@@ -539,11 +555,14 @@ def cmd_quick(args) -> int:
                         print(f"   {rel} {d[1]} {d[0]}: {d[2]!r} -> {d[3]!r}")
                 return 1 if bad else 0
             rc |= timed("compare-vs-baseline", _cmp)
-    summary = {"product_sha": _git_sha(Path(args.product)), "policy": Path(args.policy).name, "checks": checks,
-               "status": "ok" if rc == 0 else "fail"}
+    summary = {"product_sha": _git_sha(Path(args.product)), "fixtures_digest": _fixtures_digest(args.fixtures),
+               "policy": Path(args.policy).name, "checks": checks, "status": "ok" if rc == 0 else "fail"}
     if args.json:
         print(json.dumps(summary, indent=1))
     else:
+        for c in checks:
+            if c["status"] != "ok":
+                print(c["detail"], end="")
         print("quick: " + summary["status"].upper() + "  " + ", ".join(f"{c['name']}={c['status']}({c['elapsed_s']}s)" for c in checks))
     return rc
 
