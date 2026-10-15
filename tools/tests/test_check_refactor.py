@@ -663,5 +663,15 @@ class KeptCompatibilitySurfaces(unittest.TestCase):
         self.assertIsNone(ctx.hierarchy_context)
 
 
+class KicadUtilsFacade(unittest.TestCase):
+    def test_every_pre_v3_name_still_importable(self):
+        sys.path.insert(0, str(cr.REPO_ROOT / "skills" / "kicad" / "scripts"))
+        import importlib, kicad_utils
+        importlib.reload(kicad_utils)
+        names = json.loads((Path(__file__).parent / "kicad_utils_names_6a91aaa.json").read_text(encoding="utf-8"))
+        missing = [n for n in names if not hasattr(kicad_utils, n)]
+        self.assertEqual(missing, [])
+
+
 if __name__ == "__main__":
     unittest.main()
