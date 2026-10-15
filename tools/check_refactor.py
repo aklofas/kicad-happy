@@ -48,7 +48,28 @@ def _norm_path(path: str) -> str:
 
 
 def _is_volatile(path: str, volatile: set[str]) -> bool:
-    return bool(path) and (path in volatile or _norm_path(path) in volatile)
+    """Exact match (index-normalised), or a policy entry ending in `*` (not `[*]`) as a path prefix."""
+    if not path:
+        return False
+    norm = _norm_path(path)
+    if path in volatile or norm in volatile:
+        return True
+    return any(v.endswith("*") and not v.endswith("[*]") and (path.startswith(v[:-1]) or norm.startswith(v[:-1]))
+               for v in volatile)
+
+
+SNAP_TOKEN = "<SNAP>"
+
+
+def _substitute_root(obj, root_str: str):
+    """Rewrite dict keys and string values starting with root_str to start with <SNAP> instead."""
+    if isinstance(obj, str):
+        return SNAP_TOKEN + obj[len(root_str):] if obj.startswith(root_str) else obj
+    if isinstance(obj, list):
+        return [_substitute_root(x, root_str) for x in obj]
+    if isinstance(obj, dict):
+        return {_substitute_root(k, root_str): _substitute_root(v, root_str) for k, v in obj.items()}
+    return obj
 
 
 def compare_json(base, cand, volatile: set[str], path: str = "") -> list[Delta]:
@@ -89,14 +110,15 @@ def compare_json(base, cand, volatile: set[str], path: str = "") -> list[Delta]:
 def compare_dirs(base_dir: Path, cand_dir: Path, volatile: set[str]) -> dict:
     """Compare every *.json under base_dir with its counterpart. Returns a report dict."""
     report = {"files": {}, "missing_in_candidate": [], "extra_in_candidate": [], "total_deltas": 0}
+    base_root, cand_root = str(base_dir.resolve()), str(cand_dir.resolve())
     base_files = {p.relative_to(base_dir).as_posix(): p for p in base_dir.rglob("*.json")}
     cand_files = {p.relative_to(cand_dir).as_posix(): p for p in cand_dir.rglob("*.json")}
     for rel in sorted(base_files):
         if rel not in cand_files:
             report["missing_in_candidate"].append(rel)
             continue
-        b = json.loads(base_files[rel].read_text(encoding="utf-8"))
-        c = json.loads(cand_files[rel].read_text(encoding="utf-8"))
+        b = _substitute_root(json.loads(base_files[rel].read_text(encoding="utf-8")), base_root)
+        c = _substitute_root(json.loads(cand_files[rel].read_text(encoding="utf-8")), cand_root)
         deltas = compare_json(b, c, volatile)
         if deltas:
             report["files"][rel] = [list(d) for d in deltas]
@@ -178,40 +200,45 @@ def _run(cmd: list[str], env: dict, timeout: int = 300) -> tuple[int, str]:
     return proc.returncode, (lines[-1] if lines else "")
 
 
+def _produce(cmd: list[str], target: Path, label: str, env: dict, stats: dict) -> None:
+    """Run one analyzer into `target`; a stale file is removed first, a missing result is a failure."""
+    target.unlink(missing_ok=True)
+    rc, err = _run(cmd, env)
+    if not target.exists():
+        stats["failures"].append({"fixture": label, "exit": rc, "stderr": err})
+
+
 def run_snapshot(fixtures_root: Path, out_dir: Path, product_root: Path, env: dict) -> dict:
     py = sys.executable
     stats = {"sch": 0, "pcb": 0, "gerber": 0, "chain": 0, "failures": []}
-    fixtures = discover_fixtures(fixtures_root)
     by_dir: dict[str, dict] = {}
-    for fx in fixtures:
+    for fx in discover_fixtures(fixtures_root):
         slot = _slot(out_dir, fx["rel"])
-        script = product_root / ANALYZERS["schematic" if fx["kind"] == "sch" else fx["kind"]]
+        path, rel = str(fx["path"]), fx["rel"]
         if fx["kind"] == "sch":
-            rc, err = _run([py, str(script), str(fx["path"]), "-o", str(slot / "schematic.json")], env)
+            script = str(product_root / ANALYZERS["schematic"])
+            _produce([py, script, path, "-o", str(slot / "schematic.json")], slot / "schematic.json", rel, env, stats)
             stats["sch"] += 1
             by_dir.setdefault(str(fx["path"].parent), {})["sch"] = slot / "schematic.json"
         elif fx["kind"] == "pcb":
-            rc, err = _run([py, str(script), str(fx["path"]), "-o", str(slot / "pcb.json")], env)
-            rc2, err2 = _run([py, str(script), str(fx["path"]), "--full", "-o", str(slot / "pcb_full.json")], env)
-            rc, err = (rc or rc2), (err or err2)
+            script = str(product_root / ANALYZERS["pcb"])
+            _produce([py, script, path, "-o", str(slot / "pcb.json")], slot / "pcb.json", rel, env, stats)
+            _produce([py, script, path, "--full", "-o", str(slot / "pcb_full.json")],
+                     slot / "pcb_full.json", f"{rel}:pcb_full.json", env, stats)
             stats["pcb"] += 1
             by_dir.setdefault(str(fx["path"].parent), {})["pcb"] = slot / "pcb.json"
         else:
-            rc, err = _run([py, str(script), str(fx["path"]), "-o", str(slot / "gerber.json")], env)
+            script = str(product_root / ANALYZERS["gerber"])
+            _produce([py, script, path, "-o", str(slot / "gerber.json")], slot / "gerber.json", rel, env, stats)
             stats["gerber"] += 1
-        expected = slot / ("schematic.json" if fx["kind"] == "sch" else "pcb.json" if fx["kind"] == "pcb" else "gerber.json")
-        if not expected.exists():
-            stats["failures"].append({"fixture": fx["rel"], "exit": rc, "stderr": err})
     # Chained analyzers where a directory produced both schematic and pcb outputs.
     for d, outs in sorted(by_dir.items()):
         if "sch" in outs and "pcb" in outs:
             slot = outs["sch"].parent
             for kind in ("emc", "thermal", "cross_analysis"):
-                script = product_root / ANALYZERS[kind]
-                rc, err = _run([py, str(script), "--schematic", str(outs["sch"]), "--pcb", str(outs["pcb"]),
-                                "-o", str(slot / f"{kind}.json")], env)
-                if not (slot / f"{kind}.json").exists():
-                    stats["failures"].append({"fixture": f"{d}:{kind}", "exit": rc, "stderr": err})
+                script = str(product_root / ANALYZERS[kind])
+                _produce([py, script, "--schematic", str(outs["sch"]), "--pcb", str(outs["pcb"]),
+                          "-o", str(slot / f"{kind}.json")], slot / f"{kind}.json", f"{d}:{kind}", env, stats)
             stats["chain"] += 1
     return stats
 

@@ -1,17 +1,14 @@
 {
   "name": "volatile-leaves-v1",
-  "description": "Leaf paths whose values legitimately differ between two runs of the same analyzer on the same input. Populated in Task 2 from an A/A run; every entry must be a run id, timestamp, elapsed time or absolute path. Anything else differing between A/A runs is a determinism bug.",
+  "description": "Leaf paths whose values legitimately differ between two runs of the same analyzer on the same input. Every entry must be a run id, timestamp, elapsed time or absolute path (or a hash of an artifact that embeds a run id). Anything else differing between A/A runs is a determinism bug. compare_dirs first rewrites any string or dict key starting with the snapshot directory's absolute path to start with the token <SNAP>, so chained outputs compare equal across snapshot directories. A policy entry ending in * (not [*]) matches every path with that prefix, e.g. inputs.source_hashes.<SNAP>* covers the hashes keyed by snapshot paths while hashes keyed by fixture paths stay compared.",
   "volatile_leaves": [
     "run_id",
     "elapsed_s",
     "inputs.run_id",
     "capability_mode_ref.run_id",
-    "inputs.source_files[*]",
-    "inputs.source_hashes",
-    "inputs.upstream_artifacts.pcb.path",
+    "inputs.source_hashes.<SNAP>*",
     "inputs.upstream_artifacts.pcb.run_id",
     "inputs.upstream_artifacts.pcb.sha256",
-    "inputs.upstream_artifacts.schematic.path",
     "inputs.upstream_artifacts.schematic.run_id",
     "inputs.upstream_artifacts.schematic.sha256"
   ]

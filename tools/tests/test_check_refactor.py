@@ -135,6 +135,61 @@ class CompareCli(unittest.TestCase):
         self.assertIn("policy", err)
 
 
+class CompareDirsRoots(unittest.TestCase):
+    def test_snapshot_root_substituted_in_keys_and_values(self):
+        with tempfile.TemporaryDirectory() as td:
+            dirs = []
+            for n in ("a", "b"):
+                d = Path(td) / n
+                d.mkdir()
+                root = str(d.resolve())
+                doc = {"inputs": {"source_files": [root + "/x/s.json"], "source_hashes": {root + "/x/s.json": "h"}}}
+                (d / "o.json").write_text(json.dumps(doc), encoding="utf-8")
+                dirs.append(d)
+            rep = cr.compare_dirs(dirs[0], dirs[1], set())
+            self.assertEqual(rep["total_deltas"], 0)
+
+    def test_substitution_still_detects_real_change(self):
+        with tempfile.TemporaryDirectory() as td:
+            dirs = []
+            for n, h in (("a", "h1"), ("b", "h2")):
+                d = Path(td) / n
+                d.mkdir()
+                (d / "o.json").write_text(json.dumps({"k": {str(d.resolve()) + "/f": h}}), encoding="utf-8")
+                dirs.append(d)
+            self.assertEqual(cr.compare_dirs(dirs[0], dirs[1], set())["total_deltas"], 1)
+
+    def test_policy_prefix_wildcard(self):
+        vol = {"inputs.source_hashes.<SNAP>*"}
+        base = {"inputs": {"source_hashes": {"<SNAP>/x__y/schematic.json": "a", "/fix/real.kicad_sch": "h"}}}
+        cand = {"inputs": {"source_hashes": {"<SNAP>/x__y/schematic.json": "b", "/fix/real.kicad_sch": "h"}}}
+        self.assertEqual(cr.compare_json(base, cand, vol), [])
+        cand["inputs"]["source_hashes"]["/fix/real.kicad_sch"] = "changed"
+        self.assertEqual(len(cr.compare_json(base, cand, vol)), 1)
+
+
+class RunSnapshot(unittest.TestCase):
+    def test_missing_full_output_is_failure_and_stale_cleared(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            prod, fx, out = td / "prod", td / "fx", td / "out"
+            fake = ("import sys\n"
+                    "if '--full' in sys.argv: sys.exit(1)\n"
+                    "open(sys.argv[sys.argv.index('-o') + 1], 'w').write('{\"ok\": 1}')\n")
+            for rel in cr.ANALYZERS.values():
+                (prod / rel).parent.mkdir(parents=True, exist_ok=True)
+                (prod / rel).write_text(fake, encoding="utf-8")
+            (fx / "p").mkdir(parents=True)
+            (fx / "p" / "b.kicad_pcb").write_text("(kicad_pcb)", encoding="utf-8")
+            slot = out / "p__b.kicad_pcb"
+            slot.mkdir(parents=True)
+            (slot / "pcb_full.json").write_text("stale", encoding="utf-8")
+            stats = cr.run_snapshot(fx, out, prod, {})
+            self.assertEqual([f["fixture"] for f in stats["failures"]], ["p/b.kicad_pcb:pcb_full.json"])
+            self.assertFalse((slot / "pcb_full.json").exists())
+            self.assertTrue((slot / "pcb.json").exists())
+
+
 class DiscoverFixtures(unittest.TestCase):
     def test_discovers_sch_pcb_and_gerber_dirs(self):
         import tempfile
