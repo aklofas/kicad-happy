@@ -64,7 +64,7 @@ from kicad_core.fields import (
     DIGIKEY_FIELD_ALIASES, normalize_field_name, pick_field, pick_mpn,
 )
 from kicad_core.model import Component, Net, Pin, SheetData
-from kicad_core.netquery import build_pin_to_net_map
+from kicad_core.netquery import build_bridge_facts, build_pin_to_net_map, build_ref_pins
 from kicad_types import AnalysisContext, build_analysis_context
 from bus_resolver import BusGraph, expand_bus_name, match_ports
 from signal_detectors import (
@@ -836,12 +836,15 @@ def analyze_signal_paths(ctx: AnalysisContext) -> dict:
     pwm_led_dimming = detect_pwm_led_dimming(ctx, transistor_circuits)
     headphone_jacks = detect_headphone_jack(ctx)
     solder_jumpers = detect_solder_jumpers(ctx)
+    bridge_facts = build_bridge_facts(
+        ctx.components, build_ref_pins(ctx.nets), solder_jumpers)
     shorted_two_pin_components = detect_shorted_two_pin_components(ctx)
     rail_source_audit = audit_rail_sources(
-        ctx, power_regulators=power_regulators, solder_jumpers=solder_jumpers)
+        ctx, power_regulators=power_regulators, solder_jumpers=solder_jumpers,
+        bridge_facts=bridge_facts)
     label_aliases = detect_label_aliases(ctx)
     power_pin_dc_paths = audit_power_pin_dc_paths(
-        ctx, solder_jumpers=solder_jumpers)
+        ctx, solder_jumpers=solder_jumpers, bridge_facts=bridge_facts)
 
     # Remove R/C components that appear in crystal circuits from RC filter
     # results — prevents misclassifying crystal feedback resistors + load caps

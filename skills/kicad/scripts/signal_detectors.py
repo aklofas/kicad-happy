@@ -22,6 +22,7 @@ from kicad_core.netnames import (
     is_usb_data_net_name,
     parse_voltage_from_net_name as _parse_voltage_from_net_name,
 )
+from kicad_core.netquery import build_bridge_facts, build_ref_pins
 from kicad_types import AnalysisContext
 from finding_schema import make_provenance, make_finding, Det
 from detector_helpers import index_two_pin_components, get_components_by_type, get_unique_ics
@@ -4158,7 +4159,8 @@ def detect_solder_jumpers(ctx: AnalysisContext) -> list[dict]:
 
 def audit_rail_sources(ctx: AnalysisContext,
                        power_regulators: list[dict] | None = None,
-                       solder_jumpers: list[dict] | None = None) -> list[dict]:
+                       solder_jumpers: list[dict] | None = None,
+                       bridge_facts=None) -> list[dict]:
     """Audit every power-classified net for a declared source.
 
     A rail with no `power_out` pin, no `PWR_FLAG` / `#FLG`, and no
@@ -4187,10 +4189,13 @@ def audit_rail_sources(ctx: AnalysisContext,
 
     # Build a quick map of net → list of (neighbour, state, jumper_ref) tuples
     # for solder jumpers that straddle the net.
+    if bridge_facts is None:
+        bridge_facts = build_bridge_facts(
+            ctx.components or [], build_ref_pins(nets), solder_jumpers)
     jumper_bridges: dict[str, list[tuple[str, str, str]]] = {}
-    for sj in (solder_jumpers or []):
-        state = sj.get("default_state")
-        nets_straddled = sj.get("nets") or []
+    for fact in bridge_facts.jumpers:
+        state = fact.default_state
+        nets_straddled = fact.nets
         # Only 2-net jumpers (standard SolderJumper_2_Bridged / _Open) are
         # amenable to one-hop traversal. 3-pin selector jumpers (e.g.
         # SolderJumper_3_Bridged12 / _Bridged23) encode the actual shorted
@@ -4200,8 +4205,8 @@ def audit_rail_sources(ctx: AnalysisContext,
         if len(nets_straddled) != 2 or state not in ("bridged", "open"):
             continue
         a, b = nets_straddled[0], nets_straddled[1]
-        jumper_bridges.setdefault(a, []).append((b, state, sj.get("reference", "")))
-        jumper_bridges.setdefault(b, []).append((a, state, sj.get("reference", "")))
+        jumper_bridges.setdefault(a, []).append((b, state, fact.ref))
+        jumper_bridges.setdefault(b, []).append((a, state, fact.ref))
 
     def _has_direct_source(net_info: dict, net_name: str) -> bool:
         # Direct power_out pin anywhere on the net, OR an explicit PWR_FLAG
@@ -4470,8 +4475,8 @@ def _is_module_internal_rail(net_name: str) -> bool:
 
 
 def audit_power_pin_dc_paths(ctx: AnalysisContext,
-                             solder_jumpers: list[dict] | None = None
-                             ) -> list[dict]:
+                             solder_jumpers: list[dict] | None = None,
+                             bridge_facts=None) -> list[dict]:
     """For every IC power_in pin, prove a DC path to a power rail exists.
 
     A power_in pin that only reaches ground through a capacitor is
@@ -4491,37 +4496,23 @@ def audit_power_pin_dc_paths(ctx: AnalysisContext,
     components = {c.get("reference"): c for c in (ctx.components or [])}
 
     # Map component ref -> list of (pin_number, net_name, pin_type) for net hops.
-    ref_pins: dict[str, list[tuple[str, str, str]]] = {}
-    for net_name, net_info in nets.items():
-        for p in net_info.get("pins", []):
-            ref = p.get("component") or ""
-            if not ref:
-                continue
-            ref_pins.setdefault(ref, []).append(
-                (str(p.get("pin_number", "")), net_name,
-                 str(p.get("pin_type", ""))))
+    ref_pins = build_ref_pins(nets)
+    if bridge_facts is None:
+        bridge_facts = build_bridge_facts(
+            ctx.components or [], ref_pins, solder_jumpers)
 
     # Component-type-based bridge predicate.
     def _bridges_dc(ref: str) -> bool:
-        c = components.get(ref) or {}
-        t = (c.get("type") or c.get("category") or "").lower()
-        if t in ("inductor", "ferrite_bead", "fuse"):
-            return True
-        if t == "resistor":
-            # Small value resistors count as DC-conductive.
-            v = parse_value(c.get("value", ""), component_type="resistor")
-            if v is None:
-                # 0R / DNP heuristic
-                val = (c.get("value") or "").strip().lower().replace(" ", "")
-                if val in ("0", "0r", "0ohm", "0ohms"):
-                    return True
-                return False
-            return v <= 1.0
-        if t == "jumper":
-            for sj in (solder_jumpers or []):
-                if sj.get("reference") == ref:
-                    return sj.get("default_state") == "bridged"
+        fact = bridge_facts.by_ref.get(ref)
+        if fact is None:
             return False
+        if fact.kind in ("inductor", "ferrite_bead", "fuse"):
+            return True
+        if fact.kind == "resistor":
+            # Small value resistors count as DC-conductive.
+            return fact.resistance is not None and fact.resistance <= 1.0
+        if fact.kind == "jumper":
+            return fact.default_state == "bridged"
         return False
 
     def _is_capacitor(ref: str) -> bool:
