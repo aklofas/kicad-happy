@@ -549,17 +549,16 @@ def should_create_new_run(analysis_dir: str,
     current_dir, current_meta = current
     threshold_level = _SEVERITY_ORDER.get(diff_threshold, 2)
 
-    # Try to import diff_analysis for programmatic comparison
+    # Pure diff engine (no CLI import; v3 removed the analysis_cache <-> diff_analysis cycle).
     try:
-        import diff_analysis
+        import diff_engine
     except ImportError:
-        # diff_analysis.py not on sys.path -- try adding our directory
         import sys
         scripts_dir = os.path.dirname(os.path.abspath(__file__))
         if scripts_dir not in sys.path:
             sys.path.insert(0, scripts_dir)
         try:
-            import diff_analysis
+            import diff_engine
         except ImportError:
             # Can't diff -- default to creating a new run
             return True
@@ -587,17 +586,17 @@ def should_create_new_run(analysis_dir: str,
         # Detect analyzer type and diff
         analyzer_type = base_data.get('analyzer_type', '')
         diff_func = {
-            'schematic': getattr(diff_analysis, 'diff_schematic', None),
-            'pcb': getattr(diff_analysis, 'diff_pcb', None),
-            'emc': getattr(diff_analysis, 'diff_emc', None),
-            'spice': getattr(diff_analysis, 'diff_spice', None),
+            'schematic': getattr(diff_engine, 'diff_schematic', None),
+            'pcb': getattr(diff_engine, 'diff_pcb', None),
+            'emc': getattr(diff_engine, 'diff_emc', None),
+            'spice': getattr(diff_engine, 'diff_spice', None),
         }.get(analyzer_type)
 
         if diff_func is None:
             continue  # Unknown type -- skip
 
         diff_result = diff_func(base_data, head_data, threshold=1.0)
-        severity = diff_analysis.classify_severity(analyzer_type, diff_result)
+        severity = diff_engine.classify_severity(analyzer_type, diff_result)
         if _SEVERITY_ORDER.get(severity, 0) >= threshold_level:
             return True
 
