@@ -76,10 +76,12 @@ Every detector receives an `AnalysisContext` (`kicad_types.py`) — a dataclass 
 - `comp_lookup` — dict of reference to component (O(1) lookup)
 - `parsed_values` — dict of reference to parsed numeric value
 - `known_power_rails` — set of net names connected to power symbols
-- `ref_pins` — reverse index: reference to {pin_num: (net_name, net_id)}
-- `pin_net` — forward index: (reference, pin_num) to (net_name, net_id)
-- `nq` — optional `NetlistQueries` object for multi-hop net tracing
+- `ref_pins` — reverse index: reference to {pin_num: (net_name, net_record)}
+- `pin_net` — forward index: (reference, pin_num) to `PinNetEntry` = (net_name, net_record) — the full net dict, not a pin name
+- `nq` — `NetlistQueries` index for multi-hop net tracing; always present on production contexts
 - Helper methods: `is_power_net()`, `is_ground()`, `get_two_pin_nets()`
+
+Production code never constructs `AnalysisContext` directly: `kicad_types.build_analysis_context(components, nets, lib_symbols, ...)` builds every index and installs `nq` before any detector runs. Tests may construct it directly with explicit overrides.
 
 ### Writing a new detector
 
@@ -269,6 +271,35 @@ python3 tools/check_refactor.py compare /tmp/base /tmp/cand
 A refactor PR is expected to compare clean. An intended output change says so in the PR and lists the fields.
 
 A deliberate change that retires or renames a known legacy site shrinks the baseline; run `python3 tools/check_refactor.py tags --update-baseline` (or `imports --update-baseline`) in the same commit. The update refuses to add entries; a new untagged site must be tagged, not baselined.
+
+### Literal-tag scan policy (owned by the harness; copied from its `tools/SCANNER_POLICY.md` v1)
+
+**What the harness scans.** Every `*.py` under `skills/*/scripts/**` and `skills/*/*/scripts/**` (recursive; `__pycache__` skipped), identified by its root-relative POSIX path. Scanners read source with `ast` only; they never import or `eval` product code.
+
+**What counts as a finding emit site.** A call is an emit site when either holds: (1) its callee's last name segment is `make_finding` or `_make_finding`, or (2) it carries all three keywords `detector=`, `rule_id=`, `schema_era=`.
+
+**What an emit site must look like (new or migrated code).** `detector=` **string literal** (the emitted detector string — frozen for v3); `rule_id=` **string literal**; `schema_era=` **string literal** when the finding belongs to a changed-detector set. Anything else — a variable, an f-string, an attribute, a positional shape — is *unresolved* and fails the harness check unless it is one of the grandfathered exceptions below.
+
+**Grandfathered exceptions** (harness `tools/scan_exceptions.json`; counts may only shrink, and a shrink is committed together with the product change that removed the sites):
+
+| id | shape | count @6a91aaa | retire by |
+|---|---|---:|---|
+| emc-positional-make-finding | `_make_finding('<category>', '<sev>', '<RULE>', ...)` in `skills/emc/scripts/emc_rules.py`; detector derived as `emc_<category>` | 53 | EMC reshape round |
+| det-enum-shorted-two-pin | `detector=Det.SHORTED_TWO_PIN` in `skills/kicad/scripts/signal_detectors.py` | 2 | first SP-001 touch |
+| usb-compliance-rule-id-loop | `rule_id=_rid` loop in the schematic USB compliance analysis | 1 | first UC-00x touch |
+
+Legacy sites without `schema_era` are tolerated per (detector, rule_id); a **new** untagged site under a key whose count grows fails the harness check. Emitted `detector` strings, rule IDs and script paths are frozen regardless of policy; changing how a detector string is *derived* is allowed only if the emitted value is byte-identical. The product-side mirror of this check is `python3 tools/check_refactor.py tags`.
+
+### Accepted analyzer exit codes (harness `harnesslib/execution.py` `ACCEPTED_EXITS`)
+
+The harness treats a run as successful only when the analyzer exits with one of these codes **and** writes valid JSON; anything else is `exit_unexpected`, `crash` or `no_output` and fails the unit:
+
+| analyzer | accepted exits |
+|---|---:|
+| schematic, pcb, gerber, cross_analysis, spice, datasheets | 0 |
+| emc, thermal | 0, 1 (1 = findings present) |
+
+Exit codes are frozen for the v3 arc. A new CLI must document its exit codes here and in the harness before it is gated.
 
 ## Code style
 
