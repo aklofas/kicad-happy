@@ -21,7 +21,6 @@ import os
 import re
 import sys
 from pathlib import Path
-
 # Add scripts dir to path for sexp_parser and kicad_core
 sys.path.insert(0, str(Path(__file__).parent))
 from sexp_parser import (
@@ -63,6 +62,7 @@ from kicad_core.fields import (
     MPN_FIELD_ALIASES_PRIMARY, MPN_FIELD_ALIASES_GENERIC,
     DIGIKEY_FIELD_ALIASES, normalize_field_name, pick_field, pick_mpn,
 )
+from kicad_core.model import Component, Net, Pin, PinNetEntry, SheetData
 from kicad_types import AnalysisContext
 from bus_resolver import BusGraph, expand_bus_name, match_ports
 from signal_detectors import (
@@ -338,7 +338,7 @@ _ANGLE_TRANSFORM = {
 }
 
 
-def compute_pin_positions(component: dict, lib_symbols: dict) -> list[dict]:
+def compute_pin_positions(component: dict, lib_symbols: dict) -> list[Pin]:
     """Compute absolute pin positions for a placed component."""
     lib_id = component.get("lib_id", "")
     lib_name = component.get("lib_name", "")
@@ -454,7 +454,7 @@ def extract_symbol_instances(root: list) -> dict:
 
 
 def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
-                       symbol_instances: dict | None = None) -> list[dict]:
+                       symbol_instances: dict | None = None) -> list[Component]:
     """Extract all placed component instances.
 
     If instance_uuid is provided, remap references from the (instances) block
@@ -1299,7 +1299,7 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
                   power_symbols: list[dict], junctions: list[dict],
                   no_connects: list[dict] | None = None,
                   sheet_names: list[str] | None = None,
-                  bus_elements: dict | None = None) -> dict:
+                  bus_elements: dict | None = None) -> dict[str, Net]:
     """Build a connectivity map using union-find on coordinates.
 
     Groups all electrically connected points into nets, then names them
@@ -1982,7 +1982,7 @@ def compute_statistics(components: list[dict], nets: dict, bom: list[dict],
     }
 
 
-def build_pin_to_net_map(nets: dict) -> dict:
+def build_pin_to_net_map(nets: dict[str, Net]) -> dict[tuple[str, str], PinNetEntry]:
     """Build a reverse map: (component, pin_number) -> (net_name, net_info)."""
     pin_net = {}
     for net_name, net_info in nets.items():
@@ -3560,7 +3560,7 @@ def parse_legacy_schematic(path: str, analysis_dir: str | Path | None = None) ->
 
 
 def parse_single_sheet(path: str, instance_uuid: str = "",
-                       symbol_instances: dict | None = None) -> tuple:
+                       symbol_instances: dict | None = None) -> SheetData:
     """Parse a single .kicad_sch file and return raw extracted data.
 
     If instance_uuid is provided, remap component references from the
@@ -3569,7 +3569,7 @@ def parse_single_sheet(path: str, instance_uuid: str = "",
     If symbol_instances is provided, use it as fallback for remapping when
     inline (instances) blocks are absent.
 
-    Returns: (root, components, wires, labels, junctions, no_connects,
+    Returns: a SheetData (root, components, wires, labels, junctions, no_connects,
               sub_sheet_paths, lib_symbols, text_annotations, bus_elements, title_block)
     """
     root = parse_file(path)
@@ -3623,8 +3623,8 @@ def parse_single_sheet(path: str, instance_uuid: str = "",
                     "_sheet_uuid": sheet_uuid_for_pins,
                 })
 
-    return (root, components, wires, labels, junctions, no_connects,
-            sub_sheet_paths, lib_symbols, text_annotations, bus_elements, title_block)
+    return SheetData(root, components, wires, labels, junctions, no_connects,
+                     sub_sheet_paths, lib_symbols, text_annotations, bus_elements, title_block)
 
 
 def analyze_connectivity(components: list[dict], nets: dict, no_connects: list[dict]) -> dict:
@@ -9069,10 +9069,12 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
             continue
         parsed.add(parse_key)
 
+        sd = parse_single_sheet(sheet_path, instance_uuid=inst_path,
+                                symbol_instances=root_symbol_instances)
         (root, components, wires, labels, junctions, no_connects,
-         sub_sheets, lib_symbols, text_annotations, bus_elements, title_block) = \
-            parse_single_sheet(sheet_path, instance_uuid=inst_path,
-                               symbol_instances=root_symbol_instances)
+         sub_sheets, lib_symbols, text_annotations, bus_elements, title_block) = (
+            sd.root, sd.components, sd.wires, sd.labels, sd.junctions, sd.no_connects,
+            sd.sub_sheet_paths, sd.lib_symbols, sd.text_annotations, sd.bus_elements, sd.title_block)
 
         sheet_idx = len(sheets_parsed)
         for c in components:
@@ -9277,12 +9279,15 @@ def analyze_schematic(path: str, project_root: str | None = None,
                     while to_parse:
                         sheet_path = to_parse.pop(0)
                         try:
+                            sd = parse_single_sheet(
+                                sheet_path,
+                                symbol_instances=sym_inst)
                             (_, comps, wires, labels, junctions,
                              no_connects, sub_sheet_paths, lib_syms,
-                             text_annot, bus_elems, title_blk) = \
-                                parse_single_sheet(
-                                    sheet_path,
-                                    symbol_instances=sym_inst)
+                             text_annot, bus_elems, title_blk) = (
+                                sd.root, sd.components, sd.wires, sd.labels, sd.junctions,
+                                sd.no_connects, sd.sub_sheet_paths, sd.lib_symbols,
+                                sd.text_annotations, sd.bus_elements, sd.title_block)
                         except Exception as exc:
                             print(f"Warning: failed to parse "
                                   f"{os.path.basename(sheet_path)}: {exc}",

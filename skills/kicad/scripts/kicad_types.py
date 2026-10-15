@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from kicad_core.model import PinNetEntry
 from kicad_core.netnames import is_ground_name, is_power_net_name
 from kicad_core.values import parse_value
 
@@ -31,7 +32,7 @@ class AnalysisContext:
             "pin_number": num, "pin_name": name, "x": float, "y": float}], ...}}``.
         lib_symbols: Library symbol definitions extracted from the schematic's
             embedded ``lib_symbols`` section.  ``{lib_id: {value, pins, ...}}``.
-        pin_net: Pin-to-net mapping.  ``{(ref, pin_number): (net_name, pin_info)}``.
+        pin_net: Pin-to-net mapping.  ``{(ref, pin_number): (net_name, net_record)}`` — the full net record, not a pin name.
             Covers every pin on every placed component.
         comp_lookup: Quick component lookup by reference.  ``{ref: component_dict}``.
             Auto-built from *components* in ``__post_init__``.
@@ -65,11 +66,11 @@ class AnalysisContext:
     components: list[dict]
     nets: dict[str, dict]
     lib_symbols: dict
-    pin_net: dict[tuple[str, str], tuple[str | None, str | None]]
+    pin_net: dict[tuple[str, str], PinNetEntry]
     comp_lookup: dict[str, dict] = field(default_factory=dict)
     parsed_values: dict[str, float] = field(default_factory=dict)
     known_power_rails: set[str] = field(default_factory=set)
-    ref_pins: dict[str, dict[str, tuple[str | None, str | None]]] = field(default_factory=dict)
+    ref_pins: dict[str, dict[str, PinNetEntry]] = field(default_factory=dict)
     no_connects: list[dict] = field(default_factory=list)
     generator_version: str = "unknown"
     source: str = "unknown"
