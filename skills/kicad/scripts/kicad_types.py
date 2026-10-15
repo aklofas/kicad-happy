@@ -12,8 +12,36 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from kicad_core.model import PinNetEntry
+from kicad_core.netquery import build_pin_to_net_map
 from kicad_core.netnames import is_ground_name, is_power_net_name
 from kicad_core.values import parse_value
+
+
+def index_components(components: list[dict]) -> tuple[dict[str, dict], dict[str, float]]:
+    comp_lookup = {c["reference"]: c for c in components}
+    parsed_values: dict[str, float] = {}
+    for c in components:
+        val = parse_value(c.get("value", ""), component_type=c.get("type"))
+        if val is not None:
+            parsed_values[c["reference"]] = val
+    return comp_lookup, parsed_values
+
+
+def scan_power_rails(nets: dict[str, dict]) -> set[str]:
+    rails: set[str] = set()
+    for net_name, net_info in nets.items():
+        for p in net_info.get("pins", []):
+            if p["component"].startswith("#PWR") or p["component"].startswith("#FLG"):
+                rails.add(net_name)
+                break
+    return rails
+
+
+def index_ref_pins(pin_net: dict) -> dict[str, dict[str, PinNetEntry]]:
+    rp: dict[str, dict[str, PinNetEntry]] = {}
+    for (comp_ref, pin_num), val in pin_net.items():
+        rp.setdefault(comp_ref, {})[pin_num] = val
+    return rp
 
 
 @dataclass
@@ -45,8 +73,8 @@ class AnalysisContext:
             Derived from *pin_net* for quick per-component pin enumeration.
         no_connects: List of no-connect markers from the schematic.
         generator_version: KiCad version string (e.g., ``"9.0.1"``).
-        nq: Optional high-performance ``NetlistQueries`` object for multi-hop
-            net tracing.  Initialized separately when available.
+        nq: ``NetlistQueries`` object for multi-hop net tracing.  Installed by
+            ``build_analysis_context``; None only on contexts constructed directly.
         hierarchy_context: Cross-sheet context for sub-sheet analysis.  None when
             analyzing a root schematic or when hierarchy discovery is disabled.
             When present, contains: root_schematic, target_sheet, sheets_in_project,
@@ -81,24 +109,18 @@ class AnalysisContext:
     project_dir: str | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
-        if not self.comp_lookup:
-            self.comp_lookup = {c["reference"]: c for c in self.components}
-        if not self.parsed_values:
-            for c in self.components:
-                val = parse_value(c.get("value", ""), component_type=c.get("type"))
-                if val is not None:
-                    self.parsed_values[c["reference"]] = val
+        # Compatibility path for direct constructions (harness fixtures). Production
+        # contexts come from build_analysis_context(), which passes every index.
+        if not self.comp_lookup or not self.parsed_values:
+            comp_lookup, parsed_values = index_components(self.components)
+            if not self.comp_lookup:
+                self.comp_lookup = comp_lookup
+            if not self.parsed_values:
+                self.parsed_values = parsed_values
         if not self.known_power_rails:
-            for net_name, net_info in self.nets.items():
-                for p in net_info.get("pins", []):
-                    if p["component"].startswith("#PWR") or p["component"].startswith("#FLG"):
-                        self.known_power_rails.add(net_name)
-                        break
+            self.known_power_rails = scan_power_rails(self.nets)
         if not self.ref_pins:
-            rp: dict[str, dict[str, tuple[str | None, str | None]]] = {}
-            for (comp_ref, pin_num), val in self.pin_net.items():
-                rp.setdefault(comp_ref, {})[pin_num] = val
-            self.ref_pins = rp
+            self.ref_pins = index_ref_pins(self.pin_net)
 
     def is_power_net(self, name: str | None) -> bool:
         return is_power_net_name(name, self.known_power_rails)
@@ -117,3 +139,30 @@ class AnalysisContext:
             nets = [net for net, _ in pins.values()]
             return nets[0], nets[1]
         return n1, n2
+
+
+def build_analysis_context(components: list[dict], nets: dict[str, dict], lib_symbols: dict, *,
+                           no_connects: list[dict] | None = None,
+                           generator_version: str = "unknown", source: str = "unknown",
+                           cache_dir: Path | None = None, project_dir: str | None = None,
+                           known_power_rails: set[str] | None = None) -> AnalysisContext:
+    """The single construction point for production contexts (spec §4.2).
+
+    Builds ``pin_net`` and every index, installs the ``NetlistQueries`` layer and
+    returns a context no detector has to complete. ``known_power_rails`` overrides
+    the power-symbol scan (synthetic fixtures); ``no_connects`` is kept by reference.
+    """
+    pin_net = build_pin_to_net_map(nets)
+    comp_lookup, parsed_values = index_components(components)
+    rails = scan_power_rails(nets) if known_power_rails is None else known_power_rails
+    ctx = AnalysisContext(
+        components=components, nets=nets, lib_symbols=lib_symbols, pin_net=pin_net,
+        comp_lookup=comp_lookup, parsed_values=parsed_values, known_power_rails=rails,
+        ref_pins=index_ref_pins(pin_net),
+        no_connects=no_connects if no_connects is not None else [],
+        generator_version=generator_version, source=source,
+        cache_dir=cache_dir, project_dir=project_dir,
+    )
+    from netlist_queries import NetlistQueries  # local: netlist_queries annotates with this class
+    ctx.nq = NetlistQueries(ctx)
+    return ctx

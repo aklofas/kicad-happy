@@ -65,7 +65,7 @@ from kicad_core.fields import (
 )
 from kicad_core.model import Component, Net, Pin, SheetData
 from kicad_core.netquery import build_pin_to_net_map
-from kicad_types import AnalysisContext
+from kicad_types import AnalysisContext, build_analysis_context
 from bus_resolver import BusGraph, expand_bus_name, match_ports
 from signal_detectors import (
     audit_power_pin_dc_paths,
@@ -3423,22 +3423,12 @@ def parse_legacy_schematic(path: str, analysis_dir: str | Path | None = None) ->
     stats = compute_statistics(all_components, nets, bom, all_wires, all_no_connects)
 
     # Subcircuit detection (IC + 1-hop neighbors)
-    pin_net = build_pin_to_net_map(nets)
-
     # Build shared analysis context for legacy path
     _cache_dir = _resolve_lookup_paths(path, analysis_dir)
-    ctx = AnalysisContext(
-        components=all_components,
-        nets=nets,
-        lib_symbols=lib_symbols,
-        pin_net=pin_net,
-        no_connects=all_no_connects,
-        cache_dir=_cache_dir,
-        project_dir=str(Path(path).parent),
-    )
-    ctx.source = ANALYZER_SOURCE
-    from netlist_queries import NetlistQueries
-    ctx.nq = NetlistQueries(ctx)
+    ctx = build_analysis_context(
+        all_components, nets, lib_symbols,
+        no_connects=all_no_connects, source=ANALYZER_SOURCE,
+        cache_dir=_cache_dir, project_dir=str(Path(path).parent))
 
     subcircuits = identify_subcircuits(ctx)
 
@@ -9370,24 +9360,13 @@ def analyze_schematic(path: str, project_root: str | None = None,
     # Generate BOM
     bom = generate_bom(all_components)
 
-    # Build pin-to-net map once, shared by all analysis functions
-    pin_net = build_pin_to_net_map(nets)
-
-    # Build shared analysis context (replaces repeated comp_lookup / parsed_values / known_power_rails)
+    # Build shared analysis context (pin_net and every index are built once, here)
     _cache_dir = _resolve_lookup_paths(path, analysis_dir)
-    ctx = AnalysisContext(
-        components=all_components,
-        nets=nets,
-        lib_symbols=all_lib_symbols,
-        pin_net=pin_net,
-        no_connects=all_no_connects,
-        generator_version=generator_version,
-        cache_dir=_cache_dir,
-        project_dir=str(Path(path).parent),
-    )
-    ctx.source = ANALYZER_SOURCE
-    from netlist_queries import NetlistQueries
-    ctx.nq = NetlistQueries(ctx)
+    ctx = build_analysis_context(
+        all_components, nets, all_lib_symbols,
+        no_connects=all_no_connects, generator_version=generator_version,
+        source=ANALYZER_SOURCE, cache_dir=_cache_dir, project_dir=str(Path(path).parent))
+    pin_net = ctx.pin_net
 
     # Identify subcircuits
     subcircuits = identify_subcircuits(ctx)
