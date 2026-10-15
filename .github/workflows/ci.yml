@@ -25,9 +25,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Compile check all scripts
-        run: |
-          find skills/ -name "*.py" -exec python -m py_compile {} +
-          echo "All scripts compile successfully"
+        run: python -c "import compileall,sys; sys.exit(0 if compileall.compile_dir('skills', quiet=1) and compileall.compile_dir('tools', quiet=1) else 1)"
 
   skill-metadata:
     # Validates SKILL.md frontmatter against platform constraints.
@@ -149,3 +147,21 @@ jobs:
           cmp /tmp/det-guard/pcb/run_1.norm.json /tmp/det-guard/pcb/run_2.norm.json
         env:
           KICAD_HAPPY_DIR: ${{ github.workspace }}
+
+  refactor-check:
+    # v3 arc: static layering/tag ratchets, isolated-install smoke, tool unit tests.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.10"
+      - name: check_refactor unit tests
+        run: python3 -m unittest tools.tests.test_check_refactor
+      - name: import-direction ratchet
+        run: python3 tools/check_refactor.py imports
+      - name: literal-tag ratchet
+        run: python3 tools/check_refactor.py tags
+      - name: isolated-install smoke (core + each optional skill)
+        run: python3 tools/check_refactor.py install-smoke

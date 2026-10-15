@@ -369,5 +369,13 @@ class Ratchet(unittest.TestCase):
             self.assertEqual(rc, 1)
 
 
+class InstallSmoke(unittest.TestCase):
+    def test_core_only_help_from_unrelated_cwd(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            failures = cr.install_smoke(cr.REPO_ROOT, None, Path(td))
+            self.assertEqual(failures, [], "\n".join(failures))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -18,8 +18,11 @@ import argparse
 import ast
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
+import time
 from pathlib import Path
 
 TOOLS_DIR = Path(__file__).resolve().parent
@@ -29,6 +32,25 @@ LAYER_RULES = TOOLS_DIR / "layer_rules.json"
 IMPORT_BASELINE = TOOLS_DIR / "import_baseline.json"
 TAG_BASELINE = TOOLS_DIR / "tag_baseline.json"
 TAG_KEYS = ("detector", "rule_id", "schema_era")
+
+SKILL_CLIS = {
+    "kicad": ["skills/kicad/scripts/analyze_schematic.py", "skills/kicad/scripts/analyze_pcb.py",
+              "skills/kicad/scripts/analyze_gerbers.py", "skills/kicad/scripts/analyze_thermal.py",
+              "skills/kicad/scripts/cross_analysis.py", "skills/kicad/scripts/diff_analysis.py",
+              "skills/kicad/scripts/what_if.py", "skills/kicad/scripts/summarize_findings.py",
+              "skills/kicad/review/scripts/deep_review_gate.py"],
+    "datasheets": ["skills/datasheets/scripts/datasheet_verify.py", "skills/datasheets/scripts/plan_extraction.py"],
+    "emc": ["skills/emc/scripts/analyze_emc.py"],
+    "spice": ["skills/spice/scripts/simulate_subcircuits.py"],
+    "bom": ["skills/bom/scripts/bom_manager.py"],
+    "digikey": ["skills/digikey/scripts/fetch_datasheet_digikey.py", "skills/digikey/scripts/sync_datasheets_digikey.py"],
+    "mouser": ["skills/mouser/scripts/fetch_datasheet_mouser.py", "skills/mouser/scripts/sync_datasheets_mouser.py"],
+    "element14": ["skills/element14/scripts/fetch_datasheet_element14.py", "skills/element14/scripts/sync_datasheets_element14.py"],
+    "lcsc": ["skills/lcsc/scripts/fetch_datasheet_lcsc.py", "skills/lcsc/scripts/sync_datasheets_lcsc.py", "skills/lcsc/scripts/search_lcsc.py"],
+}
+SCHEMA_CLIS = ["skills/kicad/scripts/analyze_schematic.py", "skills/kicad/scripts/analyze_pcb.py",
+               "skills/kicad/scripts/analyze_gerbers.py", "skills/kicad/scripts/analyze_thermal.py",
+               "skills/kicad/scripts/cross_analysis.py", "skills/emc/scripts/analyze_emc.py"]
 
 Delta = tuple  # (path, kind, base, cand)
 
@@ -423,6 +445,109 @@ def cmd_tags(args) -> int:
     return _ratchet(sites, TAG_BASELINE, args.update_baseline, ("file", "callee", "line"))
 
 
+def install_smoke(product_root: Path, optional_skill: str | None, workdir: Path) -> list[str]:
+    """Copy core skills (+ one optional skill) into workdir/plugin and run every CLI --help
+    (and --schema for envelope CLIs) with cwd = an unrelated empty directory."""
+    plugin = workdir / "plugin" / "skills"
+    plugin.mkdir(parents=True)
+    skills = ["kicad", "datasheets"] + ([optional_skill] if optional_skill else [])
+    for sk in skills:
+        shutil.copytree(product_root / "skills" / sk, plugin / sk,
+                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    cwd = workdir / "elsewhere"
+    cwd.mkdir()
+    env = dict(os.environ)
+    env.pop("PYTHONPATH", None)
+    failures = []
+    clis = [c for sk in skills for c in SKILL_CLIS.get(sk, [])]
+    for rel in clis:
+        script = workdir / "plugin" / rel
+        proc = subprocess.run([sys.executable, str(script), "--help"], cwd=cwd, env=env,
+                              capture_output=True, text=True, timeout=120)
+        if proc.returncode != 0:
+            failures.append(f"{rel} --help exit {proc.returncode}: {(proc.stderr or '').strip().splitlines()[-1:]}")
+        if rel in SCHEMA_CLIS:
+            proc = subprocess.run([sys.executable, str(script), "--schema"], cwd=cwd, env=env,
+                                  capture_output=True, text=True, timeout=120)
+            if proc.returncode != 0 or not proc.stdout.lstrip().startswith("{"):
+                failures.append(f"{rel} --schema exit {proc.returncode}")
+    return failures
+
+
+def cmd_install_smoke(args) -> int:
+    targets = [args.skill] if args.skill else [None] + [sk for sk in SKILL_CLIS if sk not in ("kicad", "datasheets")]
+    rc = 0
+    for t in targets:
+        with tempfile.TemporaryDirectory() as td:
+            f = install_smoke(Path(args.product), t, Path(td))
+        label = t or "core"
+        print(f"install-smoke[{label}]: " + ("OK" if not f else "FAIL"))
+        for line in f:
+            print("   " + line)
+        rc |= 1 if f else 0
+    return rc
+
+
+def cmd_determinism(args) -> int:
+    volatile = load_policy(Path(args.policy))
+    with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
+        sa = run_snapshot(Path(args.fixtures), Path(a), Path(args.product), analyzer_env("random"))
+        sb = run_snapshot(Path(args.fixtures), Path(b), Path(args.product), analyzer_env("random"))
+        rep = compare_dirs(Path(a), Path(b), volatile)
+    bad = rep["total_deltas"] or rep["missing_in_candidate"] or rep["extra_in_candidate"] or sa["failures"] != sb["failures"]
+    print("determinism: " + ("FAIL" if bad else "OK") + f" ({rep['total_deltas']} delta(s))")
+    for rel, ds in rep["files"].items():
+        for d in ds[:10]:
+            print(f"   {rel} {d[1]} {d[0]}")
+    return 1 if bad else 0
+
+
+def _git_sha(root: Path) -> str:
+    try:
+        return subprocess.run(["git", "-C", str(root), "rev-parse", "--short", "HEAD"],
+                              capture_output=True, text=True).stdout.strip()
+    except OSError:
+        return "unknown"
+
+
+def cmd_quick(args) -> int:
+    checks = []
+
+    def timed(name, fn):
+        t0 = time.time()
+        rc = fn()
+        checks.append({"name": name, "status": "ok" if rc == 0 else "fail", "elapsed_s": round(time.time() - t0, 1)})
+        return rc
+
+    rc = 0
+    ns = argparse.Namespace(product=args.product, update_baseline=False)
+    rc |= timed("imports", lambda: cmd_imports(ns))
+    rc |= timed("tags", lambda: cmd_tags(ns))
+    rc |= timed("install-smoke", lambda: cmd_install_smoke(argparse.Namespace(product=args.product, skill=None)))
+    if args.fixtures:
+        rc |= timed("determinism", lambda: cmd_determinism(argparse.Namespace(
+            fixtures=args.fixtures, product=args.product, policy=args.policy)))
+        if args.baseline:
+            def _cmp():
+                with tempfile.TemporaryDirectory() as td:
+                    run_snapshot(Path(args.fixtures), Path(td), Path(args.product), analyzer_env("0"))
+                    rep = compare_dirs(Path(args.baseline), Path(td), load_policy(Path(args.policy)))
+                bad = rep["total_deltas"] or rep["missing_in_candidate"] or rep["extra_in_candidate"]
+                print("compare-vs-baseline: " + ("FAIL" if bad else "OK") + f" ({rep['total_deltas']} delta(s))")
+                for rel, ds in rep["files"].items():
+                    for d in ds[:10]:
+                        print(f"   {rel} {d[1]} {d[0]}: {d[2]!r} -> {d[3]!r}")
+                return 1 if bad else 0
+            rc |= timed("compare-vs-baseline", _cmp)
+    summary = {"product_sha": _git_sha(Path(args.product)), "policy": Path(args.policy).name, "checks": checks,
+               "status": "ok" if rc == 0 else "fail"}
+    if args.json:
+        print(json.dumps(summary, indent=1))
+    else:
+        print("quick: " + summary["status"].upper() + "  " + ", ".join(f"{c['name']}={c['status']}({c['elapsed_s']}s)" for c in checks))
+    return rc
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="check_refactor.py", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -444,6 +569,22 @@ def build_parser() -> argparse.ArgumentParser:
         q.add_argument("--product", default=str(REPO_ROOT))
         q.add_argument("--update-baseline", action="store_true")
         q.set_defaults(func=fn)
+    i = sub.add_parser("install-smoke")
+    i.add_argument("--product", default=str(REPO_ROOT))
+    i.add_argument("--skill")
+    i.set_defaults(func=cmd_install_smoke)
+    d = sub.add_parser("determinism")
+    d.add_argument("--fixtures", required=True)
+    d.add_argument("--product", default=str(REPO_ROOT))
+    d.add_argument("--policy", default=str(DEFAULT_POLICY))
+    d.set_defaults(func=cmd_determinism)
+    q = sub.add_parser("quick")
+    q.add_argument("--fixtures")
+    q.add_argument("--baseline")
+    q.add_argument("--product", default=str(REPO_ROOT))
+    q.add_argument("--policy", default=str(DEFAULT_POLICY))
+    q.add_argument("--json", action="store_true")
+    q.set_defaults(func=cmd_quick)
     return p
 
 
