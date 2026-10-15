@@ -104,8 +104,20 @@ def compare_dirs(base_dir: Path, cand_dir: Path, volatile: set[str]) -> dict:
 
 
 def cmd_compare(args) -> int:
-    volatile = load_policy(Path(args.policy))
-    report = compare_dirs(Path(args.base), Path(args.cand), volatile)
+    base, cand = Path(args.base), Path(args.cand)
+    for label, d in (("base", base), ("cand", cand)):
+        if not d.is_dir():
+            print(f"compare: {label} directory not found: {d}", file=sys.stderr)
+            return 2
+    if not any(base.rglob("*.json")):
+        print(f"compare: base directory contains no *.json: {base}", file=sys.stderr)
+        return 2
+    try:
+        volatile = load_policy(Path(args.policy))
+    except (OSError, ValueError, KeyError) as exc:
+        print(f"compare: cannot load policy {args.policy}: {exc}", file=sys.stderr)
+        return 2
+    report = compare_dirs(base, cand, volatile)
     bad = report["total_deltas"] or report["missing_in_candidate"] or report["extra_in_candidate"]
     if args.json:
         print(json.dumps(report, indent=1, default=str))
