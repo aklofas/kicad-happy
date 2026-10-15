@@ -169,18 +169,6 @@ def _is_high_speed_net(name: str) -> bool:
     return False
 
 
-def _extract_package(footprint_lib: str) -> Optional[str]:
-    """Extract MLCC package size from footprint library ID."""
-    if not footprint_lib:
-        return None
-    m = re.search(r'(\d{4})', footprint_lib)
-    if m:
-        pkg = m.group(1)
-        if pkg in ('0201', '0402', '0603', '0805', '1206', '1210', '1812', '2220'):
-            return pkg
-    return None
-
-
 def _safe_float(val, default=0.0):
     """Safely convert a value to float (handles None, str, etc.)."""
     if val is None:

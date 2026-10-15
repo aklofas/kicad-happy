@@ -754,12 +754,6 @@ def _spec_max(sv_list):
     return None
 
 
-def _spec_min(sv_list):
-    if isinstance(sv_list, list) and sv_list and isinstance(sv_list[0], dict):
-        return sv_list[0].get("min")
-    return None
-
-
 def _spec_max_voltage(sv_list):
     """First SpecValue max with a voltage (or unspecified) unit.
 

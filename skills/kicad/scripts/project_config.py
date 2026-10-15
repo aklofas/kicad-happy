@@ -148,8 +148,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
 # Deep merge
 # ---------------------------------------------------------------------------
 
-def _deep_merge(base: Dict[str, Any], override: Dict[str, Any],
-                _path: str = '') -> Dict[str, Any]:
+def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
     """Recursively merge *override* into *base*, returning a new dict.
 
     - Dict values are merged recursively (override keys win on conflict).
@@ -161,12 +160,11 @@ def _deep_merge(base: Dict[str, Any], override: Dict[str, Any],
     merged: Dict[str, Any] = {}
     all_keys = set(base) | set(override)
     for key in all_keys:
-        full_key = f'{_path}.{key}' if _path else key
         if key in override and key in base:
             bval = base[key]
             oval = override[key]
             if isinstance(bval, dict) and isinstance(oval, dict):
-                merged[key] = _deep_merge(bval, oval, full_key)
+                merged[key] = _deep_merge(bval, oval)
             elif isinstance(bval, list) and isinstance(oval, list) \
                     and key in _ADDITIVE_KEYS:
                 merged[key] = bval + oval

@@ -204,17 +204,6 @@ _ELEMENT14_KEYS = frozenset({
 })
 
 
-def _pick(props: dict, keys: frozenset) -> str:
-    """Return the first non-empty value whose normalized key is in *keys*.
-
-    Iterates the property dict in file order (not the alias frozenset) so
-    the pick is hash-seed independent when two aliases are present (KH-414).
-    """
-    return pick_field(props, keys)
-
-
-
-
 def extract_lib_symbols(root: list) -> dict:
     """Extract library symbol definitions (pin positions, types).
 
@@ -339,17 +328,6 @@ _ANGLE_TRANSFORM = {
     180: (-1, 0, 0, -1),
     270: (0, -1, 1, 0),
 }
-
-
-def apply_rotation(px: float, py: float, angle_deg: float) -> tuple[float, float]:
-    """Apply rotation to a pin offset. KiCad uses degrees, CCW positive."""
-    # EQ-065: x'=x·cosθ-y·sinθ, y'=x·sinθ+y·cosθ (2D rotation)
-    if angle_deg == 0:
-        return px, py
-    rad = math.radians(angle_deg)
-    cos_a = round(math.cos(rad), 10)
-    sin_a = round(math.sin(rad), 10)
-    return (px * cos_a - py * sin_a, px * sin_a + py * cos_a)
 
 
 def compute_pin_positions(component: dict, lib_symbols: dict) -> list[dict]:
@@ -562,11 +540,11 @@ def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
                         unit_num = si_entry["unit"]
         _props = get_properties(sym)
         mpn = pick_mpn(_props)
-        manufacturer = _pick(_props, _MANUFACTURER_KEYS)
-        digikey = _pick(_props, DIGIKEY_FIELD_ALIASES)
-        mouser = _pick(_props, _MOUSER_KEYS)
-        lcsc = _pick(_props, _LCSC_KEYS)
-        element14 = _pick(_props, _ELEMENT14_KEYS)
+        manufacturer = pick_field(_props, _MANUFACTURER_KEYS)
+        digikey = pick_field(_props, DIGIKEY_FIELD_ALIASES)
+        mouser = pick_field(_props, _MOUSER_KEYS)
+        lcsc = pick_field(_props, _LCSC_KEYS)
+        element14 = pick_field(_props, _ELEMENT14_KEYS)
 
         in_bom = get_value(sym, "in_bom") != "no"
         dnp = get_value(sym, "dnp") == "yes"
