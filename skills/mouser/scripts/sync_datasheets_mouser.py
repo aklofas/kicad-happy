@@ -50,7 +50,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from fetch_datasheet_mouser import (
     download_pdf,
-    normalize_url,
     scrape_product_page,
     try_alternative_sources,
     verify_datasheet,

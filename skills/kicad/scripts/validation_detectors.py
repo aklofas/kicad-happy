@@ -11,10 +11,8 @@ returns a list of rich finding dicts via finding_schema.make_finding(
 
 from __future__ import annotations
 
-import re
-
 from kicad_types import AnalysisContext
-from kicad_utils import parse_value, parse_voltage_from_net_name
+from kicad_utils import parse_voltage_from_net_name
 
 try:
     import os as _os, sys as _sys
@@ -33,7 +31,6 @@ from detector_helpers import (
     get_components_by_type, get_unique_ics, index_two_pin_components,
     match_ic_keywords,
 )
-from signal_detectors import _get_net_components
 from finding_schema import make_finding, make_provenance
 from lookup_helpers import get_facts, has_data, best
 

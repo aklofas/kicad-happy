@@ -17,14 +17,14 @@ Zero external dependencies beyond Python 3.8+ stdlib.
 import math
 import os
 import re
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional
 
 from emc_formulas import (
-    lambda_over_20, wavelength_in_pcb, bandwidth_from_rise_time,
+    lambda_over_20,
     knee_frequency, switching_harmonics_in_band, trapezoidal_corner_frequencies,
-    trapezoidal_harmonic_amplitude, dm_radiation_dbuv_m, dm_max_loop_area_m2,
+    trapezoidal_harmonic_amplitude, dm_radiation_dbuv_m,
     cm_radiation_dbuv_m, get_emission_limit, board_cavity_resonances,
-    harmonic_spectrum, cap_self_resonant_freq, estimate_esl, estimate_esr,
+    estimate_esl, estimate_esr,
     interplane_capacitance_pf_per_cm2, propagation_delay_ps_per_mm,
     pdn_target_impedance, pdn_impedance_sweep, find_anti_resonances, polygon_area,
     cap_value_for_srf, round_to_e12,

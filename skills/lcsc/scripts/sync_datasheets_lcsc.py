@@ -47,7 +47,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from fetch_datasheet_lcsc import (
     download_pdf,
-    normalize_url,
     try_alternative_sources,
     verify_datasheet,
     search_lcsc,

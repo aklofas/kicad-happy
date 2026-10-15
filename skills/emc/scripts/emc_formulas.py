@@ -565,7 +565,7 @@ def cap_value_for_srf(target_srf_hz: float, esl_h: float) -> float:
 
 
 # E12 standard capacitor values — imported from shared kicad_utils
-from kicad_utils import E12_DECADE as _E12_DECADE, snap_to_e_series
+from kicad_utils import snap_to_e_series
 
 
 def round_to_e12(value: float) -> float:

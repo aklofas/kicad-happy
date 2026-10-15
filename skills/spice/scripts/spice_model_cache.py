@@ -25,8 +25,6 @@ The model resolution cascade:
 """
 
 import json
-import os
-import re
 from pathlib import Path
 
 from spice_part_library import lookup_part_specs

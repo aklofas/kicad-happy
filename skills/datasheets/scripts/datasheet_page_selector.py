@@ -19,7 +19,6 @@ Usage:
     print(selection.confidence)  # "toc_found" | "keyword_scored" | "fallback"
 """
 
-import os
 import re
 import shutil
 import subprocess

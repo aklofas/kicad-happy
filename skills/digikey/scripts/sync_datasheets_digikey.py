@@ -41,7 +41,7 @@ from pathlib import Path
 
 # Import download functions from sibling script
 sys.path.insert(0, str(Path(__file__).parent))
-from fetch_datasheet_digikey import download_pdf, normalize_url, try_alternative_sources, verify_datasheet
+from fetch_datasheet_digikey import download_pdf, try_alternative_sources, verify_datasheet
 
 # ---------------------------------------------------------------------------
 # MPN filtering — distinguish real manufacturer part numbers from generic values

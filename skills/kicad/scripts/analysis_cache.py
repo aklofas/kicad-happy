@@ -19,7 +19,7 @@ import os
 import shutil
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 

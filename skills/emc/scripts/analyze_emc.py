@@ -603,7 +603,6 @@ def main():
     # Analysis cache integration
     if args.analysis_dir:
         import tempfile
-        from pathlib import Path
         # analysis_cache lives in skills/kicad/scripts/ — already on sys.path
         from analysis_cache import (hash_source_file, should_create_new_run,
                                     create_run, overwrite_current,

@@ -19,8 +19,6 @@ Expected behavior (v2.0 KH-337 fix):
 Exit code 0 = pass, 1 = fail (any exception or wrong return shape).
 """
 
-import json
-import os
 import shutil
 import sys
 import tempfile

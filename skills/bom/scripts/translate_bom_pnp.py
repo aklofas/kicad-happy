@@ -20,7 +20,6 @@ import csv
 import json
 import sys
 from pathlib import Path
-from typing import Iterator
 
 
 # --- Header field synonyms (loose-match dictionaries) -----------------------

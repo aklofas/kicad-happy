@@ -10,14 +10,11 @@ Auto-detection tries ngspice → LTspice → Xyce. Override with --simulator
 flag or SPICE_SIMULATOR environment variable.
 """
 
-import json
-import math
 import os
 import re
 import shutil
 import subprocess
 import sys
-from pathlib import Path
 
 
 # ---------------------------------------------------------------------------

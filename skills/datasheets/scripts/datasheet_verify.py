@@ -12,7 +12,6 @@ import json
 import os
 import re
 import sys
-from pathlib import Path
 
 # Allow imports from same directory
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

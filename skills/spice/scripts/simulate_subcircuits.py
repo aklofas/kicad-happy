@@ -25,8 +25,6 @@ Requires: ngspice (install: apt install ngspice / brew install ngspice)
 import argparse
 import json
 import os
-import shutil
-import subprocess
 import sys
 import tempfile
 import time

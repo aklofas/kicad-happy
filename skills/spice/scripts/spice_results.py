@@ -6,9 +6,6 @@ This module parses those files and produces a structured report with
 pass/warn/fail/skip status for each simulation.
 """
 
-import math
-import re
-
 
 def parse_output_file(filepath):
     """Parse an ngspice echo output file into a dict of key=value pairs.

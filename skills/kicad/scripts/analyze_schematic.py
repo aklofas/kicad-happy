@@ -10058,7 +10058,7 @@ def main():
 
     if args.analysis_dir:
         import tempfile
-        from analysis_cache import (ensure_analysis_dir, hash_source_file,
+        from analysis_cache import (hash_source_file,
                                      should_create_new_run, create_run,
                                      overwrite_current, CANONICAL_OUTPUTS,
                                      resolve_analysis_dir)

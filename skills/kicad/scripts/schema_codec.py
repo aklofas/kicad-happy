@@ -25,7 +25,6 @@ Rules:
 """
 from __future__ import annotations
 
-import dataclasses
 import json
 import sys
 import types
