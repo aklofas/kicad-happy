@@ -15,6 +15,7 @@ Stdlib only. Exit 0 = pass, 1 = findings, 2 = usage/setup error.
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import os
 import subprocess
@@ -24,6 +25,10 @@ from pathlib import Path
 TOOLS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = TOOLS_DIR.parent
 DEFAULT_POLICY = TOOLS_DIR / "volatile_leaves_v1.json"
+LAYER_RULES = TOOLS_DIR / "layer_rules.json"
+IMPORT_BASELINE = TOOLS_DIR / "import_baseline.json"
+TAG_BASELINE = TOOLS_DIR / "tag_baseline.json"
+TAG_KEYS = ("detector", "rule_id", "schema_era")
 
 Delta = tuple  # (path, kind, base, cand)
 
@@ -260,6 +265,134 @@ def cmd_snapshot(args) -> int:
     return 1 if stats["failures"] else 0
 
 
+def _py_files(root: Path):
+    for p in sorted((root / "skills").rglob("*.py")):
+        if "__pycache__" not in p.parts:
+            yield p
+
+
+def _skill_of(rel: str) -> str | None:
+    parts = rel.split("/")
+    return parts[1] if len(parts) > 2 and parts[0] == "skills" else None
+
+
+def scan_imports(root: Path) -> list[dict]:
+    edges = []
+    for p in _py_files(root):
+        rel = p.relative_to(root).as_posix()
+        try:
+            tree = ast.parse(p.read_text(encoding="utf-8"))
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for a in node.names:
+                    edges.append({"file": rel, "module": a.name.split(".")[0], "line": node.lineno})
+            elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+                edges.append({"file": rel, "module": node.module.split(".")[0], "line": node.lineno})
+    return edges
+
+
+def _module_index(root: Path) -> dict[str, str]:
+    """bare module/package name -> owning skill (first match wins, sorted for determinism)."""
+    idx: dict[str, str] = {}
+    for p in _py_files(root):
+        rel = p.relative_to(root).as_posix()
+        skill = _skill_of(rel)
+        name = p.parent.name if p.name == "__init__.py" else p.stem
+        idx.setdefault(name, skill)
+    return idx
+
+
+def classify_edges(edges: list[dict], rules: dict, root: Path) -> list[dict]:
+    idx = _module_index(root)
+    stdlib = set(sys.stdlib_module_names)
+    core = set(rules["core_skills"])
+    stdlib_only = tuple(rules["stdlib_only_packages"])
+    clis = set(rules["cli_modules"])
+    out = []
+    for e in edges:
+        mod, src = e["module"], e["file"]
+        if mod in stdlib or mod == "__future__":
+            continue
+        src_skill = _skill_of(src)
+        src_dir = (root / src).parent
+        if (src_dir / f"{mod}.py").is_file() or (src_dir / mod / "__init__.py").is_file():
+            target_skill = src_skill  # resolves beside the importing file: same skill
+        else:
+            target_skill = idx.get(mod)
+        if src.startswith(stdlib_only):
+            if mod != "kicad_core" and (target_skill is not None or mod not in stdlib):
+                out.append({**e, "rule": "core-package-stdlib-only"})
+                continue
+        if mod in clis and Path(src).stem != mod:
+            out.append({**e, "rule": "no-cli-import"})
+            continue
+        if target_skill is None:
+            continue  # third-party or unknown: not a layering question
+        if src_skill not in core and target_skill not in core and target_skill != src_skill:
+            out.append({**e, "rule": "optional-to-optional"})
+    return out
+
+
+def scan_tags(root: Path) -> list[dict]:
+    sites = []
+    for p in _py_files(root):
+        rel = p.relative_to(root).as_posix()
+        try:
+            tree = ast.parse(p.read_text(encoding="utf-8"))
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            fn = node.func
+            name = fn.id if isinstance(fn, ast.Name) else fn.attr if isinstance(fn, ast.Attribute) else None
+            if not name or not (name in ("make_finding", "_make_finding") or name.startswith("_make_")):
+                continue
+            kws = {k.arg: k.value for k in node.keywords if k.arg}
+            missing = [k for k in TAG_KEYS if k not in kws]
+            nonliteral = [k for k in TAG_KEYS if k in kws and not (isinstance(kws[k], ast.Constant) and isinstance(kws[k].value, str))]
+            if missing or nonliteral:
+                sites.append({"file": rel, "line": node.lineno, "callee": name, "missing": missing, "nonliteral": nonliteral})
+    return sites
+
+
+def _ratchet(current: list[dict], baseline_path: Path, update: bool, key_fields: tuple[str, ...]) -> int:
+    def key(d): return tuple(d[k] for k in key_fields)
+    baseline = json.loads(baseline_path.read_text(encoding="utf-8")) if baseline_path.exists() else []
+    base_keys = {key(d) for d in baseline}
+    new = [d for d in current if key(d) not in base_keys]
+    gone = len(base_keys - {key(d) for d in current})
+    if new and update and not baseline_path.exists():
+        new = []  # first generation of a baseline
+    for d in new:
+        print(f"NEW {d['file']}:{d['line']} {d.get('rule') or d['callee']} {d.get('module','')} "
+              f"{'missing=' + ','.join(d['missing']) if d.get('missing') else ''} "
+              f"{'nonliteral=' + ','.join(d['nonliteral']) if d.get('nonliteral') else ''}".rstrip())
+    if new:
+        print(f"{baseline_path.name}: FAIL ({len(new)} new, baseline {len(base_keys)})")
+        return 1
+    if update:
+        baseline_path.write_text(json.dumps(current, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+        print(f"{baseline_path.name}: updated ({len(current)} entries, {gone} retired)")
+    else:
+        print(f"{baseline_path.name}: OK ({len(current)} known, {gone} retired since baseline)")
+    return 0
+
+
+def cmd_imports(args) -> int:
+    rules = json.loads(LAYER_RULES.read_text(encoding="utf-8"))
+    root = Path(args.product)
+    v = classify_edges(scan_imports(root), rules, root)
+    return _ratchet(v, IMPORT_BASELINE, args.update_baseline, ("file", "module", "rule"))
+
+
+def cmd_tags(args) -> int:
+    sites = scan_tags(Path(args.product))
+    return _ratchet(sites, TAG_BASELINE, args.update_baseline, ("file", "callee", "line"))
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="check_refactor.py", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -276,6 +409,11 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--product", default=str(REPO_ROOT))
     s.add_argument("--seed", default="0", help="PYTHONHASHSEED value, or 'random'")
     s.set_defaults(func=cmd_snapshot)
+    for name, fn in (("imports", cmd_imports), ("tags", cmd_tags)):
+        q = sub.add_parser(name)
+        q.add_argument("--product", default=str(REPO_ROOT))
+        q.add_argument("--update-baseline", action="store_true")
+        q.set_defaults(func=fn)
     return p
 
 

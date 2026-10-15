@@ -205,5 +205,67 @@ class DiscoverFixtures(unittest.TestCase):
                                      ("sch", "p1/a.kicad_sch"), ("sch", "p2/b.kicad_sch")])
 
 
+class ImportRules(unittest.TestCase):
+    def _tree(self, td):
+        root = Path(td)
+        for rel, body in {
+            "skills/kicad/scripts/kicad_utils.py": "import os\n",
+            "skills/kicad/scripts/kicad_core/__init__.py": "",
+            "skills/kicad/scripts/kicad_core/fields.py": "import re\nfrom kicad_core import values\n",
+            "skills/kicad/scripts/kicad_core/bad.py": "import kicad_utils\n",
+            "skills/emc/scripts/emc_rules.py": "from kicad_utils import parse_value\n",
+            "skills/emc/scripts/emc_spice.py": "from spice_simulator import NgspiceBackend\n",
+            "skills/spice/scripts/spice_simulator.py": "import json\n",
+            "skills/bom/scripts/bom_manager.py": "import analyze_schematic\n",
+        }.items():
+            p = root / rel; p.parent.mkdir(parents=True, exist_ok=True); p.write_text(body, encoding="utf-8")
+        return root
+
+    def test_classifies_three_rule_kinds(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = self._tree(td)
+            rules = json.loads((cr.TOOLS_DIR / "layer_rules.json").read_text(encoding="utf-8"))
+            v = cr.classify_edges(cr.scan_imports(root), rules, root)
+            got = sorted((x["file"], x["rule"]) for x in v)
+            self.assertEqual(got, [
+                ("skills/bom/scripts/bom_manager.py", "no-cli-import"),
+                ("skills/emc/scripts/emc_spice.py", "optional-to-optional"),
+                ("skills/kicad/scripts/kicad_core/bad.py", "core-package-stdlib-only"),
+            ])
+
+    def test_same_directory_module_is_same_skill(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            for rel, body in {
+                "skills/aaa/scripts/helper.py": "import os\n",
+                "skills/aaa/scripts/a_main.py": "import helper\n",
+                "skills/bbb/scripts/helper.py": "import os\n",
+                "skills/bbb/scripts/b_main.py": "import helper\n",
+            }.items():
+                p = root / rel; p.parent.mkdir(parents=True, exist_ok=True); p.write_text(body, encoding="utf-8")
+            rules = json.loads((cr.TOOLS_DIR / "layer_rules.json").read_text(encoding="utf-8"))
+            self.assertEqual(cr.classify_edges(cr.scan_imports(root), rules, root), [])
+
+
+class TagScan(unittest.TestCase):
+    def test_flags_missing_and_nonliteral(self):
+        import textwrap
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "skills" / "kicad" / "scripts" / "x.py"; p.parent.mkdir(parents=True)
+            p.write_text(textwrap.dedent('''
+                def f():
+                    make_finding(detector="d", rule_id="R-001", category="c", summary="s", description="x", schema_era="v1.4")
+                    make_finding(detector=Det.X, rule_id="R-002", category="c", summary="s", description="x")
+                    _make_ex_001("a")
+                    helper_make("not a finding factory")
+            '''), encoding="utf-8")
+            sites = cr.scan_tags(Path(td))
+            self.assertEqual(len(sites), 2)
+            self.assertEqual(sites[0]["nonliteral"], ["detector"])
+            self.assertEqual(sites[0]["missing"], ["schema_era"])
+            self.assertEqual(sites[1]["callee"], "_make_ex_001")
+            self.assertEqual(sites[1]["missing"], ["detector", "rule_id", "schema_era"])
+
+
 if __name__ == "__main__":
     unittest.main()

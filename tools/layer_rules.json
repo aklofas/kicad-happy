@@ -1,0 +1,12 @@
+{
+  "core_skills": ["kicad", "datasheets"],
+  "stdlib_only_packages": ["skills/kicad/scripts/kicad_core"],
+  "cli_modules": ["analyze_schematic", "analyze_pcb", "analyze_gerbers", "analyze_thermal",
+                  "analyze_emc", "cross_analysis", "diff_analysis", "what_if", "lifecycle_audit",
+                  "simulate_subcircuits", "bom_manager"],
+  "rules": [
+    {"id": "optional-to-optional", "description": "an optional skill may import the core only"},
+    {"id": "core-package-stdlib-only", "description": "kicad_core imports stdlib and kicad_core only"},
+    {"id": "no-cli-import", "description": "no module imports a CLI module"}
+  ]
+}

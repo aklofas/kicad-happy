@@ -1,0 +1,959 @@
+[
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 392,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 448,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 485,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 546,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 1404,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 1595,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 1670,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 1769,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 1945,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 2081,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 2746,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 3962,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 415,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 504,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 521,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 592,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 638,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 899,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 970,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 1165,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 1179,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 1323,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 1468,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 1510,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 1861,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 2189,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 2250,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 2446,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 2525,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 2617,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 2765,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 2844,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 2966,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 3277,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 3488,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 3720,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 3788,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 3980,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 4433,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 607,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 757,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 1055,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 1248,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 2313,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 2432,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 2863,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 3005,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 3111,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 3530,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 1543,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 3022,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 3170,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "line": 3560,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/analyze_schematic.py",
+  "line": 9889,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/analyze_schematic.py",
+  "line": 7176,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/analyze_schematic.py",
+  "line": 7243,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/analyze_schematic.py",
+  "line": 7309,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/analyze_schematic.py",
+  "line": 8814,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": [
+   "rule_id"
+  ]
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/analyze_schematic.py",
+  "line": 8832,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/analyze_schematic.py",
+  "line": 7199,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/analyze_schematic.py",
+  "line": 7257,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/analyze_schematic.py",
+  "line": 7339,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/cross_analysis.py",
+  "line": 423,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/cross_analysis.py",
+  "line": 437,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/cross_analysis.py",
+  "line": 572,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/cross_analysis.py",
+  "line": 787,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/cross_analysis.py",
+  "line": 847,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/cross_analysis.py",
+  "line": 874,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/cross_analysis.py",
+  "line": 325,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/cross_analysis.py",
+  "line": 376,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/cross_analysis.py",
+  "line": 466,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/cross_analysis.py",
+  "line": 715,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/cross_analysis.py",
+  "line": 1001,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/cross_analysis.py",
+  "line": 252,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/cross_analysis.py",
+  "line": 655,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/cross_analysis.py",
+  "line": 619,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/domain_detectors.py",
+  "line": 5972,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_ex_001",
+  "file": "skills/kicad/scripts/lookup_detectors.py",
+  "line": 637,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_ex_001",
+  "file": "skills/kicad/scripts/lookup_detectors.py",
+  "line": 648,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_ex_001",
+  "file": "skills/kicad/scripts/lookup_detectors.py",
+  "line": 662,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/signal_detectors.py",
+  "line": 3955,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": [
+   "detector"
+  ]
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/signal_detectors.py",
+  "line": 3998,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": [
+   "detector"
+  ]
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/validation_detectors.py",
+  "line": 750,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/validation_detectors.py",
+  "line": 765,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/validation_detectors.py",
+  "line": 881,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/validation_detectors.py",
+  "line": 1072,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/validation_detectors.py",
+  "line": 835,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/validation_detectors.py",
+  "line": 934,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/validation_detectors.py",
+  "line": 1023,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/validation_detectors.py",
+  "line": 1060,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/validation_detectors.py",
+  "line": 806,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/validation_detectors.py",
+  "line": 783,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": []
+ },
+ {
+  "callee": "_make_label",
+  "file": "skills/spice/scripts/simulate_subcircuits.py",
+  "line": 240,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": []
+ }
+]
