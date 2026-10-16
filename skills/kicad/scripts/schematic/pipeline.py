@@ -176,6 +176,7 @@ from lookup_detectors import (
     detect_missing_required_components,
 )
 from schematic.presentation import assemble_legacy_result, assemble_result
+from finding_schema import assign_finding_ids
 
 
 def _resolve_lookup_paths(sch_path: str | Path,
@@ -1327,3 +1328,191 @@ def analyze_schematic(path: str, project_root: str | None = None,
                            format_newer_note=format_newer_note,
                            generator_version=generator_version,
                            file_version=file_version)
+
+
+def finalize_for_cli(result: dict, config: dict, *, schematic_path: str, lifecycle: bool,
+                     stage: str | None, audience: str | None) -> None:
+    """Phase 5: command-specific annotation; mutates *result*.
+
+    Project config summary, design intent + CERT-001 gating, power_rails config, lifecycle
+    audit / LC-007, datasheet verification, stage/audience filters, summary + trust_summary
+    recompute, finding_id assignment. Body verbatim from analyze_schematic.py::main; the only
+    seams are args.* -> parameters and one extra '..' on the datasheets path (this file is one
+    directory deeper).
+    """
+    # Attach project config summary to output for downstream consumers
+    project = config.get("project", {})
+    if project:
+        result["project_config"] = project
+
+    # Resolve design intent for downstream consumers
+    try:
+        from project_config import resolve_design_intent
+        sch_data_for_intent = {
+            'components': result.get('components', []),
+            'title_block': result.get('title_block', {}),
+        }
+        intent = resolve_design_intent(config,
+                                        schematic_data=sch_data_for_intent)
+        result['design_intent'] = intent
+
+        # Gate CERT-001 blanket certification suggestions on target_market.
+        # For hobby projects, "EU EMC compliance required" and the fallback
+        # FCC Part 15 Subpart B fire as noise on every board.  Keep specific
+        # triggers (RF, wireless, battery, USB, ethernet, HV) — those
+        # represent real circuit hazards regardless of market.
+        target_market = (intent or {}).get('target_market', 'hobby')
+        if target_market == 'hobby':
+            _blanket_cert_prefixes = (
+                'FCC Part 15 Subpart B',
+                'CISPR 32 / CE EMC Directive',
+            )
+            result['findings'] = [
+                f for f in result.get('findings', [])
+                if not (isinstance(f, dict)
+                        and f.get('rule_id') == 'CERT-001'
+                        and any(str(f.get('standard', '')).startswith(p)
+                                for p in _blanket_cert_prefixes))
+            ]
+    except ImportError:
+        pass
+
+    # Apply power_rails config (ignore/flag/voltage_overrides)
+    try:
+        from project_config import apply_power_rails_config
+        stats = result.get('statistics', {})
+        rv = result.get('rail_voltages', {})
+        pr = stats.get('power_rails', [])
+        if rv or pr:
+            filtered_rv, filtered_pr, flagged = apply_power_rails_config(
+                rv, pr, config)
+            result['rail_voltages'] = filtered_rv
+            stats['power_rails'] = filtered_pr
+            if flagged:
+                result['flagged_rails'] = flagged
+    except (ImportError, Exception):
+        pass
+
+    # rc.2 4.3 — LC-007 lifecycle-skipped INFO finding. Emit explicitly so
+    # reviewers see "lifecycle audit not run" in the findings list rather
+    # than silently missing it. Fires in three cases:
+    #   1. --lifecycle flag was not passed (most common — high frequency)
+    #   2. --lifecycle passed but no MPNs in BOM
+    #   3. --lifecycle passed but the audit raised an exception
+    _lifecycle_skip_reason: str | None = None
+    if not lifecycle:
+        _lifecycle_skip_reason = (
+            "--lifecycle flag not passed (run with --lifecycle to query "
+            "DigiKey / Mouser / LCSC / element14 for obsolescence + "
+            "operating-temp coverage; requires network + API keys)"
+        )
+    else:
+        try:
+            from lifecycle_audit import audit_bom
+            project_dir = str(Path(schematic_path).parent)
+            lifecycle = audit_bom(result, project_dir=project_dir)
+            if lifecycle and lifecycle.get("components_checked", 0) > 0:
+                result["lifecycle_audit"] = lifecycle
+                print(f"Lifecycle: {lifecycle.get('lifecycle_summary', {})}", file=sys.stderr)
+            else:
+                _lifecycle_skip_reason = (
+                    "no components with MPNs to check — populate MPN "
+                    "fields on BOM parts and re-run with --lifecycle"
+                )
+                print("Lifecycle: no components with MPNs to check", file=sys.stderr)
+        except ImportError:
+            _lifecycle_skip_reason = "lifecycle_audit.py not found"
+            print("Warning: lifecycle_audit.py not found", file=sys.stderr)
+        except (OSError, ValueError, TypeError, KeyError) as e:
+            _lifecycle_skip_reason = f"audit raised {type(e).__name__}: {e}"
+            print(f"Warning: lifecycle audit failed: {e}", file=sys.stderr)
+
+    if _lifecycle_skip_reason is not None:
+        if 'findings' not in result:
+            result['findings'] = []
+        result['findings'].append({
+            "detector": "audit_lifecycle_skipped",
+            "rule_id": "LC-007",
+            "severity": "info",
+            "confidence": "deterministic",
+            "evidence_source": "topology",
+            "category": "lifecycle",
+            "summary": f"Lifecycle audit not run — {_lifecycle_skip_reason.split(' (')[0]}",
+            "description": (
+                f"Component lifecycle / obsolescence audit was not run "
+                f"this session. Reason: {_lifecycle_skip_reason}. The "
+                f"review cannot report active / NRND / EOL / obsolete "
+                f"status, last-time-buy windows, or operating-temperature "
+                f"coverage for any BOM part. Treat the lifecycle section "
+                f"of the report as 'not performed'."
+            ),
+            "components": [],
+            "nets": [],
+            "pins": [],
+            "recommendation": (
+                "Run with --lifecycle (requires DIGIKEY_CLIENT_ID / "
+                "MOUSER_SEARCH_API_KEY / ELEMENT14_API_KEY env vars; "
+                "LCSC needs no auth) to populate this section. If "
+                "intentionally skipped, note it explicitly in the report's "
+                "'Not Performed' section."
+            ),
+            "report_context": {
+                "section": "Component Lifecycle",
+                "impact": "No obsolescence / temperature-grade evidence available.",
+                "standard_ref": "",
+            },
+        })
+
+    # Datasheet verification — cross-check extracted datasheet data against schematic
+    try:
+        # Import datasheet_verify from the datasheets skill
+        import os as _os, sys as _sys
+        _ds_scripts = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
+                                    '..', '..', '..', 'datasheets', 'scripts')
+        if _os.path.isdir(_ds_scripts):
+            _sys.path.insert(0, _os.path.abspath(_ds_scripts))
+        from datasheet_verify import run_datasheet_verification
+        project_dir = str(Path(schematic_path).parent)
+        ds_verify = run_datasheet_verification(result, project_dir=project_dir)
+        if ds_verify.get("findings") or ds_verify.get("summary", {}).get("ics_with_extractions", 0) > 0:
+            result["datasheet_verification"] = ds_verify
+    except ImportError:
+        pass
+    except (OSError, ValueError, TypeError, KeyError, AttributeError) as e:
+        # AttributeError added for rc.3 — defense against future None-leaks
+        # in datasheet_verify.py (see _load_extraction normalization).
+        result["datasheet_verification"] = {
+            "findings": [],
+            "summary": {"error": f"{type(e).__name__}: {e}"},
+        }
+
+    from output_filters import apply_output_filters
+    apply_output_filters(result, stage, audience)
+
+    # Recompute summary + trust_summary from the final findings list — post-
+    # filters (CERT-001 hobby gating, power_rails config, lifecycle audit,
+    # datasheet verification, output_filters stage filter) can mutate
+    # findings[] after the initial summary was built. Keep the envelope
+    # consistent with what actually ships in findings[].
+    _final_findings = result.get('findings', []) if isinstance(result.get('findings'), list) else []
+    _sev_counts = {"error": 0, "warning": 0, "info": 0}
+    for _f in _final_findings:
+        if not isinstance(_f, dict):
+            continue
+        _s = str(_f.get('severity', 'info')).lower()
+        if _s in _sev_counts:
+            _sev_counts[_s] += 1
+        else:
+            _sev_counts['info'] += 1
+    if isinstance(result.get('summary'), dict):
+        result['summary']['total_findings'] = len(_final_findings)
+        result['summary']['by_severity'] = _sev_counts
+    try:
+        from finding_schema import compute_trust_summary
+        result['trust_summary'] = compute_trust_summary(_final_findings, bom=result.get('bom'))
+    except (ImportError, Exception):
+        pass
+
+    # Guarantee every finding carries a stable finding_id (Layer 2 merge keys
+    # on it). Runs after all filtering/appends; before any output branch.
+    assign_finding_ids(result.get('findings', []), 'schematic')

@@ -27,6 +27,7 @@ from schematic.pipeline import (
     analyze_signal_paths,
     parse_legacy_schematic,
     analyze_legacy_schematic,
+    finalize_for_cli,
     ANALYZER_SOURCE,
     MAX_TESTED_FORMAT_VERSION,
     _resolve_lookup_paths,
@@ -155,7 +156,6 @@ from schematic.bom_stats import (
     generate_bom,
     compute_statistics,
 )
-from finding_schema import assign_finding_ids
 from envelopes.schematic import SchematicEnvelope
 from schema_codec import emit_schema
 from inputs_builder import build_inputs, build_compat
@@ -214,8 +214,8 @@ def main():
     # Load project config (for project settings — suppressions applied to
     # EMC/thermal findings, not schematic warnings which lack rule_ids)
     from project_config import resolve_config
-    resolved = resolve_config(args.config, str(Path(args.schematic).parent))
-    config = resolved.effective
+    resolved_cfg = resolve_config(args.config, str(Path(args.schematic).parent))
+    config = resolved_cfg.effective
 
     # Resolve canonical analysis_dir ONCE — used for both AnalysisContext
     # (Phase 4d-active) and capability_mode_ref (Phase 4 §3.3). This must
@@ -235,7 +235,7 @@ def main():
 
     # Build inputs provenance block (Track 1.3).
     _sch_path = Path(args.schematic)
-    _cfg_path = Path(resolved.hash_input) if resolved.hash_input else None
+    _cfg_path = Path(resolved_cfg.hash_input) if resolved_cfg.hash_input else None
     inputs = build_inputs(
         source_files=[_sch_path],
         config_path=_cfg_path,
@@ -253,182 +253,8 @@ def main():
     result["compat"] = compat
     result.pop("file", None)
 
-    # Attach project config summary to output for downstream consumers
-    project = config.get("project", {})
-    if project:
-        result["project_config"] = project
-
-    # Resolve design intent for downstream consumers
-    try:
-        from project_config import resolve_design_intent
-        sch_data_for_intent = {
-            'components': result.get('components', []),
-            'title_block': result.get('title_block', {}),
-        }
-        intent = resolve_design_intent(config,
-                                        schematic_data=sch_data_for_intent)
-        result['design_intent'] = intent
-
-        # Gate CERT-001 blanket certification suggestions on target_market.
-        # For hobby projects, "EU EMC compliance required" and the fallback
-        # FCC Part 15 Subpart B fire as noise on every board.  Keep specific
-        # triggers (RF, wireless, battery, USB, ethernet, HV) — those
-        # represent real circuit hazards regardless of market.
-        target_market = (intent or {}).get('target_market', 'hobby')
-        if target_market == 'hobby':
-            _blanket_cert_prefixes = (
-                'FCC Part 15 Subpart B',
-                'CISPR 32 / CE EMC Directive',
-            )
-            result['findings'] = [
-                f for f in result.get('findings', [])
-                if not (isinstance(f, dict)
-                        and f.get('rule_id') == 'CERT-001'
-                        and any(str(f.get('standard', '')).startswith(p)
-                                for p in _blanket_cert_prefixes))
-            ]
-    except ImportError:
-        pass
-
-    # Apply power_rails config (ignore/flag/voltage_overrides)
-    try:
-        from project_config import apply_power_rails_config
-        stats = result.get('statistics', {})
-        rv = result.get('rail_voltages', {})
-        pr = stats.get('power_rails', [])
-        if rv or pr:
-            filtered_rv, filtered_pr, flagged = apply_power_rails_config(
-                rv, pr, config)
-            result['rail_voltages'] = filtered_rv
-            stats['power_rails'] = filtered_pr
-            if flagged:
-                result['flagged_rails'] = flagged
-    except (ImportError, Exception):
-        pass
-
-    # rc.2 4.3 — LC-007 lifecycle-skipped INFO finding. Emit explicitly so
-    # reviewers see "lifecycle audit not run" in the findings list rather
-    # than silently missing it. Fires in three cases:
-    #   1. --lifecycle flag was not passed (most common — high frequency)
-    #   2. --lifecycle passed but no MPNs in BOM
-    #   3. --lifecycle passed but the audit raised an exception
-    _lifecycle_skip_reason: str | None = None
-    if not args.lifecycle:
-        _lifecycle_skip_reason = (
-            "--lifecycle flag not passed (run with --lifecycle to query "
-            "DigiKey / Mouser / LCSC / element14 for obsolescence + "
-            "operating-temp coverage; requires network + API keys)"
-        )
-    else:
-        try:
-            from lifecycle_audit import audit_bom
-            project_dir = str(Path(args.schematic).parent)
-            lifecycle = audit_bom(result, project_dir=project_dir)
-            if lifecycle and lifecycle.get("components_checked", 0) > 0:
-                result["lifecycle_audit"] = lifecycle
-                print(f"Lifecycle: {lifecycle.get('lifecycle_summary', {})}", file=sys.stderr)
-            else:
-                _lifecycle_skip_reason = (
-                    "no components with MPNs to check — populate MPN "
-                    "fields on BOM parts and re-run with --lifecycle"
-                )
-                print("Lifecycle: no components with MPNs to check", file=sys.stderr)
-        except ImportError:
-            _lifecycle_skip_reason = "lifecycle_audit.py not found"
-            print("Warning: lifecycle_audit.py not found", file=sys.stderr)
-        except (OSError, ValueError, TypeError, KeyError) as e:
-            _lifecycle_skip_reason = f"audit raised {type(e).__name__}: {e}"
-            print(f"Warning: lifecycle audit failed: {e}", file=sys.stderr)
-
-    if _lifecycle_skip_reason is not None:
-        if 'findings' not in result:
-            result['findings'] = []
-        result['findings'].append({
-            "detector": "audit_lifecycle_skipped",
-            "rule_id": "LC-007",
-            "severity": "info",
-            "confidence": "deterministic",
-            "evidence_source": "topology",
-            "category": "lifecycle",
-            "summary": f"Lifecycle audit not run — {_lifecycle_skip_reason.split(' (')[0]}",
-            "description": (
-                f"Component lifecycle / obsolescence audit was not run "
-                f"this session. Reason: {_lifecycle_skip_reason}. The "
-                f"review cannot report active / NRND / EOL / obsolete "
-                f"status, last-time-buy windows, or operating-temperature "
-                f"coverage for any BOM part. Treat the lifecycle section "
-                f"of the report as 'not performed'."
-            ),
-            "components": [],
-            "nets": [],
-            "pins": [],
-            "recommendation": (
-                "Run with --lifecycle (requires DIGIKEY_CLIENT_ID / "
-                "MOUSER_SEARCH_API_KEY / ELEMENT14_API_KEY env vars; "
-                "LCSC needs no auth) to populate this section. If "
-                "intentionally skipped, note it explicitly in the report's "
-                "'Not Performed' section."
-            ),
-            "report_context": {
-                "section": "Component Lifecycle",
-                "impact": "No obsolescence / temperature-grade evidence available.",
-                "standard_ref": "",
-            },
-        })
-
-    # Datasheet verification — cross-check extracted datasheet data against schematic
-    try:
-        # Import datasheet_verify from the datasheets skill
-        import os as _os, sys as _sys
-        _ds_scripts = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
-                                    '..', '..', 'datasheets', 'scripts')
-        if _os.path.isdir(_ds_scripts):
-            _sys.path.insert(0, _os.path.abspath(_ds_scripts))
-        from datasheet_verify import run_datasheet_verification
-        project_dir = str(Path(args.schematic).parent)
-        ds_verify = run_datasheet_verification(result, project_dir=project_dir)
-        if ds_verify.get("findings") or ds_verify.get("summary", {}).get("ics_with_extractions", 0) > 0:
-            result["datasheet_verification"] = ds_verify
-    except ImportError:
-        pass
-    except (OSError, ValueError, TypeError, KeyError, AttributeError) as e:
-        # AttributeError added for rc.3 — defense against future None-leaks
-        # in datasheet_verify.py (see _load_extraction normalization).
-        result["datasheet_verification"] = {
-            "findings": [],
-            "summary": {"error": f"{type(e).__name__}: {e}"},
-        }
-
-    from output_filters import apply_output_filters
-    apply_output_filters(result, args.stage, args.audience)
-
-    # Recompute summary + trust_summary from the final findings list — post-
-    # filters (CERT-001 hobby gating, power_rails config, lifecycle audit,
-    # datasheet verification, output_filters stage filter) can mutate
-    # findings[] after the initial summary was built. Keep the envelope
-    # consistent with what actually ships in findings[].
-    _final_findings = result.get('findings', []) if isinstance(result.get('findings'), list) else []
-    _sev_counts = {"error": 0, "warning": 0, "info": 0}
-    for _f in _final_findings:
-        if not isinstance(_f, dict):
-            continue
-        _s = str(_f.get('severity', 'info')).lower()
-        if _s in _sev_counts:
-            _sev_counts[_s] += 1
-        else:
-            _sev_counts['info'] += 1
-    if isinstance(result.get('summary'), dict):
-        result['summary']['total_findings'] = len(_final_findings)
-        result['summary']['by_severity'] = _sev_counts
-    try:
-        from finding_schema import compute_trust_summary
-        result['trust_summary'] = compute_trust_summary(_final_findings, bom=result.get('bom'))
-    except (ImportError, Exception):
-        pass
-
-    # Guarantee every finding carries a stable finding_id (Layer 2 merge keys
-    # on it). Runs after all filtering/appends; before any output branch.
-    assign_finding_ids(result.get('findings', []), 'schematic')
+    finalize_for_cli(result, config, schematic_path=args.schematic, lifecycle=args.lifecycle,
+                     stage=args.stage, audience=args.audience)
 
     if args.text:
         from output_filters import format_text
@@ -443,62 +269,10 @@ def main():
     output = json.dumps(result, indent=indent, default=str)
 
     if args.analysis_dir:
-        import tempfile
-        from analysis_cache import (hash_source_file,
-                                     should_create_new_run, create_run,
-                                     overwrite_current, CANONICAL_OUTPUTS,
-                                     resolve_analysis_dir)
-
-        project_dir = str(Path(args.schematic).parent)
-        analysis_dir = resolve_analysis_dir(args.analysis_dir)
-
-        # Find .kicad_pro for manifest
-        pro_file = ""
-        try:
-            for f in os.listdir(project_dir):
-                if f.endswith(".kicad_pro"):
-                    pro_file = f
-                    break
-        except OSError:
-            pass
-
-        # Ensure the target directory exists with manifest
-        os.makedirs(analysis_dir, exist_ok=True)
-        from analysis_cache import MANIFEST_FILENAME, save_manifest, _empty_manifest, GITIGNORE_CONTENT
-        manifest_path = os.path.join(analysis_dir, MANIFEST_FILENAME)
-        if not os.path.isfile(manifest_path):
-            manifest = _empty_manifest()
-            manifest['project'] = pro_file
-            save_manifest(analysis_dir, manifest)
-        # Respect track_in_git config — skip .gitignore if user wants git tracking
-        _track_in_git = False
-        try:
-            _track_in_git = config.get('analysis', {}).get('track_in_git', False)
-        except (NameError, AttributeError):
-            pass
-        gitignore_path = os.path.join(analysis_dir, '.gitignore')
-        if not _track_in_git and not os.path.isfile(gitignore_path):
-            with open(gitignore_path, 'w') as f:
-                f.write(GITIGNORE_CONTENT)
-
-        source_hashes = {os.path.basename(args.schematic): hash_source_file(args.schematic)}
-
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            out_file = os.path.join(tmp_dir, CANONICAL_OUTPUTS.get("schematic", "schematic.json"))
-            Path(out_file).write_text(output)
-
-            if should_create_new_run(analysis_dir, tmp_dir):
-                run_id = create_run(
-                    analysis_dir=analysis_dir,
-                    outputs_dir=tmp_dir,
-                    source_hashes=source_hashes,
-                    scripts={"schematic": f"analyze_schematic.py {os.path.basename(args.schematic)}"},
-                )
-                print(f"Analysis cached: {os.path.join(analysis_dir, run_id, 'schematic.json')}", file=sys.stderr)
-            else:
-                overwrite_current(analysis_dir, tmp_dir, source_hashes=source_hashes)
-                print(f"Analysis cache updated (current run)", file=sys.stderr)
-
+        from output_io import write_primary_run
+        write_primary_run(args.analysis_dir, output, analyzer="schematic", source_path=args.schematic,
+                          script_name="analyze_schematic.py",
+                          track_in_git=bool(config.get("analysis", {}).get("track_in_git", False)))
     elif args.output:
         Path(args.output).write_text(output)
         print(f"Written to {args.output}", file=sys.stderr)

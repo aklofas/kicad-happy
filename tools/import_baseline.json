@@ -49,8 +49,8 @@
   "rule": "optional-to-optional"
  },
  {
-  "file": "skills/kicad/scripts/analyze_schematic.py",
-  "line": 9947,
+  "file": "skills/kicad/scripts/schematic/pipeline.py",
+  "line": 1411,
   "module": "lifecycle_audit",
   "ordinal": 0,
   "rule": "no-cli-import"
