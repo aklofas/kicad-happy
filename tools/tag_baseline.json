@@ -3,7 +3,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_return_path_coverage",
-  "line": 392,
+  "line": 377,
   "missing": [
    "detector",
    "rule_id",
@@ -16,7 +16,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_return_path_coverage",
-  "line": 415,
+  "line": 400,
   "missing": [
    "detector",
    "rule_id",
@@ -29,7 +29,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_return_path_coverage",
-  "line": 448,
+  "line": 433,
   "missing": [
    "detector",
    "rule_id",
@@ -42,7 +42,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_ground_zone_coverage",
-  "line": 485,
+  "line": 470,
   "missing": [
    "detector",
    "rule_id",
@@ -55,7 +55,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_ground_zone_coverage",
-  "line": 504,
+  "line": 489,
   "missing": [
    "detector",
    "rule_id",
@@ -68,7 +68,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_ground_zone_coverage",
-  "line": 521,
+  "line": 506,
   "missing": [
    "detector",
    "rule_id",
@@ -81,7 +81,20 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_ground_domains",
-  "line": 546,
+  "line": 531,
+  "missing": [
+   "detector",
+   "rule_id",
+   "schema_era"
+  ],
+  "nonliteral": [],
+  "ordinal": 0
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_decoupling_distance",
+  "line": 577,
   "missing": [
    "detector",
    "rule_id",
@@ -101,26 +114,13 @@
    "schema_era"
   ],
   "nonliteral": [],
-  "ordinal": 0
- },
- {
-  "callee": "_make_finding",
-  "file": "skills/emc/scripts/emc_rules.py",
-  "function": "check_decoupling_distance",
-  "line": 607,
-  "missing": [
-   "detector",
-   "rule_id",
-   "schema_era"
-  ],
-  "nonliteral": [],
   "ordinal": 1
  },
  {
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_missing_decoupling",
-  "line": 638,
+  "line": 623,
   "missing": [
    "detector",
    "rule_id",
@@ -133,7 +133,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_decoupling_via_distance",
-  "line": 757,
+  "line": 742,
   "missing": [
    "detector",
    "rule_id",
@@ -146,7 +146,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_connector_filtering",
-  "line": 899,
+  "line": 884,
   "missing": [
    "detector",
    "rule_id",
@@ -159,7 +159,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_connector_ground_pins",
-  "line": 970,
+  "line": 955,
   "missing": [
    "detector",
    "rule_id",
@@ -172,7 +172,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_switching_harmonics",
-  "line": 1055,
+  "line": 1040,
   "missing": [
    "detector",
    "rule_id",
@@ -185,7 +185,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_clock_routing",
-  "line": 1165,
+  "line": 1150,
   "missing": [
    "detector",
    "rule_id",
@@ -198,7 +198,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_clock_routing",
-  "line": 1179,
+  "line": 1164,
   "missing": [
    "detector",
    "rule_id",
@@ -211,7 +211,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_clock_near_connector",
-  "line": 1248,
+  "line": 1233,
   "missing": [
    "detector",
    "rule_id",
@@ -224,7 +224,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_crystal_guard_ring",
-  "line": 1323,
+  "line": 1308,
   "missing": [
    "detector",
    "rule_id",
@@ -237,7 +237,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_via_stitching",
-  "line": 1404,
+  "line": 1389,
   "missing": [
    "detector",
    "rule_id",
@@ -250,7 +250,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_stackup",
-  "line": 1468,
+  "line": 1453,
   "missing": [
    "detector",
    "rule_id",
@@ -263,7 +263,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_stackup",
-  "line": 1510,
+  "line": 1495,
   "missing": [
    "detector",
    "rule_id",
@@ -276,7 +276,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_stackup",
-  "line": 1543,
+  "line": 1528,
   "missing": [
    "detector",
    "rule_id",
@@ -289,7 +289,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "estimate_cavity_resonances",
-  "line": 1595,
+  "line": 1580,
   "missing": [
    "detector",
    "rule_id",
@@ -302,7 +302,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "estimate_switching_emissions",
-  "line": 1670,
+  "line": 1655,
   "missing": [
    "detector",
    "rule_id",
@@ -315,7 +315,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_switching_node_area",
-  "line": 1769,
+  "line": 1754,
   "missing": [
    "detector",
    "rule_id",
@@ -328,7 +328,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_input_cap_loop_area",
-  "line": 1861,
+  "line": 1846,
   "missing": [
    "detector",
    "rule_id",
@@ -341,7 +341,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_input_cap_loop_area",
-  "line": 1945,
+  "line": 1930,
   "missing": [
    "detector",
    "rule_id",
@@ -354,7 +354,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_diff_pair_skew",
-  "line": 2081,
+  "line": 2066,
   "missing": [
    "detector",
    "rule_id",
@@ -367,7 +367,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_diff_pair_cm_radiation",
-  "line": 2189,
+  "line": 2174,
   "missing": [
    "detector",
    "rule_id",
@@ -380,7 +380,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_diff_pair_reference_plane",
-  "line": 2250,
+  "line": 2235,
   "missing": [
    "detector",
    "rule_id",
@@ -393,7 +393,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_diff_pair_layer",
-  "line": 2313,
+  "line": 2298,
   "missing": [
    "detector",
    "rule_id",
@@ -406,7 +406,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_trace_near_board_edge",
-  "line": 2432,
+  "line": 2417,
   "missing": [
    "detector",
    "rule_id",
@@ -419,7 +419,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_trace_near_board_edge",
-  "line": 2446,
+  "line": 2431,
   "missing": [
    "detector",
    "rule_id",
@@ -432,7 +432,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_ground_pour_ring",
-  "line": 2525,
+  "line": 2510,
   "missing": [
    "detector",
    "rule_id",
@@ -445,7 +445,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_connector_area_stitching",
-  "line": 2617,
+  "line": 2602,
   "missing": [
    "detector",
    "rule_id",
@@ -458,7 +458,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_crosstalk_3h_rule",
-  "line": 2746,
+  "line": 2731,
   "missing": [
    "detector",
    "rule_id",
@@ -471,7 +471,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_crosstalk_3h_rule",
-  "line": 2765,
+  "line": 2750,
   "missing": [
    "detector",
    "rule_id",
@@ -484,7 +484,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_emi_filter_effectiveness",
-  "line": 2844,
+  "line": 2829,
   "missing": [
    "detector",
    "rule_id",
@@ -497,7 +497,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_emi_filter_effectiveness",
-  "line": 2863,
+  "line": 2848,
   "missing": [
    "detector",
    "rule_id",
@@ -510,7 +510,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_esd_protection_path",
-  "line": 2966,
+  "line": 2951,
   "missing": [
    "detector",
    "rule_id",
@@ -523,7 +523,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_esd_protection_path",
-  "line": 3005,
+  "line": 2990,
   "missing": [
    "detector",
    "rule_id",
@@ -536,7 +536,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_esd_protection_path",
-  "line": 3022,
+  "line": 3007,
   "missing": [
    "detector",
    "rule_id",
@@ -549,7 +549,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_thermal_emc",
-  "line": 3111,
+  "line": 3096,
   "missing": [
    "detector",
    "rule_id",
@@ -562,7 +562,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_thermal_emc",
-  "line": 3170,
+  "line": 3155,
   "missing": [
    "detector",
    "rule_id",
@@ -575,7 +575,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_shielding_advisory",
-  "line": 3277,
+  "line": 3262,
   "missing": [
    "detector",
    "rule_id",
@@ -588,7 +588,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_pdn_impedance",
-  "line": 3488,
+  "line": 3473,
   "missing": [
    "detector",
    "rule_id",
@@ -601,7 +601,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_pdn_impedance",
-  "line": 3530,
+  "line": 3515,
   "missing": [
    "detector",
    "rule_id",
@@ -614,7 +614,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_pdn_impedance",
-  "line": 3560,
+  "line": 3545,
   "missing": [
    "detector",
    "rule_id",
@@ -627,7 +627,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_pdn_distributed",
-  "line": 3720,
+  "line": 3705,
   "missing": [
    "detector",
    "rule_id",
@@ -640,7 +640,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_pdn_distributed",
-  "line": 3788,
+  "line": 3773,
   "missing": [
    "detector",
    "rule_id",
@@ -653,7 +653,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_layer_transition_stitching",
-  "line": 3962,
+  "line": 3947,
   "missing": [
    "detector",
    "rule_id",
@@ -666,7 +666,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_layer_transition_stitching",
-  "line": 3980,
+  "line": 3965,
   "missing": [
    "detector",
    "rule_id",
@@ -679,7 +679,7 @@
   "callee": "_make_finding",
   "file": "skills/emc/scripts/emc_rules.py",
   "function": "check_inductor_leakage",
-  "line": 4433,
+  "line": 4418,
   "missing": [
    "detector",
    "rule_id",
@@ -691,98 +691,8 @@
  {
   "callee": "make_finding",
   "file": "skills/kicad/scripts/analyze_schematic.py",
-  "function": "analyze_voltage_derating",
-  "line": 7176,
-  "missing": [
-   "schema_era"
-  ],
-  "nonliteral": [],
-  "ordinal": 0
- },
- {
-  "callee": "make_finding",
-  "file": "skills/kicad/scripts/analyze_schematic.py",
-  "function": "analyze_voltage_derating",
-  "line": 7199,
-  "missing": [
-   "schema_era"
-  ],
-  "nonliteral": [],
-  "ordinal": 1
- },
- {
-  "callee": "make_finding",
-  "file": "skills/kicad/scripts/analyze_schematic.py",
-  "function": "analyze_voltage_derating",
-  "line": 7243,
-  "missing": [
-   "schema_era"
-  ],
-  "nonliteral": [],
-  "ordinal": 2
- },
- {
-  "callee": "make_finding",
-  "file": "skills/kicad/scripts/analyze_schematic.py",
-  "function": "analyze_voltage_derating",
-  "line": 7257,
-  "missing": [
-   "schema_era"
-  ],
-  "nonliteral": [],
-  "ordinal": 3
- },
- {
-  "callee": "make_finding",
-  "file": "skills/kicad/scripts/analyze_schematic.py",
-  "function": "analyze_voltage_derating",
-  "line": 7309,
-  "missing": [
-   "schema_era"
-  ],
-  "nonliteral": [],
-  "ordinal": 4
- },
- {
-  "callee": "make_finding",
-  "file": "skills/kicad/scripts/analyze_schematic.py",
-  "function": "analyze_voltage_derating",
-  "line": 7339,
-  "missing": [
-   "schema_era"
-  ],
-  "nonliteral": [],
-  "ordinal": 5
- },
- {
-  "callee": "make_finding",
-  "file": "skills/kicad/scripts/analyze_schematic.py",
-  "function": "analyze_usb_compliance",
-  "line": 8814,
-  "missing": [
-   "schema_era"
-  ],
-  "nonliteral": [
-   "rule_id"
-  ],
-  "ordinal": 0
- },
- {
-  "callee": "make_finding",
-  "file": "skills/kicad/scripts/analyze_schematic.py",
-  "function": "analyze_usb_compliance",
-  "line": 8832,
-  "missing": [
-   "schema_era"
-  ],
-  "nonliteral": [],
-  "ordinal": 1
- },
- {
-  "callee": "make_finding",
-  "file": "skills/kicad/scripts/analyze_schematic.py",
   "function": "analyze_schematic",
-  "line": 9625,
+  "line": 1463,
   "missing": [
    "schema_era"
   ],
@@ -947,7 +857,7 @@
   "callee": "make_finding",
   "file": "skills/kicad/scripts/domain_detectors.py",
   "function": "detect_i2c_address_conflicts",
-  "line": 5972,
+  "line": 5974,
   "missing": [
    "schema_era"
   ],
@@ -956,9 +866,99 @@
  },
  {
   "callee": "make_finding",
+  "file": "skills/kicad/scripts/schematic/system_analyses.py",
+  "function": "analyze_voltage_derating",
+  "line": 827,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": [],
+  "ordinal": 0
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/schematic/system_analyses.py",
+  "function": "analyze_voltage_derating",
+  "line": 850,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": [],
+  "ordinal": 1
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/schematic/system_analyses.py",
+  "function": "analyze_voltage_derating",
+  "line": 894,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": [],
+  "ordinal": 2
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/schematic/system_analyses.py",
+  "function": "analyze_voltage_derating",
+  "line": 908,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": [],
+  "ordinal": 3
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/schematic/system_analyses.py",
+  "function": "analyze_voltage_derating",
+  "line": 960,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": [],
+  "ordinal": 4
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/schematic/system_analyses.py",
+  "function": "analyze_voltage_derating",
+  "line": 990,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": [],
+  "ordinal": 5
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/schematic/system_analyses.py",
+  "function": "analyze_usb_compliance",
+  "line": 2465,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": [
+   "rule_id"
+  ],
+  "ordinal": 0
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/schematic/system_analyses.py",
+  "function": "analyze_usb_compliance",
+  "line": 2483,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": [],
+  "ordinal": 1
+ },
+ {
+  "callee": "make_finding",
   "file": "skills/kicad/scripts/signal_detectors.py",
   "function": "detect_shorted_two_pin_components",
-  "line": 3955,
+  "line": 3957,
   "missing": [
    "schema_era"
   ],
@@ -971,7 +971,7 @@
   "callee": "make_finding",
   "file": "skills/kicad/scripts/signal_detectors.py",
   "function": "detect_shorted_two_pin_components",
-  "line": 3998,
+  "line": 4000,
   "missing": [
    "schema_era"
   ],
@@ -984,7 +984,7 @@
   "callee": "make_finding",
   "file": "skills/kicad/scripts/validation_detectors.py",
   "function": "validate_i2c_bus",
-  "line": 750,
+  "line": 740,
   "missing": [
    "schema_era"
   ],
@@ -995,7 +995,7 @@
   "callee": "make_finding",
   "file": "skills/kicad/scripts/validation_detectors.py",
   "function": "validate_i2c_bus",
-  "line": 765,
+  "line": 755,
   "missing": [
    "schema_era"
   ],
@@ -1006,7 +1006,7 @@
   "callee": "make_finding",
   "file": "skills/kicad/scripts/validation_detectors.py",
   "function": "validate_i2c_bus",
-  "line": 783,
+  "line": 773,
   "missing": [
    "schema_era"
   ],
@@ -1017,7 +1017,7 @@
   "callee": "make_finding",
   "file": "skills/kicad/scripts/validation_detectors.py",
   "function": "validate_i2c_bus",
-  "line": 806,
+  "line": 796,
   "missing": [
    "schema_era"
   ],
@@ -1028,7 +1028,7 @@
   "callee": "make_finding",
   "file": "skills/kicad/scripts/validation_detectors.py",
   "function": "validate_spi_bus",
-  "line": 835,
+  "line": 825,
   "missing": [
    "schema_era"
   ],
@@ -1039,7 +1039,7 @@
   "callee": "make_finding",
   "file": "skills/kicad/scripts/validation_detectors.py",
   "function": "validate_can_bus",
-  "line": 881,
+  "line": 871,
   "missing": [
    "schema_era"
   ],
@@ -1050,7 +1050,7 @@
   "callee": "make_finding",
   "file": "skills/kicad/scripts/validation_detectors.py",
   "function": "validate_usb_bus",
-  "line": 934,
+  "line": 924,
   "missing": [
    "schema_era"
   ],
@@ -1061,7 +1061,7 @@
   "callee": "make_finding",
   "file": "skills/kicad/scripts/validation_detectors.py",
   "function": "validate_power_sequencing",
-  "line": 1023,
+  "line": 1013,
   "missing": [
    "schema_era"
   ],
@@ -1072,7 +1072,7 @@
   "callee": "make_finding",
   "file": "skills/kicad/scripts/validation_detectors.py",
   "function": "validate_power_sequencing",
-  "line": 1060,
+  "line": 1050,
   "missing": [
    "schema_era"
   ],
@@ -1083,7 +1083,7 @@
   "callee": "make_finding",
   "file": "skills/kicad/scripts/validation_detectors.py",
   "function": "validate_power_sequencing",
-  "line": 1072,
+  "line": 1062,
   "missing": [
    "schema_era"
   ],
