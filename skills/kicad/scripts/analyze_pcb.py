@@ -130,14 +130,9 @@ def main():
 
     # Load project config (for project settings — suppressions applied to
     # EMC/thermal findings, not PCB warnings which lack rule_ids)
-    try:
-        from project_config import load_config_from_path, load_config
-        if args.config:
-            config = load_config_from_path(args.config)
-        else:
-            config = load_config(str(Path(args.pcb).parent))
-    except ImportError:
-        config = {"version": 1, "project": {}, "suppressions": []}
+    from project_config import resolve_config
+    resolved_cfg = resolve_config(args.config, str(Path(args.pcb).parent))
+    config = resolved_cfg.effective
 
     # Build inputs provenance block (Track 1.3).
     # Resolve canonical analysis_dir ONCE (used for capability_mode_ref).
@@ -154,11 +149,7 @@ def main():
     _capability_mode_ref = get_capability_mode_ref(_analysis_dir)
 
     _pcb_path = Path(args.pcb)
-    if args.config:
-        _cfg_path = Path(args.config) if Path(args.config).is_file() else None
-    else:
-        _default_cfg = _pcb_path.parent / ".kicad-happy.json"
-        _cfg_path = _default_cfg if _default_cfg.is_file() else None
+    _cfg_path = Path(resolved_cfg.hash_input) if resolved_cfg.hash_input else None
     inputs = build_inputs(
         source_files=[_pcb_path],
         config_path=_cfg_path,
@@ -214,55 +205,9 @@ def main():
     output = json.dumps(result, indent=indent, default=str)
 
     if args.analysis_dir:
-        import tempfile
-        from analysis_cache import (hash_source_file,
-                                     should_create_new_run, create_run,
-                                     overwrite_current, CANONICAL_OUTPUTS,
-                                     resolve_analysis_dir)
-
-        project_dir = str(Path(args.pcb).parent)
-        analysis_dir = resolve_analysis_dir(args.analysis_dir)
-
-        # Find .kicad_pro for manifest
-        pro_file = ""
-        try:
-            for f in os.listdir(project_dir):
-                if f.endswith(".kicad_pro"):
-                    pro_file = f
-                    break
-        except OSError:
-            pass
-
-        # Ensure the target directory exists with manifest
-        os.makedirs(analysis_dir, exist_ok=True)
-        from analysis_cache import MANIFEST_FILENAME, save_manifest, _empty_manifest, GITIGNORE_CONTENT
-        manifest_path = os.path.join(analysis_dir, MANIFEST_FILENAME)
-        if not os.path.isfile(manifest_path):
-            manifest = _empty_manifest()
-            manifest['project'] = pro_file
-            save_manifest(analysis_dir, manifest)
-        gitignore_path = os.path.join(analysis_dir, '.gitignore')
-        if not os.path.isfile(gitignore_path):
-            with open(gitignore_path, 'w') as f:
-                f.write(GITIGNORE_CONTENT)
-
-        source_hashes = {os.path.basename(args.pcb): hash_source_file(args.pcb)}
-
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            out_file = os.path.join(tmp_dir, CANONICAL_OUTPUTS.get("pcb", "pcb.json"))
-            Path(out_file).write_text(output)
-
-            if should_create_new_run(analysis_dir, tmp_dir):
-                run_id = create_run(
-                    analysis_dir=analysis_dir,
-                    outputs_dir=tmp_dir,
-                    source_hashes=source_hashes,
-                    scripts={"pcb": f"analyze_pcb.py {os.path.basename(args.pcb)}"},
-                )
-                print(f"Analysis cached: {os.path.join(analysis_dir, run_id, 'pcb.json')}", file=sys.stderr)
-            else:
-                overwrite_current(analysis_dir, tmp_dir, source_hashes=source_hashes)
-                print(f"Analysis cache updated (current run)", file=sys.stderr)
+        from output_io import write_primary_run
+        write_primary_run(args.analysis_dir, output, analyzer="pcb", source_path=args.pcb,
+                          script_name="analyze_pcb.py", track_in_git=False)
 
     elif args.output:
         Path(args.output).write_text(output)

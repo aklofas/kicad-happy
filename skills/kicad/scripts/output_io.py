@@ -13,7 +13,7 @@ import tempfile
 from pathlib import Path
 
 from analysis_cache import (GITIGNORE_CONTENT, MANIFEST_FILENAME, CANONICAL_OUTPUTS, _empty_manifest,
-                            create_run, hash_source_file, overwrite_current, resolve_analysis_dir,
+                            create_run, get_current_run, hash_source_file, overwrite_current, resolve_analysis_dir,
                             save_manifest, should_create_new_run)
 
 
@@ -63,3 +63,20 @@ def write_primary_run(analysis_dir_arg: str, output_text: str, *, analyzer: str,
         else:
             overwrite_current(analysis_dir, tmp_dir, source_hashes=source_hashes)
             print(f"Analysis cache updated (current run)", file=sys.stderr)
+
+
+def write_derived_output(analysis_dir_arg: str, output_text: str, *, analyzer: str) -> str:
+    """Overwrite one derived analyzer's canonical JSON in the CURRENT run; return the path written.
+
+    Derived analyzers (gerber, thermal, cross_analysis) never create a run and carry no source
+    hashes; when nothing is tracked yet the file lands at the analysis-dir root (today's fallback).
+    """
+    analysis_dir = resolve_analysis_dir(analysis_dir_arg)
+    filename = CANONICAL_OUTPUTS.get(analyzer, f"{analyzer}.json")
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        Path(os.path.join(tmp_dir, filename)).write_text(output_text, encoding='utf-8')
+        overwrite_current(analysis_dir, tmp_dir, source_hashes=None)
+    current = get_current_run(analysis_dir)
+    if current:
+        return os.path.join(current[0], filename)
+    return os.path.join(analysis_dir, filename)
