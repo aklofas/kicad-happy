@@ -28,7 +28,19 @@ Each skill has a `SKILL.md` with YAML frontmatter (name, description, triggers) 
 
 | File | LOC | Purpose |
 |------|-----|---------|
-| `kicad/scripts/analyze_schematic.py` | ~9,500 | S-expression parser + schematic analysis orchestrator |
+| `kicad/scripts/analyze_schematic.py` | ~280 | CLI + facade: argparse → `schematic.pipeline` → output; re-exports every pre-v3 name (retire round 9) |
+| `kicad/scripts/schematic/pipeline.py` | ~1,500 | The named analysis phases and the project-level orchestration (`analyze_schematic`, `run_analyses`, `finalize_for_cli`) |
+| `kicad/scripts/schematic/reader.py` | ~800 | `.kicad_sch` reader: symbols, pins, wires, labels, sheets → `SheetData` |
+| `kicad/scripts/schematic/legacy_reader.py` | ~790 | KiCad 5 `.sch` / `.lib` reader |
+| `kicad/scripts/schematic/hierarchy.py` | ~280 | Sheet traversal and top-level sheet merge |
+| `kicad/scripts/schematic/connectivity.py` | ~890 | `build_net_map`, bus pass, label output filter |
+| `kicad/scripts/schematic/ic_analysis.py` | ~520 | IC function classification, pinouts, subcircuits |
+| `kicad/scripts/schematic/net_analysis.py` | ~1,400 | Net classification, power domains, bus/protocol detection, diff pairs, design rules |
+| `kicad/scripts/schematic/audits.py` | ~1,350 | Annotation, label, PWR_FLAG, footprint, sourcing, DNP, symbol and coverage audits |
+| `kicad/scripts/schematic/system_analyses.py` | ~2,600 | PDN, sleep current, derating, power budget/sequencing, USB, inrush and other system-level analyses |
+| `kicad/scripts/schematic/bom_stats.py` | ~120 | `generate_bom`, `compute_statistics` |
+| `kicad/scripts/schematic/presentation.py` | ~500 | Result-dict assembly in the historical key order |
+| `kicad/scripts/output_io.py` | ~65 | Analysis-cache write path shared by the primary CLIs |
 | `kicad/scripts/signal_detectors.py` | ~4,400 | Core signal path detectors (regulators, filters, opamps, dividers, crystals, protection) |
 | `kicad/scripts/domain_detectors.py` | ~6,100 | Domain-specific detectors (Ethernet, USB-C, BMS, motor drive, sensors, audio, LEDs, etc.) |
 | `kicad/scripts/validation_detectors.py` | ~1,300 | Validation detectors (pull-ups, voltage mismatch, protocol buses, power sequencing, feedback stability) |
@@ -39,7 +51,7 @@ Each skill has a `SKILL.md` with YAML frontmatter (name, description, triggers) 
 | `kicad/scripts/finding_schema.py` | ~680 | Rich finding factory, `Det` constants, consumer helpers, trust_summary aggregation |
 | `kicad/scripts/output_filters.py` | ~470 | Stage/audience filtering for all analyzers |
 | `kicad/scripts/kicad_utils.py` | ~2,000 | Shared utilities (component classification, value parsing, net detection, switching frequencies) |
-| `kicad/scripts/kicad_types.py` | ~120 | `AnalysisContext` dataclass — shared state for all detectors |
+| `kicad/scripts/kicad_types.py` | ~120 | `AnalysisContext` + `build_analysis_context`, the single production construction point — shared state for all detectors |
 | `kicad/scripts/kicad_core/sexp.py` | ~230 | S-expression parser shared by schematic and PCB analyzers (`sexp_parser.py` is a facade until round 9) |
 | `kicad/scripts/analyzer_envelope.py` | ~300 | Typed envelope dataclasses (Finding, Assessment, TrustSummary, InputsBlock, CompatBlock) — single source of truth for analyzer output shape |
 | `emc/scripts/emc_rules.py` | ~4,250 | 44 EMC rule implementations |
@@ -59,17 +71,19 @@ Optional dependencies (`requests`, `playwright`, `pdftotext`) are only used for 
 
 ## How signal detectors work
 
-The analysis pipeline runs in three phases:
+The schematic pipeline (`schematic/pipeline.py`) runs in named phases:
 
-1. **Parse** — `analyze_schematic.py` reads the KiCad S-expression file, extracts components, nets, and pins, and builds an `AnalysisContext` object.
+1. **`detect_topologies`** — pure detectors in dependency order; each receives the `AnalysisContext` and returns records.
+2. **`reconcile_detections`** — mutates phase-1 records in place: `postfilter_vd_and_dedup`, `enrich_transistor_led_drivers`.
+3. **`run_domain_detectors`** — domain, validation and lookup detectors; the RS/PP audits share one `BridgeFacts`.
+4. **`assemble_signal_results`** — crystal/RC exclusion, the `signal_analysis` dict in its historical key order, certifications/observations, capacitor enrichment and derating.
+5. **`finalize_for_cli`** — command-specific annotation in the CLI.
 
-2. **Detect** — `analyze_signal_paths()` calls each detector function in order. Each detector receives the `AnalysisContext` (and sometimes prior detector results for cross-referencing) and returns a list of findings.
-
-3. **Report** — Results are assembled into JSON output or consumed by the agent to write a design review.
+At project level, `analyze_schematic` → `run_analyses` → `presentation.assemble_result` reads the sheets, builds the context, runs these phases plus the audits, and assembles the output.
 
 ### AnalysisContext
 
-Every detector receives an `AnalysisContext` (`kicad_types.py`) — a dataclass containing:
+Every detector receives an `AnalysisContext` (`kicad_types.py`); production code builds it with `kicad_types.build_analysis_context`. It is a dataclass containing:
 
 - `components` — list of all parsed components
 - `nets` — dict of net name to net info (pins, labels)
@@ -122,7 +136,7 @@ def detect_my_circuit(ctx: AnalysisContext, prior_results=None) -> list[dict]:
     return findings
 ```
 
-Then register the new `Det` constant in `finding_schema.py` and call the detector from `analyze_schematic.py`'s `analyze_signal_paths()`, where the detector call order is defined.
+Then register the new `Det` constant in `finding_schema.py` and call the detector from the phase function in `schematic/pipeline.py` that owns the call order (`detect_topologies` for topology detectors, `run_domain_detectors` for domain, validation and lookup detectors).
 
 ### Adding an EMC rule
 

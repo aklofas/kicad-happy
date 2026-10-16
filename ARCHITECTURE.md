@@ -34,6 +34,8 @@ A facade is code kept only so a named consumer keeps working. Each entry names t
 | `_core_path` helpers | `skills/{emc,spice,bom}/scripts/_core_path.py` | the skills themselves | permanent (not a facade; listed for discoverability) |
 | `AnalysisContext.__post_init__` fill-when-empty derivation | `skills/kicad/scripts/kicad_types.py` | harness: 26 direct `AnalysisContext(...)` constructions in 20 files + `tests/fixtures/_build_ctx.py` | harness builds contexts with `build_analysis_context` (round-3 relocation map) |
 | `signal_detectors._get_net_components` index-less branch | `skills/kicad/scripts/signal_detectors.py` | same harness contexts (no `nq`) | same |
+| `schematic.pipeline.parse_legacy_schematic` (alias of `analyze_legacy_schematic`) | `skills/kicad/scripts/schematic/pipeline.py` | none known in the harness inventory; user scripts (re-exported through `analyze_schematic`) | round 9 |
+| `analyze_schematic` module re-exports (115 names from `schematic.*` and `kicad_core.*`) | `skills/kicad/scripts/analyze_schematic.py` | harness (13 imports: `build_net_map`, `_detect_differential_pairs`, `validate_hierarchical_labels`, `detect_sub_sheet`, `audit_pwr_flags`, `audit_datasheet_coverage`, `audit_sourcing_gate`, `analyze_usb_compliance`, `analyze_sleep_current`, `analyze_power_budget`, `analyze_bus_topology`, `_estimate_rail_voltage`, and `import analyze_schematic as asch` attribute access); user scripts | round 9, after the harness imports `schematic.*` |
 
 `_core_path` anchors on `Path(__file__).resolve()`, so a symlinked skill directory resolves to its real parent before walking up to `skills/`; the previous ad hoc inserts used `os.path.abspath` (no symlink following). Byte-identical copies live in emc, spice and bom by design.
 
@@ -53,3 +55,21 @@ A facade is code kept only so a named consumer keeps working. Each entry names t
 | `netquery.py` | net helpers (`get_two_pin_nets`, `build_net_id_map`), `build_pin_to_net_map`, `build_ref_pins`, `BridgeFact`/`BridgeFacts`/`build_bridge_facts` | `model`, `values` |
 
 `kicad_core` imports stdlib and itself only (CI-enforced).
+
+## `skills/kicad/scripts/schematic/` ownership (round 4)
+
+| Module | Owns | Imports |
+|---|---|---|
+| `reader.py` | `.kicad_sch` symbols, pins, wires, labels, sheets → `SheetData` | `kicad_core` |
+| `legacy_reader.py` | KiCad 5 `.sch` / `.lib` reading, pin snapping | `kicad_core`, `reader` (field-key tuples) |
+| `hierarchy.py` | sheet traversal (`parse_all_sheets`), `top_level_sheets` merge | `kicad_core`, `reader` |
+| `connectivity.py` | `build_net_map`, bus pass (`BusGraph`, `expand_bus_name`, `match_ports`), label output filter | `kicad_core` |
+| `ic_analysis.py` | IC function classification, pinouts, subcircuits | `kicad_core`, `kicad_types`, `connectivity` |
+| `net_analysis.py` | net classification, power domains, bus/protocol detection, diff pairs, ERC-style checks, `analyze_design_rules` | `kicad_core`, `kicad_types` |
+| `audits.py` | annotation / label / PWR_FLAG / footprint / sourcing / DNP / symbol / coverage audits | `kicad_core`, `connectivity` |
+| `system_analyses.py` | PDN, sleep current, derating, protocol compliance, power budget/sequencing, BOM optimisation, test coverage, assembly, USB, inrush | `kicad_core`, `kicad_types`, `net_analysis`, `finding_schema` |
+| `bom_stats.py` | `generate_bom`, `compute_statistics` | `kicad_core` |
+| `pipeline.py` | the named phases (topologies → reconcile → domain detectors → signal assembly; project: read → context → analyses → assemble; `finalize_for_cli`) | everything above, the detector modules, `kicad_types`, `finding_schema` |
+| `presentation.py` | result-dict assembly in the historical key order; legacy result | `kicad_core`, `bom_stats`, `connectivity`, `finding_schema` |
+
+Mutation contract (D4): `reconcile_detections` rewrites phase-1 records in place; `assemble_signal_results` enriches capacitor entries in place; `assemble_result` adds `category`/`parsed_value`/`pin_nets` to components and pops `_unit_pins`; `finalize_for_cli` mutates the result (findings filtering, summary recompute). Nothing else mutates caller-owned lists.
