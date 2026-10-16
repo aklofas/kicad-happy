@@ -776,7 +776,7 @@ def analyze_voltage_derating(ctx: AnalysisContext, signal_analysis: dict,
                 idx_path = extracted_dir / "index.json"
             if idx_path.exists():
                 try:
-                    with open(idx_path) as f:
+                    with open(idx_path, encoding="utf-8") as f:
                         idx = json.load(f)
                     for k, v in idx.get("extractions", {}).items():
                         if k.upper() == sanitized.upper():
@@ -787,7 +787,7 @@ def analyze_voltage_derating(ctx: AnalysisContext, signal_analysis: dict,
             if not extract_path.exists():
                 return None
         try:
-            with open(extract_path) as f:
+            with open(extract_path, encoding="utf-8") as f:
                 return json.load(f).get("absolute_maximum_ratings")
         except (json.JSONDecodeError, OSError):
             return None

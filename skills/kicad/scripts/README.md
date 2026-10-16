@@ -179,7 +179,7 @@ python3 analyze_gerbers.py ./gerbers/ --compact          # Minified JSON
 
 ## analyze_schematic.py
 
-The largest and most complex script. The rest of this document focuses on its architecture and pitfalls.
+The CLI entry point. The analysis itself lives in the `schematic/` package; `analyze_schematic.py` parses arguments, runs the pipeline and writes the output. The rest of this document focuses on its architecture and pitfalls.
 
 ### Pipeline
 
@@ -187,29 +187,15 @@ The largest and most complex script. The rest of this document focuses on its ar
 .kicad_sch file(s)
     |
     v
-parse_single_sheet()          -- S-expression parsing, component/wire/label extraction
+schematic/pipeline.py          -- named phases: read sheets -> build AnalysisContext -> run analyses -> assemble
+    |  detect_topologies / reconcile_detections / run_domain_detectors / assemble_signal_results
+    |  build_net_map (schematic/connectivity.py): union-find nets, sheet-aware coordinates
     |
     v
-analyze_schematic()           -- Multi-sheet orchestration, instance remapping
-    |  Builds: all_components, all_wires, all_labels, all_junctions
-    |
+schematic/presentation.py      -- result dict in the historical key order; detections -> flat findings[]
+    |                             with rich envelopes (detector, rule_id, severity, confidence, recommendation)
     v
-build_net_map()               -- Union-find net building (sheet-aware coordinates)
-    |  Produces: nets dict {name -> {pins, labels, ...}}
-    |
-    v
-analyze_signal_paths()        -- Subcircuit detection (VD, RC, regulators, bridges, etc.)
-analyze_design_rules()        -- Bus detection, diff pairs, power domains, ERC
-analyze_ic_pinouts()          -- Per-IC pin connectivity summary
-compute_statistics()          -- Counts, BOM dedup
-    |
-    v
-Output harmonization           -- All detections → flat findings[] with rich envelopes
-                                  (detector, rule_id, severity, confidence, recommendation)
-                                  rail_voltages/net_classifications promoted to top level
-    |
-    v
-JSON output                    -- {analyzer_type, summary, findings[], components, nets, ...}
+output_io.write_primary_run    -- JSON to stdout, -o, or the --analysis-dir run folder
 ```
 
 ### Key Data Structures

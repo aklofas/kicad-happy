@@ -270,9 +270,11 @@ def main():
 
     if args.analysis_dir:
         from output_io import write_primary_run
+        _acfg = config.get("analysis")
+        track_in_git = bool(_acfg.get("track_in_git", False)) if isinstance(_acfg, dict) else False
         write_primary_run(args.analysis_dir, output, analyzer="schematic", source_path=args.schematic,
                           script_name="analyze_schematic.py",
-                          track_in_git=bool(config.get("analysis", {}).get("track_in_git", False)))
+                          track_in_git=track_in_git)
     elif args.output:
         Path(args.output).write_text(output)
         print(f"Written to {args.output}", file=sys.stderr)

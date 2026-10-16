@@ -22,6 +22,17 @@ class Facades(unittest.TestCase):
         for n in ("analyze_schematic", "analyze_signal_paths", "parse_legacy_schematic", "MAX_TESTED_FORMAT_VERSION"):
             self.assertIs(getattr(asch, n), getattr(pl, n), n)
 
+    def test_round4_additions_are_the_same_objects(self):
+        import analyze_schematic as asch
+        import schematic.connectivity as conn, schematic.pipeline as pl, schematic.hierarchy as hi
+        import kicad_core.netquery as nq
+        for mod, names in ((conn, ("BusGraph", "expand_bus_name", "match_ports")),
+                           (nq, ("build_pin_to_net_map",)),
+                           (pl, ("analyze_legacy_schematic", "finalize_for_cli")),
+                           (hi, ("merge_top_level_sheets",))):
+            for n in names:
+                self.assertIs(getattr(asch, n), getattr(mod, n), n)
+
     def test_led_driver_rename_keeps_emitted_string(self):
         import signal_detectors as sd, inspect
         self.assertIs(sd.detect_led_drivers, sd.enrich_transistor_led_drivers)

@@ -384,9 +384,31 @@ class Ratchet(unittest.TestCase):
             self.assertEqual(cr._ratchet(grown, p, True, (), key_fn=cr._tag_key, moved_from=("a.py",)), 1)
             self.assertEqual(cr._ratchet(moved, p, True, (), key_fn=cr._tag_key, moved_from=()), 1)
 
+    def test_moved_from_rejects_same_count_wrong_shape(self):
+        base = [{"file": "a.py", "function": "f", "callee": "make_finding", "ordinal": 0, "line": 1,
+                 "missing": ["schema_era"], "nonliteral": []}]
+        wrong = [{"file": "b.py", "function": "f", "callee": "make_finding", "ordinal": 0, "line": 9,
+                  "missing": ["rule_id"], "nonliteral": []}]
+        with tempfile.TemporaryDirectory() as d, contextlib.redirect_stdout(io.StringIO()):
+            p = Path(d) / "tag_baseline.json"
+            p.write_text(json.dumps(base), encoding="utf-8")
+            self.assertEqual(cr._ratchet(wrong, p, True, (), key_fn=cr._tag_key, moved_from=("a.py",)), 1)
+            self.assertEqual(json.loads(p.read_text()), base)
+
+    def test_moved_from_relocates_import_shape(self):
+        def edge(file, line):
+            return {"file": file, "line": line, "module": "analyze_schematic", "ordinal": 0, "rule": "no-cli-import"}
+        base = [edge("a.py", 3)]
+        with tempfile.TemporaryDirectory() as d, contextlib.redirect_stdout(io.StringIO()):
+            p = Path(d) / "import_baseline.json"
+            p.write_text(json.dumps(base), encoding="utf-8")
+            self.assertEqual(cr._ratchet([edge("b.py", 7)], p, True, (), key_fn=cr._import_key, moved_from=("a.py",)), 0)
+            self.assertEqual(json.loads(p.read_text())[0]["file"], "b.py")
+
     def test_moved_from_requires_update_baseline(self):
         r = subprocess.run([sys.executable, str(cr.__file__), "tags", "--moved-from", "x.py"], capture_output=True, text=True)
         self.assertEqual(r.returncode, 2)
+        self.assertIn("--moved-from requires --update-baseline", r.stderr)
 
     def _site(self, line):
         return {"file": "a.py", "line": line, "callee": "make_finding", "missing": ["schema_era"], "nonliteral": []}

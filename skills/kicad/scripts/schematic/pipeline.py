@@ -1,7 +1,7 @@
 """Schematic analysis pipeline (v3 round 4): the phases analyze_schematic.py ran implicitly,
 as named functions with their real prerequisites passed explicitly (spec §4.3, D4).
 
-Phase 1 detect_topologies      — pure detectors in dependency order (dividers, crystals and
+Phase 1 detect_topologies      — in-order detectors (dependency order; series dividers merged, integrated LDOs appended;
                                   opamps before RC filters; exclusion sets passed as arguments)
 Phase 2 reconcile_detections   — MUTATES phase-1 records: postfilter_vd_and_dedup rebinds the
                                   divider/feedback lists; enrich_transistor_led_drivers rewrites
