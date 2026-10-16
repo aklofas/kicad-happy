@@ -119,6 +119,7 @@ def read_board(path: str, *, state: PcbReaderState | None = None) -> BoardData:
 
     root = parse_file(path)
 
+    # module attribute on purpose: the harness patches pcb.reader.<name> (ARCHITECTURE.md facade register)
     layers = reader.extract_layers(root)
     setup = reader.extract_setup(root)
     net_names = reader.extract_nets(root)
@@ -191,7 +192,10 @@ class PcbAnalyses:
 def run_analyses(board: BoardData, *, include_trace_segments: bool, return_path_radius_mm: float,
                  gp001_debug: bool, resolved_power_rails: set[str] | None) -> PcbAnalyses:
     """Phases 2–3: today's call order, facts and checks interleaved; the checks-phase hoist is
-    round 7 (S3) and must be gated."""
+    round 7 (S3) and must be gated.
+
+    Passes the board's containers by reference; no analysis is known to mutate them (observed on
+    the fixture boards, not proven; round 7 proves it before hoisting the checks)."""
     path = board.path
     root = board.root
     layers = board.layers
@@ -439,7 +443,7 @@ def finalize_for_cli(result: dict, config: dict, *, pcb_path: str, analysis_dir_
         debug_path = os.path.join(debug_dir, "gp001_debug.json")
         try:
             os.makedirs(debug_dir, exist_ok=True)
-            with open(debug_path, "w") as f:
+            with open(debug_path, "w", encoding="utf-8") as f:
                 json.dump({
                     "description": "GP-001 return-path per-sample diagnostics",
                     "radius_mm": return_path_radius_mm,

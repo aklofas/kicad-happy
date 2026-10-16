@@ -1,8 +1,9 @@
 """Output mechanics shared by the kicad-owned CLIs (v3 round 4, spec §5.2 / C1).
 
-write_primary_run: the analysis-cache write path for a primary analyzer (schematic now;
-pcb in round 5). Each CLI keeps its own --output / --analysis-dir precedence and calls
-this only on the --analysis-dir branch. Lives beside analysis_cache (which depends on
+write_primary_run: the analysis-cache write path for the primary analyzers (schematic and pcb
+CLIs); write_derived_output: the current-run overwrite path for the derived analyzers (gerber,
+thermal and cross-analysis CLIs). Each CLI keeps its own --output / --analysis-dir precedence
+and calls these only on the --analysis-dir branch. Lives beside analysis_cache (which depends on
 diff_engine), so it is not part of the stdlib-only kicad_core package.
 """
 from __future__ import annotations
@@ -68,8 +69,9 @@ def write_primary_run(analysis_dir_arg: str, output_text: str, *, analyzer: str,
 def write_derived_output(analysis_dir_arg: str, output_text: str, *, analyzer: str) -> str:
     """Overwrite one derived analyzer's canonical JSON in the CURRENT run; return the path written.
 
-    Derived analyzers (gerber, thermal, cross_analysis) never create a run and carry no source
-    hashes; when nothing is tracked yet the file lands at the analysis-dir root (today's fallback).
+    Derived analyzers (gerber, thermal, cross_analysis) carry no source hashes. When nothing is
+    tracked yet, analysis_cache.overwrite_current creates a run (it calls create_run) and the
+    run-folder path is returned; the trailing analysis-dir-root return is a defensive fallback only.
     """
     analysis_dir = resolve_analysis_dir(analysis_dir_arg)
     filename = CANONICAL_OUTPUTS.get(analyzer, f"{analyzer}.json")
