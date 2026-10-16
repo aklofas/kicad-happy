@@ -3390,8 +3390,12 @@ def postfilter_vd_and_dedup(voltage_dividers: list[dict], feedback_networks: lis
     return deduped_vds, deduped_fns
 
 
-def detect_led_drivers(ctx: AnalysisContext, transistor_circuits: list[dict]) -> None:
-    """Enrich transistor circuits with LED driver info. Modifies transistor_circuits in-place."""
+def enrich_transistor_led_drivers(ctx: AnalysisContext, transistor_circuits: list[dict]) -> None:
+    """Enrich transistor circuits with LED driver info. Modifies transistor_circuits in-place.
+
+    Mutates *transistor_circuits* in place (detector, rule_id, category, summary of
+    matching records); returns None by design.
+    """
     for tc in transistor_circuits:
         is_mosfet = tc.get("type") == "mosfet"
         is_bjt = tc.get("type") == "bjt"
@@ -3459,6 +3463,8 @@ def detect_led_drivers(ctx: AnalysisContext, transistor_circuits: list[dict]) ->
             if "led_driver" in tc:
                 break
 
+
+detect_led_drivers = enrich_transistor_led_drivers  # facade for pre-v3 importers; retire round 9
 
 
 def detect_design_observations(ctx: AnalysisContext, results: dict) -> list[dict]:

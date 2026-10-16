@@ -690,17 +690,6 @@
  },
  {
   "callee": "make_finding",
-  "file": "skills/kicad/scripts/analyze_schematic.py",
-  "function": "analyze_schematic",
-  "line": 1463,
-  "missing": [
-   "schema_era"
-  ],
-  "nonliteral": [],
-  "ordinal": 0
- },
- {
-  "callee": "make_finding",
   "file": "skills/kicad/scripts/cross_analysis.py",
   "function": "check_connector_current",
   "line": 252,
@@ -866,6 +855,17 @@
  },
  {
   "callee": "make_finding",
+  "file": "skills/kicad/scripts/schematic/presentation.py",
+  "function": "assemble_result",
+  "line": 223,
+  "missing": [
+   "schema_era"
+  ],
+  "nonliteral": [],
+  "ordinal": 0
+ },
+ {
+  "callee": "make_finding",
   "file": "skills/kicad/scripts/schematic/system_analyses.py",
   "function": "analyze_voltage_derating",
   "line": 827,
@@ -958,7 +958,7 @@
   "callee": "make_finding",
   "file": "skills/kicad/scripts/signal_detectors.py",
   "function": "detect_shorted_two_pin_components",
-  "line": 3957,
+  "line": 3963,
   "missing": [
    "schema_era"
   ],
@@ -971,7 +971,7 @@
   "callee": "make_finding",
   "file": "skills/kicad/scripts/signal_detectors.py",
   "function": "detect_shorted_two_pin_components",
-  "line": 4000,
+  "line": 4006,
   "missing": [
    "schema_era"
   ],
