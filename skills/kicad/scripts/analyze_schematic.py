@@ -213,14 +213,9 @@ def main():
 
     # Load project config (for project settings — suppressions applied to
     # EMC/thermal findings, not schematic warnings which lack rule_ids)
-    try:
-        from project_config import load_config_from_path, load_config
-        if args.config:
-            config = load_config_from_path(args.config)
-        else:
-            config = load_config(str(Path(args.schematic).parent))
-    except ImportError:
-        config = {"version": 1, "project": {}, "suppressions": []}
+    from project_config import resolve_config
+    resolved = resolve_config(args.config, str(Path(args.schematic).parent))
+    config = resolved.effective
 
     # Resolve canonical analysis_dir ONCE — used for both AnalysisContext
     # (Phase 4d-active) and capability_mode_ref (Phase 4 §3.3). This must
@@ -240,11 +235,7 @@ def main():
 
     # Build inputs provenance block (Track 1.3).
     _sch_path = Path(args.schematic)
-    if args.config:
-        _cfg_path = Path(args.config) if Path(args.config).is_file() else None
-    else:
-        _default_cfg = _sch_path.parent / ".kicad-happy.json"
-        _cfg_path = _default_cfg if _default_cfg.is_file() else None
+    _cfg_path = Path(resolved.hash_input) if resolved.hash_input else None
     inputs = build_inputs(
         source_files=[_sch_path],
         config_path=_cfg_path,

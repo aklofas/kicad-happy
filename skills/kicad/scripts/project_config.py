@@ -30,6 +30,7 @@ from typing import Any, Dict, List, Optional
 if str(Path(__file__).parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).parent))
 from kicad_core.project import _strip_jsonc, load_jsonc  # noqa: F401 -- re-exported for project_config consumers
+from kicad_core.model import ResolvedConfig
 
 
 # ---------------------------------------------------------------------------
@@ -172,6 +173,24 @@ def load_config_from_path(path: str) -> Dict[str, Any]:
         return dict(DEFAULT_CONFIG)
     cfg = _load_and_validate(path)
     return cfg if cfg is not None else dict(DEFAULT_CONFIG)
+
+
+def resolve_config(explicit_path: Optional[str], search_dir: str) -> ResolvedConfig:
+    """The one place that decides which config applies and which file is hashed (S6).
+
+    Explicit (``--config PATH``): that file only, no cascade -- ``load_config_from_path``.
+    Discovered: the cascade ``load_config`` performs from *search_dir*.
+    ``hash_input`` reproduces the CLIs' historical rule: the explicit file when it exists,
+    else ``<search_dir>/.kicad-happy.json`` when it exists, else None.
+    """
+    if explicit_path:
+        exists = os.path.isfile(explicit_path)
+        return ResolvedConfig(load_config_from_path(explicit_path), "explicit",
+                              (explicit_path,) if exists else (), explicit_path if exists else None)
+    default = os.path.join(search_dir, CONFIG_FILENAME)
+    return ResolvedConfig(load_config(search_dir), "discovered",
+                          tuple(_discover_config_paths(search_dir)),
+                          default if os.path.isfile(default) else None)
 
 
 def _load_and_validate(path: str) -> Optional[Dict[str, Any]]:
