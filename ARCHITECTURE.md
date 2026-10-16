@@ -36,6 +36,8 @@ A facade is code kept only so a named consumer keeps working. Each entry names t
 | `signal_detectors._get_net_components` index-less branch | `skills/kicad/scripts/signal_detectors.py` | same harness contexts (no `nq`) | same |
 | `schematic.pipeline.parse_legacy_schematic` (alias of `analyze_legacy_schematic`) | `skills/kicad/scripts/schematic/pipeline.py` | none known in the harness inventory; user scripts (re-exported through `analyze_schematic`) | round 9 |
 | `analyze_schematic` module re-exports (115 names from `schematic.*` and `kicad_core.*`; re-exports the names the module DEFINED at the round-3 tip, incl. 7 round-4 additions; names it merely imported, e.g. `parse_file`, `classify_component`, `make_finding`, `AnalysisContext`, are not re-bound, no known consumer) | `skills/kicad/scripts/analyze_schematic.py` | harness (13 imports: `build_net_map`, `_detect_differential_pairs`, `validate_hierarchical_labels`, `detect_sub_sheet`, `audit_pwr_flags`, `audit_datasheet_coverage`, `audit_sourcing_gate`, `analyze_usb_compliance`, `analyze_sleep_current`, `analyze_power_budget`, `analyze_bus_topology`, `_estimate_rail_voltage`, and `import analyze_schematic as asch` attribute access); user scripts | round 9, after the harness imports `schematic.*` |
+| `pcb_connectivity` (whole module, 9 re-exports) | `skills/kicad/scripts/pcb_connectivity.py` | user scripts and the scripts README; no harness import | round 9 |
+| `analyze_pcb` module re-exports (94 defined names, `main` excluded, plus the imported `parse_file` and `build_connectivity_graph` the harness binds through it) | `skills/kicad/scripts/analyze_pcb.py` | harness: 15 `from analyze_pcb import` names (`MIN_REAL_DRILL_MM`, `_pad_drills`, `ZoneFills`, `_dist_point_to_segment`, `_compute_switching_loop_areas`, `_degenerate_drills`, `_nearest_zone_copper_distance`, `_pad_on_layer`, `_pad_outline_points`, `analyze_pcb`, `analyze_design_rule_compliance`, `analyze_placement`, `_chain_segments`, `analyze_via_in_pad`, `analyze_vias`), `import analyze_pcb as ap` attribute access, and two `patch.object(analyze_pcb, ...)` sites (`extract_footprints`, `build_connectivity_graph`) that migrate to `pcb.reader` / `pcb.presentation`; user scripts | round 9, after the harness imports `pcb.*` |
 
 `_core_path` anchors on `Path(__file__).resolve()`, so a symlinked skill directory resolves to its real parent before walking up to `skills/`; the previous ad hoc inserts used `os.path.abspath` (no symlink following). Byte-identical copies live in emc, spice and bom by design.
 
@@ -51,7 +53,7 @@ A facade is code kept only so a named consumer keeps working. Each entry names t
 | `passives.py` | capacitor package/ESR/ESL, dielectric, derating, inductor shielding | stdlib |
 | `project.py` | `.kicad_pro`/`.kicad_dru`/lib-table readers, root-schematic discovery | stdlib (+ kicad_core.sexp); also hosts `load_jsonc` / `_strip_jsonc` |
 | `sexp.py` | S-expression parser (parse/find/get helpers) | stdlib |
-| `model.py` | typed records: Component/Pin/NetPin/NetLabel/Net TypedDicts, PinNetEntry, SheetData, ResolvedConfig | stdlib |
+| `model.py` | typed records: Component/Pin/NetPin/NetLabel/Net TypedDicts, PinNetEntry, SheetData, ResolvedConfig, PcbReaderState | stdlib |
 | `netquery.py` | net helpers (`get_two_pin_nets`, `build_net_id_map`), `build_pin_to_net_map`, `build_ref_pins`, `BridgeFact`/`BridgeFacts`/`build_bridge_facts` | `model`, `values` |
 
 `kicad_core` imports stdlib and itself only (CI-enforced).
@@ -73,3 +75,19 @@ A facade is code kept only so a named consumer keeps working. Each entry names t
 | `presentation.py` | result-dict assembly in the historical key order; legacy result | `kicad_core`, `bom_stats`, `connectivity`, `finding_schema`, `detection_schema` |
 
 Mutation contract (D4): `reconcile_detections` rewrites phase-1 records in place; `assemble_signal_results` enriches capacitor entries in place; `assemble_result` adds `category`/`parsed_value`/`pin_nets` to components and pops `_unit_pins`; `finalize_for_cli` mutates the result (findings filtering, summary recompute). Nothing else mutates caller-owned lists.
+
+## `skills/kicad/scripts/pcb/` ownership (round 5)
+
+| Module | Owns | Imports |
+|---|---|---|
+| `geometry.py` | polygon area/containment, `ZoneFills`, `CopperPresence`, `copper_connected`, pad outlines/sampling, `_point_in_pad` | `kicad_core` |
+| `connectivity.py` | union-find copper connectivity graph (`build_connectivity_graph`) | stdlib |
+| `reader.py` | `.kicad_pcb` extraction (layers, setup, nets, footprints, tracks, vias, zones, outline, silkscreen, metadata, dimensions, groups, net classes); `_build_net_mapping` → `PcbReaderState` | `kicad_core`, `geometry` |
+| `routing.py` | connectivity, power-net routing, routed distances, return path, net lengths/impedance, ground domains, trace proximity, current capacity, layer transitions | `kicad_core`, `geometry` |
+| `copper.py` | via analysis, thermal vias, thermal-pad vias, copper presence, via-in-pad, board-edge via clearance | `kicad_core`, `geometry`, `dfm` |
+| `assembly.py` | decoupling placement, placement/courtyards, tombstoning, switching loops, fiducials, test points, orientation, silkscreen overlaps, keepouts | `kicad_core`, `geometry` |
+| `dfm.py` | fab-capability scoring (`analyze_dfm`), drill measurement, project design-rule compliance | stdlib |
+| `presentation.py` | `group_components`, `compute_statistics`, `assemble_result` (result dict in the historical key order; the late checks that run inside it) | `kicad_core`, `connectivity`, `reader`, `routing`, `dfm`, `assembly`, `copper`, `finding_schema` |
+| `pipeline.py` | `read_board` → `run_analyses` → `assemble_result`; `resolve_power_rails`; `finalize_for_cli`; `_copper_order_from_stackup` is imported here | `reader` (module attribute: harness patch target), `geometry`, `routing`, `copper`, `assembly`, `dfm`, `presentation`, `kicad_core`, `finding_schema`, `output_filters`, `project_config` |
+
+Mutation contract: `read_board` backfills `net`/`net_number` on the extracted records (KiCad 10) through the per-call `PcbReaderState`; `run_analyses` runs today's sequence (facts and checks interleaved; the checks hoist is round 7) and mutates nothing caller-owned; `assemble_result` pops `unrouted` out of `connectivity` and the finding sections out of the result; `finalize_for_cli` mutates the result (debug strip, filters, finding_id). Nothing else mutates caller-owned lists.

@@ -40,12 +40,21 @@ Each skill has a `SKILL.md` with YAML frontmatter (name, description, triggers) 
 | `kicad/scripts/schematic/system_analyses.py` | ~2,600 | PDN, sleep current, derating, power budget/sequencing, USB, inrush and other system-level analyses |
 | `kicad/scripts/schematic/bom_stats.py` | ~120 | `generate_bom`, `compute_statistics` |
 | `kicad/scripts/schematic/presentation.py` | ~500 | Result-dict assembly in the historical key order |
-| `kicad/scripts/output_io.py` | ~65 | Analysis-cache write path shared by the primary CLIs |
+| `kicad/scripts/output_io.py` | ~80 | `write_primary_run` / `write_derived_output`: the analysis-cache write paths shared by the kicad CLIs |
 | `kicad/scripts/signal_detectors.py` | ~4,400 | Core signal path detectors (regulators, filters, opamps, dividers, crystals, protection) |
 | `kicad/scripts/domain_detectors.py` | ~6,100 | Domain-specific detectors (Ethernet, USB-C, BMS, motor drive, sensors, audio, LEDs, etc.) |
 | `kicad/scripts/validation_detectors.py` | ~1,300 | Validation detectors (pull-ups, voltage mismatch, protocol buses, power sequencing, feedback stability) |
 | `kicad/scripts/lookup_detectors.py` | ~700 | v1.4 datasheet-backed detectors (AM-001, OV-001, FT-001, PM-001, EX-001 via Phase 2 lookup API) |
-| `kicad/scripts/analyze_pcb.py` | ~6,700 | PCB layout analysis (footprints, tracks, vias, zones, DFM, assembly checks, connectivity graph) |
+| `kicad/scripts/analyze_pcb.py` | ~220 | PCB CLI + re-export facade (the analyzer lives in `kicad/scripts/pcb/`) |
+| `kicad/scripts/pcb/pipeline.py` | ~493 | `read_board`, `run_analyses`, `resolve_power_rails`, `finalize_for_cli` |
+| `kicad/scripts/pcb/presentation.py` | ~470 | `assemble_result`, `group_components`, `compute_statistics`: result dict in the historical key order |
+| `kicad/scripts/pcb/reader.py` | ~1,514 | `.kicad_pcb` extraction: layers, nets, footprints, tracks, vias, zones, outline, net classes |
+| `kicad/scripts/pcb/connectivity.py` | ~516 | Union-find copper connectivity graph |
+| `kicad/scripts/pcb/geometry.py` | ~658 | Polygon math, `ZoneFills`, `CopperPresence`, `copper_connected`, pad outlines |
+| `kicad/scripts/pcb/dfm.py` | ~903 | Fab-capability scoring, drill measurement, design-rule compliance |
+| `kicad/scripts/pcb/assembly.py` | ~1,080 | Decoupling and placement, tombstoning, switching loops, fiducials, test points, silkscreen, keepouts |
+| `kicad/scripts/pcb/routing.py` | ~1,165 | Routing, return path, net lengths and impedance, ground domains, trace proximity, current capacity |
+| `kicad/scripts/pcb/copper.py` | ~1,349 | Via, thermal-via, thermal-pad, copper-presence and via-in-pad analyses |
 | `kicad/scripts/analyze_gerbers.py` | ~1,700 | Gerber/Excellon verification |
 | `kicad/scripts/cross_analysis.py` | ~1,100 | Schematic + PCB cross-domain checks |
 | `kicad/scripts/finding_schema.py` | ~680 | Rich finding factory, `Det` constants, consumer helpers, trust_summary aggregation |
@@ -80,6 +89,8 @@ The schematic pipeline (`schematic/pipeline.py`) runs in named phases:
 5. **`finalize_for_cli`** — command-specific annotation in the CLI.
 
 At project level, `analyze_schematic` → `run_analyses` → `presentation.assemble_result` reads the sheets, builds the context, runs these phases plus the audits, and assembles the output.
+
+The PCB pipeline (`pcb/pipeline.py`) has the same shape: `read_board` → `run_analyses` (today's call order; the checks hoist is round 7) → `presentation.assemble_result`, then `finalize_for_cli` for the CLI-only annotation.
 
 ### AnalysisContext
 

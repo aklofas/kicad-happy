@@ -5,7 +5,7 @@ This directory contains the core analysis scripts, shared utilities, the S-expre
 | Script | Input | Size | Purpose |
 |--------|-------|------|---------|
 | `analyze_schematic.py` | `.kicad_sch` / `.sch` | ~9,300 LOC | Component extraction, net building, subcircuit detection, signal/power/BOM/DFM analysis, audit detectors |
-| `analyze_pcb.py` | `.kicad_pcb` | ~6,600 LOC | Footprint inventory, routing, signal integrity, power, thermal, placement, manufacturing, DFM, union-find connectivity graph, assembly/DFM checks |
+| `analyze_pcb.py` | `.kicad_pcb` | ~220 LOC (CLI + facade; analyzer in `pcb/`, ~8,000 LOC) | Footprint inventory, routing, signal integrity, power, thermal, placement, manufacturing, DFM, union-find connectivity graph, assembly/DFM checks |
 | `analyze_gerbers.py` | Gerber dir (`.gbr`/`.drl`) | ~1,400 LOC | Layer completeness, drill holes, apertures, coordinate alignment, X2 attributes |
 | `analyze_thermal.py` | schematic + PCB JSON | ~910 LOC | Junction-temperature estimator with package θJA, thermal via correction, proximity warnings |
 | `cross_analysis.py` | schematic + PCB JSON | ~430 LOC | Cross-domain checks: CC-001 connector current, EG-001 ESD gaps, DA-001 decoupling adequacy, XV-001..003, PCB intelligence (NR/RP/TW/PS/VS/DP-005) |
@@ -18,7 +18,7 @@ This directory contains the core analysis scripts, shared utilities, the S-expre
 | `validation_detectors.py` | — | ~1,000 LOC | Validation detectors (PU-001, VM-001, PR-001..004, PS-001, LR-001, FS-001) |
 | `finding_schema.py` | — | ~330 LOC | `make_finding()` factory, `Det.*` constants, `get_findings()` / `group_findings()` helpers, `trust_summary` aggregation, `sort_findings()` determinism |
 | `output_filters.py` | — | ~460 LOC | Stage/audience filtering (`--stage schematic/layout/pre_fab/bring_up`, `--audience designer/reviewer/manager`) |
-| `pcb_connectivity.py` | — | ~300 LOC | Union-find over pads/tracks/vias/zone fills for per-net island detection (used by `analyze_pcb.py --full`) |
+| `pcb/connectivity.py` | — | ~500 LOC | Union-find over pads/tracks/vias/zone fills for per-net island detection (used by `analyze_pcb.py --full`); facade `pcb_connectivity.py` kept until round 9 |
 | `project_config.py` | — | ~870 LOC | `.kicad-happy.json` loader, suppression matching, design intent resolution |
 | `analysis_cache.py` | — | ~510 LOC | Analysis-folder convention, manifest-based run tracking, SHA-256 staleness detection |
 | `diff_analysis.py` | two analyzer JSONs | ~950 LOC | Diff-aware design comparison (component/signal/EMC/SPICE) |
@@ -57,7 +57,7 @@ Parses KiCad's Lisp-like S-expression format into nested Python lists. Used by b
 
 ## analyze_pcb.py
 
-Parses `.kicad_pcb` files (KiCad 5 `module` and KiCad 6+ `footprint` formats).
+Parses `.kicad_pcb` files (KiCad 5 `module` and KiCad 6+ `footprint` formats). The CLI is a thin wrapper; the analyzer lives in the `pcb/` package.
 
 ### Pipeline
 
@@ -195,7 +195,7 @@ schematic/pipeline.py          -- named phases: read sheets -> build AnalysisCon
 schematic/presentation.py      -- result dict in the historical key order; detections -> flat findings[]
     |                             with rich envelopes (detector, rule_id, severity, confidence, recommendation)
     v
-output_io.write_primary_run    -- JSON to stdout, -o, or the --analysis-dir run folder
+output_io.write_primary_run / write_derived_output (thermal/cross/gerber)  -- JSON to stdout, -o, or the --analysis-dir run folder
 ```
 
 ### Key Data Structures
