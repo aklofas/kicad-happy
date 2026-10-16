@@ -6,7 +6,7 @@ fields, manufacturer payloads, datasheet category extensions.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TypedDict
 
 
@@ -132,3 +132,21 @@ class ResolvedConfig:
     mode: str
     paths: tuple[str, ...]
     hash_input: str | None
+
+
+@dataclass
+class PcbReaderState:
+    """Per-run PCB reader state (B1): the KiCad-10 net-name → synthetic-ID map.
+
+    Built by ``_build_net_mapping`` after extraction (sorted names, IDs from 1); consulted only by
+    the backfill in ``read_board``. One instance per ``analyze_pcb()`` call — nothing module-level.
+    """
+    net_name_to_id: dict[str, int] = field(default_factory=lambda: {"": 0})
+
+    def net_id(self, val: str | None) -> int:
+        if not val:
+            return 0
+        try:
+            return int(val)
+        except (ValueError, TypeError):
+            return self.net_name_to_id.get(val, 0)

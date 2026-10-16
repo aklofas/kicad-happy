@@ -204,6 +204,12 @@ class DiscoverFixtures(unittest.TestCase):
             self.assertEqual(kinds, [("gerber", "p1/gerbers"), ("pcb", "p1/a.kicad_pcb"),
                                      ("sch", "p1/a.kicad_sch"), ("sch", "p2/b.kicad_sch")])
 
+    def test_aba_builtin_kicad10_pair_differs_in_sorted_position_of_common(self):
+        self.assertIn('(net "COMMON")', cr.KICAD10_BOARD_A)
+        self.assertIn('(net "AAA")', cr.KICAD10_BOARD_B)
+        self.assertNotIn('(net 1', cr.KICAD10_BOARD_A)  # name-keyed: no numeric declarations
+        self.assertIn("pcb10", cr.ABA_PROGRAM)
+
 
 class ImportRules(unittest.TestCase):
     def _tree(self, td):

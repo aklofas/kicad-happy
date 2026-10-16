@@ -8,7 +8,7 @@ Subcommands (added across round 1):
   tags      literal detector/rule_id/schema_era scan (tools/tag_baseline.json)
   install-smoke  copy core (+ one optional skill) to a temp dir, run CLIs from an unrelated cwd
   determinism    snapshot twice with random hash seeds and compare
-  aba       in-process A/B/A: analyse two boards in one interpreter, A must not change
+  aba       in-process A/B/A: analyse two boards in one interpreter (+ a built-in KiCad-10 pair), A must not change
   quick     imports + tags + install-smoke + determinism + aba (+ compare when --baseline given)
 
 Stdlib only. Exit 0 = pass, 1 = findings, 2 = usage/setup error.
@@ -621,13 +621,29 @@ def cmd_determinism(args) -> int:
     return 1 if bad else 0
 
 
+_KICAD10_HEADER = ('(kicad_pcb (version 20260101) (generator "pcbnew") (generator_version "10.0")\n'
+                   '  (general (thickness 1.6))\n'
+                   '  (layers (0 "F.Cu" signal) (31 "B.Cu" signal) (44 "Edge.Cuts" user))\n')
+
+
+def _kicad10_pad(ref, x, net_name):
+    return (f'  (footprint "Test:Pad" (layer "F.Cu") (uuid "aaaaaaaa-0000-0000-0000-00000000{x:04d}") (at {x} 100)\n'
+            f'    (property "Reference" "{ref}")\n'
+            f'    (pad "1" smd rect (at 0 0) (size 2 2) (layers "F.Cu" "F.Mask") (net "{net_name}"))\n'
+            f'  )\n')
+
+
+KICAD10_BOARD_A = _KICAD10_HEADER + _kicad10_pad("U1", 100, "COMMON") + ")\n"
+KICAD10_BOARD_B = _KICAD10_HEADER + _kicad10_pad("U1", 100, "AAA") + _kicad10_pad("U2", 110, "COMMON") + ")\n"
+
 ABA_PROGRAM = r"""
 import json, sys
 from pathlib import Path
 scripts, out, spec = sys.argv[1], Path(sys.argv[2]), json.loads(sys.argv[3])
 sys.path.insert(0, scripts)
 import analyze_schematic, analyze_pcb
-fn = {"sch": analyze_schematic.analyze_schematic, "pcb": analyze_pcb.analyze_pcb}
+fn = {"sch": analyze_schematic.analyze_schematic, "pcb": analyze_pcb.analyze_pcb,
+      "pcb10": analyze_pcb.analyze_pcb}
 for kind, (a, b) in spec.items():
     r1 = fn[kind](a)
     fn[kind](b)
@@ -655,6 +671,9 @@ def cmd_aba(args) -> int:
     scripts = Path(args.product).resolve() / "skills" / "kicad" / "scripts"
     bad = False
     with tempfile.TemporaryDirectory() as td:
+        a = Path(td) / "k10_a.kicad_pcb"; a.write_text(KICAD10_BOARD_A, encoding="utf-8")
+        b = Path(td) / "k10_b.kicad_pcb"; b.write_text(KICAD10_BOARD_B, encoding="utf-8")
+        spec["pcb10"] = [str(a), str(b)]
         try:
             proc = subprocess.run([sys.executable, "-c", ABA_PROGRAM, str(scripts), td, json.dumps(spec)],
                                   cwd=td, env=analyzer_env("0"), capture_output=True, text=True,

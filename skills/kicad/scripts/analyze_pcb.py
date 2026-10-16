@@ -38,6 +38,7 @@ from kicad_core.project import (load_kicad_pro, extract_pro_net_classes,
                                 load_kicad_dru, load_lib_tables,
                                 find_project_settings_file)
 from kicad_core.fields import get_mpn_property
+from kicad_core.model import PcbReaderState
 from pcb_connectivity import build_connectivity_graph
 from finding_schema import compute_trust_summary, sort_findings, assign_finding_ids
 from envelopes.pcb import PCBEnvelope
@@ -643,32 +644,29 @@ def extract_nets(root: list) -> dict[int, str]:
 
 
 # KiCad 10 net format helpers — nets are identified by name, not number.
-_net_name_to_id: dict[str, int] = {}
-
-
 def _net_id(val: str | None) -> int:
-    """Convert a net value to an integer ID.
+    """Convert a net value to an integer ID during extraction.
 
     KiCad ≤9: val is a numeric string like "3" → returns 3.
-    KiCad 10: val is a net name like "+3.3V" → looks up synthetic ID.
+    KiCad 10: val is a net name like "+3.3V" → 0 here; the synthetic ID is assigned by
+    _build_net_mapping() and applied by the backfill through PcbReaderState.net_id().
     """
     if not val:
         return 0
     try:
         return int(val)
     except (ValueError, TypeError):
-        return _net_name_to_id.get(val, 0)
+        return 0
 
 
 def _build_net_mapping(footprints: list[dict], tracks: dict, vias: dict,
-                       zones: list[dict]) -> dict[int, str]:
+                       zones: list[dict], state: PcbReaderState) -> dict[int, str]:
     """Build synthetic net ID mapping for KiCad 10 (no net declarations).
 
     Scans all pads, tracks, vias, and zones for unique net names and assigns
     sequential integer IDs. Returns the same dict[int, str] format as
     extract_nets() for backward compatibility.
     """
-    global _net_name_to_id
     names: set[str] = set()
     for fp in footprints:
         for pad in fp.get("pads", []):
@@ -693,10 +691,10 @@ def _build_net_mapping(footprints: list[dict], tracks: dict, vias: dict,
             names.add(n)
     # Assign sequential IDs (0 = unconnected, 1+ = real nets)
     net_names: dict[int, str] = {0: ""}
-    _net_name_to_id = {"": 0}
+    state.net_name_to_id = {"": 0}
     for i, name in enumerate(sorted(names), start=1):
         net_names[i] = name
-        _net_name_to_id[name] = i
+        state.net_name_to_id[name] = i
     return net_names
 
 
@@ -6771,12 +6769,9 @@ def analyze_pcb(path: str, *, proximity: bool = False,
             classification falls back to name-based heuristics alone
             (KH-393).
     """
-    # KH-363: reset before any extraction touches _net_id() (extract_footprints
-    # calls it during pad parsing, before _build_net_mapping() rebuilds it below) —
-    # otherwise a stale mapping from a prior analyze_pcb() call in the same
-    # process can leak a wrong non-zero net_number into this board's pads.
-    global _net_name_to_id
-    _net_name_to_id = {"": 0}
+    # KH-363: one reader state per call — nothing survives into the next analyze_pcb()
+    # in the same process (a stale mapping could leak a wrong non-zero net_number).
+    state = PcbReaderState()
 
     # KH-393: resolve which power-rail override (if any) net classification
     # should use — explicit power_rails > rails auto-read from schematic
@@ -6803,23 +6798,23 @@ def analyze_pcb(path: str, *, proximity: bool = False,
 
     # KiCad 10: no net declarations — build synthetic mapping from content
     if not net_names:
-        net_names = _build_net_mapping(footprints, tracks, vias, zones)
+        net_names = _build_net_mapping(footprints, tracks, vias, zones, state)
         # Backfill net IDs now that the mapping is built
         for seg in tracks.get("segments", []):
             if "_net_name" in seg:
-                seg["net"] = _net_id(seg.pop("_net_name"))
+                seg["net"] = state.net_id(seg.pop("_net_name"))
         for arc in tracks.get("arcs", []):
             if "_net_name" in arc:
-                arc["net"] = _net_id(arc.pop("_net_name"))
+                arc["net"] = state.net_id(arc.pop("_net_name"))
         for v in vias.get("vias", []):
             if "_net_name" in v:
-                v["net"] = _net_id(v.pop("_net_name"))
+                v["net"] = state.net_id(v.pop("_net_name"))
         for z in zones:
-            z["net"] = _net_id(z.get("net_name", ""))
+            z["net"] = state.net_id(z.get("net_name", ""))
         for fp in footprints:
             for pad in fp.get("pads", []):
                 if pad.get("net_name") and pad.get("net_number", 0) == 0:
-                    pad["net_number"] = _net_id(pad["net_name"])
+                    pad["net_number"] = state.net_id(pad["net_name"])
 
     # Connectivity analysis (zone-aware)
     connectivity = analyze_connectivity(footprints, tracks, vias, net_names, zones)
