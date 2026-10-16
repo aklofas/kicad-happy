@@ -45,7 +45,7 @@ from pcb.geometry import (  # noqa: F401
     _arc_length_3pt, _chain_segments, _point_in_polys, _refined_overlap_mm2, _pad_on_layer,
     _pad_outline_points, _pad_sample_points, _point_in_pad,
 )
-from pcb_connectivity import build_connectivity_graph
+from pcb.connectivity import build_connectivity_graph
 from finding_schema import compute_trust_summary, sort_findings, assign_finding_ids
 from envelopes.pcb import PCBEnvelope
 from schema_codec import emit_schema
