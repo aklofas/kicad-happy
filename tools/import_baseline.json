@@ -1,14 +1,7 @@
 [
  {
-  "file": "skills/digikey/scripts/sync_datasheets_digikey.py",
-  "line": 269,
-  "module": "analyze_schematic",
-  "ordinal": 0,
-  "rule": "no-cli-import"
- },
- {
-  "file": "skills/element14/scripts/sync_datasheets_element14.py",
-  "line": 184,
+  "file": "skills/datasheets/distributor_core/inputs.py",
+  "line": 63,
   "module": "analyze_schematic",
   "ordinal": 0,
   "rule": "no-cli-import"
@@ -59,20 +52,6 @@
   "file": "skills/kicad/scripts/what_if.py",
   "line": 305,
   "module": "simulate_subcircuits",
-  "ordinal": 0,
-  "rule": "no-cli-import"
- },
- {
-  "file": "skills/lcsc/scripts/sync_datasheets_lcsc.py",
-  "line": 183,
-  "module": "analyze_schematic",
-  "ordinal": 0,
-  "rule": "no-cli-import"
- },
- {
-  "file": "skills/mouser/scripts/sync_datasheets_mouser.py",
-  "line": 187,
-  "module": "analyze_schematic",
   "ordinal": 0,
   "rule": "no-cli-import"
  }

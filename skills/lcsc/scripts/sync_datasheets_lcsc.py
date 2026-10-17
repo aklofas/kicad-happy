@@ -45,6 +45,7 @@ from pathlib import Path
 
 # Import from sibling script (same skill)
 sys.path.insert(0, str(Path(__file__).parent))
+import _core_path  # noqa: F401
 from fetch_datasheet_lcsc import (
     download_pdf,
     try_alternative_sources,
@@ -57,261 +58,35 @@ from fetch_datasheet_lcsc import (
     _get_manufacturer,
     _get_description,
 )
-
-
-# ---------------------------------------------------------------------------
-# MPN filtering — distinguish real manufacturer part numbers from generic values
-# ---------------------------------------------------------------------------
-
-_GENERIC_VALUE_RE = re.compile(
-    r"^[\d.]+\s*[pnuμmkMGR]?[FHΩRfhω]?$"
-    r"|^[\d.]+\s*[kKmM]?[Ωω]?$"
-    r"|^[\d.]+\s*[pnuμm]?[Ff]$"
-    r"|^[\d.]+\s*[pnuμm]?[Hh]$"
-    r"|^[\d.]+%$"
-    r"|^DNP$|^NC$|^N/?A$",
-    re.IGNORECASE,
+from distributor_core.inputs import (
+    _GENERIC_VALUE_RE,
+    _SKIP_TYPES,
+    is_real_mpn,
+    get_analyzer_output,
+    extract_parts as _extract_parts_core,
+    load_mpn_list as _load_mpn_list_core,
+)
+from distributor_core.manifest import (
+    sanitize_filename,
+    friendly_filename,
+    MANIFEST_FILENAME,
+    LEGACY_MANIFEST_FILENAME,
+    _manifest_path,
+    load_index,
+    save_index,
 )
 
-_SKIP_TYPES = {
-    "test_point", "mounting_hole", "fiducial", "graphic",
-    "jumper", "net_tie", "mechanical",
-}
+# Identifier keys projected from the BOM, in the order this provider's part dicts carry them.
+ID_KEYS = ("lcsc", "digikey", "mouser")
 
 
-def is_real_mpn(mpn: str) -> bool:
-    """Return True if the string looks like a real manufacturer part number."""
-    mpn = mpn.strip()
-    if not mpn or len(mpn) < 3:
-        return False
-    if _GENERIC_VALUE_RE.match(mpn):
-        return False
-    has_letter = any(c.isalpha() for c in mpn)
-    has_digit = any(c.isdigit() for c in mpn)
-    return has_letter and has_digit
+def extract_parts(analyzer_output):
+    return _extract_parts_core(analyzer_output, id_keys=ID_KEYS)
 
 
-# ---------------------------------------------------------------------------
-# Filename sanitization — matches convention across distributor skills
-# ---------------------------------------------------------------------------
+def load_mpn_list(path):
+    return _load_mpn_list_core(path, id_keys=ID_KEYS)
 
-def sanitize_filename(name: str) -> str:
-    """Convert a string to a safe filename component (without extension)."""
-    name = re.sub(r'[/\\:*?"<>|,;]', "_", name)
-    name = re.sub(r"\s+", "_", name)
-    name = re.sub(r"_+", "_", name).strip("_")
-    if len(name) > 200:
-        name = name[:200]
-    return name
-
-
-def friendly_filename(mpn: str, description: str = "", manufacturer: str = "") -> str:
-    """Build a human-readable filename from MPN and description."""
-    base = sanitize_filename(mpn)
-    if not description:
-        return base
-    desc = description.strip()
-    if manufacturer and desc.lower().endswith(manufacturer.lower()):
-        desc = desc[: -len(manufacturer)].strip().rstrip(",").strip()
-    if len(desc) > 80:
-        desc = desc[:77].rsplit("_", 1)[0].rsplit(" ", 1)[0]
-    desc = sanitize_filename(desc)
-    return f"{base}_{desc}" if desc else base
-
-
-# ---------------------------------------------------------------------------
-# Manifest management (manifest.json; legacy index.json read for backward compat)
-# ---------------------------------------------------------------------------
-
-MANIFEST_FILENAME = "manifest.json"
-LEGACY_MANIFEST_FILENAME = "index.json"
-
-
-def _manifest_path(out_dir: Path) -> Path:
-    new = out_dir / MANIFEST_FILENAME
-    old = out_dir / LEGACY_MANIFEST_FILENAME
-    if new.exists() or not old.exists():
-        return new
-    return old
-
-
-def load_index(path: Path) -> dict:
-    """Load existing manifest.json (or legacy index.json) or return empty."""
-    path = _manifest_path(path.parent) if path.name in (MANIFEST_FILENAME, LEGACY_MANIFEST_FILENAME) else path
-    if path.exists():
-        try:
-            with open(path, "r") as f:
-                return json.load(f)
-        except (json.JSONDecodeError, OSError):
-            pass
-    return {"schematic": "", "last_sync": "", "parts": {}}
-
-
-def save_index(path: Path, index: dict):
-    """Write manifest atomically. Always writes manifest.json; removes any
-    legacy index.json sibling after a successful write."""
-    parent = path.parent
-    parent.mkdir(parents=True, exist_ok=True)
-    new_path = parent / MANIFEST_FILENAME
-    tmp = new_path.with_suffix(".tmp")
-    with open(tmp, "w") as f:
-        json.dump(index, f, indent=2)
-    tmp.replace(new_path)
-    old_path = parent / LEGACY_MANIFEST_FILENAME
-    if old_path.exists() and old_path != new_path:
-        try:
-            old_path.unlink()
-        except OSError:
-            pass
-
-
-# ---------------------------------------------------------------------------
-# Schematic analysis — run analyzer or load pre-computed JSON
-# ---------------------------------------------------------------------------
-
-def get_analyzer_output(input_path: Path) -> dict | None:
-    """Get analyzer output, either by running the analyzer or loading JSON."""
-    if input_path.suffix == ".json":
-        with open(input_path, "r") as f:
-            return json.load(f)
-
-    if input_path.suffix in (".kicad_sch", ".sch"):
-        kicad_scripts = Path(__file__).resolve().parent.parent.parent / "kicad" / "scripts"
-        if kicad_scripts.exists():
-            sys.path.insert(0, str(kicad_scripts))
-            try:
-                from analyze_schematic import analyze_schematic
-                return analyze_schematic(str(input_path))
-            except Exception as e:
-                print(f"  Analyzer import failed ({e}), trying subprocess...",
-                      file=sys.stderr)
-
-        analyzer = kicad_scripts / "analyze_schematic.py"
-        if not analyzer.exists():
-            print(f"Error: Cannot find analyze_schematic.py at {analyzer}",
-                  file=sys.stderr)
-            return None
-        try:
-            result = subprocess.run(
-                [sys.executable, str(analyzer), str(input_path), "--compact"],
-                capture_output=True, text=True, timeout=120,
-            )
-            if result.returncode != 0:
-                print(f"Error: Analyzer failed: {result.stderr[:500]}",
-                      file=sys.stderr)
-                return None
-            return json.loads(result.stdout)
-        except Exception as e:
-            print(f"Error: Failed to run analyzer: {e}", file=sys.stderr)
-            return None
-
-    print(f"Error: Unsupported input file type: {input_path.suffix}",
-          file=sys.stderr)
-    return None
-
-
-# ---------------------------------------------------------------------------
-# Part extraction from BOM
-# ---------------------------------------------------------------------------
-
-def extract_parts(analyzer_output: dict) -> list[dict]:
-    """Extract unique parts with MPNs or distributor PNs from analyzer BOM.
-
-    A part is included if it has at least one of: a real MPN, an LCSC code,
-    a DigiKey PN, or a Mouser PN. Users set up KiCad projects differently.
-    """
-    bom = analyzer_output.get("bom", [])
-    parts = []
-
-    for entry in bom:
-        if entry.get("dnp"):
-            continue
-        if entry.get("type", "") in _SKIP_TYPES:
-            continue
-
-        mpn = entry.get("mpn", "").strip()
-        lcsc_pn = entry.get("lcsc", "").strip()
-        digikey_pn = entry.get("digikey", "").strip()
-        mouser_pn = entry.get("mouser", "").strip()
-
-        has_mpn = is_real_mpn(mpn)
-        has_distributor_pn = bool(lcsc_pn or digikey_pn or mouser_pn)
-        # F2: fall back to Value field when MPN is empty but the Value
-        # looks MPN-shaped (and the symbol isn't a generic Device:R/C/L).
-        mpn_from_value = ""
-        if not has_mpn and not has_distributor_pn:
-            value = entry.get("value", "").strip()
-            lib_id = entry.get("lib_id", "")
-            if is_real_mpn(value) and not lib_id.startswith("Device:"):
-                mpn_from_value = value
-                mpn = value
-                has_mpn = True
-        if not has_mpn and not has_distributor_pn:
-            continue
-
-        parts.append({
-            "mpn": mpn if has_mpn else "",
-            "manufacturer": entry.get("manufacturer", ""),
-            "value": entry.get("value", ""),
-            "description": entry.get("description", ""),
-            "datasheet": entry.get("datasheet", ""),
-            "references": entry.get("references", []),
-            "type": entry.get("type", ""),
-            "lcsc": lcsc_pn,
-            "digikey": digikey_pn,
-            "mouser": mouser_pn,
-        })
-
-    return parts
-
-
-def load_mpn_list(path: Path) -> list[dict]:
-    """Read MPNs from a text file, one per line (KH-312).
-
-    Skips blank lines, full-line comments (``# ...``), and inline
-    ``# ...`` comments. Filters non-MPN strings via ``is_real_mpn()``
-    and de-duplicates. Returns minimal part dicts compatible with
-    ``extract_parts()`` output — distributor PN fields are empty since
-    MPN-list mode drives searches via MPN lookup only.
-
-    Intended for batch workflows (harness, bulk datasheet seeding)
-    that don't have a KiCad project to point at.
-
-    Note: MPNs containing a literal ``#`` character are not supported
-    (they would be silently truncated by the inline-comment stripper).
-    Use the positional schematic/JSON input for such parts instead.
-    """
-    parts: list[dict] = []
-    seen: set[str] = set()
-    with open(path, "r", encoding="utf-8") as f:
-        for raw in f:
-            line = raw.strip()
-            if not line or line.startswith("#"):
-                continue
-            if "#" in line:
-                line = line.split("#", 1)[0].strip()
-                if not line:
-                    continue
-            if not is_real_mpn(line):
-                print(f"  Skipping '{line}': doesn't look like a real MPN",
-                      file=sys.stderr)
-                continue
-            if line in seen:
-                continue
-            seen.add(line)
-            parts.append({
-                "mpn": line,
-                "manufacturer": "",
-                "value": "",
-                "description": "",
-                "datasheet": "",
-                "references": [],
-                "type": "",
-                "lcsc": "",
-                "digikey": "",
-                "mouser": "",
-            })
-    return parts
 
 
 # ---------------------------------------------------------------------------
