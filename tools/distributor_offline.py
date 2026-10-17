@@ -104,13 +104,13 @@ class FakeTransport:
 # "alternatives" is documentation only: it is NOT stubbed (it calls download_pdf, which is).
 PATCH_TARGETS: dict[str, dict[str, str | tuple[str, ...]]] = {
     "digikey": {
-        "auth": "sync_datasheets_digikey.get_oauth_token",
-        "search": "sync_datasheets_digikey.search_digikey_with_token",
+        "auth": ("sync_datasheets_digikey.get_oauth_token", "provider_digikey.get_oauth_token"),
+        "search": ("sync_datasheets_digikey.search_digikey_with_token", "provider_digikey.search_digikey_with_token"),
         "download": ("sync_datasheets_digikey.download_pdf", "fetch_datasheet_digikey.download_pdf",
-                     "distributor_core.download.download_pdf"),
+                     "provider_digikey.download_pdf", "distributor_core.download.download_pdf"),
         "alternatives": "sync_datasheets_digikey.try_alternative_sources",
         "extract_text": "distributor_core.verify._extract_pdf_text",
-        "clock": "sync_datasheets_digikey.datetime",
+        "clock": ("sync_datasheets_digikey.datetime", "provider_digikey.datetime"),
         "sleep": "time.sleep",
         "fetch_search": "fetch_datasheet_digikey.search_digikey",
         "fetch_token": "fetch_datasheet_digikey._get_digikey_token",

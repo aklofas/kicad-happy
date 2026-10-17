@@ -42,7 +42,14 @@ from pathlib import Path
 # Import download functions from sibling script
 sys.path.insert(0, str(Path(__file__).parent))
 import _core_path  # noqa: F401
-from fetch_datasheet_digikey import download_pdf, try_alternative_sources, verify_datasheet
+from provider_digikey import (
+    download_pdf,
+    try_alternative_sources,
+    verify_datasheet,
+    get_oauth_token,
+    search_digikey_with_token,
+    sync_one_part,
+)
 from distributor_core.inputs import (
     _GENERIC_VALUE_RE,
     _SKIP_TYPES,
@@ -73,249 +80,9 @@ def load_mpn_list(path):
     return _load_mpn_list_core(path, id_keys=ID_KEYS)
 
 
-
-# ---------------------------------------------------------------------------
-# OAuth token management — fetch once, reuse across all API calls
-# ---------------------------------------------------------------------------
-
-def get_oauth_token() -> tuple[str, str] | None:
-    """Get DigiKey OAuth token. Returns (token, client_id) or None."""
-    client_id = os.environ.get("DIGIKEY_CLIENT_ID", "")
-    client_secret = os.environ.get("DIGIKEY_CLIENT_SECRET", "")
-    if not client_id or not client_secret:
-        print("Error: DIGIKEY_CLIENT_ID and DIGIKEY_CLIENT_SECRET environment variables required.",
-              file=sys.stderr)
-        print("  Get credentials at developer.digikey.com → My Apps → Create App",
-              file=sys.stderr)
-        return None
-
-    try:
-        token_data = urllib.parse.urlencode({
-            "client_id": client_id,
-            "client_secret": client_secret,
-            "grant_type": "client_credentials",
-        }).encode()
-        req = urllib.request.Request(
-            "https://api.digikey.com/v1/oauth2/token",
-            data=token_data,
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-        )
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            token_resp = json.loads(resp.read())
-        token = token_resp.get("access_token", "")
-        if not token:
-            print("Error: Failed to get OAuth token", file=sys.stderr)
-            return None
-        return token, client_id
-    except Exception as e:
-        print(f"Error: OAuth failed: {e}", file=sys.stderr)
-        return None
-
-
-def search_digikey_with_token(mpn: str, token: str, client_id: str) -> dict | None:
-    """Search DigiKey API using a pre-fetched OAuth token."""
-    try:
-        search_body = json.dumps({"Keywords": mpn, "Limit": 3}).encode()
-        req = urllib.request.Request(
-            "https://api.digikey.com/products/v4/search/keyword",
-            data=search_body,
-            headers={
-                "Content-Type": "application/json",
-                "X-DIGIKEY-Client-Id": client_id,
-                "Authorization": f"Bearer {token}",
-            },
-        )
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = json.loads(resp.read())
-    except urllib.error.HTTPError as e:
-        if e.code == 429:
-            print(f"  Rate limited, waiting 10s...", file=sys.stderr)
-            time.sleep(10)
-            return search_digikey_with_token(mpn, token, client_id)
-        if e.code == 401:
-            return None  # Token expired — caller should refresh
-        print(f"  Search failed for '{mpn}': HTTP {e.code}", file=sys.stderr)
-        return None
-    except Exception as e:
-        print(f"  Search failed for '{mpn}': {e}", file=sys.stderr)
-        return None
-
-    products = data.get("Products", [])
-    if not products:
-        return None
-
-    # Prefer exact MPN match
-    for p in products:
-        if p.get("ManufacturerProductNumber", "").upper().startswith(mpn.upper()):
-            return p
-    return products[0]
-
-
 # ---------------------------------------------------------------------------
 # Core sync logic
 # ---------------------------------------------------------------------------
-
-def sync_one_part(
-    part: dict,
-    output_dir: Path,
-    token: str,
-    client_id: str,
-    index: dict,
-    delay: float,
-) -> dict:
-    """Download datasheet for one part. Returns updated manifest entry."""
-    mpn = part["mpn"]
-    digikey_pn = part.get("digikey", "")
-    now = datetime.now(timezone.utc).isoformat()
-
-    # Use MPN for display/filename if available, otherwise fall back to DK PN
-    display_pn = mpn or digikey_pn
-
-    # Build a friendly filename — may be refined later if DigiKey provides
-    # a better description than the schematic had
-    desc = part.get("description", "")
-    mfg = part.get("manufacturer", "")
-    filename = friendly_filename(display_pn, desc, mfg) + ".pdf"
-    output_path = output_dir / filename
-
-    # Strategy 1: Try the datasheet URL from the schematic itself
-    schematic_url = part.get("datasheet", "")
-    if schematic_url and schematic_url != "~" and "://" in schematic_url:
-        print(f"  Trying schematic URL...", file=sys.stderr)
-        if download_pdf(schematic_url, str(output_path)):
-            size = os.path.getsize(str(output_path))
-            vr = verify_datasheet(str(output_path), display_pn, desc, mfg)
-            if vr["confidence"] == "wrong":
-                print(f"  WARNING: PDF may be wrong datasheet — {vr['details']}",
-                      file=sys.stderr)
-            result = {
-                "file": filename,
-                "manufacturer": mfg,
-                "description": desc,
-                "value": part["value"],
-                "datasheet_url": schematic_url,
-                "downloaded_date": now,
-                "source": "schematic",
-                "status": "ok",
-                "references": part["references"],
-                "size_bytes": size,
-                "verification": vr["confidence"],
-            }
-            if vr["confidence"] == "wrong":
-                result["verification_details"] = vr["details"]
-            return result
-
-    # Strategy 2: Search DigiKey API
-    # Prefer DigiKey PN (exact match, no ambiguity) over MPN keyword search
-    search_term = digikey_pn or mpn
-    time.sleep(delay)  # Rate limit
-    print(f"  Searching DigiKey for '{search_term}'...", file=sys.stderr)
-    product = search_digikey_with_token(search_term, token, client_id)
-
-    # If DK PN search failed but we also have an MPN, try that
-    if product is None and digikey_pn and mpn:
-        time.sleep(delay)
-        print(f"  DK PN not found, trying MPN '{mpn}'...", file=sys.stderr)
-        product = search_digikey_with_token(mpn, token, client_id)
-
-    if product is None:
-        return {
-            "manufacturer": part["manufacturer"],
-            "description": part.get("description", ""),
-            "value": part["value"],
-            "references": part["references"],
-            "status": "not_found",
-            "error": f"No DigiKey results for '{search_term}'" + (f" or '{mpn}'" if digikey_pn and mpn else ""),
-            "last_attempt": now,
-        }
-
-    ds_url = product.get("DatasheetUrl", "")
-    dk_mpn = product.get("ManufacturerProductNumber", mpn)
-    dk_mfg = product.get("Manufacturer", {}).get("Name", part["manufacturer"])
-    dk_desc = product.get("Description", {}).get("ProductDescription", "")
-
-    # If DigiKey returned the real MPN, use it (better than a DK PN for filenames)
-    if dk_mpn and not mpn:
-        display_pn = dk_mpn
-        filename = friendly_filename(display_pn, dk_desc or desc, dk_mfg) + ".pdf"
-        output_path = output_dir / filename
-    elif dk_desc:
-        # Rebuild filename with the richer DigiKey description
-        filename = friendly_filename(display_pn, dk_desc, dk_mfg) + ".pdf"
-        output_path = output_dir / filename
-
-    if not ds_url:
-        return {
-            "manufacturer": dk_mfg,
-            "description": dk_desc or part.get("description", ""),
-            "value": part["value"],
-            "references": part["references"],
-            "status": "no_datasheet",
-            "error": "DigiKey listing has no datasheet URL",
-            "last_attempt": now,
-        }
-
-    # Strategy 3: Download from DigiKey's datasheet URL
-    effective_desc = dk_desc or part.get("description", "")
-    print(f"  Downloading from {ds_url[:80]}...", file=sys.stderr)
-    if download_pdf(ds_url, str(output_path)):
-        size = os.path.getsize(str(output_path))
-        vr = verify_datasheet(str(output_path), dk_mpn or display_pn, effective_desc, dk_mfg)
-        if vr["confidence"] == "wrong":
-            print(f"  WARNING: PDF may be wrong datasheet — {vr['details']}",
-                  file=sys.stderr)
-        result = {
-            "file": filename,
-            "manufacturer": dk_mfg,
-            "description": effective_desc,
-            "value": part["value"],
-            "datasheet_url": ds_url,
-            "downloaded_date": now,
-            "source": "digikey",
-            "status": "ok",
-            "references": part["references"],
-            "size_bytes": size,
-            "verification": vr["confidence"],
-        }
-        if vr["confidence"] == "wrong":
-            result["verification_details"] = vr["details"]
-        return result
-
-    # Strategy 4: Try alternative sources
-    print(f"  Primary failed, trying alternatives...", file=sys.stderr)
-    if try_alternative_sources(dk_mpn, str(output_path)):
-        size = os.path.getsize(str(output_path))
-        vr = verify_datasheet(str(output_path), dk_mpn or display_pn, effective_desc, dk_mfg)
-        if vr["confidence"] == "wrong":
-            print(f"  WARNING: PDF may be wrong datasheet — {vr['details']}",
-                  file=sys.stderr)
-        result = {
-            "file": filename,
-            "manufacturer": dk_mfg,
-            "description": effective_desc,
-            "value": part["value"],
-            "datasheet_url": ds_url,
-            "downloaded_date": now,
-            "source": "alternative",
-            "status": "ok",
-            "references": part["references"],
-            "size_bytes": size,
-            "verification": vr["confidence"],
-        }
-        if vr["confidence"] == "wrong":
-            result["verification_details"] = vr["details"]
-        return result
-
-    return {
-        "manufacturer": dk_mfg,
-        "description": dk_desc or part.get("description", ""),
-        "value": part["value"],
-        "datasheet_url": ds_url,
-        "references": part["references"],
-        "status": "failed",
-        "error": "All download methods failed",
-        "last_attempt": now,
-    }
 
 
 def sync_datasheets(
@@ -466,7 +233,7 @@ def sync_datasheets(
                 n = counter[0]
             print(f"[{n}/{len(to_download)}] {part_key}", file=sys.stderr)
 
-            result = sync_one_part(part, out_dir, token, client_id, index, delay)
+            result = sync_one_part(part, out_dir, index, delay, (token, client_id))
 
             with lock:
                 index.setdefault("parts", {})[part_key] = result
@@ -498,7 +265,7 @@ def sync_datasheets(
             part_key = part["_key"]
             print(f"[{i+1}/{len(to_download)}] {part_key}", file=sys.stderr)
 
-            result = sync_one_part(part, out_dir, token, client_id, index, delay)
+            result = sync_one_part(part, out_dir, index, delay, (token, client_id))
 
             # Handle token expiry — refresh once and retry
             if result.get("status") == "not_found" and "No DigiKey results" in result.get("error", ""):

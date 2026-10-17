@@ -27,13 +27,7 @@ Exit codes:
 
 import argparse
 import json
-import os
-import re
-import shutil
-import subprocess
 import sys
-import urllib.parse
-import urllib.request
 import _core_path  # noqa: F401
 from distributor_core.download import (
     _USER_AGENT,
@@ -48,107 +42,7 @@ from distributor_core.download import (
 )
 from distributor_core.verify import _extract_pdf_text, verify_datasheet
 from distributor_core.manifest import _friendly_filename
-
-
-def _get_digikey_token() -> str | None:
-    """Get a DigiKey OAuth token, using a cached version if still valid.
-
-    Caches the token to a temp file with a 9-minute TTL (tokens last 10 minutes).
-    """
-    import tempfile
-    import time
-
-    client_id = os.environ.get("DIGIKEY_CLIENT_ID", "")
-    client_secret = os.environ.get("DIGIKEY_CLIENT_SECRET", "")
-    if not client_id or not client_secret:
-        print("Error: DIGIKEY_CLIENT_ID and DIGIKEY_CLIENT_SECRET required", file=sys.stderr)
-        return None
-
-    cache_path = os.path.join(tempfile.gettempdir(), "digikey_token_cache.json")
-
-    # Check cache
-    try:
-        if os.path.exists(cache_path):
-            with open(cache_path) as f:
-                cached = json.load(f)
-            if (cached.get("client_id") == client_id
-                    and cached.get("expires_at", 0) > time.time()):
-                return cached["token"]
-    except (json.JSONDecodeError, OSError):
-        pass
-
-    # Fetch new token
-    try:
-        token_data = urllib.parse.urlencode({
-            "client_id": client_id,
-            "client_secret": client_secret,
-            "grant_type": "client_credentials",
-        }).encode()
-        req = urllib.request.Request(
-            "https://api.digikey.com/v1/oauth2/token",
-            data=token_data,
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-        )
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            token_resp = json.loads(resp.read())
-        token = token_resp.get("access_token", "")
-        if not token:
-            print("Error: Failed to get OAuth token", file=sys.stderr)
-            return None
-
-        # Cache with 9-minute TTL (token lasts 10 min, 1 min safety margin)
-        try:
-            with open(cache_path, "w") as f:
-                json.dump({
-                    "token": token,
-                    "client_id": client_id,
-                    "expires_at": time.time() + 540,
-                }, f)
-            os.chmod(cache_path, 0o600)
-        except OSError:
-            pass  # caching is best-effort
-
-        return token
-    except Exception as e:
-        print(f"Error: OAuth failed: {e}", file=sys.stderr)
-        return None
-
-
-def search_digikey(mpn: str) -> dict | None:
-    """Search DigiKey API for a part, return first match with datasheet URL."""
-    client_id = os.environ.get("DIGIKEY_CLIENT_ID", "")
-    token = _get_digikey_token()
-    if not token:
-        return None
-
-    # Search for the part
-    try:
-        search_body = json.dumps({"Keywords": mpn, "Limit": 3}).encode()
-        req = urllib.request.Request(
-            "https://api.digikey.com/products/v4/search/keyword",
-            data=search_body,
-            headers={
-                "Content-Type": "application/json",
-                "X-DIGIKEY-Client-Id": client_id,
-                "Authorization": f"Bearer {token}",
-            },
-        )
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = json.loads(resp.read())
-    except Exception as e:
-        print(f"Error: Search failed: {e}", file=sys.stderr)
-        return None
-
-    products = data.get("Products", [])
-    if not products:
-        print(f"No results for '{mpn}'", file=sys.stderr)
-        return None
-
-    # Prefer exact MPN match
-    for p in products:
-        if p.get("ManufacturerProductNumber", "").upper().startswith(mpn.upper()):
-            return p
-    return products[0]
+from provider_digikey import _get_digikey_token, search_digikey
 
 
 def main():
