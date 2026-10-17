@@ -26,19 +26,12 @@ Dependencies:
 import argparse
 import json
 import os
-import re
-import shutil
-import subprocess
 import sys
-import urllib.parse
-import urllib.request
 import _core_path  # noqa: F401
 from distributor_core.download import (
     _USER_AGENT,
     _requests,
     _sync_playwright,
-    normalize_url as _normalize_url,
-    download_pdf as _download_pdf,
     _download_requests,
     _download_urllib,
     _download_playwright,
@@ -46,126 +39,18 @@ from distributor_core.download import (
 )
 from distributor_core.verify import _extract_pdf_text, verify_datasheet
 from distributor_core.manifest import _friendly_filename
-
-
-# This provider's datasheet URLs are used as given (no manufacturer redirect unwrapping).
-def normalize_url(url):
-    return _normalize_url(url, resolve_redirects=False)
-
-
-def download_pdf(url, output_path):
-    return _download_pdf(url, output_path, resolve_redirects=False)
-
-
-# ---------------------------------------------------------------------------
-# element14 Product Search API
-# ---------------------------------------------------------------------------
-
-_DEFAULT_STORE = "www.newark.com"
-
-
-def search_element14(query: str, api_key: str, store: str = _DEFAULT_STORE) -> dict | None:
-    """Search element14 API for a part. Returns first match with datasheet URL.
-
-    Accepts MPN, Newark/Farnell SKU, or keyword search terms.
-    Detects the query type automatically:
-      - If it looks like a numeric/alphanumeric SKU (e.g., "94AK6874"), uses id: search
-      - Otherwise uses manuPartNum: search, falling back to any: keyword search
-    """
-    # Determine search mode
-    # Newark/Farnell SKUs are typically alphanumeric codes like "94AK6874"
-    # MPNs usually have dashes, longer alphanumeric strings
-    query = query.strip()
-
-    # Try MPN search first (most common case)
-    result = _search_element14_raw(f"manuPartNum:{query}", api_key, store)
-    if result:
-        return result
-
-    # Try as distributor SKU
-    result = _search_element14_raw(f"id:{query}", api_key, store)
-    if result:
-        return result
-
-    # Fall back to keyword search
-    result = _search_element14_raw(f"any:{query}", api_key, store)
-    return result
-
-
-def _search_element14_raw(term: str, api_key: str, store: str) -> dict | None:
-    """Execute a single element14 API search."""
-    params = {
-        "term": term,
-        "storeInfo.id": store,
-        "resultsSettings.offset": "0",
-        "resultsSettings.numberOfResults": "5",
-        "resultsSettings.responseGroup": "medium",
-        "callInfo.responseDataFormat": "JSON",
-        "callInfo.apiKey": api_key,
-    }
-    url = f"https://api.element14.com/catalog/products?{urllib.parse.urlencode(params)}"
-
-    try:
-        req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = json.loads(resp.read())
-    except Exception as e:
-        print(f"[element14] Search failed: {e}", file=sys.stderr)
-        return None
-
-    # The response key depends on the search type
-    for key in ("manufacturerPartNumberSearchReturn", "keywordSearchReturn",
-                "skuSearchReturn", "premierFarnellPartNumberReturn"):
-        result_block = data.get(key)
-        if result_block:
-            break
-    else:
-        return None
-
-    products = result_block.get("products", [])
-    if not products:
-        return None
-
-    # Prefer exact MPN match
-    query_part = term.split(":", 1)[-1].upper() if ":" in term else term.upper()
-    for p in products:
-        mpn = (p.get("translatedManufacturerPartNumber") or "").upper()
-        sku = (p.get("sku") or "").upper()
-        if mpn == query_part or sku == query_part:
-            return p
-
-    # Return first result
-    return products[0]
-
-
-def _get_datasheet_url(product: dict) -> str:
-    """Extract the best datasheet URL from an element14 product."""
-    datasheets = product.get("datasheets", [])
-    for ds in datasheets:
-        url = ds.get("url", "")
-        if url:
-            return url
-    return ""
-
-
-def _get_mpn(product: dict) -> str:
-    """Extract MPN from product."""
-    return product.get("translatedManufacturerPartNumber", "")
-
-
-def _get_sku(product: dict) -> str:
-    """Extract Newark/Farnell SKU from product."""
-    return product.get("sku", "")
-
-
-def _get_manufacturer(product: dict) -> str:
-    """Extract manufacturer name from product."""
-    return product.get("brandName", "")
-
-
-def _get_description(product: dict) -> str:
-    """Extract description from product."""
-    return product.get("displayName", "")
+from provider_element14 import (
+    normalize_url,
+    download_pdf,
+    _DEFAULT_STORE,
+    search_element14,
+    _search_element14_raw,
+    _get_datasheet_url,
+    _get_mpn,
+    _get_sku,
+    _get_manufacturer,
+    _get_description,
+)
 
 
 # ---------------------------------------------------------------------------

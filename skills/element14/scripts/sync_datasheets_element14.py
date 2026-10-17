@@ -47,7 +47,7 @@ from pathlib import Path
 # Import from sibling script (same skill)
 sys.path.insert(0, str(Path(__file__).parent))
 import _core_path  # noqa: F401
-from fetch_datasheet_element14 import (
+from provider_element14 import (
     download_pdf,
     try_alternative_sources,
     verify_datasheet,
@@ -58,6 +58,7 @@ from fetch_datasheet_element14 import (
     _get_manufacturer,
     _get_description,
     _DEFAULT_STORE,
+    sync_one_part,
 )
 from distributor_core.inputs import (
     _GENERIC_VALUE_RE,
@@ -89,155 +90,9 @@ def load_mpn_list(path):
     return _load_mpn_list_core(path, id_keys=ID_KEYS)
 
 
-
 # ---------------------------------------------------------------------------
 # Core sync logic
 # ---------------------------------------------------------------------------
-
-def sync_one_part(
-    part: dict,
-    output_dir: Path,
-    index: dict,
-    delay: float,
-    api_key: str,
-    store: str,
-) -> dict:
-    """Download datasheet for one part. Returns updated manifest entry."""
-    mpn = part["mpn"]
-    element14_pn = part.get("element14", "")
-    now = datetime.now(timezone.utc).isoformat()
-
-    # Use MPN for display/filename if available, otherwise element14 PN
-    display_pn = mpn or element14_pn
-
-    desc = part.get("description", "")
-    mfg = part.get("manufacturer", "")
-    filename = friendly_filename(display_pn, desc, mfg) + ".pdf"
-    output_path = output_dir / filename
-
-    # Strategy 1: Try the datasheet URL from the schematic itself
-    schematic_url = part.get("datasheet", "")
-    if schematic_url and schematic_url != "~" and "://" in schematic_url:
-        print(f"  Trying schematic URL...", file=sys.stderr)
-        if download_pdf(schematic_url, str(output_path)):
-            size = os.path.getsize(str(output_path))
-            vr = verify_datasheet(str(output_path), display_pn, desc, mfg)
-            if vr["confidence"] == "wrong":
-                print(f"  WARNING: PDF may be wrong datasheet — {vr['details']}",
-                      file=sys.stderr)
-            result = {
-                "file": filename,
-                "manufacturer": mfg,
-                "description": desc,
-                "value": part["value"],
-                "datasheet_url": schematic_url,
-                "downloaded_date": now,
-                "source": "schematic",
-                "status": "ok",
-                "references": part["references"],
-                "size_bytes": size,
-                "verification": vr["confidence"],
-            }
-            if vr["confidence"] == "wrong":
-                result["verification_details"] = vr["details"]
-            return result
-
-    # Strategy 2: Search element14 API
-    # Prefer MPN search (most reliable), fall back to element14 SKU
-    search_term = mpn or element14_pn
-    time.sleep(delay)
-    print(f"  Searching element14 for '{search_term}'...", file=sys.stderr)
-    product = search_element14(search_term, api_key, store)
-
-    # If MPN search failed but we have an element14 PN, try that
-    if product is None and mpn and element14_pn:
-        time.sleep(delay)
-        print(f"  MPN not found, trying SKU '{element14_pn}'...", file=sys.stderr)
-        product = search_element14(element14_pn, api_key, store)
-
-    if product is not None:
-        ds_url = _get_datasheet_url(product)
-        e14_mpn = _get_mpn(product)
-        e14_mfg = _get_manufacturer(product) or mfg
-        e14_desc = _get_description(product) or desc
-        e14_sku = _get_sku(product)
-
-        # Use the richer element14 data for filename
-        effective_pn = e14_mpn or display_pn
-        if e14_desc:
-            filename = friendly_filename(effective_pn, e14_desc, e14_mfg) + ".pdf"
-            output_path = output_dir / filename
-
-        if ds_url:
-            print(f"  Downloading from element14...", file=sys.stderr)
-            if download_pdf(ds_url, str(output_path)):
-                size = os.path.getsize(str(output_path))
-                vr = verify_datasheet(str(output_path), effective_pn, e14_desc, e14_mfg)
-                if vr["confidence"] == "wrong":
-                    print(f"  WARNING: PDF may be wrong datasheet — {vr['details']}",
-                          file=sys.stderr)
-                result = {
-                    "file": filename,
-                    "manufacturer": e14_mfg,
-                    "description": e14_desc,
-                    "value": part["value"],
-                    "datasheet_url": ds_url,
-                    "downloaded_date": now,
-                    "source": "element14",
-                    "element14": e14_sku,
-                    "status": "ok",
-                    "references": part["references"],
-                    "size_bytes": size,
-                    "verification": vr["confidence"],
-                }
-                if vr["confidence"] == "wrong":
-                    result["verification_details"] = vr["details"]
-                return result
-
-    # Strategy 3: Try alternative manufacturer sources
-    if mpn:
-        print(f"  Trying alternative sources...", file=sys.stderr)
-        if try_alternative_sources(mpn, str(output_path)):
-            size = os.path.getsize(str(output_path))
-            vr = verify_datasheet(str(output_path), mpn, desc, mfg)
-            result = {
-                "file": filename,
-                "manufacturer": mfg,
-                "description": desc,
-                "value": part["value"],
-                "datasheet_url": "",
-                "downloaded_date": now,
-                "source": "alternative",
-                "status": "ok",
-                "references": part["references"],
-                "size_bytes": size,
-                "verification": vr["confidence"],
-            }
-            if vr["confidence"] == "wrong":
-                result["verification_details"] = vr["details"]
-            return result
-
-    if product is None:
-        return {
-            "manufacturer": mfg,
-            "description": desc,
-            "value": part["value"],
-            "references": part["references"],
-            "status": "not_found",
-            "error": f"No element14 results for '{search_term}'"
-                     + (f" or '{element14_pn}'" if mpn and element14_pn else ""),
-            "last_attempt": now,
-        }
-
-    return {
-        "manufacturer": mfg,
-        "description": desc,
-        "value": part["value"],
-        "references": part["references"],
-        "status": "failed",
-        "error": "No datasheet URL or all download methods failed",
-        "last_attempt": now,
-    }
 
 
 def sync_datasheets(
@@ -374,7 +229,7 @@ def sync_datasheets(
                 n = counter[0]
             print(f"[{n}/{len(to_download)}] {part_key}", file=sys.stderr)
 
-            result = sync_one_part(part, out_dir, index, delay, api_key, store)
+            result = sync_one_part(part, out_dir, index, delay, (api_key, store))
 
             with lock:
                 index.setdefault("parts", {})[part_key] = result
@@ -406,7 +261,7 @@ def sync_datasheets(
             part_key = part["_key"]
             print(f"[{i+1}/{len(to_download)}] {part_key}", file=sys.stderr)
 
-            result = sync_one_part(part, out_dir, index, delay, api_key, store)
+            result = sync_one_part(part, out_dir, index, delay, (api_key, store))
 
             index.setdefault("parts", {})[part_key] = result
 
