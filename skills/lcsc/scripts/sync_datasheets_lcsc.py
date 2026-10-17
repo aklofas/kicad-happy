@@ -46,7 +46,7 @@ from pathlib import Path
 # Import from sibling script (same skill)
 sys.path.insert(0, str(Path(__file__).parent))
 import _core_path  # noqa: F401
-from fetch_datasheet_lcsc import (
+from provider_lcsc import (
     download_pdf,
     try_alternative_sources,
     verify_datasheet,
@@ -57,6 +57,7 @@ from fetch_datasheet_lcsc import (
     _get_lcsc_code,
     _get_manufacturer,
     _get_description,
+    sync_one_part,
 )
 from distributor_core.inputs import (
     _GENERIC_VALUE_RE,
@@ -88,154 +89,9 @@ def load_mpn_list(path):
     return _load_mpn_list_core(path, id_keys=ID_KEYS)
 
 
-
 # ---------------------------------------------------------------------------
 # Core sync logic
 # ---------------------------------------------------------------------------
-
-def sync_one_part(
-    part: dict,
-    output_dir: Path,
-    index: dict,
-    delay: float,
-) -> dict:
-    """Download datasheet for one part. Returns updated manifest entry."""
-    mpn = part["mpn"]
-    lcsc_pn = part.get("lcsc", "")
-    now = datetime.now(timezone.utc).isoformat()
-
-    # Use MPN for display/filename if available, otherwise LCSC code
-    display_pn = mpn or lcsc_pn
-
-    desc = part.get("description", "")
-    mfg = part.get("manufacturer", "")
-    filename = friendly_filename(display_pn, desc, mfg) + ".pdf"
-    output_path = output_dir / filename
-
-    # Strategy 1: Try the datasheet URL from the schematic itself
-    schematic_url = part.get("datasheet", "")
-    if schematic_url and schematic_url != "~" and "://" in schematic_url:
-        print(f"  Trying schematic URL...", file=sys.stderr)
-        if download_pdf(schematic_url, str(output_path)):
-            size = os.path.getsize(str(output_path))
-            vr = verify_datasheet(str(output_path), display_pn, desc, mfg)
-            if vr["confidence"] == "wrong":
-                print(f"  WARNING: PDF may be wrong datasheet — {vr['details']}",
-                      file=sys.stderr)
-            result = {
-                "file": filename,
-                "manufacturer": mfg,
-                "description": desc,
-                "value": part["value"],
-                "datasheet_url": schematic_url,
-                "downloaded_date": now,
-                "source": "schematic",
-                "status": "ok",
-                "references": part["references"],
-                "size_bytes": size,
-                "verification": vr["confidence"],
-            }
-            if vr["confidence"] == "wrong":
-                result["verification_details"] = vr["details"]
-            return result
-
-    # Strategy 2: Search jlcsearch API
-    # Prefer LCSC code (exact match) over MPN keyword search
-    search_term = lcsc_pn or mpn
-    time.sleep(delay)
-    print(f"  Searching LCSC for '{search_term}'...", file=sys.stderr)
-    component = search_lcsc(search_term)
-    component = enrich_with_wmsc(component)
-
-    # If LCSC code search failed but we have an MPN, try that
-    if component is None and lcsc_pn and mpn:
-        time.sleep(delay)
-        print(f"  LCSC code not found, trying MPN '{mpn}'...", file=sys.stderr)
-        component = search_lcsc(mpn)
-        component = enrich_with_wmsc(component)
-
-    if component is not None:
-        ds_url = _get_datasheet_url(component)
-        lcsc_mpn = _get_mpn(component)
-        lcsc_mfg = _get_manufacturer(component) or mfg
-        lcsc_desc = _get_description(component) or desc
-        lcsc_code = _get_lcsc_code(component)
-
-        # Use the richer LCSC data for filename
-        effective_pn = lcsc_mpn or display_pn
-        if lcsc_desc:
-            filename = friendly_filename(effective_pn, lcsc_desc, lcsc_mfg) + ".pdf"
-            output_path = output_dir / filename
-
-        if ds_url:
-            print(f"  Downloading from LCSC CDN...", file=sys.stderr)
-            if download_pdf(ds_url, str(output_path)):
-                size = os.path.getsize(str(output_path))
-                vr = verify_datasheet(str(output_path), effective_pn, lcsc_desc, lcsc_mfg)
-                if vr["confidence"] == "wrong":
-                    print(f"  WARNING: PDF may be wrong datasheet — {vr['details']}",
-                          file=sys.stderr)
-                result = {
-                    "file": filename,
-                    "manufacturer": lcsc_mfg,
-                    "description": lcsc_desc,
-                    "value": part["value"],
-                    "datasheet_url": ds_url,
-                    "downloaded_date": now,
-                    "source": "lcsc",
-                    "lcsc": lcsc_code,
-                    "status": "ok",
-                    "references": part["references"],
-                    "size_bytes": size,
-                    "verification": vr["confidence"],
-                }
-                if vr["confidence"] == "wrong":
-                    result["verification_details"] = vr["details"]
-                return result
-
-    # Strategy 3: Try alternative manufacturer sources
-    if mpn:
-        print(f"  Trying alternative sources...", file=sys.stderr)
-        if try_alternative_sources(mpn, str(output_path)):
-            size = os.path.getsize(str(output_path))
-            vr = verify_datasheet(str(output_path), mpn, desc, mfg)
-            result = {
-                "file": filename,
-                "manufacturer": mfg,
-                "description": desc,
-                "value": part["value"],
-                "datasheet_url": "",
-                "downloaded_date": now,
-                "source": "alternative",
-                "status": "ok",
-                "references": part["references"],
-                "size_bytes": size,
-                "verification": vr["confidence"],
-            }
-            if vr["confidence"] == "wrong":
-                result["verification_details"] = vr["details"]
-            return result
-
-    if component is None:
-        return {
-            "manufacturer": mfg,
-            "description": desc,
-            "value": part["value"],
-            "references": part["references"],
-            "status": "not_found",
-            "error": f"No LCSC results for '{search_term}'" + (f" or '{mpn}'" if lcsc_pn and mpn else ""),
-            "last_attempt": now,
-        }
-
-    return {
-        "manufacturer": mfg,
-        "description": desc,
-        "value": part["value"],
-        "references": part["references"],
-        "status": "failed",
-        "error": "No datasheet URL or all download methods failed",
-        "last_attempt": now,
-    }
 
 
 def sync_datasheets(
@@ -361,7 +217,7 @@ def sync_datasheets(
                 n = counter[0]
             print(f"[{n}/{len(to_download)}] {part_key}", file=sys.stderr)
 
-            result = sync_one_part(part, out_dir, index, delay)
+            result = sync_one_part(part, out_dir, index, delay, None)
 
             with lock:
                 index.setdefault("parts", {})[part_key] = result
@@ -393,7 +249,7 @@ def sync_datasheets(
             part_key = part["_key"]
             print(f"[{i+1}/{len(to_download)}] {part_key}", file=sys.stderr)
 
-            result = sync_one_part(part, out_dir, index, delay)
+            result = sync_one_part(part, out_dir, index, delay, None)
 
             index.setdefault("parts", {})[part_key] = result
 
