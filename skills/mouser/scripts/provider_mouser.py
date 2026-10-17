@@ -1,4 +1,4 @@
-"""Mouser adapter (v3 round 6): auth, search, response accessors, and the provider's sync_one_part strategy chain — verbatim from fetch_datasheet_mouser.py / sync_datasheets_mouser.py; the driver is distributor_core.sync. Adapter constants are the twelve measured per-provider differences of the old drivers (see the round-6 plan's knob table)."""
+"""Mouser adapter (v3 round 6): auth, search, response accessors, and the provider's sync_one_part strategy chain — verbatim from fetch_datasheet_mouser.py / sync_datasheets_mouser.py; the driver is distributor_core.sync. Adapter constants are the thirteen measured per-provider differences of the old drivers (see the round-6 plan's knob table)."""
 
 import json
 import os
@@ -23,6 +23,7 @@ KEY_PRIORITY = ("mouser",)
 SKIPPED_COUNTS_IDS = ()
 RENAME_PRESENT = True
 FAILED_DETAIL_WITH_URL = True
+# Documentary today: the normalize_url/download_pdf wrappers hard-code the flag; round 8 may read it.
 NORMALIZE_REDIRECTS = True
 LABELS = {
     "found": "Found {n} unique parts with MPNs ({k} skipped without MPN)",

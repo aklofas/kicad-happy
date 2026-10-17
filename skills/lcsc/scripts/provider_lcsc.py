@@ -1,4 +1,4 @@
-"""LCSC adapter (v3 round 6): auth, search, response accessors, and the provider's sync_one_part strategy chain — verbatim from fetch_datasheet_lcsc.py / sync_datasheets_lcsc.py; the driver is distributor_core.sync. Adapter constants are the twelve measured per-provider differences of the old drivers (see the round-6 plan's knob table)."""
+"""LCSC adapter (v3 round 6): auth, search, response accessors, and the provider's sync_one_part strategy chain — verbatim from fetch_datasheet_lcsc.py / sync_datasheets_lcsc.py; the driver is distributor_core.sync. Adapter constants are the thirteen measured per-provider differences of the old drivers (see the round-6 plan's knob table)."""
 
 import json
 import os
@@ -27,6 +27,7 @@ KEY_PRIORITY = ("lcsc", "digikey", "mouser")
 SKIPPED_COUNTS_IDS = ID_KEYS
 RENAME_PRESENT = False
 FAILED_DETAIL_WITH_URL = False
+# Documentary today: the normalize_url/download_pdf wrappers hard-code the flag; round 8 may read it.
 NORMALIZE_REDIRECTS = False
 LABELS = {
     "found": "Found {n} unique parts with identifiers ({k} skipped without any identifier)",

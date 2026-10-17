@@ -8,8 +8,8 @@ FX = Path(os.environ.get("FX", "/tmp/harness-pin/tests/fixtures"))
 
 class CacheReader(unittest.TestCase):
     def test_lookup_is_a_normal_package_export_without_scripts_on_path(self):
-        code = ("import sys, json; sys.path.insert(0, %r); import datasheet_types as dt; "
-                "print(json.dumps({'lookup': dt.lookup.__module__, 'scripts_on_path': any(p.endswith('datasheets/scripts') for p in sys.path)}))" % str(DS))
+        code = ("import sys, json; from pathlib import PurePath; sys.path.insert(0, %r); import datasheet_types as dt; "
+                "print(json.dumps({'lookup': dt.lookup.__module__, 'scripts_on_path': any(PurePath(p).parts[-2:] == ('datasheets', 'scripts') for p in sys.path)}))" % str(DS))
         out = subprocess.run([sys.executable, "-I", "-c", code], capture_output=True, text=True, check=True).stdout
         d = json.loads(out)
         self.assertEqual(d["lookup"], "datasheet_types.cache_reader")
@@ -21,8 +21,8 @@ class CacheReader(unittest.TestCase):
         for n in ("sanitize_mpn", "cache_path_for", "CacheContext", "lookup", "STALE_PDF_MISSING", "STALE_PDF_HASH_MISMATCH", "_UNSAFE_CHAR", "_compute_pdf_sha256", "_resolve_pdf_path"):
             self.assertIs(getattr(dl, n), getattr(cr, n), n)
 
-    def test_lookup_stale_reasons(self):
-        from datasheet_types.cache_reader import lookup, STALE_PDF_MISSING
+    def test_lookup_miss_and_malformed_json_return_none(self):
+        from datasheet_types.cache_reader import lookup
         with tempfile.TemporaryDirectory() as d:
             cache = Path(d) / "extracted"; cache.mkdir()
             self.assertIsNone(lookup("NOPE", cache_dir=cache))

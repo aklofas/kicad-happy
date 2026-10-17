@@ -56,6 +56,8 @@ def get_analyzer_output(input_path: Path) -> dict | None:
 
     if input_path.suffix in (".kicad_sch", ".sch"):
         # Try importing the analyzer directly
+        # Resolves only because skills/datasheets/distributor_core/ sits at the same depth as
+        # skills/<p>/scripts/; _core_path-style anchoring is a round-8 item.
         kicad_scripts = Path(__file__).resolve().parent.parent.parent / "kicad" / "scripts"
         if kicad_scripts.exists():
             sys.path.insert(0, str(kicad_scripts))
