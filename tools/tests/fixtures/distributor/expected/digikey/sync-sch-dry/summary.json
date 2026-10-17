@@ -1,0 +1,9 @@
+{
+  "already_present": [],
+  "skipped_no_identifier": 2,
+  "skipped_previous_failures": [],
+  "would_download": [
+    "Conn_01x02_Pin",
+    "RC0603FR-07330RL"
+  ]
+}

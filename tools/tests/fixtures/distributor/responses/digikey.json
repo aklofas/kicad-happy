@@ -1,0 +1,97 @@
+{
+  "direct": {},
+  "downloads": {
+    "https://example.com/nope.pdf": false,
+    "https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATMEGA328P-AU-DataSheet.pdf": "ATMEGA328P-AU datasheet",
+    "https://www.digikey.com/fixture/atmega.pdf": false,
+    "https://www.digikey.com/fixture/failall.pdf": false,
+    "https://www.digikey.com/fixture/gone2.pdf": "GONE2 fixture datasheet text for the offline oracle (page 1).",
+    "https://www.digikey.com/fixture/lm358.pdf": "LM358DR fixture datasheet text for the offline oracle (page 1).",
+    "https://www.digikey.com/fixture/realmpn123.pdf": "REALMPN123 fixture datasheet text for the offline oracle (page 1).",
+    "https://www.digikey.com/fixture/si2302.pdf": "SI2302 fixture datasheet text for the offline oracle (page 1).",
+    "https://www.ti.com/lit/ds/symlink/tps61023.pdf": "TPS61023DRLR fixture datasheet text for the offline oracle (page 1)."
+  },
+  "scrape": {},
+  "search": {
+    "296-1234-ND": {
+      "DatasheetUrl": "https://www.digikey.com/fixture/realmpn123.pdf",
+      "Description": {
+        "ProductDescription": "Buck regulator 1A"
+      },
+      "Manufacturer": {
+        "Name": "Acme Semi"
+      },
+      "ManufacturerProductNumber": "REALMPN123"
+    },
+    "ATMEGA328P-AU": {
+      "DatasheetUrl": "https://www.digikey.com/fixture/atmega.pdf",
+      "Description": {
+        "ProductDescription": "8-bit AVR Microcontroller"
+      },
+      "Manufacturer": {
+        "Name": "Microchip Technology"
+      },
+      "ManufacturerProductNumber": "ATMEGA328P-AU"
+    },
+    "FAILALL77": {
+      "DatasheetUrl": "https://www.digikey.com/fixture/failall.pdf",
+      "Description": {
+        "ProductDescription": "Broken link part"
+      },
+      "Manufacturer": {
+        "Name": "Acme"
+      },
+      "ManufacturerProductNumber": "FAILALL77"
+    },
+    "GONE2": {
+      "DatasheetUrl": "https://www.digikey.com/fixture/gone2.pdf",
+      "Description": {
+        "ProductDescription": "Gone part revised"
+      },
+      "Manufacturer": {
+        "Name": "Mfg"
+      },
+      "ManufacturerProductNumber": "GONE2"
+    },
+    "LM358DR": {
+      "DatasheetUrl": "https://www.digikey.com/fixture/lm358.pdf",
+      "Description": {
+        "ProductDescription": "Dual Operational Amplifier"
+      },
+      "Manufacturer": {
+        "Name": "Texas Instruments"
+      },
+      "ManufacturerProductNumber": "LM358DR"
+    },
+    "NODATA1234": {
+      "DatasheetUrl": "",
+      "Description": {
+        "ProductDescription": "Mystery part"
+      },
+      "Manufacturer": {
+        "Name": "Acme"
+      },
+      "ManufacturerProductNumber": "NODATA1234"
+    },
+    "SI2302": {
+      "DatasheetUrl": "https://www.digikey.com/fixture/si2302.pdf",
+      "Description": {
+        "ProductDescription": "N-Channel MOSFET 20V"
+      },
+      "Manufacturer": {
+        "Name": "Vishay"
+      },
+      "ManufacturerProductNumber": "SI2302"
+    },
+    "TPS61023DRLR": {
+      "DatasheetUrl": "https://www.ti.com/lit/ds/symlink/tps61023.pdf",
+      "Description": {
+        "ProductDescription": "Boost Converter 5.5V"
+      },
+      "Manufacturer": {
+        "Name": "Texas Instruments"
+      },
+      "ManufacturerProductNumber": "TPS61023DRLR"
+    }
+  }
+}

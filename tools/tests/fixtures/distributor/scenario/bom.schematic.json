@@ -1,0 +1,311 @@
+{
+  "analyzer_type": "schematic",
+  "bom": [
+    {
+      "references": [
+        "U1"
+      ],
+      "value": "TPS61023DRLR",
+      "mpn": "TPS61023DRLR",
+      "manufacturer": "Texas Instruments",
+      "description": "Boost Converter",
+      "datasheet": "https://www.ti.com/lit/ds/symlink/tps61023.pdf",
+      "type": "ic",
+      "dnp": false,
+      "lib_id": "Regulator_Switching:TPS61023",
+      "digikey": "",
+      "mouser": "",
+      "lcsc": "",
+      "element14": ""
+    },
+    {
+      "references": [
+        "U2"
+      ],
+      "value": "LM358DR",
+      "mpn": "LM358DR",
+      "manufacturer": "Texas Instruments",
+      "description": "Op amp",
+      "datasheet": "~",
+      "type": "ic",
+      "dnp": false,
+      "lib_id": "Amplifier_Operational:LM358",
+      "digikey": "",
+      "mouser": "",
+      "lcsc": "",
+      "element14": ""
+    },
+    {
+      "references": [
+        "U3"
+      ],
+      "value": "NODATA1234",
+      "mpn": "NODATA1234",
+      "manufacturer": "Acme",
+      "description": "Mystery part",
+      "datasheet": "",
+      "type": "ic",
+      "dnp": false,
+      "lib_id": "Acme:NODATA",
+      "digikey": "",
+      "mouser": "",
+      "lcsc": "",
+      "element14": ""
+    },
+    {
+      "references": [
+        "U4"
+      ],
+      "value": "ATMEGA328P-AU",
+      "mpn": "ATMEGA328P-AU",
+      "manufacturer": "Microchip",
+      "description": "MCU",
+      "datasheet": "",
+      "type": "ic",
+      "dnp": false,
+      "lib_id": "MCU_Microchip_ATmega:ATmega328P-AU",
+      "digikey": "",
+      "mouser": "",
+      "lcsc": "",
+      "element14": ""
+    },
+    {
+      "references": [
+        "U5"
+      ],
+      "value": "MISSING9999",
+      "mpn": "MISSING9999",
+      "manufacturer": "Acme",
+      "description": "Unlisted part",
+      "datasheet": "",
+      "type": "ic",
+      "dnp": false,
+      "lib_id": "Acme:MISSING",
+      "digikey": "",
+      "mouser": "",
+      "lcsc": "",
+      "element14": ""
+    },
+    {
+      "references": [
+        "U6"
+      ],
+      "value": "FAILALL77",
+      "mpn": "FAILALL77",
+      "manufacturer": "Acme",
+      "description": "Broken link part",
+      "datasheet": "",
+      "type": "ic",
+      "dnp": false,
+      "lib_id": "Acme:FAILALL",
+      "digikey": "",
+      "mouser": "",
+      "lcsc": "",
+      "element14": ""
+    },
+    {
+      "references": [
+        "R1"
+      ],
+      "value": "10k",
+      "mpn": "",
+      "manufacturer": "",
+      "description": "",
+      "datasheet": "",
+      "type": "resistor",
+      "dnp": false,
+      "lib_id": "Device:R",
+      "digikey": "",
+      "mouser": "",
+      "lcsc": "",
+      "element14": ""
+    },
+    {
+      "references": [
+        "U7"
+      ],
+      "value": "SI2302",
+      "mpn": "",
+      "manufacturer": "",
+      "description": "",
+      "datasheet": "",
+      "type": "transistor",
+      "dnp": false,
+      "lib_id": "Transistor_FET:SI2302",
+      "digikey": "",
+      "mouser": "",
+      "lcsc": "",
+      "element14": ""
+    },
+    {
+      "references": [
+        "J1"
+      ],
+      "value": "USB4105-GF-A",
+      "mpn": "USB4105-GF-A",
+      "manufacturer": "GCT",
+      "description": "USB-C receptacle",
+      "datasheet": "",
+      "type": "connector",
+      "dnp": true,
+      "lib_id": "Connector:USB_C",
+      "digikey": "",
+      "mouser": "",
+      "lcsc": "",
+      "element14": ""
+    },
+    {
+      "references": [
+        "U8"
+      ],
+      "value": "REG",
+      "mpn": "",
+      "manufacturer": "",
+      "description": "Regulator",
+      "datasheet": "",
+      "type": "ic",
+      "dnp": false,
+      "lib_id": "Acme:REG",
+      "digikey": "296-1234-ND",
+      "mouser": "",
+      "lcsc": "",
+      "element14": ""
+    },
+    {
+      "references": [
+        "U9"
+      ],
+      "value": "LDO",
+      "mpn": "",
+      "manufacturer": "",
+      "description": "LDO",
+      "datasheet": "",
+      "type": "ic",
+      "dnp": false,
+      "lib_id": "Acme:LDO",
+      "digikey": "",
+      "mouser": "595-TPS7A05",
+      "lcsc": "",
+      "element14": ""
+    },
+    {
+      "references": [
+        "U10"
+      ],
+      "value": "AMS",
+      "mpn": "",
+      "manufacturer": "",
+      "description": "LDO 3.3V",
+      "datasheet": "",
+      "type": "ic",
+      "dnp": false,
+      "lib_id": "Acme:AMS",
+      "digikey": "",
+      "mouser": "",
+      "lcsc": "C14663",
+      "element14": ""
+    },
+    {
+      "references": [
+        "U11"
+      ],
+      "value": "SENSOR",
+      "mpn": "",
+      "manufacturer": "",
+      "description": "Sensor",
+      "datasheet": "",
+      "type": "ic",
+      "dnp": false,
+      "lib_id": "Acme:E14",
+      "digikey": "",
+      "mouser": "",
+      "lcsc": "",
+      "element14": "94AK6874"
+    },
+    {
+      "references": [
+        "C1"
+      ],
+      "value": "100nF",
+      "mpn": "",
+      "manufacturer": "",
+      "description": "",
+      "datasheet": "",
+      "type": "capacitor",
+      "dnp": false,
+      "lib_id": "Device:C",
+      "digikey": "",
+      "mouser": "",
+      "lcsc": "",
+      "element14": ""
+    },
+    {
+      "references": [
+        "U13"
+      ],
+      "value": "1234",
+      "mpn": "",
+      "manufacturer": "",
+      "description": "",
+      "datasheet": "",
+      "type": "ic",
+      "dnp": false,
+      "lib_id": "Sensor:X",
+      "digikey": "",
+      "mouser": "",
+      "lcsc": "",
+      "element14": ""
+    },
+    {
+      "references": [
+        "U14"
+      ],
+      "value": "PRESENT1",
+      "mpn": "PRESENT1",
+      "manufacturer": "Mfg",
+      "description": "Old Desc",
+      "datasheet": "",
+      "type": "ic",
+      "dnp": false,
+      "lib_id": "Acme:PRESENT1",
+      "digikey": "",
+      "mouser": "",
+      "lcsc": "",
+      "element14": ""
+    },
+    {
+      "references": [
+        "U15"
+      ],
+      "value": "GONE2",
+      "mpn": "GONE2",
+      "manufacturer": "Mfg",
+      "description": "Gone part",
+      "datasheet": "",
+      "type": "ic",
+      "dnp": false,
+      "lib_id": "Acme:GONE2",
+      "digikey": "",
+      "mouser": "",
+      "lcsc": "",
+      "element14": ""
+    },
+    {
+      "references": [
+        "U16"
+      ],
+      "value": "PREVFAIL3",
+      "mpn": "PREVFAIL3",
+      "manufacturer": "",
+      "description": "",
+      "datasheet": "",
+      "type": "ic",
+      "dnp": false,
+      "lib_id": "Acme:PREVFAIL3",
+      "digikey": "",
+      "mouser": "",
+      "lcsc": "",
+      "element14": ""
+    }
+  ]
+}

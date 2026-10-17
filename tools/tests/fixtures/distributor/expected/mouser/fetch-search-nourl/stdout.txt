@@ -1,0 +1,1 @@
+{"mpn": "NODATA1234", "manufacturer": "Acme", "description": "Mystery part", "datasheet_url": "", "success": false, "error": "All download methods failed", "manual_url": "https://www.mouser.com/ProductDetail/Acme/NODATA1234"}

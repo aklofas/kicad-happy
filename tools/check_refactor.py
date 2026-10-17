@@ -9,7 +9,8 @@ Subcommands (added across round 1):
   install-smoke  copy core (+ one optional skill) to a temp dir, run CLIs from an unrelated cwd
   determinism    snapshot twice with random hash seeds and compare
   aba       in-process A/B/A: analyse two boards in one interpreter (+ a built-in KiCad-10 pair), A must not change
-  quick     imports + tags + install-smoke + determinism + aba (+ compare when --baseline given)
+  sync-offline   distributor sync/fetch scripts over recorded fixtures vs the frozen expected outputs
+  quick     imports + tags + install-smoke + determinism + aba (+ compare when --baseline given) + sync-offline
 
 Stdlib only. Exit 0 = pass, 1 = findings, 2 = usage/setup error.
 """
@@ -37,6 +38,7 @@ LAYER_RULES = TOOLS_DIR / "layer_rules.json"
 IMPORT_BASELINE = TOOLS_DIR / "import_baseline.json"
 TAG_BASELINE = TOOLS_DIR / "tag_baseline.json"
 TAG_KEYS = ("detector", "rule_id", "schema_era")
+DISTRIBUTOR_EXPECTED = TOOLS_DIR / "tests" / "fixtures" / "distributor" / "expected"
 
 SKILL_CLIS = {
     "kicad": ["skills/kicad/scripts/analyze_schematic.py", "skills/kicad/scripts/analyze_pcb.py",
@@ -728,6 +730,16 @@ def _fixtures_digest(fixtures) -> str | None:
     return h.hexdigest()
 
 
+def cmd_sync_offline(args) -> int:
+    if str(TOOLS_DIR) not in sys.path:
+        sys.path.insert(0, str(TOOLS_DIR))
+    import distributor_offline
+    argv = ["--all", "--expected", str(args.expected), "--product", str(args.product)]
+    if getattr(args, "fixtures", None):
+        argv += ["--fixtures", str(args.fixtures)]
+    return distributor_offline.main(argv)
+
+
 def cmd_quick(args) -> int:
     if args.baseline and not args.fixtures:
         print("quick: --baseline requires --fixtures", file=sys.stderr)
@@ -797,6 +809,8 @@ def cmd_quick(args) -> int:
                         print(f"   {rel} {d[1]} {d[0]}: {d[2]!r} -> {d[3]!r}")
                 return 1 if bad else 0
             rc |= timed("compare-vs-baseline", _cmp)
+        rc |= timed("sync-offline", lambda: cmd_sync_offline(argparse.Namespace(
+            expected=DISTRIBUTOR_EXPECTED, product=args.product, fixtures=args.fixtures)))
     summary = {"product_sha": _git_sha(Path(args.product)), "fixtures_digest": _fixtures_digest(args.fixtures),
                "fixtures": counts, "snapshot_failures": snapshot_failures,
                "policy": Path(args.policy).name, "checks": checks, "status": "ok" if rc == 0 else "fail"}
@@ -848,6 +862,11 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--product", default=str(REPO_ROOT))
     a.add_argument("--policy", default=str(DEFAULT_POLICY))
     a.set_defaults(func=cmd_aba)
+    so = sub.add_parser("sync-offline", help="distributor sync/fetch offline oracle")
+    so.add_argument("--expected", default=str(DISTRIBUTOR_EXPECTED))
+    so.add_argument("--product", default=str(REPO_ROOT))
+    so.add_argument("--fixtures")
+    so.set_defaults(func=cmd_sync_offline)
     q = sub.add_parser("quick")
     q.add_argument("--fixtures")
     q.add_argument("--baseline")

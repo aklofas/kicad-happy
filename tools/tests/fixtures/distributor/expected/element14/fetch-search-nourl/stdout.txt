@@ -1,0 +1,1 @@
+{"mpn": "NODATA1234", "sku": "12AB1002", "manufacturer": "Acme", "description": "Mystery part", "datasheet_url": "", "success": false, "error": "No datasheet URL in element14 listing"}

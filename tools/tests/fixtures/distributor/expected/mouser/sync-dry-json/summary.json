@@ -1,0 +1,23 @@
+{
+  "already_present": [
+    "PRESENT1"
+  ],
+  "skipped_no_mpn": 8,
+  "skipped_previous_failures": [
+    "PREVFAIL3"
+  ],
+  "would_download": [
+    "TPS61023DRLR",
+    "LM358DR",
+    "NODATA1234",
+    "ATMEGA328P-AU",
+    "MISSING9999",
+    "FAILALL77",
+    "SI2302",
+    "",
+    "595-TPS7A05",
+    "",
+    "",
+    "GONE2"
+  ]
+}

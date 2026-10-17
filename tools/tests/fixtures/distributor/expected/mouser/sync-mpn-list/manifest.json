@@ -1,0 +1,41 @@
+{
+  "schematic": "<WORK>/mpns.txt",
+  "last_sync": "2026-10-16T00:00:00+00:00",
+  "parts": {
+    "LM358DR": {
+      "file": "LM358DR_Dual_Operational_Amplifier.pdf",
+      "manufacturer": "Texas Instruments",
+      "description": "Dual Operational Amplifier",
+      "value": "",
+      "datasheet_url": "https://www.mouser.com/datasheet/2/fixture/lm358.pdf",
+      "downloaded_date": "2026-10-16T00:00:00+00:00",
+      "source": "mouser",
+      "status": "ok",
+      "references": [],
+      "size_bytes": 79,
+      "verification": "verified"
+    },
+    "TPS61023DRLR": {
+      "file": "TPS61023DRLR_Boost_Converter_5.5V.pdf",
+      "manufacturer": "Texas Instruments",
+      "description": "Boost Converter 5.5V",
+      "value": "",
+      "datasheet_url": "https://www.ti.com/lit/ds/symlink/tps61023.pdf",
+      "downloaded_date": "2026-10-16T00:00:00+00:00",
+      "source": "mouser",
+      "status": "ok",
+      "references": [],
+      "size_bytes": 84,
+      "verification": "verified"
+    },
+    "MISSING9999": {
+      "manufacturer": "",
+      "description": "",
+      "value": "",
+      "references": [],
+      "status": "not_found",
+      "error": "No Mouser results for 'MISSING9999'",
+      "last_attempt": "2026-10-16T00:00:00+00:00"
+    }
+  }
+}

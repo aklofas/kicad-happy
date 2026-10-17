@@ -1,0 +1,186 @@
+{
+  "schematic": "<WORK>/bom.schematic.json",
+  "last_sync": "2026-10-16T00:00:00+00:00",
+  "parts": {
+    "PRESENT1": {
+      "manufacturer": "Mfg",
+      "description": "Old Desc",
+      "value": "PRESENT1",
+      "references": [
+        "U14"
+      ],
+      "status": "not_found",
+      "error": "No LCSC results for 'PRESENT1'",
+      "last_attempt": "2026-10-16T00:00:00+00:00"
+    },
+    "GONE2": {
+      "file": "GONE2_Gone_part_revised.pdf",
+      "manufacturer": "Mfg",
+      "description": "Gone part revised",
+      "value": "GONE2",
+      "datasheet_url": "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/fixture/gone2.pdf",
+      "downloaded_date": "2026-10-16T00:00:00+00:00",
+      "source": "lcsc",
+      "lcsc": "C1006",
+      "status": "ok",
+      "references": [
+        "U15"
+      ],
+      "size_bytes": 77,
+      "verification": "verified"
+    },
+    "PREVFAIL3": {
+      "manufacturer": "",
+      "description": "",
+      "value": "PREVFAIL3",
+      "references": [
+        "U16"
+      ],
+      "status": "failed",
+      "error": "All download methods failed",
+      "last_attempt": "2026-01-01T00:00:00+00:00"
+    },
+    "ORPHAN4": {
+      "status": "not_found",
+      "error": "No results",
+      "last_attempt": "2026-01-01T00:00:00+00:00",
+      "manufacturer": "",
+      "description": "",
+      "value": "",
+      "references": []
+    },
+    "TPS61023DRLR": {
+      "file": "TPS61023DRLR_Boost_Converter.pdf",
+      "manufacturer": "Texas Instruments",
+      "description": "Boost Converter",
+      "value": "TPS61023DRLR",
+      "datasheet_url": "https://www.ti.com/lit/ds/symlink/tps61023.pdf",
+      "downloaded_date": "2026-10-16T00:00:00+00:00",
+      "source": "schematic",
+      "status": "ok",
+      "references": [
+        "U1"
+      ],
+      "size_bytes": 84,
+      "verification": "verified"
+    },
+    "LM358DR": {
+      "file": "LM358DR_Dual_Operational_Amplifier.pdf",
+      "manufacturer": "Texas Instruments",
+      "description": "Dual Operational Amplifier",
+      "value": "LM358DR",
+      "datasheet_url": "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/fixture/lm358.pdf",
+      "downloaded_date": "2026-10-16T00:00:00+00:00",
+      "source": "lcsc",
+      "lcsc": "C1001",
+      "status": "ok",
+      "references": [
+        "U2"
+      ],
+      "size_bytes": 79,
+      "verification": "verified"
+    },
+    "NODATA1234": {
+      "manufacturer": "Acme",
+      "description": "Mystery part",
+      "value": "NODATA1234",
+      "references": [
+        "U3"
+      ],
+      "status": "failed",
+      "error": "No datasheet URL or all download methods failed",
+      "last_attempt": "2026-10-16T00:00:00+00:00"
+    },
+    "ATMEGA328P-AU": {
+      "file": "ATMEGA328P-AU_8-bit_AVR_Microcontroller.pdf",
+      "manufacturer": "Microchip",
+      "description": "MCU",
+      "value": "ATMEGA328P-AU",
+      "datasheet_url": "",
+      "downloaded_date": "2026-10-16T00:00:00+00:00",
+      "source": "alternative",
+      "status": "ok",
+      "references": [
+        "U4"
+      ],
+      "size_bytes": 39,
+      "verification": "unverified"
+    },
+    "MISSING9999": {
+      "manufacturer": "Acme",
+      "description": "Unlisted part",
+      "value": "MISSING9999",
+      "references": [
+        "U5"
+      ],
+      "status": "not_found",
+      "error": "No LCSC results for 'MISSING9999'",
+      "last_attempt": "2026-10-16T00:00:00+00:00"
+    },
+    "FAILALL77": {
+      "manufacturer": "Acme",
+      "description": "Broken link part",
+      "value": "FAILALL77",
+      "references": [
+        "U6"
+      ],
+      "status": "failed",
+      "error": "No datasheet URL or all download methods failed",
+      "last_attempt": "2026-10-16T00:00:00+00:00"
+    },
+    "SI2302": {
+      "file": "SI2302_N-Channel_MOSFET_20V.pdf",
+      "manufacturer": "Vishay",
+      "description": "N-Channel MOSFET 20V",
+      "value": "SI2302",
+      "datasheet_url": "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/fixture/si2302.pdf",
+      "downloaded_date": "2026-10-16T00:00:00+00:00",
+      "source": "lcsc",
+      "lcsc": "C1005",
+      "status": "ok",
+      "references": [
+        "U7"
+      ],
+      "size_bytes": 78,
+      "verification": "verified"
+    },
+    "296-1234-ND": {
+      "manufacturer": "",
+      "description": "Regulator",
+      "value": "REG",
+      "references": [
+        "U8"
+      ],
+      "status": "not_found",
+      "error": "No LCSC results for ''",
+      "last_attempt": "2026-10-16T00:00:00+00:00"
+    },
+    "595-TPS7A05": {
+      "manufacturer": "",
+      "description": "LDO",
+      "value": "LDO",
+      "references": [
+        "U9"
+      ],
+      "status": "not_found",
+      "error": "No LCSC results for ''",
+      "last_attempt": "2026-10-16T00:00:00+00:00"
+    },
+    "C14663": {
+      "file": "AMS1117-3.3_1A_Low_Dropout_Regulator_3.3V.pdf",
+      "manufacturer": "Advanced Monolithic Systems",
+      "description": "1A Low Dropout Regulator 3.3V",
+      "value": "AMS",
+      "datasheet_url": "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/C14663.pdf",
+      "downloaded_date": "2026-10-16T00:00:00+00:00",
+      "source": "lcsc",
+      "lcsc": "C14663",
+      "status": "ok",
+      "references": [
+        "U10"
+      ],
+      "size_bytes": 83,
+      "verification": "verified"
+    }
+  }
+}

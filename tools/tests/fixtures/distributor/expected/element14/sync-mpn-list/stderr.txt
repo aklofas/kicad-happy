@@ -1,0 +1,25 @@
+Loading MPNs from mpns.txt...
+  Skipping '1234': doesn't look like a real MPN
+Loaded 3 unique MPNs
+[1/3] LM358DR
+  Searching element14 for 'LM358DR'...
+  Downloading from element14...
+  OK: LM358DR_Dual_Operational_Amplifier.pdf (79 bytes)
+[2/3] TPS61023DRLR
+  Searching element14 for 'TPS61023DRLR'...
+  Downloading from element14...
+  OK: TPS61023DRLR_Boost_Converter_5.5V.pdf (84 bytes)
+[3/3] MISSING9999
+  Searching element14 for 'MISSING9999'...
+  Trying alternative sources...
+  NOT_FOUND: No element14 results for 'MISSING9999'
+
+Datasheet sync complete:
+  Downloaded: 2
+    LM358DR
+    TPS61023DRLR
+  Already present: 0
+  Failed: 1
+    MISSING9999 — No element14 results for 'MISSING9999'
+  Skipped (no identifier): 0
+  Output: <WORK>/ds/

@@ -1,4 +1,4 @@
-import contextlib, importlib.util, io, json, subprocess, sys, tempfile, unittest
+import contextlib, importlib.util, inspect, io, json, subprocess, sys, tempfile, unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -503,6 +503,9 @@ class QuickJson(unittest.TestCase):
         with contextlib.redirect_stdout(buf):
             cr.main(["quick"])
         self.assertTrue(buf.getvalue().rstrip("\n").splitlines()[-1].startswith("quick: "))
+
+    def test_quick_includes_sync_offline(self):
+        self.assertIn("sync-offline", inspect.getsource(cr.cmd_quick))
 
 
 FX_REAL = Path("/tmp/harness-pin/tests/fixtures")
