@@ -34,14 +34,7 @@ Dependencies:
 
 import argparse
 import json
-import os
-import re
-import shutil
-import subprocess
 import sys
-import urllib.error
-import urllib.parse
-import urllib.request
 import _core_path  # noqa: F401
 from distributor_core.download import (
     _USER_AGENT,
@@ -56,126 +49,7 @@ from distributor_core.download import (
 )
 from distributor_core.verify import _extract_pdf_text, verify_datasheet
 from distributor_core.manifest import _friendly_filename
-
-
-# ---------------------------------------------------------------------------
-# Mouser API
-# ---------------------------------------------------------------------------
-
-def _get_api_key() -> str:
-    """Get the Mouser Search API key from environment."""
-    key = os.environ.get("MOUSER_SEARCH_API_KEY", "")
-    if not key:
-        print(
-            "Error: MOUSER_SEARCH_API_KEY environment variable not set.\n"
-            "  Get a free key at mouser.com → My Account → APIs → Search API\n"
-            "  Then: export MOUSER_SEARCH_API_KEY=your-key-here",
-            file=sys.stderr,
-        )
-    return key
-
-
-def search_mouser(mpn: str, api_key: str) -> dict | None:
-    """Search Mouser API for a part by MPN. Returns first match."""
-    url = f"https://api.mouser.com/api/v1/search/partnumber?apiKey={api_key}"
-    body = json.dumps({
-        "SearchByPartRequest": {
-            "mouserPartNumber": mpn,
-            "partSearchOptions": "Exact",
-        }
-    }).encode("utf-8")
-    req = urllib.request.Request(
-        url, data=body,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            data = json.loads(resp.read())
-    except Exception as e:
-        print(f"[Mouser] Search failed: {e}", file=sys.stderr)
-        return None
-
-    errors = data.get("Errors", [])
-    if errors:
-        for err in errors:
-            print(f"[Mouser] API error: {err.get('Message', err)}", file=sys.stderr)
-        return None
-
-    parts = (data.get("SearchResults") or {}).get("Parts", [])
-    if not parts:
-        return None
-
-    # Prefer exact MPN match
-    mpn_upper = mpn.upper()
-    for p in parts:
-        if p.get("ManufacturerPartNumber", "").upper() == mpn_upper:
-            return p
-    return parts[0]
-
-
-def scrape_product_page(product_url: str) -> str:
-    """Try to extract a datasheet PDF URL from a Mouser product page.
-
-    Mouser product pages contain datasheet links in the HTML. This tries
-    to fetch the page and extract the link without requiring JS rendering.
-    Returns the datasheet URL or empty string on failure.
-    """
-    if not product_url:
-        return ""
-
-    # Normalize URL
-    if not product_url.startswith("http"):
-        product_url = "https://www.mouser.com" + product_url
-
-    headers = {
-        "User-Agent": _USER_AGENT,
-        "Accept": "text/html,application/xhtml+xml",
-        "Accept-Language": "en-US,en;q=0.9",
-    }
-
-    html = ""
-
-    # Try requests first
-    if _requests is not None:
-        try:
-            resp = _requests.get(product_url, headers=headers, timeout=20,
-                                 allow_redirects=True)
-            if resp.status_code == 200:
-                html = resp.text
-        except Exception:
-            pass
-
-    # Fallback to urllib
-    if not html:
-        try:
-            req = urllib.request.Request(product_url, headers=headers)
-            with urllib.request.urlopen(req, timeout=20) as resp:
-                html = resp.read().decode("utf-8", errors="ignore")
-        except Exception:
-            pass
-
-    if not html:
-        return ""
-
-    # Look for datasheet PDF links in the HTML
-    # Mouser uses patterns like href="/datasheet/..." or data-href with PDF URLs
-    patterns = [
-        r'href="(https?://www\.mouser\.com/datasheet/[^"]+\.pdf[^"]*)"',
-        r'href="(/datasheet/[^"]+\.pdf[^"]*)"',
-        r'href="(https?://[^"]+\.pdf)"[^>]*>[^<]*[Dd]ata\s*[Ss]heet',
-        r'"(https?://www\.mouser\.com/pdfDocs/[^"]+\.pdf)"',
-    ]
-
-    for pattern in patterns:
-        match = re.search(pattern, html, re.IGNORECASE)
-        if match:
-            url = match.group(1)
-            if url.startswith("/"):
-                url = "https://www.mouser.com" + url
-            return url
-
-    return ""
+from provider_mouser import _get_api_key, search_mouser, scrape_product_page
 
 
 # ---------------------------------------------------------------------------
