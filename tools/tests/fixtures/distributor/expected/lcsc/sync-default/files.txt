@@ -1,4 +1,4 @@
-bom.schematic.json:6376
+bom.schematic.json:6393
 datasheets/AMS1117-3.3_1A_Low_Dropout_Regulator_3.3V.pdf:83
 datasheets/ATMEGA328P-AU_8-bit_AVR_Microcontroller.pdf:39
 datasheets/GONE2_Gone_part_revised.pdf:77

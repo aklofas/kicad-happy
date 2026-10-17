@@ -4,7 +4,7 @@
   "failed": 7,
   "index_path": "<WORK>/datasheets/manifest.json",
   "output_dir": "<WORK>/datasheets",
-  "skipped_no_identifier": 4,
+  "skipped_no_identifier": 3,
   "skipped_previous_failures": 1,
   "total_identified_parts": 14,
   "verification_warnings": 0

@@ -1,5 +1,5 @@
 Analyzing bom.schematic.json...
-Found 14 unique parts with identifiers (4 skipped without any identifier)
+Found 14 unique parts with identifiers (3 skipped without any identifier)
 [1/12] TPS61023DRLR
   Trying schematic URL...
   OK: TPS61023DRLR_Boost_Converter.pdf (84 bytes)
@@ -64,5 +64,5 @@ Datasheet sync complete:
     595-TPS7A05 — No element14 results for ''
     C14663 — No element14 results for ''
   Skipped (previous failures, use --force): 1
-  Skipped (no identifier): 4
+  Skipped (no identifier): 3
   Output: <WORK>/datasheets/

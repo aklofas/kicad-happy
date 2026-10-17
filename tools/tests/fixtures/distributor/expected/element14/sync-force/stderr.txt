@@ -1,5 +1,5 @@
 Analyzing bom.schematic.json...
-Found 14 unique parts with identifiers (4 skipped without any identifier)
+Found 14 unique parts with identifiers (3 skipped without any identifier)
 [1/7] NODATA1234
   Searching element14 for 'NODATA1234'...
   Trying alternative sources...
@@ -38,5 +38,5 @@ Datasheet sync complete:
     595-TPS7A05 — No element14 results for ''
     C14663 — No element14 results for ''
     PREVFAIL3 — No element14 results for 'PREVFAIL3'
-  Skipped (no identifier): 4
+  Skipped (no identifier): 3
   Output: <WORK>/datasheets/

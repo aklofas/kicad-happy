@@ -1,4 +1,4 @@
-bom.schematic.json:6376
+bom.schematic.json:6393
 datasheets/ATMEGA328P-AU_8-bit_AVR_Microcontroller.pdf:39
 datasheets/GONE2_Gone_part_revised.pdf:77
 datasheets/LM358DR_Dual_Operational_Amplifier.pdf:79

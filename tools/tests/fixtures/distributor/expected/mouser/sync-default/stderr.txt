@@ -1,5 +1,5 @@
 Analyzing bom.schematic.json...
-Found 14 unique parts with MPNs (8 skipped without MPN)
+Found 14 unique parts with MPNs (7 skipped without MPN)
   Renamed: PRESENT1.pdf -> PRESENT1_Old_Desc.pdf
 [1/12] TPS61023DRLR
   Trying schematic URL...
@@ -66,5 +66,5 @@ Datasheet sync complete:
      — No Mouser results for ''
      — No Mouser results for ''
   Skipped (previous failures, use --force): 1
-  Skipped (no MPN): 8
+  Skipped (no MPN): 7
   Output: <WORK>/datasheets/

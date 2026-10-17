@@ -19,5 +19,5 @@
   "skipped_previous_failures": [
     "PREVFAIL3"
   ],
-  "skipped_no_mpn": 8
+  "skipped_no_mpn": 7
 }

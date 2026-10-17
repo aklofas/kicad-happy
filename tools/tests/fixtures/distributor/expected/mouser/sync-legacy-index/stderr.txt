@@ -1,5 +1,5 @@
 Analyzing bom.schematic.json...
-Found 14 unique parts with MPNs (8 skipped without MPN)
+Found 14 unique parts with MPNs (7 skipped without MPN)
 [1/13] TPS61023DRLR
   Trying schematic URL...
   OK: TPS61023DRLR_Boost_Converter.pdf (84 bytes)
@@ -70,5 +70,5 @@ Datasheet sync complete:
      — No Mouser results for ''
     PRESENT1 — No Mouser results for 'PRESENT1'
   Skipped (previous failures, use --force): 1
-  Skipped (no MPN): 8
+  Skipped (no MPN): 7
   Output: <WORK>/datasheets/

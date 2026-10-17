@@ -224,16 +224,16 @@
     },
     {
       "references": [
-        "C1"
+        "TP1"
       ],
-      "value": "100nF",
+      "value": "TestPoint",
       "mpn": "",
       "manufacturer": "",
       "description": "",
       "datasheet": "",
-      "type": "capacitor",
+      "type": "test_point",
       "dnp": false,
-      "lib_id": "Device:C",
+      "lib_id": "TestPoint:TestPoint",
       "digikey": "",
       "mouser": "",
       "lcsc": "",

@@ -1,4 +1,4 @@
-bom.schematic.json:6376
+bom.schematic.json:6393
 ds/LM358DR_Dual_Operational_Amplifier.pdf:79
 ds/TPS61023DRLR_Boost_Converter_5.5V.pdf:84
 ds/manifest.json:1347

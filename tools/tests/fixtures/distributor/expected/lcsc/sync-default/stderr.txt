@@ -1,5 +1,5 @@
 Analyzing bom.schematic.json...
-Found 13 unique parts with identifiers (5 skipped without any identifier)
+Found 13 unique parts with identifiers (4 skipped without any identifier)
 [1/11] TPS61023DRLR
   Trying schematic URL...
   OK: TPS61023DRLR_Boost_Converter.pdf (84 bytes)
@@ -60,5 +60,5 @@ Datasheet sync complete:
     296-1234-ND — No LCSC results for ''
     595-TPS7A05 — No LCSC results for ''
   Skipped (previous failures, use --force): 1
-  Skipped (no identifier): 5
+  Skipped (no identifier): 4
   Output: <WORK>/datasheets/

@@ -2,7 +2,7 @@
   "already_present": [
     "PRESENT1"
   ],
-  "skipped_no_mpn": 8,
+  "skipped_no_mpn": 7,
   "skipped_previous_failures": [
     "PREVFAIL3"
   ],

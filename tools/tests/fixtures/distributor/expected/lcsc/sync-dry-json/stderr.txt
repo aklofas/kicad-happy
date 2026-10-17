@@ -1,2 +1,2 @@
 Analyzing bom.schematic.json...
-Found 13 unique parts with identifiers (5 skipped without any identifier)
+Found 13 unique parts with identifiers (4 skipped without any identifier)

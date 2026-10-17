@@ -1,5 +1,5 @@
 Analyzing bom.schematic.json...
-Found 13 unique parts with identifiers (5 skipped without any identifier)
+Found 13 unique parts with identifiers (4 skipped without any identifier)
 [1/6] NODATA1234
   Searching LCSC for 'NODATA1234'...
   Trying alternative sources...
@@ -34,5 +34,5 @@ Datasheet sync complete:
     296-1234-ND — No LCSC results for ''
     595-TPS7A05 — No LCSC results for ''
     PREVFAIL3 — No LCSC results for 'PREVFAIL3'
-  Skipped (no identifier): 5
+  Skipped (no identifier): 4
   Output: <WORK>/datasheets/

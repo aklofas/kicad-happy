@@ -18,5 +18,5 @@
   "skipped_previous_failures": [
     "PREVFAIL3"
   ],
-  "skipped_no_identifier": 5
+  "skipped_no_identifier": 4
 }
