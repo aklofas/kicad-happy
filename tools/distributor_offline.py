@@ -104,49 +104,46 @@ class FakeTransport:
 # "alternatives" is documentation only: it is NOT stubbed (it calls download_pdf, which is).
 PATCH_TARGETS: dict[str, dict[str, str | tuple[str, ...]]] = {
     "digikey": {
-        "auth": ("sync_datasheets_digikey.get_oauth_token", "provider_digikey.get_oauth_token"),
-        "search": ("sync_datasheets_digikey.search_digikey_with_token", "provider_digikey.search_digikey_with_token"),
-        "download": ("sync_datasheets_digikey.download_pdf", "fetch_datasheet_digikey.download_pdf",
-                     "provider_digikey.download_pdf", "distributor_core.download.download_pdf"),
-        "alternatives": "sync_datasheets_digikey.try_alternative_sources",
+        "auth": "provider_digikey.get_oauth_token",
+        "search": "provider_digikey.search_digikey_with_token",
+        "download": ("fetch_datasheet_digikey.download_pdf", "provider_digikey.download_pdf",
+                     "distributor_core.download.download_pdf"),
+        "alternatives": "provider_digikey.try_alternative_sources",
         "extract_text": "distributor_core.verify._extract_pdf_text",
-        "clock": ("sync_datasheets_digikey.datetime", "provider_digikey.datetime"),
+        "clock": ("provider_digikey.datetime", "distributor_core.sync.datetime"),
         "sleep": "time.sleep",
         "fetch_search": "fetch_datasheet_digikey.search_digikey",
-        "fetch_token": "fetch_datasheet_digikey._get_digikey_token",
     },
     "mouser": {
-        "auth": ("sync_datasheets_mouser._get_api_key", "fetch_datasheet_mouser._get_api_key",
-                 "provider_mouser._get_api_key"),
-        "search": ("sync_datasheets_mouser.search_mouser", "provider_mouser.search_mouser"),
-        "scrape": ("sync_datasheets_mouser.scrape_product_page", "fetch_datasheet_mouser.scrape_product_page",
-                   "provider_mouser.scrape_product_page"),
-        "download": ("sync_datasheets_mouser.download_pdf", "fetch_datasheet_mouser.download_pdf",
-                     "provider_mouser.download_pdf", "distributor_core.download.download_pdf"),
-        "alternatives": "sync_datasheets_mouser.try_alternative_sources",
+        "auth": ("fetch_datasheet_mouser._get_api_key", "provider_mouser._get_api_key"),
+        "search": "provider_mouser.search_mouser",
+        "scrape": ("fetch_datasheet_mouser.scrape_product_page", "provider_mouser.scrape_product_page"),
+        "download": ("fetch_datasheet_mouser.download_pdf", "provider_mouser.download_pdf",
+                     "distributor_core.download.download_pdf"),
+        "alternatives": "provider_mouser.try_alternative_sources",
         "extract_text": "distributor_core.verify._extract_pdf_text",
-        "clock": ("sync_datasheets_mouser.datetime", "provider_mouser.datetime"),
+        "clock": ("provider_mouser.datetime", "distributor_core.sync.datetime"),
         "sleep": "time.sleep",
         "fetch_search": "fetch_datasheet_mouser.search_mouser",
     },
     "lcsc": {
-        "search": ("sync_datasheets_lcsc.search_lcsc", "provider_lcsc.search_lcsc"),
+        "search": "provider_lcsc.search_lcsc",
         "search_direct": ("provider_lcsc.search_lcsc_direct", "fetch_datasheet_lcsc.search_lcsc_direct"),
-        "download": ("sync_datasheets_lcsc.download_pdf", "fetch_datasheet_lcsc.download_pdf",
-                     "provider_lcsc.download_pdf", "distributor_core.download.download_pdf"),
-        "alternatives": "sync_datasheets_lcsc.try_alternative_sources",
+        "download": ("fetch_datasheet_lcsc.download_pdf", "provider_lcsc.download_pdf",
+                     "distributor_core.download.download_pdf"),
+        "alternatives": "provider_lcsc.try_alternative_sources",
         "extract_text": "distributor_core.verify._extract_pdf_text",
-        "clock": ("sync_datasheets_lcsc.datetime", "provider_lcsc.datetime"),
+        "clock": ("provider_lcsc.datetime", "distributor_core.sync.datetime"),
         "sleep": "time.sleep",
         "fetch_search": "fetch_datasheet_lcsc.search_lcsc",
     },
     "element14": {
-        "search": ("sync_datasheets_element14.search_element14", "provider_element14.search_element14"),
-        "download": ("sync_datasheets_element14.download_pdf", "fetch_datasheet_element14.download_pdf",
-                     "provider_element14.download_pdf", "distributor_core.download.download_pdf"),
-        "alternatives": "sync_datasheets_element14.try_alternative_sources",
+        "search": "provider_element14.search_element14",
+        "download": ("fetch_datasheet_element14.download_pdf", "provider_element14.download_pdf",
+                     "distributor_core.download.download_pdf"),
+        "alternatives": "provider_element14.try_alternative_sources",
         "extract_text": "distributor_core.verify._extract_pdf_text",
-        "clock": ("sync_datasheets_element14.datetime", "provider_element14.datetime"),
+        "clock": ("provider_element14.datetime", "distributor_core.sync.datetime"),
         "sleep": "time.sleep",
         "fetch_search": "fetch_datasheet_element14.search_element14",
     },
@@ -220,8 +217,6 @@ def _stub(role: str, transport: FakeTransport, provider: str):
         return FrozenDatetime
     if role == "sleep":
         return lambda *a, **k: None
-    if role == "fetch_token":
-        return lambda *a, **k: "TOKEN"
     raise KeyError(role)
 
 

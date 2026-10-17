@@ -35,27 +35,16 @@ Dependencies:
 """
 
 import argparse
-import json
-import os
-import re
-import subprocess
 import sys
-import threading
-import time
-from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
 from pathlib import Path
 
 # Import from sibling script (same skill)
 sys.path.insert(0, str(Path(__file__).parent))
 import _core_path  # noqa: F401
+import provider_mouser
+from distributor_core import sync as core_sync
+# Facade re-exports: the 935b429 names (tools/tests/sync_datasheets_mouser_names_round5.json).
 from provider_mouser import (
-    download_pdf,
-    scrape_product_page,
-    try_alternative_sources,
-    verify_datasheet,
-    search_mouser,
-    _get_api_key,
     sync_one_part,
 )
 from distributor_core.inputs import (
@@ -77,7 +66,7 @@ from distributor_core.manifest import (
 )
 
 # Identifier keys projected from the BOM, in the order this provider's part dicts carry them.
-ID_KEYS = ("mouser", "digikey", "lcsc", "element14")
+ID_KEYS = provider_mouser.ID_KEYS
 
 
 def extract_parts(analyzer_output):
@@ -93,238 +82,9 @@ def load_mpn_list(path):
 # ---------------------------------------------------------------------------
 
 
-def sync_datasheets(
-    input_path: str | None = None,
-    output_dir: str | None = None,
-    force: bool = False,
-    force_all: bool = False,
-    delay: float = 1.0,
-    parallel: int = 1,
-    dry_run: bool = False,
-    as_json: bool = False,
-    mpn_list: str | None = None,
-) -> dict:
-    """Main sync function. Returns summary dict."""
-    if input_path is None and mpn_list is None:
-        return {"error": "Must provide either input_path or mpn_list"}
-    if input_path is not None and mpn_list is not None:
-        return {"error": "Cannot provide both input_path and mpn_list"}
-
-    if output_dir:
-        out_dir = Path(output_dir)
-    elif input_path:
-        out_dir = Path(input_path).resolve().parent / "datasheets"
-    else:
-        out_dir = Path.cwd() / "datasheets"
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    index_path = out_dir / MANIFEST_FILENAME
-    index = load_index(index_path)
-
-    if mpn_list:
-        mpn_list_path = Path(mpn_list).resolve()
-        print(f"Loading MPNs from {mpn_list_path.name}...", file=sys.stderr)
-        parts = load_mpn_list(mpn_list_path)
-        print(f"Loaded {len(parts)} unique MPNs", file=sys.stderr)
-        skipped_no_mpn = 0
-    else:
-        resolved_input = Path(input_path).resolve()
-        print(f"Analyzing {resolved_input.name}...", file=sys.stderr)
-        analyzer_output = get_analyzer_output(resolved_input)
-        if analyzer_output is None:
-            return {"error": "Failed to analyze schematic"}
-
-        parts = extract_parts(analyzer_output)
-        all_bom = analyzer_output.get("bom", [])
-        skipped_no_mpn = sum(
-            1 for e in all_bom
-            if not e.get("dnp") and e.get("type", "") not in _SKIP_TYPES
-            and not is_real_mpn(e.get("mpn", ""))
-        )
-
-        print(f"Found {len(parts)} unique parts with MPNs "
-              f"({skipped_no_mpn} skipped without MPN)", file=sys.stderr)
-
-    to_download = []
-    already_present = []
-    skipped_failed = []
-
-    for part in parts:
-        mpn = part["mpn"]
-        mouser_pn = part.get("mouser", "")
-        display_pn = mpn or mouser_pn
-        existing = index.get("parts", {}).get(display_pn, {})
-        status = existing.get("status", "")
-
-        if status == "ok":
-            old_file = existing.get("file", "")
-            if (out_dir / old_file).exists():
-                if not force_all:
-                    if not dry_run:
-                        desc = existing.get("description", "") or part.get("description", "")
-                        mfg_name = existing.get("manufacturer", "") or part.get("manufacturer", "")
-                        new_file = friendly_filename(display_pn, desc, mfg_name) + ".pdf"
-                        if new_file != old_file and not (out_dir / new_file).exists():
-                            (out_dir / old_file).rename(out_dir / new_file)
-                            existing["file"] = new_file
-                            print(f"  Renamed: {old_file} -> {new_file}", file=sys.stderr)
-                    already_present.append(display_pn)
-                    existing["references"] = part["references"]
-                    continue
-
-        if status in ("failed", "not_found", "no_datasheet") and not (force or force_all):
-            skipped_failed.append(display_pn)
-            continue
-
-        to_download.append(part)
-
-    if dry_run:
-        summary = {
-            "would_download": [p["mpn"] or p.get("mouser", "") for p in to_download],
-            "already_present": already_present,
-            "skipped_previous_failures": skipped_failed,
-            "skipped_no_mpn": skipped_no_mpn,
-        }
-        if as_json:
-            json.dump(summary, sys.stdout, indent=2)
-        else:
-            print(f"\nDry run — would download {len(to_download)} datasheets:")
-            for p in to_download:
-                pn = p["mpn"] or p.get("mouser", "")
-                print(f"  {pn} ({p['manufacturer'] or 'unknown mfg'})")
-            print(f"Already present: {len(already_present)}")
-            print(f"Skipped (previous failures): {len(skipped_failed)}")
-            print(f"Skipped (no MPN): {skipped_no_mpn}")
-        return summary
-
-    if not to_download:
-        msg = f"All {len(already_present)} datasheets up to date."
-        if skipped_failed:
-            msg += f" {len(skipped_failed)} previous failures (use --force to retry)."
-        print(msg, file=sys.stderr)
-        index["schematic"] = str(mpn_list or input_path)
-        index["last_sync"] = datetime.now(timezone.utc).isoformat()
-        save_index(index_path, index)
-        return {"downloaded": 0, "already_present": len(already_present),
-                "failed": len(skipped_failed)}
-
-    mouser_api_key = _get_api_key()
-    if not mouser_api_key:
-        return {"error": "MOUSER_SEARCH_API_KEY not set"}
-
-    downloaded = []
-    failed = []
-    warnings = []
-
-    if parallel > 1:
-        lock = threading.Lock()
-        counter = [0]
-
-        def _process_part(part):
-            display_pn = part["mpn"] or part.get("mouser", "")
-            with lock:
-                counter[0] += 1
-                n = counter[0]
-            print(f"[{n}/{len(to_download)}] {display_pn}", file=sys.stderr)
-
-            result = sync_one_part(part, out_dir, index, delay, mouser_api_key)
-
-            with lock:
-                index.setdefault("parts", {})[display_pn] = result
-
-                if result["status"] == "ok":
-                    downloaded.append(display_pn)
-                    vconf = result.get("verification", "")
-                    vmark = ""
-                    if vconf == "wrong":
-                        vmark = " ⚠ WRONG DATASHEET?"
-                        warnings.append(display_pn)
-                    elif vconf == "unverified":
-                        vmark = " (unverified)"
-                    print(f"  OK: {result['file']} ({result['size_bytes']:,} bytes){vmark}",
-                          file=sys.stderr)
-                else:
-                    failed.append(display_pn)
-                    print(f"  {result['status'].upper()}: {result.get('error', '')}",
-                          file=sys.stderr)
-
-                index["schematic"] = str(mpn_list or input_path)
-                index["last_sync"] = datetime.now(timezone.utc).isoformat()
-                save_index(index_path, index)
-
-        with ThreadPoolExecutor(max_workers=parallel) as executor:
-            executor.map(_process_part, to_download)
-    else:
-        for i, part in enumerate(to_download):
-            display_pn = part["mpn"] or part.get("mouser", "")
-            print(f"[{i+1}/{len(to_download)}] {display_pn}", file=sys.stderr)
-
-            result = sync_one_part(part, out_dir, index, delay, mouser_api_key)
-
-            index.setdefault("parts", {})[display_pn] = result
-
-            if result["status"] == "ok":
-                downloaded.append(display_pn)
-                vconf = result.get("verification", "")
-                vmark = ""
-                if vconf == "wrong":
-                    vmark = " ⚠ WRONG DATASHEET?"
-                    warnings.append(display_pn)
-                elif vconf == "unverified":
-                    vmark = " (unverified)"
-                print(f"  OK: {result['file']} ({result['size_bytes']:,} bytes){vmark}",
-                      file=sys.stderr)
-            else:
-                failed.append(display_pn)
-                print(f"  {result['status'].upper()}: {result.get('error', '')}",
-                      file=sys.stderr)
-
-            index["schematic"] = str(mpn_list or input_path)
-            index["last_sync"] = datetime.now(timezone.utc).isoformat()
-            save_index(index_path, index)
-
-    summary = {
-        "downloaded": len(downloaded),
-        "already_present": len(already_present),
-        "failed": len(failed),
-        "verification_warnings": len(warnings),
-        "skipped_previous_failures": len(skipped_failed),
-        "skipped_no_mpn": skipped_no_mpn,
-        "total_parts_with_mpn": len(parts),
-        "output_dir": str(out_dir),
-        "index_path": str(index_path),
-    }
-
-    if as_json:
-        json.dump(summary, sys.stdout, indent=2)
-    else:
-        print(f"\nDatasheet sync complete:", file=sys.stderr)
-        print(f"  Downloaded: {len(downloaded)}", file=sys.stderr)
-        if downloaded:
-            for m in downloaded:
-                print(f"    {m}", file=sys.stderr)
-        if warnings:
-            print(f"  Verification warnings: {len(warnings)}", file=sys.stderr)
-            for m in warnings:
-                entry = index["parts"].get(m, {})
-                detail = entry.get("verification_details", "")
-                print(f"    {m}: {detail}", file=sys.stderr)
-        print(f"  Already present: {len(already_present)}", file=sys.stderr)
-        print(f"  Failed: {len(failed)}", file=sys.stderr)
-        if failed:
-            for m in failed:
-                entry = index["parts"].get(m, {})
-                url = entry.get("datasheet_url", "")
-                err = entry.get("error", "")
-                detail = f" — {url}" if url else f" — {err}"
-                print(f"    {m}{detail}", file=sys.stderr)
-        if skipped_failed:
-            print(f"  Skipped (previous failures, use --force): "
-                  f"{len(skipped_failed)}", file=sys.stderr)
-        print(f"  Skipped (no MPN): {skipped_no_mpn}", file=sys.stderr)
-        print(f"  Output: {out_dir}/", file=sys.stderr)
-
-    return summary
+def sync_datasheets(**kwargs) -> dict:
+    """Sync via the shared driver (distributor_core.sync) with the mouser adapter. Returns summary dict."""
+    return core_sync.sync_datasheets(provider_mouser, **kwargs)
 
 
 def main():
