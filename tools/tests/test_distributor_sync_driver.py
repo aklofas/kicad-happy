@@ -1,6 +1,6 @@
 # tools/tests/test_distributor_sync_driver.py
 import io, json, sys, tempfile, unittest
-from contextlib import redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "skills" / "datasheets"))
@@ -45,7 +45,7 @@ class Driver(unittest.TestCase):
         from distributor_core.sync import sync_datasheets
         with tempfile.TemporaryDirectory() as d:
             err = io.StringIO()
-            with redirect_stderr(err):
+            with redirect_stderr(err), redirect_stdout(io.StringIO()):
                 r = sync_datasheets(fake_provider(SKIPPED_COUNTS_IDS=()), input_path=self._bom(d), output_dir=str(Path(d) / "out"), dry_run=True, as_json=False)
             self.assertEqual(r["skipped_no_identifier"], 2)   # both id-only parts count under the Mouser rule
             self.assertIn("Found 2 unique parts with part numbers (2 skipped without any identifier)", err.getvalue())
