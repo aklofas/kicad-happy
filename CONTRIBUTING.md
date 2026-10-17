@@ -68,8 +68,17 @@ Each skill has a `SKILL.md` with YAML frontmatter (name, description, triggers) 
 | `emc/scripts/emc_spice.py` | ~710 | SPICE-enhanced PDN, filter insertion loss, harmonic FFT |
 | `datasheets/scripts/datasheet_extract_cache.py` | ~540 | Per-MPN extraction cache manager |
 | `datasheets/scripts/datasheet_features.py` | ~380 | Consumer API for analyzers (get_regulator_features, get_mcu_features, etc.) — v1.4 dual-cache-read path |
-| `datasheets/scripts/datasheet_lookup.py` | ~240 | v1.4 typed `lookup(mpn) → DatasheetFacts` facade with staleness detection |
+| `datasheets/scripts/datasheet_lookup.py` | ~25 | Facade: re-exports `datasheet_types.cache_reader` (retire round 9) |
 | `datasheets/datasheet_types/` | — | v1.4 typed access layer (DatasheetFacts, SpecValue, Pin, Pinout, trust_gating helpers) |
+| `datasheets/datasheet_types/cache_reader.py` | ~235 | Typed `lookup(mpn) → DatasheetFacts` with staleness detection; `cache_path_for`, `sanitize_mpn` |
+| `datasheets/distributor_core/sync.py` | ~320 | The one datasheet sync driver, `sync_datasheets(provider, ...)`, over a provider adapter |
+| `datasheets/distributor_core/inputs.py` | ~195 | BOM / MPN-list projection for the sync CLIs (`extract_parts`, `load_mpn_list`, `is_real_mpn`) |
+| `datasheets/distributor_core/manifest.py` | ~120 | Datasheet `manifest.json` IO and filename helpers |
+| `datasheets/distributor_core/download.py` | ~180 | PDF download cascade (requests, urllib, Playwright), redirect normalisation, alternative sources |
+| `datasheets/distributor_core/verify.py` | ~140 | PDF text extraction and datasheet verification |
+| `<p>/scripts/provider_<p>.py` | ~310–400 | Provider adapter for digikey, mouser, lcsc, element14: auth, search, accessors, `sync_one_part` |
+| `<p>/scripts/sync_datasheets_<p>.py` | ~150–160 | Sync CLI + facade: argparse → `distributor_core.sync` with the provider adapter |
+| `<p>/scripts/fetch_datasheet_<p>.py` | ~140–170 | Single-datasheet fetch CLI + facade |
 | `kicad/review/scripts/merge_annotations.py` | — | Review overlay merge: validates + applies review annotations to `analysis/merged/<analyzer>.json` |
 
 ### Zero-dependency policy
@@ -294,6 +303,8 @@ python3 tools/check_refactor.py compare /tmp/base /tmp/cand
 ```
 
 A refactor PR is expected to compare clean. An intended output change says so in the PR and lists the fields.
+
+The datasheet sync and fetch CLIs make network calls, so they have their own offline oracle: `python3 tools/distributor_offline.py --all --expected tools/tests/fixtures/distributor/expected` replays recorded provider responses through all four providers and compares the manifests, summaries and transcripts byte-for-byte (`check_refactor.py quick --fixtures ...` runs it as `sync-offline`).
 
 A deliberate change that retires or renames a known legacy site shrinks the baseline; run `python3 tools/check_refactor.py tags --update-baseline` (or `imports --update-baseline`) in the same commit. The update refuses to add entries; a new untagged site must be tagged, not baselined. The one exception is a verbatim file move: add `--moved-from <root-relative path>` (repeatable) and the update accepts relocated entries only if each new entry's shape matches an entry retired from a moved file.
 
