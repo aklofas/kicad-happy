@@ -22,7 +22,7 @@ import os
 import sys
 
 from finding_schema import group_findings_by_detection_type
-from kicad_core.render import fmt_g4, fmt_signed
+from kicad_core.render import fmt_g4, fmt_signed, summary_or_title
 from kicad_core.cli import add_only_deterministic_arg, add_output_arg, add_text_arg
 from diff_engine import (  # noqa: F401  (re-exported for callers written against pre-v3 diff_analysis)
     SIGNAL_REGISTRY, validate_signal_registry, _resolve, _diff_counts, _identity_key,
@@ -136,9 +136,9 @@ def format_text(output):
     if findings:
         lines.append("EMC Findings:")
         for f in findings.get("new", [])[:5]:
-            lines.append(f"  NEW: {f.get('rule_id', '?')} ({f.get('severity', '?')}) {f.get('title', '')}")
+            lines.append(f"  NEW: {f.get('rule_id', '?')} ({f.get('severity', '?')}) {summary_or_title(f)}")
         for f in findings.get("resolved", [])[:5]:
-            lines.append(f"  RESOLVED: {f.get('rule_id', '?')} ({f.get('severity', '?')}) {f.get('title', '')}")
+            lines.append(f"  RESOLVED: {f.get('rule_id', '?')} ({f.get('severity', '?')}) {summary_or_title(f)}")
         for f in findings.get("changed_severity", [])[:3]:
             lines.append(f"  CHANGED: {f.get('rule_id', '?')} {f.get('base_severity', '?')} → {f.get('head_severity', '?')}")
         lines.append("")

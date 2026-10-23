@@ -341,33 +341,31 @@ def _make_finding(category, severity, rule_id, title, description,
                   **extra):
     """Build a standardized EMC finding dict with rich format fields.
 
-    All EMC findings flow through this single factory. The rich format
-    fields (detector, summary, pins, evidence_source, report_context)
-    are auto-populated for backward compatibility.
+    All EMC findings flow through this single factory. The dict takes
+    finding_schema.make_finding's key set and order; the `title` argument
+    becomes `summary` (finding_id is assigned later by assign_finding_ids).
     """
     finding = {
-        'category': category,
-        'severity': _normalize_severity(severity),
+        'detector': f'emc_{category}',
         'rule_id': rule_id,
-        'confidence': confidence,
-        'title': title,
+        'category': category,
+        'summary': title,
         'description': description,
         'components': components if components is not None else [],
         'nets': nets if nets is not None else [],
-        'recommendation': recommendation,
-        # Rich format additions
-        'detector': f'emc_{category}',
-        'summary': title,
         'pins': [],
+        'severity': _normalize_severity(severity),
+        'confidence': confidence,
         'evidence_source': evidence_source or ('heuristic_rule' if confidence == 'heuristic' else 'topology'),
-        'report_context': {
-            'section': report_section or category.replace('_', ' ').title(),
-            'impact': impact or '',
-            'standard_ref': standard_ref or '',
-        },
+        'recommendation': recommendation,
     }
     if fix_params is not None:
         finding['fix_params'] = fix_params
+    finding['report_context'] = {
+        'section': report_section or category.replace('_', ' ').title(),
+        'impact': impact or '',
+        'standard_ref': standard_ref or '',
+    }
     if extra:
         finding.update(extra)
     return finding

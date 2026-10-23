@@ -19,6 +19,7 @@ if os.path.isdir(_kicad_scripts):
     sys.path.insert(0, os.path.abspath(_kicad_scripts))
 
 from finding_schema import Det, group_findings, normalize_severity
+from kicad_core.render import summary_or_title
 
 
 # Icon glyphs by normalized severity (v1.4 vocab). Used by raw-finding renderers
@@ -117,7 +118,7 @@ def _render_thermal_block(thermal, *, heading_level: int) -> list[str]:
         sev = f.get("severity", "")
         if normalize_severity(sev) in ("error", "warning"):
             rule = f.get("rule_id", "")
-            title = f.get("title", "")
+            title = summary_or_title(f)
             lines.append(f"- {_sev_icon(sev)} {rule}: {title}")
     lines.append("")
     return lines
@@ -208,7 +209,7 @@ def _render_top_risks(emc, thermal):
             conf_badge = f" `{conf}`" if conf else ""
             source = f.get("source", "")
             L.append(f"- {icon} **{f.get('rule_id', '')}**: "
-                     f"{f.get('title', '')}{conf_badge} ({source})")
+                     f"{summary_or_title(f)}{conf_badge} ({source})")
         L.append("")
 
     return L
@@ -452,9 +453,9 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
                     rows.append(f"| ~ {label} {m.get('identity', '?')} | {ch.get('field', '')}: {base_v} → {head_v}{pct_str} |")
         # EMC finding changes
         for f in diff_detail.get("findings", {}).get("new", [])[:3]:
-            rows.append(f"| NEW {f.get('severity', '?')} | {f.get('rule_id', '?')}: {f.get('title', '')} |")
+            rows.append(f"| NEW {f.get('severity', '?')} | {f.get('rule_id', '?')}: {summary_or_title(f)} |")
         for f in diff_detail.get("findings", {}).get("resolved", [])[:3]:
-            rows.append(f"| RESOLVED | {f.get('rule_id', '?')}: {f.get('title', '')} |")
+            rows.append(f"| RESOLVED | {f.get('rule_id', '?')}: {summary_or_title(f)} |")
         # SPICE status changes
         for sc in diff_detail.get("status_changes", [])[:3]:
             comps = ", ".join(sc.get("components", []))
@@ -830,7 +831,7 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
             # EMC findings in the rich report; legacy uppercase normalizes too.
             if normalize_severity(sev) == "error":
                 rule = f.get("rule_id", "")
-                title = f.get("title", "")
+                title = summary_or_title(f)
                 L.append(f"- {_sev_icon(sev)} {rule}: {title}")
         L.append("")
 
@@ -1136,7 +1137,7 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
             a("| Severity | Rule | Finding |")
             a("|----------|------|---------|")
             for f in actionable[:15]:
-                a(f"| {f.get('severity','')} | {f.get('rule_id','')} | {f.get('title','')} |")
+                a(f"| {f.get('severity','')} | {f.get('rule_id','')} | {summary_or_title(f)} |")
             a("")
 
         # Test plan highlights

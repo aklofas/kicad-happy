@@ -27,6 +27,7 @@ import _core_path  # noqa: F401
 from emc_rules import run_all_checks, generate_test_plan, analyze_regulatory_coverage
 from emc_formulas import STANDARDS, MARKET_STANDARDS
 from finding_schema import compute_trust_summary
+from kicad_core.render import summary_or_title
 from emc_envelope import EMCEnvelope
 from schema_codec import emit_schema
 from inputs_builder import build_inputs, build_upstream_artifact, build_compat
@@ -233,7 +234,7 @@ def format_text_report(result: dict) -> str:
 
         for f in cat_findings:
             sev = f['severity']
-            lines.append(f'  [{sev}] {f["rule_id"]}: {f["title"]}')
+            lines.append(f'  [{sev}] {f["rule_id"]}: {summary_or_title(f)}')
             # Wrap description
             desc = f.get('description', '')
             for i in range(0, len(desc), 70):

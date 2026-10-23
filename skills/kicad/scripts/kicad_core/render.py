@@ -21,6 +21,11 @@ SEVERITY_ALIASES = {
 }
 
 
+def summary_or_title(f):
+    """A finding's one-line text: `summary`, else the pre-v3 EMC `title`."""
+    return f.get("summary") or f.get("title", "")
+
+
 def normalize_severity(sev):
     """Map any severity string to the v1.4 normalized vocabulary.
 

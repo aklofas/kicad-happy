@@ -11,6 +11,7 @@ import json
 
 from detection_schema import SCHEMAS as _SCHEMAS
 from finding_schema import group_findings_by_detection_type, normalize_severity
+from kicad_core.render import summary_or_title
 
 
 # ---------------------------------------------------------------------------
@@ -604,7 +605,7 @@ def diff_emc(base, head, threshold):
             findings_diff["new"].append({
                 "rule_id": f.get("rule_id", ""),
                 "severity": f.get("severity", ""),
-                "title": f.get("title", ""),
+                "title": summary_or_title(f),
                 "category": f.get("category", ""),
                 "nets": f.get("nets", []),
                 "components": f.get("components", []),
@@ -616,7 +617,7 @@ def diff_emc(base, head, threshold):
                     "rule_id": f.get("rule_id", ""),
                     "base_severity": bf.get("severity", ""),
                     "head_severity": f.get("severity", ""),
-                    "title": f.get("title", ""),
+                    "title": summary_or_title(f),
                 })
 
     for key, f in base_findings.items():
@@ -624,7 +625,7 @@ def diff_emc(base, head, threshold):
             findings_diff["resolved"].append({
                 "rule_id": f.get("rule_id", ""),
                 "severity": f.get("severity", ""),
-                "title": f.get("title", ""),
+                "title": summary_or_title(f),
                 "category": f.get("category", ""),
             })
 
