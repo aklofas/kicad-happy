@@ -755,7 +755,7 @@ def validate_i2c_bus(ctx: AnalysisContext) -> list[dict]:
                 standard_ref='I2C specification UM10204 section 3.1.1', impact='I2C bus non-functional',
                 provenance=make_provenance('pr_i2c_spec', 'deterministic'),
             
-                source=ctx.source,))
+                source=ctx.source, schema_era="v3.0",))
 
         scl_pullups = _find_pullups_on_net_with_bridged(ctx, scl, resistor_nets, net_to_resistors)
         if not scl_pullups:
@@ -770,7 +770,7 @@ def validate_i2c_bus(ctx: AnalysisContext) -> list[dict]:
                 standard_ref='I2C specification UM10204 section 3.1.1', impact='I2C bus non-functional',
                 provenance=make_provenance('pr_i2c_spec', 'deterministic'),
             
-                source=ctx.source,))
+                source=ctx.source, schema_era="v3.0",))
 
         for net_label, pullups in [('SDA', sda_pullups), ('SCL', scl_pullups)]:
             for pu in pullups:
@@ -788,7 +788,7 @@ def validate_i2c_bus(ctx: AnalysisContext) -> list[dict]:
                             standard_ref='I2C specification UM10204 Table 10',
                             provenance=make_provenance('pr_i2c_spec', 'deterministic'),
                         
-                            source=ctx.source,))
+                            source=ctx.source, schema_era="v3.0",))
 
         # Address conflict: flag multiple same-IC-type on same bus
         if len(refs) >= 2:
@@ -810,7 +810,7 @@ def validate_i2c_bus(ctx: AnalysisContext) -> list[dict]:
                         impact='Address conflict causes bus corruption',
                         provenance=make_provenance('pr_i2c_spec', 'deterministic'),
                     
-                        source=ctx.source,))
+                        source=ctx.source, schema_era="v3.0",))
 
     return findings
 
@@ -840,7 +840,7 @@ def validate_spi_bus(ctx: AnalysisContext) -> list[dict]:
                     impact='Device may be selected during reset causing bus contention',
                     provenance=make_provenance('pr_spi_spec', 'deterministic'),
                 
-                    source=ctx.source,))
+                    source=ctx.source, schema_era="v3.0",))
     return findings
 
 
@@ -886,7 +886,7 @@ def validate_can_bus(ctx: AnalysisContext) -> list[dict]:
                 standard_ref='ISO 11898-2 section 7.3', impact='Bus reflections cause communication errors',
                 provenance=make_provenance('pr_can_spec', 'deterministic'),
             
-                source=ctx.source,))
+                source=ctx.source, schema_era="v3.0",))
     return findings
 
 
@@ -939,7 +939,7 @@ def validate_usb_bus(ctx: AnalysisContext) -> list[dict]:
                     standard_ref='USB 2.0 specification section 7.1.2',
                     provenance=make_provenance('pr_uart_spec', 'deterministic'),
                 
-                    source=ctx.source,))
+                    source=ctx.source, schema_era="v3.0",))
     return findings
 
 
@@ -1029,7 +1029,7 @@ def validate_power_sequencing(
                     impact='System fails to power on', report_section='Power Integrity',
                     provenance=make_provenance('ps_sequence_check', 'heuristic'),
                 
-                    source=ctx.source,))
+                    source=ctx.source, schema_era="v3.0",))
 
     for reg in power_regulators:
         ref = reg.get('ref', reg.get('reference', ''))
@@ -1066,7 +1066,7 @@ def validate_power_sequencing(
                     report_section='Power Integrity', impact='Downstream devices may latch up or boot incorrectly',
                     provenance=make_provenance('ps_sequence_check', 'heuristic'),
                 
-                    source=ctx.source,))
+                    source=ctx.source, schema_era="v3.0",))
                 continue
             findings.append(make_finding(
                 detector='validate_power_sequencing', rule_id='PS-001', category='power_integrity',
@@ -1078,7 +1078,7 @@ def validate_power_sequencing(
                 report_section='Power Integrity', impact='Downstream devices may latch up or boot incorrectly',
                 provenance=make_provenance('ps_sequence_check', 'heuristic'),
             
-                source=ctx.source,))
+                source=ctx.source, schema_era="v3.0",))
 
     return findings
 

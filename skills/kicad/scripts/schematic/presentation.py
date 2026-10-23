@@ -228,6 +228,7 @@ def assemble_result(ctx, parsed, nets, bom, analyses, *, path, sheets_parsed,
             description=format_newer_note,
             severity="info", confidence="deterministic",
             evidence_source="topology",
+            schema_era="v3.0",
         ))
 
     # Build severity summary

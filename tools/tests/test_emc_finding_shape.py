@@ -76,7 +76,7 @@ class VersusBase(unittest.TestCase):
         for o, n in zip(old, new):
             self.assertEqual(o["title"], o["summary"])
             self.assertNotIn("title", n)
-            self.assertEqual({k: v for k, v in o.items() if k != "title"}, n)
+            self.assertEqual({k: v for k, v in o.items() if k != "title"}, {k: v for k, v in n.items() if k != "schema_era"})
 
     def test_text_report_identical_vs_base(self):
         self.assertTrue(self.texts["old"])

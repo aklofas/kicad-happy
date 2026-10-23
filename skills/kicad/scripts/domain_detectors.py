@@ -5972,7 +5972,7 @@ def detect_i2c_address_conflicts(ctx: AnalysisContext) -> list[dict]:
                 impact='Bus corruption — multiple devices respond to same address',
                 provenance=make_provenance('i2c_addr_conflict', 'deterministic', claimed_components=refs),
             
-                source=ctx.source,))
+                source=ctx.source, schema_era="v3.0",))
     return results
 
 

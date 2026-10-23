@@ -392,6 +392,7 @@ def check_return_path_coverage(pcb: Dict, severity_threshold: str = 'all') -> Li
                 'reference plane coverage checking.'
             ),
             recommendation='Re-run PCB analysis with: python3 analyze_pcb.py <file> --full',
+            schema_era="v3.0",
         ))
         return findings
 
@@ -422,6 +423,7 @@ def check_return_path_coverage(pcb: Dict, severity_threshold: str = 'all') -> Li
                 trace_mm=round(trace_mm, 2),
                 is_high_speed_or_clock=False,
                 is_touch_net=True,
+                schema_era="v3.0",
             ))
             continue
 
@@ -457,6 +459,7 @@ def check_return_path_coverage(pcb: Dict, severity_threshold: str = 'all') -> Li
             coverage_pct=round(coverage, 1),
             trace_mm=round(trace_mm, 2),
             is_high_speed_or_clock=is_hs,
+            schema_era="v3.0",
         ))
 
     return findings
@@ -485,6 +488,7 @@ def check_ground_zone_coverage(pcb: Dict) -> List[Dict]:
                 f'most important EMC design feature.'
             ),
             recommendation=rec,
+            schema_era="v3.0",
         ))
         return findings
 
@@ -509,6 +513,7 @@ def check_ground_zone_coverage(pcb: Dict) -> List[Dict]:
                     'Check for routing channels that split the ground plane.'
                 ),
                 layer=layer,
+                schema_era="v3.0",
             ))
 
         if fill_ratio < 0.6:
@@ -523,6 +528,7 @@ def check_ground_zone_coverage(pcb: Dict) -> List[Dict]:
                 nets=[gz.get('net_name', 'GND')],
                 recommendation='Reduce routing density on this layer or move signals to other layers.',
                 layer=layer,
+                schema_era="v3.0",
             ))
 
     return findings
@@ -552,6 +558,7 @@ def check_ground_domains(pcb: Dict) -> List[Dict]:
                 '(typically near the ADC for analog/digital split). '
                 'Ensure no signal traces cross the domain boundary.'
             ),
+            schema_era="v3.0",
         ))
 
     return findings
@@ -589,6 +596,7 @@ def check_decoupling_distance(pcb: Dict) -> List[Dict]:
                 description=description,
                 components=[ic_ref] + [c['cap'] for c in nearby[:2]],
                 recommendation=f'Move decoupling cap within 2-3mm of {ic_ref} power pins.',
+                schema_era="v3.0",
             ))
         elif closest > 5.0:
             description = (
@@ -604,6 +612,7 @@ def check_decoupling_distance(pcb: Dict) -> List[Dict]:
                 description=description,
                 components=[ic_ref] + [c['cap'] for c in nearby[:2]],
                 recommendation=f'Move decoupling cap closer to {ic_ref} power pins if layout permits.',
+                schema_era="v3.0",
             ))
 
     return findings
@@ -649,6 +658,7 @@ def check_missing_decoupling(pcb: Dict, schematic: Optional[Dict] = None) -> Lis
                     'components': [{'type': 'capacitor', 'value': '100n'}],
                     'basis': 'Standard 100nF decoupling per IC',
                 },
+                schema_era="v3.0",
             ))
 
     return findings
@@ -762,6 +772,7 @@ def check_decoupling_via_distance(pcb: Dict) -> List[Dict]:
                         f'Place a via directly adjacent to {cap_ref} pads. '
                         f'Use fat, short traces from cap pads to via.'
                     ),
+                    schema_era="v3.0",
                 ))
 
     return findings
@@ -907,6 +918,7 @@ def check_connector_filtering(pcb: Dict, schematic: Optional[Dict] = None) -> Li
                     'components': [{'type': 'ferrite_bead'}],
                     'basis': 'EMI filter on external I/O',
                 },
+                schema_era="v3.0",
             ))
 
     return findings
@@ -977,6 +989,7 @@ def check_connector_ground_pins(pcb: Dict,
                     f'distributed among signal pins, not grouped at one end.'
                 ),
                 confidence='heuristic',
+                schema_era="v3.0",
             ))
 
     return findings
@@ -1065,6 +1078,7 @@ def check_switching_harmonics(schematic: Dict, standard: str = 'fcc-class-b') ->
                            ' Consider spread-spectrum modulation if available.')
                     ),
                     confidence='heuristic',
+                    schema_era="v3.0",
                 ))
 
     return findings
@@ -1150,6 +1164,7 @@ def check_clock_routing(pcb: Dict, schematic: Optional[Dict] = None) -> List[Dic
                 ),
                 nets=[net_name],
                 recommendation='Route clock signals on inner layers (stripline) when possible.',
+                schema_era="v3.0",
             ))
 
         # Check for excessively long clock traces
@@ -1165,6 +1180,7 @@ def check_clock_routing(pcb: Dict, schematic: Optional[Dict] = None) -> List[Dic
                 nets=[net_name],
                 recommendation='Minimize clock trace length. Place clock source close to destination.',
                 confidence='heuristic',
+                schema_era="v3.0",
             ))
 
     return findings
@@ -1238,6 +1254,7 @@ def check_clock_near_connector(pcb: Dict,
                         f'Route {net_name} away from {conn_ref}, or add '
                         f'ground guard traces between the clock and connector.'
                     ),
+                    schema_era="v3.0",
                 ))
 
                 if len(findings) > 10:
@@ -1312,6 +1329,7 @@ def check_crystal_guard_ring(pcb: Dict, schematic: Optional[Dict] = None) -> Lis
                     f'at least 3mm beyond the crystal footprint on all sides.'
                 ),
                 confidence='heuristic',
+                schema_era="v3.0",
             ))
 
     return findings
@@ -1393,6 +1411,7 @@ def check_via_stitching(pcb: Dict, schematic: Optional[Dict] = None) -> List[Dic
                 f'intervals, especially at board edges and near connectors.'
             ),
             confidence='heuristic',
+            schema_era="v3.0",
         ))
 
     return findings
@@ -1458,6 +1477,7 @@ def check_stackup(pcb: Dict) -> List[Dict]:
                     'Reorder stackup to place a ground or power plane between '
                     'every pair of signal layers.'
                 ),
+                schema_era="v3.0",
             ))
 
     # Check ground plane proximity (dielectric thickness)
@@ -1494,6 +1514,7 @@ def check_stackup(pcb: Dict) -> List[Dict]:
                     f'(0.1-0.2mm) reduces loop area and improves EMC.'
                 ),
                 recommendation='Consider stackup adjustment to reduce signal-to-reference spacing.',
+                schema_era="v3.0",
             ))
 
     # Check for interplane capacitance
@@ -1528,6 +1549,7 @@ def check_stackup(pcb: Dict) -> List[Dict]:
                             f'better high-frequency decoupling.'
                         ),
                         recommendation='Use thin prepreg between power/ground plane pairs.',
+                        schema_era="v3.0",
                     ))
 
     return findings
@@ -1581,6 +1603,7 @@ def estimate_cavity_resonances(pcb: Dict) -> List[Dict]:
             ),
             recommendation='Add decoupling capacitors with SRF near these frequencies.',
             confidence='heuristic',
+            schema_era="v3.0",
         ))
 
     return findings
@@ -1666,6 +1689,7 @@ def estimate_switching_emissions(schematic: Dict,
                 'loop area reduces emissions by 6 dB.'
             ),
             confidence='heuristic',
+            schema_era="v3.0",
         ))
 
     return findings
@@ -1763,6 +1787,7 @@ def check_switching_node_area(pcb: Optional[Dict],
                 f'Remove any copper pour on the switching node net.'
             ),
             confidence='heuristic',
+            schema_era="v3.0",
         ))
 
     return findings
@@ -1849,6 +1874,7 @@ def check_input_cap_loop_area(pcb: Optional[Dict],
                     f'to the IC with the inductor on the opposite side.'
                 ),
                 confidence='heuristic',
+                schema_era="v3.0",
             ))
         return findings
 
@@ -1934,6 +1960,7 @@ def check_input_cap_loop_area(pcb: Optional[Dict],
                 f'to the IC with the inductor on the opposite side.'
             ),
             confidence='heuristic',
+            schema_era="v3.0",
         ))
 
     return findings
@@ -2072,6 +2099,7 @@ def check_diff_pair_skew(pcb: Optional[Dict],
                 f'({max_skew * 0.5 / propagation_delay_ps_per_mm(epsilon_r):.1f}mm). '
                 f'Use length-matched serpentine routing.'
             ),
+            schema_era="v3.0",
         ))
 
     return findings
@@ -2182,6 +2210,7 @@ def check_diff_pair_cm_radiation(pcb: Optional[Dict],
                     f'(CM choke) at the connector.'
                 ),
                 confidence='datasheet-backed',
+                schema_era="v3.0",
             ))
 
     return findings
@@ -2244,6 +2273,7 @@ def check_diff_pair_reference_plane(pcb: Optional[Dict],
                     'each signal via. Preferably route diff pairs on a single '
                     'layer to avoid layer transitions entirely.'
                 ),
+                schema_era="v3.0",
             ))
 
     return findings
@@ -2305,6 +2335,7 @@ def check_diff_pair_layer(pcb: Optional[Dict],
                         'Route differential pairs on inner stripline layers '
                         'when possible for reduced EMI.'
                     ),
+                    schema_era="v3.0",
                 ))
 
     return findings
@@ -2420,6 +2451,7 @@ def check_trace_near_board_edge(pcb: Dict,
                     ),
                     nets=sorted(flagged_nets)[:5],
                     recommendation='Keep signal traces at least 3× dielectric height from board edges.',
+                    schema_era="v3.0",
                 ))
                 return findings
 
@@ -2434,6 +2466,7 @@ def check_trace_near_board_edge(pcb: Dict,
                 ),
                 nets=[net_name],
                 recommendation='Route signal away from board edge or add ground pour to the edge area.',
+                schema_era="v3.0",
             ))
 
     return findings
@@ -2516,6 +2549,7 @@ def check_ground_pour_ring(pcb: Dict) -> List[Dict]:
                     'Add ground pour on outer layers extending to within 2mm '
                     'of all board edges, connected by stitching vias.'
                 ),
+                schema_era="v3.0",
             ))
 
     return findings
@@ -2608,6 +2642,7 @@ def check_connector_area_stitching(pcb: Dict,
                     f'Add ground stitching vias at ≤{required_spacing:.0f}mm '
                     f'intervals around {conn_ref}.'
                 ),
+                schema_era="v3.0",
             ))
 
     return findings
@@ -2739,6 +2774,7 @@ def check_crosstalk_3h_rule(pcb: Dict,
                 f'or insert a ground guard trace between them.'
             ),
             confidence='heuristic',
+            schema_era="v3.0",
         ))
 
         if len(findings) > 15:
@@ -2748,6 +2784,7 @@ def check_crosstalk_3h_rule(pcb: Dict,
                 description='Multiple net pairs violate the 3H spacing rule. Review trace spacing board-wide.',
                 recommendation=f'Increase trace spacing to ≥{threshold_3h:.1f}mm on outer layers.',
                 confidence='heuristic',
+                schema_era="v3.0",
             ))
             break
 
@@ -2838,6 +2875,7 @@ def check_emi_filter_effectiveness(pcb: Optional[Dict],
                     f'cutoff to ≤{sw_freq/5/1e6:.2f} MHz.'
                 ),
                 confidence='heuristic',
+                schema_era="v3.0",
             ))
         elif ratio >= 5:
             findings.append(_make_finding(
@@ -2853,6 +2891,7 @@ def check_emi_filter_effectiveness(pcb: Optional[Dict],
                 nets=[input_rail] if input_rail else [],
                 recommendation='Input EMI filter appears adequate.',
                 confidence='heuristic',
+                schema_era="v3.0",
             ))
 
     return findings
@@ -2963,6 +3002,7 @@ def check_esd_protection_path(pcb: Dict,
                     'components': [{'type': 'tvs_diode'}],
                     'basis': 'ESD protection on external pins',
                 },
+                schema_era="v3.0",
             ))
 
         # ES-002: Check ground via count near TVS
@@ -2997,6 +3037,7 @@ def check_esd_protection_path(pcb: Dict,
                         f'ground pad. Use fat, short traces to ground plane.'
                     ),
                     confidence='heuristic',
+                    schema_era="v3.0",
                 ))
             elif gnd_vias_near == 1:
                 findings.append(_make_finding(
@@ -3010,6 +3051,7 @@ def check_esd_protection_path(pcb: Dict,
                     components=[ref],
                     recommendation=f'Add a second ground via near {ref} for lower inductance.',
                     confidence='heuristic',
+                    schema_era="v3.0",
                 ))
 
     return findings
@@ -3107,6 +3149,7 @@ def check_thermal_emc(pcb: Optional[Dict],
                         f'Alternatively, add more caps to compensate.'
                     ),
                     confidence='datasheet-backed',
+                    schema_era="v3.0",
                 ))
 
     # TH-002: Ferrite bead near switching regulator (thermal degradation)
@@ -3164,6 +3207,7 @@ def check_thermal_emc(pcb: Optional[Dict],
                             'higher-temperature-rated ferrite.'
                         ),
                         confidence='datasheet-backed',
+                        schema_era="v3.0",
                     ))
                     break  # One finding per ferrite
 
@@ -3271,6 +3315,7 @@ def check_shielding_advisory(pcb: Dict,
                     'or adding absorber material.'
                 ),
                 confidence='heuristic',
+                schema_era="v3.0",
             ))
         # Non-coincident connectors: no finding (reduces noise)
 
@@ -3503,6 +3548,7 @@ def check_pdn_impedance(pcb: Optional[Dict],
                 peaks_total=peaks_total,
                 peaks_shown=peaks_shown,
                 **out_of_band_extra,
+                schema_era="v3.0",
             ))
         elif out_band:
             # All exceeding peaks are above the PDN-relevant band -- not
@@ -3534,6 +3580,7 @@ def check_pdn_impedance(pcb: Optional[Dict],
                 method='spice' if spice_verified else 'analytical',
                 decoupling_cap_count=len(cap_models),
                 **out_of_band_extra,
+                schema_era="v3.0",
             ))
         elif peaks:
             # Peaks exist but don't exceed target — INFO
@@ -3562,6 +3609,7 @@ def check_pdn_impedance(pcb: Optional[Dict],
                     for p in peaks
                 ],
                 decoupling_cap_count=len(cap_models),
+                schema_era="v3.0",
             ))
 
     return findings
@@ -3719,6 +3767,7 @@ def check_pdn_distributed(pcb: Optional[Dict],
                     f'reduce impedance at high frequencies, plus bulk cap if '
                     f'low-frequency impedance is too high.'
                 ),
+                schema_era="v3.0",
             ))
 
     # --- PD-004: Cross-rail coupling from downstream switching ---
@@ -3789,6 +3838,7 @@ def check_pdn_distributed(pcb: Optional[Dict],
                     f'input (a 10-22µF bulk cap plus 100nF MLCC), or add '
                     f'bulk capacitance on the {rail_name} rail.'
                 ),
+                schema_era="v3.0",
             ))
 
     return findings
@@ -3955,6 +4005,7 @@ def check_layer_transition_stitching(pcb: Dict,
             nets=[net_name],
             recommendation=recommendation,
             **extra,
+            schema_era="v3.0",
         ))
 
         # Limit to avoid flooding output on large boards
@@ -3967,6 +4018,7 @@ def check_layer_transition_stitching(pcb: Dict,
                     'ground stitching vias. Review via placement board-wide.'
                 ),
                 recommendation='Add ground stitching vias at all signal layer transitions.',
+                schema_era="v3.0",
             ))
             break
 
@@ -4439,6 +4491,7 @@ def check_inductor_leakage(pcb: Dict, schematic: Dict) -> List[Dict]:
                     'perpendicular to sensitive traces.'
                 ),
                 confidence='heuristic',
+                schema_era="v3.0",
             ))
 
     return findings

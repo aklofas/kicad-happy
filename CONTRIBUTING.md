@@ -160,7 +160,7 @@ def detect_my_circuit(ctx: AnalysisContext, prior_results=None) -> list[dict]:
     return findings
 ```
 
-`detector`, `rule_id` and `schema_era` are string literals at the call site (the harness scans them); `schema_era` names the era in which the finding's shape was last changed — `lookup_detectors.py` shows the current literal.
+`detector`, `rule_id` and `schema_era` are string literals at the call site (the harness scans them); Every emit site carries a `schema_era`: `v3.0` is the era in which the finding's emitted dict last changed, `v1.4` marks the datasheet-authority detectors in `lookup_detectors.py`. New sites use `v3.0`.
 
 If consumers filter on the new detector, add a `Det` constant in `finding_schema.py` whose value equals the literal. Call the detector from the phase function in `schematic/pipeline.py` that owns the call order (`detect_topologies` for topology detectors, `run_domain_detectors` for domain, validation and lookup detectors).
 

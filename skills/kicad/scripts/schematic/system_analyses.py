@@ -835,6 +835,7 @@ def analyze_voltage_derating(ctx: AnalysisContext, signal_analysis: dict,
                 impact="Capacitor may fail short under applied voltage." if severity == "critical" else "",
                 derating_rule=derating_rule, rail=pwr_net, rail_voltage=v_rail,
                 rated_voltage=rated_v, margin_pct=round(margin_pct, 1), dielectric=dielectric,
+            schema_era="v3.0",
             ))
         elif margin_pct > profile["over_designed_cap_margin"] * 100:
             suggested_v = v_rail * 2.5
@@ -853,6 +854,7 @@ def analyze_voltage_derating(ctx: AnalysisContext, signal_analysis: dict,
                 recommendation=suggestion or "Consider a lower voltage rating to reduce cost/size.",
                 derating_rule="over_designed", rail=pwr_net, rail_voltage=v_rail,
                 rated_voltage=rated_v, margin_pct=round(margin_pct, 1),
+            schema_era="v3.0",
             ))
 
     # ---- IC absolute max voltage check ----
@@ -899,6 +901,7 @@ def analyze_voltage_derating(ctx: AnalysisContext, signal_analysis: dict,
                 impact="Operating beyond absolute maximum risks immediate device damage.",
                 derating_rule="exceeds_abs_max", rail=max_rail_name, rail_voltage=max_rail_v,
                 abs_max_vin=vin_max, margin_pct=round(margin_pct, 1),
+            schema_era="v3.0",
             ))
         elif margin_pct < 10:
             findings.append(make_finding(
@@ -912,6 +915,7 @@ def analyze_voltage_derating(ctx: AnalysisContext, signal_analysis: dict,
                 recommendation="Confirm worst-case rail tolerance leaves margin to absolute max.",
                 derating_rule="ic_10pct_abs_max", rail=max_rail_name, rail_voltage=max_rail_v,
                 abs_max_vin=vin_max, margin_pct=round(margin_pct, 1),
+            schema_era="v3.0",
             ))
 
     # ---- Resistor power dissipation check ----
@@ -970,6 +974,7 @@ def analyze_voltage_derating(ctx: AnalysisContext, signal_analysis: dict,
                 derating_rule=derating_rule, voltage_across=v_across, resistance_ohms=pv,
                 estimated_power_w=round(power_w, 4), rated_power_w=rated_power, package=pkg,
                 margin_pct=round(margin_pct, 1),
+                schema_era="v3.0",
             ))
         elif margin_pct > profile["over_designed_res_margin"] * 100:
             pkg_sizes = ["0201", "0402", "0603", "0805", "1206", "1210", "2010", "2512"]
@@ -993,6 +998,7 @@ def analyze_voltage_derating(ctx: AnalysisContext, signal_analysis: dict,
                 recommendation=suggestion or "Consider a smaller package to reduce cost/size.",
                 derating_rule="over_designed", estimated_power_w=round(power_w, 4),
                 rated_power_w=rated_power, package=pkg, margin_pct=round(margin_pct, 1),
+            schema_era="v3.0",
             ))
 
     # ---- Return findings ----
@@ -2473,6 +2479,7 @@ def analyze_usb_compliance(ctx: AnalysisContext,
                 report_section="USB Compliance",
                 impact="USB functionality / robustness",
                 check=_check_name,
+                schema_era="v3.0",
             ))
         if conn_checks["checks"].get("vbus_capacitance") == "warning":
             _detail = conn_checks.get("vbus_capacitance_detail", {})
@@ -2494,6 +2501,7 @@ def analyze_usb_compliance(ctx: AnalysisContext,
                 report_section="USB Compliance",
                 impact="VBUS droop on connect",
                 check="vbus_capacitance",
+                schema_era="v3.0",
             ))
 
         checklist.append(conn_checks)

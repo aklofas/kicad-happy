@@ -36,7 +36,7 @@ Two pin-name tables follow the same rule: `validation_detectors._PS_PG_PIN_NAMES
 
 ## Finding emit sites (enforced by `tools/check_refactor.py tags`)
 
-Every emit site carries literal string keywords `detector=`, `rule_id=` and `schema_era=`. An emit site is a `make_finding`/`_make_finding` call, or a caller of a dict-returning `_make_*` factory. A `_make_*` wrapper whose own inner `make_finding` call carries all three literals is itself the emit site, and its callers are not scanned. `_make_*` helpers that are not finding factories are ignored. Known legacy sites are in `tools/tag_baseline.json`; the list may only shrink. Moving an emit site to another file uses `tags --update-baseline --moved-from FILE`, which never lets the count of untagged shapes grow. Emitted detector strings and rule IDs are public API and never change.
+Every emit site carries literal string keywords `detector=`, `rule_id=` and `schema_era=`. An emit site is a `make_finding`/`_make_finding` call, or a caller of a dict-returning `_make_*` factory. A `_make_*` wrapper whose own inner `make_finding` call carries all three literals is itself the emit site, and its callers are not scanned. `_make_*` helpers that are not finding factories are ignored. Every site is tagged; `tools/tag_baseline.json` records the detector/rule literal shapes that predate the checks, and may only shrink. Moving an emit site to another file uses `tags --update-baseline --moved-from FILE`, which never lets the count of untagged shapes grow. Emitted detector strings and rule IDs are public API and never change.
 
 ## Facade register
 

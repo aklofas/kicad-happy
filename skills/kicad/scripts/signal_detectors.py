@@ -4045,6 +4045,7 @@ def detect_shorted_two_pin_components(ctx: AnalysisContext) -> list[dict]:
             net=n1,
             component_type=comp.get("type"),
             value=value,
+            schema_era="v3.0",
         ))
 
     # Collapse mass hits per net. When the net map has merged two rails
@@ -4090,6 +4091,7 @@ def detect_shorted_two_pin_components(ctx: AnalysisContext) -> list[dict]:
                 f"wire each listed part to its second node."),
             net=net,
             component_count=len(group),
+            schema_era="v3.0",
         ))
 
     return collapsed
@@ -4439,6 +4441,7 @@ def audit_rail_sources(ctx: AnalysisContext,
                 "standard_ref": "",
             },
             "provenance": make_provenance("rs_rail_audit", rs_confidence, []),
+            "schema_era": "v3.0",
         })
 
     return findings
@@ -4769,6 +4772,7 @@ def audit_power_pin_dc_paths(ctx: AnalysisContext,
                     "standard_ref": "",
                 },
                 "provenance": make_provenance("pp_dc_path_audit", "deterministic", [ref]),
+                "schema_era": "v3.0",
             })
 
     return findings
