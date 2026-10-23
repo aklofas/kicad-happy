@@ -34,7 +34,10 @@ from emc_formulas import (
     distributed_pdn_impedance_sweep, cross_rail_transient_current,
     parallel_cap_impedance,
 )
-from kicad_core.parts import lookup_switching_freq as _estimate_switching_freq
+from kicad_core.parts import (
+    lookup_switching_freq as _estimate_switching_freq,
+    default_switching_freq as _default_switching_freq,
+)
 from kicad_core.netquery import build_net_id_map
 from finding_schema import Det, get_findings
 
@@ -79,8 +82,13 @@ def _is_power_or_ground(name: str) -> bool:
     return False
 
 
-def _is_ground_net(name: str) -> bool:
-    """Check if a net name is specifically a ground net."""
+def is_emc_ground_name(name: str) -> bool:
+    """Check if a net name is specifically a ground net (the EMC rules' policy).
+
+    Differs from kicad_core.netnames.is_ground_name: also accepts EARTH and
+    VEE; does not accept COM, the 0V<suffix> family (0VA, 0V_A, +0V; only the
+    literal 0V), or battery-negative names (BATT-, VBAT_N, ...).
+    """
     if not name:
         return False
     # Strip hierarchical sheet path prefix (e.g., "/Power Supply/GND" → "GND")
@@ -135,7 +143,7 @@ def _touch_nets(pcb: Dict) -> set:
             fp = fp_by_ref.get(ref)
             if fp:
                 nets.update(n for n in fp.get('connected_nets') or []
-                            if n and not _is_ground_net(n))
+                            if n and not is_emc_ground_name(n))
     return nets
 
 
@@ -461,7 +469,7 @@ def check_ground_zone_coverage(pcb: Dict) -> List[Dict]:
     copper_layers = [l['name'] for l in layers if l.get('type') in ('signal', 'power')]
 
     # Find ground zones
-    gnd_zones = [z for z in zones if _is_ground_net(z.get('net_name', ''))]
+    gnd_zones = [z for z in zones if is_emc_ground_name(z.get('net_name', ''))]
 
     if not gnd_zones and len(copper_layers) >= 2:
         rec = ('Add a solid ground pour on at least one inner layer.'
@@ -931,7 +939,7 @@ def check_connector_ground_pins(pcb: Dict,
             net = pad_data.get('net', '') if isinstance(pad_data, dict) else ''
             if not net or net in ('', 'unconnected'):
                 continue
-            if _is_ground_net(net):
+            if is_emc_ground_name(net):
                 gnd_count += 1
             elif not _is_power_or_ground(net):
                 sig_count += 1
@@ -1059,22 +1067,6 @@ def check_switching_harmonics(schematic: Dict, standard: str = 'fcc-class-b') ->
                 ))
 
     return findings
-
-
-def _default_switching_freq(topology: str) -> float | None:
-    """Fallback switching frequency estimate when part is unrecognized.
-
-    Based on typical ranges for each topology. Conservative (low end)
-    to avoid underestimating harmonic reach.
-    """
-    defaults = {
-        'buck': 500e3,
-        'boost': 500e3,
-        'buck-boost': 300e3,
-        'inverting': 300e3,
-        'sepic': 300e3,
-    }
-    return defaults.get(topology.lower()) if topology else None
 
 
 def _has_spread_spectrum(value: str) -> bool:
@@ -1274,7 +1266,7 @@ def check_crystal_guard_ring(pcb: Dict, schematic: Optional[Dict] = None) -> Lis
             fp_pos[ref] = (fp.get('x', 0), fp.get('y', 0))
 
     # Find ground zones with bounding boxes
-    gnd_zones = [z for z in zones if _is_ground_net(z.get('net_name', ''))]
+    gnd_zones = [z for z in zones if is_emc_ground_name(z.get('net_name', ''))]
 
     for xtal in crystals:
         ref = xtal.get('reference', '')
@@ -1364,7 +1356,7 @@ def check_via_stitching(pcb: Dict, schematic: Optional[Dict] = None) -> List[Dic
                 net_name = net_id_map[v_net]
             else:
                 net_name = ''
-            if _is_ground_net(net_name):
+            if is_emc_ground_name(net_name):
                 gnd_via_count += 1
         via_count = gnd_via_count if gnd_via_count > 0 else len(via_list)
     else:
@@ -1478,7 +1470,7 @@ def check_stackup(pcb: Dict) -> List[Dict]:
         nearest_ref = None
         for j, rl in enumerate(copper_layers):
             rt = layer_type_map.get(rl['name'], 'signal')
-            if rt in ('power', 'ground', 'mixed') or _is_ground_net(rl['name']):
+            if rt in ('power', 'ground', 'mixed') or is_emc_ground_name(rl['name']):
                 # Calculate dielectric thickness between layers
                 # Sum dielectric layers between them in the stackup
                 idx_min = min(cl['index'], rl['index'])
@@ -1510,8 +1502,8 @@ def check_stackup(pcb: Dict) -> List[Dict]:
         t1 = layer_type_map.get(l1['name'], 'signal')
         t2 = layer_type_map.get(l2['name'], 'signal')
 
-        if (t1 == 'power' and _is_ground_net(l2['name'])) or \
-           (_is_ground_net(l1['name']) and t2 == 'power'):
+        if (t1 == 'power' and is_emc_ground_name(l2['name'])) or \
+           (is_emc_ground_name(l1['name']) and t2 == 'power'):
             # Power/ground plane pair — check dielectric thickness
             idx_min = min(l1['index'], l2['index'])
             idx_max = max(l1['index'], l2['index'])
@@ -2454,7 +2446,7 @@ def check_ground_pour_ring(pcb: Dict) -> List[Dict]:
     if not edges:
         return findings
 
-    gnd_zones = [z for z in zones if _is_ground_net(z.get('net_name', ''))]
+    gnd_zones = [z for z in zones if is_emc_ground_name(z.get('net_name', ''))]
     if not gnd_zones:
         return findings  # GP-002 already flags missing ground planes
 
@@ -2983,7 +2975,7 @@ def check_esd_protection_path(pcb: Dict,
                         net_name = net_id_map.get(net_id, '')
                     else:
                         net_name = via.get('net_name', '') if isinstance(via.get('net_name'), str) else ''
-                    if _is_ground_net(net_name):
+                    if is_emc_ground_name(net_name):
                         gnd_vias_near += 1
 
             if gnd_vias_near == 0:
@@ -3829,19 +3821,19 @@ def check_layer_transition_stitching(pcb: Dict,
     nets = pcb.get('nets', {})
     if isinstance(nets, dict):
         for name in nets:
-            if _is_ground_net(name):
+            if is_emc_ground_name(name):
                 gnd_nets.add(name)
     elif isinstance(nets, list):
         for n in nets:
             name = n.get('name', '') if isinstance(n, dict) else ''
-            if _is_ground_net(name):
+            if is_emc_ground_name(name):
                 gnd_nets.add(name)
 
     # Identify which vias are ground vias (connected to ground nets)
     gnd_via_positions = []
     for via in all_vias:
         net = via.get('net_name', via.get('net', ''))
-        if isinstance(net, str) and _is_ground_net(net):
+        if isinstance(net, str) and is_emc_ground_name(net):
             gnd_via_positions.append((via.get('x', 0), via.get('y', 0)))
         elif isinstance(net, int):
             # Net number — look up name
@@ -3849,7 +3841,7 @@ def check_layer_transition_stitching(pcb: Dict,
                 net_name = nets.get(net, nets.get(str(net), ''))
             else:
                 net_name = ''
-            if _is_ground_net(str(net_name)):
+            if is_emc_ground_name(str(net_name)):
                 gnd_via_positions.append((via.get('x', 0), via.get('y', 0)))
 
     if not gnd_via_positions:

@@ -36,7 +36,17 @@ ANALYZER_SOURCE = "cross"
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _is_ground_net(name: str) -> bool:
+def is_cross_analysis_ground_name(name: str) -> bool:
+    """Check if a net name is a ground net (the cross-analysis policy).
+
+    Removes every '/', '-' and '_' and then matches an exact set, so it
+    differs from kicad_core.netnames.is_ground_name: also accepts EARTH and
+    CHASSIS; has no GND-prefix/suffix or VSS-prefix patterns (SGND, GNDPWR,
+    GND_ISO, VSSA are not ground), no COM, no 0V<suffix> family, no
+    battery-negative names; a sheet path is concatenated, not stripped
+    ("/Power/GND" is not ground, "/GND" is). The GND_D / GND_A entries are
+    unreachable after stripping (they match as GNDD / GNDA).
+    """
     if not name:
         return False
     n = name.upper().replace('/', '').replace('-', '').replace('_', '')
@@ -48,7 +58,7 @@ def _is_power_net(name: str) -> bool:
     if not name:
         return False
     n = name.upper()
-    if _is_ground_net(name):
+    if is_cross_analysis_ground_name(name):
         return True
     if n.startswith(('+', 'VCC', 'VDD', 'VBUS', 'VIN', 'VBAT', 'VSYS')):
         return True
@@ -232,7 +242,7 @@ def check_connector_current(schematic: dict, pcb: dict | None, recorder=None) ->
             continue
         for pad in fp.get('pads', []):
             net_name = pad.get('net_name', '')
-            if not net_name or _is_ground_net(net_name) or not _is_power_net(net_name):
+            if not net_name or is_cross_analysis_ground_name(net_name) or not _is_power_net(net_name):
                 continue
             voltage = _parse_voltage_from_name(net_name)
             if voltage is None:
@@ -313,7 +323,7 @@ def check_esd_coverage_gaps(schematic: dict, pcb: dict | None, recorder=None) ->
                 if not key_str.startswith(ref + ':') and not key_str.startswith(f"('{ref}'"):
                     continue
                 net = val[0] if isinstance(val, (list, tuple)) else val
-                if not net or _is_power_net(net) or _is_ground_net(net):
+                if not net or _is_power_net(net) or is_cross_analysis_ground_name(net):
                     continue
                 if net not in protected_nets:
                     unprotected_nets.append(net)
@@ -554,7 +564,7 @@ def check_critical_net_routing(schematic, pcb, recorder=None):
     for seg in segments:
         net_id = seg.get('net', 0)
         net_name = net_id_map.get(net_id, '') if isinstance(net_id, int) else str(net_id)
-        if not net_name or _is_power_net(net_name) or _is_ground_net(net_name):
+        if not net_name or _is_power_net(net_name) or is_cross_analysis_ground_name(net_name):
             continue
         classification = _get_net_classification(net_name, schematic)
         if not classification or classification.get('type') not in _HIGH_SPEED_TYPES:
@@ -604,7 +614,7 @@ def check_return_path_enhanced(schematic, pcb, recorder=None):
     has_rpc_data = len(pcb.get('return_path_continuity', []) or []) > 0
     plane_gaps = []
     for net_name, graph in conn_graph.items():
-        if not (_is_ground_net(net_name) or _is_power_net(net_name)):
+        if not (is_cross_analysis_ground_name(net_name) or _is_power_net(net_name)):
             continue
         for gap in graph.get('gaps', []):
             plane_gaps.append({**gap, 'net': net_name})
@@ -633,7 +643,7 @@ def check_return_path_enhanced(schematic, pcb, recorder=None):
     for seg in segments:
         net_id = seg.get('net', 0)
         net_name = net_id_map.get(net_id, '') if isinstance(net_id, int) else str(net_id)
-        if not net_name or _is_power_net(net_name) or _is_ground_net(net_name):
+        if not net_name or _is_power_net(net_name) or is_cross_analysis_ground_name(net_name):
             continue
         if net_name in flagged:
             continue
@@ -746,7 +756,7 @@ def check_plane_splits(schematic, pcb, recorder=None):
     net_id_map = _build_net_id_map(pcb)
     rpc_flagged = _flagged_return_path_entries(pcb, threshold_pct=95.0)
     for plane_net, graph in conn_graph.items():
-        if not (_is_ground_net(plane_net) or _is_power_net(plane_net)):
+        if not (is_cross_analysis_ground_name(plane_net) or _is_power_net(plane_net)):
             continue
         if graph.get('islands', 1) <= 1:
             continue
@@ -760,7 +770,7 @@ def check_plane_splits(schematic, pcb, recorder=None):
         for seg in segments:
             seg_net_id = seg.get('net', 0)
             seg_net = net_id_map.get(seg_net_id, '') if isinstance(seg_net_id, int) else str(seg_net_id)
-            if not seg_net or _is_power_net(seg_net) or _is_ground_net(seg_net):
+            if not seg_net or _is_power_net(seg_net) or is_cross_analysis_ground_name(seg_net):
                 continue
             sx1, sy1 = seg.get('x1', 0), seg.get('y1', 0)
             sx2, sy2 = seg.get('x2', 0), seg.get('y2', 0)
@@ -841,7 +851,7 @@ def check_via_stitching_density(schematic, pcb, recorder=None):
     for via in via_list:
         net_id = via.get('net', 0)
         net_name = net_id_map.get(net_id, '') if isinstance(net_id, int) else str(net_id)
-        if _is_ground_net(net_name):
+        if is_cross_analysis_ground_name(net_name):
             gnd_vias.append((via.get('x', 0), via.get('y', 0)))
     if not gnd_vias:
         findings.append(make_finding(

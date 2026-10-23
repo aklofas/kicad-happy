@@ -3,6 +3,7 @@ analyses into the analyzer output dict. Bodies are verbatim from analyze_schemat
 round-3 tip; only the signatures and the input unpacking are new.
 """
 
+from kicad_core.classify import NON_COMPONENT_TYPES
 from kicad_core.values import parse_value
 from kicad_core.project import (
     extract_pro_text_variables,
@@ -356,9 +357,7 @@ def assemble_result(ctx, parsed, nets, bom, analyses, *, path, sheets_parsed,
 
     # BOM lock verification (production readiness)
     _bom_real = [c for c in all_components
-                 if c.get("type") not in ("power_symbol", "power_flag", "flag",
-                                           "mounting_hole", "fiducial",
-                                           "test_point", "graphic")
+                 if c.get("type") not in NON_COMPONENT_TYPES
                  and not c.get("reference", "").startswith("#")
                  and c.get("in_bom", True) and not c.get("dnp", False)]
     # Deduplicate multi-unit symbols

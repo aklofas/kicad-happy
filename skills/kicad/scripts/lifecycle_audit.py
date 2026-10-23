@@ -95,6 +95,9 @@ _STATUS_NORMALIZE = {
     "ltb": "last_time_buy",
 }
 
+# Normalized statuses that mean "not active" (end of life or heading there).
+_EOL_STATUSES = frozenset({"obsolete", "discontinued", "last_time_buy", "nrnd"})
+
 
 def _normalize_status(raw: str | None) -> str:
     """Normalize a lifecycle status string to a standard value."""
@@ -138,6 +141,7 @@ def _parse_temp_range(text: str) -> tuple[float, float] | None:
 
 # ---------------------------------------------------------------------------
 # MPN filtering (same pattern as sync_datasheets_digikey.py)
+# Twin of distributor_core.inputs (_GENERIC_VALUE_RE / _SKIP_TYPES).
 # ---------------------------------------------------------------------------
 
 _GENERIC_VALUE_RE = re.compile(
@@ -502,9 +506,8 @@ def audit_component(mpn: str, sources: list[str], project_dir: str | None = None
     # Consensus: True when distributors disagree and at least one says active.
     # A part reported obsolete by one distributor but active by another is
     # still orderable, so the finding should be warning rather than error.
-    _non_active = {"obsolete", "discontinued", "last_time_buy", "nrnd"}
     has_active = any(s == "active" for s in per_source_status.values())
-    has_non_active = any(s in _non_active for s in per_source_status.values())
+    has_non_active = any(s in _EOL_STATUSES for s in per_source_status.values())
     result["consensus_split"] = has_active and has_non_active
     result["per_source_status"] = per_source_status
     result["attempted"] = sorted(attempted)
@@ -688,7 +691,7 @@ def audit_bom(analysis_json: dict, project_dir: str | None = None,
         }
 
         # Flag non-active statuses
-        if status in ("nrnd", "last_time_buy", "obsolete", "discontinued"):
+        if status in _EOL_STATUSES:
             alert_map = {
                 "nrnd": "NRND — not recommended for new designs, consider replacement",
                 "last_time_buy": "Last Time Buy — order soon or find alternative",

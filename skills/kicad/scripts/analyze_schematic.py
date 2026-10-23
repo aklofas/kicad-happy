@@ -84,7 +84,7 @@ from schematic.ic_analysis import (
     _IC_LIB_PREFIX_MAP,
     _IC_VALUE_KEYWORDS,
     _IC_DESC_KEYWORDS,
-    _classify_ic_function,
+    classify_ic_pinout_role as _classify_ic_function,
     analyze_ic_pinouts,
     _pin_sort_key,
     identify_subcircuits,

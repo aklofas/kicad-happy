@@ -948,7 +948,9 @@ def validate_usb_bus(ctx: AnalysisContext) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 _ENABLE_PIN_NAMES = ('EN', 'ENABLE', 'CE', 'SHDN', 'ON', 'nSHDN', 'ON_OFF', 'RUN')
-_PG_PIN_NAMES = ('PG', 'PGOOD', 'POWER_GOOD', 'nPG', 'PGD', 'POK')
+# PS-001's power-good names; domain_detectors._PG_PIN_NAMES is a deliberately
+# different (wider) set for power-sequencing detection.
+_PS_PG_PIN_NAMES = ('PG', 'PGOOD', 'POWER_GOOD', 'nPG', 'PGD', 'POK')
 
 _SEQUENCING_SENSITIVE_KEYWORDS = (
     'stm32', 'esp32', 'nrf52', 'rp2040', 'samd', 'sam3', 'sam4',
@@ -1051,7 +1053,7 @@ def validate_power_sequencing(
             ds_feat = None   # deterministic detectors keep the v1.4 trust gate (v2.0 §3.A.1)
         if ds_feat and ds_feat.get('has_pg') is False:
             continue
-        pg_net = _get_pin_net(ctx, ref, _PG_PIN_NAMES)
+        pg_net = _get_pin_net(ctx, ref, _PS_PG_PIN_NAMES)
         if not pg_net:
             if ds_feat is None and mpn:
                 findings.append(make_finding(

@@ -7,6 +7,7 @@ import re
 from pathlib import (
     Path,
 )
+from kicad_core.classify import NON_COMPONENT_TYPES
 from kicad_core.netnames import (
     is_ground_name as _is_ground_name,
 )
@@ -161,8 +162,7 @@ def validate_footprint_filters(components: list[dict], lib_symbols: dict) -> lis
     warnings = []
 
     for c in components:
-        if c["type"] in ("power_symbol", "power_flag", "flag", "test_point",
-                          "mounting_hole", "fiducial", "graphic"):
+        if c["type"] in NON_COMPONENT_TYPES:
             continue
         if not c["footprint"]:
             continue
@@ -231,9 +231,7 @@ def _bom_real_components(components: list[dict]) -> list[dict]:
     (KH-390).
     """
     return [c for c in components
-            if c.get("type") not in ("power_symbol", "power_flag", "flag",
-                                     "test_point", "mounting_hole",
-                                     "fiducial", "graphic")
+            if c.get("type") not in NON_COMPONENT_TYPES
             and c.get("in_bom") and not c.get("dnp")]
 
 
@@ -441,8 +439,7 @@ def audit_sourcing_fields(components: list[dict]) -> dict:
     Distributor PNs (DigiKey, Mouser, LCSC) accelerate ordering.
     """
     real = [c for c in components
-            if c["type"] not in ("power_symbol", "power_flag", "flag", "test_point",
-                                  "mounting_hole", "fiducial", "graphic")
+            if c["type"] not in NON_COMPONENT_TYPES
             and c["in_bom"] and not c["dnp"]]
 
     # Deduplicate by reference (multi-unit symbols)
@@ -585,9 +582,7 @@ def audit_dnp_rate(components: list[dict]) -> list[dict]:
     assemblies, not on one-component drafts.
     """
     real = [c for c in components
-            if c.get("type") not in ("power_symbol", "power_flag", "flag",
-                                     "test_point", "mounting_hole",
-                                     "fiducial", "graphic")
+            if c.get("type") not in NON_COMPONENT_TYPES
             and c.get("in_bom")]
     if len(real) < 2:
         return []
@@ -1009,8 +1004,7 @@ def check_simulation_readiness(components: list[dict], lib_symbols: dict) -> dic
     simulation model (Sim.Type, Sim.Params, etc.) for the circuit to simulate.
     """
     real = [c for c in components
-            if c["type"] not in ("power_symbol", "power_flag", "flag",
-                                  "test_point", "mounting_hole", "fiducial", "graphic")]
+            if c["type"] not in NON_COMPONENT_TYPES]
 
     # Check for Sim_* properties which indicate SPICE model assignment
     # These are stored as component properties but we extracted only standard ones.

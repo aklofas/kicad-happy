@@ -13,6 +13,7 @@ from kicad_core.parts import (
     _LOAD_TYPE_KEYWORDS,
     lookup_regulator_vref as _lookup_regulator_vref,
     lookup_switching_freq,
+    default_switching_freq,
     match_known_switching as _match_known_switching,
 )
 from kicad_core.classify import classify_jumper_default_state
@@ -35,20 +36,14 @@ from lookup_helpers import get_facts, has_data, best
 # Shared helpers
 # ---------------------------------------------------------------------------
 
-def _default_switching_freq(topology: str) -> float | None:
-    """Fallback switching frequency estimate when part is unrecognized.
+# Gate-drive bootstrap pins: their supply is a capacitor to the switch node,
+# so having no DC path to a rail is the datasheet circuit, not a fault. Many
+# vendor symbols type them power_in. Same names detect_power_regulators uses.
+_BOOTSTRAP_PIN_TOKENS = frozenset({"BST", "BOOT", "BOOTSTRAP", "CBST"})
 
-    Based on typical ranges for each topology. Conservative (low end)
-    to avoid underestimating harmonic reach.
-    """
-    defaults = {
-        'buck': 500e3,
-        'boost': 500e3,
-        'buck-boost': 300e3,
-        'inverting': 300e3,
-        'sepic': 300e3,
-    }
-    return defaults.get(topology.lower()) if topology else None
+
+# Regulator output pin names (exact parts of a composite pin name).
+_VOUT_PIN_NAMES = frozenset({"VOUT", "VO", "OUT", "OUTPUT"})
 
 
 def _get_net_components(ctx: AnalysisContext, net_name, exclude_ref):
@@ -774,7 +769,7 @@ def detect_lc_filters(ctx: AnalysisContext) -> list[dict]:
                 for p in ctx.nets[cap_other_net]["pins"]:
                     pn = p.get("pin_name", "").upper().rstrip("0123456789").rstrip("_")
                     pn_parts = {pp.strip() for pp in pn.split("/")}
-                    if pn_parts & {"BST", "BOOT", "BOOTSTRAP", "CBST"}:
+                    if pn_parts & _BOOTSTRAP_PIN_TOKENS:
                         is_bootstrap = True
                         break
             if is_bootstrap:
@@ -1644,7 +1639,7 @@ def _screen_regulator_candidate(ctx: AnalysisContext, ic: dict) -> _RegulatorCan
             if not fb_pin:
                 fb_pin = (pname, net)
             # Composite names like "FB/VOUT" also set vout_pin
-            if not vout_pin and pn_parts & {"VOUT", "VO", "OUT", "OUTPUT"}:
+            if not vout_pin and pn_parts & _VOUT_PIN_NAMES:
                 vout_pin = (pname, net)
         elif pn_parts & {"SW", "PH", "LX"}:
             if not sw_pin:
@@ -1654,9 +1649,9 @@ def _screen_regulator_candidate(ctx: AnalysisContext, ic: dict) -> _RegulatorCan
             en_pin = (pname, net)
         elif pn_parts & {"VIN", "VI", "IN", "PVIN", "AVIN", "INPUT"}:
             vin_pin = (pname, net)
-        elif pn_parts & {"VOUT", "VO", "OUT", "OUTPUT"}:
+        elif pn_parts & _VOUT_PIN_NAMES:
             vout_pin = (pname, net)
-        elif pn_parts & {"BOOT", "BST", "BOOTSTRAP", "CBST"}:
+        elif pn_parts & _BOOTSTRAP_PIN_TOKENS:
             boot_pin = (pname, net)
 
     if not fb_pin and not sw_pin and not vout_pin:
@@ -1994,7 +1989,7 @@ def _build_regulator_record(ctx: AnalysisContext, cand: _RegulatorCandidate,
                 if sw_f:
                     freq_source = "lookup_table"
         if sw_f is None:
-            sw_f = _default_switching_freq("buck")  # conservative default for switching
+            sw_f = default_switching_freq("buck")  # conservative default for switching
             freq_source = "topology_default"
         if sw_f is not None:
             reg_info["switching_frequency_hz"] = sw_f
@@ -2647,7 +2642,7 @@ def detect_opamp_circuits(ctx: AnalysisContext) -> list[dict]:
                          "INV", "INV-IN") or \
                  (pn.startswith("-") and "IN" in pn):
                 neg_in = (pin_name, net, pnum)
-            elif pn in ("OUT", "OUTPUT", "VOUT", "VO"):
+            elif pn in _VOUT_PIN_NAMES:
                 out_pin = (pin_name, net, pnum)
             elif pn in ("V+", "V-", "VCC", "VDD", "VEE", "VSS", "VS+", "VS-"):
                 continue
@@ -4547,12 +4542,6 @@ def _is_module_internal_rail(net_name: str) -> bool:
         return False
     base = net_name.upper().lstrip('/').lstrip('+')
     return any(base.startswith(pat) for pat in _MODULE_INTERNAL_RAIL_PATTERNS)
-
-
-# Gate-drive bootstrap pins: their supply is a capacitor to the switch node,
-# so having no DC path to a rail is the datasheet circuit, not a fault. Many
-# vendor symbols type them power_in. Same names detect_power_regulators uses.
-_BOOTSTRAP_PIN_TOKENS = frozenset({"BST", "BOOT", "BOOTSTRAP", "CBST"})
 
 
 def _is_bootstrap_pin_name(pin_name: str) -> bool:

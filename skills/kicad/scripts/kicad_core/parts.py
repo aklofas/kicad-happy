@@ -340,6 +340,22 @@ def lookup_switching_freq(part_value: str) -> float | None:
     return None
 
 
+def default_switching_freq(topology: str) -> float | None:
+    """Fallback switching frequency estimate when part is unrecognized.
+
+    Based on typical ranges for each topology. Conservative (low end)
+    to avoid underestimating harmonic reach.
+    """
+    defaults = {
+        'buck': 500e3,
+        'boost': 500e3,
+        'buck-boost': 300e3,
+        'inverting': 300e3,
+        'sepic': 300e3,
+    }
+    return defaults.get(topology.lower()) if topology else None
+
+
 def match_known_switching(value: str, lib_id: str) -> bool:
     """Check if a part matches the known switching regulator table."""
     val_upper = value.upper()

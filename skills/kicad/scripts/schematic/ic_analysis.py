@@ -12,7 +12,7 @@ from schematic.connectivity import (
 )
 
 
-# Static lookup tables for IC function classification (used by _classify_ic_function)
+# Static lookup tables for IC function classification (used by classify_ic_pinout_role)
 _IC_LIB_PREFIX_MAP = {
     "regulator_linear": "linear regulator",
     "regulator_switching": "switching regulator",
@@ -187,8 +187,12 @@ _IC_DESC_KEYWORDS = [
 ]
 
 
-def _classify_ic_function(lib_id: str, value: str, description: str) -> str:
+def classify_ic_pinout_role(lib_id: str, value: str, description: str) -> str:
     """Classify IC function from library ID, value, and description.
+
+    Returns the free-form label serialised as ic_pin_analysis[].function
+    ("linear regulator", "microcontroller", ...). Disjoint from
+    kicad_core.classify.classify_ic_function, which returns a fixed enum.
 
     Three-tier lookup:
     1. KiCad stdlib library prefix (most reliable)
@@ -435,7 +439,7 @@ def analyze_ic_pinouts(ctx: AnalysisContext,
             "mpn": ic.get("mpn", ""),
             "description": ic.get("description", ""),
             "datasheet": ic.get("datasheet", ""),
-            "function": _classify_ic_function(ic["lib_id"], ic["value"], ic.get("description", "")),
+            "function": classify_ic_pinout_role(ic["lib_id"], ic["value"], ic.get("description", "")),
             "total_pins": len(pin_analysis),
             "unconnected_pins": len(unconnected),
             "pins": sorted(pin_analysis, key=lambda p: _pin_sort_key(p["pin_number"])),

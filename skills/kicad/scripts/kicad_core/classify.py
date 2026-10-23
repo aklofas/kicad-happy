@@ -2,6 +2,11 @@
 import re
 
 
+# Component types that are not physical BOM parts (symbols, markers, mechanicals).
+NON_COMPONENT_TYPES = frozenset({"power_symbol", "power_flag", "flag", "test_point",
+                                 "mounting_hole", "fiducial", "graphic"})
+
+
 def classify_component(ref: str, lib_id: str, value: str, is_power: bool = False,
                        footprint: str = "", in_bom: bool = False,
                        description: str = "", pins: list | None = None) -> str:

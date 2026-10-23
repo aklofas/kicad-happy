@@ -4360,16 +4360,6 @@ _AUDIO_AMP_KEYWORDS = (
     "sta3",
 )
 
-_AUDIO_CODEC_KEYWORDS = (
-    "wm89", "wm87",
-    "es83", "es81",
-    "ak49", "ak45",
-    "pcm51", "pcm17", "pcm29", "pcm30",
-    "cs42", "cs43", "cs44", "cs47",
-    "sgtl5", "tlv320",
-    "nau88", "adau17",
-)
-
 _I2S_PINS = {"BCLK", "LRCK", "LRCLK", "WSEL", "WS", "SDIN", "SDOUT",
              "SDAT", "DIN", "DOUT", "DACDAT", "ADCDAT", "MCLK"}
 _AUDIO_OUTPUT_PINS = {"OUT+", "OUT-", "OUTP", "OUTN", "SPKR", "SPK+", "SPK-",
