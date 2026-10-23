@@ -175,7 +175,7 @@ def _not_verifiable_finding(mpn: str, detail: str) -> dict:
     """
     return {
         "type": "extraction_not_verifiable",
-        "severity": "INFO",
+        "severity": "info",
         "mpn": mpn,
         "detail": detail,
     }
@@ -210,7 +210,7 @@ def _quality_finding(mpn, extraction):
     score = q14 if isinstance(q14, (int, float)) else q13
     return {
         "type": "extraction_quality_low",
-        "severity": "INFO",
+        "severity": "info",
         "mpn": mpn,
         "quality_score": score,
         "detail": (f"{mpn}: extraction quality score {score} is below the "
@@ -329,7 +329,7 @@ def verify_pin_voltages(components: list, nets: dict, extraction_dir: str,
             if v_abs_max is not None and net_voltage > v_abs_max:
                 findings.append({
                     "type": "pin_voltage_abs_max_exceeded",
-                    "severity": "CRITICAL",
+                    "severity": "error",
                     "ref": ref,
                     "mpn": mpn,
                     "pin_number": pin_num,
@@ -347,7 +347,7 @@ def verify_pin_voltages(components: list, nets: dict, extraction_dir: str,
                 margin_pct = (v_abs_max - net_voltage) / v_abs_max * 100 if v_abs_max else 0
                 findings.append({
                     "type": "pin_voltage_operating_exceeded",
-                    "severity": "HIGH" if margin_pct < 10 else "MEDIUM",
+                    "severity": "error" if margin_pct < 10 else "warning",
                     "ref": ref,
                     "mpn": mpn,
                     "pin_number": pin_num,
@@ -469,7 +469,7 @@ def verify_required_externals(components: list, nets: dict, extraction_dir: str,
                 # Nothing matching the requirement is connected
                 findings.append({
                     "type": "missing_required_external",
-                    "severity": "HIGH",
+                    "severity": "error",
                     "ref": ref,
                     "mpn": mpn,
                     "pin_number": pin_num,
@@ -621,7 +621,7 @@ def verify_decoupling(components: list, nets: dict, extraction_dir: str,
             total_matching = len(matching)
 
             if total_matching < req["count"]:
-                severity = "HIGH" if total_matching == 0 else "MEDIUM"
+                severity = "error" if total_matching == 0 else "warning"
                 findings.append({
                     "type": "decoupling_insufficient",
                     "severity": severity,
@@ -729,7 +729,7 @@ def run_datasheet_verification(analysis: dict, project_dir: str = "") -> dict:
     # Build severity summary
     by_severity = {}
     for f in all_findings:
-        sev = f.get("severity", "INFO")
+        sev = f.get("severity", "info")
         by_severity[sev] = by_severity.get(sev, 0) + 1
 
     return {

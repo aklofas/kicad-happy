@@ -609,7 +609,7 @@ Summarises findings across all analyzers in a run. Use when the user wants a top
 python3 <skill-path>/scripts/summarize_findings.py analysis/
 
 # Limit to top 10 high-severity findings
-python3 <skill-path>/scripts/summarize_findings.py analysis/ --top 10 --severity high
+python3 <skill-path>/scripts/summarize_findings.py analysis/ --top 10 --severity error
 
 # JSON output for programmatic consumption
 python3 <skill-path>/scripts/summarize_findings.py analysis/ --json
