@@ -3,11 +3,11 @@ with their real prerequisites passed explicitly (spec §4.3).
 
 Phase 1 read_board        — parse + extract (pcb.reader) + the KiCad-10 synthetic net map applied
                             through a per-call PcbReaderState (B1; nothing module-level)
-Phases 2–3 run_analyses   — facts and checks in TODAY'S ORDER, one function (connectivity … return
-                            path, incl. the .kicad_pro/.kicad_dru/lib-table loads); the checks hoist
-                            is round 7 (S3) and must be gated — never reorder here
-Phase 4 assemble_result   — pcb.presentation: the result dict in its historical key order; the late
-                            checks that run inside the dict build stay there
+Phase 2 run_facts         — the board facts (connectivity … return path, incl. the
+                            .kicad_pro/.kicad_dru/lib-table loads, keepout zones)
+Phase 3 run_checks        — every check over the board + facts, incl. the seven late checks
+                            hoisted out of the dict build (round 7); run_analyses composes 2 + 3
+Phase 4 assemble_result   — pcb.presentation: the result dict in its historical key order
 Phase 5 finalize_for_cli  — command-specific annotation (GP-001 debug file, project summary, design
                             intent, stage/audience filters, finding_id)
 Every body is verbatim from analyze_pcb.py at the round-4 tip; only the seams are new.
@@ -16,7 +16,7 @@ Every body is verbatim from analyze_pcb.py at the round-4 tip; only the seams ar
 import json
 import os
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +29,7 @@ from kicad_core.model import PcbReaderState
 from pcb import reader
 from pcb.geometry import ZoneFills
 from pcb.reader import (
+    _extract_keepout_zones,
     extract_silkscreen,
     extract_board_metadata,
     extract_dimensions,
@@ -52,12 +53,19 @@ from pcb.copper import (
     analyze_vias,
     analyze_thermal_pad_vias,
     analyze_copper_presence,
+    analyze_via_in_pad,
+    analyze_board_edge_via_clearance,
 )
 from pcb.dfm import analyze_dfm
 from pcb.assembly import (
     analyze_decoupling_placement,
     analyze_placement,
     analyze_tombstoning_risk,
+    analyze_fiducials,
+    analyze_test_point_coverage,
+    analyze_orientation_consistency,
+    analyze_silkscreen_pad_overlaps,
+    analyze_keepout_violations,
 )
 from pcb.presentation import assemble_result, group_components, compute_statistics
 from finding_schema import assign_finding_ids
@@ -155,9 +163,56 @@ def read_board(path: str, *, state: PcbReaderState | None = None) -> BoardData:
 
 
 @dataclass
+class PcbFacts:
+    """Phase-2 output: the measured board facts, in today's order."""
+    connectivity: Any
+    stats: Any
+    version: Any
+    generator_version: Any
+    format_newer_note: Any
+    component_groups: Any
+    net_lengths: Any
+    power_routing: Any
+    pad_distances: Any
+    ground_domains: Any
+    current_capacity: Any
+    layer_transitions: Any
+    silkscreen: Any
+    metadata: Any
+    dimensions: Any
+    groups: Any
+    net_classes: Any
+    project_settings: Any
+    ref_layer_map: Any
+    return_path: Any
+    gp001_samples: Any
+    keepout_zones: Any
+
+
+@dataclass
+class PcbChecks:
+    """Phase-3 output: the checks over the board and its facts, in today's relative order."""
+    decoupling: Any
+    via_analysis: Any
+    thermal: Any
+    placement: Any
+    dfm: Any
+    tombstoning: Any
+    thermal_pad_vias: Any
+    copper_presence: Any
+    fiducial_check: Any
+    test_point_coverage: Any
+    orientation: Any
+    silkscreen_overlaps: Any
+    keepout_violations: Any
+    via_in_pad: Any
+    edge_via: Any
+
+
+@dataclass
 class PcbAnalyses:
     """Phases 2–3 output: every intermediate analyze_pcb() computed between the board and
-    the result dict, in today's order."""
+    the result dict (PcbFacts + PcbChecks)."""
     connectivity: Any
     stats: Any
     version: Any
@@ -187,15 +242,21 @@ class PcbAnalyses:
     copper_presence: Any
     return_path: Any
     gp001_samples: Any
+    keepout_zones: Any
+    fiducial_check: Any
+    test_point_coverage: Any
+    orientation: Any
+    silkscreen_overlaps: Any
+    keepout_violations: Any
+    via_in_pad: Any
+    edge_via: Any
 
 
-def run_analyses(board: BoardData, *, include_trace_segments: bool, return_path_radius_mm: float,
-                 gp001_debug: bool, resolved_power_rails: set[str] | None) -> PcbAnalyses:
-    """Phases 2–3: today's call order, facts and checks interleaved; the checks-phase hoist is
-    round 7 (S3) and must be gated.
-
-    Passes the board's containers by reference; no analysis is known to mutate them (observed on
-    the fixture boards, not proven; round 7 proves it before hoisting the checks)."""
+def run_facts(board: BoardData, *, include_trace_segments: bool, return_path_radius_mm: float,
+              gp001_debug: bool, resolved_power_rails: set[str] | None) -> PcbFacts:
+    """Phase 2: the board facts in today's relative order (incl. the .kicad_pro/.kicad_dru/
+    lib-table loads). Passes the board's containers by reference; no analysis mutates them
+    (tools/tests/test_pcb_phase_purity.py)."""
     path = board.path
     root = board.root
     layers = board.layers
@@ -255,9 +316,6 @@ def run_analyses(board: BoardData, *, include_trace_segments: bool, return_path_
         pad_distances = analyze_pad_to_pad_distances(
             footprints, tracks, vias, net_names)
 
-    # Decoupling placement analysis
-    decoupling = analyze_decoupling_placement(footprints)
-
     # Ground domain identification
     ground_domains = analyze_ground_domains(footprints, net_names, zones)
 
@@ -265,18 +323,9 @@ def run_analyses(board: BoardData, *, include_trace_segments: bool, return_path_
     current_capacity = analyze_current_capacity(tracks, vias, zones, net_names, setup,
                                                 power_rails=_resolved_power_rails)
 
-    # Via analysis (types, annular ring, via-in-pad, fanout, current)
-    via_analysis = analyze_vias(vias, footprints, net_names)
-
-    # Thermal / via stitching analysis
-    thermal = analyze_thermal_vias(footprints, vias, zones)
-
     # Layer transitions for ground return path analysis
     layer_transitions = analyze_layer_transitions(tracks, vias, net_names,
                                                   power_rails=_resolved_power_rails)
-
-    # Placement analysis (courtyard overlaps, edge clearance, density)
-    placement = analyze_placement(footprints, outline)
 
     # Silkscreen text extraction
     silkscreen = extract_silkscreen(root, footprints)
@@ -326,24 +375,8 @@ def run_analyses(board: BoardData, *, include_trace_segments: bool, return_path_
     if lib_tables.get('footprint_libs'):
         project_settings['footprint_libs'] = lib_tables['footprint_libs']
 
-    # DFM (Design for Manufacturing) scoring
-    design_rules = (project_settings.get('design_rules')
-                    or setup.get("design_rules"))
-    dfm = analyze_dfm(footprints, tracks, vias, outline, design_rules,
-                       net_classes=net_classes, design_intent=None)
-
-    # Tombstoning risk assessment for small passives
-    tombstoning = analyze_tombstoning_risk(footprints, tracks, vias, zones)
-
-    # Thermal pad via adequacy for QFN/BGA packages
-    thermal_pad_vias = analyze_thermal_pad_vias(footprints, vias, zones, zone_fills)
-
     # Build reference layer map from stackup for multi-layer boards
     ref_layer_map = _build_reference_layer_map(setup.get("stackup", []))
-
-    # Copper presence analysis (cross-layer zone fill at pad locations)
-    copper_presence = analyze_copper_presence(footprints, zones, zone_fills,
-                                              ref_layer_map=ref_layer_map)
 
     # Return path continuity (only with --full, expensive)
     return_path = None
@@ -359,7 +392,9 @@ def run_analyses(board: BoardData, *, include_trace_segments: bool, return_path_
             power_rails=_resolved_power_rails,
             copper_order=_copper_order_from_stackup(setup.get("stackup", [])))
 
-    return PcbAnalyses(
+    keepout_zones = _extract_keepout_zones(zones, footprints)
+
+    return PcbFacts(
         connectivity=connectivity,
         stats=stats,
         version=version,
@@ -369,27 +404,118 @@ def run_analyses(board: BoardData, *, include_trace_segments: bool, return_path_
         net_lengths=net_lengths,
         power_routing=power_routing,
         pad_distances=pad_distances,
-        decoupling=decoupling,
         ground_domains=ground_domains,
         current_capacity=current_capacity,
-        via_analysis=via_analysis,
-        thermal=thermal,
         layer_transitions=layer_transitions,
-        placement=placement,
         silkscreen=silkscreen,
         metadata=metadata,
         dimensions=dimensions,
         groups=groups,
         net_classes=net_classes,
         project_settings=project_settings,
+        ref_layer_map=ref_layer_map,
+        return_path=return_path,
+        gp001_samples=gp001_samples,
+        keepout_zones=keepout_zones,
+    )
+
+
+def run_checks(board: BoardData, facts: PcbFacts, *, include_trace_segments: bool) -> PcbChecks:
+    """Phase 3: the checks in today's relative order — the eight run_analyses checks, then the
+    seven late checks that used to run inside assemble_result. Reads the board and *facts*;
+    mutates neither (tools/tests/test_pcb_phase_purity.py)."""
+    setup = board.setup
+    net_names = board.net_names
+    footprints = board.footprints
+    tracks = board.tracks
+    vias = board.vias
+    zones = board.zones
+    zone_fills = board.zone_fills
+    outline = board.outline
+    silkscreen = facts.silkscreen
+    net_classes = facts.net_classes
+    project_settings = facts.project_settings
+    ref_layer_map = facts.ref_layer_map
+
+    # Decoupling placement analysis
+    decoupling = analyze_decoupling_placement(footprints)
+
+    # Via analysis (types, annular ring, via-in-pad, fanout, current)
+    via_analysis = analyze_vias(vias, footprints, net_names)
+
+    # Thermal / via stitching analysis
+    thermal = analyze_thermal_vias(footprints, vias, zones)
+
+    # Placement analysis (courtyard overlaps, edge clearance, density)
+    placement = analyze_placement(footprints, outline)
+
+    # DFM (Design for Manufacturing) scoring
+    design_rules = (project_settings.get('design_rules')
+                    or setup.get("design_rules"))
+    dfm = analyze_dfm(footprints, tracks, vias, outline, design_rules,
+                       net_classes=net_classes, design_intent=None)
+
+    # Tombstoning risk assessment for small passives
+    tombstoning = analyze_tombstoning_risk(footprints, tracks, vias, zones)
+
+    # Thermal pad via adequacy for QFN/BGA packages
+    thermal_pad_vias = analyze_thermal_pad_vias(footprints, vias, zones, zone_fills)
+
+    # Copper presence analysis (cross-layer zone fill at pad locations)
+    copper_presence = analyze_copper_presence(footprints, zones, zone_fills,
+                                              ref_layer_map=ref_layer_map)
+
+    # New assembly/DFM checks
+    fiducial_check = analyze_fiducials(footprints)
+
+    test_point_cov = analyze_test_point_coverage(footprints, net_names)
+
+    orientation = analyze_orientation_consistency(footprints)
+
+    silkscreen_overlaps = analyze_silkscreen_pad_overlaps(
+        footprints, silkscreen.get("board_texts", []))
+
+    keepout_list = facts.keepout_zones
+    keepout_violations = analyze_keepout_violations(footprints, vias, keepout_list)
+
+    via_in_pad = None
+    edge_via = None
+    if include_trace_segments:
+        via_in_pad = analyze_via_in_pad(
+            footprints, vias,
+            {e.get("component", "") for e in (thermal_pad_vias or [])})
+
+        edge_via = analyze_board_edge_via_clearance(vias, outline)
+
+    return PcbChecks(
+        decoupling=decoupling,
+        via_analysis=via_analysis,
+        thermal=thermal,
+        placement=placement,
         dfm=dfm,
         tombstoning=tombstoning,
         thermal_pad_vias=thermal_pad_vias,
-        ref_layer_map=ref_layer_map,
         copper_presence=copper_presence,
-        return_path=return_path,
-        gp001_samples=gp001_samples,
+        fiducial_check=fiducial_check,
+        test_point_coverage=test_point_cov,
+        orientation=orientation,
+        silkscreen_overlaps=silkscreen_overlaps,
+        keepout_violations=keepout_violations,
+        via_in_pad=via_in_pad,
+        edge_via=edge_via,
     )
+
+
+def run_analyses(board: BoardData, *, include_trace_segments: bool, return_path_radius_mm: float,
+                 gp001_debug: bool, resolved_power_rails: set[str] | None) -> PcbAnalyses:
+    """Phases 2–3: run_facts then run_checks, composed into one PcbAnalyses."""
+    facts = run_facts(board, include_trace_segments=include_trace_segments,
+                      return_path_radius_mm=return_path_radius_mm,
+                      gp001_debug=gp001_debug,
+                      resolved_power_rails=resolved_power_rails)
+    checks = run_checks(board, facts, include_trace_segments=include_trace_segments)
+    return PcbAnalyses(**{f.name: getattr(part, f.name)
+                          for part in (facts, checks) for f in fields(part)})
 
 
 def analyze_pcb(path: str, *, proximity: bool = False,

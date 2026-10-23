@@ -10,18 +10,11 @@ import sys
 
 from kicad_core.netnames import is_ground_name, is_power_net_name
 from pcb.connectivity import build_connectivity_graph
-from pcb.reader import _extract_keepout_zones
 from pcb.routing import analyze_trace_proximity
 from pcb.dfm import analyze_design_rule_compliance
 from pcb.assembly import (
-    analyze_fiducials,
-    analyze_test_point_coverage,
-    analyze_orientation_consistency,
-    analyze_silkscreen_pad_overlaps,
-    analyze_keepout_violations,
     _compute_switching_loop_areas,
 )
-from pcb.copper import analyze_via_in_pad, analyze_board_edge_via_clearance
 from finding_schema import compute_trust_summary, sort_findings
 
 
@@ -112,8 +105,8 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
     """Phase 4: build the PCB analyzer result dict (historical key order).
 
     Mutates nothing caller-owned except `connectivity` (pops `unrouted`) and the
-    sections it pops back out of `result`; the late checks run here in today's
-    order (round-7 hoist candidate). *board* is a pcb.pipeline.BoardData and
+    sections it pops back out of `result`; the late checks ran in pcb.pipeline.run_checks
+    and only their result writes stay here. *board* is a pcb.pipeline.BoardData and
     *analyses* a pcb.pipeline.PcbAnalyses.
     """
     layers = board.layers
@@ -206,7 +199,7 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
             **({"via_analysis": via_analysis} if via_analysis else {}),
         },
         "zones": zones,
-        "keepout_zones": _extract_keepout_zones(zones, footprints),
+        "keepout_zones": analyses.keepout_zones,
         "connectivity": connectivity,
         "net_lengths": net_lengths,
     }
@@ -301,35 +294,31 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
         result["_gp001_debug_samples"] = gp001_samples
 
     # New assembly/DFM checks
-    fiducial_check = analyze_fiducials(footprints)
+    fiducial_check = analyses.fiducial_check
     if fiducial_check.get("findings"):
         result["fiducial_check"] = fiducial_check
 
-    test_point_cov = analyze_test_point_coverage(footprints, net_names)
+    test_point_cov = analyses.test_point_coverage
     result["test_point_coverage"] = test_point_cov
 
-    orientation = analyze_orientation_consistency(footprints)
+    orientation = analyses.orientation
     if orientation:
         result["orientation_consistency"] = orientation
 
-    silkscreen_overlaps = analyze_silkscreen_pad_overlaps(
-        footprints, silkscreen.get("board_texts", []))
+    silkscreen_overlaps = analyses.silkscreen_overlaps
     if silkscreen_overlaps:
         result["silkscreen_pad_overlaps"] = silkscreen_overlaps
 
-    keepout_list = result.get("keepout_zones", [])
-    keepout_violations = analyze_keepout_violations(footprints, vias, keepout_list)
+    keepout_violations = analyses.keepout_violations
     if keepout_violations:
         result["keepout_violations"] = keepout_violations
 
     if include_trace_segments:
-        via_in_pad = analyze_via_in_pad(
-            footprints, vias,
-            {e.get("component", "") for e in (thermal_pad_vias or [])})
+        via_in_pad = analyses.via_in_pad
         if via_in_pad:
             result["via_in_pad_issues"] = via_in_pad
 
-        edge_via = analyze_board_edge_via_clearance(vias, outline)
+        edge_via = analyses.edge_via
         if edge_via:
             result["board_edge_via_clearance"] = edge_via
 
