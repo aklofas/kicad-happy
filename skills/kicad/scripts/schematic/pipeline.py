@@ -148,7 +148,7 @@ from domain_detectors import (
     detect_sensor_interfaces,
     detect_thermocouple_rtd,
     suggest_certifications,
-    validate_power_sequencing,
+    build_power_sequencing_graph,
     detect_wireless_modules,
     detect_transformer_feedback,
     detect_i2c_address_conflicts,
@@ -417,7 +417,7 @@ def run_domain_detectors(ctx: AnalysisContext, topo: dict) -> dict:
     rtc_circuits = detect_rtc_circuits(ctx, crystal_circuits)
     led_audit = audit_led_circuits(ctx, transistor_circuits)
     thermocouple_rtd = detect_thermocouple_rtd(ctx)
-    power_sequencing_validation = validate_power_sequencing(
+    power_sequencing_validation = build_power_sequencing_graph(
         ctx, power_regulators, power_path, reset_supervisors)
     connector_ground_audit = audit_connector_ground_distribution(ctx)
 

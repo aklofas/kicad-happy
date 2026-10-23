@@ -23,6 +23,10 @@ from kicad_core.values import (
 from finding_schema import (
     make_finding,
 )
+from kicad_core.parts import (
+    MLCC_ESL,
+    MLCC_ESR,
+)
 
 
 def analyze_pdn_impedance(ctx: AnalysisContext, signal_analysis: dict | None = None) -> dict:
@@ -41,18 +45,10 @@ def analyze_pdn_impedance(ctx: AnalysisContext, signal_analysis: dict | None = N
     is_ground = ctx.is_ground
     # EQ-062: |Z| = √(ESR²+(ωL-1/ωC)²) swept over frequency
     # Package-dependent parasitics
-    # Typical MLCC parasitics — aligned with emc_formulas.py values
-    esl_by_pkg = {
-        "0201": 0.3e-9, "0402": 0.5e-9, "0603": 0.7e-9,
-        "0805": 0.9e-9, "1206": 1.1e-9, "1210": 1.2e-9,
-        "1812": 1.5e-9, "2220": 1.8e-9,
-    }
-    # ESR for X5R/X7R at 1 MHz — aligned with emc_formulas.py values
-    esr_base_by_pkg = {
-        "0201": 0.5, "0402": 0.3, "0603": 0.1,
-        "0805": 0.05, "1206": 0.03, "1210": 0.02,
-        "1812": 0.02, "2220": 0.015,
-    }
+    # Typical MLCC parasitics — the tables EMC uses (kicad_core.parts)
+    esl_by_pkg = MLCC_ESL
+    # ESR for X5R/X7R at 1 MHz
+    esr_base_by_pkg = MLCC_ESR
 
     def _extract_package_code(footprint: str) -> str | None:
         if not footprint:

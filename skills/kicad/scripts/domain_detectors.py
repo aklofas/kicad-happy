@@ -5272,10 +5272,10 @@ _PG_PIN_NAMES = {"PG", "PGOOD", "PG1", "PG2", "POWER_GOOD", "POK", "nPG",
                  "~{PG}", "~{PGOOD}", "~{POWER_GOOD}", "~{POK}"}
 
 
-def validate_power_sequencing(ctx: AnalysisContext,
-                               power_regulators: list[dict],
-                               power_path: list[dict],
-                               reset_supervisors: list[dict]) -> dict:
+def build_power_sequencing_graph(ctx: AnalysisContext,
+                                 power_regulators: list[dict],
+                                 power_path: list[dict],
+                                 reset_supervisors: list[dict]) -> dict:
     """Cross-reference power regulators, load switches, and supervisors
     to build a power-up dependency graph and flag sequencing issues."""
 

@@ -667,11 +667,8 @@ def is_old_schema(data):
 def strip_llm_overlays(data):
     """Recursively remove all keys starting with 'llm_'. Phase 4 spec §3.4 / HI-3.
 
-    Canonical implementation lives in
-    skills/kicad/review/scripts/merge_annotations.py; this is a duplicate
-    so analyzers/consumers don't need to take a dep on the review
-    sub-component to compute the deterministic baseline. Both
-    implementations are byte-equivalent; harness B-test asserts.
+    This is the canonical copy; skills/kicad/review/scripts/merge_annotations.py
+    imports it from here.
     """
     if isinstance(data, dict):
         return {k: strip_llm_overlays(v) for k, v in data.items()

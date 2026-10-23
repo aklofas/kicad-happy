@@ -78,13 +78,13 @@ One row per module outside the packages. "Imports" lists only in-repo modules, a
 |---|---|---|
 | `analyze_schematic.py` | schematic CLI (`main(argv=None) -> int`) and the facade re-exports of `schematic.*` | `schematic`, `kicad_core`, `output_filters`, `output_io`, `project_config`, `envelopes`, `schema_codec`, `inputs_builder`, `capability_mode` |
 | `analyze_pcb.py` | PCB CLI and the facade re-exports of `pcb.*` | `pcb`, `kicad_core`, `output_filters`, `output_io`, `project_config`, `envelopes`, `schema_codec`, `inputs_builder`, `capability_mode` |
-| `analyze_gerbers.py` | Gerber/Excellon reader, GR-001..005, CLI | `kicad_core`, `finding_schema`, `output_filters`, `output_io`, `envelopes`, `schema_codec`, `inputs_builder`, `capability_mode` |
-| `analyze_thermal.py` | thermal estimator (TS-001..005, TP-001..002, TH-DET), CLI | `kicad_core`, `finding_schema`, `lookup_detectors`, `analysis_cache`, `output_filters`, `output_io`, `project_config`, `envelopes`, `schema_codec`, `inputs_builder`, `capability_mode` |
-| `cross_analysis.py` | schematic + PCB cross-domain checks (CC, EG, DA, XV, NR, RP, TW, PS-002, VS-002, DP-005), `is_cross_analysis_ground_name`, CLI | `kicad_core`, `finding_schema`, `analysis_cache`, `output_filters`, `output_io`, `envelopes`, `schema_codec`, `inputs_builder`, `capability_mode` |
+| `analyze_gerbers.py` | Gerber/Excellon reader, GR-001..005, CLI | `kicad_core`, `finding_schema` (lazy), `output_filters` (lazy), `output_io` (lazy), `envelopes`, `schema_codec`, `inputs_builder`, `capability_mode` |
+| `analyze_thermal.py` | thermal estimator (TS-001..005, TP-001..002, TH-DET), CLI | `kicad_core`, `finding_schema` (lazy), `lookup_detectors`, `analysis_cache` (lazy), `output_filters` (lazy), `output_io` (lazy), `project_config` (lazy), `envelopes`, `schema_codec`, `inputs_builder`, `capability_mode` |
+| `cross_analysis.py` | schematic + PCB cross-domain checks (CC, EG, DA, XV, NR, RP, TW, PS-002, VS-002, DP-005), `is_cross_analysis_ground_name`, CLI | `kicad_core`, `finding_schema`, `analysis_cache` (lazy), `output_filters` (lazy), `output_io` (lazy), `envelopes`, `schema_codec`, `inputs_builder`, `capability_mode` |
 | `diff_analysis.py` | diff CLI and re-exports of `diff_engine` names | `diff_engine`, `finding_schema`, `kicad_core`, `analysis_cache` (lazy) |
 | `diff_engine.py` | pure comparison of two analysis outputs | `detection_schema`, `finding_schema` |
 | `what_if.py` | parameter sweep and fix suggestions, CLI | `kicad_core`, `finding_schema`, `detection_schema`; lazy `spice_tolerance`, `simulate_subcircuits`, `spice_simulator` from the spice skill (the `simulate_subcircuits` import is a `no-cli-import` baseline entry) |
-| `lifecycle_audit.py` | distributor lifecycle and temperature audit (LC-001..006, LT-001), CLI | `kicad_core`, `finding_schema`, `analysis_cache` |
+| `lifecycle_audit.py` | distributor lifecycle and temperature audit (LC-001..006, LT-001), CLI | `kicad_core`, `finding_schema` (lazy), `analysis_cache` (lazy) |
 | `summarize_findings.py` | cross-run finding summary, CLI | `kicad_core` |
 | `export_issues.py` | findings to GitHub Issues through `gh`, CLI | stdlib |
 | `fab_release_gate.py` | fab-readiness pass/fail gate over analyzer JSON | `finding_schema` |
@@ -123,7 +123,7 @@ The twelve analyzer and consumer CLIs (`analyze_schematic`, `analyze_pcb`, `anal
 | Module | Owns | Imports |
 |---|---|---|
 | `analyze_emc.py` | EMC CLI, risk scoring, test plan | `emc_rules`, `emc_formulas`, `emc_spice`, `emc_envelope`; core `kicad_core`, `finding_schema`, `output_filters`, `analysis_cache`, `project_config`, `inputs_builder`, `capability_mode`, `schema_codec` |
-| `emc_rules.py` | the EMC rule checks, `is_emc_ground_name` | `emc_formulas`, `emc_spice`; core `kicad_core`, `finding_schema`, `datasheet_features` |
+| `emc_rules.py` | the EMC rule checks, `is_emc_ground_name` | `emc_formulas`, `emc_spice` (lazy); core `kicad_core`, `finding_schema`, `datasheet_features` (optional: a module-level `try` import with a stub fallback) |
 | `emc_formulas.py` | radiation, harmonics, cavity resonance, PDN impedance formulas | core `kicad_core` |
 | `emc_spice.py` | SPICE-enhanced PDN and filter analysis | `emc_formulas`; `spice_simulator`, `spice_templates` from the spice skill (`optional-to-optional` baseline entries) |
 | `emc_envelope.py` | EMC envelope dataclass | core `analyzer_envelope` |
@@ -132,7 +132,7 @@ The twelve analyzer and consumer CLIs (`analyze_schematic`, `analyze_pcb`, `anal
 
 | Module | Owns | Imports |
 |---|---|---|
-| `simulate_subcircuits.py` | simulation orchestrator CLI | spice modules; core `kicad_core`, `analysis_cache`, `output_filters` |
+| `simulate_subcircuits.py` | simulation orchestrator CLI | spice modules; core `kicad_core`, `analysis_cache` (lazy), `output_filters` (lazy) |
 | `extract_parasitics.py` | PCB parasitic R/L/C extraction CLI | core `kicad_core` |
 | `spice_templates.py`, `spice_models.py`, `spice_model_generator.py`, `spice_model_cache.py`, `spice_part_library.py`, `spice_spec_fetcher.py` | testbenches, behavioral models, the project model cache, the part spec table and spec fetching | spice modules only |
 | `spice_simulator.py`, `spice_results.py` | simulator backends; result parsing | spice modules; `spice_results` lazily imports core `finding_schema` |

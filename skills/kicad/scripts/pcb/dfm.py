@@ -268,7 +268,6 @@ def _measure_track_spacing(tracks: dict) -> dict:
     segments = tracks.get("segments", [])
     min_spacing = float("inf")
     if len(segments) > 1:
-        min_spacing = float("inf")
         # Sample endpoints and check distances between different-net segments on same layer
         # Group by layer for efficiency
         layer_segs: dict[str, list] = {}

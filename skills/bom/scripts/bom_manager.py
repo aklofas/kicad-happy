@@ -35,7 +35,7 @@ from collections import Counter
 from pathlib import Path
 
 import _core_path  # noqa: F401
-from kicad_sexp import find_matching_paren, find_sub_sheets
+from kicad_sexp import find_sub_sheets, iter_placed_symbol_blocks
 
 from kicad_core.fields import (MPN_FIELD_ALIASES, MPN_FIELD_ALIASES_PRIMARY,
                                MPN_FIELD_ALIASES_GENERIC, DIGIKEY_FIELD_ALIASES,
@@ -154,26 +154,7 @@ def extract_placed_symbols(text: str) -> list[tuple[int, int, str]]:
 
     Returns list of (start_pos, end_pos, block_text) tuples.
     """
-    symbols = []
-
-    # Find end of lib_symbols section to skip it
-    lib_match = re.search(r'\(lib_symbols\b', text)
-    search_start = 0
-    if lib_match:
-        lib_end = find_matching_paren(text, lib_match.start())
-        search_start = lib_end + 1
-
-    # Placed symbols have (lib_id ...) as first child; lib symbols have a
-    # quoted name string instead. We look for the pattern:
-    #   (symbol\n\t\t(lib_id   or   (symbol (lib_id
-    pattern = re.compile(r'\(symbol\s*\n?\s*\(lib_id\s+')
-    for match in pattern.finditer(text, search_start):
-        sym_start = match.start()
-        sym_end = find_matching_paren(text, sym_start)
-        block = text[sym_start:sym_end + 1]
-        symbols.append((sym_start, sym_end, block))
-
-    return symbols
+    return iter_placed_symbol_blocks(text)
 
 
 def extract_properties(symbol_block: str) -> dict[str, str]:

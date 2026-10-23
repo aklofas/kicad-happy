@@ -1,12 +1,12 @@
 """PCB facts → checks phases: no analysis mutates the board, checks do not perturb facts, and
 run_analyses is exactly run_facts + run_checks (the precondition for hoisting the late checks)."""
-import dataclasses, json, sys, tempfile, unittest
+import dataclasses, json, os, sys, tempfile, unittest
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "skills" / "kicad" / "scripts"))
 
 from tools.check_refactor import KICAD10_BOARD_A, KICAD10_BOARD_B
 
-FX = Path("/tmp/harness-pin/tests/fixtures")
+FX = Path(os.environ.get("KH_FIXTURES", "/tmp/harness-pin/tests/fixtures"))
 KW = dict(return_path_radius_mm=2.0, gp001_debug=False, resolved_power_rails=None)
 
 
@@ -81,6 +81,26 @@ class PhasePurity(unittest.TestCase):
                     self.assertEqual(set(_fields(a)), set(composed))
                     for name, val in composed.items():
                         self.assertEqual(_fields(a)[name], val, name)
+
+    def test_assemble_result_leaves_board_and_analyses_unchanged(self):
+        from pcb.pipeline import read_board, run_analyses, assemble_result
+        boards = self._boards()
+        if not FX.is_dir():
+            self.skipTest(f"fixture tree absent: {FX}")
+        for path in boards:
+            for full in (False, True):
+                with self.subTest(board=path.name, full=full):
+                    board = read_board(str(path))
+                    analyses = run_analyses(board, include_trace_segments=full, **KW)
+                    snap = _freeze(board)
+                    # the one documented write: assemble_result pops connectivity["unrouted"]
+                    expected = {f.name: getattr(analyses, f.name) for f in dataclasses.fields(analyses)}
+                    expected["connectivity"] = {k: v for k, v in expected["connectivity"].items() if k != "unrouted"}
+                    expected = {k: _dump(v) for k, v in expected.items()}
+                    assemble_result(board, analyses, proximity=False, include_trace_segments=full,
+                                    schematic_data=None, resolved_power_rails=None, power_rails_source="heuristic")
+                    self.assertEqual(_freeze(board), snap)
+                    self.assertEqual(_fields(analyses), expected)
 
 
 if __name__ == "__main__":

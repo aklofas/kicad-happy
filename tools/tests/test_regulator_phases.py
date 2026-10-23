@@ -43,6 +43,7 @@ class RegulatorPhases(unittest.TestCase):
         self.assertEqual([r["ref"] for r in regs], ["U1"])
         self.assertEqual(regs[0]["detector"], "detect_power_regulators")
         self.assertEqual(regs[0]["rule_id"], "PR-DET")
+        self.assertEqual(regs[0]["topology"], "unknown")
         self.assertNotIn("vref_source", regs[0])
 
     def test_fixed_suffix_ldo_estimates_vout_and_ldo_topology(self):

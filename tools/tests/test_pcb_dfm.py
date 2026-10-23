@@ -1,6 +1,6 @@
 # tools/tests/test_pcb_dfm.py
 """Pins analyze_dfm behaviour across its module-level tables, _measure_* scans and _emit_* builders."""
-import copy, json, sys, unittest
+import copy, json, os, sys, unittest
 from pathlib import Path
 SCRIPTS = Path(__file__).resolve().parents[2] / "skills" / "kicad" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
@@ -8,7 +8,7 @@ sys.path.insert(0, str(SCRIPTS))
 from pcb.dfm import _min_drill_with_source, _is_real_drill, analyze_dfm  # noqa: E402
 from pcb.pipeline import read_board  # noqa: E402
 
-FX = Path("/tmp/harness-pin/tests/fixtures")
+FX = Path(os.environ.get("KH_FIXTURES", "/tmp/harness-pin/tests/fixtures"))
 SIMPLE = FX / "simple-project" / "simple.kicad_pcb"
 PAD_DRILL_MIN = FX / "kh412" / "pad_drill_min.kicad_pcb"
 
@@ -19,7 +19,8 @@ def _dfm(path):
                               None, net_classes={}, design_intent=None)
 
 
-@unittest.skipUnless(SIMPLE.exists() and PAD_DRILL_MIN.exists(), "harness fixtures absent")
+@unittest.skipUnless((SIMPLE.exists() and PAD_DRILL_MIN.exists()) or "KH_FIXTURES" in os.environ,
+                     "harness fixtures absent")
 class TestPcbDfm(unittest.TestCase):
     def test_metrics_key_order_and_tables_are_module_level(self):
         _, r = _dfm(SIMPLE)
@@ -49,6 +50,20 @@ class TestPcbDfm(unittest.TestCase):
         self.assertEqual(drill[0]["parameter"], "pad_drill")
         self.assertEqual(drill[0]["actual_mm"], min_drill)
         self.assertIn(f" on {source[4:]} ", drill[0]["message"])
+
+
+class TestPcbDfmSynthetic(unittest.TestCase):
+    def test_violations_keep_emit_order_across_kinds(self):
+        def seg(net, x):
+            return {"layer": "F.Cu", "net": net, "net_name": f"N{net}", "x1": x, "y1": 0.0, "x2": x, "y2": 5.0,
+                    "width": 0.1}
+        tracks = {"segments": [seg(1, 0.0), seg(2, 0.18)], "arcs": []}
+        vias = {"vias": [{"drill": 0.15, "size": 0.35, "x": 9.0, "y": 9.0}]}
+        r = analyze_dfm([], tracks, vias, {}, None, net_classes={}, design_intent=None)
+        self.assertEqual([(v["parameter"], v["actual_mm"]) for v in r["violations"]],
+                         [("track_width", 0.1), ("track_spacing", 0.08), ("via_drill", 0.15),
+                          ("annular_ring", 0.1)])
+        self.assertEqual(r["violation_count"], 4)
 
 
 if __name__ == "__main__":

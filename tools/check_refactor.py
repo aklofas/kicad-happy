@@ -927,6 +927,8 @@ def _text_exec(cmd: list[str], cwd: Path, env: dict, merge: bool = False) -> tup
                               env=env, cwd=cwd, timeout=TEXT_TIMEOUT, stdin=subprocess.DEVNULL)
     except subprocess.TimeoutExpired:
         return 124, f"timeout after {TEXT_TIMEOUT}s\n"
+    except OSError as exc:  # the interpreter or cwd is missing: record it, keep the snapshot going
+        return 127, f"{type(exc).__name__}: {exc}\n"
     return proc.returncode, proc.stdout + (proc.stderr if merge else "")
 
 
@@ -960,8 +962,11 @@ def run_text_snapshot(fixtures_root: Path, snap_dir: Path, txt_out: Path, produc
         cwd.mkdir()
         legacy = [shutil.copy2(f, work / f.name) for f in (LEGACY_A, LEGACY_B)]  # tool-tree paths must not reach the output
 
+        emitted: list[str] = []
+
         def emit(name: str, rc: int, text: str) -> None:
             nonlocal count
+            emitted.append(name)
             (txt_out / f"{name}.txt").write_text(mask_text(text, str(work), str(product_root)),
                                                  encoding="utf-8", newline="")
             (txt_out / f"{name}.exit").write_text(f"{rc}\n", encoding="utf-8")
@@ -1027,6 +1032,12 @@ def run_text_snapshot(fixtures_root: Path, snap_dir: Path, txt_out: Path, produc
                     args = ["--schematic", *args]
                 rc, out = _text_exec([py, str(product_root / rel), *args], cwd, env, merge=True)
                 emit(f"neg__{cli}__{mode}", rc, out)
+    slots = {k: [_slot_name(f["rel"]) for f in fixtures if f["kind"] == k] for k in ("sch", "pcb", "gerber")}
+    expected = text_artefact_names(slots["sch"], slots["pcb"], slots["gerber"], sorted(chains))
+    if set(emitted) != set(expected):
+        raise RuntimeError(f"text snapshot artefacts differ from text_artefact_names: "
+                           f"missing {sorted(set(expected) - set(emitted))[:5]}, "
+                           f"unexpected {sorted(set(emitted) - set(expected))[:5]}")
     return count
 
 
@@ -1139,20 +1150,30 @@ def cmd_quick(args) -> int:
         snapshot_failures = list(getattr(det_ns, "snapshot_failures", []))
         rc |= timed("aba", lambda: cmd_aba(argparse.Namespace(
             fixtures=args.fixtures, product=args.product, policy=args.policy)))
+        shared = tempfile.TemporaryDirectory()
+        shared_snap: dict = {}
+
+        def _snapshot_once() -> tuple[Path, dict]:
+            """The one seed-0 JSON snapshot that compare-vs-baseline and text-compare both read."""
+            if not shared_snap:
+                snap = Path(shared.name) / "snap"
+                shared_snap.update(dir=snap, stats=run_snapshot(Path(args.fixtures), snap, Path(args.product),
+                                                                analyzer_env("0")))
+            return shared_snap["dir"], shared_snap["stats"]
+
         if args.baseline:
             def _cmp():
                 msg = _check_base_dir(Path(args.baseline))
                 if msg:
                     print(f"compare-vs-baseline: {msg}")
                     return 2
-                with tempfile.TemporaryDirectory() as td:
-                    stats = run_snapshot(Path(args.fixtures), Path(td), Path(args.product), analyzer_env("0"))
-                    snapshot_failures[:] = stats["failures"]
-                    rep = compare_dirs(Path(args.baseline), Path(td), load_policy(Path(args.policy)))
-                    if args.budget:
-                        budget_result.update(budget_compare(
-                            rep, json.loads(Path(args.budget).read_text(encoding="utf-8")),
-                            Path(args.baseline), Path(td)))
+                td, stats = _snapshot_once()
+                snapshot_failures[:] = stats["failures"]
+                rep = compare_dirs(Path(args.baseline), td, load_policy(Path(args.policy)))
+                if args.budget:
+                    budget_result.update(budget_compare(
+                        rep, json.loads(Path(args.budget).read_text(encoding="utf-8")),
+                        Path(args.baseline), td))
                 if args.budget:
                     bad = budget_result["unclaimed"] or stats["failures"]
                     print("compare-vs-baseline: " + ("FAIL" if bad else "OK")
@@ -1186,11 +1207,10 @@ def cmd_quick(args) -> int:
                     print(f"text-compare: base directory not found: {base}")
                     text_compare.update(ok=False, artefacts=0, deltas=[f"base directory not found: {base}"])
                     return 2
-                with tempfile.TemporaryDirectory() as td:
-                    snap, txt = Path(td) / "snap", Path(td) / "txt"
-                    run_snapshot(Path(args.fixtures), snap, Path(args.product), analyzer_env("0"))
-                    run_text_snapshot(Path(args.fixtures), snap, txt, Path(args.product), _text_env("0"))
-                    n, deltas = compare_text_dirs(base, txt)
+                snap, _ = _snapshot_once()
+                txt = Path(shared.name) / "txt"
+                run_text_snapshot(Path(args.fixtures), snap, txt, Path(args.product), _text_env("0"))
+                n, deltas = compare_text_dirs(base, txt)
                 deltas, allowed = split_allowed(deltas, _load_allow(args.text_allow))
                 text_compare.update(ok=not deltas and n > 0, artefacts=n, deltas=deltas, allowed=allowed)
                 print("text-compare: " + _text_summary(n, deltas, allowed))
@@ -1198,6 +1218,7 @@ def cmd_quick(args) -> int:
                     print(f"   {d}")
                 return 1 if deltas or not n else 0
             rc |= timed("text-compare", _text_cmp)
+        shared.cleanup()
     summary = {"product_sha": _git_sha(Path(args.product)), "fixtures_digest": _fixtures_digest(args.fixtures),
                "fixtures": counts, "snapshot_failures": snapshot_failures,
                "policy": Path(args.policy).name, "checks": checks, "status": "ok" if rc == 0 else "fail"}

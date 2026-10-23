@@ -12,8 +12,9 @@ Failure semantics (Phase 3a):
   failure, partial-merge with {"_extraction_failed": true, "reason": ...}.
 
 Stdlib + jsonschema + referencing (already dev deps). Requires jsonschema and
-referencing — hard imports, no fallback. The script's only purpose is schema
-validation; silent-pass on missing deps is dangerous.
+referencing — extraction_schema imports them when validation runs and raises
+RuntimeError when they are missing; no fallback. The script's only purpose is
+schema validation; silent-pass on missing deps is dangerous.
 """
 
 from __future__ import annotations
@@ -24,8 +25,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from jsonschema import Draft202012Validator
-from referencing import Registry, Resource
+from extraction_schema import validate_against_schema
 
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]          # skills/datasheets
@@ -61,29 +61,6 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _build_registry() -> "Registry":
-    """Build a referencing Registry so $ref between local schemas resolves."""
-    registry = Registry()
-    for schema_path in SCHEMA_DIR.glob("*.schema.json"):
-        schema = json.loads(schema_path.read_text(encoding="utf-8"))
-        uri = schema.get("$id")
-        if uri:
-            registry = registry.with_resource(uri, Resource.from_contents(schema))
-    return registry
-
-
-def _validate(data, schema: dict) -> "str | None":
-    """Return error message on failure, None on success."""
-    registry = _build_registry()
-    validator = Draft202012Validator(schema, registry=registry)
-    errors = sorted(validator.iter_errors(data), key=lambda e: list(e.absolute_path))
-    if not errors:
-        return None
-    e0 = errors[0]
-    path = "/".join(str(p) for p in e0.absolute_path) or "<root>"
-    return f"{path}: {e0.message}"
-
-
 def _read_result(cache: Path, mpn: str, task_id: str) -> "dict | None":
     p = cache / f"{mpn}.{task_id}.result.json"
     if not p.exists():
@@ -105,7 +82,7 @@ def _classify(result: "dict | None", schema: dict) -> "tuple[str, str | None]":
         return "failed", "no result file found"
     if result.get("status") != "complete":
         return "failed", result.get("error") or "result file status != 'complete'"
-    err = _validate(result.get("data"), schema)
+    err = validate_against_schema(result.get("data"), schema)
     if err:
         return "failed", f"schema validation: {err}"
     return "complete", None

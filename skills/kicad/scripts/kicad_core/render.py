@@ -50,20 +50,25 @@ def severity_bucket(severity: str) -> str:
 
 
 def plural(n: int, noun: str) -> str:
+    """'<n> <noun>' with an 's' appended unless n == 1."""
     return f'{n} {noun}{"s" if n != 1 else ""}'
 
 
 def finding_line(idx, severity, rule_id, summary) -> str:
+    """One indented finding line: '  [idx] severity rule_id: summary'."""
     return f'  [{idx}] {severity} {rule_id}: {summary}'
 
 
 def wrap_lines(text: str, width: int = 70, first: str = "    ", cont: str = "      ") -> list[str]:
+    """Cut *text* into width-character chunks (no word breaking); the first gets *first*, the rest *cont*."""
     return [(first if i == 0 else cont) + text[i:i + width] for i in range(0, len(text), width)]
 
 
 def fmt_signed(value, digits: int = 1) -> str:
+    """*value* with an explicit sign and *digits* decimals, e.g. '+1.5'."""
     return f"{value:+.{digits}f}"
 
 
 def fmt_g4(value) -> str:
+    """*value* in general format with 4 significant digits."""
     return f"{value:.4g}"

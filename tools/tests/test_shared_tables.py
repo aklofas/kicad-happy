@@ -42,6 +42,20 @@ class SharedTables(unittest.TestCase):
         from schematic.ic_analysis import classify_ic_pinout_role
         self.assertIs(analyze_schematic._classify_ic_function, classify_ic_pinout_role)
 
+    def test_mlcc_parasitic_tables_live_in_kicad_core(self):
+        import emc_formulas
+        from kicad_core.parts import MLCC_ESL, MLCC_ESR
+        self.assertIs(emc_formulas.MLCC_ESL, MLCC_ESL)
+        self.assertIs(emc_formulas.MLCC_ESR, MLCC_ESR)
+        pkgs = ["0201", "0402", "0603", "0805", "1206", "1210", "1812", "2220"]
+        self.assertEqual(list(MLCC_ESL), pkgs)
+        self.assertEqual(list(MLCC_ESR), pkgs)
+        self.assertEqual(MLCC_ESL["0402"], 0.5e-9)
+        self.assertEqual(MLCC_ESR["2220"], 0.015)
+        src = (ROOT / "skills" / "kicad" / "scripts" / "schematic" / "system_analyses.py").read_text(encoding="utf-8")
+        self.assertIn("esl_by_pkg = MLCC_ESL", src)
+        self.assertIn("esr_base_by_pkg = MLCC_ESR", src)
+
     def test_audio_codec_keywords_single_definition(self):
         import domain_detectors
         src = Path(domain_detectors.__file__).read_text(encoding="utf-8")

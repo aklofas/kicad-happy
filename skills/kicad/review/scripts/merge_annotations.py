@@ -25,6 +25,10 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))   # skills/kicad/scripts
+
+from finding_schema import strip_llm_overlays  # noqa: E402
+
 SCHEMA_PATH = Path(__file__).resolve().parents[1] / "schemas" / "review_annotations.schema.json"
 
 ANALYZER_FILES = ["schematic.json", "pcb.json", "emc.json", "thermal.json",
@@ -33,16 +37,6 @@ ANALYZER_FILES = ["schematic.json", "pcb.json", "emc.json", "thermal.json",
 
 def _now_iso():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def strip_llm_overlays(data):
-    """Recursively remove all keys starting with 'llm_'. Phase 4 spec §3.4 / HI-3."""
-    if isinstance(data, dict):
-        return {k: strip_llm_overlays(v) for k, v in data.items()
-                if not k.startswith("llm_")}
-    if isinstance(data, list):
-        return [strip_llm_overlays(item) for item in data]
-    return data
 
 
 def _load_raw_envelopes(raw_dir: Path) -> dict:

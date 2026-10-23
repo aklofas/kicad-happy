@@ -2042,10 +2042,13 @@ def _build_regulator_record(ctx: AnalysisContext, cand: _RegulatorCandidate,
             _prov_evidence = "reg_keyword"
             _prov_confidence = "heuristic"
         reg_info["provenance"] = make_provenance(_prov_evidence, _prov_confidence, [ref])
+        # every candidate passed the screen, so this guard holds and the None fall-through is never reached
         return reg_info
 
 
 def _cross_reference_feedback_dividers(power_regulators: list[dict], voltage_dividers: list[dict]) -> None:
+    """Give each regulator without a feedback divider the divider whose top net is its FB net (FB-at-top),
+    and an output rail when it has none, in place."""
     # KH-084: Cross-reference feedback dividers with regulators.
     # For dividers whose top_net matches a regulator's output_rail, mark as feedback.
     for reg in power_regulators:
@@ -2069,6 +2072,7 @@ def _cross_reference_feedback_dividers(power_regulators: list[dict], voltage_div
 
 
 def _attach_regulator_capacitors(ctx: AnalysisContext, power_regulators: list[dict]) -> None:
+    """Attach each regulator's output, input and FB-net compensation capacitors to its record, in place."""
     # Detect output capacitors on each regulator's output rail
     for reg in power_regulators:
         output_rail = reg.get("output_rail")
@@ -2182,6 +2186,7 @@ def _attach_regulator_capacitors(ctx: AnalysisContext, power_regulators: list[di
 
 
 def _estimate_regulator_dissipation(ctx: AnalysisContext, power_regulators: list[dict]) -> None:
+    """Add a power_dissipation estimate to each LDO whose input rail voltage exceeds its Vout, in place."""
     # Estimate power dissipation for LDO regulators
     for reg in power_regulators:
         topology = reg.get("topology", "")

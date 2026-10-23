@@ -1,4 +1,4 @@
-"""Known-part knowledge tables: regulator Vref and switching frequencies (kicad_core). Moved verbatim from kicad_utils.py; sources and verification dates are in the table comments."""
+"""Known-part knowledge tables: regulator Vref and switching frequencies (kicad_core). Moved verbatim from kicad_utils.py; sources and verification dates are in the table comments. Typical MLCC ESL/ESR by package moved verbatim from emc_formulas.py."""
 import re
 
 
@@ -365,3 +365,32 @@ def match_known_switching(value: str, lib_id: str) -> bool:
         if val_upper.startswith(pu) or lib_part.startswith(pu):
             return True
     return False
+
+
+# ---------------------------------------------------------------------------
+# ESR/ESL lookup by package size (typical MLCC values) — moved verbatim from emc_formulas.py
+# ---------------------------------------------------------------------------
+
+# Typical ESL values for MLCC by package (Henries)
+MLCC_ESL = {
+    '0201': 0.3e-9,
+    '0402': 0.5e-9,
+    '0603': 0.7e-9,
+    '0805': 0.9e-9,
+    '1206': 1.1e-9,
+    '1210': 1.2e-9,
+    '1812': 1.5e-9,
+    '2220': 1.8e-9,
+}
+
+# Typical ESR values for MLCC by package (Ohms) — X5R/X7R at 1 MHz
+MLCC_ESR = {
+    '0201': 0.5,
+    '0402': 0.3,
+    '0603': 0.1,
+    '0805': 0.05,
+    '1206': 0.03,
+    '1210': 0.02,
+    '1812': 0.02,
+    '2220': 0.015,
+}
