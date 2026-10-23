@@ -103,75 +103,49 @@ def _min_drill_with_source(
     return None, ""
 
 
-def analyze_dfm(footprints: list[dict], tracks: dict, vias: dict,
-                board_outline: dict, design_rules: dict | None = None,
-                net_classes: list[dict] | None = None,
-                design_intent: dict | None = None) -> dict:
-    """Design for Manufacturing scoring against common fab capabilities.
+# JLCPCB standard process limits (mm)
+# Source: JLCPCB capabilities page, verified 2025-01.
+# Canonical table in references/standards-compliance.md "Fab House Capabilities"
+JLCPCB_LIMITS_STANDARD = {
+    "min_track_width": 0.127,      # 5 mil — JLCPCB standard tier
+    "min_track_spacing": 0.127,     # 5 mil — JLCPCB standard tier
+    "min_drill": 0.2,              # PTH drill — JLCPCB standard tier
+    "min_annular_ring": 0.125,     # via annular ring — JLCPCB standard tier
+    "max_board_width": 100.0,      # pricing threshold (>100mm costs more)
+    "max_board_height": 100.0,
+    "min_board_dim": 10.0,         # handling minimum
+}
+# JLCPCB advanced process limits (mm)
+JLCPCB_LIMITS_ADVANCED = {
+    "min_track_width": 0.1,        # 4 mil — JLCPCB advanced tier
+    "min_track_spacing": 0.1,      # 4 mil — JLCPCB advanced tier
+    "min_drill": 0.15,             # JLCPCB advanced tier
+    "min_annular_ring": 0.1,       # JLCPCB advanced tier
+}
 
-    Compares actual design parameters against JLCPCB standard and advanced
-    process limits. Reports a DFM tier ("standard", "advanced", or
-    "challenging"), all violations with actual vs limit values, and key
-    manufacturing metrics.
+# IPC class thresholds (design quality ceiling)
+# Source: IPC-6012 Rev E, verified against industry guidelines
+IPC_CLASS_LIMITS = {
+    1: {
+        'min_annular_ring_via': 0.10,    # mm
+        'min_annular_ring_pth': 0.10,    # mm
+        'via_in_pad_fill_required': False,
+    },
+    2: {
+        'min_annular_ring_via': 0.125,   # mm
+        'min_annular_ring_pth': 0.175,   # mm
+        'via_in_pad_fill_required': False,
+    },
+    3: {
+        'min_annular_ring_via': 0.15,    # mm
+        'min_annular_ring_pth': 0.25,    # mm
+        'via_in_pad_fill_required': True,
+        'annular_ring_breakout_allowed': False,
+    },
+}
 
-    Args:
-        footprints: Extracted footprint list.
-        tracks: Extracted track data (with segments, arcs, width_distribution).
-        vias: Extracted via data.
-        board_outline: Board outline with bounding_box.
-        design_rules: Optional design rules from setup extraction.
-        net_classes: Optional net class definitions for class-aware DFM checks.
-        design_intent: Optional resolved design intent (product_class, ipc_class,
-            etc.) for intent-aware limit selection.
-    """
-    # EQ-049: d = √(Δx²+Δy²) (DFM clearance measurement)
-    # JLCPCB standard process limits (mm)
-    # Source: JLCPCB capabilities page, verified 2025-01.
-    # Canonical table in references/standards-compliance.md "Fab House Capabilities"
-    LIMITS_STD = {
-        "min_track_width": 0.127,      # 5 mil — JLCPCB standard tier
-        "min_track_spacing": 0.127,     # 5 mil — JLCPCB standard tier
-        "min_drill": 0.2,              # PTH drill — JLCPCB standard tier
-        "min_annular_ring": 0.125,     # via annular ring — JLCPCB standard tier
-        "max_board_width": 100.0,      # pricing threshold (>100mm costs more)
-        "max_board_height": 100.0,
-        "min_board_dim": 10.0,         # handling minimum
-    }
-    # JLCPCB advanced process limits (mm)
-    LIMITS_ADV = {
-        "min_track_width": 0.1,        # 4 mil — JLCPCB advanced tier
-        "min_track_spacing": 0.1,      # 4 mil — JLCPCB advanced tier
-        "min_drill": 0.15,             # JLCPCB advanced tier
-        "min_annular_ring": 0.1,       # JLCPCB advanced tier
-    }
 
-    # IPC class thresholds (design quality ceiling)
-    # Source: IPC-6012 Rev E, verified against industry guidelines
-    IPC_CLASS_LIMITS = {
-        1: {
-            'min_annular_ring_via': 0.10,    # mm
-            'min_annular_ring_pth': 0.10,    # mm
-            'via_in_pad_fill_required': False,
-        },
-        2: {
-            'min_annular_ring_via': 0.125,   # mm
-            'min_annular_ring_pth': 0.175,   # mm
-            'via_in_pad_fill_required': False,
-        },
-        3: {
-            'min_annular_ring_via': 0.15,    # mm
-            'min_annular_ring_pth': 0.25,    # mm
-            'via_in_pad_fill_required': True,
-            'annular_ring_breakout_allowed': False,
-        },
-    }
-
-    # Determine active IPC class
-    ipc_class = 2  # default
-    if design_intent and design_intent.get('ipc_class') in (1, 2, 3):
-        ipc_class = design_intent['ipc_class']
-    ipc_limits = IPC_CLASS_LIMITS[ipc_class]
-
+def _build_net_class_lookup(net_classes: list[dict] | None) -> dict[str, dict]:
     # Build net name -> net class lookup for net-class-aware checks
     _net_class_lookup: dict[str, dict] = {}  # net_name -> class constraints
     if net_classes:
@@ -188,10 +162,12 @@ def analyze_dfm(footprints: list[dict], tracks: dict, vias: dict,
             }
             for net_name in nc.get('nets', []):
                 _net_class_lookup[net_name] = constraints
+    return _net_class_lookup
 
-    violations = []
-    metrics: dict = {}
 
+def _measure_track_widths(tracks: dict, net_class_lookup: dict[str, dict]) -> dict:
+    _net_class_lookup = net_class_lookup
+    LIMITS_ADV = JLCPCB_LIMITS_ADVANCED
     # --- Track width analysis (net-class-aware) ---
     all_widths = []
     narrowest_non_class = float('inf')  # narrowest trace NOT covered by net class
@@ -217,14 +193,24 @@ def analyze_dfm(footprints: list[dict], tracks: dict, vias: dict,
         else:
             narrowest_non_class = min(narrowest_non_class, w)
 
+    min_width = None
+    check_width = None
     if all_widths:
         min_width = min(all_widths)
-        metrics["min_track_width_mm"] = min_width
 
         check_width = (narrowest_non_class
                        if narrowest_non_class < float('inf')
                        else min_width)
+    return {"all_widths": all_widths, "narrowest_non_class": narrowest_non_class,
+            "min_width": min_width, "check_width": check_width}
 
+
+def _emit_track_width_violations(m: dict, limits_std: dict, limits_adv: dict) -> list[dict]:
+    LIMITS_STD = limits_std
+    LIMITS_ADV = limits_adv
+    violations = []
+    if m["all_widths"]:
+        check_width = m["check_width"]
         if check_width < LIMITS_ADV["min_track_width"]:
             violations.append({
                 "parameter": "track_width",
@@ -273,10 +259,14 @@ def analyze_dfm(footprints: list[dict], tracks: dict, vias: dict,
                 "recommendation": f"Track width {check_width}mm requires advanced process (standard minimum: {LIMITS_STD['min_track_width']}mm)",
                 "report_context": {"section": "DFM", "impact": "manufacturability", "standard_ref": ""},
             })
+    return violations
 
+
+def _measure_track_spacing(tracks: dict) -> dict:
     # --- Track spacing analysis (approximate from segment proximity) ---
     # Build spatial grid to find close tracks on the same layer
     segments = tracks.get("segments", [])
+    min_spacing = float("inf")
     if len(segments) > 1:
         min_spacing = float("inf")
         # Sample endpoints and check distances between different-net segments on same layer
@@ -304,64 +294,75 @@ def analyze_dfm(footprints: list[dict], tracks: dict, vias: dict,
                             spacing = center_dist - (si["width"] + sj["width"]) / 2.0
                             if 0 <= spacing < min_spacing:
                                 min_spacing = spacing
+    return {"min_spacing": min_spacing}
 
-        if min_spacing < float("inf"):
-            metrics["approx_min_spacing_mm"] = round(min_spacing, 4)
-            if min_spacing < LIMITS_ADV["min_track_spacing"]:
-                violations.append({
-                    "parameter": "track_spacing",
-                    "actual_mm": round(min_spacing, 4),
-                    "standard_limit_mm": LIMITS_STD["min_track_spacing"],
-                    "advanced_limit_mm": LIMITS_ADV["min_track_spacing"],
-                    "tier_required": "challenging",
-                    "message": f"Approximate track spacing {round(min_spacing, 4)}mm is below "
-                               f"advanced process minimum ({LIMITS_ADV['min_track_spacing']}mm)",
-                    "note": "Spacing is approximate (endpoint-to-endpoint, not full segment geometry)",
-                    "detector": "analyze_dfm",
-                    "rule_id": "DFM-001",
-                    "category": "dfm",
-                    "severity": "error",
-                    "confidence": "deterministic",
-                    "evidence_source": "topology",
-                    "summary": f"Track spacing {round(min_spacing, 4)}mm below advanced minimum ({LIMITS_ADV['min_track_spacing']}mm)",
-                    "description": f"Approximate track spacing {round(min_spacing, 4)}mm is below the advanced process minimum of {LIMITS_ADV['min_track_spacing']}mm.",
-                    "components": [],
-                    "nets": [],
-                    "pins": [],
-                    "recommendation": f"Approximate track spacing {round(min_spacing, 4)}mm is below advanced process minimum ({LIMITS_ADV['min_track_spacing']}mm)",
-                    "report_context": {"section": "DFM", "impact": "manufacturability", "standard_ref": ""},
-                })
-            elif min_spacing < LIMITS_STD["min_track_spacing"]:
-                violations.append({
-                    "parameter": "track_spacing",
-                    "actual_mm": round(min_spacing, 4),
-                    "standard_limit_mm": LIMITS_STD["min_track_spacing"],
-                    "advanced_limit_mm": LIMITS_ADV["min_track_spacing"],
-                    "tier_required": "advanced",
-                    "message": f"Approximate track spacing {round(min_spacing, 4)}mm requires "
-                               f"advanced process (standard: {LIMITS_STD['min_track_spacing']}mm)",
-                    "note": "Spacing is approximate (endpoint-to-endpoint, not full segment geometry)",
-                    "detector": "analyze_dfm",
-                    "rule_id": "DFM-001",
-                    "category": "dfm",
-                    "severity": "warning",
-                    "confidence": "deterministic",
-                    "evidence_source": "topology",
-                    "summary": f"Track spacing {round(min_spacing, 4)}mm requires advanced process (standard: {LIMITS_STD['min_track_spacing']}mm)",
-                    "description": f"Approximate track spacing {round(min_spacing, 4)}mm requires an advanced fab tier (standard minimum: {LIMITS_STD['min_track_spacing']}mm).",
-                    "components": [],
-                    "nets": [],
-                    "pins": [],
-                    "recommendation": f"Approximate track spacing {round(min_spacing, 4)}mm requires advanced process (standard: {LIMITS_STD['min_track_spacing']}mm)",
-                    "report_context": {"section": "DFM", "impact": "manufacturability", "standard_ref": ""},
-                })
 
+def _emit_track_spacing_violations(m: dict, limits_std: dict, limits_adv: dict) -> list[dict]:
+    LIMITS_STD = limits_std
+    LIMITS_ADV = limits_adv
+    violations = []
+    min_spacing = m["min_spacing"]
+    if min_spacing < float("inf"):
+        if min_spacing < LIMITS_ADV["min_track_spacing"]:
+            violations.append({
+                "parameter": "track_spacing",
+                "actual_mm": round(min_spacing, 4),
+                "standard_limit_mm": LIMITS_STD["min_track_spacing"],
+                "advanced_limit_mm": LIMITS_ADV["min_track_spacing"],
+                "tier_required": "challenging",
+                "message": f"Approximate track spacing {round(min_spacing, 4)}mm is below "
+                           f"advanced process minimum ({LIMITS_ADV['min_track_spacing']}mm)",
+                "note": "Spacing is approximate (endpoint-to-endpoint, not full segment geometry)",
+                "detector": "analyze_dfm",
+                "rule_id": "DFM-001",
+                "category": "dfm",
+                "severity": "error",
+                "confidence": "deterministic",
+                "evidence_source": "topology",
+                "summary": f"Track spacing {round(min_spacing, 4)}mm below advanced minimum ({LIMITS_ADV['min_track_spacing']}mm)",
+                "description": f"Approximate track spacing {round(min_spacing, 4)}mm is below the advanced process minimum of {LIMITS_ADV['min_track_spacing']}mm.",
+                "components": [],
+                "nets": [],
+                "pins": [],
+                "recommendation": f"Approximate track spacing {round(min_spacing, 4)}mm is below advanced process minimum ({LIMITS_ADV['min_track_spacing']}mm)",
+                "report_context": {"section": "DFM", "impact": "manufacturability", "standard_ref": ""},
+            })
+        elif min_spacing < LIMITS_STD["min_track_spacing"]:
+            violations.append({
+                "parameter": "track_spacing",
+                "actual_mm": round(min_spacing, 4),
+                "standard_limit_mm": LIMITS_STD["min_track_spacing"],
+                "advanced_limit_mm": LIMITS_ADV["min_track_spacing"],
+                "tier_required": "advanced",
+                "message": f"Approximate track spacing {round(min_spacing, 4)}mm requires "
+                           f"advanced process (standard: {LIMITS_STD['min_track_spacing']}mm)",
+                "note": "Spacing is approximate (endpoint-to-endpoint, not full segment geometry)",
+                "detector": "analyze_dfm",
+                "rule_id": "DFM-001",
+                "category": "dfm",
+                "severity": "warning",
+                "confidence": "deterministic",
+                "evidence_source": "topology",
+                "summary": f"Track spacing {round(min_spacing, 4)}mm requires advanced process (standard: {LIMITS_STD['min_track_spacing']}mm)",
+                "description": f"Approximate track spacing {round(min_spacing, 4)}mm requires an advanced fab tier (standard minimum: {LIMITS_STD['min_track_spacing']}mm).",
+                "components": [],
+                "nets": [],
+                "pins": [],
+                "recommendation": f"Approximate track spacing {round(min_spacing, 4)}mm requires advanced process (standard: {LIMITS_STD['min_track_spacing']}mm)",
+                "report_context": {"section": "DFM", "impact": "manufacturability", "standard_ref": ""},
+            })
+    return violations
+
+
+def _measure_drills(vias: dict, footprints: list[dict]) -> dict:
     # --- Drill analysis (via drills + footprint pad drills, KH-383) ---
     all_vias = vias.get("vias", [])
     via_drills = [v["drill"] for v in all_vias if _is_real_drill(v.get("drill", 0))]
     min_drill, drill_source = _min_drill_with_source(via_drills, footprints)
+    label = None
+    pad_ref = None
+    ref_suffix = None
     if min_drill is not None:
-        metrics["min_drill_mm"] = min_drill
         # A pad-sourced minimum is reported generically ("Drill") rather than
         # "Via drill" — the smallest drilled hole isn't necessarily a via.
         label = "Via drill" if drill_source == "via" else "Drill"
@@ -369,6 +370,20 @@ def analyze_dfm(footprints: list[dict], tracks: dict, vias: dict,
         # the ref in the message) instead of mislabeling them "via_drill".
         pad_ref = drill_source[4:] if drill_source.startswith("pad ") else ""
         ref_suffix = f" on {pad_ref}" if pad_ref else ""
+    return {"all_vias": all_vias, "via_drills": via_drills, "min_drill": min_drill,
+            "drill_source": drill_source, "label": label, "pad_ref": pad_ref,
+            "ref_suffix": ref_suffix}
+
+
+def _emit_drill_violations(m: dict, limits_std: dict, limits_adv: dict) -> list[dict]:
+    LIMITS_STD = limits_std
+    LIMITS_ADV = limits_adv
+    violations = []
+    min_drill = m["min_drill"]
+    drill_source = m["drill_source"]
+    label = m["label"]
+    ref_suffix = m["ref_suffix"]
+    if min_drill is not None:
         if min_drill < LIMITS_ADV["min_drill"]:
             violations.append({
                 "parameter": "via_drill" if drill_source == "via" else "pad_drill",
@@ -415,9 +430,13 @@ def analyze_dfm(footprints: list[dict], tracks: dict, vias: dict,
                 "recommendation": f"{label} {min_drill}mm requires advanced process (standard: {LIMITS_STD['min_drill']}mm)",
                 "report_context": {"section": "DFM", "impact": "manufacturability", "standard_ref": ""},
             })
+    return violations
 
+
+def _measure_annular_rings(all_vias: list[dict]) -> dict:
     # --- Annular ring analysis ---
     rings = []
+    min_ring = None
     if all_vias:
         for v in all_vias:
             size = v.get("size", 0)
@@ -426,54 +445,70 @@ def analyze_dfm(footprints: list[dict], tracks: dict, vias: dict,
                 rings.append(round((size - drill) / 2.0, 3))
         if rings:
             min_ring = min(rings)
-            metrics["min_annular_ring_mm"] = min_ring
-            if min_ring < LIMITS_ADV["min_annular_ring"]:
-                violations.append({
-                    "parameter": "annular_ring",
-                    "actual_mm": min_ring,
-                    "standard_limit_mm": LIMITS_STD["min_annular_ring"],
-                    "advanced_limit_mm": LIMITS_ADV["min_annular_ring"],
-                    "tier_required": "challenging",
-                    "message": f"Annular ring {min_ring}mm is below advanced process "
-                               f"minimum ({LIMITS_ADV['min_annular_ring']}mm)",
-                    "detector": "analyze_dfm",
-                    "rule_id": "DFM-001",
-                    "category": "dfm",
-                    "severity": "error",
-                    "confidence": "deterministic",
-                    "evidence_source": "topology",
-                    "summary": f"Annular ring {min_ring}mm below advanced minimum ({LIMITS_ADV['min_annular_ring']}mm)",
-                    "description": f"Annular ring {min_ring}mm is below the advanced process minimum of {LIMITS_ADV['min_annular_ring']}mm, requiring a challenging fab tier.",
-                    "components": [],
-                    "nets": [],
-                    "pins": [],
-                    "recommendation": f"Annular ring {min_ring}mm is below advanced process minimum ({LIMITS_ADV['min_annular_ring']}mm)",
-                    "report_context": {"section": "DFM", "impact": "manufacturability", "standard_ref": ""},
-                })
-            elif min_ring < LIMITS_STD["min_annular_ring"]:
-                violations.append({
-                    "parameter": "annular_ring",
-                    "actual_mm": min_ring,
-                    "standard_limit_mm": LIMITS_STD["min_annular_ring"],
-                    "advanced_limit_mm": LIMITS_ADV["min_annular_ring"],
-                    "tier_required": "advanced",
-                    "message": f"Annular ring {min_ring}mm requires advanced process "
-                               f"(standard: {LIMITS_STD['min_annular_ring']}mm)",
-                    "detector": "analyze_dfm",
-                    "rule_id": "DFM-001",
-                    "category": "dfm",
-                    "severity": "warning",
-                    "confidence": "deterministic",
-                    "evidence_source": "topology",
-                    "summary": f"Annular ring {min_ring}mm requires advanced process (standard: {LIMITS_STD['min_annular_ring']}mm)",
-                    "description": f"Annular ring {min_ring}mm is below the standard process minimum of {LIMITS_STD['min_annular_ring']}mm, requiring an advanced fab tier.",
-                    "components": [],
-                    "nets": [],
-                    "pins": [],
-                    "recommendation": f"Annular ring {min_ring}mm requires advanced process (standard: {LIMITS_STD['min_annular_ring']}mm)",
-                    "report_context": {"section": "DFM", "impact": "manufacturability", "standard_ref": ""},
-                })
+    return {"rings": rings, "min_ring": min_ring}
 
+
+def _emit_annular_ring_violations(m: dict, limits_std: dict, limits_adv: dict) -> list[dict]:
+    LIMITS_STD = limits_std
+    LIMITS_ADV = limits_adv
+    violations = []
+    rings = m["rings"]
+    min_ring = m["min_ring"]
+    if rings:
+        if min_ring < LIMITS_ADV["min_annular_ring"]:
+            violations.append({
+                "parameter": "annular_ring",
+                "actual_mm": min_ring,
+                "standard_limit_mm": LIMITS_STD["min_annular_ring"],
+                "advanced_limit_mm": LIMITS_ADV["min_annular_ring"],
+                "tier_required": "challenging",
+                "message": f"Annular ring {min_ring}mm is below advanced process "
+                           f"minimum ({LIMITS_ADV['min_annular_ring']}mm)",
+                "detector": "analyze_dfm",
+                "rule_id": "DFM-001",
+                "category": "dfm",
+                "severity": "error",
+                "confidence": "deterministic",
+                "evidence_source": "topology",
+                "summary": f"Annular ring {min_ring}mm below advanced minimum ({LIMITS_ADV['min_annular_ring']}mm)",
+                "description": f"Annular ring {min_ring}mm is below the advanced process minimum of {LIMITS_ADV['min_annular_ring']}mm, requiring a challenging fab tier.",
+                "components": [],
+                "nets": [],
+                "pins": [],
+                "recommendation": f"Annular ring {min_ring}mm is below advanced process minimum ({LIMITS_ADV['min_annular_ring']}mm)",
+                "report_context": {"section": "DFM", "impact": "manufacturability", "standard_ref": ""},
+            })
+        elif min_ring < LIMITS_STD["min_annular_ring"]:
+            violations.append({
+                "parameter": "annular_ring",
+                "actual_mm": min_ring,
+                "standard_limit_mm": LIMITS_STD["min_annular_ring"],
+                "advanced_limit_mm": LIMITS_ADV["min_annular_ring"],
+                "tier_required": "advanced",
+                "message": f"Annular ring {min_ring}mm requires advanced process "
+                           f"(standard: {LIMITS_STD['min_annular_ring']}mm)",
+                "detector": "analyze_dfm",
+                "rule_id": "DFM-001",
+                "category": "dfm",
+                "severity": "warning",
+                "confidence": "deterministic",
+                "evidence_source": "topology",
+                "summary": f"Annular ring {min_ring}mm requires advanced process (standard: {LIMITS_STD['min_annular_ring']}mm)",
+                "description": f"Annular ring {min_ring}mm is below the standard process minimum of {LIMITS_STD['min_annular_ring']}mm, requiring an advanced fab tier.",
+                "components": [],
+                "nets": [],
+                "pins": [],
+                "recommendation": f"Annular ring {min_ring}mm requires advanced process (standard: {LIMITS_STD['min_annular_ring']}mm)",
+                "report_context": {"section": "DFM", "impact": "manufacturability", "standard_ref": ""},
+            })
+    return violations
+
+
+def _emit_ipc_class_violations(m_rings: dict, m_drills: dict, ipc_class: int,
+                               ipc_limits: dict) -> list[dict]:
+    rings = m_rings["rings"]
+    min_ring = m_rings["min_ring"]
+    all_vias = m_drills["all_vias"]
     # --- IPC class annular ring compliance ---
     ipc_violations = []
     if rings:
@@ -552,15 +587,27 @@ def analyze_dfm(footprints: list[dict], tracks: dict, vias: dict,
                 "recommendation": "Ensure via-in-pad instances are filled and plated-over for IPC Class 3 compliance",
                 "report_context": {"section": "DFM", "impact": "compliance", "standard_ref": "IPC-6012 Class 3"},
             })
+    return ipc_violations
 
+
+def _measure_board_size(board_outline: dict) -> dict:
     # --- Board dimensions assessment ---
     bbox = board_outline.get("bounding_box")
+    width = None
+    height = None
     if bbox:
         width = bbox.get("width", 0)
         height = bbox.get("height", 0)
-        metrics["board_width_mm"] = width
-        metrics["board_height_mm"] = height
+    return {"bbox": bbox, "width": width, "height": height}
 
+
+def _emit_board_size_findings(m: dict, limits_std: dict) -> list[dict]:
+    LIMITS_STD = limits_std
+    violations = []
+    bbox = m["bbox"]
+    width = m["width"]
+    height = m["height"]
+    if bbox:
         if width > LIMITS_STD["max_board_width"] or height > LIMITS_STD["max_board_height"]:
             violations.append({
                 "parameter": "board_size",
@@ -607,7 +654,10 @@ def analyze_dfm(footprints: list[dict], tracks: dict, vias: dict,
                 "recommendation": f"Board size {width}x{height}mm is very small — may have handling concerns during fabrication",
                 "report_context": {"section": "DFM", "impact": "manufacturability", "standard_ref": ""},
             })
+    return violations
 
+
+def _dfm_tier(violations: list[dict]) -> str:
     # --- Determine overall DFM tier ---
     tier = "standard"
     for v in violations:
@@ -617,6 +667,71 @@ def analyze_dfm(footprints: list[dict], tracks: dict, vias: dict,
             break
         elif req == "advanced" and tier != "challenging":
             tier = "advanced"
+    return tier
+
+
+def analyze_dfm(footprints: list[dict], tracks: dict, vias: dict,
+                board_outline: dict, design_rules: dict | None = None,
+                net_classes: list[dict] | None = None,
+                design_intent: dict | None = None) -> dict:
+    """Design for Manufacturing scoring against common fab capabilities.
+
+    Compares actual design parameters against JLCPCB standard and advanced
+    process limits. Reports a DFM tier ("standard", "advanced", or
+    "challenging"), all violations with actual vs limit values, and key
+    manufacturing metrics.
+
+    Args:
+        footprints: Extracted footprint list.
+        tracks: Extracted track data (with segments, arcs, width_distribution).
+        vias: Extracted via data.
+        board_outline: Board outline with bounding_box.
+        design_rules: Optional design rules from setup extraction.
+        net_classes: Optional net class definitions for class-aware DFM checks.
+        design_intent: Optional resolved design intent (product_class, ipc_class,
+            etc.) for intent-aware limit selection.
+    """
+    # EQ-049: d = √(Δx²+Δy²) (DFM clearance measurement)
+    LIMITS_STD = JLCPCB_LIMITS_STANDARD
+    LIMITS_ADV = JLCPCB_LIMITS_ADVANCED
+
+    # Determine active IPC class
+    ipc_class = 2  # default
+    if design_intent and design_intent.get('ipc_class') in (1, 2, 3):
+        ipc_class = design_intent['ipc_class']
+    ipc_limits = IPC_CLASS_LIMITS[ipc_class]
+
+    _net_class_lookup = _build_net_class_lookup(net_classes)
+
+    violations = []
+    metrics: dict = {}
+
+    m_widths = _measure_track_widths(tracks, _net_class_lookup)
+    m_spacing = _measure_track_spacing(tracks)
+    m_drills = _measure_drills(vias, footprints)
+    m_rings = _measure_annular_rings(m_drills["all_vias"])
+    m_board = _measure_board_size(board_outline)
+
+    if m_widths["all_widths"]:
+        metrics["min_track_width_mm"] = m_widths["min_width"]
+    if m_spacing["min_spacing"] < float("inf"):
+        metrics["approx_min_spacing_mm"] = round(m_spacing["min_spacing"], 4)
+    if m_drills["min_drill"] is not None:
+        metrics["min_drill_mm"] = m_drills["min_drill"]
+    if m_rings["rings"]:
+        metrics["min_annular_ring_mm"] = m_rings["min_ring"]
+    if m_board["bbox"]:
+        metrics["board_width_mm"] = m_board["width"]
+        metrics["board_height_mm"] = m_board["height"]
+
+    violations.extend(_emit_track_width_violations(m_widths, LIMITS_STD, LIMITS_ADV))
+    violations.extend(_emit_track_spacing_violations(m_spacing, LIMITS_STD, LIMITS_ADV))
+    violations.extend(_emit_drill_violations(m_drills, LIMITS_STD, LIMITS_ADV))
+    violations.extend(_emit_annular_ring_violations(m_rings, LIMITS_STD, LIMITS_ADV))
+    ipc_violations = _emit_ipc_class_violations(m_rings, m_drills, ipc_class, ipc_limits)
+    violations.extend(_emit_board_size_findings(m_board, LIMITS_STD))
+
+    tier = _dfm_tier(violations)
 
     result: dict = {
         "dfm_tier": tier,
