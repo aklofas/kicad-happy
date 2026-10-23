@@ -6,7 +6,7 @@ Phase 1 read_board        — parse + extract (pcb.reader) + the KiCad-10 synthe
 Phase 2 run_facts         — the board facts (connectivity … return path, incl. the
                             .kicad_pro/.kicad_dru/lib-table loads, keepout zones)
 Phase 3 run_checks        — every check over the board + facts, incl. the seven late checks
-                            hoisted out of the dict build (round 7); run_analyses composes 2 + 3
+                            that used to run inside the dict build; run_analyses composes 2 + 3
 Phase 4 assemble_result   — pcb.presentation: the result dict in its historical key order
 Phase 5 finalize_for_cli  — command-specific annotation (GP-001 debug file, project summary, design
                             intent, stage/audience filters, finding_id)

@@ -1,5 +1,5 @@
 """PCB DFM (v3 round 5): fab-capability scoring, drill measurement, project design-rule compliance.
-Verbatim moves from analyze_pcb.py; the table/scan/assembly split is round 7 (S3)."""
+Fab tables at module level; analyze_dfm composes the _measure_* scans and the _emit_* builders."""
 
 import math
 
