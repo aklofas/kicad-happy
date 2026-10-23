@@ -28,6 +28,8 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+import _core_path  # noqa: F401
+from kicad_core.diagnostics import record
 from spice_part_library import lookup_part_specs
 from spice_model_generator import (
     generate_opamp_model,
@@ -221,7 +223,7 @@ class ModelOptions:
     offline: bool = False
 
 
-def get_model_for_part(mpn, component_type=None, context=None, options=None):
+def get_model_for_part(mpn, component_type=None, context=None, options=None, *, diagnostics=None):
     """Resolve a SPICE model for a component, using the full cascade.
 
     Resolution order:
@@ -243,6 +245,7 @@ def get_model_for_part(mpn, component_type=None, context=None, options=None):
         context: Analysis JSON dict (for cache dir and project dir)
         options: Optional ModelOptions; cache_dir overrides the cache location,
                  offline skips the API/datasheet tier (cache + lookup table only)
+        diagnostics: Optional list sink; a failed API/datasheet tier is recorded there
 
     Returns:
         (subckt_string, source_note, specs_or_None)
@@ -274,7 +277,8 @@ def get_model_for_part(mpn, component_type=None, context=None, options=None):
                     from pathlib import Path
                     project_dir = str(Path(source_file).parent)
 
-            api_specs, api_source = fetch_specs(mpn, component_type, project_dir)
+            api_specs, api_source = fetch_specs(mpn, component_type, project_dir,
+                                                diagnostics=diagnostics)
             if api_specs:
                 # Determine component type from the specs we got
                 resolved_type = component_type
@@ -293,8 +297,9 @@ def get_model_for_part(mpn, component_type=None, context=None, options=None):
                     return subckt, f"{api_source}", api_specs
         except ImportError:
             pass  # spice_spec_fetcher not available
-        except Exception:
-            pass  # API/datasheet extraction failed — fall through
+        except Exception as exc:  # API/datasheet extraction failed — fall through
+            record(diagnostics, "spice_model_cache.get_model_for_part", exc,
+                   f"API/datasheet model tier skipped for {mpn}")
 
     # --- Tier 2: Built-in lookup table (offline fallback) ---
     specs, resolved_type = lookup_part_specs(mpn, component_type)

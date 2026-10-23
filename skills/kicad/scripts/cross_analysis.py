@@ -1160,6 +1160,7 @@ def main(argv: list[str] | None = None) -> int:
         'schema_version': '1.4.0',
         'inputs': inputs,
         'compat': compat,
+        'diagnostics': [],
         'elapsed_s': round(elapsed, 3),
         'summary': {'total_findings': len(findings), 'by_severity': sev_counts},
         'findings': findings,

@@ -466,11 +466,13 @@ def main(argv: list[str] | None = None) -> int:
 
     # Run analysis
     t0 = time.time()
+    diagnostics: list = []
     findings = run_all_checks(schematic, pcb,
                               standard=args.standard,
                               severity_threshold=severity,
                               spice_backend=spice_backend,
-                              pdn_transient_a=pdn_transient_a)
+                              pdn_transient_a=pdn_transient_a,
+                              diagnostics=diagnostics)
     elapsed = time.time() - t0
 
     # Apply suppressions
@@ -533,6 +535,7 @@ def main(argv: list[str] | None = None) -> int:
         'schema_version': '1.4.0',
         'inputs': inputs,
         'compat': compat,
+        'diagnostics': diagnostics,
         'summary': {
             'total_findings': len(findings),
             'categories_checked': len(category_summary),

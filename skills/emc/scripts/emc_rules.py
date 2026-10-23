@@ -39,6 +39,7 @@ from kicad_core.parts import (
     default_switching_freq as _default_switching_freq,
 )
 from kicad_core.netquery import build_net_id_map
+from kicad_core.diagnostics import record
 from finding_schema import Det, get_findings
 
 try:
@@ -215,7 +216,7 @@ def _suggest_filtering(conn_ref: str, combined_lower: str) -> str:
 
 
 def _suggest_pdn_cap(peak, cap_models, plane_cap_f, z_target, spice_backend,
-                     sweep_before=None):
+                     sweep_before=None, diagnostics=None):
     """Generate a specific cap suggestion for a PDN anti-resonance peak.
 
     # EQ-093: C_suggest = 1/(4π²f²ESL) then round to E12 (PDN cap selection)
@@ -258,7 +259,7 @@ def _suggest_pdn_cap(peak, cap_models, plane_cap_f, z_target, spice_backend,
             }
             ok, before, after = verify_pdn_with_suggested_cap(
                 cap_models, suggested, plane_cap_f, z_target, spice_backend,
-                sweep_before=sweep_before)
+                sweep_before=sweep_before, diagnostics=diagnostics)
             if ok and before is not None and after is not None:
                 if after < before * 0.5:
                     suggestion += (
@@ -272,7 +273,9 @@ def _suggest_pdn_cap(peak, cap_models, plane_cap_f, z_target, spice_backend,
                         f' (SPICE: peak reduced to {after:.2f}Ω but still '
                         f'above target {z_target:.3f}Ω — may need additional caps)'
                     )
-        except Exception:
+        except Exception as exc:
+            record(diagnostics, "emc_rules._suggest_pdn_cap", exc,
+                   "SPICE verification of the suggested PDN cap skipped")
             suggestion += ' (analytical — verify with SPICE)'
     else:
         suggestion += ' (analytical — verify with SPICE if available)'
@@ -1587,7 +1590,7 @@ def estimate_cavity_resonances(pcb: Dict) -> List[Dict]:
 
 def estimate_switching_emissions(schematic: Dict,
                                  standard: str = 'fcc-class-b',
-                                 spice_backend=None) -> List[Dict]:
+                                 spice_backend=None, diagnostics=None) -> List[Dict]:
     """Estimate switching regulator emissions relative to limits.
 
     # EQ-094: V_n = V_peak × 2/(nπ) × sin(nπD) (trapezoidal harmonic envelope)
@@ -1627,7 +1630,8 @@ def estimate_switching_emissions(schematic: Dict,
                 from emc_spice import run_switching_fft
                 ok, harmonics = run_switching_fft(
                     v_peak, duty_cycle, 10e-9, sw_freq,
-                    spice_backend, n_harmonics=10, timeout=15)
+                    spice_backend, n_harmonics=10, timeout=15,
+                    diagnostics=diagnostics)
                 if ok and harmonics:
                     # Compare SPICE harmonics with envelope at a few points
                     fft_samples = []
@@ -1639,8 +1643,9 @@ def estimate_switching_emissions(schematic: Dict,
                             f'h{h["harmonic"]}={h["amplitude_dbuv"]:.0f}dBµV '
                             f'(envelope: {env_dbuv:.0f})')
                     fft_note = ' SPICE FFT: ' + ', '.join(fft_samples[:3]) + '.'
-            except Exception:
-                pass
+            except Exception as exc:
+                record(diagnostics, "emc_rules.estimate_switching_emissions", exc,
+                       "SPICE FFT note omitted")
 
         ss_note = (' Spread-spectrum modulation detected (~-15 dB peak reduction).'
                    if _has_spread_spectrum(val) else '')
@@ -3310,7 +3315,8 @@ def _fmt_cap(farads: float) -> str:
 def check_pdn_impedance(pcb: Optional[Dict],
                         schematic: Optional[Dict],
                         spice_backend=None,
-                        pdn_transient_a: Optional[float] = None) -> List[Dict]:
+                        pdn_transient_a: Optional[float] = None,
+                        diagnostics=None) -> List[Dict]:
     """PD-001/PD-002: Analyze decoupling network impedance per power rail.
 
     For each power regulator with detected output capacitors, model the
@@ -3426,12 +3432,13 @@ def check_pdn_impedance(pcb: Optional[Dict],
                 from emc_spice import run_pdn_spice
                 ok, spice_sweep = run_pdn_spice(
                     cap_models, plane_cap_f, spice_backend,
-                    freq_start=1e3, freq_stop=1e9)
+                    freq_start=1e3, freq_stop=1e9, diagnostics=diagnostics)
                 if ok and spice_sweep:
                     sweep = spice_sweep
                     spice_verified = True
-            except Exception:
-                pass
+            except Exception as exc:
+                record(diagnostics, "emc_rules.check_pdn_impedance", exc,
+                       "SPICE PDN sweep skipped; analytical sweep used")
         if sweep is None:
             sweep = pdn_impedance_sweep(cap_models, plane_cap_f=plane_cap_f,
                                         freq_start=1e3, freq_stop=1e9)
@@ -3478,7 +3485,7 @@ def check_pdn_impedance(pcb: Optional[Dict],
                 nets=[output_rail] if output_rail else [],
                 recommendation=_suggest_pdn_cap(
                     in_band[0], cap_models, plane_cap_f, z_target,
-                    spice_backend, sweep_before=sweep),
+                    spice_backend, sweep_before=sweep, diagnostics=diagnostics),
                 confidence='datasheet-backed' if spice_verified else 'heuristic',
                 spice_verified=spice_verified,
                 rail=output_rail,
@@ -4447,7 +4454,8 @@ def run_all_checks(schematic: Optional[Dict], pcb: Optional[Dict],
                    standard: str = 'fcc-class-b',
                    severity_threshold: str = 'all',
                    spice_backend=None,
-                   pdn_transient_a: Optional[float] = None) -> List[Dict]:
+                   pdn_transient_a: Optional[float] = None,
+                   diagnostics=None) -> List[Dict]:
     """Run all EMC rule checks and return combined findings.
 
     Args:
@@ -4459,6 +4467,7 @@ def run_all_checks(schematic: Optional[Dict], pcb: Optional[Dict],
                        PDN/filter analysis (optional, None = analytical only).
         pdn_transient_a: Transient current override (Amps) for PD-001,
                        typically from project.pdn_transient_current_a.
+        diagnostics: Optional list sink for guarded SPICE-enhancement failures.
 
     Returns:
         List of finding dicts, sorted by severity.
@@ -4501,7 +4510,8 @@ def run_all_checks(schematic: Optional[Dict], pcb: Optional[Dict],
 
     if schematic:
         all_findings.extend(check_switching_harmonics(schematic, standard))
-        all_findings.extend(estimate_switching_emissions(schematic, standard, spice_backend))
+        all_findings.extend(estimate_switching_emissions(schematic, standard, spice_backend,
+                                                         diagnostics=diagnostics))
         all_findings.extend(check_emi_filter_effectiveness(pcb, schematic, spice_backend))
 
     # Checks requiring both schematic and PCB
@@ -4511,7 +4521,8 @@ def run_all_checks(schematic: Optional[Dict], pcb: Optional[Dict],
         all_findings.extend(check_diff_pair_reference_plane(pcb, schematic))
         all_findings.extend(check_diff_pair_layer(pcb, schematic))
         all_findings.extend(check_pdn_impedance(pcb, schematic, spice_backend,
-                                                pdn_transient_a=pdn_transient_a))
+                                                pdn_transient_a=pdn_transient_a,
+                                                diagnostics=diagnostics))
         all_findings.extend(check_pdn_distributed(pcb, schematic, spice_backend))
         all_findings.extend(check_thermal_emc(pcb, schematic))
         all_findings.extend(check_switching_node_area(pcb, schematic, net_id_map))

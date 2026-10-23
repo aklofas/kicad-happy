@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from kicad_core.diagnostics import merge, record
 from kicad_core.sexp import parse_file
 from kicad_core.values import snap_to_mil_grid as _snap_mil
 from kicad_core.netnames import _clean_hierarchical_name
@@ -1018,7 +1019,7 @@ def analyze_legacy_schematic(path: str, analysis_dir: str | Path | None = None) 
     ]
     annotation_issues = check_annotation_completeness(real_components)
 
-    return assemble_legacy_result(
+    result = assemble_legacy_result(
         nets=nets,
         all_components=all_components,
         signal_analysis=signal_analysis,
@@ -1034,6 +1035,8 @@ def analyze_legacy_schematic(path: str, analysis_dir: str | Path | None = None) 
         annotation_issues=annotation_issues,
         legacy_resolution=legacy_resolution,
     )
+    result["diagnostics"] = merge(ctx.diagnostics)
+    return result
 
 
 # facade for pre-v3 importers (analyze_schematic.parse_legacy_schematic); retire round 9
@@ -1278,7 +1281,8 @@ def analyze_schematic(path: str, project_root: str | None = None,
 
     parsed = parse_all_sheets(path, root_tree=root_tree)
 
-    merge_top_level_sheets(parsed, path, root_tree)
+    pipeline_diagnostics: list = []
+    merge_top_level_sheets(parsed, path, root_tree, diagnostics=pipeline_diagnostics)
 
     all_components = parsed["components"]
     all_wires = parsed["wires"]
@@ -1322,16 +1326,19 @@ def analyze_schematic(path: str, project_root: str | None = None,
         source=ANALYZER_SOURCE, cache_dir=_cache_dir, project_dir=str(Path(path).parent))
 
     analyses = run_analyses(ctx, parsed, path, nets, bom)
-    return assemble_result(ctx, parsed, nets, bom, analyses, path=path,
-                           sheets_parsed=sheets_parsed,
-                           hierarchy_warning=hierarchy_warning,
-                           format_newer_note=format_newer_note,
-                           generator_version=generator_version,
-                           file_version=file_version)
+    result = assemble_result(ctx, parsed, nets, bom, analyses, path=path,
+                             sheets_parsed=sheets_parsed,
+                             hierarchy_warning=hierarchy_warning,
+                             format_newer_note=format_newer_note,
+                             generator_version=generator_version,
+                             file_version=file_version)
+    result["diagnostics"] = merge(pipeline_diagnostics, ctx.diagnostics)
+    return result
 
 
 def finalize_for_cli(result: dict, config: dict, *, schematic_path: str, lifecycle: bool,
-                     stage: str | None, audience: str | None) -> None:
+                     stage: str | None, audience: str | None,
+                     diagnostics: list | None = None) -> None:
     """Phase 5: command-specific annotation; mutates *result*.
 
     Project config summary, design intent + CERT-001 gating, power_rails config, lifecycle
@@ -1390,8 +1397,11 @@ def finalize_for_cli(result: dict, config: dict, *, schematic_path: str, lifecyc
             stats['power_rails'] = filtered_pr
             if flagged:
                 result['flagged_rails'] = flagged
-    except (ImportError, Exception):
+    except ImportError:
         pass
+    except Exception as exc:
+        record(diagnostics, "schematic.pipeline.apply_power_rails_config", exc,
+               "power_rails config not applied")
 
     # rc.2 4.3 — LC-007 lifecycle-skipped INFO finding. Emit explicitly so
     # reviewers see "lifecycle audit not run" in the findings list rather
@@ -1510,8 +1520,11 @@ def finalize_for_cli(result: dict, config: dict, *, schematic_path: str, lifecyc
     try:
         from finding_schema import compute_trust_summary
         result['trust_summary'] = compute_trust_summary(_final_findings, bom=result.get('bom'))
-    except (ImportError, Exception):
+    except ImportError:
         pass
+    except Exception as exc:
+        record(diagnostics, "schematic.pipeline.compute_trust_summary", exc,
+               "trust_summary not recomputed after filters")
 
     # Guarantee every finding carries a stable finding_id (Layer 2 merge keys
     # on it). Runs after all filtering/appends; before any output branch.

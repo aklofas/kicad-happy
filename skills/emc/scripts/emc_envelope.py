@@ -36,7 +36,7 @@ from typing import Optional
 import _core_path  # noqa: F401
 
 from analyzer_envelope import (  # noqa: E402
-    TrustSummary, Finding, Assessment, BySeverity, InputsBlock, CompatBlock,
+    TrustSummary, Finding, Assessment, BySeverity, InputsBlock, CompatBlock, Diagnostic,
 )
 
 
@@ -235,6 +235,9 @@ class EMCEnvelope:
     compat: CompatBlock = field(metadata={
         "description": "Schema compatibility metadata: minimum consumer "
                        "version + deprecated/experimental field lists."})
+    diagnostics: list[Diagnostic] = field(default_factory=list, kw_only=True, metadata={
+        "description": "Guarded failures that degraded this run (section omitted, "
+                       "fallback model used). Empty when nothing degraded."})
 
     # --- Universal core ---
     target_standard: str = field(metadata={

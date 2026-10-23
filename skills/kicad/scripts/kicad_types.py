@@ -75,6 +75,8 @@ class AnalysisContext:
         generator_version: KiCad version string (e.g., ``"9.0.1"``).
         nq: ``NetlistQueries`` object for multi-hop net tracing.  Installed by
             ``build_analysis_context``; None only on contexts constructed directly.
+        diagnostics: Sink for guarded failures (``kicad_core.diagnostics.record``); the
+            schematic pipeline merges it into the envelope's ``diagnostics``.
         hierarchy_context: Kept as a facade for direct harness constructions.
             ``build_analysis_context`` never sets it, so it is None on every
             production context, and no detector reads it.
@@ -104,6 +106,7 @@ class AnalysisContext:
     cache_dir: Path | None = field(default=None, repr=False)
     design_context: dict | None = field(default=None, repr=False)
     project_dir: str | None = field(default=None, repr=False)
+    diagnostics: list = field(default_factory=list, repr=False)
 
     def __post_init__(self) -> None:
         # Compatibility path for direct constructions (harness fixtures). Production
@@ -159,7 +162,7 @@ def build_analysis_context(components: list[dict], nets: dict[str, dict], lib_sy
         ref_pins=index_ref_pins(pin_net),
         no_connects=no_connects if no_connects is not None else [],
         generator_version=generator_version, source=source,
-        cache_dir=cache_dir, project_dir=project_dir,
+        cache_dir=cache_dir, project_dir=project_dir, diagnostics=[],
     )
     from netlist_queries import NetlistQueries  # local: netlist_queries annotates with this class
     ctx.nq = NetlistQueries(ctx)

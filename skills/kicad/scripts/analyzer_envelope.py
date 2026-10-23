@@ -30,6 +30,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 
+from kicad_core.diagnostics import Diagnostic  # noqa: F401  (envelopes compose it)
+
 
 @dataclass
 class ByConfidence:

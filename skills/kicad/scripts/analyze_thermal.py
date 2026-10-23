@@ -1059,10 +1059,12 @@ def main(argv: list[str] | None = None) -> int:
     # TJ-001 (Phase 4c): recompute TJ via v1.4 facts.base.thermal[theta_ja]
     # and compare to facts.base.absolute_max[TJ_SYNONYMS]. Soft-skip when
     # cache miss or below trust gate.
+    diagnostics: list = []
     findings.extend(detect_tj_exceeds_max(
         assessments,
         source=ANALYZER_SOURCE,
         cache_dir=extract_dir,
+        diagnostics=diagnostics,
     ))
 
     # Apply suppressions
@@ -1115,6 +1117,7 @@ def main(argv: list[str] | None = None) -> int:
         "schema_version": "1.4.0",
         "inputs": inputs,
         "compat": compat,
+        "diagnostics": diagnostics,
         "summary": {
             "total_findings": len(findings),
             "components_assessed": len(assessments),

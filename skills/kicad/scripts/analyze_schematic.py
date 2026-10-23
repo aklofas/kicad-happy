@@ -243,12 +243,14 @@ def main(argv: list[str] | None = None) -> int:
                                analysis_dir=_analysis_dir_for_ctx)
     # Inject provenance and drop the legacy 'file' key (already removed
     # from internal result assembly, but belt-and-suspenders).
+    diagnostics = result.pop("diagnostics", [])
     result["inputs"] = inputs
     result["compat"] = compat
+    result["diagnostics"] = diagnostics
     result.pop("file", None)
 
     finalize_for_cli(result, config, schematic_path=args.schematic, lifecycle=args.lifecycle,
-                     stage=args.stage, audience=args.audience)
+                     stage=args.stage, audience=args.audience, diagnostics=diagnostics)
 
     if args.text:
         from output_filters import format_text

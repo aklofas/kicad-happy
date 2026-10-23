@@ -13,6 +13,9 @@ import os
 import sys
 import tempfile
 
+import _core_path  # noqa: F401
+from kicad_core.diagnostics import record
+
 # Add spice skill scripts to path for simulator imports
 _SPICE_SCRIPTS = os.path.join(os.path.dirname(__file__), '..', '..', 'spice', 'scripts')
 if os.path.isdir(_SPICE_SCRIPTS):
@@ -110,7 +113,7 @@ def generate_pdn_netlist(caps, plane_cap_f=0):
 
 def run_pdn_spice(caps, plane_cap_f=0, backend=None,
                   freq_start=1e3, freq_stop=1e9,
-                  points_per_decade=50, timeout=10):
+                  points_per_decade=50, timeout=10, diagnostics=None):
     """Run SPICE AC sweep for PDN impedance and return results.
 
     Args:
@@ -191,7 +194,8 @@ def run_pdn_spice(caps, plane_cap_f=0, backend=None,
 
         return True, sweep
 
-    except Exception:
+    except Exception as exc:
+        record(diagnostics, "emc_spice.run_pdn_spice", exc, "PDN SPICE sweep failed")
         return False, None
     finally:
         # Cleanup
@@ -241,7 +245,7 @@ def generate_filter_netlist(inductor_h, cap_f, esr=0.1, esl=1e-9,
 
 
 def run_filter_spice(inductor_h, cap_f, switching_freq_hz,
-                     esr=0.1, esl=1e-9, backend=None, timeout=10):
+                     esr=0.1, esl=1e-9, backend=None, timeout=10, diagnostics=None):
     """Run SPICE AC sweep for EMI filter and measure insertion loss.
 
     Args:
@@ -304,7 +308,8 @@ def run_filter_spice(inductor_h, cap_f, switching_freq_hz,
             'cutoff_hz': results.get('fc_3db', 0),
         }
 
-    except Exception:
+    except Exception as exc:
+        record(diagnostics, "emc_spice.run_filter_spice", exc, "EMI filter SPICE sweep failed")
         return False, None
     finally:
         import shutil
@@ -354,7 +359,7 @@ def _goertzel_magnitude(samples, sample_rate, target_freq):
 # ---------------------------------------------------------------------------
 
 def run_switching_fft(v_peak, duty_cycle, rise_time_s, switching_freq_hz,
-                      backend=None, n_harmonics=15, timeout=15):
+                      backend=None, n_harmonics=15, timeout=15, diagnostics=None):
     """Run transient simulation of a switching waveform and extract harmonics.
 
     Generates a PULSE source at the switching frequency, runs transient
@@ -488,7 +493,8 @@ def run_switching_fft(v_peak, duty_cycle, rise_time_s, switching_freq_hz,
 
         return True, harmonics
 
-    except Exception:
+    except Exception as exc:
+        record(diagnostics, "emc_spice.run_switching_fft", exc, "switching FFT SPICE run failed")
         return False, None
     finally:
         import shutil
@@ -500,7 +506,7 @@ def run_switching_fft(v_peak, duty_cycle, rise_time_s, switching_freq_hz,
 
 def verify_pdn_with_suggested_cap(caps, suggested_cap, plane_cap_f,
                                   z_target, backend, timeout=10,
-                                  sweep_before=None):
+                                  sweep_before=None, diagnostics=None):
     """Re-run PDN SPICE sweep with a suggested cap added and check if the
     anti-resonance peak is resolved.
 
@@ -524,7 +530,8 @@ def verify_pdn_with_suggested_cap(caps, suggested_cap, plane_cap_f,
     if sweep_before:
         sweep1 = sweep_before
     else:
-        ok1, sweep1 = run_pdn_spice(caps, plane_cap_f, backend, timeout=timeout)
+        ok1, sweep1 = run_pdn_spice(caps, plane_cap_f, backend, timeout=timeout,
+                                   diagnostics=diagnostics)
         if not ok1 or not sweep1:
             return False, None, None
 
@@ -537,7 +544,8 @@ def verify_pdn_with_suggested_cap(caps, suggested_cap, plane_cap_f,
 
     # Run with suggested cap added
     augmented = list(caps) + [suggested_cap]
-    ok2, sweep2 = run_pdn_spice(augmented, plane_cap_f, backend, timeout=timeout)
+    ok2, sweep2 = run_pdn_spice(augmented, plane_cap_f, backend, timeout=timeout,
+                               diagnostics=diagnostics)
     if not ok2 or not sweep2:
         return False, peak_before, None
 

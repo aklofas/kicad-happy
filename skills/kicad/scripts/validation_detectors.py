@@ -263,7 +263,7 @@ def validate_pullups(ctx: AnalysisContext) -> list[dict]:
     for ic in ics:
         ref = ic['reference']
         mpn = ic.get('mpn') or ic.get('value') or ''
-        facts = get_facts(mpn, cache_dir=cache_dir) if mpn else None
+        facts = get_facts(mpn, cache_dir=cache_dir, diagnostics=getattr(ctx, "diagnostics", None)) if mpn else None
         pins = ctx.ref_pins.get(ref, {})
 
         for pnum, (net, _) in pins.items():
@@ -527,7 +527,7 @@ def validate_voltage_levels(ctx: AnalysisContext, level_shifters: list[dict] | N
             # 4b lookup probe (informational; future v1.5 will use
             # facts.base.recommended_operating.VDD to validate the rail estimate).
             mpn = ic.get('mpn') or ic.get('value') or ''
-            facts = get_facts(mpn, cache_dir=cache_dir) if mpn else None
+            facts = get_facts(mpn, cache_dir=cache_dir, diagnostics=getattr(ctx, "diagnostics", None)) if mpn else None
             # facts probe is informational — confidence stays heuristic regardless.
 
     shifted_nets: set[str] = set()
@@ -1119,7 +1119,7 @@ def validate_led_resistors(ctx: AnalysisContext) -> list[dict]:
     for led in leds:
         ref = led['reference']
         mpn = led.get('mpn') or led.get('value') or ''
-        facts = get_facts(mpn, cache_dir=cache_dir) if mpn else None
+        facts = get_facts(mpn, cache_dir=cache_dir, diagnostics=getattr(ctx, "diagnostics", None)) if mpn else None
 
         # Probe diode.vf and diode.if_max from datasheet facts.
         # DatasheetFacts.diode does not exist in v1.4 (DiodeBlock is v1.5 expansion),
@@ -1376,7 +1376,7 @@ def validate_feedback_stability(
         if not mpn:
             comp_entry = ctx.comp_lookup.get(ref)
             mpn = (comp_entry.get('mpn') if comp_entry else '') or ''
-        facts = get_facts(mpn, cache_dir=cache_dir) if mpn else None
+        facts = get_facts(mpn, cache_dir=cache_dir, diagnostics=getattr(ctx, "diagnostics", None)) if mpn else None
         # facts probe is informational — confidence stays heuristic regardless.
 
         if parallel_impedance < _FB_IMPEDANCE_MIN:

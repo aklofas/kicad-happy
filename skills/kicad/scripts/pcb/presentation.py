@@ -6,8 +6,8 @@ unpacking are new.
 
 import math
 import re
-import sys
 
+from kicad_core.diagnostics import record
 from kicad_core.netnames import is_ground_name, is_power_net_name
 from pcb.connectivity import build_connectivity_graph
 from pcb.routing import analyze_trace_proximity
@@ -109,6 +109,7 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
     and only their result writes stay here. *board* is a pcb.pipeline.BoardData and
     *analyses* a pcb.pipeline.PcbAnalyses.
     """
+    diagnostics: list = []
     layers = board.layers
     setup = board.setup
     net_names = board.net_names
@@ -336,10 +337,7 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
             err_str = str(e)[:200]
             result["connectivity_graph_error"] = (
                 f"connectivity graph unavailable: {type(e).__name__}: {err_str}")
-            print(
-                f"Warning: connectivity graph build failed: "
-                f"{type(e).__name__}: {err_str}",
-                file=sys.stderr)
+            record(diagnostics, "pcb.presentation.assemble_result", e, "connectivity_graph omitted")
 
     # --- Harmonization: collect all findings into top-level list ---
     findings = []
@@ -456,4 +454,5 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
         'by_severity': sev_counts,
     }
 
+    result["diagnostics"] = diagnostics
     return result

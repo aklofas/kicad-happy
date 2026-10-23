@@ -178,8 +178,10 @@ def main(argv: list[str] | None = None) -> int:
                          power_rails=power_rails)
     # Inject provenance and drop legacy 'file' key (already removed from
     # internal result assembly, but belt-and-suspenders).
+    diagnostics = result.pop("diagnostics", [])
     result["inputs"] = inputs
     result["compat"] = compat
+    result["diagnostics"] = diagnostics
     result.pop("file", None)
 
     finalize_for_cli(result, config, pcb_path=args.pcb, analysis_dir_arg=args.analysis_dir,

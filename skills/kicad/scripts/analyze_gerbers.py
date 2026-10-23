@@ -1613,6 +1613,7 @@ def main(argv: list[str] | None = None) -> int:
     # Inject provenance.
     result["inputs"] = inputs
     result["compat"] = compat
+    result["diagnostics"] = []
 
     from output_filters import apply_output_filters
     apply_output_filters(result, args.stage, args.audience)

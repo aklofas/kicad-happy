@@ -10,6 +10,7 @@ import os
 import sys
 from pathlib import Path
 
+from kicad_core.diagnostics import record
 from kicad_core.sexp import find_first, get_value, parse_file
 from kicad_core.project import load_kicad_pro
 from schematic.reader import (
@@ -160,7 +161,8 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
     }
 
 
-def merge_top_level_sheets(parsed: dict, path: str, root_tree: list) -> None:
+def merge_top_level_sheets(parsed: dict, path: str, root_tree: list, *,
+                           diagnostics: list | None = None) -> None:
     """Altium flat multi-page imports: fold .kicad_pro top_level_sheets peers (and their
     sub-sheets) into *parsed* in place. Inert when the root has (sheet ...) nodes or the
     project lists at most one top-level sheet. Moved verbatim from analyze_schematic()."""
@@ -221,9 +223,8 @@ def merge_top_level_sheets(parsed: dict, path: str, root_tree: list) -> None:
                                 sd.no_connects, sd.sub_sheet_paths, sd.lib_symbols,
                                 sd.text_annotations, sd.bus_elements, sd.title_block)
                         except Exception as exc:
-                            print(f"Warning: failed to parse "
-                                  f"{os.path.basename(sheet_path)}: {exc}",
-                                  file=sys.stderr)
+                            record(diagnostics, "schematic.hierarchy.merge_top_level_sheets", exc,
+                                   f"sheet {os.path.basename(sheet_path)} skipped (parse failed)")
                             continue
                         sheet_idx = base_idx
                         base_idx += 1

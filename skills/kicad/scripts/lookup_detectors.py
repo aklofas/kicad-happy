@@ -105,7 +105,7 @@ def detect_absolute_max_violations(ctx, rail_voltages: dict) -> list[dict]:
         mpn = _component_mpn(component)
         if not ref or not mpn:
             continue
-        facts = get_facts(mpn, cache_dir=cache_dir)
+        facts = get_facts(mpn, cache_dir=cache_dir, diagnostics=getattr(ctx, "diagnostics", None))
         if facts is None:
             continue
         base = getattr(facts, "base", None)
@@ -200,7 +200,7 @@ def detect_vcc_outside_recommended(ctx, rail_voltages: dict) -> list[dict]:
         mpn = _component_mpn(component)
         if not ref or not mpn:
             continue
-        facts = get_facts(mpn, cache_dir=cache_dir)
+        facts = get_facts(mpn, cache_dir=cache_dir, diagnostics=getattr(ctx, "diagnostics", None))
         if facts is None:
             continue
         base = getattr(facts, "base", None)
@@ -297,7 +297,7 @@ def detect_vcc_outside_recommended(ctx, rail_voltages: dict) -> list[dict]:
 # TJ-001 — junction temperature exceeds TJmax (thermal)
 # ---------------------------------------------------------------------------
 
-def detect_tj_exceeds_max(assessments, *, source, cache_dir) -> list[dict]:
+def detect_tj_exceeds_max(assessments, *, source, cache_dir, diagnostics=None) -> list[dict]:
     """TJ-001: Recompute junction temperature using v1.4 facts.base.thermal
     [theta_ja] and compare to facts.base.absolute_max[TJ_SYNONYMS].
 
@@ -313,7 +313,7 @@ def detect_tj_exceeds_max(assessments, *, source, cache_dir) -> list[dict]:
         mpn = a.get("mpn") or a.get("value")
         if not ref or not mpn:
             continue
-        facts = get_facts(mpn, cache_dir=cache_dir)
+        facts = get_facts(mpn, cache_dir=cache_dir, diagnostics=diagnostics)
         if facts is None:
             continue
         base = getattr(facts, "base", None)
@@ -404,7 +404,7 @@ def detect_5v_on_non_tolerant_pin(ctx, rail_voltages: dict) -> list[dict]:
         mpn = _component_mpn(component)
         if not ref or not mpn:
             continue
-        facts = get_facts(mpn, cache_dir=cache_dir)
+        facts = get_facts(mpn, cache_dir=cache_dir, diagnostics=getattr(ctx, "diagnostics", None))
         if facts is None:
             continue
         base = getattr(facts, "base", None)
@@ -501,7 +501,7 @@ def detect_wrong_signal_type(ctx) -> list[dict]:
         mpn = _component_mpn(component)
         if not ref or not mpn:
             continue
-        facts = get_facts(mpn, cache_dir=cache_dir)
+        facts = get_facts(mpn, cache_dir=cache_dir, diagnostics=getattr(ctx, "diagnostics", None))
         if facts is None:
             continue
         base = getattr(facts, "base", None)
@@ -607,7 +607,7 @@ def detect_missing_required_components(ctx, power_regulators: list) -> list[dict
         mpn = reg.get("mpn") or reg.get("value")
         if not ref or not mpn:
             continue
-        facts = get_facts(mpn, cache_dir=cache_dir)
+        facts = get_facts(mpn, cache_dir=cache_dir, diagnostics=getattr(ctx, "diagnostics", None))
         if facts is None:
             continue
         regulator = getattr(facts, "regulator", None)

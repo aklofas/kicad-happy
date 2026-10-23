@@ -10,6 +10,8 @@ import json
 import sys
 from pathlib import Path
 
+from kicad_core.diagnostics import record
+
 # Resolve skills/datasheets package path so detectors can import
 # `from lookup_helpers import has_data, best` without managing sys.path.
 # Path math: lookup_helpers.py → parents[0]=scripts, parents[1]=kicad, parents[2]=skills
@@ -29,14 +31,18 @@ except ImportError:
         return None
 
 
-def get_facts(mpn, cache_dir=None):
+def get_facts(mpn, cache_dir=None, *, diagnostics=None):
     """Return DatasheetFacts for mpn, or None on cache miss / stale / below-gate.
 
     Soft-fallback gate: detector callers check `if facts is None:` and fall
     back to heuristic. Trust-gate filtering happens at field level via
-    facts.best(field, trust_gate=...).
+    facts.best(field, trust_gate=...). A lookup that raises is recorded into
+    *diagnostics* (a list sink, usually ``ctx.diagnostics``) and returns None.
     """
     if not mpn:
+        return None
+    if cache_dir is None:
+        # No cache configured is an expected condition, not a failure: no record (lookup() raises on Path(None)).
         return None
     try:
         from datasheet_types import lookup
@@ -44,7 +50,8 @@ def get_facts(mpn, cache_dir=None):
         return None
     try:
         return lookup(mpn, cache_dir=cache_dir)
-    except Exception:
+    except Exception as exc:
+        record(diagnostics, "lookup_helpers.get_facts", exc, f"datasheet facts unavailable for {mpn}")
         return None
 
 

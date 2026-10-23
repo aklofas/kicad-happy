@@ -169,6 +169,7 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
         os.makedirs(workdir, exist_ok=True)
 
     results = []
+    sim_diagnostics: list = []  # nominal runs only; Monte Carlo trials regenerate the same records
     total_time = 0
 
     # Monte Carlo setup (lazy import only when needed)
@@ -178,7 +179,7 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
         mc_rng = _random.Random(mc_seed)
 
     def _run_single_sim(det_run, det_type, generator, evaluator,
-                        cir_file, out_file, log_file):
+                        cir_file, out_file, log_file, diagnostics=None):
         """Run one simulation: generate -> run -> parse -> evaluate.
 
         Returns (result_dict, elapsed) or (None, 0) on failure/skip.
@@ -199,6 +200,8 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
             return None, 0
 
         if isinstance(cir_content, SpiceTestbench):
+            if diagnostics is not None:
+                diagnostics.extend(cir_content.diagnostics)
             cir_content = cir_content.render(simulator_backend, out_file_spice)
 
         with open(cir_file, "w") as f:
@@ -248,7 +251,7 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
             # Nominal simulation
             result, elapsed = _run_single_sim(
                 det, det_type, generator, evaluator,
-                cir_file, out_file, log_file)
+                cir_file, out_file, log_file, diagnostics=sim_diagnostics)
 
             if result is None:
                 if elapsed > 0:
@@ -354,6 +357,7 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
                             generator, EVALUATOR_REGISTRY.get(tl_type))
 
     report = build_report(results)
+    report["diagnostics"] = sim_diagnostics + report["diagnostics"]
     report["workdir"] = workdir
     report["total_elapsed_s"] = round(total_time, 3)
     report["simulator"] = find_ngspice() or None

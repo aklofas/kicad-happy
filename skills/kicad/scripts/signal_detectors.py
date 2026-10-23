@@ -967,7 +967,7 @@ def detect_crystal_circuits(ctx: AnalysisContext) -> list[dict]:
         # Wiring activates automatically once CrystalBlock lands.
         _cache_dir = getattr(ctx, 'cache_dir', None)
         _xtal_mpn = xtal.get('mpn') or xtal.get('value') or ''
-        _xtal_facts = get_facts(_xtal_mpn, cache_dir=_cache_dir) if _xtal_mpn else None
+        _xtal_facts = get_facts(_xtal_mpn, cache_dir=_cache_dir, diagnostics=getattr(ctx, "diagnostics", None)) if _xtal_mpn else None
         _cl_specs = getattr(getattr(_xtal_facts, 'crystal', None), 'load_capacitance', None)
         if has_data(_cl_specs):
             _cl_sv = best(_cl_specs, min_confidence='medium')

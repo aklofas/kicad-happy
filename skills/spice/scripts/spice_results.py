@@ -1205,6 +1205,7 @@ def build_report(simulation_runs):
         },
         "findings": findings,
         "simulation_results": simulation_runs,
+        "diagnostics": [],
     }
 
     # Trust summary — populate through the shared helper so consumers get
@@ -1213,9 +1214,13 @@ def build_report(simulation_runs):
         import _core_path  # noqa: F401
         from finding_schema import compute_trust_summary
         report["trust_summary"] = compute_trust_summary(findings)
-    except (ImportError, Exception):
+    except Exception as exc:
         # Fall back to a minimal hand-rolled trust_summary so the envelope
         # is still complete even when the helper isn't importable.
+        if not isinstance(exc, ImportError):
+            from kicad_core.diagnostics import record  # _core_path imported above
+            record(report["diagnostics"], "spice_results.build_report", exc,
+                   "minimal trust_summary used")
         report["trust_summary"] = {
             "total_findings": len(findings),
             "trust_level": "high" if not findings else "mixed",

@@ -35,6 +35,7 @@ from collections import Counter
 from pathlib import Path
 
 import _core_path  # noqa: F401
+from kicad_core.diagnostics import record
 from kicad_sexp import find_sub_sheets, iter_placed_symbol_blocks
 
 from kicad_core.fields import (MPN_FIELD_ALIASES, MPN_FIELD_ALIASES_PRIMARY,
@@ -1201,8 +1202,10 @@ def main():
         cfg = load_config(sch_dir)
         bom_config = cfg.get('bom', {})
         preferred_suppliers_cfg = get_preferred_suppliers(cfg)
-    except (ImportError, Exception):
+    except ImportError:
         pass
+    except Exception as exc:
+        record(None, "bom_manager.main", exc, "project BOM config not loaded; defaults used")
 
     if args.command is None:
         parser.print_help()

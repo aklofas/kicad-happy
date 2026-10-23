@@ -16,6 +16,9 @@ Supported detector types (Phase 1):
 
 import math
 import re
+
+import _core_path  # noqa: F401
+from kicad_core.diagnostics import record
 from spice_models import (
     get_generic_models,
     get_ideal_opamp,
@@ -41,7 +44,7 @@ class SpiceTestbench:
     what to simulate and measure in a simulator-agnostic way.
     """
 
-    def __init__(self, circuit, analyses, measurements, extra_vars=None):
+    def __init__(self, circuit, analyses, measurements, extra_vars=None, diagnostics=None):
         """
         Args:
             circuit: Portable SPICE netlist string (everything except
@@ -55,11 +58,14 @@ class SpiceTestbench:
                 - ("name", "min", "expr")
                 - ("name", "let", "expression")
             extra_vars: Dict of extra key=value pairs for output
+            diagnostics: Guarded failures recorded while generating (kept out of
+                         extra_vars, which is echoed into the simulator output)
         """
         self.circuit = circuit
         self.analyses = analyses
         self.measurements = measurements
         self.extra_vars = extra_vars or {}
+        self.diagnostics = diagnostics if diagnostics is not None else []
 
     def render(self, backend, output_file):
         """Render complete .cir file for a specific simulator backend.
@@ -469,17 +475,19 @@ def generate_opamp_circuit(det, output_file, context=None, parasitics=None,
     model_name = "IDEAL_OPAMP"
     model_source = "ideal"
     model_specs = None
+    diagnostics: list = []
     try:
         from spice_model_cache import get_model_for_part
         part_model, source, specs = get_model_for_part(value, "opamp", context,
-                                                       options=model_options)
+                                                       options=model_options,
+                                                       diagnostics=diagnostics)
         if part_model:
             model_str = part_model
             model_name = f"OPAMP_{_sanitize_mpn_for_spice(value)}"
             model_source = source
             model_specs = specs
-    except Exception as _e:
-        pass  # Model resolution failed — use ideal
+    except Exception as exc:  # Model resolution failed — use ideal
+        record(diagnostics, "spice_templates.get_model_for_part", exc, "ideal opamp model used")
 
     if model_source == "ideal":
         model_note = "* Model: IDEAL opamp (Aol=1e6, GBW~10MHz) — real part may have lower GBW"
@@ -555,7 +563,7 @@ IAC 0 {stim_net} DC 0 AC 1u
             ("phase_at_bw", "find", f"vp({out_net})", "bw_3db"),
         ]
         model_extra["expected_tz"] = str(expected_tz)
-        return SpiceTestbench(circuit, analyses, measurements, model_extra)
+        return SpiceTestbench(circuit, analyses, measurements, model_extra, diagnostics)
 
     circuit = f"""\
 * Auto-generated testbench for opamp: {ref} ({value})
@@ -588,7 +596,7 @@ VAC {stim_net} 0 DC 0 AC 1
         ("bw_3db", "when", f"vdb({out_net})", "target", "fall=1"),
         ("phase_at_bw", "find", f"vp({out_net})", "bw_3db"),
     ]
-    return SpiceTestbench(circuit, analyses, measurements, model_extra)
+    return SpiceTestbench(circuit, analyses, measurements, model_extra, diagnostics)
 
 
 def generate_crystal_circuit(det, output_file, context=None, parasitics=None):
