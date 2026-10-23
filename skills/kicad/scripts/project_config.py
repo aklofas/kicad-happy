@@ -45,6 +45,7 @@ VALID_DERATING_PROFILES = {'hobby', 'commercial', 'conservative', 'automotive'}
 VALID_BOARD_CLASSES = {'class_1', 'class_2', 'class_3'}
 VALID_SUPPLIERS = {'digikey', 'mouser', 'lcsc', 'element14'}
 VALID_BOM_GROUP_BY = {'value', 'mpn', 'value+footprint'}
+VALID_DIFF_THRESHOLDS = {'all', 'minor', 'major', 'breaking'}
 
 # Top-level keys whose list values are concatenated across layers
 # instead of replaced.  All other lists use closer-wins semantics.
@@ -59,7 +60,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     'bom': {},
     'analysis': {
         'output_dir': 'analysis',
-        'retention': 5,
+        'retention': 0,
         'auto_diff': True,
         'track_in_git': False,
         'diff_threshold': 'major',
@@ -289,6 +290,25 @@ def _load_and_validate(path: str) -> Optional[Dict[str, Any]]:
                                   f'voltage_overrides.{k} must be numeric, '
                                   f'ignoring', file=sys.stderr)
                             del overrides[k]
+
+        # Analysis-cache knobs: an invalid value is warned and dropped (the default applies).
+        retention = raw_analysis.get('retention')
+        if retention is not None and (isinstance(retention, bool) or not isinstance(retention, int)
+                                      or retention < 0):
+            print(f'Warning: {path}: analysis.retention must be a non-negative '
+                  f'integer, ignoring', file=sys.stderr)
+            del raw_analysis['retention']
+        threshold = raw_analysis.get('diff_threshold')
+        if threshold is not None and (not isinstance(threshold, str)
+                                      or threshold not in VALID_DIFF_THRESHOLDS):
+            print(f'Warning: {path}: analysis.diff_threshold "{threshold}" invalid '
+                  f'(expected {sorted(VALID_DIFF_THRESHOLDS)}), ignoring', file=sys.stderr)
+            del raw_analysis['diff_threshold']
+        output_dir = raw_analysis.get('output_dir')
+        if output_dir is not None and (not isinstance(output_dir, str) or not output_dir):
+            print(f'Warning: {path}: analysis.output_dir must be a non-empty '
+                  f'string, ignoring', file=sys.stderr)
+            del raw_analysis['output_dir']
 
     return cfg
 

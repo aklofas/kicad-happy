@@ -208,6 +208,8 @@ def main(argv: list[str] | None = None) -> int:
     from project_config import resolve_config
     resolved_cfg = resolve_config(args.config, str(Path(args.schematic).parent))
     config = resolved_cfg.effective
+    _acfg = config.get("analysis")
+    analysis_cfg = _acfg if isinstance(_acfg, dict) else {}
 
     # Resolve canonical analysis_dir ONCE — used for both AnalysisContext
     # (Phase 4d-active) and capability_mode_ref (Phase 4 §3.3). This must
@@ -218,7 +220,7 @@ def main(argv: list[str] | None = None) -> int:
     elif args.output:
         _analysis_dir_for_ctx = Path(args.output).parent
     else:
-        _analysis_dir_for_ctx = Path("analysis")
+        _analysis_dir_for_ctx = Path(analysis_cfg.get("output_dir") or "analysis")
 
     # Resolve capability_mode_ref BEFORE build_inputs so inputs.run_id ==
     # capability_mode_ref.run_id (Phase 4 spec §3.3, audit Highest-Risk #5).
@@ -262,11 +264,11 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.analysis_dir:
         from output_io import write_primary_run
-        _acfg = config.get("analysis")
-        track_in_git = bool(_acfg.get("track_in_git", False)) if isinstance(_acfg, dict) else False
         write_primary_run(args.analysis_dir, output, analyzer="schematic", source_path=args.schematic,
                           script_name="analyze_schematic.py",
-                          track_in_git=track_in_git)
+                          track_in_git=bool(analysis_cfg.get("track_in_git", False)),
+                          diff_threshold=analysis_cfg.get("diff_threshold", "major"),
+                          retention=int(analysis_cfg.get("retention", 0) or 0))
     elif args.output:
         Path(args.output).write_text(output)
         print(f"Written to {args.output}", file=sys.stderr)

@@ -125,6 +125,8 @@ def main(argv: list[str] | None = None) -> int:
     from project_config import resolve_config
     resolved_cfg = resolve_config(args.config, str(Path(args.pcb).parent))
     config = resolved_cfg.effective
+    _acfg = config.get("analysis")
+    analysis_cfg = _acfg if isinstance(_acfg, dict) else {}
 
     # Build inputs provenance block (Track 1.3).
     # Resolve canonical analysis_dir ONCE (used for capability_mode_ref).
@@ -134,7 +136,7 @@ def main(argv: list[str] | None = None) -> int:
     elif args.output:
         _analysis_dir = Path(args.output).parent
     else:
-        _analysis_dir = Path("analysis")
+        _analysis_dir = Path(analysis_cfg.get("output_dir") or "analysis")
 
     # Resolve capability_mode_ref BEFORE build_inputs so inputs.run_id ==
     # capability_mode_ref.run_id (audit Highest-Risk #5).
@@ -199,7 +201,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.analysis_dir:
         from output_io import write_primary_run
         write_primary_run(args.analysis_dir, output, analyzer="pcb", source_path=args.pcb,
-                          script_name="analyze_pcb.py", track_in_git=False)
+                          script_name="analyze_pcb.py", track_in_git=False,
+                          diff_threshold=analysis_cfg.get("diff_threshold", "major"),
+                          retention=int(analysis_cfg.get("retention", 0) or 0))
 
     elif args.output:
         Path(args.output).write_text(output)

@@ -624,44 +624,12 @@ def main(argv: list[str] | None = None) -> int:
 
     # Analysis cache integration — write spice.json into the current run folder
     # and update the manifest so downstream tools pick it up.
+    # No project-config resolution in this CLI, so the analysis-cache knobs keep their defaults.
     if args.analysis_dir:
-        import tempfile
-        from analysis_cache import (hash_source_file, should_create_new_run,
-                                    create_run, overwrite_current,
-                                    CANONICAL_OUTPUTS, MANIFEST_FILENAME,
-                                    save_manifest, _empty_manifest,
-                                    GITIGNORE_CONTENT)
-        os.makedirs(analysis_dir, exist_ok=True)
-        manifest_path = os.path.join(analysis_dir, MANIFEST_FILENAME)
-        if not os.path.isfile(manifest_path):
-            save_manifest(analysis_dir, _empty_manifest())
-        gitignore_path = os.path.join(analysis_dir, '.gitignore')
-        if not os.path.isfile(gitignore_path):
-            with open(gitignore_path, 'w') as f:
-                f.write(GITIGNORE_CONTENT)
-
-        source_hashes = {}
-        h = hash_source_file(os.path.abspath(input_path))
-        if h:
-            source_hashes[os.path.basename(input_path)] = h
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            canonical = CANONICAL_OUTPUTS.get('spice', 'spice.json')
-            tmp_out = os.path.join(tmpdir, canonical)
-            with open(tmp_out, 'w') as f:
-                json.dump(report, f, indent=2)
-
-            if should_create_new_run(analysis_dir, tmpdir):
-                run_id = create_run(analysis_dir, tmpdir,
-                                    source_hashes=source_hashes,
-                                    scripts={'spice': 'simulate_subcircuits.py'})
-                print(f'SPICE simulation cached: new run {run_id}',
-                      file=sys.stderr)
-            else:
-                overwrite_current(analysis_dir, tmpdir,
-                                  source_hashes=source_hashes)
-                print('SPICE simulation cached: updated current run',
-                      file=sys.stderr)
+        from output_io import write_primary_run
+        write_primary_run(analysis_dir, json.dumps(report, indent=2), analyzer='spice', source_path=input_path,
+                          script_name='simulate_subcircuits.py', script_entry='simulate_subcircuits.py',
+                          record_project=False)
 
     # Output
     output_json = json.dumps(report, indent=2)

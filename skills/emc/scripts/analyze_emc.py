@@ -410,6 +410,9 @@ def main(argv: list[str] | None = None) -> int:
     except ImportError:
         config = {'version': 1, 'project': {}, 'suppressions': []}
 
+    _acfg = config.get('analysis')
+    analysis_cfg = _acfg if isinstance(_acfg, dict) else {}
+
     # Apply config defaults to CLI args
     project = config.get('project', {})
     if args.standard == 'fcc-class-b' and project.get('emc_standard'):
@@ -448,7 +451,7 @@ def main(argv: list[str] | None = None) -> int:
     elif args.output:
         _analysis_dir = _Path(args.output).parent
     else:
-        _analysis_dir = _Path("analysis")
+        _analysis_dir = _Path(analysis_cfg.get('output_dir') or 'analysis')
 
     # Resolve capability_mode_ref BEFORE build_inputs (audit Highest-Risk #5).
     _capability_mode_ref = get_capability_mode_ref(_analysis_dir)
@@ -590,56 +593,15 @@ def main(argv: list[str] | None = None) -> int:
 
     # Analysis cache integration
     if args.analysis_dir:
-        import tempfile
-        # analysis_cache lives in skills/kicad/scripts/ — already on sys.path
-        from analysis_cache import (hash_source_file, should_create_new_run,
-                                    create_run, overwrite_current,
-                                    CANONICAL_OUTPUTS, MANIFEST_FILENAME,
-                                    save_manifest, _empty_manifest, GITIGNORE_CONTENT,
-                                    resolve_analysis_dir)
-
-        # Keep analysis-dir semantics aligned with the core KiCad analyzers.
-        analysis_dir = resolve_analysis_dir(args.analysis_dir)
-
-        os.makedirs(analysis_dir, exist_ok=True)
-        manifest_path = os.path.join(analysis_dir, MANIFEST_FILENAME)
-        if not os.path.isfile(manifest_path):
-            manifest = _empty_manifest()
-            save_manifest(analysis_dir, manifest)
-        gitignore_path = os.path.join(analysis_dir, '.gitignore')
-        if not os.path.isfile(gitignore_path):
-            with open(gitignore_path, 'w') as f:
-                f.write(GITIGNORE_CONTENT)
-
-        # Hash the schematic JSON that was consumed (primary input)
-        source_hashes = {}
-        if args.schematic:
-            h = hash_source_file(os.path.abspath(args.schematic))
-            if h:
-                source_hashes[os.path.basename(args.schematic)] = h
-        if args.pcb:
-            h = hash_source_file(os.path.abspath(args.pcb))
-            if h:
-                source_hashes[os.path.basename(args.pcb)] = h
-
-        # Write result to a temp dir, then let cache module decide
-        with tempfile.TemporaryDirectory() as tmpdir:
-            canonical = CANONICAL_OUTPUTS.get('emc', 'emc.json')
-            tmp_out = os.path.join(tmpdir, canonical)
-            with open(tmp_out, 'w') as f:
-                json.dump(result, f, indent=2)
-
-            if should_create_new_run(analysis_dir, tmpdir):
-                run_id = create_run(analysis_dir, tmpdir,
-                                    source_hashes=source_hashes,
-                                    scripts={'emc': 'analyze_emc.py'})
-                print(f'EMC analysis cached: new run {run_id}',
-                      file=sys.stderr)
-            else:
-                overwrite_current(analysis_dir, tmpdir,
-                                  source_hashes=source_hashes)
-                print('EMC analysis cached: updated current run',
-                      file=sys.stderr)
+        # output_io lives in skills/kicad/scripts/ — already on sys.path
+        from output_io import write_primary_run
+        write_primary_run(args.analysis_dir, json.dumps(result, indent=2), analyzer='emc',
+                          source_path=args.schematic or args.pcb,
+                          extra_source_paths=(args.pcb,) if args.schematic and args.pcb else (),
+                          script_name='analyze_emc.py', script_entry='analyze_emc.py',
+                          record_project=False,
+                          diff_threshold=analysis_cfg.get('diff_threshold', 'major'),
+                          retention=int(analysis_cfg.get('retention', 0) or 0))
 
     # Output
     if args.output:

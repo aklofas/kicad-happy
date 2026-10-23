@@ -518,8 +518,9 @@ def list_runs(analysis_dir: str, limit: int = 0) -> list:
 # New-run decision logic
 # ---------------------------------------------------------------------------
 
-# Severity ordering for threshold comparison
-_SEVERITY_ORDER = {'none': 0, 'minor': 1, 'major': 2, 'breaking': 3}
+# Severity ordering for threshold comparison; the 'all' threshold means any detected change, the
+# same level as 'minor' (an unchanged output still overwrites the current run).
+_SEVERITY_ORDER = {'none': 0, 'all': 1, 'minor': 1, 'major': 2, 'breaking': 3}
 
 
 def should_create_new_run(analysis_dir: str,
@@ -540,7 +541,7 @@ def should_create_new_run(analysis_dir: str,
         analysis_dir: Path to the analysis/ directory.
         new_outputs_dir: Directory containing the new output JSONs.
         diff_threshold: Minimum severity to trigger a new folder.
-            One of: 'minor', 'major', 'breaking'.
+            One of: 'all' (any detected change, same as 'minor'), 'minor', 'major', 'breaking'.
     """
     current = get_current_run(analysis_dir)
     if current is None:
