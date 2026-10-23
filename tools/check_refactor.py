@@ -10,7 +10,9 @@ Subcommands (added across round 1):
   determinism    snapshot twice with random hash seeds and compare
   aba       in-process A/B/A: analyse two boards in one interpreter (+ a built-in KiCad-10 pair), A must not change
   sync-offline   distributor sync/fetch scripts over recorded fixtures vs the frozen expected outputs
+  text-compare  byte-compare two directories of masked text artefacts (snapshot writes them beside the JSON)
   quick     imports + tags + install-smoke + determinism + aba (+ compare when --baseline given) + sync-offline
+            (+ text-compare when --text-baseline given)
 
 Stdlib only. Exit 0 = pass, 1 = findings, 2 = usage/setup error.
 """
@@ -45,10 +47,11 @@ SKILL_CLIS = {
               "skills/kicad/scripts/analyze_gerbers.py", "skills/kicad/scripts/analyze_thermal.py",
               "skills/kicad/scripts/cross_analysis.py", "skills/kicad/scripts/diff_analysis.py",
               "skills/kicad/scripts/what_if.py", "skills/kicad/scripts/summarize_findings.py",
-              "skills/kicad/review/scripts/deep_review_gate.py"],
+              "skills/kicad/review/scripts/deep_review_gate.py", "skills/kicad/scripts/lifecycle_audit.py",
+              "action/format-report.py"],
     "datasheets": ["skills/datasheets/scripts/datasheet_verify.py", "skills/datasheets/scripts/plan_extraction.py"],
     "emc": ["skills/emc/scripts/analyze_emc.py"],
-    "spice": ["skills/spice/scripts/simulate_subcircuits.py"],
+    "spice": ["skills/spice/scripts/simulate_subcircuits.py", "skills/spice/scripts/extract_parasitics.py"],
     "bom": ["skills/bom/scripts/bom_manager.py"],
     "digikey": ["skills/digikey/scripts/fetch_datasheet_digikey.py", "skills/digikey/scripts/sync_datasheets_digikey.py"],
     "mouser": ["skills/mouser/scripts/fetch_datasheet_mouser.py", "skills/mouser/scripts/sync_datasheets_mouser.py"],
@@ -316,6 +319,8 @@ def cmd_snapshot(args) -> int:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     stats = run_snapshot(Path(args.fixtures), out, Path(args.product), analyzer_env(args.seed))
+    stats["text_artefacts"] = run_text_snapshot(Path(args.fixtures), out, out, Path(args.product),
+                                                _text_env(args.seed))
     print(json.dumps(stats, indent=1, default=str))
     return 1 if stats["failures"] else 0
 
@@ -559,6 +564,8 @@ def install_smoke(product_root: Path, optional_skill: str | None, workdir: Path)
     for sk in skills:
         shutil.copytree(product_root / "skills" / sk, plugin / sk,
                         ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    (workdir / "plugin" / "action").mkdir()
+    shutil.copy2(product_root / "action" / "format-report.py", workdir / "plugin" / "action" / "format-report.py")
     cwd = workdir / "elsewhere"
     cwd.mkdir()
     env = dict(os.environ)
@@ -740,10 +747,252 @@ def cmd_sync_offline(args) -> int:
     return distributor_offline.main(argv)
 
 
-def cmd_quick(args) -> int:
-    if args.baseline and not args.fixtures:
-        print("quick: --baseline requires --fixtures", file=sys.stderr)
+# --- text oracle -----------------------------------------------------------------------------
+# Freezes every --text/--audience/--stage/--compact rendering, every --help screen and every CLI
+# exit code, so a render/argparse reshuffle that leaves the JSON untouched is still caught.
+
+_STD_MODES = [("text", ["--text"]),
+              ("text-designer", ["--text", "--audience", "designer"]),
+              ("text-reviewer", ["--text", "--audience", "reviewer"]),
+              ("text-manager", ["--text", "--audience", "manager"]),
+              ("compact", ["--compact"])]
+_MANAGER_MODES = [("text", ["--text"]), ("text-manager", ["--text", "--audience", "manager"])]
+
+# (scope, cli, mode, extra args). Scopes: sch/pcb/gerber = one run per fixture of that kind;
+# chain = one per directory holding both a schematic and a pcb; legacy/pcbpair = fixed diff pairs.
+TEXT_RUNS = (
+    [("sch", "analyze_schematic", m, a) for m, a in _STD_MODES + [("stage", ["--stage", "schematic"])]]
+    + [("pcb", "analyze_pcb", m, a) for m, a in _STD_MODES + [("stage", ["--stage", "layout"]),
+                                                              ("pcb-full-text", ["--full", "--text"])]]
+    + [("gerber", "analyze_gerbers", m, a) for m, a in _STD_MODES + [("stage", ["--stage", "pre_fab"])]]
+    + [("chain", cli, m, a) for cli in ("analyze_thermal", "analyze_emc", "cross_analysis")
+       for m, a in _MANAGER_MODES + ([("compact", ["--compact"])] if cli == "analyze_emc" else [])]
+    + [("sch", "diff_analysis", "diff-text", ["--text"]), ("sch", "diff_analysis", "diff-json", [])]
+    + [("sch", "what_if", "suggest-text", ["--suggest-fixes", "--text"]),
+       ("sch", "what_if", "suggest-json", ["--suggest-fixes"])]
+    + [("sch", "summarize_findings", m, a) for m, a in (("table", []), ("json", ["--json"]),
+                                                        ("confidence", ["--by-confidence"]),
+                                                        ("warning", ["--severity", "warning"]))]
+    + [("chain", "format-report", "report-md", [])]
+    + [("legacy", "diff_analysis", "diff-text", ["--text"]), ("legacy", "diff_analysis", "diff-json", []),
+       ("pcbpair", "diff_analysis", "diff-text", ["--text"])]
+)
+TEXT_SCRIPTS = {
+    "analyze_schematic": ANALYZERS["schematic"], "analyze_pcb": ANALYZERS["pcb"],
+    "analyze_gerbers": ANALYZERS["gerber"], "analyze_thermal": ANALYZERS["thermal"],
+    "analyze_emc": ANALYZERS["emc"], "cross_analysis": ANALYZERS["cross_analysis"],
+    "diff_analysis": "skills/kicad/scripts/diff_analysis.py", "what_if": "skills/kicad/scripts/what_if.py",
+    "summarize_findings": "skills/kicad/scripts/summarize_findings.py",
+    "format-report": "action/format-report.py",
+}
+NEG_MODES = {"noargs": [], "missing": ["./does-not-exist.kicad_sch"], "badflag": ["--no-such-flag"],
+             "schema-noinput": ["--schema"]}
+TEXT_BASE_SCH = "determinism__usb_dual_esd.kicad_sch"
+LEGACY_A = TOOLS_DIR / "tests" / "fixtures" / "text" / "legacy_severity_a.json"
+LEGACY_B = TOOLS_DIR / "tests" / "fixtures" / "text" / "legacy_severity_b.json"
+TEXT_TIMEOUT = 120
+_CRED_PREFIXES = ("DIGIKEY_", "MOUSER_", "ELEMENT14_", "LCSC_")
+
+
+def _cli_stem(rel: str) -> str:
+    return Path(rel).stem
+
+
+def _cli_names() -> list[str]:
+    return [_cli_stem(r) for rels in SKILL_CLIS.values() for r in rels]
+
+
+def _slot_name(rel: str) -> str:
+    return rel.replace("/", "__")
+
+
+def text_artefact_names(sch: list[str], pcb: list[str], gerber: list[str], chain: list[str]) -> list[str]:
+    """Artefact stems (no extension) for the given fixture slots, in TEXT_RUNS order."""
+    slots = {"sch": sch, "pcb": pcb, "gerber": gerber, "chain": chain}
+    names = []
+    for scope, cli, mode, _ in TEXT_RUNS:
+        if scope in slots:
+            names.extend(f"{s}__{cli}__{mode}" for s in slots[scope])
+        else:
+            names.append(f"{scope}__{mode}")
+    names += [f"help__{c}" for c in _cli_names()]
+    for rel in (r for rels in SKILL_CLIS.values() for r in rels):
+        names += [f"neg__{_cli_stem(rel)}__{m}" for m in NEG_MODES if m != "schema-noinput" or rel in SCHEMA_CLIS]
+    return names
+
+
+def mask_text(text: str, work: str, product: str) -> str:
+    """Replace the volatile tokens of a captured run: dirs, run ids, timestamps, run-dir stamps, elapsed_s,
+    hashes of generated JSON inputs, interpreter."""
+    for root, token in sorted(((work, "<WORK>"), (product, "<PRODUCT>")), key=lambda t: -len(t[0])):
+        for r in sorted({root, str(Path(root).resolve())}, key=len, reverse=True):
+            text = text.replace(r, token)
+    text = re.sub(r"\d{8}T\d{6}Z-[0-9a-f]{6}", "<RUN_ID>", text)
+    text = re.sub(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?", "<TS>", text)
+    text = re.sub(r'("elapsed_s":\s*)-?\d+(\.\d+)?([eE][-+]?\d+)?', r"\1<ELAPSED>", text)
+    text = re.sub(r", line \d+, in ", ", line <N>, in ", text)  # traceback frames
+    text = re.sub(r"\d{4}-\d{2}-\d{2}_\d{4}", "<RUN_STAMP>", text)  # analysis run-dir name
+    text = re.sub(r'(\.json"(?:\s*:|,\s*"sha256"\s*:)\s*")[0-9a-f]{64}"', r'\1<SHA256>"', text)  # hash of a generated analyzer JSON
+    return re.sub(r"python3\.\d+", "python3", text)
+
+
+def _text_env(seed: str) -> dict:
+    env = analyzer_env(seed)
+    for k in [k for k in env if k.startswith(_CRED_PREFIXES)]:
+        del env[k]  # no credentials: a distributor CLI must fail offline, deterministically
+    env["COLUMNS"] = "80"  # argparse wraps --help at the terminal width
+    return env
+
+
+def _text_exec(cmd: list[str], cwd: Path, env: dict, merge: bool = False) -> tuple[int, str]:
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                              env=env, cwd=cwd, timeout=TEXT_TIMEOUT, stdin=subprocess.DEVNULL)
+    except subprocess.TimeoutExpired:
+        return 124, f"timeout after {TEXT_TIMEOUT}s\n"
+    return proc.returncode, proc.stdout + (proc.stderr if merge else "")
+
+
+def _chain_slots(fixtures: list[dict]) -> dict[str, tuple[str, str]]:
+    """schematic slot -> (schematic slot, pcb slot) per directory holding both; the last one in
+    sorted order wins, as in run_snapshot (chain outputs live in that schematic's slot)."""
+    by_dir: dict = {}
+    for fx in fixtures:
+        if fx["kind"] in ("sch", "pcb"):
+            by_dir.setdefault(str(fx["path"].parent), {})[fx["kind"]] = _slot_name(fx["rel"])
+    return {v["sch"]: (v["sch"], v["pcb"]) for _, v in sorted(by_dir.items()) if "sch" in v and "pcb" in v}
+
+
+def run_text_snapshot(fixtures_root: Path, snap_dir: Path, txt_out: Path, product_root: Path, env: dict) -> int:
+    """Write masked `<name>.txt` + `<name>.exit` artefacts into txt_out; returns the artefact count.
+
+    The JSON outputs of a prior run_snapshot into snap_dir feed the downstream CLIs. Scratch files
+    (analysis dirs, markdown) live in a temp work dir so nothing but .txt/.exit lands in txt_out.
+    """
+    txt_out.mkdir(parents=True, exist_ok=True)
+    for stale in [*txt_out.glob("*.txt"), *txt_out.glob("*.exit")]:
+        stale.unlink()
+    py = sys.executable
+    fixtures = discover_fixtures(fixtures_root)
+    count = 0
+    with tempfile.TemporaryDirectory() as td:
+        work = Path(td) / "work"
+        snap = work / "snap"
+        shutil.copytree(snap_dir, snap, ignore=shutil.ignore_patterns("*.txt", "*.exit"))
+        cwd = work / "cwd"
+        cwd.mkdir()
+        legacy = [shutil.copy2(f, work / f.name) for f in (LEGACY_A, LEGACY_B)]  # tool-tree paths must not reach the output
+
+        def emit(name: str, rc: int, text: str) -> None:
+            nonlocal count
+            (txt_out / f"{name}.txt").write_text(mask_text(text, str(work), str(product_root)),
+                                                 encoding="utf-8", newline="")
+            (txt_out / f"{name}.exit").write_text(f"{rc}\n", encoding="utf-8")
+            count += 1
+
+        def script(cli: str) -> str:
+            return str(product_root / TEXT_SCRIPTS[cli])
+
+        def jpath(slot: str, name: str) -> str:
+            return str(snap / slot / name)
+
+        chains = _chain_slots(fixtures)
+        for scope, cli, mode, args in TEXT_RUNS:
+            if scope in ("sch", "pcb", "gerber"):
+                for fx in (f for f in fixtures if f["kind"] == scope):
+                    slot = _slot_name(fx["rel"])
+                    if cli in ("analyze_schematic", "analyze_pcb", "analyze_gerbers"):
+                        cmd = [py, script(cli), str(fx["path"]), *args]
+                    elif cli == "diff_analysis":
+                        cmd = [py, script(cli), jpath(TEXT_BASE_SCH, "schematic.json"),
+                               jpath(slot, "schematic.json"), *args]
+                    elif cli == "what_if":
+                        cmd = [py, script(cli), jpath(slot, "schematic.json"), *args]
+                    else:  # summarize_findings reads an analysis dir written by one analyzer run
+                        adir = work / "analysis" / slot
+                        if not adir.exists():
+                            _text_exec([py, script("analyze_schematic"), str(fx["path"]),
+                                        "--analysis-dir", str(adir)], cwd, env)
+                        cmd = [py, script(cli), str(adir), *args]
+                    rc, out = _text_exec(cmd, cwd, env)
+                    emit(f"{slot}__{cli}__{mode}", rc, out)
+            elif scope == "chain":
+                for slot, (sch_slot, pcb_slot) in sorted(chains.items()):
+                    sj, pj = jpath(sch_slot, "schematic.json"), jpath(pcb_slot, "pcb.json")
+                    if cli == "format-report":
+                        outs = [work / f"{slot}.{k}.md" for k in ("pr", "full", "summary")]
+                        cmd = [py, script(cli), "--schematic", sj, "--pcb", pj]
+                        for flag, fn in (("--emc", "emc.json"), ("--thermal", "thermal.json")):
+                            if (snap / sch_slot / fn).exists():
+                                cmd += [flag, jpath(sch_slot, fn)]
+                        for flag, o in zip(("--output", "--output-full", "--output-summary"), outs):
+                            cmd += [flag, str(o)]
+                        rc, _ = _text_exec(cmd, cwd, env)
+                        out = "\n===\n".join(o.read_text(encoding="utf-8") if o.exists() else "" for o in outs)
+                    else:
+                        rc, out = _text_exec([py, script(cli), "--schematic", sj, "--pcb", pj, *args], cwd, env)
+                    emit(f"{slot}__{cli}__{mode}", rc, out)
+            elif scope == "legacy":
+                rc, out = _text_exec([py, script(cli), str(legacy[0]), str(legacy[1]), *args], cwd, env)
+                emit(f"legacy__{mode}", rc, out)
+            else:  # pcbpair
+                rc, out = _text_exec([py, script(cli), jpath("simple-project__simple.kicad_pcb", "pcb.json"),
+                                      jpath("kh408__qfn_rotated.kicad_pcb", "pcb.json"), *args], cwd, env)
+                emit(f"pcbpair__{mode}", rc, out)
+        for rel in (r for rels in SKILL_CLIS.values() for r in rels):
+            cli = _cli_stem(rel)
+            rc, out = _text_exec([py, str(product_root / rel), "--help"], cwd, env)
+            emit(f"help__{cli}", rc, out)
+            for mode, args in NEG_MODES.items():
+                if mode == "schema-noinput" and rel not in SCHEMA_CLIS:
+                    continue
+                if cli == "format-report" and mode == "missing":
+                    args = ["--schematic", *args]
+                rc, out = _text_exec([py, str(product_root / rel), *args], cwd, env, merge=True)
+                emit(f"neg__{cli}__{mode}", rc, out)
+    return count
+
+
+def compare_text_dirs(base: Path, cand: Path) -> tuple[int, list[str]]:
+    """Byte-compare every .txt/.exit in base against cand. Returns (artefacts in base, delta lines)."""
+    def files(d: Path) -> dict:
+        return {p.name: p for p in d.iterdir() if p.suffix in (".txt", ".exit")}
+    b, c = files(base), files(cand)
+    deltas = []
+    for name in sorted(b):
+        if name not in c:
+            deltas.append(f"{name}: MISSING in candidate")
+            continue
+        bb, cb = b[name].read_bytes(), c[name].read_bytes()
+        if bb != cb:
+            bl, cl = bb.decode("utf-8", "replace").split("\n"), cb.decode("utf-8", "replace").split("\n")
+            i = next((k for k in range(min(len(bl), len(cl))) if bl[k] != cl[k]), min(len(bl), len(cl)))
+            deltas.append(f"{name}: line {i + 1}: base {bl[i] if i < len(bl) else '<EOF>'!r} "
+                          f"| cand {cl[i] if i < len(cl) else '<EOF>'!r}")
+    deltas += [f"{name}: EXTRA in candidate" for name in sorted(set(c) - set(b))]
+    return len(b), deltas
+
+
+def cmd_text_compare(args) -> int:
+    for label, d in (("base", args.base), ("cand", args.cand)):
+        if not Path(d).is_dir():
+            print(f"text-compare: {label} directory not found: {d}", file=sys.stderr)
+            return 2
+    n, deltas = compare_text_dirs(Path(args.base), Path(args.cand))
+    if not n:
+        print(f"text-compare: base directory contains no artefacts: {args.base}", file=sys.stderr)
         return 2
+    for d in deltas:
+        print(d)
+    print("text-compare: " + (f"FAIL ({len(deltas)} delta(s))" if deltas else f"OK ({n} artefacts)"))
+    return 1 if deltas else 0
+
+
+def cmd_quick(args) -> int:
+    for flag, val in (("--baseline", args.baseline), ("--text-baseline", args.text_baseline)):
+        if val and not args.fixtures:
+            print(f"quick: {flag} requires --fixtures", file=sys.stderr)
+            return 2
     if args.fixtures:
         msg = _check_inputs("quick", args.fixtures, args.product)
         if msg:
@@ -754,6 +1003,7 @@ def cmd_quick(args) -> int:
         return 2
     checks = []
     snapshot_failures: list = []
+    text_compare: dict = {}
 
     def timed(name, fn):
         t0 = time.time()
@@ -811,9 +1061,29 @@ def cmd_quick(args) -> int:
             rc |= timed("compare-vs-baseline", _cmp)
         rc |= timed("sync-offline", lambda: cmd_sync_offline(argparse.Namespace(
             expected=DISTRIBUTOR_EXPECTED, product=args.product, fixtures=args.fixtures)))
+        if args.text_baseline:
+            def _text_cmp():
+                base = Path(args.text_baseline)
+                if not base.is_dir():
+                    print(f"text-compare: base directory not found: {base}")
+                    text_compare.update(ok=False, artefacts=0, deltas=[f"base directory not found: {base}"])
+                    return 2
+                with tempfile.TemporaryDirectory() as td:
+                    snap, txt = Path(td) / "snap", Path(td) / "txt"
+                    run_snapshot(Path(args.fixtures), snap, Path(args.product), analyzer_env("0"))
+                    run_text_snapshot(Path(args.fixtures), snap, txt, Path(args.product), _text_env("0"))
+                    n, deltas = compare_text_dirs(base, txt)
+                text_compare.update(ok=not deltas and n > 0, artefacts=n, deltas=deltas)
+                print("text-compare: " + (f"FAIL ({len(deltas)} delta(s))" if deltas else f"OK ({n} artefacts)"))
+                for d in deltas:
+                    print(f"   {d}")
+                return 1 if deltas or not n else 0
+            rc |= timed("text-compare", _text_cmp)
     summary = {"product_sha": _git_sha(Path(args.product)), "fixtures_digest": _fixtures_digest(args.fixtures),
                "fixtures": counts, "snapshot_failures": snapshot_failures,
                "policy": Path(args.policy).name, "checks": checks, "status": "ok" if rc == 0 else "fail"}
+    if text_compare:
+        summary["text_compare"] = text_compare
     if args.json:
         print(json.dumps(summary, indent=1))
     else:
@@ -867,9 +1137,14 @@ def build_parser() -> argparse.ArgumentParser:
     so.add_argument("--product", default=str(REPO_ROOT))
     so.add_argument("--fixtures")
     so.set_defaults(func=cmd_sync_offline)
+    tc = sub.add_parser("text-compare", help="byte-compare two text-artefact directories")
+    tc.add_argument("base")
+    tc.add_argument("cand")
+    tc.set_defaults(func=cmd_text_compare)
     q = sub.add_parser("quick")
     q.add_argument("--fixtures")
     q.add_argument("--baseline")
+    q.add_argument("--text-baseline", help="text-artefact directory to byte-compare against (needs --fixtures)")
     q.add_argument("--product", default=str(REPO_ROOT))
     q.add_argument("--policy", default=str(DEFAULT_POLICY))
     q.add_argument("--json", action="store_true")

@@ -1,0 +1,1183 @@
+{
+ "analyzer_type": "schematic",
+ "schema_version": "1.4.0",
+ "summary": {
+  "total_findings": 11,
+  "by_severity": {
+   "error": 2,
+   "warning": 1,
+   "info": 8
+  }
+ },
+ "trust_summary": {
+  "total_findings": 11,
+  "trust_level": "high",
+  "by_confidence": {
+   "deterministic": 10,
+   "heuristic": 1,
+   "datasheet_backed": 0
+  },
+  "by_evidence_source": {
+   "datasheet": 0,
+   "topology": 9,
+   "heuristic_rule": 0,
+   "symbol_footprint": 0,
+   "bom": 2,
+   "geometry": 0,
+   "api_lookup": 0
+  },
+  "provenance_coverage_pct": 36.4,
+  "bom_coverage": {
+   "total_components": 3,
+   "with_mpn": 1,
+   "with_datasheet": 0,
+   "mpn_pct": 33.3,
+   "datasheet_pct": 0.0
+  }
+ },
+ "kicad_version": "9.0",
+ "file_version": "20241228",
+ "title_block": {},
+ "statistics": {
+  "total_components": 3,
+  "unique_parts": 3,
+  "dnp_parts": 0,
+  "total_nets": 6,
+  "total_wires": 6,
+  "total_no_connects": 0,
+  "component_types": {
+   "resistor": 1,
+   "led": 1,
+   "connector": 1
+  },
+  "power_rails": [
+   {
+    "name": "+5V",
+    "voltage": 5.0
+   },
+   {
+    "name": "GND",
+    "voltage": null
+   }
+  ],
+  "missing_mpn": [
+   "D1",
+   "J1"
+  ],
+  "missing_footprint": []
+ },
+ "findings": [
+  {
+   "detector": "audit_datasheet_coverage",
+   "rule_id": "DS-003",
+   "severity": "CRITICAL",
+   "confidence": "deterministic",
+   "evidence_source": "bom",
+   "category": "verification",
+   "summary": "Datasheets present (4 files) but 2 of 3 unique BOM lines lack an MPN \u2014 those lines can't be cross-referenced. (reworded)",
+   "components": [
+    "D1",
+    "J1"
+   ],
+   "nets": [],
+   "pins": [],
+   "datasheets_dir": "fixtures/datasheets",
+   "datasheet_file_count": 4,
+   "bom_size": 3,
+   "mpn_coverage_percent": 33.3,
+   "recommendation": "Set the MPN field on the listed parts and re-sync datasheets so every BOM entry has manufacturer evidence.",
+   "report_context": {
+    "section": "Datasheet Coverage",
+    "impact": "Partial coverage: pin mapping and electrical claims for unmapped parts remain unverified.",
+    "standard_ref": ""
+   },
+   "stages": [
+    "schematic"
+   ],
+   "finding_id": "schematic:DS-003:d1"
+  },
+  {
+   "connector_ref": "J1",
+   "connector_value": "Conn_01x02_Pin",
+   "interface_type": "header",
+   "risk_level": "medium_risk",
+   "signal_nets": [
+    "__unnamed_3"
+   ],
+   "protected_nets": [],
+   "unprotected_nets": [
+    "__unnamed_3"
+   ],
+   "coverage": "none",
+   "esd_devices": [],
+   "esd_device_details": [],
+   "detector": "audit_esd_protection",
+   "rule_id": "EP-AUD",
+   "category": "protection",
+   "severity": "error",
+   "confidence": "deterministic",
+   "evidence_source": "topology",
+   "summary": "ESD audit J1 (header): none coverage",
+   "description": "ESD protection audit for header connector J1: none coverage.",
+   "components": [
+    "J1"
+   ],
+   "nets": [
+    "__unnamed_3"
+   ],
+   "pins": [],
+   "recommendation": "",
+   "report_context": {
+    "section": "ESD Protection",
+    "impact": "",
+    "standard_ref": ""
+   },
+   "provenance": {
+    "evidence": "esd_coverage_audit",
+    "confidence": "deterministic",
+    "claimed_components": [
+     "J1"
+    ],
+    "excluded_by": [],
+    "suppressed_candidates": []
+   },
+   "detection_id": "",
+   "stages": [
+    "schematic"
+   ],
+   "finding_id": "schematic:EP-AUD-j1"
+  },
+  {
+   "ref": "D1",
+   "value": "LED",
+   "type": "indicator_led",
+   "drive_method": "direct_drive",
+   "detector": "audit_led_circuits",
+   "rule_id": "LA-AUD",
+   "category": "led_control",
+   "severity": "medium",
+   "confidence": "deterministic",
+   "evidence_source": "topology",
+   "summary": "LED D1 (LED) [direct_drive]",
+   "description": "LED audit: D1 using direct_drive drive method.",
+   "components": [
+    "D1"
+   ],
+   "nets": [],
+   "pins": [],
+   "recommendation": "",
+   "report_context": {
+    "section": "LED Audit",
+    "impact": "",
+    "standard_ref": ""
+   },
+   "issue": "no_current_limiting_resistor",
+   "provenance": {
+    "evidence": "led_audit",
+    "confidence": "deterministic",
+    "claimed_components": [
+     "D1"
+    ],
+    "excluded_by": [],
+    "suppressed_candidates": []
+   },
+   "detection_id": "",
+   "stages": [
+    "schematic"
+   ],
+   "finding_id": "schematic:LA-AUD-d1"
+  },
+  {
+   "detector": "analyze_connectivity",
+   "rule_id": "NT-001",
+   "confidence": "deterministic",
+   "evidence_source": "topology",
+   "category": "connectivity",
+   "summary": "Single-pin net: D1.K only connects to D1.1 (K) (passive)",
+   "description": "Net '__unnamed_1' has exactly one pin: D1.1 (K), pin_type='passive'. Verify the intended target \u2014 if this pin should connect somewhere, the wire/label is missing.",
+   "components": [
+    "D1"
+   ],
+   "nets": [
+    "__unnamed_1"
+   ],
+   "pins": [
+    "D1.1"
+   ],
+   "net_display_name": "D1.K",
+   "pin_type": "passive",
+   "pin_name": "K",
+   "recommendation": "Check the schematic at the referenced pin \u2014 add the missing wire or place a no-connect marker if the pin is intentionally floating.",
+   "report_context": {
+    "section": "Connectivity",
+    "impact": "Passive or unclassified pin lonely on its own net.",
+    "standard_ref": ""
+   },
+   "stages": [
+    "schematic"
+   ],
+   "finding_id": "schematic:NT-001:d1"
+  }
+ ],
+ "assessments": [],
+ "bom": [
+  {
+   "value": "LED",
+   "footprint": "LED_SMD:LED_0603_1608Metric",
+   "mpn": "",
+   "manufacturer": "",
+   "digikey": "",
+   "mouser": "",
+   "lcsc": "",
+   "element14": "",
+   "datasheet": "~",
+   "description": "Light emitting diode",
+   "references": [
+    "D1"
+   ],
+   "quantity": 1,
+   "dnp": false,
+   "type": "led"
+  },
+  {
+   "value": "Conn_01x02_Pin",
+   "footprint": "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
+   "mpn": "",
+   "manufacturer": "",
+   "digikey": "",
+   "mouser": "",
+   "lcsc": "",
+   "element14": "",
+   "datasheet": "~",
+   "description": "Generic connector, single row, 01x02, pin header",
+   "references": [
+    "J1"
+   ],
+   "quantity": 1,
+   "dnp": false,
+   "type": "connector"
+  },
+  {
+   "value": "330",
+   "footprint": "Resistor_SMD:R_0603_1608Metric",
+   "mpn": "RC0603FR-07330RL",
+   "manufacturer": "Yageo",
+   "digikey": "",
+   "mouser": "",
+   "lcsc": "",
+   "element14": "",
+   "datasheet": "~",
+   "description": "Resistor",
+   "references": [
+    "R1"
+   ],
+   "quantity": 1,
+   "dnp": false,
+   "type": "resistor"
+  }
+ ],
+ "components": [
+  {
+   "reference": "R1",
+   "value": "330",
+   "lib_id": "Device:R",
+   "lib_name": "",
+   "footprint": "Resistor_SMD:R_0603_1608Metric",
+   "datasheet": "~",
+   "description": "Resistor",
+   "mpn": "RC0603FR-07330RL",
+   "manufacturer": "Yageo",
+   "digikey": "",
+   "mouser": "",
+   "lcsc": "",
+   "element14": "",
+   "x": 134.62,
+   "y": 72.39,
+   "angle": 0.0,
+   "mirror_x": false,
+   "mirror_y": false,
+   "unit": 1,
+   "uuid": "33333333-0001-0000-0000-000000000002",
+   "in_bom": true,
+   "dnp": false,
+   "on_board": true,
+   "pin_uuids": {
+    "1": "44444444-0001-0000-0000-000000000002",
+    "2": "44444444-0001-0000-0000-000000000003"
+   },
+   "type": "resistor",
+   "keywords": "R res resistor",
+   "_sheet": 0,
+   "category": "resistor",
+   "parsed_value": 330.0,
+   "pin_nets": {
+    "1": "+5V",
+    "2": "__unnamed_0"
+   }
+  },
+  {
+   "reference": "D1",
+   "value": "LED",
+   "lib_id": "Device:LED",
+   "lib_name": "",
+   "footprint": "LED_SMD:LED_0603_1608Metric",
+   "datasheet": "~",
+   "description": "Light emitting diode",
+   "mpn": "",
+   "manufacturer": "",
+   "digikey": "",
+   "mouser": "",
+   "lcsc": "",
+   "element14": "",
+   "x": 134.62,
+   "y": 83.82,
+   "angle": 270.0,
+   "mirror_x": false,
+   "mirror_y": false,
+   "unit": 1,
+   "uuid": "33333333-0001-0000-0000-000000000003",
+   "in_bom": true,
+   "dnp": false,
+   "on_board": true,
+   "pin_uuids": {
+    "2": "44444444-0001-0000-0000-000000000004",
+    "1": "44444444-0001-0000-0000-000000000005"
+   },
+   "type": "led",
+   "keywords": "LED diode",
+   "_sheet": 0,
+   "category": "led",
+   "pin_nets": {
+    "1": "__unnamed_1",
+    "2": "__unnamed_2"
+   }
+  },
+  {
+   "reference": "J1",
+   "value": "Conn_01x02_Pin",
+   "lib_id": "Connector:Conn_01x02_Pin",
+   "lib_name": "",
+   "footprint": "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
+   "datasheet": "~",
+   "description": "Generic connector, single row, 01x02, pin header",
+   "mpn": "",
+   "manufacturer": "",
+   "digikey": "",
+   "mouser": "",
+   "lcsc": "",
+   "element14": "",
+   "x": 127.0,
+   "y": 73.66,
+   "angle": 180.0,
+   "mirror_x": false,
+   "mirror_y": false,
+   "unit": 1,
+   "uuid": "33333333-0001-0000-0000-000000000005",
+   "in_bom": true,
+   "dnp": false,
+   "on_board": true,
+   "pin_uuids": {
+    "1": "44444444-0001-0000-0000-000000000007",
+    "2": "44444444-0001-0000-0000-000000000008"
+   },
+   "type": "connector",
+   "keywords": "connector",
+   "is_external_connector": false,
+   "connector_layout": "dual",
+   "_sheet": 0,
+   "category": "connector",
+   "pin_nets": {
+    "1": "GND",
+    "2": "__unnamed_3"
+   }
+  }
+ ],
+ "nets": {
+  "+5V": {
+   "name": "+5V",
+   "pins": [
+    {
+     "component": "#PWR01",
+     "pin_number": "1",
+     "pin_name": "+5V",
+     "pin_type": "power_in"
+    },
+    {
+     "component": "R1",
+     "pin_number": "1",
+     "pin_name": "~",
+     "pin_type": "passive"
+    }
+   ],
+   "point_count": 2,
+   "no_connect": false,
+   "has_pwr_flag": false,
+   "labels": []
+  },
+  "__unnamed_0": {
+   "name": "__unnamed_0",
+   "pins": [
+    {
+     "component": "R1",
+     "pin_number": "2",
+     "pin_name": "~",
+     "pin_type": "passive"
+    }
+   ],
+   "point_count": 2,
+   "no_connect": false,
+   "has_pwr_flag": false,
+   "labels": []
+  },
+  "__unnamed_1": {
+   "name": "__unnamed_1",
+   "pins": [
+    {
+     "component": "D1",
+     "pin_number": "1",
+     "pin_name": "K",
+     "pin_type": "passive"
+    }
+   ],
+   "point_count": 1,
+   "no_connect": false,
+   "has_pwr_flag": false,
+   "labels": []
+  },
+  "__unnamed_2": {
+   "name": "__unnamed_2",
+   "pins": [
+    {
+     "component": "D1",
+     "pin_number": "2",
+     "pin_name": "A",
+     "pin_type": "passive"
+    }
+   ],
+   "point_count": 1,
+   "no_connect": false,
+   "has_pwr_flag": false,
+   "labels": []
+  },
+  "GND": {
+   "name": "GND",
+   "pins": [
+    {
+     "component": "#PWR02",
+     "pin_number": "1",
+     "pin_name": "GND",
+     "pin_type": "power_in"
+    },
+    {
+     "component": "J1",
+     "pin_number": "1",
+     "pin_name": "Pin_1",
+     "pin_type": "passive"
+    }
+   ],
+   "point_count": 5,
+   "no_connect": false,
+   "has_pwr_flag": false,
+   "labels": []
+  },
+  "__unnamed_3": {
+   "name": "__unnamed_3",
+   "pins": [
+    {
+     "component": "J1",
+     "pin_number": "2",
+     "pin_name": "Pin_2",
+     "pin_type": "passive"
+    }
+   ],
+   "point_count": 1,
+   "no_connect": false,
+   "has_pwr_flag": false,
+   "labels": []
+  }
+ },
+ "subcircuits": [],
+ "ic_pin_analysis": [
+  {
+   "reference": "J1",
+   "value": "Conn_01x02_Pin",
+   "type": "connector",
+   "lib_id": "Connector:Conn_01x02_Pin",
+   "mpn": "",
+   "description": "Generic connector, single row, 01x02, pin header",
+   "datasheet": "~",
+   "function": "",
+   "total_pins": 2,
+   "unconnected_pins": 0,
+   "pins": [
+    {
+     "pin_number": "1",
+     "pin_name": "Pin_1",
+     "pin_type": "passive",
+     "net": "GND",
+     "connected_to": [],
+     "has_decoupling_cap": true,
+     "decoupling_caps": [],
+     "note": "Ground net \u2014 decoupling caps listed on VCC/VDD pins"
+    },
+    {
+     "pin_number": "2",
+     "pin_name": "Pin_2",
+     "pin_type": "passive",
+     "net": "__unnamed_3",
+     "connected_to": []
+    }
+   ],
+   "power_pins": [
+    {
+     "pin_number": "1",
+     "pin_name": "Pin_1",
+     "pin_type": "passive",
+     "net": "GND",
+     "connected_to": [],
+     "has_decoupling_cap": true,
+     "decoupling_caps": [],
+     "note": "Ground net \u2014 decoupling caps listed on VCC/VDD pins"
+    }
+   ],
+   "signal_pins": [
+    {
+     "pin_number": "2",
+     "pin_name": "Pin_2",
+     "pin_type": "passive",
+     "net": "__unnamed_3",
+     "connected_to": []
+    }
+   ],
+   "decoupling_caps_by_rail": {}
+  }
+ ],
+ "transistor_pin_analysis": [],
+ "design_analysis": {
+  "net_classification": {
+   "+5V": "power",
+   "__unnamed_0": "signal",
+   "__unnamed_1": "signal",
+   "__unnamed_2": "signal",
+   "GND": "ground",
+   "__unnamed_3": "signal"
+  },
+  "power_domains": {
+   "ic_power_rails": {},
+   "domain_groups": {}
+  },
+  "cross_domain_signals": [],
+  "bus_analysis": {
+   "i2c": [],
+   "spi": [],
+   "uart": [],
+   "can": []
+  },
+  "differential_pairs": [],
+  "erc_warnings": [],
+  "passive_warnings": []
+ },
+ "connectivity_issues": {
+  "unconnected_pins": [],
+  "single_pin_nets": [],
+  "single_pin_net_findings": [
+   {
+    "detector": "analyze_connectivity",
+    "rule_id": "NT-001",
+    "severity": "info",
+    "confidence": "deterministic",
+    "evidence_source": "topology",
+    "category": "connectivity",
+    "summary": "Single-pin net: R1.~ only connects to R1.2 (~) (passive)",
+    "description": "Net '__unnamed_0' has exactly one pin: R1.2 (~), pin_type='passive'. Verify the intended target \u2014 if this pin should connect somewhere, the wire/label is missing.",
+    "components": [
+     "R1"
+    ],
+    "nets": [
+     "__unnamed_0"
+    ],
+    "pins": [
+     "R1.2"
+    ],
+    "net_display_name": "R1.~",
+    "pin_type": "passive",
+    "pin_name": "~",
+    "recommendation": "Check the schematic at the referenced pin \u2014 add the missing wire or place a no-connect marker if the pin is intentionally floating.",
+    "report_context": {
+     "section": "Connectivity",
+     "impact": "Passive or unclassified pin lonely on its own net.",
+     "standard_ref": ""
+    },
+    "stages": [
+     "schematic"
+    ],
+    "finding_id": "schematic:NT-001:r1"
+   },
+   {
+    "detector": "analyze_connectivity",
+    "rule_id": "NT-001",
+    "severity": "info",
+    "confidence": "deterministic",
+    "evidence_source": "topology",
+    "category": "connectivity",
+    "summary": "Single-pin net: D1.K only connects to D1.1 (K) (passive)",
+    "description": "Net '__unnamed_1' has exactly one pin: D1.1 (K), pin_type='passive'. Verify the intended target \u2014 if this pin should connect somewhere, the wire/label is missing.",
+    "components": [
+     "D1"
+    ],
+    "nets": [
+     "__unnamed_1"
+    ],
+    "pins": [
+     "D1.1"
+    ],
+    "net_display_name": "D1.K",
+    "pin_type": "passive",
+    "pin_name": "K",
+    "recommendation": "Check the schematic at the referenced pin \u2014 add the missing wire or place a no-connect marker if the pin is intentionally floating.",
+    "report_context": {
+     "section": "Connectivity",
+     "impact": "Passive or unclassified pin lonely on its own net.",
+     "standard_ref": ""
+    },
+    "stages": [
+     "schematic"
+    ],
+    "finding_id": "schematic:NT-001:d1"
+   },
+   {
+    "detector": "analyze_connectivity",
+    "rule_id": "NT-001",
+    "severity": "info",
+    "confidence": "deterministic",
+    "evidence_source": "topology",
+    "category": "connectivity",
+    "summary": "Single-pin net: D1.A only connects to D1.2 (A) (passive)",
+    "description": "Net '__unnamed_2' has exactly one pin: D1.2 (A), pin_type='passive'. Verify the intended target \u2014 if this pin should connect somewhere, the wire/label is missing.",
+    "components": [
+     "D1"
+    ],
+    "nets": [
+     "__unnamed_2"
+    ],
+    "pins": [
+     "D1.2"
+    ],
+    "net_display_name": "D1.A",
+    "pin_type": "passive",
+    "pin_name": "A",
+    "recommendation": "Check the schematic at the referenced pin \u2014 add the missing wire or place a no-connect marker if the pin is intentionally floating.",
+    "report_context": {
+     "section": "Connectivity",
+     "impact": "Passive or unclassified pin lonely on its own net.",
+     "standard_ref": ""
+    },
+    "stages": [
+     "schematic"
+    ],
+    "finding_id": "schematic:NT-001:d1#1"
+   },
+   {
+    "detector": "analyze_connectivity",
+    "rule_id": "NT-001",
+    "severity": "info",
+    "confidence": "deterministic",
+    "evidence_source": "topology",
+    "category": "connectivity",
+    "summary": "Single-pin net: J1.Pin_2 only connects to J1.2 (Pin_2) (passive)",
+    "description": "Net '__unnamed_3' has exactly one pin: J1.2 (Pin_2), pin_type='passive'. Verify the intended target \u2014 if this pin should connect somewhere, the wire/label is missing.",
+    "components": [
+     "J1"
+    ],
+    "nets": [
+     "__unnamed_3"
+    ],
+    "pins": [
+     "J1.2"
+    ],
+    "net_display_name": "J1.Pin_2",
+    "pin_type": "passive",
+    "pin_name": "Pin_2",
+    "recommendation": "Check the schematic at the referenced pin \u2014 add the missing wire or place a no-connect marker if the pin is intentionally floating.",
+    "report_context": {
+     "section": "Connectivity",
+     "impact": "Passive or unclassified pin lonely on its own net.",
+     "standard_ref": ""
+    },
+    "stages": [
+     "schematic"
+    ],
+    "finding_id": "schematic:NT-001:j1"
+   }
+  ],
+  "multi_driver_nets": [],
+  "power_net_summary": {
+   "+5V": {
+    "pin_count": 1,
+    "components": [
+     "R1"
+    ]
+   },
+   "GND": {
+    "pin_count": 1,
+    "components": [
+     "J1"
+    ]
+   }
+  }
+ },
+ "labels": [],
+ "no_connects": [],
+ "power_symbols": [
+  {
+   "net_name": "+5V",
+   "x": 134.62,
+   "y": 59.69,
+   "lib_id": "power:+5V",
+   "_sheet": 0,
+   "_power_scope": "global"
+  },
+  {
+   "net_name": "GND",
+   "x": 134.62,
+   "y": 93.98,
+   "lib_id": "power:GND",
+   "_sheet": 0,
+   "_power_scope": "global"
+  }
+ ],
+ "annotation_issues": {},
+ "label_shape_warnings": [],
+ "pwr_flag_warnings": [
+  {
+   "net": "+5V",
+   "message": "Power rail '+5V' has power_in pins but no power_out or PWR_FLAG \u2014 ERC will flag this",
+   "pin_types": [
+    "passive",
+    "power_in"
+   ]
+  },
+  {
+   "net": "GND",
+   "message": "Power rail 'GND' has power_in pins but no power_out or PWR_FLAG \u2014 ERC will flag this",
+   "pin_types": [
+    "passive",
+    "power_in"
+   ]
+  }
+ ],
+ "footprint_filter_warnings": [],
+ "sourcing_audit": {
+  "total_bom_components": 3,
+  "mpn_coverage": "1/3",
+  "missing_mpn": [
+   "D1",
+   "J1"
+  ],
+  "missing_digikey": [
+   "D1",
+   "J1",
+   "R1"
+  ],
+  "missing_lcsc": [
+   "D1",
+   "J1",
+   "R1"
+  ],
+  "mpn_percent": 33.3
+ },
+ "ground_domains": {
+  "ground_nets": {
+   "GND": {
+    "domain": "signal",
+    "connections": 1,
+    "components": [
+     "J1"
+    ]
+   }
+  },
+  "multiple_domains": false
+ },
+ "bus_topology": {
+  "bus_wire_count": 0,
+  "bus_entry_count": 0,
+  "unresolved": []
+ },
+ "wire_geometry": {
+  "total_wires": 6,
+  "total_length_mm": 64.8,
+  "avg_length_mm": 10.8
+ },
+ "simulation_readiness": {
+  "total_components": 3,
+  "likely_simulatable": 2,
+  "needs_model": 1,
+  "components_without_model": [
+   "J1"
+  ],
+  "simulatable_percent": 66.7
+ },
+ "property_issues": {},
+ "placement_analysis": {
+  "bounding_box": {
+   "x_min": 127.0,
+   "y_min": 72.4,
+   "x_max": 134.6,
+   "y_max": 83.8,
+   "width_mm": 7.6,
+   "height_mm": 11.4
+  },
+  "clusters": [
+   {
+    "region": "row0_col0",
+    "component_count": 3,
+    "types": {
+     "resistor": 1,
+     "led": 1,
+     "connector": 1
+    },
+    "references": [
+     "D1",
+     "J1",
+     "R1"
+    ]
+   }
+  ],
+  "grid_size": "1x1"
+ },
+ "hierarchical_labels": {
+  "hierarchical_label_count": 0,
+  "global_label_count": 0
+ },
+ "rail_voltages": {
+  "+5V": 5.0,
+  "GND": 0
+ },
+ "power_sequencing_validation": {
+  "power_tree": [],
+  "provenance": {
+   "evidence": "pseq_enable_chain",
+   "confidence": "heuristic",
+   "claimed_components": [],
+   "excluded_by": [],
+   "suppressed_candidates": []
+  }
+ },
+ "sleep_current_audit": {
+  "rails": {
+   "+5V": {
+    "current_paths": [
+     {
+      "ref": "R1",
+      "value": "330",
+      "type": "pull_up",
+      "resistance_ohm": 330.0,
+      "rail_voltage": 5.0,
+      "current_uA": 15151.52,
+      "note": "worst-case (signal driven low)",
+      "likely_state": "worst-case (signal driven low)",
+      "realistic_uA": 15151.52
+     }
+    ],
+    "total_uA": 15151.52,
+    "always_on_uA": 0,
+    "conditional_uA": 15151.52,
+    "realistic_uA": 15151.52
+   }
+  },
+  "total_estimated_sleep_uA": 0.0,
+  "conditional_pull_up_uA": 15151.52,
+  "realistic_total_uA": 15151.52,
+  "observations": [
+   "Always-on current: 0.0 uA (0.00 mA)",
+   "Conditional current (pull-ups, worst-case): 15151.5 uA (15.15 mA)",
+   "Realistic sleep estimate: 15151.5 uA (15.15 mA)"
+  ]
+ },
+ "bom_optimization": {
+  "unique_value_counts": {
+   "resistor": 1,
+   "capacitor": 0
+  },
+  "total_unique_footprints": 3,
+  "single_use_passive_values": 1
+ },
+ "test_coverage": {
+  "test_points": [],
+  "test_point_count": 0,
+  "covered_nets": [],
+  "uncovered_key_nets": [
+   {
+    "net": "+5V",
+    "category": "power_rail"
+   }
+  ],
+  "observations": [
+   "No test points found in design",
+   "No debug connectors (SWD/JTAG/UART) identified",
+   "Key nets without test points: 1 power_rail"
+  ]
+ },
+ "assembly_complexity": {
+  "total_components": 3,
+  "smd_count": 3,
+  "tht_count": 0,
+  "complexity_score": 40,
+  "difficulty_breakdown": {
+   "hard": 0,
+   "medium": 3,
+   "easy": 0
+  },
+  "package_breakdown": {
+   "0603": 2,
+   "other_SMD": 1
+  },
+  "unique_footprints": 2,
+  "observations": [
+   "Moderate assembly complexity (score 40/100)"
+  ]
+ },
+ "missing_info": {
+  "missing_mpn": [
+   "D1",
+   "J1"
+  ]
+ },
+ "bom_lock": {
+  "total_bom_components": 3,
+  "components_with_mpn": 1,
+  "missing_mpn": [
+   "D1",
+   "J1"
+  ],
+  "missing_mpn_count": 2,
+  "generic_values": [],
+  "lock_pct": 33,
+  "status": "fail"
+ },
+ "inputs": {
+  "source_files": [
+   "simple.kicad_sch"
+  ],
+  "source_hashes": {
+   "fixtures/simple-project/simple.kicad_sch": "e52f695116918a9a55308dddec408dfa750d2c8be6a9615a11744bc48135b815"
+  },
+  "run_id": "20260101T000000Z-000000",
+  "config_hash": null,
+  "upstream_artifacts": {}
+ },
+ "compat": {
+  "minimum_consumer_version": "1.4.0",
+  "deprecated_fields": [],
+  "experimental_fields": []
+ },
+ "design_intent": {
+  "product_class": "prototype",
+  "ipc_class": 2,
+  "target_market": "hobby",
+  "expected_lifetime_years": 5,
+  "operating_temp_range": [
+   -10,
+   70
+  ],
+  "preferred_passive_size": "0603",
+  "test_coverage_target": 0.85,
+  "approved_manufacturers": [],
+  "confidence": 0.3,
+  "detection_signals": [],
+  "source": {
+   "ipc_class": "auto",
+   "product_class": "auto",
+   "target_market": "auto",
+   "expected_lifetime_years": "auto",
+   "operating_temp_range": "auto",
+   "preferred_passive_size": "auto",
+   "test_coverage_target": "auto",
+   "approved_manufacturers": "auto"
+  }
+ },
+ "audience_summary": {
+  "designer": {
+   "total_findings": 11,
+   "by_severity": {
+    "error": 2,
+    "warning": 1,
+    "info": 8
+   },
+   "by_category": {
+    "verification": 1,
+    "protection": 1,
+    "led_control": 1,
+    "component_integrity": 1,
+    "connectivity": 4,
+    "power": 1,
+    "sourcing": 1,
+    "lifecycle": 1
+   },
+   "top_issues": [
+    {
+     "detector": "validate_led_resistors",
+     "rule_id": "LR-001",
+     "category": "component_integrity",
+     "summary": "LED D1: no current-limiting resistor found",
+     "description": "LED D1 (LED) has no series current-limiting resistor.",
+     "components": [
+      "D1"
+     ],
+     "nets": [
+      "__unnamed_1",
+      "__unnamed_2"
+     ],
+     "pins": [],
+     "severity": "error",
+     "confidence": "heuristic",
+     "evidence_source": "topology",
+     "recommendation": "Add a current-limiting resistor (typically 330R-1k for 3.3V).",
+     "fix_params": {
+      "type": "add_component",
+      "components": [
+       {
+        "type": "resistor",
+        "value": "330",
+        "net_from": "__unnamed_1",
+        "net_to": "__unnamed_2"
+       }
+      ],
+      "basis": "LED requires series current limiting"
+     },
+     "report_context": {
+      "section": "Component Integrity",
+      "impact": "LED overcurrent causes failure",
+      "standard_ref": ""
+     },
+     "provenance": {
+      "evidence": "lr_resistor_check",
+      "confidence": "deterministic",
+      "claimed_components": [],
+      "excluded_by": [],
+      "suppressed_candidates": []
+     },
+     "schema_era": "v1.4",
+     "finding_id": "schematic:validation_findings-628e971bd147",
+     "detection_id": "validation_findings:628e971bd147",
+     "stages": [
+      "schematic"
+     ]
+    },
+    {
+     "detector": "audit_sourcing_gate",
+     "rule_id": "SS-001",
+     "severity": "error",
+     "confidence": "deterministic",
+     "evidence_source": "bom",
+     "category": "sourcing",
+     "summary": "Sourcing blocker: BOM has <50% MPN coverage (1/3 unique parts). Board is not pre-fab ready.",
+     "description": "Sourcing audit: 1 of 3 unique BOM lines (grouped by value + footprint) carry a manufacturer part number (33.3%). Pre-fab readiness requires 100% coverage; production assembly requires all parts sourceable via one of the supported distributors.",
+     "components": [
+      "D1",
+      "J1"
+     ],
+     "nets": [],
+     "pins": [],
+     "mpn_coverage_percent": 33.3,
+     "missing_mpn_lines": 2,
+     "missing_mpn_refs": 2,
+     "total_bom_lines": 3,
+     "recommendation": "Populate the MPN field on the listed refs (use the digikey / mouser / lcsc / element14 skill to search by value/footprint when the MPN isn't already known).",
+     "report_context": {
+      "section": "Sourcing",
+      "impact": "Pre-fab gate: board cannot be ordered until MPN coverage reaches 100%.",
+      "standard_ref": ""
+     },
+     "stages": [
+      "pre_fab"
+     ],
+     "finding_id": "schematic:SS-001:d1"
+    },
+    {
+     "detector": "audit_rail_sources",
+     "rule_id": "RS-001",
+     "severity": "warning",
+     "confidence": "deterministic",
+     "evidence_source": "topology",
+     "category": "power",
+     "summary": "+5V has no declared source",
+     "description": "Net +5V carries power_in pins but has no power_out pin, no PWR_FLAG, no regulator output mapping, and no bridged solder jumper path to a sourced net.",
+     "components": [],
+     "nets": [
+      "+5V"
+     ],
+     "pins": [
+      "#PWR01.1"
+     ],
+     "source_path": "none",
+     "recommendation": "Add a PWR_FLAG to declare the rail as externally powered (e.g. from a connector) or trace the rail back to a regulator output. If the source lives on another sheet, promote the net name to a global label.",
+     "report_context": {
+      "section": "Power \u2014 Rail Sources",
+      "impact": "Rail has no source visible to the analyser; likely a wiring gap or missing PWR_FLAG.",
+      "standard_ref": ""
+     },
+     "provenance": {
+      "evidence": "rs_rail_audit",
+      "confidence": "deterministic",
+      "claimed_components": [],
+      "excluded_by": [],
+      "suppressed_candidates": []
+     },
+     "detection_id": "",
+     "stages": [
+      "schematic"
+     ],
+     "finding_id": "schematic:RS-001:+5v"
+    }
+   ]
+  },
+  "reviewer": {
+   "total_findings": 3,
+   "by_category": {
+    "component_integrity": 1,
+    "power": 1,
+    "sourcing": 1
+   },
+   "top_issues": [
+    {
+     "rule_id": "LR-001",
+     "severity": "error",
+     "summary": "LED D1: no current-limiting resistor found",
+     "recommendation": "Add a current-limiting resistor (typically 330R-1k for 3.3V).",
+     "category": "component_integrity"
+    },
+    {
+     "rule_id": "SS-001",
+     "severity": "error",
+     "summary": "Sourcing blocker: BOM has <50% MPN coverage (1/3 unique parts). Board is not pre-fab ready.",
+     "recommendation": "Populate the MPN field on the listed refs (use the digikey / mouser / lcsc / element14 skill to search by value/footprint when the MPN isn't already known).",
+     "category": "sourcing"
+    },
+    {
+     "rule_id": "RS-001",
+     "severity": "warning",
+     "summary": "+5V has no declared source",
+     "recommendation": "Add a PWR_FLAG to declare the rail as externally powered (e.g. from a connector) or trace the rail back to a regulator output. If the source lives on another sheet, promote the net name to a global label.",
+     "category": "power"
+    }
+   ]
+  },
+  "manager": {
+   "risk_level": "moderate",
+   "blocker_count": 2,
+   "warning_count": 1,
+   "stage_readiness": {
+    "schematic": "needs_work",
+    "layout": "pass",
+    "pre_fab": "needs_work",
+    "bring_up": "pass"
+   },
+   "one_liner": "2 errors, 1 warning across 3 categories. Schematic, pre-fab stages have blockers."
+  }
+ },
+ "capability_mode_ref": {
+  "source": "analysis/capability_mode.json",
+  "run_id": "20261022T215750Z-864a2b"
+ }
+}

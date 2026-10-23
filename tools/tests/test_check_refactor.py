@@ -1,4 +1,4 @@
-import contextlib, importlib.util, inspect, io, json, subprocess, sys, tempfile, unittest
+import contextlib, importlib.util, inspect, io, json, re, subprocess, sys, tempfile, unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -751,6 +751,57 @@ class SexpParserFacade(unittest.TestCase):
         import sexp_parser, kicad_core.sexp as core
         for n in names:
             self.assertIs(getattr(sexp_parser, n), getattr(core, n), n)
+
+
+class TextOracle(unittest.TestCase):
+    def test_mask_text_replaces_volatile_tokens(self):
+        s = 'run 20261017T101010Z-abc123 at 2026-10-17T10:10:10+00:00 "elapsed_s": 1.25 /w/x /p/y python3.12 File "/p/y/a.py", line 1137, in <module>'
+        self.assertEqual(cr.mask_text(s, "/w/x", "/p/y"),
+                         'run <RUN_ID> at <TS> "elapsed_s": <ELAPSED> <WORK> <PRODUCT> python3 '
+                         'File "<PRODUCT>/a.py", line <N>, in <module>')
+
+    def test_mask_text_replaces_run_dir_stamp_and_generated_json_hash(self):
+        h = "ab" * 32
+        s = f'analysis/x/2026-10-23_0010 {{"/w/snap/a.json": "{h}", "/w/in.kicad_sch": "{h}", "path": "/w/b.json",\n "sha256": "{h}"}}'
+        self.assertEqual(cr.mask_text(s, "/w", "/p"),
+                         f'analysis/x/<RUN_STAMP> {{"<WORK>/snap/a.json": "<SHA256>", "<WORK>/in.kicad_sch": "{h}", "path": "<WORK>/b.json",\n "sha256": "<SHA256>"}}')
+
+    def test_text_compare_detects_one_byte_and_missing_artefacts(self):
+        with tempfile.TemporaryDirectory() as b, tempfile.TemporaryDirectory() as c:
+            for d, files in ((b, {"a.txt": "x\n", "a.exit": "0\n", "b.txt": "y\n"}),
+                             (c, {"a.txt": "x\n", "a.exit": "1\n"})):
+                for n, t in files.items():
+                    (Path(d) / n).write_text(t, encoding="utf-8")
+            rc, out, _ = _run_main(["text-compare", b, c])
+            self.assertEqual(rc, 1)
+            self.assertIn("a.exit", out)
+            self.assertIn("b.txt", out)
+            self.assertNotIn("a.txt", out)
+            rc, out, _ = _run_main(["text-compare", b, b])
+            self.assertEqual((rc, out.strip()), (0, "text-compare: OK (3 artefacts)"))
+
+    def test_text_runs_matrix_names_every_mode(self):
+        modes = {}
+        for scope, cli, mode, _args in cr.TEXT_RUNS:
+            modes.setdefault((scope, cli), []).append(mode)
+        std = ["text", "text-designer", "text-reviewer", "text-manager", "compact", "stage"]
+        self.assertEqual(modes[("sch", "analyze_schematic")], std)
+        self.assertEqual(modes[("pcb", "analyze_pcb")], std + ["pcb-full-text"])
+        self.assertEqual(modes[("gerber", "analyze_gerbers")], std)
+        self.assertEqual(modes[("chain", "analyze_thermal")], ["text", "text-manager"])
+        self.assertEqual(modes[("chain", "cross_analysis")], ["text", "text-manager"])
+        self.assertEqual(modes[("chain", "analyze_emc")], ["text", "text-manager", "compact"])
+        self.assertEqual(modes[("sch", "what_if")], ["suggest-text", "suggest-json"])
+        self.assertEqual(modes[("sch", "summarize_findings")], ["table", "json", "confidence", "warning"])
+        self.assertEqual(modes[("chain", "format-report")], ["report-md"])
+        pat = re.compile(r"^[a-z0-9_.-]+__[a-z_-]+__[a-z-]+$")
+        names = cr.text_artefact_names(["fx.kicad_sch"], ["fx.kicad_pcb"], ["gb"], ["fx.kicad_sch"])
+        self.assertTrue(names)
+        for n in names:
+            self.assertTrue(pat.match(n) or n.startswith(("help__", "neg__", "legacy__", "pcbpair__")), n)
+        self.assertIn("help__format-report", names)
+        self.assertIn("neg__analyze_pcb__schema-noinput", names)
+        self.assertNotIn("neg__diff_analysis__schema-noinput", names)
 
 
 class SkillLocalResources(unittest.TestCase):
