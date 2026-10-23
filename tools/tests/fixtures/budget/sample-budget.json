@@ -1,0 +1,9 @@
+{
+ "budget_id": "sample",
+ "classes": [
+  {"id": "emc-title", "files": "*/emc.json", "path": "^findings\\[\\d+\\]\\.title$", "kinds": ["missing"],
+   "where": {"rule_id": ["GP-001"]}, "expect": "GP-001 findings drop the title key"},
+  {"id": "emc-diagnostics", "files": "*/emc.json", "path": "^diagnostics$", "kinds": ["added"],
+   "expect": "emc output gains a diagnostics list"}
+ ]
+}

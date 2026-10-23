@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import ast
 import contextlib
+import fnmatch
 import hashlib
 import io
 import json
@@ -204,6 +205,82 @@ def cmd_compare(args) -> int:
         print("compare: " + ("FAIL" if bad else "OK") + f" ({report['total_deltas']} delta(s), "
               f"{len(report['files'])} file(s) differ)")
     return 1 if bad else 0
+
+
+_FINDING_PREFIX = re.compile(r"^((?:datasheet_verification\.)?)findings\[(\d+)\]")
+
+
+def _finding_rule_ids(prefix: str, index: int, docs: list) -> list:
+    """rule_id of the finding at <prefix>findings[index] in each document that has one."""
+    ids = []
+    for doc in docs:
+        node = doc.get("datasheet_verification") if prefix and isinstance(doc, dict) else doc
+        findings = node.get("findings") if isinstance(node, dict) else None
+        if isinstance(findings, list) and index < len(findings) and isinstance(findings[index], dict):
+            ids.append(findings[index].get("rule_id"))
+    return ids
+
+
+def _class_claims(cls: dict, rel: str, path: str, kind: str, docs) -> bool:
+    if not fnmatch.fnmatchcase(rel, cls["files"]) or kind not in cls["kinds"] or not re.search(cls["path"], path):
+        return False
+    wanted = (cls.get("where") or {}).get("rule_id")
+    if wanted is None:
+        return True
+    m = _FINDING_PREFIX.match(path)
+    if not m:
+        return False
+    ids = _finding_rule_ids(m.group(1), int(m.group(2)), docs())
+    return bool(ids) and all(i in wanted for i in ids)
+
+
+def budget_compare(report: dict, budget: dict, base_dir: Path, cand_dir: Path) -> dict:
+    """Assign every delta in a compare_dirs report to the first budget class that claims it."""
+    claimed: dict = {}
+    unclaimed: list = []
+    for rel, deltas in report["files"].items():
+        cache: list = []
+
+        def docs(rel=rel, cache=cache):
+            if not cache:
+                cache.extend(json.loads((d / rel).read_text(encoding="utf-8")) for d in (cand_dir, base_dir))
+            return cache
+        for path, kind, b, c in deltas:
+            cls = next((k for k in budget["classes"] if _class_claims(k, rel, path, kind, docs)), None)
+            if cls:
+                claimed[cls["id"]] = claimed.get(cls["id"], 0) + 1
+            else:
+                unclaimed.append([rel, path, kind, b, c])
+    unclaimed += [[rel, "", "missing-file", None, None] for rel in report["missing_in_candidate"]]
+    unclaimed += [[rel, "", "extra-file", None, None] for rel in report["extra_in_candidate"]]
+    return {"claimed": claimed, "unclaimed": unclaimed,
+            "classes_unused": [k["id"] for k in budget["classes"] if k["id"] not in claimed]}
+
+
+def cmd_budget_compare(args) -> int:
+    base, cand = Path(args.base), Path(args.cand)
+    if not cand.is_dir():
+        print(f"budget-compare: cand directory not found: {cand}", file=sys.stderr)
+        return 2
+    msg = _check_base_dir(base)
+    if msg:
+        print(f"budget-compare: {msg}", file=sys.stderr)
+        return 2
+    try:
+        volatile = load_policy(Path(args.policy))
+        budget = json.loads(Path(args.budget).read_text(encoding="utf-8"))
+    except (OSError, ValueError, KeyError) as exc:
+        print(f"budget-compare: cannot load policy or budget: {exc}", file=sys.stderr)
+        return 2
+    out = budget_compare(compare_dirs(base, cand, volatile), budget, base, cand)
+    if args.report:
+        Path(args.report).write_text(json.dumps(out, indent=1, default=str), encoding="utf-8")
+    for row in out["unclaimed"][:50]:
+        print(f"   {row[0]} {row[2]} {row[1]}: {row[3]!r} -> {row[4]!r}")
+    n = len(out["unclaimed"])
+    print("budget-compare: " + (f"FAIL ({n} unclaimed)" if n
+                                else f"OK ({sum(out['claimed'].values())} claimed in {len(out['claimed'])} classes)"))
+    return 1 if n else 0
 
 
 GERBER_EXTS = {".gbr", ".gbl", ".gtl", ".gm1", ".gko", ".drl", ".gbs", ".gts", ".gbo", ".gto", ".gbp", ".gtp"}
@@ -973,19 +1050,45 @@ def compare_text_dirs(base: Path, cand: Path) -> tuple[int, list[str]]:
     return len(b), deltas
 
 
+def split_allowed(deltas: list[str], allow: list[str]) -> tuple[list[str], list[str]]:
+    """Split compare_text_dirs delta lines into (unallowed, allowed) by artefact-name glob."""
+    def ok(line: str) -> bool:
+        name = line.split(":", 1)[0]
+        return any(fnmatch.fnmatchcase(n, g) for g in allow for n in (name, Path(name).stem))
+    return [d for d in deltas if not ok(d)], [d for d in deltas if ok(d)]
+
+
+def _load_allow(path) -> list[str]:
+    return json.loads(Path(path).read_text(encoding="utf-8")) if path else []
+
+
+def _text_summary(n: int, bad: list[str], allowed: list[str]) -> str:
+    if bad:
+        return f"FAIL ({len(bad)} delta(s))"
+    return f"OK ({n} artefacts" + (f", {len(allowed)} allowed differ)" if allowed else ")")
+
+
 def cmd_text_compare(args) -> int:
     for label, d in (("base", args.base), ("cand", args.cand)):
         if not Path(d).is_dir():
             print(f"text-compare: {label} directory not found: {d}", file=sys.stderr)
             return 2
+    try:
+        allow = _load_allow(args.allow)
+    except (OSError, ValueError) as exc:
+        print(f"text-compare: cannot load allow list {args.allow}: {exc}", file=sys.stderr)
+        return 2
     n, deltas = compare_text_dirs(Path(args.base), Path(args.cand))
     if not n:
         print(f"text-compare: base directory contains no artefacts: {args.base}", file=sys.stderr)
         return 2
-    for d in deltas:
+    bad, allowed = split_allowed(deltas, allow)
+    if args.report:
+        Path(args.report).write_text("".join(f"{d}\n" for d in allowed), encoding="utf-8")
+    for d in bad:
         print(d)
-    print("text-compare: " + (f"FAIL ({len(deltas)} delta(s))" if deltas else f"OK ({n} artefacts)"))
-    return 1 if deltas else 0
+    print("text-compare: " + _text_summary(n, bad, allowed))
+    return 1 if bad else 0
 
 
 def cmd_quick(args) -> int:
@@ -1004,6 +1107,7 @@ def cmd_quick(args) -> int:
     checks = []
     snapshot_failures: list = []
     text_compare: dict = {}
+    budget_result: dict = {}
 
     def timed(name, fn):
         t0 = time.time()
@@ -1045,6 +1149,20 @@ def cmd_quick(args) -> int:
                     stats = run_snapshot(Path(args.fixtures), Path(td), Path(args.product), analyzer_env("0"))
                     snapshot_failures[:] = stats["failures"]
                     rep = compare_dirs(Path(args.baseline), Path(td), load_policy(Path(args.policy)))
+                    if args.budget:
+                        budget_result.update(budget_compare(
+                            rep, json.loads(Path(args.budget).read_text(encoding="utf-8")),
+                            Path(args.baseline), Path(td)))
+                if args.budget:
+                    bad = budget_result["unclaimed"] or stats["failures"]
+                    print("compare-vs-baseline: " + ("FAIL" if bad else "OK")
+                          + f" ({sum(budget_result['claimed'].values())} claimed, "
+                          f"{len(budget_result['unclaimed'])} unclaimed)")
+                    for row in budget_result["unclaimed"][:50]:
+                        print(f"   {row[0]} {row[2]} {row[1]}: {row[3]!r} -> {row[4]!r}")
+                    for f in stats["failures"]:
+                        print(f"   snapshot failure: {f}")
+                    return 1 if bad else 0
                 bad = (rep["total_deltas"] or rep["missing_in_candidate"] or rep["extra_in_candidate"]
                        or stats["failures"])
                 print("compare-vs-baseline: " + ("FAIL" if bad else "OK") + f" ({rep['total_deltas']} delta(s))")
@@ -1073,8 +1191,9 @@ def cmd_quick(args) -> int:
                     run_snapshot(Path(args.fixtures), snap, Path(args.product), analyzer_env("0"))
                     run_text_snapshot(Path(args.fixtures), snap, txt, Path(args.product), _text_env("0"))
                     n, deltas = compare_text_dirs(base, txt)
-                text_compare.update(ok=not deltas and n > 0, artefacts=n, deltas=deltas)
-                print("text-compare: " + (f"FAIL ({len(deltas)} delta(s))" if deltas else f"OK ({n} artefacts)"))
+                deltas, allowed = split_allowed(deltas, _load_allow(args.text_allow))
+                text_compare.update(ok=not deltas and n > 0, artefacts=n, deltas=deltas, allowed=allowed)
+                print("text-compare: " + _text_summary(n, deltas, allowed))
                 for d in deltas:
                     print(f"   {d}")
                 return 1 if deltas or not n else 0
@@ -1084,6 +1203,8 @@ def cmd_quick(args) -> int:
                "policy": Path(args.policy).name, "checks": checks, "status": "ok" if rc == 0 else "fail"}
     if text_compare:
         summary["text_compare"] = text_compare
+    if budget_result:
+        summary["budget"] = budget_result
     if args.json:
         print(json.dumps(summary, indent=1))
     else:
@@ -1140,15 +1261,26 @@ def build_parser() -> argparse.ArgumentParser:
     tc = sub.add_parser("text-compare", help="byte-compare two text-artefact directories")
     tc.add_argument("base")
     tc.add_argument("cand")
+    tc.add_argument("--allow", help="JSON list of artefact-name globs that may differ")
+    tc.add_argument("--report", help="write the allowed differences to this file")
     tc.set_defaults(func=cmd_text_compare)
     q = sub.add_parser("quick")
     q.add_argument("--fixtures")
     q.add_argument("--baseline")
     q.add_argument("--text-baseline", help="text-artefact directory to byte-compare against (needs --fixtures)")
+    q.add_argument("--budget", help="budget file; baseline deltas must all be claimed by a class (needs --baseline)")
+    q.add_argument("--text-allow", help="JSON list of artefact-name globs that may differ (needs --text-baseline)")
     q.add_argument("--product", default=str(REPO_ROOT))
     q.add_argument("--policy", default=str(DEFAULT_POLICY))
     q.add_argument("--json", action="store_true")
     q.set_defaults(func=cmd_quick)
+    bc = sub.add_parser("budget-compare", help="compare two snapshot dirs; every delta must be claimed by a budget class")
+    bc.add_argument("base")
+    bc.add_argument("cand")
+    bc.add_argument("--budget", required=True)
+    bc.add_argument("--report", help="write the claimed/unclaimed result as JSON")
+    bc.add_argument("--policy", default=str(DEFAULT_POLICY))
+    bc.set_defaults(func=cmd_budget_compare)
     return p
 
 

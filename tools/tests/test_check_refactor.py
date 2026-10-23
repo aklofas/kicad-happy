@@ -817,5 +817,121 @@ class SkillLocalResources(unittest.TestCase):
         self.assertEqual(mr.SCHEMA_DIR, cr.REPO_ROOT / "skills" / "datasheets" / "schemas")
 
 
+def _write(path, obj):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(obj), encoding="utf-8")
+
+
+BUDGET_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "budget" / "sample-budget.json"
+
+
+class BudgetedOracle(unittest.TestCase):
+    def _trees(self, tmp_path, rule_id="GP-001"):
+        base, cand = Path(tmp_path) / "b", Path(tmp_path) / "c"
+        _write(base / "x" / "emc.json", {"findings": [{"rule_id": rule_id, "title": "t", "summary": "t"}]})
+        _write(cand / "x" / "emc.json", {"findings": [{"rule_id": rule_id, "summary": "t"}], "diagnostics": []})
+        return base, cand
+
+    def test_budget_compare_claims_only_matching_deltas(self):
+        with tempfile.TemporaryDirectory() as td:
+            base, cand = self._trees(td)
+            budget = {"budget_id": "t", "classes": [
+                {"id": "emc-title", "files": "*/emc.json", "path": r"^findings\[\d+\]\.title$",
+                 "kinds": ["missing"], "where": {"rule_id": ["GP-001"]}}]}
+            out = cr.budget_compare(cr.compare_dirs(base, cand, set()), budget, base, cand)
+            self.assertEqual(out["claimed"], {"emc-title": 1})
+            self.assertEqual(out["unclaimed"], [["x/emc.json", "diagnostics", "added", None, []]])
+            self.assertEqual(out["classes_unused"], [])
+
+    def test_budget_compare_where_rule_id_rejects_other_rules(self):
+        with tempfile.TemporaryDirectory() as td:
+            base, cand = self._trees(td, rule_id="GP-002")
+            budget = json.loads(BUDGET_FIXTURE.read_text(encoding="utf-8"))
+            out = cr.budget_compare(cr.compare_dirs(base, cand, set()), budget, base, cand)
+            self.assertEqual(out["claimed"], {"emc-diagnostics": 1})
+            self.assertEqual([u[1] for u in out["unclaimed"]], ["findings[0].title"])
+            self.assertEqual(out["classes_unused"], ["emc-title"])
+
+    def test_budget_compare_exit_codes(self):
+        with tempfile.TemporaryDirectory() as td:
+            base, cand = self._trees(td)
+            bf = Path(td) / "budget.json"
+            budget = {"budget_id": "t", "classes": [
+                {"id": "emc-title", "files": "*/emc.json", "path": r"^findings\[\d+\]\.title$",
+                 "kinds": ["missing"], "where": {"rule_id": ["GP-001"]}}]}
+            _write(bf, budget)
+            rc, out, _ = _run_main(["budget-compare", str(base), str(cand), "--budget", str(bf)])
+            self.assertEqual(rc, 1)
+            self.assertIn("budget-compare: FAIL (1 unclaimed)", out)
+            budget["classes"].append({"id": "diag", "files": "*/emc.json", "path": "^diagnostics$", "kinds": ["added"]})
+            _write(bf, budget)
+            rep = Path(td) / "rep.json"
+            rc, out, _ = _run_main(["budget-compare", str(base), str(cand), "--budget", str(bf), "--report", str(rep)])
+            self.assertEqual(rc, 0)
+            self.assertIn("budget-compare: OK (2 claimed in 2 classes)", out)
+            self.assertEqual(json.loads(rep.read_text(encoding="utf-8"))["unclaimed"], [])
+
+    def test_text_compare_allow_glob(self):
+        with tempfile.TemporaryDirectory() as td:
+            b, c = Path(td) / "b", Path(td) / "c"
+            for d, ts in ((b, "old\n"), (c, "new\n")):
+                d.mkdir()
+                (d / "r__summarize_findings__a.txt").write_text(ts, encoding="utf-8")
+                (d / "keep.txt").write_text("same\n", encoding="utf-8")
+            allow, rep = Path(td) / "allow.json", Path(td) / "rep.txt"
+            _write(allow, ["*__summarize_findings__*"])
+            rc, out, _ = _run_main(["text-compare", str(b), str(c), "--allow", str(allow), "--report", str(rep)])
+            self.assertEqual(rc, 0)
+            self.assertEqual(out.strip(), "text-compare: OK (2 artefacts, 1 allowed differ)")
+            self.assertIn("r__summarize_findings__a.txt", rep.read_text(encoding="utf-8"))
+            (c / "keep.txt").write_text("changed\n", encoding="utf-8")
+            rc, out, _ = _run_main(["text-compare", str(b), str(c), "--allow", str(allow)])
+            self.assertEqual(rc, 1)
+            self.assertIn("keep.txt", out)
+
+    def test_quick_passes_budget_and_text_allow_through(self):
+        seen = {}
+        orig = cr.budget_compare, cr.compare_text_dirs
+        def fake_budget(report, budget, base, cand):
+            seen["budget"] = budget["budget_id"]
+            return {"claimed": {}, "unclaimed": [], "classes_unused": []}
+        def fake_text(base, cand):
+            return 2, ["r__x__a.txt: line 1: base 'a' | cand 'b'"]
+        cr.budget_compare, cr.compare_text_dirs = fake_budget, fake_text
+        try:
+            with tempfile.TemporaryDirectory() as td:
+                bf, af = Path(td) / "b.json", Path(td) / "a.json"
+                _write(bf, {"budget_id": "qb", "classes": []})
+                _write(af, ["*x*"])
+                fx = Path(td) / "fx"
+                (fx).mkdir()
+                tb, bl = Path(td) / "tb", Path(td) / "bl"
+                tb.mkdir()
+                _write(bl / "a.json", {})
+                orig_snap, orig_txt = cr.run_snapshot, cr.run_text_snapshot
+                cr.run_snapshot = lambda *a, **k: {"failures": []}
+                cr.run_text_snapshot = lambda *a, **k: 1
+                orig_disc = cr.discover_fixtures
+                cr.discover_fixtures = lambda *_: []
+                orig_checks = {n: getattr(cr, n) for n in ("cmd_imports", "cmd_tags", "cmd_install_smoke",
+                                                          "cmd_determinism", "cmd_aba", "cmd_sync_offline")}
+                for n in orig_checks:
+                    setattr(cr, n, lambda *_a, **_k: 0)
+                orig_check_inputs = cr._check_inputs
+                cr._check_inputs = lambda *_: None
+                try:
+                    rc, _, _ = _run_main(["quick", "--fixtures", str(fx), "--baseline", str(bl),
+                                          "--text-baseline", str(tb), "--budget", str(bf), "--text-allow", str(af)])
+                finally:
+                    cr.run_snapshot, cr.run_text_snapshot, cr.discover_fixtures = orig_snap, orig_txt, orig_disc
+                    cr._check_inputs = orig_check_inputs
+                    for n, f in orig_checks.items():
+                        setattr(cr, n, f)
+        finally:
+            cr.budget_compare, cr.compare_text_dirs = orig
+        self.assertEqual(rc, 0)
+        self.assertEqual(seen, {"budget": "qb"})
+
+
 if __name__ == "__main__":
     unittest.main()
