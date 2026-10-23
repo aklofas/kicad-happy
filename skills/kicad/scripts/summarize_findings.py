@@ -23,6 +23,8 @@ import os
 import sys
 from collections import defaultdict
 
+from kicad_core.cli import add_only_deterministic_arg
+
 _SEV_RANK = {"high": 0, "error": 0, "critical": 0,
              "warning": 1, "medium": 1,
              "info": 2}
@@ -315,10 +317,7 @@ def main(argv: list[str] | None = None) -> int:
                     help="Emit the aggregated table as JSON instead of text.")
     ap.add_argument("--by-confidence", action="store_true",
                     help="Group findings by confidence level instead of rule_id.")
-    ap.add_argument("--only-deterministic", action="store_true",
-                    help="Read raw analysis/<run>/<analyzer>.json instead of "
-                         "analysis/merged/<run>/<analyzer>.json. "
-                         "Strips Layer 2 overlays for CI/offline use (Phase 4 spec §3.4).")
+    add_only_deterministic_arg(ap, consumer=True)
     ap.add_argument("--no-deep-review", action="store_true",
                     help="Exclude analysis/deep_review.json from the summary.")
     args = ap.parse_args(argv)

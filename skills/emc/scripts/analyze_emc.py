@@ -31,6 +31,8 @@ from emc_envelope import EMCEnvelope
 from schema_codec import emit_schema
 from inputs_builder import build_inputs, build_upstream_artifact, build_compat
 from capability_mode import get_capability_mode_ref
+from kicad_core.cli import (add_compact_arg, add_config_arg, add_only_deterministic_arg, add_output_arg,
+                            add_schema_arg, add_stage_audience_args, add_text_arg)
 
 ANALYZER_SOURCE = "emc"
 
@@ -304,47 +306,36 @@ def format_text_report(result: dict) -> str:
     return '\n'.join(lines)
 
 
-def main():
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description='EMC pre-compliance risk analyzer for KiCad designs')
     parser.add_argument('--schematic', '-s',
                         help='Schematic analyzer JSON. Auto-resolved from --analysis-dir current run when omitted.')
     parser.add_argument('--pcb', '-p',
                         help='PCB analyzer JSON. Auto-resolved from --analysis-dir current run when omitted.')
-    parser.add_argument('--output', '-o', help='Output JSON file path')
+    add_output_arg(parser, help='Output JSON file path')
     parser.add_argument('--severity', default='all',
                         choices=['all', 'low', 'medium', 'high', 'critical'],
                         help='Minimum severity to report (default: all)')
     parser.add_argument('--standard', default='fcc-class-b',
                         choices=list(STANDARDS.keys()),
                         help='Target EMC standard (default: fcc-class-b)')
-    parser.add_argument('--text', action='store_true',
-                        help='Print human-readable text report to stdout')
-    parser.add_argument('--compact', action='store_true',
-                        help='Omit INFO-level findings from output')
+    add_text_arg(parser, help='Print human-readable text report to stdout')
+    add_compact_arg(parser, help='Omit INFO-level findings from output')
     parser.add_argument('--market', default=None,
                         choices=list(MARKET_STANDARDS.keys()),
                         help='Target market — sets applicable standards (us, eu, automotive, medical, military)')
     parser.add_argument('--spice-enhanced', action='store_true',
                         help='Use SPICE simulation for improved PDN/filter analysis (requires ngspice/LTspice/Xyce)')
-    parser.add_argument('--config', default=None,
-                        help='Path to .kicad-happy.json project config file')
+    add_config_arg(parser)
     parser.add_argument('--analysis-dir', default=None,
                         help='Write output into analysis cache directory '
                              '(creates/updates manifest)')
-    parser.add_argument('--schema', action='store_true',
-                        help='Print JSON output schema and exit')
-    parser.add_argument('--stage', default=None,
-                        choices=['schematic', 'layout', 'pre_fab', 'bring_up'],
-                        help='Filter findings by review stage')
-    parser.add_argument('--audience', default=None,
-                        choices=['designer', 'reviewer', 'manager'],
-                        help='Audience level for summaries and --text output')
-    parser.add_argument('--only-deterministic', action='store_true',
-                        help='Accepted for consistency; analyzers never write llm_* fields. '
-                             'Honored by downstream consumers (Phase 4 spec §3.4).')
+    add_schema_arg(parser)
+    add_stage_audience_args(parser)
+    add_only_deterministic_arg(parser)
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.schema:
         emit_schema(EMCEnvelope)
@@ -380,7 +371,7 @@ def main():
                   f'signal_analysis wrapper format.\n'
                   f'Re-run analyze_schematic.py to produce the current '
                   f'findings[] format.', file=sys.stderr)
-            sys.exit(1)
+            return 1
 
     if args.pcb:
         with open(args.pcb, 'r') as f:
@@ -675,4 +666,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())

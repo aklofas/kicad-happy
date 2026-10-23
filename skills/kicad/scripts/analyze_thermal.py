@@ -29,6 +29,8 @@ from schema_codec import emit_schema
 from inputs_builder import build_inputs, build_upstream_artifact, build_compat
 from kicad_core.render import wrap_lines
 from capability_mode import get_capability_mode_ref
+from kicad_core.cli import (add_config_arg, add_only_deterministic_arg, add_output_arg, add_schema_arg,
+                            add_stage_audience_args, add_text_arg)
 from lookup_detectors import detect_tj_exceeds_max
 
 ANALYZER_SOURCE = "thermal"
@@ -904,7 +906,7 @@ def format_text_report(result: dict) -> str:
 # Main
 # ---------------------------------------------------------------------------
 
-def main():
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Thermal hotspot estimator for KiCad designs"
     )
@@ -914,30 +916,19 @@ def main():
     parser.add_argument("--pcb", "-p",
                         help="PCB analyzer JSON (from analyze_pcb.py). "
                              "Auto-resolved from --analysis-dir current run when omitted.")
-    parser.add_argument("--output", "-o",
-                        help="Output JSON file path (default: stdout)")
-    parser.add_argument("--text", action="store_true",
-                        help="Print human-readable text report")
+    add_output_arg(parser, help="Output JSON file path (default: stdout)")
+    add_text_arg(parser, help="Print human-readable text report")
     parser.add_argument("--ambient", type=float, default=DEFAULT_AMBIENT_C,
                         help=f"Ambient temperature in °C (default: {DEFAULT_AMBIENT_C})")
     parser.add_argument("--datasheets", "-d",
                         help="Path to datasheets/extracted/ directory")
-    parser.add_argument("--config", default=None,
-                        help="Path to .kicad-happy.json project config file")
+    add_config_arg(parser)
     parser.add_argument("--analysis-dir",
                         help="Write thermal.json to this directory (analysis folder convention)")
-    parser.add_argument("--schema", action="store_true",
-                        help="Print JSON output schema and exit")
-    parser.add_argument('--stage', default=None,
-                        choices=['schematic', 'layout', 'pre_fab', 'bring_up'],
-                        help='Filter findings by review stage')
-    parser.add_argument('--audience', default=None,
-                        choices=['designer', 'reviewer', 'manager'],
-                        help='Audience level for summaries and --text output')
-    parser.add_argument('--only-deterministic', action='store_true',
-                        help='Accepted for consistency; analyzers never write llm_* fields. '
-                             'Honored by downstream consumers (Phase 4 spec §3.4).')
-    args = parser.parse_args()
+    add_schema_arg(parser)
+    add_stage_audience_args(parser)
+    add_only_deterministic_arg(parser)
+    args = parser.parse_args(argv)
 
     if args.schema:
         emit_schema(ThermalEnvelope)
@@ -967,21 +958,21 @@ def main():
             schematic = json.load(f)
     except (json.JSONDecodeError, OSError) as e:
         print(f"Error reading schematic: {e}", file=sys.stderr)
-        sys.exit(1)
+        return 1
 
     if 'signal_analysis' in schematic and 'findings' not in schematic:
         print(f'Error: {args.schematic} uses the pre-v1.3 '
               f'signal_analysis wrapper format.\n'
               f'Re-run analyze_schematic.py to produce the current '
               f'findings[] format.', file=sys.stderr)
-        sys.exit(1)
+        return 1
 
     try:
         with open(args.pcb) as f:
             pcb = json.load(f)
     except (json.JSONDecodeError, OSError) as e:
         print(f"Error reading PCB: {e}", file=sys.stderr)
-        sys.exit(1)
+        return 1
 
     # Resolve datasheets directory
     extract_dir = args.datasheets
@@ -1190,7 +1181,8 @@ def main():
     else:
         json.dump(result, sys.stdout, indent=2)
         print(file=sys.stdout)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

@@ -29,6 +29,8 @@ from envelopes.cross_analysis import CrossAnalysisEnvelope
 from schema_codec import emit_schema
 from inputs_builder import build_inputs, build_upstream_artifact, build_compat
 from capability_mode import get_capability_mode_ref
+from kicad_core.cli import (add_only_deterministic_arg, add_output_arg, add_schema_arg,
+                            add_stage_audience_args, add_text_arg)
 
 ANALYZER_SOURCE = "cross"
 
@@ -1050,28 +1052,21 @@ def run_all_checks(schematic: dict, pcb: dict | None) -> tuple[list[dict], list[
     return findings, recorder.entries
 
 
-def main():
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description='Cross-domain analysis — schematic + PCB combined checks')
     parser.add_argument('--schematic', '-s', default=None,
                         help='Schematic analyzer JSON. Auto-resolved from --analysis-dir current run when omitted.')
     parser.add_argument('--pcb', '-p', default=None,
                         help='PCB analyzer JSON (optional). Auto-resolved from --analysis-dir current run when omitted.')
-    parser.add_argument('--output', '-o', default=None, help='Output JSON file path')
-    parser.add_argument('--schema', action='store_true', help='Print output schema and exit')
-    parser.add_argument('--text', action='store_true', help='Print human-readable text report')
+    add_output_arg(parser, help='Output JSON file path')
+    add_schema_arg(parser, help='Print output schema and exit')
+    add_text_arg(parser, help='Print human-readable text report')
     parser.add_argument('--analysis-dir', default=None, help='Write into analysis cache directory')
-    parser.add_argument('--stage', default=None,
-                        choices=['schematic', 'layout', 'pre_fab', 'bring_up'],
-                        help='Filter findings by review stage')
-    parser.add_argument('--audience', default=None,
-                        choices=['designer', 'reviewer', 'manager'],
-                        help='Audience level for summaries and --text output')
-    parser.add_argument('--only-deterministic', action='store_true',
-                        help='Accepted for consistency; analyzers never write llm_* fields. '
-                             'Honored by downstream consumers (Phase 4 spec §3.4).')
+    add_stage_audience_args(parser)
+    add_only_deterministic_arg(parser)
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.schema:
         emit_schema(CrossAnalysisEnvelope)
@@ -1118,7 +1113,7 @@ def main():
               f'signal_analysis wrapper format.\n'
               f'Re-run analyze_schematic.py to produce the current '
               f'findings[] format.', file=sys.stderr)
-        sys.exit(1)
+        return 1
 
     pcb = None
     if args.pcb:
@@ -1187,7 +1182,7 @@ def main():
     if args.text:
         from output_filters import format_text
         print(format_text(result.get('findings', []), args.audience or 'designer', args.stage))
-        sys.exit(0)
+        return 0
 
     if args.output:
         with open(args.output, 'w') as f:

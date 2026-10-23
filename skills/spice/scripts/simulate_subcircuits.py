@@ -32,8 +32,10 @@ import time
 
 # Allow imports from same directory
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import _core_path  # noqa: F401
 
 from spice_templates import TEMPLATE_REGISTRY, TOPLEVEL_REGISTRY, list_supported_types, SpiceTestbench
+from kicad_core.cli import add_compact_arg, add_output_arg, add_text_arg
 from spice_results import (
     EVALUATOR_REGISTRY,
     build_report,
@@ -444,7 +446,7 @@ def _summary_line(report: dict) -> str:
             f"{s['skip']} skip ({elapsed:.1f}s)")
 
 
-def main():
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Run SPICE simulations for detected subcircuits"
     )
@@ -462,10 +464,7 @@ def main():
         help="Analysis cache directory. When set, auto-resolves schematic "
              "from current run and writes spice.json into the run folder.",
     )
-    parser.add_argument(
-        "--output", "-o",
-        help="Path to write simulation report JSON (default: stdout)",
-    )
+    add_output_arg(parser, help="Path to write simulation report JSON (default: stdout)")
     parser.add_argument(
         "--workdir", "-w",
         help="Directory for simulation files (default: <run>/spice_work/ "
@@ -482,16 +481,8 @@ def main():
         help="Comma-separated list of detector types to simulate "
              f"(default: all supported: {', '.join(list_supported_types())})",
     )
-    parser.add_argument(
-        "--compact",
-        action="store_true",
-        help="Omit file paths from output (for clean reports)",
-    )
-    parser.add_argument(
-        "--text",
-        action="store_true",
-        help="Human-readable text output instead of JSON",
-    )
+    add_compact_arg(parser, help="Omit file paths from output (for clean reports)")
+    add_text_arg(parser, help="Human-readable text output instead of JSON")
     parser.add_argument(
         "--parasitics",
         help="Path to parasitics JSON (from extract_parasitics.py) for "
@@ -538,14 +529,13 @@ def main():
              "project cache and the built-in lookup table only",
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     # Resolve input: --schematic, positional, or --analysis-dir auto-resolve
     input_path = args.schematic or args.input
     workdir = args.workdir
     if args.analysis_dir:
         # analysis_cache lives in skills/kicad/scripts/
-        import _core_path  # noqa: F401
         from analysis_cache import load_manifest, MANIFEST_FILENAME
         analysis_dir = os.path.abspath(args.analysis_dir)
         manifest = load_manifest(analysis_dir)
@@ -554,7 +544,7 @@ def main():
             print(f"Error: no 'current' run in {analysis_dir}/{MANIFEST_FILENAME}. "
                   f"Run analyze_schematic.py --analysis-dir first.",
                   file=sys.stderr)
-            sys.exit(1)
+            return 1
         run_dir = os.path.join(analysis_dir, current)
         if not input_path:
             input_path = os.path.join(run_dir, 'schematic.json')
@@ -573,7 +563,7 @@ def main():
         print("  LTspice: download from analog.com/ltspice", file=sys.stderr)
         print("  Xyce:    download from xyce.sandia.gov", file=sys.stderr)
         print("  Or set NGSPICE_PATH env var to the ngspice binary path.", file=sys.stderr)
-        sys.exit(1)
+        return 1
 
     # Read analysis JSON
     try:
@@ -581,7 +571,7 @@ def main():
             analysis = json.load(f)
     except (json.JSONDecodeError, OSError) as e:
         print(f"Error reading {input_path}: {e}", file=sys.stderr)
-        sys.exit(1)
+        return 1
 
     # Parse types filter
     types = None
@@ -685,7 +675,6 @@ def main():
         print(f"SPICE simulation: {s.get('total', 0)} subcircuits — "
               f"{s.get('pass', 0)} pass, {s.get('warn', 0)} warn, "
               f"{s.get('fail', 0)} fail, {s.get('skip', 0)} skip{_suffix}")
-        import _core_path  # noqa: F401
         from output_filters import format_text
         print(format_text(report.get("findings", []), "designer"))
         if args.output:
@@ -698,7 +687,8 @@ def main():
         print(_summary_line(report), file=sys.stderr)
     elif not args.analysis_dir:
         print(output_json)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

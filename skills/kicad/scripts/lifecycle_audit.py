@@ -36,6 +36,8 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
+from kicad_core.cli import add_only_deterministic_arg, add_output_arg
+
 
 # ---------------------------------------------------------------------------
 # Temperature presets
@@ -1000,7 +1002,7 @@ def audit_bom(analysis_json: dict, project_dir: str | None = None,
 # CLI
 # ---------------------------------------------------------------------------
 
-def main():
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Component lifecycle and temperature audit",
     )
@@ -1015,10 +1017,7 @@ def main():
              "is negative, use the = form so argparse doesn't read it as a flag: "
              "--temp-range=\"-40,85\"",
     )
-    parser.add_argument(
-        "--output", "-o",
-        help="Output file path (default: stdout)",
-    )
+    add_output_arg(parser, help="Output file path (default: stdout)")
     parser.add_argument(
         "--analysis-dir",
         help="Write lifecycle.json to this directory (analysis folder convention). "
@@ -1037,13 +1036,8 @@ def main():
         "--suggest-alternatives", action="store_true",
         help="Search for replacement parts when EOL/NRND/obsolete (extra API calls)",
     )
-    parser.add_argument(
-        "--only-deterministic", action="store_true",
-        help="Read raw analysis/<run>/<analyzer>.json instead of "
-             "analysis/merged/<run>/<analyzer>.json. "
-             "Strips Layer 2 overlays for CI/offline use (Phase 4 spec §3.4).",
-    )
-    args = parser.parse_args()
+    add_only_deterministic_arg(parser, consumer=True)
+    args = parser.parse_args(argv)
 
     # Load analyzer JSON (honor --only-deterministic: skip merged/ overlay)
     input_path = Path(args.input)
@@ -1134,7 +1128,9 @@ def main():
 
     for obs in result.get("observations", []):
         print(f"  ! {obs}", file=sys.stderr)
+    return 0
 
 
 if __name__ == "__main__":
+    # Bare call kept: the missing-input traceback quotes this line, and that text is frozen.
     main()

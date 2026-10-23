@@ -70,23 +70,23 @@ from envelopes.pcb import PCBEnvelope
 from schema_codec import emit_schema
 from inputs_builder import build_inputs, build_compat
 from capability_mode import get_capability_mode_ref
+from kicad_core.cli import (add_compact_arg, add_config_arg, add_only_deterministic_arg,
+                            add_output_arg, add_schema_arg, add_stage_audience_args, add_text_arg)
 
 
-def main():
+def main(argv: list[str] | None = None) -> int:
     import argparse
     parser = argparse.ArgumentParser(description="KiCad PCB Layout Analyzer")
     parser.add_argument("pcb", nargs="?",
                         help="Path to .kicad_pcb, .kicad_pro, or project directory")
-    parser.add_argument("--output", "-o", help="Output JSON file (default: stdout)")
-    parser.add_argument("--compact", action="store_true", help="Compact JSON output")
+    add_output_arg(parser)
+    add_compact_arg(parser)
     parser.add_argument("--full", action="store_true",
                         help="Include individual track/via coordinate data")
     parser.add_argument("--proximity", action="store_true",
                         help="Run trace proximity analysis for crosstalk assessment")
-    parser.add_argument("--schema", action="store_true",
-                        help="Print JSON output schema and exit")
-    parser.add_argument("--config", default=None,
-                        help="Path to .kicad-happy.json project config file")
+    add_schema_arg(parser)
+    add_config_arg(parser)
     parser.add_argument("--analysis-dir", default=None,
                         help="Write output to analysis cache directory (timestamped runs)")
     parser.add_argument("--schematic",
@@ -94,22 +94,14 @@ def main():
     parser.add_argument('--power-rails', default=None,
                         help='Comma-separated power net names to treat as rails '
                              '(overrides name heuristics; normally auto-read from --schematic)')
-    parser.add_argument("--text", action="store_true",
-                        help="Print human-readable text report to stdout")
-    parser.add_argument('--stage', default=None,
-                        choices=['schematic', 'layout', 'pre_fab', 'bring_up'],
-                        help='Filter findings by review stage')
-    parser.add_argument('--audience', default=None,
-                        choices=['designer', 'reviewer', 'manager'],
-                        help='Audience level for summaries and --text output')
+    add_text_arg(parser, help="Print human-readable text report to stdout")
+    add_stage_audience_args(parser)
     parser.add_argument('--return-path-radius-mm', type=float, default=0.5,
                         help='Radius (mm) for copper-presence in return-path analysis (default: 0.5)')
     parser.add_argument('--gp001-debug', action='store_true',
                         help='Emit per-sample diagnostic JSON to analysis dir')
-    parser.add_argument('--only-deterministic', action='store_true',
-                        help='Accepted for consistency; analyzers never write llm_* fields. '
-                             'Honored by downstream consumers (Phase 4 spec §3.4).')
-    args = parser.parse_args()
+    add_only_deterministic_arg(parser)
+    args = parser.parse_args(argv)
 
     if args.schema:
         emit_schema(PCBEnvelope)
@@ -195,7 +187,7 @@ def main():
     if args.text:
         from output_filters import format_text
         print(format_text(result.get('findings', []), args.audience or 'designer', args.stage))
-        sys.exit(0)
+        return 0
 
     # Wire capability_mode_ref (Phase 4 spec §3.3).
     # capability_mode_ref already resolved early — reuse to keep run_id stable.
@@ -214,7 +206,8 @@ def main():
         print(f"Written to {args.output}", file=sys.stderr)
     else:
         print(output)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

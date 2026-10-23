@@ -32,6 +32,8 @@ from envelopes.gerber import GerberEnvelope  # noqa: E402
 from schema_codec import emit_schema  # noqa: E402
 from inputs_builder import build_inputs, build_compat  # noqa: E402
 from capability_mode import get_capability_mode_ref  # noqa: E402
+from kicad_core.cli import (add_compact_arg, add_only_deterministic_arg, add_output_arg,  # noqa: E402
+                            add_schema_arg, add_stage_audience_args, add_text_arg)
 
 ANALYZER_SOURCE = "gerber"
 
@@ -1550,30 +1552,21 @@ def _build_gerber_findings(completeness, alignment, drill_classification,
     return findings
 
 
-def main():
+def main(argv: list[str] | None = None) -> int:
     import argparse
     parser = argparse.ArgumentParser(description="KiCad Gerber & Drill File Analyzer")
     parser.add_argument("directory", nargs="?", help="Path to gerber/drill file directory")
-    parser.add_argument("--output", "-o", help="Output JSON file (default: stdout)")
+    add_output_arg(parser)
     parser.add_argument("--analysis-dir",
                         help="Write gerbers.json to this directory (analysis folder convention)")
-    parser.add_argument("--compact", action="store_true", help="Compact JSON output")
+    add_compact_arg(parser)
     parser.add_argument("--full", action="store_true",
                         help="Include full pin-to-net connectivity data")
-    parser.add_argument("--text", action="store_true",
-                        help="Print human-readable text summary")
-    parser.add_argument("--schema", action="store_true",
-                        help="Print JSON output schema and exit")
-    parser.add_argument('--stage', default=None,
-                        choices=['schematic', 'layout', 'pre_fab', 'bring_up'],
-                        help='Filter findings by review stage')
-    parser.add_argument('--audience', default=None,
-                        choices=['designer', 'reviewer', 'manager'],
-                        help='Audience level for summaries and --text output')
-    parser.add_argument('--only-deterministic', action='store_true',
-                        help='Accepted for consistency; analyzers never write llm_* fields. '
-                             'Honored by downstream consumers (Phase 4 spec §3.4).')
-    args = parser.parse_args()
+    add_text_arg(parser, help="Print human-readable text summary")
+    add_schema_arg(parser)
+    add_stage_audience_args(parser)
+    add_only_deterministic_arg(parser)
+    args = parser.parse_args(argv)
 
     if args.schema:
         emit_schema(GerberEnvelope)
@@ -1650,7 +1643,8 @@ def main():
         print(format_text(result.get('findings', []), args.audience or 'designer', args.stage))
     else:
         print(output_json)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

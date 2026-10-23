@@ -31,6 +31,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
 
 from kicad_core.values import parse_value
 from kicad_core.render import fmt_g4, fmt_signed
+from kicad_core.cli import add_only_deterministic_arg, add_output_arg, add_text_arg
 from finding_schema import group_findings_by_detection_type, is_old_schema
 
 
@@ -1250,7 +1251,7 @@ def _run_emc_preview(analysis: dict, patched_json: dict,
 # Main
 # ---------------------------------------------------------------------------
 
-def main():
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="What-if parameter sweep for KiCad designs"
     )
@@ -1259,10 +1260,8 @@ def main():
                         help="REF=VALUE pairs (e.g., R5=4.7k C3=22n)")
     parser.add_argument("--spice", action="store_true",
                         help="Re-run SPICE simulations on affected subcircuits")
-    parser.add_argument("--output", "-o",
-                        help="Write patched analysis JSON to file")
-    parser.add_argument("--text", action="store_true",
-                        help="Human-readable text output")
+    add_output_arg(parser, help="Write patched analysis JSON to file")
+    add_text_arg(parser, help="Human-readable text output")
     parser.add_argument("--emc", action="store_true",
                         help="Show EMC impact preview (runs analyze_emc.py)")
     parser.add_argument("--pcb",
@@ -1273,11 +1272,8 @@ def main():
                         help="Target value for --fix (e.g., 3.3 for Vout, 1000 for Hz)")
     parser.add_argument("--suggest-fixes", action="store_true",
                         help="Scan analysis for fixable issues and suggest component changes")
-    parser.add_argument("--only-deterministic", action="store_true",
-                        help="Read raw analysis/<run>/<analyzer>.json instead of "
-                             "analysis/merged/<run>/<analyzer>.json. "
-                             "Strips Layer 2 overlays for CI/offline use (Phase 4 spec §3.4).")
-    args = parser.parse_args()
+    add_only_deterministic_arg(parser, consumer=True)
+    args = parser.parse_args(argv)
 
     if not args.changes and not args.fix and not args.suggest_fixes:
         parser.error("at least one REF=VALUE change, --fix, or --suggest-fixes is required")
@@ -1297,18 +1293,18 @@ def main():
             analysis = json.load(f)
     except (json.JSONDecodeError, OSError) as e:
         print(f"Error reading {args.input}: {e}", file=sys.stderr)
-        sys.exit(1)
+        return 1
 
     if is_old_schema(analysis):
         print("Error: this JSON uses the pre-v1.3 signal_analysis wrapper "
               "format.\nRe-run analyze_schematic.py to produce the current "
               "findings[] format.", file=sys.stderr)
-        sys.exit(1)
+        return 1
 
     signal = group_findings_by_detection_type(analysis)
     if not signal:
         print("Error: no subcircuit findings in input JSON", file=sys.stderr)
-        sys.exit(1)
+        return 1
 
     # Load PCB analysis if available
     pcb_path = args.pcb
@@ -1337,7 +1333,7 @@ def main():
         else:
             json.dump(result, sys.stdout, indent=2)
             print()
-        sys.exit(0)
+        return 0
 
     # --- Fix branch ---
     if args.fix:
@@ -1346,14 +1342,14 @@ def main():
         if not m:
             print(f"Error: invalid --fix target '{args.fix}' \u2014 use type[index] "
                   f"(e.g., voltage_dividers[0])", file=sys.stderr)
-            sys.exit(1)
+            return 1
         fix_det_type = m.group(1)
         fix_idx = int(m.group(2))
         dets = signal.get(fix_det_type, [])
         if fix_idx >= len(dets):
             print(f"Error: {fix_det_type}[{fix_idx}] does not exist "
                   f"(have {len(dets)} detections)", file=sys.stderr)
-            sys.exit(1)
+            return 1
         det = dets[fix_idx]
 
         if args.target is not None:
@@ -1376,7 +1372,7 @@ def main():
             if target_field is None:
                 print(f"Error: cannot infer target for {fix_det_type} \u2014 use --target",
                       file=sys.stderr)
-                sys.exit(1)
+                return 1
 
         suggestions = _solve_fix(det, fix_det_type, target_field, target_value)
         result = {"fix_suggestions": [{
@@ -1395,7 +1391,7 @@ def main():
         else:
             json.dump(result, sys.stdout, indent=2)
             print()
-        sys.exit(0)
+        return 0
 
     # Parse changes — returns (dict of Change, optional SweepSpec)
     changes, sweep = _parse_changes(args.changes)
@@ -1419,7 +1415,7 @@ def main():
         else:
             json.dump(sweep_result, sys.stdout, indent=2)
             print()
-        sys.exit(0)
+        return 0
 
     # --- Single-value branch ---
     # Convert Change objects to legacy (value, str) tuples for downstream functions
@@ -1442,7 +1438,7 @@ def main():
         else:
             json.dump(result, sys.stdout, indent=2)
             print()
-        sys.exit(0)
+        return 0
 
     # Apply changes to each affected detection
     patched_dets = []
@@ -1549,7 +1545,8 @@ def main():
     elif not args.output:
         json.dump(result, sys.stdout, indent=2)
         print()
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

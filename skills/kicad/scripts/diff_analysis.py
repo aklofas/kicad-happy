@@ -23,6 +23,7 @@ import sys
 
 from finding_schema import group_findings_by_detection_type
 from kicad_core.render import fmt_g4, fmt_signed
+from kicad_core.cli import add_only_deterministic_arg, add_output_arg, add_text_arg
 from diff_engine import (  # noqa: F401  (re-exported for callers written against pre-v3 diff_analysis)
     SIGNAL_REGISTRY, validate_signal_registry, _resolve, _diff_counts, _identity_key,
     _generic_identity, _diff_lists, _compare_fields, _summarize_detection, diff_assessments,
@@ -324,7 +325,7 @@ def _format_trends(trends, n_runs):
 # CLI
 # ---------------------------------------------------------------------------
 
-def main():
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Compare two KiCad analysis JSON files and report changes"
     )
@@ -338,17 +339,14 @@ def main():
     parser.add_argument("--type", dest="output_type",
                         help="Output type to diff (schematic, pcb, emc, spice, "
                              "deep_review). Default: auto-detect first common output")
-    parser.add_argument("--output", "-o", help="Write output JSON to file (default: stdout)")
-    parser.add_argument("--text", action="store_true", help="Output human-readable text instead of JSON")
+    add_output_arg(parser, help="Write output JSON to file (default: stdout)")
+    add_text_arg(parser, help="Output human-readable text instead of JSON")
     parser.add_argument("--threshold", type=float, default=1.0,
                         help="Ignore numeric deltas below this percentage (default: 1.0%%)")
     parser.add_argument("--trend", type=int, metavar="N",
                         help="Show metric trends across last N runs (requires --analysis-dir)")
-    parser.add_argument("--only-deterministic", action="store_true",
-                        help="Read raw analysis/<run>/<analyzer>.json instead of "
-                             "analysis/merged/<run>/<analyzer>.json. "
-                             "Strips Layer 2 overlays for CI/offline use (Phase 4 spec §3.4).")
-    args = parser.parse_args()
+    add_only_deterministic_arg(parser, consumer=True)
+    args = parser.parse_args(argv)
 
     # Resolve runs from analysis cache if --analysis-dir is provided
     if args.analysis_dir:
@@ -358,7 +356,7 @@ def main():
         analysis_dir = args.analysis_dir
         if not os.path.isdir(analysis_dir):
             print(f"Error: analysis directory not found: {analysis_dir}", file=sys.stderr)
-            sys.exit(1)
+            return 1
 
         # Determine which runs to compare
         if len(args.run) == 2:
@@ -372,7 +370,7 @@ def main():
         all_runs = list_runs(analysis_dir)
         if not all_runs:
             print("Error: no runs found in analysis directory", file=sys.stderr)
-            sys.exit(1)
+            return 1
 
         resolved = []
         for rid in run_ids:
@@ -381,7 +379,7 @@ def main():
             elif rid == "previous":
                 if len(all_runs) < 2:
                     print("Error: only one run exists — nothing to diff", file=sys.stderr)
-                    sys.exit(1)
+                    return 1
                 resolved.append(all_runs[1][0])
             else:
                 # Exact run ID
@@ -392,7 +390,7 @@ def main():
                         break
                 if not found:
                     print(f"Error: run '{rid}' not found in manifest", file=sys.stderr)
-                    sys.exit(1)
+                    return 1
                 resolved.append(rid)
 
         # Determine output type
@@ -407,7 +405,7 @@ def main():
                     break
             if not out_type:
                 print("Error: no common output files between runs", file=sys.stderr)
-                sys.exit(1)
+                return 1
 
         filename = CANONICAL_OUTPUTS.get(out_type, f"{out_type}.json")
         args.base = os.path.join(analysis_dir, resolved[0], filename)
@@ -427,7 +425,7 @@ def main():
         else:
             json.dump({"trends": trends, "n_runs": args.trend}, sys.stdout, indent=2)
             print()
-        sys.exit(0)
+        return 0
 
     # Load inputs (honor --only-deterministic: skip merged/ overlay)
     def _load_input(path, label):
@@ -452,7 +450,7 @@ def main():
     head_type = detect_type(head)
     if not base_type or not head_type:
         print("Error: could not detect analyzer type from JSON", file=sys.stderr)
-        sys.exit(1)
+        return 1
     # Check for pre-v1.3 format
     old_files = []
     if base_type == "schematic_old":
@@ -465,10 +463,10 @@ def main():
               f"Re-run analyze_schematic.py to produce the current "
               f"findings[] format, then re-run this diff.",
               file=sys.stderr)
-        sys.exit(1)
+        return 1
     if base_type != head_type:
         print(f"Error: type mismatch — base is {base_type}, head is {head_type}", file=sys.stderr)
-        sys.exit(1)
+        return 1
 
     # Run diff
     # Note: deep_review is NOT in the dispatch table below because it has a
@@ -486,7 +484,7 @@ def main():
     if base_type not in diff_funcs and base_type != "deep_review":
         print(f"Error: no diff function for analyzer type '{base_type}'",
               file=sys.stderr)
-        sys.exit(1)
+        return 1
 
     if base_type == "deep_review":
         dr_result = diff_deep_review(base, head)
@@ -511,7 +509,7 @@ def main():
                     f.write(output_json)
             else:
                 print(output_json)
-        sys.exit(0)
+        return 0
 
     diff_result = diff_funcs[base_type](base, head, args.threshold)
     summary = build_summary(base_type, diff_result)
@@ -545,7 +543,8 @@ def main():
                 f.write(output_json)
         else:
             print(output_json)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

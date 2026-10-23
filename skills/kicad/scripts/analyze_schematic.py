@@ -160,19 +160,19 @@ from envelopes.schematic import SchematicEnvelope
 from schema_codec import emit_schema
 from inputs_builder import build_inputs, build_compat
 from capability_mode import get_capability_mode_ref
+from kicad_core.cli import (add_compact_arg, add_config_arg, add_only_deterministic_arg,
+                            add_output_arg, add_schema_arg, add_stage_audience_args, add_text_arg)
 
 
-def main():
+def main(argv: list[str] | None = None) -> int:
     import argparse
     parser = argparse.ArgumentParser(description="KiCad Schematic Analyzer")
     parser.add_argument("schematic", nargs="?",
                         help="Path to .kicad_sch, .kicad_pro, or project directory")
-    parser.add_argument("--output", "-o", help="Output JSON file (default: stdout)")
-    parser.add_argument("--compact", action="store_true", help="Compact JSON output")
-    parser.add_argument("--schema", action="store_true",
-                        help="Print JSON output schema and exit")
-    parser.add_argument("--config", default=None,
-                        help="Path to .kicad-happy.json project config file")
+    add_output_arg(parser)
+    add_compact_arg(parser)
+    add_schema_arg(parser)
+    add_config_arg(parser)
     parser.add_argument("--project-root", default=None,
                         help="Root .kicad_sch for hierarchy context (auto-discovered if omitted)")
     parser.add_argument("--no-hierarchy", action="store_true",
@@ -181,18 +181,10 @@ def main():
                         help="Run lifecycle/obsolescence audit (requires network + API keys)")
     parser.add_argument("--analysis-dir", default=None,
                         help="Write output to analysis cache directory (timestamped runs)")
-    parser.add_argument("--text", action="store_true",
-                        help="Print human-readable text report to stdout")
-    parser.add_argument('--stage', default=None,
-                        choices=['schematic', 'layout', 'pre_fab', 'bring_up'],
-                        help='Filter findings by review stage')
-    parser.add_argument('--audience', default=None,
-                        choices=['designer', 'reviewer', 'manager'],
-                        help='Audience level for summaries and --text output')
-    parser.add_argument('--only-deterministic', action='store_true',
-                        help='Accepted for consistency; analyzers never write llm_* fields. '
-                             'Honored by downstream consumers (Phase 4 spec §3.4).')
-    args = parser.parse_args()
+    add_text_arg(parser, help="Print human-readable text report to stdout")
+    add_stage_audience_args(parser)
+    add_only_deterministic_arg(parser)
+    args = parser.parse_args(argv)
 
     if args.schema:
         emit_schema(SchematicEnvelope)
@@ -259,7 +251,7 @@ def main():
     if args.text:
         from output_filters import format_text
         print(format_text(result.get('findings', []), args.audience or 'designer', args.stage))
-        sys.exit(0)
+        return 0
 
     # Wire capability_mode_ref (Phase 4 spec §3.3). Already resolved early
     # so inputs.run_id and capability_mode_ref.run_id match.
@@ -280,7 +272,8 @@ def main():
         print(f"Written to {args.output}", file=sys.stderr)
     else:
         print(output)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
