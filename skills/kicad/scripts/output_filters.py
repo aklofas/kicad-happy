@@ -16,6 +16,8 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any, Dict, List, Optional
 
+from kicad_core.render import severity_bucket as _severity_bucket, plural, finding_line
+
 # ---------------------------------------------------------------------------
 # Stage definitions
 # ---------------------------------------------------------------------------
@@ -75,20 +77,6 @@ _STAGE_RULES: Dict[str, List[str]] = {
         'DI-DET', 'RS-DET',
     ],
 }
-
-# ---------------------------------------------------------------------------
-# Severity normalization
-# ---------------------------------------------------------------------------
-
-def _severity_bucket(severity: str) -> str:
-    """Normalize a finding severity string to error/warning/info bucket."""
-    s = (severity or '').upper()
-    if s in ('CRITICAL', 'HIGH', 'ERROR'):
-        return 'error'
-    if s in ('MEDIUM', 'WARNING', 'WARN'):
-        return 'warning'
-    return 'info'
-
 
 # ---------------------------------------------------------------------------
 # Stage assignment
@@ -220,9 +208,9 @@ def build_audience_summary(findings: List[Dict[str, Any]]) -> Dict[str, Any]:
     else:
         parts = []
         if blocker_count:
-            parts.append(f'{blocker_count} error{"s" if blocker_count != 1 else ""}')
+            parts.append(plural(blocker_count, 'error'))
         if warning_count:
-            parts.append(f'{warning_count} warning{"s" if warning_count != 1 else ""}')
+            parts.append(plural(warning_count, 'warning'))
         summary_str = ', '.join(parts)
         cat_str = f'across {cat_count} categor{"ies" if cat_count != 1 else "y"}' if cat_count else ''
         blocker_str = ''
@@ -292,7 +280,7 @@ def _format_finding_designer(f: Dict[str, Any], idx: int) -> str:
     rule_id = f.get('rule_id', '')
     severity = f.get('severity', 'INFO').upper()
     summary = f.get('summary', f.get('message', '(no summary)'))
-    lines.append(f'  [{idx}] {severity} {rule_id}: {summary}')
+    lines.append(finding_line(idx, severity, rule_id, summary))
 
     detail = f.get('detail', f.get('description', ''))
     if detail:
@@ -319,7 +307,7 @@ def _format_finding_reviewer(f: Dict[str, Any], idx: int) -> str:
     severity = f.get('severity', 'INFO').upper()
     summary = f.get('summary', f.get('message', '(no summary)'))
     recommendation = f.get('recommendation', f.get('fix', ''))
-    line = f'  [{idx}] {severity} {rule_id}: {summary}'
+    line = finding_line(idx, severity, rule_id, summary)
     if recommendation:
         line += f'\n      Rec: {recommendation}'
     return line
@@ -410,7 +398,7 @@ def format_text(
         total = len(visible)
         err_count = sum(1 for f in visible if _severity_bucket(f.get('severity', '')) == 'error')
         warn_count = total - err_count
-        lines.append(f'Total: {total} ({err_count} error{"s" if err_count != 1 else ""}, {warn_count} warning{"s" if warn_count != 1 else ""})')
+        lines.append(f'Total: {total} ({plural(err_count, "error")}, {plural(warn_count, "warning")})')
         return '\n'.join(lines)
 
     # ------------------------------------------------------------------
@@ -435,8 +423,8 @@ def format_text(
     warn_count = sum(1 for f in active_findings if _severity_bucket(f.get('severity', '')) == 'warning')
     info_count = len(active_findings) - err_count - warn_count
     lines.append(
-        f'Total: {len(active_findings)} ({err_count} error{"s" if err_count != 1 else ""}, '
-        f'{warn_count} warning{"s" if warn_count != 1 else ""}, '
+        f'Total: {len(active_findings)} ({plural(err_count, "error")}, '
+        f'{plural(warn_count, "warning")}, '
         f'{info_count} info)'
     )
     return '\n'.join(lines)

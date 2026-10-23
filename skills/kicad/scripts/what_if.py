@@ -30,6 +30,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "..", "spice", "scripts"))
 
 from kicad_core.values import parse_value
+from kicad_core.render import fmt_g4, fmt_signed
 from finding_schema import group_findings_by_detection_type, is_old_schema
 
 
@@ -662,7 +663,7 @@ def _format_value(val, field):
         return f"{val:.1f}dB"
     if field.startswith("estimated_vout") or field.endswith("_V") or field.endswith("_v"):
         return f"{val:.3f}V"
-    return f"{val:.4g}"
+    return fmt_g4(val)
 
 
 def format_text(result: dict) -> str:
@@ -696,7 +697,7 @@ def format_text(result: dict) -> str:
             before = _format_value(d["before"], field)
             after = _format_value(d["after"], field)
             pct = d.get("delta_pct")
-            pct_str = f" ({pct:+.1f}%)" if pct is not None else ""
+            pct_str = f" ({fmt_signed(pct)}%)" if pct is not None else ""
             lines.append(f"    {field}: {before} -> {after}{pct_str}")
 
         for t in sc.get("tolerance", []):
@@ -711,7 +712,7 @@ def format_text(result: dict) -> str:
             before = _format_value(d["before"], key)
             after = _format_value(d["after"], key)
             pct = d.get("delta_pct")
-            pct_str = f" ({pct:+.1f}%)" if pct is not None else ""
+            pct_str = f" ({fmt_signed(pct)}%)" if pct is not None else ""
             lines.append(f"    SPICE {key}: {before} -> {after}{pct_str}")
 
         # PCB parasitics
@@ -1096,7 +1097,7 @@ def _format_fix(fix_result: dict) -> str:
                 e = s["e_series"].get(series, {})
                 ev = e.get("value", 0)
                 err = e.get("error_pct", 0)
-                lines.append(f"    {series}:    {_format_value(ev, vkey):>10}  ({err:+.1f}%)")
+                lines.append(f"    {series}:    {_format_value(ev, vkey):>10}  ({fmt_signed(err)}%)")
             lines.append("")
     for fix in fix_result.get("fix_suggestions", []):
         for w in fix.get("footprint_warnings", []):

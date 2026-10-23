@@ -27,6 +27,7 @@ import time
 from envelopes.thermal import ThermalEnvelope
 from schema_codec import emit_schema
 from inputs_builder import build_inputs, build_upstream_artifact, build_compat
+from kicad_core.render import wrap_lines
 from capability_mode import get_capability_mode_ref
 from lookup_detectors import detect_tj_exceeds_max
 
@@ -889,9 +890,7 @@ def format_text_report(result: dict) -> str:
             sev = f["severity"]
             lines.append(f"  [{sev}] {f['rule_id']}: {f['title']}")
             desc = f.get("description", "")
-            for i in range(0, len(desc), 70):
-                prefix = "    " if i == 0 else "      "
-                lines.append(prefix + desc[i:i + 70])
+            lines.extend(wrap_lines(desc))
             if f.get("recommendation"):
                 lines.append(f"    -> {f['recommendation']}")
             lines.append("")

@@ -22,6 +22,7 @@ import os
 import sys
 
 from finding_schema import group_findings_by_detection_type
+from kicad_core.render import fmt_g4, fmt_signed
 from diff_engine import (  # noqa: F401  (re-exported for callers written against pre-v3 diff_analysis)
     SIGNAL_REGISTRY, validate_signal_registry, _resolve, _diff_counts, _identity_key,
     _generic_identity, _diff_lists, _compare_fields, _summarize_detection, diff_assessments,
@@ -184,7 +185,7 @@ def format_text(output):
     risk = diff.get("risk_score", {})
     if risk:
         lines.append(f"EMC Risk Score: {risk.get('base', '?')} → {risk.get('head', '?')} "
-                      f"(delta {risk.get('delta', 0):+.1f})")
+                      f"(delta {fmt_signed(risk.get('delta', 0))})")
         lines.append("")
 
     remaining = total - shown
@@ -304,7 +305,7 @@ def _format_trends(trends, n_runs):
                     continue
                 # Reverse to chronological (list_runs returns newest-first)
                 datapoints = list(reversed(datapoints))
-                vals = [f"{v:.4g}" for _, v in datapoints]
+                vals = [fmt_g4(v) for _, v in datapoints]
                 first_val = datapoints[0][1]
                 last_val = datapoints[-1][1]
                 val_chain = " \u2192 ".join(vals)
