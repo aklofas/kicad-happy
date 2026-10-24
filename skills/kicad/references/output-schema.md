@@ -54,6 +54,9 @@ in `analyzer_envelope.py`. Breaking changes bump the analyzer's
   `config_hash`, `upstream_artifacts`.
 - `compat` — `CompatBlock`. `minimum_consumer_version`,
   `deprecated_fields`, `experimental_fields`.
+- `diagnostics` — `list[Diagnostic]`. Guarded failures that degraded
+  the run (`source`, `exception`, `message`, `effect`); `[]` when
+  nothing degraded.
 
 ### Tier 2 — Analyzer-specific body
 
@@ -321,3 +324,14 @@ Output of `python3 skills/kicad/scripts/cross_analysis.py --schematic ... --pcb 
 | `capability_mode_ref` | `dict \| null` | no | Pointer to canonical analysis/capability_mode.json run-level record. Shape: {source, run_id}. See Phase 4 spec §3.3. |
 | `audience_summary` | `dict \| null` | no | Designer/reviewer/manager summary views. Added by apply_output_filters whenever findings[] is non-empty. |
 | `stage_filter` | `dict \| null` | no | Stage-filtered findings rollup. Present only when --stage is passed. |
+
+## Diagnostic
+
+One entry of the Tier 1 `diagnostics` list, shared by every envelope.
+
+| Key | Type | Required | Description |
+|-----|------|----------|-------------|
+| `source` | `string` | yes | Where the guard sits: '<module>.<function>'. |
+| `exception` | `string` | yes | Exception class name, e.g. 'KeyError'. |
+| `message` | `string` | yes | str(exception), truncated to 200 characters. |
+| `effect` | `string` | yes | What the run did instead, e.g. 'power_rails config not applied'. |

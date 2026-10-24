@@ -2,7 +2,7 @@
 
 Each check function returns a list of finding dicts with:
   - category: str (ground_plane, decoupling, io_filtering, etc.)
-  - severity: str (CRITICAL, HIGH, MEDIUM, LOW, INFO)
+  - severity: str (error, warning, info)
   - rule_id: str (e.g., GP-001)
   - summary: str
   - description: str

@@ -214,11 +214,11 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
         if simulator_backend:
             success, stdout, stderr = simulator_backend.run(
                 os.path.basename(cir_file), timeout=timeout,
-                cwd=os.path.dirname(cir_file))
+                cwd=os.path.dirname(os.path.abspath(cir_file)))
         else:
             success, stdout, stderr = run_ngspice(
                 os.path.basename(cir_file), timeout=timeout,
-                cwd=os.path.dirname(cir_file))
+                cwd=os.path.dirname(os.path.abspath(cir_file)))
         elapsed = time.monotonic() - t0
         total_time += elapsed
 

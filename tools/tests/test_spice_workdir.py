@@ -61,6 +61,27 @@ class WorkdirTest(unittest.TestCase):
                 self.assertEqual(cmd[-1], os.path.basename(cmd[-1]))
                 self.assertTrue(cmd[-1].endswith(".cir"))
 
+    def test_bare_cir_filename_runs_in_cwd(self):
+        import simulate_subcircuits as ss
+        with tempfile.TemporaryDirectory() as tmp:
+            analysis = json.load(open(_analysis(tmp), encoding="utf-8"))
+            calls = []
+
+            def fake(cmd, **kw):
+                calls.append((cmd, kw))
+                return subprocess.CompletedProcess(cmd, 0, "", "")
+            old = os.getcwd()
+            os.chdir(tmp)
+            try:
+                here = os.getcwd()
+                with mock.patch("spice_simulator.subprocess.run", side_effect=fake):
+                    ss.simulate_subcircuits(analysis, workdir=".")
+            finally:
+                os.chdir(old)
+            self.assertTrue(calls)
+            for cmd, kw in calls:
+                self.assertEqual(kw["cwd"], here)
+
     @unittest.skipUnless(shutil.which("ngspice"), "ngspice not installed")
     def test_space_in_workdir_same_as_without(self):
         with tempfile.TemporaryDirectory() as tmp:

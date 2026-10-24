@@ -222,7 +222,7 @@ def _finding_rule_ids(prefix: str, index: int, docs: list) -> list:
 
 
 def _class_claims(cls: dict, rel: str, path: str, kind: str, docs) -> bool:
-    if not fnmatch.fnmatchcase(rel, cls["files"]) or kind not in cls["kinds"] or not re.search(cls["path"], path):
+    if not fnmatch.fnmatchcase(rel, cls["files"]) or kind not in cls["kinds"] or not re.fullmatch(cls["path"], path):
         return False
     wanted = (cls.get("where") or {}).get("rule_id")
     if wanted is None:
@@ -257,6 +257,17 @@ def budget_compare(report: dict, budget: dict, base_dir: Path, cand_dir: Path) -
             "classes_unused": [k["id"] for k in budget["classes"] if k["id"] not in claimed]}
 
 
+def _budget_problem(budget) -> str | None:
+    """Why *budget* cannot drive budget_compare, or None when it can."""
+    if not isinstance(budget, dict) or not isinstance(budget.get("classes"), list):
+        return "budget has no 'classes' list"
+    for i, cls in enumerate(budget["classes"]):
+        missing = [k for k in ("id", "files", "path", "kinds") if not isinstance(cls, dict) or k not in cls]
+        if missing:
+            return f"budget class {i} lacks {', '.join(missing)}"
+    return None
+
+
 def cmd_budget_compare(args) -> int:
     base, cand = Path(args.base), Path(args.cand)
     if not cand.is_dir():
@@ -271,6 +282,10 @@ def cmd_budget_compare(args) -> int:
         budget = json.loads(Path(args.budget).read_text(encoding="utf-8"))
     except (OSError, ValueError, KeyError) as exc:
         print(f"budget-compare: cannot load policy or budget: {exc}", file=sys.stderr)
+        return 2
+    msg = _budget_problem(budget)
+    if msg:
+        print(f"budget-compare: {msg}", file=sys.stderr)
         return 2
     out = budget_compare(compare_dirs(base, cand, volatile), budget, base, cand)
     if args.report:
@@ -1103,6 +1118,11 @@ def cmd_text_compare(args) -> int:
 
 
 def cmd_quick(args) -> int:
+    for flag, val, needs, have in (("--budget", args.budget, "--baseline", args.baseline),
+                                   ("--text-allow", args.text_allow, "--text-baseline", args.text_baseline)):
+        if val and not have:
+            print(f"quick: {flag} requires {needs}", file=sys.stderr)
+            return 2
     for flag, val in (("--baseline", args.baseline), ("--text-baseline", args.text_baseline)):
         if val and not args.fixtures:
             print(f"quick: {flag} requires --fixtures", file=sys.stderr)

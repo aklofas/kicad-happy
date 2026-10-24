@@ -833,6 +833,37 @@ class BudgetedOracle(unittest.TestCase):
             self.assertIn("budget-compare: OK (2 claimed in 2 classes)", out)
             self.assertEqual(json.loads(rep.read_text(encoding="utf-8"))["unclaimed"], [])
 
+    def test_budget_file_missing_keys_exits_2(self):
+        with tempfile.TemporaryDirectory() as td:
+            base, cand = self._trees(td)
+            bf = Path(td) / "budget.json"
+            _write(bf, {"budget_id": "x", "classes": [{"id": "c"}]})
+            rc, _, err = _run_main(["budget-compare", str(base), str(cand), "--budget", str(bf)])
+            self.assertEqual(rc, 2)
+            self.assertIn("files", err)
+
+    def test_quick_budget_without_baseline_exits_2(self):
+        with tempfile.TemporaryDirectory() as td:
+            bf = Path(td) / "b.json"
+            _write(bf, {"budget_id": "qb", "classes": []})
+            rc, _, err = _run_main(["quick", "--budget", str(bf)])
+            self.assertEqual(rc, 2)
+            self.assertIn("--baseline", err)
+            rc, _, err = _run_main(["quick", "--text-allow", str(bf)])
+            self.assertEqual(rc, 2)
+            self.assertIn("--text-baseline", err)
+
+    def test_budget_path_regex_is_anchored(self):
+        with tempfile.TemporaryDirectory() as td:
+            base, cand = Path(td) / "b", Path(td) / "c"
+            _write(base / "x" / "emc.json", {})
+            _write(cand / "x" / "emc.json", {"diagnostics": [], "diagnostics_extra": 1})
+            budget = {"budget_id": "t", "classes": [
+                {"id": "diag", "files": "*/emc.json", "path": "diagnostics", "kinds": ["added"]}]}
+            out = cr.budget_compare(cr.compare_dirs(base, cand, set()), budget, base, cand)
+            self.assertEqual(out["claimed"], {"diag": 1})
+            self.assertEqual([u[1] for u in out["unclaimed"]], ["diagnostics_extra"])
+
     def test_text_compare_allow_glob(self):
         with tempfile.TemporaryDirectory() as td:
             b, c = Path(td) / "b", Path(td) / "c"
