@@ -48,8 +48,8 @@ def index_ref_pins(pin_net: dict) -> dict[str, dict[str, PinNetEntry]]:
 class AnalysisContext:
     """Shared state passed to all 40+ signal and domain detector functions.
 
-    Built by ``build_analysis_context()`` for production runs (direct construction
-    is the harness/test path), after components, nets, and pin_net are fully resolved.  Provides indexed lookups and helper methods so
+    Construct through ``build_analysis_context()``; a directly constructed context gets
+    no derived indexes.  Built after components, nets, and pin_net are fully resolved.  Provides indexed lookups and helper methods so
     detectors don't rebuild these structures individually.
 
     Attributes:

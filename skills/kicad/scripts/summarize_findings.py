@@ -298,7 +298,7 @@ def main(argv: list[str] | None = None) -> int:
                          "Default 20.")
     ap.add_argument("--severity",
                     help=("Filter to a single severity bucket. Accepts any "
-                          "of: high/critical/error (all → high), "
+                          "of: high/critical/error (all → error), "
                           "warning/medium/warn (→ warning), info. "
                           "Raises if the value is unrecognised."))
     ap.add_argument("--confidence",

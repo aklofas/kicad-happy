@@ -35,7 +35,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - EMC SPICE testbenches run inside their temporary work directory with bare filenames, so a `TMPDIR` containing a space no longer silently skips every EMC SPICE measurement. (KH-472)
 - `lifecycle_audit.py` gives a usage error (exit 2), not a traceback, when its input is missing, a directory or not JSON. (KH-464)
 - `analyze_gerbers.py` exits 2 with a usage error on a nonexistent directory, instead of a clean report with exit 0. (KH-466)
-- Monte-Carlo SPICE trials report each model fallback once, on stderr and in `diagnostics`, instead of once per trial. (KH-475)
+- Monte-Carlo SPICE trials print each model fallback once instead of once per trial; a fallback seen only in a trial is now also recorded in `diagnostics`. (KH-475)
 - KH-454 and KH-455 (see Changed) were found while adjudicating the v2.3.2 corpus gate.
 - `capability_mode.json` `schema_versions` is filled in regardless of the current directory; it was `{}` when an analyzer ran from outside the repository root.
 - The `emc_formulas.trace_resistance_ohm` equation comment was re-numbered from `EQ-042`, which another formula already used, to `EQ-108`. (KH-445)
@@ -93,7 +93,7 @@ Python import paths only; every CLI and flag is unchanged (output changes are un
 | `sync_datasheets_<p>`: `extract_parts`, `load_mpn_list`, `get_analyzer_output`, `is_real_mpn` | `distributor_core.inputs` (`extract_parts` / `load_mpn_list` take `id_keys=provider_<p>.ID_KEYS`) |
 | `sync_datasheets_<p>`: `ID_KEYS`, `sync_one_part`; DigiKey also `get_oauth_token`, `search_digikey_with_token` | `provider_<p>` |
 | `fetch_datasheet_<p>`: `normalize_url` (DigiKey, Mouser) | `distributor_core.download` |
-| `fetch_datasheet_<p>`: `normalize_url` (LCSC, element14), element14 `search_element14` | `provider_<p>` |
+| `fetch_datasheet_<p>`: `normalize_url` (LCSC, element14) | `provider_<p>` |
 | `build_hierarchy_context`, `enrich_from_hierarchy`, `apply_rotation`, `_pick`, `_spec_min`, `_extract_page_text`, `_extract_package`, `_pct_delta`, `DrillTool`, `check_one` | none (dead code); use `pick_field` in place of `_pick` |
 
 ### Migration

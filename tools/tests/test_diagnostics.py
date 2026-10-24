@@ -12,8 +12,11 @@ for _p in (SCRIPTS, SPICE):
         sys.path.insert(0, str(_p))
 
 FX = Path(os.environ.get("KH_FIXTURES", "/tmp/harness-pin/tests/fixtures")) / "simple-project"
-ARC = ROOT.parents[2] / ".superpowers" / "sdd" / "2026-10-14-refactor-arc"
-OLD_SCH = ARC / "baseline-6a91aaa" / "simple-project__simple.kicad_sch" / "schematic.json"
+# The 6a91aaa baseline lives outside the repo (worktree layout only).
+ARC = (ROOT.parents[2] / ".superpowers" / "sdd" / "2026-10-14-refactor-arc"
+       if len(ROOT.parents) > 2 else None)
+OLD_SCH = (ARC / "baseline-6a91aaa" / "simple-project__simple.kicad_sch" / "schematic.json"
+           if ARC else None)
 SCHEMA_CLIS = (SCRIPTS / "analyze_schematic.py", SCRIPTS / "analyze_pcb.py", SCRIPTS / "analyze_gerbers.py",
                SCRIPTS / "analyze_thermal.py", SCRIPTS / "cross_analysis.py",
                ROOT / "skills" / "emc" / "scripts" / "analyze_emc.py")
@@ -57,7 +60,7 @@ class EnvelopeSchemas(unittest.TestCase):
         from spice_results import build_report
         self.assertEqual(build_report([])["diagnostics"], [])
 
-    @unittest.skipUnless(OLD_SCH.is_file(), "6a91aaa baseline not present")
+    @unittest.skipUnless(OLD_SCH is not None and OLD_SCH.is_file(), "6a91aaa baseline not present")
     def test_old_artifact_without_diagnostics_still_validates(self):
         try:
             import jsonschema

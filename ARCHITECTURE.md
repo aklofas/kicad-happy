@@ -11,9 +11,7 @@ Frozen for the whole arc:
 - rule IDs and emitted `detector` strings (users' suppression configs, harness identities);
 - script paths, skill names, CLI flags and exit codes.
 
-Open, under the round-8 budget: output key order, EMC finding shape, severity vocabulary, `schema_era` coverage, swallowed exceptions becoming diagnostics, additive schema fields. `finding_id`s may move where content legitimately changes. Wholesale output key renames (`ref`→`reference`, `net`→`net_name`) are **excluded**; a key is renamed only where it is actively misleading, and each such rename is listed in the round-8 budget.
-
-Everything outside the round-8 budget is expected to produce strict-field identical output.
+Output is not frozen, but an output change after 3.0.0 needs a declared budget before it lands: each changed class (key, finding, severity, `schema_era`) is listed with its expected magnitude, and the corpus gate checks it. Everything outside the budget must produce strict-field identical output. `finding_id`s may move only where content legitimately changes. Wholesale output key renames (`ref`→`reference`, `net`→`net_name`) are **excluded**; a key is renamed only where it is actively misleading, and each such rename is listed in the budget.
 
 ## Dependency rules (enforced by `tools/check_refactor.py imports`)
 
@@ -48,7 +46,7 @@ Round 8 changed output under five budget classes; the user-facing list is the `C
 - B4: one severity vocabulary (`info`/`warning`/`error`) in `datasheet_verification` (findings and `summary.by_severity`), `cross_verify.py` output and `summarize_findings` (`high` becomes `error`); legacy names are accepted on input only.
 - B5: RS-001 is removed on nets whose only `power_in` pins are bootstrap-named (KH-454); PP-001 is added on boards with duplicate component refs (KH-455).
 
-Behaviour changes outside the budget leave output identical at defaults: the config knobs (`retention`, `diff_threshold`, `output_dir`), EMC and SPICE runs through `output_io.write_primary_run`, and KH-463 (SPICE workdir). Round 8 added no facade rows: `analyze_schematic` binds no `validate_power_sequencing`.
+Behaviour changes outside the budget leave output identical at defaults: the config knobs (`retention`, `diff_threshold`, `output_dir`), EMC and SPICE runs through `output_io.write_primary_run`, and KH-463 (SPICE workdir).
 
 ## Facade register
 
