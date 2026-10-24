@@ -7,7 +7,7 @@ present. Soft-skip when the cache is missing or below trust gate — no
 analyzer ever blocks on lookup() per Phase 4 spec §5.1.
 
 API surface (Phase 4b alignment, 2026-05-03):
-    facts = get_facts(mpn, cache_dir=cache_dir)        # may be None
+    facts = get_facts(mpn, cache_dir=cache_dir, diagnostics=diagnostics)  # may be None
     if facts is None: return []                        # silent skip
     specs = facts.base.absolute_max.get(key)           # list[SpecValue]
     if has_data(specs):

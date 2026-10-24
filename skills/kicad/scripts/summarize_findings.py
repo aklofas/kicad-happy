@@ -8,7 +8,7 @@ N lines sorted by (severity rank, count).
 Usage:
     summarize_findings.py <analysis-dir>
     summarize_findings.py <analysis-dir> --top 10
-    summarize_findings.py <analysis-dir> --severity high
+    summarize_findings.py <analysis-dir> --severity error
     summarize_findings.py <analysis-dir> --run 2026-04-14_1939
 
 Works cross-platform: no symlinks, paths are resolved via the manifest

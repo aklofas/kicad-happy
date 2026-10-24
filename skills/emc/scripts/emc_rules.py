@@ -4,7 +4,7 @@ Each check function returns a list of finding dicts with:
   - category: str (ground_plane, decoupling, io_filtering, etc.)
   - severity: str (CRITICAL, HIGH, MEDIUM, LOW, INFO)
   - rule_id: str (e.g., GP-001)
-  - title: str
+  - summary: str
   - description: str
   - components: list[str] (reference designators involved)
   - nets: list[str] (net names involved)

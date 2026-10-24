@@ -141,11 +141,11 @@ Controls analysis script behavior and output.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `output_dir` | string | `"analysis"` | Directory for analysis JSON output |
+| `output_dir` | string | `"analysis"` | Directory name (relative to the current directory) used for the capability sidecar and the default analysis directory when neither `--analysis-dir` nor `--output` is given |
 | `retention` | integer | `0` | 0 = keep every run (default); N keeps the N newest unpinned runs |
 | `auto_diff` | boolean | `true` | Automatically diff against the previous run |
 | `track_in_git` | boolean | `false` | Include analysis output in git tracking |
-| `diff_threshold` | string | `"major"` | Minimum change level to report: `"major"`, `"minor"`, or `"all"` |
+| `diff_threshold` | string | `"major"` | Change level at which a new timestamped run folder is created instead of overwriting the current one: `"major"` (default), `"minor"`, or `"all"` (any detected change) |
 | `power_rails` | object | `{}` | Power rail filtering and annotation (see below) |
 
 #### `analysis.power_rails` (object) — v1.2

@@ -36,7 +36,19 @@ Two pin-name tables follow the same rule: `validation_detectors._PS_PG_PIN_NAMES
 
 ## Finding emit sites (enforced by `tools/check_refactor.py tags`)
 
-Every emit site carries literal string keywords `detector=`, `rule_id=` and `schema_era=`. An emit site is a `make_finding`/`_make_finding` call, or a caller of a dict-returning `_make_*` factory. A `_make_*` wrapper whose own inner `make_finding` call carries all three literals is itself the emit site, and its callers are not scanned. `_make_*` helpers that are not finding factories are ignored. Every site is tagged; `tools/tag_baseline.json` records the detector/rule literal shapes that predate the checks, and may only shrink. Moving an emit site to another file uses `tags --update-baseline --moved-from FILE`, which never lets the count of untagged shapes grow. Emitted detector strings and rule IDs are public API and never change.
+Every emit site carries literal string keywords `detector=`, `rule_id=` and `schema_era=`. An emit site is a `make_finding`/`_make_finding` call, or a caller of a dict-returning `_make_*` factory. A `_make_*` wrapper whose own inner `make_finding` call carries all three literals is itself the emit site, and its callers are not scanned. `_make_*` helpers that are not finding factories are ignored. `schema_era` is `v1.4` for the datasheet-authority detectors and `v3.0` for every site whose emitted dict changed in the v3 line. `tools/tag_baseline.json` records the 56 detector/rule literal shapes that predate the checks, and may only shrink. Moving an emit site to another file uses `tags --update-baseline --moved-from FILE`, which never lets the count of untagged shapes grow. Emitted detector strings and rule IDs are public API and never change.
+
+## Round 8 output changes
+
+Round 8 changed output under five budget classes, with magnitudes in `handoff-round8.md` in the arc folder.
+
+- B1: a `diagnostics` list at the root of every analyzer envelope and the SPICE report (`[]` when nothing degraded); the six `--schema` outputs gain the property.
+- B2: EMC `findings[*]` take `make_finding`'s key order and lose `title` (its text is `summary`); `finding_id` is unchanged; the same removal in `audience_summary.*.top_issues`.
+- B3: `schema_era: "v3.0"` is added on findings of the 89 previously untagged emit sites and on RS-001/PP-001.
+- B4: one severity vocabulary (`info`/`warning`/`error`) in `datasheet_verification` (findings and `summary.by_severity`), `cross_verify.py` output and `summarize_findings` (`high` becomes `error`); legacy names are accepted on input only.
+- B5: RS-001 is removed on nets whose only `power_in` pins are bootstrap-named (KH-454); PP-001 is added on boards with duplicate component refs (KH-455).
+
+Behaviour changes outside the budget leave output identical at defaults: the config knobs (`retention`, `diff_threshold`, `output_dir`), EMC and SPICE runs through `output_io.write_primary_run`, and KH-463 (SPICE workdir). Round 8 added no facade rows: `analyze_schematic` binds no `validate_power_sequencing`.
 
 ## Facade register
 
@@ -123,7 +135,7 @@ The twelve analyzer and consumer CLIs (`analyze_schematic`, `analyze_pcb`, `anal
 | Module | Owns | Imports |
 |---|---|---|
 | `analyze_emc.py` | EMC CLI, risk scoring, test plan | `emc_rules`, `emc_formulas`, `emc_spice`, `emc_envelope`; core `kicad_core`, `finding_schema`, `output_filters`, `analysis_cache`, `project_config`, `inputs_builder`, `capability_mode`, `schema_codec` |
-| `emc_rules.py` | the EMC rule checks, `is_emc_ground_name` | `emc_formulas`, `emc_spice` (lazy); core `kicad_core`, `finding_schema`, `datasheet_features` (optional: a module-level `try` import with a stub fallback) |
+| `emc_rules.py` | the EMC rule checks (findings have `make_finding`'s key shape), `is_emc_ground_name` | `emc_formulas`, `emc_spice` (lazy); core `kicad_core`, `finding_schema`, `datasheet_features` (optional: a module-level `try` import with a stub fallback) |
 | `emc_formulas.py` | radiation, harmonics, cavity resonance, PDN impedance formulas | core `kicad_core` |
 | `emc_spice.py` | SPICE-enhanced PDN and filter analysis | `emc_formulas`; `spice_simulator`, `spice_templates` from the spice skill (`optional-to-optional` baseline entries) |
 | `emc_envelope.py` | EMC envelope dataclass | core `analyzer_envelope` |
@@ -162,6 +174,7 @@ The twelve analyzer and consumer CLIs (`analyze_schematic`, `analyze_pcb`, `anal
 | `model.py` | typed records: Component/Pin/NetPin/NetLabel/Net TypedDicts, PinNetEntry, SheetData, ResolvedConfig, PcbReaderState | stdlib |
 | `netquery.py` | net helpers (`get_two_pin_nets`, `build_net_id_map`), `build_pin_to_net_map`, `build_ref_pins`, `BridgeFact`/`BridgeFacts`/`build_bridge_facts` | `model`, `values` |
 | `render.py` | severity normaliser and text fragments: `normalize_severity` + `SEVERITY_ALIASES`; `severity_bucket` (the text-report bucket, kept as a named adapter: it differs on `WARN` and accepts `ERROR`); `plural`, `finding_line`, `wrap_lines`, `fmt_signed`, `fmt_g4` | stdlib |
+| `diagnostics.py` | `Diagnostic` and `record(sink, source, exc, effect)`: a guarded failure that degraded a run is printed to stderr and appended to the envelope's `diagnostics` list | stdlib |
 | `cli.py` | shared argparse declarations: `STAGES`, `AUDIENCES`, `add_stage_audience_args`, `add_only_deterministic_arg`, `add_schema_arg`, `add_output_arg`, `add_compact_arg`, `add_text_arg`, `add_config_arg` | stdlib |
 
 `kicad_core` imports stdlib and itself only (CI-enforced).

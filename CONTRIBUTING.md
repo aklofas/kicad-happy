@@ -146,7 +146,7 @@ def detect_my_circuit(ctx: AnalysisContext, prior_results=None) -> list[dict]:
         findings.append(make_finding(
             detector="detect_my_circuit",
             rule_id="MC-001",
-            schema_era="v1.4",
+            schema_era="v3.0",
             category="signal",
             severity="warning",          # error | warning | info
             confidence="deterministic",  # deterministic | heuristic | datasheet-backed
@@ -160,7 +160,9 @@ def detect_my_circuit(ctx: AnalysisContext, prior_results=None) -> list[dict]:
     return findings
 ```
 
-`detector`, `rule_id` and `schema_era` are string literals at the call site (the harness scans them); Every emit site carries a `schema_era`: `v3.0` is the era in which the finding's emitted dict last changed, `v1.4` marks the datasheet-authority detectors in `lookup_detectors.py`. New sites use `v3.0`.
+`detector`, `rule_id` and `schema_era` are string literals at the call site (the harness scans them). Every emit site carries a `schema_era`. `v1.4` marks the datasheet-authority detectors added in v1.4; `v3.0` marks every emit site whose emitted dict changed in the v3 line (shape, keys or behaviour). A new detector uses the current literal `v3.0`.
+
+A guard that catches an exception and falls back never uses `except Exception: pass`. It calls `kicad_core.diagnostics.record(sink, source, exc, effect)`, which prints one stderr line and appends a `Diagnostic` to the `diagnostics` list the envelope carries.
 
 If consumers filter on the new detector, add a `Det` constant in `finding_schema.py` whose value equals the literal. Call the detector from the phase function in `schematic/pipeline.py` that owns the call order (`detect_topologies` for topology detectors, `run_domain_detectors` for domain, validation and lookup detectors).
 
