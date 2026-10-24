@@ -22,7 +22,7 @@ jobs:
       - run: sudo apt-get install -y ngspice poppler-utils
 
       # --- Tier 1: Deterministic analysis ---
-      - uses: aklofas/kicad-happy@v1
+      - uses: aklofas/kicad-happy@v3
         id: analysis
         with:
           digikey-client-id: ${{ secrets.DIGIKEY_CLIENT_ID }}

@@ -1,6 +1,6 @@
 # Architecture notes (v3 arc, living document)
 
-This file records the decisions a contributor needs that the code does not state on its own: which contracts are frozen, which way imports may point, which module owns what, and which code is kept only for a named consumer. The per-package ownership tables for `kicad_core/`, `schematic/`, `pcb/` and `distributor_core/` follow the top-level module map. The facade register lists compatibility code that is retired in round 9 of the v3 arc.
+This file records the decisions a contributor needs that the code does not state on its own: which contracts are frozen, which way imports may point, which module owns what, and which code is kept only for a named consumer. The per-package ownership tables for `kicad_core/`, `schematic/`, `pcb/` and `distributor_core/` follow the top-level module map. The facade register lists every facade kept for a named consumer; it is empty.
 
 ## Contracts: frozen and open
 
@@ -40,7 +40,7 @@ Every emit site carries literal string keywords `detector=`, `rule_id=` and `sch
 
 ## Round 8 output changes
 
-Round 8 changed output under five budget classes, with magnitudes in `handoff-round8.md` in the arc folder.
+Round 8 changed output under five budget classes; the user-facing list is the `CHANGELOG.md` v3.0.0 "Changed" section.
 
 - B1: a `diagnostics` list at the root of every analyzer envelope and the SPICE report (`[]` when nothing degraded); the six `--schema` outputs gain the property.
 - B2: EMC `findings[*]` take `make_finding`'s key order and lose `title` (its text is `summary`); `finding_id` is unchanged; the same removal in `audience_summary.*.top_issues`.
@@ -52,35 +52,9 @@ Behaviour changes outside the budget leave output identical at defaults: the con
 
 ## Facade register
 
-A facade is code kept only so a named consumer keeps working. Each entry names the consumer and the condition that retires it. Round 9 of the v3 arc requires this table to be empty or every row re-justified.
+No facades remain as of 3.0.0: the facade modules, re-exports and aliases kept during the v3 arc were removed, and `CHANGELOG.md` lists each removed import path with its new owner. Code added only so a named consumer keeps working needs a row here naming the consumer and the condition that removes it.
 
-| Symbol | Location | Consumer | Retire when |
-|---|---|---|---|
-| `make_finding(design_context=...)` ignored keyword | `skills/kicad/scripts/finding_schema.py` | harness contract tests (one real call: `tests/contract/test_finding_id.py:118`; two docstring mentions) | harness migrates per round-1 relocation map |
-| `AnalysisContext.design_context`, `AnalysisContext.hierarchy_context` fields | `skills/kicad/scripts/kicad_types.py` | harness fixtures (`tests/fixtures/_build_ctx.py`, 15 contract files, `tests/test_schema_drift.py`, `tools/generate_catalog.py`) | same |
-| `lookup_helpers.read_design_context` | `skills/kicad/scripts/lookup_helpers.py` | harness `tests/contract/test_lookup_helpers.py` | same |
-| `kicad_utils` (whole module, 72 re-exports) | `skills/kicad/scripts/kicad_utils.py` | harness (10 names: is_power_net_name, is_ground_name, MPN_FIELD_ALIASES, MPN_FIELD_ALIASES_PRIMARY, normalize_field_name, lookup_regulator_vref, classify_component); user scripts | round 9, after harness and Action import `kicad_core.*` |
-| `diff_analysis` re-exports of `diff_engine` names | `skills/kicad/scripts/diff_analysis.py` | harness `tests/test_diff_analysis.py`, `tests/test_detection_schema.py` (`SIGNAL_REGISTRY`), `tests/contract/test_diff_deep_review.py` | same |
-| `sexp_parser` (whole module) | `skills/kicad/scripts/sexp_parser.py` | harness `validate/verify_parser.py`, `tests/...` (1 import); docs `skills/kicad/SKILL.md:810` (edit in place in round 9; SKILL.md is at its line ceiling), `skills/kicad/scripts/README.md`, `skills/kicad/scripts/methodology_schematic.md`, `skills/kicad/scripts/methodology_pcb.md`, `skills/kicad/references/pcb-layout-analysis.md`, `skills/kicad/references/supplementary-data-sources.md` | round 9, after the harness imports `kicad_core.sexp` and those docs point at `kicad_core.sexp` |
-| `analyze_schematic.build_pin_to_net_map` (import binding) | `skills/kicad/scripts/analyze_schematic.py` | harness (2 sites) | round 9 |
-| `signal_detectors.detect_led_drivers` (alias of `enrich_transistor_led_drivers`) | `skills/kicad/scripts/signal_detectors.py` | none known in the harness inventory; user scripts | round 9 |
-| `bus_resolver` (whole module) | `skills/kicad/scripts/bus_resolver.py` | harness `tests/test_bus_resolver.py` | round 9, after the harness imports `schematic.connectivity` |
-| `project_config.load_jsonc`, `project_config._strip_jsonc` re-exports | `skills/kicad/scripts/project_config.py` | harness `tests/test_kh368_jsonc.py`, `tests/test_kh400_jsonc_trailing_comma.py` | same |
-| `_core_path` helpers | `skills/{emc,spice,bom,digikey,mouser,lcsc,element14}/scripts/_core_path.py` | the skills themselves | permanent (not a facade; listed for discoverability) |
-| `AnalysisContext.__post_init__` fill-when-empty derivation | `skills/kicad/scripts/kicad_types.py` | harness: 26 direct `AnalysisContext(...)` constructions in 20 files + `tests/fixtures/_build_ctx.py` | harness builds contexts with `build_analysis_context` (round-3 relocation map) |
-| `signal_detectors._get_net_components` index-less branch | `skills/kicad/scripts/signal_detectors.py` | same harness contexts (no `nq`) | same |
-| `schematic.pipeline.parse_legacy_schematic` (alias of `analyze_legacy_schematic`) | `skills/kicad/scripts/schematic/pipeline.py` | none known in the harness inventory; user scripts (re-exported through `analyze_schematic`) | round 9 |
-| `analyze_schematic` module re-exports (115 names from `schematic.*` and `kicad_core.*`; re-exports the names the module DEFINED at the round-3 tip, incl. 7 round-4 additions; names it merely imported, e.g. `parse_file`, `classify_component`, `make_finding`, `AnalysisContext`, are not re-bound, no known consumer) | `skills/kicad/scripts/analyze_schematic.py` | harness (13 imports: `build_net_map`, `_detect_differential_pairs`, `validate_hierarchical_labels`, `detect_sub_sheet`, `audit_pwr_flags`, `audit_datasheet_coverage`, `audit_sourcing_gate`, `analyze_usb_compliance`, `analyze_sleep_current`, `analyze_power_budget`, `analyze_bus_topology`, `_estimate_rail_voltage`, and `import analyze_schematic as asch` attribute access); user scripts | round 9, after the harness imports `schematic.*` |
-| `pcb_connectivity` (whole module, 9 re-exports) | `skills/kicad/scripts/pcb_connectivity.py` | user scripts and the scripts README; no harness import | round 9 |
-| `analyze_pcb` module re-exports (94 defined names, `main` excluded, plus the imported `parse_file` and `build_connectivity_graph` the harness binds through it) | `skills/kicad/scripts/analyze_pcb.py` | harness: 15 `from analyze_pcb import` names (`MIN_REAL_DRILL_MM`, `_pad_drills`, `ZoneFills`, `_dist_point_to_segment`, `_compute_switching_loop_areas`, `_degenerate_drills`, `_nearest_zone_copper_distance`, `_pad_on_layer`, `_pad_outline_points`, `analyze_pcb`, `analyze_design_rule_compliance`, `analyze_placement`, `_chain_segments`, `analyze_via_in_pad`, `analyze_vias`), `import analyze_pcb as ap` attribute access, and two `patch.object(analyze_pcb, ...)` sites (`extract_footprints`, `build_connectivity_graph`) that migrate to `pcb.reader` / `pcb.presentation`; user scripts | round 9, after the harness imports `pcb.*` |
-| `sync_datasheets_<p>` module re-exports (×4: digikey, mouser, lcsc, element14; re-exports every name the module DEFINED at the round-5 tip (`tools/tests/sync_datasheets_<p>_names_round5.json`), e.g. `extract_parts`/`load_mpn_list` one-argument wrappers, `sync_one_part`, `get_oauth_token`; names it merely imported from its fetch module, e.g. `download_pdf`, `try_alternative_sources`, `verify_datasheet`, the provider's search/accessor names, are not re-bound, no known consumer; `sync_datasheets(**kwargs)` delegates to `distributor_core.sync`) | `skills/<p>/scripts/sync_datasheets_<p>.py` | harness runs them as scripts only (`run/run_datasheets.py`, `tools/detect_changes.py`); user scripts. Re-exported names are bindings, not patch seams: patching `sync_datasheets_digikey.get_oauth_token` no longer reaches the driver | round 9 |
-| `fetch_datasheet_<p>` module re-exports (×4; the moved helpers from `distributor_core.*` and `provider_<p>`; LCSC and element14 re-export the provider's no-redirect `normalize_url`/`download_pdf` wrappers) | `skills/<p>/scripts/fetch_datasheet_<p>.py` | lcsc: harness `tests/test_kh405_lcsc_wmsc_fallthrough.py` (4 names: `search_lcsc_direct`, `enrich_with_wmsc`, `_get_datasheet_url`, `_get_manufacturer`; its `mock.patch.object(fdl, "search_lcsc_direct")` sites migrate to `provider_lcsc`, where `enrich_with_wmsc` looks the name up); docs `skills/lcsc/SKILL.md` (points at `provider_lcsc.search_lcsc_direct()` since round 6); the other three: user scripts | round 9, after the harness imports `provider_lcsc` |
-| `datasheet_lookup` (whole module, 9 re-exports of `datasheet_types.cache_reader`; keeps its `_TYPES_PARENT` sys.path insert) | `skills/datasheets/scripts/datasheet_lookup.py` | harness: 9 test files bind its names (`test_b5d_detector_fire_shapes.py`, `test_detect_changes.py`, `datasheets/test_a3_lookup_path.py`, `test_a3_compat_path.py`, `test_a7_known_divergences.py`, `test_a3_trust_gates_deny.py`, `contract/test_datasheet_cache_roundtrip.py`, `contract/test_datasheet_lookup.py`, `contract/test_datasheet_features.py`); its one `monkeypatch.setattr(datasheet_lookup, "_UNSAFE_CHAR", ...)` site migrates to `datasheet_types.cache_reader`; scripts-dir importers | round 9, after the harness imports `datasheet_types` |
-| `finding_schema.normalize_severity`, `finding_schema._SEVERITY_NORMALIZE` (import bindings of `kicad_core.render.normalize_severity` / `SEVERITY_ALIASES`) | `skills/kicad/scripts/finding_schema.py` | `normalize_severity`: harness `tests/contract/test_action_format_report_v14.py` (one import, 16 assertions) and the harness `tools/api_migration.py` inventory; in this repo `action/format-report.py`, `diff_engine.py`, `fab_release_gate.py`. `_SEVERITY_NORMALIZE`: no importer in the harness or in this repo; only the identity check in `tools/tests/test_render.py` | round 9, after each consumer imports `kicad_core.render` |
-| `analyze_schematic._classify_ic_function` (alias of `schematic.ic_analysis.classify_ic_pinout_role`) | `skills/kicad/scripts/analyze_schematic.py` | no harness import (the name appears only in a `regression/bugfix_registry.json` summary string); `skills/datasheets/references/extraction-schema.md` no longer names it; user scripts | round 9, after the consumer imports `schematic.ic_analysis.classify_ic_pinout_role` |
-| `output_filters._severity_bucket` (import alias of `kicad_core.render.severity_bucket`) | `skills/kicad/scripts/output_filters.py` | the module's own call sites; no harness import | round 9 |
-
-`_core_path` anchors on `Path(__file__).resolve()`, so a symlinked skill directory resolves to its real parent before walking up to `skills/`; the previous ad hoc inserts used `os.path.abspath` (no symlink following). Byte-identical copies live in emc, spice, bom and the four distributor skills (digikey, mouser, lcsc, element14) by design; the distributor skills use it to reach `skills/datasheets/distributor_core/`, which sits in the core.
+The `_core_path` helpers (`skills/{emc,spice,bom,digikey,mouser,lcsc,element14}/scripts/_core_path.py`) are permanent and are not facades. `_core_path` anchors on `Path(__file__).resolve()`, so a symlinked skill directory resolves to its real parent before walking up to `skills/`; the previous ad hoc inserts used `os.path.abspath` (no symlink following). Byte-identical copies live in emc, spice, bom and the four distributor skills (digikey, mouser, lcsc, element14) by design; the distributor skills use it to reach `skills/datasheets/distributor_core/`, which sits in the core.
 
 ## Module ownership — `skills/kicad/scripts/` top level
 
@@ -88,12 +62,12 @@ One row per module outside the packages. "Imports" lists only in-repo modules, a
 
 | Module | Owns | Imports |
 |---|---|---|
-| `analyze_schematic.py` | schematic CLI (`main(argv=None) -> int`) and the facade re-exports of `schematic.*` | `schematic`, `kicad_core`, `output_filters`, `output_io`, `project_config`, `envelopes`, `schema_codec`, `inputs_builder`, `capability_mode` |
-| `analyze_pcb.py` | PCB CLI and the facade re-exports of `pcb.*` | `pcb`, `kicad_core`, `output_filters`, `output_io`, `project_config`, `envelopes`, `schema_codec`, `inputs_builder`, `capability_mode` |
+| `analyze_schematic.py` | schematic CLI (`main(argv=None) -> int`) over `schematic.*` | `schematic`, `kicad_core`, `output_filters`, `output_io`, `project_config`, `envelopes`, `schema_codec`, `inputs_builder`, `capability_mode` |
+| `analyze_pcb.py` | PCB CLI over `pcb.*` | `pcb`, `kicad_core`, `output_filters`, `output_io`, `project_config`, `envelopes`, `schema_codec`, `inputs_builder`, `capability_mode` |
 | `analyze_gerbers.py` | Gerber/Excellon reader, GR-001..005, CLI | `kicad_core`, `finding_schema` (lazy), `output_filters` (lazy), `output_io` (lazy), `envelopes`, `schema_codec`, `inputs_builder`, `capability_mode` |
 | `analyze_thermal.py` | thermal estimator (TS-001..005, TP-001..002, TH-DET), CLI | `kicad_core`, `finding_schema` (lazy), `lookup_detectors`, `analysis_cache` (lazy), `output_filters` (lazy), `output_io` (lazy), `project_config` (lazy), `envelopes`, `schema_codec`, `inputs_builder`, `capability_mode` |
 | `cross_analysis.py` | schematic + PCB cross-domain checks (CC, EG, DA, XV, NR, RP, TW, PS-002, VS-002, DP-005), `is_cross_analysis_ground_name`, CLI | `kicad_core`, `finding_schema`, `analysis_cache` (lazy), `output_filters` (lazy), `output_io` (lazy), `envelopes`, `schema_codec`, `inputs_builder`, `capability_mode` |
-| `diff_analysis.py` | diff CLI and re-exports of `diff_engine` names | `diff_engine`, `finding_schema`, `kicad_core`, `analysis_cache` (lazy) |
+| `diff_analysis.py` | diff CLI over `diff_engine` | `diff_engine`, `finding_schema`, `kicad_core`, `analysis_cache` (lazy) |
 | `diff_engine.py` | pure comparison of two analysis outputs | `detection_schema`, `finding_schema` |
 | `what_if.py` | parameter sweep and fix suggestions, CLI | `kicad_core`, `finding_schema`, `detection_schema`; lazy `spice_tolerance`, `simulate_subcircuits`, `spice_simulator` from the spice skill (the `simulate_subcircuits` import is a `no-cli-import` baseline entry) |
 | `lifecycle_audit.py` | distributor lifecycle and temperature audit (LC-001..006, LT-001), CLI | `kicad_core`, `finding_schema` (lazy), `analysis_cache` (lazy) |
@@ -122,11 +96,7 @@ One row per module outside the packages. "Imports" lists only in-repo modules, a
 | `domain_detectors.py` | domain-specific detectors (interfaces, power path, sensors, audio, LEDs, ...) | `signal_detectors`, `kicad_core`, `kicad_types`, `detector_helpers`, `finding_schema` |
 | `validation_detectors.py` | validation detectors (PU, VM, PR, PS-001, LR, FS) | `kicad_core`, `kicad_types`, `detector_helpers`, `finding_schema`, `lookup_helpers`, `datasheet_features` |
 | `lookup_detectors.py` | datasheet-backed detectors over `lookup()` | `finding_schema`, `lookup_helpers` |
-| `lookup_helpers.py` | detector-side `lookup()` glue; `read_design_context` facade | `datasheet_types` |
-| `kicad_utils.py` | facade re-exporting `kicad_core.*` | `kicad_core` |
-| `sexp_parser.py` | facade for `kicad_core.sexp` | `kicad_core` |
-| `bus_resolver.py` | facade for `schematic.connectivity` | `schematic` |
-| `pcb_connectivity.py` | facade for `pcb.connectivity` | `pcb` |
+| `lookup_helpers.py` | detector-side `lookup()` glue | `datasheet_types` |
 
 The twelve analyzer and consumer CLIs (`analyze_schematic`, `analyze_pcb`, `analyze_gerbers`, `analyze_thermal`, `cross_analysis`, `diff_analysis`, `what_if`, `lifecycle_audit`, `summarize_findings`, and outside this directory `analyze_emc`, `simulate_subcircuits`, `extract_parasitics`) define `main(argv=None) -> int` and take their shared flag declarations from `kicad_core/cli.py`. Eleven of them exit with `sys.exit(main())`. `lifecycle_audit.py` is the one seam: its `__main__` block calls `main()` bare, because the traceback printed on missing input quotes that line and that text is frozen. Its exit codes still come from `main`, which calls `sys.exit(1)` on its error paths.
 
@@ -225,7 +195,7 @@ Mutation contract: `read_board` backfills `net`/`net_number` on the extracted re
 | `distributor_core/verify.py` | PDF text extraction and datasheet verification | stdlib (+ optional `pdftotext` binary) |
 | `distributor_core/sync.py` | `sync_datasheets(provider, ...)`: the one sync driver over a provider adapter (thirteen substitution sites over the adapter's `DEFAULT_DELAY`, `preflight`, `ID_KEYS`, `SKIPPED_COUNTS_IDS`, `LABELS`, `KEY_PRIORITY`, `RENAME_PRESENT`, `authenticate`, `sync_one_part`, `FAILED_DETAIL_WITH_URL`, `report_tail`) | `inputs`, `manifest` |
 | `skills/<p>/scripts/provider_<p>.py` (×4) | the adapter: auth, search, response accessors, `sync_one_part(part, output_dir, index, delay, ctx)`, adapter constants | `distributor_core` (via `_core_path`) |
-| `fetch_datasheet_<p>.py`, `sync_datasheets_<p>.py` (×4 each) | argparse `main()` + facade re-exports; basenames and flags frozen | `provider_<p>`, `distributor_core` |
+| `fetch_datasheet_<p>.py`, `sync_datasheets_<p>.py` (×4 each) | argparse `main()`; basenames and flags frozen | `provider_<p>`, `distributor_core` |
 | `skills/datasheets/datasheet_types/cache_reader.py` | extraction-cache reader: `lookup`, `cache_path_for`, `sanitize_mpn`, staleness (`CacheContext`, `STALE_PDF_*`) | `.codec`, `.extraction` |
 | `skills/datasheets/scripts/extraction_schema.py` | JSON Schema validation of extraction results: `schema_registry` (local `$ref` resolution over `skills/datasheets/schemas/`), `validate_against_schema`; shared by `merge_results.py` and `validate_extraction_result.py` | stdlib + optional `jsonschema`/`referencing` (imported when validation runs) |
 

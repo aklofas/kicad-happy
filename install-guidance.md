@@ -528,7 +528,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - run: sudo apt-get install -y ngspice poppler-utils
-      - uses: aklofas/kicad-happy@v1
+      - uses: aklofas/kicad-happy@v3
         id: analysis
       - uses: thollander/actions-comment-pull-request@v3
         if: github.event_name == 'pull_request'
@@ -552,7 +552,7 @@ branch — component additions/removals, signal parameter shifts, new/resolved
 findings:
 
 ```yaml
-      - uses: aklofas/kicad-happy@v1
+      - uses: aklofas/kicad-happy@v3
         id: analysis
         with:
           diff-base: true
@@ -622,7 +622,7 @@ Add secrets in your repo: Settings → Secrets and variables → Actions → New
 
 ### Action outputs
 
-The `aklofas/kicad-happy@v1` step exposes these outputs for downstream steps:
+The `aklofas/kicad-happy@v3` step exposes these outputs for downstream steps:
 
 | Output | Description |
 |--------|-------------|

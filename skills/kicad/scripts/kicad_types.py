@@ -73,8 +73,9 @@ class AnalysisContext:
             Derived from *pin_net* for quick per-component pin enumeration.
         no_connects: List of no-connect markers from the schematic.
         generator_version: KiCad version string (e.g., ``"9.0.1"``).
-        nq: ``NetlistQueries`` object for multi-hop net tracing.  Installed by
-            ``build_analysis_context``; None only on contexts constructed directly.
+        nq: ``NetlistQueries`` object for multi-hop net tracing.  Detectors
+            require a context built by ``build_analysis_context``, which always
+            installs ``nq``.
         diagnostics: Sink for guarded failures (``kicad_core.diagnostics.record``); the
             schematic pipeline merges it into the envelope's ``diagnostics``.
 

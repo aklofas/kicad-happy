@@ -17,9 +17,6 @@ Consumers import:
     # Typed access via Track 2.2:
     ds.base.pinout.find(name="EN")
     ds.regulator.topology  # if "regulator" in ds.categories
-
-Moved here from skills/datasheets/scripts/datasheet_lookup.py (v3
-round 6); that module is now a re-export facade.
 """
 from __future__ import annotations
 

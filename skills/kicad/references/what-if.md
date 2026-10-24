@@ -81,7 +81,7 @@ C3=22n
 L1=10u
 ```
 
-Standard engineering notation. The parser uses `parse_value()` from `kicad_utils.py` with automatic component type detection based on the reference prefix (`C` -> capacitor, `L` -> inductor, everything else -> resistor by default).
+Standard engineering notation. The parser uses `parse_value()` from `kicad_core/values.py` with automatic component type detection based on the reference prefix (`C` -> capacitor, `L` -> inductor, everything else -> resistor by default).
 
 ### Comma Sweep
 
@@ -219,7 +219,7 @@ Each suggestion includes the ideal (exact) value plus E-series snapped alternati
 
 ## E-Series Snapping
 
-All fix suggestions are snapped to standard E-series values using `snap_to_e_series()` from `kicad_utils.py`.
+All fix suggestions are snapped to standard E-series values using `snap_to_e_series()` from `kicad_core/values.py`.
 
 **Algorithm:**
 1. Extract the decade: `decade = 10^floor(log10(value))`

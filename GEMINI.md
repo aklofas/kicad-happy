@@ -61,7 +61,7 @@ All scripts are zero-dependency (Python 3.10+ stdlib only). No `pip install` nee
 - `skills/emc/scripts/emc_rules.py` — 44 EMC rule implementations (~4,250 LOC)
 - `skills/kicad/scripts/kicad_types.py` — `AnalysisContext` dataclass shared by all detectors
 - `skills/kicad/references/` — 18 deep methodology guides
-- `skills/datasheets/` — Extraction pipeline + v1.4 typed `lookup()` facade with `datasheet_types/` access layer (DatasheetFacts, SpecValue, Pin, Pinout, trust_gating helpers)
+- `skills/datasheets/` — Extraction pipeline + v1.4 typed `lookup()` entry point with `datasheet_types/` access layer (DatasheetFacts, SpecValue, Pin, Pinout, trust_gating helpers)
 - `skills/kicad/review/` — v2.0 Deep Review infrastructure: schemas (design_context, review_annotations, deep_review), merge/validate/build-plan scripts, prompt scaffold for design_context input; Deep Review evidence gate at `deep_review_gate.py`
 
 ## Documentation reference

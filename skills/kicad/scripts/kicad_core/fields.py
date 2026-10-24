@@ -1,8 +1,8 @@
 """Property-field aliases and field selection (kicad_core).
 
 Single source for the MPN / distributor part-number alias sets and the
-file-order-stable field pickers (KH-414, KH-418). Moved verbatim from
-kicad_utils.py in the v3 refactor; kicad_utils re-exports every name.
+file-order-stable field pickers (KH-414, KH-418). The names live here, in
+kicad_core; callers import them from kicad_core.fields.
 """
 
 # ---------------------------------------------------------------------------

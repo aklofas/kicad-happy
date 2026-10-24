@@ -28,7 +28,7 @@ Each skill has a `SKILL.md` with YAML frontmatter (name, description, triggers) 
 
 | File | LOC | Purpose |
 |------|-----|---------|
-| `kicad/scripts/analyze_schematic.py` | ~280 | CLI + facade: argparse → `schematic.pipeline` → output; re-exports every pre-v3 name (retire round 9) |
+| `kicad/scripts/analyze_schematic.py` | ~135 | CLI: argparse → `schematic.pipeline` → output |
 | `kicad/scripts/schematic/pipeline.py` | ~1,520 | The named analysis phases and the project-level orchestration (`analyze_schematic`, `run_analyses`, `finalize_for_cli`) |
 | `kicad/scripts/schematic/reader.py` | ~800 | `.kicad_sch` reader: symbols, pins, wires, labels, sheets → `SheetData` |
 | `kicad/scripts/schematic/legacy_reader.py` | ~790 | KiCad 5 `.sch` / `.lib` reader |
@@ -45,7 +45,7 @@ Each skill has a `SKILL.md` with YAML frontmatter (name, description, triggers) 
 | `kicad/scripts/domain_detectors.py` | ~6,150 | Domain-specific detectors (Ethernet, USB-C, BMS, motor drive, sensors, audio, LEDs, etc.) |
 | `kicad/scripts/validation_detectors.py` | ~1,430 | Validation detectors (pull-ups, voltage mismatch, protocol buses, power sequencing, feedback stability) |
 | `kicad/scripts/lookup_detectors.py` | ~690 | v1.4 datasheet-backed detectors (AM-001, OV-001, FT-001, PM-001, EX-001 via Phase 2 lookup API) |
-| `kicad/scripts/analyze_pcb.py` | ~215 | PCB CLI + re-export facade (the analyzer lives in `kicad/scripts/pcb/`) |
+| `kicad/scripts/analyze_pcb.py` | ~160 | PCB CLI (the analyzer lives in `kicad/scripts/pcb/`) |
 | `kicad/scripts/pcb/pipeline.py` | ~620 | `read_board` → `run_facts` → `run_checks` (`run_analyses` composes them) → `presentation.assemble_result`; `resolve_power_rails`, `finalize_for_cli` |
 | `kicad/scripts/pcb/presentation.py` | ~460 | `assemble_result`, `group_components`, `compute_statistics`: result dict in the historical key order |
 | `kicad/scripts/pcb/reader.py` | ~1,515 | `.kicad_pcb` extraction: layers, nets, footprints, tracks, vias, zones, outline, net classes |
@@ -59,9 +59,8 @@ Each skill has a `SKILL.md` with YAML frontmatter (name, description, triggers) 
 | `kicad/scripts/cross_analysis.py` | ~1,200 | Schematic + PCB cross-domain checks |
 | `kicad/scripts/finding_schema.py` | ~680 | Rich finding factory, `Det` constants, consumer helpers, trust_summary aggregation |
 | `kicad/scripts/output_filters.py` | ~460 | Stage/audience filtering for all analyzers |
-| `kicad/scripts/kicad_utils.py` | ~47 | Facade re-exporting `kicad_core.*` (retire round 9) |
 | `kicad/scripts/kicad_types.py` | ~170 | `AnalysisContext` + `build_analysis_context`, the single production construction point — shared state for all detectors |
-| `kicad/scripts/kicad_core/sexp.py` | ~235 | S-expression parser shared by schematic and PCB analyzers (`sexp_parser.py` is a facade until round 9) |
+| `kicad/scripts/kicad_core/sexp.py` | ~235 | S-expression parser shared by schematic and PCB analyzers |
 | `kicad/scripts/kicad_core/render.py` | ~70 | Severity normaliser (`normalize_severity`, `severity_bucket`) and text-report fragments |
 | `kicad/scripts/kicad_core/cli.py` | ~50 | Shared argparse declarations (`--stage`/`--audience`, `--output`, `--schema`, `--compact`, `--text`, `--config`, `--only-deterministic`) |
 | `kicad/scripts/analyzer_envelope.py` | ~295 | Typed envelope dataclasses (Finding, Assessment, TrustSummary, InputsBlock, CompatBlock) — single source of truth for analyzer output shape |
@@ -70,7 +69,6 @@ Each skill has a `SKILL.md` with YAML frontmatter (name, description, triggers) 
 | `emc/scripts/emc_spice.py` | ~710 | SPICE-enhanced PDN, filter insertion loss, harmonic FFT |
 | `datasheets/scripts/datasheet_extract_cache.py` | ~540 | Per-MPN extraction cache manager |
 | `datasheets/scripts/datasheet_features.py` | ~420 | Consumer API for analyzers (get_regulator_features, get_mcu_features, etc.) — v1.4 dual-cache-read path |
-| `datasheets/scripts/datasheet_lookup.py` | ~25 | Facade: re-exports `datasheet_types.cache_reader` (retire round 9) |
 | `datasheets/datasheet_types/` | — | v1.4 typed access layer (DatasheetFacts, SpecValue, Pin, Pinout, trust_gating helpers) |
 | `datasheets/datasheet_types/cache_reader.py` | ~235 | Typed `lookup(mpn) → DatasheetFacts` with staleness detection; `cache_path_for`, `sanitize_mpn` |
 | `datasheets/distributor_core/sync.py` | ~320 | The one datasheet sync driver, `sync_datasheets(provider, ...)`, over a provider adapter |
@@ -79,8 +77,8 @@ Each skill has a `SKILL.md` with YAML frontmatter (name, description, triggers) 
 | `datasheets/distributor_core/download.py` | ~180 | PDF download cascade (requests, urllib, Playwright), redirect normalisation, alternative sources |
 | `datasheets/distributor_core/verify.py` | ~135 | PDF text extraction and datasheet verification |
 | `<p>/scripts/provider_<p>.py` | ~315–400 | Provider adapter for digikey, mouser, lcsc, element14: auth, search, accessors, `sync_one_part` |
-| `<p>/scripts/sync_datasheets_<p>.py` | ~150–160 | Sync CLI + facade: argparse → `distributor_core.sync` with the provider adapter |
-| `<p>/scripts/fetch_datasheet_<p>.py` | ~145–170 | Single-datasheet fetch CLI + facade |
+| `<p>/scripts/sync_datasheets_<p>.py` | ~115–130 | Sync CLI: argparse → `distributor_core.sync` with the provider adapter |
+| `<p>/scripts/fetch_datasheet_<p>.py` | ~130–160 | Single-datasheet fetch CLI |
 | `kicad/review/scripts/merge_annotations.py` | ~175 | Review overlay merge: validates + applies review annotations to `analysis/merged/<analyzer>.json` |
 
 ### Zero-dependency policy

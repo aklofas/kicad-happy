@@ -807,7 +807,7 @@ The narrative matters most for probes that investigate *why* something looks wro
 
 Small investment, much lower friction.
 
-For probing the raw `.kicad_sch` / `.kicad_pcb` files themselves (not the analyzer JSON), use `<skill-path>/scripts/sexp_parser.py`: `parse(text)` and `parse_file(path)` return the document as nested Python lists; `find_all(node, kw)`, `find_first(node, kw)`, and `get_value(node, kw)` navigate it.
+For probing the raw `.kicad_sch` / `.kicad_pcb` files themselves (not the analyzer JSON), use `<skill-path>/scripts/kicad_core/sexp.py`: `parse(text)` and `parse_file(path)` return the document as nested Python lists; `find_all(node, kw)`, `find_first(node, kw)`, and `get_value(node, kw)` navigate it.
 
 ### Quick Review Checklists
 
@@ -831,7 +831,7 @@ third-party PDF datasheets, distributor API responses). The parsing architecture
 mitigates prompt injection and code execution risks:
 
 - **Deterministic parsers**: S-expression files (`.kicad_sch`, `.kicad_pcb`) are
-  parsed by a dedicated recursive-descent parser (`sexp_parser.py`) — not
+  parsed by a dedicated recursive-descent parser (`kicad_core/sexp.py`) — not
   `eval()`, `exec()`, or any code execution primitive. The parser produces
   Python lists/strings only.
 - **Structured JSON boundary**: All analyzer output is structured JSON with a

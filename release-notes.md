@@ -2,6 +2,23 @@
 
 The story of each kicad-happy release — what changed and why it matters when upgrading. For line-level detail, see the [CHANGELOG](CHANGELOG.md).
 
+## 🚀 v3.0.0 — The v3 refactor
+
+The 2.x line had grown around a few very large files: the schematic analyzer alone was over nine thousand lines, a shared utility module was imported by everything, and each distributor kept its own copy of the datasheet sync loop. v3 restructures that code without changing what it reports. It was done in nine gated rounds. Eight changed no output at all: every output field was compared against the previous candidate and found identical, on a 200-project cross-section of the regression corpus (5,829 open-source KiCad projects) for the first two rounds and on all 149,629 corpus analysis units for the other six. One round changed output on purpose, under a declared budget that the corpus gate checked class by class; the corpus was then relocked at schema era `v3.0`. The last round removed the compatibility layer that kept the old import paths alive while the corpus tooling moved to the new ones.
+
+What a user sees is small. Every analyzer output and the SPICE report carry a `diagnostics` list: when a guarded step fails, it is recorded there and printed once on stderr instead of being swallowed. EMC findings now have the same keys in the same order as every other finding; the duplicate `title` is gone and its text is in `summary`. The datasheet-verification, cross-verify and finding-summary tools use one severity vocabulary, `error`, `warning` and `info`, and still accept the old names as input. Findings of 40 detectors carry `schema_era: "v3.0"`. RS-001 no longer fires on nets fed only by gate-driver bootstrap pins, and PP-001 keeps every power pin on boards with duplicate references. The `retention`, `diff_threshold` and `output_dir` settings in `.kicad-happy.json` are now read; they were documented before but ignored. A few error paths got better too: a missing input to `lifecycle_audit.py` or `analyze_gerbers.py` is a usage error, and a temp directory with a space in its path no longer makes SPICE skip every measurement.
+
+What a script author does: if your Python imported `kicad_utils`, `sexp_parser`, `bus_resolver`, `pcb_connectivity`, `datasheet_lookup`, or helpers through `analyze_schematic` / `analyze_pcb`, import them from their new owner. The [CHANGELOG](CHANGELOG.md) lists every removed path with its owner. Every CLI, flag and rule ID from 2.3.2 is unchanged, and EMC's `title` is the only output key removed.
+
+Upgrading:
+
+- GitHub Action: `uses: aklofas/kicad-happy@v3`. `@v2` stays on v2.3.2.
+- Saved analysis JSON from earlier versions stays readable by `diff_analysis`, `what_if`, `summarize_findings` and the Action's report renderer.
+- If your `.kicad-happy.json` sets `analysis.retention: N`, the oldest unpinned runs beyond N are deleted on the first 3.0.0 run.
+- `make_finding(design_context=...)` no longer exists as a keyword. An unknown keyword lands in the finding through `**extra`, so drop the argument.
+- Build an `AnalysisContext` with `kicad_types.build_analysis_context(...)`. A directly constructed context no longer derives its indexes, and `known_power_rails=set()` now means no power rails.
+- Scripts that imported the removed paths follow the table in the CHANGELOG.
+
 ## 🔧 v2.3.2 — Backport
 
 A small release from the field while the v3 refactor continues on its own branch. imrcly found that AM-001, the absolute-maximum check, had never fired on a real datasheet extraction: it looked up `VIN` where extractions store `VIN_max`. With the key convention honoured, an LM2596 on a 50 V rail against its 45 V limit is reported, as it should have been all along. The same PR makes every datasheets script read and write UTF-8, so Windows users on a cp1252 locale stop losing `°C` and `Ω` in unit strings.

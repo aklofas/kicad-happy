@@ -26,7 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - run: sudo apt-get install -y ngspice poppler-utils
-      - uses: aklofas/kicad-happy@v1
+      - uses: aklofas/kicad-happy@v3
         id: analysis
       - uses: thollander/actions-comment-pull-request@v3
         if: github.event_name == 'pull_request'
@@ -43,7 +43,7 @@ The PR comment updates on re-pushes. A [full report](skills/kicad/references/rep
 Enable `diff-base: true` to show only what changed between the PR and the base branch — component additions/removals, signal parameter shifts, new/resolved EMC findings, and SPICE status transitions. The PR comment includes a "Changes from Base" section.
 
 ```yaml
-      - uses: aklofas/kicad-happy@v1
+      - uses: aklofas/kicad-happy@v3
         id: analysis
         with:
           diff-base: true

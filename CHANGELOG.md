@@ -6,6 +6,107 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ---
 
+## v3.0.0 — unreleased
+
+**Theme: the v3 refactor — the same analyzers, CLIs and rule IDs on a restructured codebase: a stdlib-only shared core (`kicad_core/`), `schematic/` and `pcb/` packages with named pipeline phases, and one datasheet sync driver over four provider adapters. Output is unchanged except for the items under Changed. Python scripts that imported the analyzers' internals need the new import paths listed under Removed.**
+
+### Changed
+
+- Every analyzer envelope and the SPICE report carry a `diagnostics` list: one `{source, exception, message, effect}` record per guarded step that failed, `[]` when nothing degraded. These failures used to be swallowed silently; each one now also prints one `Warning:` line on stderr.
+- EMC findings use the same key set and key order as every other analyzer's findings (`make_finding`); the duplicate `title` key is gone and its text is in `summary`. `finding_id` is unchanged. The same applies to `audience_summary.*.top_issues`.
+- Findings of 40 detectors carry `schema_era: "v3.0"`: the 18 EMC categories (`emc_board_edge`, `emc_clock_routing`, `emc_crosstalk`, `emc_decoupling`, `emc_diff_pair`, `emc_emi_filter`, `emc_emission_estimate`, `emc_esd_path`, `emc_ground_plane`, `emc_inductor_leakage`, `emc_io_filtering`, `emc_pdn`, `emc_return_path`, `emc_shielding`, `emc_stackup`, `emc_switching_emc`, `emc_thermal_emc`, `emc_via_stitching`) and `analyze_usb_compliance`, `analyze_voltage_derating`, `audit_power_pin_dc_paths`, `audit_rail_sources`, `check_connector_current`, `check_critical_net_routing`, `check_cross_validation`, `check_decoupling_adequacy`, `check_diff_pair_quality`, `check_esd_coverage_gaps`, `check_plane_splits`, `check_return_path_enhanced`, `check_trace_width_power`, `check_via_stitching_density`, `detect_i2c_address_conflicts`, `detect_shorted_two_pin_components`, `format_version_gate`, `validate_can_bus`, `validate_i2c_bus`, `validate_power_sequencing`, `validate_spi_bus`, `validate_usb_bus`.
+- `datasheet_verify`, `cross_verify.py` and `summarize_findings` use one severity vocabulary, `error` / `warning` / `info` (`summarize_findings` reports `high` as `error`). Legacy names (`CRITICAL`, `HIGH`, `MEDIUM`, ...) are still accepted on input.
+- RS-001 no longer fires on a net whose only `power_in` pins are gate-driver bootstrap pins. (KH-454)
+- PP-001 deduplicates on `(ref, pin_number, net_name)`, so a board with duplicate or unannotated references keeps every power pin. (KH-455)
+- `.kicad-happy.json` `analysis.retention`, `diff_threshold` and `output_dir` are honoured; they were documented but never read. The `retention` default is 0 (keep every run), which is what every run already did. An invalid value prints a warning and falls back to the default.
+- EMC and SPICE write their `analysis/` runs through the same code path as the kicad analyzers; their `--analysis-dir` stderr lines now use the same wording.
+- SPICE simulations run inside their work directory and reference their files by bare name; the work directory and the simulator binaries (`NGSPICE_PATH`, `LTSPICE_PATH`, `XYCE_PATH` or a `PATH` hit) resolve to absolute paths. (KH-463)
+
+### Added
+
+- `skills/kicad/scripts/kicad_core/`, a stdlib-only shared core: `sexp`, `fields`, `values`, `classify`, `netnames`, `passives`, `parts`, `project`, `netquery`, `model`, `render`, `cli`, `diagnostics`. `output_io.py` sits beside it and owns the `analysis/` write paths.
+- `skills/kicad/scripts/schematic/` and `skills/kicad/scripts/pcb/` packages hold the analyzers, each with named pipeline phases (`schematic.pipeline`, `pcb.pipeline`: read, run analyses, assemble the result). `analyze_schematic.py` and `analyze_pcb.py` are thin CLIs over them.
+- `skills/datasheets/distributor_core/` (inputs, manifest, download, verify, and the one `sync` driver) and a `provider_<p>.py` adapter for each of DigiKey, Mouser, LCSC and element14. The eight sync and fetch CLIs keep their names and flags.
+- `tools/check_refactor.py`, the refactor checker run in CI: import direction, the literal `detector`/`rule_id`/`schema_era` tag scan, an install smoke from an unrelated directory, determinism, and JSON and text output oracles.
+- `ARCHITECTURE.md`: frozen contracts, dependency rules and module ownership.
+
+### Fixed
+
+- EMC SPICE testbenches run inside their temporary work directory with bare filenames, so a `TMPDIR` containing a space no longer silently skips every EMC SPICE measurement. (KH-472)
+- `lifecycle_audit.py` gives a usage error (exit 2), not a traceback, when its input is missing, a directory or not JSON. (KH-464)
+- `analyze_gerbers.py` exits 2 with a usage error on a nonexistent directory, instead of a clean report with exit 0. (KH-466)
+- Monte-Carlo SPICE trials report each model fallback once, on stderr and in `diagnostics`, instead of once per trial. (KH-475)
+- KH-454 and KH-455 (see Changed) were found while adjudicating the v2.3.2 corpus gate.
+- `capability_mode.json` `schema_versions` is filled in regardless of the current directory; it was `{}` when an analyzer ran from outside the repository root.
+- The `emc_formulas.trace_resistance_ohm` equation comment was re-numbered from `EQ-042`, which another formula already used, to `EQ-108`. (KH-445)
+- Two refactor regressions were caught in review before any release and are listed for completeness: a non-dict `analysis` value in `.kicad-happy.json` made the schematic CLI exit 1, and PP-001 lost its last-wins handling of duplicate references.
+
+### Removed
+
+Python import paths only; every CLI and flag is unchanged (output changes are under Changed). A script that imported one of these names imports it from the new owner. Private (`_name`) helpers moved with the public names of the same module.
+
+| Removed | New owner |
+|---|---|
+| `kicad_utils`: `classify_component`, `classify_connector`, `classify_ic_function`, `classify_jumper_default_state` | `kicad_core.classify` |
+| `kicad_utils`: `DIGIKEY_FIELD_ALIASES`, `MPN_FIELD_ALIASES`, `MPN_FIELD_ALIASES_GENERIC`, `MPN_FIELD_ALIASES_PRIMARY`, `get_mpn_property`, `get_property_ci`, `normalize_field_name`, `pick_field`, `pick_mpn` | `kicad_core.fields` |
+| `kicad_utils`: `USB_DATA_NET_MARKERS`, `is_ground_name`, `is_power_net_name`, `is_usb_data_net_name`, `parse_voltage_from_net_name` | `kicad_core.netnames` |
+| `kicad_utils`: `build_net_id_map`, `get_two_pin_nets` | `kicad_core.netquery` |
+| `kicad_utils`: `lookup_regulator_vref`, `lookup_switching_freq`, `match_known_switching` | `kicad_core.parts` |
+| `kicad_utils`: `classify_dielectric`, `classify_inductor_shielding`, `estimate_cap_esl`, `estimate_cap_esr`, `estimate_dc_bias_derating`, `extract_cap_package` | `kicad_core.passives` |
+| `kicad_utils`: `discover_root_schematic`, `extract_pro_design_rules`, `extract_pro_net_classes`, `extract_pro_text_variables`, `find_project_settings_file`, `is_referenced_as_child`, `load_kicad_dru`, `load_kicad_pro`, `load_lib_tables`, `resolve_project_input` | `kicad_core.project` |
+| `kicad_utils`: `COORD_EPSILON`, `E12_DECADE`, `E24_DECADE`, `E96_DECADE`, `format_frequency`, `parse_rated_voltage`, `parse_tolerance`, `parse_value`, `snap_to_e_series`, `snap_to_mil_grid` | `kicad_core.values` |
+| `sexp_parser`: `find_all`, `find_deep`, `find_first`, `get_at`, `get_properties`, `get_property`, `get_value`, `get_xy`, `has_flag`, `parse`, `parse_file` | `kicad_core.sexp` |
+| `analyze_schematic`: `build_pin_to_net_map` | `kicad_core.netquery` |
+| `analyze_schematic`: `analyze_bus_topology`, `analyze_wire_geometry`, `audit_datasheet_coverage`, `audit_dnp_rate`, `audit_property_patterns`, `audit_pwr_flags`, `audit_sourcing_fields`, `audit_sourcing_gate`, `check_annotation_completeness`, `check_generic_transistor_symbols`, `check_instance_consistency`, `check_simulation_readiness`, `classify_ground_domains`, `spatial_clustering`, `summarize_alternate_pins`, `validate_footprint_filters`, `validate_hierarchical_labels`, `validate_label_shapes`, `verify_pin_coverage` | `schematic.audits` |
+| `analyze_schematic`: `compute_statistics`, `generate_bom` | `schematic.bom_stats` |
+| `analyze_schematic`: `BusGraph`, `build_net_map`, `expand_bus_name`, `get_net_neighbors`, `match_ports` | `schematic.connectivity` |
+| `analyze_schematic`: `merge_top_level_sheets`, `parse_all_sheets` | `schematic.hierarchy` |
+| `analyze_schematic`: `analyze_ic_pinouts`, `identify_subcircuits` | `schematic.ic_analysis` |
+| `analyze_schematic`: `analyze_connectivity`, `analyze_design_rules` | `schematic.net_analysis` |
+| `analyze_schematic`: `ANALYZER_SOURCE`, `MAX_TESTED_FORMAT_VERSION`, `analyze_legacy_schematic`, `analyze_signal_paths` | `schematic.pipeline` |
+| `analyze_schematic`: `compute_pin_positions`, `detect_sub_sheet`, `extract_bus_elements`, `extract_components`, `extract_junctions`, `extract_labels`, `extract_lib_symbols`, `extract_no_connects`, `extract_power_symbols`, `extract_symbol_instances`, `extract_text_annotations`, `extract_title_block`, `extract_wires`, `parse_single_sheet` | `schematic.reader` |
+| `analyze_schematic`: `SLEEP_PULL_MIN_OHM`, `analyze_assembly_complexity`, `analyze_bom_optimization`, `analyze_inrush_current`, `analyze_pdn_impedance`, `analyze_power_budget`, `analyze_power_sequencing`, `analyze_protocol_compliance`, `analyze_sleep_current`, `analyze_test_coverage`, `analyze_usb_compliance`, `analyze_voltage_derating` | `schematic.system_analyses` |
+| `bus_resolver`: `BusGraph`, `expand_bus_name`, `match_ports` | `schematic.connectivity` |
+| `analyze_pcb`: `parse_file` | `kicad_core.sexp` |
+| `analyze_pcb`: `analyze_decoupling_placement`, `analyze_fiducials`, `analyze_keepout_violations`, `analyze_orientation_consistency`, `analyze_placement`, `analyze_silkscreen_pad_overlaps`, `analyze_test_point_coverage`, `analyze_tombstoning_risk` | `pcb.assembly` |
+| `analyze_pcb`: `build_connectivity_graph` | `pcb.connectivity` |
+| `analyze_pcb`: `analyze_board_edge_via_clearance`, `analyze_copper_presence`, `analyze_thermal_pad_vias`, `analyze_thermal_vias`, `analyze_via_in_pad`, `analyze_vias` | `pcb.copper` |
+| `analyze_pcb`: `MIN_REAL_DRILL_MM`, `analyze_design_rule_compliance`, `analyze_dfm` | `pcb.dfm` |
+| `analyze_pcb`: `CopperPresence`, `ZoneFills`, `copper_connected` | `pcb.geometry` |
+| `analyze_pcb`: `ANALYZER_SOURCE`, `MAX_TESTED_FORMAT_VERSION` | `pcb.pipeline` |
+| `analyze_pcb`: `compute_statistics`, `group_components` | `pcb.presentation` |
+| `analyze_pcb`: `extract_board_metadata`, `extract_board_outline`, `extract_dimensions`, `extract_footprints`, `extract_groups`, `extract_layers`, `extract_net_classes`, `extract_nets`, `extract_setup`, `extract_silkscreen`, `extract_tracks`, `extract_vias`, `extract_zones` | `pcb.reader` |
+| `analyze_pcb`: `analyze_connectivity`, `analyze_current_capacity`, `analyze_ground_domains`, `analyze_layer_transitions`, `analyze_net_lengths`, `analyze_pad_to_pad_distances`, `analyze_power_nets`, `analyze_return_path_continuity`, `analyze_trace_proximity` | `pcb.routing` |
+| `pcb_connectivity`: `UnionFind`, `build_connectivity_graph` | `pcb.connectivity` |
+| `analyze_schematic._classify_ic_function` | `schematic.ic_analysis.classify_ic_pinout_role` |
+| `schematic.pipeline.parse_legacy_schematic` | `schematic.pipeline.analyze_legacy_schematic` |
+| `signal_detectors.detect_led_drivers` | `signal_detectors.enrich_transistor_led_drivers` (the emitted `detector` string `detect_led_drivers` is unchanged) |
+| `finding_schema.normalize_severity`, `finding_schema._SEVERITY_NORMALIZE` | `kicad_core.render.normalize_severity`, `kicad_core.render.SEVERITY_ALIASES` |
+| `output_filters._severity_bucket` | `kicad_core.render.severity_bucket` |
+| `project_config._strip_jsonc` | `kicad_core.project._strip_jsonc` |
+| `diff_analysis`: `validate_signal_registry`, `diff_assessments`, `classify_severity` | `diff_engine` |
+| `make_finding(design_context=...)` keyword | none; drop the argument |
+| `AnalysisContext.design_context`, `AnalysisContext.hierarchy_context`, and the index derivation on direct construction | `kicad_types.build_analysis_context(...)` |
+| `lookup_helpers.read_design_context` | none |
+| `datasheet_lookup`: `lookup`, `cache_path_for`, `sanitize_mpn`, `CacheContext`, `STALE_PDF_HASH_MISMATCH`, `STALE_PDF_MISSING` | `datasheet_types.cache_reader` |
+| `sync_datasheets_<p>`: `MANIFEST_FILENAME`, `LEGACY_MANIFEST_FILENAME`, `friendly_filename`, `load_index`, `save_index`, `sanitize_filename` | `distributor_core.manifest` |
+| `sync_datasheets_<p>`: `extract_parts`, `load_mpn_list`, `get_analyzer_output`, `is_real_mpn` | `distributor_core.inputs` (`extract_parts` / `load_mpn_list` take `id_keys=provider_<p>.ID_KEYS`) |
+| `sync_datasheets_<p>`: `ID_KEYS`, `sync_one_part`; DigiKey also `get_oauth_token`, `search_digikey_with_token` | `provider_<p>` |
+| `fetch_datasheet_<p>`: `normalize_url` (DigiKey, Mouser) | `distributor_core.download` |
+| `fetch_datasheet_<p>`: `normalize_url` (LCSC, element14), element14 `search_element14` | `provider_<p>` |
+| `build_hierarchy_context`, `enrich_from_hierarchy`, `apply_rotation`, `_pick`, `_spec_min`, `_extract_page_text`, `_extract_package`, `_pct_delta`, `DrillTool`, `check_one` | none (dead code); use `pick_field` in place of `_pick` |
+
+### Migration
+
+- GitHub Action: use `uses: aklofas/kicad-happy@v3`. `@v2` stays on v2.3.2.
+- Analysis JSON written by earlier versions stays readable by every reader (`diff_analysis`, `what_if`, `summarize_findings`, the Action's report renderer).
+- A `.kicad-happy.json` that already sets `analysis.retention: N` has its oldest unpinned runs beyond N deleted on the first 3.0.0 run, because the key is now read.
+- `make_finding(design_context=...)`: the keyword is gone. `make_finding` merges unknown keywords into the finding through `**extra`, so a caller that still passes it gets a `design_context` key in its finding; drop the argument.
+- `AnalysisContext`: build it with `kicad_types.build_analysis_context(...)`. A directly constructed context no longer derives its indexes, so detectors that need `nq` fail on it, and `known_power_rails=set()` now means the board has no power rails.
+- Python scripts that imported the removed paths: follow the Removed table.
+
+---
+
 ## v2.3.2 — 2026-10-22
 
 **Theme: backport — six small analyzer fixes from two contributors, landed on the 2.x line while the v3 refactor continues on its own branch. One change is not purely additive: RS-001 drops to `heuristic` confidence on rails it recognises only by name.**

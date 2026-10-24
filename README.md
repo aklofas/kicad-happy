@@ -13,13 +13,13 @@ These skills turn your AI coding agent into a full-fledged electronics design as
 
 ## 🔬 What it looks like in practice
 
-Point your agent at a KiCad project and it does the rest — parses every schematic and PCB file, traces every net, computes every voltage, and tells you what's wrong before you spend money on boards.
+Point your agent at a KiCad project and it does the rest — parses your schematic and PCB files, traces the nets, computes rail voltages from the feedback dividers it finds, and tells you what's wrong before you spend money on boards.
 
 > "Analyze my KiCad project at `hardware/rev2/`"
 
 Here's a condensed example from an open-source robot controller board. The agent found all of this automatically:
 
-**It builds your power tree** — tracing every regulator from input to load, computing output voltages from feedback dividers:
+**It builds your power tree** — tracing each regulator it recognises from input to load, computing output voltages from feedback dividers:
 
 ```
 VBUS (USB-C / battery input, fused)
@@ -30,7 +30,7 @@ VBUS (USB-C / battery input, fused)
     └── Decoupling: 16 caps, 10.8µF total
 ```
 
-**It identifies every subcircuit** — not just passives, but the functional blocks and how they connect:
+**It identifies subcircuits** — not just passives, but the functional blocks and how they connect:
 
 | Subcircuit  | Details                                                                                       |
 | ----------- | --------------------------------------------------------------------------------------------- |
@@ -40,7 +40,7 @@ VBUS (USB-C / battery input, fused)
 | Sensors     | Onboard sensor interface, crystal oscillator with load cap validation                         |
 | Protection  | ESD clamp on USB D+/D-, dual input fuses (0.75A signal, 2.5A motor)                          |
 
-**It audits every connector for ESD protection** — and flags the ones that are exposed:
+**It audits connectors for ESD protection** — and flags the ones that are exposed:
 
 ```
 ESD coverage: 19 connectors audited
@@ -424,7 +424,7 @@ Or set up the [GitHub Action](github-action.md) and get automated analysis on ev
 | element14 | `ELEMENT14_API_KEY`                          | [partner.element14.com](https://partner.element14.com/) |
 | LCSC      | *none*                                       | Free community API                                      |
 
-**Optional Python packages**: `requests` (better HTTP), `playwright` (JS-heavy datasheet sites), `pdftotext` (PDF text extraction).
+**Optional**: Python packages `requests` (better HTTP) and `playwright` (JS-heavy datasheet sites); the `pdftotext` executable (poppler-utils) for PDF text extraction.
 
 ## ✅ KiCad version support
 
@@ -439,7 +439,7 @@ Or set up the [GitHub Action](github-action.md) and get automated analysis on ev
 
 ## 🎯 Release notes
 
-**Current release: v2.3.2 — backport.** AM-001 absolute-maximum checks resolve the `<domain>_max` keys real datasheet extractions carry; the datasheets scripts are UTF-8-safe on Windows; PU-001 skips no-connect pins, PP-001 skips gate-driver bootstrap pins, RS-001 reports heuristic confidence on rails it recognises only by name, and `cross_analysis.py` gives a usage error instead of a traceback on a bad input path. Upgrading: additive except the RS-001 confidence shift on name-only rails.
+**Current release: v3.0.0 — the v3 refactor.** Same analyzers, same CLIs, same rule IDs; the code behind them is now a stdlib-only core plus `schematic/`, `pcb/` and `distributor_core/` packages. Output changes are additive except: EMC findings drop their duplicate `title`, every envelope gains `diagnostics`, and the datasheet-verification / summary tools use `error`/`warning`/`info`. Scripts that imported `kicad_utils`, `sexp_parser` or the analyzer modules' helpers: see the migration table in the release notes.
 
 **Previous: v2.3.0 — correctness batch.** Eighteen verified fixes plus three community contributions: CP-003 touch-pad clearance is measured against real copper (it reported 0.0 mm on most boards and fired on test points), decoupling-distance findings only pair capacitors that actually share a supply net with the IC, the power budget and sleep-current audit stop dropping loads and rails, PD-001 no longer mistakes feedback feedforward caps for decouplers, and the datasheet-authority gates finally receive the project directory. New: **SP-001** catches a two-pin part wired to a single net (invisible to ERC), and `search_lcsc.py` searches the LCSC/JLCPCB catalog from the terminal. Datasheet sync no longer crashes on Windows when it re-saves its manifest. Upgrading: the EMC PD-001 field `transient_amps` is now `transient_a`; everything else is additive.
 

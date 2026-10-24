@@ -34,8 +34,9 @@ def _load_extraction(extract_dir: str, mpn: str) -> dict:
 
     # Preserve dots and hyphens — planner/merger write literal MPN-named
     # files (`ABM8G-106-12.000MHZ-T.json`), so the legacy positional path
-    # MUST match what they wrote. Aligned with datasheet_lookup.sanitize_mpn
-    # and the flag-mode regex in _cli_v14 below.
+    # MUST match what they wrote. Aligned with
+    # datasheet_types.cache_reader.sanitize_mpn and the flag-mode regex in
+    # _cli_v14 below.
     sanitized = re.sub(r'[^A-Za-z0-9_.-]', '_', mpn.strip())
 
     # Direct file lookup
