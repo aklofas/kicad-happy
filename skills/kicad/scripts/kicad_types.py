@@ -63,10 +63,10 @@ class AnalysisContext:
         pin_net: Pin-to-net mapping.  ``{(ref, pin_number): (net_name, net_record)}`` — the full net record, not a pin name.
             Covers every pin on every placed component.
         comp_lookup: Quick component lookup by reference.  ``{ref: component_dict}``.
-            Auto-built from *components* in ``__post_init__``.
+            Built from *components* by ``build_analysis_context``.
         parsed_values: Parsed SI values (ohms, farads, henries) per component.
             ``{ref: float}``.  Only components whose value string parses
-            successfully are included.  Auto-built in ``__post_init__``.
+            successfully are included.  Built by ``build_analysis_context``.
         known_power_rails: Net names connected to power symbols (``#PWR``, ``#FLG``).
             Used by ``is_power_net()`` to distinguish power rails from signal nets.
         ref_pins: Per-component pin map.  ``{ref: {pin_number: (net_name, net_record)}}``.
@@ -77,9 +77,6 @@ class AnalysisContext:
             ``build_analysis_context``; None only on contexts constructed directly.
         diagnostics: Sink for guarded failures (``kicad_core.diagnostics.record``); the
             schematic pipeline merges it into the envelope's ``diagnostics``.
-        hierarchy_context: Kept as a facade for direct harness constructions.
-            ``build_analysis_context`` never sets it, so it is None on every
-            production context, and no detector reads it.
 
     Methods:
         is_power_net(name): True if *name* is a known power rail or matches
@@ -102,25 +99,9 @@ class AnalysisContext:
     generator_version: str = "unknown"
     source: str = "unknown"
     nq: 'NetlistQueries | None' = field(default=None, repr=False)
-    hierarchy_context: dict | None = field(default=None, repr=False)
     cache_dir: Path | None = field(default=None, repr=False)
-    design_context: dict | None = field(default=None, repr=False)
     project_dir: str | None = field(default=None, repr=False)
     diagnostics: list = field(default_factory=list, repr=False)
-
-    def __post_init__(self) -> None:
-        # Compatibility path for direct constructions (harness fixtures). Production
-        # contexts come from build_analysis_context(), which passes every index.
-        if not self.comp_lookup or not self.parsed_values:
-            comp_lookup, parsed_values = index_components(self.components)
-            if not self.comp_lookup:
-                self.comp_lookup = comp_lookup
-            if not self.parsed_values:
-                self.parsed_values = parsed_values
-        if not self.known_power_rails:
-            self.known_power_rails = scan_power_rails(self.nets)
-        if not self.ref_pins:
-            self.ref_pins = index_ref_pins(self.pin_net)
 
     def is_power_net(self, name: str | None) -> bool:
         return is_power_net_name(name, self.known_power_rails)
@@ -150,8 +131,8 @@ def build_analysis_context(components: list[dict], nets: dict[str, dict], lib_sy
 
     Builds ``pin_net`` and every index, installs the ``NetlistQueries`` layer and
     returns a context no detector has to complete. ``known_power_rails`` overrides
-    the power-symbol scan when non-empty (synthetic fixtures); an explicit empty
-    set is rescanned by ``__post_init__`` (kept for old-equivalence until the facade retires); ``no_connects`` is kept by reference.
+    the power-symbol scan (synthetic fixtures); an explicit set (including an empty
+    one) is used as given; ``no_connects`` is kept by reference.
     """
     pin_net = build_pin_to_net_map(nets)
     comp_lookup, parsed_values = index_components(components)

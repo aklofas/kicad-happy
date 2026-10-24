@@ -34,12 +34,6 @@ class RenderTests(unittest.TestCase):
         self.assertEqual(fmt_g4(0.00012345), "0.0001234")
         self.assertEqual(fmt_g4(1234567), "1.235e+06")
 
-    def test_finding_schema_and_output_filters_bind_render(self):
-        import finding_schema, output_filters, kicad_core.render as render
-        self.assertIs(finding_schema.normalize_severity, render.normalize_severity)
-        self.assertIs(finding_schema._SEVERITY_NORMALIZE, render.SEVERITY_ALIASES)
-        self.assertIs(output_filters._severity_bucket, render.severity_bucket)
-
 
 if __name__ == "__main__":
     unittest.main()

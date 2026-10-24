@@ -16,7 +16,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any, Dict, List, Optional
 
-from kicad_core.render import severity_bucket as _severity_bucket, plural, finding_line
+from kicad_core.render import severity_bucket, plural, finding_line
 
 # ---------------------------------------------------------------------------
 # Stage definitions
@@ -151,7 +151,7 @@ def build_audience_summary(findings: List[Dict[str, Any]]) -> Dict[str, Any]:
     by_category_err_warn: Dict[str, int] = defaultdict(int)
 
     for f in findings:
-        bucket = _severity_bucket(f.get('severity', ''))
+        bucket = severity_bucket(f.get('severity', ''))
         cat = f.get('category', 'uncategorized') or 'uncategorized'
         by_category[cat] += 1
         if bucket == 'error':
@@ -183,12 +183,12 @@ def build_audience_summary(findings: List[Dict[str, Any]]) -> Dict[str, Any]:
         stage_errors = sum(
             1 for f in findings
             if stage in f.get('stages', ['schematic'])
-            and _severity_bucket(f.get('severity', '')) == 'error'
+            and severity_bucket(f.get('severity', '')) == 'error'
         )
         stage_warnings = sum(
             1 for f in findings
             if stage in f.get('stages', ['schematic'])
-            and _severity_bucket(f.get('severity', '')) == 'warning'
+            and severity_bucket(f.get('severity', '')) == 'warning'
         )
         if stage_errors > 0:
             stage_readiness[stage] = 'needs_work'
@@ -358,7 +358,7 @@ def format_text(
             lines.append(f'  {s:<12} {_readiness_char(status)}')
 
         # Blocker list
-        blockers = [f for f in active_findings if _severity_bucket(f.get('severity', '')) == 'error']
+        blockers = [f for f in active_findings if severity_bucket(f.get('severity', '')) == 'error']
         if blockers:
             lines += ['', 'Blockers:']
             for f in blockers:
@@ -375,7 +375,7 @@ def format_text(
         # Errors and warnings only
         visible = [
             f for f in active_findings
-            if _severity_bucket(f.get('severity', '')) in ('error', 'warning')
+            if severity_bucket(f.get('severity', '')) in ('error', 'warning')
         ]
         if not visible:
             header = '=== Review Summary ==='
@@ -396,7 +396,7 @@ def format_text(
             lines.append('')
 
         total = len(visible)
-        err_count = sum(1 for f in visible if _severity_bucket(f.get('severity', '')) == 'error')
+        err_count = sum(1 for f in visible if severity_bucket(f.get('severity', '')) == 'error')
         warn_count = total - err_count
         lines.append(f'Total: {total} ({plural(err_count, "error")}, {plural(warn_count, "warning")})')
         return '\n'.join(lines)
@@ -419,8 +419,8 @@ def format_text(
             idx += 1
         lines.append('')
 
-    err_count = sum(1 for f in active_findings if _severity_bucket(f.get('severity', '')) == 'error')
-    warn_count = sum(1 for f in active_findings if _severity_bucket(f.get('severity', '')) == 'warning')
+    err_count = sum(1 for f in active_findings if severity_bucket(f.get('severity', '')) == 'error')
+    warn_count = sum(1 for f in active_findings if severity_bucket(f.get('severity', '')) == 'warning')
     info_count = len(active_findings) - err_count - warn_count
     lines.append(
         f'Total: {len(active_findings)} ({plural(err_count, "error")}, '

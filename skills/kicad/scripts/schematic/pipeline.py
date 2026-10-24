@@ -1039,10 +1039,6 @@ def analyze_legacy_schematic(path: str, analysis_dir: str | Path | None = None) 
     return result
 
 
-# facade for pre-v3 importers (analyze_schematic.parse_legacy_schematic); retire round 9
-parse_legacy_schematic = analyze_legacy_schematic
-
-
 @dataclass
 class SchematicAnalyses:
     """Project-level analyses analyze_schematic() computes between the context and the result."""

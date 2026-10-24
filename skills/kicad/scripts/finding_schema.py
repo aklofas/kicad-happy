@@ -9,8 +9,6 @@ from __future__ import annotations
 import hashlib
 import re
 
-from kicad_core.render import normalize_severity, SEVERITY_ALIASES as _SEVERITY_NORMALIZE  # noqa: F401  (re-exported; facade)
-
 VALID_SEVERITIES = ('error', 'warning', 'info')
 VALID_CONFIDENCES = ('deterministic', 'heuristic', 'datasheet-backed')
 VALID_EVIDENCE_SOURCES = (
@@ -196,17 +194,12 @@ def make_finding(
     impact: str | None = None,
     standard_ref: str | None = None,
     source: str | None = None,
-    design_context: dict | None = None,
     **extra,
 ) -> dict:
     """Build a rich finding dict with consistent structure.
 
     Required fields: detector, rule_id, category, summary, description.
     All other fields have sensible defaults.
-
-    design_context: ignored. Accepted so external callers written against
-        v1.4–v2.3 keep working; scheduled for removal when the harness
-        migrates (ARCHITECTURE.md facade register).
 
     Extra kwargs are merged into the finding (e.g., domain-specific data).
     """

@@ -48,24 +48,7 @@ _VOUT_PIN_NAMES = frozenset({"VOUT", "VO", "OUT", "OUTPUT"})
 
 def _get_net_components(ctx: AnalysisContext, net_name, exclude_ref):
     """Get components on a net excluding the given component."""
-    if ctx.nq:
-        return ctx.nq.components_on_net(net_name, exclude_refs={exclude_ref})
-    if net_name not in ctx.nets:
-        return []
-    result_comps = []
-    for p in ctx.nets[net_name]["pins"]:
-        if p["component"] == exclude_ref:
-            continue
-        comp = ctx.comp_lookup.get(p["component"])
-        if comp:
-            result_comps.append({
-                "reference": p["component"],
-                "type": comp["type"],
-                "value": comp["value"],
-                "pin_name": p.get("pin_name", ""),
-                "pin_number": p["pin_number"],
-            })
-    return result_comps
+    return ctx.nq.components_on_net(net_name, exclude_refs={exclude_ref})
 
 
 def _classify_load(ctx: AnalysisContext, net_name, exclude_ref):
@@ -3522,9 +3505,6 @@ def enrich_transistor_led_drivers(ctx: AnalysisContext, transistor_circuits: lis
                     break
             if "led_driver" in tc:
                 break
-
-
-detect_led_drivers = enrich_transistor_led_drivers  # facade for pre-v3 importers; retire round 9
 
 
 def detect_design_observations(ctx: AnalysisContext, results: dict) -> list[dict]:

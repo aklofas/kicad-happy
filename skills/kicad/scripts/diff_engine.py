@@ -10,8 +10,8 @@ analysis_cache <-> diff_analysis import cycle.
 import json
 
 from detection_schema import SCHEMAS as _SCHEMAS
-from finding_schema import group_findings_by_detection_type, normalize_severity
-from kicad_core.render import summary_or_title
+from finding_schema import group_findings_by_detection_type
+from kicad_core.render import normalize_severity, summary_or_title
 
 
 # ---------------------------------------------------------------------------

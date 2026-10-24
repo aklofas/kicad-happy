@@ -715,25 +715,6 @@ class AbaReal(unittest.TestCase):
         self.assertEqual(rc, 2)
 
 
-class KeptCompatibilitySurfaces(unittest.TestCase):
-    """Facade-register entries that must keep accepting the old keyword until the harness migrates."""
-    def setUp(self):
-        sys.path.insert(0, str(cr.REPO_ROOT / "skills" / "kicad" / "scripts"))
-
-    def test_make_finding_ignores_design_context(self):
-        from finding_schema import make_finding
-        f = make_finding(detector="d", rule_id="X-001", category="c", summary="s", description="d",
-                         design_context={"severity_overrides": {"X-001": "info"}})
-        self.assertEqual(f["severity"], "warning")
-        self.assertNotIn("design_context", f)
-
-    def test_analysis_context_accepts_retired_fields(self):
-        from kicad_types import AnalysisContext
-        ctx = AnalysisContext(components=[], nets={}, lib_symbols={}, pin_net={},
-                              hierarchy_context=None, design_context={"x": 1})
-        self.assertIsNone(ctx.hierarchy_context)
-
-
 class TextOracle(unittest.TestCase):
     def test_mask_text_replaces_volatile_tokens(self):
         s = 'run 20261017T101010Z-abc123 at 2026-10-17T10:10:10+00:00 "elapsed_s": 1.25 /w/x /p/y python3.12 File "/p/y/a.py", line 1137, in <module>'

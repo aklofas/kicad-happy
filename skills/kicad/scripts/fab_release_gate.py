@@ -21,7 +21,7 @@ import sys
 import time
 from typing import Any, Dict, List, Optional
 
-from finding_schema import normalize_severity
+from kicad_core.render import normalize_severity
 
 
 GATE_VERSION = "1.0"

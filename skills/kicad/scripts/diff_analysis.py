@@ -24,11 +24,10 @@ import sys
 from finding_schema import group_findings_by_detection_type
 from kicad_core.render import fmt_g4, fmt_signed, summary_or_title
 from kicad_core.cli import add_only_deterministic_arg, add_output_arg, add_text_arg
-from diff_engine import (  # noqa: F401  (re-exported for callers written against pre-v3 diff_analysis)
-    SIGNAL_REGISTRY, validate_signal_registry, _resolve, _diff_counts, _identity_key,
-    _generic_identity, _diff_lists, _compare_fields, _summarize_detection, diff_assessments,
-    _attach_assessments_diff, detect_type, diff_schematic, diff_pcb, diff_emc, diff_spice,
-    diff_thermal, diff_deep_review, classify_severity, classify_regressions, build_summary,
+from diff_engine import (
+    SIGNAL_REGISTRY, _resolve, _identity_key, _generic_identity, detect_type, diff_schematic,
+    diff_pcb, diff_emc, diff_spice, diff_thermal, diff_deep_review, classify_regressions,
+    build_summary,
 )
 
 

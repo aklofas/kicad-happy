@@ -18,8 +18,8 @@ _kicad_scripts = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 if os.path.isdir(_kicad_scripts):
     sys.path.insert(0, os.path.abspath(_kicad_scripts))
 
-from finding_schema import Det, group_findings, normalize_severity
-from kicad_core.render import summary_or_title
+from finding_schema import Det, group_findings
+from kicad_core.render import normalize_severity, summary_or_title
 
 
 # Icon glyphs by normalized severity (v1.4 vocab). Used by raw-finding renderers

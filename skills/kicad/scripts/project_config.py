@@ -29,7 +29,7 @@ from typing import Any, Dict, List, Optional
 # standalone load by file path (harness spec_from_file_location, docs)
 if str(Path(__file__).parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).parent))
-from kicad_core.project import _strip_jsonc, load_jsonc  # noqa: F401 -- re-exported for project_config consumers
+from kicad_core.project import load_jsonc
 from kicad_core.model import ResolvedConfig
 
 
