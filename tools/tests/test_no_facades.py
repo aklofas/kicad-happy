@@ -12,9 +12,17 @@ class NoFacades(unittest.TestCase):
                     "skills/kicad/scripts/bus_resolver.py", "skills/kicad/scripts/pcb_connectivity.py"):
             self.assertFalse((ROOT / rel).exists(), rel)
 
-    @unittest.expectedFailure
     def test_datasheet_lookup_facade_is_gone(self):
         self.assertFalse((ROOT / "skills/datasheets/scripts/datasheet_lookup.py").exists())
+
+    def test_thin_distributor_clis_bind_only_what_main_uses(self):
+        import importlib
+        for p in ("digikey", "mouser", "lcsc", "element14"):
+            sys.path.insert(0, str(ROOT / "skills" / p / "scripts"))
+            m = importlib.import_module(f"sync_datasheets_{p}")
+            for n in ("extract_parts", "load_mpn_list", "ID_KEYS", "get_oauth_token", "sync_one_part"):
+                self.assertFalse(hasattr(m, n), f"{p}.{n}")
+            self.assertTrue(callable(m.sync_datasheets) and callable(m.main))
 
     def test_cli_modules_export_only_main_and_their_imports(self):
         import analyze_schematic, analyze_pcb

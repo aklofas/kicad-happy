@@ -15,12 +15,6 @@ class CacheReader(unittest.TestCase):
         self.assertEqual(d["lookup"], "datasheet_types.cache_reader")
         self.assertFalse(d["scripts_on_path"])
 
-    def test_facade_binds_the_same_objects(self):
-        sys.path.insert(0, str(DS / "scripts"))
-        import datasheet_lookup as dl, datasheet_types.cache_reader as cr
-        for n in ("sanitize_mpn", "cache_path_for", "CacheContext", "lookup", "STALE_PDF_MISSING", "STALE_PDF_HASH_MISMATCH", "_UNSAFE_CHAR", "_compute_pdf_sha256", "_resolve_pdf_path"):
-            self.assertIs(getattr(dl, n), getattr(cr, n), n)
-
     def test_lookup_miss_and_malformed_json_return_none(self):
         from datasheet_types.cache_reader import lookup
         with tempfile.TemporaryDirectory() as d:

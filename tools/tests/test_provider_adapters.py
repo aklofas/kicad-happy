@@ -1,4 +1,4 @@
-import json, sys, unittest
+import sys, unittest
 from pathlib import Path
 TESTS = Path(__file__).resolve().parent
 SKILLS = TESTS.parents[1] / "skills"
@@ -14,15 +14,7 @@ def _load(p, kind):
         sys.path.pop(0)
 
 
-class Facades(unittest.TestCase):
-    def test_fetch_and_sync_scripts_bind_every_round5_name(self):
-        for p in PROVIDERS:
-            for kind in ("fetch_datasheet", "sync_datasheets"):
-                mod = _load(p, kind)
-                names = json.loads((TESTS / f"{kind}_{p}_names_round5.json").read_text(encoding="utf-8"))
-                missing = [n for n in names if n != "main" and not hasattr(mod, n)]
-                self.assertEqual(missing, [], f"{kind}_{p}")
-
+class ProviderAdapters(unittest.TestCase):
     def test_provider_adapters_expose_the_contract(self):
         import importlib
         for p in PROVIDERS:
@@ -53,17 +45,22 @@ class Facades(unittest.TestCase):
         ti = "https://www.ti.com/general/docs/suppproductinfo.tsp?gotoUrl=https%3A%2F%2Fwww.ti.com%2Flit%2Fgpn%2Flm358"
         expect = {"digikey": "https://www.ti.com/lit/gpn/lm358", "mouser": "https://www.ti.com/lit/gpn/lm358",
                   "lcsc": ti, "element14": ti}
-        for p in PROVIDERS:
-            fetch = _load(p, "fetch_datasheet")
-            self.assertEqual(fetch.normalize_url(ti), expect[p], f"fetch_datasheet_{p}")
-            self.assertTrue(callable(fetch.download_pdf), f"fetch_datasheet_{p}.download_pdf")  # bound only; not called (network)
-            if p in ("lcsc", "element14"):
-                sys.path.insert(0, str(SKILLS / p / "scripts"))
-                try:
-                    prov = importlib.import_module(f"provider_{p}")
-                finally:
-                    sys.path.pop(0)
-                self.assertEqual(prov.normalize_url(ti), ti, f"provider_{p}")
+        sys.path.insert(0, str(SKILLS / "digikey" / "scripts"))
+        try:
+            import _core_path  # noqa: F401
+            from distributor_core.download import normalize_url
+        finally:
+            sys.path.pop(0)
+        for p in ("digikey", "mouser"):
+            self.assertEqual(normalize_url(ti), expect[p], p)
+        for p in ("lcsc", "element14"):
+            sys.path.insert(0, str(SKILLS / p / "scripts"))
+            try:
+                prov = importlib.import_module(f"provider_{p}")
+            finally:
+                sys.path.pop(0)
+            self.assertEqual(prov.normalize_url(ti), ti, f"provider_{p}")
+
 
 if __name__ == "__main__":
     unittest.main()

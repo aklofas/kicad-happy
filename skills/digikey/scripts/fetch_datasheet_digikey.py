@@ -29,20 +29,10 @@ import argparse
 import json
 import sys
 import _core_path  # noqa: F401
-from distributor_core.download import (
-    _USER_AGENT,
-    _requests,
-    _sync_playwright,
-    normalize_url,
-    download_pdf,
-    _download_requests,
-    _download_urllib,
-    _download_playwright,
-    try_alternative_sources,
-)
-from distributor_core.verify import _extract_pdf_text, verify_datasheet
+from distributor_core.download import download_pdf, try_alternative_sources
+from distributor_core.verify import verify_datasheet
 from distributor_core.manifest import _friendly_filename
-from provider_digikey import _get_digikey_token, search_digikey
+from provider_digikey import search_digikey
 
 
 def main():

@@ -26,21 +26,11 @@ import json
 import re
 import sys
 import _core_path  # noqa: F401
-from distributor_core.download import (
-    _USER_AGENT,
-    _requests,
-    _sync_playwright,
-    _download_requests,
-    _download_urllib,
-    _download_playwright,
-    try_alternative_sources,
-)
-from distributor_core.verify import _extract_pdf_text, verify_datasheet
+from distributor_core.download import try_alternative_sources
+from distributor_core.verify import verify_datasheet
 from distributor_core.manifest import _friendly_filename
 from provider_lcsc import (
-    normalize_url,
     download_pdf,
-    _parse_extra,
     search_lcsc,
     search_lcsc_direct,
     enrich_with_wmsc,

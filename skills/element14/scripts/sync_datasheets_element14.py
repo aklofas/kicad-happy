@@ -40,40 +40,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import _core_path  # noqa: F401
 import provider_element14
+from provider_element14 import _DEFAULT_STORE
 from distributor_core import sync as core_sync
-# Facade re-exports: the 935b429 names (tools/tests/sync_datasheets_element14_names_round5.json).
-from provider_element14 import (
-    _DEFAULT_STORE,
-    sync_one_part,
-)
-from distributor_core.inputs import (
-    _GENERIC_VALUE_RE,
-    _SKIP_TYPES,
-    is_real_mpn,
-    get_analyzer_output,
-    extract_parts as _extract_parts_core,
-    load_mpn_list as _load_mpn_list_core,
-)
-from distributor_core.manifest import (
-    sanitize_filename,
-    friendly_filename,
-    MANIFEST_FILENAME,
-    LEGACY_MANIFEST_FILENAME,
-    _manifest_path,
-    load_index,
-    save_index,
-)
-
-# Identifier keys projected from the BOM, in the order this provider's part dicts carry them.
-ID_KEYS = provider_element14.ID_KEYS
-
-
-def extract_parts(analyzer_output):
-    return _extract_parts_core(analyzer_output, id_keys=ID_KEYS)
-
-
-def load_mpn_list(path):
-    return _load_mpn_list_core(path, id_keys=ID_KEYS)
 
 
 # ---------------------------------------------------------------------------

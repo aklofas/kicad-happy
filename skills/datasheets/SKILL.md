@@ -29,7 +29,7 @@ This skill owns:
 - **Typed access layer (v1.4)** — `datasheet_types/` package exposes `DatasheetFacts`, `SpecValue`, `Pin`, `Pinout`, `lookup()`, `best()`, `trusted()`, `has_data()`. Recommended for all new consumers.
 - **PDF page selection** — heuristics to pick pages most likely to contain pinouts, e-chars, applications, SPICE models.
 - **Quality scoring** — v1.4 uses a three-dimension rubric (pinout completeness, base completeness, category-extension completeness, 0–100 scale). v1.3 5-dimension weighted rubric still applies to legacy caches.
-- **Consumer APIs** — `datasheet_types.cache_reader` (`from datasheet_types import lookup`) for v1.4 typed access, with `scripts/datasheet_lookup.py` kept as a facade; `scripts/datasheet_features.py` for the v1.3 dict-shaped helpers (`get_regulator_features`, `get_mcu_features`, `get_pin_function`) — the v1.3 helpers dual-read v1.4 caches and translate to v1.3 dict shape for legacy detector code. Sunset planned for v1.6.
+- **Consumer APIs** — `datasheet_types.cache_reader` (`from datasheet_types import lookup`) for v1.4 typed access; `scripts/datasheet_features.py` for the v1.3 dict-shaped helpers (`get_regulator_features`, `get_mcu_features`, `get_pin_function`) — the v1.3 helpers dual-read v1.4 caches and translate to v1.3 dict shape for legacy detector code. Sunset planned for v1.6.
 - **Verification** — `datasheet_verify.py` (v1.3, schema-vs-usage cross-check) plus `verify_v14_extraction` (v1.4, power_domain references resolve, recommended ≤ absolute, regulator pin references exist).
 
 ## Non-goals
@@ -63,7 +63,6 @@ This skill owns:
 - `scripts/datasheet_page_selector.py` — page selection heuristics (used by both v1.3 and v1.4 pipelines)
 - `scripts/datasheet_score.py` — v1.3 extraction quality scoring
 - `scripts/datasheet_verify.py` — cross-check extraction vs schematic usage (v1.3 + v1.4 `verify_v14_extraction` mode)
-- `scripts/datasheet_lookup.py` — facade over `datasheet_types/cache_reader.py`, the **v1.4** typed `lookup(mpn) → DatasheetFacts` with staleness detection
 - `scripts/datasheet_features.py` — v1.3 consumer helper API (dual-reads v1.4 caches via `_derive_*_v14` translators)
 - `scripts/plan_extraction.py` — **v1.4** orchestration plan generator (Phase 3 extraction pipeline)
 - `scripts/merge_results.py` — **v1.4** per-task result validator + merger
