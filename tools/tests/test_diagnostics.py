@@ -158,6 +158,52 @@ class OpampModelFallback(unittest.TestCase):
         self.assertEqual(len(_warning_lines(err.getvalue())), 1)
         self.assertNotIn("diagnostics", tb.extra_vars)
 
+    def test_once_sink_drops_repeats_silently(self):
+        from kicad_core.diagnostics import OnceSink, record
+        nominal: list = []
+        with contextlib.redirect_stderr(io.StringIO()):
+            record(nominal, "m.f", OSError("x"), "fallback used")
+        sink = OnceSink(nominal)
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            record(sink, "m.f", OSError("x"), "fallback used")
+            record(sink, "m.f", OSError("x"), "fallback used")
+        self.assertEqual(len(sink), 1)
+        self.assertEqual(_warning_lines(err.getvalue()), [])
+        plain: list = []
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            record(plain, "m.f", OSError("x"), "fallback used")
+            record(plain, "m.f", OSError("x"), "fallback used")
+        self.assertEqual(len(plain), 2)
+        self.assertEqual(len(_warning_lines(err.getvalue())), 2)
+
+    def test_monte_carlo_trials_report_each_fallback_once(self):
+        import spice_model_cache, simulate_subcircuits as ss
+        det = {"detector": "detect_opamp_circuits", "configuration": "inverting", "reference": "U1",
+               "value": "LM358", "output_net": "OUT", "inverting_input_net": "INN",
+               "non_inverting_input_net": "GND", "gain": -10.0,
+               "feedback_resistor": {"ref": "R2", "ohms": 100000.0},
+               "input_resistor": {"ref": "R1", "ohms": 10000.0}}
+
+        def fake(cmd, **kw):
+            out = os.path.join(kw["cwd"], os.path.splitext(cmd[-1])[0] + ".out")
+            with open(out, "w", encoding="utf-8") as f:
+                f.write("gain_1k=20.0\n")
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        err = io.StringIO()
+        with tempfile.TemporaryDirectory() as wd, \
+                mock.patch.object(spice_model_cache, "get_model_for_part", side_effect=OSError("no cache")), \
+                mock.patch("spice_simulator.subprocess.run", side_effect=fake), \
+                contextlib.redirect_stderr(err):
+            report = ss.simulate_subcircuits({"findings": [det]}, workdir=wd, monte_carlo_n=3)
+        lines = [ln for ln in _warning_lines(err.getvalue())
+                 if ln.startswith("Warning: spice_templates.generate_opamp_circuit")]
+        self.assertEqual(len(lines), 1, err.getvalue())
+        recs = [d for d in report["diagnostics"] if d["source"] == "spice_templates.generate_opamp_circuit"]
+        self.assertEqual(len(recs), 1, report["diagnostics"])
+        self.assertTrue(any("tolerance_analysis" in r for r in report["simulation_results"]), report["simulation_results"])
+
 
 if __name__ == "__main__":
     unittest.main()

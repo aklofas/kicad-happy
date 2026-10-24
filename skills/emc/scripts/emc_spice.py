@@ -169,11 +169,11 @@ def run_pdn_spice(caps, plane_cap_f=0, backend=None,
     out_file = os.path.join(workdir, 'pdn_results.txt')
 
     try:
-        cir_content = tb.render(backend, out_file)
+        cir_content = tb.render(backend, os.path.basename(out_file))
         with open(cir_file, 'w') as f:
             f.write(cir_content)
 
-        success, stdout, stderr = backend.run(cir_file, timeout=timeout)
+        success, stdout, stderr = backend.run(os.path.basename(cir_file), timeout=timeout, cwd=workdir)
         if not success:
             return False, None
 
@@ -290,11 +290,11 @@ def run_filter_spice(inductor_h, cap_f, switching_freq_hz,
     out_file = os.path.join(workdir, 'filter_results.txt')
 
     try:
-        cir_content = tb.render(backend, out_file)
+        cir_content = tb.render(backend, os.path.basename(out_file))
         with open(cir_file, 'w') as f:
             f.write(cir_content)
 
-        success, stdout, stderr = backend.run(cir_file, timeout=timeout)
+        success, stdout, stderr = backend.run(os.path.basename(cir_file), timeout=timeout, cwd=workdir)
         if not success:
             return False, None
 
@@ -414,8 +414,8 @@ def run_switching_fft(v_peak, duty_cycle, rise_time_s, switching_freq_hz,
             f'.tran {_format_eng(t_step)} {_format_eng(t_sim)}\n'
             f'.control\n'
             f'run\n'
-            f'wrdata {raw_file} v(sw)\n'
-            f'echo "done=1" > {out_file}\n'
+            f'wrdata {os.path.basename(raw_file)} v(sw)\n'
+            f'echo "done=1" > {os.path.basename(out_file)}\n'
             f'.endc\n'
             f'.end\n'
         )
@@ -423,7 +423,7 @@ def run_switching_fft(v_peak, duty_cycle, rise_time_s, switching_freq_hz,
         with open(cir_file, 'w') as f:
             f.write(cir_content)
 
-        success, stdout, stderr = backend.run(cir_file, timeout=timeout)
+        success, stdout, stderr = backend.run(os.path.basename(cir_file), timeout=timeout, cwd=workdir)
         # ngspice returns exit code 1 with .control blocks that lack
         # .print/.plot — check for output file instead of exit code
         if not success:
@@ -691,11 +691,11 @@ def run_distributed_pdn_spice(node, plane_cap_f=0, backend=None,
     cir_file = os.path.join(workdir, 'distributed_pdn.cir')
     out_file = os.path.join(workdir, 'distributed_pdn.out')
 
-    cir_content = tb.render(backend, out_file.replace('\\', '/'))
+    cir_content = tb.render(backend, os.path.basename(out_file))
     with open(cir_file, 'w') as f:
         f.write(cir_content)
 
-    success, stdout, stderr = backend.run(cir_file, timeout=timeout)
+    success, stdout, stderr = backend.run(os.path.basename(cir_file), timeout=timeout, cwd=workdir)
     if not success:
         return False, None
 

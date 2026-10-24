@@ -1584,6 +1584,8 @@ def main(argv: list[str] | None = None) -> int:
                     ".g2l", ".g3l", ".g4l", ".g5l", ".g6l",
                     ".gtp", ".gbp"}
     _gerber_files = []
+    if not _gerber_dir.exists():
+        parser.error(f"directory {args.directory}: no such file or directory")
     if _gerber_dir.is_dir():
         for p in sorted(_gerber_dir.iterdir()):
             if not p.is_file():

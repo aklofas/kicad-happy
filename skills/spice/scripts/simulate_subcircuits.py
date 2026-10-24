@@ -34,6 +34,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _core_path  # noqa: F401
 from kicad_core.cli import add_compact_arg, add_output_arg, add_text_arg
+from kicad_core.diagnostics import OnceSink
 
 from spice_templates import TEMPLATE_REGISTRY, TOPLEVEL_REGISTRY, list_supported_types, SpiceTestbench
 from spice_results import (
@@ -169,7 +170,7 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
         os.makedirs(workdir, exist_ok=True)
 
     results = []
-    sim_diagnostics: list = []  # nominal runs only; Monte Carlo trials regenerate the same records
+    sim_diagnostics: list = []  # Monte Carlo trials add only records the nominal runs lack
     total_time = 0
 
     # Monte Carlo setup (lazy import only when needed)
@@ -193,6 +194,10 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
         gen_kwargs = {"context": analysis_json, "parasitics": parasitics}
         if model_options is not None and "model_options" in inspect.signature(generator).parameters:
             gen_kwargs["model_options"] = model_options
+        # Repeated (Monte Carlo) runs hand the generator the once-sink, so a fallback it
+        # already reported is not printed or recorded again.
+        if isinstance(diagnostics, OnceSink) and "diagnostics" in inspect.signature(generator).parameters:
+            gen_kwargs["diagnostics"] = diagnostics
         try:
             cir_content = generator(det_run, out_file_spice, **gen_kwargs)
         except (KeyError, TypeError, ValueError) as e:
@@ -302,13 +307,15 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
                     mc_out = os.path.join(workdir, f"{label}_mc.out")
                     mc_log = os.path.join(workdir, f"{label}_mc.log")
 
+                    trial_sink = OnceSink(sim_diagnostics)
+                    seeded = len(trial_sink)
                     for _trial in range(monte_carlo_n):
                         sampled_det = sample_detection(
                             det, components, mc_rng, mc_distribution,
                             det_type=det_type)
                         mc_result, _mc_elapsed = _run_single_sim(
                             sampled_det, det_type, generator, evaluator,
-                            mc_cir, mc_out, mc_log)
+                            mc_cir, mc_out, mc_log, diagnostics=trial_sink)
                         if mc_result is not None:
                             mc_results_list.append(mc_result)
                             # Store sampled values for sensitivity analysis
@@ -320,6 +327,7 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
                                 except (KeyError, TypeError, IndexError):
                                     pass
                             sampled_values_list.append(sv)
+                    sim_diagnostics.extend(trial_sink[seeded:])
 
                     # Store original det for component ref lookup
                     result["_det"] = det

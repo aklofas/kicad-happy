@@ -1045,8 +1045,17 @@ def main(argv: list[str] | None = None) -> int:
         candidate = input_path.parent.parent / "merged" / input_path.parent.name / input_path.name
         if candidate.exists():
             input_path = candidate
-    with open(input_path) as f:
-        analysis = json.load(f)
+    expected = "expected the JSON file written by analyze_schematic.py"
+    if not input_path.is_file():
+        what = "is a directory" if input_path.is_dir() else "no such file"
+        parser.error(f"input {input_path}: {what}; {expected}")
+    try:
+        with open(input_path, encoding="utf-8") as f:
+            analysis = json.load(f)
+    except ValueError as e:
+        parser.error(f"input {input_path}: not JSON ({e}); {expected}")
+    except OSError as e:
+        parser.error(f"input {input_path}: cannot read ({e}); {expected}")
 
     # Resolve project directory from analyzer JSON
     source_file = analysis.get("file", "")

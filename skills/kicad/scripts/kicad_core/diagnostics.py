@@ -21,12 +21,20 @@ class Diagnostic:
         "description": "What the run did instead, e.g. 'power_rails config not applied'."})
 
 
+class OnceSink(list):
+    """A sink for repeated runs: ``record()`` drops a record equal to one the sink already
+    holds — no stderr line, no append."""
+
+
 def record(sink, source: str, exc: BaseException, effect: str) -> None:
     """Print one stderr line for *exc*; append a Diagnostic dict when *sink* is a list."""
     message = str(exc)[:200]
     if isinstance(sink, list):
-        sink.append(asdict(Diagnostic(source=source, exception=type(exc).__name__,
-                                      message=message, effect=effect)))
+        entry = asdict(Diagnostic(source=source, exception=type(exc).__name__,
+                                  message=message, effect=effect))
+        if isinstance(sink, OnceSink) and entry in sink:
+            return
+        sink.append(entry)
     print(f"Warning: {source}: {type(exc).__name__}: {message} — {effect}", file=sys.stderr)
 
 

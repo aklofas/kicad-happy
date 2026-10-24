@@ -359,7 +359,7 @@ VIN {top_net} 0 DC {vin}
 
 
 def generate_opamp_circuit(det, output_file, context=None, parasitics=None,
-                           model_options=None):
+                           model_options=None, diagnostics=None):
     """Generate testbench for an opamp circuit detection.
 
     Args:
@@ -369,6 +369,7 @@ def generate_opamp_circuit(det, output_file, context=None, parasitics=None,
              gain, gain_dB, feedback_resistor{ref,ohms},
              input_resistor{ref,ohms}, feedback_capacitor{ref,farads}
         output_file: Path for ASCII results file
+        diagnostics: A sink for repeated runs; None keeps the testbench's own list.
 
     Returns:
         Complete .cir file content string, or None if configuration is
@@ -475,19 +476,20 @@ def generate_opamp_circuit(det, output_file, context=None, parasitics=None,
     model_name = "IDEAL_OPAMP"
     model_source = "ideal"
     model_specs = None
-    diagnostics: list = []
+    tb_diagnostics: list = []
+    sink = tb_diagnostics if diagnostics is None else diagnostics
     try:
         from spice_model_cache import get_model_for_part
         part_model, source, specs = get_model_for_part(value, "opamp", context,
                                                        options=model_options,
-                                                       diagnostics=diagnostics)
+                                                       diagnostics=sink)
         if part_model:
             model_str = part_model
             model_name = f"OPAMP_{_sanitize_mpn_for_spice(value)}"
             model_source = source
             model_specs = specs
     except Exception as exc:  # Model resolution failed — use ideal
-        record(diagnostics, "spice_templates.generate_opamp_circuit", exc, "ideal opamp model used")
+        record(sink, "spice_templates.generate_opamp_circuit", exc, "ideal opamp model used")
 
     if model_source == "ideal":
         model_note = "* Model: IDEAL opamp (Aol=1e6, GBW~10MHz) — real part may have lower GBW"
@@ -563,7 +565,7 @@ IAC 0 {stim_net} DC 0 AC 1u
             ("phase_at_bw", "find", f"vp({out_net})", "bw_3db"),
         ]
         model_extra["expected_tz"] = str(expected_tz)
-        return SpiceTestbench(circuit, analyses, measurements, model_extra, diagnostics)
+        return SpiceTestbench(circuit, analyses, measurements, model_extra, tb_diagnostics)
 
     circuit = f"""\
 * Auto-generated testbench for opamp: {ref} ({value})
@@ -596,7 +598,7 @@ VAC {stim_net} 0 DC 0 AC 1
         ("bw_3db", "when", f"vdb({out_net})", "target", "fall=1"),
         ("phase_at_bw", "find", f"vp({out_net})", "bw_3db"),
     ]
-    return SpiceTestbench(circuit, analyses, measurements, model_extra, diagnostics)
+    return SpiceTestbench(circuit, analyses, measurements, model_extra, tb_diagnostics)
 
 
 def generate_crystal_circuit(det, output_file, context=None, parasitics=None):

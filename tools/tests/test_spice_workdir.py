@@ -64,7 +64,8 @@ class WorkdirTest(unittest.TestCase):
     def test_bare_cir_filename_runs_in_cwd(self):
         import simulate_subcircuits as ss
         with tempfile.TemporaryDirectory() as tmp:
-            analysis = json.load(open(_analysis(tmp), encoding="utf-8"))
+            with open(_analysis(tmp), encoding="utf-8") as f:
+                analysis = json.load(f)
             calls = []
 
             def fake(cmd, **kw):
