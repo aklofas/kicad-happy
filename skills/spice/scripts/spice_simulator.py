@@ -29,7 +29,7 @@ class SimulatorBackend:
         """Locate the simulator binary. Returns path string or None."""
         raise NotImplementedError
 
-    def run(self, cir_file, timeout=5):
+    def run(self, cir_file, timeout=5, cwd=None):
         """Run simulation in batch mode.
 
         Args:
@@ -102,14 +102,14 @@ class NgspiceBackend(SimulatorBackend):
                 return candidate
         return None
 
-    def run(self, cir_file, timeout=5):
+    def run(self, cir_file, timeout=5, cwd=None):
         binary = self.find()
         if not binary:
             return False, "", "ngspice not found"
         try:
             result = subprocess.run(
                 [binary, "-b", cir_file],
-                capture_output=True, text=True, timeout=timeout,
+                capture_output=True, text=True, timeout=timeout, cwd=cwd,
             )
             return result.returncode == 0, result.stdout, result.stderr
         except subprocess.TimeoutExpired:
@@ -233,7 +233,7 @@ class LtspiceBackend(SimulatorBackend):
 
         return None
 
-    def run(self, cir_file, timeout=5):
+    def run(self, cir_file, timeout=5, cwd=None):
         binary = self.find()
         if not binary:
             return False, "", "LTspice not found"
@@ -247,7 +247,7 @@ class LtspiceBackend(SimulatorBackend):
                 cmd = [binary, "-b", cir_file]
 
             result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=timeout,
+                cmd, capture_output=True, text=True, timeout=timeout, cwd=cwd,
             )
             # LTspice returns 0 on success
             return result.returncode == 0, result.stdout, result.stderr
@@ -353,7 +353,7 @@ class XyceBackend(SimulatorBackend):
                 return found
         return None
 
-    def run(self, cir_file, timeout=5):
+    def run(self, cir_file, timeout=5, cwd=None):
         binary = self.find()
         if not binary:
             return False, "", "Xyce not found"
@@ -361,7 +361,7 @@ class XyceBackend(SimulatorBackend):
             # Xyce doesn't use -b; just pass the netlist file
             result = subprocess.run(
                 [binary, cir_file],
-                capture_output=True, text=True, timeout=timeout,
+                capture_output=True, text=True, timeout=timeout, cwd=cwd,
             )
             return result.returncode == 0, result.stdout, result.stderr
         except subprocess.TimeoutExpired:

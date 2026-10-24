@@ -73,14 +73,14 @@ def find_ngspice():
     return backend.find()
 
 
-def run_ngspice(cir_file, timeout=5):
+def run_ngspice(cir_file, timeout=5, cwd=None):
     """Run ngspice in batch mode on a .cir file.
 
     Legacy wrapper — prefer simulator_backend.run() for multi-simulator.
     """
     from spice_simulator import NgspiceBackend
     backend = NgspiceBackend()
-    return backend.run(cir_file, timeout=timeout)
+    return backend.run(cir_file, timeout=timeout, cwd=cwd)
 
 
 def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
@@ -185,7 +185,10 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
         Returns (result_dict, elapsed) or (None, 0) on failure/skip.
         """
         nonlocal total_time
-        out_file_spice = out_file.replace("\\", "/")
+        # The simulator runs inside the cir file's directory and sees only
+        # bare filenames, so no path (spaces, backslashes) reaches its
+        # control language.
+        out_file_spice = os.path.basename(out_file)
 
         gen_kwargs = {"context": analysis_json, "parasitics": parasitics}
         if model_options is not None and "model_options" in inspect.signature(generator).parameters:
@@ -209,9 +212,13 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
 
         t0 = time.monotonic()
         if simulator_backend:
-            success, stdout, stderr = simulator_backend.run(cir_file, timeout=timeout)
+            success, stdout, stderr = simulator_backend.run(
+                os.path.basename(cir_file), timeout=timeout,
+                cwd=os.path.dirname(cir_file))
         else:
-            success, stdout, stderr = run_ngspice(cir_file, timeout=timeout)
+            success, stdout, stderr = run_ngspice(
+                os.path.basename(cir_file), timeout=timeout,
+                cwd=os.path.dirname(cir_file))
         elapsed = time.monotonic() - t0
         total_time += elapsed
 
