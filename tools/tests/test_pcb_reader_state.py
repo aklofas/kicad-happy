@@ -35,21 +35,27 @@ class ReaderState(unittest.TestCase):
         self.assertEqual(st.net_id("COMMON"), 3)
 
     def test_module_net_id_is_pure_during_extraction(self):
-        import analyze_pcb as ap
-        self.assertEqual(ap._net_id("COMMON"), 0)
-        self.assertEqual(ap._net_id("12"), 12)
-        self.assertFalse(hasattr(ap, "_net_name_to_id"))
+        import pcb.reader as reader
+        self.assertEqual(reader._net_id("COMMON"), 0)
+        self.assertEqual(reader._net_id("12"), 12)
+        self.assertFalse(hasattr(reader, "_net_name_to_id"))
 
     def test_same_process_a_b_a_is_identical_on_kicad10_boards(self):
-        import analyze_pcb as ap
+        from pcb.pipeline import analyze_pcb
         with tempfile.TemporaryDirectory() as d:
             a = Path(d) / "a.kicad_pcb"; a.write_text(BOARD_A, encoding="utf-8")
             b = Path(d) / "b.kicad_pcb"; b.write_text(BOARD_B, encoding="utf-8")
-            r1 = ap.analyze_pcb(str(a)); ap.analyze_pcb(str(b)); r3 = ap.analyze_pcb(str(a))
+            r1 = analyze_pcb(str(a)); analyze_pcb(str(b)); r3 = analyze_pcb(str(a))
         self.assertEqual(r1["nets"], {"1": "COMMON"})
         self.assertEqual(r1["net_name_to_id"], r3["net_name_to_id"])
         self.assertEqual(_net_number(r1, "U1"), _net_number(r3, "U1"))
         self.assertEqual(json.dumps(r1, sort_keys=True, default=str), json.dumps(r3, sort_keys=True, default=str))
+
+    def test_read_board_uses_the_reader_module_attribute(self):
+        import inspect, pcb.pipeline as pl
+        src = inspect.getsource(pl.read_board)
+        self.assertIn("reader.extract_footprints(", src)
+        self.assertIn("reader._build_net_mapping(", src)
 
 
 if __name__ == "__main__":

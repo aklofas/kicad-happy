@@ -56,13 +56,12 @@ def get_analyzer_output(input_path: Path) -> dict | None:
 
     if input_path.suffix in (".kicad_sch", ".sch"):
         # Try importing the analyzer directly
-        # Resolves only because skills/datasheets/distributor_core/ sits at the same depth as
-        # skills/<p>/scripts/; _core_path-style anchoring is a round-8 item.
+        # The path insert resolves skills/kicad/scripts relative to this file.
         kicad_scripts = Path(__file__).resolve().parent.parent.parent / "kicad" / "scripts"
         if kicad_scripts.exists():
             sys.path.insert(0, str(kicad_scripts))
             try:
-                from analyze_schematic import analyze_schematic
+                from schematic.pipeline import analyze_schematic
                 return analyze_schematic(str(input_path))
             except Exception as e:
                 print(f"  Analyzer import failed ({e}), trying subprocess...",

@@ -734,25 +734,6 @@ class KeptCompatibilitySurfaces(unittest.TestCase):
         self.assertIsNone(ctx.hierarchy_context)
 
 
-class KicadUtilsFacade(unittest.TestCase):
-    def test_every_pre_v3_name_still_importable(self):
-        sys.path.insert(0, str(cr.REPO_ROOT / "skills" / "kicad" / "scripts"))
-        import importlib, kicad_utils
-        importlib.reload(kicad_utils)
-        names = json.loads((Path(__file__).parent / "kicad_utils_names_6a91aaa.json").read_text(encoding="utf-8"))
-        missing = [n for n in names if not hasattr(kicad_utils, n)]
-        self.assertEqual(missing, [])
-
-
-class SexpParserFacade(unittest.TestCase):
-    def test_sexp_parser_facade_exports_every_pre_v3_name(self):
-        names = json.loads((Path(__file__).parent / "sexp_parser_names_8912a5a.json").read_text(encoding="utf-8"))
-        sys.path.insert(0, str(cr.REPO_ROOT / "skills" / "kicad" / "scripts"))
-        import sexp_parser, kicad_core.sexp as core
-        for n in names:
-            self.assertIs(getattr(sexp_parser, n), getattr(core, n), n)
-
-
 class TextOracle(unittest.TestCase):
     def test_mask_text_replaces_volatile_tokens(self):
         s = 'run 20261017T101010Z-abc123 at 2026-10-17T10:10:10+00:00 "elapsed_s": 1.25 /w/x /p/y python3.12 File "/p/y/a.py", line 1137, in <module>'

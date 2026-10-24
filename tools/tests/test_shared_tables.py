@@ -37,11 +37,6 @@ class SharedTables(unittest.TestCase):
         self.assertTrue(is_cross_analysis_ground_name("CHASSIS"))
         self.assertFalse(is_cross_analysis_ground_name("/Power/GND"))   # today's behaviour, preserved
 
-    def test_old_names_stay_bound_where_a_facade_exists(self):
-        import analyze_schematic
-        from schematic.ic_analysis import classify_ic_pinout_role
-        self.assertIs(analyze_schematic._classify_ic_function, classify_ic_pinout_role)
-
     def test_mlcc_parasitic_tables_live_in_kicad_core(self):
         import emc_formulas
         from kicad_core.parts import MLCC_ESL, MLCC_ESR

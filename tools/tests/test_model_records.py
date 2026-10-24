@@ -20,17 +20,18 @@ def _annotations(td):
 class RecordShapes(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        import analyze_schematic as asch
+        from schematic.pipeline import analyze_schematic
+        from schematic.reader import parse_single_sheet
         from kicad_core import model
         cls.model = model
         cls.results = []
         for f in sorted(set(FX.rglob("*.kicad_sch")) | set(FX.rglob("*.sch"))):
             try:
-                cls.results.append(asch.analyze_schematic(str(f), no_hierarchy=True))
+                cls.results.append(analyze_schematic(str(f), no_hierarchy=True))
             except Exception:
                 continue
         assert len(cls.results) >= 10, "fixture set too small to trust"
-        cls.sheet = asch.parse_single_sheet(str(FX / "simple-project" / "simple.kicad_sch"))
+        cls.sheet = parse_single_sheet(str(FX / "simple-project" / "simple.kicad_sch"))
 
     def test_component_keys(self):
         allowed = _annotations(self.model.Component)

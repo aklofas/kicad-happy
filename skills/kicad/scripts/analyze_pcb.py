@@ -1,18 +1,5 @@
 #!/usr/bin/env python3
-"""
-KiCad PCB Layout Analyzer — comprehensive single-pass extraction.
-
-Parses a .kicad_pcb file and outputs structured JSON with:
-- Board dimensions and layer stack
-- Footprint inventory (components, positions, pads, nets)
-- Routing analysis (tracks, vias, zones)
-- Net connectivity and unrouted nets
-- Design rule summary
-- Statistics
-
-Usage:
-    python analyze_pcb.py <file.kicad_pcb|file.kicad_pro|dir/> [--output file.json]
-"""
+"""CLI for the KiCad PCB layout analyzer; the analyzer lives in `pcb/`."""
 
 import json
 import os
@@ -21,51 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from pcb.pipeline import (  # noqa: F401
-    analyze_pcb, finalize_for_cli, ANALYZER_SOURCE, MAX_TESTED_FORMAT_VERSION,
-    _power_rails_from_schematic,
-)
-from pcb.presentation import group_components, compute_statistics  # noqa: F401
-from pcb.geometry import (  # noqa: F401
-    _extract_polygon_coords, _shoelace_area_from_coords, _shoelace_area, _point_in_polygon,
-    _polygon_bbox, ZoneFills, _dist_point_to_segment, CopperPresence, copper_connected,
-    _arc_length_3pt, _chain_segments, _point_in_polys, _refined_overlap_mm2, _pad_on_layer,
-    _pad_outline_points, _pad_sample_points, _point_in_pad,
-)
-from pcb.assembly import (  # noqa: F401
-    _ESD_TVS_PREFIXES, _min_power_pad_distance, _nearby_decoupling_caps,
-    analyze_decoupling_placement, _RF_MODULE_KEYWORDS, _RF_LIB_KEYWORDS, _is_rf_module,
-    _EDGE_MOUNT_LIBRARY_KEYWORDS, _EDGE_MOUNT_VALUE_KEYWORDS, _is_edge_mount_footprint,
-    analyze_placement, _extract_package_code, analyze_tombstoning_risk,
-    _compute_switching_loop_areas, _finest_smd_pad_dim, _fiducial_severity_from_pitch,
-    analyze_fiducials, analyze_test_point_coverage, analyze_orientation_consistency,
-    analyze_silkscreen_pad_overlaps, analyze_keepout_violations,
-)
-from pcb.routing import (  # noqa: F401
-    analyze_connectivity, analyze_power_nets, _build_routing_graph, _route_distance,
-    analyze_pad_to_pad_distances, analyze_return_path_continuity, _safe_num,
-    _build_reference_layer_map, _copper_order_from_stackup, _via_spans_layer,
-    _microstrip_impedance, _build_layer_heights, analyze_net_lengths, analyze_ground_domains,
-    analyze_trace_proximity, analyze_current_capacity, analyze_layer_transitions,
-)
-from pcb.copper import (  # noqa: F401
-    _find_thermal_pads, analyze_thermal_vias, analyze_vias, analyze_thermal_pad_vias,
-    _PASSIVE_REF_RE, _nearest_zone_copper_distance, analyze_copper_presence, analyze_via_in_pad,
-    analyze_board_edge_via_clearance,
-)
-from pcb.dfm import (  # noqa: F401
-    MIN_REAL_DRILL_MM, _is_real_drill, _degenerate_drills, _pad_effective_drill, _pad_drills,
-    _min_drill_with_source, analyze_dfm, analyze_design_rule_compliance,
-)
-from pcb.reader import (  # noqa: F401
-    extract_layers, extract_setup, extract_nets, _net_id, _build_net_mapping, extract_footprints,
-    extract_tracks, extract_vias, extract_zones, _extract_keepout_zones, extract_board_outline,
-    extract_silkscreen, extract_board_metadata, extract_dimensions, extract_groups,
-    extract_net_classes,
-)
-# re-exported for the harness (see ARCHITECTURE.md facade register)
-from kicad_core.sexp import parse_file  # noqa: F401
-from pcb.connectivity import build_connectivity_graph  # noqa: F401
+from pcb.pipeline import analyze_pcb, finalize_for_cli
 from envelopes.pcb import PCBEnvelope
 from schema_codec import emit_schema
 from inputs_builder import build_inputs, build_compat

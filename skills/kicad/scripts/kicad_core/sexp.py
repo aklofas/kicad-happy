@@ -5,7 +5,7 @@ Parses KiCad's Lisp-like S-expression format into nested Python lists.
 Handles quoted strings, multi-line expressions, and large files efficiently.
 
 Usage:
-    from sexp_parser import parse_file, find_all, find_first, get_property
+    from kicad_core.sexp import parse_file, find_all, find_first, get_property
 """
 
 import re
