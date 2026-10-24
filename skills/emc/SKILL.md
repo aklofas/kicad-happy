@@ -129,9 +129,9 @@ Read the JSON report and incorporate findings into the design review. Each findi
   "findings": [
     {
       "category": "ground_plane",
-      "severity": "CRITICAL",
+      "severity": "error",
       "rule_id": "GP-001",
-      "title": "Signal crosses ground plane void",
+      "summary": "Signal crosses ground plane void",
       "description": "Net SPI_CLK crosses a 3.2mm gap in GND on In1.Cu",
       "components": ["U3", "U7"],
       "nets": ["SPI_CLK"],

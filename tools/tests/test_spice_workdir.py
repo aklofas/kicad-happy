@@ -45,6 +45,13 @@ class WorkdirTest(unittest.TestCase):
 
             def fake(cmd, **kw):
                 calls.append((cmd, kw))
+                with open(os.path.join(kw["cwd"], cmd[-1]), encoding="utf-8") as f:
+                    echoes = [l for l in f.read().splitlines() if l.startswith("echo ")]
+                self.assertTrue(echoes)
+                for l in echoes:
+                    target = l.rsplit('" >', 1)[1].strip()
+                    self.assertNotIn("/", target)
+                    self.assertNotIn("\\", target)
                 return subprocess.CompletedProcess(cmd, 0, "", "")
             with mock.patch("spice_simulator.subprocess.run", side_effect=fake):
                 ss.simulate_subcircuits(analysis, workdir=wd)
@@ -67,6 +74,19 @@ class WorkdirTest(unittest.TestCase):
                 sums.append(json.loads(r.stdout)["summary"])
             self.assertEqual(sums[0].get("skip"), sums[1].get("skip"))
             self.assertEqual(sums[0].get("pass"), sums[1].get("pass"))
+            self.assertGreaterEqual(sums[0]["pass"], 1)
+
+    @unittest.skipUnless(shutil.which("ngspice"), "ngspice not installed")
+    def test_relative_simulator_path_survives_workdir_cwd(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            analysis = _analysis(tmp)
+            env = dict(os.environ,
+                       NGSPICE_PATH=os.path.relpath(shutil.which("ngspice"), start=tmp))
+            r = subprocess.run(
+                [sys.executable, str(SPICE / "simulate_subcircuits.py"),
+                 analysis, "--workdir", os.path.join(tmp, "w"), "--compact"],
+                capture_output=True, text=True, cwd=tmp, env=env)
+            self.assertGreaterEqual(json.loads(r.stdout)["summary"]["pass"], 1, r.stderr)
 
 
 if __name__ == "__main__":

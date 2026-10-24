@@ -163,7 +163,7 @@ Filter and annotate power rails in analysis output. All patterns use fnmatch glo
 ```jsonc
 "analysis": {
   "output_dir": "analysis",
-  "retention": 5,
+  "retention": 0,
   "auto_diff": true,
   "track_in_git": false,
   "diff_threshold": "major",

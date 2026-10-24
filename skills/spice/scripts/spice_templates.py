@@ -487,7 +487,7 @@ def generate_opamp_circuit(det, output_file, context=None, parasitics=None,
             model_source = source
             model_specs = specs
     except Exception as exc:  # Model resolution failed — use ideal
-        record(diagnostics, "spice_templates.get_model_for_part", exc, "ideal opamp model used")
+        record(diagnostics, "spice_templates.generate_opamp_circuit", exc, "ideal opamp model used")
 
     if model_source == "ideal":
         model_note = "* Model: IDEAL opamp (Aol=1e6, GBW~10MHz) — real part may have lower GBW"

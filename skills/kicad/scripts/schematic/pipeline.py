@@ -1400,7 +1400,7 @@ def finalize_for_cli(result: dict, config: dict, *, schematic_path: str, lifecyc
     except ImportError:
         pass
     except Exception as exc:
-        record(diagnostics, "schematic.pipeline.apply_power_rails_config", exc,
+        record(diagnostics, "schematic.pipeline.finalize_for_cli", exc,
                "power_rails config not applied")
 
     # rc.2 4.3 — LC-007 lifecycle-skipped INFO finding. Emit explicitly so
@@ -1523,7 +1523,7 @@ def finalize_for_cli(result: dict, config: dict, *, schematic_path: str, lifecyc
     except ImportError:
         pass
     except Exception as exc:
-        record(diagnostics, "schematic.pipeline.compute_trust_summary", exc,
+        record(diagnostics, "schematic.pipeline.finalize_for_cli", exc,
                "trust_summary not recomputed after filters")
 
     # Guarantee every finding carries a stable finding_id (Layer 2 merge keys

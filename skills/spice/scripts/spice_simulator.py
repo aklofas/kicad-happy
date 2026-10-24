@@ -88,11 +88,11 @@ class NgspiceBackend(SimulatorBackend):
         # Explicit override
         env_path = os.environ.get("NGSPICE_PATH")
         if env_path and os.path.isfile(env_path):
-            return env_path
+            return os.path.abspath(env_path)
         # Standard PATH lookup
         found = shutil.which("ngspice")
         if found:
-            return found
+            return os.path.abspath(found)
         # Windows default
         for candidate in [
             os.path.join(os.environ.get("PROGRAMFILES", ""), "Spice64", "bin", "ngspice.exe"),
@@ -198,13 +198,13 @@ class LtspiceBackend(SimulatorBackend):
     def find(self):
         env_path = os.environ.get("LTSPICE_PATH")
         if env_path and os.path.isfile(env_path):
-            return env_path
+            return os.path.abspath(env_path)
 
         # Standard PATH
         for name in ("ltspice", "LTspice", "XVIIx64"):
             found = shutil.which(name)
             if found:
-                return found
+                return os.path.abspath(found)
 
         # Platform-specific defaults
         if sys.platform == "win32":
@@ -346,11 +346,11 @@ class XyceBackend(SimulatorBackend):
     def find(self):
         env_path = os.environ.get("XYCE_PATH")
         if env_path and os.path.isfile(env_path):
-            return env_path
+            return os.path.abspath(env_path)
         for name in ("Xyce", "xyce"):
             found = shutil.which(name)
             if found:
-                return found
+                return os.path.abspath(found)
         return None
 
     def run(self, cir_file, timeout=5, cwd=None):

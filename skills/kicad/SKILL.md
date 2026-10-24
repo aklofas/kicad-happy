@@ -347,7 +347,7 @@ The `analysis` section in `.kicad-happy.json` controls the shared analysis outpu
 {
   "analysis": {
     "output_dir": "analysis",
-    "retention": 5,
+    "retention": 0,
     "auto_diff": true,
     "track_in_git": false,
     "diff_threshold": "major"
@@ -357,8 +357,8 @@ The `analysis` section in `.kicad-happy.json` controls the shared analysis outpu
 
 | Field | Default | Description |
 |-------|---------|-------------|
-| `output_dir` | `"analysis"` | Analysis directory path, relative to project root |
-| `retention` | `5` | Max unpinned runs to keep. `0` = unlimited |
+| `output_dir` | `"analysis"` | Analysis directory; relative paths resolve against the working directory |
+| `retention` | `0` | Max unpinned runs to keep. `0` = keep all (default) |
 | `auto_diff` | `true` | Auto-include delta section in design reviews |
 | `track_in_git` | `false` | When false, JSONs gitignored but manifest tracked |
 | `diff_threshold` | `"major"` | Severity that triggers new timestamped folder: `minor`, `major`, `breaking` |

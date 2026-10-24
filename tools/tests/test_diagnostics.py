@@ -88,7 +88,7 @@ class PowerRailsGuard(unittest.TestCase):
         self.assertEqual(base["diagnostics"], [])
         self.assertEqual(len(got["diagnostics"]), 1)
         d = got["diagnostics"][0]
-        self.assertTrue(d["source"].endswith("apply_power_rails_config"), d)
+        self.assertTrue(d["source"].endswith("finalize_for_cli"), d)
         self.assertEqual((d["exception"], d["message"]), ("KeyError", "'x'"))
         for doc in (base, got):
             for k in ("diagnostics", "flagged_rails", "capability_mode_ref"):
@@ -96,7 +96,7 @@ class PowerRailsGuard(unittest.TestCase):
             doc["inputs"].pop("run_id", None)
         self.assertEqual(got, base)
         self.assertEqual(len(_warning_lines(got_err)), len(_warning_lines(base_err)) + 1)
-        self.assertEqual(len([ln for ln in _warning_lines(got_err) if "apply_power_rails_config" in ln]), 1)
+        self.assertEqual(len([ln for ln in _warning_lines(got_err) if "finalize_for_cli" in ln]), 1)
 
 
 SYNTH = FX.parent / "synthetic_top_level_sheets" / "page1.kicad_sch"

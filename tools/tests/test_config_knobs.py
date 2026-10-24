@@ -68,13 +68,18 @@ class ConfigKnobs(unittest.TestCase):
         self.schematic()
         pinned = load_manifest(str(self.adir))["current"]
         pin_run(str(self.adir), pinned)
+        unpinned = []
         for v in ("332", "333", "334"):
             self.set_resistor(v)
             self.schematic()
+            unpinned.append(load_manifest(str(self.adir))["current"])
         m = load_manifest(str(self.adir))
         survivors = run_dirs(self.adir)
         self.assertEqual(len(survivors), 3, survivors)
         self.assertIn(pinned, survivors)
+        self.assertNotIn(unpinned[0], survivors)
+        for run_id in unpinned[1:]:
+            self.assertIn(run_id, survivors)
         self.assertEqual(sorted(m["runs"]), survivors)
         self.assertIn(m["current"], survivors)
         self.assertTrue((self.adir / m["current"] / "schematic.json").is_file())
