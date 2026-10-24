@@ -25,6 +25,8 @@ The model resolution cascade:
 """
 
 import json
+import os
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -40,19 +42,29 @@ from spice_model_generator import (
 )
 
 
+_PROCESS_CACHE_DIR = None  # per-process fallback root, created lazily
+
+
 def resolve_cache_dir(analysis_json, override_dir=None):
     """Determine the spice/models/ directory for this project.
 
-    Derives the project directory from the analyzer JSON's "file" field
-    (the source .kicad_sch path), then places spice/models/ alongside it.
+    Resolution, first match wins:
+        1. override_dir, when given
+        2. beside the schematic named by the analysis JSON's "file" field
+        3. one per-process temp directory, created on first use, so two
+           processes never share a manifest and no model leaks across projects
+
+    simulate_subcircuits passes its workdir as override_dir when the analysis
+    names no file, so step 3 is reached only by other callers.
 
     Args:
-        analysis_json: Parsed analyzer JSON dict (needs "file" key)
+        analysis_json: Parsed analyzer JSON dict ("file" key optional)
         override_dir: If set, use this directory instead of deriving
 
     Returns:
         Path to spice/models/ directory (may not exist yet)
     """
+    global _PROCESS_CACHE_DIR
     if override_dir:
         return Path(override_dir) / "spice" / "models"
 
@@ -61,9 +73,9 @@ def resolve_cache_dir(analysis_json, override_dir=None):
         project_dir = Path(source_file).parent
         return project_dir / "spice" / "models"
 
-    # Fallback: temp directory
-    import tempfile
-    return Path(tempfile.gettempdir()) / "kicad-happy-spice" / "models"
+    if _PROCESS_CACHE_DIR is None:
+        _PROCESS_CACHE_DIR = Path(tempfile.mkdtemp(prefix="kicad-happy-spice-"))
+    return _PROCESS_CACHE_DIR / "spice" / "models"
 
 
 # In-memory cache for manifest.json to avoid re-reading on every call.
@@ -170,9 +182,20 @@ def cache_model(cache_dir, mpn, subckt, specs, source, component_type):
         "created": datetime.datetime.now().astimezone().isoformat(timespec='seconds'),
     }
 
+    # Write beside the target and swap it in, so a reader never sees a half-written manifest
     write_path = cache_dir / MANIFEST_FILENAME
-    with open(write_path, "w") as f:
-        json.dump(index, f, indent=2)
+    tmp = tempfile.NamedTemporaryFile(dir=cache_dir, prefix="manifest.", suffix=".tmp",
+                                      delete=False, mode="w", encoding="utf-8")
+    try:
+        with tmp:
+            json.dump(index, tmp, indent=2)
+        os.replace(tmp.name, write_path)
+    except BaseException:
+        try:
+            os.unlink(tmp.name)
+        except OSError:
+            pass
+        raise
 
     # Remove legacy file after successful migration
     old_path = cache_dir / LEGACY_MANIFEST_FILENAME

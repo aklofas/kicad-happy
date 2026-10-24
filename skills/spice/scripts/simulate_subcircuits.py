@@ -169,6 +169,12 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
     else:
         os.makedirs(workdir, exist_ok=True)
 
+    # An analysis that names no schematic caches its models under this run's workdir
+    if not analysis_json.get("file") and (model_options is None or model_options.cache_dir is None):
+        from spice_model_cache import ModelOptions
+        model_options = ModelOptions(cache_dir=workdir,
+                                     offline=(model_options.offline if model_options else False))
+
     results = []
     sim_diagnostics: list = []  # Monte Carlo trials add only records the nominal runs lack
     total_time = 0

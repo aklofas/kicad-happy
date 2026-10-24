@@ -653,7 +653,7 @@ def generate_distributed_pdn_netlist(node, plane_cap_f=0):
 
 def run_distributed_pdn_spice(node, plane_cap_f=0, backend=None,
                               freq_start=1e3, freq_stop=1e9,
-                              points_per_decade=50, timeout=10):
+                              points_per_decade=50, timeout=10, diagnostics=None):
     """Run SPICE AC sweep for distributed PDN impedance at IC load point.
 
     Same pattern as run_pdn_spice() but uses the distributed netlist.
@@ -682,7 +682,7 @@ def run_distributed_pdn_spice(node, plane_cap_f=0, backend=None,
     n_probes = int(decades * probes_per_decade)
     for i in range(n_probes + 1):
         f = freq_start * (10 ** (i * decades / n_probes))
-        measurements.append(('ac', f'z_at_{i}', f'find vr(ic_load) at={_format_eng(f)}'))
+        measurements.append((f'z_at_{i}', 'find', 'vm(ic_load)', f'at={_format_eng(f)}'))
 
     tb = SpiceTestbench(netlist, analyses, measurements)
 
@@ -691,26 +691,38 @@ def run_distributed_pdn_spice(node, plane_cap_f=0, backend=None,
     cir_file = os.path.join(workdir, 'distributed_pdn.cir')
     out_file = os.path.join(workdir, 'distributed_pdn.out')
 
-    cir_content = tb.render(backend, os.path.basename(out_file))
-    with open(cir_file, 'w') as f:
-        f.write(cir_content)
+    try:
+        cir_content = tb.render(backend, os.path.basename(out_file))
+        with open(cir_file, 'w') as f:
+            f.write(cir_content)
 
-    success, stdout, stderr = backend.run(os.path.basename(cir_file), timeout=timeout, cwd=workdir)
-    if not success:
+        success, stdout, stderr = backend.run(os.path.basename(cir_file), timeout=timeout, cwd=workdir)
+        if not success:
+            return False, None
+
+        if hasattr(backend, 'parse_results'):
+            sim_data = backend.parse_results(out_file, stdout, stderr)
+        else:
+            return False, None
+
+        # Build sweep from probe results
+        sweep = []
+        for i in range(n_probes + 1):
+            f = freq_start * (10 ** (i * decades / n_probes))
+            key = f'z_at_{i}'
+            z = sim_data.get(key)
+            if z is not None and isinstance(z, (int, float)) and z > 0:
+                sweep.append({'freq_hz': f, 'impedance_ohm': abs(z)})
+
+        return bool(sweep), sweep if sweep else None
+
+    except Exception as exc:
+        record(diagnostics, "emc_spice.run_distributed_pdn_spice", exc, "distributed PDN SPICE sweep failed")
         return False, None
-
-    if hasattr(backend, 'parse_results'):
-        sim_data = backend.parse_results(out_file, stdout, stderr)
-    else:
-        return False, None
-
-    # Build sweep from probe results
-    sweep = []
-    for i in range(n_probes + 1):
-        f = freq_start * (10 ** (i * decades / n_probes))
-        key = f'z_at_{i}'
-        z = sim_data.get(key)
-        if z is not None and isinstance(z, (int, float)) and z > 0:
-            sweep.append({'freq_hz': f, 'impedance_ohm': abs(z)})
-
-    return bool(sweep), sweep if sweep else None
+    finally:
+        # Cleanup
+        import shutil
+        try:
+            shutil.rmtree(workdir, ignore_errors=True)
+        except Exception:
+            pass

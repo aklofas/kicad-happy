@@ -73,5 +73,34 @@ class EmcSpiceWorkdirTest(unittest.TestCase):
         self.assertEqual(out[0], out[1])
 
 
+    def test_distributed_pdn_renders_measurements_and_cleans_up(self):
+        import math
+        n_probes = int(math.log10(1e9 / 1e3) * 10)
+        for ok in (True, False):
+            with self.subTest(success=ok):
+                seen = {}
+
+                def fake(cmd, **kw):
+                    seen["cwd"] = kw["cwd"]
+                    with open(os.path.join(kw["cwd"], cmd[-1]), encoding="utf-8") as f:
+                        seen["cir"] = f.read()
+                    out = os.path.join(kw["cwd"], "distributed_pdn.out")
+                    with open(out, "w", encoding="utf-8") as f:
+                        f.write(" ".join(f"z_at_{i}=0.05" for i in range(n_probes + 1)) + "\n")
+                    return subprocess.CompletedProcess(cmd, 0 if ok else 1, "", "" if ok else "boom")
+                with mock.patch.object(NgspiceBackend, "find", return_value="ngspice"), \
+                        mock.patch("spice_simulator.subprocess.run", side_effect=fake):
+                    result = emc_spice.run_distributed_pdn_spice({"output_caps": [CAP]},
+                                                                 backend=NgspiceBackend())
+                meas = [l for l in seen["cir"].splitlines() if re.match(r"meas ac z_at_\d+ find vm\(ic_load\) at=", l)]
+                self.assertEqual(len(meas), n_probes + 1, seen["cir"])
+                self.assertTrue(os.path.basename(seen["cwd"]).startswith("emc_dpdn_"))
+                self.assertFalse(os.path.exists(seen["cwd"]))
+                if ok:
+                    self.assertTrue(result[0], result)
+                    self.assertEqual(len(result[1]), n_probes + 1)
+                else:
+                    self.assertEqual(result, (False, None))
+
 if __name__ == "__main__":
     unittest.main()

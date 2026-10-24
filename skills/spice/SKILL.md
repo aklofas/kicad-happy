@@ -302,7 +302,7 @@ For detailed information about the behavioral models used, their accuracy envelo
 | `scripts/spice_simulator.py` | Simulator backends — ngspice, LTspice, Xyce auto-detection and batch execution |
 | `scripts/spice_part_library.py` | Lookup table of electrical specs for ~100 common opamps, LDOs, comparators, voltage references, crystal drivers |
 | `scripts/spice_model_generator.py` | Parameterized behavioral .subckt generation from specs dicts |
-| `scripts/spice_model_cache.py` | Project-local model cache in `spice/models/` next to the schematic |
+| `scripts/spice_model_cache.py` | Project-local model cache in `spice/models/` next to the schematic when the analysis JSON names it; otherwise under the run's workdir (`--model-cache-dir` to share one cache) |
 | `scripts/spice_spec_fetcher.py` | Queries distributor APIs (LCSC, DigiKey, element14, Mouser), structured datasheet extractions, and PDF regex for parametric specs |
 | `scripts/extract_parasitics.py` | Compute trace R, via L, coupling C from PCB analysis JSON |
 

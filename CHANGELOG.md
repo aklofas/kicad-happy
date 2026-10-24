@@ -36,6 +36,8 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `lifecycle_audit.py` gives a usage error (exit 2), not a traceback, when its input is missing, a directory or not JSON. (KH-464)
 - `analyze_gerbers.py` exits 2 with a usage error on a nonexistent directory, instead of a clean report with exit 0. (KH-466)
 - Monte-Carlo SPICE trials print each model fallback once instead of once per trial; a fallback seen only in a trial is now also recorded in `diagnostics`. (KH-475)
+- The SPICE model cache no longer falls back to one machine-wide temp directory: runs without a project path cache under their own workdir, and the manifest is written atomically, so parallel runs can no longer read a half-written manifest or serve another project's model. (KH-477)
+- `run_distributed_pdn_spice` renders its `.meas` lines (it never produced a result before) and removes its temp directory. (KH-478)
 - KH-454 and KH-455 (see Changed) were found while adjudicating the v2.3.2 corpus gate.
 - `capability_mode.json` `schema_versions` is filled in regardless of the current directory; it was `{}` when an analyzer ran from outside the repository root.
 - The `emc_formulas.trace_resistance_ohm` equation comment was re-numbered from `EQ-042`, which another formula already used, to `EQ-108`. (KH-445)
