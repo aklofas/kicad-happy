@@ -4292,12 +4292,14 @@ def audit_rail_sources(ctx: AnalysisContext,
         return net_name in reg_output_nets
 
     def _power_rail(net_name: str, net_info: dict) -> bool:
-        # "Power rail" = named like a rail OR has any power_in pin on it.
+        # "Power rail" = named like a rail OR has a power_in pin on it that is
+        # not a bootstrap pin (a BST net is fed by its capacitor, never a source).
         if net_name.startswith("__unnamed_"):
             return False
         if is_power_net_name(net_name, None):
             return True
         return any(p.get("pin_type") == "power_in"
+                   and not _is_bootstrap_pin_name(p.get("pin_name") or "")
                    for p in net_info.get("pins", []))
 
     for net_name, net_info in nets.items():
@@ -4626,8 +4628,8 @@ def audit_power_pin_dc_paths(ctx: AnalysisContext,
                 break
 
     MAX_HOPS = 2
-    # Track (ref, pin) pairs already checked to avoid duplicate findings.
-    seen: set[tuple[str, str]] = set()
+    # Track (ref, pin, net) triples already checked to avoid duplicate findings.
+    seen: set[tuple[str, str, str]] = set()
 
     for net_name, net_info in nets.items():
         for p in net_info.get("pins", []):
@@ -4653,7 +4655,8 @@ def audit_power_pin_dc_paths(ctx: AnalysisContext,
             if net_name in nets_with_connector:
                 continue
 
-            key = (ref, pin_num)
+            # The net is part of the key: duplicate / unannotated refs (U? x N) share (ref, pin).
+            key = (ref, pin_num, net_name)
             if key in seen:
                 continue
             seen.add(key)
