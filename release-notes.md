@@ -2,6 +2,14 @@
 
 The story of each kicad-happy release — what changed and why it matters when upgrading. For line-level detail, see the [CHANGELOG](CHANGELOG.md).
 
+## 🔧 v2.3.2 — Backport
+
+A small release from the field while the v3 refactor continues on its own branch. imrcly found that AM-001, the absolute-maximum check, had never fired on a real datasheet extraction: it looked up `VIN` where extractions store `VIN_max`. With the key convention honoured, an LM2596 on a 50 V rail against its 45 V limit is reported, as it should have been all along. The same PR makes every datasheets script read and write UTF-8, so Windows users on a cp1252 locale stop losing `°C` and `Ω` in unit strings.
+
+EldarPolitkin audited an eight-sheet board and filed four issues, each with a repro sheet and a test, then sent the four fixes. PU-001 no longer demands a pull-up on a pin the designer has explicitly marked no-connect. PP-001 no longer reports the bootstrap pin of a gate driver as a supply pin with no DC path; the bootstrap capacitor is the intended break. RS-001 is now honest about how it recognised a rail: when the only evidence is the net's name, the finding says so and carries heuristic confidence instead of deterministic. And `cross_analysis.py` prints a usage error rather than a traceback when pointed at a directory.
+
+Upgrading: every change removes a false positive or clarifies a message. The RS-001 change flips `confidence` from `deterministic` to `heuristic` on roughly two in five RS-001 findings corpus-wide (those on name-only rails), so trust-summary counts move; the finding ids do not.
+
 ## 🔧 v2.3.1 — Maintenance batch
 
 A follow-up to v2.3.0 in three layers. The first is the batch itself: jlecoeur's report that `Manufacturer P/N` and `Digikey P/N` were invisible to the analyzers turned into one shared, case-insensitive alias set for the schematic analyzer, the PCB analyzer and the BOM manager, plus six small v2.3.0 follow-ups — thermal-via counting on rotated QFNs, through-hole touch pads, pad-sourced drill violations, a clearer thermal skip reason, RP-001 wording on touch nets, and bus wires on Altium-style peer sheets. A malformed `capability_mode.json` sidecar, which had been silently crashing every analyzer in one harness environment, is now warned about and bypassed.

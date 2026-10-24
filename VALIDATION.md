@@ -2,7 +2,7 @@
 
 This document describes how kicad-happy is tested and validated. Every change to the analysis engine is verified against a corpus of real-world KiCad projects before release.
 
-*Auto-generated on 2026-10-06 by `generate_validation_md.py`.*
+*Auto-generated on 2026-10-23 by `generate_validation_md.py`.*
 
 ## Why this matters
 
@@ -77,36 +77,36 @@ A single unhandled exception across any analyzer on any file in the corpus is tr
 
 Hard assertions on known-good output values. If a previously correct result changes, the assertion fails and the change must be investigated.
 
-*Measured via `regression/run_checks.py --json`: 2,716,971 passed / 7 failed / 2 errors out of 2,716,980 (100.0%).*
+*Measured via `regression/run_checks.py --json`: 2,716,670 passed / 7 failed / 2 errors out of 2,716,679 (100.0%).*
 
 | Category | Assertion count | Pass rate |
 |----------|----------------|-----------|
-| STRUCT | 1,386,475 | 100.0% |
-| SEED | 1,327,582 | 100.0% |
+| STRUCT | 1,386,323 | 100.0% |
+| SEED | 1,327,433 | 100.0% |
 | FND | 4,541 | 100.0% |
 | BUGFIX | 237 | 100.0% |
-| **Total** | **2,716,980** | **100.0%** |
+| **Total** | **2,716,679** | **100.0%** |
 
 Assertions are seeded from validated output and checked on every run. When analyzer logic changes intentionally (new fields, corrected calculations), affected assertions are re-seeded after manual verification.
 
 ### Layer 1 regression gate (pre-tag requirement)
 
-Before any release is tagged, the harness runs the candidate commit and the previous release over the full corpus and diffs every analyzer envelope unit by unit. Every unit that moves (FAIL, Disappeared, NewUnknown) must be attributed to a budget class pre-registered in the change's review record, and no finding may be silently downgraded; unexplained movement fails the gate. The run below is the v2.3.1 soak-fix gate (`9fbbb26` → `ef6d55c`, harness `results/v23x_soak_gate/adjudication_soak.md`) — the last of three incremental gates over the v2.3.1 range (`a01e9ca` → `ef6d55c`), all CLEAN.
+Before any release is tagged, the harness runs the candidate commit and the previous release over the full corpus and diffs every analyzer envelope unit by unit. Every unit that moves (FAIL, Disappeared, NewUnknown) must be attributed to a budget class pre-registered in the change's review record, and no finding may be silently downgraded; unexplained movement fails the gate. The run below is the v2.3.2 backport gate (`6a91aaa` → `4701c26`, harness `results/v232_gate/adjudication_v232.md`) — one full-corpus gate over the whole release range.
 
-Latest run: section `soak_full`, 170,014 analyzer-runs. Verdict: **CLEAN under the batch budget — zero severity downgrades, every moved unit attributed (whole-output walk, 0 violations)**.
+Latest run: section `v232_full_standard`, 170,022 analyzer-runs. Verdict: **ACCEPT under the three-class backport budget — zero severity downgrades, zero budget violations, every moved unit attributed (one residue unit hand-adjudicated in-budget, KH-455)**.
 
 | Outcome | Count |
 |---------|------:|
-| PASS | 149,617 |
-| FAIL | 12 |
-| Disappeared | 218 |
+| PASS | 146,923 |
+| FAIL | 2,706 |
+| Disappeared | 5,029 |
 | Downgrades | 0 |
 | Upgrades | 0 |
 | NewKnown | 0 |
 | NewUpgraded | 0 |
-| NewUnknown | 218 |
+| NewUnknown | 1 |
 | WARN | 0 |
-| SKIP | 20,385 |
+| SKIP | 20,393 |
 
 *A gate is CLEAN when `Downgrades == 0` and every `FAIL`, `Disappeared` and `NewUnknown` unit is attributed to a pre-registered budget class in the adjudication record (a zero-delta gate has none to attribute). `NewKnown`/`NewUpgraded` are intentional new findings; `SKIP` units have no comparable baseline.*
 
@@ -209,8 +209,8 @@ The harness requires Python 3.8+ and a checkout of the corpus repos. ngspice is 
 
 All analyzer bugs found during validation are tracked with sequential IDs:
 
-- `KH-001` through `KH-441`: analyzer issues (383 filed, 350 closed, 33 open)
-- `TH-001` through `TH-058`: harness infrastructure issues (48 filed, 33 closed, 15 open)
+- `KH-001` through `KH-455`: analyzer issues (396 filed, 354 closed, 42 open)
+- `TH-001` through `TH-071`: harness infrastructure issues (59 filed, 38 closed, 21 open)
 
 Each closed analyzer issue has a corresponding bugfix regression guard assertion that prevents the bug from returning.
 
@@ -226,8 +226,8 @@ Each closed analyzer issue has a corresponding bugfix regression guard assertion
 | SPICE simulations | 36,589 |
 | Components parsed | 1,305,789 |
 | Nets traced | 2,090,189 |
-| Regression assertions | 2,716,980 at 100.0% |
+| Regression assertions | 2,716,679 at 100.0% |
 | Bugfix guards | 175 (100% — no regressions) |
-| Closed issues | 350 analyzer + 33 harness |
-| Open issues | 33 analyzer + 15 harness |
+| Closed issues | 354 analyzer + 38 harness |
+| Open issues | 42 analyzer + 21 harness |
 | Schematic detectors | 65 |

@@ -6,6 +6,25 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ---
 
+## v2.3.2 — 2026-10-22
+
+**Theme: backport — six small analyzer fixes from two contributors, landed on the 2.x line while the v3 refactor continues on its own branch. One change is not purely additive: RS-001 drops to `heuristic` confidence on rails it recognises only by name.**
+
+### Fixed
+
+- AM-001 absolute-maximum checks resolve the `<domain>_max` keys that datasheet extractions actually carry (`VIN_max`, `VDD_max`, …) before falling back to the bare domain; the rule had been structurally silent on schema-conformant extractions (an LM2596 with `VIN_max` 45 V on a 50 V rail: no finding before, one after). (#51 — imrcly)
+- Every text I/O site in the datasheets scripts reads and writes UTF-8, so unit strings such as `°C` and `Ω` survive a cp1252 Windows locale. No POSIX behaviour change. (#51 — imrcly)
+- `cross_analysis.py` exits with an argparse usage error instead of a traceback when `--schematic` or `--pcb` names a directory or a file that is not JSON. (#52 — EldarPolitkin; KH-450)
+- PU-001 no longer asks for a pull-up on a pin that carries a no-connect marker and touches nothing else. (#53 — EldarPolitkin; KH-451)
+- RS-001 on a rail it recognises only by name (no `power_in` pin on the net) now says so: `confidence` and provenance drop to `heuristic`, the description reads "is named like a power rail (no power_in pin on it)", and `pins` is empty. Rails with a `power_in` pin are unchanged, and `finding_id` is stable either way. (#54 — EldarPolitkin; KH-452)
+- PP-001 skips gate-driver bootstrap pins (`BST`, `BOOT`, `BOOTSTRAP`, `CBST`, with `_x` or digit suffixes); the bootstrap capacitor is the intended DC break, not a missing supply path. (#55 — EldarPolitkin; KH-453)
+
+**Validation:** one budgeted corpus gate over the whole range (`6a91aaa` → `4701c26`: 149,629 unit pairs, zero downgrades, zero budget violations — 25,466 RS-001 confidence flips, 4,894 PU-001 and 135 PP-001 disappearances, every one attributed; cross-analysis, EMC, thermal, PCB and Gerber outputs byte-identical), a 300-project `--full` chain A/A, contract suite 707 passed, eleven new harness tests adopted from the PRs.
+
+**Thanks:** imrcly (#51), EldarPolitkin (#52–#55 — four issues, each with a minimal repro sheet and a drop-in test, and PRs #56–#59 that fixed them).
+
+---
+
 ## v2.3.1 — 2026-10-06
 
 **Theme: maintenance — one field-recognition gap from the field, six v2.3.0 follow-ups, two regressions the corpus gate caught before the tag, and three defects a fresh-eyes soak found on a real board. Every change gated over the full corpus; the one output change that is not additive is the MPN re-ranking.**
