@@ -1639,7 +1639,8 @@ def main(argv: list[str] | None = None) -> int:
     if not output_path and args.analysis_dir:
         from output_io import write_derived_output
         out_path = write_derived_output(args.analysis_dir, output_json, analyzer='gerber')
-        print(f"Written to {out_path}", file=sys.stderr)
+        if out_path:
+            print(f"Written to {out_path}", file=sys.stderr)
     elif output_path:
         Path(output_path).write_text(output_json)
         print(f"Written to {output_path}", file=sys.stderr)

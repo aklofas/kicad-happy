@@ -81,8 +81,9 @@ def write_primary_run(analysis_dir_arg: str, output_text: str, *, analyzer: str,
             print(f"Analysis cache updated (current run)", file=sys.stderr)
 
 
-def write_derived_output(analysis_dir_arg: str, output_text: str, *, analyzer: str) -> str:
-    """Overwrite one derived analyzer's canonical JSON in the CURRENT run; return the path written.
+def write_derived_output(analysis_dir_arg: str, output_text: str, *, analyzer: str) -> str | None:
+    """Overwrite one derived analyzer's canonical JSON in the CURRENT run; return the path written,
+    or None when the copy was refused (overwrite_current has already warned).
 
     Derived analyzers (gerber, thermal, cross_analysis) carry no source hashes. When nothing is
     tracked yet, analysis_cache.overwrite_current creates a run (it calls create_run) and the
@@ -92,7 +93,8 @@ def write_derived_output(analysis_dir_arg: str, output_text: str, *, analyzer: s
     filename = CANONICAL_OUTPUTS.get(analyzer, f"{analyzer}.json")
     with tempfile.TemporaryDirectory() as tmp_dir:
         Path(os.path.join(tmp_dir, filename)).write_text(output_text, encoding='utf-8')
-        overwrite_current(analysis_dir, tmp_dir, source_hashes=None)
+        if not overwrite_current(analysis_dir, tmp_dir, source_hashes=None):
+            return None
     current = get_current_run(analysis_dir)
     if current:
         return os.path.join(current[0], filename)

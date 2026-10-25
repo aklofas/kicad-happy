@@ -465,7 +465,7 @@ def create_run(analysis_dir: str,
 
 def overwrite_current(analysis_dir: str,
                       outputs_dir: str,
-                      source_hashes: Optional[Dict[str, str]] = None) -> None:
+                      source_hashes: Optional[Dict[str, str]] = None) -> bool:
     """Overwrite the current run folder with new outputs.
 
     Used when sources changed but analysis results didn't differ
@@ -476,6 +476,9 @@ def overwrite_current(analysis_dir: str,
         analysis_dir: Path to the analysis/ directory.
         outputs_dir: Temp directory containing the new output files.
         source_hashes: Updated source hashes (None = keep existing).
+
+    Returns:
+        False when a file was refused (not copied), else True.
     """
     manifest = load_manifest(analysis_dir)
     current_id = manifest.get('current')
@@ -484,7 +487,7 @@ def overwrite_current(analysis_dir: str,
         create_run(analysis_dir, outputs_dir,
                    source_hashes=source_hashes or {},
                    scripts={})
-        return
+        return True
     problem = _run_id_problem(analysis_dir, current_id)
     if problem:
         record(None, "analysis_cache.overwrite_current",
@@ -497,7 +500,7 @@ def overwrite_current(analysis_dir: str,
         create_run(analysis_dir, outputs_dir,
                    source_hashes=source_hashes or {},
                    scripts={})
-        return
+        return True
 
     current_dir = os.path.join(analysis_dir, current_id)
     os.makedirs(current_dir, exist_ok=True)
@@ -531,6 +534,7 @@ def overwrite_current(analysis_dir: str,
                 outputs[atype] = filename
 
     save_manifest(analysis_dir, manifest)
+    return not refused
 
 
 # ---------------------------------------------------------------------------

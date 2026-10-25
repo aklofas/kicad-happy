@@ -1176,9 +1176,10 @@ def main(argv: list[str] | None = None) -> int:
     if analysis_dir_mode:
         from output_io import write_derived_output
         out_path = write_derived_output(args.analysis_dir, json.dumps(result, indent=2), analyzer="thermal")
-        score_str = "SKIPPED" if score is None else f"{score}/100"
-        print(f"Thermal analysis complete: {len(findings)} findings "
-              f"(score {score_str}) -> {out_path}", file=sys.stderr)
+        if out_path:
+            score_str = "SKIPPED" if score is None else f"{score}/100"
+            print(f"Thermal analysis complete: {len(findings)} findings "
+                  f"(score {score_str}) -> {out_path}", file=sys.stderr)
     elif output_path:
         with open(output_path, "w") as f:
             json.dump(result, f, indent=2)

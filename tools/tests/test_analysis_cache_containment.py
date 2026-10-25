@@ -302,9 +302,13 @@ class LeafSymlinkTest(unittest.TestCase):
             os.makedirs(out2)
             _write(os.path.join(out2, "schematic.json"), {"analyzer_type": "schematic"})
             with redirect_stderr(io.StringIO()):
-                analysis_cache.overwrite_current(ad, out2)
+                self.assertIs(analysis_cache.overwrite_current(ad, out2), False)
             with open(outside, encoding="utf-8") as f:
                 self.assertEqual(f.read(), "outside-secret")
+            os.remove(leaf)
+            self.assertIs(analysis_cache.overwrite_current(ad, out2), True)
+            self.assertIs(analysis_cache.overwrite_current(os.path.join(tmp, "fresh"), out2),
+                          True)
 
     def test_ordinary_files_copy_unchanged_and_replace_existing(self):
         with tempfile.TemporaryDirectory() as tmp:

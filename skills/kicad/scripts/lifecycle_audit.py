@@ -1100,13 +1100,14 @@ def main(argv: list[str] | None = None) -> int:
             tmp_out = os.path.join(tmp_dir, filename)
             with open(tmp_out, "w") as f:
                 f.write(output_json)
-            overwrite_current(analysis_dir, tmp_dir, source_hashes=None)
+            written = overwrite_current(analysis_dir, tmp_dir, source_hashes=None)
         current = get_current_run(analysis_dir)
         if current:
             out_path = os.path.join(current[0], filename)
         else:
             out_path = os.path.join(analysis_dir, filename)
-        print(f"Audit written to {out_path}", file=sys.stderr)
+        if written:
+            print(f"Audit written to {out_path}", file=sys.stderr)
     elif output_path:
         with open(output_path, "w") as f:
             f.write(output_json)

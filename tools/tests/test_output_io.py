@@ -116,5 +116,63 @@ class WriteDerivedOutput(unittest.TestCase):
             self.assertEqual(os.path.basename(out), "gerber.json")
 
 
+class RefusedDerivedCopy(unittest.TestCase):
+    """A derived output whose current-run file is a planted symlink is not copied, and
+    nothing reports it as written."""
+
+    def _plant(self, d, adir, name):
+        from analysis_cache import load_manifest
+        leaf = adir / load_manifest(str(adir))["current"] / name
+        leaf.unlink()
+        outside = Path(d) / "outside"
+        outside.write_text("secret", encoding="utf-8")
+        leaf.symlink_to(outside)
+        return outside
+
+    def test_write_derived_output_returns_none(self):
+        import contextlib, io
+        from output_io import write_derived_output
+        with tempfile.TemporaryDirectory() as d:
+            adir = Path(d) / "analysis"
+            self.assertIsNotNone(write_derived_output(str(adir), "{}", analyzer="thermal"))
+            outside = self._plant(d, adir, "thermal.json")
+            with contextlib.redirect_stderr(io.StringIO()):
+                self.assertIsNone(write_derived_output(str(adir), "{}", analyzer="thermal"))
+            self.assertEqual(outside.read_text(encoding="utf-8"), "secret")
+
+    def test_derived_clis_do_not_name_an_unwritten_file(self):
+        import subprocess
+        scripts = Path(__file__).resolve().parents[2] / "skills" / "kicad" / "scripts"
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            (d / "g").mkdir()
+            (d / "sch.json").write_text('{"analyzer_type": "schematic", "components": []}',
+                                        encoding="utf-8")
+            (d / "pcb.json").write_text('{"analyzer_type": "pcb", "footprints": []}',
+                                        encoding="utf-8")
+            pair = ["-s", str(d / "sch.json"), "-p", str(d / "pcb.json")]
+            runs = {"thermal.json": ["analyze_thermal.py", *pair],
+                    "cross_analysis.json": ["cross_analysis.py", *pair],
+                    "gerber.json": ["analyze_gerbers.py", str(d / "g")]}
+            adir = d / "analysis"
+            env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+            for name, argv in runs.items():
+                with self.subTest(name=name):
+                    cmd = [sys.executable, str(scripts / argv[0]), *argv[1:],
+                           "--analysis-dir", str(adir)]
+                    first = subprocess.run(cmd, capture_output=True, text=True, env=env,
+                                           timeout=120)
+                    self.assertEqual(first.returncode, 0, first.stderr)
+                    self.assertIn(name, first.stderr)
+                    outside = self._plant(d, adir, name)
+                    second = subprocess.run(cmd, capture_output=True, text=True, env=env,
+                                            timeout=120)
+                    self.assertEqual(second.returncode, 0, second.stderr)
+                    self.assertIn("file not copied", second.stderr)
+                    self.assertNotIn(" -> ", second.stderr)
+                    self.assertNotIn("Written to", second.stderr)
+                    self.assertEqual(outside.read_text(encoding="utf-8"), "secret")
+
+
 if __name__ == "__main__":
     unittest.main()

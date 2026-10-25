@@ -1199,7 +1199,8 @@ def main(argv: list[str] | None = None) -> int:
     elif args.analysis_dir:
         from output_io import write_derived_output
         out_path = write_derived_output(args.analysis_dir, json.dumps(result, indent=2), analyzer='cross_analysis')
-        print(f'Cross-analysis: {len(findings)} findings -> {out_path}', file=sys.stderr)
+        if out_path:
+            print(f'Cross-analysis: {len(findings)} findings -> {out_path}', file=sys.stderr)
     else:
         print(json.dumps(result, indent=2))
 
