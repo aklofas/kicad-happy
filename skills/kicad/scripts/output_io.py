@@ -77,8 +77,8 @@ def write_primary_run(analysis_dir_arg: str, output_text: str, *, analyzer: str,
                 prune_runs(analysis_dir, retention)
             print(f"Analysis cached: {os.path.join(analysis_dir, run_id, os.path.basename(out_file))}", file=sys.stderr)
         else:
-            overwrite_current(analysis_dir, tmp_dir, source_hashes=source_hashes)
-            print(f"Analysis cache updated (current run)", file=sys.stderr)
+            if overwrite_current(analysis_dir, tmp_dir, source_hashes=source_hashes):
+                print(f"Analysis cache updated (current run)", file=sys.stderr)
 
 
 def write_derived_output(analysis_dir_arg: str, output_text: str, *, analyzer: str) -> str | None:

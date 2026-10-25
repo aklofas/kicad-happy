@@ -116,6 +116,41 @@ class WriteDerivedOutput(unittest.TestCase):
             self.assertEqual(os.path.basename(out), "gerber.json")
 
 
+class RefusedPrimaryOverwrite(unittest.TestCase):
+    def test_refused_current_run_copy_is_not_reported_as_updated(self):
+        import contextlib, io
+        from output_io import write_primary_run
+        from analysis_cache import load_manifest
+        with tempfile.TemporaryDirectory() as d:
+            src = Path(d) / "x.kicad_sch"; src.write_text("(kicad_sch)", encoding="utf-8")
+            adir = Path(d) / "analysis"
+            doc = json.dumps({"analyzer_type": "schematic", "findings": []})
+            args = dict(analyzer="schematic", source_path=str(src), script_name="s.py")
+            with contextlib.redirect_stderr(io.StringIO()):
+                write_primary_run(str(adir), doc, **args)
+            m = load_manifest(str(adir))
+            leaf = adir / m["current"] / "schematic.json"
+            # The planted target holds the same document, so the run is overwritten, not new.
+            outside = Path(d) / "outside.json"
+            outside.write_text(leaf.read_text(encoding="utf-8"), encoding="utf-8")
+            before = outside.read_bytes()
+            leaf.unlink()
+            leaf.symlink_to(outside)
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err):
+                write_primary_run(str(adir), doc, **args)
+            self.assertEqual(load_manifest(str(adir))["current"], m["current"])
+            self.assertIn("file not copied", err.getvalue())
+            self.assertNotIn("Analysis cache updated", err.getvalue())
+            self.assertEqual(outside.read_bytes(), before)
+            leaf.unlink()
+            leaf.write_text(doc, encoding="utf-8")
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err):
+                write_primary_run(str(adir), doc, **args)
+            self.assertIn("Analysis cache updated (current run)", err.getvalue())
+
+
 class RefusedDerivedCopy(unittest.TestCase):
     """A derived output whose current-run file is a planted symlink is not copied, and
     nothing reports it as written."""
