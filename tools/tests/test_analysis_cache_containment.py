@@ -105,6 +105,27 @@ class SymlinkAndOutputNameTest(unittest.TestCase):
             self.assertFalse(os.path.exists(os.path.join(tmp, "x", "loot.json")))
             self.assertIn("run id ignored", err.getvalue())
 
+    @unittest.skipUnless(hasattr(os, "symlink") and os.name == "posix", "needs POSIX symlinks")
+    def test_symlinked_out_run_dir_says_it_resolves_outside(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ad = self._layout(tmp)
+            elsewhere = os.path.join(tmp, "elsewhere", "2001-02-03_0405")
+            os.makedirs(elsewhere)
+            os.symlink(elsewhere, os.path.join(ad, "2001-02-03_0405"))
+            _write(os.path.join(ad, "manifest.json"), {"current": "2001-02-03_0405", "runs": {
+                "2001-02-03_0405": {"outputs": {}, "source_hashes": {}}}})
+            err = io.StringIO()
+            with redirect_stderr(err):
+                analysis_cache.create_run(ad, _outputs(tmp), {}, {}, run_id="r2")
+            self.assertIn("'2001-02-03_0405' resolves outside the analysis directory", err.getvalue())
+            self.assertNotIn("is not a folder name", err.getvalue())
+            _write(os.path.join(ad, "manifest.json"), {"current": "../x", "runs": {"../x": {}}})
+            err = io.StringIO()
+            with redirect_stderr(err):
+                analysis_cache.create_run(ad, _outputs(os.path.join(tmp, "x")), {}, {},
+                                          run_id="r3")
+            self.assertIn("'../x' is not a folder name", err.getvalue())
+
     def test_output_name_with_path_parts_is_ignored(self):
         with tempfile.TemporaryDirectory() as tmp:
             ad = self._layout(tmp)
@@ -155,6 +176,20 @@ class CurrentRunReadersTest(unittest.TestCase):
         _write(os.path.join(ad, "manifest.json"),
                {"current": "../../outside", "runs": {"../../outside": {"outputs": {}}}})
         return ad, outside
+
+    def test_deep_review_gate_refuses_an_escaping_current(self):
+        sys.path.insert(0, str(ROOT / "skills" / "kicad" / "review" / "scripts"))
+        import deep_review_gate
+        with tempfile.TemporaryDirectory() as tmp:
+            ad, outside = self._hostile(tmp)
+            _write(os.path.join(outside, "schematic.json"),
+                   {"components": [{"reference": "LOOT1"}], "nets": {}})
+            self.assertEqual(deep_review_gate.load_anchor_sets(ad), (set(), set()))
+            os.makedirs(os.path.join(ad, "r1"))
+            _write(os.path.join(ad, "r1", "schematic.json"),
+                   {"components": [{"reference": "U1"}], "nets": {"VCC": {}}})
+            _write(os.path.join(ad, "manifest.json"), {"current": "r1", "runs": {"r1": {}}})
+            self.assertEqual(deep_review_gate.load_anchor_sets(ad), ({"U1"}, {"VCC"}))
 
     def test_spice_refuses_an_escaping_current(self):
         with tempfile.TemporaryDirectory() as tmp:

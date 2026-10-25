@@ -29,7 +29,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `skills/datasheets/distributor_core/` (inputs, manifest, download, verify, and the one `sync` driver) and a `provider_<p>.py` adapter for each of DigiKey, Mouser, LCSC and element14. The eight sync and fetch CLIs keep their names and flags.
 - `tools/check_refactor.py`, the refactor checker run in CI: import direction, the literal `detector`/`rule_id`/`schema_era` tag scan, an install smoke from an unrelated directory, determinism, and JSON and text output oracles.
 - `ARCHITECTURE.md`: frozen contracts, dependency rules and module ownership.
-- `simulate_subcircuits.py --model-cache-dir DIR` keeps cached SPICE part models under `DIR/spice/models/` instead of beside the schematic, and `--offline` resolves part models from the project cache and the built-in lookup table only, with no distributor or datasheet queries.
+- `simulate_subcircuits.py --model-cache-dir DIR` keeps cached SPICE part models under `DIR/spice/models/` instead of beside the schematic the analysis JSON names (`file` or `inputs.source_files[0]`), and `--offline` resolves part models from the project cache and the built-in lookup table only, with no distributor or datasheet queries.
 
 ### Fixed
 
@@ -37,8 +37,20 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `lifecycle_audit.py` gives a usage error (exit 2), not a traceback, when its input is missing, a directory or not JSON. (KH-464)
 - `analyze_gerbers.py` exits 2 with a usage error on a nonexistent directory, instead of a clean report with exit 0. (KH-466)
 - Monte-Carlo SPICE trials print each model fallback once instead of once per trial; a fallback seen only in a trial is now also recorded in `diagnostics`. (KH-475)
-- The SPICE model cache no longer falls back to one machine-wide temp directory: runs without a project path cache under their own workdir, and the manifest is written atomically, so parallel runs can no longer read a half-written manifest or serve another project's model. (KH-477)
+- The SPICE model cache no longer falls back to one machine-wide temp directory: by default it is `spice/models/` beside the schematic the analysis JSON names (`file` or `inputs.source_files[0]`), only an analysis that names no source file caches under its run's workdir, and the manifest is written atomically, so parallel runs can no longer read a half-written manifest or serve another project's model. (KH-477)
 - `run_distributed_pdn_spice` renders its `.meas` lines (it never produced a result before) and removes its temp directory. (KH-478)
+- An `analysis/manifest.json` run id or output name can no longer point a write, copy or delete outside the analysis directory; such an entry prints a warning and is ignored.
+- The schematic and PCB CLIs skip a recursive or empty sub-sheet with a diagnostic, give a usage error for an empty root input, and resolve a KiCad 5 `.pro` input to its sibling schematic or board.
+- A wrong-typed `.kicad-happy.json` key prints a warning and uses its default, and a string `components` or `nets` suppression is read as one pattern instead of matching every component.
+- A read-only current directory no longer fails a run, and `--text` output survives a stdout that cannot encode UTF-8.
+- `what_if` recomputes a regulator's `estimated_vout` after a feedback-resistor change, and an impossible `--fix` target now exits 1 with one message; this is a behaviour change, it used to print a header and exit 0.
+- `analyze_thermal`, `cross_analysis` and `analyze_emc` give a usage error when their schematic and PCB inputs are swapped or are not analyzer envelopes.
+- `analyze_emc --severity` filters correctly; `high` used to return no findings.
+- Datasheet downloads never delete an existing PDF, and an outage, a rate limit (429) or an auth failure (401/403) is stored as `error` and retried on the next sync instead of being recorded as `not_found`.
+- `bom_manager` reads CSVs that start with a byte-order mark, `edit_properties` keeps backslashes in values, and `translate_bom_pnp` reads cp1252 files and refuses `.xlsx` input.
+- SPICE testbenches are written as UTF-8, and simulator logs are read as UTF-8 with replacement, so a non-ASCII part value or a UTF-16 LTspice log no longer crashes a run.
+- The GitHub Action report reads the keys the analyzers emit (DFM tier, board dimensions, divider and filter rows), and its `diff-base` run extracts the base revision's sub-sheets and project config instead of only the root schematic.
+- `gen_output_schema_md.py --help` no longer rewrites `output-schema.md`.
 - KH-454 and KH-455 (see Changed) were found while adjudicating the v2.3.2 corpus gate.
 - `capability_mode.json` `schema_versions` is filled in regardless of the current directory; it was `{}` when an analyzer ran from outside the repository root.
 - The `emc_formulas.trace_resistance_ohm` equation comment was re-numbered from `EQ-042`, which another formula already used, to `EQ-108`. (KH-445)

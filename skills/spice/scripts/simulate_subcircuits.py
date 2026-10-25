@@ -34,7 +34,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _core_path  # noqa: F401
 from kicad_core.cli import add_compact_arg, add_output_arg, add_text_arg, utf8_text_stdout
-from kicad_core.diagnostics import OnceSink, record
+from kicad_core.diagnostics import OnceSink
 
 from spice_templates import TEMPLATE_REGISTRY, TOPLEVEL_REGISTRY, list_supported_types, SpiceTestbench
 from spice_results import (
@@ -169,8 +169,10 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
     else:
         os.makedirs(workdir, exist_ok=True)
 
-    # An analysis that names no schematic caches its models under this run's workdir
-    if not analysis_json.get("file") and (model_options is None or model_options.cache_dir is None):
+    # An analysis that names no source file caches its models under this run's workdir
+    from spice_model_cache import project_dir_from_analysis
+    if (project_dir_from_analysis(analysis_json) is None
+            and (model_options is None or model_options.cache_dir is None)):
         from spice_model_cache import ModelOptions
         model_options = ModelOptions(cache_dir=workdir,
                                      offline=(model_options.offline if model_options else False))
@@ -237,10 +239,6 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
             f.write(f"=== stdout ===\n{stdout}\n=== stderr ===\n{stderr}\n")
 
         if not success:
-            reason = next((l.strip() for l in (stderr or stdout or "").splitlines() if l.strip()),
-                          "simulator exited with an error")
-            record(diagnostics, "simulate_subcircuits.run",
-                   RuntimeError(f"{os.path.basename(cir_file)}: {reason}"), "simulation skipped")
             return None, elapsed
 
         if simulator_backend and hasattr(simulator_backend, 'parse_results'):

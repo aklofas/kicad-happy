@@ -1,5 +1,5 @@
-"""The SPICE model cache never shares one machine-wide temp directory, and it
-writes its manifest atomically."""
+"""The SPICE model cache sits beside the project the analysis names, never in one
+machine-wide temp directory, and it writes its manifest atomically."""
 import json, os, subprocess, sys, tempfile, unittest
 from pathlib import Path
 from unittest import mock
@@ -37,6 +37,25 @@ class FallbackDirTest(unittest.TestCase):
         self.assertEqual(spice_model_cache.resolve_cache_dir({"file": "/p/a.kicad_sch"}),
                          Path("/p") / "spice" / "models")
 
+    def test_source_files_names_the_project(self):
+        a = {"inputs": {"source_files": ["/x/proj/board.kicad_sch"]}}
+        self.assertEqual(spice_model_cache.resolve_cache_dir(a),
+                         Path("/x/proj") / "spice" / "models")
+        self.assertEqual(spice_model_cache.project_dir_from_analysis(a), Path("/x/proj"))
+
+    def test_file_wins_over_source_files(self):
+        a = {"file": "/p/a.kicad_sch", "inputs": {"source_files": ["/x/proj/board.kicad_sch"]}}
+        self.assertEqual(spice_model_cache.resolve_cache_dir(a), Path("/p") / "spice" / "models")
+
+    def test_no_source_file_uses_the_process_fallback(self):
+        for a in ({}, {"file": None, "inputs": {"source_files": []}}, {"inputs": None}):
+            self.assertIsNone(spice_model_cache.project_dir_from_analysis(a))
+        with tempfile.TemporaryDirectory() as root, \
+                mock.patch.object(spice_model_cache, "_PROCESS_CACHE_DIR", None, create=True), \
+                mock.patch("tempfile.tempdir", root):
+            got = spice_model_cache.resolve_cache_dir({"file": None, "inputs": {"source_files": []}})
+            self.assertTrue(Path(got).resolve().is_relative_to(Path(root).resolve()), got)
+
 
 class ManifestTest(unittest.TestCase):
     def test_manifest_write_is_atomic(self):
@@ -69,7 +88,7 @@ class ManifestTest(unittest.TestCase):
 
 
 class SimulateCacheDirTest(unittest.TestCase):
-    def _run(self, wd, model_options=None):
+    def _run(self, wd, model_options=None, analysis=None):
         import simulate_subcircuits as ss
         import spice_spec_fetcher
 
@@ -79,7 +98,7 @@ class SimulateCacheDirTest(unittest.TestCase):
                 mock.patch.object(spice_spec_fetcher, "fetch_specs", return_value=(None, None)), \
                 mock.patch("spice_model_cache.resolve_cache_dir",
                            wraps=spice_model_cache.resolve_cache_dir) as rcd:
-            ss.simulate_subcircuits({"findings": [dict(OPAMP)]}, workdir=wd,
+            ss.simulate_subcircuits(dict(analysis or {}, findings=[dict(OPAMP)]), workdir=wd,
                                     model_options=model_options)
         return rcd
 
@@ -99,6 +118,18 @@ class SimulateCacheDirTest(unittest.TestCase):
                 self.assertEqual(c.kwargs["override_dir"], other)
             self.assertTrue((Path(other) / "spice" / "models" / "manifest.json").is_file())
             self.assertFalse((Path(tmp) / "ws2" / "spice").exists())
+
+    def test_simulate_caches_beside_the_named_source_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proj = os.path.join(tmp, "proj")
+            wd = os.path.join(tmp, "ws")
+            rcd = self._run(wd, analysis={"inputs": {"source_files": [
+                os.path.join(proj, "board.kicad_sch")]}})
+            self.assertTrue(rcd.call_args_list)
+            for c in rcd.call_args_list:
+                self.assertIsNone(c.kwargs["override_dir"])
+            self.assertTrue((Path(proj) / "spice" / "models" / "manifest.json").is_file())
+            self.assertFalse((Path(wd) / "spice").exists())
 
 
 if __name__ == "__main__":

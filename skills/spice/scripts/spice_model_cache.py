@@ -45,20 +45,36 @@ from spice_model_generator import (
 _PROCESS_CACHE_DIR = None  # per-process fallback root, created lazily
 
 
+def project_dir_from_analysis(analysis_json):
+    """Return the directory of the first source file the analysis JSON names
+    ("file", else inputs.source_files[0]), or None when it names none."""
+    if not isinstance(analysis_json, dict):
+        return None
+    source_file = analysis_json.get("file")
+    if not (isinstance(source_file, str) and source_file):
+        inputs = analysis_json.get("inputs")
+        sources = inputs.get("source_files") if isinstance(inputs, dict) else None
+        source_file = sources[0] if isinstance(sources, list) and sources else None
+    if isinstance(source_file, str) and source_file:
+        return Path(source_file).parent
+    return None
+
+
 def resolve_cache_dir(analysis_json, override_dir=None):
     """Determine the spice/models/ directory for this project.
 
     Resolution, first match wins:
         1. override_dir, when given
-        2. beside the schematic named by the analysis JSON's "file" field
+        2. beside the first source file the analysis JSON names
+           ("file", or "inputs.source_files[0]")
         3. one per-process temp directory, created on first use, so two
            processes never share a manifest and no model leaks across projects
 
     simulate_subcircuits passes its workdir as override_dir when the analysis
-    names no file, so step 3 is reached only by other callers.
+    names no source file, so step 3 is reached only by other callers.
 
     Args:
-        analysis_json: Parsed analyzer JSON dict ("file" key optional)
+        analysis_json: Parsed analyzer JSON dict ("file" / "inputs" optional)
         override_dir: If set, use this directory instead of deriving
 
     Returns:
@@ -68,9 +84,8 @@ def resolve_cache_dir(analysis_json, override_dir=None):
     if override_dir:
         return Path(override_dir) / "spice" / "models"
 
-    source_file = analysis_json.get("file", "")
-    if source_file:
-        project_dir = Path(source_file).parent
+    project_dir = project_dir_from_analysis(analysis_json)
+    if project_dir is not None:
         return project_dir / "spice" / "models"
 
     if _PROCESS_CACHE_DIR is None:
@@ -239,7 +254,8 @@ class ModelOptions:
     """CLI-level model resolution options (v3 round 3, TH-059 product half).
 
     cache_dir: directory under which spice/models/ is read and written
-               (default: beside the schematic named in the analysis JSON)
+               (default: beside the first source file the analysis JSON names,
+               "file" or "inputs.source_files[0]")
     offline:   never query distributor APIs or datasheets; cache + lookup table only
     """
     cache_dir: str | None = None
@@ -293,12 +309,9 @@ def get_model_for_part(mpn, component_type=None, context=None, options=None, *, 
         try:
             from spice_spec_fetcher import fetch_specs
             # Derive project dir from context for datasheet fallback
-            project_dir = None
-            if context:
-                source_file = context.get("file", "")
-                if source_file:
-                    from pathlib import Path
-                    project_dir = str(Path(source_file).parent)
+            project_dir = project_dir_from_analysis(context)
+            if project_dir is not None:
+                project_dir = str(project_dir)
 
             api_specs, api_source = fetch_specs(mpn, component_type, project_dir,
                                                 diagnostics=diagnostics)

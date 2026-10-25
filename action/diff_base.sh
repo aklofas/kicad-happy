@@ -4,7 +4,7 @@
 # entrypoint.sh (not executed directly).
 #
 # kh_extract_base REF DEST SCHEMATIC PCB CONFIG
-#   Extracts, as they are at REF, every .kicad_sch / .kicad_pro / .kicad_dru
+#   Extracts, as they are at REF, every .kicad_sch / .sch / .kicad_pro / .kicad_dru
 #   under the schematic's directory (so hierarchical sub-sheets come from
 #   the same commit as the root), the PCB and the project config, into
 #   DEST/<repo-relative path>. Empty arguments and files absent at REF are
@@ -32,8 +32,8 @@ kh_extract_base() {
         rel=$(dirname "$(kh_repo_rel "$sch")")
         while IFS= read -r f; do
             files+=("$f")
-        done < <(git -C "$top" ls-tree -r --name-only "$ref" -- "$rel" \
-                    | grep -E '\.(kicad_sch|kicad_pro|kicad_dru)$' || true)
+        done < <(git -C "$top" -c core.quotePath=false ls-tree -r --name-only "$ref" -- "$rel" \
+                    | grep -E '\.(kicad_sch|sch|kicad_pro|kicad_dru)$' || true)
     fi
     for f in "$pcb" "$cfg"; do
         [ -n "$f" ] || continue

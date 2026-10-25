@@ -62,23 +62,30 @@ GITIGNORE_CONTENT = """\
 !manifest.json
 """
 
-def _is_run_id(analysis_dir: str, rid: Any) -> bool:
-    """True when *rid* names one run folder directly inside *analysis_dir*.
+def _run_id_problem(analysis_dir: str, rid: Any) -> Optional[str]:
+    """Why *rid* does not name one run folder directly inside *analysis_dir*, or None.
 
     Manifest run ids become paths that are written into and deleted; a manifest is
     user-editable (track_in_git commits it), so an absolute, dotted or nested id must
     never resolve outside the analysis directory.
     """
     if not isinstance(rid, str) or not rid or rid in ('.', '..'):
-        return False
+        return "is not a folder name"
     if os.path.basename(rid) != rid or os.path.isabs(rid) or '/' in rid or '\\' in rid:
-        return False
+        return "is not a folder name"
     try:
         root = os.path.realpath(analysis_dir)
         # A symlinked run dir resolving anywhere but directly under the root is not a run.
-        return os.path.dirname(os.path.realpath(os.path.join(analysis_dir, rid))) == root
+        if os.path.dirname(os.path.realpath(os.path.join(analysis_dir, rid))) == root:
+            return None
+        return "resolves outside the analysis directory"
     except (ValueError, OSError):
-        return False
+        return "is not a folder name"
+
+
+def _is_run_id(analysis_dir: str, rid: Any) -> bool:
+    """True when *rid* names one run folder directly inside *analysis_dir*."""
+    return _run_id_problem(analysis_dir, rid) is None
 
 
 def get_run(analysis_dir: str, run_id: Any,
@@ -335,9 +342,10 @@ def create_run(analysis_dir: str,
     # unrelated outputs. (KH-281 follow-up: original guard was too blunt.)
     prev_run_id = manifest.get('current')
     prev_outputs = {}
-    if prev_run_id and not _is_run_id(analysis_dir, prev_run_id):
+    problem = _run_id_problem(analysis_dir, prev_run_id) if prev_run_id else None
+    if problem:
         record(None, "analysis_cache.create_run",
-               ValueError(f"manifest current run id {prev_run_id!r} is not a folder name"),
+               ValueError(f"manifest current run id {prev_run_id!r} {problem}"),
                "run id ignored")
         prev_run_id = None
     if prev_run_id and prev_run_id in manifest.get('runs', {}):
@@ -423,9 +431,10 @@ def overwrite_current(analysis_dir: str,
                    source_hashes=source_hashes or {},
                    scripts={})
         return
-    if not _is_run_id(analysis_dir, current_id):
+    problem = _run_id_problem(analysis_dir, current_id)
+    if problem:
         record(None, "analysis_cache.overwrite_current",
-               ValueError(f"manifest current run id {current_id!r} is not a folder name"),
+               ValueError(f"manifest current run id {current_id!r} {problem}"),
                "run id ignored")
         manifest['current'] = None
         manifest['runs'] = {rid: meta for rid, meta in manifest.get('runs', {}).items()
@@ -496,9 +505,10 @@ def prune_runs(analysis_dir: str, retention: int = 5) -> List[str]:
         if not meta.get('pinned', False) and rid != current_id
     ]
     for rid, _meta in list(unpinned):
-        if not _is_run_id(analysis_dir, rid):
+        problem = _run_id_problem(analysis_dir, rid)
+        if problem:
             record(None, "analysis_cache.prune_runs",
-                   ValueError(f"manifest run id {rid!r} is not a folder name"),
+                   ValueError(f"manifest run id {rid!r} {problem}"),
                    "run id ignored")
             unpinned.remove((rid, _meta))
 

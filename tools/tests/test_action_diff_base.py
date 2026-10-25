@@ -83,6 +83,24 @@ class DiffBaseTest(unittest.TestCase):
         r = _bash(link, f'kh_base_path "{self.dest}" "{link}/hw/top.kicad_sch"')
         self.assertEqual(r.stdout.strip(), f"{self.dest}/hw/top.kicad_sch", r.stderr)
 
+    def test_non_ascii_sub_sheet_name(self):
+        _write(self.repo, "hw/Netzteil_Übersicht.kicad_sch", "psu base")
+        _git(self.repo, "add", "-A")
+        _git(self.repo, "commit", "-qm", "psu")
+        r = _bash(self.repo, f'kh_extract_base HEAD "{self.dest}" hw/top.kicad_sch hw/top.kicad_pcb ""')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self._read("hw/Netzteil_Übersicht.kicad_sch"), "psu base")
+
+    def test_legacy_sch_root(self):
+        _write(self.repo, "old/main.sch", "legacy root")
+        _write(self.repo, "old/power.sch", "legacy sub")
+        _git(self.repo, "add", "-A")
+        _git(self.repo, "commit", "-qm", "legacy")
+        r = _bash(self.repo, f'kh_extract_base HEAD "{self.dest}" old/main.sch "" ""')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self._read("old/main.sch"), "legacy root")
+        self.assertEqual(self._read("old/power.sch"), "legacy sub")
+
     def test_nothing_at_base_returns_1(self):
         r = _bash(self.repo, f'kh_extract_base base "{self.dest}" "" missing.kicad_pcb "" || echo NONE')
         self.assertIn("NONE", r.stdout)

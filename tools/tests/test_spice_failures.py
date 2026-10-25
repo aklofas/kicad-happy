@@ -1,5 +1,5 @@
 """SPICE testbenches are written as UTF-8 whatever the locale, and a simulator run that fails
-records a diagnostic naming the backend's error (the result stays a skip, the exit code 0)."""
+is a skip with exit code 0 and no diagnostics record."""
 import json, os, stat, subprocess, sys, tempfile, unittest
 from pathlib import Path
 
@@ -55,18 +55,15 @@ class SpiceFailureTest(unittest.TestCase):
             with open(os.path.join(wd, cirs[0]), encoding="utf-8") as f:
                 self.assertIn(VALUE, f.read())
 
-    def test_failed_run_records_a_diagnostic(self):
+    def test_failed_run_is_a_skip_without_a_diagnostic(self):
         with tempfile.TemporaryDirectory() as tmp:
             r, report, _ = _simulate(tmp, 'echo "fatal: boom" >&2\nexit 3\n')
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual([x["status"] for x in report["simulation_results"]], ["skip"])
         self.assertEqual(report["simulation_results"][0]["note"], "Simulation failed")
-        runs = [d for d in report["diagnostics"] if d["source"] == "simulate_subcircuits.run"]
-        self.assertEqual(len(runs), 1, report["diagnostics"])
-        self.assertEqual(runs[0]["exception"], "RuntimeError")
-        self.assertIn("fatal: boom", runs[0]["message"])
-        self.assertEqual(runs[0]["effect"], "simulation skipped")
-        self.assertIn("fatal: boom", r.stderr)
+        self.assertEqual([d for d in report["diagnostics"]
+                          if d["source"] == "simulate_subcircuits.run"], [])
+        self.assertNotIn("fatal: boom", r.stderr)
 
     def test_successful_run_records_nothing(self):
         with tempfile.TemporaryDirectory() as tmp:
