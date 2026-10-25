@@ -27,6 +27,9 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 ### Fixed
 
 - The fab release gate reports missing gerber layers (including inner copper) and active EMC errors; it read keys no analyzer writes and passed both. (KH-563)
+- Gerber completeness requires the inner copper layers the stackup implies (from X2 copper positions, drill spans or the job file), and uppercase `.GL<n>` inner copper files are found. A 4-layer set missing an inner layer was reported complete. (KH-564)
+- GR-005 checks whether the board outline closes: round and arc-closed outlines no longer get "open outline", and open outlines with four or more draws now do. A closed outline with extra Edge.Cuts lines gets no finding. (KH-565)
+- X2 pin entries in `analyze_gerbers.py --full` connectivity carry the net declared with the pin; they took whatever net was active before the pin (usually none). (KH-591)
 
 ---
 

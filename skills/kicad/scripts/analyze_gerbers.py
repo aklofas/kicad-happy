@@ -44,6 +44,102 @@ _POWER_KEYWORDS_GERBER = {"vcc", "vdd", "gnd", "agnd", "dgnd", "gndref",
 # Gerber parser
 # ---------------------------------------------------------------------------
 
+def _outline_has_loop(content: str, fmt: dict | None, units: str | None) -> bool | None:
+    """Whether the D01 draws in an outline file form at least one closed loop.
+
+    Endpoints within 0.025 mm (0.001 in) are one vertex. Returns None when the
+    file has no draws. Missing X or Y keeps the previous value, and a coordinate
+    with no D code repeats the previous operation.
+    """
+    if fmt:
+        x_int, x_dec = fmt["x_integer"], fmt["x_decimal"]
+        y_int, y_dec = fmt["y_integer"], fmt["y_decimal"]
+        trailing = fmt["zero_omit"] == "trailing"
+        incremental = fmt["notation"] == "incremental"
+    else:
+        x_int, x_dec, y_int, y_dec = 0, 6, 0, 6
+        trailing = incremental = False
+    tol = 0.001 if units == "inch" else 0.025
+
+    def coord(digits, n_int, n_dec):
+        sign = -1 if digits.startswith("-") else 1
+        digits = digits.lstrip("+-")
+        if trailing:
+            digits = digits.ljust(n_int + n_dec, "0")
+        return sign * int(digits) / 10 ** n_dec
+
+    body = re.sub(r"%[^%]*%", "", content.replace("\r", "").replace("\n", ""))
+    cur_x = cur_y = None
+    op = None
+    arc = False
+    segments = []
+    for stmt in body.split("*"):
+        stmt = stmt.strip()
+        if not stmt or stmt.startswith("G04"):
+            continue
+        g = re.match(r"G0?([0-3])(?!\d)", stmt)
+        if g:
+            arc = g.group(1) in ("2", "3")
+        d = re.search(r"D0?([123])$", stmt)
+        if d:
+            op = d.group(1)
+        mx = re.search(r"X([+-]?\d+)", stmt)
+        my = re.search(r"Y([+-]?\d+)", stmt)
+        if not (mx or my):
+            continue
+        nx = coord(mx.group(1), x_int, x_dec) if mx else None
+        ny = coord(my.group(1), y_int, y_dec) if my else None
+        if incremental:
+            nx = (cur_x or 0) + (nx or 0)
+            ny = (cur_y or 0) + (ny or 0)
+        else:
+            nx = cur_x if nx is None else nx
+            ny = cur_y if ny is None else ny
+        if op == "1" and None not in (cur_x, cur_y, nx, ny):
+            segments.append(((cur_x, cur_y), (nx, ny),
+                             arc and (cur_x, cur_y) == (nx, ny)))
+        cur_x, cur_y = nx, ny
+
+    if not segments:
+        return None
+
+    vertices = []
+    grid = {}
+
+    def vertex(p):
+        gx, gy = int(p[0] // tol), int(p[1] // tol)
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for i in grid.get((gx + dx, gy + dy), ()):
+                    q = vertices[i]
+                    if abs(q[0] - p[0]) <= tol and abs(q[1] - p[1]) <= tol:
+                        return i
+        vertices.append(p)
+        grid.setdefault((gx, gy), []).append(len(vertices) - 1)
+        return len(vertices) - 1
+
+    parent = {}
+
+    def root(i):
+        parent.setdefault(i, i)
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    for a, b, full_circle in segments:
+        if full_circle:
+            return True
+        ia, ib = vertex(a), vertex(b)
+        if ia == ib:
+            continue
+        ra, rb = root(ia), root(ib)
+        if ra == rb:
+            return True
+        parent[ra] = rb
+    return False
+
+
 def parse_gerber(path: str) -> dict:
     """Parse a single Gerber RS-274X file with full X2 object attribute extraction.
 
@@ -122,6 +218,7 @@ def parse_gerber(path: str) -> dict:
     net_draw_counts = {}        # net_name -> draw count (D01 operations)
     net_flash_counts = {}       # net_name -> flash count (D03 operations)
     pin_mappings = []           # [{ref, pin, pin_name, net}]
+    pending_pin = None          # (ref, pin, pin_name) until the next flash/draw
 
     # Aperture dimension tracking for trace width / min feature analysis
     aperture_dims = {}          # D-code -> parsed dimension info
@@ -162,6 +259,16 @@ def parse_gerber(path: str) -> dict:
             pending_aper_function = None
             current_component = None
             current_net = None
+            pending_pin = None
+            continue
+        if s == "%TD.P*%":
+            pending_pin = None
+            continue
+        if s == "%TD.N*%":
+            current_net = None
+            continue
+        if s == "%TD.C*%":
+            current_component = None
             continue
 
         # -- Object attributes (TO) — component, net, pin --
@@ -183,12 +290,9 @@ def parse_gerber(path: str) -> dict:
 
         m = re.match(r"%TO\.P,([^,]*),([^,*]*)(?:,([^*]*))?\*%", s)
         if m:
-            pin_mappings.append({
-                "ref": m.group(1),
-                "pin": m.group(2),
-                "pin_name": m.group(3) or "",
-                "net": current_net or "",
-            })
+            # The net is often declared after the pin, so the pin is recorded
+            # at the object it is attached to.
+            pending_pin = (m.group(1), m.group(2), m.group(3) or "")
             continue
 
         # -- Polarity --
@@ -206,6 +310,14 @@ def parse_gerber(path: str) -> dict:
             current_aperture = ap_sel.group(1)
 
         # -- Operations: flash (D03), draw (D01) --
+        if pending_pin and ("D03" in s or "D01" in s):
+            pin_mappings.append({
+                "ref": pending_pin[0],
+                "pin": pending_pin[1],
+                "pin_name": pending_pin[2],
+                "net": current_net or "",
+            })
+            pending_pin = None
         if "D03" in s:
             result["flash_count"] += 1
             if current_aperture:
@@ -237,6 +349,8 @@ def parse_gerber(path: str) -> dict:
 
     # Identify layer type
     result["layer_type"] = identify_layer_type(Path(path).name, result["x2_attributes"])
+    if result["layer_type"] == "Edge.Cuts":
+        result["outline_has_loop"] = _outline_has_loop(content, result["format"], result["units"])
 
     # --- Build X2 object summary ---
     has_x2_objects = bool(component_pads or net_names or pin_mappings)
@@ -714,8 +828,14 @@ def classify_drill_tools(drills: list[dict]) -> dict:
 
 
 def check_completeness(gerbers: list[dict], drills: list[dict],
-                        job_info: dict | None = None) -> dict:
-    """Check if all expected layers are present."""
+                        job_info: dict | None = None,
+                        stackup_layers: int | None = None) -> dict:
+    """Check if all expected layers are present.
+
+    ``stackup_layers`` is the copper layer count from positional evidence
+    (X2 copper positions, drill spans, job file); when it is 3 or more the
+    inner layers it implies are required.
+    """
     found_layers = set()
     for g in gerbers:
         lt = g.get("layer_type")
@@ -745,6 +865,8 @@ def check_completeness(gerbers: list[dict], drills: list[dict],
 
     inner_layers = {lt for lt in found_layers if lt.startswith("In") and lt.endswith(".Cu")}
     required = {"F.Cu", "B.Cu", "F.Mask", "B.Mask", "Edge.Cuts"} | inner_layers
+    if stackup_layers and stackup_layers >= 3:
+        required |= {f"In{i}.Cu" for i in range(1, stackup_layers - 1)}
     recommended = {"F.SilkS", "F.Paste"}
 
     return {
@@ -1172,7 +1294,7 @@ def analyze_gerbers(directory: str, full: bool = False) -> dict:
     # Also pick up uppercase extensions
     for ext in ("*.GBR", "*.GTL", "*.GBL", "*.GTS", "*.GBS", "*.GTO", "*.GBO",
                 "*.GKO", "*.GM1", "*.G1", "*.G2", "*.G3", "*.G4",
-                "*.G2L", "*.G3L", "*.G4L", "*.G5L", "*.G6L",
+                "*.G2L", "*.G3L", "*.G4L", "*.G5L", "*.G6L", "*.GL[0-9]*",
                 "*.GTP", "*.GBP", "*.DRL"):
         if ext == "*.DRL":
             drill_files.extend(sorted(gerber_dir.glob(ext)))
@@ -1214,22 +1336,24 @@ def analyze_gerbers(directory: str, full: bool = False) -> dict:
     if job_files:
         job_info = parse_job_file(str(job_files[0]))
 
-    # Layer count
-    copper_layers = [g for g in gerbers
-                     if g.get("layer_type", "").endswith(".Cu") and "error" not in g]
-    layer_count = len(copper_layers)
+    # Stackup count from positional evidence only; file counts and filename
+    # indexes can neither prove nor rule out a missing inner layer.
+    stackup_layers = 0
     if job_info and job_info.get("layer_count"):
-        layer_count = max(layer_count, job_info["layer_count"])
+        stackup_layers = max(stackup_layers, job_info["layer_count"])
     for d in drills:
         span = d.get("layer_span")
         if span:
-            layer_count = max(layer_count, span[1])
-    # Infer layer count from X2 FileFunction Ln designation (e.g., "Copper,L4,Bot")
+            stackup_layers = max(stackup_layers, span[1])
+    # X2 FileFunction Ln designation (e.g., "Copper,L4,Bot")
     for g in gerbers:
         ff = g.get("x2_attributes", {}).get("FileFunction", "")
         ln_match = re.search(r"Copper,L(\d+)", ff, re.IGNORECASE)
         if ln_match:
-            layer_count = max(layer_count, int(ln_match.group(1)))
+            stackup_layers = max(stackup_layers, int(ln_match.group(1)))
+    copper_layers = [g for g in gerbers
+                     if g.get("layer_type", "").endswith(".Cu") and "error" not in g]
+    layer_count = max(len(copper_layers), stackup_layers)
 
     # Classify drills first — needed by completeness check (KH-184)
     drill_classification = classify_drill_tools(drills)
@@ -1241,7 +1365,7 @@ def analyze_gerbers(directory: str, full: bool = False) -> dict:
                 d["type"] = "PTH"
 
     # Run checks
-    completeness = check_completeness(gerbers, drills, job_info)
+    completeness = check_completeness(gerbers, drills, job_info, stackup_layers)
     alignment = check_alignment(gerbers, drills)
     board_dims = compute_board_dimensions(gerbers, job_info)
 
@@ -1361,9 +1485,11 @@ def analyze_gerbers(directory: str, full: bool = False) -> dict:
     if zip_scan:
         result["zip_archives"] = zip_scan
 
+    edge = next((g for g in gerbers if g.get("layer_type") == "Edge.Cuts"), None)
     findings = _build_gerber_findings(
         completeness, alignment, drill_classification,
-        gerber_summary, drill_summary, result["statistics"])
+        gerber_summary, drill_summary, result["statistics"],
+        outline_has_loop=edge.get("outline_has_loop") if edge else None)
     result["findings"] = findings
     result["assessments"] = []
 
@@ -1402,7 +1528,8 @@ def analyze_gerbers(directory: str, full: bool = False) -> dict:
 
 
 def _build_gerber_findings(completeness, alignment, drill_classification,
-                           gerber_summary, drills, statistics) -> list:
+                           gerber_summary, drills, statistics,
+                           outline_has_loop=None) -> list:
     """Build rich findings from gerber analysis data."""
     findings = []
 
@@ -1520,8 +1647,8 @@ def _build_gerber_findings(completeness, alignment, drill_classification,
                 'report_context': {'section': 'Gerber Completeness', 'impact': 'Assembly solder joint quality', 'standard_ref': ''},
             })
 
-    # GR-005: Board outline not closed (heuristic)
-    # Check if Edge.Cuts layer exists and has reasonable draw count
+    # GR-005: Board outline not closed (heuristic). A closed loop plus stray
+    # Edge.Cuts lines is accepted, as KiCad accepts it.
     edge_layer = None
     for g in gerber_summary:
         if g.get('layer_type', '') == 'Edge.Cuts':
@@ -1529,7 +1656,7 @@ def _build_gerber_findings(completeness, alignment, drill_classification,
             break
     if edge_layer:
         draws = edge_layer.get('draw_count', 0)
-        if draws > 0 and draws < 4:
+        if draws > 0 and outline_has_loop is False:
             findings.append({
                 'detector': 'analyze_gerbers',
                 'rule_id': 'GR-005',
@@ -1537,8 +1664,8 @@ def _build_gerber_findings(completeness, alignment, drill_classification,
                 'severity': 'error',
                 'confidence': 'heuristic',
                 'evidence_source': 'topology',
-                'summary': f'Board outline may not be closed — only {draws} draw(s)',
-                'description': f'Edge.Cuts layer has only {draws} draw command(s). A closed rectangular outline needs at least 4. The outline may be incomplete.',
+                'summary': f'Board outline is not closed — {draws} draw(s) form no closed loop',
+                'description': f'The {draws} draw command(s) on the Edge.Cuts layer do not join into a closed shape. The outline may be incomplete.',
                 'components': [],
                 'nets': [],
                 'pins': [],
