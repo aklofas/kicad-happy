@@ -33,7 +33,8 @@ from schema_codec import emit_schema
 from inputs_builder import build_inputs, build_upstream_artifact, build_compat
 from capability_mode import get_capability_mode_ref
 from kicad_core.cli import (add_compact_arg, add_config_arg, add_only_deterministic_arg, add_output_arg,
-                            add_schema_arg, add_stage_audience_args, add_text_arg, utf8_text_stdout)
+                            add_schema_arg, add_stage_audience_args, add_text_arg, envelope_type_error,
+                            utf8_text_stdout)
 
 ANALYZER_SOURCE = "emc"
 
@@ -366,9 +367,25 @@ def main(argv: list[str] | None = None) -> int:
     schematic = None
     pcb = None
 
+    def _load_analyzer_json(flag, path, writer, expected):
+        if not os.path.isfile(path):
+            what = 'a directory' if os.path.isdir(path) else 'not found'
+            parser.error(f'{flag} {path}: {what}; expected the JSON file '
+                         f'{writer} writes (--output)')
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            parser.error(f'{flag} {path}: not JSON ({e}); expected the JSON '
+                         f'file {writer} writes (--output)')
+        type_error = envelope_type_error(flag, path, data, expected, writer)
+        if type_error:
+            parser.error(type_error)
+        return data
+
     if args.schematic:
-        with open(args.schematic, 'r') as f:
-            schematic = json.load(f)
+        schematic = _load_analyzer_json('--schematic', args.schematic,
+                                        'analyze_schematic.py', 'schematic')
         if 'signal_analysis' in schematic and 'findings' not in schematic:
             print(f'Error: {args.schematic} uses the pre-v1.3 '
                   f'signal_analysis wrapper format.\n'
@@ -377,8 +394,7 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
     if args.pcb:
-        with open(args.pcb, 'r') as f:
-            pcb = json.load(f)
+        pcb = _load_analyzer_json('--pcb', args.pcb, 'analyze_pcb.py', 'pcb')
 
     # Effective severity threshold
     severity = args.severity

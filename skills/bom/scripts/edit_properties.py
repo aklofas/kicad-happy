@@ -155,7 +155,7 @@ def update_property_value(
     escaped_name = re.escape(prop_name)
     new_block = re.sub(
         rf'(\(property\s+"{escaped_name}"\s+)"(?:[^"\\]|\\.)*"',
-        rf'\1"{escaped_value}"',
+        lambda m: f'{m.group(1)}"{escaped_value}"',
         old_block,
         count=1,
     )
@@ -354,7 +354,7 @@ def main():
 
     # Read updates
     if args.updates:
-        updates = json.loads(args.updates.read_text())
+        updates = json.loads(args.updates.read_text(encoding="utf-8"))
     elif not sys.stdin.isatty():
         updates = json.load(sys.stdin)
     else:

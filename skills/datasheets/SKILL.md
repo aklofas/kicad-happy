@@ -71,7 +71,7 @@ This skill owns:
 
 ## Extraction workflow
 
-Run `python3 skills/datasheets/scripts/plan_extraction.py <project>` to generate an orchestration plan, then `merge_results.py` to validate and merge per-task outputs. Full scout→plan→dispatch→merge procedure: [`references/extraction-pipeline.md`](references/extraction-pipeline.md).
+Run `python3 skills/datasheets/scripts/plan_extraction.py <project>` to generate an orchestration plan, then `merge_results.py` to validate and merge per-task outputs. `merge_results.py` and `validate_extraction_result.py` need the `jsonschema` package (`pip install jsonschema`); everything else here is stdlib-only. Full scout→plan→dispatch→merge procedure: [`references/extraction-pipeline.md`](references/extraction-pipeline.md).
 
 ## Consuming extractions (v1.4 typed API)
 

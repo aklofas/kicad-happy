@@ -28,7 +28,11 @@ the provider module (``provider_<p>.py``) arrives as the first argument:
  13. The closing skipped line is ``LABELS["summary_skipped"]``; the DigiKey
      tips became ``provider.report_tail(out_dir, downloaded, already_present, failed)``.
 
-Imports ``distributor_core.inputs``/``manifest`` and the stdlib only — never a provider.
+Later fixes: a ``not_found`` whose search failed in transport (``distributor_core.download``
+records it) is stored as ``error`` so the next run retries it, and an ``ok`` entry whose file
+is still on disk is kept.
+
+Imports ``distributor_core.inputs``/``manifest``/``download`` and the stdlib only — never a provider.
 """
 
 import json
@@ -38,6 +42,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 
+from distributor_core.download import take_transport_failure
 from distributor_core.inputs import (
     _SKIP_TYPES,
     is_real_mpn,
@@ -51,6 +56,19 @@ from distributor_core.manifest import (
     load_index,
     save_index,
 )
+
+
+def _outage_entry(result: dict, previous: dict, out_dir: Path) -> tuple[dict, dict]:
+    """(entry to store, result to report) for one part. A ``not_found`` caused by a network
+    failure is not an answer: report it as ``error`` (not a skipped previous failure, so the next
+    run retries) and keep a previous ``ok`` entry whose file is still on disk."""
+    outage = take_transport_failure()
+    if outage is None or result.get("status") != "not_found":
+        return result, result
+    result = {**result, "status": "error", "error": f"network failure, retried next run: {outage}"}
+    if previous.get("status") == "ok" and (out_dir / previous.get("file", "")).is_file():
+        return previous, result
+    return result, result
 
 
 def sync_datasheets(
@@ -208,10 +226,12 @@ def sync_datasheets(
                 n = counter[0]
             print(f"[{n}/{len(to_download)}] {part_key}", file=sys.stderr)
 
+            take_transport_failure()
             result = provider.sync_one_part(part, out_dir, index, delay, ctx)
 
             with lock:
-                index.setdefault("parts", {})[part_key] = result
+                stored, result = _outage_entry(result, index.get("parts", {}).get(part_key, {}), out_dir)
+                index.setdefault("parts", {})[part_key] = stored
 
                 if result["status"] == "ok":
                     downloaded.append(part_key)
@@ -240,13 +260,15 @@ def sync_datasheets(
             part_key = part["_key"]
             print(f"[{i+1}/{len(to_download)}] {part_key}", file=sys.stderr)
 
+            take_transport_failure()
             result = provider.sync_one_part(part, out_dir, index, delay, ctx)
 
             # Handle token expiry — refresh once and retry
             if result.get("status") == "not_found" and "No DigiKey results" in result.get("error", ""):
                 pass
 
-            index.setdefault("parts", {})[part_key] = result
+            stored, result = _outage_entry(result, index.get("parts", {}).get(part_key, {}), out_dir)
+            index.setdefault("parts", {})[part_key] = stored
 
             if result["status"] == "ok":
                 downloaded.append(part_key)

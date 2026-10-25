@@ -40,6 +40,7 @@ from kicad_core.parts import (
 )
 from kicad_core.netquery import build_net_id_map
 from kicad_core.diagnostics import record
+from kicad_core.render import normalize_severity
 from finding_schema import Det, get_findings
 
 try:
@@ -4521,10 +4522,8 @@ def run_all_checks(schematic: Optional[Dict], pcb: Optional[Dict],
         diagnostics: Optional list sink for guarded SPICE-enhancement failures.
 
     Returns:
-        List of finding dicts, sorted by severity.
+        List of finding dicts, in check order.
     """
-    severity_order = {'CRITICAL': 0, 'HIGH': 1, 'MEDIUM': 2, 'LOW': 3, 'INFO': 4}
-    threshold = severity_order.get(severity_threshold.upper(), 4)
 
     all_findings = []
 
@@ -4580,12 +4579,11 @@ def run_all_checks(schematic: Optional[Dict], pcb: Optional[Dict],
         all_findings.extend(check_input_cap_loop_area(pcb, schematic, spice_backend))
         all_findings.extend(check_inductor_leakage(pcb, schematic))
 
-    # Filter by severity
+    # Filter by severity; the threshold may be a legacy name (critical/high/medium/low).
     if severity_threshold.lower() != 'all':
+        severity_order = {'error': 0, 'warning': 1, 'info': 2}
+        threshold = severity_order[normalize_severity(severity_threshold)]
         all_findings = [f for f in all_findings
-                        if severity_order.get(f['severity'], 4) <= threshold]
-
-    # Sort by severity (critical first)
-    all_findings.sort(key=lambda f: severity_order.get(f['severity'], 4))
+                        if severity_order[normalize_severity(f.get('severity'))] <= threshold]
 
     return all_findings

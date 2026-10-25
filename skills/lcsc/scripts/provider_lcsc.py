@@ -15,6 +15,7 @@ from distributor_core.download import (
     _USER_AGENT,
     normalize_url as _normalize_url,
     download_pdf as _download_pdf,
+    note_transport_failure,
     try_alternative_sources,
 )
 from distributor_core.verify import verify_datasheet
@@ -85,6 +86,7 @@ def search_lcsc(query: str) -> dict | None:
         with urllib.request.urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read())
     except Exception as e:
+        note_transport_failure(e)
         print(f"[LCSC] Search failed: {e}", file=sys.stderr)
         return None
 

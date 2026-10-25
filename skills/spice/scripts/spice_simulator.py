@@ -109,7 +109,8 @@ class NgspiceBackend(SimulatorBackend):
         try:
             result = subprocess.run(
                 [binary, "-b", cir_file],
-                capture_output=True, text=True, timeout=timeout, cwd=cwd,
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=timeout, cwd=cwd,
             )
             return result.returncode == 0, result.stdout, result.stderr
         except subprocess.TimeoutExpired:
@@ -247,7 +248,8 @@ class LtspiceBackend(SimulatorBackend):
                 cmd = [binary, "-b", cir_file]
 
             result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=timeout, cwd=cwd,
+                cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=timeout, cwd=cwd,
             )
             # LTspice returns 0 on success
             return result.returncode == 0, result.stdout, result.stderr
@@ -361,7 +363,8 @@ class XyceBackend(SimulatorBackend):
             # Xyce doesn't use -b; just pass the netlist file
             result = subprocess.run(
                 [binary, cir_file],
-                capture_output=True, text=True, timeout=timeout, cwd=cwd,
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=timeout, cwd=cwd,
             )
             return result.returncode == 0, result.stdout, result.stderr
         except subprocess.TimeoutExpired:

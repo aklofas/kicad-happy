@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import _core_path  # noqa: F401
-from distributor_core.download import download_pdf, try_alternative_sources
+from distributor_core.download import download_pdf, note_transport_failure, try_alternative_sources
 from distributor_core.verify import verify_datasheet
 from distributor_core.manifest import friendly_filename
 
@@ -212,9 +212,11 @@ def search_digikey_with_token(mpn: str, token: str, client_id: str) -> dict | No
             return search_digikey_with_token(mpn, token, client_id)
         if e.code == 401:
             return None  # Token expired — caller should refresh
+        note_transport_failure(e)
         print(f"  Search failed for '{mpn}': HTTP {e.code}", file=sys.stderr)
         return None
     except Exception as e:
+        note_transport_failure(e)
         print(f"  Search failed for '{mpn}': {e}", file=sys.stderr)
         return None
 

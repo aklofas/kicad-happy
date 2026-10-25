@@ -34,7 +34,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _core_path  # noqa: F401
 from kicad_core.cli import add_compact_arg, add_output_arg, add_text_arg, utf8_text_stdout
-from kicad_core.diagnostics import OnceSink
+from kicad_core.diagnostics import OnceSink, record
 
 from spice_templates import TEMPLATE_REGISTRY, TOPLEVEL_REGISTRY, list_supported_types, SpiceTestbench
 from spice_results import (
@@ -218,7 +218,7 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
                 diagnostics.extend(cir_content.diagnostics)
             cir_content = cir_content.render(simulator_backend, out_file_spice)
 
-        with open(cir_file, "w") as f:
+        with open(cir_file, "w", encoding="utf-8") as f:
             f.write(cir_content)
 
         t0 = time.monotonic()
@@ -233,10 +233,14 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
         elapsed = time.monotonic() - t0
         total_time += elapsed
 
-        with open(log_file, "w") as f:
+        with open(log_file, "w", encoding="utf-8") as f:
             f.write(f"=== stdout ===\n{stdout}\n=== stderr ===\n{stderr}\n")
 
         if not success:
+            reason = next((l.strip() for l in (stderr or stdout or "").splitlines() if l.strip()),
+                          "simulator exited with an error")
+            record(diagnostics, "simulate_subcircuits.run",
+                   RuntimeError(f"{os.path.basename(cir_file)}: {reason}"), "simulation skipped")
             return None, elapsed
 
         if simulator_backend and hasattr(simulator_backend, 'parse_results'):
@@ -593,9 +597,9 @@ def main(argv: list[str] | None = None) -> int:
 
     # Read analysis JSON
     try:
-        with open(input_path, "r") as f:
+        with open(input_path, "r", encoding="utf-8") as f:
             analysis = json.load(f)
-    except (json.JSONDecodeError, OSError) as e:
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError) as e:
         print(f"Error reading {input_path}: {e}", file=sys.stderr)
         return 1
 
@@ -614,7 +618,7 @@ def main(argv: list[str] | None = None) -> int:
     parasitics_data = None
     if args.parasitics:
         try:
-            with open(args.parasitics, "r") as f:
+            with open(args.parasitics, "r", encoding="utf-8") as f:
                 parasitics_data = json.load(f)
             n_nets = len(parasitics_data.get("nets", {}))
             print(f"Loaded parasitics for {n_nets} nets from {args.parasitics}",
@@ -672,10 +676,10 @@ def main(argv: list[str] | None = None) -> int:
         from output_filters import format_text
         print(format_text(report.get("findings", []), "designer"))
         if args.output:
-            with open(args.output, "w") as f:
+            with open(args.output, "w", encoding="utf-8") as f:
                 f.write(output_json)
     elif args.output:
-        with open(args.output, "w") as f:
+        with open(args.output, "w", encoding="utf-8") as f:
             f.write(output_json)
         # Print summary to stderr
         print(_summary_line(report), file=sys.stderr)

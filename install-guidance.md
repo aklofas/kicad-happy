@@ -20,7 +20,7 @@ the plugin ecosystem evolves.
 |-------------|---------|
 | Python | 3.10+ (3.8 EOL Oct 2024; CI tests 3.10 and 3.12) |
 | Dependencies | None required. All analysis scripts use Python stdlib only. |
-| Optional packages | `requests` (HTTP), `playwright` (JS-heavy PDF sites), `pdftotext` (PDF extraction) |
+| Optional packages | `requests` (HTTP), `playwright` (JS-heavy PDF sites), `pdftotext` (PDF extraction), `jsonschema` (datasheet extraction merge/validate: `merge_results.py`, `validate_extraction_result.py`) |
 | Optional system tools | `ngspice` / `LTspice` / `Xyce` (SPICE simulation, auto-detected) |
 | KiCad | Not required at runtime. Analyzes saved `.kicad_sch` / `.kicad_pcb` files directly. |
 | KiCad versions | 5, 6, 7, 8, 9, 10 (all supported) |

@@ -23,7 +23,7 @@ def parse_output_file(filepath):
     """
     results = {}
     try:
-        with open(filepath, "r") as f:
+        with open(filepath, "r", encoding="utf-8", errors="replace") as f:
             content = f.read().strip()
     except (OSError, IOError):
         return results

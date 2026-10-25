@@ -12,7 +12,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import _core_path  # noqa: F401
-from distributor_core.download import _USER_AGENT, _requests, download_pdf, try_alternative_sources
+from distributor_core.download import (_USER_AGENT, _requests, download_pdf, note_transport_failure,
+                                       try_alternative_sources)
 from distributor_core.verify import verify_datasheet
 from distributor_core.manifest import friendly_filename
 
@@ -78,6 +79,7 @@ def search_mouser(mpn: str, api_key: str) -> dict | None:
         with urllib.request.urlopen(req, timeout=20) as resp:
             data = json.loads(resp.read())
     except Exception as e:
+        note_transport_failure(e)
         print(f"[Mouser] Search failed: {e}", file=sys.stderr)
         return None
 

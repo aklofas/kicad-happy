@@ -17,6 +17,8 @@ PCB="${INPUT_PCB:-}"
 # Deterministic project detection: exactly one project auto-selects,
 # otherwise fail loudly listing candidates (KH-369). See detect_project.sh.
 . "$ACTION_PATH/action/detect_project.sh"
+# kh_extract_base / kh_base_path for the diff-base re-run.
+. "$ACTION_PATH/action/diff_base.sh"
 
 echo "::group::File Detection"
 echo "Schematic: ${SCHEMATIC:-not found}"
@@ -293,26 +295,31 @@ if [ "${INPUT_DIFF_BASE:-false}" = "true" ] && [ -n "${GITHUB_BASE_REF:-}" ]; th
     [ -n "$EMC_JSON" ] && [ -f "$EMC_JSON" ] && cp "$EMC_JSON" "$OUTDIR/head/emc.json"
     [ -n "$SPICE_JSON" ] && [ -f "$SPICE_JSON" ] && cp "$SPICE_JSON" "$OUTDIR/head/spice.json"
 
-    # Checkout base branch versions of KiCad files
+    # Fetch the base branch; its KiCad files are extracted below, the working tree is untouched
     mkdir -p "$OUTDIR/base"
     BASE_OK=true
     git fetch origin "$GITHUB_BASE_REF" --depth=1 2>/dev/null || BASE_OK=false
+    BASE_TREE="$OUTDIR/base-tree"
     if [ "$BASE_OK" = "true" ]; then
-        # Checkout only the KiCad files from base, not full branch switch
-        git checkout FETCH_HEAD -- "$SCHEMATIC" "$PCB" 2>/dev/null || BASE_OK=false
+        # Extract the base project (sub-sheets, PCB, config) into a separate tree
+        kh_extract_base FETCH_HEAD "$BASE_TREE" "$SCHEMATIC" "$PCB" "${CONFIG_PATH:-}" 2>/dev/null || BASE_OK=false
     fi
 
     if [ "$BASE_OK" = "true" ]; then
-        # Re-run analyzers on base versions
-        if [ -n "$SCHEMATIC" ] && [ -f "$SCHEMATIC" ]; then
-            python3 "$SCRIPTS/analyze_schematic.py" "$SCHEMATIC" -o "$OUTDIR/base/schematic.json" 2>/dev/null || true
+        # Re-run analyzers on base versions, with the base config as head uses its own
+        BASE_SCH=$(kh_base_path "$BASE_TREE" "$SCHEMATIC")
+        BASE_PCB=$(kh_base_path "$BASE_TREE" "$PCB")
+        BASE_CFG=$(kh_base_path "$BASE_TREE" "${CONFIG_PATH:-}")
+        BASE_CFG_ARGS=()
+        [ -n "$BASE_CFG" ] && [ -f "$BASE_CFG" ] && BASE_CFG_ARGS=(--config "$BASE_CFG")
+        if [ -n "$BASE_SCH" ] && [ -f "$BASE_SCH" ]; then
+            python3 "$SCRIPTS/analyze_schematic.py" "$BASE_SCH" -o "$OUTDIR/base/schematic.json" \
+                ${BASE_CFG_ARGS[@]+"${BASE_CFG_ARGS[@]}"} 2>/dev/null || true
         fi
-        if [ -n "$PCB" ] && [ -f "$PCB" ]; then
-            python3 "$SCRIPTS/analyze_pcb.py" "$PCB" -o "$OUTDIR/base/pcb.json" 2>/dev/null || true
+        if [ -n "$BASE_PCB" ] && [ -f "$BASE_PCB" ]; then
+            python3 "$SCRIPTS/analyze_pcb.py" "$BASE_PCB" -o "$OUTDIR/base/pcb.json" \
+                ${BASE_CFG_ARGS[@]+"${BASE_CFG_ARGS[@]}"} 2>/dev/null || true
         fi
-
-        # Restore HEAD versions
-        git checkout HEAD -- "$SCHEMATIC" "$PCB" 2>/dev/null || true
 
         # Run diff for each matching pair
         for dtype in schematic pcb emc spice; do

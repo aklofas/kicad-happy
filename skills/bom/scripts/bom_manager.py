@@ -774,7 +774,7 @@ def load_existing_csv(csv_path: Path) -> dict[str, dict]:
         return {}
 
     rows = {}
-    with open(csv_path, newline="", encoding="utf-8") as f:
+    with open(csv_path, newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         for row in reader:
             # Use MPN as key if available, else first reference
@@ -980,7 +980,7 @@ def generate_order_files(
         return {"error": f"BOM CSV not found: {csv_path}"}
 
     # Read the BOM CSV
-    with open(csv_path, newline="", encoding="utf-8") as f:
+    with open(csv_path, newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         rows = list(reader)
 

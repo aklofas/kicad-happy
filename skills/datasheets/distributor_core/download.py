@@ -3,6 +3,8 @@ manufacturer redirect normalisation (opt-in per provider), the Microchip alterna
 
 import os
 import shutil
+import threading
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -21,6 +23,34 @@ try:
     from playwright.sync_api import sync_playwright as _sync_playwright
 except ImportError:
     _sync_playwright = None
+
+
+_transport = threading.local()
+
+
+def is_transport_error(exc: BaseException) -> bool:
+    """True for a failure of the network rather than an answer from it: a timeout, a refused
+    or reset connection, a DNS failure, or an HTTP 5xx. An HTTP 4xx is an answer."""
+    status = getattr(exc, "code", None)
+    if status is None:
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+    if isinstance(status, int):
+        return status >= 500
+    return isinstance(exc, OSError)
+
+
+def note_transport_failure(exc: BaseException) -> None:
+    """Record, for this thread, that a distributor search failed in transport (see
+    ``is_transport_error``); the sync driver reads it with ``take_transport_failure``."""
+    if is_transport_error(exc):
+        _transport.failure = f"{type(exc).__name__}: {exc}"
+
+
+def take_transport_failure() -> str | None:
+    """Return and clear this thread's recorded transport failure."""
+    failure = getattr(_transport, "failure", None)
+    _transport.failure = None
+    return failure
 
 
 def normalize_url(url: str, *, resolve_redirects: bool = True) -> str:
@@ -60,9 +90,12 @@ def download_pdf(url: str, output_path: str, *, resolve_redirects: bool = True) 
     1. Try requests library (handles HTTP/2, redirects, all manufacturer sites)
     2. Fall back to Python urllib (HTTP/1.1 only — some sites may timeout)
 
-    Returns True if a valid PDF was downloaded.
+    Returns True if a valid PDF was downloaded. Each method writes to
+    ``<output_path>.part``, which replaces ``output_path`` only once it sniffs
+    as a PDF, so a failed attempt never removes a file already there.
     """
     url = normalize_url(url, resolve_redirects=resolve_redirects)
+    part_path = output_path + ".part"
 
     methods = []
     if _requests is not None:
@@ -73,21 +106,20 @@ def download_pdf(url: str, output_path: str, *, resolve_redirects: bool = True) 
 
     for name, fn in methods:
         try:
-            if fn(url, output_path):
+            if fn(url, part_path):
                 # Verify it's actually a PDF
-                with open(output_path, "rb") as f:
+                with open(part_path, "rb") as f:
                     header = f.read(8)
                 if header.startswith(b"%PDF"):
+                    os.replace(part_path, output_path)
                     size = os.path.getsize(output_path)
                     print(f"Downloaded {size:,} bytes via {name}: {output_path}")
                     return True
-                else:
-                    # Not a PDF (probably HTML error page or JS redirect)
-                    os.remove(output_path)
+                # Not a PDF (probably HTML error page or JS redirect)
         except Exception:
-            if os.path.exists(output_path):
-                os.remove(output_path)
-            continue
+            pass
+        if os.path.exists(part_path):
+            os.remove(part_path)
 
     return False
 
