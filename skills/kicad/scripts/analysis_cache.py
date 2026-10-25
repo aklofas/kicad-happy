@@ -147,10 +147,8 @@ def ensure_analysis_dir(project_dir: str,
         save_manifest(analysis_dir, manifest)
 
     # Create .gitignore if needed
-    gitignore_path = os.path.join(analysis_dir, '.gitignore')
-    if not track_in_git and not os.path.isfile(gitignore_path):
-        with open(gitignore_path, 'w', encoding='utf-8') as f:
-            f.write(GITIGNORE_CONTENT)
+    if not track_in_git:
+        ensure_gitignore(analysis_dir)
 
     return analysis_dir
 
@@ -191,7 +189,7 @@ def load_manifest(analysis_dir: str) -> Dict[str, Any]:
         # Corrupt manifest -- back up and return empty
         backup = manifest_path + '.bak'
         try:
-            shutil.copy2(manifest_path, backup)
+            _copy_regular(manifest_path, backup, "load_manifest")
         except OSError:
             pass
         print(f'Warning: corrupt manifest at {manifest_path}, '
@@ -342,6 +340,22 @@ def _copy_regular(src: str, dst: str, caller: str = "copy") -> bool:
     return True
 
 
+def ensure_gitignore(analysis_dir: str) -> None:
+    """Write analysis/.gitignore unless anything is already at that path.
+
+    A symlink there (even a dangling one) is skipped with a warning, never
+    written through.
+    """
+    path = os.path.join(analysis_dir, '.gitignore')
+    if os.path.lexists(path):
+        if os.path.islink(path):
+            record(None, "analysis_cache.ensure_gitignore",
+                   ValueError(f"{path} is a symlink"), "file not written")
+        return
+    with open(path, 'w', encoding='utf-8') as f:
+        f.write(GITIGNORE_CONTENT)
+
+
 def create_run(analysis_dir: str,
                outputs_dir: str,
                source_hashes: Dict[str, str],
@@ -489,14 +503,16 @@ def overwrite_current(analysis_dir: str,
     os.makedirs(current_dir, exist_ok=True)
 
     # Overwrite files
+    refused = False
     for filename in os.listdir(outputs_dir):
         src = os.path.join(outputs_dir, filename)
         if os.path.isfile(src) and filename.endswith('.json'):
-            _copy_regular(src, os.path.join(current_dir, filename), "overwrite_current")
+            if not _copy_regular(src, os.path.join(current_dir, filename), "overwrite_current"):
+                refused = True
 
     # Update manifest entry
     run_entry = manifest['runs'][current_id]
-    if source_hashes is not None:
+    if source_hashes is not None and not refused:
         # Merge, don't replace — running pcb after schematic should keep
         # the schematic's hash alongside the pcb's, so staleness detection
         # still works against every source file contributing to the run.

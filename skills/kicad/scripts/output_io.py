@@ -13,7 +13,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from analysis_cache import (GITIGNORE_CONTENT, MANIFEST_FILENAME, CANONICAL_OUTPUTS, _empty_manifest,
+from analysis_cache import (ensure_gitignore, MANIFEST_FILENAME, CANONICAL_OUTPUTS, _empty_manifest,
                             create_run, get_current_run, hash_source_file, overwrite_current, prune_runs,
                             resolve_analysis_dir, save_manifest, should_create_new_run)
 
@@ -51,10 +51,8 @@ def write_primary_run(analysis_dir_arg: str, output_text: str, *, analyzer: str,
         manifest['project'] = pro_file
         save_manifest(analysis_dir, manifest)
     # Respect track_in_git config — skip .gitignore if user wants git tracking
-    gitignore_path = os.path.join(analysis_dir, '.gitignore')
-    if not track_in_git and not os.path.isfile(gitignore_path):
-        with open(gitignore_path, 'w', encoding='utf-8') as f:
-            f.write(GITIGNORE_CONTENT)
+    if not track_in_git:
+        ensure_gitignore(analysis_dir)
 
     source_hashes = {}
     for path in (source_path, *extra_source_paths):

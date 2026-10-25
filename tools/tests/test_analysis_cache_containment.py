@@ -326,5 +326,72 @@ class LeafSymlinkTest(unittest.TestCase):
             self.assertEqual(sorted(os.listdir(os.path.join(ad, "r2"))), ["pcb.json", "schematic.json"])
 
 
+class PlantedSymlinkWriterTest(unittest.TestCase):
+    def _secret(self, tmp):
+        path = os.path.join(tmp, "victim.txt")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("keep")
+        return path
+
+    def _assert_kept(self, path):
+        with open(path, encoding="utf-8") as f:
+            self.assertEqual(f.read(), "keep")
+
+    def test_corrupt_manifest_backup_is_not_written_through(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            victim = self._secret(tmp)
+            ad = os.path.join(tmp, "analysis")
+            os.makedirs(ad)
+            with open(os.path.join(ad, "manifest.json"), "w", encoding="utf-8") as f:
+                f.write("{not json")
+            os.symlink(victim, os.path.join(ad, "manifest.json.bak"))
+            with redirect_stderr(io.StringIO()):
+                analysis_cache.load_manifest(ad)
+            self._assert_kept(victim)
+
+    def test_dangling_gitignore_symlink_is_not_created_through(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = os.path.join(tmp, "not-yet.txt")
+            ad = os.path.join(tmp, "analysis")
+            os.makedirs(ad)
+            os.symlink(target, os.path.join(ad, ".gitignore"))
+            err = io.StringIO()
+            with redirect_stderr(err):
+                analysis_cache.ensure_gitignore(ad)
+            self.assertFalse(os.path.exists(target))
+            self.assertIn("symlink", err.getvalue())
+
+    def test_write_primary_run_leaves_a_gitignore_symlink_alone(self):
+        import output_io
+        with tempfile.TemporaryDirectory() as tmp:
+            target = os.path.join(tmp, "not-yet.txt")
+            ad = os.path.join(tmp, "analysis")
+            os.makedirs(ad)
+            os.symlink(target, os.path.join(ad, ".gitignore"))
+            src = os.path.join(tmp, "a.kicad_sch")
+            with open(src, "w", encoding="utf-8") as f:
+                f.write("x")
+            with redirect_stderr(io.StringIO()):
+                output_io.write_primary_run(ad, "{}", analyzer="schematic", source_path=src,
+                                            script_name="analyze_schematic.py")
+            self.assertFalse(os.path.exists(target))
+
+    def test_overwrite_current_refused_copy_keeps_the_old_hash(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ad = os.path.join(tmp, "analysis")
+            rid = analysis_cache.create_run(ad, _outputs(tmp), source_hashes={"a.kicad_sch": "old"},
+                                            scripts={}, run_id="r1")
+            leaf = os.path.join(ad, rid, "schematic.json")
+            os.remove(leaf)
+            os.symlink(self._secret(tmp), leaf)
+            out2 = os.path.join(tmp, "out2")
+            os.makedirs(out2)
+            _write(os.path.join(out2, "schematic.json"), {"analyzer_type": "schematic"})
+            with redirect_stderr(io.StringIO()):
+                analysis_cache.overwrite_current(ad, out2, source_hashes={"a.kicad_sch": "new"})
+            hashes = analysis_cache.load_manifest(ad)["runs"]["r1"]["source_hashes"]
+            self.assertEqual(hashes, {"a.kicad_sch": "old"})
+
+
 if __name__ == "__main__":
     unittest.main()
