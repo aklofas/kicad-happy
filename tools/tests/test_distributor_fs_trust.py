@@ -38,6 +38,49 @@ class FsTrust(unittest.TestCase):
             self.assertEqual((out / "x.pdf").read_bytes(), b"%PDF-1.4 test")
             self.assertTrue((out / "x.pdf.part").is_symlink())
 
+    def test_umask_untouched_and_import_time_mode_used(self):
+        from distributor_core import download, manifest
+        with tempfile.TemporaryDirectory() as d:
+            out = Path(d)
+            old = os.umask(0o027)
+            try:
+                with mock.patch.object(manifest, "DEFAULT_FILE_MODE", 0o640), \
+                     mock.patch.object(download, "DEFAULT_FILE_MODE", 0o640), \
+                     mock.patch.object(download, "_requests", None), \
+                     mock.patch.object(download, "_sync_playwright", None), \
+                     mock.patch.object(download, "_download_urllib", _fake_urllib), \
+                     redirect_stdout(io.StringIO()):
+                    download.download_pdf("https://example.com/x.pdf", str(out / "x.pdf"))
+                    manifest.save_index(out / "manifest.json", {"parts": {}})
+                    after = os.umask(0o027)
+            finally:
+                os.umask(old)
+            self.assertEqual(after, 0o027)
+            self.assertEqual((out / "x.pdf").stat().st_mode & 0o777, 0o640)
+            self.assertEqual((out / "manifest.json").stat().st_mode & 0o777, 0o640)
+
+    def test_part_removed_on_interrupt_and_on_missing(self):
+        from distributor_core import download
+
+        def interrupt(url, path):
+            raise KeyboardInterrupt
+
+        def vanish(url, path):
+            os.remove(path)
+            return False
+        for fn, exc in ((interrupt, KeyboardInterrupt), (vanish, None)):
+            with tempfile.TemporaryDirectory() as d, \
+                 mock.patch.object(download, "_requests", None), \
+                 mock.patch.object(download, "_sync_playwright", None), \
+                 mock.patch.object(download, "_download_urllib", fn):
+                target = str(Path(d) / "x.pdf")
+                if exc:
+                    with self.assertRaises(exc):
+                        download.download_pdf("https://example.com/x.pdf", target)
+                else:
+                    self.assertFalse(download.download_pdf("https://example.com/x.pdf", target))
+                self.assertEqual(os.listdir(d), [])
+
     def test_manifest_tmp_symlink_not_followed(self):
         from distributor_core.manifest import save_index
         with tempfile.TemporaryDirectory() as d:

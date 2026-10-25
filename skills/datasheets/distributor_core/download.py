@@ -9,6 +9,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from distributor_core.manifest import DEFAULT_FILE_MODE
+
 
 _USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0"
 
@@ -98,12 +100,6 @@ def normalize_url(url: str, *, resolve_redirects: bool = True) -> str:
     return url
 
 
-def _umask() -> int:
-    mask = os.umask(0)
-    os.umask(mask)
-    return mask
-
-
 def download_pdf(url: str, output_path: str, *, resolve_redirects: bool = True) -> bool:
     """Download a PDF from a URL, trying multiple methods.
 
@@ -129,26 +125,30 @@ def download_pdf(url: str, output_path: str, *, resolve_redirects: bool = True) 
     if _sync_playwright is not None:
         methods.append(("playwright", _download_playwright))
 
-    for name, fn in methods:
+    try:
+        for name, fn in methods:
+            try:
+                if fn(url, part_path):
+                    # Verify it's actually a PDF
+                    with open(part_path, "rb") as f:
+                        header = f.read(8)
+                    if header.startswith(b"%PDF"):
+                        os.chmod(part_path, DEFAULT_FILE_MODE)
+                        os.replace(part_path, output_path)
+                        size = os.path.getsize(output_path)
+                        print(f"Downloaded {size:,} bytes via {name}: {output_path}")
+                        return True
+                    # Not a PDF (probably HTML error page or JS redirect)
+            except Exception:
+                pass
+            if os.path.exists(part_path):
+                os.truncate(part_path, 0)
+        return False
+    finally:
         try:
-            if fn(url, part_path):
-                # Verify it's actually a PDF
-                with open(part_path, "rb") as f:
-                    header = f.read(8)
-                if header.startswith(b"%PDF"):
-                    os.chmod(part_path, 0o666 & ~_umask())
-                    os.replace(part_path, output_path)
-                    size = os.path.getsize(output_path)
-                    print(f"Downloaded {size:,} bytes via {name}: {output_path}")
-                    return True
-                # Not a PDF (probably HTML error page or JS redirect)
-        except Exception:
+            os.remove(part_path)
+        except FileNotFoundError:
             pass
-        if os.path.exists(part_path):
-            os.truncate(part_path, 0)
-
-    os.remove(part_path)
-    return False
 
 
 # ---------------------------------------------------------------------------

@@ -58,6 +58,15 @@ def friendly_filename(mpn: str, description: str = "", manufacturer: str = "") -
 # Manifest management (manifest.json; legacy index.json read for backward compat)
 # ---------------------------------------------------------------------------
 
+def _read_umask() -> int:
+    mask = os.umask(0)
+    os.umask(mask)
+    return mask
+
+
+# Read once at import: reading it later would briefly change the umask of every thread.
+DEFAULT_FILE_MODE = 0o666 & ~_read_umask()
+
 MANIFEST_FILENAME = "manifest.json"
 
 
@@ -95,9 +104,7 @@ def save_index(path: Path, index: dict):
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(index, f, indent=2)
-        mask = os.umask(0)
-        os.umask(mask)
-        os.chmod(tmp, 0o666 & ~mask)
+        os.chmod(tmp, DEFAULT_FILE_MODE)
         os.replace(tmp, new_path)
     except BaseException:
         if os.path.exists(tmp):
