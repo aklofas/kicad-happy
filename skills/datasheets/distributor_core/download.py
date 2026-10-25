@@ -28,26 +28,40 @@ except ImportError:
 _transport = threading.local()
 
 
-def is_transport_error(exc: BaseException) -> bool:
-    """True for a failure of the network rather than an answer from it: a timeout, a refused
-    or reset connection, a DNS failure, or an HTTP 5xx. An HTTP 4xx is an answer."""
+_ACCESS_REFUSED = (401, 403)
+
+
+def _http_status(exc: BaseException):
     status = getattr(exc, "code", None)
     if status is None:
         status = getattr(getattr(exc, "response", None), "status_code", None)
-    if isinstance(status, int):
-        return status >= 500
+    return status if isinstance(status, int) else None
+
+
+def is_transport_error(exc: BaseException) -> bool:
+    """True for a failure of the network rather than an answer from it: a timeout, a refused
+    or reset connection, a DNS failure, an HTTP 429 (rate limit) or 5xx. Any other HTTP 4xx
+    is an answer."""
+    status = _http_status(exc)
+    if status is not None:
+        return status == 429 or status >= 500
     return isinstance(exc, OSError)
 
 
 def note_transport_failure(exc: BaseException) -> None:
-    """Record, for this thread, that a distributor search failed in transport (see
-    ``is_transport_error``); the sync driver reads it with ``take_transport_failure``."""
+    """Record, for this thread, that a distributor search failed without an answer: in
+    transport (see ``is_transport_error``) or refused access (HTTP 401/403). The sync driver
+    reads the message with ``take_transport_failure``."""
+    status = _http_status(exc)
     if is_transport_error(exc):
-        _transport.failure = f"{type(exc).__name__}: {exc}"
+        _transport.failure = f"network failure, retried next run: {type(exc).__name__}: {exc}"
+    elif status in _ACCESS_REFUSED:
+        _transport.failure = (f"access refused (HTTP {status}), check the API credentials: "
+                              f"{type(exc).__name__}: {exc}")
 
 
 def take_transport_failure() -> str | None:
-    """Return and clear this thread's recorded transport failure."""
+    """Return and clear this thread's recorded failure message."""
     failure = getattr(_transport, "failure", None)
     _transport.failure = None
     return failure

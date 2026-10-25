@@ -74,6 +74,9 @@ class TransportClassificationTest(unittest.TestCase):
         self.assertTrue(is_transport_error(ConnectionRefusedError()))
         self.assertTrue(is_transport_error(http(500)))
         self.assertTrue(is_transport_error(http(503)))
+        self.assertTrue(is_transport_error(http(429)))
+        self.assertFalse(is_transport_error(http(401)))
+        self.assertFalse(is_transport_error(http(403)))
         self.assertFalse(is_transport_error(http(404)))
         self.assertFalse(is_transport_error(http(400)))
         self.assertFalse(is_transport_error(ValueError("bad json")))
@@ -109,10 +112,30 @@ class SyncOutageTest(unittest.TestCase):
 
     def _sync(self, d, provider, **kw):
         from distributor_core.sync import sync_datasheets
-        with redirect_stderr(io.StringIO()), redirect_stdout(io.StringIO()):
+        self.stderr = io.StringIO()
+        with redirect_stderr(self.stderr), redirect_stdout(io.StringIO()):
             r = sync_datasheets(provider, input_path=self._bom(d), output_dir=str(Path(d) / "out"), **kw)
         m = json.loads((Path(d) / "out" / "manifest.json").read_text(encoding="utf-8"))
         return r, m
+
+    def test_rate_limit_is_retried_next_run(self):
+        err = urllib.error.HTTPError("u", 429, "Too Many Requests", {}, None)
+        with tempfile.TemporaryDirectory() as d:
+            _, m = self._sync(d, _provider(lambda p, *a: _not_found(p, err)))
+            self.assertEqual(m["parts"]["LM358DR"]["status"], "error")
+            self.assertIn("429", m["parts"]["LM358DR"]["error"])
+            dry, _ = self._sync(d, _provider(lambda p, *a: _not_found(p)), dry_run=True, as_json=True)
+            self.assertEqual(dry["would_download"], ["LM358DR"])
+
+    def test_auth_failure_is_an_error_naming_the_status(self):
+        for code in (401, 403):
+            err = urllib.error.HTTPError("u", code, "Forbidden", {}, None)
+            with tempfile.TemporaryDirectory() as d:
+                _, m = self._sync(d, _provider(lambda p, *a: _not_found(p, err)))
+            entry = m["parts"]["LM358DR"]
+            self.assertEqual(entry["status"], "error", code)
+            self.assertIn(f"HTTP {code}", entry["error"])
+            self.assertIn("credentials", entry["error"])
 
     def test_outage_is_retried_next_run(self):
         outage = urllib.error.URLError(ConnectionRefusedError("refused"))
@@ -149,6 +172,8 @@ class SyncOutageTest(unittest.TestCase):
             self.assertEqual(m["parts"]["LM358DR"]["status"], "ok")
             self.assertEqual((out / "LM358DR.pdf").read_bytes(), GOOD)
             self.assertEqual(r["failed"], 1)
+            self.assertIn("LM358DR — network failure, retried next run: TimeoutError: timed out",
+                          self.stderr.getvalue())
 
 
 class LcscProviderOutageTest(unittest.TestCase):

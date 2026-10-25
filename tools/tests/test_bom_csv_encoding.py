@@ -72,6 +72,17 @@ class TranslateBomPnpTest(unittest.TestCase):
             with open(out, encoding="utf-8") as f:
                 self.assertIn("100nF \u00b110%", f.read())
 
+    def test_undefined_cp1252_byte_does_not_crash(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = os.path.join(tmp, "odd.csv")
+            with open(src, "wb") as f:   # 0x81 is undefined in cp1252, 0xb1 is the cp1252 plus-minus
+                f.write(b"Comment,Designator,Footprint,LCSC\r\n100nF \xb110% \x81,C1,0603,C14663\r\n")
+            out = os.path.join(tmp, "jlc.csv")
+            r = _run("translate_bom_pnp.py", "bom", src, "-o", out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            with open(out, encoding="utf-8") as f:
+                self.assertIn("100nF \u00b110% \ufffd", f.read())
+
     def test_xlsx_is_a_usage_error(self):
         with tempfile.TemporaryDirectory() as tmp:
             src = os.path.join(tmp, "x.xlsx")

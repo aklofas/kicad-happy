@@ -210,9 +210,9 @@ def search_digikey_with_token(mpn: str, token: str, client_id: str) -> dict | No
             print(f"  Rate limited, waiting 10s...", file=sys.stderr)
             time.sleep(10)
             return search_digikey_with_token(mpn, token, client_id)
+        note_transport_failure(e)
         if e.code == 401:
             return None  # Token expired — caller should refresh
-        note_transport_failure(e)
         print(f"  Search failed for '{mpn}': HTTP {e.code}", file=sys.stderr)
         return None
     except Exception as e:

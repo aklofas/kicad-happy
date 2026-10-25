@@ -314,9 +314,9 @@ class LtspiceBackend(SimulatorBackend):
             text = stdout
         else:
             try:
-                with open(log_path) as f:
+                with open(log_path, encoding="utf-8", errors="replace") as f:
                     text = f.read()
-            except OSError:
+            except (OSError, UnicodeDecodeError):
                 text = stdout
 
         # Parse LTspice .meas output format:
@@ -416,9 +416,9 @@ class XyceBackend(SimulatorBackend):
         text = ""
         if os.path.isfile(mt0_path):
             try:
-                with open(mt0_path) as f:
+                with open(mt0_path, encoding="utf-8", errors="replace") as f:
                     text = f.read()
-            except OSError:
+            except (OSError, UnicodeDecodeError):
                 text = stdout
         else:
             text = stdout

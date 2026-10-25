@@ -1271,7 +1271,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--fix",
                         help="Detection to fix (e.g., voltage_dividers[0])")
     parser.add_argument("--target", type=float,
-                        help="Target value for --fix (e.g., 3.3 for Vout, 1000 for Hz)")
+                        help="Target value for --fix, in the detection's own field: a ratio "
+                             "0-1 for voltage_dividers (Vout/Vin) and for a regulator's "
+                             "feedback_networks (Vref/Vout), Hz for rc_filters/lc_filters, "
+                             "gain for opamp_circuits, pF for crystal_circuits")
     parser.add_argument("--suggest-fixes", action="store_true",
                         help="Scan analysis for fixable issues and suggest component changes")
     add_only_deterministic_arg(parser, consumer=True)
@@ -1379,6 +1382,15 @@ def main(argv: list[str] | None = None) -> int:
                 return 1
 
         suggestions = _solve_fix(det, fix_det_type, target_field, target_value)
+        if not suggestions:
+            if target_field == "ratio" and not 0 < target_value < 1:
+                why = (f"target ratio {target_value:g} is outside (0, 1); a divider target is "
+                       f"Vout/Vin (feedback: Vref/Vout), not a voltage")
+            else:
+                why = (f"no component values reach {target_field}={target_value:g} "
+                       f"for this detection")
+            print(f"Error: {fix_det_type}[{fix_idx}]: {why}", file=sys.stderr)
+            return 1
         result = {"fix_suggestions": [{
             "detection_type": fix_det_type,
             "detection_index": fix_idx,

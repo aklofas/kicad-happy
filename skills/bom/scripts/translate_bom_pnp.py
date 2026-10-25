@@ -301,12 +301,12 @@ def _read_csv_rows(path: str) -> list[list[str]]:
     """Read a CSV file into a list of rows (each row a list of strings).
 
     UTF-8 (with or without a BOM); a file that is not UTF-8 is read as cp1252,
-    the encoding Excel and Altium use on Windows."""
+    the encoding Excel and Altium use on Windows (its five undefined bytes become U+FFFD)."""
     try:
         with open(path, newline="", encoding="utf-8-sig") as f:
             return [list(row) for row in csv.reader(f)]
     except UnicodeDecodeError:
-        with open(path, newline="", encoding="cp1252") as f:
+        with open(path, newline="", encoding="cp1252", errors="replace") as f:
             return [list(row) for row in csv.reader(f)]
 
 

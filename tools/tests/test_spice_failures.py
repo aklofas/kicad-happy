@@ -76,5 +76,25 @@ class SpiceFailureTest(unittest.TestCase):
                           if d["source"] == "simulate_subcircuits.run"], [])
 
 
+class ParseResultsEncodingTest(unittest.TestCase):
+    """A simulator log that is not UTF-8 (LTspice writes UTF-16) never crashes the parse."""
+    def test_ltspice_log_and_xyce_mt0_with_bad_bytes(self):
+        sys.path.insert(0, str(SIM.parent))
+        from spice_simulator import LtspiceBackend, XyceBackend
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, "x.out")
+            with open(os.path.join(tmp, "x.log"), "wb") as f:
+                f.write(b"fc: v(out)=1234 at 5\n\xff\xfe\x81\n")
+            with open(os.path.join(tmp, "x.mt0"), "wb") as f:
+                f.write(b"gain = 2.5\n\xff\xfe\x81\n")
+            self.assertEqual(LtspiceBackend().parse_results(out, "", "").get("fc"), 1234.0)
+            self.assertEqual(XyceBackend().parse_results(out, "", "").get("gain"), 2.5)
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, "y.out")
+            with open(os.path.join(tmp, "y.log"), "w", encoding="utf-16") as f:
+                f.write("fc: v(out)=1 at 5\n")
+            self.assertIsInstance(LtspiceBackend().parse_results(out, "", ""), dict)
+
+
 if __name__ == "__main__":
     unittest.main()

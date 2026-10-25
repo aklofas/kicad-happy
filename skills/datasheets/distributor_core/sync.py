@@ -60,12 +60,13 @@ from distributor_core.manifest import (
 
 def _outage_entry(result: dict, previous: dict, out_dir: Path) -> tuple[dict, dict]:
     """(entry to store, result to report) for one part. A ``not_found`` caused by a network
-    failure is not an answer: report it as ``error`` (not a skipped previous failure, so the next
-    run retries) and keep a previous ``ok`` entry whose file is still on disk."""
+    failure, a rate limit or refused access is not an answer: report it as ``error`` (not a
+    skipped previous failure, so the next run retries) and keep a previous ``ok`` entry whose
+    file is still on disk."""
     outage = take_transport_failure()
     if outage is None or result.get("status") != "not_found":
         return result, result
-    result = {**result, "status": "error", "error": f"network failure, retried next run: {outage}"}
+    result = {**result, "status": "error", "error": outage}
     if previous.get("status") == "ok" and (out_dir / previous.get("file", "")).is_file():
         return previous, result
     return result, result
@@ -213,6 +214,7 @@ def sync_datasheets(
     # Process each part
     downloaded = []
     failed = []
+    kept_errors = {}  # part key -> error, for an outage that kept the previous ok entry
     warnings = []  # verification warnings
 
     if parallel > 1:
@@ -232,6 +234,8 @@ def sync_datasheets(
             with lock:
                 stored, result = _outage_entry(result, index.get("parts", {}).get(part_key, {}), out_dir)
                 index.setdefault("parts", {})[part_key] = stored
+                if stored is not result:
+                    kept_errors[part_key] = result["error"]
 
                 if result["status"] == "ok":
                     downloaded.append(part_key)
@@ -269,6 +273,8 @@ def sync_datasheets(
 
             stored, result = _outage_entry(result, index.get("parts", {}).get(part_key, {}), out_dir)
             index.setdefault("parts", {})[part_key] = stored
+            if stored is not result:
+                kept_errors[part_key] = result["error"]
 
             if result["status"] == "ok":
                 downloaded.append(part_key)
@@ -322,6 +328,9 @@ def sync_datasheets(
         if failed:
             for m in failed:
                 entry = index["parts"].get(m, {})
+                if m in kept_errors:
+                    print(f"    {m} — {kept_errors[m]}", file=sys.stderr)
+                    continue
                 if provider.FAILED_DETAIL_WITH_URL:
                     url = entry.get("datasheet_url", "")
                     err = entry.get("error", "")

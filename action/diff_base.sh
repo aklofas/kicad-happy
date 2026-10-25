@@ -15,7 +15,7 @@
 #   Prints where PATH lives inside DEST (empty PATH prints nothing).
 
 kh_repo_rel() {
-    python3 -c 'import os, sys; print(os.path.relpath(os.path.abspath(sys.argv[1]), sys.argv[2]))' \
+    python3 -c 'import os, sys; print(os.path.relpath(os.path.realpath(sys.argv[1]), os.path.realpath(sys.argv[2])))' \
         "$1" "$(git rev-parse --show-toplevel)"
 }
 

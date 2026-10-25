@@ -77,6 +77,12 @@ class DiffBaseTest(unittest.TestCase):
         r = _bash(self.repo, f'kh_base_path "{self.dest}" ./hw/top.kicad_sch')
         self.assertEqual(r.stdout.strip(), f"{self.dest}/hw/top.kicad_sch")
 
+    def test_symlinked_checkout_path(self):
+        link = os.path.join(self._tmp.name, "link")
+        os.symlink(self.repo, link)
+        r = _bash(link, f'kh_base_path "{self.dest}" "{link}/hw/top.kicad_sch"')
+        self.assertEqual(r.stdout.strip(), f"{self.dest}/hw/top.kicad_sch", r.stderr)
+
     def test_nothing_at_base_returns_1(self):
         r = _bash(self.repo, f'kh_extract_base base "{self.dest}" "" missing.kicad_pcb "" || echo NONE')
         self.assertIn("NONE", r.stdout)
