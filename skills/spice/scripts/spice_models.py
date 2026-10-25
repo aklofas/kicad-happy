@@ -144,8 +144,15 @@ def spice_text(s):
 
 
 def spice_ident(s):
-    """Text for an element-name suffix: anything but [A-Za-z0-9_] becomes _."""
-    return re.sub(r"[^A-Za-z0-9_]", "_", str(s))
+    """Text for an element-name suffix.
+
+    Whitespace, control characters and the characters SPICE uses to split or
+    group tokens (= ( ) , ; { }) become _; ordinary references such as R1-A
+    or U1.2 are unchanged.
+    """
+    return "".join("_" if ch.isspace() or ch in "=(),;{}"
+                   or unicodedata.category(ch).startswith("C") else ch
+                   for ch in str(s))
 
 
 def spice_element_for_passive(ref, value_si, net1, net2):

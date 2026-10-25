@@ -121,7 +121,12 @@ class HelperTest(unittest.TestCase):
         self.assertEqual(spice_text("a\nb\r\nc\td"), "a b  c d")
         self.assertEqual(spice_text("\u00b5F"), "\u00b5F")
         self.assertEqual(spice_ident("U3"), "U3")
-        self.assertEqual(spice_ident("U3\n.control"), "U3__control")
+        self.assertEqual(spice_ident("U3\n.control"), "U3_.control")
+        self.assertEqual(spice_ident("R1-A"), "R1-A")
+        self.assertEqual(spice_ident("U1.2"), "U1.2")
+        self.assertEqual(spice_ident("C+1"), "C+1")
+        self.assertEqual(spice_ident("R1 A=1"), "R1_A_1")
+        self.assertEqual(spice_ident("R(1),2;{3}"), "R_1__2__3_")
         self.assertEqual(_sanitize_net("VCC\n.control"), "VCC_.control")
         self.assertEqual(_sanitize_net("+3V3"), "_3V3")
 
