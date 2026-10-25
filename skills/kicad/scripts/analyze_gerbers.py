@@ -827,6 +827,9 @@ def classify_drill_tools(drills: list[dict]) -> dict:
     }
 
 
+_INNER_COPPER_EXT = re.compile(r"\.(?:g\d+l?|gl\d+)$", re.IGNORECASE)
+
+
 def check_completeness(gerbers: list[dict], drills: list[dict],
                         job_info: dict | None = None,
                         stackup_layers: int | None = None) -> dict:
@@ -866,7 +869,15 @@ def check_completeness(gerbers: list[dict], drills: list[dict],
     inner_layers = {lt for lt in found_layers if lt.startswith("In") and lt.endswith(".Cu")}
     required = {"F.Cu", "B.Cu", "F.Mask", "B.Mask", "Edge.Cuts"} | inner_layers
     if stackup_layers and stackup_layers >= 3:
-        required |= {f"In{i}.Cu" for i in range(1, stackup_layers - 1)}
+        # Inner-copper files without X2 carry no reliable layer index (CAM
+        # tools number .GL<n>/.G<n>L differently), so they only count toward
+        # the implied inner layers; only the shortfall is reported missing.
+        unindexed = sum(1 for g in gerbers if g.get("layer_type") == "unknown"
+                        and _INNER_COPPER_EXT.search(g.get("filename", "")))
+        implied = [f"In{i}.Cu" for i in range(1, stackup_layers - 1)]
+        absent = [lt for lt in implied if lt not in found_layers]
+        shortfall = len(implied) - len(inner_layers) - unindexed
+        required |= set(absent[:max(0, shortfall)])
     recommended = {"F.SilkS", "F.Paste"}
 
     return {

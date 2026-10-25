@@ -71,6 +71,25 @@ class StackupCompletenessTest(unittest.TestCase):
         self.assertIn("In2.Cu", c["found_layers"])
         self.assertEqual(c["missing_required"], [])
 
+    def test_unindexed_inner_files_count(self):
+        # L4 bottom => four copper layers => two inner layers. Two inner-copper
+        # files without X2 (.GL2/.GL3, or Eagle .G2L/.G3L) make up the pair.
+        for names in (("board.GL2", "board.GL3"), ("board.G2L", "board.G3L")):
+            with self.subTest(names=names):
+                r = self._run([("board.GTL", "Copper,L1,Top"), (names[0], None),
+                               (names[1], None), ("board.GBL", "Copper,L4,Bot")])
+                self.assertEqual(r["completeness"]["missing_required"], [])
+                self.assertEqual([f for f in _gr(r, "GR-001") if "Missing layer: In" in f["summary"]], [])
+
+    def test_unindexed_inner_shortfall(self):
+        # L6 bottom => four inner layers; one .GL2 without X2 covers one of
+        # them, so exactly three inner layers are missing.
+        r = self._run([("board.GTL", "Copper,L1,Top"), ("board.GL2", None),
+                       ("board.GBL", "Copper,L6,Bot")])
+        missing = [m for m in r["completeness"]["missing_required"] if m.startswith("In")]
+        self.assertEqual(len(missing), 3)
+        self.assertTrue(set(missing) <= {"In1.Cu", "In2.Cu", "In3.Cu", "In4.Cu"})
+
     def test_two_layer_unchanged(self):
         r = self._run([("b-F_Cu.gtl", "Copper,L1,Top"), ("b-B_Cu.gbl", "Copper,L2,Bot")])
         c = r["completeness"]
