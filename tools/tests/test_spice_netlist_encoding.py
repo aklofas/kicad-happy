@@ -1,7 +1,9 @@
 """Text that reaches a SPICE netlist cannot start a simulator command line."""
 import itertools
+import json
 import os
 import sys
+import tempfile
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -11,6 +13,8 @@ for sub in ("skills/spice/scripts", "skills/kicad/scripts", "skills/emc/scripts"
 import simulate_subcircuits  # noqa: E402
 from spice_model_cache import ModelOptions  # noqa: E402
 import emc_spice  # noqa: E402
+import spice_model_generator  # noqa: E402
+import spice_spec_fetcher  # noqa: E402
 from spice_models import _sanitize_net, spice_echo, spice_ident, spice_text  # noqa: E402
 from spice_simulator import NgspiceBackend  # noqa: E402
 
@@ -292,6 +296,42 @@ class CleanValuesTest(unittest.TestCase):
               "non_inverting_input_net": "GND", "gain": -10, "gain_dB": 20,
               "feedback_resistor": _res("R4", 100000), "input_resistor": _res("R5")}
         self.assertEqual(_render(gens["opamp_circuits"], op), EXPECTED_OP)
+
+
+def _extracted_specs(spice_specs, mpn="LM358"):
+    with tempfile.TemporaryDirectory() as tmp:
+        folder = os.path.join(tmp, "datasheets", "extracted")
+        os.makedirs(folder)
+        with open(os.path.join(folder, "manifest.json"), "w", encoding="utf-8") as f:
+            json.dump({"extractions": {mpn: {"file": mpn + ".json"}}}, f)
+        with open(os.path.join(folder, mpn + ".json"), "w", encoding="utf-8") as f:
+            json.dump({"meta": {"extraction_score": 8.0}, "spice_specs": spice_specs}, f)
+        return spice_spec_fetcher.fetch_specs_from_extraction(mpn, tmp)
+
+
+class ExtractedSpecsTest(unittest.TestCase):
+    def test_numbers_and_flags_pass_through_unchanged(self):
+        specs = _extracted_specs({"gbw_hz": 1e6, "slew_vus": 0.3, "vos_mv": 2, "aol_db": 100,
+                                  "rro": False, "swing_v": 1.5, "vref": None})
+        self.assertEqual(specs, {"gbw_hz": 1e6, "slew_vus": 0.3, "vos_mv": 2, "aol_db": 100,
+                                 "rro": False, "swing_v": 1.5, "_source": "extraction:LM358"})
+
+    def test_non_numbers_are_dropped(self):
+        specs = _extracted_specs({
+            "gbw_hz": 1e6, "swing_v": PAYLOAD, "vref": "1.2", "dropout_mv": True,
+            "iq_ua": float("inf"), "rro": "true", "fixed": PAYLOAD,
+            "output_type": PAYLOAD, "unknown_key": 1})
+        self.assertEqual(specs, {"gbw_hz": 1e6, "_source": "extraction:LM358"})
+
+    def test_generated_models_have_no_injected_line(self):
+        specs = _extracted_specs({"gbw_hz": 1e6, "swing_v": PAYLOAD, "vref": PAYLOAD,
+                                  "zout_ohms": PAYLOAD, "fixed": PAYLOAD})
+        gen = spice_model_generator
+        for text in (gen.generate_opamp_model("LM358", specs),
+                     gen.generate_ldo_model("LM358", specs),
+                     gen.generate_vref_model("LM358", specs)):
+            self.assertFalse([l for l in text.splitlines()
+                              if l.strip().lower().startswith(("shell", ".control", ".endc"))])
 
 
 if __name__ == "__main__":

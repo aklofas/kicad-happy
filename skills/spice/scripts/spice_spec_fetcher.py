@@ -12,6 +12,7 @@ table.
 """
 
 import json
+import math
 import os
 import re
 import time
@@ -548,6 +549,34 @@ def fetch_specs_from_datasheet(mpn, project_dir):
 # Unified fetch interface
 # ---------------------------------------------------------------------------
 
+_NUMERIC_SPECS = frozenset((
+    "gbw_hz", "slew_vus", "vos_mv", "aol_db", "rin_ohms", "supply_min", "supply_max",
+    "swing_v", "dropout_mv", "iq_ua", "iout_max_ma", "vref", "zout_ohms", "prop_delay_ns",
+))
+_BOOLEAN_SPECS = frozenset(("rro", "rri", "fixed"))
+_OUTPUT_TYPES = frozenset(("push_pull", "open_collector", "open_drain"))
+
+
+def _read_spice_specs(raw):
+    """Keep only the spec values the model generators can use safely.
+
+    Numbers must be finite JSON numbers, flags real JSON booleans, and the
+    comparator output type one of its known names; anything else is dropped.
+    """
+    specs = {}
+    for key, val in (raw.items() if isinstance(raw, dict) else ()):
+        if key in _NUMERIC_SPECS:
+            if isinstance(val, (int, float)) and not isinstance(val, bool) \
+                    and math.isfinite(val):
+                specs[key] = val
+        elif key in _BOOLEAN_SPECS:
+            if isinstance(val, bool):
+                specs[key] = val
+        elif key == "output_type" and val in _OUTPUT_TYPES:
+            specs[key] = val
+    return specs
+
+
 def fetch_specs_from_extraction(mpn, project_dir):
     """Extract SPICE-relevant specs from a cached datasheet extraction."""
     if not project_dir:
@@ -586,10 +615,7 @@ def fetch_specs_from_extraction(mpn, project_dir):
     meta = extraction.get("meta", {})
     if meta.get("extraction_score", 0) < 6.0:
         return None
-    spice = extraction.get("spice_specs", {})
-    if not spice:
-        return None
-    specs = {k: v for k, v in spice.items() if v is not None}
+    specs = _read_spice_specs(extraction.get("spice_specs"))
     if not specs:
         return None
     if specs.get("gbw_hz") or specs.get("vref") or specs.get("dropout_mv"):
