@@ -1,7 +1,8 @@
 """Datasheet downloads go only to http(s) URLs on public addresses, every redirect is
 checked, and a download stops at a size and wall-clock limit. No network: the resolver
 and every transport are local fakes."""
-import argparse, http.client, io, json, os, sys, tempfile, unittest, urllib.request, urllib.response
+import argparse, http.client, io, json, os, socket, sys, tempfile, threading, time, unittest
+import urllib.request, urllib.response
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
@@ -226,11 +227,98 @@ class DownloadPolicyTest(unittest.TestCase):
         self.assertEqual(broken.calls, [])
 
 
+class _Trickle:
+    """A real socket answering 200 with a large Content-Length, then one byte every 50 ms
+    for at most 4 s: a single 64 KiB read never completes and no recv is ever idle long
+    enough for the socket timeout."""
+
+    def __init__(self):
+        self.server, self.client = socket.socketpair()
+        self.client.settimeout(2)
+        self.stop = threading.Event()
+        self.server.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 100000\r\n\r\n%PDF")
+        self.thread = threading.Thread(target=self._drip, daemon=True)
+        self.thread.start()
+
+    def _drip(self):
+        end = time.monotonic() + 4
+        try:
+            while not self.stop.is_set() and time.monotonic() < end:
+                self.server.sendall(b"0")
+                time.sleep(0.05)
+        except OSError:
+            pass
+        self.server.close()
+
+    def response(self, url):
+        resp = http.client.HTTPResponse(self.client, method="GET", url=url)
+        resp.begin()
+        resp.msg = resp.reason
+        return resp
+
+    def close(self):
+        self.stop.set()
+        self.thread.join()
+        self.client.close()
+
+
+class TrickleDeadlineTest(unittest.TestCase):
+    URL = "https://example.com/x.pdf"
+
+    def setUp(self):
+        for target, kw in (("_resolve", {"return_value": PUBLIC}),
+                           ("_allow_private_hosts", {"return_value": False}),
+                           ("DOWNLOAD_TIMEOUT_S", None)):
+            p = (mock.patch.object(download, target, 0.5) if kw is None
+                 else mock.patch.object(download, target, **kw))
+            p.start()
+            self.addCleanup(p.stop)
+        self.trickle = _Trickle()
+        self.addCleanup(self.trickle.close)
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+
+    def _run(self, **patches):
+        stderr = io.StringIO()
+        start = time.monotonic()
+        with mock.patch.multiple(download, _sync_playwright=None, **patches), \
+             redirect_stderr(stderr), redirect_stdout(io.StringIO()):
+            ok = download.download_pdf(self.URL, os.path.join(self.dir.name, "x.pdf"))
+        elapsed = time.monotonic() - start
+        self.assertFalse(ok)
+        self.assertLess(elapsed, 3.0)
+        self.assertIn("download stopped", stderr.getvalue())
+        self.assertEqual(os.listdir(self.dir.name), [])
+
+    def test_urllib_trickle_stops_at_the_deadline(self):
+        trickle = self.trickle
+
+        class Fake(urllib.request.BaseHandler):
+            def https_open(self, req):
+                return trickle.response(req.full_url)
+        handlers = _with_fake_urllib_handler(Fake)
+        self._run(_requests=None, _URLLIB_HANDLERS=handlers)
+
+    def test_requests_trickle_stops_at_the_deadline(self):
+        trickle = self.trickle
+
+        class Resp(_FakeRequestsResponse):
+            def __init__(self):
+                super().__init__(200)
+                self.raw = trickle.response(TrickleDeadlineTest.URL)
+
+            def iter_content(self, size):
+                return iter(lambda: self.raw.read(size), b"")
+        self._run(_requests=_FakeRequests({self.URL: Resp}), _download_urllib=_fail)
+
+
 class _FakeRoute:
-    def __init__(self, url, log, navigation=False, status=200, location=None):
+    """A Playwright route for ``url``; ``chain`` answers each fetched URL with
+    ``(status, location)``, or an exception to raise."""
+
+    def __init__(self, url, log, chain):
         self.request = mock.Mock(url=url)
-        self.request.is_navigation_request.return_value = navigation
-        self._log, self._status, self._location = log, status, location
+        self._log, self._chain = log, chain
 
     def abort(self, reason=None):
         self._log.append(("abort", self.request.url))
@@ -238,18 +326,23 @@ class _FakeRoute:
     def continue_(self):
         self._log.append(("continue", self.request.url))
 
-    def fetch(self, max_redirects=None):
-        self._log.append(("fetch", self.request.url, max_redirects))
-        headers = {"location": self._location} if self._location else {}
-        return mock.Mock(status=self._status, headers=headers)
+    def fetch(self, url=None, max_redirects=None, timeout=None):
+        url = url or self.request.url
+        self._log.append(("fetch", url, max_redirects))
+        answer = self._chain.get(url, (200, None))
+        if isinstance(answer, Exception):
+            raise answer
+        status, location = answer
+        headers = {"location": location} if location else {}
+        return mock.Mock(status=status, headers=headers)
 
     def fulfill(self, response=None):
         self._log.append(("fulfill", self.request.url))
 
 
-def _fake_playwright(routes, log):
+def _fake_playwright(urls, chain, log):
     """A ``sync_playwright`` stand-in: its page records ``route`` registrations and, on
-    ``goto``, drives the registered handler with each fake route in ``routes``."""
+    ``goto``, drives the registered handler with a fake route for each of ``urls``."""
     registered = []
 
     class Page:
@@ -262,8 +355,8 @@ def _fake_playwright(routes, log):
 
         def goto(self, url, **kw):
             assert registered, "route must be installed before navigation"
-            for make in routes:
-                self.handler(make(log))
+            for u in urls:
+                self.handler(_FakeRoute(u, log, chain))
             return None
 
         def close(self):
@@ -290,18 +383,20 @@ def _fake_playwright(routes, log):
 
 class PlaywrightRouteTest(unittest.TestCase):
     def test_browser_requests_follow_the_policy(self):
+        chain = {
+            "https://a.example/x": (302, "https://b.example/y"),
+            "https://b.example/y": (302, "http://169.254.169.254/latest"),
+            "https://cdn.example.org/app.js": (302, "http://10.0.0.1/x"),
+            "https://example.com/moved": (301, "https://cdn.example.org/x.pdf"),
+            "https://loop.example/a": (302, "/b"),
+            "https://loop.example/b": (302, "/a"),
+            "https://broken.example/x": OSError("connection reset"),
+        }
+        urls = ["https://example.com/x.pdf", "http://127.0.0.1/admin", "https://a.example/x",
+                "https://cdn.example.org/app.js", "https://example.com/moved",
+                "file:///etc/passwd", "https://loop.example/a", "https://broken.example/x"]
         log = []
-        routes = [
-            lambda log: _FakeRoute("https://example.com/x.pdf", log, navigation=True),
-            lambda log: _FakeRoute("http://127.0.0.1/admin", log),
-            lambda log: _FakeRoute("https://cdn.example.org/app.js", log),
-            lambda log: _FakeRoute("https://example.com/next", log, navigation=True,
-                                   status=302, location="http://169.254.169.254/latest"),
-            lambda log: _FakeRoute("https://example.com/moved", log, navigation=True,
-                                   status=301, location="https://cdn.example.org/x.pdf"),
-            lambda log: _FakeRoute("file:///etc/passwd", log, navigation=True),
-        ]
-        fake, registered = _fake_playwright(routes, log)
+        fake, registered = _fake_playwright(urls, chain, log)
         with tempfile.TemporaryDirectory() as d, \
              mock.patch.object(download, "_resolve", return_value=PUBLIC), \
              mock.patch.object(download, "_allow_private_hosts", return_value=False), \
@@ -312,16 +407,24 @@ class PlaywrightRouteTest(unittest.TestCase):
             self.assertFalse(download.download_pdf("https://example.com/x.pdf",
                                                    os.path.join(d, "x.pdf")))
         self.assertEqual(registered, ["**/*"])
+        loop = [("fetch", "https://loop.example/a", 0), ("fetch", "https://loop.example/b", 0)] * 3
         self.assertEqual(log, [
             ("fetch", "https://example.com/x.pdf", 0),
             ("fulfill", "https://example.com/x.pdf"),
             ("abort", "http://127.0.0.1/admin"),
-            ("continue", "https://cdn.example.org/app.js"),
-            ("fetch", "https://example.com/next", 0),
-            ("abort", "https://example.com/next"),
+            ("fetch", "https://a.example/x", 0),
+            ("fetch", "https://b.example/y", 0),
+            ("abort", "https://a.example/x"),
+            ("fetch", "https://cdn.example.org/app.js", 0),
+            ("abort", "https://cdn.example.org/app.js"),
             ("fetch", "https://example.com/moved", 0),
+            ("fetch", "https://cdn.example.org/x.pdf", 0),
             ("fulfill", "https://example.com/moved"),
             ("abort", "file:///etc/passwd"),
+            *loop,
+            ("abort", "https://loop.example/a"),
+            ("fetch", "https://broken.example/x", 0),
+            ("abort", "https://broken.example/x"),
         ])
 
 

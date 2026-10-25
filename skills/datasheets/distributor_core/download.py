@@ -6,6 +6,7 @@ Every URL, and every redirect, must be http or https on a public address (see
 ``DOWNLOAD_TIMEOUT_S`` seconds."""
 
 import argparse
+import http.client
 import ipaddress
 import math
 import os
@@ -228,6 +229,74 @@ def _copy_bounded(chunks, f, deadline: float) -> int:
     return total
 
 
+def _find_socket(obj, depth: int = 0):
+    """The socket under a response or connection object, if there is one."""
+    if obj is None or depth > 6:
+        return None
+    if isinstance(obj, socket.socket):
+        return obj
+    for name in ("_sock", "sock", "raw", "fp", "_fp", "_connection"):
+        found = _find_socket(getattr(obj, name, None), depth + 1)
+        if found is not None:
+            return found
+    return None
+
+
+def _shutdown(obj) -> None:
+    sock = _find_socket(obj)
+    if sock is not None:
+        try:
+            sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+
+
+class _Watchdog:
+    """Enforces the deadline from outside a blocked read: at the deadline every watched
+    connection or response has its socket shut down, which ends a read that a server is
+    feeding a byte at a time. Leaving the block after that raises
+    ``DownloadLimitExceeded``."""
+
+    def __init__(self, deadline: float):
+        self.fired = False
+        self._targets = []
+        self._lock = threading.Lock()
+        self._timer = threading.Timer(max(0.0, deadline - time.monotonic()), self._fire)
+        self._timer.daemon = True
+
+    def watch(self, obj) -> None:
+        with self._lock:
+            self._targets.append(obj)
+            fired = self.fired
+        if fired:
+            _shutdown(obj)
+
+    def _fire(self) -> None:
+        with self._lock:
+            self.fired = True
+            targets = list(self._targets)
+        for obj in targets:
+            _shutdown(obj)
+
+    def __enter__(self):
+        _call.watchdog = self
+        self._timer.start()
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self._timer.cancel()
+        _call.watchdog = None
+        if self.fired:
+            raise DownloadLimitExceeded(f"took longer than {DOWNLOAD_TIMEOUT_S:g} s") from exc
+        return False
+
+
+def _watch_current(obj) -> None:
+    watchdog = getattr(_call, "watchdog", None)
+    if watchdog is not None:
+        watchdog.watch(obj)
+
+
 def normalize_url(url: str, *, resolve_redirects: bool = True) -> str:
     """Convert manufacturer-specific redirect URLs to direct PDF URLs.
 
@@ -339,26 +408,28 @@ def _download_requests(url: str, output_path: str) -> bool:
     if _requests is None:
         return False
     deadline = _deadline()
-    for _ in range(_MAX_REDIRECTS + 1):
-        resp = _requests.get(
-            url,
-            headers={"User-Agent": _USER_AGENT},
-            timeout=_socket_timeout(deadline),
-            allow_redirects=False,
-            stream=True,
-        )
-        try:
-            location = resp.headers.get("Location")
-            if resp.status_code in _REDIRECT_CODES and location:
-                url = urllib.parse.urljoin(url, location)
-                _check_redirect(url)
-                continue
-            resp.raise_for_status()
-            with open(output_path, "wb") as f:
-                total = _copy_bounded(resp.iter_content(_CHUNK_BYTES), f, deadline)
-            return total > 0
-        finally:
-            resp.close()
+    with _Watchdog(deadline) as watchdog:
+        for _ in range(_MAX_REDIRECTS + 1):
+            resp = _requests.get(
+                url,
+                headers={"User-Agent": _USER_AGENT},
+                timeout=_socket_timeout(deadline),
+                allow_redirects=False,
+                stream=True,
+            )
+            watchdog.watch(resp)
+            try:
+                location = resp.headers.get("Location")
+                if resp.status_code in _REDIRECT_CODES and location:
+                    url = urllib.parse.urljoin(url, location)
+                    _check_redirect(url)
+                    continue
+                resp.raise_for_status()
+                with open(output_path, "wb") as f:
+                    total = _copy_bounded(resp.iter_content(_CHUNK_BYTES), f, deadline)
+                return total > 0
+            finally:
+                resp.close()
     raise urllib.error.URLError(f"more than {_MAX_REDIRECTS} redirects")
 
 
@@ -372,10 +443,32 @@ class _CheckedRedirectHandler(urllib.request.HTTPRedirectHandler):
 
 # No file:, ftp: or data: handler: only http(s), every redirect checked. The proxy handler
 # keeps http_proxy/https_proxy working; the policy still checks the target URL.
+class _WatchedHTTPConnection(http.client.HTTPConnection):
+    def connect(self):
+        super().connect()
+        _watch_current(self.sock)
+
+
+class _WatchedHTTPSConnection(http.client.HTTPSConnection):
+    def connect(self):
+        super().connect()
+        _watch_current(self.sock)
+
+
+class _WatchedHTTPHandler(urllib.request.HTTPHandler):
+    def http_open(self, req):
+        return self.do_open(_WatchedHTTPConnection, req)
+
+
+class _WatchedHTTPSHandler(urllib.request.HTTPSHandler):
+    def https_open(self, req):
+        return self.do_open(_WatchedHTTPSConnection, req, context=self._context)
+
+
 _URLLIB_HANDLERS = [
     urllib.request.ProxyHandler,
-    urllib.request.HTTPHandler,
-    urllib.request.HTTPSHandler,
+    _WatchedHTTPHandler,
+    _WatchedHTTPSHandler,
     urllib.request.HTTPDefaultErrorHandler,
     urllib.request.HTTPErrorProcessor,
     _CheckedRedirectHandler,
@@ -393,33 +486,46 @@ def _download_urllib(url: str, output_path: str) -> bool:
     """Download using Python urllib (fallback, HTTP/1.1 only)."""
     deadline = _deadline()
     req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
-    with _urllib_opener().open(req, timeout=_socket_timeout(deadline)) as resp:
-        with open(output_path, "wb") as f:
-            total = _copy_bounded(iter(lambda: resp.read(_CHUNK_BYTES), b""), f, deadline)
+    with _Watchdog(deadline) as watchdog:
+        with _urllib_opener().open(req, timeout=_socket_timeout(deadline)) as resp:
+            watchdog.watch(resp)
+            with open(output_path, "wb") as f:
+                total = _copy_bounded(iter(lambda: resp.read(_CHUNK_BYTES), b""), f, deadline)
     return total > 0
 
 
-def _policy_route(allow_private: bool):
-    """A ``page.route`` handler that aborts every request the policy refuses: the page,
-    its subresources and its navigations. The browser follows redirects without routing
-    them, so a navigation is fetched here without redirects and a refused ``Location``
-    is aborted too."""
+def _ms_left(deadline: float, cap_ms: float) -> float:
+    return max(1.0, min(cap_ms, (deadline - time.monotonic()) * 1000))
+
+
+def _policy_route(allow_private: bool, deadline: float):
+    """A ``page.route`` handler for every browser request. The browser does not route
+    the hops of a redirect, so the handler fetches each hop itself with redirects off,
+    checks it against the policy, and fulfils the request with the final answer. A
+    refused hop, too many hops, an answer over the size limit or any error aborts it."""
     def handle(route):
-        request = route.request
-        if url_problem(request.url, allow_private=allow_private):
-            route.abort("blockedbyclient")
-            return
-        if not request.is_navigation_request():
-            route.continue_()
-            return
-        response = route.fetch(max_redirects=0)
-        location = response.headers.get("location")
-        if response.status in _REDIRECT_CODES and location:
-            target = urllib.parse.urljoin(request.url, location)
-            if url_problem(target, allow_private=allow_private):
-                route.abort("blockedbyclient")
+        try:
+            url = route.request.url
+            for _ in range(_MAX_REDIRECTS + 1):
+                if url_problem(url, allow_private=allow_private):
+                    break
+                response = route.fetch(url=url, max_redirects=0,
+                                       timeout=_ms_left(deadline, 30000))
+                location = response.headers.get("location")
+                if response.status in _REDIRECT_CODES and location:
+                    url = urllib.parse.urljoin(url, location)
+                    continue
+                length = response.headers.get("content-length", "")
+                if length.isdigit() and int(length) > MAX_DOWNLOAD_BYTES:
+                    break
+                route.fulfill(response=response)
                 return
-        route.fulfill(response=response)
+            route.abort("blockedbyclient")
+        except Exception:
+            try:
+                route.abort("failed")
+            except Exception:
+                pass
     return handle
 
 
@@ -435,11 +541,13 @@ def _download_playwright(url: str, output_path: str) -> bool:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
         try:
-            page.route("**/*", _policy_route(_allow_private_now()))
+            deadline = _deadline()
+            page.route("**/*", _policy_route(_allow_private_now(), deadline))
             # First try: expect a download event (some sites trigger JS downloads)
             try:
-                with page.expect_download(timeout=15000) as dl_info:
-                    page.goto(url, timeout=15000, wait_until="domcontentloaded")
+                with page.expect_download(timeout=_ms_left(deadline, 15000)) as dl_info:
+                    page.goto(url, timeout=_ms_left(deadline, 15000),
+                              wait_until="domcontentloaded")
                 download = dl_info.value
                 download.save_as(output_path)
                 if os.path.exists(output_path) and os.path.getsize(output_path) > MAX_DOWNLOAD_BYTES:
@@ -450,7 +558,7 @@ def _download_playwright(url: str, output_path: str) -> bool:
                 pass
 
             # Second try: navigate and read the response body directly
-            resp = page.goto(url, timeout=20000, wait_until="domcontentloaded")
+            resp = page.goto(url, timeout=_ms_left(deadline, 20000), wait_until="domcontentloaded")
             if resp is None:
                 return False
             body = resp.body()
