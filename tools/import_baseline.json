@@ -47,5 +47,12 @@
   "module": "simulate_subcircuits",
   "ordinal": 0,
   "rule": "no-cli-import"
+ },
+ {
+  "file": "skills/emc/scripts/emc_spice.py",
+  "line": 24,
+  "module": "spice_models",
+  "ordinal": 0,
+  "rule": "optional-to-optional"
  }
 ]

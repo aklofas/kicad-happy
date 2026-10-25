@@ -5,12 +5,14 @@ import sys
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-for sub in ("skills/spice/scripts", "skills/kicad/scripts"):
+for sub in ("skills/spice/scripts", "skills/kicad/scripts", "skills/emc/scripts"):
     sys.path.insert(0, os.path.join(ROOT, sub))
 
 import simulate_subcircuits  # noqa: E402
 from spice_model_cache import ModelOptions  # noqa: E402
-from spice_models import _sanitize_net, spice_ident, spice_text  # noqa: E402
+import emc_spice  # noqa: E402
+from spice_models import _sanitize_net, spice_echo, spice_ident, spice_text  # noqa: E402
+from spice_simulator import NgspiceBackend  # noqa: E402
 
 PAYLOAD = "X\n.control\nshell echo pwned\n.endc"
 MEAS = "<MEAS>"
@@ -107,12 +109,31 @@ def _generators():
     return table
 
 
-def _render(gen, det, **extra):
+def _library_mpn(det):
+    """A poisoned detection whose value still resolves to a library part."""
+    det = _poison(det)
+    if "value" in det:
+        det["value"] = "LM358" + PAYLOAD
+    return det
+
+
+def _assert_only_own_control_block(test, name, text, own=1):
+    lines = [l.strip().lower() for l in text.splitlines()]
+    test.assertEqual(lines.count(".control"), own, name)
+    test.assertEqual(lines.count(".endc"), own, name)
+    for line in lines:
+        for bad in (".control", "shell", ".endc", ".include", ".lib"):
+            if line == bad and own:
+                continue
+            test.assertFalse(line.startswith(bad), (name, line))
+
+
+def _render(gen, det, backend=None, **extra):
     kwargs = dict(extra)
     if gen.__name__ == "generate_opamp_circuit":
         kwargs["model_options"] = ModelOptions(offline=True)
     tb = gen(det, "out.txt", **kwargs)
-    return None if tb is None else tb.render(_Backend(), "out.txt")
+    return None if tb is None else tb.render(backend or _Backend(), "out.txt")
 
 
 class HelperTest(unittest.TestCase):
@@ -138,14 +159,28 @@ class InjectionTest(unittest.TestCase):
     def test_no_injected_line_in_any_template(self):
         for name, gen in _generators().items():
             for det in DETECTIONS[name]:
-                clean = _render(gen, det)
-                self.assertIsNotNone(clean, name)
-                text = _render(gen, _poison(det))
-                self.assertIsNotNone(text, name)
-                for line in text.splitlines():
-                    low = line.strip().lower()
-                    for bad in (".control", "shell", ".endc"):
-                        self.assertFalse(low.startswith(bad), (name, line))
+                self.assertIsNotNone(_render(gen, det), name)
+                for variant in (_poison(det), _library_mpn(det)):
+                    text = _render(gen, variant, backend=NgspiceBackend())
+                    self.assertIsNotNone(text, name)
+                    _assert_only_own_control_block(self, name, text)
+
+    def test_echo_values_are_encoded(self):
+        self.assertEqual(spice_echo("bridge"), "bridge")
+        self.assertEqual(spice_echo("lookup:LM358"), "lookup:LM358")
+        self.assertEqual(spice_echo("0.5"), "0.5")
+        self.assertEqual(spice_echo('a"b\nc > d; e$f'), "a_b c _ d_ e_f")
+        block = NgspiceBackend().format_measurement_block(
+            [("op", "")], [], "out.txt", {"k": 'v"\n.endc\nshell x'})
+        self.assertEqual(block.splitlines(),
+                         [".control", "op ", 'echo "k=v_ .endc shell x" > out.txt',
+                          "quit", ".endc"])
+
+    def test_emc_netlists_are_encoded(self):
+        caps = [{"ref": PAYLOAD, "farads": 1e-7, "esr_ohm": 0.01, "esl_h": 1e-9}]
+        text = emc_spice.generate_pdn_netlist(caps)
+        self.assertIn("* X .control shell echo pwned .endc:", text)
+        _assert_only_own_control_block(self, "emc", text, own=0)
 
     def test_free_text_ftype_and_context(self):
         det = dict(DETECTIONS["rc_filters"][0], type=PAYLOAD)

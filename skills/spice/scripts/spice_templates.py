@@ -497,7 +497,7 @@ def generate_opamp_circuit(det, output_file, context=None, parasitics=None,
         model_note = "* Model: IDEAL opamp (Aol=1e6, GBW~10MHz) — real part may have lower GBW"
     else:
         gbw = model_specs.get("gbw_hz", 0) if model_specs else 0
-        model_note = f"* Model: {spice_text(value)} behavioral ({model_source}, GBW={gbw/1e6:.1f}MHz)"
+        model_note = f"* Model: {spice_text(value)} behavioral ({spice_text(model_source)}, GBW={gbw/1e6:.1f}MHz)"
 
     gain_comment = ""
     if expected_gain is not None:

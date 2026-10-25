@@ -16,6 +16,8 @@ import shutil
 import subprocess
 import sys
 
+from spice_models import spice_echo
+
 
 # ---------------------------------------------------------------------------
 # Base class
@@ -170,7 +172,7 @@ class NgspiceBackend(SimulatorBackend):
         # Add extra variables
         if extra_vars:
             for key, val in extra_vars.items():
-                echo_vars.append(f"{key}={val}")
+                echo_vars.append(f"{spice_echo(key)}={spice_echo(val)}")
 
         # Echo all results to output file
         echo_str = " ".join(echo_vars)

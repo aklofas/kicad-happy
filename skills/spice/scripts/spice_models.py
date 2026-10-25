@@ -143,6 +143,15 @@ def spice_text(s):
                    for ch in str(s))
 
 
+def spice_echo(s):
+    """Text for a value inside a quoted control-block echo.
+
+    Control characters become spaces; characters that close the quote, redirect
+    the output, end the command or expand a variable become _.
+    """
+    return "".join("_" if ch in '"<>;$`\\' else ch for ch in spice_text(s))
+
+
 def spice_ident(s):
     """Text for an element-name suffix.
 
