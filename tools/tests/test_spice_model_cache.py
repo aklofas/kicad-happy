@@ -87,6 +87,31 @@ class ManifestTest(unittest.TestCase):
             self.assertEqual((d / "manifest.json").read_bytes(), before)
 
 
+class UnwritableCacheTest(unittest.TestCase):
+    def test_lookup_model_is_used_when_the_cache_cannot_be_written(self):
+        if hasattr(os, "geteuid") and os.geteuid() == 0:
+            self.skipTest("root can write a read-only directory")
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp) / "proj"
+            d.mkdir()
+            os.chmod(d, 0o555)
+            try:
+                if os.access(d, os.W_OK):
+                    self.skipTest("directory is still writable")
+                sink = []
+                subckt, source, specs = spice_model_cache.get_model_for_part(
+                    "LM358", "opamp", {"inputs": {"source_files": [str(d / "x.kicad_sch")]}},
+                    ModelOptions(offline=True), diagnostics=sink)
+            finally:
+                os.chmod(d, 0o755)
+        self.assertEqual(source, "lookup:LM358")
+        self.assertIn("LM358", subckt)
+        self.assertTrue(specs)
+        self.assertEqual(len(sink), 1, sink)
+        self.assertEqual(sink[0]["source"], "spice_model_cache.cache_model")
+        self.assertEqual(sink[0]["effect"], "model not cached")
+
+
 class SimulateCacheDirTest(unittest.TestCase):
     def _run(self, wd, model_options=None, analysis=None):
         import simulate_subcircuits as ss

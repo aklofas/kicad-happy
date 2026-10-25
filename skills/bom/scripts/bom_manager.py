@@ -370,7 +370,7 @@ def generate_bom(symbols: list[dict], convention: dict,
         # Extract canonical field values using the project's actual field names
         def get_canonical(canonical_name: str) -> str:
             if canonical_name == "mpn":
-                # KH-418 round 2: the project's declared MPN field is
+                # KH-418: the project's declared MPN field is
                 # authoritative among manufacturer-specific names when it is
                 # itself primary-tier and populated on this symbol — file
                 # order only breaks ties between OTHER primaries.

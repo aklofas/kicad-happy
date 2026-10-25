@@ -328,8 +328,12 @@ def get_model_for_part(mpn, component_type=None, context=None, options=None, *, 
                     subckt = generator(mpn, api_specs)
                     if use_cache:
                         cache_dir = resolve_cache_dir(context or {}, override_dir=opts.cache_dir)
-                        cache_model(cache_dir, mpn, subckt, api_specs,
-                                    api_source, resolved_type)
+                        try:
+                            cache_model(cache_dir, mpn, subckt, api_specs,
+                                        api_source, resolved_type)
+                        except OSError as exc:
+                            record(diagnostics, "spice_model_cache.cache_model", exc,
+                                   "model not cached")
                     return subckt, f"{api_source}", api_specs
         except ImportError:
             pass  # spice_spec_fetcher not available
@@ -345,7 +349,10 @@ def get_model_for_part(mpn, component_type=None, context=None, options=None, *, 
             subckt = generator(mpn, specs)
             if use_cache:
                 cache_dir = resolve_cache_dir(context or {}, override_dir=opts.cache_dir)
-                cache_model(cache_dir, mpn, subckt, specs, "lookup", resolved_type)
+                try:
+                    cache_model(cache_dir, mpn, subckt, specs, "lookup", resolved_type)
+                except OSError as exc:
+                    record(diagnostics, "spice_model_cache.cache_model", exc, "model not cached")
             return subckt, f"lookup:{mpn}", specs
 
     # --- Fallback: ideal model ---

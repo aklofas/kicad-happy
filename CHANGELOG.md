@@ -40,7 +40,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The SPICE model cache no longer falls back to one machine-wide temp directory: by default it is `spice/models/` beside the schematic the analysis JSON names (`file` or `inputs.source_files[0]`), only an analysis that names no source file caches under its run's workdir, and the manifest is written atomically, so parallel runs can no longer read a half-written manifest or serve another project's model. (KH-477)
 - `run_distributed_pdn_spice` renders its `.meas` lines (it never produced a result before) and removes its temp directory. (KH-478)
 - An `analysis/manifest.json` run id or output name can no longer point a write, copy or delete outside the analysis directory; such an entry prints a warning and is ignored.
-- The schematic and PCB CLIs skip a recursive or empty sub-sheet with a diagnostic, give a usage error for an empty root input, and resolve a KiCad 5 `.pro` input to its sibling schematic or board.
+- The schematic CLI skips a recursive or empty sub-sheet with a diagnostic, and the schematic and PCB CLIs give a usage error for an empty root input and resolve a KiCad 5 `.pro` input to its sibling schematic or board.
 - A wrong-typed `.kicad-happy.json` key prints a warning and uses its default, and a string `components` or `nets` suppression is read as one pattern instead of matching every component.
 - A read-only current directory no longer fails a run, and `--text` output survives a stdout that cannot encode UTF-8.
 - `what_if` recomputes a regulator's `estimated_vout` after a feedback-resistor change, and an impossible `--fix` target now exits 1 with one message; this is a behaviour change, it used to print a header and exit 0.

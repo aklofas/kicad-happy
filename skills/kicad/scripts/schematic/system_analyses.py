@@ -1,4 +1,4 @@
-"""System-level analyses (PDN impedance, sleep current, voltage derating, protocol compliance, power budget and sequencing, BOM optimization, test coverage, assembly complexity, USB compliance, inrush; v3 round 4): verbatim move from analyze_schematic.py; no behaviour change."""
+"""System-level analyses (PDN impedance, sleep current, voltage derating, protocol compliance, power budget and sequencing, BOM optimization, test coverage, assembly complexity, USB compliance, inrush): verbatim move from analyze_schematic.py; no behaviour change."""
 from __future__ import annotations
 
 import json

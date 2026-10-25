@@ -109,7 +109,7 @@ class TitleBlock:
 class Finding:
     """One entry in an analyzer's findings[] array.
 
-    This is the rich-finding envelope locked in v1.3 round 2. Detector-
+    This is the rich-finding envelope locked in v1.3. Detector-
     specific fields live in `extra` as a free-form dict (JSON object with
     no schema constraint for v1.4; tightened per-rule_id in v1.5).
     """

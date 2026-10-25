@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Refactor checker for kicad-happy (v3 arc).
 
-Subcommands (added across round 1):
+Subcommands:
   compare   strict-field JSON comparison of two snapshot directories
   snapshot  run the analyzers over a fixture tree into a snapshot directory
   imports   dependency-direction check (tools/layer_rules.json)
