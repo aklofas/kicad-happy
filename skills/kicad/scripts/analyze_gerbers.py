@@ -33,7 +33,7 @@ from schema_codec import emit_schema  # noqa: E402
 from inputs_builder import build_inputs, build_compat  # noqa: E402
 from capability_mode import get_capability_mode_ref  # noqa: E402
 from kicad_core.cli import (add_compact_arg, add_only_deterministic_arg, add_output_arg,  # noqa: E402
-                            add_schema_arg, add_stage_audience_args, add_text_arg)
+                            add_schema_arg, add_stage_audience_args, add_text_arg, utf8_text_stdout)
 
 ANALYZER_SOURCE = "gerber"
 
@@ -1567,6 +1567,8 @@ def main(argv: list[str] | None = None) -> int:
     add_stage_audience_args(parser)
     add_only_deterministic_arg(parser)
     args = parser.parse_args(argv)
+    if args.text:
+        utf8_text_stdout()
 
     if args.schema:
         emit_schema(GerberEnvelope)

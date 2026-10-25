@@ -33,7 +33,7 @@ from schema_codec import emit_schema
 from inputs_builder import build_inputs, build_upstream_artifact, build_compat
 from capability_mode import get_capability_mode_ref
 from kicad_core.cli import (add_compact_arg, add_config_arg, add_only_deterministic_arg, add_output_arg,
-                            add_schema_arg, add_stage_audience_args, add_text_arg)
+                            add_schema_arg, add_stage_audience_args, add_text_arg, utf8_text_stdout)
 
 ANALYZER_SOURCE = "emc"
 
@@ -337,6 +337,8 @@ def main(argv: list[str] | None = None) -> int:
     add_only_deterministic_arg(parser)
 
     args = parser.parse_args(argv)
+    if args.text:
+        utf8_text_stdout()
 
     if args.schema:
         emit_schema(EMCEnvelope)

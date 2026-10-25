@@ -21,7 +21,8 @@ from schematic.reader import (
 
 
 def parse_all_sheets(root_path: str, root_tree: list | None = None,
-                     symbol_instances_override: dict | None = None):
+                     symbol_instances_override: dict | None = None, *,
+                     diagnostics: list | None = None):
     """Parse a root schematic and all sub-sheets recursively.
 
     Performs Phase A of schematic analysis: recursive sheet traversal,
@@ -36,6 +37,8 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
             instead of extracting from root_tree. Required when parsing a
             sub-sheet that lacks (symbol_instances) — pass the root's
             symbol_instances collected during the peer-sheet traversal.
+        diagnostics: list sink for skipped sheets (a sheet that includes one of
+            its own ancestors, or an empty sub-sheet file).
 
     Returns:
         dict with keys:
@@ -66,15 +69,25 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
     root_title_block = {}
     sheets_parsed = []
 
-    to_parse = [(str(Path(root_path).resolve()), "")]
+    # Each queue entry carries the chain of sheet files above it: a sheet that
+    # names one of its own ancestors would otherwise expand forever.
+    to_parse = [(str(Path(root_path).resolve()), "", ())]
     parsed = set()
+    skipped = set()
 
     while to_parse:
-        sheet_path, inst_path = to_parse.pop(0)
+        sheet_path, inst_path, ancestors = to_parse.pop(0)
         parse_key = (sheet_path, inst_path)
         if parse_key in parsed:
             continue
         parsed.add(parse_key)
+        if ancestors and os.path.getsize(sheet_path) == 0:
+            if sheet_path not in skipped:
+                skipped.add(sheet_path)
+                record(diagnostics, "schematic.hierarchy.parse_all_sheets",
+                       ValueError(f"sheet file {os.path.basename(sheet_path)} is empty"),
+                       "empty sheet skipped")
+            continue
 
         sd = parse_single_sheet(sheet_path, instance_uuid=inst_path,
                                 symbol_instances=root_symbol_instances)
@@ -129,11 +142,20 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
             root_title_block = title_block
         sheets_parsed.append(sheet_path)
 
+        chain = ancestors + (sheet_path,)
         for sub_path, sub_uuid in sub_sheets:
             sub_resolved = str(Path(sub_path).resolve())
+            if sub_resolved in chain:
+                if sub_resolved not in skipped:
+                    skipped.add(sub_resolved)
+                    record(diagnostics, "schematic.hierarchy.parse_all_sheets",
+                           ValueError(f"sheet file {os.path.basename(sheet_path)} includes its own "
+                                      f"ancestor {os.path.basename(sub_resolved)}"),
+                           "recursive sheet skipped")
+                continue
             child_path = inst_path + "/" + sub_uuid if sub_uuid else inst_path
             if (sub_resolved, child_path) not in parsed:
-                to_parse.append((sub_resolved, child_path))
+                to_parse.append((sub_resolved, child_path, chain))
 
     merged_bus = {"bus_wires": [], "bus_entries": [], "bus_aliases": []}
     for be in all_bus_elements:

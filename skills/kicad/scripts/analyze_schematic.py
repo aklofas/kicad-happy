@@ -14,7 +14,8 @@ from schema_codec import emit_schema
 from inputs_builder import build_inputs, build_compat
 from capability_mode import get_capability_mode_ref
 from kicad_core.cli import (add_compact_arg, add_config_arg, add_only_deterministic_arg,
-                            add_output_arg, add_schema_arg, add_stage_audience_args, add_text_arg)
+                            add_output_arg, add_schema_arg, add_stage_audience_args, add_text_arg,
+                            utf8_text_stdout)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -38,6 +39,8 @@ def main(argv: list[str] | None = None) -> int:
     add_stage_audience_args(parser)
     add_only_deterministic_arg(parser)
     args = parser.parse_args(argv)
+    if args.text:
+        utf8_text_stdout()
 
     if args.schema:
         emit_schema(SchematicEnvelope)
@@ -46,7 +49,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("the following arguments are required: schematic")
 
     # Resolve .kicad_pro or directory to the root .kicad_sch
-    from kicad_core.project import resolve_project_input
+    from kicad_core.project import resolve_project_input, empty_input_error
     try:
         resolved, note = resolve_project_input(args.schematic, '.kicad_sch')
         if note:
@@ -55,6 +58,9 @@ def main(argv: list[str] | None = None) -> int:
         args.schematic = resolved
     except FileNotFoundError as e:
         parser.error(str(e))
+    _empty_error = empty_input_error(args.schematic, 'kicad_sch')
+    if _empty_error:
+        parser.error(_empty_error)
 
     # Load project config (for project settings — suppressions applied to
     # EMC/thermal findings, not schematic warnings which lack rule_ids)

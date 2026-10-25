@@ -33,7 +33,7 @@ import time
 # Allow imports from same directory
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _core_path  # noqa: F401
-from kicad_core.cli import add_compact_arg, add_output_arg, add_text_arg
+from kicad_core.cli import add_compact_arg, add_output_arg, add_text_arg, utf8_text_stdout
 from kicad_core.diagnostics import OnceSink
 
 from spice_templates import TEMPLATE_REGISTRY, TOPLEVEL_REGISTRY, list_supported_types, SpiceTestbench
@@ -555,6 +555,8 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     args = parser.parse_args(argv)
+    if args.text:
+        utf8_text_stdout()
 
     # Resolve input: --schematic, positional, or --analysis-dir auto-resolve
     input_path = args.schematic or args.input

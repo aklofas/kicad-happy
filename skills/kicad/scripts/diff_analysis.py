@@ -23,7 +23,7 @@ import sys
 
 from finding_schema import group_findings_by_detection_type
 from kicad_core.render import fmt_g4, fmt_signed, summary_or_title
-from kicad_core.cli import add_only_deterministic_arg, add_output_arg, add_text_arg
+from kicad_core.cli import add_only_deterministic_arg, add_output_arg, add_text_arg, utf8_text_stdout
 from diff_engine import (
     SIGNAL_REGISTRY, _resolve, _identity_key, _generic_identity, detect_type, diff_schematic,
     diff_pcb, diff_emc, diff_spice, diff_thermal, diff_deep_review, classify_regressions,
@@ -346,6 +346,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="Show metric trends across last N runs (requires --analysis-dir)")
     add_only_deterministic_arg(parser, consumer=True)
     args = parser.parse_args(argv)
+    if args.text:
+        utf8_text_stdout()
 
     # Resolve runs from analysis cache if --analysis-dir is provided
     if args.analysis_dir:

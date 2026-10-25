@@ -30,7 +30,8 @@ from inputs_builder import build_inputs, build_upstream_artifact, build_compat
 from kicad_core.render import wrap_lines
 from capability_mode import get_capability_mode_ref
 from kicad_core.cli import (add_config_arg, add_only_deterministic_arg, add_output_arg, add_schema_arg,
-                            add_stage_audience_args, add_text_arg)
+                            add_stage_audience_args, add_text_arg, envelope_type_error,
+                            utf8_text_stdout)
 from lookup_detectors import detect_tj_exceeds_max
 
 ANALYZER_SOURCE = "thermal"
@@ -929,6 +930,8 @@ def main(argv: list[str] | None = None) -> int:
     add_stage_audience_args(parser)
     add_only_deterministic_arg(parser)
     args = parser.parse_args(argv)
+    if args.text:
+        utf8_text_stdout()
 
     if args.schema:
         emit_schema(ThermalEnvelope)
@@ -959,6 +962,10 @@ def main(argv: list[str] | None = None) -> int:
     except (json.JSONDecodeError, OSError) as e:
         print(f"Error reading schematic: {e}", file=sys.stderr)
         return 1
+    _type_error = envelope_type_error('--schematic', args.schematic, schematic, 'schematic',
+                                      'analyze_schematic.py')
+    if _type_error:
+        parser.error(_type_error)
 
     if 'signal_analysis' in schematic and 'findings' not in schematic:
         print(f'Error: {args.schematic} uses the pre-v1.3 '
@@ -973,6 +980,9 @@ def main(argv: list[str] | None = None) -> int:
     except (json.JSONDecodeError, OSError) as e:
         print(f"Error reading PCB: {e}", file=sys.stderr)
         return 1
+    _type_error = envelope_type_error('--pcb', args.pcb, pcb, 'pcb', 'analyze_pcb.py')
+    if _type_error:
+        parser.error(_type_error)
 
     # Resolve datasheets directory
     extract_dir = args.datasheets

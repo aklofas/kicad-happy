@@ -342,6 +342,21 @@ def resolve_project_input(path: str, target_ext: str = '.kicad_sch') -> tuple:
                 f"does not exist in {parent_dir}")
         return candidate, f"Resolved from {os.path.basename(path)}"
 
+    # --- Input is a KiCad 5 .pro file: the sibling .sch / .kicad_pcb ---
+    if path.endswith('.pro'):
+        if not os.path.isfile(path):
+            raise FileNotFoundError(f"Project file not found: {path}")
+        pro_stem = os.path.basename(path)[:-len('.pro')]
+        parent_dir = os.path.dirname(path)
+        exts = ('.sch', '.kicad_sch') if target_ext == '.kicad_sch' else (target_ext,)
+        for ext in exts:
+            candidate = os.path.join(parent_dir, pro_stem + ext)
+            if os.path.isfile(candidate):
+                return candidate, f"Resolved from {os.path.basename(path)}"
+        raise FileNotFoundError(
+            f"Project '{pro_stem}' found but {' / '.join(pro_stem + e for e in exts)} "
+            f"does not exist in {parent_dir}; pass the schematic or board file itself")
+
     # --- Input already has the target extension ---
     if path.endswith(target_ext):
         if not os.path.isfile(path):
@@ -352,6 +367,22 @@ def resolve_project_input(path: str, target_ext: str = '.kicad_sch') -> tuple:
     if not os.path.isfile(path):
         raise FileNotFoundError(f"File not found: {path}")
     return path, ""
+
+
+_INPUT_KIND = {'kicad_sch': 'a KiCad schematic (.kicad_sch or legacy .sch)',
+               'kicad_pcb': 'a KiCad board (.kicad_pcb)'}
+
+
+def empty_input_error(path: str, expected: str) -> str | None:
+    """Return a usage-error message when *path* holds nothing but whitespace (the parser has
+    nothing to read), else None. *expected* is 'kicad_sch' or 'kicad_pcb'."""
+    with open(path, 'r', encoding='utf-8', errors='replace') as f:
+        while True:
+            chunk = f.read(65536)
+            if not chunk:
+                return f"{path}: file is empty; expected {_INPUT_KIND[expected]}"
+            if chunk.strip():
+                return None
 
 
 def extract_pro_net_classes(pro: dict) -> list[dict]:

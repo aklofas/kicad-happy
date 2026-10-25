@@ -30,7 +30,8 @@ from schema_codec import emit_schema
 from inputs_builder import build_inputs, build_upstream_artifact, build_compat
 from capability_mode import get_capability_mode_ref
 from kicad_core.cli import (add_only_deterministic_arg, add_output_arg, add_schema_arg,
-                            add_stage_audience_args, add_text_arg)
+                            add_stage_audience_args, add_text_arg, envelope_type_error,
+                            utf8_text_stdout)
 
 ANALYZER_SOURCE = "cross"
 
@@ -1067,6 +1068,8 @@ def main(argv: list[str] | None = None) -> int:
     add_only_deterministic_arg(parser)
 
     args = parser.parse_args(argv)
+    if args.text:
+        utf8_text_stdout()
 
     if args.schema:
         emit_schema(CrossAnalysisEnvelope)
@@ -1089,7 +1092,7 @@ def main(argv: list[str] | None = None) -> int:
     if not args.schematic:
         parser.error('--schematic is required (or pass --analysis-dir with a current run containing schematic.json)')
 
-    def _load_analyzer_json(flag, path, writer):
+    def _load_analyzer_json(flag, path, writer, expected):
         # A first-time user naturally passes the project folder or the
         # .kicad_sch / .kicad_pcb itself; give a usage error, not a traceback.
         if not os.path.isfile(path):
@@ -1098,15 +1101,19 @@ def main(argv: list[str] | None = None) -> int:
                          f'{writer} writes (--output)')
         try:
             with open(path, 'r') as f:
-                return json.load(f)
+                data = json.load(f)
         except json.JSONDecodeError as e:
             parser.error(f'{flag} {path}: not JSON ({e}); expected the JSON '
                          f'file {writer} writes (--output)')
+        type_error = envelope_type_error(flag, path, data, expected, writer)
+        if type_error:
+            parser.error(type_error)
+        return data
 
     t0 = time.time()
 
     schematic = _load_analyzer_json('--schematic', args.schematic,
-                                    'analyze_schematic.py')
+                                    'analyze_schematic.py', 'schematic')
 
     if 'signal_analysis' in schematic and 'findings' not in schematic:
         print(f'Error: {args.schematic} uses the pre-v1.3 '
@@ -1117,7 +1124,7 @@ def main(argv: list[str] | None = None) -> int:
 
     pcb = None
     if args.pcb:
-        pcb = _load_analyzer_json('--pcb', args.pcb, 'analyze_pcb.py')
+        pcb = _load_analyzer_json('--pcb', args.pcb, 'analyze_pcb.py', 'pcb')
 
     # Build inputs provenance block (Track 1.3).
     from pathlib import Path as _Path

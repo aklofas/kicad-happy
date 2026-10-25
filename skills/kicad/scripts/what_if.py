@@ -31,7 +31,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
 
 from kicad_core.values import parse_value
 from kicad_core.render import fmt_g4, fmt_signed
-from kicad_core.cli import add_only_deterministic_arg, add_output_arg, add_text_arg
+from kicad_core.cli import add_only_deterministic_arg, add_output_arg, add_text_arg, utf8_text_stdout
 from finding_schema import group_findings_by_detection_type, is_old_schema
 
 
@@ -284,6 +284,8 @@ def _get_det_label(det: dict, det_type: str) -> str:
             refs.append(det[key]["ref"])
     if "reference" in det:
         refs.append(det["reference"])
+    if det_type == "power_regulators" and det.get("ref"):
+        refs.append(det["ref"])
     for key in ("feedback_resistor", "input_resistor"):
         if key in det and isinstance(det[key], dict) and "ref" in det[key]:
             refs.append(det[key]["ref"])
@@ -1274,6 +1276,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="Scan analysis for fixable issues and suggest component changes")
     add_only_deterministic_arg(parser, consumer=True)
     args = parser.parse_args(argv)
+    if args.text:
+        utf8_text_stdout()
 
     if not args.changes and not args.fix and not args.suggest_fixes:
         parser.error("at least one REF=VALUE change, --fix, or --suggest-fixes is required")

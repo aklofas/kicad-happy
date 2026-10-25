@@ -31,6 +31,7 @@ if str(Path(__file__).parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).parent))
 from kicad_core.project import load_jsonc
 from kicad_core.model import ResolvedConfig
+from kicad_core.diagnostics import record
 
 
 # ---------------------------------------------------------------------------
@@ -210,8 +211,18 @@ def _load_and_validate(path: str) -> Optional[Dict[str, Any]]:
         print(f'Warning: {path} root must be an object', file=sys.stderr)
         return None
 
+    def _wrong_type(container: dict, key: str, label: str, expected: str) -> None:
+        record(None, "project_config._load_and_validate",
+               TypeError(f"{path}: {label} must be {expected}, got "
+                         f"{type(container[key]).__name__}"),
+               f"{label} ignored, default used")
+        del container[key]
+
     # Validate suppressions if present
     raw_suppressions = cfg.get('suppressions')
+    if raw_suppressions is not None and not isinstance(raw_suppressions, list):
+        _wrong_type(cfg, 'suppressions', 'suppressions', 'a list')
+        raw_suppressions = None
     if raw_suppressions is not None:
         valid_suppressions = []
         for i, s in enumerate(raw_suppressions):
@@ -223,8 +234,37 @@ def _load_and_validate(path: str) -> Optional[Dict[str, Any]]:
                 print(f'Warning: {path}: suppressions[{i}] missing required '
                       f'"rule_id", skipping', file=sys.stderr)
                 continue
+            # A pattern list given as one string is one pattern, not one per character.
+            bad_patterns = False
+            for list_key in ('components', 'nets'):
+                val = s.get(list_key)
+                if isinstance(val, str):
+                    record(None, "project_config._load_and_validate",
+                           TypeError(f"{path}: suppressions[{i}].{list_key} must be a list, got str"),
+                           f"suppressions[{i}].{list_key} read as a one-element list")
+                    s[list_key] = [val]
+                elif val is not None and not isinstance(val, list):
+                    record(None, "project_config._load_and_validate",
+                           TypeError(f"{path}: suppressions[{i}].{list_key} must be a list, got "
+                                     f"{type(val).__name__}"),
+                           f"suppressions[{i}] ignored")
+                    bad_patterns = True
+            if bad_patterns:
+                continue
             valid_suppressions.append(s)
         cfg['suppressions'] = valid_suppressions
+
+    # Validate project section (ambient temperature feeds thermal arithmetic)
+    raw_project = cfg.get('project')
+    if raw_project is not None:
+        if not isinstance(raw_project, dict):
+            _wrong_type(cfg, 'project', 'project', 'an object')
+        else:
+            ambient = raw_project.get('ambient_temperature_c')
+            if ambient is not None and (isinstance(ambient, bool)
+                                        or not isinstance(ambient, (int, float))):
+                _wrong_type(raw_project, 'ambient_temperature_c',
+                            'project.ambient_temperature_c', 'a number')
 
     # Validate preferred_suppliers
     raw_suppliers = cfg.get('preferred_suppliers')
@@ -252,7 +292,9 @@ def _load_and_validate(path: str) -> Optional[Dict[str, Any]]:
             del cfg['bom']
         else:
             group_by = raw_bom.get('group_by')
-            if group_by is not None and group_by not in VALID_BOM_GROUP_BY:
+            if group_by is not None and not isinstance(group_by, str):
+                _wrong_type(raw_bom, 'group_by', 'bom.group_by', 'a string')
+            elif group_by is not None and group_by not in VALID_BOM_GROUP_BY:
                 print(f'Warning: {path}: bom.group_by "{group_by}" invalid '
                       f'(expected {VALID_BOM_GROUP_BY}), ignoring',
                       file=sys.stderr)
@@ -309,6 +351,30 @@ def _load_and_validate(path: str) -> Optional[Dict[str, Any]]:
             print(f'Warning: {path}: analysis.output_dir must be a non-empty '
                   f'string, ignoring', file=sys.stderr)
             del raw_analysis['output_dir']
+
+    # Validate design_intent types (values outside the vocabularies already fall back to auto)
+    if 'design_intent' in cfg:
+        raw_intent = cfg['design_intent']
+        if not isinstance(raw_intent, dict):
+            _wrong_type(cfg, 'design_intent', 'design_intent', 'an object')
+        else:
+            def _is_number(v):
+                return isinstance(v, (int, float)) and not isinstance(v, bool)
+            checks = (
+                ('product_class', lambda v: isinstance(v, str), 'a string'),
+                ('target_market', lambda v: isinstance(v, str), 'a string'),
+                ('ipc_class', _is_number, 'a number'),
+                ('expected_lifetime_years', _is_number, 'a number'),
+                ('test_coverage_target', _is_number, 'a number'),
+                ('operating_temp_range',
+                 lambda v: isinstance(v, list) and len(v) == 2 and all(_is_number(t) for t in v),
+                 'a [min, max] list of numbers'),
+                ('operating_temp_min', _is_number, 'a number'),
+                ('operating_temp_max', _is_number, 'a number'),
+            )
+            for key, ok, expected in checks:
+                if key in raw_intent and not ok(raw_intent[key]):
+                    _wrong_type(raw_intent, key, f'design_intent.{key}', expected)
 
     return cfg
 
@@ -735,6 +801,8 @@ def matches_suppression(finding: Dict[str, Any],
 
     # Component match (optional filter)
     sup_components = suppression.get('components')
+    if isinstance(sup_components, str):
+        sup_components = [sup_components]
     if sup_components:
         finding_components = finding.get('components', [])
         if not finding_components:
@@ -745,6 +813,8 @@ def matches_suppression(finding: Dict[str, Any],
 
     # Net match (optional filter)
     sup_nets = suppression.get('nets')
+    if isinstance(sup_nets, str):
+        sup_nets = [sup_nets]
     if sup_nets:
         finding_nets = finding.get('nets', [])
         if not finding_nets:

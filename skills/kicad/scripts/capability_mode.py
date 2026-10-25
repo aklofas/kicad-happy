@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Optional
 
 from run_id import generate_run_id
+from kicad_core.diagnostics import record as record_diagnostic
 
 _SCHEMAS_DIR = Path(__file__).resolve().parent.parent.parent / "datasheets" / "schemas"
 
@@ -164,7 +165,14 @@ def get_or_create_capability_mode(
         # (no self-heal under os.link first-writer-wins; see
         # _read_capability_mode docstring for recovery).
     record = _fresh_record(datasheet_extraction, cache_dir, llm_review_status, schema_versions)
-    analysis_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        analysis_dir.mkdir(parents=True, exist_ok=True)
+        fd, tmp_path = tempfile.mkstemp(dir=analysis_dir, prefix=".capmode-", suffix=".tmp")
+    except OSError as exc:
+        # A read-only directory (sandbox, read-only checkout) must not fail the analysis.
+        record_diagnostic(None, "capability_mode.get_or_create_capability_mode", exc,
+                          f"{CAPABILITY_MODE_FILENAME} not written, in-memory record used")
+        return record
     # Atomic create: stage the full record to a temp file in the same
     # directory, then os.link() it into place. os.link raises
     # FileExistsError if the target already exists, so it is an atomic
@@ -177,7 +185,6 @@ def get_or_create_capability_mode(
     #      exists() check above, exactly one os.link() succeeds; the loser
     #      reads the winner's record, so every analyzer in the run shares
     #      one run_id (HI-7).
-    fd, tmp_path = tempfile.mkstemp(dir=analysis_dir, prefix=".capmode-", suffix=".tmp")
     try:
         with os.fdopen(fd, "w") as f:
             f.write(json.dumps(record, indent=2, sort_keys=True) + "\n")
@@ -191,6 +198,11 @@ def get_or_create_capability_mode(
             if winner is not None:
                 _warn_malformed(path, winner)
             return record
+    except OSError as exc:
+        # Full disk, or a filesystem without hard links (FAT, exFAT).
+        record_diagnostic(None, "capability_mode.get_or_create_capability_mode", exc,
+                          f"{CAPABILITY_MODE_FILENAME} not written, in-memory record used")
+        return record
     finally:
         try:
             os.unlink(tmp_path)

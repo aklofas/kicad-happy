@@ -563,6 +563,9 @@ def main():
                         help="Treat warnings as failures")
 
     args = parser.parse_args()
+    if args.text:
+        from kicad_core.cli import utf8_text_stdout
+        utf8_text_stdout()
 
     def _load(path):
         if not path or not os.path.isfile(path):

@@ -48,3 +48,29 @@ def add_text_arg(parser, help: str) -> None:
 def add_config_arg(parser) -> None:
     parser.add_argument("--config", default=None,
                         help="Path to .kicad-happy.json project config file")
+
+
+def utf8_text_stdout() -> None:
+    """For --text output: re-encode stdout as UTF-8 when it is not, so a redirect under a
+    legacy code page (Windows cp1252) never fails on the report's Ω, ≤ or ≥."""
+    import sys
+    enc = (getattr(sys.stdout, "encoding", None) or "").lower().replace("-", "").replace("_", "")
+    if enc != "utf8" and hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+
+_JSON_TYPE_NAMES = {list: "array", str: "string", int: "number", float: "number", bool: "boolean"}
+
+
+def envelope_type_error(flag: str, path: str, data, expected: str, writer: str) -> str | None:
+    """Usage-error text when *data* (loaded from *path*) is not a *expected* analyzer envelope
+    (its ``analyzer_type``), else None. Envelopes without the marker are accepted."""
+    if not isinstance(data, dict):
+        kind = "null" if data is None else _JSON_TYPE_NAMES.get(type(data), type(data).__name__)
+        return (f"{flag} {path}: a JSON {kind}, not an analyzer envelope; "
+                f"expected the JSON file {writer} writes (--output)")
+    found = data.get("analyzer_type")
+    if found is not None and found != expected:
+        return (f"{flag} {path}: analyzer_type is '{found}', not '{expected}'; "
+                f"expected the JSON file {writer} writes (--output)")
+    return None

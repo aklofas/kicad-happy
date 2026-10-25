@@ -22,6 +22,8 @@ import tempfile
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
+from kicad_core.diagnostics import record
+
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -56,6 +58,25 @@ GITIGNORE_CONTENT = """\
 !.gitignore
 !manifest.json
 """
+
+def _is_run_id(analysis_dir: str, rid: Any) -> bool:
+    """True when *rid* names one run folder directly inside *analysis_dir*.
+
+    Manifest run ids become paths that are written into and deleted; a manifest is
+    user-editable (track_in_git commits it), so an absolute, dotted or nested id must
+    never resolve outside the analysis directory.
+    """
+    if not isinstance(rid, str) or not rid or rid in ('.', '..'):
+        return False
+    if os.path.basename(rid) != rid or os.path.isabs(rid) or '/' in rid or '\\' in rid:
+        return False
+    root = os.path.realpath(analysis_dir)
+    target = os.path.realpath(os.path.join(analysis_dir, rid))
+    try:
+        return target != root and os.path.commonpath([root, target]) == root
+    except ValueError:
+        return False
+
 
 def _empty_manifest() -> Dict[str, Any]:
     """Return a fresh empty manifest (avoids mutable default sharing)."""
@@ -297,6 +318,11 @@ def create_run(analysis_dir: str,
     # unrelated outputs. (KH-281 follow-up: original guard was too blunt.)
     prev_run_id = manifest.get('current')
     prev_outputs = {}
+    if prev_run_id and not _is_run_id(analysis_dir, prev_run_id):
+        record(None, "analysis_cache.create_run",
+               ValueError(f"manifest current run id {prev_run_id!r} is not a folder name"),
+               "run id ignored")
+        prev_run_id = None
     if prev_run_id and prev_run_id in manifest.get('runs', {}):
         prev_run_dir = os.path.join(analysis_dir, prev_run_id)
         prev_run_info = manifest['runs'][prev_run_id]
@@ -373,6 +399,16 @@ def overwrite_current(analysis_dir: str,
                    source_hashes=source_hashes or {},
                    scripts={})
         return
+    if not _is_run_id(analysis_dir, current_id):
+        record(None, "analysis_cache.overwrite_current",
+               ValueError(f"manifest current run id {current_id!r} is not a folder name"),
+               "run id ignored")
+        manifest['current'] = None
+        save_manifest(analysis_dir, manifest)
+        create_run(analysis_dir, outputs_dir,
+                   source_hashes=source_hashes or {},
+                   scripts={})
+        return
 
     current_dir = os.path.join(analysis_dir, current_id)
     os.makedirs(current_dir, exist_ok=True)
@@ -433,6 +469,12 @@ def prune_runs(analysis_dir: str, retention: int = 5) -> List[str]:
             runs.items(), key=lambda x: x[1].get('generated', ''))
         if not meta.get('pinned', False) and rid != current_id
     ]
+    for rid, _meta in list(unpinned):
+        if not _is_run_id(analysis_dir, rid):
+            record(None, "analysis_cache.prune_runs",
+                   ValueError(f"manifest run id {rid!r} is not a folder name"),
+                   "run id ignored")
+            unpinned.remove((rid, _meta))
 
     # Always keep current in the unpinned count
     unpinned_count = len(unpinned) + (1 if current_id and current_id in runs
@@ -491,6 +533,8 @@ def get_current_run(analysis_dir: str
     current_id = manifest.get('current')
     if not current_id or current_id not in manifest.get('runs', {}):
         return None
+    if not _is_run_id(analysis_dir, current_id):
+        return None
     run_dir = os.path.join(analysis_dir, current_id)
     return run_dir, manifest['runs'][current_id]
 
@@ -506,6 +550,8 @@ def list_runs(analysis_dir: str, limit: int = 0) -> list:
     sorted_ids = sorted(runs.keys(), reverse=True)
     result = []
     for run_id in sorted_ids:
+        if not _is_run_id(analysis_dir, run_id):
+            continue
         run_dir = os.path.join(analysis_dir, run_id)
         if os.path.isdir(run_dir):
             result.append((run_id, runs[run_id]))
