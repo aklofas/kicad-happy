@@ -226,6 +226,119 @@ class DownloadPolicyTest(unittest.TestCase):
         self.assertEqual(broken.calls, [])
 
 
+class _FakeRoute:
+    def __init__(self, url, log, navigation=False, status=200, location=None):
+        self.request = mock.Mock(url=url)
+        self.request.is_navigation_request.return_value = navigation
+        self._log, self._status, self._location = log, status, location
+
+    def abort(self, reason=None):
+        self._log.append(("abort", self.request.url))
+
+    def continue_(self):
+        self._log.append(("continue", self.request.url))
+
+    def fetch(self, max_redirects=None):
+        self._log.append(("fetch", self.request.url, max_redirects))
+        headers = {"location": self._location} if self._location else {}
+        return mock.Mock(status=self._status, headers=headers)
+
+    def fulfill(self, response=None):
+        self._log.append(("fulfill", self.request.url))
+
+
+def _fake_playwright(routes, log):
+    """A ``sync_playwright`` stand-in: its page records ``route`` registrations and, on
+    ``goto``, drives the registered handler with each fake route in ``routes``."""
+    registered = []
+
+    class Page:
+        def route(self, pattern, handler):
+            registered.append(pattern)
+            self.handler = handler
+
+        def expect_download(self, timeout=None):
+            raise RuntimeError("no download event")
+
+        def goto(self, url, **kw):
+            assert registered, "route must be installed before navigation"
+            for make in routes:
+                self.handler(make(log))
+            return None
+
+        def close(self):
+            pass
+
+    class Browser:
+        def new_page(self):
+            return Page()
+
+        def close(self):
+            pass
+
+    class P:
+        chromium = mock.Mock(launch=lambda headless: Browser())
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    return (lambda: P()), registered
+
+
+class PlaywrightRouteTest(unittest.TestCase):
+    def test_browser_requests_follow_the_policy(self):
+        log = []
+        routes = [
+            lambda log: _FakeRoute("https://example.com/x.pdf", log, navigation=True),
+            lambda log: _FakeRoute("http://127.0.0.1/admin", log),
+            lambda log: _FakeRoute("https://cdn.example.org/app.js", log),
+            lambda log: _FakeRoute("https://example.com/next", log, navigation=True,
+                                   status=302, location="http://169.254.169.254/latest"),
+            lambda log: _FakeRoute("https://example.com/moved", log, navigation=True,
+                                   status=301, location="https://cdn.example.org/x.pdf"),
+            lambda log: _FakeRoute("file:///etc/passwd", log, navigation=True),
+        ]
+        fake, registered = _fake_playwright(routes, log)
+        with tempfile.TemporaryDirectory() as d, \
+             mock.patch.object(download, "_resolve", return_value=PUBLIC), \
+             mock.patch.object(download, "_allow_private_hosts", return_value=False), \
+             mock.patch.object(download, "_requests", None), \
+             mock.patch.object(download, "_download_urllib", lambda u, p: False), \
+             mock.patch.object(download, "_sync_playwright", fake), \
+             redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            self.assertFalse(download.download_pdf("https://example.com/x.pdf",
+                                                   os.path.join(d, "x.pdf")))
+        self.assertEqual(registered, ["**/*"])
+        self.assertEqual(log, [
+            ("fetch", "https://example.com/x.pdf", 0),
+            ("fulfill", "https://example.com/x.pdf"),
+            ("abort", "http://127.0.0.1/admin"),
+            ("continue", "https://cdn.example.org/app.js"),
+            ("fetch", "https://example.com/next", 0),
+            ("abort", "https://example.com/next"),
+            ("fetch", "https://example.com/moved", 0),
+            ("fulfill", "https://example.com/moved"),
+            ("abort", "file:///etc/passwd"),
+        ])
+
+
+class UrllibOpenerTest(unittest.TestCase):
+    def test_opener_keeps_proxies_and_has_no_local_schemes(self):
+        # A ProxyHandler without any proxy configured registers no methods and is dropped.
+        proxies = {"http_proxy": "http://proxy.example:3128",
+                   "https_proxy": "http://proxy.example:3128"}
+        with mock.patch.dict(os.environ, proxies):
+            handlers = download._urllib_opener().handlers
+        kinds = [type(h) for h in handlers]
+        self.assertTrue(any(issubclass(k, urllib.request.ProxyHandler) for k in kinds))
+        for banned in (urllib.request.FileHandler, urllib.request.FTPHandler,
+                       urllib.request.DataHandler, urllib.request.UnknownHandler):
+            self.assertFalse(any(issubclass(k, banned) for k in kinds), banned)
+
+
 class AllowPrivateTest(unittest.TestCase):
     def _allow(self, home, cwd=None):
         old = os.getcwd()

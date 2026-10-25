@@ -370,8 +370,10 @@ class _CheckedRedirectHandler(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
-# No file:, ftp: or data: handler and no proxy handler: only http(s), every redirect checked.
+# No file:, ftp: or data: handler: only http(s), every redirect checked. The proxy handler
+# keeps http_proxy/https_proxy working; the policy still checks the target URL.
 _URLLIB_HANDLERS = [
+    urllib.request.ProxyHandler,
     urllib.request.HTTPHandler,
     urllib.request.HTTPSHandler,
     urllib.request.HTTPDefaultErrorHandler,
@@ -397,6 +399,30 @@ def _download_urllib(url: str, output_path: str) -> bool:
     return total > 0
 
 
+def _policy_route(allow_private: bool):
+    """A ``page.route`` handler that aborts every request the policy refuses: the page,
+    its subresources and its navigations. The browser follows redirects without routing
+    them, so a navigation is fetched here without redirects and a refused ``Location``
+    is aborted too."""
+    def handle(route):
+        request = route.request
+        if url_problem(request.url, allow_private=allow_private):
+            route.abort("blockedbyclient")
+            return
+        if not request.is_navigation_request():
+            route.continue_()
+            return
+        response = route.fetch(max_redirects=0)
+        location = response.headers.get("location")
+        if response.status in _REDIRECT_CODES and location:
+            target = urllib.parse.urljoin(request.url, location)
+            if url_problem(target, allow_private=allow_private):
+                route.abort("blockedbyclient")
+                return
+        route.fulfill(response=response)
+    return handle
+
+
 def _download_playwright(url: str, output_path: str) -> bool:
     """Download using Playwright headless browser.
 
@@ -409,6 +435,7 @@ def _download_playwright(url: str, output_path: str) -> bool:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
         try:
+            page.route("**/*", _policy_route(_allow_private_now()))
             # First try: expect a download event (some sites trigger JS downloads)
             try:
                 with page.expect_download(timeout=15000) as dl_info:
