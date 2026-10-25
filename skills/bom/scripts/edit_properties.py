@@ -47,7 +47,8 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from kicad_sexp import escape_kicad_string, find_matching_paren, iter_placed_symbol_blocks
+from kicad_sexp import (atomic_write_text, escape_kicad_string, find_matching_paren,
+                        iter_placed_symbol_blocks)
 
 
 # ---------------------------------------------------------------------------
@@ -127,6 +128,7 @@ def build_new_property(
 ) -> str:
     """Build a new (property ...) block for insertion."""
     escaped_value = escape_kicad_string(prop_value)
+    prop_name = escape_kicad_string(prop_name)
     inner = indent + "\t"
     return (
         f'\n{indent}(property "{prop_name}" "{escaped_value}" (at 0 0 0)\n'
@@ -413,7 +415,7 @@ def main():
         print(f"Backup: {backup_path}", file=sys.stderr)
 
     # Write modified file
-    args.schematic.write_text(modified_text, encoding="utf-8")
+    atomic_write_text(args.schematic, modified_text)
     print(
         f"\nDone: {total_changes} properties changed "
         f"({actions.get('updated', 0)} updated, {actions.get('added', 0)} added).",

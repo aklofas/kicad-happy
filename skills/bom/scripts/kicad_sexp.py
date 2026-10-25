@@ -6,7 +6,10 @@ and sync_datasheet_urls.py.
 
 from __future__ import annotations
 
+import os
 import re
+import shutil
+import tempfile
 from pathlib import Path
 
 
@@ -72,7 +75,27 @@ def iter_placed_symbol_blocks(text: str) -> list[tuple[int, int, str]]:
 
 def escape_kicad_string(s: str) -> str:
     """Escape a string for use in a KiCad S-expression property value."""
-    return s.replace('\\', '\\\\').replace('"', '\\"')
+    return (s.replace('\\', '\\\\').replace('"', '\\"')
+             .replace('\n', '\\n').replace('\r', '\\r'))
+
+
+def atomic_write_text(path: Path, text: str) -> None:
+    """Write UTF-8 text to path (symlinks resolved) via a temp file and os.replace."""
+    target = Path(path).resolve()
+    fd, tmp = tempfile.mkstemp(dir=str(target.parent), prefix=target.name + ".",
+                               suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        if target.exists():
+            shutil.copymode(target, tmp)
+        os.replace(tmp, target)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def find_sub_sheets(text: str, base_dir: Path) -> list[Path]:

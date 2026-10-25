@@ -16,6 +16,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - SPICE no longer pastes a project's cached model (`spice/models/*.sub`) into the netlist when it contains simulator control commands or includes any file; the part falls back to the next model source with one `diagnostics` record. `spice.trust_project_models: true` in `~/.kicad-happy.json` restores verbatim use. Model files are written without following symlinks. (KH-500)
 - The DigiKey access token is cached in a private per-user folder (`~/.cache/kicad-happy`, or `%LOCALAPPDATA%\kicad-happy`) with mode 0600 from creation, bound to the client ID, shared by the three DigiKey callers. The old `/tmp/digikey_token_cache.json` is no longer read. (KH-501)
 - `analysis/` runs never copy from or write through a symlinked file; such a file is skipped with a warning. (KH-502)
+- `sync_datasheet_urls.py --recursive` writes only schematics inside the root sheet's folder; sheets outside it are reported and left alone. Schematic writes from `sync_datasheet_urls.py` and `edit_properties.py` are atomic, line breaks in property values and new property names are escaped. (KH-503)
 
 ---
 

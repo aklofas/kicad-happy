@@ -37,7 +37,8 @@ from urllib.parse import urlparse
 
 sys.path.insert(0, str(Path(__file__).parent))
 from edit_properties import apply_updates
-from kicad_sexp import collect_schematic_files, iter_placed_symbol_blocks
+from kicad_sexp import (atomic_write_text, collect_schematic_files,
+                        iter_placed_symbol_blocks)
 
 
 # ---------------------------------------------------------------------------
@@ -192,6 +193,7 @@ def sync_datasheet_urls(
     fills = []
     files_modified = 0
 
+    write_root = schematic_path.parent
     for sch_file in sch_files:
         text = sch_file.read_text(encoding="utf-8")
         current = extract_ref_datasheets(text)
@@ -242,6 +244,10 @@ def sync_datasheet_urls(
                 print(f"  [{sch_file.name}] {ref} ({info['mpn']}): "
                       f"would {action} Datasheet", file=sys.stderr)
         else:
+            if write_root != sch_file.parent and write_root not in sch_file.parents:
+                print(f"Warning: {sch_file} is outside {write_root}; not written",
+                      file=sys.stderr)
+                continue
             modified_text, change_log = apply_updates(text, updates)
 
             # Backup if requested
@@ -253,7 +259,7 @@ def sync_datasheet_urls(
                 shutil.copy2(sch_file, backup_path)
                 print(f"  Backup: {backup_path}", file=sys.stderr)
 
-            sch_file.write_text(modified_text, encoding="utf-8")
+            atomic_write_text(sch_file, modified_text)
             files_modified += 1
 
     # Report fills
