@@ -15,7 +15,6 @@ import json
 import math
 import os
 import re
-import time
 import urllib.request
 import urllib.error
 import urllib.parse

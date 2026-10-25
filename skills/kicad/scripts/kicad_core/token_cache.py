@@ -40,7 +40,7 @@ def load_token(name, client_id):
         if (data.get("client_id") == client_id and isinstance(token, str) and token
                 and data.get("expires_at", 0) > time.time()):
             return token
-    except (OSError, ValueError, AttributeError, TypeError):
+    except (OSError, ValueError, AttributeError, TypeError, RecursionError):
         pass
     return None
 

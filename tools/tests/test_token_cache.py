@@ -66,6 +66,16 @@ class TokenCacheTest(_Env):
             self.assertIsNone(token_cache.load_token("digikey_token", "cid"), body)
 
 
+class DeepJsonTest(_Env):
+    def test_deeply_nested_json_is_a_miss(self):
+        token_cache.store_token("digikey_token", "cid", "T", 540)
+        with open(self.file, "w") as f:
+            f.write("[" * 100000)
+        if POSIX:
+            os.chmod(self.file, 0o600)
+        self.assertIsNone(token_cache.load_token("digikey_token", "cid"))
+
+
 class _Resp(io.BytesIO):
     def __enter__(self):
         return self
@@ -83,12 +93,15 @@ class CallersTest(_Env):
         self.addCleanup(p.stop)
 
     def _check(self, get, unwrap):
-        old = os.path.join(tempfile.gettempdir(), "digikey_token_cache.json")
-        if not os.path.exists(old):
-            with open(old, "w") as f:
-                json.dump({"access_token": "EVIL", "token": "EVIL", "client_id": "cid",
-                           "expires_at": 9e99}, f)
-            self.addCleanup(os.unlink, old)
+        fake_tmp = os.path.join(self.home, "faketmp")
+        os.makedirs(fake_tmp)
+        p = mock.patch("tempfile.tempdir", fake_tmp)
+        p.start()
+        self.addCleanup(p.stop)
+        old = os.path.join(fake_tmp, "digikey_token_cache.json")
+        with open(old, "w") as f:
+            json.dump({"access_token": "EVIL", "token": "EVIL", "client_id": "cid",
+                       "expires_at": 9e99}, f)
         with mock.patch("urllib.request.urlopen",
                         side_effect=lambda *a, **k: _Resp(b'{"access_token": "T1"}')) as uo:
             self.assertEqual(unwrap(get()), "T1")

@@ -336,7 +336,7 @@ The `kicad` skill also creates analyzer JSON and design review markdown reports 
 
 | File | Location | Purpose |
 |------|----------|---------|
-| `digikey_token_cache.json` | System temp dir | OAuth token cache (9-min TTL, mode 0600) |
+| `digikey_token.json` | `~/.cache/kicad-happy` (`%LOCALAPPDATA%\kicad-happy`) | OAuth token cache (9-min TTL, mode 0600) |
 | `manifest.tmp` | `datasheets/` | Atomic write staging — renamed to `manifest.json`, never persists |
 
 ### Cleanup commands
