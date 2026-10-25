@@ -22,7 +22,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Changed
 
-- `fab_release_gate.py` exits 1 when the verdict is FAIL (most real projects today: 289 of 300 sampled full-chain projects end in FAIL) and 2 when a path given on the command line does not exist or is the wrong analyzer's output; it was 0 in both cases. Scripts that run it under `set -e` must handle exit 1. (KH-563)
+- `fab_release_gate.py` exits 1 when the verdict is FAIL (most real projects today: 289 of 300 sampled full-chain projects end in FAIL) and 2 when a path given on the command line does not exist, holds an empty JSON object or is the wrong analyzer's output; it was 0 in both cases. Scripts that run it under `set -e` must handle exit 1. (KH-563)
 
 ### Fixed
 

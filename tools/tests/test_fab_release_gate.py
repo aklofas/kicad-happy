@@ -134,6 +134,16 @@ class ExitCodeTest(unittest.TestCase):
         r = _run("fab_release_gate.py", "-s", sch, "-p", pcb)
         self.assertEqual(r.returncode, 2, r.stderr)
 
+    def test_empty_optional_input_is_a_usage_error(self):
+        sch = _dump(self.tmp, "s.json", PASS_SCH)
+        pcb = _dump(self.tmp, "p.json", PASS_PCB)
+        empty = _dump(self.tmp, "e.json", {})
+        for flag in ("--gerbers", "--thermal", "--emc"):
+            with self.subTest(flag=flag):
+                r = _run("fab_release_gate.py", "-s", sch, "-p", pcb, flag, empty)
+                self.assertEqual(r.returncode, 2, r.stderr)
+                self.assertIn(f"{flag} {empty}: empty", r.stderr)
+
     def test_pass_verdict_exits_0(self):
         sch = _dump(self.tmp, "s.json", PASS_SCH)
         pcb = _dump(self.tmp, "p.json", PASS_PCB)

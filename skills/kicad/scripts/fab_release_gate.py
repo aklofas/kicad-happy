@@ -621,6 +621,9 @@ def main(argv=None) -> int:
             ("emc_data", "--emc", "analyze_emc.py", "emc")):
         path = getattr(args, flag[2:])
         optional[key] = _load(flag, path, writer, expected) if path else None
+        if path and not optional[key]:
+            parser.error(f"{flag} {path}: empty; expected the JSON file "
+                         f"{writer} writes (--output)")
 
     result = run_gate(sch, pcb, strict=args.strict, **optional)
 
