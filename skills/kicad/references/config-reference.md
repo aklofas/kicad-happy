@@ -255,6 +255,25 @@ The eight `sync_datasheets_<distributor>.py` and `fetch_datasheet_<distributor>.
 
 ---
 
+### `spice` (object) — user-level only
+
+Read only from `~/.kicad-happy.json`. A project or workspace `.kicad-happy.json` cannot set it; the value there is ignored.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `trust_project_models` | bool | `false` | Paste a project's cached part models (`spice/models/*.sub`) into the netlist verbatim. Only the JSON value `true` turns it on. |
+
+Without it, `simulate_subcircuits.py` skips a cached model that contains a simulator control command (`.control`, `.endc`, `shell`, `source`) or an `.include`/`.inc`/`.lib` of a file outside `spice/models/`. The part falls back to the next model source (distributor data, the built-in table, or the ideal model) and the report's `diagnostics` gets one `project model skipped` record. A generated fallback model is cached in place of the skipped file.
+
+```jsonc
+// ~/.kicad-happy.json
+{
+  "spice": { "trust_project_models": true }  // e.g. vendor models you reviewed
+}
+```
+
+---
+
 ## Complete Example
 
 Production consumer electronics board targeting the EU market. LCSC primary supplier, IPC Class 2, with suppressions, power rail filtering, BOM config, and branding.
@@ -381,3 +400,4 @@ Production consumer electronics board targeting the EU market. LCSC primary supp
 | `design_intent.test_coverage_target` | number | — | market-adj. | Yes |
 | `design_intent.approved_manufacturers` | array | — | [] | — |
 | `datasheets.allow_private_hosts` (user file only) | bool | — | false | — |
+| `spice.trust_project_models` (user file only) | bool | — | false | — |

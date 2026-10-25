@@ -64,8 +64,9 @@ class ManifestTest(unittest.TestCase):
             with mock.patch("spice_model_cache.os.replace", wraps=os.replace) as rep:
                 spice_model_cache.cache_model(d, "LM358", ".subckt X\n.ends\n", {"gbw_hz": 1e6},
                                               "lookup", "opamp")
-            self.assertEqual(rep.call_count, 1)
-            self.assertEqual(Path(rep.call_args.args[1]), d / "manifest.json")
+            # the model file is swapped in first, then the manifest
+            self.assertEqual([Path(c.args[1]) for c in rep.call_args_list],
+                             [d / "LM358.sub", d / "manifest.json"])
             src = Path(rep.call_args.args[0])
             self.assertEqual(src.parent, d)
             self.assertNotEqual(src.name, "manifest.json.tmp")

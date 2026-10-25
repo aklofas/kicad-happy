@@ -31,8 +31,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import _core_path  # noqa: F401
+from distributor_core.manifest import manifest_file_path
 from kicad_core.diagnostics import record
 from spice_part_library import lookup_part_specs
+from spice_spec_fetcher import _read_spice_specs
 from spice_model_generator import (
     generate_opamp_model,
     generate_ldo_model,
@@ -141,19 +143,68 @@ def get_cached_model(cache_dir, mpn):
         return None, None
 
     key = sanitize_mpn(mpn)
-    entry = index.get(key)
-    if not entry:
+    entry = index.get(key) if isinstance(index, dict) else None
+    if not isinstance(entry, dict):
         return None, None
 
-    model_file = Path(cache_dir) / entry.get("file", "")
-    if not model_file.exists():
+    name = entry.get("file")
+    model_file = manifest_file_path(Path(cache_dir), name)
+    if model_file is None or not name.endswith(".sub") or not model_file.is_file():
         return None, None
 
     try:
-        subckt = model_file.read_text()
-        return subckt, entry.get("specs", {})
-    except OSError:
+        subckt = model_file.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
         return None, None
+    return subckt, _read_spice_specs(entry.get("specs"))
+
+
+_CONTROL_PREFIXES = (".control", ".endc", "shell", "source")
+_INCLUDE_CARDS = (".include", ".inc", ".lib")
+
+
+def _logical_lines(text):
+    lines = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.startswith("+") and lines:
+            lines[-1] += " " + line[1:].strip()
+        else:
+            lines.append(line)
+    return lines
+
+
+def _include_target(rest):
+    rest = rest.strip()
+    if rest[:1] in ("'", '"'):
+        end = rest.find(rest[0], 1)
+        return rest[1:end] if end > 0 else rest[1:]
+    return rest.split()[0] if rest else ""
+
+
+def model_text_problem(text, cache_dir):
+    """Why a cached model is unsafe to paste into a netlist, or None.
+
+    Unsafe: a simulator control command (``.control``/``.endc``/``shell``/``source``)
+    or an ``.include``/``.inc``/``.lib`` of a file outside ``cache_dir``.
+    """
+    root = Path(cache_dir).resolve()
+    for line in _logical_lines(text):
+        low = line.lower()
+        if low.startswith(_CONTROL_PREFIXES):
+            return f"model contains a simulator control command: {line[:60]}"
+        card = low.split(None, 1)[0] if low else ""
+        if card in _INCLUDE_CARDS:
+            target = _include_target(line[len(card):])
+            inside = False
+            if target and not target.startswith("~"):
+                try:
+                    inside = (root / target).resolve().is_relative_to(root)
+                except (OSError, ValueError):
+                    inside = False
+            if not inside:
+                return f"model includes a file outside the models folder: {target[:60]}"
+    return None
 
 
 def cache_model(cache_dir, mpn, subckt, specs, source, component_type):
@@ -174,8 +225,19 @@ def cache_model(cache_dir, mpn, subckt, specs, source, component_type):
     filename = f"{key}.sub"
     model_path = cache_dir / filename
 
-    # Write .sub file
-    model_path.write_text(subckt)
+    # A temp file swapped in replaces a planted symlink instead of writing through it
+    tmp = tempfile.NamedTemporaryFile(dir=cache_dir, prefix=f"{key}.", suffix=".tmp",
+                                      delete=False, mode="w", encoding="utf-8")
+    try:
+        with tmp:
+            tmp.write(subckt)
+        os.replace(tmp.name, model_path)
+    except BaseException:
+        try:
+            os.unlink(tmp.name)
+        except OSError:
+            pass
+        raise
 
     # Update manifest (prefer existing file; always write to manifest.json)
     read_path = _cache_manifest_path(cache_dir)
@@ -257,9 +319,12 @@ class ModelOptions:
                (default: beside the first source file the analysis JSON names,
                "file" or "inputs.source_files[0]")
     offline:   never query distributor APIs or datasheets; cache + lookup table only
+    trust_project_models: paste cached models verbatim, even ones with simulator
+               control commands or includes outside the models folder
     """
     cache_dir: str | None = None
     offline: bool = False
+    trust_project_models: bool = False
 
 
 def get_model_for_part(mpn, component_type=None, context=None, options=None, *, diagnostics=None):
@@ -301,7 +366,13 @@ def get_model_for_part(mpn, component_type=None, context=None, options=None, *, 
     if use_cache:
         cache_dir = resolve_cache_dir(context or {}, override_dir=opts.cache_dir)
         cached_subckt, cached_specs = get_cached_model(cache_dir, mpn)
-        if cached_subckt:
+        problem = None
+        if cached_subckt and not opts.trust_project_models:
+            problem = model_text_problem(cached_subckt, cache_dir)
+            if problem:
+                record(diagnostics, "spice_model_cache.get_cached_model", ValueError(problem),
+                       "project model skipped")
+        if cached_subckt and not problem:
             return cached_subckt, f"cache:{mpn}", cached_specs
 
     # --- Tier 1: Distributor API parametric specs ---

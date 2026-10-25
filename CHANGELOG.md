@@ -13,6 +13,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Datasheet syncs write their temporary files under random names and ignore manifest `file` entries that point outside `datasheets/`, so a planted symlink or a crafted manifest can no longer redirect writes or moves. A worker error in `--parallel` mode is no longer swallowed. (KH-497)
 - Datasheet downloads accept only `http`/`https` URLs on public addresses, checked on every redirect, and stop at 50 MB or 120 s (`--max-download-mb`, `--download-timeout`). Private hosts need `datasheets.allow_private_hosts: true` in `~/.kicad-happy.json`. The browser fallback runs only for URLs that pass the same check. (KH-498)
 - SPICE netlists strip line breaks and other control characters from component references, values and net names, so schematic text can no longer add simulator commands. (KH-499)
+- SPICE no longer pastes a project's cached model (`spice/models/*.sub`) into the netlist when it contains simulator control commands or includes files outside the models folder; the part falls back to the next model source with one `diagnostics` record. `spice.trust_project_models: true` in `~/.kicad-happy.json` restores verbatim use. Model files are written without following symlinks. (KH-500)
 
 ---
 

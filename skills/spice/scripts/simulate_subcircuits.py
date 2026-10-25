@@ -23,6 +23,7 @@ Requires: ngspice (install: apt install ngspice / brew install ngspice)
 """
 
 import argparse
+import dataclasses
 import inspect
 import json
 import os
@@ -174,8 +175,7 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
     if (project_dir_from_analysis(analysis_json) is None
             and (model_options is None or model_options.cache_dir is None)):
         from spice_model_cache import ModelOptions
-        model_options = ModelOptions(cache_dir=workdir,
-                                     offline=(model_options.offline if model_options else False))
+        model_options = dataclasses.replace(model_options or ModelOptions(), cache_dir=workdir)
 
     results = []
     sim_diagnostics: list = []  # Monte Carlo trials add only records the nominal runs lack
@@ -624,10 +624,15 @@ def main(argv: list[str] | None = None) -> int:
         except (json.JSONDecodeError, OSError) as e:
             print(f"Warning: could not load parasitics: {e}", file=sys.stderr)
 
+    from kicad_core.project import load_user_config
+    spice_config = load_user_config().get("spice")
+    trust_project_models = (isinstance(spice_config, dict)
+                            and spice_config.get("trust_project_models") is True)
     model_options = None
-    if args.model_cache_dir or args.offline:
+    if args.model_cache_dir or args.offline or trust_project_models:
         from spice_model_cache import ModelOptions
-        model_options = ModelOptions(cache_dir=args.model_cache_dir, offline=args.offline)
+        model_options = ModelOptions(cache_dir=args.model_cache_dir, offline=args.offline,
+                                     trust_project_models=trust_project_models)
 
     # Run simulations
     report = simulate_subcircuits(
