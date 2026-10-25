@@ -119,8 +119,9 @@ def compare_json(base, cand, volatile: set[str], path: str = "") -> list[Delta]:
     if isinstance(base, dict):
         deltas: list[Delta] = []
         bk, ck = list(base), list(cand)
-        if set(bk) == set(ck) and bk != ck:
-            deltas.append((path, "order", bk, ck))
+        bk_common, ck_common = [k for k in bk if k in cand], [k for k in ck if k in base]
+        if bk_common != ck_common:  # a reorder must not hide behind an added or missing key
+            deltas.append((path, "order", bk_common, ck_common))
         for k in bk:
             sub = f"{path}.{k}" if path else k
             if k not in cand:
@@ -257,6 +258,10 @@ def budget_compare(report: dict, budget: dict, base_dir: Path, cand_dir: Path) -
             "classes_unused": [k["id"] for k in budget["classes"] if k["id"] not in claimed]}
 
 
+def _is_str_list(v) -> bool:
+    return isinstance(v, list) and all(isinstance(x, str) for x in v)
+
+
 def _budget_problem(budget) -> str | None:
     """Why *budget* cannot drive budget_compare, or None when it can."""
     if not isinstance(budget, dict) or not isinstance(budget.get("classes"), list):
@@ -265,7 +270,40 @@ def _budget_problem(budget) -> str | None:
         missing = [k for k in ("id", "files", "path", "kinds") if not isinstance(cls, dict) or k not in cls]
         if missing:
             return f"budget class {i} lacks {', '.join(missing)}"
+        name = cls["id"] if isinstance(cls["id"], str) else i
+        bad = [k for k in ("id", "files", "path") if not isinstance(cls[k], str)]
+        if not _is_str_list(cls["kinds"]):
+            bad.append("kinds")
+        if bad:
+            return f"budget class {name}: wrong type for {', '.join(bad)} (strings; kinds a list of strings)"
+        try:
+            re.compile(cls["path"])
+        except re.error as exc:
+            return f"budget class {name}: path is not a valid regex: {exc}"
+        where = cls.get("where")
+        if where is not None:  # `expect` is documentary and not checked
+            if not isinstance(where, dict):
+                return f"budget class {name}: where must be an object"
+            unknown = sorted(set(where) - {"rule_id"})
+            if unknown:
+                return f"budget class {name}: unsupported where key(s) {', '.join(unknown)} (only rule_id)"
+            if "rule_id" in where and not _is_str_list(where["rule_id"]):
+                return f"budget class {name}: where.rule_id must be a list of strings"
     return None
+
+
+def load_budget(path: Path) -> dict:
+    """Read and validate a budget file; raises ValueError naming the problem."""
+    try:
+        budget = json.loads(Path(path).read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise ValueError(f"cannot read {path}: {exc}") from exc
+    except ValueError as exc:
+        raise ValueError(f"{path} is not valid JSON: {exc}") from exc
+    msg = _budget_problem(budget)
+    if msg:
+        raise ValueError(msg)
+    return budget
 
 
 def cmd_budget_compare(args) -> int:
@@ -279,13 +317,9 @@ def cmd_budget_compare(args) -> int:
         return 2
     try:
         volatile = load_policy(Path(args.policy))
-        budget = json.loads(Path(args.budget).read_text(encoding="utf-8"))
+        budget = load_budget(Path(args.budget))
     except (OSError, ValueError, KeyError) as exc:
         print(f"budget-compare: cannot load policy or budget: {exc}", file=sys.stderr)
-        return 2
-    msg = _budget_problem(budget)
-    if msg:
-        print(f"budget-compare: {msg}", file=sys.stderr)
         return 2
     out = budget_compare(compare_dirs(base, cand, volatile), budget, base, cand)
     if args.report:
@@ -341,10 +375,11 @@ def _run(cmd: list[str], env: dict, timeout: int = 300) -> tuple[int, str]:
 
 
 def _produce(cmd: list[str], target: Path, label: str, env: dict, stats: dict) -> None:
-    """Run one analyzer into `target`; a stale file is removed first, a missing result is a failure."""
+    """Run one analyzer into `target`; a stale file is removed first, a nonzero exit or a missing
+    result is a failure."""
     target.unlink(missing_ok=True)
     rc, err = _run(cmd, env)
-    if not target.exists():
+    if rc != 0 or not target.exists():
         stats["failures"].append({"fixture": label, "exit": rc, "stderr": err})
 
 
@@ -411,10 +446,11 @@ def cmd_snapshot(args) -> int:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     stats = run_snapshot(Path(args.fixtures), out, Path(args.product), analyzer_env(args.seed))
+    stats["text_failures"] = []
     stats["text_artefacts"] = run_text_snapshot(Path(args.fixtures), out, out, Path(args.product),
-                                                _text_env(args.seed))
+                                                _text_env(args.seed), failures=stats["text_failures"])
     print(json.dumps(stats, indent=1, default=str))
-    return 1 if stats["failures"] else 0
+    return 1 if stats["failures"] or stats["text_failures"] else 0
 
 
 def _py_files(root: Path):
@@ -594,6 +630,16 @@ def _ratchet(current: list[dict], baseline_path: Path, update: bool, key_fields:
             print(f"{baseline_path.name}: {len(new)} relocated entries matched against "
                   f"{sum(pool.values())} retired from moved files")
             new = []
+    # A known site may only lose missing/non-literal keys ("may only shrink"), never gain them.
+    def gaps(d): return set(d.get("missing", [])) | set(d.get("nonliteral", []))
+    base_by_key = {key(d): d for d in baseline}
+    worse = [d for d in current if key(d) in base_by_key and gaps(d) - gaps(base_by_key[key(d)])]
+    for d in worse:
+        print(f"WORSE {d['file']}:{d['line']} {d['callee']} missing={','.join(d.get('missing', []))} "
+              f"nonliteral={','.join(d.get('nonliteral', []))}")
+    if worse:
+        print(f"{baseline_path.name}: FAIL ({len(worse)} known site(s) worse, baseline {len(base_keys)})")
+        return 1
     for d in new:
         print(f"NEW {d['file']}:{d['line']} {d.get('rule') or d['callee']} {d.get('module','')} "
               f"{'missing=' + ','.join(d['missing']) if d.get('missing') else ''} "
@@ -957,12 +1003,17 @@ def _chain_slots(fixtures: list[dict]) -> dict[str, tuple[str, str]]:
     return {v["sch"]: (v["sch"], v["pcb"]) for _, v in sorted(by_dir.items()) if "sch" in v and "pcb" in v}
 
 
-def run_text_snapshot(fixtures_root: Path, snap_dir: Path, txt_out: Path, product_root: Path, env: dict) -> int:
+def run_text_snapshot(fixtures_root: Path, snap_dir: Path, txt_out: Path, product_root: Path, env: dict,
+                      failures: list | None = None) -> int:
     """Write masked `<name>.txt` + `<name>.exit` artefacts into txt_out; returns the artefact count.
 
     The JSON outputs of a prior run_snapshot into snap_dir feed the downstream CLIs. Scratch files
     (analysis dirs, markdown) live in a temp work dir so nothing but .txt/.exit lands in txt_out.
+    The name of every positive (non-`neg__`) run that exits nonzero is appended to *failures*.
     """
+    # The CLIs run in an empty cwd, so a relative root would point nowhere.
+    fixtures_root, snap_dir, txt_out, product_root = (
+        Path(p).resolve() for p in (fixtures_root, snap_dir, txt_out, product_root))
     txt_out.mkdir(parents=True, exist_ok=True)
     for stale in [*txt_out.glob("*.txt"), *txt_out.glob("*.exit")]:
         stale.unlink()
@@ -986,6 +1037,8 @@ def run_text_snapshot(fixtures_root: Path, snap_dir: Path, txt_out: Path, produc
                                                  encoding="utf-8", newline="")
             (txt_out / f"{name}.exit").write_text(f"{rc}\n", encoding="utf-8")
             count += 1
+            if rc != 0 and not name.startswith("neg__") and failures is not None:
+                failures.append(name)
 
         def script(cli: str) -> str:
             return str(product_root / TEXT_SCRIPTS[cli])
@@ -1127,6 +1180,13 @@ def cmd_quick(args) -> int:
         if val and not args.fixtures:
             print(f"quick: {flag} requires --fixtures", file=sys.stderr)
             return 2
+    budget = None
+    if args.budget:
+        try:
+            budget = load_budget(Path(args.budget))
+        except ValueError as exc:
+            print(f"quick: budget: {exc}", file=sys.stderr)
+            return 2
     if args.fixtures:
         msg = _check_inputs("quick", args.fixtures, args.product)
         if msg:
@@ -1190,11 +1250,8 @@ def cmd_quick(args) -> int:
                 td, stats = _snapshot_once()
                 snapshot_failures[:] = stats["failures"]
                 rep = compare_dirs(Path(args.baseline), td, load_policy(Path(args.policy)))
-                if args.budget:
-                    budget_result.update(budget_compare(
-                        rep, json.loads(Path(args.budget).read_text(encoding="utf-8")),
-                        Path(args.baseline), td))
-                if args.budget:
+                if budget is not None:
+                    budget_result.update(budget_compare(rep, budget, Path(args.baseline), td))
                     bad = budget_result["unclaimed"] or stats["failures"]
                     print("compare-vs-baseline: " + ("FAIL" if bad else "OK")
                           + f" ({sum(budget_result['claimed'].values())} claimed, "
@@ -1229,14 +1286,22 @@ def cmd_quick(args) -> int:
                     return 2
                 snap, _ = _snapshot_once()
                 txt = Path(shared.name) / "txt"
-                run_text_snapshot(Path(args.fixtures), snap, txt, Path(args.product), _text_env("0"))
+                run_failures: list = []
+                run_text_snapshot(Path(args.fixtures), snap, txt, Path(args.product), _text_env("0"),
+                                  failures=run_failures)
                 n, deltas = compare_text_dirs(base, txt)
                 deltas, allowed = split_allowed(deltas, _load_allow(args.text_allow))
-                text_compare.update(ok=not deltas and n > 0, artefacts=n, deltas=deltas, allowed=allowed)
-                print("text-compare: " + _text_summary(n, deltas, allowed))
+                text_compare.update(ok=not deltas and n > 0 and not run_failures, artefacts=n, deltas=deltas,
+                                    allowed=allowed, run_failures=run_failures)
+                line = _text_summary(n, deltas, allowed)
+                if run_failures:
+                    line = f"FAIL ({len(run_failures)} positive run(s) exited nonzero; {line})"
+                print("text-compare: " + line)
                 for d in deltas:
                     print(f"   {d}")
-                return 1 if deltas or not n else 0
+                for name in run_failures:
+                    print(f"   positive run exited nonzero: {name}")
+                return 1 if deltas or not n or run_failures else 0
             rc |= timed("text-compare", _text_cmp)
         shared.cleanup()
     summary = {"product_sha": _git_sha(Path(args.product)), "fixtures_digest": _fixtures_digest(args.fixtures),

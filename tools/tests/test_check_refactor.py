@@ -926,5 +926,140 @@ class BudgetedOracle(unittest.TestCase):
         self.assertEqual(seen, {"budget": "qb"})
 
 
+class FailClosedGaps(unittest.TestCase):
+    """Each case is a way the oracle used to report OK on input it could not judge."""
+
+    def test_order_delta_with_added_key(self):
+        d = cr.compare_json({"findings": [], "summary": {}},
+                            {"summary": {}, "findings": [], "diagnostics": []}, set())
+        self.assertIn(("", "order", ["findings", "summary"], ["summary", "findings"]), d)
+        self.assertIn(("diagnostics", "added", None, []), d)
+
+    def test_order_ignores_pure_add(self):
+        d = cr.compare_json({"a": 1, "b": 2}, {"a": 1, "b": 2, "c": 3}, set())
+        self.assertNotIn("order", [x[1] for x in d])
+
+    def test_produce_nonzero_exit_after_write_is_failure(self):
+        with tempfile.TemporaryDirectory() as td:
+            fake, target = Path(td) / "fake.py", Path(td) / "out.json"
+            fake.write_text("import sys\nopen(sys.argv[1], 'w').write('{}')\nsys.exit(1)\n", encoding="utf-8")
+            stats = {"failures": []}
+            cr._produce([sys.executable, str(fake), str(target)], target, "fx", {}, stats)
+            self.assertTrue(target.exists())
+            self.assertEqual([f["exit"] for f in stats["failures"]], [1])
+
+    @unittest.skipUnless(FX_REAL.is_dir(), "frozen fixtures not available")
+    def test_text_snapshot_resolves_relative_roots(self):
+        import os, shutil
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            fx = td / "fx"
+            for rel in ("simple-project/simple.kicad_sch", "simple-project/simple.kicad_pcb",
+                        "simple-project/simple.kicad_pro", "determinism/usb_dual_esd.kicad_sch",
+                        "kh408/qfn_rotated.kicad_pcb"):
+                (fx / rel).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(FX_REAL / rel, fx / rel)
+            snap = td / "snap"
+            stats = cr.run_snapshot(fx, snap, cr.REPO_ROOT, cr.analyzer_env("0"))
+            self.assertEqual(stats["failures"], [])
+            old = os.getcwd()
+            os.chdir(td)
+            try:
+                cr.run_text_snapshot(Path("fx"), Path("snap"), Path("txt"),
+                                     Path(os.path.relpath(cr.REPO_ROOT, td)), cr._text_env("0"))
+            finally:
+                os.chdir(old)
+            bad = [e.stem for e in sorted((td / "txt").glob("*.exit"))
+                   if not e.stem.startswith("neg__") and e.read_text(encoding="utf-8").strip() != "0"]
+            self.assertEqual(bad, [])
+
+    def test_positive_text_run_nonzero_is_failure(self):
+        with tempfile.TemporaryDirectory() as td:
+            fx, out = Path(td) / "fx", Path(td) / "out"
+            (fx / "p").mkdir(parents=True)
+            (fx / "p" / "a.kicad_sch").write_text("(kicad_sch)", encoding="utf-8")
+
+            def fake_exec(cmd, cwd, env, merge=False):
+                bad = "--help" in cmd and cmd[1].endswith("analyze_schematic.py")
+                return (1 if bad else 0), ""
+            orig = cr.run_snapshot, cr._text_exec
+            cr.run_snapshot = lambda *a, **k: {"failures": []}
+            cr._text_exec = fake_exec
+            try:
+                rc, out_text, _ = _run_main(["snapshot", "--fixtures", str(fx), "--out", str(out),
+                                             "--product", str(cr.REPO_ROOT)])
+            finally:
+                cr.run_snapshot, cr._text_exec = orig
+        self.assertEqual(rc, 1)
+        self.assertIn("help__analyze_schematic", out_text)
+
+    def _bad_budget(self, cls):
+        base = {"id": "c1", "files": "*", "path": "^x$", "kinds": ["added"]}
+        base.update(cls)
+        return {"budget_id": "t", "classes": [base]}
+
+    def _load(self, budget):
+        with tempfile.TemporaryDirectory() as td:
+            bf = Path(td) / "b.json"
+            _write(bf, budget)
+            return cr.load_budget(bf)
+
+    def test_budget_rejects_unknown_where_key(self):
+        with self.assertRaises(ValueError) as cm:
+            self._load(self._bad_budget({"where": {"detector": ["x"]}}))
+        self.assertIn("detector", str(cm.exception))
+
+    def test_budget_rejects_bad_regex(self):
+        with self.assertRaises(ValueError) as cm:
+            self._load(self._bad_budget({"path": "["}))
+        self.assertIn("c1", str(cm.exception))
+
+    def test_budget_rejects_bad_types(self):
+        with self.assertRaises(ValueError):
+            self._load(self._bad_budget({"kinds": "added"}))
+
+    def test_budget_accepts_valid_with_expect(self):
+        b = self._load(self._bad_budget({"where": {"rule_id": ["GP-001"]}, "expect": "documentary"}))
+        self.assertEqual(b["classes"][0]["id"], "c1")
+
+    def test_quick_budget_uses_validated_loader(self):
+        with tempfile.TemporaryDirectory() as td:
+            bf = Path(td) / "b.json"
+            _write(bf, self._bad_budget({"where": {"detector": ["x"]}}))
+            rc, _, err = _run_main(["quick", "--fixtures", str(Path(td) / "nofx"), "--baseline",
+                                    str(Path(td) / "nobase"), "--budget", str(bf)])
+        self.assertEqual(rc, 2)
+        self.assertIn("budget:", err)
+        self.assertIn("detector", err)
+
+    SITE = {"file": "a.py", "function": "f", "callee": "make_finding", "ordinal": 0, "line": 3,
+            "missing": [], "nonliteral": ["detector"]}
+
+    def _tag_ratchet(self, nonliteral, update=False):
+        cur = [dict(self.SITE, nonliteral=nonliteral)]
+        buf = io.StringIO()
+        with tempfile.TemporaryDirectory() as d, contextlib.redirect_stdout(buf):
+            p = Path(d) / "tag_baseline.json"
+            p.write_text(json.dumps([self.SITE]), encoding="utf-8")
+            rc = cr._ratchet(cur, p, update, (), key_fn=cr._tag_key)
+        return rc, buf.getvalue()
+
+    def test_tag_ratchet_rejects_worsened_known_site(self):
+        for update in (False, True):
+            rc, out = self._tag_ratchet(["detector", "rule_id"], update)
+            self.assertEqual(rc, 1)
+            self.assertIn("WORSE", out)
+
+    def test_tag_ratchet_rejects_key_swap(self):
+        rc, out = self._tag_ratchet(["rule_id"])
+        self.assertEqual(rc, 1)
+        self.assertIn("WORSE", out)
+
+    def test_tag_ratchet_allows_improved_known_site(self):
+        rc, out = self._tag_ratchet([])
+        self.assertEqual(rc, 0)
+        self.assertNotIn("WORSE", out)
+
+
 if __name__ == "__main__":
     unittest.main()
