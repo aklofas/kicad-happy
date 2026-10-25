@@ -159,7 +159,7 @@ def get_cached_model(cache_dir, mpn):
     return subckt, _read_spice_specs(entry.get("specs"))
 
 
-_CONTROL_PREFIXES = (".control", ".endc", "shell", "source")
+_CONTROL_WORDS = (".control", ".endc", "shell", "source")
 _INCLUDE_CARDS = (".include", ".inc", ".lib")
 
 
@@ -191,9 +191,9 @@ def model_text_problem(text, cache_dir):
     root = Path(cache_dir).resolve()
     for line in _logical_lines(text):
         low = line.lower()
-        if low.startswith(_CONTROL_PREFIXES):
-            return f"model contains a simulator control command: {line[:60]}"
         card = low.split(None, 1)[0] if low else ""
+        if card in _CONTROL_WORDS:
+            return f"model contains a simulator control command: {line[:60]}"
         if card in _INCLUDE_CARDS:
             target = _include_target(line[len(card):])
             inside = False
@@ -372,6 +372,8 @@ def get_model_for_part(mpn, component_type=None, context=None, options=None, *, 
             if problem:
                 record(diagnostics, "spice_model_cache.get_cached_model", ValueError(problem),
                        "project model skipped")
+                # The fallback model is used but never replaces the user's file
+                use_cache = False
         if cached_subckt and not problem:
             return cached_subckt, f"cache:{mpn}", cached_specs
 

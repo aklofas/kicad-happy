@@ -99,6 +99,19 @@ class ModelTrustTest(_CacheCase):
         self.assertEqual(specs, {"gbw_hz": 1000000.0, "vos_mv": 2})
 
 
+    def test_skipped_model_is_never_overwritten(self):
+        self.plant(CONTROL)
+        sub_before = (self.models / "LM358.sub").read_bytes()
+        manifest_before = (self.models / "manifest.json").read_bytes()
+        (subckt, source, _), _ = self.resolve()
+        self.assertEqual(source, "lookup:LM358")
+        self.assertIn(".subckt", subckt)
+        self.assertEqual((self.models / "LM358.sub").read_bytes(), sub_before)
+        self.assertEqual((self.models / "manifest.json").read_bytes(), manifest_before)
+        self.assertEqual(sorted(p.name for p in self.models.iterdir()),
+                         ["LM358.sub", "manifest.json"])
+
+
 class ModelTextProblemTest(unittest.TestCase):
     def test_problems(self):
         with tempfile.TemporaryDirectory() as d:
@@ -108,6 +121,12 @@ class ModelTextProblemTest(unittest.TestCase):
             self.assertIsNotNone(smc.model_text_problem("  .CONTROL\n", cache))
             self.assertIsNotNone(smc.model_text_problem(".endc\n", cache))
             self.assertIsNotNone(smc.model_text_problem(".inc ~/x.lib\n", cache))
+            for ok in ("SOURCE1 1 2 3 4 SW1\n", "shellcap 1 2 1p\n", ".controlx\n",
+                       "Sourcefoo 1 0\n"):
+                self.assertIsNone(smc.model_text_problem(ok, cache), ok)
+            for bad in ("SOURCE x.cir\n", "Shell\trm x\n", "shell\n", ".Control\n",
+                        "  .endc  \n"):
+                self.assertIsNotNone(smc.model_text_problem(bad, cache), bad)
 
 
 class ManifestFileTest(_CacheCase):
