@@ -30,6 +30,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Gerber completeness requires the inner copper layers the stackup implies (from X2 copper positions, drill spans or the job file), and uppercase `.GL<n>` inner copper files are found. A 4-layer set missing an inner layer was reported complete. (KH-564)
 - GR-005 checks whether the board outline closes: round and arc-closed outlines no longer get "open outline", and open outlines with four or more draws now do. A closed outline with extra Edge.Cuts lines gets no finding. (KH-565)
 - X2 pin entries in `analyze_gerbers.py --full` connectivity carry the net declared with the pin; they took whatever net was active before the pin (usually none). (KH-591)
+- CC-001, EG-001, DA-001 and TW-001 read the keys the analyzers write; they emitted nothing on any real project. CC-001 and TW-001 take the current from the regulator output-capacitance estimate (heuristic). EG-001 is reported as info and ignores sheet-qualified grounds. TW-001's width table interpolates below 0.5 A instead of requiring 0.25 mm at any current. DP-005 pairs `...DP`/`...DM` nets. (KH-566, KH-567)
 
 ---
 

@@ -24,6 +24,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from finding_schema import make_finding, compute_trust_summary, assign_finding_ids
+from kicad_core.netnames import is_ground_name
 from kicad_core.netquery import build_net_id_map as _build_net_id_map
 from envelopes.cross_analysis import CrossAnalysisEnvelope
 from schema_codec import emit_schema
@@ -112,12 +113,16 @@ _IPC2152_1OZ_10C = {
 }
 
 
+def _reg_iout(reg: dict) -> float:
+    return (reg.get('estimated_iout_A')
+            or (reg.get('power_dissipation') or {}).get('estimated_iout_A')
+            or 0)
+
+
 def _min_trace_width_for_current(current_a: float) -> float:
     prev_i, prev_w = 0.0, 0.0
     for i, w in sorted(_IPC2152_1OZ_10C.items()):
         if current_a <= i:
-            if prev_i == 0:
-                return w
             frac = (current_a - prev_i) / (i - prev_i)
             return prev_w + frac * (w - prev_w)
         prev_i, prev_w = i, w
@@ -243,15 +248,15 @@ def check_connector_current(schematic: dict, pcb: dict | None, recorder=None) ->
         fp = fp_map.get(ref)
         if not fp:
             continue
-        for pad in fp.get('pads', []):
-            net_name = pad.get('net_name', '')
-            if not net_name or is_cross_analysis_ground_name(net_name) or not _is_power_net(net_name):
+        pad_nets = {e.get('net') for e in (fp.get('pad_nets') or {}).values()}
+        for net_name in sorted(n for n in pad_nets if n):
+            if is_cross_analysis_ground_name(net_name) or not _is_power_net(net_name):
                 continue
             voltage = _parse_voltage_from_name(net_name)
             if voltage is None:
                 continue
             total_current = sum(
-                reg.get('estimated_iout_A', 0) or 0
+                _reg_iout(reg)
                 for reg in regulators
                 if reg.get('input_rail') == net_name
             )
@@ -268,7 +273,8 @@ def check_connector_current(schematic: dict, pcb: dict | None, recorder=None) ->
                     summary=f'Connector {ref}: trace on {net_name} too narrow for ~{total_current:.1f}A',
                     description=(
                         f'Power net {net_name} at connector {ref} carries estimated '
-                        f'{total_current:.1f}A but narrowest trace is {trace_w:.2f}mm. '
+                        f'{total_current:.1f}A (estimated from the regulator output '
+                        f'capacitance) but narrowest trace is {trace_w:.2f}mm. '
                         f'IPC-2152 recommends >= {min_w:.2f}mm (1oz Cu, 10C rise).'
                     ),
                     severity='warning', confidence='heuristic', evidence_source='topology',
@@ -309,9 +315,6 @@ def check_esd_coverage_gaps(schematic: dict, pcb: dict | None, recorder=None) ->
     components = schematic.get('components', [])
     connectors = [c for c in components if c.get('type') == 'connector']
 
-    # Build pin_net lookup from schematic components
-    pin_net_data = schematic.get('pin_net') or {}
-
     for conn in connectors:
         val_lib = (conn.get('value', '') + ' ' + conn.get('lib_id', '')).lower()
         if not any(k in val_lib for k in _EXTERNAL_CONNECTOR_KEYWORDS):
@@ -319,17 +322,13 @@ def check_esd_coverage_gaps(schematic: dict, pcb: dict | None, recorder=None) ->
         ref = conn['reference']
 
         unprotected_nets = []
-        # Check via pin_net data (keys are "ref:pin_number" strings or tuples)
-        if isinstance(pin_net_data, dict):
-            for key, val in pin_net_data.items():
-                key_str = str(key)
-                if not key_str.startswith(ref + ':') and not key_str.startswith(f"('{ref}'"):
-                    continue
-                net = val[0] if isinstance(val, (list, tuple)) else val
-                if not net or _is_power_net(net) or is_cross_analysis_ground_name(net):
-                    continue
-                if net not in protected_nets:
-                    unprotected_nets.append(net)
+        pin_nets = conn.get('pin_nets') or {}
+        for _, net in sorted(pin_nets.items()):
+            if (not net or _is_power_net(net) or is_cross_analysis_ground_name(net)
+                    or is_ground_name(net)):
+                continue
+            if net not in protected_nets:
+                unprotected_nets.append(net)
 
         # Deduplicate
         unprotected_nets = list(dict.fromkeys(unprotected_nets))
@@ -344,7 +343,7 @@ def check_esd_coverage_gaps(schematic: dict, pcb: dict | None, recorder=None) ->
                     f'{len(unprotected_nets)} unprotected signal net(s): '
                     f'{", ".join(unprotected_nets[:5])}{"..." if len(unprotected_nets) > 5 else ""}.'
                 ),
-                severity='warning', confidence='heuristic', evidence_source='topology',
+                severity='info', confidence='heuristic', evidence_source='topology',
                 components=[ref], nets=unprotected_nets[:10],
                 recommendation='Add TVS or ESD clamp diodes on unprotected external nets.',
                 fix_params={
@@ -366,22 +365,17 @@ def check_esd_coverage_gaps(schematic: dict, pcb: dict | None, recorder=None) ->
 def check_decoupling_adequacy(schematic: dict, pcb: dict | None, recorder=None) -> list[dict]:
     """DA-001: Per-IC decoupling assessment — count, value, and placement."""
     findings: list[dict] = []
-    decoupling_list = [f for f in schematic.get('findings', [])
-                       if f.get('detector') == 'detect_decoupling']
-    decoupling = decoupling_list[0] if decoupling_list else {}
-    if not decoupling:
+    rails = [f for f in schematic.get('findings', [])
+             if f.get('detector') == 'detect_decoupling']
+    if not rails:
         _record(recorder, 'DA-001', False, 'no decoupling detector findings in schematic analysis', 0, findings)
         return findings
 
-    rails = decoupling.get('per_rail', decoupling.get('rails', []))
-    if isinstance(rails, dict):
-        rails = list(rails.values())
-
+    ics = [c for c in schematic.get('components', []) if c.get('type') == 'ic']
     for rail in rails:
-        rail_name = rail.get('rail', rail.get('name', ''))
-        caps = rail.get('capacitors', [])
-        ics = rail.get('ics', rail.get('ic_count', 0))
-        ic_count = ics if isinstance(ics, int) else len(ics) if isinstance(ics, list) else 0
+        rail_name = rail.get('rail', '')
+        caps = rail.get('capacitors') or []
+        ic_count = sum(1 for c in ics if rail_name in set((c.get('pin_nets') or {}).values()))
         if ic_count == 0:
             continue
         cap_count = len(caps)
@@ -702,7 +696,7 @@ def check_trace_width_power(schematic, pcb, recorder=None):
     net_current = {}
     for reg in regulators:
         output_rail = reg.get('output_rail', '')
-        iout = reg.get('estimated_iout_A', 0) or 0
+        iout = _reg_iout(reg)
         if output_rail and iout > 0:
             net_current[output_rail] = max(net_current.get(output_rail, 0), iout)
         input_rail = reg.get('input_rail', '')
@@ -729,7 +723,7 @@ def check_trace_width_power(schematic, pcb, recorder=None):
                 detector='check_trace_width_power', rule_id='TW-001',
                 category='current_capacity',
                 summary=f'Power net {net_name}: trace {trace_w:.2f}mm too narrow for ~{current:.1f}A',
-                description=f'Power net {net_name} carries ~{current:.1f}A but narrowest trace is {trace_w:.2f}mm. IPC-2152 recommends >= {min_w:.2f}mm.',
+                description=f'Power net {net_name} carries ~{current:.1f}A (estimated from regulator output capacitance) but narrowest trace is {trace_w:.2f}mm. IPC-2152 recommends >= {min_w:.2f}mm.',
                 severity='warning', confidence='heuristic', evidence_source='topology',
                 nets=[net_name],
                 recommendation=f'Widen {net_name} traces to >= {min_w:.1f}mm or use copper pour.',
@@ -909,6 +903,7 @@ _DIFF_PAIR_SUFFIXES = [
     (re.compile(r'(.+)_DP$'), re.compile(r'(.+)_DN$')),
     (re.compile(r'(.+)_TXP$'), re.compile(r'(.+)_TXN$')),
     (re.compile(r'(.+)_RXP$'), re.compile(r'(.+)_RXN$')),
+    (re.compile(r'(.+)DP$'), re.compile(r'(.+)DM$')),
 ]
 
 
