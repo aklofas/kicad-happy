@@ -34,6 +34,17 @@ class EscapeTest(unittest.TestCase):
         self.assertEqual([p[1] for p in props], [name])
 
 
+class EscapedNameUpdateTest(unittest.TestCase):
+    def test_update_twice_keeps_one_property(self):
+        name = 'A"B\\C'
+        text = sheet_text("R1", "")
+        for value in ("one", "two"):
+            text, _ = edit_properties.apply_updates(text, {"R1": {name: value}})
+        props = [p for p in sexp.find_all(sexp.find_first(sexp.parse(text), "symbol"), "property")
+                 if p[1] == name]
+        self.assertEqual([p[2] for p in props], ["two"])
+
+
 class SyncRootsTest(unittest.TestCase):
     def setUp(self):
         self._td = tempfile.TemporaryDirectory()

@@ -83,7 +83,7 @@ def find_property_in_block(text: str, sym_start: int, sym_end: int, prop_name: s
     Returns (start, end) positions of the entire (property ...) block, or None.
     """
     block = text[sym_start:sym_end + 1]
-    escaped_name = re.escape(prop_name)
+    escaped_name = re.escape(escape_kicad_string(prop_name))
     pattern = re.compile(rf'\(property\s+"{escaped_name}"\s+"')
 
     match = pattern.search(block)
@@ -154,7 +154,7 @@ def update_property_value(
     escaped_value = escape_kicad_string(new_value)
 
     # Replace just the value string after the property name
-    escaped_name = re.escape(prop_name)
+    escaped_name = re.escape(escape_kicad_string(prop_name))
     new_block = re.sub(
         rf'(\(property\s+"{escaped_name}"\s+)"(?:[^"\\]|\\.)*"',
         lambda m: f'{m.group(1)}"{escaped_value}"',
@@ -222,7 +222,7 @@ def apply_updates(
                     # Extract current value
                     old_block = text[prop_start:prop_end + 1]
                     old_match = re.search(
-                        rf'\(property\s+"{re.escape(prop_name)}"\s+"((?:[^"\\]|\\.)*)"',
+                        rf'\(property\s+"{re.escape(escape_kicad_string(prop_name))}"\s+"((?:[^"\\]|\\.)*)"',
                         old_block,
                     )
                     old_value = old_match.group(1) if old_match else ""
