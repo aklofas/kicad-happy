@@ -250,5 +250,81 @@ class CliTest(unittest.TestCase):
             self.assertIn("run id ignored", r.stderr)
 
 
+class LeafSymlinkTest(unittest.TestCase):
+    def _outside(self, tmp, text="outside-secret"):
+        path = os.path.join(tmp, "outside.json")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(text)
+        return path
+
+    def test_symlinked_previous_output_is_not_copied_forward(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ad = os.path.join(tmp, "analysis")
+            first = analysis_cache.create_run(ad, _outputs(tmp), source_hashes={}, scripts={},
+                                              run_id="r1")
+            leaf = os.path.join(ad, first, "schematic.json")
+            os.remove(leaf)
+            os.symlink(self._outside(tmp), leaf)
+            out2 = os.path.join(tmp, "out2")
+            os.makedirs(out2)
+            _write(os.path.join(out2, "pcb.json"), {"analyzer_type": "pcb"})
+            err = io.StringIO()
+            with redirect_stderr(err):
+                analysis_cache.create_run(ad, out2, source_hashes={}, scripts={}, run_id="r2")
+            new_leaf = os.path.join(ad, "r2", "schematic.json")
+            self.assertFalse(os.path.lexists(new_leaf))
+            self.assertIn("symlink", err.getvalue())
+
+    def test_symlink_planted_in_the_new_run_is_not_written_through(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ad = os.path.join(tmp, "analysis")
+            os.makedirs(os.path.join(ad, "r1"))
+            outside = self._outside(tmp)
+            os.symlink(outside, os.path.join(ad, "r1", "schematic.json"))
+            err = io.StringIO()
+            with redirect_stderr(err):
+                analysis_cache.create_run(ad, _outputs(tmp), source_hashes={}, scripts={},
+                                          run_id="r1")
+            with open(outside, encoding="utf-8") as f:
+                self.assertEqual(f.read(), "outside-secret")
+            self.assertIn("symlink", err.getvalue())
+
+    def test_overwrite_current_does_not_write_through_a_symlink(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ad = os.path.join(tmp, "analysis")
+            rid = analysis_cache.create_run(ad, _outputs(tmp), source_hashes={}, scripts={},
+                                            run_id="r1")
+            leaf = os.path.join(ad, rid, "schematic.json")
+            os.remove(leaf)
+            outside = self._outside(tmp)
+            os.symlink(outside, leaf)
+            out2 = os.path.join(tmp, "out2")
+            os.makedirs(out2)
+            _write(os.path.join(out2, "schematic.json"), {"analyzer_type": "schematic"})
+            with redirect_stderr(io.StringIO()):
+                analysis_cache.overwrite_current(ad, out2)
+            with open(outside, encoding="utf-8") as f:
+                self.assertEqual(f.read(), "outside-secret")
+
+    def test_ordinary_files_copy_unchanged_and_replace_existing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ad = os.path.join(tmp, "analysis")
+            analysis_cache.create_run(ad, _outputs(tmp), source_hashes={}, scripts={}, run_id="r1")
+            out2 = os.path.join(tmp, "out2")
+            os.makedirs(out2)
+            _write(os.path.join(out2, "pcb.json"), {"analyzer_type": "pcb"})
+            analysis_cache.create_run(ad, out2, source_hashes={}, scripts={}, run_id="r2")
+            self.assertEqual(sorted(os.listdir(os.path.join(ad, "r2"))), ["pcb.json", "schematic.json"])
+            with open(os.path.join(ad, "r2", "schematic.json"), encoding="utf-8") as f:
+                self.assertEqual(f.read(), '{"analyzer_type": "schematic"}')
+            out3 = os.path.join(tmp, "out3")
+            os.makedirs(out3)
+            _write(os.path.join(out3, "pcb.json"), {"analyzer_type": "pcb", "n": 2})
+            analysis_cache.overwrite_current(ad, out3)
+            with open(os.path.join(ad, "r2", "pcb.json"), encoding="utf-8") as f:
+                self.assertEqual(f.read(), '{"analyzer_type": "pcb", "n": 2}')
+            self.assertEqual(sorted(os.listdir(os.path.join(ad, "r2"))), ["pcb.json", "schematic.json"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -17,6 +17,7 @@ import hashlib
 import json
 import os
 import shutil
+import stat
 import sys
 import tempfile
 from datetime import datetime
@@ -305,6 +306,42 @@ def generate_run_id(analysis_dir: Optional[str] = None) -> str:
 # Run creation
 # ---------------------------------------------------------------------------
 
+def _is_symlink_or_irregular(path: str) -> bool:
+    try:
+        return not stat.S_ISREG(os.lstat(path).st_mode)
+    except OSError:
+        return True
+
+
+def _copy_regular(src: str, dst: str, caller: str = "copy") -> bool:
+    """Copy a regular file without reading or writing through a symlink.
+
+    The copy goes to a temp file beside ``dst`` and is renamed over it, so a
+    symlink planted at ``dst`` is replaced-never-followed; one at ``src`` is
+    skipped.
+    """
+    if _is_symlink_or_irregular(src):
+        record(None, f"analysis_cache.{caller}",
+               ValueError(f"{src} is a symlink"), "file not copied")
+        return False
+    if os.path.lexists(dst) and _is_symlink_or_irregular(dst):
+        record(None, f"analysis_cache.{caller}",
+               ValueError(f"{dst} is a symlink"), "file not copied")
+        return False
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(dst) or ".", prefix=".copy-")
+    os.close(fd)
+    try:
+        shutil.copy2(src, tmp)
+        os.replace(tmp, dst)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    return True
+
+
 def create_run(analysis_dir: str,
                outputs_dir: str,
                source_hashes: Dict[str, str],
@@ -361,7 +398,7 @@ def create_run(analysis_dir: str,
                        "manifest output ignored")
         prev_hashes = prev_run_info.get('source_hashes', {}) or {}
         cur_hashes = source_hashes or {}
-        for analysis_type, filename in prev_outputs.items():
+        for analysis_type, filename in list(prev_outputs.items()):
             exts = _OUTPUT_SOURCE_EXT.get(filename, ())
             stale = False
             if exts:
@@ -376,15 +413,18 @@ def create_run(analysis_dir: str,
                 continue
             prev_file = os.path.join(prev_run_dir, filename)
             new_file = os.path.join(run_dir, filename)
-            if os.path.isfile(prev_file) and not os.path.isfile(new_file):
-                shutil.copy2(prev_file, new_file)
+            if os.path.lexists(prev_file) and not os.path.isfile(new_file):
+                if _copy_regular(prev_file, new_file, "create_run"):
+                    continue
+                prev_outputs.pop(analysis_type, None)
 
     # Copy new outputs (overwrites any copied-forward files)
     new_outputs = {}
     for filename in os.listdir(outputs_dir):
         src = os.path.join(outputs_dir, filename)
         if os.path.isfile(src) and filename.endswith('.json'):
-            shutil.copy2(src, os.path.join(run_dir, filename))
+            if not _copy_regular(src, os.path.join(run_dir, filename), "create_run"):
+                continue
             # Map filename back to analysis type
             for atype, canonical in CANONICAL_OUTPUTS.items():
                 if filename == canonical:
@@ -452,7 +492,7 @@ def overwrite_current(analysis_dir: str,
     for filename in os.listdir(outputs_dir):
         src = os.path.join(outputs_dir, filename)
         if os.path.isfile(src) and filename.endswith('.json'):
-            shutil.copy2(src, os.path.join(current_dir, filename))
+            _copy_regular(src, os.path.join(current_dir, filename), "overwrite_current")
 
     # Update manifest entry
     run_entry = manifest['runs'][current_id]
