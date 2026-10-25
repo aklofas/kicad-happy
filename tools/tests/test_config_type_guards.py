@@ -3,10 +3,11 @@ pattern list given as one string is one pattern."""
 import io, json, os, subprocess, sys, tempfile, unittest
 from contextlib import redirect_stderr
 from pathlib import Path
+from tools.tests._fixtures import fixture_path, have
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "skills" / "kicad" / "scripts"
-FX = Path(os.environ.get("KH_FIXTURES", "/tmp/harness-pin/tests/fixtures")) / "simple-project"
+FX = fixture_path("simple-project")
 sys.path.insert(0, str(SCRIPTS))
 
 from project_config import _load_and_validate, matches_suppression, resolve_design_intent  # noqa: E402
@@ -79,7 +80,7 @@ class WrongTypeTest(unittest.TestCase):
         self.assertEqual(out, cfg)
 
 
-@unittest.skipUnless(FX.is_dir(), "harness fixtures not present")
+@unittest.skipUnless(have(FX), "harness fixtures not present")
 class CliTest(unittest.TestCase):
     def _run(self, script, *args, cwd):
         env = dict(os.environ, PYTHONHASHSEED="0", PYTHONDONTWRITEBYTECODE="1")

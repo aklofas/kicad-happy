@@ -3,10 +3,11 @@ is never deleted by pruning and never written into."""
 import io, json, os, subprocess, sys, tempfile, unittest
 from contextlib import redirect_stderr
 from pathlib import Path
+from tools.tests._fixtures import fixture_path, have
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "skills" / "kicad" / "scripts"
-FX = Path(os.environ.get("KH_FIXTURES", "/tmp/harness-pin/tests/fixtures")) / "simple-project"
+FX = fixture_path("simple-project")
 sys.path.insert(0, str(SCRIPTS))
 
 import analysis_cache  # noqa: E402
@@ -214,7 +215,7 @@ class CurrentRunReadersTest(unittest.TestCase):
                     self.assertIn("manifest has no run", r.stderr)
 
 
-@unittest.skipUnless(FX.is_dir(), "harness fixtures not present")
+@unittest.skipUnless(have(FX), "harness fixtures not present")
 class CliTest(unittest.TestCase):
     def _run(self, *args, cwd):
         env = dict(os.environ, PYTHONHASHSEED="0", PYTHONDONTWRITEBYTECODE="1")

@@ -2,13 +2,14 @@
 """Pins analyze_dfm behaviour across its module-level tables, _measure_* scans and _emit_* builders."""
 import copy, json, os, sys, unittest
 from pathlib import Path
+from tools.tests._fixtures import fixture_path, have
 SCRIPTS = Path(__file__).resolve().parents[2] / "skills" / "kicad" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 from pcb.dfm import _min_drill_with_source, _is_real_drill, analyze_dfm  # noqa: E402
 from pcb.pipeline import read_board  # noqa: E402
 
-FX = Path(os.environ.get("KH_FIXTURES", "/tmp/harness-pin/tests/fixtures"))
+FX = fixture_path()
 SIMPLE = FX / "simple-project" / "simple.kicad_pcb"
 PAD_DRILL_MIN = FX / "kh412" / "pad_drill_min.kicad_pcb"
 
@@ -19,7 +20,7 @@ def _dfm(path):
                               None, net_classes={}, design_intent=None)
 
 
-@unittest.skipUnless((SIMPLE.exists() and PAD_DRILL_MIN.exists()) or "KH_FIXTURES" in os.environ,
+@unittest.skipUnless((have(SIMPLE) and have(PAD_DRILL_MIN)),
                      "harness fixtures absent")
 class TestPcbDfm(unittest.TestCase):
     def test_metrics_key_order_and_tables_are_module_level(self):

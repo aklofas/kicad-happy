@@ -1,5 +1,6 @@
 import contextlib, importlib.util, inspect, io, json, re, subprocess, sys, tempfile, unittest
 from pathlib import Path
+from tools.tests._fixtures import fixture_path, have
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from tools import check_refactor as cr
@@ -508,7 +509,7 @@ class QuickJson(unittest.TestCase):
         self.assertIn("sync-offline", inspect.getsource(cr.cmd_quick))
 
 
-FX_REAL = Path("/tmp/harness-pin/tests/fixtures")
+FX_REAL = fixture_path()
 
 
 def _run_main(argv):
@@ -693,7 +694,7 @@ class ProductShaAndParse(unittest.TestCase):
             self.assertEqual(f, [], "\n".join(f))
 
 
-@unittest.skipUnless(FX_REAL.is_dir(), "frozen fixtures not available")
+@unittest.skipUnless(have(FX_REAL), "frozen fixtures not available")
 class AbaReal(unittest.TestCase):
     def test_aba_passes_on_real_fixtures(self):
         rc, out, err = _run_main(["aba", "--fixtures", str(FX_REAL)])
@@ -948,7 +949,7 @@ class FailClosedGaps(unittest.TestCase):
             self.assertTrue(target.exists())
             self.assertEqual([f["exit"] for f in stats["failures"]], [1])
 
-    @unittest.skipUnless(FX_REAL.is_dir(), "frozen fixtures not available")
+    @unittest.skipUnless(have(FX_REAL), "frozen fixtures not available")
     def test_text_snapshot_resolves_relative_roots(self):
         import os, shutil
         with tempfile.TemporaryDirectory() as td:

@@ -1,11 +1,12 @@
 """EMC findings take make_finding's key set and order (no `title`); finding_id and --text unchanged."""
 import json, os, shutil, subprocess, sys, tempfile, unittest
 from pathlib import Path
+from tools.tests._fixtures import fixture_path, have
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "skills" / "kicad" / "scripts"
 EMC = ROOT / "skills" / "emc" / "scripts"
-FX = Path(os.environ.get("KH_FIXTURES", "/tmp/harness-pin/tests/fixtures")) / "simple-project"
+FX = fixture_path("simple-project")
 # Frozen pre-change export (git archive 0490c49): EMC findings there still carry `title`.
 OLD = Path(os.environ.get("KH_OLD_TREE", "/tmp/kh-r8"))
 sys.path.insert(0, str(SCRIPTS))
@@ -39,7 +40,7 @@ class FactoryShape(unittest.TestCase):
         self.assertEqual(list(f)[-3:], ["fix_params", "report_context", "net_count"])
 
 
-@unittest.skipUnless((FX / "simple.kicad_sch").is_file() and (OLD / "skills/emc/scripts/analyze_emc.py").is_file(),
+@unittest.skipUnless(have(FX / "simple.kicad_sch") and (OLD / "skills/emc/scripts/analyze_emc.py").is_file(),
                      "frozen fixtures or the pre-change export not present")
 class VersusBase(unittest.TestCase):
     @classmethod

@@ -1,10 +1,11 @@
 """analysis.retention / diff_threshold / output_dir are honoured; EMC/SPICE cache bytes unchanged."""
 import json, os, re, shutil, subprocess, sys, tempfile, unittest
 from pathlib import Path
+from tools.tests._fixtures import fixture_path, have
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "skills" / "kicad" / "scripts"
-FX = Path(os.environ.get("KH_FIXTURES", "/tmp/harness-pin/tests/fixtures")) / "simple-project"
+FX = fixture_path("simple-project")
 # Frozen pre-change export (git archive 0490c49) for the manifest-bytes comparison.
 OLD = Path(os.environ.get("KH_OLD_TREE", "/tmp/kh-r8"))
 sys.path.insert(0, str(SCRIPTS))
@@ -19,7 +20,7 @@ def run_dirs(adir):
     return sorted(p.name for p in Path(adir).iterdir() if p.is_dir())
 
 
-@unittest.skipUnless((FX / "simple.kicad_sch").is_file(), "frozen fixtures not present")
+@unittest.skipUnless(have(FX / "simple.kicad_sch"), "frozen fixtures not present")
 class ConfigKnobs(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -139,7 +140,7 @@ def _normalise(manifest_text):
     return re.sub(r'"generated": "[^"]*"', '"generated": "T"', text)
 
 
-@unittest.skipUnless((FX / "simple.kicad_sch").is_file() and (OLD / "skills/emc/scripts/analyze_emc.py").is_file(),
+@unittest.skipUnless(have(FX / "simple.kicad_sch") and (OLD / "skills/emc/scripts/analyze_emc.py").is_file(),
                      "frozen fixtures or the pre-change export not present")
 class ManifestBytes(unittest.TestCase):
     def test_emc_and_spice_manifest_bytes_unchanged(self):

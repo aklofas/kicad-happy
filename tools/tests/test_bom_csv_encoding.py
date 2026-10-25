@@ -3,10 +3,11 @@ designators; translate_bom_pnp reads a cp1252 BOM and refuses xlsx with a usage 
 updated property keeps its backslashes."""
 import csv, os, re, shutil, subprocess, sys, tempfile, unittest
 from pathlib import Path
+from tools.tests._fixtures import fixture_path, have
 
 ROOT = Path(__file__).resolve().parents[2]
 BOM = ROOT / "skills" / "bom" / "scripts"
-FX = Path(os.environ.get("KH_FIXTURES", "/tmp/harness-pin/tests/fixtures")) / "simple-project"
+FX = fixture_path("simple-project")
 
 
 def _run(script, *args, **kw):
@@ -25,7 +26,7 @@ def _read(path):
         return list(csv.DictReader(f))
 
 
-@unittest.skipUnless((FX / "simple.kicad_sch").is_file(), "fixtures absent")
+@unittest.skipUnless(have(FX / "simple.kicad_sch"), "fixtures absent")
 class BomManagerExcelCsvTest(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -99,7 +100,7 @@ class TranslateBomPnpTest(unittest.TestCase):
         self.assertNotIn("xlsx", r.stdout)
 
 
-@unittest.skipUnless((FX / "simple.kicad_sch").is_file(), "fixtures absent")
+@unittest.skipUnless(have(FX / "simple.kicad_sch"), "fixtures absent")
 class EditPropertiesBackslashTest(unittest.TestCase):
     def test_updated_value_keeps_backslashes(self):
         with tempfile.TemporaryDirectory() as tmp:

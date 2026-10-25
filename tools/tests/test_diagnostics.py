@@ -2,6 +2,7 @@
 and every analyzer envelope declares the list as an optional root field."""
 import contextlib, io, json, os, subprocess, sys, tempfile, unittest
 from pathlib import Path
+from tools.tests._fixtures import fixture_path, have
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -11,7 +12,7 @@ for _p in (SCRIPTS, SPICE):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
-FX = Path(os.environ.get("KH_FIXTURES", "/tmp/harness-pin/tests/fixtures")) / "simple-project"
+FX = fixture_path("simple-project")
 # The 6a91aaa baseline lives outside the repo (worktree layout only).
 ARC = (ROOT.parents[2] / ".superpowers" / "sdd" / "2026-10-14-refactor-arc"
        if len(ROOT.parents) > 2 else None)
@@ -72,7 +73,7 @@ class EnvelopeSchemas(unittest.TestCase):
         self.assertEqual(errors, [])
 
 
-@unittest.skipUnless((FX / "simple.kicad_sch").is_file(), "frozen fixtures not present")
+@unittest.skipUnless(have(FX / "simple.kicad_sch"), "frozen fixtures not present")
 class PowerRailsGuard(unittest.TestCase):
     def _run(self, patched):
         import analyze_schematic, project_config
@@ -105,7 +106,7 @@ class PowerRailsGuard(unittest.TestCase):
 SYNTH = FX.parent / "synthetic_top_level_sheets" / "page1.kicad_sch"
 
 
-@unittest.skipUnless(SYNTH.is_file(), "frozen fixtures not present")
+@unittest.skipUnless(have(SYNTH), "frozen fixtures not present")
 class PeerSheetGuard(unittest.TestCase):
     def test_peer_sheet_parse_failure_is_one_record_and_one_line(self):
         import schematic.hierarchy as hierarchy
@@ -198,6 +199,7 @@ class OpampModelFallback(unittest.TestCase):
         with tempfile.TemporaryDirectory() as wd, \
                 mock.patch.object(spice_model_cache, "get_model_for_part", side_effect=OSError("no cache")), \
                 mock.patch("spice_simulator.subprocess.run", side_effect=fake), \
+                mock.patch("spice_simulator.NgspiceBackend.find", return_value="/fake/bin/ngspice"), \
                 contextlib.redirect_stderr(err):
             report = ss.simulate_subcircuits({"findings": [det]}, workdir=wd, monte_carlo_n=3)
         lines = [ln for ln in _warning_lines(err.getvalue())

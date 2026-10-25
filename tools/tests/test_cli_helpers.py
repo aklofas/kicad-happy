@@ -3,10 +3,11 @@
 import argparse, inspect, io, os, sys, tempfile, unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from tools.tests._fixtures import fixture_path, have
 SKILLS = Path(__file__).resolve().parents[2] / "skills"
 for _d in ("kicad", "emc", "spice"):
     sys.path.insert(0, str(SKILLS / _d / "scripts"))
-FX = Path(os.environ.get("KH_FIXTURES", "/tmp/harness-pin/tests/fixtures"))
+FX = fixture_path()
 
 from kicad_core.cli import (add_compact_arg, add_config_arg, add_only_deterministic_arg,  # noqa: E402
                             add_output_arg, add_schema_arg, add_stage_audience_args, add_text_arg)
@@ -43,7 +44,7 @@ class CliHelperTests(unittest.TestCase):
             # "int" where the module has `from __future__ import annotations` (cross_analysis, summarize_findings)
             self.assertIn(sig.return_annotation, (int, "int"), mod.__name__)
 
-    @unittest.skipUnless(FX.is_dir() or "KH_FIXTURES" in os.environ, "frozen fixtures absent")
+    @unittest.skipUnless(have(FX), "frozen fixtures absent")
     def test_main_returns_exit_codes_in_process(self):
         # main() resolves ./analysis as its capability-mode dir; keep that write out of the tree.
         cwd = os.getcwd()

@@ -2,13 +2,14 @@
 """--analysis-dir must tolerate a non-dict ``analysis`` value in .kicad-happy.json (frozen exit-code contract)."""
 import json, os, shutil, subprocess, sys, tempfile, unittest
 from pathlib import Path
+from tools.tests._fixtures import fixture_path, have
 
 ROOT = Path(__file__).resolve().parents[2]
 CLI = ROOT / "skills" / "kicad" / "scripts" / "analyze_schematic.py"
-FIXTURE = Path(os.environ.get("KH_FIXTURES", "/tmp/harness-pin/tests/fixtures")) / "simple-project" / "simple.kicad_sch"
+FIXTURE = fixture_path("simple-project", "simple.kicad_sch")
 
 
-@unittest.skipUnless(FIXTURE.exists() or "KH_FIXTURES" in os.environ, "harness pin fixtures absent")
+@unittest.skipUnless(have(FIXTURE), "harness pin fixtures absent")
 class AnalysisDirConfig(unittest.TestCase):
     def _run(self, analysis_value):
         with tempfile.TemporaryDirectory() as td:

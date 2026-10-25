@@ -2,11 +2,12 @@
 run_analyses is exactly run_facts + run_checks (the precondition for hoisting the late checks)."""
 import dataclasses, json, os, sys, tempfile, unittest
 from pathlib import Path
+from tools.tests._fixtures import fixture_path, have
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "skills" / "kicad" / "scripts"))
 
 from tools.check_refactor import KICAD10_BOARD_A, KICAD10_BOARD_B
 
-FX = Path(os.environ.get("KH_FIXTURES", "/tmp/harness-pin/tests/fixtures"))
+FX = fixture_path()
 KW = dict(return_path_radius_mm=2.0, gp001_debug=False, resolved_power_rails=None)
 
 
@@ -36,7 +37,7 @@ def _fields(obj):
 
 class PhasePurity(unittest.TestCase):
     def _boards(self):
-        paths = sorted(FX.rglob("*.kicad_pcb")) if FX.is_dir() else []
+        paths = sorted(p for p in FX.rglob("*.kicad_pcb") if p.is_file()) if FX.is_dir() else []
         td = tempfile.TemporaryDirectory()
         self.addCleanup(td.cleanup)
         for name, text in (("k10_a", KICAD10_BOARD_A), ("k10_b", KICAD10_BOARD_B)):
@@ -48,7 +49,7 @@ class PhasePurity(unittest.TestCase):
     def test_facts_and_checks_are_pure(self):
         from pcb.pipeline import read_board, run_facts, run_checks
         boards = self._boards()
-        if not FX.is_dir():
+        if not have(FX):
             self.skipTest(f"fixture tree absent: {FX}")
         for path in boards:
             for full in (False, True):
@@ -85,7 +86,7 @@ class PhasePurity(unittest.TestCase):
     def test_assemble_result_leaves_board_and_analyses_unchanged(self):
         from pcb.pipeline import read_board, run_analyses, assemble_result
         boards = self._boards()
-        if not FX.is_dir():
+        if not have(FX):
             self.skipTest(f"fixture tree absent: {FX}")
         for path in boards:
             for full in (False, True):

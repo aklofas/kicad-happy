@@ -2,10 +2,11 @@
 traceback; a read-only working directory does not fail a stdout run."""
 import json, os, subprocess, sys, tempfile, unittest
 from pathlib import Path
+from tools.tests._fixtures import fixture_path, have
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "skills" / "kicad" / "scripts"
-FX = Path(os.environ.get("KH_FIXTURES", "/tmp/harness-pin/tests/fixtures")) / "simple-project"
+FX = fixture_path("simple-project")
 
 
 def _run(script, *args, cwd=None):
@@ -68,7 +69,7 @@ class GerberDirTest(unittest.TestCase):
         json.loads(r.stdout)
 
 
-@unittest.skipUnless(FX.is_dir(), "harness fixtures not present")
+@unittest.skipUnless(have(FX), "harness fixtures not present")
 class EnvelopeTypeTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -118,7 +119,7 @@ class EnvelopeTypeTest(unittest.TestCase):
                 json.loads(r.stdout)
 
 
-@unittest.skipUnless(FX.is_dir() and os.name == "posix" and os.geteuid() != 0,
+@unittest.skipUnless(have(FX) and os.name == "posix" and os.geteuid() != 0,
                      "needs the fixtures and a non-root POSIX user")
 class ReadOnlyCwdTest(unittest.TestCase):
     def test_stdout_run_in_a_read_only_directory(self):

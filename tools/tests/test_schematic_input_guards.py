@@ -3,10 +3,11 @@ skipped with a diagnostic; an empty top-level input is a usage error (exit 2); a
 resolves to its sibling schematic."""
 import json, os, subprocess, sys, tempfile, time, unittest
 from pathlib import Path
+from tools.tests._fixtures import fixture_path, have
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "skills" / "kicad" / "scripts"
-FX = Path(os.environ.get("KH_FIXTURES", "/tmp/harness-pin/tests/fixtures")) / "simple-project"
+FX = fixture_path("simple-project")
 
 
 def _limit_memory():
@@ -37,7 +38,7 @@ def _with_sheet(base, sheet_file, uuid="99999999-0000-0000-0000-000000000001"):
     return base[:tail] + block + base[tail:]
 
 
-@unittest.skipUnless(FX.is_dir(), "harness fixtures not present")
+@unittest.skipUnless(have(FX), "harness fixtures not present")
 class SheetGuardTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -112,7 +113,7 @@ class SheetGuardTest(unittest.TestCase):
         self.assertEqual(d["diagnostics"], [])
 
 
-@unittest.skipUnless(FX.is_dir(), "harness fixtures not present")
+@unittest.skipUnless(have(FX), "harness fixtures not present")
 class RootInputTest(unittest.TestCase):
     def _usage_error(self, script, path, needle):
         with tempfile.TemporaryDirectory() as tmp:

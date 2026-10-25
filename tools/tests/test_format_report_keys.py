@@ -3,11 +3,12 @@ divider refs from r_top/r_bottom, filter refs and frequencies from resistor/indu
 and cutoff_hz/resonant_hz, single-pin nets as '<net> (<ref> pin <n>)'."""
 import json, os, subprocess, sys, tempfile, unittest
 from pathlib import Path
+from tools.tests._fixtures import fixture, fixture_path, have
 
 ROOT = Path(__file__).resolve().parents[2]
 FR = ROOT / "action" / "format-report.py"
 KS = ROOT / "skills" / "kicad" / "scripts"
-FX = Path(os.environ.get("KH_FIXTURES", "/tmp/harness-pin/tests/fixtures"))
+FX = fixture_path()
 PLACEHOLDERS = ("? × ?", "Vout=None", "{'ref'", "Single-pin net: {", "DFM: ?", "| DFM tier | ? |")
 
 
@@ -27,7 +28,7 @@ def _render(tmp, **inputs):
         return f.read(), g.read()
 
 
-@unittest.skipUnless((FX / "simple-project" / "simple.kicad_pcb").is_file(), "fixtures absent")
+@unittest.skipUnless(have(FX / "simple-project" / "simple.kicad_pcb"), "fixtures absent")
 class FixtureReportTest(unittest.TestCase):
     def assertNoPlaceholders(self, *texts):
         for t in texts:
@@ -50,9 +51,7 @@ class FixtureReportTest(unittest.TestCase):
         self.assertNoPlaceholders(md, full)
 
     def test_usb_dual_esd_dividers_and_single_pin_nets(self):
-        sch_src = FX / "determinism" / "usb_dual_esd.kicad_sch"
-        if not sch_src.is_file():
-            self.skipTest("fixture absent")
+        sch_src = fixture("determinism", "usb_dual_esd.kicad_sch")
         with tempfile.TemporaryDirectory() as tmp:
             sch = os.path.join(tmp, "sch.json")
             _run(KS / "analyze_schematic.py", sch_src, "--output", sch)

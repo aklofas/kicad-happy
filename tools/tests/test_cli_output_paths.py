@@ -1,7 +1,8 @@
 import json, os, subprocess, sys, tempfile, unittest
 from pathlib import Path
+from tools.tests._fixtures import fixture_path, have
 SCRIPTS = Path(__file__).resolve().parents[2] / "skills" / "kicad" / "scripts"
-FX = Path(os.environ.get("KH_FIXTURES", "/tmp/harness-pin/tests/fixtures")) / "simple-project"
+FX = fixture_path("simple-project")
 
 
 def run(script, *args, cwd):
@@ -9,7 +10,7 @@ def run(script, *args, cwd):
                           text=True, encoding="utf-8")
 
 
-@unittest.skipUnless((FX / "simple.kicad_pcb").is_file(), "frozen fixtures not present")
+@unittest.skipUnless(have(FX / "simple.kicad_pcb"), "frozen fixtures not present")
 class AnalysisDirRoundTrips(unittest.TestCase):
     def test_pcb_caches_then_updates_current_run(self):
         with tempfile.TemporaryDirectory() as d:

@@ -3,12 +3,13 @@ onto error/warning/info), and a missing, directory, non-JSON or wrong-envelope i
 error (exit 2), not a traceback or a clean score."""
 import collections, json, os, subprocess, sys, tempfile, unittest
 from pathlib import Path
+from tools.tests._fixtures import fixture_path, have
 
 ROOT = Path(__file__).resolve().parents[2]
 EMC = ROOT / "skills" / "emc" / "scripts" / "analyze_emc.py"
 PCB = ROOT / "skills" / "kicad" / "scripts" / "analyze_pcb.py"
 SCH = ROOT / "skills" / "kicad" / "scripts" / "analyze_schematic.py"
-FX = Path(os.environ.get("KH_FIXTURES", "/tmp/harness-pin/tests/fixtures"))
+FX = fixture_path()
 
 
 def _run(script, *args):
@@ -16,7 +17,7 @@ def _run(script, *args):
                           capture_output=True, text=True, encoding="utf-8")
 
 
-@unittest.skipUnless((FX / "kh412" / "pad_drill_min.kicad_pcb").is_file(), "fixtures absent")
+@unittest.skipUnless(have(FX / "kh412" / "pad_drill_min.kicad_pcb"), "fixtures absent")
 class SeverityFilterTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, "v*-dev"]
   pull_request:
-    branches: [main]
+    branches: [main, "v*-dev"]
 
 permissions:
   contents: read
@@ -150,8 +150,17 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: "3.10"
-      - name: check_refactor unit tests
-        run: python3 -m unittest tools.tests.test_check_refactor
+      - name: Clone test harness at pinned commit (fixtures + dev deps)
+        run: |
+          git clone https://github.com/aklofas/kicad-happy-testharness.git /tmp/harness
+          cd /tmp/harness
+          git checkout f990d904f58
+      - name: Install harness dev deps (jsonschema, referencing)
+        run: python3 -m pip install --disable-pip-version-check -r /tmp/harness/requirements-dev.txt
+      - name: tools unit tests (all, against the pinned harness fixtures)
+        env:
+          KH_FIXTURES: /tmp/harness/tests/fixtures
+        run: python3 -m unittest discover -s tools/tests -t . -v
       - name: import-direction ratchet
         run: python3 tools/check_refactor.py imports
       - name: literal-tag ratchet

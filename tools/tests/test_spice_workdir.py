@@ -9,6 +9,10 @@ SPICE = ROOT / "skills" / "spice" / "scripts"
 sys.path.insert(0, str(SPICE))
 
 
+# the backend resolves its binary before running; fake it so no simulator is needed
+FAKE_NGSPICE = "/fake/bin/ngspice"
+
+
 def _analysis(tmp):
     """Minimal analysis JSON with one simulatable RC filter."""
     out = os.path.join(tmp, "analysis.json")
@@ -53,7 +57,8 @@ class WorkdirTest(unittest.TestCase):
                     self.assertNotIn("/", target)
                     self.assertNotIn("\\", target)
                 return subprocess.CompletedProcess(cmd, 0, "", "")
-            with mock.patch("spice_simulator.subprocess.run", side_effect=fake):
+            with mock.patch("spice_simulator.subprocess.run", side_effect=fake), \
+                     mock.patch("spice_simulator.NgspiceBackend.find", return_value=FAKE_NGSPICE):
                 ss.simulate_subcircuits(analysis, workdir=wd)
             self.assertTrue(calls)
             for cmd, kw in calls:
@@ -75,7 +80,8 @@ class WorkdirTest(unittest.TestCase):
             os.chdir(tmp)
             try:
                 here = os.getcwd()
-                with mock.patch("spice_simulator.subprocess.run", side_effect=fake):
+                with mock.patch("spice_simulator.subprocess.run", side_effect=fake), \
+                     mock.patch("spice_simulator.NgspiceBackend.find", return_value=FAKE_NGSPICE):
                     ss.simulate_subcircuits(analysis, workdir=".")
             finally:
                 os.chdir(old)

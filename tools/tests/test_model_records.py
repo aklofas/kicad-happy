@@ -2,10 +2,11 @@
 """The TypedDicts in kicad_core/model.py must be truthful for both readers."""
 import sys, unittest
 from pathlib import Path
+from tools.tests._fixtures import fixture_path, have
 
 REPO = Path(__file__).resolve().parents[2]
 SCRIPTS = REPO / "skills" / "kicad" / "scripts"
-FX = Path("/tmp/harness-pin/tests/fixtures")
+FX = fixture_path()
 sys.path.insert(0, str(SCRIPTS))
 
 
@@ -16,7 +17,7 @@ def _annotations(td):
     return set(out)
 
 
-@unittest.skipUnless(FX.is_dir(), "frozen fixtures absent")
+@unittest.skipUnless(have(FX), "frozen fixtures absent")
 class RecordShapes(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -25,7 +26,7 @@ class RecordShapes(unittest.TestCase):
         from kicad_core import model
         cls.model = model
         cls.results = []
-        for f in sorted(set(FX.rglob("*.kicad_sch")) | set(FX.rglob("*.sch"))):
+        for f in sorted(p for p in set(FX.rglob("*.kicad_sch")) | set(FX.rglob("*.sch")) if p.is_file()):
             try:
                 cls.results.append(analyze_schematic(str(f), no_hierarchy=True))
             except Exception:

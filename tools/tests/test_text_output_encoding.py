@@ -1,10 +1,11 @@
 """--text output survives a stdout that is not UTF-8 (a Windows cp1252 redirect)."""
 import os, subprocess, sys, tempfile, unittest
 from pathlib import Path
+from tools.tests._fixtures import fixture_path, have
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "skills" / "kicad" / "scripts"
-FIXTURES = Path(os.environ.get("KH_FIXTURES", "/tmp/harness-pin/tests/fixtures"))
+FIXTURES = fixture_path()
 ESD = FIXTURES / "determinism" / "usb_dual_esd.kicad_sch"
 
 
@@ -23,7 +24,7 @@ class HelperTest(unittest.TestCase):
         self.assertEqual(r.stdout.decode("utf-8").strip(), "Ω ≤ ≥")
 
 
-@unittest.skipUnless(ESD.is_file(), "harness fixtures not present")
+@unittest.skipUnless(have(ESD), "harness fixtures not present")
 class CliTest(unittest.TestCase):
     def test_schematic_text_with_non_cp1252_characters(self):
         with tempfile.TemporaryDirectory() as tmp:

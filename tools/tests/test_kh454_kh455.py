@@ -3,6 +3,7 @@
 dedups on (ref, pin, net) so duplicate / unannotated refs keep every power pin (KH-455)."""
 import copy, json, subprocess, sys, unittest
 from pathlib import Path
+from tools.tests._fixtures import fixture_path, have
 from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "skills" / "kicad" / "scripts"))
@@ -10,7 +11,7 @@ from kicad_types import build_analysis_context  # noqa: E402
 from signal_detectors import audit_rail_sources, audit_power_pin_dc_paths  # noqa: E402
 
 BEFORE = "0490c49"
-FX = Path("/tmp/harness-pin/tests/fixtures")
+FX = fixture_path()
 
 
 def _ctx(components, nets, flagged=()):
@@ -131,10 +132,10 @@ class FixtureSetsUnchanged(unittest.TestCase):
                 self.assertGreater(refs.count(x["components"][0]), 1, x)
 
     def test_simple_project_and_every_fixture(self):
-        if not FX.is_dir():
+        if not have(FX):
             raise unittest.SkipTest(f"{FX} absent")
         old = _old_module()
-        schs = sorted(FX.rglob("*.kicad_sch"))
+        schs = sorted(p for p in FX.rglob("*.kicad_sch") if p.is_file())
         self.assertIn(FX / "simple-project" / "simple.kicad_sch", schs)
         for sch in schs:
             with self.subTest(sch=str(sch.relative_to(FX))):

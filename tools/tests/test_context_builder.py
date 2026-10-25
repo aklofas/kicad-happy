@@ -1,12 +1,13 @@
 # tools/tests/test_context_builder.py
 import sys, unittest
 from pathlib import Path
+from tools.tests._fixtures import fixture_path, have
 SCRIPTS = Path(__file__).resolve().parents[2] / "skills" / "kicad" / "scripts"
-FX = Path("/tmp/harness-pin/tests/fixtures")
+FX = fixture_path()
 sys.path.insert(0, str(SCRIPTS))
 
 
-@unittest.skipUnless(FX.is_dir(), "frozen fixtures absent")
+@unittest.skipUnless(have(FX), "frozen fixtures absent")
 class Builder(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

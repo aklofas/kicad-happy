@@ -1,9 +1,10 @@
 # tools/tests/test_cache_reader.py
 import json, os, shutil, subprocess, sys, tempfile, unittest
 from pathlib import Path
+from tools.tests._fixtures import fixture, fixture_path
 DS = Path(__file__).resolve().parents[2] / "skills" / "datasheets"
 sys.path.insert(0, str(DS))
-FX = Path(os.environ.get("FX", "/tmp/harness-pin/tests/fixtures"))
+FX = fixture_path()
 
 
 class CacheReader(unittest.TestCase):
@@ -24,9 +25,7 @@ class CacheReader(unittest.TestCase):
             self.assertIsNone(lookup("X1", cache_dir=cache))
 
     def test_real_fixture_without_pdf_is_stale_pdf_missing(self):
-        src = FX / "datasheets-extracted" / "LM2596-ADJ.json"
-        if not src.is_file():
-            self.skipTest(f"fixture absent: {src}")
+        src = fixture("datasheets-extracted", "LM2596-ADJ.json")
         from datasheet_types.cache_reader import lookup, STALE_PDF_MISSING
         with tempfile.TemporaryDirectory() as d:
             cache = Path(d) / "extracted"; cache.mkdir()
