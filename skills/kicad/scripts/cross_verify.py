@@ -558,7 +558,7 @@ def check_thermal_vias(thermal: dict, pcb: dict) -> list[dict]:
     Cross-references thermal margins with PCB thermal pad via counts.
     Only runs when thermal JSON is provided.
     """
-    assessments = thermal.get("thermal_assessments", [])
+    assessments = thermal.get("assessments") or thermal.get("thermal_assessments", [])
     if not assessments:
         return []
 

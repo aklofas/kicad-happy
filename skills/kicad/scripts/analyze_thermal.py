@@ -27,7 +27,7 @@ import time
 from envelopes.thermal import ThermalEnvelope
 from schema_codec import emit_schema
 from inputs_builder import build_inputs, build_upstream_artifact, build_compat
-from kicad_core.render import wrap_lines
+from kicad_core.render import summary_or_title, wrap_lines
 from capability_mode import get_capability_mode_ref
 from kicad_core.cli import (add_config_arg, add_only_deterministic_arg, add_output_arg, add_schema_arg,
                             add_stage_audience_args, add_text_arg, envelope_type_error,
@@ -91,15 +91,16 @@ PACKAGE_THERMAL_RESISTANCE = [
     (r"[TL]QFP.*48", 50.0),
     (r"[TL]QFP.*32", 60.0),
     (r"[TL]QFP", 50.0),
-    # SOIC/SOP
-    (r"SOIC.*16|SOP.*16", 80.0),
-    (r"SOIC.*8|SOP.*8", 120.0),
+    # MSOP/TSSOP/SOIC/SOP — families before the generic SOP row; exposed-pad
+    # variants fall through to the generic value.
+    (r"MSOP(?!.*-\d*EP)", 200.0),
+    (r"TSSOP[-_]?(?:20|24|28)(?![\d.x])(?!.*-\d*EP)", 80.0),
+    (r"TSSOP[-_]?(?:14|16)(?![\d.x])(?!.*-\d*EP)", 100.0),
+    (r"TSSOP[-_]?8(?![\d.x])(?!.*-\d*EP)", 150.0),
+    (r"TSSOP(?!.*-\d*EP)", 100.0),
+    (r"(?:SOIC|(?<![A-Z])SOP)[-_]?16(?![\d.x])", 80.0),
+    (r"(?:SOIC|(?<![A-Z])SOP)[-_]?8(?![\d.x])", 120.0),
     (r"SOIC|SOP", 100.0),
-    # TSSOP/MSOP
-    (r"TSSOP.*(?:20|24|28)", 80.0),
-    (r"TSSOP.*(?:14|16)", 100.0),
-    (r"TSSOP.*8", 150.0),
-    (r"MSOP", 200.0),
     # BGA
     (r"BGA.*(?:256|324|400)", 20.0),
     (r"BGA", 25.0),
@@ -300,7 +301,9 @@ def _estimate_all_power_dissipation(schematic: dict) -> tuple:
             skipped.append({"ref": ref, "value": reg.get("value", ""),
                              "reason": "below_min_pdiss"})
 
-    # 3. Current sense shunt resistors — P = I²R
+    # 3. Current sense shunt resistors: the detector only knows the sense
+    # range's full-scale current, not the load, so there is no operating
+    # current to cost.
     current_sense = [f for f in schematic.get("findings", [])
                      if f.get("detector") == "detect_current_sense"]
     for cs in current_sense:
@@ -310,22 +313,9 @@ def _estimate_all_power_dissipation(schematic: dict) -> tuple:
         ref = shunt.get("ref", "")
         if ref in seen_refs:
             continue
-        r_ohms = shunt.get("ohms", 0)
-        i_max = cs.get("max_current_100mV_A", 0)
-        if not r_ohms or not i_max:
-            continue
-
-        p_w = i_max * i_max * r_ohms
-        if p_w > MIN_PDISS_W:
-            results.append({
-                "ref": ref,
-                "value": shunt.get("value", ""),
-                "type": "shunt_resistor",
-                "pdiss_w": round(p_w, 4),
-                "pdiss_source": f"{i_max:.3f}A² × {r_ohms}Ω",
-                "pdiss_confidence": "deterministic",
-            })
-            seen_refs.add(ref)
+        skipped.append({"ref": ref, "value": shunt.get("value", ""),
+                        "reason": "no_operating_current"})
+        seen_refs.add(ref)
 
     return results, skipped
 
@@ -839,7 +829,8 @@ def format_text_report(result: dict) -> str:
     lines = []
     summary = result.get("summary", {})
     findings = result.get("findings", [])
-    assessments = result.get("thermal_assessments", [])
+    assessments = result.get("assessments") or result.get("thermal_assessments", [])
+    by_sev = summary.get("by_severity") or {}
 
     lines.append("=" * 60)
     lines.append("THERMAL HOTSPOT ANALYSIS")
@@ -859,11 +850,16 @@ def format_text_report(result: dict) -> str:
 
     lines.append(f"Total findings:      {summary.get('total_findings', 0)}")
     lines.append(f"Components assessed: {summary.get('components_assessed', 0)}")
-    lines.append(f"  CRITICAL:    {summary.get('critical', 0)}")
-    lines.append(f"  HIGH:        {summary.get('high', 0)}")
-    lines.append(f"  MEDIUM:      {summary.get('medium', 0)}")
-    lines.append(f"  LOW:         {summary.get('low', 0)}")
-    lines.append(f"  INFO:        {summary.get('info', 0)}")
+    if by_sev:
+        lines.append(f"  ERROR:       {by_sev.get('error', 0)}")
+        lines.append(f"  WARNING:     {by_sev.get('warning', 0)}")
+        lines.append(f"  INFO:        {by_sev.get('info', 0)}")
+    else:
+        lines.append(f"  CRITICAL:    {summary.get('critical', 0)}")
+        lines.append(f"  HIGH:        {summary.get('high', 0)}")
+        lines.append(f"  MEDIUM:      {summary.get('medium', 0)}")
+        lines.append(f"  LOW:         {summary.get('low', 0)}")
+        lines.append(f"  INFO:        {summary.get('info', 0)}")
     lines.append("")
 
     # Component thermal table
@@ -890,8 +886,8 @@ def format_text_report(result: dict) -> str:
         lines.append("-" * 60)
 
         for f in findings:
-            sev = f["severity"]
-            lines.append(f"  [{sev}] {f['rule_id']}: {f['title']}")
+            sev = f.get("severity", "")
+            lines.append(f"  [{sev}] {f.get('rule_id', '')}: {summary_or_title(f)}")
             desc = f.get("description", "")
             lines.extend(wrap_lines(desc))
             if f.get("recommendation"):

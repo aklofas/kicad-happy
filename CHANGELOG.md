@@ -31,6 +31,9 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - GR-005 checks whether the board outline closes: round and arc-closed outlines no longer get "open outline", and open outlines with four or more draws now do. A closed outline with extra Edge.Cuts lines gets no finding. (KH-565)
 - X2 pin entries in `analyze_gerbers.py --full` connectivity carry the net declared with the pin; they took whatever net was active before the pin (usually none). (KH-591)
 - CC-001, EG-001, DA-001 and TW-001 read the keys the analyzers write; they emitted nothing on any real project. CC-001 and TW-001 take the current from the regulator output-capacitance estimate (heuristic). EG-001 is reported as info and ignores sheet-qualified grounds. TW-001's width table interpolates below 0.5 A instead of requiring 0.25 mm at any current. DP-005 pairs `...DP`/`...DM` nets. (KH-566, KH-567)
+- Thermal no longer costs a current-sense resistor at its full-scale current (a misread capacitor reported 2e9 W); it is listed as skipped until an operating current is known (KH-568).
+- MSOP, TSSOP, SSOP and SOIC-14 footprints get their own junction-to-ambient resistance instead of the SOIC/SOP value (KH-569).
+- The thermal text report shows the component table and severity counts and no longer crashes on summary-only findings; `cross_verify` thermal-via checks read the same keys (KH-570).
 
 ---
 
