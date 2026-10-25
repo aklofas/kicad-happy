@@ -1,6 +1,6 @@
 """The SPICE model cache sits beside the project the analysis names, never in one
 machine-wide temp directory, and it writes its manifest atomically."""
-import json, os, subprocess, sys, tempfile, unittest
+import contextlib, io, json, os, subprocess, sys, tempfile, unittest
 from pathlib import Path
 from unittest import mock
 
@@ -156,6 +156,64 @@ class SimulateCacheDirTest(unittest.TestCase):
                 self.assertIsNone(c.kwargs["override_dir"])
             self.assertTrue((Path(proj) / "spice" / "models" / "manifest.json").is_file())
             self.assertFalse((Path(wd) / "spice").exists())
+
+
+class CacheFileModeTest(unittest.TestCase):
+    def test_model_and_manifest_use_the_import_time_mode(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(spice_model_cache, "DEFAULT_FILE_MODE", 0o640, create=True):
+            spice_model_cache.cache_model(tmp, "LM358", ".subckt LM358 1 2\n.ends\n", {},
+                                          "lookup", "opamp")
+            self.assertEqual((Path(tmp) / "LM358.sub").stat().st_mode & 0o777, 0o640)
+            self.assertEqual((Path(tmp) / "manifest.json").stat().st_mode & 0o777, 0o640)
+
+
+class SimulateSymlinkedProjectCacheTest(unittest.TestCase):
+    """A project whose spice/ or spice/models/ is a symlink caches under the run's
+    workdir instead; an explicit cache dir is the user's choice and is used as given."""
+
+    def _run(self, wd, analysis, model_options=None):
+        import simulate_subcircuits as ss
+        import spice_spec_fetcher
+
+        def fake(cmd, **kw):
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        with mock.patch("spice_simulator.subprocess.run", side_effect=fake), \
+                mock.patch.object(spice_spec_fetcher, "fetch_specs", return_value=(None, None)), \
+                contextlib.redirect_stderr(io.StringIO()):
+            return ss.simulate_subcircuits(dict(analysis, findings=[dict(OPAMP)]), workdir=wd,
+                                           model_options=model_options)
+
+    def test_symlinked_project_folders_not_used(self):
+        for link in ("spice", "spice/models"):
+            with self.subTest(link=link), tempfile.TemporaryDirectory() as tmp:
+                tmp = Path(tmp)
+                outside = tmp / "outside"
+                outside.mkdir()
+                proj = tmp / "proj"
+                (proj / link).parent.mkdir(parents=True, exist_ok=True)
+                (proj / link).symlink_to(outside, target_is_directory=True)
+                wd = tmp / "ws"
+                report = self._run(str(wd), {"file": str(proj / "board.kicad_sch")})
+                self.assertEqual(os.listdir(outside), [])
+                self.assertTrue((wd / "spice" / "models" / "manifest.json").is_file())
+                cache_records = [d for d in report["diagnostics"]
+                                 if d["source"] == "simulate_subcircuits.simulate_subcircuits"]
+                self.assertEqual(len(cache_records), 1, report["diagnostics"])
+                self.assertIn(str(proj / link), cache_records[0]["message"])
+
+    def test_explicit_cache_dir_symlink_used(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            outside = tmp / "outside"
+            outside.mkdir()
+            chosen = tmp / "chosen"
+            chosen.mkdir()
+            (chosen / "spice").symlink_to(outside, target_is_directory=True)
+            report = self._run(str(tmp / "ws"), {"file": str(tmp / "proj" / "board.kicad_sch")},
+                               ModelOptions(cache_dir=str(chosen)))
+            self.assertTrue((outside / "models" / "manifest.json").is_file())
+            self.assertEqual(report["diagnostics"], [])
 
 
 if __name__ == "__main__":

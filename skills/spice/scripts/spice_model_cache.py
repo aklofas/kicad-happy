@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import _core_path  # noqa: F401
-from distributor_core.manifest import manifest_file_path
+from distributor_core.manifest import DEFAULT_FILE_MODE, manifest_file_path
 from kicad_core.diagnostics import record
 from spice_part_library import lookup_part_specs
 from spice_spec_fetcher import _read_spice_specs
@@ -218,6 +218,7 @@ def cache_model(cache_dir, mpn, subckt, specs, source, component_type):
     try:
         with tmp:
             tmp.write(subckt)
+        os.chmod(tmp.name, DEFAULT_FILE_MODE)
         os.replace(tmp.name, model_path)
     except BaseException:
         try:
@@ -253,6 +254,7 @@ def cache_model(cache_dir, mpn, subckt, specs, source, component_type):
     try:
         with tmp:
             json.dump(index, tmp, indent=2)
+        os.chmod(tmp.name, DEFAULT_FILE_MODE)
         os.replace(tmp.name, write_path)
     except BaseException:
         try:

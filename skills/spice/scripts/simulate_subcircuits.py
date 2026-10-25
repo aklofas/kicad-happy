@@ -35,7 +35,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _core_path  # noqa: F401
 from kicad_core.cli import add_compact_arg, add_output_arg, add_text_arg, utf8_text_stdout
-from kicad_core.diagnostics import OnceSink
+from kicad_core.diagnostics import OnceSink, record
 
 from spice_templates import TEMPLATE_REGISTRY, TOPLEVEL_REGISTRY, list_supported_types, SpiceTestbench
 from spice_results import (
@@ -170,15 +170,28 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
     else:
         os.makedirs(workdir, exist_ok=True)
 
-    # An analysis that names no source file caches its models under this run's workdir
+    sim_diagnostics: list = []  # Monte Carlo trials add only records the nominal runs lack
+
+    # An analysis that names no source file caches its models under this run's workdir,
+    # and so does a project whose spice/ or spice/models/ is a symlink, which would
+    # send cache writes to the link's target.
     from spice_model_cache import project_dir_from_analysis
-    if (project_dir_from_analysis(analysis_json) is None
-            and (model_options is None or model_options.cache_dir is None)):
-        from spice_model_cache import ModelOptions
-        model_options = dataclasses.replace(model_options or ModelOptions(), cache_dir=workdir)
+    if model_options is None or model_options.cache_dir is None:
+        project_dir = project_dir_from_analysis(analysis_json)
+        linked = None
+        if project_dir is not None:
+            linked = next((p for p in (project_dir / "spice", project_dir / "spice" / "models")
+                           if p.is_symlink()), None)
+            if linked is not None:
+                record(sim_diagnostics, "simulate_subcircuits.simulate_subcircuits",
+                       OSError(f"{linked} is a symlink"),
+                       "part models cached in the run's workdir")
+        if project_dir is None or linked is not None:
+            from spice_model_cache import ModelOptions
+            model_options = dataclasses.replace(model_options or ModelOptions(),
+                                                cache_dir=workdir)
 
     results = []
-    sim_diagnostics: list = []  # Monte Carlo trials add only records the nominal runs lack
     total_time = 0
 
     # Monte Carlo setup (lazy import only when needed)
