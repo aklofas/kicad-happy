@@ -25,6 +25,8 @@ from spice_models import (
     spice_element_for_passive,
     _sanitize_net,
     _format_eng,
+    spice_ident,
+    spice_text,
 )
 
 
@@ -218,8 +220,8 @@ def generate_rc_filter(det, output_file, context=None, parasitics=None):
         model_note = "* Model: ideal passives + PCB trace parasitics"
 
     circuit = f"""\
-* Auto-generated testbench for RC filter: {r_ref}/{c_ref}
-* Type: {ftype}, expected fc = {fc:.1f} Hz
+* Auto-generated testbench for RC filter: {spice_text(r_ref)}/{spice_text(c_ref)}
+* Type: {spice_text(ftype)}, expected fc = {fc:.1f} Hz
 {model_note}
 {parasitic_note}
 
@@ -271,12 +273,12 @@ def generate_lc_filter(det, output_file, context=None, parasitics=None):
     in_net = "ac_in"
 
     circuit = f"""\
-* Auto-generated testbench for LC filter: {l_ref}/{c_ref}
+* Auto-generated testbench for LC filter: {spice_text(l_ref)}/{spice_text(c_ref)}
 * Expected resonant frequency = {f_res:.1f} Hz, Z0 = {z0:.1f} ohms
 * Model: ideal passives + small inductor ESR (Q=100)
 
 * Topology: source → R_esr → L → shared_net, C from shared_net → gnd
-R_{l_ref}_esr {in_net} {in_net}_mid {_format_eng(r_series)}
+R_{spice_ident(l_ref)}_esr {in_net} {in_net}_mid {_format_eng(r_series)}
 {spice_element_for_passive(l_ref, l_henries, in_net + "_mid", shared)}
 {spice_element_for_passive(c_ref, c_farads, shared, "0")}
 
@@ -339,7 +341,7 @@ def generate_voltage_divider(det, output_file, vin=3.3, context=None, parasitics
     expected_vout = vin * ratio
 
     circuit = f"""\
-* Auto-generated testbench for voltage divider: {rt_ref}/{rb_ref}
+* Auto-generated testbench for voltage divider: {spice_text(rt_ref)}/{spice_text(rb_ref)}
 * Expected Vout = {vin} * {ratio:.6f} = {expected_vout:.4f} V
 * Model: ideal passives (exact, unloaded)
 
@@ -435,7 +437,7 @@ def generate_opamp_circuit(det, output_file, context=None, parasitics=None,
             # Input resistor is actually the ground-leg resistor
             # Already placed above from sig_in to neg_net — need to fix:
             # it should be from neg_net to ground
-            netlist_lines = [l for l in netlist_lines if not l.startswith(ri["ref"])]
+            netlist_lines = [l for l in netlist_lines if not l.startswith(spice_ident(ri["ref"]))]
             netlist_lines.append(
                 spice_element_for_passive(ri["ref"], ri["ohms"], neg_net, "0")
             )
@@ -495,7 +497,7 @@ def generate_opamp_circuit(det, output_file, context=None, parasitics=None,
         model_note = "* Model: IDEAL opamp (Aol=1e6, GBW~10MHz) — real part may have lower GBW"
     else:
         gbw = model_specs.get("gbw_hz", 0) if model_specs else 0
-        model_note = f"* Model: {value} behavioral ({model_source}, GBW={gbw/1e6:.1f}MHz)"
+        model_note = f"* Model: {spice_text(value)} behavioral ({model_source}, GBW={gbw/1e6:.1f}MHz)"
 
     gain_comment = ""
     if expected_gain is not None:
@@ -532,8 +534,8 @@ def generate_opamp_circuit(det, output_file, context=None, parasitics=None,
         rf_ohms = rf["ohms"] if rf else 1e6
         expected_tz = rf_ohms
         circuit = f"""\
-* Auto-generated testbench for opamp: {ref} ({value})
-* Configuration: {config} (transimpedance = Rf = {_format_eng(rf_ohms)} ohm)
+* Auto-generated testbench for opamp: {spice_text(ref)} ({spice_text(value)})
+* Configuration: {spice_text(config)} (transimpedance = Rf = {_format_eng(rf_ohms)} ohm)
 {gain_comment}
 {model_note}
 
@@ -545,7 +547,7 @@ V_VCC {vcc_net} 0 DC {vcc_v}
 V_VEE {vee_net} 0 DC {vee_v}
 
 * Opamp instance
-X{ref} {pos_net or neg_net} {neg_net} {out_net} {vcc_net} {vee_net} {model_name}
+X{spice_ident(ref)} {pos_net or neg_net} {neg_net} {out_net} {vcc_net} {vee_net} {model_name}
 
 * Feedback network
 {chr(10).join(feedback_components)}
@@ -568,8 +570,8 @@ IAC 0 {stim_net} DC 0 AC 1u
         return SpiceTestbench(circuit, analyses, measurements, model_extra, tb_diagnostics)
 
     circuit = f"""\
-* Auto-generated testbench for opamp: {ref} ({value})
-* Configuration: {config}
+* Auto-generated testbench for opamp: {spice_text(ref)} ({spice_text(value)})
+* Configuration: {spice_text(config)}
 {gain_comment}
 {model_note}
 
@@ -581,7 +583,7 @@ V_VCC {vcc_net} 0 DC {vcc_v}
 V_VEE {vee_net} 0 DC {vee_v}
 
 * Opamp instance
-X{ref} {pos_net or neg_net} {neg_net} {out_net} {vcc_net} {vee_net} {model_name}
+X{spice_ident(ref)} {pos_net or neg_net} {neg_net} {out_net} {vcc_net} {vee_net} {model_name}
 
 * Feedback network
 {chr(10).join(feedback_components)}
@@ -653,9 +655,9 @@ def generate_crystal_circuit(det, output_file, context=None, parasitics=None):
         c0 = 5e-12
 
     circuit = f"""\
-* Auto-generated testbench for crystal circuit: {ref} ({value})
+* Auto-generated testbench for crystal circuit: {spice_text(ref)} ({spice_text(value)})
 * Frequency: {freq:.0f} Hz
-* Load caps: {c1['ref']}={_format_eng(c1['farads'])}F, {c2['ref']}={_format_eng(c2['farads'])}F
+* Load caps: {spice_text(c1['ref'])}={_format_eng(c1['farads'])}F, {spice_text(c2['ref'])}={_format_eng(c2['farads'])}F
 * Effective CL: {cl_eff:.1f} pF (calculated by analyzer)
 * Model: generic crystal equivalent circuit (Rm={rm} ohms)
 *
@@ -826,8 +828,8 @@ def generate_feedback_network(det, output_file, vin=3.3, context=None, parasitic
     fb_note = f"Connected to {fb_ic} FB pin" if fb_ic else "Feedback network"
 
     circuit = f"""\
-* Auto-generated testbench for feedback network: {rt_ref}/{rb_ref}
-* {fb_note}
+* Auto-generated testbench for feedback network: {spice_text(rt_ref)}/{spice_text(rb_ref)}
+* {spice_text(fb_note)}
 * Expected FB voltage = {vin} * {ratio:.6f} = {expected_vout:.4f} V
 * Model: ideal passives (exact, unloaded)
 
@@ -923,14 +925,14 @@ def _generate_mosfet_testbench(det, output_file, context=None, parasitics=None):
 
     protection_note = ""
     if has_flyback:
-        protection_note += f"\n* Flyback diode: {det.get('flyback_diode', 'yes')}"
+        protection_note += f"\n* Flyback diode: {spice_text(det.get('flyback_diode', 'yes'))}"
     if has_snubber:
         protection_note += "\n* Drain snubber RC detected"
 
     if is_p:
         circuit = f"""\
-* Auto-generated testbench for {ch_type} MOSFET: {ref} ({value})
-* Load type: {load_type}{protection_note}
+* Auto-generated testbench for {ch_type} MOSFET: {spice_text(ref)} ({spice_text(value)})
+* Load type: {spice_text(load_type)}{protection_note}
 * Model: generic PMOS (Vth=-1.5V) — real threshold depends on part
 
 {get_generic_models()}
@@ -938,7 +940,7 @@ def _generate_mosfet_testbench(det, output_file, context=None, parasitics=None):
 VDD vdd 0 DC {vdd}
 
 * P-channel MOSFET: source to VDD, drain to load
-M{ref} {drain} {gate} vdd vdd {model} L=1u W=100u
+M{spice_ident(ref)} {drain} {gate} vdd vdd {model} L=1u W=100u
 RLOAD {drain} 0 1k
 
 * Gate drive: sweep from VDD (off) to 0V (on)
@@ -957,8 +959,8 @@ Vgate {gate} 0 DC {vdd}
         return SpiceTestbench(circuit, analyses, measurements, extra)
     else:
         circuit = f"""\
-* Auto-generated testbench for {ch_type} MOSFET: {ref} ({value})
-* Load type: {load_type}{protection_note}
+* Auto-generated testbench for {ch_type} MOSFET: {spice_text(ref)} ({spice_text(value)})
+* Load type: {spice_text(load_type)}{protection_note}
 * Model: generic NMOS (Vth=1.5V) — real threshold depends on part
 
 {get_generic_models()}
@@ -967,7 +969,7 @@ VDD vdd 0 DC {vdd}
 
 * N-channel MOSFET: drain to load, source to GND
 RLOAD vdd {drain} 1k
-M{ref} {drain} {gate} 0 0 {model} L=1u W=100u
+M{spice_ident(ref)} {drain} {gate} 0 0 {model} L=1u W=100u
 
 * Gate drive: sweep from 0V (off) to VDD (on)
 Vgate {gate} 0 DC 0
@@ -1008,7 +1010,7 @@ def _generate_bjt_testbench(det, output_file, context=None, parasitics=None):
     emitter_r_line = ""
     if emitter_r:
         # Parse value — the detector gives ref and value but not always ohms
-        emitter_r_line = f"* Emitter resistor: {emitter_r.get('reference', 'RE')} = {emitter_r.get('value', '?')}"
+        emitter_r_line = f"* Emitter resistor: {spice_text(emitter_r.get('reference', 'RE'))} = {spice_text(emitter_r.get('value', '?'))}"
 
     # Base resistors
     base_res = det.get("base_resistors", [])
@@ -1016,8 +1018,8 @@ def _generate_bjt_testbench(det, output_file, context=None, parasitics=None):
 
     if is_pnp:
         circuit = f"""\
-* Auto-generated testbench for {polarity} BJT: {ref} ({value})
-* Load type: {load_type}, {base_note}
+* Auto-generated testbench for {polarity} BJT: {spice_text(ref)} ({spice_text(value)})
+* Load type: {spice_text(load_type)}, {base_note}
 * Model: generic PNP (hFE=200)
 {emitter_r_line}
 
@@ -1026,7 +1028,7 @@ def _generate_bjt_testbench(det, output_file, context=None, parasitics=None):
 VCC vcc 0 DC {vcc}
 
 * PNP: emitter to VCC, collector to load
-Q{ref} {collector} {base} vcc {model}
+Q{spice_ident(ref)} {collector} {base} vcc {model}
 RLOAD {collector} 0 1k
 
 * Base drive: sweep from VCC (off) to VCC-0.8V (on)
@@ -1044,8 +1046,8 @@ Vbase {base} 0 DC {vcc}
         return SpiceTestbench(circuit, analyses, measurements, extra)
     else:
         circuit = f"""\
-* Auto-generated testbench for {polarity} BJT: {ref} ({value})
-* Load type: {load_type}, {base_note}
+* Auto-generated testbench for {polarity} BJT: {spice_text(ref)} ({spice_text(value)})
+* Load type: {spice_text(load_type)}, {base_note}
 * Model: generic NPN (hFE=200)
 {emitter_r_line}
 
@@ -1055,7 +1057,7 @@ VCC vcc 0 DC {vcc}
 
 * NPN: collector to load, emitter to GND
 RLOAD vcc {collector} 1k
-Q{ref} {collector} {base} 0 {model}
+Q{spice_ident(ref)} {collector} {base} 0 {model}
 
 * Base drive: sweep from 0V (off) to 1V (on)
 Vbase {base} 0 DC 0
@@ -1106,10 +1108,10 @@ def generate_current_sense(det, output_file, context=None, parasitics=None):
     i_at_100mv = 0.1 / r_ohms
 
     circuit = f"""\
-* Auto-generated testbench for current sense: {r_ref} ({r_ohms} ohm)
-* Sense IC: {ic_ref} ({ic_value})
-* Expected max current at 50mV: {max_50} A
-* Expected max current at 100mV: {max_100} A
+* Auto-generated testbench for current sense: {spice_text(r_ref)} ({r_ohms} ohm)
+* Sense IC: {spice_text(ic_ref)} ({spice_text(ic_value)})
+* Expected max current at 50mV: {spice_text(max_50)} A
+* Expected max current at 100mV: {spice_text(max_100)} A
 * Model: ideal resistor (exact)
 
 {spice_element_for_passive(r_ref, r_ohms, "sense_hi", "0")}
@@ -1159,14 +1161,14 @@ def generate_protection_device(det, output_file, context=None, parasitics=None):
     sweep_max = rail_v * 3  # Sweep to 3x nominal to see clamping
 
     circuit = f"""\
-* Auto-generated testbench for protection device: {ref} ({value})
-* Type: {ptype}, protecting {det.get('protected_net', '?')}
+* Auto-generated testbench for protection device: {spice_text(ref)} ({spice_text(value)})
+* Type: {spice_text(ptype)}, protecting {spice_text(det.get('protected_net', '?'))}
 * Model: generic Zener diode — real TVS clamping may differ
 
 {get_generic_models()}
 
 * TVS/ESD diode: cathode to protected net, anode to clamp (GND)
-D{ref} {clamp_net or '0'} {protected_net} D_GENERIC
+D{spice_ident(ref)} {clamp_net or '0'} {protected_net} D_GENERIC
 
 * Voltage ramp on protected net to find clamping voltage
 Vramp {protected_net} 0 DC 0
@@ -1244,16 +1246,16 @@ def generate_decoupling(det, output_file, context=None, parasitics=None):
         # Series R-L-C from rail node to ground
         n1 = f"n_esr_{i}"
         n2 = f"n_lpar_{i}"
-        cap_lines.append(f"R_esr_{ref} rail {n1} {_format_eng(esr)}")
-        cap_lines.append(f"L_par_{ref} {n1} {n2} {_format_eng(l_par)}")
-        cap_lines.append(f"{ref} {n2} 0 {_format_eng(farads)}")
+        cap_lines.append(f"R_esr_{spice_ident(ref)} rail {n1} {_format_eng(esr)}")
+        cap_lines.append(f"L_par_{spice_ident(ref)} {n1} {n2} {_format_eng(l_par)}")
+        cap_lines.append(f"{spice_ident(ref)} {n2} 0 {_format_eng(farads)}")
 
     cap_netlist = "\n".join(cap_lines)
     n_caps = len(valid_caps)
     model_note = "ESR/ESL from pdn_impedance (package-based)" if using_pdn else "estimated ESR + parasitic L from SRF"
 
     circuit = f"""\
-* Auto-generated testbench for decoupling analysis: {rail} rail
+* Auto-generated testbench for decoupling analysis: {spice_text(rail)} rail
 * {n_caps} capacitor(s) in parallel, series R-L-C model
 * Model: {model_note}
 
@@ -1325,10 +1327,10 @@ def generate_regulator_feedback(det, output_file, context=None, parasitics=None)
     mid_net = "fb_net"
 
     circuit = f"""\
-* Auto-generated testbench for regulator feedback: {reg_ref}
-* Divider: {rt_ref}/{rb_ref}, ratio={ratio:.4f}
-* Expected Vout={vin}V, Vfb={expected_vfb:.4f}V (Vref={vref or '?'}V)
-* Topology: {topology}
+* Auto-generated testbench for regulator feedback: {spice_text(reg_ref)}
+* Divider: {spice_text(rt_ref)}/{spice_text(rb_ref)}, ratio={ratio:.4f}
+* Expected Vout={vin}V, Vfb={expected_vfb:.4f}V (Vref={spice_text(vref or '?')}V)
+* Topology: {spice_text(topology)}
 * Model: ideal passives (exact for DC divider)
 
 VIN out_rail 0 DC {vin}
@@ -1391,7 +1393,7 @@ def generate_rf_matching(det, output_file, context=None, parasitics=None):
 
     circuit = f"""\
 * Auto-generated testbench for RF matching network
-* Topology: {topology}, {len(valid)} components: {', '.join(comp_refs)}
+* Topology: {spice_text(topology)}, {len(valid)} components: {spice_text(', '.join(comp_refs))}
 * Model: ideal passives — no parasitic ESR/ESL
 
 {comp_netlist}
@@ -1451,13 +1453,13 @@ def generate_inrush(det, output_file, context=None, parasitics=None):
     # Build parallel caps
     cap_lines = []
     for i, c in enumerate(valid_caps):
-        cap_lines.append(f"{c['ref']} out 0 {_format_eng(c['farads'])}")
+        cap_lines.append(f"{spice_ident(c['ref'])} out 0 {_format_eng(c['farads'])}")
     cap_netlist = "\n".join(cap_lines)
     cap_refs = [c["ref"] for c in valid_caps[:5]]
     total_uf = sum(c["farads"] for c in valid_caps) * 1e6
 
     circuit = f"""\
-* Auto-generated testbench for inrush analysis: {reg_ref} ({topology})
+* Auto-generated testbench for inrush analysis: {spice_text(reg_ref)} ({spice_text(topology)})
 * Output: {v_out}V, {total_uf:.1f}µF total capacitance
 * Soft-start: {soft_start_ms}ms ramp
 
@@ -1523,8 +1525,8 @@ def generate_bridge_circuit(det, output_file, context=None, parasitics=None):
             v_supply = v
 
     circuit = f"""\
-* Auto-generated testbench for bridge circuit: {topology}
-* Half-bridge: {hi_ref} (high, {hi_type}) / {lo_ref} (low, {lo_type})
+* Auto-generated testbench for bridge circuit: {spice_text(topology)}
+* Half-bridge: {spice_text(hi_ref)} (high, {spice_text(hi_type)}) / {spice_text(lo_ref)} (low, {spice_text(lo_type)})
 * Model: generic FET models — real Vth/Rds depends on specific part
 
 {get_generic_models()}
@@ -1533,9 +1535,9 @@ def generate_bridge_circuit(det, output_file, context=None, parasitics=None):
 VDD vdd 0 DC {v_supply}
 
 * Low-side FET: gate swept, drain to mid, source to ground
-M{lo_ref} mid lo_gate 0 0 {lo_model} L=1u W=100u
+M{spice_ident(lo_ref)} mid lo_gate 0 0 {lo_model} L=1u W=100u
 * High-side kept off (gate tied to source/ground)
-M{hi_ref} vdd hi_gate mid mid {hi_model} L=1u W=100u
+M{spice_ident(hi_ref)} vdd hi_gate mid mid {hi_model} L=1u W=100u
 Rhi_gnd hi_gate {"mid" if hi_type == "PMOS" else "0"} 100k
 
 * Load resistor at output
@@ -1598,12 +1600,12 @@ def generate_bms_balance(det, output_file, context=None, parasitics=None):
     bms_val = det.get("bms_value", "?")
 
     circuit = f"""\
-* Auto-generated testbench for BMS balance resistor: {bms_ref} ({bms_val})
-* {cell_count} cells, balance R = {r_ref} ({_format_eng(r_ohms)} ohm)
+* Auto-generated testbench for BMS balance resistor: {spice_text(bms_ref)} ({spice_text(bms_val)})
+* {cell_count} cells, balance R = {spice_text(r_ref)} ({_format_eng(r_ohms)} ohm)
 * Worst-case: 4.2V fully-charged Li-ion cell
 
 Vcell cell 0 DC 4.2
-{r_ref} cell 0 {_format_eng(r_ohms)}
+{spice_ident(r_ref)} cell 0 {_format_eng(r_ohms)}
 """
 
     analyses = [("op", "")]
@@ -1653,12 +1655,12 @@ def generate_snubber(det, output_file, context=None, parasitics=None):
     f_stop = f_analytical * 100
 
     circuit = f"""\
-* Auto-generated testbench for snubber on {fet_ref}: {r_ref}/{c_ref}
+* Auto-generated testbench for snubber on {spice_text(fet_ref)}: {spice_text(r_ref)}/{spice_text(c_ref)}
 * R={_format_eng(r_ohms)} ohm, C={_format_eng(c_farads)} F
 * Analytical: tau={_format_eng(tau)}s, f_snub={f_analytical:.1f} Hz
 
-{r_ref} drain mid {_format_eng(r_ohms)}
-{c_ref} mid 0 {_format_eng(c_farads)}
+{spice_ident(r_ref)} drain mid {_format_eng(r_ohms)}
+{spice_ident(c_ref)} mid 0 {_format_eng(c_farads)}
 
 * AC current source — V(drain) = Z(f)
 IAC 0 drain DC 0 AC 1
@@ -1701,8 +1703,8 @@ def generate_rf_chain(det, output_file, context=None, parasitics=None):
 
     circuit = f"""\
 * Auto-generated testbench for RF chain link budget
-* Operating frequency: {freq/1e6:.0f} MHz ({band})
-* Analytical gain budget: {gain_budget:.1f} dB ({n_stages} stages)
+* Operating frequency: {freq/1e6:.0f} MHz ({spice_text(band)})
+* Analytical gain budget: {gain_budget:.1f} dB ({spice_text(n_stages)} stages)
 * Model: 50-ohm reference impedance check + heuristic gain budget
 
 R_source port 0 50

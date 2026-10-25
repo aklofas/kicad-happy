@@ -10,6 +10,9 @@ subcircuit. This module covers active components that require behavioral
 modeling.
 """
 
+import re
+import unicodedata
+
 
 # ---------------------------------------------------------------------------
 # Ideal opamp — voltage-controlled voltage source with very high open-loop gain.
@@ -134,6 +137,17 @@ DEFAULT_MODEL = {
 }
 
 
+def spice_text(s):
+    """Text for a netlist comment line: control characters become spaces."""
+    return "".join(" " if unicodedata.category(ch).startswith("C") else ch
+                   for ch in str(s))
+
+
+def spice_ident(s):
+    """Text for an element-name suffix: anything but [A-Za-z0-9_] becomes _."""
+    return re.sub(r"[^A-Za-z0-9_]", "_", str(s))
+
+
 def spice_element_for_passive(ref, value_si, net1, net2):
     """Generate a SPICE line for a passive component (R, C, or L).
 
@@ -146,7 +160,7 @@ def spice_element_for_passive(ref, value_si, net1, net2):
     Returns:
         SPICE element string, e.g., 'R5 net_in net_out 10k'
     """
-    return f"{ref} {_sanitize_net(net1)} {_sanitize_net(net2)} {_format_eng(value_si)}"
+    return f"{spice_ident(ref)} {_sanitize_net(net1)} {_sanitize_net(net2)} {_format_eng(value_si)}"
 
 
 def _sanitize_net(name):
@@ -165,6 +179,8 @@ def _sanitize_net(name):
     result = name
     for ch in " (){}[]!@#$%^&*=+|\\;:'\",<>?/":
         result = result.replace(ch, "_")
+    result = "".join("_" if unicodedata.category(ch).startswith("C") else ch
+                     for ch in result)
     # Net names starting with a digit need a prefix
     if result and result[0].isdigit():
         result = "n" + result
