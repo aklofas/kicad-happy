@@ -118,6 +118,10 @@ def url_problem(url: str, *, allow_private: bool) -> str | None:
     """``None`` when ``url`` may be downloaded, else a short reason. Only http and https
     with a host; every address the host resolves to must be public unless
     ``allow_private``."""
+    # Parsers disagree on where the host of such a URL ends (urlsplit and urllib3 split
+    # ``http://a\\@b/`` differently), and a datasheet URL never needs credentials.
+    if any(c == "\\" or c.isspace() or ord(c) < 32 or ord(c) == 127 for c in url):
+        return "a backslash, blank or control character in the URL"
     try:
         parts = urllib.parse.urlsplit(url)
         host = parts.hostname
@@ -128,6 +132,8 @@ def url_problem(url: str, *, allow_private: bool) -> str | None:
         return f"scheme {scheme or '(none)'} is not http or https"
     if not host:
         return "no host"
+    if "@" in parts.netloc:
+        return "credentials in the URL"
     if allow_private:
         return None
     try:

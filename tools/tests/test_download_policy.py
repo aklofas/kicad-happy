@@ -96,6 +96,20 @@ class UrlProblemTest(unittest.TestCase):
         self.assertIsNone(download.url_problem("http://10.0.0.5/a.pdf", allow_private=True))
         self.assertIsInstance(download.url_problem("file:///x", allow_private=True), str)
 
+    def test_credentials_backslashes_and_blanks_refused(self):
+        # Parsers disagree on where the host ends in these URLs (urlsplit reads
+        # ``evil.com`` in the first one, requests and browsers read ``127.0.0.1``), so
+        # they are refused whatever the host resolves to.
+        with mock.patch.object(download, "_resolve", return_value=PUBLIC):
+            for url in ("http://127.0.0.1\\@evil.com/x.pdf", "http://evil.com@127.0.0.1/",
+                        "http://user:pw@example.com/a.pdf", "http://@example.com/a.pdf",
+                        "http://exa mple.com/", "http://example.com/a\tb.pdf",
+                        "http://example.com/a.pdf\n", "http://example.com/a\x00.pdf",
+                        "http://example.com/a\x7f.pdf", "http://example.com\\a.pdf"):
+                for allow_private in (False, True):
+                    self.assertIsInstance(
+                        download.url_problem(url, allow_private=allow_private), str, url)
+
 
 class DownloadPolicyTest(unittest.TestCase):
     def setUp(self):
@@ -157,6 +171,17 @@ class DownloadPolicyTest(unittest.TestCase):
         self.assertEqual([u for u, _ in fake.calls], ["https://example.com/x.pdf"])
         self.assertIs(fake.calls[0][1]["allow_redirects"], False)
         self.assertIs(fake.calls[0][1]["stream"], True)
+
+    def test_redirect_with_backslash_userinfo_refused(self):
+        fake = _FakeRequests({
+            "https://example.com/x.pdf":
+                lambda: _FakeRequestsResponse(
+                    302, {"Location": "http://169.254.169.254\\@public.example/x.pdf"}),
+        })
+        self.assertFalse(self._download("https://example.com/x.pdf", requests=fake,
+                                        urllib_fn=_fail, playwright=_fail))
+        self.assertEqual([u for u, _ in fake.calls], ["https://example.com/x.pdf"])
+        self.assertEqual(os.listdir(self.dir.name), [])
 
     def test_relative_redirect_to_intranet_refused(self):
         fake = _FakeRequests({
