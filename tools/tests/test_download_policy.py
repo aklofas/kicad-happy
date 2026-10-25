@@ -186,6 +186,21 @@ class DownloadPolicyTest(unittest.TestCase):
             self.assertFalse(self._download(url, requests=_FakeRequests({}),
                                             urllib_fn=_fail, playwright=_fail), url)
 
+    def test_percent_encoded_host_refused(self):
+        self.assertIsInstance(download.url_problem("http://%31%32%37.0.0.1/x.pdf",
+                                                   allow_private=False), str)
+        self.assertIsInstance(download.url_problem("http://example.com:%38%30/x.pdf",
+                                                   allow_private=True), str)
+        self.assertIsNone(download.url_problem("https://example.com/a%20b.pdf",
+                                               allow_private=False))
+        fake = _FakeRequests({
+            "https://example.com/x.pdf":
+                lambda: _FakeRequestsResponse(302, {"Location": "http://%31%36%39.254.169.254/"}),
+        })
+        self.assertFalse(self._download("https://example.com/x.pdf", requests=fake,
+                                        urllib_fn=_fail, playwright=_fail))
+        self.assertEqual([u for u, _ in fake.calls], ["https://example.com/x.pdf"])
+
     def test_redirect_with_backslash_userinfo_refused(self):
         fake = _FakeRequests({
             "https://example.com/x.pdf":

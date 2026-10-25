@@ -134,6 +134,8 @@ def url_problem(url: str, *, allow_private: bool) -> str | None:
         return "no host"
     if "@" in parts.netloc:
         return "credentials in the URL"
+    if "%" in parts.netloc:
+        return "a percent-encoded host or port"
     if allow_private:
         return None
     try:
