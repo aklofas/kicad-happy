@@ -17,10 +17,12 @@ Zero external dependencies — Python 3.8+ stdlib only.
 import argparse
 import json
 import os
+import re
 import sys
 import time
 from typing import Any, Dict, List, Optional
 
+from kicad_core.cli import envelope_type_error
 from kicad_core.render import normalize_severity
 
 
@@ -226,6 +228,14 @@ def check_consistency(sch: Dict, pcb: Dict) -> List[Dict]:
     return checks
 
 
+_CRITICAL_LAYERS = {"F.Cu", "B.Cu", "F.Mask", "B.Mask", "Edge.Cuts"}
+
+
+def _is_critical_layer(layer: str) -> bool:
+    return (layer in _CRITICAL_LAYERS
+            or re.fullmatch(r"In\d+\.Cu", layer) is not None)
+
+
 def check_gerbers(gerber_data: Optional[Dict]) -> List[Dict]:
     """Check Gerber layer completeness and alignment."""
     if not gerber_data:
@@ -238,12 +248,21 @@ def check_gerbers(gerber_data: Optional[Dict]) -> List[Dict]:
 
     # Layer completeness
     completeness = gerber_data.get("completeness", {})
-    missing = completeness.get("missing_layers", [])
-    critical_missing = [l for l in missing
-                        if any(k in l.upper() for k in
-                               ("F.CU", "B.CU", "EDGE", "F.MASK", "B.MASK",
-                                "FRONT_COPPER", "BACK_COPPER", "BOARD_OUTLINE",
-                                "FRONT_SOLDERMASK", "BACK_SOLDERMASK"))]
+    if not isinstance(completeness, dict):
+        completeness = {}
+    if "missing" in completeness:
+        missing = list(completeness.get("missing") or [])
+        critical_missing = [l for l in missing if _is_critical_layer(l)]
+    elif "missing_required" in completeness or "missing_recommended" in completeness:
+        critical_missing = list(completeness.get("missing_required") or [])
+        missing = critical_missing + list(completeness.get("missing_recommended") or [])
+    else:
+        missing = list(completeness.get("missing_layers") or [])
+        critical_missing = [l for l in missing
+                            if _is_critical_layer(l) or any(
+                                k in l.upper() for k in
+                                ("FRONT_COPPER", "BACK_COPPER", "BOARD_OUTLINE",
+                                 "FRONT_SOLDERMASK", "BACK_SOLDERMASK"))]
     silk_missing = [l for l in missing
                     if any(k in l.upper() for k in ("SILK", "LEGEND"))]
 
@@ -291,7 +310,7 @@ def check_thermal(thermal_data: Optional[Dict]) -> List[Dict]:
     warnings = [f for f in active if normalize_severity(f.get("severity")) == "warning"]
 
     if errors:
-        refs = [f.get("components", ["?"])[0] for f in errors[:3]]
+        refs = [(f.get("components") or ["?"])[0] for f in errors[:3]]
         return [_check("thermal", "thermal_risk", "fail",
                         f"{len(errors)} error-severity thermal finding(s): {', '.join(refs)}",
                         {"error_count": len(errors), "warning_count": len(warnings)})]
@@ -311,17 +330,24 @@ def check_emc(emc_data: Optional[Dict]) -> List[Dict]:
         return [_check("emc", "emc_risk", "skip",
                         "EMC analysis not provided")]
 
-    summary = emc_data.get("summary", {})
+    summary = emc_data.get("summary") or {}
     score = summary.get("emc_risk_score", 0)
-    crits = summary.get("critical", 0)
+    findings = emc_data.get("findings")
+    if isinstance(findings, list):
+        errors = sum(1 for f in findings
+                     if isinstance(f, dict) and not f.get("suppressed")
+                     and normalize_severity(f.get("severity")) == "error")
+    else:
+        errors = ((summary.get("by_severity") or {}).get("error")
+                  or summary.get("critical") or 0)
 
-    if crits > 0:
+    if errors > 0:
         return [_check("emc", "emc_risk", "warn",
-                        f"EMC score {score}/100 — {crits} critical finding(s) (advisory)",
-                        {"emc_risk_score": score, "critical": crits})]
+                        f"EMC score {score}/100 — {errors} error finding(s) (advisory)",
+                        {"emc_risk_score": score, "error_count": errors})]
     else:
         return [_check("emc", "emc_risk", "pass",
-                        f"EMC score {score}/100 — no critical findings")]
+                        f"EMC score {score}/100 — no error findings")]
 
 
 def _compute_trust_posture(sch, pcb, thermal_data, emc_data):
@@ -540,7 +566,7 @@ def format_text_report(result: Dict) -> str:
 # CLI
 # ---------------------------------------------------------------------------
 
-def main():
+def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         description="Fabrication release gate for KiCad designs")
     parser.add_argument("--schematic", "-s", required=True,
@@ -562,36 +588,47 @@ def main():
     parser.add_argument("--strict", action="store_true",
                         help="Treat warnings as failures")
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.text:
         from kicad_core.cli import utf8_text_stdout
         utf8_text_stdout()
 
-    def _load(path):
-        if not path or not os.path.isfile(path):
-            return None
-        with open(path) as f:
-            return json.load(f)
+    def _load(flag, path, writer, expected):
+        if not os.path.isfile(path):
+            what = 'a directory' if os.path.isdir(path) else 'not found'
+            parser.error(f'{flag} {path}: {what}; expected the JSON file '
+                         f'{writer} writes (--output)')
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            parser.error(f'{flag} {path}: not JSON ({e}); expected the JSON '
+                         f'file {writer} writes (--output)')
+        type_error = envelope_type_error(flag, path, data, expected, writer)
+        if type_error:
+            parser.error(type_error)
+        return data
 
-    sch = _load(args.schematic)
-    pcb = _load(args.pcb)
+    sch = _load("--schematic", args.schematic, "analyze_schematic.py", "schematic")
+    pcb = _load("--pcb", args.pcb, "analyze_pcb.py", "pcb")
     if not sch or not pcb:
-        print("Error: schematic and PCB JSON are required", file=sys.stderr)
-        sys.exit(1)
+        parser.error("--schematic and --pcb must be non-empty analyzer JSON")
 
-    result = run_gate(
-        sch, pcb,
-        gerber_data=_load(args.gerbers),
-        thermal_data=_load(args.thermal),
-        emc_data=_load(args.emc),
-        strict=args.strict,
-    )
+    optional = {}
+    for key, flag, writer, expected in (
+            ("gerber_data", "--gerbers", "analyze_gerbers.py", "gerber"),
+            ("thermal_data", "--thermal", "analyze_thermal.py", "thermal"),
+            ("emc_data", "--emc", "analyze_emc.py", "emc")):
+        path = getattr(args, flag[2:])
+        optional[key] = _load(flag, path, writer, expected) if path else None
+
+    result = run_gate(sch, pcb, strict=args.strict, **optional)
 
     if args.text:
         print(format_text_report(result))
     elif args.output:
         indent = None if args.compact else 2
-        with open(args.output, "w") as f:
+        with open(args.output, "w", encoding="utf-8") as f:
             json.dump(result, f, indent=indent)
         overall = result["overall_status"]
         total = result["summary"]["total_checks"]
@@ -602,6 +639,8 @@ def main():
         json.dump(result, sys.stdout, indent=indent)
         print(file=sys.stdout)
 
+    return 1 if result["overall_status"] == "FAIL" else 0
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

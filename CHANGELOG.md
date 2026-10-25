@@ -20,6 +20,14 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `plan_extraction.py` and `merge_results.py` name their files with the same MPN-to-filename mapping as the extraction readers, so MPNs with `/` (such as `LM317/NOPB`) work and no MPN can write outside the cache. (KH-505)
 - The Action report reads and writes UTF-8 whatever the host locale. (KH-504)
 
+### Changed
+
+- `fab_release_gate.py` exits 1 when the verdict is FAIL (most real projects today: 289 of 300 sampled full-chain projects end in FAIL) and 2 when a path given on the command line does not exist or is the wrong analyzer's output; it was 0 in both cases. Scripts that run it under `set -e` must handle exit 1. (KH-563)
+
+### Fixed
+
+- The fab release gate reports missing gerber layers (including inner copper) and active EMC errors; it read keys no analyzer writes and passed both. (KH-563)
+
 ---
 
 ## v3.0.0 — unreleased
