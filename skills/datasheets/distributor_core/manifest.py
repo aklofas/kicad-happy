@@ -2,7 +2,9 @@
 atomic replace, legacy sibling removed after a successful write), sanitize/friendly filenames."""
 
 import json
+import os
 import re
+import tempfile
 from pathlib import Path
 
 
@@ -89,16 +91,35 @@ def save_index(path: Path, index: dict):
     parent = path.parent
     parent.mkdir(parents=True, exist_ok=True)
     new_path = parent / MANIFEST_FILENAME
-    tmp = new_path.with_suffix(".tmp")
-    with open(tmp, "w") as f:
-        json.dump(index, f, indent=2)
-    tmp.replace(new_path)
+    fd, tmp = tempfile.mkstemp(dir=str(parent), prefix="manifest.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(index, f, indent=2)
+        mask = os.umask(0)
+        os.umask(mask)
+        os.chmod(tmp, 0o666 & ~mask)
+        os.replace(tmp, new_path)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        raise
     old_path = parent / LEGACY_MANIFEST_FILENAME
     if old_path.exists() and old_path != new_path:
         try:
             old_path.unlink()
         except OSError:
             pass
+
+
+def manifest_file_path(out_dir: Path, name: object) -> Path | None:
+    """``out_dir / name`` for a manifest ``file`` value that is a plain leaf name and not a
+    symlink; None for anything that could point outside ``out_dir``."""
+    if not isinstance(name, str) or not name or name in (".", ".."):
+        return None
+    if name != os.path.basename(name) or "/" in name or "\\" in name:
+        return None
+    path = out_dir / name
+    return None if path.is_symlink() else path
 
 
 def _friendly_filename(mpn: str, description: str = "") -> str:

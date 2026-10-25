@@ -54,6 +54,7 @@ from distributor_core.manifest import (
     friendly_filename,
     MANIFEST_FILENAME,
     load_index,
+    manifest_file_path,
     save_index,
 )
 
@@ -67,7 +68,8 @@ def _outage_entry(result: dict, previous: dict, out_dir: Path) -> tuple[dict, di
     if outage is None or result.get("status") != "not_found":
         return result, result
     result = {**result, "status": "error", "error": outage}
-    if previous.get("status") == "ok" and (out_dir / previous.get("file", "")).is_file():
+    prev_file = manifest_file_path(out_dir, previous.get("file", ""))
+    if previous.get("status") == "ok" and prev_file is not None and prev_file.is_file():
         return previous, result
     return result, result
 
@@ -151,8 +153,12 @@ def sync_datasheets(
 
         if status == "ok":
             old_file = existing.get("file", "")
+            old_path = manifest_file_path(out_dir, old_file)
+            if old_path is None and old_file:
+                print(f"Warning: manifest entry {part_key} names a file outside {out_dir}; ignored",
+                      file=sys.stderr)
             # Verify file still exists
-            if (out_dir / old_file).exists():
+            if old_path is not None and old_path.exists():
                 if not force_all:
                     # Rename to friendly filename if the old name was plain MPN
                     if provider.RENAME_PRESENT and not dry_run:
@@ -160,7 +166,7 @@ def sync_datasheets(
                         mfg = existing.get("manufacturer", "") or part.get("manufacturer", "")
                         new_file = friendly_filename(part_key, desc, mfg) + ".pdf"
                         if new_file != old_file and not (out_dir / new_file).exists():
-                            (out_dir / old_file).rename(out_dir / new_file)
+                            old_path.rename(out_dir / new_file)
                             existing["file"] = new_file
                             print(f"  Renamed: {old_file} -> {new_file}", file=sys.stderr)
                     already_present.append(part_key)
@@ -258,7 +264,8 @@ def sync_datasheets(
                 save_index(index_path, index)
 
         with ThreadPoolExecutor(max_workers=parallel) as executor:
-            executor.map(_process_part, to_download)
+            for _ in executor.map(_process_part, to_download):
+                pass
     else:
         for i, part in enumerate(to_download):
             part_key = part["_key"]

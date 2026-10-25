@@ -3,6 +3,7 @@ manufacturer redirect normalisation (opt-in per provider), the Microchip alterna
 
 import os
 import shutil
+import tempfile
 import threading
 import urllib.error
 import urllib.parse
@@ -97,6 +98,12 @@ def normalize_url(url: str, *, resolve_redirects: bool = True) -> str:
     return url
 
 
+def _umask() -> int:
+    mask = os.umask(0)
+    os.umask(mask)
+    return mask
+
+
 def download_pdf(url: str, output_path: str, *, resolve_redirects: bool = True) -> bool:
     """Download a PDF from a URL, trying multiple methods.
 
@@ -105,11 +112,15 @@ def download_pdf(url: str, output_path: str, *, resolve_redirects: bool = True) 
     2. Fall back to Python urllib (HTTP/1.1 only — some sites may timeout)
 
     Returns True if a valid PDF was downloaded. Each method writes to
-    ``<output_path>.part``, which replaces ``output_path`` only once it sniffs
-    as a PDF, so a failed attempt never removes a file already there.
+    a uniquely named ``.part`` file beside ``output_path``, which replaces
+    ``output_path`` only once it sniffs as a PDF, so a failed attempt never removes a
+    file already there and a planted link is never written through.
     """
     url = normalize_url(url, resolve_redirects=resolve_redirects)
-    part_path = output_path + ".part"
+    fd, part_path = tempfile.mkstemp(
+        dir=os.path.dirname(os.path.abspath(output_path)),
+        prefix=os.path.basename(output_path) + ".", suffix=".part")
+    os.close(fd)
 
     methods = []
     if _requests is not None:
@@ -125,6 +136,7 @@ def download_pdf(url: str, output_path: str, *, resolve_redirects: bool = True) 
                 with open(part_path, "rb") as f:
                     header = f.read(8)
                 if header.startswith(b"%PDF"):
+                    os.chmod(part_path, 0o666 & ~_umask())
                     os.replace(part_path, output_path)
                     size = os.path.getsize(output_path)
                     print(f"Downloaded {size:,} bytes via {name}: {output_path}")
@@ -133,8 +145,9 @@ def download_pdf(url: str, output_path: str, *, resolve_redirects: bool = True) 
         except Exception:
             pass
         if os.path.exists(part_path):
-            os.remove(part_path)
+            os.truncate(part_path, 0)
 
+    os.remove(part_path)
     return False
 
 

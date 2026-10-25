@@ -6,6 +6,14 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ---
 
+## v3.0.1 — unreleased
+
+### Security
+
+- Datasheet syncs write their temporary files under random names and ignore manifest `file` entries that point outside `datasheets/`, so a planted symlink or a crafted manifest can no longer redirect writes or moves. A worker error in `--parallel` mode is no longer swallowed. (KH-497)
+
+---
+
 ## v3.0.0 — unreleased
 
 **Theme: the v3 refactor — the same analyzers, CLIs and rule IDs on a restructured codebase: a stdlib-only shared core (`kicad_core/`), `schematic/` and `pcb/` packages with named pipeline phases, and one datasheet sync driver over four provider adapters. Output is unchanged except for the items under Changed. Python scripts that imported the analyzers' internals need the new import paths listed under Removed.**
