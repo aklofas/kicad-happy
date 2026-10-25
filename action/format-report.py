@@ -128,9 +128,9 @@ def _load_json(path):
     if not path or not os.path.isfile(path):
         return None
     try:
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             return json.load(f)
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError):
         return None
 
 
@@ -1399,18 +1399,18 @@ def main():
         thermal_path=args.thermal,
     )
 
-    with open(args.output, "w") as f:
+    with open(args.output, "w", encoding="utf-8") as f:
         f.write(report)
 
     if args.output_full:
         full = format_full_report(args.schematic, args.pcb, args.spice, args.emc,
                                    args.derating_profile, thermal_path=args.thermal)
-        with open(args.output_full, "w") as f:
+        with open(args.output_full, "w", encoding="utf-8") as f:
             f.write(full)
         print(f"Full report: {args.output_full} ({len(full)} chars)", file=sys.stderr)
 
     if args.output_summary:
-        with open(args.output_summary, "w") as f:
+        with open(args.output_summary, "w", encoding="utf-8") as f:
             json.dump(summary, f, indent=2)
 
     print(f"Report: {args.output} ({len(report)} chars)", file=sys.stderr)

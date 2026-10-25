@@ -1,5 +1,5 @@
 """--text output survives a stdout that is not UTF-8 (a Windows cp1252 redirect)."""
-import os, subprocess, sys, tempfile, unittest
+import json, os, subprocess, sys, tempfile, unittest
 from pathlib import Path
 from tools.tests._fixtures import fixture_path, have
 
@@ -77,3 +77,46 @@ class WhatIfSuggestFixesTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+FORMAT_REPORT = ROOT / "action" / "format-report.py"
+SIMPLE = FIXTURES / "simple-project"
+
+
+@unittest.skipUnless(have(SIMPLE / "simple.kicad_pcb"), "harness fixtures not present")
+class ActionReportEncodingTest(unittest.TestCase):
+    ASCII_ENV = dict(os.environ, PYTHONUTF8="0", PYTHONIOENCODING="ascii", LC_ALL="C", LANG="C",
+                     PYTHONDONTWRITEBYTECODE="1")
+
+    def test_report_files_are_utf8_under_an_ascii_locale(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            sch, pcb = os.path.join(tmp, "sch.json"), os.path.join(tmp, "pcb.json")
+            for script, src, out in (("analyze_schematic.py", "simple.kicad_sch", sch),
+                                     ("analyze_pcb.py", "simple.kicad_pcb", pcb)):
+                subprocess.run([sys.executable, str(SCRIPTS / script), str(SIMPLE / src), "--output", out],
+                               check=True, capture_output=True, env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"))
+            outs = [os.path.join(tmp, n) for n in ("r.md", "full.md", "summary.json")]
+            r = subprocess.run([sys.executable, str(FORMAT_REPORT), "--schematic", sch, "--pcb", pcb,
+                                "--output", outs[0], "--output-full", outs[1], "--output-summary", outs[2]],
+                               capture_output=True, env=self.ASCII_ENV, timeout=300)
+            self.assertEqual(r.returncode, 0, r.stderr.decode("utf-8", "replace")[-1500:])
+            for p in outs[:2]:
+                with open(p, "rb") as f:
+                    text = f.read().decode("utf-8")
+                self.assertIn("\u2014", text)  # em dash, written as UTF-8
+            with open(outs[0], "rb") as f:
+                comment = f.read().decode("utf-8")
+            self.assertIn("\u2705", comment)
+            with open(outs[2], "rb") as f:
+                json.loads(f.read().decode("utf-8"))
+
+    def test_load_json_survives_a_non_utf8_file(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("format_report_mod", FORMAT_REPORT)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        with tempfile.TemporaryDirectory() as tmp:
+            p = os.path.join(tmp, "bad.json")
+            with open(p, "wb") as f:
+                f.write(b'{"a": "\xff\xfe"}')
+            self.assertIsNone(mod._load_json(p))
