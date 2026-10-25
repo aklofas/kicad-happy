@@ -32,6 +32,7 @@ if str(Path(__file__).parent) not in sys.path:
 from kicad_core.project import load_jsonc
 from kicad_core.model import ResolvedConfig
 from kicad_core.diagnostics import record
+from kicad_core.render import normalize_severity
 
 
 # ---------------------------------------------------------------------------
@@ -897,15 +898,12 @@ def count_by_severity(findings: List[Dict[str, Any]],
 # Risk scoring (used by top-risk summary, Feature 4)
 # ---------------------------------------------------------------------------
 
-SEVERITY_WEIGHTS = {
-    'CRITICAL': 15, 'HIGH': 8, 'MEDIUM': 3, 'LOW': 1, 'INFO': 0,
-}
+SEVERITY_WEIGHTS = {'error': 15, 'warning': 3, 'info': 0}
 
 CONFIDENCE_WEIGHTS = {
     'deterministic': 1.0,
     'datasheet-backed': 0.9,
     'heuristic': 0.7,
-    'ai-inferred': 0.5,
 }
 
 # Category → risk bucket(s) with boost multiplier
@@ -929,8 +927,9 @@ BUCKET_BOOSTS = {
 
 def compute_finding_risk(finding: Dict[str, Any], bucket: str) -> float:
     """Compute risk score for a single finding in a specific bucket."""
-    sev = SEVERITY_WEIGHTS.get(finding.get('severity', 'INFO'), 0)
-    conf = CONFIDENCE_WEIGHTS.get(finding.get('confidence', 'heuristic'), 0.7)
+    sev = SEVERITY_WEIGHTS.get(normalize_severity(finding.get('severity')), 0)
+    conf_name = finding.get('confidence')
+    conf = CONFIDENCE_WEIGHTS.get(conf_name, 0.7) if isinstance(conf_name, str) else 0.7
     boost = BUCKET_BOOSTS.get(bucket, 1.0)
     return sev * conf * boost
 

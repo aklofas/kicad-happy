@@ -25,6 +25,7 @@ from collections import defaultdict
 
 from kicad_core.cli import add_only_deterministic_arg
 from analysis_cache import get_run
+from finding_schema import VALID_CONFIDENCES, VALID_EVIDENCE_SOURCES
 
 _SEV_RANK = {"error": 0, "high": 0, "critical": 0,
              "warning": 1, "medium": 1,
@@ -150,14 +151,10 @@ def _filter_severity(findings: list[dict], severity: str | None) -> list[dict]:
     return [f for f in findings if _norm(f.get("severity", "info")) == want]
 
 
-# F16: per-finding trust filters. Vocabulary comes from finding_schema's
-# VALID_CONFIDENCES / VALID_EVIDENCE_SOURCES — kept inline to avoid an
-# import (summarize_findings is intentionally dependency-light).
-_KNOWN_CONFIDENCES = frozenset(
-    ("deterministic", "heuristic", "datasheet_backed"))
-_KNOWN_EVIDENCE_SOURCES = frozenset(
-    ("topology", "datasheet", "heuristic_rule", "simulation",
-     "user_config", "geometry", "lookup", "bom"))
+# Per-finding trust filters. The vocabularies are finding_schema's; `datasheet_backed`
+# is accepted as the spelling used by the trust_summary keys.
+_KNOWN_CONFIDENCES = frozenset(VALID_CONFIDENCES) | {"datasheet_backed"}
+_KNOWN_EVIDENCE_SOURCES = frozenset(VALID_EVIDENCE_SOURCES)
 
 
 def _filter_confidence(findings: list[dict], confidence: str | None) -> list[dict]:
@@ -167,7 +164,8 @@ def _filter_confidence(findings: list[dict], confidence: str | None) -> list[dic
         raise SystemExit(
             f"error: unknown --confidence {confidence!r} — "
             f"accepted: {', '.join(sorted(_KNOWN_CONFIDENCES))}")
-    return [f for f in findings if f.get("confidence") == confidence]
+    want = confidence.replace("_", "-")
+    return [f for f in findings if f.get("confidence") == want]
 
 
 def _filter_evidence_source(findings: list[dict], src: str | None) -> list[dict]:
@@ -203,8 +201,11 @@ def _aggregate(findings: list[dict]) -> list[dict]:
         g["detectors"].add(f.get("detector") or "")
         g["source_files"].add(f.get("_source_file") or "")
         conf = f.get("confidence", "")
-        if conf in g["by_confidence"]:
-            g["by_confidence"][conf] += 1
+        if not isinstance(conf, str):
+            conf = ""
+        conf_key = conf.replace("-", "_")
+        if conf_key in g["by_confidence"]:
+            g["by_confidence"][conf_key] += 1
         elif conf in g["deep_review_confidence"]:
             g["deep_review_confidence"][conf] += 1
 

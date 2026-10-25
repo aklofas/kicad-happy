@@ -34,6 +34,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Thermal no longer costs a current-sense resistor at its full-scale current (a misread capacitor reported 2e9 W); it is listed as skipped until an operating current is known (KH-568).
 - MSOP, TSSOP, SSOP and SOIC-14 footprints get their own junction-to-ambient resistance instead of the SOIC/SOP value (KH-569).
 - The thermal text report shows the component table and severity counts and no longer crashes on summary-only findings; `cross_verify` thermal-via checks read the same keys (KH-570).
+- The Action report's Top Risks section appears: it scored only uppercase severities and never rendered with current severity names. `summarize_findings` counts and filters `datasheet-backed` findings and accepts every evidence source; the schematic severity histogram built before finalization counts `error` findings (KH-582).
 
 ---
 

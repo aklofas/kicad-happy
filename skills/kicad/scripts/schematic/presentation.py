@@ -4,6 +4,7 @@ only the signatures and the input unpacking are new.
 """
 
 from kicad_core.classify import NON_COMPONENT_TYPES
+from kicad_core.render import normalize_severity
 from kicad_core.values import parse_value
 from kicad_core.project import (
     extract_pro_text_variables,
@@ -234,13 +235,7 @@ def assemble_result(ctx, parsed, nets, bom, analyses, *, path, sheets_parsed,
     # Build severity summary
     sev_counts = {"error": 0, "warning": 0, "info": 0}
     for _f in findings:
-        _sev = _f.get("severity", "info").lower() if isinstance(_f, dict) else "info"
-        if _sev in ("critical", "high"):
-            sev_counts["error"] += 1
-        elif _sev in ("medium", "warning"):
-            sev_counts["warning"] += 1
-        else:
-            sev_counts["info"] += 1
+        sev_counts[normalize_severity(_f.get("severity") if isinstance(_f, dict) else None)] += 1
 
     # Deterministic order so repeated runs produce byte-identical output
     # (KH-316).  Sort key: (rule_id, detector, first_component, first_net, summary).
@@ -449,13 +444,7 @@ def assemble_legacy_result(*, nets, all_components, signal_analysis, real_compon
 
     sev_counts = {"error": 0, "warning": 0, "info": 0}
     for f in findings:
-        sev = f.get("severity", "info").lower() if isinstance(f, dict) else "info"
-        if sev in ("critical", "high"):
-            sev_counts["error"] += 1
-        elif sev in ("medium", "warning"):
-            sev_counts["warning"] += 1
-        else:
-            sev_counts["info"] += 1
+        sev_counts[normalize_severity(f.get("severity") if isinstance(f, dict) else None)] += 1
 
     # Legacy analysis quality summary (KH-271)
     _pin_source_counts = {"parsed_lib": 0, "suffix_match": 0, "snapped_to_wire": 0, "unresolved": 0}
