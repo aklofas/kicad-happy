@@ -1,4 +1,4 @@
-"""One datasheet-sync driver over the provider adapters (v3 refactor, round 6).
+"""One datasheet-sync driver over the provider adapters.
 
 ``sync_datasheets(provider, ...)`` is the DigiKey ``sync_datasheets`` body of
 935b429 verbatim, with exactly these thirteen substitutions (and nothing else);

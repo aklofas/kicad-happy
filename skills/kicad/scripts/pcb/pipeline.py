@@ -1,4 +1,4 @@
-"""PCB analysis pipeline (v3 round 5): the phases analyze_pcb.py ran implicitly, as named functions
+"""PCB analysis pipeline: the phases analyze_pcb.py ran implicitly, as named functions
 with their real prerequisites passed explicitly (spec §4.3).
 
 Phase 1 read_board        — parse + extract (pcb.reader) + the KiCad-10 synthetic net map applied
@@ -10,7 +10,7 @@ Phase 3 run_checks        — every check over the board + facts, incl. the seve
 Phase 4 assemble_result   — pcb.presentation: the result dict in its historical key order
 Phase 5 finalize_for_cli  — command-specific annotation (GP-001 debug file, project summary, design
                             intent, stage/audience filters, finding_id)
-Every body is verbatim from analyze_pcb.py at the round-4 tip; only the seams are new.
+Every body is verbatim from analyze_pcb.py; only the seams are new.
 """
 
 import json

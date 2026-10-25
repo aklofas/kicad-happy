@@ -1,4 +1,4 @@
-"""PCB placement and assembly checks (v3 round 5): decoupling placement, placement/courtyards,
+"""PCB placement and assembly checks: decoupling placement, placement/courtyards,
 tombstoning, switching loops, fiducials, test points, orientation, silkscreen overlaps, keepouts.
 Verbatim moves from analyze_pcb.py."""
 

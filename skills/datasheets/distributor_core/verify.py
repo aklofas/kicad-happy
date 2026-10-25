@@ -1,4 +1,4 @@
-"""PDF text extraction and datasheet verification (v3 round 6): pdftotext then raw-byte scan;
+"""PDF text extraction and datasheet verification: pdftotext then raw-byte scan;
 MPN / manufacturer / keyword matching → confidence."""
 
 import re

@@ -1,4 +1,4 @@
-"""Download transport (v3 round 6): requests → urllib → playwright cascade with PDF sniffing,
+"""Download transport: requests → urllib → playwright cascade with PDF sniffing,
 manufacturer redirect normalisation (opt-in per provider), the Microchip alternative pattern."""
 
 import os

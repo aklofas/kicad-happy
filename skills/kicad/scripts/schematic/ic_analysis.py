@@ -1,4 +1,4 @@
-"""IC pinout and subcircuit analyses (v3 round 4): verbatim move from analyze_schematic.py; no behaviour change."""
+"""IC pinout and subcircuit analyses: verbatim move from analyze_schematic.py; no behaviour change."""
 from __future__ import annotations
 
 from kicad_types import (

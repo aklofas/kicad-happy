@@ -1,6 +1,6 @@
-"""Schematic result assembly (v3 round 4): turns the parsed sheets, net map, BOM and
-analyses into the analyzer output dict. Bodies are verbatim from analyze_schematic.py at the
-round-3 tip; only the signatures and the input unpacking are new.
+"""Schematic result assembly: turns the parsed sheets, net map, BOM and
+analyses into the analyzer output dict. Bodies are verbatim from analyze_schematic.py;
+only the signatures and the input unpacking are new.
 """
 
 from kicad_core.classify import NON_COMPONENT_TYPES

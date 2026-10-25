@@ -1,4 +1,4 @@
-"""Schematic reader: .kicad_sch symbols, pins, wires, labels, sheets → SheetData (v3 round 4).
+"""Schematic reader: .kicad_sch symbols, pins, wires, labels, sheets → SheetData.
 
 Verbatim moves from analyze_schematic.py; no behaviour change. Reads only — the
 net map is built by schematic.connectivity, the hierarchy walk by schematic.hierarchy.

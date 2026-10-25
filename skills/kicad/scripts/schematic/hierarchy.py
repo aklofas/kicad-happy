@@ -1,4 +1,4 @@
-"""Schematic hierarchy: sheet traversal and the Altium top-level-sheets merge (v3 round 4).
+"""Schematic hierarchy: sheet traversal and the Altium top-level-sheets merge.
 
 parse_all_sheets is a verbatim move from analyze_schematic.py; merge_top_level_sheets
 is the top_level_sheets block of analyze_schematic() extracted (body unchanged modulo

@@ -1,4 +1,4 @@
-"""Schematic analysis pipeline (v3 round 4): the phases analyze_schematic.py ran implicitly,
+"""Schematic analysis pipeline: the phases analyze_schematic.py ran implicitly,
 as named functions with their real prerequisites passed explicitly (spec §4.3, D4).
 
 Phase 1 detect_topologies      — in-order detectors (dependency order; series dividers merged, integrated LDOs appended;
@@ -14,7 +14,7 @@ Phase 4 assemble_signal_results — crystal/RC exclusion (after ADC detection co
                                   (both walk the dict recursively and MUTATE entries that carry
                                   'farads' and 'ref')
 Project level: analyze_schematic → run_analyses → presentation.assemble_result.
-Every body is verbatim from analyze_schematic.py at the round-3 tip; only the seams are new.
+Every body is verbatim from analyze_schematic.py; only the seams are new.
 """
 
 import os

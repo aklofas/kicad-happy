@@ -1,4 +1,4 @@
-"""PCB copper checks (v3 round 5): via analysis, thermal vias and thermal-pad vias, copper presence,
+"""PCB copper checks: via analysis, thermal vias and thermal-pad vias, copper presence,
 via-in-pad, board-edge via clearance. Verbatim moves from analyze_pcb.py."""
 
 import math

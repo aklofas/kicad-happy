@@ -1,4 +1,4 @@
-"""DigiKey adapter (v3 round 6): auth, search, response accessors, and the provider's sync_one_part strategy chain — verbatim from fetch_datasheet_digikey.py / sync_datasheets_digikey.py; the driver is distributor_core.sync. Adapter constants are the thirteen measured per-provider differences of the old drivers (see the round-6 plan's knob table)."""
+"""DigiKey adapter: auth, search, response accessors, and the provider's sync_one_part strategy chain — verbatim from fetch_datasheet_digikey.py / sync_datasheets_digikey.py; the driver is distributor_core.sync. Adapter constants are the thirteen measured per-provider differences of the old drivers."""
 
 import json
 import os
@@ -21,7 +21,7 @@ KEY_PRIORITY = ("digikey", "mouser", "lcsc")
 SKIPPED_COUNTS_IDS = ID_KEYS
 RENAME_PRESENT = True
 FAILED_DETAIL_WITH_URL = True
-# Documentary today: the normalize_url/download_pdf wrappers hard-code the flag; round 8 may read it.
+# Documentary today: the normalize_url/download_pdf wrappers hard-code the flag; a later version may read it.
 NORMALIZE_REDIRECTS = True
 LABELS = {
     "found": "Found {n} unique parts with part numbers ({k} skipped without any identifier)",

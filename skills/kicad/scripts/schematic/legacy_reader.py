@@ -1,4 +1,4 @@
-"""Legacy schematic reader: KiCad 5 .sch / .lib → component and wire records (v3 round 4).
+"""Legacy schematic reader: KiCad 5 .sch / .lib → component and wire records.
 
 Verbatim moves from analyze_schematic.py; no behaviour change.
 """

@@ -1,4 +1,4 @@
-"""PCB reader (v3 round 5): .kicad_pcb extraction — layers, setup, nets, footprints, tracks,
+"""PCB reader: .kicad_pcb extraction — layers, setup, nets, footprints, tracks,
 vias, zones, outline, silkscreen, metadata, dimensions, groups, net classes.
 
 Verbatim moves from analyze_pcb.py; no behaviour change. Reads only: the KiCad-10 synthetic

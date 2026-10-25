@@ -1,4 +1,4 @@
-"""Distributor sync inputs (v3 round 6): BOM projection, MPN-list reading, analyzer output.
+"""Distributor sync inputs: BOM projection, MPN-list reading, analyzer output.
 Verbatim from sync_datasheets_digikey.py; id_keys parameterises the per-provider identifier set
 (order = the dict-key order each provider wrote)."""
 

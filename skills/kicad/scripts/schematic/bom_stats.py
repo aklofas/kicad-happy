@@ -1,4 +1,4 @@
-"""BOM generation and statistics (v3 round 4): verbatim move from analyze_schematic.py; no behaviour change."""
+"""BOM generation and statistics: verbatim move from analyze_schematic.py; no behaviour change."""
 from __future__ import annotations
 
 from kicad_core.netnames import (

@@ -1,4 +1,4 @@
-"""Pin/net index primitives (kicad_core). Round 2 seeds it with the two net helpers that lived in kicad_utils; round 3 adds the index builders and BridgeFact."""
+"""Pin/net index primitives (kicad_core). The two net helpers that lived in kicad_utils, the index builders and BridgeFact."""
 
 from dataclasses import dataclass
 

@@ -1,4 +1,4 @@
-"""Output mechanics shared by the kicad-owned CLIs (v3 round 4, spec §5.2 / C1).
+"""Output mechanics shared by the kicad-owned CLIs.
 
 write_primary_run: the analysis-cache write path for the primary analyzers (schematic, pcb, EMC
 and SPICE CLIs); write_derived_output: the current-run overwrite path for the derived analyzers (gerber,

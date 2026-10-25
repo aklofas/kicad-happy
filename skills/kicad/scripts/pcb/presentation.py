@@ -1,6 +1,6 @@
-"""PCB result assembly (v3 round 5): turns the board read by pcb.pipeline.read_board and the
+"""PCB result assembly: turns the board read by pcb.pipeline.read_board and the
 intermediates computed by pcb.pipeline.run_analyses into the analyzer output dict.
-Bodies are verbatim from analyze_pcb.py at the round-4 tip; only the signatures and the input
+Bodies are verbatim from analyze_pcb.py; only the signatures and the input
 unpacking are new.
 """
 

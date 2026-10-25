@@ -1,4 +1,4 @@
-"""Connectivity, power-domain, cross-domain, bus-protocol and differential-pair analyses (v3 round 4): verbatim move from analyze_schematic.py; no behaviour change."""
+"""Connectivity, power-domain, cross-domain, bus-protocol and differential-pair analyses: verbatim move from analyze_schematic.py; no behaviour change."""
 from __future__ import annotations
 
 import re

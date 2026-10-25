@@ -1,4 +1,4 @@
-"""PCB routing analyses (v3 round 5): connectivity, power-net routing, routed distances, return
+"""PCB routing analyses: connectivity, power-net routing, routed distances, return
 path, net lengths/impedance, ground domains, trace proximity, current capacity, layer transitions.
 Verbatim moves from analyze_pcb.py."""
 

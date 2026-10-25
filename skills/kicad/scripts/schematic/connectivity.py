@@ -1,4 +1,4 @@
-"""Schematic connectivity: bus resolution and the net map (v3 round 4).
+"""Schematic connectivity: bus resolution and the net map.
 
 Verbatim moves from bus_resolver.py and analyze_schematic.py; no behaviour change.
 Bus logic replicates KiCad's bus semantics: ordered vector expansion,

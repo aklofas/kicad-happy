@@ -1,4 +1,4 @@
-"""PCB geometry primitives (v3 round 5): polygon area/containment, zone fills, copper presence,
+"""PCB geometry primitives: polygon area/containment, zone fills, copper presence,
 pad outlines and sampling. Verbatim moves from analyze_pcb.py; no behaviour change.
 
 ZoneFills / CopperPresence / copper_connected are the spatial index every copper-aware check

@@ -251,7 +251,7 @@ _GENERATORS = {
 
 @dataclass(frozen=True)
 class ModelOptions:
-    """CLI-level model resolution options (v3 round 3, TH-059 product half).
+    """CLI-level model resolution options.
 
     cache_dir: directory under which spice/models/ is read and written
                (default: beside the first source file the analysis JSON names,

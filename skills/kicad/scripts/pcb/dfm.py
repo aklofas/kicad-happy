@@ -1,4 +1,4 @@
-"""PCB DFM (v3 round 5): fab-capability scoring, drill measurement, project design-rule compliance.
+"""PCB DFM: fab-capability scoring, drill measurement, project design-rule compliance.
 Fab tables at module level; analyze_dfm composes the _measure_* scans and the _emit_* builders."""
 
 import math

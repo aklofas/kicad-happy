@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline oracle for the four distributor skills' sync/fetch scripts (v3 round 6).
+"""Offline oracle for the four distributor skills' sync/fetch scripts.
 
 Runs each provider's ``sync_datasheets`` and ``fetch_datasheet_<p>.main`` in
 process over one shared BOM scenario, with the clock frozen, sleeps no-oped

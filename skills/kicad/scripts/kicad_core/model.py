@@ -1,4 +1,4 @@
-"""Typed records over the reader dict shapes (kicad_core.model, v3 round 3).
+"""Typed records over the reader dict shapes (kicad_core.model).
 
 TypedDicts describe what the readers already emit, so serialisation does not
 change (spec §4.1). Open boundaries stay plain dicts (D3): finding ``extra``

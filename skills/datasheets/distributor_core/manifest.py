@@ -1,4 +1,4 @@
-"""Datasheet manifest IO and filename primitives (v3 round 6): manifest.json (index.json legacy read,
+"""Datasheet manifest IO and filename primitives: manifest.json (index.json legacy read,
 atomic replace, legacy sibling removed after a successful write), sanitize/friendly filenames."""
 
 import json
