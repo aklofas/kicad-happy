@@ -91,9 +91,9 @@ PACKAGE_THERMAL_RESISTANCE = [
     (r"[TL]QFP.*48", 50.0),
     (r"[TL]QFP.*32", 60.0),
     (r"[TL]QFP", 50.0),
-    # MSOP/TSSOP/SOIC/SOP — families before the generic SOP row; exposed-pad
-    # variants fall through to the generic value.
-    (r"MSOP(?!.*-\d*EP)", 200.0),
+    # MSOP/TSSOP/SOIC/SOP — families before the generic SOP row; VSSOP is the
+    # MSOP body. Exposed-pad variants fall through to the generic value.
+    (r"(?:MSOP|VSSOP)(?!.*-\d*EP)", 200.0),
     (r"TSSOP[-_]?(?:20|24|28)(?![\d.x])(?!.*-\d*EP)", 80.0),
     (r"TSSOP[-_]?(?:14|16)(?![\d.x])(?!.*-\d*EP)", 100.0),
     (r"TSSOP[-_]?8(?![\d.x])(?!.*-\d*EP)", 150.0),

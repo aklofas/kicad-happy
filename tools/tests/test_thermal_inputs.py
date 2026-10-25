@@ -38,6 +38,8 @@ class Packages(unittest.TestCase):
             "MSOP-8": 200, "TSSOP-8": 150, "TSSOP-20": 80, "SSOP-28": 100,
             "SOIC-14_3.9x8.7mm": 100, "SOIC-8": 120, "SOP-8": 120, "SOIC-16W": 80,
             "MSOP-10-1EP": 100, "HTSSOP-20-1EP": 100,
+            "VSSOP-8_3x3mm_P0.65mm": 200, "VSSOP-10_3x3mm_P0.5mm": 200,
+            "HVSSOP-8-1EP_3x3mm_P0.65mm_EP1.57x1.89mm": 100,
         }
         for name, theta in table.items():
             with self.subTest(name=name):
