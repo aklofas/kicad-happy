@@ -24,7 +24,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from finding_schema import make_finding, compute_trust_summary, assign_finding_ids
-from kicad_core.netnames import is_ground_name
+from kicad_core.netnames import is_ground_name, is_power_net_name
 from kicad_core.netquery import build_net_id_map as _build_net_id_map
 from envelopes.cross_analysis import CrossAnalysisEnvelope
 from schema_codec import emit_schema
@@ -272,7 +272,7 @@ def check_connector_current(schematic: dict, pcb: dict | None, recorder=None) ->
                     category='current_capacity',
                     summary=f'Connector {ref}: trace on {net_name} too narrow for ~{total_current:.1f}A',
                     description=(
-                        f'Power net {net_name} at connector {ref} carries estimated '
+                        f'Power net {net_name} at connector {ref} carries '
                         f'{total_current:.1f}A (estimated from the regulator output '
                         f'capacitance) but narrowest trace is {trace_w:.2f}mm. '
                         f'IPC-2152 recommends >= {min_w:.2f}mm (1oz Cu, 10C rise).'
@@ -325,7 +325,7 @@ def check_esd_coverage_gaps(schematic: dict, pcb: dict | None, recorder=None) ->
         pin_nets = conn.get('pin_nets') or {}
         for _, net in sorted(pin_nets.items()):
             if (not net or _is_power_net(net) or is_cross_analysis_ground_name(net)
-                    or is_ground_name(net)):
+                    or is_ground_name(net) or is_power_net_name(net)):
                 continue
             if net not in protected_nets:
                 unprotected_nets.append(net)

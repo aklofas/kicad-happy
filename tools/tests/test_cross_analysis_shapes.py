@@ -68,11 +68,23 @@ class Shapes(unittest.TestCase):
         self.assertEqual(set(eg[0]["nets"]), {"__unnamed_24", "__unnamed_25"})
         self.assertEqual(eg[0]["severity"], "info")
 
+    @staticmethod
+    def _usb_conn(pin_nets):
+        return {"components": [{"reference": "J9", "type": "connector", "value": "USB_C",
+                                "lib_id": "Connector:USB_C", "pin_nets": pin_nets}],
+                "findings": []}
+
     def test_eg001_sheet_ground_excluded(self):
-        sch = {"components": [{"reference": "J9", "type": "connector", "value": "USB_C",
-                               "lib_id": "Connector:USB_C", "pin_nets": {"1": "/Sheet/GND"}}],
-               "findings": []}
-        self.assertEqual(ca.check_esd_coverage_gaps(sch, None), [])
+        sch = self._usb_conn({"1": "/Sheet/GND", "2": "/Sheet/CC1"})
+        eg = ca.check_esd_coverage_gaps(sch, None)
+        self.assertEqual([f["nets"] for f in eg], [["/Sheet/CC1"]])
+
+    def test_eg001_sheet_power_excluded(self):
+        sch = self._usb_conn({"1": "/USB/VBUS", "2": "/USB/CC1", "3": "/Slider_DAC/+24V",
+                              "4": "/Power/+5V"})
+        eg = ca.check_esd_coverage_gaps(sch, None)
+        self.assertEqual([f["nets"] for f in eg], [["/USB/CC1"]])
+        self.assertIn("1 unprotected", eg[0]["summary"])
 
     def test_da001_usb_dual_esd(self):
         rec = []
@@ -123,6 +135,7 @@ class Shapes(unittest.TestCase):
         self.assertEqual([f["rule_id"] for f in out], ["CC-001"])
         self.assertEqual(out[0]["nets"], ["+24V"])
         self.assertIn("output capacitance", out[0]["description"])
+        self.assertIn("J1 carries 2.1A (estimated from the regulator output", out[0]["description"])
 
     def test_dp005_dp_dm_pairs(self):
         def cls(*names):
