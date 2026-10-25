@@ -66,9 +66,11 @@ class ModelTrustTest(_CacheCase):
         self.assertEqual(specs, {"gbw_hz": 1000000.0})
         self.assertEqual(sink, [])
 
-    def test_include_outside_skipped(self):
+    def test_include_or_control_line_skipped(self):
         for line in (".include ../../etc/x.lib", ".LIB /abs/x.lib", '.inc "../x.lib"',
-                     ".inc\n+ ../../etc/x.lib", "shell rm -rf x", "source evil.cir"):
+                     ".inc\n+ ../../etc/x.lib", ".include helper.lib", ".lib sub/x.lib tt",
+                     ".LIBRARY x", ".incx /abs/evil.lib", ".controlx",
+                     "shell rm -rf x", "source evil.cir"):
             with self.subTest(line=line):
                 smc._index_cache.clear()
                 self.plant(".subckt LM358 1 2 3 4 5\n" + line + "\n.ends\n")
@@ -76,8 +78,8 @@ class ModelTrustTest(_CacheCase):
                 self.assertEqual(source, "lookup:LM358")
                 self.assertEqual(len(sink), 1, sink)
 
-    def test_include_inside_used(self):
-        text = ".subckt LM358 1 2 3 4 5\n.include helper.lib\n.lib sub/x.lib tt\n.ends\n"
+    def test_element_names_like_control_words_used(self):
+        text = ".subckt LM358 1 2 3 4 5\nSOURCE1 1 2 3 4 SW1\nshellcap 1 2 1p\n.ends\n"
         self.plant(text)
         (subckt, source, _), sink = self.resolve()
         self.assertEqual(source, "cache:LM358")
@@ -114,19 +116,15 @@ class ModelTrustTest(_CacheCase):
 
 class ModelTextProblemTest(unittest.TestCase):
     def test_problems(self):
-        with tempfile.TemporaryDirectory() as d:
-            cache = Path(d)
-            self.assertIsNone(smc.model_text_problem(CLEAN, cache))
-            self.assertIsNone(smc.model_text_problem("* .control in a comment\n", cache))
-            self.assertIsNotNone(smc.model_text_problem("  .CONTROL\n", cache))
-            self.assertIsNotNone(smc.model_text_problem(".endc\n", cache))
-            self.assertIsNotNone(smc.model_text_problem(".inc ~/x.lib\n", cache))
-            for ok in ("SOURCE1 1 2 3 4 SW1\n", "shellcap 1 2 1p\n", ".controlx\n",
-                       "Sourcefoo 1 0\n"):
-                self.assertIsNone(smc.model_text_problem(ok, cache), ok)
-            for bad in ("SOURCE x.cir\n", "Shell\trm x\n", "shell\n", ".Control\n",
-                        "  .endc  \n"):
-                self.assertIsNotNone(smc.model_text_problem(bad, cache), bad)
+        self.assertIsNone(smc.model_text_problem(CLEAN))
+        self.assertIsNone(smc.model_text_problem("* .control in a comment\n"))
+        for ok in ("SOURCE1 1 2 3 4 SW1\n", "shellcap 1 2 1p\n", "Sourcefoo 1 0\n",
+                   "R1 inc lib 1k\n", ".ends\n"):
+            self.assertIsNone(smc.model_text_problem(ok), ok)
+        for bad in ("SOURCE x.cir\n", "Shell\trm x\n", "shell\n", ".Control\n",
+                    "  .endc  \n", ".controlx\n", ".LIBRARY x\n", ".inc ~/x.lib\n",
+                    ".include helper.lib\n", ".incx a\n", ".lib\n", "  .Inc\n+ x.lib\n"):
+            self.assertIsNotNone(smc.model_text_problem(bad), bad)
 
 
 class ManifestFileTest(_CacheCase):

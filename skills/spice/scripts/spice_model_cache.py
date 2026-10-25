@@ -159,8 +159,12 @@ def get_cached_model(cache_dir, mpn):
     return subckt, _read_spice_specs(entry.get("specs"))
 
 
-_CONTROL_WORDS = (".control", ".endc", "shell", "source")
-_INCLUDE_CARDS = (".include", ".inc", ".lib")
+# ngspice recognises dot-cards by prefix, so ".controlx" opens a control block and
+# ".incx" includes a file; shell/source only matter as whole words (inside a control
+# block), which keeps element names like SOURCE1 usable.
+_CONTROL_CARD_PREFIXES = (".control", ".endc")
+_INCLUDE_CARD_PREFIXES = (".inc", ".lib")
+_CONTROL_WORDS = ("shell", "source")
 
 
 def _logical_lines(text):
@@ -174,36 +178,19 @@ def _logical_lines(text):
     return lines
 
 
-def _include_target(rest):
-    rest = rest.strip()
-    if rest[:1] in ("'", '"'):
-        end = rest.find(rest[0], 1)
-        return rest[1:end] if end > 0 else rest[1:]
-    return rest.split()[0] if rest else ""
-
-
-def model_text_problem(text, cache_dir):
+def model_text_problem(text):
     """Why a cached model is unsafe to paste into a netlist, or None.
 
-    Unsafe: a simulator control command (``.control``/``.endc``/``shell``/``source``)
-    or an ``.include``/``.inc``/``.lib`` of a file outside ``cache_dir``.
+    Unsafe: a line that opens or closes a simulator control block, runs ``shell`` or
+    ``source``, or includes any file (``.inc``/``.include``/``.lib``). Included files
+    resolve from the simulation directory and are never scanned, so none is allowed.
     """
-    root = Path(cache_dir).resolve()
     for line in _logical_lines(text):
-        low = line.lower()
-        card = low.split(None, 1)[0] if low else ""
-        if card in _CONTROL_WORDS:
+        card = line.lower().split(None, 1)[0] if line else ""
+        if card.startswith(_INCLUDE_CARD_PREFIXES):
+            return f"model includes a file: {line[:60]}"
+        if card.startswith(_CONTROL_CARD_PREFIXES) or card in _CONTROL_WORDS:
             return f"model contains a simulator control command: {line[:60]}"
-        if card in _INCLUDE_CARDS:
-            target = _include_target(line[len(card):])
-            inside = False
-            if target and not target.startswith("~"):
-                try:
-                    inside = (root / target).resolve().is_relative_to(root)
-                except (OSError, ValueError):
-                    inside = False
-            if not inside:
-                return f"model includes a file outside the models folder: {target[:60]}"
     return None
 
 
@@ -368,7 +355,7 @@ def get_model_for_part(mpn, component_type=None, context=None, options=None, *, 
         cached_subckt, cached_specs = get_cached_model(cache_dir, mpn)
         problem = None
         if cached_subckt and not opts.trust_project_models:
-            problem = model_text_problem(cached_subckt, cache_dir)
+            problem = model_text_problem(cached_subckt)
             if problem:
                 record(diagnostics, "spice_model_cache.get_cached_model", ValueError(problem),
                        "project model skipped")

@@ -263,7 +263,7 @@ Read only from `~/.kicad-happy.json`. A project or workspace `.kicad-happy.json`
 |-------|------|---------|-------------|
 | `trust_project_models` | bool | `false` | Paste a project's cached part models (`spice/models/*.sub`) into the netlist verbatim. Only the JSON value `true` turns it on. |
 
-Without it, `simulate_subcircuits.py` skips a cached model with a line whose first word is a simulator control command (`.control`, `.endc`, `shell`, `source`) or an `.include`/`.inc`/`.lib` of a file outside `spice/models/`. The part falls back to the next model source (distributor data, the built-in table, or the ideal model) and the report's `diagnostics` gets one `project model skipped` record. The skipped file and its manifest entry are left as they are; the fallback model is not cached over them.
+Without it, `simulate_subcircuits.py` skips a cached model with a line that starts a simulator control block (`.control`, `.endc`), runs `shell` or `source`, or includes any file (`.include`, `.inc`, `.lib`). The part falls back to the next model source (distributor data, the built-in table, or the ideal model) and the report's `diagnostics` gets one `project model skipped` record. The skipped file and its manifest entry are left as they are; the fallback model is not cached over them.
 
 ```jsonc
 // ~/.kicad-happy.json
