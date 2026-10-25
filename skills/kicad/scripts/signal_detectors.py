@@ -2688,7 +2688,7 @@ def detect_opamp_circuits(ctx: AnalysisContext) -> list[dict]:
             out_comps = {p["component"] for p in ctx.nets[out_net]["pins"] if p["component"] != ref}
             neg_comps = {p["component"] for p in ctx.nets[neg_net]["pins"] if p["component"] != ref}
             fb_resistors = out_comps & neg_comps
-            for fb_ref in fb_resistors:
+            for fb_ref in sorted(fb_resistors):
                 comp = ctx.comp_lookup.get(fb_ref)
                 if comp and comp["type"] == "resistor" and fb_ref in ctx.parsed_values:
                     # KH-149: Verify direct connection — one pin on out_net, other on neg_net
@@ -2702,7 +2702,7 @@ def detect_opamp_circuits(ctx: AnalysisContext) -> list[dict]:
             cf_ref = None
             cf_val = None
             fb_caps = out_comps & neg_comps
-            for fb_cref in fb_caps:
+            for fb_cref in sorted(fb_caps):
                 comp = ctx.comp_lookup.get(fb_cref)
                 if comp and comp["type"] == "capacitor" and fb_cref in ctx.parsed_values:
                     # KH-149: Verify direct connection
@@ -2729,7 +2729,7 @@ def detect_opamp_circuits(ctx: AnalysisContext) -> list[dict]:
                         mid_comps = {p["component"] for p in ctx.nets[mid]["pins"]
                                     if p["component"] != out_comp_ref}
                         fb_via_mid = mid_comps & neg_comps
-                        for fb2 in fb_via_mid:
+                        for fb2 in sorted(fb_via_mid):
                             c2 = ctx.comp_lookup.get(fb2)
                             if c2 and c2["type"] in ("resistor", "capacitor"):
                                 if oc["type"] == "resistor" and out_comp_ref in ctx.parsed_values:

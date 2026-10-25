@@ -35,6 +35,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - MSOP, TSSOP, SSOP and SOIC-14 footprints get their own junction-to-ambient resistance instead of the SOIC/SOP value (KH-569).
 - The thermal text report shows the component table and severity counts and no longer crashes on summary-only findings; `cross_verify` thermal-via checks read the same keys (KH-570).
 - The Action report's Top Risks section appears: it scored only uppercase severities and never rendered with current severity names. `summarize_findings` counts and filters `datasheet-backed` findings and accepts every evidence source; the schematic severity histogram built before finalization counts `error` findings (KH-582).
+- Regulator inductor and output-rail picks, op-amp feedback parts, the CP-001 description, EMC ML-001 victims and test-plan protocols, datasheet decoupling lists, lifecycle sources and merged config order no longer depend on Python's hash seed. Where several candidates qualify, the alphabetically first net or reference wins; a connector carrying several pair types is ranked by its riskiest protocol (KH-509, KH-584, KH-607, KH-620, KH-581, KH-579, KH-421).
 
 ---
 

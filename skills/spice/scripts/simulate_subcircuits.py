@@ -621,7 +621,7 @@ def main(argv: list[str] | None = None) -> int:
         supported = set(list_supported_types())
         unknown = set(types) - supported
         if unknown:
-            print(f"Warning: unknown types ignored: {', '.join(unknown)}",
+            print(f"Warning: unknown types ignored: {', '.join(sorted(unknown))}",
                   file=sys.stderr)
             types = [t for t in types if t in supported]
 

@@ -198,7 +198,7 @@ class NetlistQueries:
         For multi-pin, returns all nets except start_net.
         """
         other_nets = self._nets_by_comp.get(through_ref, set())
-        return [n for n in other_nets if n != start_net]
+        return sorted(n for n in other_nets if n != start_net)
 
     def trace_path(self, start_ref: str, start_pin: str,
                    max_hops: int = 5,
@@ -282,8 +282,8 @@ class NetlistQueries:
 
         for _hop in range(max_hops + 1):
             next_nets: set[str] = set()
-            for net_name in frontier_nets:
-                for comp_ref in self._comps_by_net.get(net_name, set()):
+            for net_name in sorted(frontier_nets):
+                for comp_ref in sorted(self._comps_by_net.get(net_name, set())):
                     if comp_ref in seen_refs:
                         continue
                     seen_refs.add(comp_ref)

@@ -920,7 +920,7 @@ def audit_bom(analysis_json: dict, project_dir: str | None = None,
         "components_checked": total,
         "components_with_mpn": total,
         "components_without_mpn": skipped,
-        "sources_available": list({src for f in lifecycle_findings for src in f.get("sources", {})}),
+        "sources_available": sorted({src for f in lifecycle_findings for src in f.get("sources", {})}),
         "findings": lifecycle_findings,
         "lifecycle_summary": status_counts,
     }

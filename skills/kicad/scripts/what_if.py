@@ -339,7 +339,7 @@ def _run_spice_comparison(affected: list, patched_dets: list,
 
         spice_deltas = {}
         all_keys = set(list(sim_before.keys()) + list(sim_after.keys()))
-        for key in all_keys:
+        for key in sorted(all_keys):
             bv = sim_before.get(key)
             av = sim_after.get(key)
             if bv is None or av is None:
@@ -570,7 +570,7 @@ def _extract_parasitics(pcb_analysis: dict, det: dict, det_type: str) -> dict:
         total_r = 0.0
         total_l = 0.0
         net_name = None
-        for net in comp_nets:
+        for net in sorted(comp_nets):
             net_tracks = tracks.get(net, [])
             if isinstance(net_tracks, dict):
                 net_tracks = [net_tracks]

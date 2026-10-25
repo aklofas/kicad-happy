@@ -85,7 +85,7 @@ def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any
       replace the corresponding *base* value entirely.
     """
     merged: Dict[str, Any] = {}
-    all_keys = set(base) | set(override)
+    all_keys = list(base) + [k for k in override if k not in base]
     for key in all_keys:
         if key in override and key in base:
             bval = base[key]

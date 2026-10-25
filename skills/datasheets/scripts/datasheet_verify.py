@@ -598,7 +598,7 @@ def verify_decoupling(components: list, nets: dict, extraction_dir: str,
 
         # Count caps on power nets
         caps_on_power = []
-        for net_name in power_pin_nets:
+        for net_name in sorted(power_pin_nets):
             net_info = nets.get(net_name, {})
             for p in net_info.get("pins", []) if isinstance(net_info, dict) else []:
                 c_ref = p.get("component", "")

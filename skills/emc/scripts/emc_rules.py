@@ -4144,11 +4144,9 @@ def generate_test_plan(schematic: Optional[Dict], pcb: Optional[Dict],
                 n = pad.get('net_name', '')
                 if n:
                     conn_nets.add(n)
-            proto = None
-            for n in conn_nets:
-                if n in dp_nets:
-                    proto = dp_nets[n]
-                    break
+            # A connector carrying several pair types is ranked by its riskiest one.
+            proto = max((dp_nets[n] for n in conn_nets if n in dp_nets),
+                        key=lambda p: (protocol_speeds.get(p, 4), p), default=None)
             if proto:
                 score = protocol_speeds.get(proto, 4)
                 reasons.append(f'{proto} interface')
@@ -4423,7 +4421,7 @@ def check_inductor_leakage(pcb: Dict, schematic: Dict) -> List[Dict]:
 
     # Filter to those with PCB positions
     sensitive = []
-    for ref in sensitive_refs:
+    for ref in sorted(sensitive_refs):
         if ref in fp_pos:
             sensitive.append({'ref': ref, 'x': fp_pos[ref][0], 'y': fp_pos[ref][1]})
 

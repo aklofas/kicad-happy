@@ -1019,10 +1019,10 @@ def analyze_copper_presence(footprints: list[dict], zones: list[dict],
             opp_uncovered.append(ref)
 
         if foreign_pads:
-            fz_nets = list(set(
+            fz_nets = sorted({
                 n for fp_pad in foreign_pads
                 for n in fp_pad["foreign_zones"]
-            ))
+            })
             # Classify: is every foreign zone a ground rail AND does this
             # component have a pin on that ground? That's the "desired"
             # case (decoupling cap sitting over GND pour) and should
