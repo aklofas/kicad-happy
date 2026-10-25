@@ -8,6 +8,7 @@ import json
 import os
 import stat
 import sys
+import tempfile
 import time
 
 
@@ -50,9 +51,9 @@ def store_token(name, client_id, token, ttl_s):
     tmp = None
     try:
         folder = cache_dir()
-        tmp = os.path.join(folder, f".{name}.{os.getpid()}.tmp")
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        fd, tmp = tempfile.mkstemp(dir=folder, prefix=f".{name}.", suffix=".tmp")
         with os.fdopen(fd, "w", encoding="utf-8") as f:
+            os.chmod(tmp, 0o600)
             json.dump({"client_id": client_id, "token": token,
                        "expires_at": time.time() + ttl_s}, f)
         os.replace(tmp, os.path.join(folder, name + ".json"))

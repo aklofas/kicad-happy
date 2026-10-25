@@ -1,6 +1,6 @@
 """The DigiKey access token is cached in a private per-user folder, bound to the
 client id, and the old shared temp file is never read."""
-import io, json, os, stat, sys, tempfile, unittest
+import io, json, os, stat, sys, tempfile, threading, unittest
 from pathlib import Path
 from unittest import mock
 
@@ -64,6 +64,36 @@ class TokenCacheTest(_Env):
                 f.write(body)
             os.chmod(self.file, 0o600)
             self.assertIsNone(token_cache.load_token("digikey_token", "cid"), body)
+
+
+class ConcurrentStoreTest(_Env):
+    def test_two_threads_storing_at_once_both_succeed(self):
+        # The first writer pauses mid-write while a second thread of the same process
+        # stores; neither may disturb the other's temp file.
+        real_dump = json.dump
+        first_writing, second_done = threading.Event(), threading.Event()
+        calls = []
+
+        def dump(obj, f, *a, **k):
+            calls.append(obj["token"])
+            if len(calls) == 1:
+                first_writing.set()
+                second_done.wait(5)
+            return real_dump(obj, f, *a, **k)
+
+        with mock.patch.object(token_cache.json, "dump", dump):
+            first = threading.Thread(
+                target=token_cache.store_token, args=("digikey_token", "cid", "A", 540))
+            first.start()
+            self.assertTrue(first_writing.wait(5))
+            token_cache.store_token("digikey_token", "cid", "B", 540)
+            second_done.set()
+            first.join(5)
+        self.assertEqual(calls, ["A", "B"])
+        self.assertEqual(token_cache.load_token("digikey_token", "cid"), "A")
+        self.assertEqual(os.listdir(os.path.dirname(self.file)), ["digikey_token.json"])
+        if POSIX:
+            self.assertEqual(stat.S_IMODE(os.stat(self.file).st_mode), 0o600)
 
 
 class DeepJsonTest(_Env):
