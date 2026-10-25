@@ -29,6 +29,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `skills/datasheets/distributor_core/` (inputs, manifest, download, verify, and the one `sync` driver) and a `provider_<p>.py` adapter for each of DigiKey, Mouser, LCSC and element14. The eight sync and fetch CLIs keep their names and flags.
 - `tools/check_refactor.py`, the refactor checker run in CI: import direction, the literal `detector`/`rule_id`/`schema_era` tag scan, an install smoke from an unrelated directory, determinism, and JSON and text output oracles.
 - `ARCHITECTURE.md`: frozen contracts, dependency rules and module ownership.
+- `simulate_subcircuits.py --model-cache-dir DIR` keeps cached SPICE part models under `DIR/spice/models/` instead of beside the schematic, and `--offline` resolves part models from the project cache and the built-in lookup table only, with no distributor or datasheet queries.
 
 ### Fixed
 
@@ -45,7 +46,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Removed
 
-Python import paths only; every CLI and flag is unchanged (output changes are under Changed). A script that imported one of these names imports it from the new owner. Private (`_name`) helpers moved with the public names of the same module.
+Python import paths only; every CLI and flag from 2.3.2 still exists (output changes are under Changed, the two new SPICE flags under Added). A script that imported one of these names imports it from the new owner. Private (`_name`) helpers moved with the public names of the same module.
 
 | Removed | New owner |
 |---|---|
@@ -214,7 +215,7 @@ Python import paths only; every CLI and flag is unchanged (output changes are un
 
 ### Added
 
-- `power_net_resolution` block on PCB output: which nets classified as power/ground and under which resolution (`cli` / `schematic` / `heuristic`). New `--power-rails` flag; rails auto-read from `--schematic analysis/schematic.json` when provided. (KH-393, #40 — reported by curtisgalloway.)
+- `power_net_resolution` block on PCB output: which nets classified as power/ground and under which resolution (`cli` / `schematic` / `heuristic`). New `--power-rails` flag; rails auto-read from `--schematic analysis/<run_id>/schematic.json` when provided. (KH-393, #40 — reported by curtisgalloway.)
 - `checks_run` manifest on cross-analysis output: every check reports whether it ran, why it was skipped, and how much it examined — no more silently absent checks. (KH-381)
 - `connectivity_graph_error` on PCB output when `--full` connectivity-graph construction fails — previously a silent `except: pass`. (audit KHPA-005 subset)
 - **FV-001** info finding when a file's format version is newer than the analyzer's tested maximum — analysis proceeds best-effort but says so. (audit KHPA-002)

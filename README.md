@@ -196,7 +196,7 @@ The analysis scripts are **pure Python 3.10+** with zero required dependencies. 
 
 ### Release candidates
 
-The stable install commands above always resolve to the latest stable release on `main` (currently v2.1.0). When a release candidate is active, opt in by appending `#<tag>` to the marketplace ref:
+The stable install commands above always resolve to the latest stable release on `main`. When a release candidate is active, opt in by appending `#<tag>` to the marketplace ref:
 
 **Claude Code:**
 
@@ -441,9 +441,13 @@ Or set up the [GitHub Action](github-action.md) and get automated analysis on ev
 
 **Current release: v3.0.0 — the v3 refactor.** Same analyzers, same CLIs, same rule IDs; the code behind them is now a stdlib-only core plus `schematic/`, `pcb/` and `distributor_core/` packages. Output changes are additive except: EMC findings drop their duplicate `title`, every envelope gains `diagnostics`, and the datasheet-verification / summary tools use `error`/`warning`/`info`. Scripts that imported `kicad_utils`, `sexp_parser` or the analyzer modules' helpers: see the migration table in the CHANGELOG.
 
+**Previous: v2.3.2 — backport.** AM-001 now reads the `<domain>_max` keys datasheet extractions use, so it fires on real extractions; every datasheets script reads and writes UTF-8; PU-001 and PP-001 stop flagging no-connect pins and gate-driver bootstrap pins; RS-001 says when it recognised a rail by name only; `cross_analysis.py` gives a usage error instead of a traceback on a directory. Upgrading: RS-001 on a name-only rail now carries `heuristic` confidence.
+
+**Previous: v2.3.1 — maintenance batch.** One shared, case-insensitive part-number alias set (`Manufacturer P/N`, `Digikey P/N`, ...) for the schematic analyzer, the PCB analyzer and the BOM manager, with manufacturer-specific names ranked above generic ones; CP-003 and via-in-pad use the real outline of round and oval pads; VM-001 stops flagging a correct GPIO-to-EN connection when an extraction lacks the EN threshold. Upgrading: on symbols with both a manufacturer-specific and a generic part-number field, the manufacturer-specific one now wins.
+
 **Previous: v2.3.0 — correctness batch.** Eighteen verified fixes plus three community contributions: CP-003 touch-pad clearance is measured against real copper (it reported 0.0 mm on most boards and fired on test points), decoupling-distance findings only pair capacitors that actually share a supply net with the IC, the power budget and sleep-current audit stop dropping loads and rails, PD-001 no longer mistakes feedback feedforward caps for decouplers, and the datasheet-authority gates finally receive the project directory. New: **SP-001** catches a two-pin part wired to a single net (invisible to ERC), and `search_lcsc.py` searches the LCSC/JLCPCB catalog from the terminal. Datasheet sync no longer crashes on Windows when it re-saves its manifest. Upgrading: the EMC PD-001 field `transient_amps` is now `transient_a`; everything else is additive.
 
-**Previous: v2.2.1 — maintenance batch.** Twenty-five verified fixes: the GP-001 via-antipad and power-rail-classification false positives from the field are gone, no-connect markers no longer absorb pins into wires passing beneath them (community-contributed, `kicad-cli`-verified), internal-oscillator IC descriptions stop triggering false clock findings, and a whole class of output nondeterminism was eliminated with a CI guard to keep it that way. Skipped or degraded analysis is now visible (`checks_run` manifest, connectivity-error notes, conditional-rule skip counts). Upgrading: GitHub Action users with multi-project repos must set the `schematic`/`pcb` inputs explicitly (auto-detect now fails loudly instead of guessing), and `analyze_pcb.py --schematic analysis/schematic.json` now classifies your declared power rails correctly.
+**Previous: v2.2.1 — maintenance batch.** Twenty-five verified fixes: the GP-001 via-antipad and power-rail-classification false positives from the field are gone, no-connect markers no longer absorb pins into wires passing beneath them (community-contributed, `kicad-cli`-verified), internal-oscillator IC descriptions stop triggering false clock findings, and a whole class of output nondeterminism was eliminated with a CI guard to keep it that way. Skipped or degraded analysis is now visible (`checks_run` manifest, connectivity-error notes, conditional-rule skip counts). Upgrading: GitHub Action users with multi-project repos must set the `schematic`/`pcb` inputs explicitly (auto-detect now fails loudly instead of guessing), and `analyze_pcb.py --schematic analysis/<run_id>/schematic.json` now classifies your declared power rails correctly.
 
 Per-release stories are in [release-notes.md](release-notes.md); line-level detail in the [CHANGELOG](CHANGELOG.md).
 
@@ -453,21 +457,19 @@ Everything above was validated against a [corpus of 5,800+ open-source KiCad pro
 
 **The numbers:**
 
-| Metric                       | Value                                        |
-| ---------------------------- | -------------------------------------------- |
-| Repos in corpus              | 5,800+                                       |
-| Schematic files analyzed     | 6,845 (100% success)                         |
-| PCB files analyzed           | 3,498 (99.9%)                                |
-| Gerber directories analyzed  | 1,050 (100% success)                         |
-| EMC pre-compliance analyses  | 6,853 (100% success, 141K+ findings)         |
-| Components parsed            | 312,956                                      |
-| Nets traced                  | 531,418                                      |
-| SPICE subcircuit simulations | 30,646 across 17 types                       |
-| SPICE-verified EMC findings  | 169 (PDN impedance via ngspice)              |
-| Regression assertions        | 808K+ at 100% pass rate                      |
-| Equations tracked & verified | 86 with source citations                     |
-| Bugfix regression guards     | 67 (100% pass — no fixed bugs have returned) |
-| Closed analyzer issues       | 193                                          |
+| Metric                       | Value                                         |
+| ---------------------------- | --------------------------------------------- |
+| Repos in corpus              | 5,857                                         |
+| Schematic files analyzed     | 36,462 (100% success)                         |
+| PCB files analyzed           | 18,751 (100% success)                         |
+| Gerber directories analyzed  | 5,512 (100% success)                          |
+| EMC pre-compliance analyses  | 36,670 (100% success)                         |
+| SPICE simulation runs        | 36,589 (100% success)                         |
+| Components parsed            | 1,305,789                                     |
+| Nets traced                  | 2,090,189                                     |
+| Regression assertions        | 2,714,062 at 100.0% pass rate                 |
+| Bugfix regression guards     | 175 (100% pass — no fixed bugs have returned) |
+| Closed analyzer issues       | 358                                           |
 
 Three-layer regression testing catches drift at every level:
 

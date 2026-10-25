@@ -190,7 +190,7 @@ output_io.write_primary_run / write_derived_output (thermal/cross/gerber)  -- JS
 Full support. S-expression format parsed by `kicad_core/sexp.py`.
 
 ### Legacy `.sch` (KiCad 4/5)
-Line-based format. Components, wires, labels, power symbols parsed. `.lib` symbol libraries are parsed for pin definitions (`parse_legacy_lib()`), enabling pin-to-net mapping via geometric snapping. Library resolution searches cache-lib, sym-lib-table, LIBS: directives, and built-in defaults. Pin geometry uses a snapping radius (up to 12mm) when parsed symbols are incomplete — results are heuristic and carry reduced confidence compared to KiCad 6+ native pin data.
+Line-based format. Components, wires, labels, power symbols parsed. `.lib` symbol libraries are parsed for pin definitions (`schematic.legacy_reader._parse_legacy_lib()`), enabling pin-to-net mapping via geometric snapping. Library resolution searches cache-lib, sym-lib-table, LIBS: directives, and built-in defaults. Pin geometry uses a snapping radius (up to 12mm) when parsed symbols are incomplete — results are heuristic and carry reduced confidence compared to KiCad 6+ native pin data.
 
 ### Eagle `.sch`
 Not supported (binary and XML formats). Returns 0 components gracefully.

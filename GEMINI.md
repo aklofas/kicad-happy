@@ -49,18 +49,20 @@ All scripts are zero-dependency (Python 3.10+ stdlib only). No `pip install` nee
 
 ## Code structure
 
-- `skills/kicad/scripts/analyze_schematic.py` — Schematic parser and analysis orchestrator (~9,500 LOC)
-- `skills/kicad/scripts/signal_detectors.py` — Core signal path detectors (~4,400 LOC)
+- `skills/kicad/scripts/analyze_schematic.py` / `analyze_pcb.py` — thin CLIs (~150 LOC each) over the `schematic/` and `pcb/` packages
+- `skills/kicad/scripts/schematic/` — schematic reader (incl. legacy `.sch`), connectivity, hierarchy, audits, and the named pipeline phases (`pipeline.py`)
+- `skills/kicad/scripts/pcb/` — PCB reader, copper connectivity, DFM, routing, assembly checks, and the named pipeline phases (`pipeline.py`)
+- `skills/kicad/scripts/kicad_core/` — stdlib-only shared core (S-expression parser, value parsing, classification, net names, net queries, model records, rendering, CLI helpers, diagnostics); see `ARCHITECTURE.md`
+- `skills/kicad/scripts/signal_detectors.py` — Core signal path detectors (~4,800 LOC)
 - `skills/kicad/scripts/domain_detectors.py` — Domain-specific detectors (~6,100 LOC)
-- `skills/kicad/scripts/validation_detectors.py` — Validation detectors (pull-ups, voltage levels, protocol buses, feedback stability) (~1,300 LOC)
+- `skills/kicad/scripts/validation_detectors.py` — Validation detectors (pull-ups, voltage levels, protocol buses, feedback stability) (~1,400 LOC)
 - `skills/kicad/scripts/lookup_detectors.py` — v1.4 datasheet-backed detectors (AM-001, OV-001, FT-001, PM-001, EX-001) via Phase 2 lookup API (~700 LOC)
-- `skills/kicad/scripts/analyze_pcb.py` — PCB layout analyzer (~6,700 LOC)
 - `skills/kicad/scripts/analyzer_envelope.py` — Typed envelope dataclasses (Finding, Assessment, TrustSummary, InputsBlock, CompatBlock) — single source of truth for analyzer output shape
 - `skills/kicad/scripts/finding_schema.py` — Rich finding factory, `Det` constants, consumer helpers, trust_summary aggregation
-- `skills/kicad/scripts/cross_analysis.py` — Schematic + PCB cross-domain checks (~1,100 LOC)
-- `skills/emc/scripts/emc_rules.py` — 44 EMC rule implementations (~4,250 LOC)
-- `skills/kicad/scripts/kicad_types.py` — `AnalysisContext` dataclass shared by all detectors
-- `skills/kicad/references/` — 18 deep methodology guides
+- `skills/kicad/scripts/cross_analysis.py` — Schematic + PCB cross-domain checks (~1,200 LOC)
+- `skills/emc/scripts/emc_rules.py` — 44 EMC rule implementations (~4,600 LOC)
+- `skills/kicad/scripts/kicad_types.py` — `AnalysisContext` dataclass shared by all detectors; build it with `build_analysis_context(...)`
+- `skills/kicad/references/` — 20 methodology and reference guides
 - `skills/datasheets/` — Extraction pipeline + v1.4 typed `lookup()` entry point with `datasheet_types/` access layer (DatasheetFacts, SpecValue, Pin, Pinout, trust_gating helpers)
 - `skills/kicad/review/` — v2.0 Deep Review infrastructure: schemas (design_context, review_annotations, deep_review), merge/validate/build-plan scripts, prompt scaffold for design_context input; Deep Review evidence gate at `deep_review_gate.py`
 

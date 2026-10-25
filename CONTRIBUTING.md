@@ -40,7 +40,7 @@ Each skill has a `SKILL.md` with YAML frontmatter (name, description, triggers) 
 | `kicad/scripts/schematic/system_analyses.py` | ~2,630 | PDN, sleep current, derating, power budget/sequencing, USB, inrush and other system-level analyses |
 | `kicad/scripts/schematic/bom_stats.py` | ~115 | `generate_bom`, `compute_statistics` |
 | `kicad/scripts/schematic/presentation.py` | ~500 | Result-dict assembly in the historical key order |
-| `kicad/scripts/output_io.py` | ~85 | `write_primary_run` / `write_derived_output`: the analysis-cache write paths shared by the kicad CLIs |
+| `kicad/scripts/output_io.py` | ~100 | `write_primary_run` / `write_derived_output`: the analysis-cache write paths shared by the kicad CLIs |
 | `kicad/scripts/signal_detectors.py` | ~4,770 | Core signal path detectors (regulators, filters, opamps, dividers, crystals, protection); the regulator detector = screen/build phases per IC + three passes (feedback dividers, capacitors, dissipation) |
 | `kicad/scripts/domain_detectors.py` | ~6,150 | Domain-specific detectors (Ethernet, USB-C, BMS, motor drive, sensors, audio, LEDs, etc.) |
 | `kicad/scripts/validation_detectors.py` | ~1,430 | Validation detectors (pull-ups, voltage mismatch, protocol buses, power sequencing, feedback stability) |
@@ -59,9 +59,9 @@ Each skill has a `SKILL.md` with YAML frontmatter (name, description, triggers) 
 | `kicad/scripts/cross_analysis.py` | ~1,200 | Schematic + PCB cross-domain checks |
 | `kicad/scripts/finding_schema.py` | ~680 | Rich finding factory, `Det` constants, consumer helpers, trust_summary aggregation |
 | `kicad/scripts/output_filters.py` | ~460 | Stage/audience filtering for all analyzers |
-| `kicad/scripts/kicad_types.py` | ~170 | `AnalysisContext` + `build_analysis_context`, the single production construction point — shared state for all detectors |
+| `kicad/scripts/kicad_types.py` | ~150 | `AnalysisContext` + `build_analysis_context`, the single production construction point — shared state for all detectors |
 | `kicad/scripts/kicad_core/sexp.py` | ~235 | S-expression parser shared by schematic and PCB analyzers |
-| `kicad/scripts/kicad_core/render.py` | ~70 | Severity normaliser (`normalize_severity`, `severity_bucket`) and text-report fragments |
+| `kicad/scripts/kicad_core/render.py` | ~80 | Severity normaliser (`normalize_severity`, `severity_bucket`) and text-report fragments |
 | `kicad/scripts/kicad_core/cli.py` | ~50 | Shared argparse declarations (`--stage`/`--audience`, `--output`, `--schema`, `--compact`, `--text`, `--config`, `--only-deterministic`) |
 | `kicad/scripts/analyzer_envelope.py` | ~295 | Typed envelope dataclasses (Finding, Assessment, TrustSummary, InputsBlock, CompatBlock) — single source of truth for analyzer output shape |
 | `emc/scripts/emc_rules.py` | ~4,530 | 44 EMC rule implementations |

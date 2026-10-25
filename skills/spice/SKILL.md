@@ -319,6 +319,8 @@ Model resolution cascade:
 6. **Built-in lookup table** — ~100 common parts as offline fallback
 7. **Ideal model fallback** — if the MPN isn't recognized by any source
 
+`--offline` skips the distributor and datasheet sources: only the project cache, the built-in lookup table and the ideal fallback are used.
+
 The `model_note` field in the report indicates which model was used: `"LM358 behavioral (lookup:LM358, GBW=1.0MHz)"` vs `"ideal opamp (Aol=1e6, GBW~10MHz)"`.
 
 Models are cached project-locally in a `spice/` directory alongside the schematic files (same pattern as `datasheets/`). This keeps models co-located with the design and handles board revisions and subprojects naturally.

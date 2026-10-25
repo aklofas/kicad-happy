@@ -42,7 +42,7 @@ Round 8 changed output under five budget classes; the user-facing list is the `C
 
 - B1: a `diagnostics` list at the root of every analyzer envelope and the SPICE report (`[]` when nothing degraded); the six `--schema` outputs gain the property.
 - B2: EMC `findings[*]` take `make_finding`'s key order and lose `title` (its text is `summary`); `finding_id` is unchanged; the same removal in `audience_summary.*.top_issues`.
-- B3: `schema_era: "v3.0"` is added on findings of the 89 previously untagged emit sites and on RS-001/PP-001.
+- B3: `schema_era: "v3.0"` is added on findings of the 40 detectors listed in the `CHANGELOG.md` v3.0.0 "Changed" section, RS-001 and PP-001 among them; `tools/tag_baseline.json` shrank from 89 to 56 untagged shapes.
 - B4: one severity vocabulary (`info`/`warning`/`error`) in `datasheet_verification` (findings and `summary.by_severity`), `cross_verify.py` output and `summarize_findings` (`high` becomes `error`); legacy names are accepted on input only.
 - B5: RS-001 is removed on nets whose only `power_in` pins are bootstrap-named (KH-454); PP-001 is added on boards with duplicate component refs (KH-455).
 

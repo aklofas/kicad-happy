@@ -480,7 +480,7 @@ def audit_sourcing_gate(components: list[dict]) -> list[dict]:
     `audit_sourcing_fields()` returns a numeric summary; this surfaces
     the gap as findings so the stage filter and severity rollups see
     it. Rule tiers:
-      SS-001  mpn_percent < 50        severity=high   (pre-fab blocker)
+      SS-001  mpn_percent < 50        severity=error  (pre-fab blocker)
       SS-002  50 <= mpn_percent < 80  severity=warning
       SS-003  80 <= mpn_percent < 100 severity=info
     mpn_percent == 100 emits nothing.

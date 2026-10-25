@@ -103,7 +103,7 @@ else:
 
 **Categories shipped in v1.4 (six):** `regulator`, `diode`, `transistor`, `opamp`, `mcu` (catalog tier), `crystal`. Each category extension is optional on `DatasheetFacts` — absent when the part doesn't fit the category. `mcu` Tier 2 (per-instance pin-mux detail) is deferred to v1.5.
 
-**Trust gates take an explicit `min_confidence`** (`"low" | "medium" | "high"`, keyword-only, required). Detectors declare their trust level per [spec §12](docs/datasheet-extraction-v2.md). `best()` and `trusted()` preserve extractor-intended ordering — no library-side re-ranking.
+**Trust gates take an explicit `min_confidence`** (`"low" | "medium" | "high"`, keyword-only, required). Each detector declares the trust level it needs. `best()` and `trusted()` preserve extractor-intended ordering — no library-side re-ranking.
 
 **Staleness detection:** `lookup()` hashes the source PDF and compares to `source.sha256`. Three outcomes surface on `DatasheetFacts._cache_context`: fresh, `pdf_hash_mismatch`, `pdf_missing`. Read via `facts.stale` and `facts._cache_context.stale_reason`.
 

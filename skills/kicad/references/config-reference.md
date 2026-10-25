@@ -141,7 +141,7 @@ Controls analysis script behavior and output.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `output_dir` | string | `"analysis"` | Directory name (relative to the current directory) used for the capability sidecar and the default analysis directory when neither `--analysis-dir` nor `--output` is given |
+| `output_dir` | string | `"analysis"` | Directory name (relative to the current directory) that receives the `capability_mode.json` sidecar when neither `--analysis-dir` nor `--output` is given; the analysis JSON itself then goes to stdout |
 | `retention` | integer | `0` | 0 = keep every run (default); N keeps the N newest unpinned runs |
 | `auto_diff` | boolean | `true` | Automatically diff against the previous run |
 | `track_in_git` | boolean | `false` | Include analysis output in git tracking |

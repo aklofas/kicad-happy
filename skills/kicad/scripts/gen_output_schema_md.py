@@ -8,6 +8,7 @@ definitions that drive --schema. No manual duplication.
 """
 from __future__ import annotations
 
+import argparse
 import sys
 import typing
 from dataclasses import MISSING, fields, is_dataclass
@@ -200,6 +201,9 @@ def _emit_envelope(cls, *, intro: str) -> str:
 
 
 def main():
+    argparse.ArgumentParser(
+        description="Regenerate skills/kicad/references/output-schema.md from the envelope dataclasses.",
+    ).parse_args()
     parts = [HEADER]
     parts.append(_emit_envelope(
         SchematicEnvelope,
