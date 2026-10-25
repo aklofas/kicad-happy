@@ -172,6 +172,20 @@ class DownloadPolicyTest(unittest.TestCase):
         self.assertIs(fake.calls[0][1]["allow_redirects"], False)
         self.assertIs(fake.calls[0][1]["stream"], True)
 
+    def test_spaces_after_the_host_are_encoded(self):
+        fake = _FakeRequests({
+            "https://example.com/Data%20Sheet.pdf?a=b%20c#p%202":
+                lambda: _FakeRequestsResponse(200, chunks=[PDF]),
+        })
+        self.assertTrue(self._download("https://example.com/Data Sheet.pdf?a=b c#p 2",
+                                       requests=fake, urllib_fn=_fail, playwright=_fail))
+        self.assertEqual([u for u, _ in fake.calls],
+                         ["https://example.com/Data%20Sheet.pdf?a=b%20c#p%202"])
+        for url in ("http://exa mple.com/a.pdf", "http://example.com/a\tb.pdf",
+                    "http://example.com/a b\\c.pdf", "http://u ser@example.com/a.pdf"):
+            self.assertFalse(self._download(url, requests=_FakeRequests({}),
+                                            urllib_fn=_fail, playwright=_fail), url)
+
     def test_redirect_with_backslash_userinfo_refused(self):
         fake = _FakeRequests({
             "https://example.com/x.pdf":

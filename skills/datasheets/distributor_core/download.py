@@ -333,6 +333,18 @@ def normalize_url(url: str, *, resolve_redirects: bool = True) -> str:
     return url
 
 
+def _encode_spaces(url: str) -> str:
+    """``url`` with each space after the host written as ``%20``, as KiCad Datasheet
+    fields often hold them. A space in the scheme or host is left for the policy to
+    refuse."""
+    sep = url.find("://")
+    if sep < 0:
+        return url
+    start = sep + 3
+    end = min((i for i in (url.find(c, start) for c in "/?#") if i >= 0), default=len(url))
+    return url[:end] + url[end:].replace(" ", "%20")
+
+
 def download_pdf(url: str, output_path: str, *, resolve_redirects: bool = True) -> bool:
     """Download a PDF from a URL, trying multiple methods.
 
@@ -349,7 +361,7 @@ def download_pdf(url: str, output_path: str, *, resolve_redirects: bool = True) 
     ``output_path`` only once it sniffs as a PDF, so a failed attempt never removes a
     file already there and a planted link is never written through.
     """
-    url = normalize_url(url, resolve_redirects=resolve_redirects)
+    url = _encode_spaces(normalize_url(url, resolve_redirects=resolve_redirects))
     allow_private = _allow_private_hosts()
     problem = url_problem(url, allow_private=allow_private)
     if problem:
