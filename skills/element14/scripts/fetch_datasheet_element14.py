@@ -28,7 +28,7 @@ import json
 import os
 import sys
 import _core_path  # noqa: F401
-from distributor_core.download import try_alternative_sources
+from distributor_core.download import try_alternative_sources, add_download_args, apply_download_args
 from distributor_core.verify import verify_datasheet
 from distributor_core.manifest import _friendly_filename
 from provider_element14 import (
@@ -58,7 +58,9 @@ def main():
     parser.add_argument("--store", default=_DEFAULT_STORE,
                         help=f"element14 store ID (default: {_DEFAULT_STORE})")
     parser.add_argument("--json", action="store_true", help="Output result as JSON")
+    add_download_args(parser)
     args = parser.parse_args()
+    apply_download_args(args)
 
     if args.search:
         api_key = os.environ.get("ELEMENT14_API_KEY", "")

@@ -26,7 +26,7 @@ import json
 import re
 import sys
 import _core_path  # noqa: F401
-from distributor_core.download import try_alternative_sources
+from distributor_core.download import try_alternative_sources, add_download_args, apply_download_args
 from distributor_core.verify import verify_datasheet
 from distributor_core.manifest import _friendly_filename
 from provider_lcsc import (
@@ -54,7 +54,9 @@ def main():
                        help="Search by MPN or LCSC code (e.g., GRM155R71C104KA88D or C14663)")
     parser.add_argument("--output", "-o", help="Output file path (default: <MPN>.pdf)")
     parser.add_argument("--json", action="store_true", help="Output result as JSON")
+    add_download_args(parser)
     args = parser.parse_args()
+    apply_download_args(args)
 
     if args.search:
         component = search_lcsc(args.search)

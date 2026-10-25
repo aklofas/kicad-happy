@@ -34,6 +34,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import _core_path  # noqa: F401
 import provider_digikey
 from distributor_core import sync as core_sync
+from distributor_core.download import add_download_args, apply_download_args
 
 
 # ---------------------------------------------------------------------------
@@ -92,7 +93,9 @@ def main():
         "--json", action="store_true",
         help="Output summary as JSON",
     )
+    add_download_args(parser)
     args = parser.parse_args()
+    apply_download_args(args)
 
     result = sync_datasheets(
         input_path=args.input,

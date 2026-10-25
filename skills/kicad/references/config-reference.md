@@ -229,6 +229,32 @@ Explicit design intent overrides. When absent, each field is **auto-detected** f
 
 ---
 
+### `datasheets` (object) — user-level only
+
+Read only from `~/.kicad-happy.json`. A project or workspace `.kicad-happy.json` cannot set it; the value there is ignored.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `allow_private_hosts` | bool | `false` | Let the datasheet sync and fetch scripts download from loopback, private, link-local and other non-public addresses. Only the JSON value `true` turns it on. |
+
+Without it, a datasheet download accepts only `http` and `https` URLs whose host resolves to public addresses, and every redirect is checked the same way. The browser fallback (playwright) runs only for URLs that pass this check.
+
+```jsonc
+// ~/.kicad-happy.json
+{
+  "datasheets": { "allow_private_hosts": true }  // e.g. an internal datasheet mirror
+}
+```
+
+The eight `sync_datasheets_<distributor>.py` and `fetch_datasheet_<distributor>.py` scripts also take two command-line limits per download:
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--max-download-mb MB` | 50 | Stop a download larger than this. |
+| `--download-timeout SECONDS` | 120 | Stop a download that takes longer than this, redirects included. |
+
+---
+
 ## Complete Example
 
 Production consumer electronics board targeting the EU market. LCSC primary supplier, IPC Class 2, with suppressions, power rail filtering, BOM config, and branding.
@@ -354,3 +380,4 @@ Production consumer electronics board targeting the EU market. LCSC primary supp
 | `design_intent.preferred_passive_size` | string | — | `"0603"` | Yes |
 | `design_intent.test_coverage_target` | number | — | market-adj. | Yes |
 | `design_intent.approved_manufacturers` | array | — | [] | — |
+| `datasheets.allow_private_hosts` (user file only) | bool | — | false | — |

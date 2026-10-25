@@ -1,10 +1,19 @@
 """Download transport: requests → urllib → playwright cascade with PDF sniffing,
-manufacturer redirect normalisation (opt-in per provider), the Microchip alternative pattern."""
+manufacturer redirect normalisation (opt-in per provider), the Microchip alternative pattern.
 
+Every URL, and every redirect, must be http or https on a public address (see
+``url_problem``); a download stops at ``MAX_DOWNLOAD_BYTES`` or after
+``DOWNLOAD_TIMEOUT_S`` seconds."""
+
+import argparse
+import ipaddress
+import math
 import os
-import shutil
+import socket
+import sys
 import tempfile
 import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -13,6 +22,15 @@ from distributor_core.manifest import DEFAULT_FILE_MODE
 
 
 _USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0"
+
+
+MAX_DOWNLOAD_BYTES = 50 * 1024 * 1024
+DOWNLOAD_TIMEOUT_S = 120.0
+
+_SOCKET_TIMEOUT_S = 20
+_MAX_REDIRECTS = 5
+_CHUNK_BYTES = 65536
+_REDIRECT_CODES = (301, 302, 303, 307, 308)
 
 
 # Try to import optional dependencies; graceful fallback if not installed
@@ -70,6 +88,146 @@ def take_transport_failure() -> str | None:
     return failure
 
 
+class DownloadRefused(urllib.error.URLError):
+    """A URL or a redirect the download policy does not allow."""
+
+
+class DownloadLimitExceeded(OSError):
+    """A download larger than ``MAX_DOWNLOAD_BYTES`` or slower than ``DOWNLOAD_TIMEOUT_S``."""
+
+
+def _resolve(host: str) -> list[str]:
+    """The addresses ``host`` resolves to. The only DNS lookup in this module."""
+    return [info[4][0] for info in socket.getaddrinfo(host, None)]
+
+
+def _address_problem(text: str) -> str | None:
+    try:
+        ip = ipaddress.ip_address(text.split("%", 1)[0])
+    except ValueError:
+        return f"{text} is not an IP address"
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        ip = ip.ipv4_mapped
+    if not ip.is_global or ip.is_multicast:
+        return f"{text} is not a public address"
+    return None
+
+
+def url_problem(url: str, *, allow_private: bool) -> str | None:
+    """``None`` when ``url`` may be downloaded, else a short reason. Only http and https
+    with a host; every address the host resolves to must be public unless
+    ``allow_private``."""
+    try:
+        parts = urllib.parse.urlsplit(url)
+        host = parts.hostname
+    except ValueError:
+        return "not a valid URL"
+    scheme = parts.scheme.lower()
+    if scheme not in ("http", "https"):
+        return f"scheme {scheme or '(none)'} is not http or https"
+    if not host:
+        return "no host"
+    if allow_private:
+        return None
+    try:
+        addresses = [str(ipaddress.ip_address(host))]
+    except ValueError:
+        try:
+            addresses = _resolve(host)
+        except (OSError, UnicodeError) as exc:
+            return f"{host} does not resolve ({type(exc).__name__})"
+        if not addresses:
+            return f"{host} does not resolve"
+    for address in addresses:
+        problem = _address_problem(address)
+        if problem:
+            return problem if address == host else f"{host}: {problem}"
+    return None
+
+
+def _allow_private_hosts() -> bool:
+    """True only when the user's own ``~/.kicad-happy.json`` sets
+    ``datasheets.allow_private_hosts`` to ``true``."""
+    try:
+        kicad_scripts = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__)))), "kicad", "scripts")
+        if kicad_scripts not in sys.path:
+            sys.path.insert(0, kicad_scripts)
+        from kicad_core.project import load_user_config
+    except Exception:
+        return False
+    datasheets = load_user_config().get("datasheets", {})
+    return isinstance(datasheets, dict) and datasheets.get("allow_private_hosts") is True
+
+
+def _positive_float(text: str) -> float:
+    try:
+        value = float(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{text!r} is not a number")
+    if not (math.isfinite(value) and value > 0):
+        raise argparse.ArgumentTypeError(f"{text!r} must be a number greater than 0")
+    return value
+
+
+def add_download_args(parser) -> None:
+    """Add ``--max-download-mb`` and ``--download-timeout`` to ``parser``."""
+    parser.add_argument("--max-download-mb", type=_positive_float, default=50.0, metavar="MB",
+                        help="Stop a datasheet download larger than this (default: 50)")
+    parser.add_argument("--download-timeout", type=_positive_float, default=120.0,
+                        metavar="SECONDS",
+                        help="Stop a datasheet download that takes longer than this "
+                             "(default: 120)")
+
+
+def apply_download_args(args) -> None:
+    """Set the module's download limits from ``add_download_args`` values."""
+    global MAX_DOWNLOAD_BYTES, DOWNLOAD_TIMEOUT_S
+    MAX_DOWNLOAD_BYTES = int(args.max_download_mb * 1024 * 1024)
+    DOWNLOAD_TIMEOUT_S = float(args.download_timeout)
+
+
+# The policy of the download_pdf call running on this thread, read by the transports.
+_call = threading.local()
+
+
+def _deadline() -> float:
+    deadline = getattr(_call, "deadline", None)
+    return deadline if deadline is not None else time.monotonic() + DOWNLOAD_TIMEOUT_S
+
+
+def _allow_private_now() -> bool:
+    return bool(getattr(_call, "allow_private", False))
+
+
+def _socket_timeout(deadline: float) -> float:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise DownloadLimitExceeded(f"took longer than {DOWNLOAD_TIMEOUT_S:g} s")
+    return min(_SOCKET_TIMEOUT_S, remaining)
+
+
+def _check_redirect(newurl: str) -> None:
+    problem = url_problem(newurl, allow_private=_allow_private_now())
+    if problem:
+        raise DownloadRefused(f"redirect to {newurl}: {problem}")
+
+
+def _copy_bounded(chunks, f, deadline: float) -> int:
+    """Write ``chunks`` to ``f``; raise ``DownloadLimitExceeded`` past either limit."""
+    total = 0
+    for chunk in chunks:
+        if not chunk:
+            continue
+        total += len(chunk)
+        if total > MAX_DOWNLOAD_BYTES:
+            raise DownloadLimitExceeded(f"larger than {MAX_DOWNLOAD_BYTES:,} bytes")
+        if time.monotonic() > deadline:
+            raise DownloadLimitExceeded(f"took longer than {DOWNLOAD_TIMEOUT_S:g} s")
+        f.write(chunk)
+    return total
+
+
 def normalize_url(url: str, *, resolve_redirects: bool = True) -> str:
     """Convert manufacturer-specific redirect URLs to direct PDF URLs.
 
@@ -104,8 +262,12 @@ def download_pdf(url: str, output_path: str, *, resolve_redirects: bool = True) 
     """Download a PDF from a URL, trying multiple methods.
 
     Strategy:
-    1. Try requests library (handles HTTP/2, redirects, all manufacturer sites)
+    1. Try requests library (handles HTTP/2, all manufacturer sites)
     2. Fall back to Python urllib (HTTP/1.1 only — some sites may timeout)
+    3. Fall back to a headless browser (playwright) when installed
+
+    A URL the policy refuses (``url_problem``) is never fetched. A refused redirect or
+    an exceeded limit ends the whole call: no other method is tried.
 
     Returns True if a valid PDF was downloaded. Each method writes to
     a uniquely named ``.part`` file beside ``output_path``, which replaces
@@ -113,6 +275,12 @@ def download_pdf(url: str, output_path: str, *, resolve_redirects: bool = True) 
     file already there and a planted link is never written through.
     """
     url = normalize_url(url, resolve_redirects=resolve_redirects)
+    allow_private = _allow_private_hosts()
+    problem = url_problem(url, allow_private=allow_private)
+    if problem:
+        print(f"Warning: download refused: {url}: {problem}", file=sys.stderr)
+        return False
+
     fd, part_path = tempfile.mkstemp(
         dir=os.path.dirname(os.path.abspath(output_path)),
         prefix=os.path.basename(output_path) + ".", suffix=".part")
@@ -125,6 +293,8 @@ def download_pdf(url: str, output_path: str, *, resolve_redirects: bool = True) 
     if _sync_playwright is not None:
         methods.append(("playwright", _download_playwright))
 
+    _call.deadline = time.monotonic() + DOWNLOAD_TIMEOUT_S
+    _call.allow_private = allow_private
     try:
         for name, fn in methods:
             try:
@@ -139,12 +309,20 @@ def download_pdf(url: str, output_path: str, *, resolve_redirects: bool = True) 
                         print(f"Downloaded {size:,} bytes via {name}: {output_path}")
                         return True
                     # Not a PDF (probably HTML error page or JS redirect)
+            except DownloadRefused as exc:
+                print(f"Warning: download refused: {url}: {exc.reason}", file=sys.stderr)
+                return False
+            except DownloadLimitExceeded as exc:
+                print(f"Warning: download stopped: {url}: {exc}", file=sys.stderr)
+                return False
             except Exception:
                 pass
             if os.path.exists(part_path):
                 os.truncate(part_path, 0)
         return False
     finally:
+        _call.deadline = None
+        _call.allow_private = False
         try:
             os.remove(part_path)
         except FileNotFoundError:
@@ -156,30 +334,67 @@ def download_pdf(url: str, output_path: str, *, resolve_redirects: bool = True) 
 # ---------------------------------------------------------------------------
 
 def _download_requests(url: str, output_path: str) -> bool:
-    """Download using the requests library (handles HTTP/2, all manufacturers)."""
+    """Download using the requests library (handles HTTP/2, all manufacturers).
+    Redirects are followed here, each one checked against the policy."""
     if _requests is None:
         return False
-    resp = _requests.get(
-        url,
-        headers={"User-Agent": _USER_AGENT},
-        timeout=20,
-        allow_redirects=True,
-    )
-    resp.raise_for_status()
-    if len(resp.content) == 0:
-        return False
-    with open(output_path, "wb") as f:
-        f.write(resp.content)
-    return True
+    deadline = _deadline()
+    for _ in range(_MAX_REDIRECTS + 1):
+        resp = _requests.get(
+            url,
+            headers={"User-Agent": _USER_AGENT},
+            timeout=_socket_timeout(deadline),
+            allow_redirects=False,
+            stream=True,
+        )
+        try:
+            location = resp.headers.get("Location")
+            if resp.status_code in _REDIRECT_CODES and location:
+                url = urllib.parse.urljoin(url, location)
+                _check_redirect(url)
+                continue
+            resp.raise_for_status()
+            with open(output_path, "wb") as f:
+                total = _copy_bounded(resp.iter_content(_CHUNK_BYTES), f, deadline)
+            return total > 0
+        finally:
+            resp.close()
+    raise urllib.error.URLError(f"more than {_MAX_REDIRECTS} redirects")
+
+
+class _CheckedRedirectHandler(urllib.request.HTTPRedirectHandler):
+    max_redirections = _MAX_REDIRECTS
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        _check_redirect(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+# No file:, ftp: or data: handler and no proxy handler: only http(s), every redirect checked.
+_URLLIB_HANDLERS = [
+    urllib.request.HTTPHandler,
+    urllib.request.HTTPSHandler,
+    urllib.request.HTTPDefaultErrorHandler,
+    urllib.request.HTTPErrorProcessor,
+    _CheckedRedirectHandler,
+]
+
+
+def _urllib_opener() -> urllib.request.OpenerDirector:
+    opener = urllib.request.OpenerDirector()
+    for handler in _URLLIB_HANDLERS:
+        opener.add_handler(handler())
+    return opener
 
 
 def _download_urllib(url: str, output_path: str) -> bool:
     """Download using Python urllib (fallback, HTTP/1.1 only)."""
+    deadline = _deadline()
     req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
-    with urllib.request.urlopen(req, timeout=20) as resp:
+    with _urllib_opener().open(req, timeout=_socket_timeout(deadline)) as resp:
         with open(output_path, "wb") as f:
-            shutil.copyfileobj(resp, f)
-    return os.path.exists(output_path) and os.path.getsize(output_path) > 0
+            total = _copy_bounded(iter(lambda: resp.read(_CHUNK_BYTES), b""), f, deadline)
+    return total > 0
 
 
 def _download_playwright(url: str, output_path: str) -> bool:
@@ -200,6 +415,9 @@ def _download_playwright(url: str, output_path: str) -> bool:
                     page.goto(url, timeout=15000, wait_until="domcontentloaded")
                 download = dl_info.value
                 download.save_as(output_path)
+                if os.path.exists(output_path) and os.path.getsize(output_path) > MAX_DOWNLOAD_BYTES:
+                    os.remove(output_path)
+                    return False
                 return os.path.exists(output_path) and os.path.getsize(output_path) > 0
             except Exception:
                 pass
@@ -209,7 +427,7 @@ def _download_playwright(url: str, output_path: str) -> bool:
             if resp is None:
                 return False
             body = resp.body()
-            if body and body[:4] == b"%PDF":
+            if body and len(body) <= MAX_DOWNLOAD_BYTES and body[:4] == b"%PDF":
                 with open(output_path, "wb") as f:
                     f.write(body)
                 return True

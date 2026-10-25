@@ -29,7 +29,8 @@ import argparse
 import json
 import sys
 import _core_path  # noqa: F401
-from distributor_core.download import download_pdf, try_alternative_sources
+from distributor_core.download import (download_pdf, try_alternative_sources,
+                                       add_download_args, apply_download_args)
 from distributor_core.verify import verify_datasheet
 from distributor_core.manifest import _friendly_filename
 from provider_digikey import search_digikey
@@ -42,7 +43,9 @@ def main():
     group.add_argument("--search", metavar="MPN", help="Search DigiKey by MPN and download the datasheet")
     parser.add_argument("--output", "-o", help="Output file path (default: <MPN>.pdf in current directory)")
     parser.add_argument("--json", action="store_true", help="Output result as JSON (for script integration)")
+    add_download_args(parser)
     args = parser.parse_args()
+    apply_download_args(args)
 
     if args.search:
         product = search_digikey(args.search)

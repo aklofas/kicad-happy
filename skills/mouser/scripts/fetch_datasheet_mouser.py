@@ -36,7 +36,8 @@ import argparse
 import json
 import sys
 import _core_path  # noqa: F401
-from distributor_core.download import download_pdf, try_alternative_sources
+from distributor_core.download import (download_pdf, try_alternative_sources,
+                                       add_download_args, apply_download_args)
 from distributor_core.verify import verify_datasheet
 from distributor_core.manifest import _friendly_filename
 from provider_mouser import _get_api_key, search_mouser, scrape_product_page
@@ -55,7 +56,9 @@ def main():
     group.add_argument("--search", metavar="MPN", help="Search Mouser by MPN")
     parser.add_argument("--output", "-o", help="Output file path")
     parser.add_argument("--json", action="store_true", help="JSON output")
+    add_download_args(parser)
     args = parser.parse_args()
+    apply_download_args(args)
 
     if args.url:
         # Direct URL mode

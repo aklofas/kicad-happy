@@ -31,6 +31,12 @@ def _raiser(exc):
 
 
 class DownloadKeepsExistingTest(unittest.TestCase):
+    def setUp(self):
+        from distributor_core import download
+        p = mock.patch.object(download, "_resolve", return_value=["93.184.216.34"])
+        p.start()
+        self.addCleanup(p.stop)
+
     def _download(self, method):
         from distributor_core import download
         with tempfile.TemporaryDirectory() as d:

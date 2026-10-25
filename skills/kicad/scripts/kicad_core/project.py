@@ -87,6 +87,18 @@ def load_jsonc(path: str) -> dict:
     return json.loads(_strip_jsonc(raw))
 
 
+def load_user_config() -> dict:
+    """The user's own ``~/.kicad-happy.json`` and nothing else: a project file never
+    reaches a setting read from here. ``{}`` when the file is missing, unreadable,
+    invalid or not an object."""
+    path = os.path.join(os.path.expanduser("~"), ".kicad-happy.json")
+    try:
+        data = load_jsonc(path)
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 def find_project_settings_file(file_path: str, ext: str) -> str | None:
     """Find the ``ext`` file (e.g. ``.kicad_pro``, ``.kicad_dru``) matching
     ``file_path``'s project, in ``file_path``'s directory.
