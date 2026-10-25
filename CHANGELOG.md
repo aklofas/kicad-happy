@@ -17,6 +17,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The DigiKey access token is cached in a private per-user folder (`~/.cache/kicad-happy`, or `%LOCALAPPDATA%\kicad-happy`) with mode 0600 from creation, bound to the client ID, shared by the three DigiKey callers. The old `/tmp/digikey_token_cache.json` is no longer read. (KH-501)
 - `analysis/` runs never copy from or write through a symlinked file; such a file is skipped with a warning. (KH-502)
 - `sync_datasheet_urls.py --recursive` writes only schematics inside the root sheet's folder; sheets outside it are reported and left alone. Schematic writes from `sync_datasheet_urls.py` and `edit_properties.py` are atomic, line breaks in property values and new property names are escaped. (KH-503)
+- `plan_extraction.py` and `merge_results.py` name their files with the same MPN-to-filename mapping as the extraction readers, so MPNs with `/` (such as `LM317/NOPB`) work and no MPN can write outside the cache. (KH-505)
 
 ---
 

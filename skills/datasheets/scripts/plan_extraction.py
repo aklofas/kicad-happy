@@ -15,6 +15,12 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+_SKILL_ROOT = str(Path(__file__).resolve().parent.parent)
+if _SKILL_ROOT not in sys.path:
+    sys.path.insert(0, _SKILL_ROOT)
+
+from datasheet_types.cache_reader import sanitize_mpn  # noqa: E402
+
 PLAN_VERSION = "1.0"
 
 # task_id → (subagent_role, tier, schema_path, prompt_path) relative to repo root
@@ -54,7 +60,7 @@ def _now_iso() -> str:
 
 
 def _load_existing_extraction(cache_dir: Path, mpn: str) -> dict | None:
-    p = cache_dir / f"{mpn}.json"
+    p = cache_dir / f"{sanitize_mpn(mpn)}.json"
     if not p.exists():
         return None
     try:
@@ -70,7 +76,7 @@ def _is_cache_current(existing: dict, pdf_sha: str) -> bool:
 
 
 def _load_scout(cache_dir: Path, mpn: str) -> dict:
-    p = cache_dir / f"{mpn}.scout.json"
+    p = cache_dir / f"{sanitize_mpn(mpn)}.scout.json"
     if not p.exists():
         raise FileNotFoundError(
             f"Cached scout not found at {p}. Run scout subagent and write its data here, "
@@ -121,7 +127,7 @@ def _build_plan(mpn: str, pdf_path: Path, pdf_sha: str, cache_dir: Path, scout: 
         "pdf_sha256": pdf_sha,
         "cache_dir": str(cache_dir),
         "created_at": _now_iso(),
-        "scout_ref": f"{mpn}.scout.json",
+        "scout_ref": f"{sanitize_mpn(mpn)}.scout.json",
         "tasks": tasks,
         "execution": {"started_at": None, "completed_at": None, "outcomes": []},
     }
@@ -135,7 +141,7 @@ def _build_skip_plan(mpn: str, pdf_path: Path, pdf_sha: str, cache_dir: Path) ->
         "pdf_sha256": pdf_sha,
         "cache_dir": str(cache_dir),
         "created_at": _now_iso(),
-        "scout_ref": f"{mpn}.scout.json",
+        "scout_ref": f"{sanitize_mpn(mpn)}.scout.json",
         "tasks": [],
         "execution": {"started_at": None, "completed_at": None, "outcomes": []},
     }
@@ -176,10 +182,10 @@ def main(argv: list[str] | None = None) -> int:
     scout = _load_scout(args.cache_dir, args.mpn)
 
     verdict = (scout.get("quality_verdict") or {}).get("verdict")
-    plan_path = args.cache_dir / f"{args.mpn}.plan.json"
+    plan_path = args.cache_dir / f"{sanitize_mpn(args.mpn)}.plan.json"
     if verdict == "skip":
         plan = _build_skip_plan(args.mpn, args.pdf_path, pdf_sha, args.cache_dir)
-        plan_path.write_text(json.dumps(plan, indent=2))
+        plan_path.write_text(json.dumps(plan, indent=2), encoding="utf-8")
         reason = (scout.get("quality_verdict") or {}).get("reason")
         print(
             f"{args.mpn}: scout verdict 'skip' ({reason}); empty plan written, no extraction dispatched",
@@ -188,7 +194,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     plan = _build_plan(args.mpn, args.pdf_path, pdf_sha, args.cache_dir, scout)
-    plan_path.write_text(json.dumps(plan, indent=2))
+    plan_path.write_text(json.dumps(plan, indent=2), encoding="utf-8")
     print(f"{args.mpn}: plan written to {plan_path} ({len(plan['tasks'])} tasks)")
     print(f"  next: run dispatcher per skills/datasheets/references/dispatch-claude-code.md")
     return 0

@@ -21,11 +21,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 from extraction_schema import validate_against_schema
+
+_SKILL_PARENT = str(Path(__file__).resolve().parents[1])
+if _SKILL_PARENT not in sys.path:
+    sys.path.insert(0, _SKILL_PARENT)
+
+from datasheet_types.cache_reader import sanitize_mpn  # noqa: E402
 
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]          # skills/datasheets
@@ -61,8 +68,18 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+_SAFE_TASK_ID = re.compile(r"[A-Za-z0-9_.\-]+")
+
+
 def _read_result(cache: Path, mpn: str, task_id: str) -> "dict | None":
-    p = cache / f"{mpn}.{task_id}.result.json"
+    if not _SAFE_TASK_ID.fullmatch(task_id) or task_id in (".", ".."):
+        return {
+            "task_id": task_id,
+            "status": "failed",
+            "error": "task id is not a safe file name component",
+            "data": None,
+        }
+    p = cache / f"{sanitize_mpn(mpn)}.{task_id}.result.json"
     if not p.exists():
         return None
     try:
@@ -137,7 +154,7 @@ def _initial_extraction(plan: dict) -> dict:
             "extractor_scout": None,
             "extractor_schema_version": EXTRACTOR_SCHEMA_VERSION,
             "quality_score": None,
-            "plan_ref": f"{plan['mpn']}.plan.json",
+            "plan_ref": f"{sanitize_mpn(plan['mpn'])}.plan.json",
         },
         "base": {},
         "categories": [],
@@ -146,7 +163,7 @@ def _initial_extraction(plan: dict) -> dict:
 
 def _enrich_source_from_scout(extraction: dict, cache: Path, mpn: str) -> None:
     """Overlay scout metadata onto the source block. Silent on missing file."""
-    p = cache / f"{mpn}.scout.json"
+    p = cache / f"{sanitize_mpn(mpn)}.scout.json"
     if not p.exists():
         return
     try:
@@ -192,7 +209,7 @@ def _record_outcome(
 
 
 def merge(cache: Path, mpn: str, *, retry_failed: bool = False) -> int:
-    plan_path = cache / f"{mpn}.plan.json"
+    plan_path = cache / f"{sanitize_mpn(mpn)}.plan.json"
     if not plan_path.exists():
         print(f"error: plan not found at {plan_path}", file=sys.stderr)
         return 2
@@ -223,7 +240,7 @@ def merge(cache: Path, mpn: str, *, retry_failed: bool = False) -> int:
         if status == "complete":
             _splice_field(extraction, tid, role, result["data"])
             task["status"] = "complete"
-            task["result_ref"] = f"{mpn}.{tid}.result.json"
+            task["result_ref"] = f"{sanitize_mpn(mpn)}.{tid}.result.json"
             _record_outcome(plan, tid, attempts, "complete", None)
             sv = result.get("schema_version")
             if sv and role not in ("base", "pinout"):
@@ -240,7 +257,7 @@ def merge(cache: Path, mpn: str, *, retry_failed: bool = False) -> int:
     if failed_tasks and not retry_failed:
         # First merge with failures: write plan state, exit nonzero.
         # Caller re-dispatches failed tasks, then re-runs with --retry-failed.
-        plan_path.write_text(json.dumps(plan, indent=2, sort_keys=True))
+        plan_path.write_text(json.dumps(plan, indent=2, sort_keys=True), encoding="utf-8")
         for task, err in failed_tasks:
             print(f"failed: {task['task_id']}: {err}", file=sys.stderr)
         print(
@@ -276,9 +293,9 @@ def merge(cache: Path, mpn: str, *, retry_failed: bool = False) -> int:
         extraction["extraction"]["quality_score"] = None
     plan["execution"]["completed_at"] = _now_iso()
 
-    out_path = cache / f"{mpn}.json"
-    out_path.write_text(json.dumps(extraction, indent=2, sort_keys=True))
-    plan_path.write_text(json.dumps(plan, indent=2, sort_keys=True))
+    out_path = cache / f"{sanitize_mpn(mpn)}.json"
+    out_path.write_text(json.dumps(extraction, indent=2, sort_keys=True), encoding="utf-8")
+    plan_path.write_text(json.dumps(plan, indent=2, sort_keys=True), encoding="utf-8")
     print(f"{mpn}: merged → {out_path}")
     return 0
 
