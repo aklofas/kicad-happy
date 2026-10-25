@@ -133,6 +133,48 @@ class FsTrust(unittest.TestCase):
             self.assertEqual([p.name for p in out.iterdir() if p.suffix == ".pdf"], [])
             self.assertIn("names a file outside", err.getvalue())
 
+    def test_derived_datasheets_symlink_refused(self):
+        from distributor_core.sync import sync_datasheets
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            outside = d / "outside"
+            outside.mkdir()
+            project = d / "project"
+            project.mkdir()
+            bom = project / "bom.json"
+            bom.write_text(json.dumps({"bom": [{"mpn": "LM358DR", "references": ["U1"],
+                                                "value": "LM358DR", "type": "ic"}]}),
+                           encoding="utf-8")
+            (project / "datasheets").symlink_to(outside, target_is_directory=True)
+            mpns = project / "mpns.txt"
+            mpns.write_text("LM358DR\n", encoding="utf-8")
+            cwd = os.getcwd()
+            os.chdir(project)
+            try:
+                for kw in ({"input_path": str(bom)}, {"mpn_list": str(mpns)}):
+                    with self.subTest(**kw), redirect_stderr(io.StringIO()), \
+                         redirect_stdout(io.StringIO()):
+                        r = sync_datasheets(fake_provider(), **kw)
+                    self.assertEqual(set(r), {"error"})
+                    self.assertIn("symlink", r["error"])
+                    self.assertEqual(os.listdir(outside), [])
+            finally:
+                os.chdir(cwd)
+
+    def test_explicit_output_symlink_allowed(self):
+        from distributor_core.sync import sync_datasheets
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            outside = d / "outside"
+            outside.mkdir()
+            (d / "link").symlink_to(outside, target_is_directory=True)
+            mpns = d / "mpns.txt"
+            mpns.write_text("LM358DR\n", encoding="utf-8")
+            with redirect_stderr(io.StringIO()), redirect_stdout(io.StringIO()):
+                r = sync_datasheets(fake_provider(), mpn_list=str(mpns), output_dir=str(d / "link"))
+            self.assertNotIn("error", r)
+            self.assertEqual(os.listdir(outside), ["manifest.json"])
+
     def test_parallel_worker_exception_propagates(self):
         from distributor_core.sync import sync_datasheets
 

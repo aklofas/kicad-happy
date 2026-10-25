@@ -108,6 +108,10 @@ def sync_datasheets(
     else:
         # MPN-list mode without explicit --output: use cwd/datasheets
         out_dir = Path.cwd() / "datasheets"
+    # A datasheets/ link found in the project would send every write to its target;
+    # only an explicit --output may point elsewhere.
+    if not output_dir and out_dir.is_symlink():
+        return {"error": f"{out_dir} is a symlink; pass --output to write datasheets there"}
     out_dir.mkdir(parents=True, exist_ok=True)
 
     index_path = out_dir / MANIFEST_FILENAME
