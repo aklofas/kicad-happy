@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import _core_path  # noqa: F401
+from kicad_core import token_cache
 from distributor_core.download import download_pdf, note_transport_failure, try_alternative_sources
 from distributor_core.verify import verify_datasheet
 from distributor_core.manifest import friendly_filename
@@ -60,27 +61,15 @@ def _get_digikey_token() -> str | None:
 
     Caches the token to a temp file with a 9-minute TTL (tokens last 10 minutes).
     """
-    import tempfile
-    import time
-
     client_id = os.environ.get("DIGIKEY_CLIENT_ID", "")
     client_secret = os.environ.get("DIGIKEY_CLIENT_SECRET", "")
     if not client_id or not client_secret:
         print("Error: DIGIKEY_CLIENT_ID and DIGIKEY_CLIENT_SECRET required", file=sys.stderr)
         return None
 
-    cache_path = os.path.join(tempfile.gettempdir(), "digikey_token_cache.json")
-
-    # Check cache
-    try:
-        if os.path.exists(cache_path):
-            with open(cache_path) as f:
-                cached = json.load(f)
-            if (cached.get("client_id") == client_id
-                    and cached.get("expires_at", 0) > time.time()):
-                return cached["token"]
-    except (json.JSONDecodeError, OSError):
-        pass
+    cached = token_cache.load_token("digikey_token", client_id)
+    if cached:
+        return cached
 
     # Fetch new token
     try:
@@ -102,16 +91,7 @@ def _get_digikey_token() -> str | None:
             return None
 
         # Cache with 9-minute TTL (token lasts 10 min, 1 min safety margin)
-        try:
-            with open(cache_path, "w") as f:
-                json.dump({
-                    "token": token,
-                    "client_id": client_id,
-                    "expires_at": time.time() + 540,
-                }, f)
-            os.chmod(cache_path, 0o600)
-        except OSError:
-            pass  # caching is best-effort
+        token_cache.store_token("digikey_token", client_id, token, 540)
 
         return token
     except Exception as e:

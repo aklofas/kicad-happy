@@ -36,6 +36,7 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
+from kicad_core import token_cache
 from kicad_core.cli import add_only_deterministic_arg, add_output_arg
 
 
@@ -182,15 +183,9 @@ def _get_digikey_token() -> tuple[str, str] | None:
     if not client_id or not client_secret:
         return None
 
-    # Token cache
-    cache_path = os.path.join(tempfile.gettempdir(), "digikey_token_cache.json")
-    try:
-        with open(cache_path) as f:
-            cache = json.load(f)
-        if cache.get("expires_at", 0) > time.time():
-            return cache["access_token"], client_id
-    except (OSError, json.JSONDecodeError, KeyError):
-        pass
+    cached = token_cache.load_token("digikey_token", client_id)
+    if cached:
+        return cached, client_id
 
     try:
         data = urllib.parse.urlencode({
@@ -206,8 +201,7 @@ def _get_digikey_token() -> tuple[str, str] | None:
         with urllib.request.urlopen(req, timeout=10) as resp:
             token_data = json.loads(resp.read())
         token = token_data["access_token"]
-        with open(cache_path, "w") as f:
-            json.dump({"access_token": token, "expires_at": time.time() + 540}, f)
+        token_cache.store_token("digikey_token", client_id, token, 540)
         return token, client_id
     except (urllib.error.URLError, OSError, json.JSONDecodeError, KeyError):
         return None
