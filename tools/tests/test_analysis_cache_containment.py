@@ -81,6 +81,104 @@ class WriteTest(unittest.TestCase):
             self.assertEqual(analysis_cache.list_runs(ad), [])
 
 
+class SymlinkAndOutputNameTest(unittest.TestCase):
+    """A run dir that is a symlink into a nested folder, or a manifest output name with path
+    parts, must not steer the copy-forward outside the analysis dir."""
+
+    def _layout(self, tmp):
+        ad = os.path.join(tmp, "x", "y", "proj", "analysis")
+        os.makedirs(os.path.join(ad, "a", "b"))
+        Path(tmp, "x", "y", "proj", "loot.json").write_text("{}", encoding="utf-8")
+        return ad
+
+    @unittest.skipUnless(hasattr(os, "symlink") and os.name == "posix", "needs POSIX symlinks")
+    def test_symlinked_run_dir_is_not_a_run_id(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ad = self._layout(tmp)
+            os.symlink(os.path.join(ad, "a", "b"), os.path.join(ad, "nest"))
+            self.assertFalse(analysis_cache._is_run_id(ad, "nest"))
+            _write(os.path.join(ad, "manifest.json"), {"current": "nest", "runs": {
+                "nest": {"outputs": {"schematic": "../../../loot.json"}, "source_hashes": {}}}})
+            err = io.StringIO()
+            with redirect_stderr(err):
+                analysis_cache.create_run(ad, _outputs(tmp), {}, {}, run_id="r2")
+            self.assertFalse(os.path.exists(os.path.join(tmp, "x", "loot.json")))
+            self.assertIn("run id ignored", err.getvalue())
+
+    def test_output_name_with_path_parts_is_ignored(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ad = self._layout(tmp)
+            os.makedirs(os.path.join(ad, "r1"))
+            _write(os.path.join(ad, "r1", "pcb.json"), {"analyzer_type": "pcb"})
+            _write(os.path.join(ad, "manifest.json"), {"current": "r1", "runs": {
+                "r1": {"outputs": {"schematic": "../../../loot.json", "pcb": "pcb.json"},
+                       "source_hashes": {}}}})
+            err = io.StringIO()
+            with redirect_stderr(err):
+                analysis_cache.create_run(ad, _outputs(tmp), {}, {}, run_id="r2")
+            self.assertFalse(os.path.exists(os.path.join(tmp, "x", "loot.json")))
+            self.assertTrue(os.path.isfile(os.path.join(ad, "r2", "pcb.json")))
+            self.assertIn("analysis_cache.create_run", err.getvalue())
+            self.assertIn("manifest output ignored", err.getvalue())
+            with open(os.path.join(ad, "manifest.json"), encoding="utf-8") as f:
+                outputs = json.load(f)["runs"]["r2"]["outputs"]
+            self.assertEqual(outputs, {"schematic": "schematic.json", "pcb": "pcb.json"})
+
+    def test_nul_byte_run_id_is_rejected_not_raised(self):
+        with tempfile.TemporaryDirectory() as ad:
+            self.assertFalse(analysis_cache._is_run_id(ad, "bad\x00id"))
+
+    def test_overwrite_current_drops_invalid_ids_once(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ad = os.path.join(tmp, "a", "b")
+            os.makedirs(ad)
+            _write(os.path.join(ad, "manifest.json"), {"current": "../../etc", "runs": {"../../etc": {}}})
+            with redirect_stderr(io.StringIO()):
+                analysis_cache.overwrite_current(ad, _outputs(tmp))
+            err = io.StringIO()
+            with redirect_stderr(err):
+                analysis_cache.overwrite_current(ad, _outputs(os.path.join(tmp, "a")))
+            self.assertNotIn("run id ignored", err.getvalue())
+            with open(os.path.join(ad, "manifest.json"), encoding="utf-8") as f:
+                self.assertNotIn("../../etc", json.load(f)["runs"])
+
+
+class CurrentRunReadersTest(unittest.TestCase):
+    """The SPICE and summary CLIs resolve the current run through the validated helper."""
+
+    def _hostile(self, tmp):
+        ad = os.path.join(tmp, "proj", "analysis")
+        outside = os.path.join(tmp, "outside")
+        os.makedirs(ad)
+        os.makedirs(outside)
+        _write(os.path.join(outside, "schematic.json"), {"analyzer_type": "schematic", "findings": []})
+        _write(os.path.join(ad, "manifest.json"),
+               {"current": "../../outside", "runs": {"../../outside": {"outputs": {}}}})
+        return ad, outside
+
+    def test_spice_refuses_an_escaping_current(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ad, outside = self._hostile(tmp)
+            r = subprocess.run([sys.executable, str(ROOT / "skills" / "spice" / "scripts" /
+                                                    "simulate_subcircuits.py"), "--analysis-dir", ad],
+                               capture_output=True, text=True, encoding="utf-8", cwd=tmp, timeout=120)
+            self.assertEqual(r.returncode, 1, r.stderr)
+            self.assertIn("no 'current' run", r.stderr)
+            self.assertFalse(os.path.exists(os.path.join(outside, "spice_work")))
+
+    def test_summarize_refuses_an_escaping_run(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ad, _outside = self._hostile(tmp)
+            for extra in ((), ("--run", "../../outside")):
+                with self.subTest(extra=extra):
+                    r = subprocess.run([sys.executable, str(SCRIPTS / "summarize_findings.py"),
+                                        ad, *extra],
+                                       capture_output=True, text=True, encoding="utf-8", cwd=tmp,
+                                       timeout=120)
+                    self.assertNotEqual(r.returncode, 0)
+                    self.assertIn("manifest has no run", r.stderr)
+
+
 @unittest.skipUnless(FX.is_dir(), "harness fixtures not present")
 class CliTest(unittest.TestCase):
     def _run(self, *args, cwd):

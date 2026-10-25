@@ -83,6 +83,29 @@ class SheetGuardTest(unittest.TestCase):
         self.assertEqual([(x["source"], x["effect"]) for x in d["diagnostics"]],
                          [("schematic.hierarchy.parse_all_sheets", "empty sheet skipped")])
 
+    def test_empty_sub_sheet_whitespace_only_is_skipped(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = os.path.join(tmp, "ws_sub.kicad_sch")
+            Path(root).write_text(_with_sheet(self.base, "child.kicad_sch"), encoding="utf-8")
+            Path(tmp, "child.kicad_sch").write_text(" \r\n\t\n", encoding="utf-8")
+            d = self._analyze(tmp, root)
+        self.assertEqual([x["effect"] for x in d["diagnostics"]], ["empty sheet skipped"])
+
+    def test_sheet_instanced_twice_still_expands_twice(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            single = os.path.join(tmp, "single.kicad_sch")
+            Path(single).write_text(self.base, encoding="utf-8")
+            child = self._analyze(tmp, single)
+            root = os.path.join(tmp, "twice.kicad_sch")
+            text = _with_sheet(self.base, "child.kicad_sch")
+            text = _with_sheet(text, "child.kicad_sch", uuid="99999999-0000-0000-0000-000000000002")
+            Path(root).write_text(text, encoding="utf-8")
+            Path(tmp, "child.kicad_sch").write_text(self.base, encoding="utf-8")
+            d = self._analyze(tmp, root)
+        self.assertEqual(d["diagnostics"], [])
+        self.assertEqual(len(d["sheets"]), 3)
+        self.assertEqual(len(d["components"]), 3 * len(child["components"]))
+
     def test_acyclic_fixture_has_no_diagnostics(self):
         with tempfile.TemporaryDirectory() as tmp:
             d = self._analyze(tmp, str(FX / "simple.kicad_sch"))

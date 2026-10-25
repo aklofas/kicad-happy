@@ -52,6 +52,9 @@ _OUTPUT_SOURCE_EXT = {
                     '.gm1', '.drl', '.txt'),
 }
 
+# The only names the cache ever records in a run's 'outputs' map.
+_CANONICAL_NAMES = frozenset(CANONICAL_OUTPUTS.values())
+
 GITIGNORE_CONTENT = """\
 # Analysis output -- regenerable from source files
 *
@@ -70,12 +73,26 @@ def _is_run_id(analysis_dir: str, rid: Any) -> bool:
         return False
     if os.path.basename(rid) != rid or os.path.isabs(rid) or '/' in rid or '\\' in rid:
         return False
-    root = os.path.realpath(analysis_dir)
-    target = os.path.realpath(os.path.join(analysis_dir, rid))
     try:
-        return target != root and os.path.commonpath([root, target]) == root
-    except ValueError:
+        root = os.path.realpath(analysis_dir)
+        # A symlinked run dir resolving anywhere but directly under the root is not a run.
+        return os.path.dirname(os.path.realpath(os.path.join(analysis_dir, rid))) == root
+    except (ValueError, OSError):
         return False
+
+
+def get_run(analysis_dir: str, run_id: Any,
+            manifest: Optional[Dict[str, Any]] = None) -> Optional[Tuple[str, Dict[str, Any]]]:
+    """Return (folder_path, run_metadata) for *run_id*, or None when the manifest has no
+    such run or the id is not a folder directly inside *analysis_dir*."""
+    if manifest is None:
+        manifest = load_manifest(analysis_dir)
+    runs = manifest.get('runs', {})
+    if not run_id or not isinstance(run_id, str) or run_id not in runs:
+        return None
+    if not _is_run_id(analysis_dir, run_id):
+        return None
+    return os.path.join(analysis_dir, run_id), runs[run_id]
 
 
 def _empty_manifest() -> Dict[str, Any]:
@@ -326,7 +343,14 @@ def create_run(analysis_dir: str,
     if prev_run_id and prev_run_id in manifest.get('runs', {}):
         prev_run_dir = os.path.join(analysis_dir, prev_run_id)
         prev_run_info = manifest['runs'][prev_run_id]
-        prev_outputs = prev_run_info.get('outputs', {})
+        prev_outputs = {}
+        for analysis_type, filename in (prev_run_info.get('outputs', {}) or {}).items():
+            if filename in _CANONICAL_NAMES:
+                prev_outputs[analysis_type] = filename
+            else:
+                record(None, "analysis_cache.create_run",
+                       ValueError(f"manifest output {filename!r} is not a canonical output name"),
+                       "manifest output ignored")
         prev_hashes = prev_run_info.get('source_hashes', {}) or {}
         cur_hashes = source_hashes or {}
         for analysis_type, filename in prev_outputs.items():
@@ -404,6 +428,8 @@ def overwrite_current(analysis_dir: str,
                ValueError(f"manifest current run id {current_id!r} is not a folder name"),
                "run id ignored")
         manifest['current'] = None
+        manifest['runs'] = {rid: meta for rid, meta in manifest.get('runs', {}).items()
+                            if _is_run_id(analysis_dir, rid)}
         save_manifest(analysis_dir, manifest)
         create_run(analysis_dir, outputs_dir,
                    source_hashes=source_hashes or {},
@@ -530,13 +556,7 @@ def get_current_run(analysis_dir: str
     Returns None if no current run exists.
     """
     manifest = load_manifest(analysis_dir)
-    current_id = manifest.get('current')
-    if not current_id or current_id not in manifest.get('runs', {}):
-        return None
-    if not _is_run_id(analysis_dir, current_id):
-        return None
-    run_dir = os.path.join(analysis_dir, current_id)
-    return run_dir, manifest['runs'][current_id]
+    return get_run(analysis_dir, manifest.get('current'), manifest)
 
 
 def list_runs(analysis_dir: str, limit: int = 0) -> list:

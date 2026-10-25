@@ -563,16 +563,15 @@ def main(argv: list[str] | None = None) -> int:
     workdir = args.workdir
     if args.analysis_dir:
         # analysis_cache lives in skills/kicad/scripts/
-        from analysis_cache import load_manifest, MANIFEST_FILENAME
+        from analysis_cache import get_current_run, MANIFEST_FILENAME
         analysis_dir = os.path.abspath(args.analysis_dir)
-        manifest = load_manifest(analysis_dir)
-        current = manifest.get('current') if manifest else None
-        if not current:
+        current = get_current_run(analysis_dir)
+        if current is None:
             print(f"Error: no 'current' run in {analysis_dir}/{MANIFEST_FILENAME}. "
                   f"Run analyze_schematic.py --analysis-dir first.",
                   file=sys.stderr)
             return 1
-        run_dir = os.path.join(analysis_dir, current)
+        run_dir = current[0]
         if not input_path:
             input_path = os.path.join(run_dir, 'schematic.json')
         if not workdir:

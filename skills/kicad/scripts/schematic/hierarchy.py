@@ -12,7 +12,7 @@ from pathlib import Path
 
 from kicad_core.diagnostics import record
 from kicad_core.sexp import find_first, get_value, parse_file
-from kicad_core.project import load_kicad_pro
+from kicad_core.project import empty_input_error, load_kicad_pro
 from schematic.reader import (
     extract_power_symbols,
     extract_symbol_instances,
@@ -81,7 +81,7 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
         if parse_key in parsed:
             continue
         parsed.add(parse_key)
-        if ancestors and os.path.getsize(sheet_path) == 0:
+        if ancestors and empty_input_error(sheet_path, 'kicad_sch'):
             if sheet_path not in skipped:
                 skipped.add(sheet_path)
                 record(diagnostics, "schematic.hierarchy.parse_all_sheets",

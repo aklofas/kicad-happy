@@ -24,6 +24,7 @@ import sys
 from collections import defaultdict
 
 from kicad_core.cli import add_only_deterministic_arg
+from analysis_cache import get_run
 
 _SEV_RANK = {"error": 0, "high": 0, "critical": 0,
              "warning": 1, "medium": 1,
@@ -42,10 +43,11 @@ def _resolve_run_dir(
     with open(manifest_path, "r", encoding="utf-8") as f:
         manifest = json.load(f)
     run_id = run_override or manifest.get("current")
-    if not run_id or run_id not in manifest.get("runs", {}):
+    run = get_run(analysis_dir, run_id, manifest)
+    if run is None:
         raise SystemExit(
             f"error: manifest has no run {run_id!r}")
-    path = os.path.join(analysis_dir, run_id)
+    path = run[0]
     if not os.path.isdir(path):
         raise SystemExit(
             f"error: run directory missing on disk: {path!r}")
