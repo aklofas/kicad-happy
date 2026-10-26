@@ -64,15 +64,29 @@ class TestCircleCourtyard(unittest.TestCase):
         cy = fp["courtyard"]
         self.assertEqual((cy["min_x"], cy["max_x"], cy["max_y"]), (48.0, 52.0, 52.0))
 
-    def test_malformed_courtyard_is_skipped(self):
-        # KiCad reports malformed_courtyard for a doubled or zero-length segment and ignores it
-        sq = ''.join(f'(fp_line (start {a} {b}) (end {c} {d}) (layer F.CrtYd) (width 0.05))\n'
-                     for a, b, c, d in ((-1, -1, 1, -1), (1, -1, -1, -1), (1, -1, 1, 1),
-                                        (1, 1, -1, 1), (-1, 1, -1, -1)))
-        fp = read_board(_board(_fp("U1", 50, 50, sq))).footprints[0]
-        self.assertNotIn("courtyard", fp)
-        self.assertNotIn("courtyard_poly", fp)
+    def _square(self, extra_first="", extra_last=""):
+        sides = ((-1, -1, 1, -1), (1, -1, 1, 1), (1, 1, -1, 1), (-1, 1, -1, -1))
+        return extra_first + ''.join(
+            f'(fp_line (start {a} {b}) (end {c} {d}) (layer F.CrtYd) (width 0.05))\n'
+            for a, b, c, d in sides) + extra_last
 
+    def _line(self, a, b, c, d):
+        return f'(fp_line (start {a} {b}) (end {c} {d}) (layer F.CrtYd) (width 0.05))\n'
+
+    def test_doubled_side_is_malformed_either_direction(self):
+        for dup in (self._line(-1, -1, 1, -1), self._line(1, -1, -1, -1)):
+            fp = read_board(_board(_fp("U1", 50, 50, self._square(extra_last=dup)))).footprints[0]
+            self.assertNotIn("courtyard", fp)
+            self.assertNotIn("courtyard_poly", fp)
+
+    def test_zero_length_segment_is_harmless(self):
+        for kw in ({"extra_first": self._line(1, 1, 1, 1)}, {"extra_last": self._line(0, 0, 0, 0)},
+                   {"extra_last": self._line(-1, -1, -1, -1)}):
+            sq = self._square(**kw)
+            fps = (_fp("U1", 50, 50, sq), _fp("U2", 51.5, 50, self._square()))
+            fp = read_board(_board(*fps)).footprints[0]
+            self.assertEqual(len(fp["courtyard_poly"][0]), 4)
+            self.assertEqual(len(_placement(*fps)), 1)
 
     def test_legacy_stadium_matches_kicad_conversion(self):
         # kicad-cli pcb upgrade writes these two arcs as mid (5.9 0) / (-5.9 0)
