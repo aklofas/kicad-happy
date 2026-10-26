@@ -262,6 +262,9 @@ def _parse_legacy_lib(path: str) -> dict:
     current_aliases = []  # KH-142: track ALIAS names
     current_pins = []
     current_unit_pins = {}
+    current_alt_pins = []
+    current_alt_unit_pins = {}
+    current_has_alt = False
     current_datasheet = ""
     in_draw = False
 
@@ -275,6 +278,9 @@ def _parse_legacy_lib(path: str) -> dict:
                 current_aliases = []
                 current_pins = []
                 current_unit_pins = {}
+                current_alt_pins = []
+                current_alt_unit_pins = {}
+                current_has_alt = False
                 current_datasheet = ""
                 in_draw = False
 
@@ -305,6 +311,7 @@ def _parse_legacy_lib(path: str) -> dict:
                     unit_num = int(parts[9])
                 except (ValueError, IndexError):
                     continue
+                body_style = int(parts[10]) if parts[10].isdigit() else 0
                 elec_code = parts[11]
                 pin_type = _LEGACY_PIN_TYPE_MAP.get(elec_code, "unspecified")
 
@@ -314,9 +321,17 @@ def _parse_legacy_lib(path: str) -> dict:
                     "type": pin_type,
                     "shape": "",
                     "offset": [round(px, 4), round(py, 4)],
+                    # an N anywhere in the shape token makes the pin invisible
+                    "hidden": len(parts) >= 13 and "N" in parts[12],
                 }
-                current_pins.append(pin)
-                current_unit_pins.setdefault(unit_num, []).append(pin)
+                # body style 0 is common to both bodies, 2 is the De Morgan alternate
+                if body_style != 2:
+                    current_pins.append(pin)
+                    current_unit_pins.setdefault(unit_num, []).append(pin)
+                if body_style != 1:
+                    current_has_alt = current_has_alt or body_style == 2
+                    current_alt_pins.append(pin)
+                    current_alt_unit_pins.setdefault(unit_num, []).append(pin)
 
         elif line == "ENDDEF" and current_name is not None:
             # Check if multi-unit: has pins in more than one non-zero unit
@@ -334,6 +349,9 @@ def _parse_legacy_lib(path: str) -> dict:
             }
             if current_datasheet:
                 sym_def["datasheet"] = current_datasheet
+            if current_has_alt:
+                sym_def["alt_unit_pins"] = current_alt_unit_pins if has_multi_unit else None
+                sym_def["alt_pins"] = current_alt_pins
             symbols[current_name] = sym_def
             # KH-142: Register same definition under each alias name
             for alias in current_aliases:
@@ -638,7 +656,7 @@ def _parse_legacy_single_sheet(path: str) -> tuple:
                         comp["lib_id"] = parts[1]
                         comp["reference"] = parts[2]
 
-                # U unit mm_part timestamp
+                # U unit convert timestamp
                 elif cl.startswith("U "):
                     parts = cl.split()
                     if len(parts) >= 4:
@@ -646,6 +664,10 @@ def _parse_legacy_single_sheet(path: str) -> tuple:
                         try:
                             comp["unit"] = int(parts[1])
                         except (ValueError, IndexError):
+                            pass
+                        try:
+                            comp["_body_style"] = int(parts[2])
+                        except ValueError:
                             pass
 
                 # P x y

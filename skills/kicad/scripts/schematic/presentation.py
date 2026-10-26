@@ -158,6 +158,7 @@ def assemble_result(ctx, parsed, nets, bom, analyses, *, path, sheets_parsed,
         else:
             _comp['pin_nets'] = _all_pn
         _comp.pop("_unit_pins", None)
+        _comp.pop("_body_style", None)
 
     # Flatten signal_analysis: all list values become findings, dict values promote to top level
     # KH-388: detect_voltage_dividers' feedback-network path deliberately
@@ -419,6 +420,7 @@ def assemble_legacy_result(*, nets, all_components, signal_analysis, real_compon
         else:
             _comp['pin_nets'] = _all_pn
         _comp.pop("_unit_pins", None)
+        _comp.pop("_body_style", None)
 
     # Add stable detection IDs for diff matching (legacy path)
     from detection_schema import compute_detection_id as _compute_det_id

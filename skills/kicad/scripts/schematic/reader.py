@@ -85,10 +85,14 @@ def extract_lib_symbols(root: list) -> dict:
             continue
 
         # Collect pins from sub-unit symbols, keyed by unit number.
-        # Sub-symbols named like "SymName_U_V" where U is the unit number.
-        # Unit 0 sub-symbols (_0_1) contain pins/graphics shared by all units.
+        # Sub-symbols named like "SymName_U_V": U is the unit, V the body style.
+        # Unit 0 sub-symbols (_0_1) contain pins/graphics shared by all units;
+        # body style 0 is shared by both bodies, 2 is the De Morgan alternate.
         unit_pins: dict[int, list] = {}
         all_pins = []
+        alt_unit_pins: dict[int, list] = {}
+        alt_pins = []
+        has_alt_body = False
 
         for child in sym:
             if not isinstance(child, list) or len(child) < 2 or child[0] != "symbol":
@@ -98,13 +102,19 @@ def extract_lib_symbols(root: list) -> dict:
             parts = sub_name.rsplit("_", 2)
             if len(parts) >= 3 and parts[-1].isdigit() and parts[-2].isdigit():
                 unit_num = int(parts[-2])
+                body_style = int(parts[-1])
                 sub_pins = _extract_pins_from_node(child)
                 if sub_pins:
-                    unit_pins.setdefault(unit_num, []).extend(sub_pins)
-                    all_pins.extend(sub_pins)
+                    if body_style in (0, 1):
+                        unit_pins.setdefault(unit_num, []).extend(sub_pins)
+                        all_pins.extend(sub_pins)
+                    if body_style in (0, 2):
+                        alt_unit_pins.setdefault(unit_num, []).extend(sub_pins)
+                        alt_pins.extend(sub_pins)
+                    has_alt_body = has_alt_body or body_style == 2
 
         # If no sub-unit pins found, fall back to find_deep on the whole symbol
-        if not all_pins:
+        if not all_pins and not has_alt_body:
             all_pins = [_parse_single_pin(pin) for pin in find_deep(sym, "pin") if len(pin) >= 3]
 
         # Get symbol properties
@@ -153,6 +163,9 @@ def extract_lib_symbols(root: list) -> dict:
             "ki_fp_filters": ki_fp_filters,
             "alternates": alternates if alternates else None,
         }
+        if has_alt_body:
+            symbols[name]["alt_unit_pins"] = alt_unit_pins
+            symbols[name]["alt_pins"] = alt_pins
 
     return symbols
 
@@ -184,15 +197,17 @@ def compute_pin_positions(component: dict, lib_symbols: dict) -> list[Pin]:
 
     # For multi-unit symbols, use pins from this unit PLUS unit 0 (shared pins).
     # In KiCad, sub-symbol _0_1 contains pins shared by all units (e.g., power pins).
+    # A symbol placed with body style 2 (De Morgan) takes the alternate body's pins.
     unit_num = component.get("unit")
-    unit_pins_map = sym_def.get("unit_pins")
+    alt_body = component.get("_body_style", 1) == 2 and "alt_pins" in sym_def
+    unit_pins_map = sym_def.get("alt_unit_pins") if alt_body else sym_def.get("unit_pins")
     if unit_num and unit_pins_map and unit_num in unit_pins_map:
         pins = list(unit_pins_map[unit_num])
         # Also include unit 0 (shared/common) pins if they exist
         if 0 in unit_pins_map:
             pins.extend(unit_pins_map[0])
     else:
-        pins = sym_def["pins"]
+        pins = sym_def["alt_pins"] if alt_body else sym_def["pins"]
 
     pin_positions = []
     for pin in pins:
@@ -323,6 +338,12 @@ def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
         # Extract unit number for multi-unit symbols
         unit_node = find_first(sym, "unit")
         unit_num = int(unit_node[1]) if unit_node and len(unit_node) > 1 else None
+        # KiCad 6-9 write (convert N) only when N != 1; KiCad 10 always writes (body_style N)
+        body_node = find_first(sym, "body_style") or find_first(sym, "convert")
+        try:
+            body_style = int(body_node[1]) if body_node and len(body_node) > 1 else 1
+        except (ValueError, TypeError):
+            body_style = 1
 
         ref = get_property(sym, "Reference") or ""
         value = get_property(sym, "Value")
@@ -426,6 +447,7 @@ def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
             "dnp": dnp,
             "on_board": on_board,
             "pin_uuids": pin_uuids,
+            "_body_style": body_style,
         }
 
         # Determine component type from reference prefix, lib_id, and lib_symbol flags

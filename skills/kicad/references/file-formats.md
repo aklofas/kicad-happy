@@ -343,7 +343,7 @@ EELAYER 30 0
 EELAYER END
 $Comp                                    ; Component instance
 L Library:Symbol Reference
-U unit timestamp
+U unit convert timestamp                 ; convert = placed body style (2 = De Morgan)
 P x y
 F 0 "R1" H x y size flags C CNN        ; F0 = Reference
 F 1 "10k" H x y size flags C CNN        ; F1 = Value

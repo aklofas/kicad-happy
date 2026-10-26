@@ -82,7 +82,8 @@ class Component(_ComponentRequired, total=False):
     """A placed component. Required keys are those BOTH readers (``extract_components`` and the
     legacy ``.sch`` reader) always set; everything else is optional. ``pins`` is stripped and
     ``category``/``parsed_value``/``pin_nets`` are added by result assembly; ``_sheet`` is set
-    by multi-sheet assembly; ``_unit_pins`` is a set popped before output."""
+    by multi-sheet assembly; ``_unit_pins`` (a set) and ``_body_style`` (the placed De Morgan body,
+    default 1) are popped before output."""
     lib_name: str
     pins: list[Pin]
     keywords: str
@@ -94,6 +95,7 @@ class Component(_ComponentRequired, total=False):
     parsed_value: float
     pin_nets: dict[str, str]
     _unit_pins: set
+    _body_style: int
     _sheet: int
     _power_scope: str
     _pin_source: str
