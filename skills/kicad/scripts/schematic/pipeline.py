@@ -965,7 +965,7 @@ def analyze_legacy_schematic(path: str, analysis_dir: str | Path | None = None) 
     # KH-016 fix: built-in fallback pin offsets differ between KiCad library
     # versions, so a built-in pin that misses every wire end moves to the
     # nearest free one on its sheet.  Pins from parsed libraries never move.
-    _snap_pins_to_wires(all_components, all_wires, all_labels)
+    _snap_pins_to_wires(all_components, all_wires, all_labels + all_no_connects)
 
     # Extract power symbols (preserve _sheet so build_net_map keeps coordinate
     # spaces separate — without it, power symbols from sub-sheets all land in

@@ -499,12 +499,16 @@ def _snap_pins_to_wires(components: list[dict], wires: list[dict],
     Legacy KiCad standard library pin offsets vary between versions (±100, ±150,
     ±200, ±250 mils for R/C/L/D).  A pin of a component whose symbol came from
     the built-in table (``_pin_source == "builtin"``) that has no wire endpoint
-    within COORD_EPSILON moves to the closest wire endpoint within
-    _MAX_SNAP_DIST of the component center, roughly in the pin's direction.
+    within COORD_EPSILON may move to the free wire endpoint nearest to it among
+    those within _MAX_SNAP_DIST of the component center, roughly in the pin's
+    direction.
 
-    A wire endpoint already held by a parsed-library pin, a built-in pin that
-    sits on it, a power symbol or one of the ``occupied`` points (labels: dicts
-    with x, y, _sheet) is never a target.  Pins from parsed libraries are where KiCad puts them and never move.
+    A wire endpoint held by a parsed-library pin, a built-in pin that sits on
+    it, a power symbol or one of the ``occupied`` points (labels and no-connect
+    markers: dicts with x, y, _sheet) is never a target.  Each free endpoint
+    takes at most one pin: when several pins want the same endpoint the nearest
+    pin wins (ties in component order) and the others stay where they are.
+    Pins from parsed libraries are where KiCad puts them and never move.
     """
     _MAX_SNAP_DIST = 12.0  # mm (~470 mils) — covers all standard symbols
     EPS = COORD_EPSILON
@@ -542,52 +546,50 @@ def _snap_pins_to_wires(components: list[dict], wires: list[dict],
             if key(x, y) not in held.get(sheet, ()):
                 free_pts_by_sheet.setdefault(sheet, []).append((x, y))
 
-    for comp in components:
+    # each unmatched built-in pin's nearest acceptable endpoint:
+    # (distance from the pin, comp index, pin index, sheet, endpoint)
+    wanted = []
+    for ci, comp in enumerate(components):
         if comp.get("_pin_source") != "builtin":
             continue
         if comp.get("type") in ("power_symbol", "power_flag", "flag"):
             continue
-        pins = comp.get("pins")
-        if not pins:
-            continue
-
         sheet = comp.get("_sheet", 0)
         wire_set = wire_eps_by_sheet.get(sheet, set())
         free_list = free_pts_by_sheet.get(sheet, [])
         cx, cy = comp["x"], comp["y"]
-
-        # Pins already on a wire endpoint stay and claim it
-        unmatched = []
-        claimed = set()
-        for pin in pins:
-            sk = key(pin["x"], pin["y"])
-            if sk in wire_set:
-                claimed.add(sk)
-            else:
-                unmatched.append(pin)
-
-        for pin in unmatched:
-            best_dist = _MAX_SNAP_DIST
-            best_pt = None
+        for pi, pin in enumerate(comp.get("pins") or []):
+            if key(pin["x"], pin["y"]) in wire_set:
+                continue
             opx, opy = pin["x"] - cx, pin["y"] - cy
+            best = None
             for wx, wy in free_list:
-                if key(wx, wy) in claimed:
-                    continue
                 dx = wx - cx
                 dy = wy - cy
-                dist = (dx * dx + dy * dy) ** 0.5
-                if dist < best_dist:
-                    # Prefer wire endpoints roughly in the direction of the
-                    # original computed pin (relative to component center)
-                    dot = dx * opx + dy * opy
-                    if dot > 0 or (opx == 0 and opy == 0):
-                        best_dist = dist
-                        best_pt = (wx, wy)
-            if best_pt is not None:
-                pin["x"] = _snap_mil(best_pt[0])
-                pin["y"] = _snap_mil(best_pt[1])
-                comp["_pin_source"] = "snapped_to_wire"
-                claimed.add(key(pin["x"], pin["y"]))
+                if (dx * dx + dy * dy) ** 0.5 >= _MAX_SNAP_DIST:
+                    continue
+                # only endpoints roughly in the direction of the computed pin
+                if not (dx * opx + dy * opy > 0 or (opx == 0 and opy == 0)):
+                    continue
+                d = ((wx - pin["x"]) ** 2 + (wy - pin["y"]) ** 2) ** 0.5
+                if best is None or d < best[0]:
+                    best = (d, (wx, wy))
+            if best is not None:
+                wanted.append((best[0], ci, pi, sheet, best[1]))
+
+    # A pin that loses its endpoint does not fall back to a farther one: the
+    # winner is the likelier owner and the loser's offset is likely wrong.
+    taken: set[tuple[int, tuple[float, float]]] = set()
+    for _d, ci, pi, sheet, (wx, wy) in sorted(wanted, key=lambda w: w[:3]):
+        end = (sheet, key(wx, wy))
+        if end in taken:
+            continue
+        taken.add(end)
+        comp = components[ci]
+        pin = comp["pins"][pi]
+        pin["x"] = _snap_mil(wx)
+        pin["y"] = _snap_mil(wy)
+        comp["_pin_source"] = "snapped_to_wire"
 
 
 def _parse_legacy_single_sheet(path: str) -> tuple:

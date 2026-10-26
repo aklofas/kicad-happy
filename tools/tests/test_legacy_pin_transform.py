@@ -174,6 +174,45 @@ class SnapTest(unittest.TestCase):
         self.assertEqual(pin_xy(r, "R2", "2"), mm(2020, 1850))
         self.assertNotEqual(net_of(r, "R2", "2"), "TOP")
 
+    def test_two_builtin_pins_want_one_free_end_the_nearer_takes_it(self):
+        # end E (2000,1830): R1 pin 1 is 20 mil from it, R2 pin 2 (R2 listed first) 40 mil;
+        # R2 pin 2 does not fall back to the held end at (1700,1830)
+        body = (comp("Device:R", "R2", 2000, 1640, "1    0    0    -1", ts="5F000002")
+                + comp("Device:R", "R1", 2000, 2000, "1    0    0    -1", ts="5F000001")
+                + wire(2000, 1830, 1700, 1830) + label(1700, 1830, "TOP"))
+        r = analyze(body, J_LIB)
+        self.assertEqual(pin_xy(r, "R1", "1"), mm(2000, 1830))
+        self.assertEqual(net_of(r, "R1", "1"), "TOP")
+        self.assertEqual(pin_xy(r, "R2", "2"), mm(2000, 1790))
+        self.assertNotEqual(net_of(r, "R2", "2"), "TOP")
+
+    def test_the_losing_pin_does_not_fall_back_to_a_farther_free_end(self):
+        # as above, but the wire's far end (1700,1830) is free: R2 pin 2 still stays put
+        body = (comp("Device:R", "R2", 2000, 1640, "1    0    0    -1", ts="5F000002")
+                + comp("Device:R", "R1", 2000, 2000, "1    0    0    -1", ts="5F000001")
+                + wire(2000, 1830, 1700, 1830))
+        r = analyze(body, J_LIB)
+        self.assertEqual(pin_xy(r, "R1", "1"), mm(2000, 1830))
+        self.assertEqual(pin_xy(r, "R2", "2"), mm(2000, 1790))
+        self.assertNotEqual(net_of(r, "R2", "2"), net_of(r, "R1", "1"))
+
+    def _held_end(self, holder):
+        # built-in R1 pin 1 at (2000,1850), 20 mil short of the end (2000,1830) held by `holder`;
+        # the wire's far end (2000,1500) is beyond the 12 mm snap radius
+        body = (comp("Device:R", "R1", 2000, 2000, "1    0    0    -1", ts="5F000001")
+                + wire(2000, 1830, 2000, 1500) + holder)
+        r = analyze(body, J_LIB)
+        self.assertEqual(pin_xy(r, "R1", "1"), mm(2000, 1850))
+
+    def test_a_label_holds_an_end(self):
+        self._held_end(label(2000, 1830, "TOP"))
+
+    def test_a_power_symbol_holds_an_end(self):
+        self._held_end(comp("power:+5V", "#PWR01", 2000, 1830, "1    0    0    -1", ts="5F000003"))
+
+    def test_a_no_connect_holds_an_end(self):
+        self._held_end("NoConn ~ 2000 1830\n")
+
     def test_builtin_components_are_counted(self):
         body = (comp("Device:R", "R1", 2000, 2000, "1    0    0    -1", ts="5F000001")
                 + comp("j:J", "J1", 4000, 1830, "1    0    0    -1", ts="5F000002"))
