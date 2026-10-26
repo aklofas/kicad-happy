@@ -361,6 +361,41 @@ def _parse_legacy_lib(path: str) -> dict:
     return symbols
 
 
+def _read_sym_lib_table(base_dir: Path) -> list:
+    """Legacy-type entries of the project sym-lib-table as (nickname, existing lib path).
+
+    ${KIPRJMOD} is the project directory; any other variable leaves the entry out.
+    A missing or malformed table, or an unreadable library, yields nothing.
+    """
+    table = base_dir / "sym-lib-table"
+    if not table.exists():
+        return []
+    entries = []
+    try:
+        root = parse_file(str(table))
+        for lib_entry in find_all(root, "lib"):
+            nick = lib_type = lib_uri = ""
+            for child in lib_entry:
+                if isinstance(child, list) and len(child) >= 2:
+                    if child[0] == "name":
+                        nick = str(child[1])
+                    elif child[0] == "type":
+                        lib_type = str(child[1])
+                    elif child[0] == "uri":
+                        lib_uri = str(child[1])
+            if lib_type != "Legacy" or not lib_uri:
+                continue
+            lib_uri = lib_uri.replace("${KIPRJMOD}", str(base_dir))
+            if "${" in lib_uri:
+                continue
+            lib_path = Path(lib_uri)
+            if lib_path.is_file():
+                entries.append((nick, lib_path))
+    except (ValueError, IndexError, KeyError, OSError):
+        pass  # Don't crash on malformed sym-lib-table
+    return entries
+
+
 def _resolve_legacy_libs(sch_path: str, all_sch_lines: dict) -> tuple:
     """Find and parse .lib files for legacy schematics.
 
@@ -393,6 +428,10 @@ def _resolve_legacy_libs(sch_path: str, all_sch_lines: dict) -> tuple:
     cache_path = base_dir / f"{stem}-cache.lib"
     if cache_path.exists():
         symbols = _parse_legacy_lib(str(cache_path))
+        # Project libraries the cache does not hold, addressed as nick:name
+        for nick, lib_path in _read_sym_lib_table(base_dir):
+            for name, sym_def in _parse_legacy_lib(str(lib_path)).items():
+                symbols.setdefault(f"{nick}:{name}", sym_def)
         # Also add standard library fallbacks for anything missing
         for name, pins in _STANDARD_LIB_PINS.items():
             if name not in symbols:
@@ -408,30 +447,11 @@ def _resolve_legacy_libs(sch_path: str, all_sch_lines: dict) -> tuple:
 
     # Strategy 2.5: Parse sym-lib-table for legacy library paths (KH-141)
     # KiCad 5 file version 4 uses sym-lib-table instead of LIBS: header directives
-    sym_lib_table = base_dir / "sym-lib-table"
-    if sym_lib_table.exists():
+    slt_entries = _read_sym_lib_table(base_dir)
+    if slt_entries:
         slt_symbols = {}
-        try:
-            slt_root = parse_file(str(sym_lib_table))
-            for lib_entry in find_all(slt_root, "lib"):
-                lib_type = ""
-                lib_uri = ""
-                for child in lib_entry:
-                    if isinstance(child, list) and len(child) >= 2:
-                        if child[0] == "type":
-                            lib_type = str(child[1])
-                        elif child[0] == "uri":
-                            lib_uri = str(child[1])
-                if lib_type != "Legacy" or not lib_uri:
-                    continue
-                # Resolve ${KIPRJMOD} to project directory
-                lib_uri = lib_uri.replace("${KIPRJMOD}", str(base_dir))
-                lib_path = Path(lib_uri)
-                if lib_path.exists():
-                    parsed = _parse_legacy_lib(str(lib_path))
-                    slt_symbols.update(parsed)
-        except (ValueError, IndexError, KeyError, OSError):
-            pass  # Don't crash on malformed sym-lib-table
+        for _nick, lib_path in slt_entries:
+            slt_symbols.update(_parse_legacy_lib(str(lib_path)))
         if slt_symbols:
             # Add standard library fallbacks
             for name, pins in _STANDARD_LIB_PINS.items():
