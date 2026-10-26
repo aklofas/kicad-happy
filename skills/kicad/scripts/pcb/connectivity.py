@@ -82,14 +82,14 @@ def _stackup_sort_key(layer: str) -> tuple[int, int]:
 
 def _expand_copper_layers(layers: list[str],
                           copper_layers: list[str]) -> list[str]:
-    """Expand copper layer specs to the physical layers they actually touch.
+    """Expand a via's copper layer specs to the physical layers it touches.
 
     - ``*.Cu`` expands to every copper layer.
     - A via records only its two endpoint layers (e.g. a through via is
       ``["F.Cu", "B.Cu"]``); expand it to every layer between the endpoints,
       inclusive, so it unions through any inner plane it passes through
       (GH issue #24). ``copper_layers`` must be in physical stackup order.
-    - A single concrete layer (e.g. an SMD pad) is returned unchanged.
+    - Any other list of concrete layers is returned de-duplicated.
     """
     cu = [layer for layer in (layers or [])
           if layer == '*.Cu' or '.Cu' in layer]
@@ -180,7 +180,8 @@ class _CellIndex:
 
 
 def _arc_chords(start, mid, end, tol: float = 0.005) -> list[tuple[float, float]]:
-    """Points along a start/mid/end arc whose chords stay within `tol` of the arc."""
+    """Points along a start/mid/end arc whose chords stay within `tol` of the arc,
+    using at most 64 chords (a large arc's chords may then sag further)."""
     (sx, sy), (ex, ey) = start, end
     if not mid:
         return [(sx, sy), (ex, ey)]
