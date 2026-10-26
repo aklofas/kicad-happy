@@ -21,6 +21,11 @@ class RailControlSuffix(unittest.TestCase):
     def test_configured_power_rail_keeps_precedence(self):
         self.assertTrue(is_power_net_name("3V3_EN", {"3V3_EN"}))
 
+    def test_configured_rail_under_a_sheet_path(self):
+        self.assertTrue(is_power_net_name("/Sheet/3V3_EN", {"3V3_EN"}))
+        self.assertFalse(is_power_net_name("/Sheet/3V3_EN"))
+        self.assertTrue(is_power_net_name("/pwr/vcc_io"))
+
 
 if __name__ == "__main__":
     unittest.main()
