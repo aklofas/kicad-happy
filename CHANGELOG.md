@@ -23,6 +23,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 ### Changed
 
 - `fab_release_gate.py` exits 1 when the verdict is FAIL (most real projects today: 289 of 300 sampled full-chain projects end in FAIL) and 2 when a path given on the command line does not exist, holds an empty JSON object or is the wrong analyzer's output; it was 0 in both cases. Scripts that run it under `set -e` must handle exit 1. (KH-563)
+- Legacy (KiCad 5 `.sch`) pins now sit where KiCad connects them. Every legacy pin was flipped top-to-bottom and components whose orientation matrix starts with `-` (about one in eight) ignored their rotation, so asymmetric parts, diode/LED/electrolytic polarity and IC pins were mis-mapped; only symbols from the built-in fallback table are still snapped to a nearby wire end, and only to one no other pin, power symbol or label holds. Legacy `angle`/`mirror_x`/`mirror_y` now describe the placement (an unmirrored part read `mirror_x: true`), and `legacy_analysis_quality.pin_source_coverage` counts built-in symbols under `builtin_fallback` (they were counted as `parsed_lib`). Expect different nets and findings on most KiCad 5 projects. (KH-511)
 
 ### Fixed
 

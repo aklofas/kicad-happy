@@ -190,7 +190,7 @@ output_io.write_primary_run / write_derived_output (thermal/cross/gerber)  -- JS
 Full support. S-expression format parsed by `kicad_core/sexp.py`.
 
 ### Legacy `.sch` (KiCad 4/5)
-Line-based format. Components, wires, labels, power symbols parsed. `.lib` symbol libraries are parsed for pin definitions (`schematic.legacy_reader._parse_legacy_lib()`), enabling pin-to-net mapping via geometric snapping. Library resolution searches cache-lib, sym-lib-table, LIBS: directives, and built-in defaults. Pin geometry uses a snapping radius (up to 12mm) when parsed symbols are incomplete — results are heuristic and carry reduced confidence compared to KiCad 6+ native pin data.
+Line-based format. Components, wires, labels, power symbols parsed. `.lib` symbol libraries are parsed for pin definitions (`schematic.legacy_reader._parse_legacy_lib()`), enabling pin-to-net mapping by exact pin coordinates (the `$Comp` orientation matrix applied to the `.lib` pin offset, as KiCad does). Library resolution searches cache-lib, sym-lib-table, LIBS: directives, and built-in defaults. Pins of symbols taken from the built-in defaults (`pin_source_coverage.builtin_fallback`) are snapped to the nearest free wire end within 12mm when they miss every wire end — those results are heuristic; pins from parsed libraries never move.
 
 ### Eagle `.sch`
 Not supported (binary and XML formats). Returns 0 components gracefully.
@@ -348,7 +348,7 @@ The harness is the authoritative validation layer. For the legacy `batchtest` di
 
 ## Known Remaining Limitations
 
-- **Legacy pin mapping**: `.sch` pin-to-net mapping uses heuristic geometry snapping (up to 12mm radius) when `.lib` symbols are incomplete or resolved from fallback sources
+- **Legacy pin mapping**: `.sch` pins of symbols resolved from the built-in fallback table use heuristic snapping to a free wire end (up to 12mm radius); pins from parsed `.lib` files are exact
 - **Vout estimation**: Feedback divider Vout uses hardcoded Vref guesses (0.6, 0.8, 1.0, 1.22, 1.25V) without a component database
 - **Regulator output_rail**: Switching regulators sometimes show null output_rail when the power net is on the inductor output side
 - **Eagle files**: Not parseable — output 0 components

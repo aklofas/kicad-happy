@@ -953,7 +953,7 @@ def analyze_legacy_schematic(path: str, analysis_dir: str | Path | None = None) 
                 _pin_src = "suffix_match"
         if sym_def:
             comp["pins"] = compute_pin_positions(comp, {lib_id: sym_def})
-            comp["_pin_source"] = _pin_src
+            comp["_pin_source"] = "builtin" if sym_def.get("_builtin") else _pin_src
             # KH-216: Store unit-valid pin numbers for pin_nets filtering
             comp["_unit_pins"] = {p["number"] for p in comp["pins"]}
             # Snap pin positions to mil grid — eliminates floating-point drift
@@ -962,12 +962,10 @@ def analyze_legacy_schematic(path: str, analysis_dir: str | Path | None = None) 
                 pin["x"] = _snap_mil(pin["x"])
                 pin["y"] = _snap_mil(pin["y"])
 
-    # KH-016 fix: Snap component pins to nearby wire endpoints when the
-    # computed pin positions don't match any wire (caused by KiCad version
-    # differences in standard library pin offsets).  For each pin, if no wire
-    # endpoint is within COORD_EPSILON, find the closest wire endpoint on the
-    # same sheet within a generous radius and snap to it.
-    _snap_pins_to_wires(all_components, all_wires)
+    # KH-016 fix: built-in fallback pin offsets differ between KiCad library
+    # versions, so a built-in pin that misses every wire end moves to the
+    # nearest free one on its sheet.  Pins from parsed libraries never move.
+    _snap_pins_to_wires(all_components, all_wires, all_labels)
 
     # Extract power symbols (preserve _sheet so build_net_map keeps coordinate
     # spaces separate — without it, power symbols from sub-sheets all land in

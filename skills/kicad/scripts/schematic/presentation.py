@@ -447,9 +447,12 @@ def assemble_legacy_result(*, nets, all_components, signal_analysis, real_compon
         sev_counts[normalize_severity(f.get("severity") if isinstance(f, dict) else None)] += 1
 
     # Legacy analysis quality summary (KH-271)
-    _pin_source_counts = {"parsed_lib": 0, "suffix_match": 0, "snapped_to_wire": 0, "unresolved": 0}
+    _pin_source_counts = {"parsed_lib": 0, "suffix_match": 0, "snapped_to_wire": 0, "unresolved": 0,
+                          "builtin_fallback": 0}
     for c in real_components:
         src = c.get("_pin_source", "unresolved")
+        if src == "builtin":
+            src = "builtin_fallback"
         if src in _pin_source_counts:
             _pin_source_counts[src] += 1
         else:

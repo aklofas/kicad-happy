@@ -203,9 +203,12 @@ def compute_pin_positions(component: dict, lib_symbols: dict) -> list[Pin]:
         # Apply transform: prefer raw matrix (legacy KiCad 5) over decomposed angle/mirror
         transform_matrix = component.get("transform_matrix")
         if transform_matrix:
+            # KiCad negates both the matrix's second column and the .lib pin Y
+            # on load, so the file matrix maps the raw offset straight into
+            # Y-down sheet space; rpy is negated to cancel the shared inversion.
             a, b, c, d = transform_matrix
             rpx = a * px + b * py
-            rpy = c * px + d * py
+            rpy = -(c * px + d * py)
         else:
             # KiCad 6+: decomposed angle + mirror. Compose exactly as KiCad does
             # so rotation+mirror combos match (mirror inverts rotation handedness).

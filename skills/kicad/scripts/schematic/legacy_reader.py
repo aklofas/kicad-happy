@@ -14,7 +14,9 @@ from kicad_core.fields import (
     MPN_FIELD_ALIASES_PRIMARY, MPN_FIELD_ALIASES_GENERIC,
     DIGIKEY_FIELD_ALIASES, normalize_field_name,
 )
-from schematic.reader import _MANUFACTURER_KEYS, _MOUSER_KEYS, _LCSC_KEYS, _ELEMENT14_KEYS
+from schematic.reader import (
+    _ANGLE_TRANSFORM, _MANUFACTURER_KEYS, _MOUSER_KEYS, _LCSC_KEYS, _ELEMENT14_KEYS,
+)
 
 
 # KiCad 5 legacy .lib pin type codes → KiCad 6+ type strings
@@ -211,6 +213,34 @@ _STANDARD_LIB_PINS = {
 }
 
 
+_MATRIX_LINE = re.compile(r"-?\d+\s+-?\d+\s+-?\d+\s+-?\d+$")
+
+
+def _legacy_orientation_table() -> dict:
+    """Raw legacy matrix -> (angle, mirror_x, mirror_y) that places pins identically.
+
+    KiCad's legacy loader negates the second column of the file matrix, so the
+    KiCad 6 transform (x1, y1, x2, y2) corresponds to the file matrix
+    (x1, -y1, x2, -y2).  Candidates are tried in KiCad's GetOrientation order,
+    so an unmirrored orientation wins over an equivalent mirrored one.
+    """
+    table = {}
+    candidates = [(a, False, False) for a in (0, 90, 180, 270)]
+    candidates += [(0, True, False), (90, True, False), (270, True, False)]
+    candidates += [(a, False, True) for a in (0, 90, 180, 270)]
+    for angle, mx, my in candidates:
+        x1, y1, x2, y2 = _ANGLE_TRANSFORM[angle]
+        if mx:
+            x2, y2 = -x2, -y2
+        if my:
+            x1, y1 = -x1, -y1
+        table.setdefault((x1, -y1, x2, -y2), (angle, mx, my))
+    return table
+
+
+_LEGACY_ORIENTATION = _legacy_orientation_table()
+
+
 def _parse_legacy_lib(path: str) -> dict:
     """Parse a KiCad 5 .lib file and return symbol definitions.
 
@@ -351,7 +381,7 @@ def _resolve_legacy_libs(sch_path: str, all_sch_lines: dict) -> tuple:
                 symbols[name] = {
                     "pins": pins, "unit_pins": None, "description": "",
                     "keywords": "", "is_power": False, "ki_fp_filters": "",
-                    "alternates": None,
+                    "alternates": None, "_builtin": True,
                 }
         resolution_info["cache_lib_found"] = True
         resolution_info["parsed_lib_count"] = max(0, len(symbols) - len(_STANDARD_LIB_PINS))
@@ -391,7 +421,7 @@ def _resolve_legacy_libs(sch_path: str, all_sch_lines: dict) -> tuple:
                     slt_symbols[name] = {
                         "pins": pins, "unit_pins": None, "description": "",
                         "keywords": "", "is_power": False, "ki_fp_filters": "",
-                        "alternates": None,
+                        "alternates": None, "_builtin": True,
                     }
             resolution_info["sym_lib_table_used"] = True
             resolution_info["parsed_lib_count"] = max(0, len(slt_symbols) - len(_STANDARD_LIB_PINS))
@@ -453,7 +483,7 @@ def _resolve_legacy_libs(sch_path: str, all_sch_lines: dict) -> tuple:
             symbols[name] = {
                 "pins": pins, "unit_pins": None, "description": "",
                 "keywords": "", "is_power": False, "ki_fp_filters": "",
-                "alternates": None,
+                "alternates": None, "_builtin": True,
             }
 
     resolution_info["libs_directive_used"] = bool(lib_names)
@@ -462,33 +492,51 @@ def _resolve_legacy_libs(sch_path: str, all_sch_lines: dict) -> tuple:
     return symbols, resolution_info
 
 
-def _snap_pins_to_wires(components: list[dict], wires: list[dict]) -> None:
-    """Snap component pins to nearby wire endpoints when positions don't match.
+def _snap_pins_to_wires(components: list[dict], wires: list[dict],
+                        occupied: list[dict]) -> None:
+    """Snap built-in fallback pins to nearby free wire endpoints.
 
     Legacy KiCad standard library pin offsets vary between versions (±100, ±150,
-    ±200, ±250 mils for R/C/L/D).  When the built-in fallback positions don't
-    match the actual wire endpoints, this function finds the closest wire
-    endpoint for each pin and snaps to it.
+    ±200, ±250 mils for R/C/L/D).  A pin of a component whose symbol came from
+    the built-in table (``_pin_source == "builtin"``) that has no wire endpoint
+    within COORD_EPSILON moves to the closest wire endpoint within
+    _MAX_SNAP_DIST of the component center, roughly in the pin's direction.
 
-    Only snaps when the computed position has no wire endpoint within
-    COORD_EPSILON, and a wire endpoint exists within _MAX_SNAP_DIST of the
-    component center (generous enough for the largest standard symbols).
+    A wire endpoint already held by a parsed-library pin, a power symbol or one
+    of the ``occupied`` points (labels: dicts with x, y, _sheet) is never a
+    target.  Pins from parsed libraries are where KiCad puts them and never move.
     """
     _MAX_SNAP_DIST = 12.0  # mm (~470 mils) — covers all standard symbols
     EPS = COORD_EPSILON
 
-    # Build per-sheet wire endpoint set for fast lookup, and list for snapping
+    def key(x, y):
+        return (round(x / EPS) * EPS, round(y / EPS) * EPS)
+
+    held: dict[int, set[tuple[float, float]]] = {}
+    for comp in components:
+        sheet = comp.get("_sheet", 0)
+        if comp.get("type") in ("power_symbol", "power_flag", "flag"):
+            held.setdefault(sheet, set()).add(key(comp["x"], comp["y"]))
+        elif comp.get("_pin_source") != "builtin":
+            for pin in comp.get("pins") or []:
+                held.setdefault(sheet, set()).add(key(pin["x"], pin["y"]))
+    for pt in occupied:
+        held.setdefault(pt.get("_sheet", 0), set()).add(key(pt["x"], pt["y"]))
+
+    # Per-sheet wire endpoint set for fast lookup, and free endpoints for snapping
     wire_eps_by_sheet: dict[int, set[tuple[float, float]]] = {}
-    wire_pts_by_sheet: dict[int, list[tuple[float, float]]] = {}
+    free_pts_by_sheet: dict[int, list[tuple[float, float]]] = {}
     for w in wires:
         sheet = w.get("_sheet", 0)
         for x, y in ((w["x1"], w["y1"]), (w["x2"], w["y2"])):
-            sx = round(x / EPS) * EPS
-            sy = round(y / EPS) * EPS
-            wire_eps_by_sheet.setdefault(sheet, set()).add((sx, sy))
-            wire_pts_by_sheet.setdefault(sheet, []).append((x, y))
+            sk = key(x, y)
+            wire_eps_by_sheet.setdefault(sheet, set()).add(sk)
+            if sk not in held.get(sheet, ()):
+                free_pts_by_sheet.setdefault(sheet, []).append((x, y))
 
     for comp in components:
+        if comp.get("_pin_source") != "builtin":
+            continue
         if comp.get("type") in ("power_symbol", "power_flag", "flag"):
             continue
         pins = comp.get("pins")
@@ -497,31 +545,25 @@ def _snap_pins_to_wires(components: list[dict], wires: list[dict]) -> None:
 
         sheet = comp.get("_sheet", 0)
         wire_set = wire_eps_by_sheet.get(sheet, set())
-        wire_list = wire_pts_by_sheet.get(sheet, [])
+        free_list = free_pts_by_sheet.get(sheet, [])
         cx, cy = comp["x"], comp["y"]
 
-        # Check which pins are already matched to wire endpoints
+        # Pins already on a wire endpoint stay and claim it
         unmatched = []
-        for pin in pins:
-            sk = (round(pin["x"] / EPS) * EPS, round(pin["y"] / EPS) * EPS)
-            if sk not in wire_set:
-                unmatched.append(pin)
-
-        if not unmatched:
-            continue  # all pins already matched
-
-        # Collect nearby wire endpoints (not already claimed by another pin)
         claimed = set()
         for pin in pins:
-            if pin not in unmatched:
-                claimed.add((round(pin["x"] / EPS) * EPS, round(pin["y"] / EPS) * EPS))
+            sk = key(pin["x"], pin["y"])
+            if sk in wire_set:
+                claimed.add(sk)
+            else:
+                unmatched.append(pin)
 
         for pin in unmatched:
             best_dist = _MAX_SNAP_DIST
             best_pt = None
-            for wx, wy in wire_list:
-                sk = (round(wx / EPS) * EPS, round(wy / EPS) * EPS)
-                if sk in claimed:
+            opx, opy = pin["x"] - cx, pin["y"] - cy
+            for wx, wy in free_list:
+                if key(wx, wy) in claimed:
                     continue
                 dx = wx - cx
                 dy = wy - cy
@@ -529,7 +571,6 @@ def _snap_pins_to_wires(components: list[dict], wires: list[dict]) -> None:
                 if dist < best_dist:
                     # Prefer wire endpoints roughly in the direction of the
                     # original computed pin (relative to component center)
-                    opx, opy = pin["x"] - cx, pin["y"] - cy
                     dot = dx * opx + dy * opy
                     if dot > 0 or (opx == 0 and opy == 0):
                         best_dist = dist
@@ -538,7 +579,7 @@ def _snap_pins_to_wires(components: list[dict], wires: list[dict]) -> None:
                 pin["x"] = _snap_mil(best_pt[0])
                 pin["y"] = _snap_mil(best_pt[1])
                 comp["_pin_source"] = "snapped_to_wire"
-                claimed.add((round(pin["x"] / EPS) * EPS, round(pin["y"] / EPS) * EPS))
+                claimed.add(key(pin["x"], pin["y"]))
 
 
 def _parse_legacy_single_sheet(path: str) -> tuple:
@@ -658,29 +699,14 @@ def _parse_legacy_single_sheet(path: str) -> tuple:
                             if re.match(r'^Field\d+$', fname):
                                 comp.setdefault("_generic_fields", {})[fname] = field_val
 
-                # Orientation matrix line (after position line)
-                # Format: a b c d  (2x2 transform matrix [a b; c d])
-                # det = a*d - b*c: +1 = no mirror, -1 = mirrored (X axis)
-                elif cl and cl[0].isdigit() and len(cl.split()) == 4:
-                    parts = cl.split()
-                    try:
-                        a, b, c, d = [int(p) for p in parts]
-                        comp["transform_matrix"] = (a, b, c, d)
-                        det = a * d - b * c
-                        if det < 0:
-                            comp["mirror_x"] = True
-                            # Remove mirror to extract pure rotation
-                            c, d = -c, -d
-                        if (a, b) == (1, 0):
-                            comp["angle"] = 0
-                        elif (a, b) == (0, 1):
-                            comp["angle"] = 90
-                        elif (a, b) == (-1, 0):
-                            comp["angle"] = 180
-                        elif (a, b) == (0, -1):
-                            comp["angle"] = 270
-                    except ValueError:
-                        pass
+                # Orientation matrix line (after position line): four signed ints
+                # a b c d; the 3-token redundant position line never matches.
+                elif _MATRIX_LINE.match(cl):
+                    a, b, c, d = [int(p) for p in cl.split()]
+                    comp["transform_matrix"] = (a, b, c, d)
+                    orient = _LEGACY_ORIENTATION.get((a, b, c, d))
+                    if orient:
+                        comp["angle"], comp["mirror_x"], comp["mirror_y"] = orient
 
                 i += 1
             # Positional fallback for generic field names (Field1=manufacturer, Field2=MPN)
