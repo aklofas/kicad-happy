@@ -154,6 +154,31 @@ def _legacy_arc_points(centre, p0, angle_deg):
     return (round(p0[0], 6), round(p0[1], 6)), rot(angle_deg / 2.0), rot(angle_deg)
 
 
+_CIRCLE_SIDES = 32
+
+
+def _tessellate_arc(start, mid, end):
+    """Points along the circular arc start -> mid -> end, about 32 chords per full turn."""
+    (x1, y1), (x2, y2), (x3, y3) = start, mid, end
+    d = 2 * (x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2))
+    if abs(d) < 1e-12:
+        raise ValueError("collinear arc")
+    ux = ((x1**2 + y1**2) * (y2 - y3) + (x2**2 + y2**2) * (y3 - y1) + (x3**2 + y3**2) * (y1 - y2)) / d
+    uy = ((x1**2 + y1**2) * (x3 - x2) + (x2**2 + y2**2) * (x1 - x3) + (x3**2 + y3**2) * (x2 - x1)) / d
+    r = math.hypot(x1 - ux, y1 - uy)
+    a1 = math.atan2(y1 - uy, x1 - ux)
+    am = math.atan2(y2 - uy, x2 - ux)
+    a3 = math.atan2(y3 - uy, x3 - ux)
+    two_pi = 2 * math.pi
+    sweep = (a3 - a1) % two_pi
+    if (am - a1) % two_pi > sweep:
+        sweep -= two_pi
+    n = max(2, math.ceil(abs(sweep) / (two_pi / _CIRCLE_SIDES)))
+    pts = [(ux + r * math.cos(a1 + sweep * k / n), uy + r * math.sin(a1 + sweep * k / n))
+           for k in range(1, n)]
+    return [start] + pts + [end]
+
+
 def _net_id(val: str | None) -> int:
     """Convert a net value to an integer ID during extraction.
 
@@ -397,7 +422,7 @@ def extract_footprints(root: list) -> list[dict]:
         crtyd_pts: list[tuple[float, float]] = []
         crtyd_segs: list[tuple[tuple[float, float], tuple[float, float]]] = []
         crtyd_polys: list[list[tuple[float, float]]] = []
-        crtyd_unchainable = False  # arcs/circles → polygon set would be incomplete
+        crtyd_unchainable = False  # an unparseable arc/circle leaves the polygon set incomplete
 
         def _fp_to_abs(lx: float, ly: float) -> tuple[float, float]:
             if angle != 0:
@@ -444,16 +469,53 @@ def extract_footprints(root: list) -> list[dict]:
                         crtyd_polys.append(corners)
                         crtyd_pts.extend(corners)
                     continue
-                # fp_circle / fp_arc: bbox contribution only — polygon set
-                # stays disabled so overlap falls back to the AABB (KH-350)
-                crtyd_unchainable = True
-                for key in ("start", "end", "center", "mid"):
-                    node = find_first(item, key)
-                    if node and len(node) >= 3:
-                        crtyd_pts.append(_fp_to_abs(float(node[1]), float(node[2])))
+                try:
+                    if gtype == "fp_circle":
+                        c = find_first(item, "center")
+                        e = find_first(item, "end")
+                        cx_, cy_ = float(c[1]), float(c[2])
+                        r = math.hypot(float(e[1]) - cx_, float(e[2]) - cy_)
+                        if r <= 0:
+                            raise ValueError("zero radius")
+                        ring = [_fp_to_abs(cx_ + r * math.cos(2 * math.pi * k / _CIRCLE_SIDES),
+                                           cy_ + r * math.sin(2 * math.pi * k / _CIRCLE_SIDES))
+                                for k in range(_CIRCLE_SIDES)]
+                        crtyd_polys.append(ring)
+                        crtyd_pts.extend(ring)
+                        continue
+                    s_ = find_first(item, "start")
+                    e = find_first(item, "end")
+                    m = find_first(item, "mid")
+                    a = get_value(item, "angle")
+                    if m:
+                        arc_pts = ((float(s_[1]), float(s_[2])), (float(m[1]), float(m[2])),
+                                   (float(e[1]), float(e[2])))
+                    elif a is not None:
+                        arc_pts = _legacy_arc_points((float(s_[1]), float(s_[2])),
+                                                     (float(e[1]), float(e[2])), float(a))
+                    else:
+                        raise ValueError("arc without mid or angle")
+                    line = [_fp_to_abs(px, py) for px, py in _tessellate_arc(*arc_pts)]
+                except (TypeError, ValueError, IndexError):
+                    crtyd_unchainable = True
+                    for key in ("start", "end", "center", "mid"):
+                        node = find_first(item, key)
+                        if node and len(node) >= 3:
+                            crtyd_pts.append(_fp_to_abs(float(node[1]), float(node[2])))
+                    continue
+                crtyd_segs.extend(zip(line, line[1:]))
+                crtyd_pts.extend(line)
 
         if crtyd_segs and not crtyd_unchainable:
-            _chained = _chain_segments(crtyd_segs)
+            # A segment drawn twice (once per direction) would leave a two-point chain
+            _seen: set = set()
+            _unique = []
+            for _a, _b in crtyd_segs:
+                _key = frozenset(((round(_a[0], 3), round(_a[1], 3)), (round(_b[0], 3), round(_b[1], 3))))
+                if _key not in _seen:
+                    _seen.add(_key)
+                    _unique.append((_a, _b))
+            _chained = _chain_segments(_unique)
             if _chained:
                 crtyd_polys.extend(_chained)
             else:
