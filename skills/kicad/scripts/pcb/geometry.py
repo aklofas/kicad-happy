@@ -98,11 +98,8 @@ def outline_edge_distance(px: float, py: float, edges: list[dict]) -> float | No
         elif t == "circle" and e.get("center") and e.get("end"):
             cx, cy = e["center"]
             d = abs(math.hypot(px - cx, py - cy) - math.hypot(e["end"][0] - cx, e["end"][1] - cy))
-        elif t == "arc" and e.get("start") and e.get("end"):
-            if e.get("mid"):
-                d = _arc_distance(px, py, e["start"], e["mid"], e["end"])
-            else:
-                d = _point_segment_distance(px, py, *e["start"], *e["end"])
+        elif t == "arc" and e.get("start") and e.get("end") and e.get("mid"):
+            d = _arc_distance(px, py, e["start"], e["mid"], e["end"])
         elif t == "polygon" and e.get("points"):
             d = _polyline_distance(px, py, e["points"], True)
         elif t == "curve" and e.get("points"):

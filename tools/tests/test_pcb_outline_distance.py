@@ -60,9 +60,12 @@ class TestOutlineDistance(unittest.TestCase):
         e = {"type": "arc", "start": [0, 0], "mid": [5, 0], "end": [10, 0]}
         self.assertAlmostEqual(outline_edge_distance(5, 2, [e]), 2.0)
 
-    def test_arc_without_mid_uses_endpoints(self):
+    def test_arc_without_mid_is_skipped(self):
+        # its chord may run well inside the board, so it is not an edge to measure
         e = {"type": "arc", "start": [0, 0], "mid": None, "end": [10, 0]}
-        self.assertAlmostEqual(outline_edge_distance(5, 2, [e]), 2.0)
+        self.assertIsNone(outline_edge_distance(5, 2, [e]))
+        line = {"type": "line", "start": [0, 10], "end": [10, 10]}
+        self.assertAlmostEqual(outline_edge_distance(5, 2, [e, line]), 8.0)
 
 
 class TestBv001(unittest.TestCase):
