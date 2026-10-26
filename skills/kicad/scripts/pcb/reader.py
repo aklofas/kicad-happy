@@ -138,6 +138,22 @@ def extract_nets(root: list) -> dict[int, str]:
 
 
 # KiCad 10 net format helpers — nets are identified by name, not number.
+def _legacy_arc_points(centre, p0, angle_deg):
+    """KiCad 5 arc (centre, first point, sweep) -> (start, mid, end) as KiCad 6+ stores it.
+
+    The sweep rotates by +angle in KiCad's y-down coordinates (plain x/y rotation).
+    """
+    cx, cy = centre
+    dx, dy = p0[0] - cx, p0[1] - cy
+
+    def rot(deg):
+        a = math.radians(deg)
+        return (round(cx + dx * math.cos(a) - dy * math.sin(a), 6),
+                round(cy + dx * math.sin(a) + dy * math.cos(a), 6))
+
+    return (round(p0[0], 6), round(p0[1], 6)), rot(angle_deg / 2.0), rot(angle_deg)
+
+
 def _net_id(val: str | None) -> int:
     """Convert a net value to an integer ID during extraction.
 
@@ -888,7 +904,15 @@ def extract_board_outline(root: list) -> dict:
                 start = find_first(item, "start")
                 mid = find_first(item, "mid")
                 end = find_first(item, "end")
+                angle = get_value(item, "angle")
                 if start and end:
+                    if mid is None and angle is not None:
+                        a_start, a_mid, a_end = _legacy_arc_points(
+                            (float(start[1]), float(start[2])),
+                            (float(end[1]), float(end[2])), float(angle))
+                        edges.append({"type": "arc", "start": list(a_start),
+                                      "mid": list(a_mid), "end": list(a_end)})
+                        continue
                     edges.append({
                         "type": "arc",
                         "start": [float(start[1]), float(start[2])],
