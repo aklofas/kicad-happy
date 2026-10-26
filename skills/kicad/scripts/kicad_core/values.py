@@ -35,8 +35,10 @@ def parse_value(value_str: str, component_type: str | None = None) -> float | No
     Handles: 10K, 4.7u, 100n, 220p, 1M, 2.2m, 47R, 0R1, 4K7, 1R0, etc.
     Returns None if unparseable.
 
-    If component_type is "capacitor" and the result is a bare integer >=1.0
-    (no unit suffix), treat it as picofarads (KH-153: legacy KiCad 5 convention).
+    If component_type is "capacitor" and the result is a bare plain number
+    (no unit letter, no exponent), treat it as picofarads when >= 1.0 and as
+    microfarads below (legacy KiCad 5 convention). An explicit F ("1F") or an
+    exponent ("1e-6") is already in farads.
     """
     # EQ-068: SI prefix: p=1e-12 n=1e-9 u=1e-6 m=1e-3 k=1e3 M=1e6
     if not value_str:
@@ -47,10 +49,11 @@ def parse_value(value_str: str, component_type: str | None = None) -> float | No
     # KiCad 9 uses space-separated units: "18 pF", "4.7 uF" — rejoin if
     # the second token starts with an SI prefix letter.
     parts = value_str.strip().split("/")[0].split()
-    if len(parts) >= 2 and parts[1] and parts[1][0] in "pnuµmkKMGRr":
+    if len(parts) >= 2 and parts[1] and (parts[1][0] in "pnuµmkKMGRr" or parts[1] in ("F", "f")):
         s = parts[0] + parts[1]
     else:
         s = parts[0] if parts else ""
+    explicit_si = bool(re.fullmatch(r'[0-9.]+(?:[eE][-+]?\d+)?[Ff]|[0-9.]+[eE][-+]?\d+', s))
     # KH-112: Ferrite bead impedance notation (600R/200mA, 120R@100MHz)
     # is not a parseable component value — return None to avoid nonsensical results
     if re.search(r'\d+[Rr]\s*[/@]\s*\d', s):
@@ -102,7 +105,7 @@ def parse_value(value_str: str, component_type: str | None = None) -> float | No
     # Plain number: "100", "47", "0.1"
     try:
         result = float(s)
-        if component_type == "capacitor":
+        if component_type == "capacitor" and not explicit_si:
             # KH-153: Bare integers >= 1 are picofarads in legacy schematics.
             # KH-212: Bare decimals < 1 (0.1, 0.47, 0.22) are microfarads —
             # no real-world cap is 0.1 Farads in SMD packages.
@@ -197,7 +200,7 @@ def snap_to_e_series(value: float, series: str = "E96") -> tuple:
     decade = 10 ** math.floor(math.log10(value))
     normalized = value / decade
     decade_list = _E_SERIES.get(series, E96_DECADE)
-    best = min(decade_list, key=lambda e: abs(e - normalized))
+    best = min(decade_list + [10.0], key=lambda e: abs(math.log10(e) - math.log10(normalized)))
     snapped = best * decade
     error_pct = (snapped - value) / value * 100 if value != 0 else 0.0
     return (snapped, round(error_pct, 2))

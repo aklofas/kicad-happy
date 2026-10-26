@@ -44,6 +44,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - LB-001 counts one alias per drawn label name: a net that reaches the same hierarchical label through several sheet instances (`/A/SIG`, `/B/SIG`) is no longer reported as having multiple labels, and `aliases` lists each drawn name once. (KH-668)
 - A global bus label (`D[0..7]` as a `global_label` on a bus) names global member nets, as KiCad does: the same member under a global bus on several sheets is now one net, and a global label or power symbol named after a member (`D3`) joins it. Each sheet's members used to stay separate, so cross-sheet buses showed many single-pin nets (NT-001) and their member nets lost their other pins. (KH-514)
 - A bus entry onto a net that an earlier entry had already joined to its bus member is no longer reported as an unlabelled tap in `bus_topology.unresolved`, and now joins its member as well. (KH-670)
+- Capacitor values with an explicit `F` unit or a bare exponent are read as farads: `1F`, `120F 2.3v`, `1 F` and `10e-12` were scaled as picofarads or microfarads, so supercapacitors were missed (SC-001 now sees them) and PDN and RC results used the wrong capacitance. Bare plain numbers (`100`, `0.1`) keep the legacy picofarad / microfarad reading; a lowercase `0.1f` now means 0.1 F. E-series snapping picks the nearest value by log distance and knows 10 as the top of each decade, so 9.9 kΩ snaps to 10 kΩ rather than 8.2 kΩ and EMC anti-resonance recommendations read 1 nF where they said 820 pF. (KH-516, KH-517)
 
 ---
 
