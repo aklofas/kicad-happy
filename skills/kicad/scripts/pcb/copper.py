@@ -6,7 +6,8 @@ import re
 
 from kicad_core.netnames import is_ground_name
 from pcb.dfm import _degenerate_drills, _is_real_drill, _pad_drills
-from pcb.geometry import ZoneFills, _pad_sample_points, _point_in_pad, copper_connected
+from pcb.geometry import (ZoneFills, _pad_sample_points, _point_in_pad, copper_connected,
+                          outline_edge_distance)
 
 
 def _find_thermal_pads(fp: dict) -> list[dict]:
@@ -1277,42 +1278,13 @@ def analyze_via_in_pad(footprints: list[dict], vias: dict, thermal_pad_refs: set
 
 def analyze_board_edge_via_clearance(vias: dict, board_outline: dict) -> list[dict]:
     """BV-001: Check vias close to board edges."""
-    # EQ-103: d = min distance from via center to any Edge.Cuts line segment.
-    # Source: Self-evident — 2D point-to-segment distance (see EQ-098).
+    # EQ-103: d = min distance from the via centre to any Edge.Cuts edge (lines, rects,
+    # arcs, circles, polygons, curves) -- see outline_edge_distance.
     findings: list[dict] = []
     via_list = vias.get("vias", [])
     edges = board_outline.get("edges", [])
 
     if not via_list or not edges:
-        return findings
-
-    def _pt_seg_dist(px, py, x1, y1, x2, y2):
-        # EQ-104: Helper — same 2D point-to-segment distance as EQ-098.
-        # Source: Self-evident — kept as a local helper to avoid import cycles.
-        dx, dy = x2 - x1, y2 - y1
-        length_sq = dx * dx + dy * dy
-        if length_sq == 0:
-            return math.sqrt((px - x1) ** 2 + (py - y1) ** 2)
-        t = max(0, min(1, ((px - x1) * dx + (py - y1) * dy) / length_sq))
-        return math.sqrt((px - x1 - t * dx) ** 2 + (py - y1 - t * dy) ** 2)
-
-    # Extract edge line segments
-    edge_segs: list[tuple[float, float, float, float]] = []
-    for edge in edges:
-        etype = edge.get("type", "")
-        if etype == "line":
-            s = edge.get("start", [0, 0])
-            e = edge.get("end", [0, 0])
-            edge_segs.append((s[0], s[1], e[0], e[1]))
-        elif etype == "rect":
-            s = edge.get("start", [0, 0])
-            e = edge.get("end", [0, 0])
-            edge_segs.append((s[0], s[1], e[0], s[1]))
-            edge_segs.append((e[0], s[1], e[0], e[1]))
-            edge_segs.append((e[0], e[1], s[0], e[1]))
-            edge_segs.append((s[0], e[1], s[0], s[1]))
-
-    if not edge_segs:
         return findings
 
     threshold_mm = 0.5
@@ -1321,11 +1293,9 @@ def analyze_board_edge_via_clearance(vias: dict, board_outline: dict) -> list[di
         vy = via.get("y")
         if vx is None or vy is None:
             continue
-        min_dist = float("inf")
-        for x1, y1, x2, y2 in edge_segs:
-            d = _pt_seg_dist(vx, vy, x1, y1, x2, y2)
-            if d < min_dist:
-                min_dist = d
+        min_dist = outline_edge_distance(vx, vy, edges)
+        if min_dist is None:
+            return findings
         if min_dist < threshold_mm:
             findings.append({
                 "via_x": round(vx, 2),

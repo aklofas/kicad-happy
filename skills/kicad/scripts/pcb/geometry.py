@@ -20,6 +20,98 @@ def _extract_polygon_coords(pts_node: list) -> list[tuple[float, float]]:
     return [(float(xy[1]), float(xy[2])) for xy in find_all(pts_node, "xy")]
 
 
+def _point_segment_distance(px: float, py: float, x1: float, y1: float,
+                            x2: float, y2: float) -> float:
+    dx, dy = x2 - x1, y2 - y1
+    length_sq = dx * dx + dy * dy
+    if length_sq == 0:
+        return math.hypot(px - x1, py - y1)
+    t = max(0.0, min(1.0, ((px - x1) * dx + (py - y1) * dy) / length_sq))
+    return math.hypot(px - x1 - t * dx, py - y1 - t * dy)
+
+
+def _polyline_distance(px: float, py: float, pts: list, closed: bool) -> float | None:
+    pts = [(float(p[0]), float(p[1])) for p in pts]
+    if not pts:
+        return None
+    if len(pts) == 1:
+        return math.hypot(px - pts[0][0], py - pts[0][1])
+    n = len(pts)
+    pairs = range(n) if closed else range(n - 1)
+    return min(_point_segment_distance(px, py, *pts[i], *pts[(i + 1) % n]) for i in pairs)
+
+
+def _arc_distance(px: float, py: float, start, mid, end) -> float:
+    sx, sy = start
+    mx, my = mid
+    ex, ey = end
+    if (sx, sy) == (ex, ey):
+        # Full circle: start and mid are opposite ends of a diameter.
+        cx, cy = (sx + mx) / 2.0, (sy + my) / 2.0
+        return abs(math.hypot(px - cx, py - cy) - math.hypot(sx - cx, sy - cy))
+    d = 2.0 * (sx * (my - ey) + mx * (ey - sy) + ex * (sy - my))
+    if abs(d) < 1e-12:
+        return min(_point_segment_distance(px, py, sx, sy, mx, my),
+                   _point_segment_distance(px, py, mx, my, ex, ey))
+    ss, ms, es = sx * sx + sy * sy, mx * mx + my * my, ex * ex + ey * ey
+    cx = (ss * (my - ey) + ms * (ey - sy) + es * (sy - my)) / d
+    cy = (ss * (ex - mx) + ms * (sx - ex) + es * (mx - sx)) / d
+    r = math.hypot(sx - cx, sy - cy)
+    tau = 2.0 * math.pi
+    a_s = math.atan2(sy - cy, sx - cx)
+    nm = (math.atan2(my - cy, mx - cx) - a_s) % tau
+    ne = (math.atan2(ey - cy, ex - cx) - a_s) % tau
+    # The mid point is on the sweep: counter-clockwise when it comes before the end.
+    ccw = nm <= ne
+    off = (math.atan2(py - cy, px - cx) - a_s) % tau
+    inside = off <= ne if ccw else (tau - off) % tau <= tau - ne
+    if inside:
+        return abs(math.hypot(px - cx, py - cy) - r)
+    return min(math.hypot(px - sx, py - sy), math.hypot(px - ex, py - ey))
+
+
+def _bezier_points(ctrl: list, steps: int = 32) -> list:
+    if len(ctrl) != 4:
+        return ctrl
+    (x0, y0), (x1, y1), (x2, y2), (x3, y3) = ctrl
+    out = []
+    for i in range(steps + 1):
+        t = i / steps
+        u = 1.0 - t
+        a, b, c, e = u * u * u, 3 * u * u * t, 3 * u * t * t, t * t * t
+        out.append((a * x0 + b * x1 + c * x2 + e * x3, a * y0 + b * y1 + c * y2 + e * y3))
+    return out
+
+
+def outline_edge_distance(px: float, py: float, edges: list[dict]) -> float | None:
+    """Shortest distance from (px, py) to a board outline made of ``board_outline.edges``
+    entries; None when no edge is usable."""
+    best: float | None = None
+    for e in edges:
+        t = e.get("type")
+        d = None
+        if t == "line" and e.get("start") and e.get("end"):
+            d = _point_segment_distance(px, py, *e["start"], *e["end"])
+        elif t == "rect" and e.get("start") and e.get("end"):
+            (x1, y1), (x2, y2) = e["start"], e["end"]
+            d = _polyline_distance(px, py, [(x1, y1), (x2, y1), (x2, y2), (x1, y2)], True)
+        elif t == "circle" and e.get("center") and e.get("end"):
+            cx, cy = e["center"]
+            d = abs(math.hypot(px - cx, py - cy) - math.hypot(e["end"][0] - cx, e["end"][1] - cy))
+        elif t == "arc" and e.get("start") and e.get("end"):
+            if e.get("mid"):
+                d = _arc_distance(px, py, e["start"], e["mid"], e["end"])
+            else:
+                d = _point_segment_distance(px, py, *e["start"], *e["end"])
+        elif t == "polygon" and e.get("points"):
+            d = _polyline_distance(px, py, e["points"], True)
+        elif t == "curve" and e.get("points"):
+            d = _polyline_distance(px, py, _bezier_points(e["points"]), False)
+        if d is not None and (best is None or d < best):
+            best = d
+    return best
+
+
 def _shoelace_area_from_coords(coords: list[tuple[float, float]]) -> float:
     """Compute polygon area from coordinate list using shoelace formula."""
     n = len(coords)
