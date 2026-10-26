@@ -52,6 +52,11 @@ _RAIL_TAILS_GATED = frozenset({"VBUS", "VIN", "VBAT", "VBATT", "VSYS", "VREG"})
 # 12VPG, 5VOK), not a rail.
 _VOLTAGE_SIGNAL_SUFFIXES = frozenset({"EN", "ENABLE", "ON", "OFF", "FB", "PG",
                                       "OK", "DET", "SENSE"})
+# A rail name followed by one of these after an underscore (VCC_EN, 3V3_PG,
+# VBUS_SENSE) is a signal about the rail. INT is left out: 5V_INT is a rail.
+_RAIL_SIGNAL_SUFFIXES = _VOLTAGE_SIGNAL_SUFFIXES | frozenset({
+    "PGOOD", "PWRGD", "PGD", "GOOD", "SNS", "MON", "DETECT", "CTRL", "CTL",
+    "SHDN", "RESET", "RST", "NEN"})
 
 
 def is_usb_data_net_name(name_upper: str) -> bool:
@@ -80,6 +85,8 @@ def is_power_net_name(net_name: str | None, power_rails: set[str] | None = None)
     # (KH-407). Excludes 0V<digit> (0V9, 0V85, 0V95, 0V5) — those are
     # sub-1V rails under the nnVn convention, not ground.
     if re.match(r'^\+?0+V(?!\d)', nu):
+        return False
+    if "_" in nu and nu.rsplit("_", 1)[-1] in _RAIL_SIGNAL_SUFFIXES:
         return False
     # Explicit known names
     if nu in ("GND", "VSS", "AGND", "DGND", "PGND", "GNDPWR", "GNDA", "GNDD",
