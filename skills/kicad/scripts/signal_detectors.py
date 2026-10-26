@@ -4456,8 +4456,10 @@ def detect_label_aliases(ctx: AnalysisContext) -> list[dict]:
         cross_sheet = [lbl for lbl in applied
                        if lbl.get("type") in
                            ("global_label", "hierarchical_label")]
-        names = sorted({str(lbl.get("name", "")) for lbl in cross_sheet
-                        if lbl.get("name")})
+        # A label reached through several sheet instances carries one
+        # instance-qualified name per instance; the alias is the drawn name.
+        names = sorted({str(lbl.get("_bare_name") or lbl.get("name", ""))
+                        for lbl in cross_sheet if lbl.get("name")})
         if len(names) < 2:
             continue
         # Skip power-rail aliases: labels on GND / VCC / +3.3V / etc. are

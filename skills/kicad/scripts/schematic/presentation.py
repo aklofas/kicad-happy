@@ -11,13 +11,18 @@ from kicad_core.project import (
     load_lib_tables,
     load_kicad_pro,
 )
-from schematic.connectivity import _labels_for_output
+from schematic.connectivity import _labels_for_output, strip_net_label_internals
 from schematic.bom_stats import compute_statistics
 from finding_schema import (
     compute_trust_summary,
     sort_findings,
     make_finding,
 )
+
+
+def _nets_for_output(nets):
+    strip_net_label_internals(nets)
+    return nets
 
 
 def assemble_result(ctx, parsed, nets, bom, analyses, *, path, sheets_parsed,
@@ -259,7 +264,7 @@ def assemble_result(ctx, parsed, nets, bom, analyses, *, path, sheets_parsed,
             for c in all_components
             if c["type"] not in ("power_symbol", "power_flag", "flag")
         ],
-        "nets": nets,
+        "nets": _nets_for_output(nets),
         "subcircuits": subcircuits,
         "ic_pin_analysis": ic_analysis,
         "transistor_pin_analysis": transistor_analysis,
@@ -476,7 +481,7 @@ def assemble_legacy_result(*, nets, all_components, signal_analysis, real_compon
         "statistics": stats,
         "bom": bom,
         "components": real_components,
-        "nets": nets,
+        "nets": _nets_for_output(nets),
         "subcircuits": subcircuits,
         "findings": findings,
         "assessments": [],

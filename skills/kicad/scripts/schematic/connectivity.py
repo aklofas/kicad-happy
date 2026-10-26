@@ -481,6 +481,7 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
             "source": "label",
             "name": lbl_name,
             "label_type": lbl["type"],
+            "bare_name": lbl.get("_bare_name"),
         }, sheet)
         # Only global labels and power symbols connect across sheets.
         # Local labels only connect within the same sheet (handled by wire union).
@@ -765,7 +766,10 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
                     key_tuple = (lbl_name, lbl_type)
                     if lbl_name and key_tuple not in net_labels_seen:
                         net_labels_seen.add(key_tuple)
-                        net_labels.append({"name": lbl_name, "type": lbl_type})
+                        entry = {"name": lbl_name, "type": lbl_type}
+                        if info.get("bare_name"):
+                            entry["_bare_name"] = info["bare_name"]
+                        net_labels.append(entry)
                 else:
                     continue
                 if cand_name:
@@ -871,6 +875,13 @@ def _labels_for_output(labels: list[dict]) -> list[dict]:
     """Return a copy of `labels` with the bus-pass internal keys removed."""
     return [{k: v for k, v in lbl.items() if k not in _INTERNAL_LABEL_KEYS}
             for lbl in labels]
+
+
+def strip_net_label_internals(nets: dict) -> None:
+    """Drop the bus-pass/LB-001 internal keys from every net's ``labels``, in place."""
+    for info in nets.values():
+        if info.get("labels"):
+            info["labels"] = _labels_for_output(info["labels"])
 
 
 def get_net_neighbors(net_info: dict, exclude_ref: str) -> list[dict]:
