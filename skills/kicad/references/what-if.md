@@ -224,7 +224,7 @@ All fix suggestions are snapped to standard E-series values using `snap_to_e_ser
 **Algorithm:**
 1. Extract the decade: `decade = 10^floor(log10(value))`
 2. Normalize: `normalized = value / decade`
-3. Find the closest value in the series decade list.
+3. Find the nearest value in the series decade list by log distance, with 10 (the next decade's first value) included, so in E12 9.9 snaps to 10 rather than 8.2.
 4. Reconstruct: `snapped = best * decade`
 5. Compute error: `error_pct = (snapped - value) / value * 100`
 

@@ -83,7 +83,7 @@ Each `(footprint ...)` or `(module ...)` block produces:
 
 **SMD vs. through-hole classification**: Determined from `(attr smd)` or `(attr through_hole)`. Falls back to pad type inspection for KiCad 5 files.
 
-**Courtyard extraction**: Bounding box computed from `fp_line`, `fp_rect`, `fp_circle` on `CrtYd` layers, transformed to absolute coordinates.
+**Courtyard extraction**: Bounding box computed from `fp_line`, `fp_rect`, `fp_circle`, `fp_arc` and `fp_poly` on `CrtYd` layers, transformed to absolute coordinates. Circles become 32-sided polygons and arcs (including KiCad 5 centre/angle arcs) are tessellated, so the outline chains into `courtyard_poly` for the PM-001 overlap test. F.CrtYd and B.CrtYd are chained separately, and the same outline on both sides counts once. A side that draws a segment twice is malformed, as in KiCad (`malformed_courtyard`): the footprint gets no courtyard and one `diagnostics` record.
 
 ### 2.5 Track Extraction
 

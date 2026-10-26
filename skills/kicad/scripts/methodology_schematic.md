@@ -142,13 +142,14 @@ This gives each pin an absolute `(x, y)` in schematic space, which is how pins c
 KiCad 4/5 `.sch` files use a line-based format with `$Comp`/`$EndComp` blocks, `Wire Wire Line` entries, and `Text Label`/`Text GLabel` markers. The analyzer has a separate parser for this format that:
 
 - Converts coordinates from mils (1/1000 inch) to mm
-- Parses the 2x2 orientation matrix to extract rotation angle and mirror flags
+- Applies the component's 2x2 orientation matrix to each library pin once, as KiCad does, and reports the placement as rotation angle and mirror flags
 - Extracts labels, wires, junctions, and no-connects with their own syntax
 - Parses `.lib` files (cache libraries and project libs) to populate pin positions and types
-- Computes absolute pin positions using `compute_pin_positions()` (same transform as KiCad 6+)
+- Reads `$Sheet` blocks: each sheet pin (`F<n>` line) becomes a hierarchical connection point on the parent sheet and joins the child's hierarchical label of the same name; a sheet used more than once contributes each instance's components, with the reference from the symbol's `AR` record for that instance (the `L` reference when there is none)
+- Skips a sheet that includes itself or one of its ancestors, with one `diagnostics` record
 - Performs subcircuit detection via `identify_subcircuits()`
 
-The `.lib` resolution strategy: (1) prefer `*-cache.lib` alongside the root `.sch` (self-contained), (2) fall back to individual `LIBS:` directives searching the project directory tree, (3) use built-in defaults for common standard library symbols (R, C, L, D, LED, transistors). Coverage is typically 92–100% depending on which `.lib` files are available in the repo.
+The `.lib` resolution strategy: (1) prefer `*-cache.lib` alongside the root `.sch` (self-contained), and also read the project's `sym-lib-table` libraries, so a component named `nick:Name` takes its pins from the project library ahead of the cache's `nick_Name` copy; (2) without a cache, read the `sym-lib-table` libraries, or the `LIBS:` directives searching the project directory tree; (3) use built-in defaults for common standard library symbols (R, C, L, D, LED, transistors). Only pins from the built-in defaults may be snapped to a nearby free wire end (their offsets vary between KiCad versions); pins from a parsed library stay where KiCad puts them. Coverage is typically 92–100% depending on which `.lib` files are available in the repo.
 
 ---
 
@@ -158,13 +159,13 @@ The net-building algorithm is the core of the analyzer. It determines which pins
 
 ### Algorithm: Union-Find on Sheet-Aware Coordinates
 
-Every electrical point in the schematic is assigned a coordinate key:
+Every electrical point in the schematic is assigned a coordinate key in KiCad's internal units (100 nm):
 
 ```python
-key = (sheet_index, round(x / EPSILON) * EPSILON, round(y / EPSILON) * EPSILON)
+key = (sheet_index, to_iu(x), to_iu(y))   # to_iu(mm) = round(mm * 10000), half away from zero
 ```
 
-where `EPSILON = 0.01 mm`. The sheet index prevents cross-sheet merges; the rounding absorbs floating-point noise in coordinates.
+The sheet index prevents cross-sheet merges. Two points join only when their keys are equal, as in KiCad; the 100 nm rounding absorbs floating-point noise in coordinates.
 
 A standard union-find (disjoint set) data structure with path compression groups connected points into equivalence classes:
 
@@ -179,25 +180,22 @@ union(a, b):  merge two sets
 
 2. **Wire endpoints** — Each wire's `(x1, y1)` and `(x2, y2)` are added as points and unioned together. Wires are also indexed in a spatial grid (5mm cells) for fast mid-wire point lookup.
 
-3. **Labels** — Added at their placement position. If a label sits mid-wire (not at an endpoint), the `point_on_segment()` function detects this and unions the label with the wire.
+3. **Labels** — Added at their placement position. A label joins every wire it lies on, at an end or mid-wire, within 1 IU (100 nm).
    - **Local labels**: Only connect within the same sheet. Keyed by `(name, sheet)`.
    - **Global labels**: Connect across all sheets. Keyed by `(name,)`.
    - **Hierarchical labels**: Connect across sheets (parent ↔ child). Keyed by `(name,)`.
 
-4. **Power symbols** — Always cross-sheet. The symbol's pin position (not its center) is used as the connection point. PWR_FLAG symbols are excluded.
+4. **Power symbols** — Always cross-sheet. The symbol's pin position (not its center) is used as the connection point. Like a component pin, it joins a wire only at a wire end. PWR_FLAG symbols are excluded.
 
-5. **Junctions** — Added and unioned with overlapping wires.
+5. **Junctions** — Added and unioned with every wire they lie exactly on (0 IU).
 
-6. **Mid-wire pin placement** — A second pass checks if any component pin lands on a wire segment between its endpoints (rare but legal in KiCad).
+A component pin or power symbol that lies inside a wire, between its ends, does not join it, as in KiCad.
 
-### Mid-Wire Detection
+### Mid-Wire Detection and Near Misses
 
-Points can be placed anywhere on a wire, not just at endpoints. The analyzer detects this with:
+Labels and junctions can sit anywhere on a wire. The analyzer tests them against the wire segments with KiCad's integer distance test (`segment_hit_iu`): within 1 IU for a label, exactly on the segment for a junction. A spatial grid index (5mm cells) makes this efficient — only wire segments in the same grid cell are tested, avoiding O(W×P) full scans.
 
-1. **Bounding box check**: Quick rejection if the point is outside the wire's bounding box (± 0.05mm tolerance).
-2. **Cross product collinearity**: The perpendicular distance from point to wire line must be < 0.05mm.
-
-A spatial grid index (5mm cells) makes this efficient — only wire segments in the same grid cell are tested, avoiding O(W×P) full scans.
+A point that is left unjoined within 0.01 mm of another point, or within 0.05 mm of a wire, is almost certainly a drawing slip. It is not joined; it is listed in `diagnostics` as a `CoordinateNearMiss` record (at most 20 per run, then one summary record).
 
 ### Net Naming Priority
 
@@ -351,6 +349,7 @@ A net is classified as a power rail by two complementary methods:
 - **Exact matches**: `VCC`, `VDD`, `AVCC`, `AVDD`, `DVCC`, `DVDD`, `VBUS`, `VIO`, `VMAIN`, `VPWR`, `VSYS`, `VBAT`, `VCORE`, `VIN`, `VOUT`, `VREG`
 - **Patterns**: Names starting with `+` (e.g., `+3V3`, `+5V`, `+12V`), `V` followed by digits (e.g., `V3V3`, `V1V8`)
 - **Prefixes**: `VDD_*`, `VCC_*`, `VBAT_*`, `VSYS_*`, `VBUS_*`, etc.
+- **Control suffixes win**: a name whose last `_` part is a control or status word (`VCC_EN`, `3V3_PG`, `VBUS_SENSE`, `PWR_ON`) is a signal about the rail, not the rail, unless the net is in the power-symbol or project power-rail set.
 
 A net is considered a power net if **either** method matches.
 
@@ -855,11 +854,11 @@ Power symbols (`#PWR`, `#FLG`) and DNP components are excluded from the BOM coun
 
 ## 13. Known Limitations
 
-1. **Legacy `.sch` format**: No pin-level net connectivity. Would require parsing the companion `.lib` file for pin geometry, which is not implemented. Legacy schematics get component lists and label-based net names only.
+1. **Legacy `.sch` format**: Pin-level connectivity depends on the `.lib` files in the repo. Symbols found in no library fall back to a built-in table of common parts, whose pin offsets are snapped to nearby free wire ends; a symbol missing from both has no pins and joins no net.
 
 2. **Value parsing generosity**: `parse_value()` extracts the first numeric-looking substring. A transistor's `"2N3904"` could be parsed as `2.0` if the caller doesn't check component type first. All signal detectors guard against this by checking type before using parsed values.
 
-3. **Coordinate tolerance**: `EPSILON = 0.01mm`. Points closer than this are treated as the same location. Extremely dense layouts could theoretically have false coordinate merges, though this hasn't been observed in practice across 1,053 tested schematics.
+3. **Coordinate identity**: Points join only at identical 100 nm coordinates, as in KiCad. A point that misses another by a few micrometres is not joined; it is reported as a `CoordinateNearMiss` diagnostic (at most 20 per run) rather than silently merged.
 
 4. **High-fanout filter rejection**: RC/LC filters on nets with >6 connections are rejected as likely buses. This may miss legitimate filters on high-fanout nets (e.g., a filter feeding multiple ICs).
 
