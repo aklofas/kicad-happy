@@ -10,6 +10,7 @@ import math
 import re
 
 from kicad_core.sexp import find_all, find_first, get_at, get_property, get_value
+from kicad_core.diagnostics import record
 from kicad_core.fields import get_mpn_property
 from kicad_core.model import PcbReaderState
 from pcb.geometry import (
@@ -233,7 +234,7 @@ def _build_net_mapping(footprints: list[dict], tracks: dict, vias: dict,
     return net_names
 
 
-def extract_footprints(root: list) -> list[dict]:
+def extract_footprints(root: list, diagnostics: list | None = None) -> list[dict]:
     """Extract all placed footprints with pad details.
 
     Handles both KiCad 6+ (footprint ...) and KiCad 5 (module ...) formats.
@@ -517,6 +518,9 @@ def extract_footprints(root: list) -> list[dict]:
                     continue
                 if _key in _seen:
                     crtyd_pts = []
+                    record(diagnostics, "pcb.reader.extract_footprints",
+                           ValueError(f"{ref}: courtyard has a segment drawn twice"),
+                           "courtyard not used for placement checks")
                     break
                 _seen.add(_key)
                 _unique.append((_a, _b))

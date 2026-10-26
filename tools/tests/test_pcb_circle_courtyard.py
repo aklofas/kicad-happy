@@ -9,14 +9,18 @@ from pcb.pipeline import read_board  # noqa: E402
 from pcb.assembly import analyze_placement  # noqa: E402
 
 
+_dirs = []
+
+
 def _fp(ref, x, y, crtyd):
     return (f'(footprint "L:F" (layer "F.Cu") (at {x} {y})\n'
             f'  (property "Reference" "{ref}")\n  (property "Value" "v")\n{crtyd})\n')
 
 
 def _board(*fps):
-    d = tempfile.mkdtemp()
-    p = os.path.join(d, "b.kicad_pcb")
+    d = tempfile.TemporaryDirectory()
+    _dirs.append(d)
+    p = os.path.join(d.name, "b.kicad_pcb")
     with open(p, "w", encoding="utf-8") as f:
         f.write('(kicad_pcb (version 20221018) (generator pcbnew)\n' + "".join(fps) + ')\n')
     return p
@@ -31,6 +35,10 @@ def _placement(*fps):
 
 
 class TestCircleCourtyard(unittest.TestCase):
+    def tearDown(self):
+        while _dirs:
+            _dirs.pop().cleanup()
+
     def test_circle_bbox_and_polygon(self):
         fp = read_board(_board(_fp("C1", 110, 100, CIRCLE))).footprints[0]
         cy = fp["courtyard"]
@@ -78,6 +86,13 @@ class TestCircleCourtyard(unittest.TestCase):
             fp = read_board(_board(_fp("U1", 50, 50, self._square(extra_last=dup)))).footprints[0]
             self.assertNotIn("courtyard", fp)
             self.assertNotIn("courtyard_poly", fp)
+
+    def test_malformed_courtyard_is_recorded(self):
+        board = read_board(_board(_fp("U1", 50, 50, self._square(extra_last=self._line(-1, -1, 1, -1)))))
+        self.assertEqual(board.diagnostics, [{
+            "source": "pcb.reader.extract_footprints", "exception": "ValueError",
+            "message": "U1: courtyard has a segment drawn twice",
+            "effect": "courtyard not used for placement checks"}])
 
     def test_zero_length_segment_is_harmless(self):
         for kw in ({"extra_first": self._line(1, 1, 1, 1)}, {"extra_last": self._line(0, 0, 0, 0)},

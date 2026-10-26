@@ -109,7 +109,7 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
     and only their result writes stay here. *board* is a pcb.pipeline.BoardData and
     *analyses* a pcb.pipeline.PcbAnalyses.
     """
-    diagnostics: list = []
+    diagnostics: list = list(board.diagnostics)
     layers = board.layers
     setup = board.setup
     net_names = board.net_names

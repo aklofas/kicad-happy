@@ -16,7 +16,7 @@ Every body is verbatim from analyze_pcb.py; only the seams are new.
 import json
 import os
 import sys
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any
 
@@ -119,6 +119,7 @@ class BoardData:
     zone_fills: ZoneFills
     outline: dict
     state: PcbReaderState
+    diagnostics: list = field(default_factory=list)
 
 
 def read_board(path: str, *, state: PcbReaderState | None = None) -> BoardData:
@@ -131,7 +132,8 @@ def read_board(path: str, *, state: PcbReaderState | None = None) -> BoardData:
     layers = reader.extract_layers(root)
     setup = reader.extract_setup(root)
     net_names = reader.extract_nets(root)
-    footprints = reader.extract_footprints(root)
+    diagnostics: list = []
+    footprints = reader.extract_footprints(root, diagnostics)
     tracks = reader.extract_tracks(root)
     vias = reader.extract_vias(root)
     zones, zone_fills = reader.extract_zones(root)
@@ -159,7 +161,8 @@ def read_board(path: str, *, state: PcbReaderState | None = None) -> BoardData:
 
     return BoardData(path=path, root=root, layers=layers, setup=setup, net_names=net_names,
                      footprints=footprints, tracks=tracks, vias=vias, zones=zones,
-                     zone_fills=zone_fills, outline=outline, state=state)
+                     zone_fills=zone_fills, outline=outline, state=state,
+                     diagnostics=diagnostics)
 
 
 @dataclass
