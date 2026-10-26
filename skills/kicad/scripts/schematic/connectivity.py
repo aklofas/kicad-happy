@@ -672,9 +672,11 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
         # label that just isn't one of this bus's member names is a distinct
         # failure (the label misnamed/mistargeted, not absent) — kept separate
         # so the reason says what was actually unresolved.
-        for s, tk, tap in tap_points:
+        # Read every tap's names first: joining a tap to its slot below can
+        # re-root its net, and root_names is keyed by the roots before that.
+        tap_names = [root_names.get(find(tk), set()) for _s, tk, _tap in tap_points]
+        for (s, tk, tap), names in zip(tap_points, tap_names):
             g = bus_graphs[s]
-            names = root_names.get(find(tk), set())
             mset = g.cluster_member_set(tap["cluster"])
             cand = (names & mset) if mset is not None else set(names)
             if cand:
