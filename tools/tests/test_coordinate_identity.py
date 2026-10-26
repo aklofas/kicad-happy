@@ -90,7 +90,8 @@ def near_misses(result):
 
 
 class CoordinateSemanticsTest(unittest.TestCase):
-    """The survey's synthetic schematic t.kicad_sch, cases 1-9."""
+    """Nine wire, pin, label and junction placements, each next to the same layout drawn
+    on exact coordinates, with the groupings KiCad's netlist gives."""
 
     @classmethod
     def setUpClass(cls):
@@ -143,7 +144,7 @@ class CoordinateSemanticsTest(unittest.TestCase):
 
 
 class PowerSymbolTest(unittest.TestCase):
-    """The survey's t2.kicad_sch: power symbols and a global label on a wire."""
+    """Power symbols at a wire end and inside a wire, and a global label on a wire."""
 
     @classmethod
     def setUpClass(cls):
@@ -207,6 +208,26 @@ class NearMissCapTest(unittest.TestCase):
         self.assertTrue(all(d["exception"] == "CoordinateNearMiss" for d in sink))
         self.assertIn("5 more", sink[-1]["message"])
         self.assertEqual(len(err.getvalue().splitlines()), 21)
+
+
+class NearMissAcrossBucketsTest(unittest.TestCase):
+    def _sink(self, wire_x):
+        from schematic.connectivity import build_net_map
+        comps = [{"reference": "R1", "value": "1k", "type": "resistor", "pins": [
+            {"number": "1", "name": "~", "type": "passive", "x": 150.004, "y": 0.0}]}]
+        sink = []
+        with redirect_stderr(StringIO()):
+            build_net_map(comps, [{"x1": wire_x, "y1": 0.0, "x2": wire_x, "y2": 5.0}], [], [], [],
+                          diagnostics=sink)
+        return [d["message"] for d in sink]
+
+    def test_pair_across_a_bucket_edge_is_reported(self):
+        # 150.004 and 150.006 mm are 0.002 mm apart on either side of 150.005
+        self.assertEqual(self._sink(150.006), [
+            "sheet 0: wire end at (150.006, 0) mm is 0.002 mm from pin 'R1.1' at (150.004, 0)"])
+
+    def test_pair_more_than_0_01_mm_apart_is_not_reported(self):
+        self.assertEqual(self._sink(150.016), [])
 
 
 class BusGraphToleranceTest(unittest.TestCase):

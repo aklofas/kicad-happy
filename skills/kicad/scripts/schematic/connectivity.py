@@ -301,6 +301,7 @@ class CoordinateNearMiss(Exception):
 
 
 _NEAR_MISS_CAP = 20
+_NEAR_MISS_IU = 100  # 0.01 mm
 _NEAR_MISS_EFFECT = "not connected (KiCad joins exact coordinates)"
 
 
@@ -943,16 +944,26 @@ def _record_near_misses(near_buckets, near_wires, wire_segments, find, sheet_nam
         return sheet_names[sheet] if sheet_names and 0 <= sheet < len(sheet_names) else sheet
 
     events = []
-    for pts in near_buckets.values():
-        if len(pts) < 2:
-            continue
-        keys = sorted(pts)
-        k0 = keys[0]
-        x0, y0, info0 = pts[k0]
-        for k in keys[1:]:
-            if find(k) == find(k0):
+    reported = set()
+    for (sheet, bx, by), pts in sorted(near_buckets.items()):
+        for k in sorted(pts):
+            if k in reported:
                 continue
+            # Compare with the neighbouring buckets too, so a pair across a bucket edge is seen;
+            # each point is reported against the first point near it that it does not join.
+            k0 = None
+            for nx in (bx - 1, bx, bx + 1):
+                for ny in (by - 1, by, by + 1):
+                    for kn in near_buckets.get((sheet, nx, ny), ()):
+                        if (kn < k and (k0 is None or kn < k0)
+                                and (kn[1] - k[1]) ** 2 + (kn[2] - k[2]) ** 2 <= _NEAR_MISS_IU ** 2
+                                and find(kn) != find(k)):
+                            k0, src0 = kn, near_buckets[(sheet, nx, ny)][kn]
+            if k0 is None:
+                continue
+            reported.add(k)
             x, y, info = pts[k]
+            x0, y0, info0 = src0
             d = ((k[1] - k0[1]) ** 2 + (k[2] - k0[2]) ** 2) ** 0.5 / 1e4
             events.append((k, f"sheet {sheet_label(k[0])}: {_describe_point(info)} at ({_mm(x)}, {_mm(y)}) mm"
                               f" is {_mm(d)} mm from {_describe_point(info0)} at ({_mm(x0)}, {_mm(y0)})"))
