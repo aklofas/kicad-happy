@@ -53,6 +53,15 @@ class Callers(unittest.TestCase):
         obs = detect_design_observations(ctx, {"power_regulators": [reg]})
         self.assertEqual([o for o in obs if "vout_net_mismatch" in o], [])
 
+    def test_regulator_on_a_rail_named_0v_is_no_mismatch_and_no_crash(self):
+        from signal_detectors import detect_design_observations
+        reg = {"ref": "U1", "value": "X", "estimated_vout": 3.3, "output_rail": "0V",
+               "feedback_divider": {}, "assumed_vref": 0.8, "topology": "LDO"}
+        ctx = _ctx([{"reference": "U1", "type": "ic", "value": "X"}], {"0V": [("U1", "1", "power_out")]}, {"0V"})
+        obs = detect_design_observations(ctx, {"power_regulators": [reg]})
+        self.assertEqual([o for o in obs if "vout_net_mismatch" in o], [])
+        self.assertEqual([o["estimated_vout"] for o in obs if o.get("category") == "regulator_voltage"], [3.3])
+
     def test_sleep_current_uses_the_rail_magnitude(self):
         from schematic.system_analyses import analyze_sleep_current
         ctx = _ctx([{"reference": "R1", "type": "resistor", "value": "10k"}],
