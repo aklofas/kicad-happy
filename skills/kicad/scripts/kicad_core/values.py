@@ -49,11 +49,11 @@ def parse_value(value_str: str, component_type: str | None = None) -> float | No
     # KiCad 9 uses space-separated units: "18 pF", "4.7 uF" — rejoin if
     # the second token starts with an SI prefix letter.
     parts = value_str.strip().split("/")[0].split()
-    if len(parts) >= 2 and parts[1] and (parts[1][0] in "pnuµmkKMGRr" or parts[1] in ("F", "f")):
+    if len(parts) >= 2 and parts[1] and (parts[1][0] in "pnuµmkKMGRr" or parts[1] == "F"):
         s = parts[0] + parts[1]
     else:
         s = parts[0] if parts else ""
-    explicit_si = bool(re.fullmatch(r'[0-9.]+(?:[eE][-+]?\d+)?[Ff]|[0-9.]+[eE][-+]?\d+', s))
+    explicit_si = bool(re.fullmatch(r'[0-9.]+(?:[eE][-+]?\d+)?F|[0-9.]+[eE][-+]?\d+', s))
     # KH-112: Ferrite bead impedance notation (600R/200mA, 120R@100MHz)
     # is not a parseable component value — return None to avoid nonsensical results
     if re.search(r'\d+[Rr]\s*[/@]\s*\d', s):

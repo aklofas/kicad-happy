@@ -14,7 +14,7 @@ class CapacitorFarads(unittest.TestCase):
             self.assertAlmostEqual(parse_value(text, component_type="capacitor") / want, 1.0, places=9, msg=text)
 
     def test_bare_plain_numbers_keep_the_legacy_rescale(self):
-        for text, want in [("100", 1e-10), ("0.1", 1e-7), ("4.7", 4.7e-12), ("100n", 1e-7)]:
+        for text, want in [("100", 1e-10), ("0.1", 1e-7), ("4.7", 4.7e-12), ("100n", 1e-7), ("0.1f", 1e-7)]:
             self.assertAlmostEqual(parse_value(text, component_type="capacitor") / want, 1.0, places=9, msg=text)
 
     def test_untyped_f_is_unchanged(self):
