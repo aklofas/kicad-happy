@@ -191,19 +191,21 @@ class BusGraph:
         return self._cluster_members.get(cid)
 
     def cluster_ordered(self, cid, width):
-        # The cluster's own member naming comes from a local bus label if it
-        # has one, else a global one, else a hierarchical one — each names the
-        # local wire, so a co-clustered sheet pin maps positionally to them. A sheet
+        # The cluster's own member naming comes from a local or global bus label
+        # if it has one, else from a hierarchical one — each names the local
+        # wire, so a co-clustered sheet pin maps positionally to them. A sheet
         # PIN never participates: it carries the FAR-side (child's) member
         # names, which map positionally, not the local ordering. Local wins
         # over hier so a local relabel (e.g. m68k's SIMM_~{CAS[0..3]} over a
         # ~{CAS[0..3]} pin) still governs; hier is the fallback that lets a
         # root/pass-through bus label (openmd's {PHASES} feeding OUT{PHASES}
-        # and V{PHASES} pins) canonicalize the cluster.
+        # and V{PHASES} pins) canonicalize the cluster. Local and global labels
+        # rank together, so two different same-width names of either kind stay
+        # ambiguous.
         atts = self._cluster_labels.get(cid, [])
-        for role in ("local", "global", "hier"):
+        for roles in (("local", "global"), ("hier",)):
             matches = [att["expansion"] for att in atts
-                       if att["role"] == role and len(att["expansion"]) == width]
+                       if att["role"] in roles and len(att["expansion"]) == width]
             # Ambiguity is two DIFFERENT expansions of the same width — the same
             # bus labeled twice along one wire (readability) is not ambiguous.
             distinct = {tuple(m) for m in matches}
@@ -593,10 +595,11 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
         # (A) Name-based member joining for local/global/hier bus labels. Sheet-pin
         # ("pin") labels are excluded: their members name the child's nets,
         # not the parent's local nets, so they map only positionally in (C).
-        # Only the same-sheet LOCAL key `(member, s)` is accepted — a
-        # local/hier bus member is local-scoped, so it must not fuse with a
-        # coincidentally same-named GLOBAL label (keyed bare) elsewhere; KiCad
-        # keeps local/hier bus scope separate from the global net space.
+        # A local/hier bus label accepts only the same-sheet LOCAL key
+        # `(member, s)` — its members are local-scoped, so they must not fuse
+        # with a coincidentally same-named GLOBAL label (keyed bare) elsewhere;
+        # KiCad keeps local/hier bus scope separate from the global net space.
+        # A global bus label also takes the bare key (below).
         #
         # Same-sheet bus-name joining (member_rep): a local or hierarchical
         # bus label has sheet scope — KiCad connects same-name local/hier

@@ -74,7 +74,8 @@ def _sheet_block(name, x, pin=""):
             f' (instances (project "t" (path "/{ROOT_UUID}" (page "{ord(name) - 95}")))))\n')
 
 
-def write_project(tmp):
+def write_project(tmp, root_local=None):
+    """``root_local``: a local bus label added to the root bus beside its global D[0..3]."""
     _n[0] = 0
     children = {
         # two sheets each carry the global bus D[0..3]
@@ -98,6 +99,7 @@ def write_project(tmp):
             + _sheet_block("e", 180, f' (pin "X[0..3]" input (at 180 30 180) {FONT} (uuid "{_uuid()}"))')
             + f'(bus (pts (xy 150 30) (xy 180 30)) (stroke (width 0) (type default)) (uuid "{_uuid()}"))\n'
             + _label("global_label", "D[0..3]", 160, 30)
+            + (_label("label", root_local, 170, 30) if root_local else "")
             + '(sheet_instances (path "/" (page "1")))\n)\n')
     Path(tmp, "t.kicad_sch").write_text(root, encoding="utf-8")
     return os.path.join(tmp, "t.kicad_sch")
@@ -143,6 +145,23 @@ class GlobalBusMembersTest(unittest.TestCase):
     def test_groups_match_kicad(self):
         self.assertEqual(self.groups, {frozenset({"R1", "R2", "R8"}), frozenset({"R3", "R4", "R5"}),
                                        frozenset({"R6"}), frozenset({"R7"})})
+
+
+class RootBusLabelsTest(unittest.TestCase):
+    def analyze(self, root_local):
+        with tempfile.TemporaryDirectory() as tmp:
+            with redirect_stderr(StringIO()):
+                return analyze_schematic(write_project(tmp, root_local))
+
+    def test_local_and_global_names_of_one_width_are_ambiguous(self):
+        result = self.analyze("ADDR[0..3]")
+        self.assertIn({"reason": "ambiguous_bus_width", "name": "4"},
+                      result["bus_topology"]["unresolved"])
+
+    def test_local_and_global_with_the_same_members_are_not_ambiguous(self):
+        result = self.analyze("D[0..3]")
+        self.assertEqual(result["bus_topology"]["unresolved"], [])
+        self.assertIn(frozenset({"R1", "R2", "R8"}), pin_groups(result))
 
 
 if __name__ == "__main__":

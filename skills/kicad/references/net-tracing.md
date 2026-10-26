@@ -129,7 +129,8 @@ separate from the point-to-point tracing above.
 - **Sheet pins.** A parent bus reaching a child sheet's pin maps onto the
   child's hierarchical-label bus positionally, per instance — never by
   matching bare bus names across instances. The parent order comes from the
-  bus's local label, else its global label, else its hierarchical label.
+  bus's local or global label (two different names of one width are
+  ambiguous), else its hierarchical label.
 - **Hier/local join.** A genuine (non-sheet-pin) hierarchical label joins
   same-name local labels on its own sheet into one net; a sheet-pin label
   does not — its bare name belongs to the child and repeats per instance.
