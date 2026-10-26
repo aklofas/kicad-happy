@@ -3,12 +3,9 @@ import math
 import re
 
 
-# Coordinate matching tolerance (mm) — used across net building and connectivity analysis
-COORD_EPSILON = 0.01
-
 # Legacy .sch files use integer mils (1/1000 inch).  The conversion pipeline
 # (mil * 0.0254 → round(4) → rotate via trig → round(4)) accumulates
-# floating-point error that can exceed COORD_EPSILON.  Snapping back to the
+# floating-point error that can move a point off its exact coordinate.  Snapping back to the
 # nearest mil grid after all transforms eliminates the drift.
 _MIL_MM = 0.0254  # 1 mil in mm
 

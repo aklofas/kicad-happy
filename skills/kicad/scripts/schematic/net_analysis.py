@@ -5,9 +5,7 @@ import re
 from kicad_types import (
     AnalysisContext,
 )
-from kicad_core.values import (
-    COORD_EPSILON,
-)
+from kicad_core.coords import to_iu
 from kicad_core.parts import (
     _OUTPUT_DRIVE_KEYWORDS,
 )
@@ -26,14 +24,13 @@ def analyze_connectivity(components: list[dict], nets: dict, no_connects: list[d
     - multi_driver_nets: nets with multiple output/bidirectional drivers
     - power_net_summary: per power rail, which components connect
     """
-    EPSILON = COORD_EPSILON
 
     # Build set of no-connect positions for quick lookup
     nc_positions = set()
     for nc in no_connects:
         nc_positions.add((nc.get("_sheet", 0),
-                          round(nc["x"] / EPSILON) * EPSILON,
-                          round(nc["y"] / EPSILON) * EPSILON))
+                          to_iu(nc["x"]),
+                          to_iu(nc["y"])))
 
     # Build set of all pins that appear in any net
     connected_pins = set()
@@ -51,8 +48,8 @@ def analyze_connectivity(components: list[dict], nets: dict, no_connects: list[d
             if pin_key not in connected_pins:
                 # Check if there's a no-connect marker at this pin
                 pin_pos = (comp.get("_sheet", 0),
-                           round(pin["x"] / EPSILON) * EPSILON,
-                           round(pin["y"] / EPSILON) * EPSILON)
+                           to_iu(pin["x"]),
+                           to_iu(pin["y"]))
                 if pin_pos not in nc_positions:
                     unconnected_pins.append({
                         "component": comp["reference"],

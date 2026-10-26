@@ -8,7 +8,8 @@ import re
 from pathlib import Path
 
 from kicad_core.sexp import find_all, parse_file
-from kicad_core.values import COORD_EPSILON, _MIL_MM, snap_to_mil_grid as _snap_mil
+from kicad_core.coords import to_iu
+from kicad_core.values import _MIL_MM, snap_to_mil_grid as _snap_mil
 from kicad_core.classify import classify_component
 from kicad_core.fields import (
     MPN_FIELD_ALIASES_PRIMARY, MPN_FIELD_ALIASES_GENERIC,
@@ -541,8 +542,8 @@ def _snap_pins_to_wires(components: list[dict], wires: list[dict],
 
     Legacy KiCad standard library pin offsets vary between versions (±100, ±150,
     ±200, ±250 mils for R/C/L/D).  A pin of a component whose symbol came from
-    the built-in table (``_pin_source == "builtin"``) that has no wire endpoint
-    within COORD_EPSILON may move to the free wire endpoint nearest to it among
+    the built-in table (``_pin_source == "builtin"``) that is not exactly on a wire
+    endpoint may move to the free wire endpoint nearest to it among
     those within _MAX_SNAP_DIST of the component center, roughly in the pin's
     direction.
 
@@ -554,18 +555,16 @@ def _snap_pins_to_wires(components: list[dict], wires: list[dict],
     Pins from parsed libraries are where KiCad puts them and never move.
     """
     _MAX_SNAP_DIST = 12.0  # mm (~470 mils) — covers all standard symbols
-    EPS = COORD_EPSILON
-
     def key(x, y):
-        return (round(x / EPS) * EPS, round(y / EPS) * EPS)
+        return (to_iu(x), to_iu(y))
 
-    wire_eps_by_sheet: dict[int, set[tuple[float, float]]] = {}
+    wire_eps_by_sheet: dict[int, set[tuple[int, int]]] = {}
     for w in wires:
         sheet = w.get("_sheet", 0)
         for x, y in ((w["x1"], w["y1"]), (w["x2"], w["y2"])):
             wire_eps_by_sheet.setdefault(sheet, set()).add(key(x, y))
 
-    held: dict[int, set[tuple[float, float]]] = {}
+    held: dict[int, set[tuple[int, int]]] = {}
     for comp in components:
         sheet = comp.get("_sheet", 0)
         if comp.get("type") in ("power_symbol", "power_flag", "flag"):
@@ -622,7 +621,7 @@ def _snap_pins_to_wires(components: list[dict], wires: list[dict],
 
     # A pin that loses its endpoint does not fall back to a farther one: the
     # winner is the likelier owner and the loser's offset is likely wrong.
-    taken: set[tuple[int, tuple[float, float]]] = set()
+    taken: set[tuple[int, tuple[int, int]]] = set()
     for _d, ci, pi, sheet, (wx, wy) in sorted(wanted, key=lambda w: w[:3]):
         end = (sheet, key(wx, wy))
         if end in taken:

@@ -1024,7 +1024,8 @@ def analyze_legacy_schematic(path: str, analysis_dir: str | Path | None = None) 
     # Build nets from wires + labels + power symbols + component pins
     nets = build_net_map(all_components, all_wires, all_labels, power_symbols, all_junctions,
                          all_no_connects,
-                         sheet_names=[Path(p).stem for p in sheets_parsed])
+                         sheet_names=[Path(p).stem for p in sheets_parsed],
+                         diagnostics=parse_diagnostics)
 
     stats = compute_statistics(all_components, nets, bom, all_wires, all_no_connects)
 
@@ -1341,7 +1342,7 @@ def analyze_schematic(path: str, project_root: str | None = None,
     nets = build_net_map(all_components, all_wires, all_labels, power_symbols, all_junctions,
                          all_no_connects,
                          sheet_names=[Path(p).stem for p in sheets_parsed],
-                         bus_elements=merged_bus)
+                         bus_elements=merged_bus, diagnostics=pipeline_diagnostics)
 
     # Generate BOM
     bom = generate_bom(all_components)

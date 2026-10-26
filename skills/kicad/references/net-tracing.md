@@ -47,7 +47,7 @@ Example: Resistor at (152.4, 176.53) rotated 90 deg, pin 1 at relative (0, 3.81)
 
 Large IC symbols (e.g., ESP32 modules) have pins on the left **and** right sides. Two different pins can share the same Y-coordinate but have very different X-coordinates. A `no_connect` or wire at `(91.44, 77.47)` is NOT the same pin as a wire endpoint at `(60.96, 77.47)` — they are on opposite sides of the symbol.
 
-**Always verify BOTH X and Y** when matching coordinates. Use exact floating-point comparison — KiCad stores coordinates with nanometer precision internally, and properly connected elements share the exact same coordinate values. If you see any difference (even 0.001mm), the coordinates are NOT the same point; they indicate a wiring error or coordinate transform bug. To determine which side a pin exits from:
+**Always verify BOTH X and Y** when matching coordinates. Use exact comparison — KiCad stores schematic coordinates as integers of 100 nm (0.0001 mm) and joins two points only when those integers are equal. If you see any difference (even 0.001mm), the coordinates are NOT the same point; they indicate a wiring error or coordinate transform bug, and KiCad does not connect them. The analyzer joins the same way and lists each such near miss in `diagnostics` (`CoordinateNearMiss`). To determine which side a pin exits from:
 1. Find the pin's relative offset in the `lib_symbols` definition — negative X = left side, positive X = right side
 2. Apply the symbol's placement transform to get the absolute position
 3. Match against wires/labels/no_connects using the **exact** (X, Y) pair

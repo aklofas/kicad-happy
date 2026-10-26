@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import re
 
-from kicad_core.values import COORD_EPSILON
+from kicad_core.coords import segment_hit_iu, to_iu
+from kicad_core.diagnostics import record
 from kicad_core.model import Net
 
 
@@ -62,10 +63,10 @@ _EPSILON = 0.01
 
 
 def _point_on_segment(px, py, x1, y1, x2, y2, tol=0.05):
-    """Point-on-segment test (bbox + cross-product collinearity).
+    """Point-on-segment test in mm with a 0.05 mm tolerance (bbox + distance to the line).
 
-    Same math as analyze_schematic.py:1408-1424, copied rather than
-    imported to keep this module stdlib-only and analyzer-independent.
+    Bus clusters and bus-entry taps keep this tolerance; build_net_map also uses it to
+    report points that are near a wire without lying on it.
     """
     if px < min(x1, x2) - tol or px > max(x1, x2) + tol:
         return False
@@ -295,15 +296,58 @@ def match_ports(pin_ports, hier_ports, unresolved):
     return pairs
 
 
+class CoordinateNearMiss(Exception):
+    """A point within 0.01 mm of another point, or 0.05 mm of a wire, that KiCad does not join."""
+
+
+_NEAR_MISS_CAP = 20
+_NEAR_MISS_EFFECT = "not connected (KiCad joins exact coordinates)"
+
+
+def _mm(v: float) -> str:
+    text = f"{v:.4f}".rstrip("0").rstrip(".")
+    return "0" if text == "-0" else text
+
+
+def _describe_point(info: dict) -> str:
+    src = info["source"]
+    if src == "pin":
+        return f"pin '{info['component']}.{info['pin_number']}'"
+    if src == "pwr_flag":
+        return f"PWR_FLAG pin '{info['component']}'"
+    if src == "label":
+        kind = (info.get("label_type") or "label").replace("_", " ")
+        return f"{kind} '{info.get('name') or ''}'"
+    if src == "power_symbol":
+        return f"power symbol '{info['net_name']}'"
+    return {"wire": "wire end", "junction": "junction", "no_connect": "no-connect marker",
+            "bus_tap": "bus entry"}.get(src, src)
+
+
+def _distance_to_segment_iu(p, a, b) -> float:
+    abx, aby = b[0] - a[0], b[1] - a[1]
+    apx, apy = p[0] - a[0], p[1] - a[1]
+    f = abx * abx + aby * aby
+    t = 0.0 if f == 0 else max(0.0, min(1.0, (apx * abx + apy * aby) / f))
+    return ((apx - t * abx) ** 2 + (apy - t * aby) ** 2) ** 0.5
+
+
 def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
                   power_symbols: list[dict], junctions: list[dict],
                   no_connects: list[dict] | None = None,
                   sheet_names: list[str] | None = None,
-                  bus_elements: dict | None = None) -> dict[str, Net]:
+                  bus_elements: dict | None = None,
+                  diagnostics: list | None = None) -> dict[str, Net]:
     """Build a connectivity map using union-find on coordinates.
 
     Groups all electrically connected points into nets, then names them
     from labels and power symbols.
+
+    Points join only at identical KiCad internal units (100 nm); a label joins
+    a wire within 1 IU, a junction only exactly on it, a pin (power symbols
+    included) only at a wire end. A point left unjoined within 0.01 mm of
+    another point or 0.05 mm of a wire is recorded in ``diagnostics`` as a
+    ``CoordinateNearMiss`` (at most 20, then one summary record).
 
     When ``bus_elements`` carries bus wires (GH #25), a per-sheet bus pass
     resolves hierarchical bus connectivity: bus-name labels are consumed out
@@ -312,17 +356,19 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
     hier-label bus. On ``bus_elements=None`` or a board with no bus wires the
     pass is inert and the output is byte-identical to the pre-#25 map.
     """
-    EPSILON = COORD_EPSILON
-
     # Collect all electrical points
     # Each point: (sheet, x, y, source_info)
     # The sheet index keeps each sheet's coordinate space separate so that
     # wires on different sheets at the same (x,y) don't falsely merge.
     parent = {}
     point_info = {}  # key -> list of info dicts
+    # 0.01 mm buckets, used only to report points that are close but not equal:
+    # (sheet, bx, by) -> {key: (x, y, info) of its first point}
+    near_buckets: dict[tuple, dict] = {}
+    near_wires: dict[tuple, tuple] = {}  # (key, wire index) -> (x, y, info)
 
     def key(x, y, sheet=0):
-        return (sheet, round(x / EPSILON) * EPSILON, round(y / EPSILON) * EPSILON)
+        return (sheet, to_iu(x), to_iu(y))
 
     def find(p):
         while parent.get(p, p) != p:
@@ -340,6 +386,8 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
         if k not in parent:
             parent[k] = k
         point_info.setdefault(k, []).append(info)
+        near_buckets.setdefault((sheet, round(x / 0.01), round(y / 0.01)), {}).setdefault(
+            k, (x, y, info))
         return k
 
     # Add component pins. PWR_FLAG is an ERC marker, not a real connection —
@@ -364,8 +412,8 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
 
     # Add wire endpoints and union them.
     # Also build a list of wire segments so we can detect points that land
-    # mid-wire (labels, pins, junctions, power symbols placed on a wire
-    # between its endpoints).
+    # mid-wire (labels, junctions and bus-entry taps placed on a wire between
+    # its endpoints).
     wire_segments = []  # list of (k1, k2, x1, y1, x2, y2, sheet)
     # Spatial grid index for fast wire segment lookup — avoids O(W*P) scans.
     # Grid cell size of 5mm captures typical KiCad schematic wire lengths.
@@ -390,36 +438,25 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
             for gy in range(gy0, gy1 + 1):
                 wire_grid.setdefault((sheet, gx, gy), []).append(idx)
 
-    def point_on_segment(px, py, x1, y1, x2, y2):
-        """Check if point (px,py) lies on the wire segment (x1,y1)-(x2,y2)."""
-        # Quick bounding box check with tolerance
-        tol = 0.05
-        if px < min(x1, x2) - tol or px > max(x1, x2) + tol:
-            return False
-        if py < min(y1, y2) - tol or py > max(y1, y2) + tol:
-            return False
-        # Cross product to check collinearity
-        cross = (x2 - x1) * (py - y1) - (y2 - y1) * (px - x1)
-        seg_len_sq = (x2 - x1) ** 2 + (y2 - y1) ** 2
-        if seg_len_sq < tol * tol:
-            return False
-        # Distance from point to line, squared
-        if abs(cross) / (seg_len_sq ** 0.5) > tol:
-            return False
-        return True
+    def wires_near(px, py, sheet):
+        return wire_grid.get((sheet, int(px // _WIRE_GRID_SIZE), int(py // _WIRE_GRID_SIZE)), ())
 
-    def union_with_overlapping_wires(k, px, py, sheet=0):
-        """Union point k with every wire segment it lies on (same sheet only)."""
-        gx = int(px // _WIRE_GRID_SIZE)
-        gy = int(py // _WIRE_GRID_SIZE)
-        candidates = wire_grid.get((sheet, gx, gy), ())
-        for idx in candidates:
-            wk1, wk2, wx1, wy1, wx2, wy2, ws = wire_segments[idx]
-            if point_on_segment(px, py, wx1, wy1, wx2, wy2):
+    def union_with_overlapping_wires(k, px, py, sheet, dist_iu, info):
+        """Union point k with every same-sheet wire within dist_iu IU of it.
+
+        dist_iu None joins no wire here (a pin meets a wire only at its end,
+        which shares k). A wire within 0.05 mm that does not join is kept as a
+        near-miss candidate.
+        """
+        for idx in wires_near(px, py, sheet):
+            wk1, wk2, wx1, wy1, wx2, wy2, _ws = wire_segments[idx]
+            if dist_iu is not None and segment_hit_iu(k[1:], wk1[1:], wk2[1:], dist_iu):
                 union(k, wk1)
                 # KH-360: no early return — a junction/label at a crossing
                 # must join every wire under it, matching KiCad's
                 # connection_graph (all coincident lines are inserted).
+            elif _point_on_segment(px, py, wx1, wy1, wx2, wy2):
+                near_wires.setdefault((k, idx), (px, py, info))
 
     # Bus pass classification (GH #25). Group bus wires/entries per sheet,
     # build a BusGraph for every sheet that carries bus wire, and attach each
@@ -484,12 +521,13 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
         lbl_name = lbl["name"]
         if isinstance(lbl_name, list):
             lbl_name = str(lbl_name[0]) if lbl_name else ""
-        k = add_point(lbl["x"], lbl["y"], {
+        lbl_info = {
             "source": "label",
             "name": lbl_name,
             "label_type": lbl["type"],
             "bare_name": lbl.get("_bare_name"),
-        }, sheet)
+        }
+        k = add_point(lbl["x"], lbl["y"], lbl_info, sheet)
         # Only global labels and power symbols connect across sheets.
         # Local labels only connect within the same sheet (handled by wire union).
         if lbl["type"] == "global_label":
@@ -511,7 +549,8 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
             # Local labels: union same-name labels within this sheet only
             local_key = (lbl_name, sheet)
             label_keys.setdefault(local_key, []).append(k)
-        union_with_overlapping_wires(k, lbl["x"], lbl["y"], sheet)
+        # KiCad joins a label to a wire it hits within 1 IU.
+        union_with_overlapping_wires(k, lbl["x"], lbl["y"], sheet, 1, lbl_info)
 
     # Add power symbols — compute actual pin position from lib symbol.
     # PWR_FLAG is a DRC-only marker (tells ERC a net has a power source).
@@ -520,11 +559,12 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
         if ps["net_name"] == "PWR_FLAG":
             continue
         sheet = ps.get("_sheet", 0)
-        k = add_point(ps["x"], ps["y"], {
+        ps_info = {
             "source": "power_symbol",
             "net_name": ps["net_name"],
             "power_scope": ps.get("_power_scope", "global"),
-        }, sheet)
+        }
+        k = add_point(ps["x"], ps["y"], ps_info, sheet)
         # Global power symbols connect across all sheets; local power symbols
         # only connect within the same sheet (isolated power domains).
         if ps.get("_power_scope") == "local":
@@ -532,7 +572,8 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
             label_keys.setdefault(local_key, []).append(k)
         else:
             label_keys.setdefault(ps["net_name"], []).append(k)
-        union_with_overlapping_wires(k, ps["x"], ps["y"], sheet)
+        # A power symbol is a pin: KiCad joins it to a wire only at a wire end.
+        union_with_overlapping_wires(k, ps["x"], ps["y"], sheet, None, ps_info)
 
     # Legacy hidden power-in pins: in KiCad 4/5, ICs could have invisible
     # power-in pins (VCC, GND) that create implicit global net connections
@@ -556,8 +597,10 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
     # Add junctions — also check mid-wire placement
     for junc in junctions:
         sheet = junc.get("_sheet", 0)
-        k = add_point(junc["x"], junc["y"], {"source": "junction"}, sheet)
-        union_with_overlapping_wires(k, junc["x"], junc["y"], sheet)
+        junc_info = {"source": "junction"}
+        k = add_point(junc["x"], junc["y"], junc_info, sheet)
+        # KiCad joins a junction to the wires it lies exactly on.
+        union_with_overlapping_wires(k, junc["x"], junc["y"], sheet, 0, junc_info)
 
     # Add no-connect markers to the union-find so NC'd pins are absorbed into
     # the same group and the resulting net gets tagged as intentional NC.
@@ -653,7 +696,10 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
             g = bus_graphs[s]
             for tap in g.taps:
                 tk = add_point(tap["x"], tap["y"], {"source": "bus_tap"}, s)
-                union_with_overlapping_wires(tk, tap["x"], tap["y"], s)
+                for idx in wires_near(tap["x"], tap["y"], s):
+                    wk1, _wk2, wx1, wy1, wx2, wy2, _ws = wire_segments[idx]
+                    if _point_on_segment(tap["x"], tap["y"], wx1, wy1, wx2, wy2):
+                        union(tk, wk1)
                 tap_points.append((s, tk, tap))
 
         # Local label names present on each union group, for tap member ID.
@@ -736,6 +782,8 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
 
         bus_elements["_unresolved"] = all_unresolved + [
             u for s in sorted(bus_graphs) for u in bus_graphs[s].unresolved]
+
+    _record_near_misses(near_buckets, near_wires, wire_segments, find, sheet_names, diagnostics)
 
     # Build net groups
     net_groups: dict[tuple, list[tuple]] = {}
@@ -887,6 +935,45 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
                 entry["display_name"] = bare
             nets[k] = entry
     return nets
+
+
+def _record_near_misses(near_buckets, near_wires, wire_segments, find, sheet_names, diagnostics):
+    """Record each near-miss candidate that ends up not connected."""
+    def sheet_label(sheet):
+        return sheet_names[sheet] if sheet_names and 0 <= sheet < len(sheet_names) else sheet
+
+    events = []
+    for pts in near_buckets.values():
+        if len(pts) < 2:
+            continue
+        keys = sorted(pts)
+        k0 = keys[0]
+        x0, y0, info0 = pts[k0]
+        for k in keys[1:]:
+            if find(k) == find(k0):
+                continue
+            x, y, info = pts[k]
+            d = ((k[1] - k0[1]) ** 2 + (k[2] - k0[2]) ** 2) ** 0.5 / 1e4
+            events.append((k, f"sheet {sheet_label(k[0])}: {_describe_point(info)} at ({_mm(x)}, {_mm(y)}) mm"
+                              f" is {_mm(d)} mm from {_describe_point(info0)} at ({_mm(x0)}, {_mm(y0)})"))
+    for (k, idx), (x, y, info) in near_wires.items():
+        wk1, wk2, wx1, wy1, wx2, wy2, _ws = wire_segments[idx]
+        if find(k) == find(wk1):
+            continue
+        d = _distance_to_segment_iu(k[1:], wk1[1:], wk2[1:]) / 1e4
+        where = (f"lies inside wire ({_mm(wx1)}, {_mm(wy1)})-({_mm(wx2)}, {_mm(wy2)})"
+                 " (a pin joins a wire only at its ends)" if d == 0 else
+                 f"is {_mm(d)} mm from wire ({_mm(wx1)}, {_mm(wy1)})-({_mm(wx2)}, {_mm(wy2)})")
+        events.append((k, f"sheet {sheet_label(k[0])}: {_describe_point(info)} at ({_mm(x)}, {_mm(y)}) mm"
+                          f" {where}"))
+    events.sort()
+    for _k, message in events[:_NEAR_MISS_CAP]:
+        record(diagnostics, "schematic.connectivity.build_net_map",
+               CoordinateNearMiss(message), _NEAR_MISS_EFFECT)
+    if len(events) > _NEAR_MISS_CAP:
+        record(diagnostics, "schematic.connectivity.build_net_map",
+               CoordinateNearMiss(f"{len(events) - _NEAR_MISS_CAP} more near misses not listed"),
+               _NEAR_MISS_EFFECT)
 
 
 # Internal-only fields the bus pass (GH #25) reads off namespaced hierarchical
