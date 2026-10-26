@@ -20,6 +20,30 @@ from schematic.reader import (
 )
 
 
+def namespace_hierarchical_labels(labels: list[dict], inst_path: str) -> None:
+    """Prefix each hierarchical label and sheet pin with its sheet instance path, in place.
+
+    A child's hierarchical label becomes ``<inst_path>/NAME``; a sheet pin (a label
+    carrying ``_sheet_uuid``) becomes ``<inst_path>/<sheet_uuid>/NAME``, the name the
+    child instance gives its label, so the two meet by name.  The bare name and the
+    namespace stay on internal fields so the bus pass (GH #25) can pair parent
+    sheet-pin ports with child hier-label ports positionally.
+    """
+    for lbl in labels:
+        if lbl["type"] == "hierarchical_label":
+            suuid = lbl.pop("_sheet_uuid", None)
+            lbl["_bare_name"] = lbl["name"]
+            if suuid:
+                lbl["_is_sheet_pin"] = True
+                lbl["_hier_ns"] = ((inst_path + "/" + suuid)
+                                   if inst_path else ("/" + suuid))
+                lbl["name"] = lbl["_hier_ns"] + "/" + lbl["name"]
+            else:
+                lbl["_hier_ns"] = inst_path
+                if inst_path:
+                    lbl["name"] = inst_path + "/" + lbl["name"]
+
+
 def parse_all_sheets(root_path: str, root_tree: list | None = None,
                      symbol_instances_override: dict | None = None, *,
                      diagnostics: list | None = None):
@@ -112,23 +136,7 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
         for be in bus_elements.get("bus_entries", []):
             be["_sheet"] = sheet_idx
 
-        # Namespace hierarchical labels, but retain the bare identity and
-        # namespace on internal fields so the bus pass (GH #25) can pair
-        # parent sheet-pin ports with child hier-label ports positionally.
-        # Name-mangling must reproduce the pre-#25 values exactly.
-        for lbl in labels:
-            if lbl["type"] == "hierarchical_label":
-                suuid = lbl.pop("_sheet_uuid", None)
-                lbl["_bare_name"] = lbl["name"]
-                if suuid:
-                    lbl["_is_sheet_pin"] = True
-                    lbl["_hier_ns"] = ((inst_path + "/" + suuid)
-                                       if inst_path else ("/" + suuid))
-                    lbl["name"] = lbl["_hier_ns"] + "/" + lbl["name"]
-                else:
-                    lbl["_hier_ns"] = inst_path
-                    if inst_path:
-                        lbl["name"] = inst_path + "/" + lbl["name"]
+        namespace_hierarchical_labels(labels, inst_path)
 
         all_components.extend(components)
         all_wires.extend(wires)

@@ -46,6 +46,7 @@ from kicad_types import (
 )
 from schematic.connectivity import build_net_map
 from schematic.hierarchy import (
+    namespace_hierarchical_labels,
     parse_all_sheets,
     merge_top_level_sheets,
 )
@@ -854,8 +855,10 @@ def analyze_legacy_schematic(path: str, analysis_dir: str | Path | None = None) 
     Legacy format uses line-oriented text with $Comp/$EndComp blocks, coordinates
     in mils (1/1000 inch), and positional field numbering (F0=ref, F1=value, etc.).
 
-    For hierarchical designs, recursively parses all subsheets referenced by
-    $Sheet blocks and merges connectivity across sheets.
+    For hierarchical designs, parses every instance of every subsheet referenced by
+    $Sheet blocks and merges connectivity across sheets.  A sheet used more than once
+    contributes each instance's components, referenced from their per-instance
+    ``AR`` records (else the ``L``/``F0`` reference).
 
     Parses .lib files to populate component pin data for pin-to-net mapping
     and signal analysis.
@@ -867,15 +870,20 @@ def analyze_legacy_schematic(path: str, analysis_dir: str | Path | None = None) 
     all_no_connects = []
     sheets_parsed = []
     all_sch_lines = {}  # path -> LIBS: lines for lib resolution
+    parse_diagnostics: list = []
 
-    to_parse = [str(Path(path).resolve())]
+    # Each queue entry carries the chain of sheet files above it: a sheet that
+    # names one of its own ancestors would otherwise expand forever.
+    to_parse = [(str(Path(path).resolve()), "", ())]
     parsed = set()
+    skipped = set()
 
     while to_parse:
-        sheet_path = to_parse.pop(0)
-        if sheet_path in parsed:
+        sheet_path, inst_path, ancestors = to_parse.pop(0)
+        parse_key = (sheet_path, inst_path)
+        if parse_key in parsed:
             continue
-        parsed.add(sheet_path)
+        parsed.add(parse_key)
 
         components, wires, labels, junctions, no_connects, sub_sheets, lib_lines = \
             _parse_legacy_single_sheet(sheet_path)
@@ -895,6 +903,20 @@ def analyze_legacy_schematic(path: str, analysis_dir: str | Path | None = None) 
         for nc in no_connects:
             nc["_sheet"] = sheet_idx
 
+        # KiCad 5 keys a symbol's per-instance reference by the sheet timestamp
+        # path without the root, then the symbol's own timestamp.
+        for c in components:
+            ar = c.pop("_ar", None)
+            if ar and inst_path:
+                hit = ar.get((inst_path + "/" + c.get("uuid", "")).upper())
+                if hit:
+                    c["reference"] = hit[0]
+                    try:
+                        c["unit"] = int(hit[1])
+                    except ValueError:
+                        pass
+        namespace_hierarchical_labels(labels, inst_path)
+
         all_components.extend(components)
         all_wires.extend(wires)
         all_labels.extend(labels)
@@ -902,9 +924,19 @@ def analyze_legacy_schematic(path: str, analysis_dir: str | Path | None = None) 
         all_no_connects.extend(no_connects)
         sheets_parsed.append(sheet_path)
 
-        for sub_path in sub_sheets:
-            if sub_path not in parsed:
-                to_parse.append(sub_path)
+        chain = ancestors + (sheet_path,)
+        for sub_path, sub_ts in sub_sheets:
+            if sub_path in chain:
+                if sub_path not in skipped:
+                    skipped.add(sub_path)
+                    record(parse_diagnostics, "schematic.pipeline.analyze_legacy_schematic",
+                           ValueError(f"sheet file {os.path.basename(sheet_path)} includes its own "
+                                      f"ancestor {os.path.basename(sub_path)}"),
+                           "recursive sheet skipped")
+                continue
+            child_path = inst_path + "/" + sub_ts if sub_ts else inst_path
+            if (sub_path, child_path) not in parsed:
+                to_parse.append((sub_path, child_path, chain))
 
     # Resolve .lib files and parse pin data
     root_path = str(Path(path).resolve())
@@ -1033,7 +1065,7 @@ def analyze_legacy_schematic(path: str, analysis_dir: str | Path | None = None) 
         annotation_issues=annotation_issues,
         legacy_resolution=legacy_resolution,
     )
-    result["diagnostics"] = merge(ctx.diagnostics)
+    result["diagnostics"] = merge(parse_diagnostics, ctx.diagnostics)
     return result
 
 

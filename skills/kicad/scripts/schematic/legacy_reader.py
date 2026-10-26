@@ -610,12 +610,18 @@ def _snap_pins_to_wires(components: list[dict], wires: list[dict],
         comp["_pin_source"] = "snapped_to_wire"
 
 
+_AR_LINE = re.compile(r'AR\s+Path="([^"]*)"\s+Ref="([^"]*)"\s+Part="([^"]*)"')
+_SHEET_PIN_LINE = re.compile(r'F(\d+)\s+"([^"]*)"\s+\S+\s+\S+\s+(-?\d+)\s+(-?\d+)')
+
+
 def _parse_legacy_single_sheet(path: str) -> tuple:
     """Parse a single legacy .sch file and return raw extracted data.
 
     Returns: (components, wires, labels, junctions, no_connects, sub_sheet_paths, lib_lines)
-    where sub_sheet_paths is a list of resolved Path strings for $Sheet references,
-    and lib_lines is a list of raw 'LIBS:...' lines from the file header.
+    where sub_sheet_paths is a list of (resolved path, sheet timestamp) for $Sheet
+    references, and lib_lines is a list of raw 'LIBS:...' lines from the file header.
+    Sheet pins come back as hierarchical labels carrying ``_sheet_uuid``; a component's
+    ``AR`` records come back as ``_ar`` = {upper-cased path: (reference, unit)}.
     """
     with open(path, "r", encoding="utf-8", errors="replace") as f:
         lines = f.readlines()
@@ -669,6 +675,12 @@ def _parse_legacy_single_sheet(path: str) -> tuple:
                             comp["_body_style"] = int(parts[2])
                         except ValueError:
                             pass
+
+                # AR Path="/<sheet ts>/.../<symbol ts>" Ref="R10"  Part="1"
+                elif cl.startswith("AR "):
+                    am = _AR_LINE.match(cl)
+                    if am:
+                        comp.setdefault("_ar", {})[am.group(1).upper()] = (am.group(2), am.group(3))
 
                 # P x y
                 elif cl.startswith("P "):
@@ -761,9 +773,11 @@ def _parse_legacy_single_sheet(path: str) -> tuple:
                                               description=comp.get("description", ""))
             components.append(comp)
 
-        # Hierarchical sheet block — extract subsheet filename
+        # Hierarchical sheet block — subsheet filename, timestamp and pins
         elif line == "$Sheet":
             sheet_file = None
+            sheet_ts = ""
+            sheet_pins = []
             i += 1
             while i < len(lines) and lines[i].strip() != "$EndSheet":
                 sl = lines[i].strip()
@@ -771,11 +785,22 @@ def _parse_legacy_single_sheet(path: str) -> tuple:
                 sm = re.match(r'F1\s+"([^"]+\.sch)"', sl)
                 if sm:
                     sheet_file = sm.group(1)
+                um = re.match(r'U\s+([0-9A-Fa-f]+)', sl)
+                if um:
+                    sheet_ts = um.group(1).upper()
+                # F<n> "NAME" shape side x y size, n >= 2 — a sheet pin
+                pm = _SHEET_PIN_LINE.match(sl)
+                if pm and int(pm.group(1)) >= 2:
+                    sheet_pins.append((pm.group(2), int(pm.group(3)), int(pm.group(4))))
                 i += 1
+            for pin_name, px, py in sheet_pins:
+                labels.append({"name": pin_name, "type": "hierarchical_label",
+                               "x": _snap_mil(px * MIL_TO_MM), "y": _snap_mil(py * MIL_TO_MM),
+                               "angle": 0, "_sheet_uuid": sheet_ts})
             if sheet_file:
                 sub_path = base_dir / sheet_file
                 if sub_path.exists():
-                    sub_sheet_paths.append(str(sub_path.resolve()))
+                    sub_sheet_paths.append((str(sub_path.resolve()), sheet_ts))
 
         # Wire
         elif line == "Wire Wire Line":
