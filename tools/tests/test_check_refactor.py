@@ -200,10 +200,12 @@ class DiscoverFixtures(unittest.TestCase):
             (root / "p1" / "a.kicad_pcb").write_text("(kicad_pcb)", encoding="utf-8")
             (root / "p1" / "gerbers").mkdir(); (root / "p1" / "gerbers" / "a-F_Cu.gbr").write_text("G04*", encoding="utf-8")
             (root / "p2").mkdir(); (root / "p2" / "b.kicad_sch").write_text("(kicad_sch)", encoding="utf-8")
+            (root / "p3").mkdir(); (root / "p3" / "c.sch").write_text("EESchema Schematic File Version 4\n", encoding="utf-8")
             fx = cr.discover_fixtures(root)
             kinds = sorted((f["kind"], f["rel"]) for f in fx)
             self.assertEqual(kinds, [("gerber", "p1/gerbers"), ("pcb", "p1/a.kicad_pcb"),
-                                     ("sch", "p1/a.kicad_sch"), ("sch", "p2/b.kicad_sch")])
+                                     ("sch", "p1/a.kicad_sch"), ("sch", "p2/b.kicad_sch"),
+                                     ("sch", "p3/c.sch")])
 
     def test_aba_builtin_kicad10_pair_differs_in_sorted_position_of_common(self):
         self.assertIn('(net "COMMON")', cr.KICAD10_BOARD_A)

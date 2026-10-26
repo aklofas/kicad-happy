@@ -349,7 +349,7 @@ def discover_fixtures(root: Path) -> list[dict]:
         if "__pycache__" in p.parts:
             continue
         rel = p.relative_to(root).as_posix()
-        if p.suffix == ".kicad_sch" and p.is_file():
+        if p.suffix in (".kicad_sch", ".sch") and p.is_file():
             out.append({"kind": "sch", "rel": rel, "path": p})
         elif p.suffix == ".kicad_pcb" and p.is_file():
             out.append({"kind": "pcb", "rel": rel, "path": p})
