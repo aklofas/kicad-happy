@@ -42,7 +42,12 @@ def parse_file(path: str) -> list:
         return parse(f.read())
 
 
-def _tokenize(text: str) -> list[str]:
+# Punctuation tokens are sentinels so a quoted "(" or ")" stays a plain string.
+_LPAREN = object()
+_RPAREN = object()
+
+
+def _tokenize(text: str) -> list:
     """Tokenize S-expression text into a flat list of tokens."""
     tokens = []
     i = 0
@@ -56,10 +61,10 @@ def _tokenize(text: str) -> list[str]:
             while i < n and text[i] != "\n":
                 i += 1
         elif c == "(":
-            tokens.append("(")
+            tokens.append(_LPAREN)
             i += 1
         elif c == ")":
-            tokens.append(")")
+            tokens.append(_RPAREN)
             i += 1
         elif c == '"':
             # Quoted string
@@ -86,20 +91,22 @@ def _tokenize(text: str) -> list[str]:
     return tokens
 
 
-def _parse_tokens(tokens: list[str], pos: int) -> tuple[Any, int]:
+def _parse_tokens(tokens: list, pos: int) -> tuple[Any, int]:
     """Recursively parse tokens starting at pos. Returns (result, new_pos)."""
     # KH-101: Bounds check for truncated/malformed files with unbalanced parens
     if pos >= len(tokens):
         raise ValueError("Unexpected end of input at position %d" % pos)
-    if tokens[pos] == "(":
+    if tokens[pos] is _LPAREN:
         lst = []
         pos += 1
-        while pos < len(tokens) and tokens[pos] != ")":
+        while pos < len(tokens) and tokens[pos] is not _RPAREN:
             item, pos = _parse_tokens(tokens, pos)
             lst.append(item)
         return lst, pos + 1  # skip ')'
     else:
-        return tokens[pos], pos + 1
+        tok = tokens[pos]
+        # A stray ")" at top level comes back as the string, as for any other atom.
+        return (")" if tok is _RPAREN else tok), pos + 1
 
 
 def find_all(node: list, keyword: str) -> list[list]:
