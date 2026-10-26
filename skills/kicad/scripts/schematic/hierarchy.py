@@ -25,19 +25,24 @@ def namespace_hierarchical_labels(labels: list[dict], inst_path: str) -> None:
 
     A child's hierarchical label becomes ``<inst_path>/NAME``; a sheet pin (a label
     carrying ``_sheet_uuid``) becomes ``<inst_path>/<sheet_uuid>/NAME``, the name the
-    child instance gives its label, so the two meet by name.  The bare name and the
-    namespace stay on internal fields so the bus pass (GH #25) can pair parent
+    child instance gives its label, so the two meet by name.  A sheet pin whose sheet
+    has no uuid keeps the parent's namespace but is still a sheet pin.  The bare name
+    and the namespace stay on internal fields so the bus pass (GH #25) can pair parent
     sheet-pin ports with child hier-label ports positionally.
     """
     for lbl in labels:
         if lbl["type"] == "hierarchical_label":
-            suuid = lbl.pop("_sheet_uuid", None)
             lbl["_bare_name"] = lbl["name"]
-            if suuid:
+            if "_sheet_uuid" in lbl:
+                suuid = lbl.pop("_sheet_uuid")
                 lbl["_is_sheet_pin"] = True
-                lbl["_hier_ns"] = ((inst_path + "/" + suuid)
-                                   if inst_path else ("/" + suuid))
-                lbl["name"] = lbl["_hier_ns"] + "/" + lbl["name"]
+                if suuid:
+                    lbl["_hier_ns"] = ((inst_path + "/" + suuid)
+                                       if inst_path else ("/" + suuid))
+                else:
+                    lbl["_hier_ns"] = inst_path
+                if lbl["_hier_ns"]:
+                    lbl["name"] = lbl["_hier_ns"] + "/" + lbl["name"]
             else:
                 lbl["_hier_ns"] = inst_path
                 if inst_path:

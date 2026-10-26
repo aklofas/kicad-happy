@@ -31,12 +31,17 @@ def comp(ref, x, y, ts, ar=()):
 def sheet(ts, name, filename, pins=()):
     pin_lines = "".join(f'F{n} "{pname}" I L {px} {py} 60 \n'
                         for n, (pname, px, py) in enumerate(pins, start=2))
-    return (f"$Sheet\nS 3000 1500 1000 1000\nU {ts}\n"
+    u_line = f"U {ts}\n" if ts else ""
+    return (f"$Sheet\nS 3000 1500 1000 1000\n{u_line}"
             f'F0 "{name}" 50\nF1 "{filename}" 50\n{pin_lines}$EndSheet\n')
 
 
 def wire(x1, y1, x2, y2):
     return f"Wire Wire Line\n\t{x1} {y1} {x2} {y2}\n"
+
+
+def label(x, y, name):
+    return f"Text Label {x} {y} 0    50   ~ 0\n{name}\n"
 
 
 def hlabel(x, y, name):
@@ -84,6 +89,19 @@ class SheetPinTest(unittest.TestCase):
         self.assertEqual(net_of(r, "R2", "1"), "/A0000001/IN")
         self.assertEqual(net_of(r, "R3", "1"), "/B0000001/IN")
 
+    def test_sheet_pins_without_timestamp_do_not_join_a_parent_local_label(self):
+        # Parent local label IN on R1.1; two un-timestamped sheets each show an unwired
+        # pin IN. A sheet pin is not a hierarchical label of the parent sheet, so the
+        # local label stays on its own net.
+        root = (comp("R1", 1000, 2200, "5B000001") + wire(1000, 2000, 1000, 1700)
+                + label(1000, 1700, "IN")
+                + sheet("", "c1", "c1.sch", [("IN", 3000, 2000)])
+                + sheet("", "c2", "c2.sch", [("IN", 5000, 2000)]))
+        r = analyze({"t.sch": root, "c1.sch": CHILD_R2, "c2.sch": CHILD_R3})
+        self.assertIsNotNone(net_of(r, "R1", "1"))
+        self.assertNotEqual(net_of(r, "R1", "1"), net_of(r, "R2", "1"))
+        self.assertNotEqual(net_of(r, "R1", "1"), net_of(r, "R3", "1"))
+
 
 class RepeatedSheetTest(unittest.TestCase):
     def test_each_instance_takes_its_ar_reference(self):
@@ -101,6 +119,22 @@ class RepeatedSheetTest(unittest.TestCase):
         root = (sheet("AAAA0001", "ch1", "c.sch") + sheet("BBBB0001", "ch2", "c.sch"))
         r = analyze({"t.sch": root, "c.sch": comp("R5", 1000, 1000, "5C000001")})
         self.assertEqual([c["reference"] for c in r["components"]], ["R5", "R5"])
+
+    def test_nested_instance_uses_the_full_sheet_path(self):
+        child = comp("R1", 1000, 1000, "5C000001",
+                     ar=[("/BBBB0001/5C000001", "R99"), ("/AAAA0001/BBBB0001/5C000001", "R42")])
+        files = {
+            "t.sch": sheet("AAAA0001", "a", "a.sch"),
+            "a.sch": sheet("BBBB0001", "b", "b.sch"),
+            "b.sch": child,
+        }
+        r = analyze(files)
+        self.assertEqual([c["reference"] for c in r["components"]], ["R42"])
+
+    def test_root_component_keeps_its_f0_reference(self):
+        root = comp("R1", 1000, 1000, "5B000001", ar=[("/5B000001", "R77")])
+        r = analyze({"t.sch": root})
+        self.assertEqual([c["reference"] for c in r["components"]], ["R1"])
 
     def test_ar_match_ignores_timestamp_case(self):
         child = comp("R10", 1000, 1000, "5c000001",
@@ -150,6 +184,11 @@ class NamespaceHelperTest(unittest.TestCase):
                        {"name": "P", "type": "hierarchical_label", "_sheet_uuid": "u9"}]
         namespace_hierarchical_labels(root_labels, "")
         self.assertEqual([l["name"] for l in root_labels], ["IN", "/u9/P"])
+        no_uuid = [{"name": "Q", "type": "hierarchical_label", "_sheet_uuid": ""}]
+        namespace_hierarchical_labels(no_uuid, "/u1")
+        self.assertEqual(no_uuid[0]["name"], "/u1/Q")
+        self.assertTrue(no_uuid[0]["_is_sheet_pin"])
+        self.assertNotIn("_sheet_uuid", no_uuid[0])
 
 
 if __name__ == "__main__":
