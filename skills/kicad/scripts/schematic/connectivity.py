@@ -192,8 +192,8 @@ class BusGraph:
 
     def cluster_ordered(self, cid, width):
         # The cluster's own member naming comes from a local bus label if it
-        # has one, else from a hierarchical bus label — both name the local
-        # wire, so a co-clustered sheet pin maps positionally to them. A sheet
+        # has one, else a global one, else a hierarchical one — each names the
+        # local wire, so a co-clustered sheet pin maps positionally to them. A sheet
         # PIN never participates: it carries the FAR-side (child's) member
         # names, which map positionally, not the local ordering. Local wins
         # over hier so a local relabel (e.g. m68k's SIMM_~{CAS[0..3]} over a
@@ -201,7 +201,7 @@ class BusGraph:
         # root/pass-through bus label (openmd's {PHASES} feeding OUT{PHASES}
         # and V{PHASES} pins) canonicalize the cluster.
         atts = self._cluster_labels.get(cid, [])
-        for role in ("local", "hier"):
+        for role in ("local", "global", "hier"):
             matches = [att["expansion"] for att in atts
                        if att["role"] == role and len(att["expansion"]) == width]
             # Ambiguity is two DIFFERENT expansions of the same width — the same
@@ -429,7 +429,7 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
     bus_graphs: dict[int, BusGraph] = {}
     bus_aliases: dict = {}
     bus_label_idx: set[int] = set()
-    bus_named_labels: list[tuple] = []  # (sheet, bare, x, y) for local/hier labels
+    bus_named_labels: list[tuple] = []  # (sheet, bare, x, y, role), local/global/hier
     if bus_active:
         bus_aliases = {a["name"]: a["members"]
                        for a in bus_elements.get("bus_aliases", [])}
@@ -453,14 +453,19 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
             bare = lbl.get("_bare_name", raw_name)
             if expand_bus_name(bare, bus_aliases) is None:
                 continue
-            role = ("pin" if lbl.get("_is_sheet_pin")
-                    else ("hier" if lbl["type"] == "hierarchical_label"
-                          else "local"))
+            if lbl.get("_is_sheet_pin"):
+                role = "pin"
+            elif lbl["type"] == "hierarchical_label":
+                role = "hier"
+            elif lbl["type"] == "global_label":
+                role = "global"
+            else:
+                role = "local"
             if g.add_bus_label(bare, lbl["x"], lbl["y"],
                                ns=lbl.get("_hier_ns", ""), role=role):
                 bus_label_idx.add(idx)
-                if role in ("local", "hier"):
-                    bus_named_labels.append((s, bare, lbl["x"], lbl["y"]))
+                if role != "pin":
+                    bus_named_labels.append((s, bare, lbl["x"], lbl["y"], role))
             else:
                 g.note_unresolved("label_not_on_bus_wire", bare)
         for g in bus_graphs.values():
@@ -585,7 +590,7 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
                 parent[sk] = sk
             return sk
 
-        # (A) Name-based member joining for local/hier bus labels. Sheet-pin
+        # (A) Name-based member joining for local/global/hier bus labels. Sheet-pin
         # ("pin") labels are excluded: their members name the child's nets,
         # not the parent's local nets, so they map only positionally in (C).
         # Only the same-sheet LOCAL key `(member, s)` is accepted — a
@@ -604,8 +609,14 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
         # down to Cache/SIMM/CDC). Sheet pins are excluded (not in
         # bus_named_labels), so a pin without a co-located local label does not
         # name-join — it connects only by wire and the positional match (C).
+        #
+        # A GLOBAL bus label's members are global nets, as KiCad names them: the
+        # same member under any global bus on any sheet is one net, and a global
+        # net label or power symbol of the member's name (the bare label_keys
+        # entry) joins it.
         member_rep: dict[tuple, tuple] = {}  # (sheet, member) -> a member slot
-        for s, bare, lx, ly in bus_named_labels:
+        global_rep: dict[str, tuple] = {}  # member -> a slot, across sheets
+        for s, bare, lx, ly, role in bus_named_labels:
             g = bus_graphs[s]
             cid = g.cluster_at(lx, ly)
             expansion = expand_bus_name(bare, bus_aliases)
@@ -621,6 +632,15 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
                     member_rep[(s, member)] = slot
                 else:
                     union(rep, slot)
+                if role == "global":
+                    grep_ = global_rep.get(member)
+                    if grep_ is None:
+                        global_rep[member] = slot
+                    else:
+                        union(grep_, slot)
+                    gk = label_keys.get(member)
+                    if gk:
+                        union(slot, gk[0])
 
         # (B1) Register every bus-entry tap point and union it with the wires
         # it lands on. This must precede the root_names sweep so a tapped

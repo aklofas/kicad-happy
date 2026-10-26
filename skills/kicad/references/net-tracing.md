@@ -122,9 +122,14 @@ separate from the point-to-point tracing above.
 - **Member attachment.** A member net joins its bus via an unlabelled
   bus-entry tap, or a same-sheet member label matching the bus's own
   member naming.
+- **Global buses.** A global-label bus names global member nets: the same
+  member under a global bus on any sheet is one net, and a global label or
+  power symbol with the member's name (`D3`) joins it. A local label of that
+  name on another sheet does not.
 - **Sheet pins.** A parent bus reaching a child sheet's pin maps onto the
   child's hierarchical-label bus positionally, per instance — never by
-  matching bare bus names across instances.
+  matching bare bus names across instances. The parent order comes from the
+  bus's local label, else its global label, else its hierarchical label.
 - **Hier/local join.** A genuine (non-sheet-pin) hierarchical label joins
   same-name local labels on its own sheet into one net; a sheet-pin label
   does not — its bare name belongs to the child and repeats per instance.
@@ -141,7 +146,7 @@ separate from the point-to-point tracing above.
   - `entry_both_ends_on_bus` — a bus-entry tap lands on a bus wire at
     both ends (neither end is the wire side).
   - `entry_off_bus` — a bus-entry tap touches no bus wire at either end.
-  - `label_not_on_bus_wire` — a bus-name label (local/hier/pin) isn't
+  - `label_not_on_bus_wire` — a bus-name label (local/global/hier/pin) isn't
     positioned on any bus wire segment.
   - `unlabeled_entry_tap` — a bus-entry tap's net carries no label at all.
   - `entry_tap_name_not_in_bus` — a bus-entry tap's net carries a label,
