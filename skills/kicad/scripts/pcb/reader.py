@@ -9,7 +9,7 @@ from __future__ import annotations
 import math
 import re
 
-from kicad_core.sexp import find_all, find_first, get_at, get_property, get_value
+from kicad_core.sexp import find_all, find_first, get_at, get_property, get_value, has_flag
 from kicad_core.diagnostics import record
 from kicad_core.fields import get_mpn_property
 from kicad_core.model import PcbReaderState
@@ -1122,6 +1122,16 @@ def extract_board_outline(root: list) -> dict:
     }
 
 
+def _text_hidden(node: list) -> bool:
+    """True when a property / fp_text node is hidden.
+
+    KiCad writes `hide` or `(hide yes)` as a direct child (after the text
+    string), older files inside `effects`; `(hide no)` is visible.
+    """
+    effects = find_first(node, "effects")
+    return has_flag(node[3:], "hide") or bool(effects and has_flag(effects, "hide"))
+
+
 def extract_silkscreen(root: list, footprints: list[dict]) -> dict:
     """Extract silkscreen text and check documentation completeness.
 
@@ -1185,14 +1195,7 @@ def extract_silkscreen(root: list, footprints: list[dict]) -> dict:
             if len(prop) >= 3 and prop[1] == "Reference":
                 layer = get_value(prop, "layer")
                 if layer and ("SilkS" in layer or "Silkscreen" in layer):
-                    # Check if hidden via (effects (font ...) hide)
-                    effects = find_first(prop, "effects")
-                    is_hidden = False
-                    if effects:
-                        for child in effects:
-                            if child == "hide" or (isinstance(child, list) and child[0] == "hide"):
-                                is_hidden = True
-                                break
+                    is_hidden = _text_hidden(prop)
                     if not is_hidden:
                         ref_visible = True
                 break
@@ -1203,13 +1206,7 @@ def extract_silkscreen(root: list, footprints: list[dict]) -> dict:
                 if len(ft) >= 3 and ft[1] == "reference":
                     layer = get_value(ft, "layer")
                     if layer and ("SilkS" in layer or "Silkscreen" in layer):
-                        effects = find_first(ft, "effects")
-                        is_hidden = False
-                        if effects:
-                            for child in effects:
-                                if child == "hide" or (isinstance(child, list) and child[0] == "hide"):
-                                    is_hidden = True
-                                    break
+                        is_hidden = _text_hidden(ft)
                         if not is_hidden:
                             ref_visible = True
                     break
@@ -1226,13 +1223,7 @@ def extract_silkscreen(root: list, footprints: list[dict]) -> dict:
             if len(ft) >= 3 and ft[1] == "value":
                 layer = get_value(ft, "layer")
                 if layer and ("SilkS" in layer or "Silkscreen" in layer):
-                    effects = find_first(ft, "effects")
-                    is_hidden = False
-                    if effects:
-                        for child in effects:
-                            if child == "hide" or (isinstance(child, list) and child[0] == "hide"):
-                                is_hidden = True
-                                break
+                    is_hidden = _text_hidden(ft)
                     if not is_hidden and fp_ref:
                         values_on_silk.append(fp_ref)
 
@@ -1241,13 +1232,7 @@ def extract_silkscreen(root: list, footprints: list[dict]) -> dict:
             if len(prop) >= 3 and prop[1] == "Value":
                 layer = get_value(prop, "layer")
                 if layer and ("SilkS" in layer or "Silkscreen" in layer):
-                    effects = find_first(prop, "effects")
-                    is_hidden = False
-                    if effects:
-                        for child in effects:
-                            if child == "hide" or (isinstance(child, list) and child[0] == "hide"):
-                                is_hidden = True
-                                break
+                    is_hidden = _text_hidden(prop)
                     if not is_hidden and fp_ref and fp_ref not in values_on_silk:
                         values_on_silk.append(fp_ref)
 
@@ -1256,13 +1241,7 @@ def extract_silkscreen(root: list, footprints: list[dict]) -> dict:
             if len(ft) >= 3 and ft[1] == "user":
                 layer = get_value(ft, "layer")
                 if layer and ("SilkS" in layer or "Silkscreen" in layer):
-                    effects = find_first(ft, "effects")
-                    is_hidden = False
-                    if effects:
-                        for child in effects:
-                            if child == "hide" or (isinstance(child, list) and child[0] == "hide"):
-                                is_hidden = True
-                                break
+                    is_hidden = _text_hidden(ft)
                     if not is_hidden:
                         user_silk_texts.append({
                             "footprint": fp_ref,
