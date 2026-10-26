@@ -5,19 +5,23 @@ import re
 def parse_voltage_from_net_name(net_name: str) -> float | None:
     """Try to extract a voltage value from a power net name.
 
+    A leading '-' or 'NEG' makes the rail negative.
+
     Examples: '+3V3' → 3.3, '+5V' → 5.0, '+12V' → 12.0, '+1V8' → 1.8,
-    'VCC_3V3' → 3.3, '+2.5V' → 2.5, 'VBAT' → None
+    'VCC_3V3' → 3.3, '+2.5V' → 2.5, '-5V' → -5.0, 'NEG12V' → -12.0,
+    'VBAT' → None
     """
     if not net_name:
         return None
+    sign = -1.0 if re.match(r'(-|NEG)', net_name, re.IGNORECASE) else 1.0
     # Pattern: digits V digits  (e.g. 3V3 → 3.3, 1V8 → 1.8)
     m = re.search(r'(\d+)V(\d+)', net_name, re.IGNORECASE)
     if m:
-        return float(f"{m.group(1)}.{m.group(2)}")
+        return sign * float(f"{m.group(1)}.{m.group(2)}")
     # Pattern: digits.digits V  or  digits V  (e.g. 3.3V, 5V, 12V)
     m = re.search(r'(\d+\.?\d*)V', net_name, re.IGNORECASE)
     if m:
-        return float(m.group(1))
+        return sign * float(m.group(1))
     return None
 
 

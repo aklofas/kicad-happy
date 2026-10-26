@@ -1350,7 +1350,7 @@ def _check_passive_ratings(ctx: AnalysisContext) -> list:
                 # Rough rail voltage estimation from name
                 for net in [c_n1, c_n2]:
                     if net:
-                        v_est = _estimate_rail_voltage(net)
+                        v_est = abs(_estimate_rail_voltage(net) or 0)
                         if v_est and rated_v < v_est * 1.5:
                             passive_warnings.append({
                                 "component": c["reference"],

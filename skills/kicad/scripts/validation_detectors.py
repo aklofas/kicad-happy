@@ -477,7 +477,11 @@ _VOLTAGE_THRESHOLDS = {
 
 
 def _estimate_rail_voltage_for_ic(ctx: AnalysisContext, ref: str) -> float | None:
-    """Estimate IC supply rail voltage. Regulators use VIN pin; others use first power net."""
+    """Estimate IC supply rail voltage. Regulators use VIN pin; others use first power net.
+
+    Returns the magnitude so a +/- supplied IC does not read as a different
+    domain depending on pin order.
+    """
     comp = ctx.comp_lookup.get(ref, {})
     mpn = comp.get('mpn') or comp.get('value', '')
     feat = get_regulator_features(mpn, project_dir=ctx.project_dir) if mpn else None
@@ -490,14 +494,14 @@ def _estimate_rail_voltage_for_ic(ctx: AnalysisContext, ref: str) -> float | Non
             if str(pnum) == vin_pin and net and ctx.is_power_net(net) and not ctx.is_ground(net):
                 v = parse_voltage_from_net_name(net)
                 if v is not None:
-                    return v
+                    return abs(v)
 
     pins = ctx.ref_pins.get(ref, {})
     for pnum, (net, _) in pins.items():
         if net and ctx.is_power_net(net) and not ctx.is_ground(net):
             v = parse_voltage_from_net_name(net)
             if v is not None:
-                return v
+                return abs(v)
     return None
 
 
@@ -1209,6 +1213,7 @@ def validate_led_resistors(ctx: AnalysisContext) -> list[dict]:
 
         for sr in series_resistors:
             rail_v = parse_voltage_from_net_name(sr['rail'])
+            rail_v = abs(rail_v) if rail_v is not None else None
             if rail_v is None or rail_v <= vf:
                 continue
             current_ma = (rail_v - vf) / sr['ohms'] * 1000

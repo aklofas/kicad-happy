@@ -4135,7 +4135,8 @@ def _infer_voltage(ctx: AnalysisContext, net_name: str | None) -> float | None:
     if not net_name:
         return None
     from kicad_core.netnames import parse_voltage_from_net_name
-    return parse_voltage_from_net_name(net_name)
+    v = parse_voltage_from_net_name(net_name)
+    return abs(v) if v is not None else None
 
 
 def detect_level_shifters(ctx: AnalysisContext) -> list[dict]:
@@ -5037,6 +5038,7 @@ def audit_led_circuits(ctx: AnalysisContext,
         if series_resistor and supply_net:
             v_supply = parse_voltage_from_net_name(supply_net)
             if v_supply:
+                v_supply = abs(v_supply)
                 vf = _estimate_led_vf(comp)
                 if v_supply > vf:
                     i_ma = (v_supply - vf) / series_resistor["ohms"] * 1000
@@ -5058,7 +5060,7 @@ def audit_led_circuits(ctx: AnalysisContext,
             v_supply = parse_voltage_from_net_name(supply_net)
             color = _detect_led_color(comp)
             floor = _LED_VF_FLOOR.get(color) if color else None
-            if v_supply is not None and floor is not None and v_supply < floor:
+            if v_supply is not None and v_supply >= 0 and floor is not None and v_supply < floor:
                 results.append({
                     "ref": ref,
                     "type": "indicator_led",
@@ -5427,6 +5429,8 @@ def build_power_sequencing_graph(ctx: AnalysisContext,
             # Find nominal voltage of monitored rail
             src = output_rails.get(rail)
             nominal = src.get("voltage") if src else parse_voltage_from_net_name(rail)
+            if nominal:
+                nominal = abs(nominal)
             if nominal and threshold > nominal:
                 issues.append({
                     "type": "supervisor_threshold_above_nominal",
@@ -5649,7 +5653,7 @@ def suggest_certifications(ctx: AnalysisContext, signal_analysis: dict) -> list[
 
     # High voltage detection (>60V)
     rail_voltages = signal_analysis.get("rail_voltages", {})
-    max_voltage = max((v for v in rail_voltages.values()
+    max_voltage = max((abs(v) for v in rail_voltages.values()
                        if isinstance(v, (int, float))), default=0)
     if max_voltage > 60:
         suggestions.append({

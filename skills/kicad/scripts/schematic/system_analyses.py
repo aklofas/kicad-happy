@@ -279,18 +279,15 @@ def analyze_sleep_current(ctx: AnalysisContext,
 
     def _rail_voltage(name: str) -> float | None:
         v = _estimate_rail_voltage(name)
-        if v is not None:
-            return v
-        if signal_analysis:
+        if v is None and signal_analysis:
             v = signal_analysis.get("rail_voltages", {}).get(_clean_hierarchical_name(name))
-            if v is not None:
-                return v
-        v = _reg_vout_by_rail.get(name)
-        if v is not None:
-            return v
-        if name and _battery_rail_re.match(name):
-            return 3.7
-        return None
+        if v is None:
+            v = _reg_vout_by_rail.get(name)
+        if v is None and name and _battery_rail_re.match(name):
+            v = 3.7
+        # Sleep draw scales with the rail's magnitude, so a negative rail
+        # contributes |V|/R like a positive one.
+        return abs(v) if v is not None else None
 
     # --- Resistors between power and ground ---
     _seen_refs = set()
@@ -808,6 +805,7 @@ def analyze_voltage_derating(ctx: AnalysisContext, signal_analysis: dict,
         if not pwr_net:
             continue
         v_rail = _get_rail_voltage(pwr_net)
+        v_rail = abs(v_rail) if v_rail is not None else None  # stress is the magnitude
         if v_rail is None or v_rail <= 0:
             continue
         dielectric = _classify_cap_dielectric(comp)
@@ -883,6 +881,7 @@ def analyze_voltage_derating(ctx: AnalysisContext, signal_analysis: dict,
                 continue
             if is_power_net(net_name):
                 v = _get_rail_voltage(net_name)
+                v = abs(v) if v is not None else None
                 if v is not None and v > max_rail_v:
                     max_rail_v, max_rail_name = v, net_name
         if max_rail_v <= 0:
@@ -934,10 +933,12 @@ def analyze_voltage_derating(ctx: AnalysisContext, signal_analysis: dict,
                 v_across = abs(v1 - v2)
             elif pwr_net and gnd_net:
                 v_across = _get_rail_voltage(pwr_net)
+                v_across = abs(v_across) if v_across is not None else None
             else:
                 continue
         else:
             v_across = _get_rail_voltage(pwr_net)
+            v_across = abs(v_across) if v_across is not None else None
         if v_across is None or v_across <= 0:
             continue
         power_w = (v_across ** 2) / pv
@@ -1081,7 +1082,7 @@ def analyze_protocol_compliance(components: list[dict], nets: dict,
                     dev_ref = dev["ref"] if isinstance(dev, dict) else dev
                     for rail_info in power_domains.get(dev_ref, {}).get("power_rails", []):
                         v = _estimate_rail_voltage(rail_info) if isinstance(rail_info, str) else None
-                        if v:
+                        if v and v > 0:  # a negative supply is not the bus logic level
                             device_voltages.add(v)
                 if pu_voltage and device_voltages:
                     mismatched = [v for v in device_voltages if abs(v - pu_voltage) > 0.5]
@@ -1492,7 +1493,7 @@ def analyze_power_budget(ctx: AnalysisContext,
             # LDO thermal dissipation: uses the rail's total load (ICs +
             # other loads like LEDs) -- KH-375/KH-386 need the same number.
             if reg.get("topology") == "LDO" and v_in_rail and v_out:
-                v_in = _estimate_rail_voltage(v_in_rail)
+                v_in = abs(_estimate_rail_voltage(v_in_rail) or 0)
                 if v_in and v_in > v_out:
                     total_load_mA = rail_info["estimated_load_mA"]
                     v_drop = v_in - v_out
@@ -2582,7 +2583,7 @@ def analyze_inrush_current(ctx: AnalysisContext,
         if not output_caps:
             continue
 
-        v_out = reg.get("estimated_vout") or _estimate_rail_voltage(out_rail)
+        v_out = reg.get("estimated_vout") or abs(_estimate_rail_voltage(out_rail) or 0)
         if not v_out or v_out <= 0:
             continue
 

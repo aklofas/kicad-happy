@@ -3756,7 +3756,9 @@ def detect_design_observations(ctx: AnalysisContext, results: dict) -> list[dict
             out_rail = reg.get("output_rail", "")
             rail_v = _parse_voltage_from_net_name(out_rail)
             if rail_v is not None and reg["estimated_vout"] > 0:
-                pct_diff = abs(reg["estimated_vout"] - rail_v) / rail_v
+                # A negative rail is estimated as a magnitude here (inverting
+                # regulators are not always recognised), so compare |Vout| to |Vrail|.
+                pct_diff = abs(reg["estimated_vout"] - abs(rail_v)) / abs(rail_v)
                 if pct_diff > 0.15:
                     obs["vout_net_mismatch"] = {
                         "net_name": out_rail,

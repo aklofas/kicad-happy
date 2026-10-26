@@ -124,8 +124,8 @@ def detect_absolute_max_violations(ctx, rail_voltages: dict) -> list[dict]:
             if net is None:
                 continue
             rail_v = rail_voltages.get(net)
-            if rail_v is None:
-                continue
+            if rail_v is None or rail_v < 0:
+                continue  # datasheet limits are positive-supply ratings
 
             # The base schema keys abs-max ratings "<domain>_max" (VIN_max), as
             # datasheet_verify._v2_domain_voltage_max reads them.
@@ -219,8 +219,8 @@ def detect_vcc_outside_recommended(ctx, rail_voltages: dict) -> list[dict]:
             if net is None:
                 continue
             rail_v = rail_voltages.get(net)
-            if rail_v is None:
-                continue
+            if rail_v is None or rail_v < 0:
+                continue  # datasheet limits are positive-supply ratings
 
             synonyms = _candidate_synonyms(domain, VDD_SYNONYMS)
             specs = _resolve_key(rec_block, synonyms)
