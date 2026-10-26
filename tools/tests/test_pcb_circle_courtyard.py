@@ -64,13 +64,32 @@ class TestCircleCourtyard(unittest.TestCase):
         cy = fp["courtyard"]
         self.assertEqual((cy["min_x"], cy["max_x"], cy["max_y"]), (48.0, 52.0, 52.0))
 
-    def test_duplicated_outline_segments_still_chain(self):
+    def test_malformed_courtyard_is_skipped(self):
+        # KiCad reports malformed_courtyard for a doubled or zero-length segment and ignores it
         sq = ''.join(f'(fp_line (start {a} {b}) (end {c} {d}) (layer F.CrtYd) (width 0.05))\n'
-                     for a, b, c, d in ((-1, -1, 1, -1), (1, -1, -1, -1), (1, -1, 1, 1), (1, 1, 1, -1),
-                                        (1, 1, -1, 1), (-1, 1, 1, 1), (-1, 1, -1, -1), (-1, -1, -1, 1)))
+                     for a, b, c, d in ((-1, -1, 1, -1), (1, -1, -1, -1), (1, -1, 1, 1),
+                                        (1, 1, -1, 1), (-1, 1, -1, -1)))
         fp = read_board(_board(_fp("U1", 50, 50, sq))).footprints[0]
-        self.assertEqual(len(fp["courtyard_poly"]), 1)
-        self.assertEqual(len(fp["courtyard_poly"][0]), 4)
+        self.assertNotIn("courtyard", fp)
+        self.assertNotIn("courtyard_poly", fp)
+
+
+    def test_legacy_stadium_matches_kicad_conversion(self):
+        # kicad-cli pcb upgrade writes these two arcs as mid (5.9 0) / (-5.9 0)
+        legacy = ('(fp_line (start -1 -4.9) (end 1 -4.9) (layer F.CrtYd) (width 0.05))\n'
+                  '(fp_line (start -1 4.9) (end 1 4.9) (layer F.CrtYd) (width 0.05))\n'
+                  '(fp_arc (start -1 0) (end -1 4.9) (angle 180) (layer F.CrtYd) (width 0.05))\n'
+                  '(fp_arc (start 1 0) (end 1 -4.9) (angle 180) (layer F.CrtYd) (width 0.05))\n')
+        modern = ('(fp_line (start -1 -4.9) (end 1 -4.9) (layer "F.CrtYd") (width 0.05))\n'
+                  '(fp_line (start -1 4.9) (end 1 4.9) (layer "F.CrtYd") (width 0.05))\n'
+                  '(fp_arc (start -1 4.9) (mid -5.9 0) (end -1 -4.9) (layer "F.CrtYd") (width 0.05))\n'
+                  '(fp_arc (start 1 -4.9) (mid 5.9 0) (end 1 4.9) (layer "F.CrtYd") (width 0.05))\n')
+        a = read_board(_board(_fp("M1", 50, 50, legacy))).footprints[0]
+        b = read_board(_board(_fp("M2", 50, 50, modern))).footprints[0]
+        self.assertEqual(a["courtyard"], b["courtyard"])
+        self.assertEqual(a["courtyard"]["min_x"], 44.1)
+        self.assertEqual(a["courtyard"]["max_x"], 55.9)
+        self.assertEqual(len(a["courtyard_poly"]), 1)
 
 
 if __name__ == "__main__":

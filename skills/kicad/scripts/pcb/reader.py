@@ -507,15 +507,18 @@ def extract_footprints(root: list) -> list[dict]:
                 crtyd_pts.extend(line)
 
         if crtyd_segs and not crtyd_unchainable:
-            # A segment drawn twice (once per direction) would leave a two-point chain
+            # KiCad rejects a courtyard that draws a segment twice or has a zero-length one
+            # (malformed_courtyard) and skips it in the overlap check
             _seen: set = set()
             _unique = []
             for _a, _b in crtyd_segs:
                 _key = frozenset(((round(_a[0], 3), round(_a[1], 3)), (round(_b[0], 3), round(_b[1], 3))))
-                if _key not in _seen:
-                    _seen.add(_key)
-                    _unique.append((_a, _b))
-            _chained = _chain_segments(_unique)
+                if len(_key) < 2 or _key in _seen:
+                    crtyd_pts = []
+                    break
+                _seen.add(_key)
+                _unique.append((_a, _b))
+            _chained = _chain_segments(_unique) if crtyd_pts else None
             if _chained:
                 crtyd_polys.extend(_chained)
             else:
