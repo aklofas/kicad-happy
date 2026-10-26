@@ -201,7 +201,12 @@ def compute_pin_positions(component: dict, lib_symbols: dict) -> list[Pin]:
     unit_num = component.get("unit")
     alt_body = component.get("_body_style", 1) == 2 and "alt_pins" in sym_def
     unit_pins_map = sym_def.get("alt_unit_pins") if alt_body else sym_def.get("unit_pins")
-    if unit_num and unit_pins_map and unit_num in unit_pins_map:
+    if alt_body and unit_num and sym_def.get("unit_pins"):
+        # KiCad draws this unit's body-0/2 items plus unit 0's; a unit with no
+        # alternate-body pins of its own shows only the shared ones.
+        unit_pins_map = unit_pins_map or {}
+        pins = list(unit_pins_map.get(unit_num, [])) + list(unit_pins_map.get(0, []))
+    elif unit_num and unit_pins_map and unit_num in unit_pins_map:
         pins = list(unit_pins_map[unit_num])
         # Also include unit 0 (shared/common) pins if they exist
         if 0 in unit_pins_map:

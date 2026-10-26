@@ -94,6 +94,34 @@ class ModernBodyStyleTest(unittest.TestCase):
         self.assertNotIn("_body_style", r["components"][0])
 
 
+# H: unit 1 has pin 1 in both bodies, unit 2 has pin 2 in body 1 only. kicad-cli 10.0.6 lists
+# no pin at all for unit 2 placed with (convert 2), and pin 2 for unit 2 with body 1.
+H_LIB = ('(lib_symbols (symbol "t:H" (in_bom yes) (on_board yes)'
+         ' (property "Reference" "U" (at 0 0 0)) (property "Value" "H" (at 0 0 0))'
+         f' (symbol "H_1_1" {_pin(1, -5, 0)}) (symbol "H_1_2" {_pin(1, -7, 0)})'
+         f' (symbol "H_2_1" {_pin(2, 5, 0)})))')
+
+
+class ModernUnitWithoutAlternateBodyTest(unittest.TestCase):
+    def _pins(self, extra):
+        sym = ('(symbol (lib_id "t:H") (at 100 100 0) ' + extra + ' (in_bom yes) (on_board yes)'
+               ' (uuid "00000000-0000-0000-0000-000000000001")'
+               ' (property "Reference" "U1" (at 0 0 0)) (property "Value" "H" (at 0 0 0)))')
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "t.kicad_sch")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write('(kicad_sch (version 20250114) (generator "eeschema")'
+                        f' (uuid "00000000-0000-0000-0000-0000000000aa") (paper "A4") {H_LIB} {sym})')
+            (comp,) = parse_single_sheet(path).components
+        return sorted((p["number"], p["x"], p["y"]) for p in comp["pins"])
+
+    def test_unit_two_body_two_takes_no_other_units_pins(self):
+        self.assertEqual(self._pins("(unit 2) (convert 2)"), [])
+
+    def test_unit_two_body_one(self):
+        self.assertEqual(self._pins("(unit 2)"), [("2", 105, 100)])
+
+
 HEAD = "EESchema Schematic File Version 4\nEELAYER 30 0\nEELAYER END\n$Descr A4 11693 8268\n$EndDescr\n"
 LIB_HEAD = "EESchema-LIBRARY Version 2.4\n#encoding utf-8\n"
 
@@ -176,6 +204,34 @@ class LegacyBodyStyleTest(unittest.TestCase):
         r = analyze(comp("m:G", "U3", 2000, 2000, unit=2, convert=2), lib)
         self.assertEqual(pins_of(r, "U3"), [mm("2", 1700, 1900), mm("3", 2000, 1700)])
 
+
+    def test_multi_unit_unit_without_body_two_pins(self):
+        # unit 2 has pin 2 in body 1 only; placed with convert 2 it shows only the
+        # all-units pin 3, never unit 1's body-2 pin 1
+        lib = ("DEF N_G U 0 40 Y Y 2 L N\nF0 \"U\" 0 0 50 H V C CNN\nDRAW\n"
+               "X A 1 -200 0 100 R 50 50 1 1 I\nX A 1 -300 0 200 R 50 50 1 2 I\n"
+               "X B 2 200 0 100 L 50 50 2 1 O\nX V 3 0 300 100 D 50 50 0 0 W\nENDDRAW\nENDDEF\n")
+        r = analyze(comp("n:G", "U4", 2000, 2000, unit=2, convert=2), lib)
+        self.assertEqual(pins_of(r, "U4"), [mm("3", 2000, 1700)])
+
+    def test_no_internal_keys_in_output(self):
+        body = (comp("d:G", "U1", 1000, 1000) + comp("d:G", "U2", 2000, 1000, convert=2, ts="5F000002")
+                + wire(700, 1000, 500, 1000) + label(500, 1000, "IN_ALT"))
+        r = analyze(body, D_LIB + "#\n" + T_LIB)
+        found = []
+
+        def walk(x):
+            if isinstance(x, dict):
+                for k, v in x.items():
+                    if k in ("_body_style", "alt_pins", "alt_unit_pins") or (k == "hidden" and v is False):
+                        found.append(k)
+                    walk(v)
+            elif isinstance(x, list):
+                for v in x:
+                    walk(v)
+        walk(r)
+        self.assertEqual(found, [])
+        self.assertTrue(r["components"])
 
 T_LIB = ("DEF T_T U 0 40 Y Y 1 F N\nF0 \"U\" 0 0 50 H V C CNN\nDRAW\n"
          "X TOP 1 0 200 100 D 50 50 1 1 P\nX BOT 2 0 -200 100 U 50 50 1 1 P\n"
