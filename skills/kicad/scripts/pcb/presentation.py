@@ -330,7 +330,8 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
         # Build copper connectivity graph (requires full track/via data)
         try:
             conn_graph = build_connectivity_graph(
-                footprints, tracks, vias, zone_fills, zones, net_names)
+                footprints, tracks, vias, zone_fills, zones, net_names,
+                board_layers=layers)
             if conn_graph:
                 result["connectivity_graph"] = conn_graph
         except Exception as e:

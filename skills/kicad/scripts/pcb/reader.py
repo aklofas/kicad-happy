@@ -380,6 +380,10 @@ def extract_footprints(root: list, diagnostics: list | None = None) -> list[dict
             if pad_layers and len(pad_layers) > 1:
                 pad_info["layers"] = [l for l in pad_layers[1:] if isinstance(l, str)]
 
+            if pad_shape == "roundrect":
+                rratio = get_value(pad, "roundrect_rratio")
+                pad_info["roundrect_rratio"] = float(rratio) if rratio is not None else 0.25
+
             # Pin function and type (from schematic, carried into PCB)
             pinfunc = get_value(pad, "pinfunction")
             pintype = get_value(pad, "pintype")

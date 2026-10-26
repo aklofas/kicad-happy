@@ -748,3 +748,82 @@ def _point_in_pad(vx: float, vy: float, px: float, py: float,
         return dx * dx + cy * cy <= r * r
     # rect / roundrect / trapezoid / custom: rotated bounding rect
     return abs(dx) <= hw and abs(dy) <= hh
+
+
+def pad_copper_layers(pad: dict, copper_layers: list[str]) -> list[str]:
+    """Copper layers a pad has copper on: ``*.Cu`` is every board copper layer,
+    ``F&B.Cu`` the two outer ones; an NPTH pad has none."""
+    if pad.get("type") == "np_thru_hole":
+        return []
+    out: list[str] = []
+    for layer in pad.get("layers") or []:
+        if layer == "*.Cu":
+            out.extend(copper_layers)
+        elif layer == "F&B.Cu":
+            out.extend(("F.Cu", "B.Cu"))
+        elif layer.endswith(".Cu"):
+            out.append(layer)
+    return list(dict.fromkeys(out))
+
+
+def _segment_segment_distance(ax: float, ay: float, bx: float, by: float,
+                              cx: float, cy: float, dx: float, dy: float) -> float:
+    """Shortest distance between segments AB and CD (0 when they cross)."""
+    def cross(ox, oy, px, py, qx, qy):
+        return (px - ox) * (qy - oy) - (py - oy) * (qx - ox)
+    d1 = cross(cx, cy, dx, dy, ax, ay)
+    d2 = cross(cx, cy, dx, dy, bx, by)
+    d3 = cross(ax, ay, bx, by, cx, cy)
+    d4 = cross(ax, ay, bx, by, dx, dy)
+    if d1 * d2 < 0 and d3 * d4 < 0:
+        return 0.0
+    return min(_point_segment_distance(ax, ay, cx, cy, dx, dy),
+               _point_segment_distance(bx, by, cx, cy, dx, dy),
+               _point_segment_distance(cx, cy, ax, ay, bx, by),
+               _point_segment_distance(dx, dy, ax, ay, bx, by))
+
+
+def _segment_box_distance(ax: float, ay: float, bx: float, by: float,
+                          hw: float, hh: float) -> float:
+    """Distance from segment AB to the axis-aligned box |x| <= hw, |y| <= hh."""
+    if (abs(ax) <= hw and abs(ay) <= hh) or (abs(bx) <= hw and abs(by) <= hh):
+        return 0.0
+    corners = ((-hw, -hh), (hw, -hh), (hw, hh), (-hw, hh))
+    return min(_segment_segment_distance(ax, ay, bx, by, *corners[i], *corners[(i + 1) % 4])
+               for i in range(4))
+
+
+def segment_to_pad_distance(seg: dict, pad: dict) -> float:
+    """Distance from a track centreline (x1, y1)-(x2, y2) to a pad's copper; 0 when they
+    overlap. circle, oval (stadium), rect/trapezoid (box), roundrect (inner box grown by
+    the corner radius, ``roundrect_rratio`` x the short side, KiCad default 0.25); custom
+    pads use the max(w, h)/2 circle. The pad angle is absolute, as in `_point_in_pad`."""
+    w = pad.get("width", 0) or 0
+    h = pad.get("height", 0) or 0
+    px, py = pad["abs_x"], pad["abs_y"]
+    ax, ay = seg["x1"] - px, seg["y1"] - py
+    bx, by = seg["x2"] - px, seg["y2"] - py
+    shape = pad.get("shape", "rect")
+    if shape in ("circle", "custom"):
+        d = _point_segment_distance(0.0, 0.0, ax, ay, bx, by)
+        return max(0.0, d - max(w, h) / 2.0)
+    angle = pad.get("angle") or 0
+    if angle:
+        # Inverse of the pad's local -> board rotation, as in `_point_in_pad`.
+        rad = math.radians(-angle)
+        c, s = math.cos(rad), math.sin(rad)
+        ax, ay = ax * c + ay * s, -ax * s + ay * c
+        bx, by = bx * c + by * s, -bx * s + by * c
+    hw, hh = w / 2.0, h / 2.0
+    if shape == "oval":
+        r = min(hw, hh)
+        if hw >= hh:
+            core = (-(hw - r), 0.0, hw - r, 0.0)
+        else:
+            core = (0.0, -(hh - r), 0.0, hh - r)
+        return max(0.0, _segment_segment_distance(ax, ay, bx, by, *core) - r)
+    rr = 0.0
+    if shape == "roundrect":
+        ratio = pad.get("roundrect_rratio", 0.25)
+        rr = min(max(ratio, 0.0), 0.5) * min(w, h)
+    return max(0.0, _segment_box_distance(ax, ay, bx, by, hw - rr, hh - rr) - rr)
