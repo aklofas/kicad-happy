@@ -5,6 +5,8 @@ file-order-stable field pickers (KH-414, KH-418). The names live here, in
 kicad_core; callers import them from kicad_core.fields.
 """
 
+from kicad_core.sexp import is_keyword
+
 # ---------------------------------------------------------------------------
 # Part-number field aliases (KH-414, GitHub #46)
 #
@@ -70,7 +72,7 @@ def get_property_ci(node: list, aliases: frozenset):
     """
     for child in node:
         if isinstance(child, list) and len(child) >= 3 and child[0] == "property":
-            off = 1 if child[1] == "private" else 0
+            off = 1 if is_keyword(child[1], "private") else 0
             if len(child) >= 3 + off and normalize_field_name(child[1 + off]) in aliases:
                 value = str(child[2 + off])
                 if value:
@@ -102,7 +104,7 @@ def _get_property_ci_nonblank(node: list, aliases: frozenset):
     value (same walk as get_property_ci; final wave fix)."""
     for child in node:
         if isinstance(child, list) and len(child) >= 3 and child[0] == "property":
-            off = 1 if child[1] == "private" else 0
+            off = 1 if is_keyword(child[1], "private") else 0
             if len(child) >= 3 + off and normalize_field_name(child[1 + off]) in aliases:
                 value = str(child[2 + off])
                 if value.strip():

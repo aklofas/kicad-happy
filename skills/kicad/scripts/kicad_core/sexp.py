@@ -42,6 +42,55 @@ def parse_file(path: str) -> list:
         return parse(f.read())
 
 
+_C_ESCAPES = {"a": "\x07", "b": "\x08", "f": "\x0c", "n": "\n", "r": "\r",
+              "t": "\t", "v": "\x0b", '"': '"', "\\": "\\"}
+_C_ESCAPE_RE = re.compile(r"\\(x[0-9A-Fa-f]{1,2}|[0-7]{1,3}|.)", re.S)
+
+
+def _unescape_c(raw: str) -> str:
+    """Decode a quoted token's escapes as KiCad's lexer does (dsnlexer.cpp).
+
+    \\x and octal escapes are raw bytes that the token then reads as UTF-8; an
+    unknown escape keeps its backslash.
+    """
+    if "\\" not in raw:
+        return raw
+    out = bytearray()
+    pos = 0
+    for m in _C_ESCAPE_RE.finditer(raw):
+        out += raw[pos:m.start()].encode("utf-8", "surrogatepass")
+        pos = m.end()
+        g = m.group(1)
+        if g[0] == "x" and len(g) > 1:
+            out.append(int(g[1:], 16))
+        elif g[0] in "01234567":
+            out.append(int(g, 8) & 0xFF)
+        elif g in _C_ESCAPES:
+            out += _C_ESCAPES[g].encode()
+        else:
+            out += ("\\" + g).encode("utf-8", "surrogatepass")
+    out += raw[pos:].encode("utf-8", "surrogatepass")
+    return out.decode("utf-8", "replace")
+
+
+class _Quoted(str):
+    """A quoted token whose text spells a keyword the readers test for."""
+    __slots__ = ()
+
+
+_KEYWORD_LOOKALIKES = frozenset({"private", "hide"})
+
+
+def is_keyword(token, word: str) -> bool:
+    """True only for an unquoted atom equal to *word* (a quoted "hide" is a string)."""
+    return token == word and not isinstance(token, _Quoted)
+
+
+# KiCad ends an atom only at whitespace (NUL included) or a parenthesis; a quote
+# starts a string only as a token's first character.
+_ATOM_END = frozenset(" \t\n\r\0()")
+_SPACE = frozenset(" \t\n\r\0")
+
 # Punctuation tokens are sentinels so a quoted "(" or ")" stays a plain string.
 _LPAREN = object()
 _RPAREN = object()
@@ -54,10 +103,10 @@ def _tokenize(text: str) -> list:
     n = len(text)
     while i < n:
         c = text[i]
-        if c in " \t\n\r":
+        if c in _SPACE:
             i += 1
-        elif c == "#":
-            # Line comment — skip to end of line
+        elif c == "#" and not text[text.rfind("\n", 0, i) + 1:i].strip(" \t\r\0"):
+            # A comment only when first on its line; elsewhere # is an atom character
             while i < n and text[i] != "\n":
                 i += 1
         elif c == "(":
@@ -77,14 +126,13 @@ def _tokenize(text: str) -> list:
                 else:
                     j += 1
             raw = text[i + 1 : j]
-            # Unescape: \\→placeholder first, then known sequences, then restore
-            raw = raw.replace("\\\\", "\x00").replace('\\"', '"').replace("\\n", "\n").replace("\\r", "\r").replace("\x00", "\\")
-            tokens.append(_unescape_braces(raw))
+            tok = _unescape_braces(_unescape_c(raw))
+            tokens.append(_Quoted(tok) if tok in _KEYWORD_LOOKALIKES else tok)
             i = j + 1
         else:
             # Unquoted atom
             j = i
-            while j < n and text[j] not in " \t\n\r()\"":
+            while j < n and text[j] not in _ATOM_END:
                 j += 1
             tokens.append(_unescape_braces(text[i:j]))
             i = j
@@ -168,7 +216,7 @@ def get_property(node: list, prop_name: str) -> str | None:
     """
     for child in node:
         if isinstance(child, list) and len(child) >= 3 and child[0] == "property":
-            off = 1 if child[1] == "private" else 0
+            off = 1 if is_keyword(child[1], "private") else 0
             if len(child) >= 3 + off and child[1 + off] == prop_name:
                 return str(child[2 + off])
     return None
@@ -189,7 +237,7 @@ def get_properties(node: list) -> dict[str, str]:
     result: dict[str, str] = {}
     for child in node:
         if isinstance(child, list) and len(child) >= 3 and child[0] == "property":
-            off = 1 if child[1] == "private" else 0
+            off = 1 if is_keyword(child[1], "private") else 0
             if len(child) >= 3 + off:
                 result[child[1 + off].lower()] = str(child[2 + off])
     return result
@@ -218,16 +266,17 @@ def has_flag(node: list, flag: str) -> bool:
 
     Handles three KiCad forms:
     - Bare token:    (pin ... hide ...)        — legacy (KiCad 5/6/early 7)
-    - Boolean yes:   (pin ... (hide yes) ...)  — post-20241004
-    - Boolean no:    (pin ... (hide no) ...)   — post-20241004 (returns False)
+    - Bare list:     (fp_text ... (hide))      — true (KiCad's absent-bool default)
+    - Boolean yes:   (pin ... (hide yes) ...)  — true
+    - Boolean no:    (pin ... (hide no) ...)   — false
 
     Absent flag returns False.
     """
-    if flag in node:
+    if any(is_keyword(child, flag) for child in node):
         return True
     for child in node:
-        if isinstance(child, list) and len(child) >= 2 and child[0] == flag:
-            return str(child[1]).lower() in ("yes", "true")
+        if isinstance(child, list) and child and child[0] == flag:
+            return len(child) < 2 or str(child[1]).lower() in ("yes", "true")
     return False
 
 
