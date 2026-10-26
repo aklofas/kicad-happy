@@ -947,6 +947,8 @@ def analyze_legacy_schematic(path: str, analysis_dir: str | Path | None = None) 
     # or "Library:Symbol".  This handles both forms.
     _cache_suffix_map: dict[str, str] = {}
     for sym_name in lib_symbols:
+        if ":" in sym_name:
+            continue  # nick:name entries are exact lookups, not cache names
         if "_" in sym_name:
             bare = sym_name.rsplit("_", 1)[-1]
             # Only map if the bare name is unique (avoid ambiguity)

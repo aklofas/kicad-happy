@@ -364,7 +364,8 @@ def _parse_legacy_lib(path: str) -> dict:
 def _read_sym_lib_table(base_dir: Path) -> list:
     """Legacy-type entries of the project sym-lib-table as (nickname, existing lib path).
 
-    ${KIPRJMOD} is the project directory; any other variable leaves the entry out.
+    ${KIPRJMOD} is the project directory and relative paths start there; any other
+    variable leaves the entry out.
     A missing or malformed table, or an unreadable library, yields nothing.
     """
     table = base_dir / "sym-lib-table"
@@ -373,7 +374,11 @@ def _read_sym_lib_table(base_dir: Path) -> list:
     entries = []
     try:
         root = parse_file(str(table))
-        for lib_entry in find_all(root, "lib"):
+        lib_nodes = find_all(root, "lib")
+    except (ValueError, IndexError, KeyError, OSError):
+        return []  # Don't crash on malformed sym-lib-table
+    for lib_entry in lib_nodes:
+        try:
             nick = lib_type = lib_uri = ""
             for child in lib_entry:
                 if isinstance(child, list) and len(child) >= 2:
@@ -388,11 +393,11 @@ def _read_sym_lib_table(base_dir: Path) -> list:
             lib_uri = lib_uri.replace("${KIPRJMOD}", str(base_dir))
             if "${" in lib_uri:
                 continue
-            lib_path = Path(lib_uri)
+            lib_path = base_dir / lib_uri  # an absolute URI replaces base_dir
             if lib_path.is_file():
                 entries.append((nick, lib_path))
-    except (ValueError, IndexError, KeyError, OSError):
-        pass  # Don't crash on malformed sym-lib-table
+        except (ValueError, IndexError, KeyError, OSError):
+            continue
     return entries
 
 

@@ -27,19 +27,26 @@ COMP = ("$Comp\nL proj:R R1\nU 1 1 5F000001\nP 4000 3000\n"
 TABLE = '(sym_lib_table\n  (lib (name proj)(type Legacy)(uri {uri})(options "")(descr ""))\n)\n'
 
 
-def analyze(uri, with_cache=True):
+def analyze(uri, with_cache=True, cache_lib=None, proj_lib=None, table=None, comp=COMP,
+            cwd=None):
     with tempfile.TemporaryDirectory() as tmp:
         with open(os.path.join(tmp, "t.sch"), "w", encoding="utf-8") as f:
-            f.write(HEAD + COMP + "$EndSCHEMATC\n")
+            f.write(HEAD + comp + "$EndSCHEMATC\n")
         if with_cache:
             with open(os.path.join(tmp, "t-cache.lib"), "w", encoding="utf-8") as f:
-                f.write(LIB_HEAD + RES.format(name="OLIMEX_RCL_R") + "#End Library\n")
+                f.write(LIB_HEAD + (cache_lib or RES.format(name="OLIMEX_RCL_R")) + "#End Library\n")
         with open(os.path.join(tmp, "proj.lib"), "w", encoding="utf-8") as f:
-            f.write(LIB_HEAD + RES.format(name="R") + "#End Library\n")
+            f.write(LIB_HEAD + (proj_lib or RES.format(name="R")) + "#End Library\n")
         with open(os.path.join(tmp, "sym-lib-table"), "w", encoding="utf-8") as f:
-            f.write(TABLE.format(uri=uri))
-        with redirect_stderr(StringIO()):
-            return analyze_legacy_schematic(os.path.join(tmp, "t.sch"))
+            f.write(table or TABLE.format(uri=uri))
+        old = os.getcwd()
+        if cwd:
+            os.chdir(cwd)
+        try:
+            with redirect_stderr(StringIO()):
+                return analyze_legacy_schematic(os.path.join(tmp, "t.sch"))
+        finally:
+            os.chdir(old)
 
 
 def pins(result):
@@ -68,6 +75,32 @@ class SymLibTableWithCache(unittest.TestCase):
     def test_without_cache_unchanged(self):
         comp, got = pins(analyze("${KIPRJMOD}/proj.lib", with_cache=False))
         self.assertEqual(got, self.EXPECTED)
+
+    def test_library_wins_over_cache_copy_of_the_same_symbol(self):
+        # cache keeps the symbol as proj_R with 200 mil pins; the library has 300 mil pins
+        cache = RES.format(name="proj_R").replace("300", "200")
+        comp, got = pins(analyze("${KIPRJMOD}/proj.lib", cache_lib=cache))
+        self.assertEqual(got, self.EXPECTED)
+
+    def test_relative_uri_is_relative_to_the_project(self):
+        comp, got = pins(analyze("proj.lib", cwd=tempfile.gettempdir()))
+        self.assertEqual(got, self.EXPECTED)
+
+    def test_bad_entry_does_not_hide_later_entries(self):
+        table = ("(sym_lib_table\n  (lib (name bad)(type Legacy)(uri))\n"
+                 "  (lib (name dir)(type Legacy)(uri ${KIPRJMOD}))\n"
+                 "  (lib (name proj)(type Legacy)(uri ${KIPRJMOD}/proj.lib)(options \"\")(descr \"\"))\n)\n")
+        comp, got = pins(analyze(None, table=table))
+        self.assertEqual(got, self.EXPECTED)
+
+    def test_table_symbols_do_not_break_a_unique_cache_suffix(self):
+        # bare `Q` maps to the cache symbol OLIMEX_Q; the library's X_Q must not make it ambiguous
+        q = RES.format(name="OLIMEX_Q").replace("300", "100")
+        lib = RES.format(name="X_Q")
+        q_comp = COMP.replace("proj:R", "Q")
+        comp, got = pins(analyze("${KIPRJMOD}/proj.lib", cache_lib=q, proj_lib=lib, comp=q_comp))
+        self.assertEqual(comp.get("_pin_source"), "suffix_match")
+        self.assertEqual(got["1"][1], round((3000 - 100) * MIL, 4))
 
 
 if __name__ == "__main__":
