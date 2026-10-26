@@ -94,6 +94,27 @@ class TestCircleCourtyard(unittest.TestCase):
             "message": "U1: courtyard has a segment drawn twice",
             "effect": "courtyard not used for placement checks"}])
 
+    def test_same_outline_on_front_and_back_is_not_malformed(self):
+        # KiCad checks F.CrtYd and B.CrtYd as two courtyards: no malformed_courtyard here
+        both = self._square() + self._square().replace("F.CrtYd", "B.CrtYd")
+        board = read_board(_board(_fp("J2", 50, 50, both)))
+        fp = board.footprints[0]
+        self.assertEqual(board.diagnostics, [])
+        cy = fp["courtyard"]
+        self.assertEqual((cy["min_x"], cy["min_y"], cy["max_x"], cy["max_y"]), (49.0, 49.0, 51.0, 51.0))
+        self.assertEqual(len(fp["courtyard_poly"]), 1)
+        self.assertEqual(sorted(map(tuple, fp["courtyard_poly"][0])),
+                         [(49.0, 49.0), (49.0, 51.0), (51.0, 49.0), (51.0, 51.0)])
+
+    def test_same_outline_on_front_and_back_still_overlaps(self):
+        both = self._square() + self._square().replace("F.CrtYd", "B.CrtYd")
+        rect = '(fp_rect (start -1 -1) (end 1 1) (layer "F.CrtYd") (width 0.05))\n'
+        # 2 x 2 squares 1.5 mm apart overlap by 0.5 x 2 = 1 mm2
+        for a in (both, rect + rect.replace("F.CrtYd", "B.CrtYd")):
+            ov = _placement(_fp("J2", 50, 50, a), _fp("U2", 51.5, 50, self._square()))
+            self.assertEqual(len(ov), 1)
+            self.assertAlmostEqual(ov[0]["overlap_mm2"], 1.0, delta=0.1)
+
     def test_zero_length_segment_is_harmless(self):
         for kw in ({"extra_first": self._line(1, 1, 1, 1)}, {"extra_last": self._line(0, 0, 0, 0)},
                    {"extra_last": self._line(-1, -1, -1, -1)}):

@@ -425,7 +425,8 @@ def extract_footprints(root: list, diagnostics: list | None = None) -> list[dict
 
         # Extract courtyard geometry: bounding box + chained outline polygons
         crtyd_pts: list[tuple[float, float]] = []
-        crtyd_segs: list[tuple[tuple[float, float], tuple[float, float]]] = []
+        # KiCad keeps F.CrtYd and B.CrtYd as two separate courtyards
+        crtyd_segs: dict[str, list[tuple[tuple[float, float], tuple[float, float]]]] = {}
         crtyd_polys: list[list[tuple[float, float]]] = []
         crtyd_unchainable = False  # an unparseable arc/circle leaves the polygon set incomplete
 
@@ -442,6 +443,7 @@ def extract_footprints(root: list, diagnostics: list | None = None) -> list[dict
                 item_layer = get_value(item, "layer")
                 if not item_layer or "CrtYd" not in item_layer:
                     continue
+                side_segs = crtyd_segs.setdefault(item_layer, [])
                 # fp_poly: extract all vertex coordinates
                 if gtype == "fp_poly":
                     pts = find_first(item, "pts")
@@ -460,7 +462,7 @@ def extract_footprints(root: list, diagnostics: list | None = None) -> list[dict
                     if p1 and p2 and len(p1) >= 3 and len(p2) >= 3:
                         seg_a = _fp_to_abs(float(p1[1]), float(p1[2]))
                         seg_b = _fp_to_abs(float(p2[1]), float(p2[2]))
-                        crtyd_segs.append((seg_a, seg_b))
+                        side_segs.append((seg_a, seg_b))
                         crtyd_pts.extend((seg_a, seg_b))
                     continue
                 if gtype == "fp_rect":
@@ -508,31 +510,49 @@ def extract_footprints(root: list, diagnostics: list | None = None) -> list[dict
                         if node and len(node) >= 3:
                             crtyd_pts.append(_fp_to_abs(float(node[1]), float(node[2])))
                     continue
-                crtyd_segs.extend(zip(line, line[1:]))
+                side_segs.extend(zip(line, line[1:]))
                 crtyd_pts.extend(line)
 
-        if crtyd_segs and not crtyd_unchainable:
-            # KiCad rejects a courtyard that draws a segment twice (malformed_courtyard) and
-            # skips it in the overlap check; zero-length segments are harmless
-            _seen: set = set()
-            _unique = []
-            for _a, _b in crtyd_segs:
-                _key = frozenset(((round(_a[0], 3), round(_a[1], 3)), (round(_b[0], 3), round(_b[1], 3))))
-                if len(_key) < 2:
-                    continue
-                if _key in _seen:
-                    crtyd_pts = []
-                    record(diagnostics, "pcb.reader.extract_footprints",
-                           ValueError(f"{ref}: courtyard has a segment drawn twice"),
-                           "courtyard not used for placement checks")
+        if any(crtyd_segs.values()) and not crtyd_unchainable:
+            # KiCad rejects a courtyard that draws a segment twice on one side
+            # (malformed_courtyard) and skips it in the overlap check; zero-length
+            # segments are harmless
+            for _side in sorted(crtyd_segs):
+                _seen: set = set()
+                _unique = []
+                for _a, _b in crtyd_segs[_side]:
+                    _key = frozenset(((round(_a[0], 3), round(_a[1], 3)),
+                                      (round(_b[0], 3), round(_b[1], 3))))
+                    if len(_key) < 2:
+                        continue
+                    if _key in _seen:
+                        crtyd_pts = []
+                        record(diagnostics, "pcb.reader.extract_footprints",
+                               ValueError(f"{ref}: courtyard has a segment drawn twice"),
+                               "courtyard not used for placement checks")
+                        break
+                    _seen.add(_key)
+                    _unique.append((_a, _b))
+                if not crtyd_pts:
                     break
-                _seen.add(_key)
-                _unique.append((_a, _b))
-            _chained = _chain_segments(_unique) if crtyd_pts else None
-            if _chained:
+                if not crtyd_segs[_side]:
+                    continue
+                _chained = _chain_segments(_unique)
+                if not _chained:
+                    crtyd_unchainable = True
+                    break
                 crtyd_polys.extend(_chained)
-            else:
-                crtyd_unchainable = True
+
+        if len(crtyd_polys) > 1:
+            # The same outline on both sides would cancel itself in the even-odd overlap test
+            _poly_keys: set = set()
+            _distinct = []
+            for poly in crtyd_polys:
+                _pk = tuple(sorted((round(px, 3), round(py, 3)) for px, py in poly))
+                if _pk not in _poly_keys:
+                    _poly_keys.add(_pk)
+                    _distinct.append(poly)
+            crtyd_polys = _distinct
 
         fp_entry: dict = {
             "library": fp_lib,
