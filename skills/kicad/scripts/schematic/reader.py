@@ -533,6 +533,19 @@ def extract_labels(root: list) -> list[dict]:
     return labels
 
 
+def rename_legacy_power_symbols(components: list[dict]) -> None:
+    """Set each global power symbol's Value to the name of its first pin when that pin is a
+    hidden power input, as KiCad 10 does on loading a file older than 20230221 or a KiCad 5
+    schematic (SCH_SCREEN::FixLegacyPowerSymbolMismatches). A visible pin keeps the Value."""
+    for comp in components:
+        if comp.get("type") != "power_symbol" or comp.get("_power_scope") == "local":
+            continue
+        pins = comp.get("pins") or []
+        first = pins[0] if pins else None
+        if first and first.get("type") == "power_in" and first.get("hidden") and first.get("name"):
+            comp["value"] = first["name"]
+
+
 def extract_power_symbols(components: list[dict]) -> list[dict]:
     """Extract power symbols from the component list (they define net names).
 

@@ -70,7 +70,7 @@ When extracting wires programmatically, search up to 4-5 lines ahead from `(wire
 ## Step 4: Identify net names at wire endpoints
 
 Look for:
-- **Power symbols**: `(lib_id "power:GND")` or `(lib_id "power:+BATT")` placed at a wire endpoint — the symbol's Value property is the net name
+- **Power symbols**: `(lib_id "power:GND")` or `(lib_id "power:+BATT")` placed at a wire endpoint — the symbol's Value property is the net name (in files older than version 20230221 and in KiCad 5 schematics, KiCad renames a power symbol whose pin is hidden after that pin: `power:+3.3V` with pin `+3V3` is `+3V3`)
 - **Labels**: `(label "NET_NAME" (at X Y ...))` at a wire endpoint
 - **Global labels**: `(global_label "NET_NAME" (at X Y ...))` for cross-sheet nets
 - **Junctions**: `(junction (at X Y))` marks where crossing wires connect
@@ -134,6 +134,8 @@ separate from the point-to-point tracing above.
 - **Hier/local join.** A genuine (non-sheet-pin) hierarchical label joins
   same-name local labels on its own sheet into one net; a sheet-pin label
   does not — its bare name belongs to the child and repeats per instance.
+  A global label, global power symbol or hidden power-in pin likewise joins
+  same-name local labels on its own sheet.
 - **Naming.** A resolved member net is named from the parent (lowest sheet) label.
 - **Qualified keys.** Bare-name collisions across sheet scopes use the
   `/<sheet>/<name>` key (KH-359), same as any other net.

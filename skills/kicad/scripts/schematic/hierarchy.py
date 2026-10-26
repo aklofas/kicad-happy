@@ -17,7 +17,19 @@ from schematic.reader import (
     extract_power_symbols,
     extract_symbol_instances,
     parse_single_sheet,
+    rename_legacy_power_symbols,
 )
+
+# KiCad renames legacy power symbols on load when the root file predates this version.
+_POWER_RENAME_BEFORE = 20230221
+
+
+def _renames_legacy_power_symbols(file_version) -> bool:
+    """True when the root schematic's version is older than 20230221."""
+    try:
+        return int(file_version) < _POWER_RENAME_BEFORE
+    except (TypeError, ValueError):
+        return False
 
 
 def namespace_hierarchical_labels(labels: list[dict], inst_path: str) -> None:
@@ -176,6 +188,8 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
         merged_bus["bus_entries"].extend(be.get("bus_entries", []))
         merged_bus["bus_aliases"].extend(be.get("bus_aliases", []))
 
+    if _renames_legacy_power_symbols(file_version):
+        rename_legacy_power_symbols(all_components)
     power_symbols = extract_power_symbols(all_components)
 
     return {
@@ -308,5 +322,7 @@ def merge_top_level_sheets(parsed: dict, path: str, root_tree: list, *,
                     # Power symbols were extracted from root-sheet components
                     # only; refresh from the merged list so peer-sheet ones are
                     # included.
+                    if _renames_legacy_power_symbols(parsed.get("file_version")):
+                        rename_legacy_power_symbols(parsed["components"])
                     parsed["power_symbols"] = extract_power_symbols(
                         parsed["components"])

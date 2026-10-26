@@ -249,7 +249,7 @@ The sheet's UUID comes from the parent's `(sheet ... (uuid "xxx"))` block.
 - **Hierarchical labels** (`hierarchical_label`): Connect via parent sheet's hierarchical pin
 - **Power symbols**: Behave like global labels (connect across all sheets by name)
 
-In `build_net_map()`, local labels use `(name, sheet)` as their union key, while global/hierarchical labels and power symbols use `(name,)` (no sheet).
+In `build_net_map()`, local labels use `(name, sheet)` as their union key, while global/hierarchical labels and power symbols use `(name,)` (no sheet) and also `(name, sheet)`, so a same-name local label on their own sheet joins them (sheet pins excepted).
 
 ### Net Name Assignment
 

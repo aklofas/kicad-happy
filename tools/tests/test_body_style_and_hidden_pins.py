@@ -254,16 +254,18 @@ class LegacyHiddenPowerPinTest(unittest.TestCase):
         self.assertTrue(next(p for p in u1["pins"] if p["number"] == "3").get("hidden"))
         self.assertNotIn("hidden", next(p for p in u1["pins"] if p["number"] == "1"))
 
-    def test_power_symbol_hidden_pin_stays_out(self):
-        # power:VCC placed with value +3V3: its hidden VCC pin must not pull +3V3 into VCC
+    def test_power_symbol_named_from_its_hidden_pin(self):
+        # power:VCC placed with value +3V3: KiCad renames it after its hidden VCC pin on load,
+        # so the wire it drives is the VCC net
         body = (comp("t:T", "U1", 1000, 1000, ts="5F000001")
                 + comp("power:VCC", "#PWR01", 6000, 3000, ts="5F000003", value="+3V3")
                 + comp("t:T", "U2", 6000, 2800, ts="5F000002")
                 + wire(6000, 3000, 6000, 2800) + glabel(5000, 1000, "VCC"))
         r = analyze(body, T_LIB)
         self.assertEqual(net_of(r, "U1", "3"), "VCC")
-        self.assertEqual(net_of(r, "U2", "2"), "+3V3")
+        self.assertEqual(net_of(r, "U2", "2"), "VCC")
         self.assertEqual(net_of(r, "U2", "3"), "VCC")
+        self.assertNotIn("+3V3", r["nets"])
 
     def test_hidden_power_out_pin_makes_no_net(self):
         lib = ("DEF O_O U 0 40 Y Y 1 F N\nF0 \"U\" 0 0 50 H V C CNN\nDRAW\n"

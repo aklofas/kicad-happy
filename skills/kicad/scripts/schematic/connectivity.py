@@ -533,6 +533,8 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
         # Local labels only connect within the same sheet (handled by wire union).
         if lbl["type"] == "global_label":
             label_keys.setdefault(lbl_name, []).append(k)
+            # KiCad also joins a global label to same-name local labels on its own sheet.
+            label_keys.setdefault((lbl_name, sheet), []).append(k)
         elif lbl["type"] == "hierarchical_label":
             # Cross-sheet by (namespaced) name — the pre-existing hier union.
             label_keys.setdefault(lbl_name, []).append(k)
@@ -573,6 +575,8 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
             label_keys.setdefault(local_key, []).append(k)
         else:
             label_keys.setdefault(ps["net_name"], []).append(k)
+            # ... and a same-name local label on its sheet joins it, as for a global label.
+            label_keys.setdefault((ps["net_name"], sheet), []).append(k)
         # A power symbol is a pin: KiCad joins it to a wire only at a wire end.
         union_with_overlapping_wires(k, ps["x"], ps["y"], sheet, None, ps_info)
 
@@ -588,6 +592,7 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
             if pin.get("hidden") and pin["type"] == "power_in" and pin["name"]:
                 k = key(pin["x"], pin["y"], sheet)
                 label_keys.setdefault(pin["name"], []).append(k)
+                label_keys.setdefault((pin["name"], sheet), []).append(k)
 
     # Union global/hierarchical labels and power symbols with the same name.
     # This is what connects nets across different parts of the schematic.

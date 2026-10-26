@@ -34,6 +34,7 @@ from kicad_core.netquery import (
 from schematic.reader import (
     compute_pin_positions,
     detect_sub_sheet,
+    rename_legacy_power_symbols,
 )
 from schematic.legacy_reader import (
     _resolve_legacy_libs,
@@ -1004,6 +1005,8 @@ def analyze_legacy_schematic(path: str, analysis_dir: str | Path | None = None) 
     # Extract power symbols (preserve _sheet so build_net_map keeps coordinate
     # spaces separate — without it, power symbols from sub-sheets all land in
     # sheet 0's coordinate space and fail to connect to their actual wires).
+    # KiCad 10 renames power symbols on every KiCad 5 import.
+    rename_legacy_power_symbols(all_components)
     power_symbols = []
     for comp in all_components:
         if comp["type"] == "power_symbol":
