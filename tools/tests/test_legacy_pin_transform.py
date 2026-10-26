@@ -161,6 +161,19 @@ class SnapTest(unittest.TestCase):
         self.assertEqual(net_of(r, "J1", "1"), "TOP")
         self.assertEqual(net_of(r, "R1", "2"), "BOT")
 
+    def test_builtin_pin_does_not_take_another_builtin_pins_wire_end(self):
+        # R1 pin 1 sits on the wire end (2000,1850); R2 (matrix 0 1 1 0) has pin 2 at
+        # (2020,1850), 20 mil away, and must not snap onto R1's end
+        body = (comp("Device:R", "R1", 2000, 2000, "1    0    0    -1", ts="5F000001")
+                + comp("Device:R", "R2", 2170, 1850, "0    1    1    0", ts="5F000002")
+                + wire(2000, 1850, 2000, 1500) + label(2000, 1500, "TOP")
+                + wire(2000, 2150, 2000, 2400) + label(2000, 2400, "BOT"))
+        r = analyze(body, J_LIB)
+        self.assertEqual(pin_xy(r, "R1", "1"), mm(2000, 1850))
+        self.assertEqual(net_of(r, "R1", "1"), "TOP")
+        self.assertEqual(pin_xy(r, "R2", "2"), mm(2020, 1850))
+        self.assertNotEqual(net_of(r, "R2", "2"), "TOP")
+
     def test_builtin_components_are_counted(self):
         body = (comp("Device:R", "R1", 2000, 2000, "1    0    0    -1", ts="5F000001")
                 + comp("j:J", "J1", 4000, 1830, "1    0    0    -1", ts="5F000002"))

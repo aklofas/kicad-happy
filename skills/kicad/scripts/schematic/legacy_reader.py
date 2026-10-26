@@ -502,15 +502,21 @@ def _snap_pins_to_wires(components: list[dict], wires: list[dict],
     within COORD_EPSILON moves to the closest wire endpoint within
     _MAX_SNAP_DIST of the component center, roughly in the pin's direction.
 
-    A wire endpoint already held by a parsed-library pin, a power symbol or one
-    of the ``occupied`` points (labels: dicts with x, y, _sheet) is never a
-    target.  Pins from parsed libraries are where KiCad puts them and never move.
+    A wire endpoint already held by a parsed-library pin, a built-in pin that
+    sits on it, a power symbol or one of the ``occupied`` points (labels: dicts
+    with x, y, _sheet) is never a target.  Pins from parsed libraries are where KiCad puts them and never move.
     """
     _MAX_SNAP_DIST = 12.0  # mm (~470 mils) — covers all standard symbols
     EPS = COORD_EPSILON
 
     def key(x, y):
         return (round(x / EPS) * EPS, round(y / EPS) * EPS)
+
+    wire_eps_by_sheet: dict[int, set[tuple[float, float]]] = {}
+    for w in wires:
+        sheet = w.get("_sheet", 0)
+        for x, y in ((w["x1"], w["y1"]), (w["x2"], w["y2"])):
+            wire_eps_by_sheet.setdefault(sheet, set()).add(key(x, y))
 
     held: dict[int, set[tuple[float, float]]] = {}
     for comp in components:
@@ -520,18 +526,20 @@ def _snap_pins_to_wires(components: list[dict], wires: list[dict],
         elif comp.get("_pin_source") != "builtin":
             for pin in comp.get("pins") or []:
                 held.setdefault(sheet, set()).add(key(pin["x"], pin["y"]))
+        else:
+            # a built-in pin already on a wire end holds it too
+            for pin in comp.get("pins") or []:
+                sk = key(pin["x"], pin["y"])
+                if sk in wire_eps_by_sheet.get(sheet, ()):
+                    held.setdefault(sheet, set()).add(sk)
     for pt in occupied:
         held.setdefault(pt.get("_sheet", 0), set()).add(key(pt["x"], pt["y"]))
 
-    # Per-sheet wire endpoint set for fast lookup, and free endpoints for snapping
-    wire_eps_by_sheet: dict[int, set[tuple[float, float]]] = {}
     free_pts_by_sheet: dict[int, list[tuple[float, float]]] = {}
     for w in wires:
         sheet = w.get("_sheet", 0)
         for x, y in ((w["x1"], w["y1"]), (w["x2"], w["y2"])):
-            sk = key(x, y)
-            wire_eps_by_sheet.setdefault(sheet, set()).add(sk)
-            if sk not in held.get(sheet, ()):
+            if key(x, y) not in held.get(sheet, ()):
                 free_pts_by_sheet.setdefault(sheet, []).append((x, y))
 
     for comp in components:
