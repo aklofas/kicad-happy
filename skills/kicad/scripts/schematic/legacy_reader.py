@@ -297,6 +297,7 @@ def _parse_legacy_lib(path: str) -> dict:
     current_alt_unit_pins = {}
     current_has_alt = False
     current_datasheet = ""
+    current_is_power = False
     in_draw = False
 
     for line in lines:
@@ -306,6 +307,8 @@ def _parse_legacy_lib(path: str) -> dict:
             parts = line.split()
             if len(parts) >= 2:
                 current_name = parts[1].lstrip("~")
+                # DEF name ref unused text_offset pin_numbers pin_names units locked power
+                current_is_power = len(parts) >= 10 and parts[9] == "P"
                 current_aliases = []
                 current_pins = []
                 current_unit_pins = {}
@@ -374,7 +377,7 @@ def _parse_legacy_lib(path: str) -> dict:
                 "unit_pins": current_unit_pins if has_multi_unit else None,
                 "description": "",
                 "keywords": "",
-                "is_power": False,
+                "is_power": current_is_power,
                 "ki_fp_filters": "",
                 "alternates": None,
             }
@@ -392,12 +395,12 @@ def _parse_legacy_lib(path: str) -> dict:
     return symbols
 
 
-def _read_sym_lib_table(base_dir: Path) -> list:
+def _read_sym_lib_table(base_dir: Path, missing: list | None = None) -> list:
     """Legacy-type entries of the project sym-lib-table as (nickname, existing lib path).
 
-    ${KIPRJMOD} is the project directory and relative paths start there; any other
-    variable leaves the entry out.
-    A missing or malformed table, or an unreadable library, yields nothing.
+    ${KIPRJMOD} / $(KIPRJMOD) is the project directory and relative paths start there; any
+    other variable leaves the entry out.  A missing or malformed table, or an unreadable
+    library, yields nothing.  Each skipped entry adds a (nickname, reason) pair to *missing*.
     """
     table = base_dir / "sym-lib-table"
     if not table.exists():
@@ -421,23 +424,96 @@ def _read_sym_lib_table(base_dir: Path) -> list:
                         lib_uri = str(child[1])
             if lib_type != "Legacy" or not lib_uri:
                 continue
-            lib_uri = lib_uri.replace("${KIPRJMOD}", str(base_dir))
-            if "${" in lib_uri:
+            # KiCad expands ${VAR} and $(VAR) alike (ExpandEnvVarSubstitutions)
+            lib_uri = lib_uri.replace("${KIPRJMOD}", str(base_dir)).replace("$(KIPRJMOD)", str(base_dir))
+            if "${" in lib_uri or "$(" in lib_uri:
+                if missing is not None:
+                    missing.append((nick, f"path variable not set in {lib_uri}"))
                 continue
             lib_path = base_dir / lib_uri  # an absolute URI replaces base_dir
             if lib_path.is_file():
                 entries.append((nick, lib_path))
+            elif missing is not None:
+                missing.append((nick, f"{lib_uri} not found"))
         except (ValueError, IndexError, KeyError, OSError):
             continue
     return entries
 
 
-def _resolve_legacy_libs(sch_path: str, all_sch_lines: dict) -> tuple:
+def _pro_libraries(base_dir: Path, stem: str, missing: list | None = None) -> list[Path]:
+    """The `.pro` [eeschema/libraries] LibName<n> list, in order, as existing .lib paths.
+
+    Each name is tried in the project directory, then in each LibDir entry; a name found
+    nowhere adds a (name, reason) pair to *missing*.
+    """
+    try:
+        text = (base_dir / f"{stem}.pro").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    names = [m.group(1).strip() for m in re.finditer(r"(?m)^LibName\d+=(.*)$", text)]
+    dirs = [""]
+    for m in re.finditer(r"(?m)^LibDir=(.*)$", text):
+        dirs.extend(d.strip() for d in m.group(1).split(";") if d.strip())
+    found = []
+    for name in names:
+        if not name:
+            continue
+        file_name = name if name.endswith(".lib") else name + ".lib"
+        for d in dirs:
+            lib_path = base_dir / d / file_name
+            if lib_path.is_file():
+                found.append(lib_path)
+                break
+        else:
+            if missing is not None:
+                missing.append((Path(name).name, f"{file_name} not found"))
+    return found
+
+
+def _pin_signature(sym_def: dict) -> list:
+    return sorted((p["number"], p["name"], p["type"], tuple(p["offset"]), p["hidden"])
+                  for p in sym_def.get("pins") or [])
+
+
+def _cache_conflicts(sch_path: str, lib_ids) -> tuple[list[str], list[str]]:
+    """Placed symbols whose `<stem>-cache.lib` copy differs from a `.pro` library's copy.
+
+    Applies to a project with a cache and no sym-lib-table, which KiCad 10 opens through
+    its rescue step; the cache copy is the one it keeps by default.  Returns (library
+    names, symbol names), both sorted; empty when nothing differs.
+    """
+    base = Path(sch_path)
+    cache_path = base.parent / f"{base.stem}-cache.lib"
+    if not cache_path.exists() or (base.parent / "sym-lib-table").exists():
+        return [], []
+    wanted = set(lib_ids)
+    lib_paths = _pro_libraries(base.parent, base.stem) if wanted else []
+    if not lib_paths:
+        return [], []
+    project: dict = {}
+    for lib_path in lib_paths:
+        for name, sym_def in _parse_legacy_lib(str(lib_path)).items():
+            project.setdefault(name, (lib_path.stem, sym_def))
+    cache = _parse_legacy_lib(str(cache_path))
+    libs, names = set(), set()
+    for name in wanted:
+        if name in cache and name in project:
+            lib_name, sym_def = project[name]
+            if _pin_signature(sym_def) != _pin_signature(cache[name]):
+                libs.add(lib_name)
+                names.add(name)
+    return sorted(libs), sorted(names)
+
+
+def _resolve_legacy_libs(sch_path: str, all_sch_lines: dict,
+                         missing: list | None = None) -> tuple:
     """Find and parse .lib files for legacy schematics.
 
     Args:
         sch_path: Path to the root .sch file.
         all_sch_lines: Dict mapping sheet paths to their lines (for LIBS: extraction).
+        missing: when a list, receives one (library nickname, reason) pair per library
+            that is named but cannot be loaded.
 
     Strategy:
     1. Look for *-cache.lib alongside the root .sch file (self-contained, preferred)
@@ -465,7 +541,7 @@ def _resolve_legacy_libs(sch_path: str, all_sch_lines: dict) -> tuple:
     if cache_path.exists():
         symbols = _parse_legacy_lib(str(cache_path))
         # Project libraries the cache does not hold, addressed as nick:name
-        for nick, lib_path in _read_sym_lib_table(base_dir):
+        for nick, lib_path in _read_sym_lib_table(base_dir, missing):
             for name, sym_def in _parse_legacy_lib(str(lib_path)).items():
                 symbols.setdefault(f"{nick}:{name}", sym_def)
         # Also add standard library fallbacks for anything missing
@@ -483,11 +559,18 @@ def _resolve_legacy_libs(sch_path: str, all_sch_lines: dict) -> tuple:
 
     # Strategy 2.5: Parse sym-lib-table for legacy library paths (KH-141)
     # KiCad 5 file version 4 uses sym-lib-table instead of LIBS: header directives
-    slt_entries = _read_sym_lib_table(base_dir)
+    slt_entries = _read_sym_lib_table(base_dir, missing)
     if slt_entries:
+        # nick:name resolves through its own table row; a bare name takes the first row
+        parsed = [(nick, _parse_legacy_lib(str(lib_path))) for nick, lib_path in slt_entries]
         slt_symbols = {}
-        for _nick, lib_path in slt_entries:
-            slt_symbols.update(_parse_legacy_lib(str(lib_path)))
+        for _nick, lib in parsed:
+            for name, sym_def in lib.items():
+                slt_symbols.setdefault(name, sym_def)
+        parsed_count = sum(1 for name in slt_symbols if name not in _STANDARD_LIB_PINS)
+        for nick, lib in parsed:
+            for name, sym_def in lib.items():
+                slt_symbols[f"{nick}:{name}"] = sym_def
         if slt_symbols:
             # Add standard library fallbacks
             for name, pins in _STANDARD_LIB_PINS.items():
@@ -498,7 +581,7 @@ def _resolve_legacy_libs(sch_path: str, all_sch_lines: dict) -> tuple:
                         "alternates": None, "_builtin": True,
                     }
             resolution_info["sym_lib_table_used"] = True
-            resolution_info["parsed_lib_count"] = max(0, len(slt_symbols) - len(_STANDARD_LIB_PINS))
+            resolution_info["parsed_lib_count"] = parsed_count
             resolution_info["builtin_fallback_count"] = len(_STANDARD_LIB_PINS)
             return slt_symbols, resolution_info
 
@@ -550,6 +633,10 @@ def _resolve_legacy_libs(sch_path: str, all_sch_lines: dict) -> tuple:
                 parsed = _parse_legacy_lib(str(candidate))
                 symbols.update(parsed)
                 break
+        else:
+            if missing is not None:
+                # LIBS: libraries serve unqualified names
+                missing.append(("", f"{lib_file} not found"))
 
     # Add standard library fallbacks
     for name, pins in _STANDARD_LIB_PINS.items():
@@ -712,8 +799,9 @@ def _parse_legacy_single_sheet(path: str) -> tuple:
                 if cl.startswith("L "):
                     parts = cl.split()
                     if len(parts) >= 3:
-                        comp["lib_id"] = parts[1]
-                        comp["reference"] = parts[2]
+                        # KiCad writes spaces in these two tokens as `~`
+                        comp["lib_id"] = parts[1].replace("~", " ")
+                        comp["reference"] = parts[2].replace("~", " ")
 
                 # U unit convert timestamp
                 elif cl.startswith("U "):

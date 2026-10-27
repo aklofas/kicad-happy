@@ -38,6 +38,7 @@ from schematic.reader import (
     rename_legacy_power_symbols,
 )
 from schematic.legacy_reader import (
+    _cache_conflicts,
     _resolve_legacy_libs,
     _snap_pins_to_wires,
     _parse_legacy_single_sheet,
@@ -851,6 +852,61 @@ def analyze_signal_paths(ctx: AnalysisContext) -> dict:
     return assemble_signal_results(ctx, topo, domain)
 
 
+_LEGACY_SOURCE = "schematic.pipeline.analyze_legacy_schematic"
+_LIBRARY_RECORD_CAP = 20
+
+
+def _record_library_gaps(components: list[dict], missing: list, root_path: str,
+                         diagnostics: list) -> None:
+    """One diagnostics record per library whose placed symbols got no library pins, and one
+    when cache copies differ from the project's `.pro` libraries."""
+    by_lib: dict[str, list[dict]] = {}
+    for comp in components:
+        if comp.get("type") in ("power_symbol", "power_flag", "flag"):
+            continue
+        if comp.get("_pin_source") in (None, "builtin"):
+            lib_id = comp.get("lib_id", "")
+            nick = lib_id.split(":", 1)[0] if ":" in lib_id else ""
+            by_lib.setdefault(nick, []).append(comp)
+    reasons: dict[str, list[str]] = {}
+    for nick, reason in missing:
+        reasons.setdefault(nick, []).append(reason)
+    libs = sorted(by_lib)
+    for nick in libs[:_LIBRARY_RECORD_CAP]:
+        comps = by_lib[nick]
+        refs = list(dict.fromkeys(c.get("reference", "?") for c in comps))
+        shown = ", ".join(refs[:5]) + (", …" if len(refs) > 5 else "")
+        why = "; ".join(reasons.get(nick, [])[:2])
+        builtin = sum(1 for c in comps if c.get("_pin_source") == "builtin")
+        if builtin == len(comps):
+            effect = "built-in pin table used"
+        elif builtin == 0:
+            effect = "no pins; the part is left unconnected"
+        else:
+            effect = (f"built-in pin table used for {builtin}; "
+                      f"{len(comps) - builtin} left unconnected")
+        record(diagnostics, _LEGACY_SOURCE,
+               FileNotFoundError(f"library '{nick or '(unqualified)'}': {len(refs)} placed "
+                                 f"symbol(s) not available to the analyzer ({shown})"
+                                 + (f"; {why}" if why else "")),
+               effect)
+    if len(libs) > _LIBRARY_RECORD_CAP:
+        record(diagnostics, _LEGACY_SOURCE,
+               FileNotFoundError(f"{len(libs) - _LIBRARY_RECORD_CAP} more libraries with "
+                                 "placed symbols not available to the analyzer"),
+               "built-in pin table used or the parts left unconnected")
+
+    conflict_libs, conflict_names = _cache_conflicts(
+        root_path, {c.get("lib_id", "") for c in components})
+    if conflict_names:
+        placed = sum(1 for c in components if c.get("lib_id") in conflict_names)
+        shown = ", ".join(conflict_names[:5]) + (", …" if len(conflict_names) > 5 else "")
+        record(diagnostics, _LEGACY_SOURCE,
+               ValueError(f"{placed} placed symbol(s) differ between the cache and project "
+                          f"library {', '.join(conflict_libs)} ({shown})"),
+               "cache copy used, as KiCad 10's rescue default keeps it")
+
+
 def analyze_legacy_schematic(path: str, analysis_dir: str | Path | None = None) -> dict:
     """Parse a KiCad 5 legacy .sch file and return the same structure as analyze_schematic.
 
@@ -942,7 +998,8 @@ def analyze_legacy_schematic(path: str, analysis_dir: str | Path | None = None) 
 
     # Resolve .lib files and parse pin data
     root_path = str(Path(path).resolve())
-    lib_symbols, legacy_resolution = _resolve_legacy_libs(root_path, all_sch_lines)
+    missing_libs: list = []
+    lib_symbols, legacy_resolution = _resolve_legacy_libs(root_path, all_sch_lines, missing_libs)
 
     # Build a reverse lookup for cache lib names: bare_symbol -> full cache name.
     # Cache libs store "Library_Symbol" while schematics reference bare "Symbol"
@@ -988,6 +1045,8 @@ def analyze_legacy_schematic(path: str, analysis_dir: str | Path | None = None) 
                 sym_def = lib_symbols.get(cache_key)
                 _pin_src = "suffix_match"
         if sym_def:
+            if sym_def.get("is_power") and comp.get("type") != "power_symbol":
+                comp["_global_power_part"] = True
             comp["pins"] = compute_pin_positions(comp, {lib_id: sym_def})
             comp["_pin_source"] = "builtin" if sym_def.get("_builtin") else _pin_src
             # KH-216: Store unit-valid pin numbers for pin_nets filtering
@@ -997,6 +1056,8 @@ def analyze_legacy_schematic(path: str, analysis_dir: str | Path | None = None) 
             for pin in comp["pins"]:
                 pin["x"] = _snap_mil(pin["x"])
                 pin["y"] = _snap_mil(pin["y"])
+
+    _record_library_gaps(all_components, missing_libs, root_path, parse_diagnostics)
 
     # KH-016 fix: built-in fallback pin offsets differ between KiCad library
     # versions, so a built-in pin that misses every wire end moves to the

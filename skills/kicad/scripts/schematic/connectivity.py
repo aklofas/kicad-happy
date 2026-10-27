@@ -822,12 +822,15 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
     # power-in pins (VCC, GND) that create implicit global net connections
     # by pin name.  These pins have no wires attached — they connect solely
     # by their name matching other hidden power pins or power symbols.
+    # A power-input pin of a power-flagged library symbol is global even when
+    # visible (SCH_PIN::IsGlobalPower).
     for comp in components:
         if comp.get("type") == "power_symbol":
             continue
         sheet = comp.get("_sheet", 0)
         for pin in comp.get("pins", []):
-            if pin.get("hidden") and pin["type"] == "power_in" and pin["name"]:
+            if ((pin.get("hidden") or comp.get("_global_power_part"))
+                    and pin["type"] == "power_in" and pin["name"]):
                 k = key(pin["x"], pin["y"], sheet)
                 label_keys.setdefault(pin["name"], []).append(k)
                 label_keys.setdefault((pin["name"], sheet), []).append(k)

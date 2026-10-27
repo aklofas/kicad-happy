@@ -434,6 +434,7 @@ def assemble_legacy_result(*, nets, all_components, signal_analysis, real_compon
         _comp.pop("_body_style", None)
         _comp.pop("_pin_alternates", None)
         _comp.pop("_jumper_groups", None)
+        _comp.pop("_global_power_part", None)
     for _ps in power_symbols:
         _ps.pop("_drives", None)
 
