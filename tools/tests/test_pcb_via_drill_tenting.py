@@ -21,7 +21,8 @@ SCRIPTS = Path(__file__).resolve().parents[2] / "skills" / "kicad" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 from kicad_core.sexp import parse  # noqa: E402
-from pcb.reader import extract_vias  # noqa: E402
+from pcb.copper import analyze_thermal_pad_vias, analyze_via_in_pad  # noqa: E402
+from pcb.reader import extract_footprints, extract_vias, extract_zones  # noqa: E402
 
 
 def board_text(setup="", classes="", vias="", version=20171130):
@@ -135,6 +136,91 @@ class ViaTenting(unittest.TestCase):
         vias = (_via(5, 1, "(drill 0.4) (tenting (front no) (back none))")
                 + _via(10, 1, "(drill 0.4) (tenting (front yes) (back no))"))
         self.assertEqual(_tenting(setup, vias, V10), [["back"], ["front"]])
+
+
+def _fp(ref, x, pad_layers, ep_layers=None, side="F"):
+    """Four 0.3 x 0.8 signal pads and a 3 x 3 pad 5 (an exposed pad when ep_layers is given)."""
+    pads = "".join(
+        f' (pad {n} smd rect (at {dx} -2.5) (size 0.3 0.8) (layers {pad_layers}) (net 3 SIG))'
+        for n, dx in ((1, -0.75), (2, -0.25), (3, 0.25), (4, 0.75)))
+    big = ep_layers if ep_layers is not None else pad_layers
+    pads += f' (pad 5 smd rect (at 0 0) (size 3 3) (layers {big}) (net 1 GND))'
+    return f'(module Test:QFN (layer {side}.Cu) (at {x} 10) (fp_text reference {ref} (at 0 4) (layer {side}.SilkS)){pads})'
+
+
+def _vp001(setup, fp, vias):
+    root = parse(board_text(setup, "", fp + vias))
+    return analyze_via_in_pad(extract_footprints(root), extract_vias(root), set())
+
+
+def _tv001(setup, fp, vias):
+    root = parse(board_text(setup, "", fp + vias))
+    zones, fills = extract_zones(root)
+    return analyze_thermal_pad_vias(extract_footprints(root), extract_vias(root), zones, fills)
+
+
+SMD = "F.Cu F.Paste F.Mask"
+NO_MASK = "F.Cu F.Paste"
+
+
+def _gnd_via(x, y=10, extra=""):
+    return f'(via (at {x} {y}) (size 0.6) (drill 0.3) {extra} (layers F.Cu B.Cu) (net 1))'
+
+
+class ViaInPadExposure(unittest.TestCase):
+    """KiCad plots a pad's mask opening whatever the tenting of a via inside it; the tented via
+    only loses its own flash (plot_board_layers.cpp, PCB_VIA::GetLayerSet)."""
+
+    def test_tented_via_in_a_pad_mask_opening_is_exposed(self):
+        f = _vp001("", _fp("U1", 15, SMD), _gnd_via(15.5))
+        self.assertEqual(len(f), 1)
+        self.assertTrue(f[0]["tented"])
+        self.assertEqual(f[0]["severity"], "warning")
+        self.assertIn("exposed by the pad's mask opening", f[0]["summary"])
+
+    def test_tented_via_in_a_pad_without_mask_is_covered(self):
+        f = _vp001("", _fp("U1", 15, NO_MASK), _gnd_via(15.5))
+        self.assertEqual((f[0]["tented"], f[0]["severity"]), (True, "info"))
+
+    def test_untented_via_in_a_pad_without_mask_is_exposed(self):
+        f = _vp001("(pcbplotparams (viasonmask true))", _fp("U1", 15, NO_MASK), _gnd_via(15.5))
+        self.assertEqual((f[0]["tented"], f[0]["severity"]), (False, "warning"))
+
+    def test_back_pad_opening_exposes_a_through_via(self):
+        f = _vp001("", _fp("U1", 15, "B.Cu B.Paste B.Mask", side="B"), _gnd_via(15.5))
+        self.assertEqual(f[0]["severity"], "warning")
+
+    def test_mask_opening_on_the_other_side_exposes_a_through_via(self):
+        # KiCad opens B.Mask at an F.Cu pad that lists B.Mask; the through via shows there.
+        f = _vp001("", _fp("U1", 15, "F.Cu B.Mask"), _gnd_via(15.5))
+        self.assertEqual(f[0]["severity"], "warning")
+
+    def test_blind_via_not_reaching_the_opening_side_is_covered(self):
+        via = '(via blind (at 15.5 10) (size 0.6) (drill 0.3) (layers F.Cu In1.Cu) (net 1))'
+        f = _vp001("", _fp("U1", 15, "F.Cu B.Mask"), via)
+        self.assertEqual(f[0]["severity"], "info")
+
+
+class ThermalPadViaExposure(unittest.TestCase):
+    def test_tented_via_inside_the_thermal_pad_is_exposed(self):
+        tv = _tv001("", _fp("U1", 15, SMD), _gnd_via(15.5))
+        self.assertEqual(len(tv), 1)
+        self.assertIn("tenting_note", tv[0])
+        self.assertTrue(tv[0]["tenting_note"].startswith("1 via(s)"))
+
+    def test_tented_via_in_the_margin_is_covered(self):
+        # 1.8 mm from the centre: outside the 1.5 mm half-width, inside the 1.5x margin.
+        tv = _tv001("", _fp("U1", 15, SMD), _gnd_via(16.8))
+        self.assertEqual(tv[0]["via_count"], 1)
+        self.assertNotIn("tenting_note", tv[0])
+
+    def test_untented_via_in_the_margin_is_exposed(self):
+        tv = _tv001("(pcbplotparams (viasonmask true))", _fp("U1", 15, SMD), _gnd_via(16.8))
+        self.assertIn("tenting_note", tv[0])
+
+    def test_via_inside_a_thermal_pad_without_mask_follows_tenting(self):
+        tv = _tv001("", _fp("U1", 15, SMD, ep_layers=NO_MASK), _gnd_via(15.5))
+        self.assertNotIn("tenting_note", tv[0])
 
 
 if __name__ == "__main__":

@@ -10,6 +10,19 @@ from pcb.geometry import (ZoneFills, _pad_on_layer, _pad_sample_points, _point_i
                           copper_connected, outline_edge_distance)
 
 
+def _via_exposed_by_pad(via: dict, pad_layers: list | None) -> bool:
+    """True when a pad's own mask opening uncovers a via inside it. KiCad plots the pad's
+    aperture on every mask layer in the pad's layer set whatever the via's tenting; the
+    via shows wherever it reaches that side."""
+    layers = set(pad_layers or ())
+    reaches = via.get("layers") or ["F.Cu", "B.Cu"]
+    for side in ("F", "B"):
+        if (f"{side}.Cu" in reaches
+                and layers & {f"{side}.Mask", "*.Mask", "F&B.Mask"}):
+            return True
+    return False
+
+
 def _find_thermal_pads(fp: dict) -> list[dict]:
     """Identify thermal/exposed pads on a footprint.
 
@@ -645,6 +658,7 @@ def analyze_thermal_pad_vias(footprints: list[dict], vias: dict,
             drill_sum = 0.0
             vias_tented = 0
             vias_untented = 0
+            vias_exposed = 0
 
             for via in all_vias:
                 vx, vy = via["x"], via["y"]
@@ -662,12 +676,15 @@ def analyze_thermal_pad_vias(footprints: list[dict], vias: dict,
                     drill = via.get("drill", 0.3)
                     drill_sum += drill
                     effective_vias_in_pad += (drill / 0.3) ** 2
-                    # Check tenting
-                    tenting = via.get("tenting", [])
-                    if len(tenting) > 0:
+                    tented = len(via.get("tenting", [])) > 0
+                    if tented:
                         vias_tented += 1
                     else:
                         vias_untented += 1
+                    # Inside the pad outline the pad's mask opening decides, not tenting.
+                    if not tented or (abs(dx) <= half_w and abs(dy) <= half_h
+                                      and _via_exposed_by_pad(via, pad.get("layers"))):
+                        vias_exposed += 1
 
             # Count thru_hole pads in the same footprint on the same net
             # — these are footprint-embedded thermal vias (common in
@@ -834,10 +851,11 @@ def analyze_thermal_pad_vias(footprints: list[dict], vias: dict,
                 "raw_adequacy": raw_adequacy,
             }
 
-            if vias_untented > 0:
+            if vias_exposed > 0:
                 entry["tenting_note"] = (
-                    f"{vias_untented} via(s) are not tented — solder may wick "
-                    f"through during reflow, creating voids under the thermal pad"
+                    f"{vias_exposed} via(s) are open to solder (untented, or inside the "
+                    f"pad's mask opening) — solder may wick through during reflow, "
+                    f"creating voids under the thermal pad"
                 )
 
             if drill_penalized and strict_via_count > 0:
@@ -1213,7 +1231,7 @@ def analyze_copper_presence(footprints: list[dict], zones: list[dict],
 
 
 def analyze_via_in_pad(footprints: list[dict], vias: dict, thermal_pad_refs: set) -> list[dict]:
-    """VP-001: Detect vias inside SMD pads that aren't tented."""
+    """VP-001: Detect vias inside SMD pads; warn when solder can reach them."""
     findings: list[dict] = []
     via_list = vias.get("vias", [])
     if not via_list:
@@ -1244,19 +1262,27 @@ def analyze_via_in_pad(footprints: list[dict], vias: dict, thermal_pad_refs: set
             pad_num = pad.get("number", "?")
             smd_pads.append((ref, pad_num, pad.get("net_name", ""),
                              px, py, pw, ph,
-                             pad.get("shape", "rect"), pad.get("angle", 0)))
+                             pad.get("shape", "rect"), pad.get("angle", 0), _pad_layers))
 
     for via in via_list:
         vx = via.get("x")
         vy = via.get("y")
         if vx is None or vy is None:
             continue
-        for ref, pad_num, net, ppx, ppy, pw, ph, pshape, pangle in smd_pads:
+        for ref, pad_num, net, ppx, ppy, pw, ph, pshape, pangle, players in smd_pads:
             if _point_in_pad(vx, vy, ppx, ppy, pw, ph, pshape, pangle):
-                # Check tenting
-                tenting = via.get("tenting", [])
-                tented = len(tenting) > 0
-                severity = "info" if tented else "warning"
+                tented = len(via.get("tenting", [])) > 0
+                by_pad = _via_exposed_by_pad(via, players)
+                if by_pad:
+                    state, detail = "exposed by the pad's mask opening", (
+                        "The pad's mask opening exposes it whatever its tenting — "
+                        "solder may wick through.")
+                elif tented:
+                    state, detail = "tented", "Tented."
+                else:
+                    state, detail = "untented", "Not tented — solder may wick through."
+                exposed = by_pad or not tented
+                severity = "warning" if exposed else "info"
                 findings.append({
                     "component": ref,
                     "pad": pad_num,
@@ -1269,13 +1295,15 @@ def analyze_via_in_pad(footprints: list[dict], vias: dict, thermal_pad_refs: set
                     "severity": severity,
                     "confidence": "heuristic",
                     "evidence_source": "topology",
-                    "summary": f"Via in pad: {ref}:{pad_num} ({'tented' if tented else 'untented'})",
-                    "description": f"Via at ({round(vx, 2)}, {round(vy, 2)}) inside SMD pad {ref}:{pad_num}. {'Tented.' if tented else 'Not tented — solder may wick through.'}",
+                    "summary": f"Via in pad: {ref}:{pad_num} ({state})",
+                    "description": f"Via at ({round(vx, 2)}, {round(vy, 2)}) inside SMD pad {ref}:{pad_num}. {detail}",
                     "components": [ref],
                     "nets": [net] if net else [],
                     "pins": [],
-                    "recommendation": "" if tented else f"Fill and cap via in {ref}:{pad_num} or tent with solder mask.",
-                    "report_context": {"section": "DFM", "impact": "Solder wicking risk" if not tented else "", "standard_ref": ""},
+                    "recommendation": (f"Fill and cap via in {ref}:{pad_num}." if by_pad
+                                       else "" if tented
+                                       else f"Fill and cap via in {ref}:{pad_num} or tent with solder mask."),
+                    "report_context": {"section": "DFM", "impact": "Solder wicking risk" if exposed else "", "standard_ref": ""},
                 })
                 break  # One finding per via
 
