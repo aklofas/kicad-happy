@@ -589,8 +589,12 @@ def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
         # KH-083: Try lib_name first for correct lib_symbol lookup
         sym_def = (lib_symbols.get(lib_name) if lib_name else None) or lib_symbols.get(lib_id, {})
         is_power_sym = sym_def.get("is_power", False)
+        # A stacked pin ("[1-5]") counts once per contact, as in KiCad's netlist.
+        lib_pins = sym_def.get("pins")
+        if lib_pins is not None:
+            lib_pins = [p for p in lib_pins for _ in _expand_stacked(p["number"])]
         comp["type"] = classify_component(ref, lib_id, value, is_power_sym, footprint, in_bom=in_bom,
-                                          description=description, pins=sym_def.get("pins"))
+                                          description=description, pins=lib_pins)
         # Store ki_keywords for downstream analysis (e.g., P-channel detection)
         comp["keywords"] = sym_def.get("keywords", "")
         # Track power scope (global vs local) for connectivity
@@ -603,7 +607,7 @@ def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
 
         # Enrich connectors with external status and layout
         if comp["type"] == "connector":
-            pin_count = len(sym_def.get("pins", [])) if sym_def else 0
+            pin_count = len(lib_pins or [])
             is_ext, conn_layout = classify_connector(lib_id, value, pin_count)
             comp["is_external_connector"] = is_ext
             comp["connector_layout"] = conn_layout

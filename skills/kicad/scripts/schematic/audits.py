@@ -11,6 +11,7 @@ from kicad_core.classify import NON_COMPONENT_TYPES
 from kicad_core.netnames import (
     is_ground_name as _is_ground_name,
 )
+from schematic.reader import _expand_stacked
 from schematic.connectivity import (
     expand_bus_name,
 )
@@ -1208,7 +1209,7 @@ def verify_pin_coverage(components: list[dict], lib_symbols: dict) -> list[dict]
         expected_pins = set()
         for p in lib_pins:
             if p["type"] != "no_connect":
-                expected_pins.add(p["number"])
+                expected_pins.update(_expand_stacked(p["number"]))
 
         missing = expected_pins - placed_pin_nums
         if missing and len(missing) > len(expected_pins) * 0.3:

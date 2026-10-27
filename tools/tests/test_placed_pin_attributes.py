@@ -190,6 +190,10 @@ class JumperAndStackedTest(unittest.TestCase):
                                           **{n: "BOT" for n in ("6", "7", "9", "10", "11")}})
         self.assertNotIn("_jumper_groups", s1)
 
+    def test_stacked_library_pins_count_as_placed(self):
+        # every contact of S1's two stacked pins is placed, so no pin-coverage warning
+        self.assertNotIn("S1", [w["component"] for w in self.r.get("pin_coverage_warnings", [])])
+
 
 if __name__ == "__main__":
     unittest.main()
