@@ -954,7 +954,7 @@ def _parse_legacy_single_sheet(path: str) -> tuple:
                         else:
                             at = cl.find('"', field_end)
                             nm = _quoted(cl, at) if at >= 0 else None
-                            comp.setdefault("_fields", {})[nm[0] if nm else f"Field{field_num}"] = field_val
+                            comp.setdefault("_fields", {})[nm[0] if nm and nm[0] else f"Field{field_num}"] = field_val
                         if field_num == 0:
                             comp["reference"] = field_val
                         elif field_num == 1:

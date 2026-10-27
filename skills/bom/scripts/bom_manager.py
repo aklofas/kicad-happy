@@ -644,11 +644,11 @@ def _sheet_list_order(sheets: list[dict]) -> list[int]:
 
 def _legacy_symbols(input_path: Path, recursive: bool) -> list[dict]:
     """Symbols of a KiCad 5 .sch project in the shape _placed_symbols returns. KiCad 5 has no
-    in_bom or dnp flag; a "~" field is empty."""
+    in_bom or dnp flag, and its loader keeps a field's text as written (a "~" stays "~")."""
     import schematic.legacy_reader as legacy
     out = []
     for rec in legacy.read_legacy_symbols(str(input_path), recursive=recursive):
-        props = {name: "" if text == "~" else text for name, text in rec["fields"].items()}
+        props = dict(rec["fields"])
         ref = rec["reference"]
         out.append({"reference": ref, "type": classify_reference(ref), "in_bom": True,
                     "dnp": is_dnp("", props), "unit": rec["unit"], "uuid": rec["uuid"],
@@ -662,7 +662,7 @@ def analyze(
     group_by: str = 'value+footprint',
 ) -> dict:
     """Analyze a KiCad schematic and return full BOM report."""
-    if input_path.suffix == ".sch":
+    if input_path.suffix.lower() == ".sch":
         all_symbols = _legacy_symbols(input_path, recursive)
         return _report(input_path, all_symbols, sorted({s["source_file"] for s in all_symbols}), group_by)
     texts: dict[Path, str] = {}
@@ -1373,7 +1373,7 @@ def main():
     p_order.add_argument("--json", action="store_true", help="Output result as JSON")
 
     # Backwards compat: if first arg is a .kicad_sch file with no subcommand, assume "analyze"
-    if len(sys.argv) > 1 and sys.argv[1].endswith((".kicad_sch", ".sch")):
+    if len(sys.argv) > 1 and sys.argv[1].lower().endswith((".kicad_sch", ".sch")):
         sys.argv.insert(1, "analyze")
 
     args = parser.parse_args()
@@ -1418,7 +1418,7 @@ def main():
         if not args.schematic.exists():
             print(f"Error: {args.schematic} not found", file=sys.stderr)
             sys.exit(1)
-        if args.schematic.suffix not in (".kicad_sch", ".sch"):
+        if args.schematic.suffix.lower() not in (".kicad_sch", ".sch"):
             print(f"Error: expected a .kicad_sch or .sch file, got {args.schematic.suffix}", file=sys.stderr)
             sys.exit(1)
 

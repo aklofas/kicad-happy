@@ -48,7 +48,7 @@ class LegacyBom(unittest.TestCase):
     def refs(self, report):
         return sorted(r for e in report["bom"] for r in e["references"])
 
-    def test_user_field_is_the_mpn_and_tilde_footprint_is_empty(self):
+    def test_user_field_is_the_mpn_and_tilde_footprint_is_literal(self):
         root = self.write("a.sch",
                           comp("R1", "5F000001",
                                extra='F 4 "RC0805FR-0710KL" H 1000 1000 50  0001 C CNN "MPN"\n')
@@ -56,7 +56,8 @@ class LegacyBom(unittest.TestCase):
         report = bom_manager.analyze(root)
         by_ref = {r: e for e in report["bom"] for r in e["references"]}
         self.assertEqual(by_ref["R1"]["mpn"], "RC0805FR-0710KL")
-        self.assertEqual(by_ref["C1"]["footprint"], "")
+        # KiCad 10 keeps a legacy field's text as written
+        self.assertEqual(by_ref["C1"]["footprint"], "~")
         self.assertEqual(by_ref["R1"]["footprint"], "R_0603")
 
     def test_power_symbols_are_not_parts(self):

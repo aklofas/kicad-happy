@@ -341,7 +341,7 @@ def main():
     if not args.schematic.exists():
         print(f"Error: {args.schematic} not found", file=sys.stderr)
         sys.exit(1)
-    if args.schematic.suffix == ".sch":
+    if args.schematic.suffix.lower() == ".sch":
         print("Error: KiCad 5 .sch files are read only; edit properties in a .kicad_sch file",
               file=sys.stderr)
         sys.exit(1)
