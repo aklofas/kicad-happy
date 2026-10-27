@@ -629,9 +629,13 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
     # Add component pins. PWR_FLAG is an ERC marker, not a real connection —
     # still register its position so the net gets a has_pwr_flag annotation.
     for comp in components:
-        is_pwr_flag = comp.get("value") == "PWR_FLAG" or comp.get("type") == "power_flag"
+        pins = comp.get("pins") or []
+        # a power symbol with only power-output pins is a PWR_FLAG whatever its Value
+        is_pwr_flag = (comp.get("value") == "PWR_FLAG" or comp.get("type") == "power_flag"
+                       or (comp.get("type") == "power_symbol" and pins
+                           and all(p.get("type") == "power_out" for p in pins)))
         sheet = comp.get("_sheet", 0)
-        for pin in comp.get("pins", []):
+        for pin in pins:
             if is_pwr_flag:
                 add_point(pin["x"], pin["y"], {
                     "source": "pwr_flag",
@@ -799,7 +803,7 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
     # PWR_FLAG is a DRC-only marker (tells ERC a net has a power source).
     # It doesn't create real connectivity, so exclude it entirely.
     for ps in power_symbols:
-        if ps["net_name"] == "PWR_FLAG":
+        if ps["net_name"] == "PWR_FLAG" or ps.get("_drives") is False:
             continue
         sheet = ps.get("_sheet", 0)
         ps_info = {

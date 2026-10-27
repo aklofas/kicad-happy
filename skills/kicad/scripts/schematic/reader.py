@@ -596,6 +596,16 @@ def rename_legacy_power_symbols(components: list[dict]) -> None:
             comp["value"] = first["name"]
 
 
+def power_symbol_drives(comp: dict) -> bool:
+    """True when a power symbol names and joins its net by its Value.
+
+    KiCad drives a net name only from a power-input pin, so a PWR_FLAG (power output) never
+    joins anything by name.  A symbol without parsed pins (missing library) keeps its Value.
+    """
+    pins = comp.get("pins") or []
+    return not pins or pins[0].get("type") == "power_in"
+
+
 def extract_power_symbols(components: list[dict]) -> list[dict]:
     """Extract power symbols from the component list (they define net names).
 
@@ -619,6 +629,7 @@ def extract_power_symbols(components: list[dict]) -> list[dict]:
                 "lib_id": comp["lib_id"],
                 "_sheet": comp.get("_sheet", 0),
                 "_power_scope": comp.get("_power_scope", "global"),
+                "_drives": power_symbol_drives(comp),
             })
     return power
 

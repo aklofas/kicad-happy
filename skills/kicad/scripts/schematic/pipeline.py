@@ -34,6 +34,7 @@ from kicad_core.netquery import (
 from schematic.reader import (
     compute_pin_positions,
     detect_sub_sheet,
+    power_symbol_drives,
     rename_legacy_power_symbols,
 )
 from schematic.legacy_reader import (
@@ -1019,6 +1020,7 @@ def analyze_legacy_schematic(path: str, analysis_dir: str | Path | None = None) 
             if "_sheet" in comp:
                 ps["_sheet"] = comp["_sheet"]
             ps["_power_scope"] = comp.get("_power_scope", "global")
+            ps["_drives"] = power_symbol_drives(comp)
             power_symbols.append(ps)
 
     # Generate BOM
