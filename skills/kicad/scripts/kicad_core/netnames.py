@@ -87,10 +87,10 @@ def is_power_net_name(net_name: str | None, power_rails: set[str] | None = None)
     # to KiCad, but the rules below were written against the decoded name.
     net_name = unescape_string(net_name)
     # Strip hierarchical sheet path prefix (e.g., "/Power Supply/VCC" → "VCC")
+    # The rail set matches only by full name: a sheet-local label is its own net even
+    # when its leaf names a power symbol elsewhere (KiCad joins local labels per sheet).
     if "/" in net_name:
         net_name = net_name.rsplit("/", 1)[-1]
-        if power_rails and net_name in power_rails:
-            return True
     nu = net_name.upper()
     # Zero-volt ground spellings (0V, 0VA, 0VANA, 0VCC, 0V_A, +0V, ...) are
     # never rails, no matter what pattern rule below would otherwise match

@@ -22,9 +22,26 @@ class RailControlSuffix(unittest.TestCase):
         self.assertTrue(is_power_net_name("3V3_EN", {"3V3_EN"}))
 
     def test_configured_rail_under_a_sheet_path(self):
-        self.assertTrue(is_power_net_name("/Sheet/3V3_EN", {"3V3_EN"}))
+        # A sheet-local label is its own net; it is not the rail of the same leaf name.
+        self.assertFalse(is_power_net_name("/Sheet/3V3_EN", {"3V3_EN"}))
         self.assertFalse(is_power_net_name("/Sheet/3V3_EN"))
         self.assertTrue(is_power_net_name("/pwr/vcc_io"))
+
+
+class RailSetMatchesFullName(unittest.TestCase):
+    # KiCad joins a global power pin's net by name, but a local label only within its own
+    # sheet (eeschema connection_graph.cpp), so a local `X` on sheet A and a power symbol `X`
+    # elsewhere are two nets and only the power symbol's is a rail.
+    def test_local_label_named_like_a_rail_elsewhere_is_not_that_rail(self):
+        self.assertFalse(is_power_net_name("/A/X", {"X"}))
+        self.assertFalse(is_power_net_name("/HVIL/HVIL_N", {"HVIL_N"}))
+
+    def test_rail_by_its_full_name(self):
+        self.assertTrue(is_power_net_name("X", {"X"}))
+
+    def test_leaf_name_heuristics_still_apply(self):
+        self.assertTrue(is_power_net_name("/pwr/vcc_io", {"X"}))
+        self.assertTrue(is_power_net_name("/Power/3V3", {"3V3"}))
 
 
 if __name__ == "__main__":
