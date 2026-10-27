@@ -53,7 +53,6 @@ class TestPolygonArcs(unittest.TestCase):
     def test_zone_outline_arc_corner_area(self):
         # 10 x 10 square whose (10,0) corner is rounded by a quarter circle of radius 4
         r = 4.0
-        c = 6 + 0.0
         mx = 6 + r * math.sin(math.radians(45))
         my = 4 - r * math.cos(math.radians(45))
         body = ('(zone (net 0) (net_name "") (layer "F.Cu") (hatch edge 0.5)\n'
@@ -62,6 +61,28 @@ class TestPolygonArcs(unittest.TestCase):
         z = read_board(_board(body)).zones[0]
         expected = 100.0 - r * r * (1 - math.pi / 4)
         self.assertAlmostEqual(z["outline_area_mm2"], expected, delta=0.01)
+
+    @staticmethod
+    def _courtyard(pts):
+        body = ('(footprint "X" (layer "F.Cu") (at 100 100) (property "Reference" "U1")\n'
+                '(fp_poly %s (stroke (width 0.05) (type solid)) (fill none) (layer "F.CrtYd")))\n' % pts)
+        return read_board(_board(body)).footprints[0]
+
+    def test_courtyard_fp_poly_with_an_arc(self):
+        # a semicircle of radius 1 about the footprint origin closes the right side
+        fp = self._courtyard('(pts (xy -2 -1) (xy 0 -1) (arc (start 0 -1) (mid 1 0) (end 0 1)) (xy -2 1))')
+        cy = fp["courtyard"]
+        self.assertEqual((cy["min_x"], cy["min_y"], cy["max_y"]), (98.0, 99.0, 101.0))
+        self.assertAlmostEqual(cy["max_x"], 101.0, delta=0.01)  # the arc's chords, not its end points
+        poly = fp["courtyard_poly"][0]
+        self.assertGreater(len(poly), 5)
+        for vx, vy in poly:
+            if vx > 100:
+                self.assertAlmostEqual(math.hypot(vx - 100, vy - 100), 1.0, places=3)
+
+    def test_courtyard_fp_poly_xy_only_unchanged(self):
+        fp = self._courtyard('(pts (xy -2 -1) (xy 2 -1) (xy 2 1) (xy -2 1))')
+        self.assertEqual(fp["courtyard_poly"], [[[98.0, 99.0], [102.0, 99.0], [102.0, 101.0], [98.0, 101.0]]])
 
 
 if __name__ == "__main__":

@@ -75,10 +75,10 @@ class KiCad5StrokedFill(unittest.TestCase):
 
     def test_stroked_when_the_token_is_absent_or_yes(self):
         # KiCad 10 keeps the stroke unless the token is present and false.
-        zones, _ = extract_zones(_board(SQUARE, version=20221018,
-                                        extra=" (filled_areas_thickness yes)"))
-        self.assertAlmostEqual(zones[0]["filled_area_mm2"], KICAD_SQUARE,
-                               delta=KICAD_SQUARE * 0.005)
+        for extra in (" (filled_areas_thickness yes)", ""):
+            zones, _ = extract_zones(_board(SQUARE, version=20221018, extra=extra))
+            self.assertAlmostEqual(zones[0]["filled_area_mm2"], KICAD_SQUARE,
+                                   delta=KICAD_SQUARE * 0.005, msg=extra or "no token")
 
 
 if __name__ == "__main__":

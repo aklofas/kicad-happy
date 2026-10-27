@@ -1,4 +1,3 @@
-# tools/tests/test_pcb_layer_identity.py
 """KiCad maps a board's copper layers by their position in the (layers ...) table
 (first = F.Cu, last = B.Cu, inner = In<i>.Cu unless already canonical), so a KiCad 5
 board whose copper layers were renamed (Top/Bottom, ...) reads exactly like the same
@@ -12,6 +11,7 @@ sys.path.insert(0, str(SCRIPTS))
 from kicad_core.sexp import parse_file  # noqa: E402
 from pcb.pipeline import analyze_pcb, read_board  # noqa: E402
 import pcb.reader as reader  # noqa: E402
+from kicad_core.sexp import find_first  # noqa: E402
 
 RENAMED_2L = """(kicad_pcb (version 20171130) (host pcbnew 5.1.12)
   (layers (0 Top signal) (31 Bottom signal) (34 B.Paste user hide))
@@ -20,6 +20,17 @@ RENAMED_2L = """(kicad_pcb (version 20171130) (host pcbnew 5.1.12)
     (pad 1 smd rect (at 0 0) (size 1 1) (layers Top F.Paste F.Mask) (net 1 N))
     (pad 2 smd rect (at 2 0) (size 1 1) (layers Top) (net 1 N)))
   (segment (start 0 0) (end 2 0) (width 0.25) (layer Top) (net 1)))
+"""
+
+RENAMED_ZONE = """(kicad_pcb (version 20171130) (host pcbnew 5.1.12)
+  (layers (0 Top signal) (31 Bottom signal) (44 Edge.Cuts user))
+  (net 0 "") (net 1 N)
+  (gr_line (start 0 0) (end 5 0) (layer Top) (width 0.3))
+  (zone (net 1) (net_name N) (layer Bottom) (hatch edge 0.508)
+    (connect_pads (clearance 0.2)) (min_thickness 0.25)
+    (fill yes (arc_segments 32) (thermal_gap 0.5) (thermal_bridge_width 0.5))
+    (polygon (pts (xy 0 0) (xy 4 0) (xy 4 4) (xy 0 4)))
+    (filled_polygon (pts (xy 0 0) (xy 4 0) (xy 4 4) (xy 0 4)))))
 """
 
 RENAMED_4L = """(kicad_pcb (version 20171130) (host pcbnew 5.1.12)
@@ -88,6 +99,16 @@ class TestCanonicalizeCopperLayers(unittest.TestCase):
         bd = read_board(_write(self.tmp.name, RENAMED_4L))
         self.assertEqual([s["layer"] for s in bd.tracks["segments"]], ["In1.Cu", "In2.Cu"])
         self.assertEqual(bd.vias["vias"][0]["layers"], ["F.Cu", "B.Cu"])
+
+    def test_zone_fill_and_graphic_layers_rewritten(self):
+        path = _write(self.tmp.name, RENAMED_ZONE)
+        root = parse_file(path)
+        reader.canonicalize_copper_layers(root)
+        self.assertEqual(find_first(find_first(root, "gr_line"), "layer")[1], "F.Cu")
+        bd = read_board(path)
+        self.assertEqual(bd.zones[0]["layers"], ["B.Cu"])
+        self.assertTrue(bd.zone_fills.has_copper_at(2, 2, "B.Cu"))
+        self.assertFalse(bd.zone_fills.has_copper_at(2, 2, "Bottom"))
 
     def test_canonical_board_unchanged(self):
         text = RENAMED_2L.replace("Top", "F.Cu").replace("Bottom", "B.Cu")
