@@ -35,6 +35,8 @@ LIB = '''(lib_symbols
 ROOT_UUID = "00000000-0000-4000-8000-0281000000e0"
 CHILD_UUID = "00000000-0000-4000-8000-0282000000e0"
 SHEET = "00000000-0000-4000-8000-02830000005e"
+SHEET2 = "00000000-0000-4000-8000-02840000005e"
+CHILD2_UUID = "00000000-0000-4000-8000-0285000000e0"
 FP = "Resistor_SMD:R_0603_1608Metric"
 
 
@@ -70,7 +72,8 @@ def _doc(uuid, version, items, root=True):
 
 def write_project(tmp, version=20260306):
     """R33 DNP, fitted in A; R70 in_bom yes, (in_bom no) in A; R71 (in_bom no), (in_bom yes)
-    in A; R80 10k, Value HV in A; #PWR1 +5V, Value +12V in A; R90 on a sheet that is DNP in A."""
+    in A; R80 10k, Value HV in A; #PWR1 +5V, Value +12V in A; R90 on a sheet that is DNP in A;
+    R91 on a sheet that is (in_bom no) in A."""
     uid = _Ids()
     rp = "/" + ROOT_UUID
     wire = f'(wire (pts (xy 20 6.19) (xy 20 0)) (stroke (width 0) (type default)) (uuid "{uid()}"))'
@@ -85,11 +88,16 @@ def write_project(tmp, version=20260306):
         f'(sheet (at 60 80) (size 20 10) (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)'
         f' (uuid "{SHEET}") {_prop("Sheetname", "s")} {_prop("Sheetfile", "child.kicad_sch")}'
         f' (instances (project "vt" (path "{rp}" (page "2") (variant (name "A") (dnp yes))))))',
+        f'(sheet (at 90 80) (size 20 10) (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)'
+        f' (uuid "{SHEET2}") {_prop("Sheetname", "s2")} {_prop("Sheetfile", "child2.kicad_sch")}'
+        f' (instances (project "vt" (path "{rp}" (page "3") (variant (name "A") (in_bom no))))))',
     ]
     files = {
         "vt.kicad_sch": _doc(ROOT_UUID, version, root_items),
         "child.kicad_sch": _doc(CHILD_UUID, version,
                                 [_sym(uid, "R90", "4k7", f"{rp}/{SHEET}", (10, 10))], root=False),
+        "child2.kicad_sch": _doc(CHILD2_UUID, version,
+                                 [_sym(uid, "R91", "5k6", f"{rp}/{SHEET2}", (10, 10))], root=False),
         "vt.kicad_pro": json.dumps({"meta": {"filename": "vt.kicad_pro", "version": 3},
                                     "schematic": {"variants": [{"name": "A", "description": "a"}]}}),
     }
@@ -131,6 +139,7 @@ class AnalyzerVariantTest(_Project):
         self.assertFalse(comps["R71"]["in_bom"])
         self.assertEqual(comps["R80"]["value"], "10k")
         self.assertFalse(comps["R90"]["dnp"])
+        self.assertTrue(comps["R91"]["in_bom"])
         self.assertNotIn("variant", result.get("project_settings", {}))
 
     def test_variant_overrides_what_it_names(self):
@@ -141,6 +150,7 @@ class AnalyzerVariantTest(_Project):
         self.assertEqual(comps["R80"]["value"], "HV")
         self.assertEqual(comps["R80"]["footprint"], FP)
         self.assertTrue(comps["R90"]["dnp"])
+        self.assertFalse(comps["R91"]["in_bom"])
         self.assertEqual(result["project_settings"]["variant"], "A")
 
     def test_power_net_keeps_the_base_value(self):
@@ -165,6 +175,7 @@ class BomManagerVariantTest(_Project):
         self.assertNotIn("R71", bom)
         self.assertEqual(bom["R80"]["value"], "10k")
         self.assertFalse(bom["R90"]["dnp"])
+        self.assertIn("R91", bom)
 
     def test_variant(self):
         bom = self.bom("A")
@@ -173,6 +184,7 @@ class BomManagerVariantTest(_Project):
         self.assertIn("R71", bom)
         self.assertEqual(bom["R80"]["value"], "HV")
         self.assertTrue(bom["R90"]["dnp"])
+        self.assertNotIn("R91", bom)
 
     def test_unknown_variant_is_a_usage_error(self):
         err = io.StringIO()
@@ -196,11 +208,13 @@ class InvertedInBomBefore20260306Test(_Project):
         comps, _ = self.comps("A")
         self.assertTrue(comps["R70"]["in_bom"])
         self.assertFalse(comps["R71"]["in_bom"])
+        self.assertTrue(comps["R91"]["in_bom"])
 
     def test_bom_manager(self):
         bom = self.bom("A")
         self.assertIn("R70", bom)
         self.assertNotIn("R71", bom)
+        self.assertIn("R91", bom)
 
 
 if __name__ == "__main__":
