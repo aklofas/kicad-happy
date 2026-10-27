@@ -47,6 +47,19 @@ def _old(rel: str, name: str):
     return ns[name]
 
 
+# KiCad 7+ writes (lib_name ...) before (lib_id ...) when the placed symbol's local name differs
+# from the library's.
+LIB_NAME_SYMBOL = """\t(symbol
+\t\t(lib_name "R_1")
+\t\t(lib_id "Device:R")
+\t\t(at 30 10 0)
+\t\t(property "Reference" "R2" (at 0 0 0))
+\t\t(property "Datasheet" "https://example.com/r2.pdf" (at 0 0 0))
+\t)
+"""
+SCH_LIB_NAME = SCH[:SCH.rindex(")")] + LIB_NAME_SYMBOL + ")\n"
+
+
 class BomSpans(unittest.TestCase):
     def test_shared_scanner_yields_placed_blocks_only(self):
         from kicad_sexp import iter_placed_symbol_blocks
@@ -75,6 +88,22 @@ class BomSpans(unittest.TestCase):
         self.assertEqual(sync_datasheet_urls.extract_ref_datasheets(SCH), old(SCH))
         self.assertEqual(sync_datasheet_urls.extract_ref_datasheets(SCH),
                          {"R1": "https://example.com/r.pdf", "C1": ""})
+
+
+class LibNameSpans(unittest.TestCase):
+    def test_shared_scanner_sees_lib_name_symbols(self):
+        from kicad_sexp import iter_placed_symbol_blocks
+        spans = iter_placed_symbol_blocks(SCH_LIB_NAME)
+        self.assertEqual(len(spans), 4)
+        self.assertEqual(spans[-1][2], LIB_NAME_SYMBOL.strip())
+
+    def test_writers_see_lib_name_symbols(self):
+        import edit_properties, sync_datasheet_urls
+        self.assertEqual([r for _, _, r in edit_properties.find_placed_symbols(SCH_LIB_NAME)],
+                         ["R1", "C1", "#PWR01", "R2"])
+        self.assertEqual(sync_datasheet_urls.extract_ref_datasheets(SCH_LIB_NAME),
+                         {"R1": "https://example.com/r.pdf", "C1": "",
+                          "R2": "https://example.com/r2.pdf"})
 
 
 if __name__ == "__main__":

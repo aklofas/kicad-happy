@@ -387,7 +387,7 @@ A dual op-amp (e.g., LM358) has one reference (U1) but two units (U1A, U1B). In 
 
 ### Hierarchical Schematics
 
-Properties are on the symbol instances in each sheet, not on the sheet reference. When a project uses hierarchical design (root + sub-sheets), `bom_manager.py --recursive` finds all symbols across all sheets. The `edit_properties.py` script needs to be pointed at the specific `.kicad_sch` file containing the symbol to edit.
+Properties are on the symbol instances in each sheet, not on the sheet reference. When a project uses hierarchical design (root + sub-sheets), `bom_manager.py --recursive` finds all symbols across all sheets, with each sheet instance's own reference (a sheet used twice lists both sets). The `edit_properties.py` script needs to be pointed at the specific `.kicad_sch` file containing the symbol to edit, and finds a symbol by the `Reference` property stored in that file, which for a repeated sheet is the reference of only one of its instances.
 
 ### KiCad 5 vs KiCad 6+ Format
 

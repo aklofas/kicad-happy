@@ -81,6 +81,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Custom pads connect through their drawn primitives, not only their anchor, in the `--full` graph; a circle anchor has the diameter of the pad size's x and a `rect` anchor is the size box, as in KiCad. (kf/A7-F1)
 - KiCad 5 zone fills are read at their real width (the fill outline grown by half its minimum thickness, as KiCad loads a fill saved before 20250210 without `(filled_areas_thickness no)`); fill areas and copper-presence checks on those boards change. (kf/A9-F2)
 - NPTH pads whose copper is larger than their hole (a mounting hole with a copper ring) carry copper, as in KiCad: in the `--full` graph such a pad with a net joins the copper it touches on its first copper layer, and copper-presence checks no longer treat a bare NPTH hole (hole as large as the pad) as copper. (KH-417)
+- The recursive BOM (`bom_manager --recursive`) and the datasheet-URL sync follow KiCad 6 sub-sheets (`"Sheet file"`); they were skipped. All three BOM scripts see symbols that start with `(lib_name …)`. `bom_manager` reports each sheet instance's own reference and unit (repeated sheets, KiCad 6 root `symbol_instances` incl. their value and footprint, renamed roots); it listed the first instance only. It drops symbols under a sheet excluded from the BOM and marks symbols under a DNP sheet as DNP (KiCad 9+ sheet attributes, inherited by nested sheets), reads `~` as empty in files older than 20250318, and lists each schematic file once. (kf/A13-X1, kf/A13-F6)
 
 ---
 

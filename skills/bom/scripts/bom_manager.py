@@ -36,7 +36,10 @@ from pathlib import Path
 
 import _core_path  # noqa: F401
 from kicad_core.diagnostics import record
-from kicad_sexp import find_sub_sheets, iter_placed_symbol_blocks
+from kicad_core.instances import tilde_is_empty
+from kicad_core.sexp import get_value, parse
+from kicad_sexp import (direct_child, direct_value, find_sub_sheet_entries, instance_of,
+                        iter_placed_symbol_blocks, symbol_instances_of)
 
 from kicad_core.fields import (MPN_FIELD_ALIASES, MPN_FIELD_ALIASES_PRIMARY,
                                MPN_FIELD_ALIASES_GENERIC, DIGIKEY_FIELD_ALIASES,
@@ -508,27 +511,101 @@ def _find_gaps(entry: dict, convention: dict) -> list[str]:
 # Full analysis
 # ---------------------------------------------------------------------------
 
-def parse_schematic_file(filepath: Path) -> tuple[list[dict], str]:
-    """Parse a single .kicad_sch file and return (symbols, text)."""
-    text = filepath.read_text(encoding="utf-8")
-    raw_symbols = extract_placed_symbols(text)
+_VERSION = re.compile(r'\(version\s+(\d+)\)')
+# KiCad applies a root's (symbol_instances) only when the root predates this file version.
+_SYMBOL_INSTANCES_BEFORE = 20221002
 
-    symbols = []
-    for start, end, block in raw_symbols:
+
+def _file_version(text: str) -> int | None:
+    match = _VERSION.search(text)
+    return int(match.group(1)) if match else None
+
+
+def _placed_symbols(text: str) -> list[tuple[dict, str]]:
+    """(symbol, block) for each placed symbol of one .kicad_sch text, in file order."""
+    tilde_empty = tilde_is_empty(_file_version(text))
+    out = []
+    for start, end, block in extract_placed_symbols(text):
         props = extract_properties(block)
+        if tilde_empty:
+            # Files older than 20250318 write "~" for an empty field
+            props = {name: "" if value == "~" else value for name, value in props.items()}
         ref = props.get("Reference", "")
-        comp_type = classify_reference(ref)
-
-        symbols.append({
+        unit = direct_value(block, "unit")
+        out.append(({
             "reference": ref,
-            "type": comp_type,
+            "type": classify_reference(ref),
             "in_bom": is_in_bom(block),
             "dnp": is_dnp(block, props),
+            "unit": int(unit) if unit and unit.isdigit() else 1,
+            "uuid": direct_value(block, "uuid") or "",
             "raw_properties": props,
-            "source_file": str(filepath),
-        })
+        }, block))
+    return out
 
-    return symbols, text
+
+def _kicad6_symbol_instances(root_text: str) -> dict[str, dict]:
+    """A KiCad 6 root's (symbol_instances): lowercase path below the root -> reference,
+    unit, value, footprint ("~" read as empty)."""
+    node = direct_child(root_text, "symbol_instances")
+    if node is None:
+        return {}
+    out = {}
+    for path_node in parse(node)[1:]:
+        if not isinstance(path_node, list) or len(path_node) < 2 or path_node[0] != "path":
+            continue
+        unit = get_value(path_node, "unit")
+        entry = {"reference": get_value(path_node, "reference") or "",
+                 "unit": int(unit) if unit and unit.isdigit() else None}
+        for key in ("value", "footprint"):
+            text = get_value(path_node, key) or ""
+            entry[key] = "" if text == "~" else text
+        out[str(path_node[1]).lower()] = entry
+    return out
+
+
+def _sheet_instances(input_path: Path, recursive: bool, read) -> list[dict]:
+    """Every sheet instance below *input_path* (the root first, then breadth first in file
+    order): file, path below the root (sheet uuids), the in_bom / dnp the sheets on that path
+    impose, the parent instance and the sibling sort key.  A sheet that includes one of its
+    own ancestors is skipped."""
+    root = input_path.resolve()
+    sheets = [{"file": input_path, "path": "", "in_bom": True, "dnp": False,
+               "parent": None, "key": (), "chain": (root,)}]
+    seen = {(root, "")}
+    i = 0
+    while recursive and i < len(sheets):
+        parent = sheets[i]
+        for sub in find_sub_sheet_entries(read(parent["file"]), parent["file"].parent):
+            resolved = sub.path.resolve()
+            path = parent["path"] + "/" + sub.uuid if sub.uuid else parent["path"]
+            if resolved in parent["chain"] or (resolved, path.lower()) in seen:
+                continue
+            seen.add((resolved, path.lower()))
+            sheets.append({"file": sub.path, "path": path,
+                           # KiCad 9+: a sheet's attributes reach every symbol below it,
+                           # OR-ed over the path; a nested sheet cannot re-include
+                           "in_bom": parent["in_bom"] and sub.in_bom,
+                           "dnp": parent["dnp"] or sub.dnp,
+                           "parent": i, "key": (sub.at[0], sub.at[1], sub.uuid.lower()),
+                           "chain": parent["chain"] + (resolved,)})
+        i += 1
+    return sheets
+
+
+def _sheet_list_order(sheets: list[dict]) -> list[int]:
+    """Indices of *sheets* in KiCad's sheet list order: depth first, siblings by x, then y,
+    then uuid (SCH_SCREEN::GetSheets)."""
+    children: dict[int, list[int]] = {}
+    for i, sheet in enumerate(sheets):
+        if sheet["parent"] is not None:
+            children.setdefault(sheet["parent"], []).append(i)
+    order, stack = [], [0]
+    while stack:
+        i = stack.pop()
+        order.append(i)
+        stack.extend(sorted(children.get(i, ()), key=lambda c: sheets[c]["key"], reverse=True))
+    return order
 
 
 def analyze(
@@ -537,29 +614,82 @@ def analyze(
     group_by: str = 'value+footprint',
 ) -> dict:
     """Analyze a KiCad schematic and return full BOM report."""
-    files_to_parse = [input_path]
+    texts: dict[Path, str] = {}
 
-    if recursive:
-        # Discover all sub-sheets recursively
-        visited = set()
-        queue = [input_path]
-        while queue:
-            current = queue.pop(0)
-            if current in visited:
-                continue
-            visited.add(current)
-            text = current.read_text(encoding="utf-8")
-            sub_sheets = find_sub_sheets(text, current.parent)
-            for ss in sub_sheets:
-                if ss not in visited:
-                    queue.append(ss)
-                    files_to_parse.append(ss)
+    def read(path: Path) -> str:
+        key = path.resolve()
+        if key not in texts:
+            texts[key] = path.read_text(encoding="utf-8")
+        return texts[key]
 
-    # Parse all files
+    root_text = read(input_path)
+    root_text = root_text[root_text.find("("):]
+    sheets = _sheet_instances(input_path, recursive, read)
+    files = {}
+    for sheet in sheets:
+        files.setdefault(sheet["file"].resolve(), sheet["file"])
+    files_to_parse = list(files.values())
+    parsed = {key: _placed_symbols(read(f)) for key, f in files.items()}
+
+    # References and units per sheet instance (SCH_SYMBOL::GetRef): the instance whose path
+    # is the sheet's full path, starting with the root sheet's uuid
+    root_uuid = direct_value(root_text, "uuid") or ""
+    root_kiid = "/" + root_uuid if root_uuid else ""
+    version = _file_version(root_text)
+    k6 = {}
+    if version is None or version < _SYMBOL_INSTANCES_BEFORE:
+        k6 = _kicad6_symbol_instances(root_text)
+    k6_by_uuid: dict[str, list[dict]] = {}
+    for si_path, entry in k6.items():
+        k6_by_uuid.setdefault(si_path.rpartition("/")[2], []).append(
+            dict(entry, path=root_kiid + si_path.rpartition("/")[0], project=""))
+
+    # A KiCad 6 entry's non-empty value / footprint overwrites the one symbol it names, sheet
+    # by sheet in sheet-list order, so a symbol on a repeated sheet shows the last one
+    # (SCH_SHEET_LIST::UpdateSymbolInstanceData)
+    k6_fields: dict[tuple, dict] = {}
+    if k6:
+        for i in _sheet_list_order(sheets):
+            sheet = sheets[i]
+            resolved = sheet["file"].resolve()
+            for sym, _block in parsed[resolved]:
+                entry = k6.get((sheet["path"] + "/" + sym["uuid"]).lower())
+                if entry is None:
+                    continue
+                fields = k6_fields.setdefault((resolved, sym["uuid"].lower()), {})
+                for key, name in (("value", "Value"), ("footprint", "Footprint")):
+                    if entry[key]:
+                        fields[name] = entry[key]
+
     all_symbols = []
-    for fp in files_to_parse:
-        syms, _ = parse_schematic_file(fp)
-        all_symbols.extend(syms)
+    for sheet in sheets:
+        resolved = sheet["file"].resolve()
+        tilde_empty = tilde_is_empty(_file_version(read(sheet["file"])))
+        for parsed_sym, block in parsed[resolved]:
+            sym = dict(parsed_sym, raw_properties=dict(parsed_sym["raw_properties"]),
+                       source_file=str(sheet["file"]))
+            props = sym["raw_properties"]
+            props.update(k6_fields.get((resolved, sym["uuid"].lower()), {}))
+            # Inline instance value / footprint (files of late 2022) set the symbol's field
+            for inst in symbol_instances_of(block, tilde_empty):
+                for key, name in (("value", "Value"), ("footprint", "Footprint")):
+                    if key in inst:
+                        props[name] = inst[key]
+            hit = instance_of(block, root_kiid + sheet["path"], project_name=input_path.stem,
+                              candidates=k6_by_uuid.get(sym["uuid"].lower(), []))
+            if hit is not None:
+                ref, unit = hit
+                if ref:
+                    sym["reference"] = ref
+                    sym["type"] = classify_reference(ref)
+                    props["Reference"] = ref
+                if unit:
+                    sym["unit"] = unit
+            if not sheet["in_bom"]:
+                sym["in_bom"] = False
+            if sheet["dnp"]:
+                sym["dnp"] = True
+            all_symbols.append(sym)
 
     # Detect convention
     convention = detect_convention(all_symbols)
