@@ -527,6 +527,7 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
             "name": lbl_name,
             "label_type": lbl["type"],
             "bare_name": lbl.get("_bare_name"),
+            "is_sheet_pin": bool(lbl.get("_is_sheet_pin")),
         }
         k = add_point(lbl["x"], lbl["y"], lbl_info, sheet)
         # Only global labels and power symbols connect across sheets.
@@ -806,26 +807,27 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
         for m in members:
             all_info.extend(point_info.get(m, []))
 
-        # Find net name using KiCad's priority:
-        # global_label > power_symbol > hierarchical_label > local label > pin
+        # Find net name using KiCad's driver priority (connection_graph.h PRIORITY):
+        # global label > power symbol (global, then local) > local label >
+        # hierarchical label > sheet pin
         _NET_NAME_PRIORITY = {
             "global_label": 0,
             "power_symbol": 1,
-            "hierarchical_label": 2,
-            "label": 3,
-            "directive_label": 4,
+            "label": 2,
+            "hierarchical_label": 3,
+            "sheet_pin": 4,
+            "directive_label": 5,
         }
 
         # Accumulate every global / hierarchical / local label attached to
         # this net (LB-001 reads this; also useful for report annotations).
         # Dedup by (name, label_type).
-        # best = (priority, tiebreak_sheet, seq, name, is_local, sheet)
-        # tiebreak_sheet is -1 for global-scope sources so, at equal priority,
-        # a global name beats a local one and a lower (parent) sheet beats a
-        # higher one — KiCad names a resolved net after the parent member
-        # label. seq preserves first-seen order at full ties.
+        # best = (priority, tiebreak_sheet, tiebreak_name, name, is_local, sheet)
+        # tiebreak_sheet is -1 for global-scope sources, else the sheet index
+        # (breadth-first, so a lower index is never deeper): at equal priority
+        # KiCad prefers the shallower sheet, then the alphabetically lower
+        # escaped name (ResolveDrivers, propagateToNeighbors).
         best = None
-        seq = 0
         net_labels_seen: set[tuple[str, str]] = set()
         net_labels: list[dict] = []
         for m in members:
@@ -836,12 +838,17 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
                     p = _NET_NAME_PRIORITY["power_symbol"]
                     cand_name = info["net_name"]
                     is_local = info.get("power_scope") == "local"
+                    sheet_scoped = is_local
+                    tie_name = cand_name
                 elif src == "label":
                     lbl_name = info.get("name") or ""
                     lbl_type = info.get("label_type") or "label"
-                    p = _NET_NAME_PRIORITY.get(lbl_type, 3)
+                    p = _NET_NAME_PRIORITY.get(
+                        "sheet_pin" if info.get("is_sheet_pin") else lbl_type, 2)
                     cand_name = lbl_name
                     is_local = lbl_type in ("label", "directive_label")
+                    sheet_scoped = lbl_type != "global_label"
+                    tie_name = info.get("bare_name") or lbl_name
                     key_tuple = (lbl_name, lbl_type)
                     if lbl_name and key_tuple not in net_labels_seen:
                         net_labels_seen.add(key_tuple)
@@ -852,11 +859,10 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
                 else:
                     continue
                 if cand_name:
-                    cand = (p, m_sheet if is_local else -1, seq,
+                    cand = (p, m_sheet if sheet_scoped else -1, _driver_sort_name(tie_name),
                             cand_name, is_local, m_sheet)
                     if best is None or cand[:3] < best[:3]:
                         best = cand
-                seq += 1
         net_name = best[3] if best else None
 
         # Check if any member of this group is a no-connect marker OR a
@@ -941,6 +947,11 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
                 entry["display_name"] = bare
             nets[k] = entry
     return nets
+
+
+def _driver_sort_name(name: str) -> str:
+    """The text KiCad sorts equal-rank drivers by: the name escaped as a net name."""
+    return name.replace("/", "{slash}").replace("\n", "").replace("\r", "")
 
 
 def _record_near_misses(near_buckets, near_wires, wire_segments, find, sheet_names, diagnostics):

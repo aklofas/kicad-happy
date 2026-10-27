@@ -253,11 +253,15 @@ In `build_net_map()`, local labels use `(name, sheet)` as their union key, while
 
 ### Net Name Assignment
 
-Nets are assigned names with this priority:
-1. Power symbol name (e.g., "GND", "+3V3")
-2. Global/hierarchical label name
+Nets are assigned names with KiCad's driver priority:
+1. Global label name
+2. Power symbol name (e.g., "GND", "+3V3"; global before local)
 3. Local label name
-4. `__unnamed_N` for nets with no label
+4. Hierarchical label name
+5. Sheet pin name
+6. `__unnamed_N` for nets with no label
+
+Between equal-priority names, the shallower sheet wins, then the alphabetically lower name as KiCad escapes it (`/` as `{slash}`).
 
 **Duplicate name handling**: When multiple disconnected wire groups share the same net name (e.g., two separate "GND" connections via local labels), the second group's pins are merged into the first's net entry rather than overwriting it. This was a previous bug (commit f8ae22b).
 

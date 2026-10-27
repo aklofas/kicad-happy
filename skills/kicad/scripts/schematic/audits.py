@@ -1316,14 +1316,15 @@ def validate_hierarchical_labels(labels: list[dict], nets: dict,
         bare = l.get("_bare_name", l["name"])
         return expand_bus_name(bare, aliases) is not None
 
-    # Check for hierarchical labels that don't appear in any net (bus labels
-    # excluded — they resolve to member nets, not a net under their bus name).
+    # Check for hierarchical labels that no net carries (bus labels excluded —
+    # they resolve to member nets). A carried label is connected whatever
+    # driver names its net.
     scalar_hier_names = set(l["name"] for l in hier_labels if not _is_bus_label(l))
     hier_names = set(l["name"] for l in hier_labels)
     global_names = set(l["name"] for l in global_labels)
-    net_names = set(nets.keys())
+    carried = {l.get("name") for n in nets.values() for l in (n.get("labels") or [])}
 
-    unconnected_hier = sorted(scalar_hier_names - net_names)
+    unconnected_hier = sorted(scalar_hier_names - carried)
     if unconnected_hier:
         result["unconnected_hierarchical"] = unconnected_hier
 
