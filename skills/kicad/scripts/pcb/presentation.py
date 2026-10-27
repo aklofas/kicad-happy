@@ -15,7 +15,7 @@ from pcb.dfm import analyze_design_rule_compliance
 from pcb.assembly import (
     _compute_switching_loop_areas,
 )
-from finding_schema import compute_trust_summary, sort_findings
+from finding_schema import compute_trust_summary, show_decoded_names, sort_findings
 
 
 def group_components(footprints: list[dict]) -> dict:
@@ -437,6 +437,7 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
             "report_context": {"section": "File Format", "impact": "", "standard_ref": ""},
         })
 
+    show_decoded_names(findings)
     # Deterministic order for byte-identical repeated runs (KH-316).
     sort_findings(findings)
 

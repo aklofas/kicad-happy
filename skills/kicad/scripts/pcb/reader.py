@@ -9,7 +9,7 @@ from __future__ import annotations
 import math
 import re
 
-from kicad_core.sexp import find_all, find_first, get_at, get_property, get_value, has_flag
+from kicad_core.sexp import find_all, find_first, get_at, get_property, get_value, has_flag, raw_text
 from kicad_core.diagnostics import record
 from kicad_core.fields import get_mpn_property
 from kicad_core.model import PcbReaderState
@@ -133,8 +133,8 @@ def extract_nets(root: list) -> dict[int, str]:
                 net_num = int(item[1])
             except (ValueError, TypeError):
                 continue  # KiCad 10 has no numeric net declarations
-            net_name = item[2]
-            nets[net_num] = net_name
+            # KiCad keeps the declared name as written (netinfo_item.cpp)
+            nets[net_num] = raw_text(item[2])
     return nets
 
 
@@ -371,11 +371,11 @@ def extract_footprints(root: list, diagnostics: list | None = None) -> list[dict
             if pad_net and len(pad_net) >= 3:
                 # KiCad ≤9: (net number "name")
                 pad_info["net_number"] = _net_id(pad_net[1])
-                pad_info["net_name"] = pad_net[2]
+                pad_info["net_name"] = raw_text(pad_net[2])
             elif pad_net and len(pad_net) == 2:
                 # KiCad 10: (net "name") — no numeric ID
-                pad_info["net_name"] = pad_net[1]
-                pad_info["net_number"] = _net_id(pad_net[1])
+                pad_info["net_name"] = raw_text(pad_net[1])
+                pad_info["net_number"] = _net_id(pad_info["net_name"])
 
             if pad_layers and len(pad_layers) > 1:
                 pad_info["layers"] = [l for l in pad_layers[1:] if isinstance(l, str)]
@@ -628,7 +628,7 @@ def extract_tracks(root: list) -> dict:
         end = find_first(seg, "end")
         width = get_value(seg, "width")
         layer = get_value(seg, "layer")
-        net = get_value(seg, "net")
+        net = get_value(seg, "net", raw=True)
 
         if start and end:
             seg_info = {
@@ -650,7 +650,7 @@ def extract_tracks(root: list) -> dict:
         end = find_first(arc, "end")
         width = get_value(arc, "width")
         layer = get_value(arc, "layer")
-        net = get_value(arc, "net")
+        net = get_value(arc, "net", raw=True)
 
         if start and end:
             arc_info = {
@@ -701,7 +701,7 @@ def extract_vias(root: list) -> dict:
         at = get_at(via)
         size = get_value(via, "size")
         drill = get_value(via, "drill")
-        net = get_value(via, "net")
+        net = get_value(via, "net", raw=True)
         layers_node = find_first(via, "layers")
 
         # Via type is a bare token between 'via' and the first sub-list,
@@ -775,8 +775,8 @@ def extract_zones(root: list) -> tuple[list[dict], ZoneFills]:
     zones = []
     zone_fills = ZoneFills()
     for zone_idx, zone in enumerate(find_all(root, "zone")):
-        net = get_value(zone, "net")
-        net_name = get_value(zone, "net_name")
+        net = get_value(zone, "net", raw=True)
+        net_name = get_value(zone, "net_name", raw=True)
         layer = get_value(zone, "layer")
         layers_node = find_first(zone, "layers")
 
@@ -1603,7 +1603,7 @@ def extract_net_classes(root: list) -> list[dict]:
         nets = []
         for item in find_all(nc, "add_net"):
             if len(item) > 1:
-                nets.append(item[1])
+                nets.append(raw_text(item[1]))
         if nets:
             info["nets"] = nets
             info["net_count"] = len(nets)

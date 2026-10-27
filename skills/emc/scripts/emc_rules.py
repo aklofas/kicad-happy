@@ -41,6 +41,7 @@ from kicad_core.parts import (
 from kicad_core.netquery import build_net_id_map
 from kicad_core.diagnostics import record
 from kicad_core.render import normalize_severity
+from kicad_core.sexp import unescape_string
 from finding_schema import Det, get_findings
 
 try:
@@ -68,7 +69,7 @@ def _is_power_or_ground(name: str) -> bool:
     """Check if a net name is power or ground."""
     if not name:
         return False
-    low = name.lower().strip('+')
+    low = unescape_string(name).lower().strip('+')
     for prefix in ('gnd', 'vcc', 'vdd', 'vss', 'vee', 'v+', 'v-',
                    '+3v', '+5v', '+12v', '+1v', '+2v', '+24v', '+48v',
                    '3v3', '5v0', '1v8', '1v2', '0v9', '2v5',
@@ -93,6 +94,7 @@ def is_emc_ground_name(name: str) -> bool:
     """
     if not name:
         return False
+    name = unescape_string(name)
     # Strip hierarchical sheet path prefix (e.g., "/Power Supply/GND" → "GND")
     if "/" in name:
         name = name.rsplit("/", 1)[-1]

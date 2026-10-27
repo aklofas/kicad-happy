@@ -6,6 +6,7 @@ from kicad_types import (
     AnalysisContext,
 )
 from kicad_core.coords import to_iu
+from kicad_core.sexp import unescape_string
 from kicad_core.parts import (
     _OUTPUT_DRIVE_KEYWORDS,
 )
@@ -192,7 +193,7 @@ def _classify_nets(ctx: AnalysisContext) -> dict:
                 net_classes[net_name] = "signal"
             continue
 
-        nu = net_name.upper()
+        nu = unescape_string(net_name).upper()
         if is_ground(net_name):
             net_classes[net_name] = "ground"
         elif is_power_net(net_name):
@@ -1201,7 +1202,13 @@ def _detect_differential_pairs(ctx: AnalysisContext) -> list:
     net_names_upper: dict[tuple[str, str], str] = {}
     for k, v in nets.items():
         disp = v.get("display_name", k)
-        prefix = k[: -len(disp)] if k.endswith(disp) else ""
+        if k.endswith(disp):
+            prefix = k[: -len(disp)]
+        elif k.startswith("/") and "display_name" in v:
+            # A decoded display_name is not the key's tail; an escaped name has no '/'.
+            prefix = k.rsplit("/", 1)[0] + "/"
+        else:
+            prefix = ""
         net_names_upper[(prefix, disp.upper())] = k
     found_pairs: set[tuple[str, str]] = set()  # track to avoid duplicates
 

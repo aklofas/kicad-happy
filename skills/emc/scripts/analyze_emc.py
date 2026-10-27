@@ -26,7 +26,7 @@ import _core_path  # noqa: F401
 
 from emc_rules import run_all_checks, generate_test_plan, analyze_regulatory_coverage
 from emc_formulas import STANDARDS, MARKET_STANDARDS
-from finding_schema import compute_trust_summary
+from finding_schema import compute_trust_summary, show_decoded_names
 from kicad_core.render import summary_or_title
 from emc_envelope import EMCEnvelope
 from schema_codec import emit_schema
@@ -493,6 +493,7 @@ def main(argv: list[str] | None = None) -> int:
                               pdn_transient_a=pdn_transient_a,
                               diagnostics=diagnostics)
     elapsed = time.time() - t0
+    show_decoded_names(findings)
 
     # Apply suppressions
     apply_suppressions(findings, config.get('suppressions', []))

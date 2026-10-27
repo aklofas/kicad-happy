@@ -7,11 +7,10 @@ resolution inside groups, and the _{...}/^{...}/~{...} text-markup exclusion.
 """
 from __future__ import annotations
 
-import re
-
 from kicad_core.coords import segment_hit_iu, to_iu
 from kicad_core.diagnostics import record
 from kicad_core.model import Net
+from kicad_core.sexp import unescape_string
 
 
 _MAX_DEPTH = 4
@@ -150,28 +149,12 @@ def _parse_bus_group(name):
     return None
 
 
-_KICAD_ESCAPE_RE = re.compile(
-    r"(?<![$~^_])\{(dblquote|quote|lt|gt|backslash|slash|bar|comma|colon|space|dollar"
-    r"|tab|return|brace)\}")
-_KICAD_ESCAPE_CHARS = {
-    "dblquote": '"', "quote": "'", "lt": "<", "gt": ">", "backslash": "\\", "slash": "/",
-    "bar": "|", "comma": ",", "colon": ":", "space": " ", "dollar": "$", "tab": "\t",
-    "return": "\n", "brace": "{",
-}
-
-
-def _unescape(name):
-    """KiCad parses a label as a bus after UnescapeString (sch_connection.cpp)."""
-    if "{" not in name:
-        return name
-    return _KICAD_ESCAPE_RE.sub(lambda m: _KICAD_ESCAPE_CHARS[m.group(1)], name)
-
-
 def bus_kind(name):
     """'vector', 'group' or None, as KiCad classifies a label name."""
     if not isinstance(name, str) or not name:
         return None
-    name = _unescape(name)
+    # KiCad parses a label as a bus after UnescapeString (sch_connection.cpp).
+    name = unescape_string(name)
     if _parse_bus_vector(name):
         return "vector"
     group = _parse_bus_group(name)
@@ -187,7 +170,7 @@ def expand_bus_name(name, aliases=None, _depth=0):
     """
     if _depth > _MAX_DEPTH or not isinstance(name, str) or not name:
         return None
-    name = _unescape(name)
+    name = unescape_string(name)
     vector = _parse_bus_vector(name)
     if vector:
         prefix, suffix, indices = vector
@@ -212,7 +195,7 @@ def expand_bus_name(name, aliases=None, _depth=0):
 
 def _local_member_names(name, members):
     """A group bus's members without the group prefix (KiCad LocalName)."""
-    group = _parse_bus_group(_unescape(name)) if isinstance(name, str) else None
+    group = _parse_bus_group(unescape_string(name)) if isinstance(name, str) else None
     if not group or not group[0]:
         return list(members)
     pre = group[0] + "."
@@ -1196,8 +1179,10 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
                 "has_pwr_flag": e["has_pwr_flag"],
                 "labels": e["labels"],
             }
-            if k != bare:
-                entry["display_name"] = bare
+            # The key keeps KiCad's escaped name; display_name is the name KiCad shows.
+            shown = unescape_string(bare)
+            if k != shown:
+                entry["display_name"] = shown
             nets[k] = entry
     return nets
 

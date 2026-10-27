@@ -33,6 +33,7 @@ from kicad_core.project import load_jsonc
 from kicad_core.model import ResolvedConfig
 from kicad_core.diagnostics import record
 from kicad_core.render import normalize_severity
+from kicad_core.sexp import unescape_string
 
 
 # ---------------------------------------------------------------------------
@@ -828,7 +829,9 @@ def matches_suppression(finding: Dict[str, Any],
             candidates = {fn}
             if fn.startswith("/") and fn.count("/") >= 2:
                 candidates.add(fn.rsplit("/", 1)[-1])
-            return candidates
+            # A pattern written against the shown name (D1/TX) still
+            # matches the escaped net name (D1{slash}TX).
+            return candidates | {unescape_string(c) for c in candidates}
         if not any(fnmatch(c, sp) for fn in finding_nets
                    for c in _net_candidates(fn) for sp in sup_nets):
             return False

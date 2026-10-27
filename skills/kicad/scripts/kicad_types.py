@@ -108,7 +108,7 @@ class AnalysisContext:
         return is_power_net_name(name, self.known_power_rails)
 
     def is_ground(self, name: str | None) -> bool:
-        return is_ground_name(name)
+        return is_ground_name(name, self.known_power_rails)
 
     def get_two_pin_nets(self, ref: str) -> tuple[str | None, str | None]:
         n1, _ = self.pin_net.get((ref, "1"), (None, None))

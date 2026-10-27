@@ -9,6 +9,8 @@ from __future__ import annotations
 import hashlib
 import re
 
+from kicad_core.sexp import unescape_string
+
 VALID_SEVERITIES = ('error', 'warning', 'info')
 VALID_CONFIDENCES = ('deterministic', 'heuristic', 'datasheet-backed')
 VALID_EVIDENCE_SOURCES = (
@@ -392,6 +394,22 @@ def compute_trust_summary(findings, bom=None):
     if bom_coverage is not None:
         result['bom_coverage'] = bom_coverage
     return result
+
+
+def show_decoded_names(findings):
+    """Print net names in finding text as KiCad shows them ({slash} -> /).
+
+    ``nets`` keeps the escaped identity; summary, description and
+    recommendation are read by people. Mutates in place, returns the list.
+    """
+    for f in findings:
+        if not isinstance(f, dict):
+            continue
+        for key in ('summary', 'description', 'recommendation'):
+            text = f.get(key)
+            if isinstance(text, str) and '{' in text:
+                f[key] = unescape_string(text)
+    return findings
 
 
 # ---------------------------------------------------------------------------

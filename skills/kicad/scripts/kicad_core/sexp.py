@@ -29,6 +29,73 @@ def _unescape_braces(s: str) -> str:
     return _BRACE_RE.sub(lambda m: _BRACE_ESCAPES.get(m.group(0), m.group(0)), s)
 
 
+class _Escaped(str):
+    """A token whose text carried brace escapes: the value is the decoded text, ``raw``
+    the text as written (KiCad keeps net names in that form)."""
+    __slots__ = ("raw",)
+
+
+def _decoded(text: str) -> str:
+    out = _unescape_braces(text)
+    if out == text:
+        return text
+    tok = _Escaped(out)
+    tok.raw = text
+    return tok
+
+
+def raw_text(token) -> str:
+    """The token's text as written in the file, brace escapes kept."""
+    return token.raw if isinstance(token, _Escaped) else str(token)
+
+
+def unescape_string(text: str) -> str:
+    """KiCad's UnescapeString (string_utils.cpp): the text KiCad shows for an escaped name."""
+    n = len(text)
+    if n <= 2 or "{" not in text:
+        return text
+    out = []
+    i = 0
+    prev = ch = ""
+    while i < n:
+        prev, ch = ch, text[i]
+        if ch != "{":
+            out.append(ch)
+            i += 1
+            continue
+        depth, j = 1, i + 1
+        while j < n:
+            if text[j] == "{":
+                depth += 1
+            elif text[j] == "}":
+                depth -= 1
+                if depth <= 0:
+                    break
+            j += 1
+        token = text[i + 1:j]
+        if j >= n:
+            out.append("{" + unescape_string(token))
+        elif prev in ("$", "~", "^", "_") or token not in _KICAD_UNESCAPE:
+            out.append("{" + unescape_string(token) + "}")
+        else:
+            out.append(_KICAD_UNESCAPE[token])
+        ch = text[j] if j < n else ""
+        i = j + 1
+    return "".join(out)
+
+
+_KICAD_UNESCAPE = {
+    "dblquote": '"', "quote": "'", "lt": "<", "gt": ">", "backslash": "\\", "slash": "/",
+    "bar": "|", "comma": ",", "colon": ":", "space": " ", "dollar": "$", "tab": "\t",
+    "return": "\n", "brace": "{",
+}
+
+
+def net_name_escape(text: str) -> str:
+    """KiCad's EscapeString(text, CTX_NETNAME): '/' becomes {slash}, line breaks are dropped."""
+    return text.replace("/", "{slash}").replace("\n", "").replace("\r", "")
+
+
 def parse(text: str) -> list:
     """Parse S-expression text into nested Python lists."""
     tokens = _tokenize(text)
@@ -126,7 +193,7 @@ def _tokenize(text: str) -> list:
                 else:
                     j += 1
             raw = text[i + 1 : j]
-            tok = _unescape_braces(_unescape_c(raw))
+            tok = _decoded(_unescape_c(raw))
             tokens.append(_Quoted(tok) if tok in _KEYWORD_LOOKALIKES else tok)
             i = j + 1
         else:
@@ -134,7 +201,7 @@ def _tokenize(text: str) -> list:
             j = i
             while j < n and text[j] not in _ATOM_END:
                 j += 1
-            tokens.append(_unescape_braces(text[i:j]))
+            tokens.append(_decoded(text[i:j]))
             i = j
     return tokens
 
@@ -195,14 +262,15 @@ def _find_deep_acc(node: list, keyword: str, acc: list) -> None:
             _find_deep_acc(child, keyword, acc)
 
 
-def get_value(node: list, keyword: str) -> str | None:
+def get_value(node: list, keyword: str, raw: bool = False) -> str | None:
     """Get the value of a simple (keyword value) pair.
 
     Example: get_value(symbol, "lib_id") -> "Device:C"
+    ``raw=True`` returns the text as written (brace escapes kept).
     """
     child = find_first(node, keyword)
     if child and len(child) > 1:
-        return str(child[1])
+        return raw_text(child[1]) if raw else str(child[1])
     return None
 
 

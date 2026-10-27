@@ -263,6 +263,8 @@ Nets are assigned names with KiCad's driver priority:
 
 Between equal-priority names, the shallower sheet wins, then the alphabetically lower name as KiCad escapes it (`/` as `{slash}`).
 
+A label's net name is its shown text with `/` escaped as `{slash}` (KiCad's net-name escaping), so a label shown `A/B` names the net `A{slash}B`; the net's `display_name` carries the shown form. Board net names are read as the file writes them.
+
 **Duplicate name handling**: When multiple disconnected wire groups share the same net name (e.g., two separate "GND" connections via local labels), the second group's pins are merged into the first's net entry rather than overwriting it. This was a previous bug (commit f8ae22b).
 
 ## Value Parser

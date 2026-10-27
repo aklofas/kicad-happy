@@ -1,6 +1,8 @@
 """Net-name heuristics: rail/ground/USB recognition and voltage-from-name (kicad_core). Each predicate is one named policy; do not union them with other skills' lists (see product review U2)."""
 import re
 
+from kicad_core.sexp import unescape_string
+
 
 def parse_voltage_from_net_name(net_name: str) -> float | None:
     """Try to extract a voltage value from a power net name.
@@ -13,6 +15,7 @@ def parse_voltage_from_net_name(net_name: str) -> float | None:
     """
     if not net_name:
         return None
+    net_name = unescape_string(net_name)
     sign = -1.0 if re.match(r'(-|NEG)', net_name, re.IGNORECASE) else 1.0
     # Pattern: digits V digits  (e.g. 3V3 → 3.3, 1V8 → 1.8)
     m = re.search(r'(\d+)V(\d+)', net_name, re.IGNORECASE)
@@ -80,6 +83,9 @@ def is_power_net_name(net_name: str | None, power_rails: set[str] | None = None)
         return False
     if power_rails and net_name in power_rails:
         return True
+    # Name heuristics read the shown name: an escaped {slash} is not a sheet separator
+    # to KiCad, but the rules below were written against the decoded name.
+    net_name = unescape_string(net_name)
     # Strip hierarchical sheet path prefix (e.g., "/Power Supply/VCC" → "VCC")
     if "/" in net_name:
         net_name = net_name.rsplit("/", 1)[-1]
@@ -156,10 +162,17 @@ def is_power_net_name(net_name: str | None, power_rails: set[str] | None = None)
     return False
 
 
-def is_ground_name(net_name: str | None) -> bool:
-    """Check if a net name looks like a ground rail."""
+def is_ground_name(net_name: str | None, power_rails: set[str] | None = None) -> bool:
+    """Check if a net name looks like a ground rail.
+
+    A net named ``0`` is ground only when a power symbol names it (the SPICE ground
+    symbol); a connector pin labelled ``0`` is a signal.
+    """
     if not net_name:
         return False
+    if net_name == "0":
+        return bool(power_rails) and "0" in power_rails
+    net_name = unescape_string(net_name)
     # Strip hierarchical sheet path prefix (e.g., "/Power Supply/GND" → "GND")
     if "/" in net_name:
         net_name = net_name.rsplit("/", 1)[-1]

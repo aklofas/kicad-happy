@@ -23,7 +23,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from finding_schema import make_finding, compute_trust_summary, assign_finding_ids
+from finding_schema import make_finding, compute_trust_summary, assign_finding_ids, show_decoded_names
 from kicad_core.netnames import is_ground_name, is_power_net_name
 from kicad_core.netquery import build_net_id_map as _build_net_id_map
 from envelopes.cross_analysis import CrossAnalysisEnvelope
@@ -1150,6 +1150,7 @@ def main(argv: list[str] | None = None) -> int:
     compat = build_compat()
 
     findings, checks_run = run_all_checks(schematic, pcb)
+    show_decoded_names(findings)
     elapsed = time.time() - t0
 
     sev_counts = {'error': 0, 'warning': 0, 'info': 0}

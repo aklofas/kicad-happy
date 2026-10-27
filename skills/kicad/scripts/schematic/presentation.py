@@ -15,6 +15,7 @@ from schematic.connectivity import _labels_for_output, strip_net_label_internals
 from schematic.bom_stats import compute_statistics
 from finding_schema import (
     compute_trust_summary,
+    show_decoded_names,
     sort_findings,
     make_finding,
 )
@@ -245,6 +246,7 @@ def assemble_result(ctx, parsed, nets, bom, analyses, *, path, sheets_parsed,
     for _f in findings:
         sev_counts[normalize_severity(_f.get("severity") if isinstance(_f, dict) else None)] += 1
 
+    show_decoded_names(findings)
     # Deterministic order so repeated runs produce byte-identical output
     # (KH-316).  Sort key: (rule_id, detector, first_component, first_net, summary).
     sort_findings(findings)

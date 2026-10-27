@@ -9,7 +9,8 @@ import os
 from pathlib import Path
 
 from kicad_core.sexp import (find_all, find_first, find_deep, get_value, get_property,
-                             get_properties, get_at, has_flag, parse_file)
+                             get_properties, get_at, has_flag, net_name_escape, parse_file,
+                             raw_text, unescape_string)
 from kicad_core.classify import classify_component, classify_connector, classify_ic_function
 from kicad_core.fields import DIGIKEY_FIELD_ALIASES, pick_field, pick_mpn
 from kicad_core.instances import inline_instances, resolve_instance, tilde_is_empty
@@ -564,6 +565,8 @@ def extract_labels(root: list) -> list[dict]:
             # KH-078: Malformed s-expressions can yield a list instead of string
             if isinstance(name, list):
                 name = str(name[0]) if name else ""
+            else:
+                name = label_net_name(name)
             at = get_at(lbl)
             x, y, angle = at if at else (0, 0, 0)
             # Shape field exists on global_label and hierarchical_label
@@ -581,6 +584,12 @@ def extract_labels(root: list) -> list[dict]:
             labels.append(entry)
 
     return labels
+
+
+def label_net_name(token) -> str:
+    """The net name KiCad gives a label or sheet pin: its shown text escaped as a net name
+    (sch_label.cpp, EscapeString(GetShownText(), CTX_NETNAME))."""
+    return net_name_escape(unescape_string(raw_text(token)))
 
 
 def rename_legacy_power_symbols(components: list[dict]) -> None:
@@ -623,7 +632,8 @@ def extract_power_symbols(components: list[dict]) -> list[dict]:
             else:
                 px, py = comp["x"], comp["y"]
             power.append({
-                "net_name": comp["value"],
+                # sch_pin.cpp: EscapeString(shown Value, CTX_NETNAME)
+                "net_name": net_name_escape(comp["value"]),
                 "x": px,
                 "y": py,
                 "lib_id": comp["lib_id"],
@@ -734,7 +744,8 @@ def extract_bus_elements(root: list) -> dict:
         members_node = find_first(alias, "members")
         members = []
         if members_node:
-            members = [m for m in members_node[1:] if isinstance(m, str)]
+            # sch_connection.cpp escapes each member as written (EscapeString, CTX_NETNAME).
+            members = [net_name_escape(raw_text(m)) for m in members_node[1:] if isinstance(m, str)]
         if name:
             bus_aliases.append({"name": name, "members": members})
 
@@ -833,7 +844,7 @@ def parse_single_sheet(path: str, instance_uuid: str = "",
         for pin in find_all(sheet, "pin"):
             if len(pin) < 2:
                 continue
-            pin_name = pin[1]
+            pin_name = pin[1] if isinstance(pin[1], list) else label_net_name(pin[1])
             at = get_at(pin)
             if at:
                 labels.append({
