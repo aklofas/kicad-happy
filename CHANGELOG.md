@@ -77,6 +77,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - KiCad 5 boards whose copper layers were renamed (`Top`/`Bottom`, `Front`/`Back`, …) are read the way KiCad maps them, by their position in the layer table, so their SMD pads, sides, tracks and zones are no longer lost; a layer's `hide` flag is no longer reported as its alias. CP-001 checks a pad against the zones on the copper side the pad is on, not its footprint's side. (kf/A8-F1)
 - Tracks saved with a solder-mask opening (KiCad 9+ `(layers "F.Cu" "F.Mask")` form) keep their copper layer. Copper drawn as board graphics with a net (KiCad 8+ copper shapes) now connects pads in the `--full` graph, as in KiCad, and nets routed only by such shapes are no longer reported unrouted (RT-001). (kf/A9-F1, kf/A9-F3)
 - Custom pads connect through their drawn primitives, not only their anchor, in the `--full` graph; a circle anchor has the diameter of the pad size's x and a `rect` anchor is the size box, as in KiCad. (kf/A7-F1)
+- KiCad 5 zone fills are read at their real width (the fill outline grown by half its minimum thickness, as KiCad loads a fill saved before 20250210 without `(filled_areas_thickness no)`); fill areas and copper-presence checks on those boards change. (kf/A9-F2)
 
 ---
 

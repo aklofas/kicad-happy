@@ -976,6 +976,33 @@ def extract_vias(root: list) -> dict:
     }
 
 
+def _file_has_stroked_fills(root: list) -> bool:
+    """KiCad 10 treats zone fills of a board older than 20250210 as stroked
+    (a missing version reads as 20201115)."""
+    try:
+        version = int(get_value(root, "version") or 20201115)
+    except ValueError:
+        return False
+    return version < 20250210
+
+
+def _stroked_fill_extra_area(coords: list[tuple[float, float]], r: float) -> float:
+    """Area a polygon gains when grown by r with round corners: P*r + pi*r^2.
+
+    Edges walked in both directions are the zero-width slits that join a hole
+    to the outline; they bound no copper and are left out of P."""
+    n = len(coords)
+    keys = [(round(x, 4), round(y, 4)) for x, y in coords]
+    edges = {(keys[i - 1], keys[i]) for i in range(n)}
+    perimeter = 0.0
+    for i in range(n):
+        if (keys[i], keys[i - 1]) in edges:
+            continue
+        (x1, y1), (x2, y2) = coords[i - 1], coords[i]
+        perimeter += math.hypot(x2 - x1, y2 - y1)
+    return perimeter * r + math.pi * r * r
+
+
 def extract_zones(root: list) -> tuple[list[dict], ZoneFills]:
     """Extract copper zones with outline and filled polygon area/spatial data.
 
@@ -996,6 +1023,7 @@ def extract_zones(root: list) -> tuple[list[dict], ZoneFills]:
     """
     zones = []
     zone_fills = ZoneFills()
+    stroked_fills = _file_has_stroked_fills(root)
     for zone_idx, zone in enumerate(find_all(root, "zone")):
         net = get_value(zone, "net", raw=True)
         net_name = get_value(zone, "net_name", raw=True)
@@ -1071,27 +1099,38 @@ def extract_zones(root: list) -> tuple[list[dict], ZoneFills]:
         filled_min_y = float('inf')
         filled_max_x = float('-inf')
         filled_max_y = float('-inf')
+        # KiCad loads a stroked fill as its polygon grown by min_thickness / 2
+        # with round corners; the token present as "no" marks a KiCad 6+ fill.
+        inflate = 0.0
+        if (stroked_fills and not keepout
+                and get_value(zone, "filled_areas_thickness") != "no"):
+            try:
+                inflate = max(float(min_thickness or 0) / 2.0, 0.0)
+            except ValueError:
+                inflate = 0.0
         for fp_node in find_all(zone, "filled_polygon"):
             fp_layer = get_value(fp_node, "layer") or layer or ""
             fp_pts = find_first(fp_node, "pts")
             if fp_pts:
                 coords = _extract_polygon_coords(fp_pts)
                 area = _shoelace_area_from_coords(coords)
+                if inflate and len(coords) >= 3:
+                    area += _stroked_fill_extra_area(coords, inflate)
                 filled_layers[fp_layer] = filled_layers.get(fp_layer, 0.0) + area
                 total_filled_area += area
                 fill_count += 1
                 # Store coordinates for spatial queries
-                zone_fills.add(zone_idx, fp_layer, coords)
+                zone_fills.add(zone_idx, fp_layer, coords, inflate)
                 # Track overall filled bounding box
                 for cx, cy in coords:
-                    if cx < filled_min_x:
-                        filled_min_x = cx
-                    if cy < filled_min_y:
-                        filled_min_y = cy
-                    if cx > filled_max_x:
-                        filled_max_x = cx
-                    if cy > filled_max_y:
-                        filled_max_y = cy
+                    if cx - inflate < filled_min_x:
+                        filled_min_x = cx - inflate
+                    if cy - inflate < filled_min_y:
+                        filled_min_y = cy - inflate
+                    if cx + inflate > filled_max_x:
+                        filled_max_x = cx + inflate
+                    if cy + inflate > filled_max_y:
+                        filled_max_y = cy + inflate
 
         zone_layers = []
         if layers_node and len(layers_node) > 1:

@@ -244,14 +244,47 @@ class ZoneFills:
         ] = []
         self._next_fill_id = 0
         self._grids: dict[int, tuple] = {}
+        self._inflate: dict[int, float] = {}
 
     def add(self, zone_idx: int, layer: str,
-            coords: list[tuple[float, float]]) -> None:
-        """Register a filled polygon region for spatial queries."""
+            coords: list[tuple[float, float]], inflate: float = 0.0) -> None:
+        """Register a filled polygon region for spatial queries.
+
+        inflate > 0: the copper is the polygon grown by this radius with round
+        corners (a KiCad 5 fill stored as the centre line of its stroke)."""
         bbox = _polygon_bbox(coords)
         fill_id = self._next_fill_id
         self._next_fill_id += 1
+        if inflate > 0:
+            self._inflate[fill_id] = inflate
+            bbox = (bbox[0] - inflate, bbox[1] - inflate,
+                    bbox[2] + inflate, bbox[3] + inflate)
         self._fills.append((fill_id, zone_idx, layer, coords, bbox))
+
+    def _contains(self, fill_id: int, x: float, y: float,
+                  coords: list[tuple[float, float]]) -> bool:
+        if _point_in_polygon(x, y, coords):
+            return True
+        r = self._inflate.get(fill_id)
+        return r is not None and self._near_edge(fill_id, x, y, r)
+
+    def _near_edge(self, fill_id: int, x: float, y: float, r: float) -> bool:
+        """True when (x, y) is within r of the fill's polygon boundary."""
+        cell, _ncx, _ncy, cells = self._segment_grid(fill_id)
+        _fid, _zidx, _layer, coords, bbox = self._fills[fill_id]
+        n = len(coords)
+        seen: set = set()
+        for cx in range(int((x - r - bbox[0]) // cell), int((x + r - bbox[0]) // cell) + 1):
+            for cy in range(int((y - r - bbox[1]) // cell), int((y + r - bbox[1]) // cell) + 1):
+                for i in cells.get((cx, cy), ()):
+                    if i in seen:
+                        continue
+                    seen.add(i)
+                    x1, y1 = coords[i]
+                    x2, y2 = coords[(i + 1) % n]
+                    if _dist_point_to_segment(x, y, x1, y1, x2, y2) <= r:
+                        return True
+        return False
 
     def _segment_grid(self, fill_id: int):
         """Lazily built uniform grid: cell -> indices of polygon segments whose
@@ -298,7 +331,7 @@ class ZoneFills:
             # Fast bounding box rejection
             if x < bbox[0] or x > bbox[2] or y < bbox[1] or y > bbox[3]:
                 continue
-            if _point_in_polygon(x, y, coords):
+            if self._contains(_fill_id, x, y, coords):
                 results.append(zones[zone_idx])
                 seen.add(zone_idx)
         return results
@@ -314,7 +347,7 @@ class ZoneFills:
                 continue
             if x < bbox[0] or x > bbox[2] or y < bbox[1] or y > bbox[3]:
                 continue
-            if not _point_in_polygon(x, y, coords):
+            if not self._contains(fill_id, x, y, coords):
                 continue
             if net_name is not None and zones[zone_idx].get("net_name", "") != net_name:
                 continue
@@ -328,7 +361,7 @@ class ZoneFills:
                 continue
             if x < bbox[0] or x > bbox[2] or y < bbox[1] or y > bbox[3]:
                 continue
-            if _point_in_polygon(x, y, coords):
+            if self._contains(_fill_id, x, y, coords):
                 return True
         return False
 
@@ -354,6 +387,8 @@ class ZoneFills:
         set), and every unvisited segment has |C-S| >= (r-1)*cell.
         Fills are visited nearest-bbox-first so `best` tightens early and
         farther fills short-circuit before any grid is even built.
+        An inflated fill's edge is its polygon grown by the radius: the
+        polygon distance d becomes d + r inside the polygon, |d - r| outside.
         """
         best = float("inf")
         candidates = []
@@ -364,9 +399,12 @@ class ZoneFills:
             dy = max(bbox[1] - y, 0.0, y - bbox[3])
             candidates.append((math.hypot(dx, dy), fid, coords, bbox))
         candidates.sort(key=lambda c: c[0])
+        max_inflate = max(self._inflate.values(), default=0.0)
         for offset, fid, coords, bbox in candidates:
-            if offset >= best:
+            if offset - max_inflate >= best:
                 break  # sorted ascending: every remaining candidate is >= offset >= best
+            rad = self._inflate.get(fid, 0.0)
+            fbest = float("inf")  # polygon distance for this fill
             cell, ncx, ncy, cells = self._segment_grid(fid)
             # Project (x, y) onto the bbox; this point's cell is always
             # inside [0, ncx-1] x [0, ncy-1], so max_ring below is bounded
@@ -382,8 +420,10 @@ class ZoneFills:
             n = len(coords)
             r = 0
             while r <= max_ring:
-                if r > 0 and math.hypot(offset, (r - 1) * cell) >= best:
-                    break  # exact: every unvisited segment is >= hypot(offset, (r-1)*cell) away
+                if r > 0:
+                    lower = math.hypot(offset, (r - 1) * cell)
+                    if lower >= fbest or lower - rad >= best:
+                        break  # exact: every unvisited segment is >= lower away
                 # Walk only the O(r) boundary cells of this ring (not the
                 # full (2r+1)^2 square): ring 0 is just the own cell; ring
                 # r>0 is the top/bottom rows and left/right columns of the
@@ -406,9 +446,13 @@ class ZoneFills:
                         x1, y1 = coords[i]
                         x2, y2 = coords[(i + 1) % n]
                         d = _dist_point_to_segment(x, y, x1, y1, x2, y2)
-                        if d < best:
-                            best = d
+                        if d < fbest:
+                            fbest = d
                 r += 1
+            if rad and fbest < float("inf"):
+                fbest = fbest + rad if _point_in_polygon(x, y, coords) else abs(fbest - rad)
+            if fbest < best:
+                best = fbest
         return best
 
 
