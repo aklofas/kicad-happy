@@ -38,10 +38,10 @@ import _core_path  # noqa: F401
 from kicad_core.diagnostics import record
 from kicad_core.instances import tilde_is_empty
 from kicad_core.sexp import get_value, parse
-from kicad_sexp import (direct_child, direct_value, find_sub_sheet_entries, instance_of,
+from kicad_sexp import (find_matching_paren, direct_child, direct_value, find_sub_sheet_entries, instance_of,
                         iter_placed_symbol_blocks, symbol_instances_of)
 
-from kicad_core.fields import (MPN_FIELD_ALIASES, MPN_FIELD_ALIASES_PRIMARY,
+from kicad_core.fields import (merge_unit_fields, MPN_FIELD_ALIASES, MPN_FIELD_ALIASES_PRIMARY,
                                MPN_FIELD_ALIASES_GENERIC, DIGIKEY_FIELD_ALIASES,
                                normalize_field_name)
 
@@ -357,6 +357,12 @@ def generate_bom(symbols: list[dict], convention: dict,
 
     field_map = convention["field_mapping"]
 
+    # KiCad takes a multi-unit part's fields from its lowest unit that sets them; the library
+    # unit count gates the merge, a placed unit above 1 standing in when the library is unknown
+    units_by_ref: dict[str, list[dict]] = {}
+    for sym in symbols:
+        units_by_ref.setdefault(sym["reference"], []).append(sym)
+
     for sym in symbols:
         ref = sym["reference"]
         comp_type = sym["type"]
@@ -369,6 +375,10 @@ def generate_bom(symbols: list[dict], convention: dict,
         seen_refs.add(ref)
 
         props = sym["raw_properties"]
+        units = units_by_ref[ref]
+        if "?" not in ref and any((u.get("unit_count") or (2 if u.get("unit", 1) > 1 else 1)) > 1
+                                  for u in units):
+            props = merge_unit_fields((u.get("unit", 1), u["raw_properties"]) for u in units)
 
         # Extract canonical field values using the project's actual field names
         def get_canonical(canonical_name: str) -> str:
@@ -422,12 +432,14 @@ def generate_bom(symbols: list[dict], convention: dict,
                 bom_comment = val
                 break
 
+        # A line never mixes DNP and fitted parts
+        dnp = bool(sym["dnp"])
         if group_by == 'mpn':
-            group_key = (mpn,) if mpn else (value, footprint, mpn)
+            group_key = (dnp, mpn) if mpn else (dnp, value, footprint, mpn)
         elif group_by == 'value':
-            group_key = (value,)
+            group_key = (dnp, value)
         else:  # 'value+footprint' — current default
-            group_key = (value, footprint, mpn)
+            group_key = (dnp, value, footprint, mpn)
 
         if group_key not in groups:
             groups[group_key] = {
@@ -521,9 +533,29 @@ def _file_version(text: str) -> int | None:
     return int(match.group(1)) if match else None
 
 
+def _library_unit_counts(text: str) -> dict[str, int]:
+    """Library symbol name -> number of units (sub-symbols `NAME_<unit>_<style>`, unit 0 = shared)."""
+    match = re.search(r'\(lib_symbols\b', text)
+    if not match:
+        return {}
+    node = parse(text[match.start():find_matching_paren(text, match.start()) + 1])
+    counts = {}
+    for sym in node[1:]:
+        if isinstance(sym, list) and len(sym) > 1 and sym[0] == "symbol":
+            units = set()
+            for sub in sym[2:]:
+                if isinstance(sub, list) and len(sub) > 1 and sub[0] == "symbol":
+                    parts = str(sub[1]).rsplit("_", 2)
+                    if len(parts) == 3 and parts[1].isdigit() and int(parts[1]) > 0:
+                        units.add(int(parts[1]))
+            counts[str(sym[1])] = len(units)
+    return counts
+
+
 def _placed_symbols(text: str) -> list[tuple[dict, str]]:
     """(symbol, block) for each placed symbol of one .kicad_sch text, in file order."""
     tilde_empty = tilde_is_empty(_file_version(text))
+    unit_counts = _library_unit_counts(text)
     out = []
     for start, end, block in extract_placed_symbols(text):
         props = extract_properties(block)
@@ -538,6 +570,8 @@ def _placed_symbols(text: str) -> list[tuple[dict, str]]:
             "in_bom": is_in_bom(block),
             "dnp": is_dnp(block, props),
             "unit": int(unit) if unit and unit.isdigit() else 1,
+            "unit_count": unit_counts.get(direct_value(block, "lib_name")
+                                          or direct_value(block, "lib_id") or "", 0),
             "uuid": direct_value(block, "uuid") or "",
             "raw_properties": props,
         }, block))
