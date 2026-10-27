@@ -48,7 +48,10 @@ from datetime import datetime
 from pathlib import Path
 
 from kicad_sexp import (atomic_write_text, escape_kicad_string, find_matching_paren,
-                        iter_placed_symbol_blocks)
+                        iter_placed_symbol_blocks, sch_file_version)
+
+# First schematic format whose effects block takes "(hide yes)"; KiCad 6/7 only accept bare "hide".
+_HIDE_YES_MIN_VERSION = 20231120
 
 
 # ---------------------------------------------------------------------------
@@ -125,8 +128,14 @@ def build_new_property(
     prop_name: str,
     prop_value: str,
     indent: str,
+    file_version: int | None = None,
 ) -> str:
-    """Build a new (property ...) block for insertion."""
+    """Build a new (property ...) block for insertion.
+
+    Bare `hide` loads in every KiCad generation, so it is also the form for an unknown version.
+    """
+    hide = ("(hide yes)" if file_version is not None and file_version >= _HIDE_YES_MIN_VERSION
+            else "hide")
     escaped_value = escape_kicad_string(prop_value)
     prop_name = escape_kicad_string(prop_name)
     inner = indent + "\t"
@@ -136,7 +145,7 @@ def build_new_property(
         f'{inner}\t(font\n'
         f'{inner}\t\t(size 1.27 1.27)\n'
         f'{inner}\t)\n'
-        f'{inner}\t(hide yes)\n'
+        f'{inner}\t{hide}\n'
         f'{inner})\n'
         f'{indent})'
     )
@@ -184,6 +193,7 @@ def apply_updates(
     Returns:
         (modified_text, change_log)
     """
+    file_version = sch_file_version(text)
     change_log = []
 
     # Find all placed symbols
@@ -302,6 +312,7 @@ def apply_updates(
                 edit["prop_name"],
                 edit["new_value"],
                 edit["indent"],
+                file_version,
             )
             pos = edit["insert_after"] + 1
             text = text[:pos] + new_prop + text[pos:]

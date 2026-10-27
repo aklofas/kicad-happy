@@ -78,6 +78,15 @@ def iter_placed_symbol_blocks(text: str) -> list[tuple[int, int, str]]:
     return symbols
 
 
+_SCH_VERSION_RE = re.compile(r'\A\s*\(kicad_sch\s+\(version\s+(\d+)\)')
+
+
+def sch_file_version(text: str) -> int | None:
+    """The `(version N)` of a `.kicad_sch` text, or None when it has no such header."""
+    m = _SCH_VERSION_RE.match(text)
+    return int(m.group(1)) if m else None
+
+
 def escape_kicad_string(s: str) -> str:
     """Escape a string for use in a KiCad S-expression property value."""
     return (s.replace('\\', '\\\\').replace('"', '\\"')
