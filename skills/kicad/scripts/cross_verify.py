@@ -22,6 +22,10 @@ import math
 import os
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from kicad_core.pairing import pair_by_path  # noqa: E402
+
 
 def cross_verify(sch: dict, pcb: dict,
                  thermal: dict | None = None) -> dict:
@@ -104,8 +108,9 @@ def cross_verify(sch: dict, pcb: dict,
 def check_component_matching(sch: dict, pcb: dict) -> dict:
     """Check 1: Bidirectional component reference matching.
 
-    Compares schematic component refs against PCB footprint refs.
-    Detects orphans, missing components, value mismatches, and DNP conflicts.
+    Pairs footprints with schematic parts by schematic path, as KiCad's Update PCB does
+    (kicad_core.pairing.pair_by_path). Detects orphans, missing components, value
+    mismatches, references that differ between the paired parts, and DNP conflicts.
     """
     # Build schematic ref lookup (exclude power symbols and flags)
     sch_comps = {}
@@ -122,37 +127,33 @@ def check_component_matching(sch: dict, pcb: dict) -> dict:
         if c.get("dnp"):
             dnp_refs.add(ref)
 
-    # Build PCB ref lookup
-    pcb_fps = {}
+    pairs, sch_only, pcb_only = pair_by_path(sch, pcb)
+    pcb_by_ref = {}
     for fp in pcb.get("footprints", []):
         ref = fp.get("reference", "")
-        if not ref or ref.startswith("#"):
-            continue
-        pcb_fps[ref] = {
-            "value": fp.get("value", ""),
-            "lib_id": fp.get("lib_id", ""),
-        }
+        if ref and not ref.startswith("#"):
+            pcb_by_ref[ref] = fp
+    matched = {}
+    for ref, fp in pairs:
+        matched[ref] = fp
 
-    sch_refs = set(sch_comps.keys())
-    pcb_refs = set(pcb_fps.keys())
-
-    matched = sch_refs & pcb_refs
     orphans = []  # in PCB but not schematic
     missing = []  # in schematic but not PCB
     value_mismatches = []
+    reference_mismatches = []
     dnp_conflicts = []
 
     # Orphans: in PCB but not in schematic
-    for ref in sorted(pcb_refs - sch_refs):
+    for ref in sorted(pcb_only):
         orphans.append({
             "ref": ref,
-            "pcb_value": pcb_fps[ref]["value"],
+            "pcb_value": pcb_by_ref[ref].get("value", ""),
             "status": "fail",
             "message": f"{ref} in PCB but not in schematic (stale placement?)",
         })
 
     # Missing: in schematic but not in PCB
-    for ref in sorted(sch_refs - pcb_refs):
+    for ref in sorted(sch_only):
         if ref in dnp_refs:
             continue  # DNP components are expected to be absent from PCB
         sc = sch_comps[ref]
@@ -167,7 +168,7 @@ def check_component_matching(sch: dict, pcb: dict) -> dict:
     # Value mismatches on matched refs
     for ref in sorted(matched):
         sv = sch_comps[ref]["value"]
-        pv = pcb_fps[ref]["value"]
+        pv = matched[ref].get("value", "")
         if sv and pv and sv.lower() != pv.lower():
             value_mismatches.append({
                 "ref": ref,
@@ -177,8 +178,19 @@ def check_component_matching(sch: dict, pcb: dict) -> dict:
                 "message": f"{ref}: schematic says '{sv}', PCB says '{pv}'",
             })
 
+    # Paired by path but annotated differently on the PCB
+    for ref in sorted(matched):
+        pcb_ref = matched[ref].get("reference", "")
+        if pcb_ref != ref:
+            reference_mismatches.append({
+                "ref": ref,
+                "pcb_ref": pcb_ref,
+                "status": "warning",
+                "message": f"{ref} is {pcb_ref} on the PCB (annotation not synchronised)",
+            })
+
     # DNP conflicts: marked DNP but placed in PCB
-    for ref in sorted(dnp_refs & pcb_refs):
+    for ref in sorted(dnp_refs & set(matched)):
         dnp_conflicts.append({
             "ref": ref,
             "status": "warning",
@@ -187,11 +199,12 @@ def check_component_matching(sch: dict, pcb: dict) -> dict:
 
     return {
         "schematic_count": len(sch_comps),
-        "pcb_count": len(pcb_fps),
+        "pcb_count": len(pcb_by_ref),
         "matched": len(matched),
         "orphans": orphans,
         "missing": missing,
         "value_mismatches": value_mismatches,
+        "reference_mismatches": reference_mismatches,
         "dnp_conflicts": dnp_conflicts,
     }
 

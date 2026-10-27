@@ -54,7 +54,7 @@ class SchemaEraLiterals(unittest.TestCase):
 
     def test_v3_site_count(self):
         _, values = _scan()
-        self.assertEqual(values.count("v3.0"), 91)
+        self.assertEqual(values.count("v3.0"), 95)
 
 
 if __name__ == "__main__":

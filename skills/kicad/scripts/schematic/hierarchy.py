@@ -149,6 +149,14 @@ def apply_sheet_flags(components: list[dict], sheet_chain: list[dict]) -> None:
             c["on_board"] = False
 
 
+def set_instance_paths(components: list[dict], inst_path: str) -> None:
+    """Give each placed unit the path a board footprint carries for it, in place: the sheet
+    uuids below the root, then the symbol uuid (KiCad's SCH_SHEET_PATH::PathAsString)."""
+    for c in components:
+        if c.get("uuid"):
+            c["instance_path"] = inst_path + "/" + c["uuid"]
+
+
 def namespace_hierarchical_labels(labels: list[dict], inst_path: str) -> None:
     """Prefix each hierarchical label and sheet pin with its sheet instance path, in place.
 
@@ -289,6 +297,7 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
             sd.root, sd.components, sd.wires, sd.labels, sd.junctions, sd.no_connects,
             sd.sub_sheet_paths, sd.lib_symbols, sd.text_annotations, sd.bus_elements, sd.title_block)
         apply_sheet_flags(components, text_chain)
+        set_instance_paths(components, inst_path)
 
         sheet_idx = len(sheets_parsed)
         for c in components:
@@ -344,6 +353,7 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
     for sheet_idx, start, root, lib_symbols, sheet_kwargs in pending:
         components = extract_components(root, lib_symbols, **sheet_kwargs)
         apply_sheet_flags(components, sheet_kwargs["text_ctx"]["sheet_chain"])
+        set_instance_paths(components, sheet_kwargs["instance_uuid"])
         for c in components:
             c["_sheet"] = sheet_idx
         all_components[start:start + len(components)] = components

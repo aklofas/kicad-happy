@@ -24,8 +24,10 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from finding_schema import make_finding, compute_trust_summary, assign_finding_ids, show_decoded_names
+from kicad_core.fields import merge_unit_fields
 from kicad_core.netnames import is_ground_name, is_power_net_name
 from kicad_core.netquery import build_net_id_map as _build_net_id_map
+from kicad_core.pairing import pair_by_path
 from envelopes.cross_analysis import CrossAnalysisEnvelope
 from schema_codec import emit_schema
 from inputs_builder import build_inputs, build_upstream_artifact, build_compat
@@ -358,6 +360,19 @@ def check_esd_coverage_gaps(schematic: dict, pcb: dict | None, recorder=None) ->
     return findings
 
 
+def _package_keys(components) -> set:
+    """One key per package: units of a part share its reference (KiCad's netlist has one
+    component per reference). Unannotated parts keep one key per placed unit."""
+    keys = set()
+    for c in components:
+        ref = c.get('reference') or ''
+        if ref and not ref.endswith('?'):
+            keys.add(('ref', ref))
+        else:
+            keys.add(('unit', c.get('instance_path') or c.get('uuid') or str(id(c))))
+    return keys
+
+
 # ---------------------------------------------------------------------------
 # DA-001: Decoupling strategy adequacy
 # ---------------------------------------------------------------------------
@@ -375,7 +390,8 @@ def check_decoupling_adequacy(schematic: dict, pcb: dict | None, recorder=None) 
     for rail in rails:
         rail_name = rail.get('rail', '')
         caps = rail.get('capacitors') or []
-        ic_count = sum(1 for c in ics if rail_name in set((c.get('pin_nets') or {}).values()))
+        ic_count = len(_package_keys(
+            [c for c in ics if rail_name in set((c.get('pin_nets') or {}).values())]))
         if ic_count == 0:
             continue
         cap_count = len(caps)
@@ -406,23 +422,66 @@ def check_decoupling_adequacy(schematic: dict, pcb: dict | None, recorder=None) 
 
 
 # ---------------------------------------------------------------------------
-# XV-001..003: Schematic/PCB cross-validation
+# XV-001..004: Schematic/PCB cross-validation
 # ---------------------------------------------------------------------------
 
+def _xv_ref(ref) -> bool:
+    return isinstance(ref, str) and bool(ref) and not ref.startswith('#')
+
+
+def _units_by_ref(schematic: dict) -> dict[str, list[dict]]:
+    units: dict[str, list[dict]] = {}
+    for c in schematic.get('components', []):
+        ref = c.get('reference', '')
+        if _xv_ref(ref):
+            units.setdefault(ref, []).append(c)
+    return units
+
+
+def _package_fields(units: list[dict]) -> dict[str, str]:
+    """Value, Footprint and MPN of one reference, merged across its units as KiCad's
+    netlist merges them (kicad_core.fields.merge_unit_fields)."""
+    def fields(c):
+        out = {name: c.get(key) for name, key in (('Value', 'value'), ('Footprint', 'footprint'))
+               if isinstance(c.get(key), str)}
+        mpn = c.get('mpn')
+        if isinstance(mpn, str) and mpn.strip():
+            out['MPN'] = mpn
+        return out
+    merged = merge_unit_fields((c.get('unit') or 1, fields(c)) for c in units)
+    return {'value': merged.get('Value', ''), 'footprint': merged.get('Footprint', ''),
+            'mpn': merged.get('MPN', '')}
+
+
+def _sch_footprint(units: list[dict]) -> str:
+    """The footprint KiCad's netlist gives the part: its lowest unit with one."""
+    return _package_fields(units)['footprint']
+
+
+def _fpid_name(fpid: str) -> str:
+    return fpid.partition(':')[2] if ':' in fpid else fpid
+
+
+def _fpid_equivalent(board_fpid: str, sch_fpid: str) -> bool:
+    """KiCad's fpidsEquivalent: a schematic footprint without a library nickname matches
+    on the footprint name alone; otherwise library and name must both be equal."""
+    if ':' not in sch_fpid:
+        return _fpid_name(board_fpid) == sch_fpid
+    return board_fpid == sch_fpid
+
+
 def check_cross_validation(schematic: dict, pcb: dict | None, recorder=None) -> list[dict]:
-    """XV-001..003: Cross-validate schematic and PCB data consistency."""
+    """XV-001..003: references, values and footprints of each schematic part and its PCB
+    footprint, paired by schematic path (kicad_core.pairing.pair_by_path)."""
     findings: list[dict] = []
     if not pcb:
         _record(recorder, 'XV-001..003', False, 'no PCB data provided', 0, findings)
         return findings
 
-    sch_refs = {c.get('reference', '') for c in schematic.get('components', [])
-                if c.get('reference', '') and not c['reference'].startswith('#')}
+    pairs, in_sch_not_pcb, in_pcb_not_sch = pair_by_path(schematic, pcb)
+    sch_refs = set(_units_by_ref(schematic))
     pcb_refs = {fp.get('reference', '') for fp in pcb.get('footprints', [])
-                if fp.get('reference', '') and not fp['reference'].startswith('#')}
-
-    in_sch_not_pcb = sch_refs - pcb_refs
-    in_pcb_not_sch = pcb_refs - sch_refs
+                if _xv_ref(fp.get('reference', ''))}
 
     # XV-001: Components in schematic but not PCB
     real_missing = {r for r in in_sch_not_pcb if not r.startswith(('TP', 'MH', 'NT', 'FID'))}
@@ -451,12 +510,31 @@ def check_cross_validation(schematic: dict, pcb: dict | None, recorder=None) -> 
         
             source=ANALYZER_SOURCE, schema_era="v3.0",))
 
+    # XV-001: a footprint paired by path carries another reference (annotation not synced)
+    renamed = sorted({(ref, fp['reference']) for ref, fp in pairs if fp['reference'] != ref})
+    if renamed:
+        refs = sorted({ref for ref, _ in renamed})
+        listed = ', '.join(f'{ref} (PCB {pcb_ref})' for ref, pcb_ref in renamed[:20])
+        findings.append(make_finding(
+            detector='check_cross_validation', rule_id='XV-001', category='design_sync',
+            summary=f'{len(refs)} component(s) with a different reference on the PCB',
+            description=(f'Footprints placed for these symbols carry another reference: {listed}'
+                         f'{"..." if len(renamed) > 20 else ""}.'),
+            severity='warning', confidence='deterministic', evidence_source='topology',
+            components=refs[:20],
+            recommendation='Update PCB from schematic (or back-annotate) so both use the same references.',
+            impact='Assembly files and the schematic name different parts',
+            source=ANALYZER_SOURCE, schema_era="v3.0", reason='reference_mismatch'))
+
+    units = _units_by_ref(schematic)
+    fields = {ref: _package_fields(recs) for ref, recs in units.items()}
+
+    # Copies of a footprint, or one reference on several symbols, report one difference once.
+    reported = set()
+
     # XV-002: Value consistency
-    pcb_fp_map = {fp.get('reference', ''): fp for fp in pcb.get('footprints', [])}
-    sch_comp_map = {c.get('reference', ''): c for c in schematic.get('components', [])}
-    for ref in sorted(sch_refs & pcb_refs):
-        sch_val = sch_comp_map.get(ref, {}).get('value', '')
-        pcb_fp = pcb_fp_map.get(ref, {})
+    for ref, pcb_fp in pairs:
+        sch_val = fields[ref]['value']
         pcb_val = pcb_fp.get('value', '')
         # KH-326: skip cross-check if either value is malformed (not a string).
         # Parser edge case in analyze_pcb.py footprint parsing can yield a list.
@@ -465,14 +543,17 @@ def check_cross_validation(schematic: dict, pcb: dict | None, recorder=None) -> 
         if sch_val and pcb_val and sch_val != pcb_val:
             if sch_val.replace(' ', '') == pcb_val.replace(' ', ''):
                 continue
-            # Skip when the PCB "value" is actually the footprint library name
-            # (never synced from schematic — KiCad default on fresh placement)
-            pcb_footprint = pcb_fp.get('footprint', '')
-            if pcb_val == pcb_footprint or pcb_val == pcb_footprint.split(':')[-1]:
+            if ('XV-002', ref, sch_val, pcb_val) in reported:
                 continue
+            reported.add(('XV-002', ref, sch_val, pcb_val))
+            pcb_footprint = pcb_fp.get('library') or pcb_fp.get('footprint') or ''
+            if pcb_val in (pcb_footprint, _fpid_name(pcb_footprint)):
+                summary = f'{ref}: value never synchronised to the PCB — "{sch_val}" vs footprint name "{pcb_val}"'
+            else:
+                summary = f'{ref}: value mismatch — "{sch_val}" vs "{pcb_val}"'
             findings.append(make_finding(
                 detector='check_cross_validation', rule_id='XV-002', category='design_sync',
-                summary=f'{ref}: value mismatch — "{sch_val}" vs "{pcb_val}"',
+                summary=summary,
                 description=f'{ref} has "{sch_val}" in schematic but "{pcb_val}" in PCB.',
                 severity='warning', confidence='deterministic', evidence_source='topology',
                 components=[ref],
@@ -481,7 +562,76 @@ def check_cross_validation(schematic: dict, pcb: dict | None, recorder=None) -> 
 
                 source=ANALYZER_SOURCE, schema_era="v3.0",))
 
+    # XV-003: Footprint consistency (Update PCB replaces a footprint whose FPID differs)
+    relinked = []
+    for ref, pcb_fp in pairs:
+        sch_fp = fields[ref]['footprint']
+        board_fp = pcb_fp.get('library') or pcb_fp.get('footprint') or ''
+        if not isinstance(board_fp, str) or not sch_fp or not board_fp:
+            continue
+        if _fpid_equivalent(board_fp, sch_fp) or ('XV-003', ref, sch_fp, board_fp) in reported:
+            continue
+        reported.add(('XV-003', ref, sch_fp, board_fp))
+        if _fpid_name(board_fp) == _fpid_name(sch_fp):
+            relinked.append((ref, sch_fp, board_fp))
+            continue
+        findings.append(make_finding(
+            detector='check_cross_validation', rule_id='XV-003', category='design_sync',
+            summary=f'{ref}: footprint mismatch — "{sch_fp}" vs "{board_fp}"',
+            description=(f'{ref} is assigned "{sch_fp}" in the schematic but the PCB carries '
+                         f'"{board_fp}"; Update PCB from schematic would replace it.'),
+            severity='warning', confidence='deterministic', evidence_source='topology',
+            components=[ref],
+            recommendation='Update PCB from schematic, or assign the PCB footprint to the symbol.',
+            impact='Wrong land pattern on the manufactured board',
+            source=ANALYZER_SOURCE, schema_era="v3.0",))
+    if relinked:
+        refs = sorted({ref for ref, _, _ in relinked})
+        listed = ', '.join(f'{ref} ("{s}" vs "{b}")' for ref, s, b in relinked[:20])
+        findings.append(make_finding(
+            detector='check_cross_validation', rule_id='XV-003', category='design_sync',
+            summary=f'{len(refs)} footprint(s) differ from the schematic only in the library name',
+            description=f'Same footprint name, different library: {listed}{"..." if len(relinked) > 20 else ""}.',
+            severity='info', confidence='deterministic', evidence_source='topology',
+            components=refs[:20],
+            recommendation='Update PCB from schematic to link these footprints to the schematic\'s libraries.',
+            source=ANALYZER_SOURCE, schema_era="v3.0",))
+
     _record(recorder, 'XV-001..003', True, None, len(sch_refs | pcb_refs), findings)
+    return findings
+
+
+def check_mpn_parity(schematic: dict, pcb: dict | None, recorder=None) -> list[dict]:
+    """XV-004: a footprint's MPN differs from its symbol's (both non-blank; Update PCB
+    copies symbol fields to the footprint exactly)."""
+    findings: list[dict] = []
+    if not pcb:
+        _record(recorder, 'XV-004', False, 'no PCB data provided', 0, findings)
+        return findings
+    pairs, _, _ = pair_by_path(schematic, pcb)
+    units = _units_by_ref(schematic)
+    compared = 0
+    reported = set()
+    for ref, pcb_fp in pairs:
+        sch_mpn = _package_fields(units[ref])['mpn'].strip()
+        pcb_mpn = pcb_fp.get('mpn')
+        pcb_mpn = pcb_mpn.strip() if isinstance(pcb_mpn, str) else ''
+        if not sch_mpn or not pcb_mpn:
+            continue
+        compared += 1
+        if sch_mpn == pcb_mpn or (ref, sch_mpn, pcb_mpn) in reported:
+            continue
+        reported.add((ref, sch_mpn, pcb_mpn))
+        findings.append(make_finding(
+            detector='check_mpn_parity', rule_id='XV-004', category='design_sync',
+            summary=f'{ref}: MPN mismatch — "{sch_mpn}" vs "{pcb_mpn}"',
+            description=f'{ref} has MPN "{sch_mpn}" in the schematic but "{pcb_mpn}" on the PCB.',
+            severity='warning', confidence='deterministic', evidence_source='topology',
+            components=[ref],
+            recommendation='Update PCB from schematic so the footprint fields match the symbol.',
+            impact='Assembly may source a different part than the schematic specifies',
+            source=ANALYZER_SOURCE, schema_era="v3.0",))
+    _record(recorder, 'XV-004', True, None, compared, findings)
     return findings
 
 
@@ -1038,6 +1188,7 @@ def run_all_checks(schematic: dict, pcb: dict | None) -> tuple[list[dict], list[
     findings.extend(check_esd_coverage_gaps(schematic, pcb, recorder=recorder))
     findings.extend(check_decoupling_adequacy(schematic, pcb, recorder=recorder))
     findings.extend(check_cross_validation(schematic, pcb, recorder=recorder))
+    findings.extend(check_mpn_parity(schematic, pcb, recorder=recorder))
     # PCB intelligence checks
     findings.extend(check_critical_net_routing(schematic, pcb, recorder=recorder))
     findings.extend(check_return_path_enhanced(schematic, pcb, recorder=recorder))

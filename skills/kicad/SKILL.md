@@ -239,7 +239,7 @@ python3 <skill-path>/scripts/cross_analysis.py \
     --schematic schematic.json --pcb pcb.json --output cross_analysis.json
 ```
 
-Checks: CC-001 connector current capacity, EG-001 ESD protection gaps, DA-001 decoupling adequacy, XV-001..003 schematic/PCB sync. PCB JSON optional.
+Checks: CC-001 connector current capacity, EG-001 ESD protection gaps, DA-001 decoupling adequacy, XV-001..004 schematic/PCB sync (parts paired by schematic path; XV-003 footprint, XV-004 MPN). PCB JSON optional.
 
 Mechanical cross-verify (PCB vs schematic geometry): `python3 <skill-path>/scripts/cross_verify.py --help`.
 

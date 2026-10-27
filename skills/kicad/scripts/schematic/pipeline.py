@@ -51,6 +51,7 @@ from kicad_types import (
 from schematic.connectivity import build_net_map
 from schematic.hierarchy import (
     namespace_hierarchical_labels,
+    set_instance_paths,
     parse_all_sheets,
     merge_top_level_sheets,
 )
@@ -952,6 +953,7 @@ def analyze_legacy_schematic(path: str, analysis_dir: str | Path | None = None) 
             nc["_sheet"] = sheet_idx
 
         apply_instance_reference(components, inst_path)
+        set_instance_paths(components, inst_path)
         namespace_hierarchical_labels(labels, inst_path)
 
         all_components.extend(components)

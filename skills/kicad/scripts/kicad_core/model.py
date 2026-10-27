@@ -81,8 +81,9 @@ class _ComponentRequired(TypedDict):
 class Component(_ComponentRequired, total=False):
     """A placed component. Required keys are those BOTH readers (``extract_components`` and the
     legacy ``.sch`` reader) always set; everything else is optional. ``pins`` is stripped and
-    ``category``/``parsed_value``/``pin_nets`` are added by result assembly; ``_sheet`` is set
-    by multi-sheet assembly; ``_unit_pins`` (a set) and ``_body_style`` (the placed De Morgan body,
+    ``category``/``parsed_value``/``pin_nets`` are added by result assembly; ``_sheet`` and
+    ``instance_path`` (the board footprint path of the placed unit) are set by multi-sheet
+    assembly; ``_unit_pins`` (a set) and ``_body_style`` (the placed De Morgan body,
     default 1) are popped before output."""
     lib_name: str
     pins: list[Pin]
@@ -94,6 +95,7 @@ class Component(_ComponentRequired, total=False):
     category: str
     parsed_value: float
     pin_nets: dict[str, str]
+    instance_path: str
     _unit_pins: set
     _body_style: int
     _sheet: int
