@@ -459,7 +459,7 @@ def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
         # Fall back to the lib_symbol's Value property only when the property is
         # missing entirely (None), not when it exists but is empty string (KH-230).
         if value is None:
-            sym_def_val = lib_symbols.get(lib_id, {})
+            sym_def_val = (lib_symbols.get(lib_name) if lib_name else None) or lib_symbols.get(lib_id, {})
             value = sym_def_val.get("value", "") or ""
         else:
             value = value or ""
@@ -538,8 +538,10 @@ def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
         element14 = pick_field(_props, _ELEMENT14_KEYS)
 
         in_bom = get_value(sym, "in_bom") != "no"
-        dnp = get_value(sym, "dnp") == "yes"
-        if not dnp and value.upper() in ("DNP", "DO NOT POPULATE", "DO NOT PLACE", "NP"):
+        dnp_token = get_value(sym, "dnp")
+        dnp = dnp_token == "yes"
+        # KiCad reads only the attribute; the Value guess remains for files without one (KiCad 6)
+        if dnp_token is None and value.upper() in ("DNP", "DO NOT POPULATE", "DO NOT PLACE", "NP"):
             dnp = True
         on_board = get_value(sym, "on_board") != "no"
 
