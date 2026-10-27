@@ -140,7 +140,7 @@ Uses union-find (same algorithm concept as the schematic net builder) on `(x, y,
 2. **Union track segments** — each segment's start and end points are unioned on their layer
 3. **Union vias** — a via unions its position across all layers it spans
 4. **Account for zones** — for each net with a zone, union all pads on that net + layer (approximation: assumes zone covers all pads)
-5. **Copper graphics** — a board graphic on a copper layer with a net (KiCad 8+) joins like a track of its stroke width; a filled one also joins the same-net pads, vias and track ends inside it
+5. **Copper graphics** — a board graphic on a copper layer with a net (KiCad 8+) joins like a track of its stroke width; a filled one also joins the same-net pads, vias and track ends inside it; a graphic with a vertex inside a same-net zone fill joins that fill
 
 Then count connected components per net:
 - **1 component** → fully routed
