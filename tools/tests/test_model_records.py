@@ -60,8 +60,10 @@ class RecordShapes(unittest.TestCase):
     def test_sheetdata_field_order_matches_old_tuple(self):
         import dataclasses
         names = [f.name for f in dataclasses.fields(self.model.SheetData)]
+        # the old tuple's fields first, in order; sheet_fields (defaulted) follows them
         self.assertEqual(names, ["root", "components", "wires", "labels", "junctions", "no_connects",
-                                 "sub_sheet_paths", "lib_symbols", "text_annotations", "bus_elements", "title_block"])
+                                 "sub_sheet_paths", "lib_symbols", "text_annotations", "bus_elements", "title_block",
+                                 "sheet_fields"])
         self.assertIsInstance(self.sheet, self.model.SheetData)
 
 

@@ -9,12 +9,13 @@ import os
 from pathlib import Path
 
 from kicad_core.sexp import (find_all, find_first, find_deep, get_value, get_property,
-                             get_properties, get_at, has_flag, net_name_escape, parse_file,
-                             raw_text, unescape_string)
+                             get_properties, get_at, has_flag, is_keyword, net_name_escape,
+                             parse_file, raw_text, unescape_string)
 from kicad_core.classify import classify_component, classify_connector, classify_ic_function
 from kicad_core.fields import DIGIKEY_FIELD_ALIASES, pick_field, pick_mpn
 from kicad_core.instances import inline_instances, resolve_instance, tilde_is_empty
 from kicad_core.model import Component, Pin, SheetData
+from kicad_core.textvars import resolve_text_vars, unescape_text_vars
 
 
 # ---------------------------------------------------------------------------
@@ -385,6 +386,313 @@ def extract_symbol_instances(root: list) -> dict:
     return result
 
 
+# ---------------------------------------------------------------------------
+# Text variables in symbol fields (KiCad's SCH_SYMBOL / SCH_SHEET / SCHEMATIC ResolveTextVar)
+# ---------------------------------------------------------------------------
+
+_MANDATORY_FIELDS = ("Reference", "Value", "Footprint", "Datasheet", "Description")
+_SIM_FIELDS = frozenset({"SIM.DEVICE", "SIM.TYPE", "SIM.PINS", "SIM.PARAMS", "SIM.LIBRARY",
+                         "SIM.NAME"})
+_TITLE_BLOCK_KEYS = {"ISSUE_DATE": "date", "REVISION": "rev", "TITLE": "title",
+                     "COMPANY": "company", **{f"COMMENT{n}": f"comment_{n}" for n in range(1, 10)}}
+_SHEET_NAME_FIELDS = {"Sheetname": "SHEETNAME", "Sheet name": "SHEETNAME",
+                      "Sheetfile": "SHEETFILE", "Sheet file": "SHEETFILE"}
+
+
+def _has_text_vars(text: str) -> bool:
+    return "${" in text or "@{" in text
+
+
+def _raw_fields(node: list) -> list[tuple[str, str]]:
+    """(name, text) of every property of *node*, in file order."""
+    fields = []
+    for child in node:
+        if isinstance(child, list) and len(child) >= 3 and child[0] == "property":
+            off = 1 if is_keyword(child[1], "private") else 0
+            if len(child) >= 3 + off:
+                fields.append((str(child[1 + off]), str(child[2 + off])))
+    return fields
+
+
+def sheet_block_fields(sheet: list, tilde_empty: bool) -> dict:
+    """A (sheet ...) block's fields (name and file fields named SHEETNAME / SHEETFILE, the
+    names KiCad resolves them by) and its attribute flags."""
+    fields = [(_SHEET_NAME_FIELDS.get(name, name), _field(text, tilde_empty))
+              for name, text in _raw_fields(sheet)]
+    return {"fields": fields,
+            "in_bom": get_value(sheet, "in_bom") != "no",
+            "on_board": get_value(sheet, "on_board") != "no",
+            "dnp": get_value(sheet, "dnp") == "yes",
+            "exclude_from_sim": get_value(sheet, "exclude_from_sim") == "yes"}
+
+
+def sheet_chain_node(uuid: str, fields: dict | None) -> dict:
+    """One sheet of a text-variable sheet chain; its title block is set when its file is read."""
+    fields = fields or {"fields": [], "in_bom": True, "on_board": True, "dnp": False,
+                        "exclude_from_sim": False}
+    name = next((text for key, text in fields["fields"] if key == "SHEETNAME"), "")
+    return dict(fields, uuid=uuid, name=name, title_block={})
+
+
+def _letter_sub_reference(unit: int, first: int) -> str:
+    suffix = ""
+    while True:
+        u = (unit - 1) % 26
+        suffix = chr(first + u) + suffix
+        unit = (unit - u) // 26
+        if unit <= 0:
+            return suffix
+
+
+def _sub_reference(unit: int, ctx: dict) -> str:
+    """The unit suffix KiCad appends to a multi-unit reference (project subpart settings)."""
+    if not unit or unit < 1:
+        return ""
+    sep = ctx.get("subpart_separator") or 0
+    first = ctx.get("subpart_first_id") or ord("A")
+    prefix = chr(sep) if sep else ""
+    if ord("0") <= first <= ord("9"):
+        return prefix + str(unit)
+    return prefix + _letter_sub_reference(unit, first)
+
+
+def _project_var(token: str, ctx: dict) -> str | None:
+    if token == "PROJECTNAME":
+        return ctx.get("project_name", "")
+    value = ctx.get("project_vars", {}).get(token)
+    return None if value is None else str(value)
+
+
+def _title_block_var(token: str, title_block: dict, ctx: dict) -> str | None:
+    """TITLE_BLOCK::TextVarResolver: a title block token resolves even when the field is empty."""
+    key = _TITLE_BLOCK_KEYS.get(token)
+    if key is None:
+        return None
+    value = resolve_text_vars(title_block.get(key, ""), lambda tok, _d: _project_var(tok, ctx))
+    return None if value == "${" + token + "}" else value
+
+
+def _sheet_path_text(nodes: list) -> str:
+    """SCH_SHEET_PATH::PathHumanReadable for *nodes* (innermost sheet first, root last)."""
+    return "/" + "".join(node["name"] + "/" for node in reversed(nodes[:-1]))
+
+
+_FLAG_TEXT = {"EXCLUDE_FROM_BOM": "Excluded from BOM", "EXCLUDE_FROM_BOARD": "Excluded from board",
+              "EXCLUDE_FROM_SIM": "Excluded from simulation", "DNP": "DNP"}
+
+
+def _flag_set(flags: dict, token: str) -> bool:
+    return {"EXCLUDE_FROM_BOM": not flags["in_bom"], "EXCLUDE_FROM_BOARD": not flags["on_board"],
+            "EXCLUDE_FROM_SIM": flags["exclude_from_sim"], "DNP": flags["dnp"]}[token]
+
+
+def _chain_flag(nodes: list, token: str) -> str | None:
+    """An attribute token: its text when any sheet of *nodes* sets the attribute, else ""."""
+    if token not in _FLAG_TEXT:
+        return None
+    return _FLAG_TEXT[token] if any(_flag_set(n, token) for n in nodes) else ""
+
+
+def _schematic_var(token: str, ctx: dict) -> str | None:
+    """SCHEMATIC::ResolveTextVar on the root sheet (page numbers and FILEPATH stay unresolved)."""
+    chain = ctx["sheet_chain"]
+    if token == "SHEETPATH":
+        return "/"
+    if token == "SHEETNAME":
+        return chain[-1]["name"]
+    if token == "FILENAME":
+        return ctx.get("filename", "")
+    if token == "PROJECTNAME":
+        return ctx.get("project_name", "")
+    if token in ("VARIANTNAME", "VARIANT", "VARIANT_DESC"):
+        return ""
+    value = _title_block_var(token, chain[-1]["title_block"], ctx)
+    if value is not None:
+        return value
+    return _project_var(token, ctx)
+
+
+def _cross_reference(token: str, depth: int, ctx: dict) -> str | None:
+    registry = ctx.get("registry")
+    return registry.cross_reference(token, depth) if registry is not None else None
+
+
+def _sheet_var(token: str, k: int, depth: int, ctx: dict) -> str | None:
+    """SCH_SHEET::ResolveTextVar for sheet *k* of the chain, then its ancestors."""
+    chain = ctx["sheet_chain"]
+    if ":" in token:
+        value = _cross_reference(token, depth + 1, ctx)
+        if value is not None:
+            return value
+    node = chain[k]
+    for name, text in node["fields"]:
+        if token == name:
+            if _has_text_vars(text):
+                text = resolve_text_vars(text, lambda tok, d: _sheet_var(tok, k, d + 1, ctx),
+                                         depth + 1)
+            return unescape_text_vars(text)
+    value = _title_block_var(token, node["title_block"], ctx)
+    if value is not None:
+        return value
+    if token == "SHEETPATH":
+        return _sheet_path_text(chain[k:])
+    value = _chain_flag(chain[k:], token)
+    if value is not None:
+        return value
+    if k + 1 < len(chain):
+        return _sheet_var(token, k + 1, depth + 1, ctx)
+    return _schematic_var(token, ctx)
+
+
+class SymbolText:
+    """Shown text of one placed symbol's fields on one sheet path (SCH_FIELD::GetShownText with
+    SCH_SYMBOL::ResolveTextVar).  Operating points and pin / net functions stay unresolved."""
+
+    def __init__(self, fields: list[tuple[str, str]], ref: str, unit, unit_count: int,
+                 lib_id: str, lib_def: dict, flags: dict, ctx: dict):
+        self.fields = fields
+        self.ref = ref
+        self.unit = unit or 1
+        self.unit_count = unit_count
+        self.lib_id = lib_id
+        self.lib_def = lib_def
+        self.flags = flags
+        self.ctx = ctx
+
+    def has_text_vars(self) -> bool:
+        return any(_has_text_vars(text) for _, text in self.fields)
+
+    def shown(self, text: str, depth: int = 0) -> str:
+        if _has_text_vars(text):
+            text = resolve_text_vars(text, lambda tok, d: self.var(tok, d + 1), depth)
+        return unescape_text_vars(text)
+
+    def _field_text(self, name: str) -> str:
+        return next((text for key, text in self.fields if key == name), "")
+
+    def var(self, token: str, depth: int) -> str | None:
+        ctx = self.ctx
+        if ":" in token:
+            value = _cross_reference(token, depth + 1, ctx)
+            if value is not None:
+                return value
+        low = token.lower()
+        for name, text in self.fields:
+            # a field whose text is just a reference to itself stops resolution
+            if text.replace(" ", "").lower() == ("${" + name + "}").lower():
+                return token
+            if low == name.lower():
+                if name == "Reference":
+                    return self.ref + (_sub_reference(self.unit, ctx) if self.unit_count > 1 else "")
+                return self.shown(text, depth + 1)
+        if token in _SIM_FIELDS:
+            return ""
+        if any(token == t or token == t.upper() for t in ctx.get("template_fields", ())):
+            return ""
+        if token in ("FOOTPRINT_LIBRARY", "FOOTPRINT_NAME"):
+            parts = self.shown(self._field_text("Footprint"), depth + 1).split(":")
+            if token == "FOOTPRINT_LIBRARY":
+                return parts[0]
+            return parts[1] if len(parts) > 1 else ""
+        if token == "UNIT":
+            return _sub_reference(self.unit, ctx)
+        if token == "SHORT_REFERENCE":
+            return self.ref
+        if token in ("SYMBOL_LIBRARY", "SYMBOL_NAME"):
+            nick, sep, name = self.lib_id.partition(":")
+            if not sep:
+                nick, name = "", self.lib_id
+            return nick if token == "SYMBOL_LIBRARY" else name
+        if token == "SYMBOL_DESCRIPTION":
+            return self.lib_def.get("description", "") or ""
+        if token == "SYMBOL_KEYWORDS":
+            return self.lib_def.get("keywords", "") or ""
+        if token in _FLAG_TEXT:
+            if _flag_set(self.flags, token):
+                return _FLAG_TEXT[token]
+            return _chain_flag(ctx["sheet_chain"], token)
+        return _sheet_var(token, 0, depth + 1, ctx)
+
+
+class TextVarRegistry:
+    """Every placed symbol (and sheet) of one schematic, for ``${REF:FIELD}`` cross references.
+
+    References met before the whole schematic is read count in ``pending``; the hierarchy
+    walk reads those sheets again once ``ready`` is set."""
+
+    def __init__(self):
+        self.refs: list = []
+        self.by_uuid: dict = {}
+        self.sheets: dict = {}
+        self.ready = False
+        self.pending = 0
+
+    def add_symbol(self, ref: str, uuid: str, instance_path: str, text: SymbolText) -> None:
+        if self.ready:
+            return
+        self.refs.append((ref, text))
+        if uuid:
+            self.by_uuid.setdefault(uuid.lower(), []).append((instance_path.rstrip("/").lower(), text))
+
+    def add_sheet(self, uuid: str, ctx: dict) -> None:
+        if uuid and not self.ready:
+            self.sheets.setdefault(uuid.lower(), ctx)
+
+    def cross_reference(self, token: str, depth: int) -> str | None:
+        """SCHEMATIC::ResolveCrossReference."""
+        if not self.ready:
+            self.pending += 1
+            return None
+        ref, _, remainder = token.partition(":")
+        field_name = remainder.partition(":")[0]
+        parts = [p for p in ref.split("/") if p]
+        key = parts[-1].lower() if parts else ""
+        hits = self.by_uuid.get(key)
+        if hits:
+            want = ("/" + "/".join(parts[:-1])).lower()
+            text = hits[0][1]
+            if len(parts) > 1:
+                text = next((t for path, t in hits if path == want or path.endswith(want)), text)
+            value = text.var(field_name, depth + 1)
+            return value if value is not None else f"<Unresolved: {text.ref}:{field_name}>"
+        sheet_ctx = self.sheets.get(key)
+        if sheet_ctx is not None:
+            value = _sheet_var(remainder, 0, depth + 1, sheet_ctx)
+            return value if value is not None else token
+        found = None
+        for sym_ref, text in self.refs:
+            if sym_ref == ref:
+                found = text
+                break
+            if len(sym_ref) == len(ref) + 1 and sym_ref.startswith(ref) and "A" <= sym_ref[-1] <= "Z":
+                found = text
+        if found is None:
+            return f"<Unresolved: {ref}>"
+        value = found.var(field_name, depth + 1)
+        return value if value is not None else f"<Unresolved: {found.ref}:{field_name}>"
+
+
+def text_context(pro: dict | None, project_name: str, filename: str,
+                 registry: TextVarRegistry | None) -> dict:
+    """The schematic-wide part of a text-variable context (the caller adds ``sheet_chain``)."""
+    sch = (pro or {}).get("schematic") or {}
+    drawing = sch.get("drawing") if isinstance(sch.get("drawing"), dict) else {}
+    templates = [f.get("name") for f in drawing.get("field_names") or ()
+                 if isinstance(f, dict) and isinstance(f.get("name"), str) and f.get("name")]
+    variables = (pro or {}).get("text_variables")
+
+    def setting(key, default):
+        value = sch.get(key, default)
+        return value if isinstance(value, int) and not isinstance(value, bool) else default
+
+    return {"project_vars": variables if isinstance(variables, dict) else {},
+            "project_name": project_name, "filename": filename,
+            "template_fields": templates,
+            "subpart_separator": setting("subpart_id_separator", 0),
+            "subpart_first_id": setting("subpart_first_id", ord("A")),
+            "registry": registry}
+
+
 def _field(text, tilde_empty: bool) -> str:
     """A field's text, "" when absent; "~" is empty in files older than 20250318."""
     if text is None or (tilde_empty and text == "~"):
@@ -392,10 +700,25 @@ def _field(text, tilde_empty: bool) -> str:
     return text
 
 
+def _symbol_fields(sym: list, value: str, footprint: str, tilde_empty: bool) -> list[tuple[str, str]]:
+    """A placed symbol's fields in KiCad's order: the five mandatory fields (Value and
+    Footprint as resolved from the instance), then the others as written."""
+    raw = [(name, _field(text, tilde_empty)) for name, text in _raw_fields(sym)]
+    given = dict(reversed(raw))
+    fields = [(name, value if name == "Value" else footprint if name == "Footprint"
+               else given.get(name, "")) for name in _MANDATORY_FIELDS]
+    seen = set(_MANDATORY_FIELDS)
+    for name, text in raw:
+        if name not in seen:
+            seen.add(name)
+            fields.append((name, text))
+    return fields
+
+
 def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
                        symbol_instances: dict | None = None, *,
                        instance_path: str | None = None, root_kiid: str = "",
-                       project_name: str = "") -> list[Component]:
+                       project_name: str = "", text_ctx: dict | None = None) -> list[Component]:
     """Extract all placed component instances.
 
     With *instance_path* (the sheet's full KIID path, root sheet uuid first) each symbol's
@@ -409,6 +732,10 @@ def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
 
     Without *instance_path*, *instance_uuid* remaps references from the inline instance whose
     path contains it, falling back to *symbol_instances*.
+
+    With *text_ctx* (see text_context; ``sheet_chain`` lists this sheet first, the root last)
+    text variables in the fields expand as KiCad shows them, after the instance values and
+    before classification; each symbol is added to the context's registry.
     """
     components = []
     tilde_empty = tilde_is_empty(get_value(root, "version"))
@@ -530,6 +857,25 @@ def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
         _props = get_properties(sym)
         if tilde_empty:
             _props = {k: _field(v, True) for k, v in _props.items()}
+        sym_def = (lib_symbols.get(lib_name) if lib_name else None) or lib_symbols.get(lib_id, {})
+        in_bom = get_value(sym, "in_bom") != "no"
+        dnp_token = get_value(sym, "dnp")
+        on_board = get_value(sym, "on_board") != "no"
+        if text_ctx is not None:
+            fields = _symbol_fields(sym, value, footprint, tilde_empty)
+            unit_count = sum(1 for u in (sym_def.get("unit_pins") or {}) if u > 0)
+            flags = {"in_bom": in_bom, "on_board": on_board, "dnp": dnp_token == "yes",
+                     "exclude_from_sim": get_value(sym, "exclude_from_sim") == "yes"}
+            text = SymbolText(fields, ref, unit_num, unit_count, lib_id, sym_def, flags, text_ctx)
+            registry = text_ctx.get("registry")
+            if registry is not None:
+                registry.add_symbol(ref, uuid_val, instance_path or "", text)
+            if text.has_text_vars():
+                value = text.shown(value)
+                footprint = text.shown(footprint)
+                datasheet = text.shown(datasheet)
+                description = text.shown(description)
+                _props = {k: text.shown(v) for k, v in _props.items()}
         mpn = pick_mpn(_props)
         manufacturer = pick_field(_props, _MANUFACTURER_KEYS)
         digikey = pick_field(_props, DIGIKEY_FIELD_ALIASES)
@@ -537,13 +883,10 @@ def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
         lcsc = pick_field(_props, _LCSC_KEYS)
         element14 = pick_field(_props, _ELEMENT14_KEYS)
 
-        in_bom = get_value(sym, "in_bom") != "no"
-        dnp_token = get_value(sym, "dnp")
         dnp = dnp_token == "yes"
         # KiCad reads only the attribute; the Value guess remains for files without one (KiCad 6)
         if dnp_token is None and value.upper() in ("DNP", "DO NOT POPULATE", "DO NOT PLACE", "NP"):
             dnp = True
-        on_board = get_value(sym, "on_board") != "no"
 
         # Get pin UUIDs for connectivity
         pin_uuids = {}
@@ -588,8 +931,7 @@ def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
         }
 
         # Determine component type from reference prefix, lib_id, and lib_symbol flags
-        # KH-083: Try lib_name first for correct lib_symbol lookup
-        sym_def = (lib_symbols.get(lib_name) if lib_name else None) or lib_symbols.get(lib_id, {})
+        # KH-083: lib_name is tried first for the lib_symbol lookup (sym_def above)
         is_power_sym = sym_def.get("is_power", False)
         # A stacked pin ("[1-5]") counts once per contact, as in KiCad's netlist.
         lib_pins = sym_def.get("pins")
@@ -877,7 +1219,7 @@ def extract_title_block(root: list) -> dict:
 def parse_single_sheet(path: str, instance_uuid: str = "",
                        symbol_instances: dict | None = None, *,
                        instance_path: str | None = None, root_kiid: str = "",
-                       project_name: str = "") -> SheetData:
+                       project_name: str = "", text_ctx: dict | None = None) -> SheetData:
     """Parse a single .kicad_sch file and return raw extracted data.
 
     If instance_uuid is provided, remap component references from the
@@ -886,24 +1228,28 @@ def parse_single_sheet(path: str, instance_uuid: str = "",
     If symbol_instances is provided, use it as fallback for remapping when
     inline (instances) blocks are absent.
 
-    instance_path / root_kiid / project_name: see extract_components.
+    instance_path / root_kiid / project_name / text_ctx: see extract_components; this file's
+    title block becomes the first sheet of text_ctx's chain.
 
     Returns: a SheetData (root, components, wires, labels, junctions, no_connects,
               sub_sheet_paths, lib_symbols, text_annotations, bus_elements, title_block)
     """
     root = parse_file(path)
     lib_symbols = extract_lib_symbols(root)
+    title_block = extract_title_block(root)
+    if text_ctx is not None:
+        text_ctx["sheet_chain"][0]["title_block"] = title_block
     components = extract_components(root, lib_symbols, instance_uuid=instance_uuid,
                                     symbol_instances=symbol_instances,
                                     instance_path=instance_path, root_kiid=root_kiid,
-                                    project_name=project_name)
+                                    project_name=project_name, text_ctx=text_ctx)
     wires = extract_wires(root)
     labels = extract_labels(root)
     junctions = extract_junctions(root)
     no_connects = extract_no_connects(root)
     text_annotations = extract_text_annotations(root)
     bus_elements = extract_bus_elements(root)
-    title_block = extract_title_block(root)
+    tilde_empty = tilde_is_empty(get_value(root, "version"))
 
     # Find sub-sheet references, including UUIDs for multi-instance support.
     # Also extract sheet pin stubs — these are the parent-side endpoints of
@@ -912,8 +1258,10 @@ def parse_single_sheet(path: str, instance_uuid: str = "",
     # connecting the parent sheet's wires to the child sheet's matching
     # hierarchical_label via the label name union in build_net_map().
     sub_sheet_paths = []
+    sheet_fields = {}
     base_dir = Path(path).parent
     for sheet in find_all(root, "sheet"):
+        sheet_fields.setdefault(get_value(sheet, "uuid") or "", sheet_block_fields(sheet, tilde_empty))
         # Sheet file property name varies by KiCad version:
         # KiCad 6+: (property "Sheetfile" "filename.kicad_sch")
         # KiCad 7+: (property "Sheet file" "filename.kicad_sch")
@@ -945,7 +1293,8 @@ def parse_single_sheet(path: str, instance_uuid: str = "",
                 })
 
     return SheetData(root, components, wires, labels, junctions, no_connects,
-                     sub_sheet_paths, lib_symbols, text_annotations, bus_elements, title_block)
+                     sub_sheet_paths, lib_symbols, text_annotations, bus_elements, title_block,
+                     sheet_fields)
 
 
 def detect_sub_sheet(root_tree: list, file_path: str = None) -> bool:

@@ -14,10 +14,14 @@ from kicad_core.diagnostics import record
 from kicad_core.sexp import find_all, find_first, get_at, get_property, get_value, parse_file
 from kicad_core.project import empty_input_error, load_kicad_pro
 from schematic.reader import (
+    TextVarRegistry,
+    extract_components,
     extract_power_symbols,
     extract_symbol_instances,
     parse_single_sheet,
     rename_legacy_power_symbols,
+    sheet_chain_node,
+    text_context,
 )
 
 # KiCad renames legacy power symbols on load when the root file predates this version.
@@ -110,6 +114,23 @@ def _settle_kicad6_values(symbol_instances: dict, root_path: str, root_tree: lis
     return settled
 
 
+def _top_sheet_node(sheet_path: str, uuid: str, pro: dict | None, default_name: str) -> dict:
+    """A top-level sheet of the text-variable chain: named by its .kicad_pro top_level_sheets
+    entry, else *default_name* (the project name, as kicad-cli names a lone root)."""
+    name = default_name
+    tls = ((pro or {}).get("schematic") or {}).get("top_level_sheets") or []
+    for entry in tls if isinstance(tls, list) else ():
+        fn = entry.get("filename") if isinstance(entry, dict) else None
+        if fn and entry.get("name") and str(
+                (Path(sheet_path).parent / fn).resolve()) == str(Path(sheet_path).resolve()):
+            name = entry["name"]
+            break
+    return sheet_chain_node(uuid, {"fields": [("SHEETNAME", name),
+                                              ("SHEETFILE", os.path.basename(sheet_path))],
+                                   "in_bom": True, "on_board": True, "dnp": False,
+                                   "exclude_from_sim": False})
+
+
 def namespace_hierarchical_labels(labels: list[dict], inst_path: str) -> None:
     """Prefix each hierarchical label and sheet pin with its sheet instance path, in place.
 
@@ -185,6 +206,10 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
     root_uuid = get_value(root_tree, "uuid") or ""
     root_kiid = "/" + root_uuid if root_uuid else ""
     project_name = Path(root_path).stem
+    pro = load_kicad_pro(root_path)
+    registry = TextVarRegistry()
+    text_shared = text_context(pro, project_name, os.path.basename(root_path), registry)
+    pending = []
 
     all_components = []
     all_wires = []
@@ -199,12 +224,13 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
 
     # Each queue entry carries the chain of sheet files above it: a sheet that
     # names one of its own ancestors would otherwise expand forever.
-    to_parse = [(str(Path(root_path).resolve()), "", ())]
+    to_parse = [(str(Path(root_path).resolve()), "", (),
+                 (_top_sheet_node(root_path, root_uuid, pro, project_name),))]
     parsed = set()
     skipped = set()
 
     while to_parse:
-        sheet_path, inst_path, ancestors = to_parse.pop(0)
+        sheet_path, inst_path, ancestors, text_chain = to_parse.pop(0)
         parse_key = (sheet_path, inst_path)
         if parse_key in parsed:
             continue
@@ -217,10 +243,12 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
                        "empty sheet skipped")
             continue
 
-        sd = parse_single_sheet(sheet_path, instance_uuid=inst_path,
-                                symbol_instances=root_symbol_instances,
-                                instance_path=root_kiid + inst_path, root_kiid=root_kiid,
-                                project_name=project_name)
+        text_ctx = dict(text_shared, sheet_chain=list(text_chain))
+        pending_before = registry.pending
+        sheet_kwargs = dict(instance_uuid=inst_path, symbol_instances=root_symbol_instances,
+                            instance_path=root_kiid + inst_path, root_kiid=root_kiid,
+                            project_name=project_name, text_ctx=text_ctx)
+        sd = parse_single_sheet(sheet_path, **sheet_kwargs)
         (root, components, wires, labels, junctions, no_connects,
          sub_sheets, lib_symbols, text_annotations, bus_elements, title_block) = (
             sd.root, sd.components, sd.wires, sd.labels, sd.junctions, sd.no_connects,
@@ -244,6 +272,8 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
 
         namespace_hierarchical_labels(labels, inst_path)
 
+        if registry.pending != pending_before:
+            pending.append((sheet_idx, len(all_components), sd.root, lib_symbols, sheet_kwargs))
         all_components.extend(components)
         all_wires.extend(wires)
         all_labels.extend(labels)
@@ -269,7 +299,17 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
                 continue
             child_path = inst_path + "/" + sub_uuid if sub_uuid else inst_path
             if (sub_resolved, child_path) not in parsed:
-                to_parse.append((sub_resolved, child_path, chain))
+                child_chain = (sheet_chain_node(sub_uuid, sd.sheet_fields.get(sub_uuid)),) + text_chain
+                registry.add_sheet(sub_uuid, dict(text_shared, sheet_chain=list(child_chain)))
+                to_parse.append((sub_resolved, child_path, chain, child_chain))
+
+    # ${REF:FIELD} needs every symbol: sheets that met one are read again now
+    registry.ready = True
+    for sheet_idx, start, root, lib_symbols, sheet_kwargs in pending:
+        components = extract_components(root, lib_symbols, **sheet_kwargs)
+        for c in components:
+            c["_sheet"] = sheet_idx
+        all_components[start:start + len(components)] = components
 
     merged_bus = {"bus_wires": [], "bus_entries": [], "bus_aliases": []}
     for be in all_bus_elements:
@@ -347,13 +387,16 @@ def merge_top_level_sheets(parsed: dict, path: str, root_tree: list, *,
                     # Altium-flat imports (no inner refs) walk this loop
                     # exactly once per peer with no recursion. PR #19
                     # follow-up #14 (Copilot review 3221428004).
-                    to_parse = list(extra_sheets)
+                    text_shared = text_context(pro, Path(path).stem, os.path.basename(path), None)
+                    to_parse = [(p, (_top_sheet_node(p, "", pro, Path(p).stem),))
+                                for p in extra_sheets]
                     while to_parse:
-                        sheet_path = to_parse.pop(0)
+                        sheet_path, text_chain = to_parse.pop(0)
                         try:
                             sd = parse_single_sheet(
                                 sheet_path,
-                                symbol_instances=sym_inst)
+                                symbol_instances=sym_inst,
+                                text_ctx=dict(text_shared, sheet_chain=list(text_chain)))
                             (_, comps, wires, labels, junctions,
                              no_connects, sub_sheet_paths, lib_syms,
                              text_annot, bus_elems, title_blk) = (
@@ -403,11 +446,12 @@ def merge_top_level_sheets(parsed: dict, path: str, root_tree: list, *,
                         # for the hybrid case. `seen` is the cycle guard:
                         # it already has root + every peer; we add each
                         # sub-sheet on first sighting.
-                        for sub_path, _sheet_uuid in sub_sheet_paths:
+                        for sub_path, sheet_uuid in sub_sheet_paths:
                             abs_sub = str(Path(sub_path).resolve())
                             if abs_sub not in seen:
                                 seen.add(abs_sub)
-                                to_parse.append(abs_sub)
+                                node = sheet_chain_node(sheet_uuid, sd.sheet_fields.get(sheet_uuid))
+                                to_parse.append((abs_sub, (node,) + text_chain))
                     # Power symbols were extracted from root-sheet components
                     # only; refresh from the merged list so peer-sheet ones are
                     # included.

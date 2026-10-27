@@ -119,6 +119,9 @@ class SheetData:
     text_annotations: list[dict]
     bus_elements: dict
     title_block: dict
+    # sheet uuid -> {"fields": [(name, text)], "in_bom", "on_board", "dnp", "exclude_from_sim"}
+    # for each (sheet ...) block; the sheet name and file fields are named SHEETNAME / SHEETFILE
+    sheet_fields: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
