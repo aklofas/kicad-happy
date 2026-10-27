@@ -495,11 +495,6 @@ def _pair_fields(schematic: dict, pairs) -> list[tuple[str, dict, dict]]:
     return out
 
 
-def _sch_footprint(units: list[dict]) -> str:
-    """The footprint KiCad's netlist gives the part: its lowest unit with one."""
-    return _package_fields(units)['footprint']
-
-
 def _fpid_name(fpid: str) -> str:
     return fpid.partition(':')[2] if ':' in fpid else fpid
 
