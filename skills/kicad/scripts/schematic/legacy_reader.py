@@ -214,6 +214,36 @@ _STANDARD_LIB_PINS = {
 }
 
 
+_FIELD_HEAD = re.compile(r'F\s*(\d+)')
+
+
+def _quoted(s: str, pos: int = 0) -> "tuple[str, int] | None":
+    """Read a quoted string as KiCad 5's parseQuotedString does.
+
+    A backslash is dropped before a quote or another backslash and kept
+    otherwise; the string ends at the first unescaped quote. Returns
+    (text, index after the closing quote), or None when no quote starts the
+    text (after blanks).
+    """
+    n = len(s)
+    while pos < n and s[pos] in " \t":
+        pos += 1
+    if pos >= n or s[pos] != '"':
+        return None
+    pos += 1
+    out = []
+    while pos < n:
+        c = s[pos]
+        if c == "\\" and pos + 1 < n and s[pos + 1] in '"\\':
+            pos += 1
+            c = s[pos]
+        elif c == '"':
+            return "".join(out), pos + 1
+        out.append(c)
+        pos += 1
+    return "".join(out), pos
+
+
 _MATRIX_LINE = re.compile(r"-?\d+\s+-?\d+\s+-?\d+\s+-?\d+$")
 
 
@@ -290,9 +320,9 @@ def _parse_legacy_lib(path: str) -> dict:
             current_aliases.extend(line.split()[1:])
 
         elif line.startswith("F3 ") and current_name is not None:
-            m = re.match(r'F3\s+"([^"]*)"', line)
-            if m:
-                current_datasheet = m.group(1)
+            q = _quoted(line, 2)
+            if q:
+                current_datasheet = q[0]
 
         elif line == "DRAW":
             in_draw = True
@@ -635,7 +665,6 @@ def _snap_pins_to_wires(components: list[dict], wires: list[dict],
 
 
 _AR_LINE = re.compile(r'AR\s+Path="([^"]*)"\s+Ref="([^"]*)"\s+Part="([^"]*)"')
-_SHEET_PIN_LINE = re.compile(r'F(\d+)\s+"([^"]*)"\s+\S+\s+\S+\s+(-?\d+)\s+(-?\d+)')
 
 
 def _parse_legacy_single_sheet(path: str) -> tuple:
@@ -716,10 +745,11 @@ def _parse_legacy_single_sheet(path: str) -> tuple:
                 # F N "value" orientation x y size flags visibility hjustify [font [italic bold]]
                 elif cl.startswith("F "):
                     # Parse field: F N "value" ...
-                    fm = re.match(r'F\s+(\d+)\s+"([^"]*)"', cl)
-                    if fm:
+                    fm = _FIELD_HEAD.match(cl)
+                    fq = _quoted(cl, fm.end()) if fm else None
+                    if fq:
                         field_num = int(fm.group(1))
-                        field_val = fm.group(2)
+                        field_val, field_end = fq
                         if field_num == 0:
                             comp["reference"] = field_val
                         elif field_num == 1:
@@ -732,8 +762,10 @@ def _parse_legacy_single_sheet(path: str) -> tuple:
                         elif field_num >= 4 and field_val:
                             # Check if the field has a name after the positional data
                             # Format: F N "value" H x y size flags visibility hjustify "FieldName"
-                            name_match = re.search(r'"([^"]*)"[^"]*$', cl[fm.end():])
-                            fname = name_match.group(1) if name_match else f"Field{field_num}"
+                            # the name is the next quoted string; the attributes between are unquoted
+                            name_at = cl.find('"', field_end)
+                            name_match = _quoted(cl, name_at) if name_at >= 0 else None
+                            fname = name_match[0] if name_match else f"Field{field_num}"
                             if name_match:
                                 fl = normalize_field_name(fname)
                                 if fl in MPN_FIELD_ALIASES_PRIMARY:
@@ -806,16 +838,21 @@ def _parse_legacy_single_sheet(path: str) -> tuple:
             while i < len(lines) and lines[i].strip() != "$EndSheet":
                 sl = lines[i].strip()
                 # F1 "filename.sch" size — the sheet filename field
-                sm = re.match(r'F1\s+"([^"]+\.sch)"', sl)
-                if sm:
-                    sheet_file = sm.group(1)
+                sq = _quoted(sl, 2) if re.match(r'F1\s', sl) else None
+                if sq and sq[0].endswith(".sch"):
+                    sheet_file = sq[0]
                 um = re.match(r'U\s+([0-9A-Fa-f]+)', sl)
                 if um:
                     sheet_ts = um.group(1).upper()
                 # F<n> "NAME" shape side x y size, n >= 2 — a sheet pin
-                pm = _SHEET_PIN_LINE.match(sl)
-                if pm and int(pm.group(1)) >= 2:
-                    sheet_pins.append((pm.group(2), int(pm.group(3)), int(pm.group(4))))
+                pm = _FIELD_HEAD.match(sl)
+                pq = _quoted(sl, pm.end()) if pm and int(pm.group(1)) >= 2 else None
+                if pq:
+                    rest = sl[pq[1]:].split()
+                    try:
+                        sheet_pins.append((pq[0], int(rest[2]), int(rest[3])))
+                    except (ValueError, IndexError):
+                        pass
                 i += 1
             for pin_name, px, py in sheet_pins:
                 labels.append({"name": pin_name, "type": "hierarchical_label",
@@ -827,7 +864,7 @@ def _parse_legacy_single_sheet(path: str) -> tuple:
                     sub_sheet_paths.append((str(sub_path.resolve()), sheet_ts))
 
         # Wire
-        elif line == "Wire Wire Line":
+        elif line.split()[:3] == ["Wire", "Wire", "Line"]:
             i += 1
             if i < len(lines):
                 parts = lines[i].strip().split()

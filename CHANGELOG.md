@@ -65,6 +65,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A net that a power symbol names `0` (the SPICE ground symbol, now named as KiCad names it) is ground: it no longer drew a missing-ground-pin CG-AUD finding or missing CC pull-down UC-003 findings. A connector pin or label named `0` stays a signal. (kf/A3-F7)
 - Library symbols whose own name ends in `_<n>_<n>` (e.g. `Connector:Raspberry_Pi_2_3`) are no longer mistaken for sub-units; their placements get their pins and connect. A placed unit that has no pins of its own no longer borrows the other units' pins (it has only the common unit-0 pins, as in KiCad), and KiCad 10 body styles beyond the De Morgan pair use their own pins. (kf/A2-F1, kf/A2-F4, kf/A2-F5)
 - KiCad 10 stacked pin numbers (`[1-5]`, `[6,7,9-11]`) expand to one pin per number, and KiCad 10 jumper symbols (`jumper_pin_groups`, `duplicate_pin_numbers_are_jumpers yes`) connect their linked pins. (kf/A2-F6, kf/A3-F5)
+- KiCad 5 schematics: quoted fields, sheet pins and library datasheets that contain `\"` or `\\` (a value `1.3"-128x64`, a Windows datasheet path) are read as KiCad reads them, and a wire whose header carries `width`/`style` tokens is kept. (kf/A5-F4, A5-F6)
 
 ---
 
