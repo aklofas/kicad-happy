@@ -120,6 +120,7 @@ class BoardData:
     outline: dict
     state: PcbReaderState
     diagnostics: list = field(default_factory=list)
+    graphics: list = field(default_factory=list)
 
 
 def read_board(path: str, *, state: PcbReaderState | None = None) -> BoardData:
@@ -139,6 +140,7 @@ def read_board(path: str, *, state: PcbReaderState | None = None) -> BoardData:
     vias = reader.extract_vias(root)
     zones, zone_fills = reader.extract_zones(root)
     outline = reader.extract_board_outline(root)
+    graphics = reader.extract_copper_graphics(root)
 
     # KiCad 10: no net declarations — build synthetic mapping from content
     if not net_names:
@@ -155,6 +157,9 @@ def read_board(path: str, *, state: PcbReaderState | None = None) -> BoardData:
                 v["net"] = state.net_id(v.pop("_net_name"))
         for z in zones:
             z["net"] = state.net_id(z.get("net_name", ""))
+        for g in graphics:
+            if "_net_name" in g:
+                g["net"] = state.net_id(g.pop("_net_name"))
         for fp in footprints:
             for pad in fp.get("pads", []):
                 if pad.get("net_name") and pad.get("net_number", 0) == 0:
@@ -163,7 +168,7 @@ def read_board(path: str, *, state: PcbReaderState | None = None) -> BoardData:
     return BoardData(path=path, root=root, layers=layers, setup=setup, net_names=net_names,
                      footprints=footprints, tracks=tracks, vias=vias, zones=zones,
                      zone_fills=zone_fills, outline=outline, state=state,
-                     diagnostics=diagnostics)
+                     diagnostics=diagnostics, graphics=graphics)
 
 
 @dataclass
@@ -275,7 +280,8 @@ def run_facts(board: BoardData, *, include_trace_segments: bool, return_path_rad
     _resolved_power_rails = resolved_power_rails
 
     # Connectivity analysis (zone-aware)
-    connectivity = analyze_connectivity(footprints, tracks, vias, net_names, zones)
+    connectivity = analyze_connectivity(footprints, tracks, vias, net_names, zones,
+                                        graphics=board.graphics)
 
     stats = compute_statistics(footprints, tracks, vias, zones, outline, connectivity, net_names, layers=layers)
 

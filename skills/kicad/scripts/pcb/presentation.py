@@ -331,7 +331,7 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
         try:
             conn_graph = build_connectivity_graph(
                 footprints, tracks, vias, zone_fills, zones, net_names,
-                board_layers=layers)
+                board_layers=layers, graphics=board.graphics)
             if conn_graph:
                 result["connectivity_graph"] = conn_graph
         except Exception as e:

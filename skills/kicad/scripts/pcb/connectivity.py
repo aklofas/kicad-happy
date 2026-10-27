@@ -14,7 +14,7 @@ import math
 import re
 
 from pcb.geometry import (
-    _segment_segment_distance, pad_copper_layers, segment_to_pad_distance,
+    _point_in_polygon, _segment_segment_distance, pad_copper_layers, segment_to_pad_distance,
 )
 
 # Copper closer than this counts as touching (rounding in the board file).
@@ -216,12 +216,15 @@ def build_connectivity_graph(
     zones: list[dict],
     net_id_map: dict[int, str],
     board_layers: list[dict] | None = None,
+    graphics: list[dict] | None = None,
 ) -> dict[str, dict]:
     """Build per-net connectivity graph using union-find.
 
     Copper joins where it overlaps: a pad or via unions with every same-layer
     track piece its copper touches (real pad shape), track pieces union with
-    each other, arcs as chords, and a via inside a pad unions with it.
+    each other, arcs as chords, and a via inside a pad unions with it. A copper
+    graphic with a net is its outline as track pieces of its stroke width; a
+    filled one also joins every same-net pad, via or track end inside it.
 
     Args:
         footprints: PCB footprint list with pads (abs_x, abs_y, net_name).
@@ -232,6 +235,7 @@ def build_connectivity_graph(
         net_id_map: {net_id: net_name} mapping.
         board_layers: the board layer table (``extract_layers``); its copper
             layers are what ``*.Cu`` pads expand to.
+        graphics: copper graphics with a net (``reader.extract_copper_graphics``).
 
     Returns:
         Dict keyed by net_name with islands, components, gaps, disconnected_pads.
@@ -337,6 +341,32 @@ def build_connectivity_graph(
                 'layer': arc.get('layer', ''),
                 'net': arc.get('net', 0),
             }))
+
+    net_regions: dict[str, list[dict]] = {}
+    net_graphics: dict[str, list[dict]] = {}
+    for gi, g in enumerate(graphics or []):
+        pts = g.get('pts') or []
+        n = len(pts)
+        closed = g.get('closed') and n >= 3
+        for k in range(n if closed else n - 1):
+            pieces.append((f"gr_{gi}.{k}", {
+                'x1': pts[k][0], 'y1': pts[k][1],
+                'x2': pts[(k + 1) % n][0], 'y2': pts[(k + 1) % n][1],
+                'width': g.get('width', 0),
+                'layer': g.get('layer', ''),
+                'net': g.get('net', 0),
+            }))
+        g_net = g.get('net', 0)
+        g_name = net_id_map.get(g_net, '') if isinstance(g_net, int) else str(g_net)
+        if g_name and n >= 2:
+            net_graphics.setdefault(g_name, []).append(
+                {'key': f"gr_{gi}.0:a", 'layer': g.get('layer', ''), 'pts': pts})
+        if closed and g.get('filled') and g_name:
+            xs = [p[0] for p in pts]
+            ys = [p[1] for p in pts]
+            net_regions.setdefault(g_name, []).append({
+                'key': f"gr_{gi}.0:a", 'layer': g.get('layer', ''), 'pts': pts,
+                'bbox': (min(xs), min(ys), max(xs), max(ys))})
 
     for piece_key, seg in pieces:
         seg_net_id = seg.get('net', 0)
@@ -487,19 +517,41 @@ def build_connectivity_graph(
                 if segment_to_pad_distance(point, pad['shape']) <= r + _CONTACT_EPS:
                     uf.union(via['key'], pad['key'])
 
-        # Phase 3: Zone fills — only probe pads and vias (track endpoints
-        # are already connected via Phase 1).
+        # A filled copper graphic joins the pads, vias and track ends inside it.
+        for reg in net_regions.get(net_name, ()):
+            if reg['key'] not in all_keys:
+                continue
+            bx0, by0, bx1, by1 = reg['bbox']
+            for node in nodes:
+                x, y = node['x'], node['y']
+                if (node['layer'] == reg['layer'] and bx0 <= x <= bx1 and by0 <= y <= by1
+                        and _point_in_polygon(x, y, reg['pts'])):
+                    uf.union(reg['key'], node['key'])
+
+        # Phase 3: Zone fills — only probe pads, vias and copper graphics (track
+        # endpoints are already connected via Phase 1).
         if zone_fills is not None and zone_fills.has_data:
             for layer in node_layers:
                 layer_pv = [node for node in nodes
                             if node['layer'] == layer
                             and node.get('kind') in ('pad', 'via')]
-                if len(layer_pv) < 2:
+                layer_gr = [g for g in net_graphics.get(net_name, ())
+                            if g['layer'] == layer and g['key'] in all_keys]
+                if len(layer_pv) + len(layer_gr) < 2:
                     continue
                 fill_groups: dict[int, list[str]] = {}
                 for node in layer_pv:
                     for fill_id in _node_fill_regions(node, zone_fills, zones, net_name):
                         fill_groups.setdefault(fill_id, []).append(node['key'])
+                # A copper graphic overlapping a same-net fill is joined to it.
+                for g in layer_gr:
+                    hit: set[int] = set()
+                    for x, y in g['pts']:
+                        for fill_id, _zone_idx in zone_fills.fill_regions_at_point(
+                                x, y, layer, zones, net_name=net_name):
+                            hit.add(fill_id)
+                    for fill_id in sorted(hit):
+                        fill_groups.setdefault(fill_id, []).append(g['key'])
                 for _fill_id, members in fill_groups.items():
                     for i in range(1, len(members)):
                         uf.union(members[0], members[i])

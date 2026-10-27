@@ -130,7 +130,7 @@ Two levels of connectivity checking are performed:
 
 ### 3.1 Basic Routing Completeness
 
-For each net with ≥2 pads, checks whether ANY routing exists (tracks, vias, or zones on that net). Fast but coarse — doesn't detect partially routed nets.
+For each net with ≥2 pads, checks whether ANY routing exists (tracks, vias, zones, or copper graphics with that net). Fast but coarse — doesn't detect partially routed nets.
 
 ### 3.2 Full Union-Find Connectivity
 
@@ -140,6 +140,7 @@ Uses union-find (same algorithm concept as the schematic net builder) on `(x, y,
 2. **Union track segments** — each segment's start and end points are unioned on their layer
 3. **Union vias** — a via unions its position across all layers it spans
 4. **Account for zones** — for each net with a zone, union all pads on that net + layer (approximation: assumes zone covers all pads)
+5. **Copper graphics** — a board graphic on a copper layer with a net (KiCad 8+) joins like a track of its stroke width; a filled one also joins the same-net pads, vias and track ends inside it
 
 Then count connected components per net:
 - **1 component** → fully routed

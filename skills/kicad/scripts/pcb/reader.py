@@ -16,7 +16,7 @@ from kicad_core.fields import get_mpn_property
 from kicad_core.model import PcbReaderState
 from pcb.geometry import (
     ZoneFills, _chain_segments, _extract_polygon_coords, _polygon_bbox, _shoelace_area,
-    _shoelace_area_from_coords, pts_coords,
+    _shoelace_area_from_coords, _bezier_points, arc_points, pts_coords,
 )
 
 
@@ -680,6 +680,15 @@ def extract_footprints(root: list, diagnostics: list | None = None) -> list[dict
     return footprints
 
 
+def _track_copper_layer(item: list) -> str | None:
+    """Copper layer of a track or shape written with (layers "F.Cu" "F.Mask"): KiCad takes the
+    copper member as the layer and a mask member as a solder-mask opening (SetLayerSet)."""
+    for v in (find_first(item, "layers") or [])[1:]:
+        if isinstance(v, str) and v.endswith(".Cu") and not v.startswith("*"):
+            return v
+    return None
+
+
 def extract_tracks(root: list) -> dict:
     """Extract track segments with statistics."""
     segments = []
@@ -687,7 +696,7 @@ def extract_tracks(root: list) -> dict:
         start = find_first(seg, "start")
         end = find_first(seg, "end")
         width = get_value(seg, "width")
-        layer = get_value(seg, "layer")
+        layer = get_value(seg, "layer") or _track_copper_layer(seg)
         net = get_value(seg, "net", raw=True)
 
         if start and end:
@@ -709,7 +718,7 @@ def extract_tracks(root: list) -> dict:
         mid = find_first(arc, "mid")
         end = find_first(arc, "end")
         width = get_value(arc, "width")
-        layer = get_value(arc, "layer")
+        layer = get_value(arc, "layer") or _track_copper_layer(arc)
         net = get_value(arc, "net", raw=True)
 
         if start and end:
@@ -752,6 +761,124 @@ def extract_tracks(root: list) -> dict:
         "segments": segments,
         "arcs": arcs,
     }
+
+
+def _stroke_width(item: list) -> float:
+    """Stroke width of a shape: (stroke (width w)), or the legacy (width w)."""
+    stroke = find_first(item, "stroke")
+    w = get_value(stroke, "width") if stroke else get_value(item, "width")
+    try:
+        return float(w) if w else 0.0
+    except (TypeError, ValueError):
+        return 0.0
+
+
+_FILL_ON = ("yes", "solid", "hatch", "reverse_hatch", "cross_hatch")
+_FILL_OFF = ("no", "none")
+
+
+def _shape_filled(item: list, kind: str, width: float, layer: str | None) -> bool:
+    """KiCad's fill rule for a shape (parsePCB_SHAPE): an explicit (fill ...) token decides;
+    without one a 0-width rect or circle is filled, and so is any polygon off Edge.Cuts."""
+    fill = find_first(item, "fill")
+    if fill is not None:
+        filled = False
+        for tok in fill[1:]:
+            if isinstance(tok, list):
+                tok = tok[0] if tok else ""
+            if tok in _FILL_ON:
+                filled = True
+            elif tok in _FILL_OFF:
+                filled = False
+        return filled
+    if kind in ("rect", "circle") and width == 0:
+        return True
+    return kind == "poly" and layer != "Edge.Cuts"
+
+
+def _xy(node: list) -> tuple[float, float]:
+    return (float(node[1]), float(node[2]))
+
+
+def shape_geometry(item: list, gtype: str):
+    """(points, closed) of a gr_*/fp_* shape in its file coordinates; None when unusable.
+
+    Arcs and circles become chords within 5 um of the curve (at most 64)."""
+    kind = gtype.split("_", 1)[1]
+    try:
+        if kind == "line":
+            s, e = find_first(item, "start"), find_first(item, "end")
+            return ([_xy(s), _xy(e)], False) if s and e else None
+        if kind == "arc":
+            s, m, e = find_first(item, "start"), find_first(item, "mid"), find_first(item, "end")
+            if s and m and e:
+                return arc_points(_xy(s), _xy(m), _xy(e), tol=0.005), False
+            angle = get_value(item, "angle")
+            if s and e and angle is not None:
+                # KiCad 5 form: start = centre, end = first point, angle = sweep.
+                a, mid, b = _legacy_arc_points(_xy(s), _xy(e), float(angle))
+                return arc_points(a, mid, b, tol=0.005), False
+            return None
+        if kind == "circle":
+            c, e = find_first(item, "center"), find_first(item, "end")
+            if not (c and e):
+                return None
+            (cx, cy), (ex, ey) = _xy(c), _xy(e)
+            r = math.hypot(ex - cx, ey - cy)
+            if r <= 0:
+                return None
+            step = 2.0 * math.acos(max(-1.0, 1.0 - 0.005 / r)) if r > 0.005 else math.pi
+            n = min(64, max(8, math.ceil(2.0 * math.pi / step)))
+            return [(cx + r * math.cos(2.0 * math.pi * k / n), cy + r * math.sin(2.0 * math.pi * k / n))
+                    for k in range(n)], True
+        if kind == "rect":
+            s, e = find_first(item, "start"), find_first(item, "end")
+            if not (s and e):
+                return None
+            (x1, y1), (x2, y2) = _xy(s), _xy(e)
+            return [(x1, y1), (x2, y1), (x2, y2), (x1, y2)], True
+        if kind == "poly":
+            pts = find_first(item, "pts")
+            return (pts_coords(pts), True) if pts else None
+        if kind == "curve":
+            pts = find_first(item, "pts")
+            return (_bezier_points(pts_coords(pts)), False) if pts else None
+    except (TypeError, ValueError, IndexError):
+        return None
+    return None
+
+
+# KiCad's DEFAULT_LINE_WIDTH: what it gives an unfilled shape saved with a zero width.
+_DEFAULT_LINE_WIDTH = 0.10
+
+
+def extract_copper_graphics(root: list) -> list[dict]:
+    """Board graphics on a copper layer that carry a net. KiCad 8+ (format 20230730) gives
+    shapes a net and its connectivity takes in every copper shape."""
+    out = []
+    for gtype in ("gr_line", "gr_arc", "gr_circle", "gr_rect", "gr_poly", "gr_curve"):
+        for item in find_all(root, gtype):
+            layer = get_value(item, "layer") or _track_copper_layer(item)
+            if not layer or not layer.endswith(".Cu"):
+                continue
+            net = get_value(item, "net", raw=True)
+            if not net or net == "0":
+                continue
+            geo = shape_geometry(item, gtype)
+            if not geo or len(geo[0]) < 2:
+                continue
+            pts, closed = geo
+            kind = gtype.split("_", 1)[1]
+            width = _stroke_width(item)
+            filled = closed and len(pts) >= 3 and _shape_filled(item, kind, width, layer)
+            if width <= 0 and not filled:
+                width = _DEFAULT_LINE_WIDTH
+            info = {"kind": kind, "layer": layer, "net": _net_id(net), "pts": pts,
+                    "closed": closed, "width": width, "filled": filled}
+            if not net.lstrip("-").isdigit():
+                info["_net_name"] = net  # KiCad 10: stash for the net-id backfill
+            out.append(info)
+    return out
 
 
 def extract_vias(root: list) -> dict:

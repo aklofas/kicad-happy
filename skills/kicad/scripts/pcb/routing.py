@@ -11,11 +11,13 @@ from pcb.geometry import CopperPresence, _arc_length_3pt
 
 def analyze_connectivity(footprints: list[dict], tracks: dict, vias: dict,
                          net_names: dict[int, str],
-                         zones: list[dict] | None = None) -> dict:
+                         zones: list[dict] | None = None,
+                         graphics: list[dict] | None = None) -> dict:
     """Analyze routing completeness — find unrouted nets.
 
-    A net is considered routed if it has tracks, vias, or a copper zone
-    covering it. Nets with only a single pad are skipped.
+    A net is considered routed if it has tracks, vias, a copper zone or a copper
+    graphic (KiCad 8+ shapes with a net) covering it. Nets with only a single pad
+    are skipped.
     """
     # Build set of nets that have pads
     pad_nets: dict[int, list[str]] = {}  # net_number -> list of "REF.pad"
@@ -36,6 +38,9 @@ def analyze_connectivity(footprints: list[dict], tracks: dict, vias: dict,
     for via in vias.get("vias", []):
         if via["net"] > 0:
             routed_nets.add(via["net"])
+    for g in graphics or []:
+        if g.get("net", 0) > 0:
+            routed_nets.add(g["net"])
     # Zones also route nets — a GND zone connects all GND pads
     if zones:
         for z in zones:
