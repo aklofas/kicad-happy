@@ -201,6 +201,41 @@ class FootprintParityTest(unittest.TestCase):
         self.assertEqual(_rules(_xv(sch, fps), "XV-003"), [])
 
 
+class DuplicateReferenceTest(unittest.TestCase):
+    """KiCad merges the symbols of one reference only for multi-unit library symbols
+    (netlist_exporter_base.cpp: GetUnitCount() > 1); Update PCB compares every other footprint
+    with its own symbol."""
+
+    def test_two_single_unit_symbols_sharing_a_reference(self):
+        cases = (
+            ([_c("R1", "/A", value="10k"), _c("R1", "/B", value="4k7")],
+             [_fp("R1", "/A", value="10k"), _fp("R1", "/B", value="4k7")]),
+            ([_c("U1", "/A", fp="Package_SO:SOIC-8"), _c("U1", "/B", fp="Package_DIP:DIP-8")],
+             [_fp("U1", "/A", lib="Package_SO:SOIC-8"), _fp("U1", "/B", lib="Package_DIP:DIP-8")]),
+            ([_c("Q1", "/A", mpn="BSS138"), _c("Q1", "/B", mpn="2N7002")],
+             [_fp("Q1", "/A", mpn="BSS138"), _fp("Q1", "/B", mpn="2N7002")]),
+        )
+        for sch, fps in cases:
+            out = _xv(sch, fps)
+            self.assertEqual([f for f in out if f["rule_id"] in ("XV-002", "XV-003", "XV-004")], [],
+                             sch[0]["reference"])
+
+    def test_multi_unit_part_still_merges(self):
+        dip = "Package_DIP:DIP-14_W7.62mm"
+        sch = [_c("U1", "/S/A1", fp="", unit=1, mpn=""), _c("U1", "/S/A2", fp=dip, unit=2, mpn="LM324N")]
+        out = _xv(sch, [_fp("U1", "/S/A1", lib=dip, mpn="LM324N")])
+        self.assertEqual([f for f in out if f["rule_id"] in ("XV-003", "XV-004")], [])
+        out = _xv(sch, [_fp("U1", "/S/A1", lib="Package_SO:SOIC-14", mpn="LM324DR")])
+        self.assertEqual(sorted(f["rule_id"] for f in out), ["XV-003", "XV-004"])
+
+    def test_stale_footprint_of_a_used_reference_is_unlinked(self):
+        out = _xv([_c("R5", "/U")], [_fp("R7", "/U"), _fp("R5", "/stale")])
+        xv1 = {f.get("reason"): f for f in _rules(out, "XV-001")}
+        self.assertEqual(xv1["unlinked_footprint"]["components"], ["R5"])
+        self.assertEqual(xv1["unlinked_footprint"]["severity"], "info")
+        self.assertFalse(any("but not schematic" in f["summary"] for f in xv1.values()))
+
+
 class ValueSyncTest(unittest.TestCase):
     def test_never_synchronised_value_reported(self):
         out = _rules(_xv([_c("C1", "/U1", value="10uF", fp="Capacitor_SMD:C_0603_1608Metric")],
@@ -239,6 +274,12 @@ class DecouplingPackagesTest(unittest.TestCase):
         comps = [_c("U1", f"/A{u}", unit=u, ctype="ic", pin_nets=nets) for u in (1, 2, 3, 4)]
         comps.append(_c("U2", "/B", ctype="ic", pin_nets=nets))
         self.assertEqual(ca.check_decoupling_adequacy(self._sch(comps, [{}, {}]), None), [])
+        out = ca.check_decoupling_adequacy(self._sch(comps, [{}]), None)
+        self.assertIn("1 caps for 2 ICs", out[0]["summary"])
+
+    def test_single_unit_parts_sharing_a_reference_stay_distinct(self):
+        nets = {"1": "+3V3"}
+        comps = [_c("U5", "/A", ctype="ic", pin_nets=nets), _c("U5", "/B", ctype="ic", pin_nets=nets)]
         out = ca.check_decoupling_adequacy(self._sch(comps, [{}]), None)
         self.assertIn("1 caps for 2 ICs", out[0]["summary"])
 

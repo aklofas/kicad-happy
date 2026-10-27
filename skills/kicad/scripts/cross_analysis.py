@@ -360,17 +360,26 @@ def check_esd_coverage_gaps(schematic: dict, pcb: dict | None, recorder=None) ->
     return findings
 
 
-def _package_keys(components) -> set:
-    """One key per package: units of a part share its reference (KiCad's netlist has one
-    component per reference). Unannotated parts keep one key per placed unit."""
-    keys = set()
-    for c in components:
-        ref = c.get('reference') or ''
-        if ref and not ref.endswith('?'):
-            keys.add(('ref', ref))
-        else:
-            keys.add(('unit', c.get('instance_path') or c.get('uuid') or str(id(c))))
-    return keys
+def _multi_unit(c: dict, units_by_ref: dict) -> bool:
+    """Whether *c* is a unit of a multi-unit part. KiCad's netlist merges every symbol of one
+    reference only for multi-unit library symbols; a placed unit above 1 is the sign of one
+    (the output carries no unit count). Unannotated references stay one part per symbol."""
+    ref = c.get('reference') or ''
+    if not ref or ref.endswith('?'):
+        return False
+    return any((u.get('unit') or 1) != 1 for u in units_by_ref.get(ref, ()))
+
+
+def _package_key(c: dict, units_by_ref: dict) -> tuple:
+    if _multi_unit(c, units_by_ref):
+        return ('ref', c['reference'])
+    return ('symbol', c.get('instance_path') or c.get('uuid') or str(id(c)))
+
+
+def _package_keys(components, units_by_ref: dict) -> set:
+    """One key per package: the units of a multi-unit part share one; every other symbol is
+    its own package, even when it shares a reference with another."""
+    return {_package_key(c, units_by_ref) for c in components}
 
 
 # ---------------------------------------------------------------------------
@@ -387,11 +396,12 @@ def check_decoupling_adequacy(schematic: dict, pcb: dict | None, recorder=None) 
         return findings
 
     ics = [c for c in schematic.get('components', []) if c.get('type') == 'ic']
+    by_ref = _units_by_ref(schematic)
     for rail in rails:
         rail_name = rail.get('rail', '')
         caps = rail.get('capacitors') or []
         ic_count = len(_package_keys(
-            [c for c in ics if rail_name in set((c.get('pin_nets') or {}).values())]))
+            [c for c in ics if rail_name in set((c.get('pin_nets') or {}).values())], by_ref))
         if ic_count == 0:
             continue
         cap_count = len(caps)
@@ -453,6 +463,31 @@ def _package_fields(units: list[dict]) -> dict[str, str]:
             'mpn': merged.get('MPN', '')}
 
 
+def _pair_fields(schematic: dict, pairs) -> list[tuple[str, dict, dict]]:
+    """(reference, footprint, merged fields of the paired part) per pair. A footprint paired by
+    path compares with its own symbol (with the other units of a multi-unit part); one paired
+    by reference compares with every symbol of that reference."""
+    units = _units_by_ref(schematic)
+    by_path = {}
+    for c in schematic.get('components', []):
+        path = c.get('instance_path')
+        if _xv_ref(c.get('reference', '')) and isinstance(path, str) and path:
+            by_path.setdefault(path.lower(), c)
+    cache: dict = {}
+    out = []
+    for ref, fp in pairs:
+        path = fp.get('sch_path')
+        c = by_path.get(path.lower()) if isinstance(path, str) and path else None
+        if c is not None and not _multi_unit(c, units):
+            key, members = ('symbol', id(c)), [c]
+        else:
+            key, members = ('ref', ref), units[ref]
+        if key not in cache:
+            cache[key] = _package_fields(members)
+        out.append((ref, fp, cache[key]))
+    return out
+
+
 def _sch_footprint(units: list[dict]) -> str:
     """The footprint KiCad's netlist gives the part: its lowest unit with one."""
     return _package_fields(units)['footprint']
@@ -498,7 +533,9 @@ def check_cross_validation(schematic: dict, pcb: dict | None, recorder=None) -> 
             source=ANALYZER_SOURCE, schema_era="v3.0",))
 
     # XV-001: Components in PCB but not schematic
-    real_extra = {r for r in in_pcb_not_sch if not r.startswith(('TP', 'MH', 'NT', 'FID', 'H', 'G'))}
+    extra = {r for r in in_pcb_not_sch if not r.startswith(('TP', 'MH', 'NT', 'FID', 'H', 'G'))}
+    unlinked = extra & sch_refs
+    real_extra = extra - unlinked
     if real_extra:
         findings.append(make_finding(
             detector='check_cross_validation', rule_id='XV-001', category='design_sync',
@@ -509,6 +546,16 @@ def check_cross_validation(schematic: dict, pcb: dict | None, recorder=None) -> 
             recommendation='Verify these are intentional (mounting holes, test points, fiducials).',
         
             source=ANALYZER_SOURCE, schema_era="v3.0",))
+    if unlinked:
+        findings.append(make_finding(
+            detector='check_cross_validation', rule_id='XV-001', category='design_sync',
+            summary=f'{len(unlinked)} footprint(s) not linked to any schematic symbol',
+            description=(f'Not linked to a symbol (each reference is used by a different symbol): '
+                         f'{", ".join(sorted(unlinked)[:20])}{"..." if len(unlinked) > 20 else ""}.'),
+            severity='info', confidence='deterministic', evidence_source='topology',
+            components=sorted(unlinked)[:20],
+            recommendation='Update PCB from schematic; KiCad replaces or removes footprints its symbols do not own.',
+            source=ANALYZER_SOURCE, schema_era="v3.0", reason='unlinked_footprint'))
 
     # XV-001: a footprint paired by path carries another reference (annotation not synced)
     renamed = sorted({(ref, fp['reference']) for ref, fp in pairs if fp['reference'] != ref})
@@ -526,15 +573,14 @@ def check_cross_validation(schematic: dict, pcb: dict | None, recorder=None) -> 
             impact='Assembly files and the schematic name different parts',
             source=ANALYZER_SOURCE, schema_era="v3.0", reason='reference_mismatch'))
 
-    units = _units_by_ref(schematic)
-    fields = {ref: _package_fields(recs) for ref, recs in units.items()}
+    checked = _pair_fields(schematic, pairs)
 
     # Copies of a footprint, or one reference on several symbols, report one difference once.
     reported = set()
 
     # XV-002: Value consistency
-    for ref, pcb_fp in pairs:
-        sch_val = fields[ref]['value']
+    for ref, pcb_fp, fields in checked:
+        sch_val = fields['value']
         pcb_val = pcb_fp.get('value', '')
         # KH-326: skip cross-check if either value is malformed (not a string).
         # Parser edge case in analyze_pcb.py footprint parsing can yield a list.
@@ -564,8 +610,8 @@ def check_cross_validation(schematic: dict, pcb: dict | None, recorder=None) -> 
 
     # XV-003: Footprint consistency (Update PCB replaces a footprint whose FPID differs)
     relinked = []
-    for ref, pcb_fp in pairs:
-        sch_fp = fields[ref]['footprint']
+    for ref, pcb_fp, fields in checked:
+        sch_fp = fields['footprint']
         board_fp = pcb_fp.get('library') or pcb_fp.get('footprint') or ''
         if not isinstance(board_fp, str) or not sch_fp or not board_fp:
             continue
@@ -609,11 +655,10 @@ def check_mpn_parity(schematic: dict, pcb: dict | None, recorder=None) -> list[d
         _record(recorder, 'XV-004', False, 'no PCB data provided', 0, findings)
         return findings
     pairs, _, _ = pair_by_path(schematic, pcb)
-    units = _units_by_ref(schematic)
     compared = 0
     reported = set()
-    for ref, pcb_fp in pairs:
-        sch_mpn = _package_fields(units[ref])['mpn'].strip()
+    for ref, pcb_fp, fields in _pair_fields(schematic, pairs):
+        sch_mpn = fields['mpn'].strip()
         pcb_mpn = pcb_fp.get('mpn')
         pcb_mpn = pcb_mpn.strip() if isinstance(pcb_mpn, str) else ''
         if not sch_mpn or not pcb_mpn:
