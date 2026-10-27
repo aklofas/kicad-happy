@@ -165,6 +165,8 @@ def assemble_result(ctx, parsed, nets, bom, analyses, *, path, sheets_parsed,
             _comp['pin_nets'] = _all_pn
         _comp.pop("_unit_pins", None)
         _comp.pop("_body_style", None)
+        _comp.pop("_pin_alternates", None)
+        _comp.pop("_jumper_groups", None)
     for _ps in power_symbols:
         _ps.pop("_drives", None)
 
@@ -430,6 +432,8 @@ def assemble_legacy_result(*, nets, all_components, signal_analysis, real_compon
             _comp['pin_nets'] = _all_pn
         _comp.pop("_unit_pins", None)
         _comp.pop("_body_style", None)
+        _comp.pop("_pin_alternates", None)
+        _comp.pop("_jumper_groups", None)
     for _ps in power_symbols:
         _ps.pop("_drives", None)
 

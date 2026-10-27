@@ -43,6 +43,38 @@ _ELEMENT14_KEYS = frozenset({
 })
 
 
+def _split_alnum(text: str) -> tuple[str, int]:
+    """(prefix, numeric suffix) of a pin number; -1 when it has no trailing digits."""
+    i = len(text)
+    while i > 0 and text[i - 1] in "0123456789":
+        i -= 1
+    return (text[:i], int(text[i:])) if i < len(text) else (text, -1)
+
+
+def _expand_stacked(num: str) -> list[str]:
+    """Pin numbers of a KiCad stacked pin number such as "[1-5]" or "[6,7,9-11]".
+
+    As KiCad's ExpandStackedPinNotation: a range needs one alphabetic prefix on both
+    ends and start <= end; malformed notation is the literal text as one number.
+    """
+    if not (num.startswith("[") and num.endswith("]")):
+        return [num]
+    out = []
+    for part in num[1:-1].split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "-" in part:
+            start, end = (t.strip() for t in part.split("-", 1))
+            (sp, sv), (ep, ev) = _split_alnum(start), _split_alnum(end)
+            if sp != ep or sv < 0 or ev < 0 or sv > ev:
+                return [num]
+            out.extend(f"{sp}{v}" for v in range(sv, ev + 1))
+        else:
+            out.append(part)
+    return out or [num]
+
+
 def extract_lib_symbols(root: list) -> dict:
     """Extract library symbol definitions (pin positions, types).
 
@@ -66,12 +98,19 @@ def extract_lib_symbols(root: list) -> dict:
         pin_num = str(pin_num_node[1]) if pin_num_node and len(pin_num_node) > 1 and pin_num_node[1] is not None else ""
         # Detect hidden pins — KiCad uses (hide yes) inside pin node
         hidden = has_flag(pin, "hide")
-        return {
+        parsed = {
             "number": pin_num, "name": pin_name,
             "type": pin_type, "shape": pin_shape,
             "offset": list(at) if at else None,
             "hidden": hidden,
         }
+        alts = {str(c[1]): (str(c[2]) if len(c) > 2 else "")
+                for c in pin if isinstance(c, list) and len(c) >= 2 and c[0] == "alternate"}
+        if alts:
+            parsed["_alternates"] = alts
+            # KiCad reads a "~" pin name as empty in files older than 20250318.
+            parsed["_alt_base"] = "" if tilde_empty and pin_name == "~" else pin_name
+        return parsed
 
     def _extract_pins_from_node(node):
         """Extract pin definitions directly from a symbol node (not recursing into sub-symbols)."""
@@ -155,6 +194,15 @@ def extract_lib_symbols(root: list) -> dict:
             if alts:
                 alternates[pin_num] = alts
 
+        # KiCad 10 jumper symbols: pins in one group, or sharing a number, are joined inside it.
+        jumper_groups = []
+        dup_pin_jumpers = False
+        for child in sym:
+            if isinstance(child, list) and child and child[0] == "jumper_pin_groups":
+                jumper_groups = [{str(m) for m in g} for g in child[1:] if isinstance(g, list)]
+            elif isinstance(child, list) and len(child) >= 2 and child[0] == "duplicate_pin_numbers_are_jumpers":
+                dup_pin_jumpers = child[1] == "yes"
+
         symbols[name] = {
             "pins": all_pins,
             "unit_pins": unit_pins if unit_pins else None,
@@ -166,6 +214,9 @@ def extract_lib_symbols(root: list) -> dict:
             "ki_fp_filters": ki_fp_filters,
             "alternates": alternates if alternates else None,
         }
+        if jumper_groups or dup_pin_jumpers:
+            symbols[name]["_jumper_groups"] = jumper_groups
+            symbols[name]["_dup_pin_jumpers"] = dup_pin_jumpers
         if any(b >= 3 for b in body_unit_pins):
             symbols[name]["_body_unit_pins"] = {b: m for b, m in body_unit_pins.items() if b == 0 or b >= 3}
         if has_alt_body:
@@ -280,16 +331,24 @@ def compute_pin_positions(component: dict, lib_symbols: dict) -> list[Pin]:
         else:
             pin_name = str(pin_name)
 
-        entry = {
-            "number": pin_num,
-            "name": pin_name,
-            "type": pin["type"],
-            "x": abs_x,
-            "y": abs_y,
-        }
-        if pin.get("hidden"):
-            entry["hidden"] = True
-        pin_positions.append(entry)
+        pin_type = pin["type"]
+        # KiCad's SetAlt: a placed alternate applies when it is not the base name and the
+        # library pin defines it; the alternate's name and type replace the pin's.
+        alt = (component.get("_pin_alternates") or {}).get(pin_num)
+        if alt and "_alternates" in pin and alt != pin["_alt_base"] and alt in pin["_alternates"]:
+            pin_name, pin_type = alt, pin["_alternates"][alt] or pin_type
+
+        for number in _expand_stacked(pin_num):
+            entry = {
+                "number": number,
+                "name": pin_name,
+                "type": pin_type,
+                "x": abs_x,
+                "y": abs_y,
+            }
+            if pin.get("hidden"):
+                entry["hidden"] = True
+            pin_positions.append(entry)
 
     return pin_positions
 
@@ -486,12 +545,16 @@ def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
 
         # Get pin UUIDs for connectivity
         pin_uuids = {}
+        pin_alternates = {}
         for pin_node in find_all(sym, "pin"):
             if len(pin_node) >= 2:
                 pin_num = pin_node[1]
                 pin_uuid_node = find_first(pin_node, "uuid")
                 if pin_uuid_node and len(pin_uuid_node) > 1:
                     pin_uuids[pin_num] = pin_uuid_node[1]
+                alt_node = find_first(pin_node, "alternate")
+                if alt_node and len(alt_node) > 1 and alt_node[1]:
+                    pin_alternates[str(pin_num)] = str(alt_node[1])
 
         comp = {
             "reference": ref,
@@ -519,6 +582,7 @@ def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
             "on_board": on_board,
             "pin_uuids": pin_uuids,
             "_body_style": body_style,
+            "_pin_alternates": pin_alternates,
         }
 
         # Determine component type from reference prefix, lib_id, and lib_symbol flags
@@ -544,6 +608,9 @@ def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
             comp["is_external_connector"] = is_ext
             comp["connector_layout"] = conn_layout
 
+        if sym_def.get("_jumper_groups") or sym_def.get("_dup_pin_jumpers"):
+            comp["_jumper_groups"] = (sym_def.get("_jumper_groups", []),
+                                      sym_def.get("_dup_pin_jumpers", False))
         # Compute absolute pin positions
         comp["pins"] = compute_pin_positions(comp, lib_symbols)
         # KH-216: Store unit-valid pin numbers for pin_nets filtering

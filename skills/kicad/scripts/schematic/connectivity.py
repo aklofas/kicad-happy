@@ -618,6 +618,7 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
                        or (comp.get("type") == "power_symbol" and pins
                            and all(p.get("type") == "power_out" for p in pins)))
         sheet = comp.get("_sheet", 0)
+        number_keys: dict[str, list] = {}
         for pin in pins:
             if is_pwr_flag:
                 add_point(pin["x"], pin["y"], {
@@ -625,13 +626,23 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
                     "component": comp["reference"],
                 }, sheet)
             else:
-                add_point(pin["x"], pin["y"], {
+                k = add_point(pin["x"], pin["y"], {
                     "source": "pin",
                     "component": comp["reference"],
                     "pin_number": pin["number"],
                     "pin_name": pin["name"],
                     "pin_type": pin["type"],
                 }, sheet)
+                number_keys.setdefault(pin["number"], []).append(k)
+        # KiCad 10 jumper symbols join, inside the placed symbol, the pins of each jumper
+        # pin group and (with duplicate_pin_numbers_are_jumpers) the pins sharing a number.
+        if comp.get("_jumper_groups"):
+            groups, dup_numbers = comp["_jumper_groups"]
+            linked = [ks for ks in number_keys.values() if len(ks) > 1] if dup_numbers else []
+            linked += [[k for n in sorted(g) for k in number_keys.get(n, [])] for g in groups]
+            for ks in linked:
+                for k in ks[1:]:
+                    union(ks[0], k)
 
     # Add wire endpoints and union them.
     # Also build a list of wire segments so we can detect points that land
