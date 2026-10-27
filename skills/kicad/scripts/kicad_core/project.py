@@ -162,6 +162,26 @@ def load_kicad_pro(file_path: str) -> dict | None:
         return None
 
 
+def variant_names(pro: dict | None) -> list[str]:
+    """The design variant names a KiCad 10 project declares (``schematic.variants``), in
+    order."""
+    sch = pro.get("schematic") if isinstance(pro, dict) else None
+    entries = sch.get("variants") if isinstance(sch, dict) else None
+    if not isinstance(entries, list):
+        return []
+    return [str(e["name"]) for e in entries if isinstance(e, dict) and e.get("name")]
+
+
+def unknown_variant_error(variant: str, pro: dict | None) -> str | None:
+    """The usage error for a ``--variant`` the project does not declare, else None."""
+    names = variant_names(pro)
+    if variant in names:
+        return None
+    if not names:
+        return f"unknown variant {variant!r} (the project defines no variants)"
+    return f"unknown variant {variant!r} (the project defines: {', '.join(names)})"
+
+
 NIL_UUID = "00000000-0000-0000-0000-000000000000"
 
 

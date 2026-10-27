@@ -13,7 +13,8 @@ from kicad_core.sexp import (find_all, find_first, find_deep, get_value, get_pro
                              parse_file, raw_text, unescape_string)
 from kicad_core.classify import classify_component, classify_connector, classify_ic_function
 from kicad_core.fields import DIGIKEY_FIELD_ALIASES, pick_field, pick_mpn
-from kicad_core.instances import inline_instances, resolve_instance, tilde_is_empty
+from kicad_core.instances import (inline_instances, instance_variants, resolve_instance,
+                                  tilde_is_empty, variant_overrides)
 from kicad_core.model import Component, Pin, SheetData
 from kicad_core.textvars import resolve_text_vars, unescape_text_vars
 
@@ -414,16 +415,20 @@ def _raw_fields(node: list) -> list[tuple[str, str]]:
     return fields
 
 
-def sheet_block_fields(sheet: list, tilde_empty: bool) -> dict:
+def sheet_block_fields(sheet: list, tilde_empty: bool, overrides: dict | None = None) -> dict:
     """A (sheet ...) block's fields (name and file fields named SHEETNAME / SHEETFILE, the
-    names KiCad resolves them by) and its attribute flags."""
-    fields = [(_SHEET_NAME_FIELDS.get(name, name), _field(text, tilde_empty))
+    names KiCad resolves them by) and its attribute flags; *overrides* are a design variant's
+    (kicad_core.instances.variant_overrides)."""
+    overrides = overrides or {}
+    fields = [(_SHEET_NAME_FIELDS.get(name, name),
+               overrides.get("fields", {}).get(name, _field(text, tilde_empty)))
               for name, text in _raw_fields(sheet)]
-    return {"fields": fields,
-            "in_bom": get_value(sheet, "in_bom") != "no",
-            "on_board": get_value(sheet, "on_board") != "no",
-            "dnp": get_value(sheet, "dnp") == "yes",
-            "exclude_from_sim": get_value(sheet, "exclude_from_sim") == "yes"}
+    flags = {"in_bom": get_value(sheet, "in_bom") != "no",
+             "on_board": get_value(sheet, "on_board") != "no",
+             "dnp": get_value(sheet, "dnp") == "yes",
+             "exclude_from_sim": get_value(sheet, "exclude_from_sim") == "yes"}
+    flags.update((k, v) for k, v in overrides.items() if k in flags)
+    return dict(fields=fields, **flags)
 
 
 def sheet_chain_node(uuid: str, fields: dict | None) -> dict:
@@ -718,7 +723,8 @@ def _symbol_fields(sym: list, value: str, footprint: str, tilde_empty: bool) -> 
 def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
                        symbol_instances: dict | None = None, *,
                        instance_path: str | None = None, root_kiid: str = "",
-                       project_name: str = "", text_ctx: dict | None = None) -> list[Component]:
+                       project_name: str = "", text_ctx: dict | None = None,
+                       variant: str | None = None) -> list[Component]:
     """Extract all placed component instances.
 
     With *instance_path* (the sheet's full KIID path, root sheet uuid first) each symbol's
@@ -736,9 +742,13 @@ def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
     With *text_ctx* (see text_context; ``sheet_chain`` lists this sheet first, the root last)
     text variables in the fields expand as KiCad shows them, after the instance values and
     before classification; each symbol is added to the context's registry.
+
+    With *variant* (a KiCad 10 design variant name) the instance's variant block overrides
+    the attributes and fields it names; None is the default variant.
     """
     components = []
-    tilde_empty = tilde_is_empty(get_value(root, "version"))
+    file_version = get_value(root, "version")
+    tilde_empty = tilde_is_empty(file_version)
     si_by_uuid: dict = {}
     if instance_path is not None and symbol_instances:
         for si_path, entry in symbol_instances.items():
@@ -794,6 +804,7 @@ def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
         datasheet = _field(get_property(sym, "Datasheet"), tilde_empty)
         description = _field(get_property(sym, "Description"), tilde_empty)
         uuid_val = get_value(sym, "uuid") or ""
+        overrides = {}
 
         if instance_path is not None:
             candidates = []
@@ -818,6 +829,7 @@ def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
                     ref = hit["reference"]
                 if hit["unit"]:
                     unit_num = hit["unit"]
+                overrides = variant_overrides(hit.get("variants"), variant, file_version)
         elif instance_uuid:
             remapped = False
             instances_node = find_first(sym, "instances")
@@ -858,14 +870,26 @@ def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
         if tilde_empty:
             _props = {k: _field(v, True) for k, v in _props.items()}
         sym_def = (lib_symbols.get(lib_name) if lib_name else None) or lib_symbols.get(lib_id, {})
-        in_bom = get_value(sym, "in_bom") != "no"
+        # A power symbol keeps its own Value: KiCad names its net without the variant
+        var_fields = {} if sym_def.get("is_power") else overrides.get("fields", {})
+        if var_fields:
+            value = var_fields.get("Value", value)
+            footprint = var_fields.get("Footprint", footprint)
+            datasheet = var_fields.get("Datasheet", datasheet)
+            description = var_fields.get("Description", description)
+            _props = {k: var_fields.get(k, v) for k, v in _props.items()}
+        in_bom = overrides.get("in_bom", get_value(sym, "in_bom") != "no")
         dnp_token = get_value(sym, "dnp")
-        on_board = get_value(sym, "on_board") != "no"
+        if "dnp" in overrides:
+            dnp_token = "yes" if overrides["dnp"] else "no"
+        on_board = overrides.get("on_board", get_value(sym, "on_board") != "no")
         unit_count = sum(1 for u in (sym_def.get("unit_pins") or {}) if u > 0)
         if text_ctx is not None:
-            fields = _symbol_fields(sym, value, footprint, tilde_empty)
+            fields = [(name, var_fields.get(name, text))
+                      for name, text in _symbol_fields(sym, value, footprint, tilde_empty)]
             flags = {"in_bom": in_bom, "on_board": on_board, "dnp": dnp_token == "yes",
-                     "exclude_from_sim": get_value(sym, "exclude_from_sim") == "yes"}
+                     "exclude_from_sim": overrides.get(
+                         "exclude_from_sim", get_value(sym, "exclude_from_sim") == "yes")}
             text = SymbolText(fields, ref, unit_num, unit_count, lib_id, sym_def, flags, text_ctx)
             registry = text_ctx.get("registry")
             if registry is not None:
@@ -1220,7 +1244,8 @@ def extract_title_block(root: list) -> dict:
 def parse_single_sheet(path: str, instance_uuid: str = "",
                        symbol_instances: dict | None = None, *,
                        instance_path: str | None = None, root_kiid: str = "",
-                       project_name: str = "", text_ctx: dict | None = None) -> SheetData:
+                       project_name: str = "", text_ctx: dict | None = None,
+                       variant: str | None = None) -> SheetData:
     """Parse a single .kicad_sch file and return raw extracted data.
 
     If instance_uuid is provided, remap component references from the
@@ -1229,8 +1254,9 @@ def parse_single_sheet(path: str, instance_uuid: str = "",
     If symbol_instances is provided, use it as fallback for remapping when
     inline (instances) blocks are absent.
 
-    instance_path / root_kiid / project_name / text_ctx: see extract_components; this file's
-    title block becomes the first sheet of text_ctx's chain.
+    instance_path / root_kiid / project_name / text_ctx / variant: see extract_components;
+    this file's title block becomes the first sheet of text_ctx's chain.  A sub-sheet's
+    variant block is the one of its instance on *instance_path*.
 
     Returns: a SheetData (root, components, wires, labels, junctions, no_connects,
               sub_sheet_paths, lib_symbols, text_annotations, bus_elements, title_block)
@@ -1243,14 +1269,16 @@ def parse_single_sheet(path: str, instance_uuid: str = "",
     components = extract_components(root, lib_symbols, instance_uuid=instance_uuid,
                                     symbol_instances=symbol_instances,
                                     instance_path=instance_path, root_kiid=root_kiid,
-                                    project_name=project_name, text_ctx=text_ctx)
+                                    project_name=project_name, text_ctx=text_ctx,
+                                    variant=variant)
     wires = extract_wires(root)
     labels = extract_labels(root)
     junctions = extract_junctions(root)
     no_connects = extract_no_connects(root)
     text_annotations = extract_text_annotations(root)
     bus_elements = extract_bus_elements(root)
-    tilde_empty = tilde_is_empty(get_value(root, "version"))
+    file_version = get_value(root, "version")
+    tilde_empty = tilde_is_empty(file_version)
 
     # Find sub-sheet references, including UUIDs for multi-instance support.
     # Also extract sheet pin stubs — these are the parent-side endpoints of
@@ -1262,7 +1290,12 @@ def parse_single_sheet(path: str, instance_uuid: str = "",
     sheet_fields = {}
     base_dir = Path(path).parent
     for sheet in find_all(root, "sheet"):
-        sheet_fields.setdefault(get_value(sheet, "uuid") or "", sheet_block_fields(sheet, tilde_empty))
+        overrides = {}
+        if variant is not None and instance_path is not None:
+            overrides = variant_overrides(instance_variants(sheet, instance_path), variant,
+                                          file_version)
+        sheet_fields.setdefault(get_value(sheet, "uuid") or "",
+                                sheet_block_fields(sheet, tilde_empty, overrides))
         # Sheet file property name varies by KiCad version:
         # KiCad 6+: (property "Sheetfile" "filename.kicad_sch")
         # KiCad 7+: (property "Sheet file" "filename.kicad_sch")

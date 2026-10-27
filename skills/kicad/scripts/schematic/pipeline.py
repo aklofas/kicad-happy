@@ -1266,7 +1266,8 @@ def run_analyses(ctx: AnalysisContext, parsed: dict, path: str, nets: dict, bom:
 
 def analyze_schematic(path: str, project_root: str | None = None,
                       no_hierarchy: bool = False,
-                      analysis_dir: str | Path | None = None) -> dict:
+                      analysis_dir: str | Path | None = None,
+                      variant: str | None = None) -> dict:
     """Main analysis function. Returns complete structured data.
 
     For hierarchical designs (multi-sheet), recursively parses all sub-sheets
@@ -1284,6 +1285,8 @@ def analyze_schematic(path: str, project_root: str | None = None,
             Auto-discovered from .kicad_pro if not provided.
         no_hierarchy: If True, skip hierarchy auto-discovery entirely.
             Useful when analysing a sub-sheet in isolation.
+        variant: A KiCad 10 design variant name; None is the default variant.  The selected
+            name is reported as ``project_settings.variant``.
     """
     # Detect legacy format
     with open(path, "r", encoding="utf-8", errors="replace") as f:
@@ -1310,7 +1313,7 @@ def analyze_schematic(path: str, project_root: str | None = None,
             print(f"Note: {original_basename} is a sub-sheet — analyzing "
                   f"full project from root {root_basename}",
                   file=sys.stderr)
-            result = analyze_schematic(root_path, no_hierarchy=True)
+            result = analyze_schematic(root_path, no_hierarchy=True, variant=variant)
             result["_redirected_from"] = original_basename
 
             # Stale file check: is the original file in the project tree?
@@ -1341,9 +1344,10 @@ def analyze_schematic(path: str, project_root: str | None = None,
         )
 
     pipeline_diagnostics: list = []
-    parsed = parse_all_sheets(path, root_tree=root_tree, diagnostics=pipeline_diagnostics)
+    parsed = parse_all_sheets(path, root_tree=root_tree, diagnostics=pipeline_diagnostics,
+                              variant=variant)
 
-    merge_top_level_sheets(parsed, path, diagnostics=pipeline_diagnostics)
+    merge_top_level_sheets(parsed, path, diagnostics=pipeline_diagnostics, variant=variant)
 
     all_components = parsed["components"]
     all_wires = parsed["wires"]
@@ -1394,6 +1398,8 @@ def analyze_schematic(path: str, project_root: str | None = None,
                              generator_version=generator_version,
                              file_version=file_version)
     result["diagnostics"] = merge(pipeline_diagnostics, ctx.diagnostics)
+    if variant is not None:
+        result.setdefault("project_settings", {})["variant"] = variant
     return result
 
 

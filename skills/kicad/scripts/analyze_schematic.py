@@ -35,6 +35,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="Run lifecycle/obsolescence audit (requires network + API keys)")
     parser.add_argument("--analysis-dir", default=None,
                         help="Write output to analysis cache directory (timestamped runs)")
+    parser.add_argument("--variant", default=None, metavar="NAME",
+                        help="KiCad 10 design variant to analyze (default: the default variant)")
     add_text_arg(parser, help="Print human-readable text report to stdout")
     add_stage_audience_args(parser)
     add_only_deterministic_arg(parser)
@@ -61,6 +63,12 @@ def main(argv: list[str] | None = None) -> int:
     _empty_error = empty_input_error(args.schematic, 'kicad_sch')
     if _empty_error:
         parser.error(_empty_error)
+    if args.variant is not None:
+        from kicad_core.project import load_kicad_pro, unknown_variant_error
+        _variant_error = unknown_variant_error(
+            args.variant, load_kicad_pro(args.project_root or args.schematic))
+        if _variant_error:
+            parser.error(_variant_error)
 
     # Load project config (for project settings — suppressions applied to
     # EMC/thermal findings, not schematic warnings which lack rule_ids)
@@ -99,7 +107,8 @@ def main(argv: list[str] | None = None) -> int:
     result = analyze_schematic(args.schematic,
                                project_root=args.project_root,
                                no_hierarchy=args.no_hierarchy,
-                               analysis_dir=_analysis_dir_for_ctx)
+                               analysis_dir=_analysis_dir_for_ctx,
+                               variant=args.variant)
     # Inject provenance and drop the legacy 'file' key (already removed
     # from internal result assembly, but belt-and-suspenders).
     diagnostics = result.pop("diagnostics", [])

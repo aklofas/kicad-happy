@@ -73,5 +73,69 @@ def inline_instances(sym: list, tilde_empty: bool) -> list[dict]:
                 text = get_value(path_node, key)
                 if text is not None:
                     entry[key] = "" if (tilde_empty and text == "~") else text
+            variants = variant_blocks(path_node)
+            if variants:
+                entry["variants"] = variants
             out.append(entry)
     return out
+
+
+_VARIANT_FLAGS = ("dnp", "in_bom", "on_board", "exclude_from_sim")
+# Before this file version KiCad stored a variant's in_bom with the inverted meaning.
+_VARIANT_IN_BOM_FIXED = 20260306
+
+
+def variant_blocks(path_node: list) -> dict:
+    """The ``(variant (name N) ...)`` blocks of one instance path, by name (a later block of a
+    name replaces an earlier one): each flag token as written ("yes" / "no") and ``fields``
+    (name -> text, as written)."""
+    out = {}
+    for node in path_node:
+        if not isinstance(node, list) or not node or node[0] != "variant":
+            continue
+        block = {"fields": {}}
+        for child in node[1:]:
+            if not isinstance(child, list) or len(child) < 2:
+                continue
+            if child[0] == "name":
+                block["name"] = str(child[1])
+            elif child[0] in _VARIANT_FLAGS:
+                block[child[0]] = str(child[1])
+            elif child[0] == "field":
+                name = get_value(child, "name")
+                if name is not None:
+                    block["fields"][name] = get_value(child, "value") or ""
+        out[block.pop("name", "")] = block
+    return out
+
+
+def variant_overrides(variants: dict | None, name: str | None, file_version) -> dict:
+    """What design variant *name* changes on one symbol or sheet instance, as KiCad 10 reads it:
+    each of dnp / in_bom / on_board / exclude_from_sim the variant sets (a bool), and
+    ``fields`` (name -> text).  Empty when *name* is None or the instance has no such variant
+    (the default variant: the symbol's own attributes and fields)."""
+    block = (variants or {}).get(name) if name is not None else None
+    if not block:
+        return {}
+    out = {flag: block[flag] == "yes" for flag in _VARIANT_FLAGS if flag in block}
+    if "in_bom" in out:
+        try:
+            fixed = int(file_version) >= _VARIANT_IN_BOM_FIXED
+        except (TypeError, ValueError):
+            fixed = False
+        if not fixed:
+            out["in_bom"] = not out["in_bom"]
+    if block["fields"]:
+        out["fields"] = dict(block["fields"])
+    return out
+
+
+def instance_variants(node: list, path: str) -> dict | None:
+    """The variant blocks of the instance of a sheet (or symbol) *node* whose path is exactly
+    *path*; the last such instance wins.  None when there is none."""
+    want = _norm_path(path)
+    hit = None
+    for entry in inline_instances(node, False):
+        if _norm_path(entry["path"]) == want:
+            hit = entry
+    return hit.get("variants") if hit else None

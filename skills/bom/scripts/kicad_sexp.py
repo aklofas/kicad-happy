@@ -14,7 +14,8 @@ from pathlib import Path
 from typing import NamedTuple
 
 import _core_path  # noqa: F401
-from kicad_core.instances import inline_instances, resolve_instance
+from kicad_core.instances import (inline_instances, instance_variants, resolve_instance,
+                                  variant_overrides)
 from kicad_core.sexp import parse
 
 
@@ -148,6 +149,7 @@ class SubSheet(NamedTuple):
     at: tuple[float, float]
     in_bom: bool
     dnp: bool
+    block: str = ""
 
 
 def find_sub_sheet_entries(text: str, base_dir: Path) -> list[SubSheet]:
@@ -174,6 +176,7 @@ def find_sub_sheet_entries(text: str, base_dir: Path) -> list[SubSheet]:
             at=(float(at.group(1)), float(at.group(2))) if at else (0.0, 0.0),
             in_bom=direct_value(block, "in_bom") != "no",
             dnp=direct_value(block, "dnp") == "yes",
+            block=block,
         ))
     return sheets
 
@@ -192,18 +195,38 @@ def symbol_instances_of(symbol_block: str, tilde_empty: bool = True) -> list[dic
     return inline_instances(["symbol", parse(node)], tilde_empty)
 
 
-def instance_of(symbol_block: str, sheet_path: str, *, project_name: str = "",
-                candidates: list[dict] | None = None) -> tuple[str, int | None] | None:
-    """(reference, unit) KiCad uses for the placed symbol on *sheet_path* (the full KIID path,
-    root sheet uuid first): the instance with that exact path, else the first instance of
+def resolved_instance(symbol_block: str, sheet_path: str, *, project_name: str = "",
+                      candidates: list[dict] | None = None) -> dict | None:
+    """The instance KiCad uses for the placed symbol on *sheet_path* (the full KIID path, root
+    sheet uuid first): the instance with that exact path, else the first instance of
     *project_name*, else the first instance (kicad_core.instances.resolve_instance).
     *candidates* are instances known from elsewhere (a KiCad 6 root's symbol_instances),
     tried before the block's own.  None when the symbol has no instance at all."""
-    hit = resolve_instance(list(candidates or ()) + symbol_instances_of(symbol_block),
-                           sheet_path, project_name)
+    return resolve_instance(list(candidates or ()) + symbol_instances_of(symbol_block),
+                            sheet_path, project_name)
+
+
+def instance_of(symbol_block: str, sheet_path: str, *, project_name: str = "",
+                candidates: list[dict] | None = None) -> tuple[str, int | None] | None:
+    """(reference, unit) of resolved_instance; None when the symbol has no instance at all."""
+    hit = resolved_instance(symbol_block, sheet_path, project_name=project_name,
+                            candidates=candidates)
     if hit is None:
         return None
     return hit["reference"], hit["unit"]
+
+
+def sheet_variant(sheet_block: str, parent_path: str, variant: str | None,
+                  file_version) -> dict:
+    """What design variant *variant* changes on a ``(sheet ...)`` block placed on the sheet
+    whose full KIID path is *parent_path* (kicad_core.instances.variant_overrides)."""
+    if variant is None:
+        return {}
+    node = direct_child(sheet_block, "instances")
+    if node is None:
+        return {}
+    return variant_overrides(instance_variants(["sheet", parse(node)], parent_path), variant,
+                             file_version)
 
 
 def collect_schematic_files(root: Path, recursive: bool) -> list[Path]:

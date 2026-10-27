@@ -180,7 +180,8 @@ def namespace_hierarchical_labels(labels: list[dict], inst_path: str) -> None:
 
 def parse_all_sheets(root_path: str, root_tree: list | None = None,
                      symbol_instances_override: dict | None = None, *,
-                     diagnostics: list | None = None, project_path: str | None = None):
+                     diagnostics: list | None = None, project_path: str | None = None,
+                     variant: str | None = None):
     """Parse a root schematic and all sub-sheets recursively.
 
     Performs Phase A of schematic analysis: recursive sheet traversal,
@@ -200,6 +201,8 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
         project_path: the schematic whose project this sheet belongs to (names the
             project and finds its .kicad_pro); defaults to root_path.  Set when
             root_path is another top-level sheet of that project.
+        variant: a KiCad 10 design variant name (see extract_components); None is the
+            default variant.
 
     Returns:
         dict with keys:
@@ -279,7 +282,7 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
         pending_before = registry.pending
         sheet_kwargs = dict(instance_uuid=inst_path, symbol_instances=root_symbol_instances,
                             instance_path=root_kiid + inst_path, root_kiid=root_kiid,
-                            project_name=project_name, text_ctx=text_ctx)
+                            project_name=project_name, text_ctx=text_ctx, variant=variant)
         sd = parse_single_sheet(sheet_path, **sheet_kwargs)
         (root, components, wires, labels, junctions, no_connects,
          sub_sheets, lib_symbols, text_annotations, bus_elements, title_block) = (
@@ -389,7 +392,7 @@ def multi_root_sheets(path: str, pro: dict | None) -> list[dict]:
 
 
 def merge_top_level_sheets(parsed: dict, path: str, *,
-                           diagnostics: list | None = None) -> None:
+                           diagnostics: list | None = None, variant: str | None = None) -> None:
     """Fold the other top-level sheets of a KiCad 10 multi-root project (each with its
     sub-sheets, see parse_all_sheets) into *parsed*, the analysis of the declared sheet
     *path*, in place.  A peer that fails to parse is skipped with one diagnostic."""
@@ -402,7 +405,8 @@ def merge_top_level_sheets(parsed: dict, path: str, *,
           file=sys.stderr)
     for peer in peers:
         try:
-            sub = parse_all_sheets(peer, project_path=path, diagnostics=diagnostics)
+            sub = parse_all_sheets(peer, project_path=path, diagnostics=diagnostics,
+                                   variant=variant)
         except Exception as exc:
             record(diagnostics, "schematic.hierarchy.merge_top_level_sheets", exc,
                    f"sheet {os.path.basename(peer)} skipped (parse failed)")

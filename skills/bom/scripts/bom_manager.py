@@ -23,6 +23,9 @@ Usage:
 
     # Export with recursive sub-sheets
     python3 bom_manager.py export path/to/schematic.kicad_sch -o bom/bom.csv --recursive
+
+    # A KiCad 10 design variant (default: the default variant)
+    python3 bom_manager.py analyze path/to/schematic.kicad_sch --recursive --variant "ETD 39"
 """
 
 from __future__ import annotations
@@ -36,10 +39,10 @@ from pathlib import Path
 
 import _core_path  # noqa: F401
 from kicad_core.diagnostics import record
-from kicad_core.instances import tilde_is_empty
+from kicad_core.instances import tilde_is_empty, variant_overrides
 from kicad_core.sexp import get_value, parse
-from kicad_sexp import (find_matching_paren, direct_child, direct_value, find_sub_sheet_entries, instance_of,
-                        iter_placed_symbol_blocks, symbol_instances_of)
+from kicad_sexp import (find_matching_paren, direct_child, direct_value, find_sub_sheet_entries,
+                        iter_placed_symbol_blocks, resolved_instance, sheet_variant, symbol_instances_of)
 
 from kicad_core.fields import (merge_unit_fields, MPN_FIELD_ALIASES, MPN_FIELD_ALIASES_PRIMARY,
                                MPN_FIELD_ALIASES_GENERIC, DIGIKEY_FIELD_ALIASES,
@@ -598,11 +601,12 @@ def _kicad6_symbol_instances(root_text: str) -> dict[str, dict]:
     return out
 
 
-def _sheet_instances(input_path: Path, recursive: bool, read) -> list[dict]:
+def _sheet_instances(input_path: Path, recursive: bool, read, variant: str | None = None,
+                     root_kiid: str = "") -> list[dict]:
     """Every sheet instance below *input_path* (the root first, then breadth first in file
     order): file, path below the root (sheet uuids), the in_bom / dnp the sheets on that path
-    impose, the parent instance and the sibling sort key.  A sheet that includes one of its
-    own ancestors is skipped."""
+    impose (each sheet as design variant *variant* sets it), the parent instance and the
+    sibling sort key.  A sheet that includes one of its own ancestors is skipped."""
     root = input_path.resolve()
     sheets = [{"file": input_path, "path": "", "in_bom": True, "dnp": False,
                "parent": None, "key": (), "chain": (root,)}]
@@ -610,17 +614,19 @@ def _sheet_instances(input_path: Path, recursive: bool, read) -> list[dict]:
     i = 0
     while recursive and i < len(sheets):
         parent = sheets[i]
-        for sub in find_sub_sheet_entries(read(parent["file"]), parent["file"].parent):
+        text = read(parent["file"])
+        for sub in find_sub_sheet_entries(text, parent["file"].parent):
             resolved = sub.path.resolve()
             path = parent["path"] + "/" + sub.uuid if sub.uuid else parent["path"]
             if resolved in parent["chain"] or (resolved, path.lower()) in seen:
                 continue
             seen.add((resolved, path.lower()))
+            var = sheet_variant(sub.block, root_kiid + parent["path"], variant, _file_version(text))
             sheets.append({"file": sub.path, "path": path,
                            # KiCad 9+: a sheet's attributes reach every symbol below it,
                            # OR-ed over the path; a nested sheet cannot re-include
-                           "in_bom": parent["in_bom"] and sub.in_bom,
-                           "dnp": parent["dnp"] or sub.dnp,
+                           "in_bom": parent["in_bom"] and var.get("in_bom", sub.in_bom),
+                           "dnp": parent["dnp"] or var.get("dnp", sub.dnp),
                            "parent": i, "key": (sub.at[0], sub.at[1], sub.uuid.lower()),
                            "chain": parent["chain"] + (resolved,)})
         i += 1
@@ -660,8 +666,10 @@ def analyze(
     input_path: Path,
     recursive: bool = False,
     group_by: str = 'value+footprint',
+    variant: str | None = None,
 ) -> dict:
-    """Analyze a KiCad schematic and return full BOM report."""
+    """Analyze a KiCad schematic and return full BOM report.  *variant* names a KiCad 10 design
+    variant; None is the default variant (the symbols' own attributes and fields)."""
     if input_path.suffix.lower() == ".sch":
         all_symbols = _legacy_symbols(input_path, recursive)
         return _report(input_path, all_symbols, sorted({s["source_file"] for s in all_symbols}), group_by)
@@ -675,7 +683,9 @@ def analyze(
 
     root_text = read(input_path)
     root_text = root_text[root_text.find("("):]
-    sheets = _sheet_instances(input_path, recursive, read)
+    root_uuid = direct_value(root_text, "uuid") or ""
+    root_kiid = "/" + root_uuid if root_uuid else ""
+    sheets = _sheet_instances(input_path, recursive, read, variant, root_kiid)
     files = {}
     for sheet in sheets:
         files.setdefault(sheet["file"].resolve(), sheet["file"])
@@ -684,8 +694,6 @@ def analyze(
 
     # References and units per sheet instance (SCH_SYMBOL::GetRef): the instance whose path
     # is the sheet's full path, starting with the root sheet's uuid
-    root_uuid = direct_value(root_text, "uuid") or ""
-    root_kiid = "/" + root_uuid if root_uuid else ""
     version = _file_version(root_text)
     k6 = {}
     if version is None or version < _SYMBOL_INSTANCES_BEFORE:
@@ -715,7 +723,8 @@ def analyze(
     all_symbols = []
     for sheet in sheets:
         resolved = sheet["file"].resolve()
-        tilde_empty = tilde_is_empty(_file_version(read(sheet["file"])))
+        file_version = _file_version(read(sheet["file"]))
+        tilde_empty = tilde_is_empty(file_version)
         for parsed_sym, block in parsed[resolved]:
             sym = dict(parsed_sym, raw_properties=dict(parsed_sym["raw_properties"]),
                        source_file=str(sheet["file"]))
@@ -726,16 +735,25 @@ def analyze(
                 for key, name in (("value", "Value"), ("footprint", "Footprint")):
                     if key in inst:
                         props[name] = inst[key]
-            hit = instance_of(block, root_kiid + sheet["path"], project_name=input_path.stem,
-                              candidates=k6_by_uuid.get(sym["uuid"].lower(), []))
+            hit = resolved_instance(block, root_kiid + sheet["path"], project_name=input_path.stem,
+                                    candidates=k6_by_uuid.get(sym["uuid"].lower(), []))
             if hit is not None:
-                ref, unit = hit
-                if ref:
-                    sym["reference"] = ref
-                    sym["type"] = classify_reference(ref)
-                    props["Reference"] = ref
-                if unit:
-                    sym["unit"] = unit
+                if hit["reference"]:
+                    sym["reference"] = hit["reference"]
+                    sym["type"] = classify_reference(hit["reference"])
+                    props["Reference"] = hit["reference"]
+                if hit["unit"]:
+                    sym["unit"] = hit["unit"]
+                var = variant_overrides(hit.get("variants"), variant, file_version)
+                if var:
+                    # A variant overrides the fields the symbol has; the reference stays
+                    props.update((k, v) for k, v in var.get("fields", {}).items()
+                                 if k in props and k != "Reference")
+                    if "in_bom" in var:
+                        sym["in_bom"] = var["in_bom"]
+                    if "dnp" in var or "fields" in var:
+                        dnp_flag = var.get("dnp", direct_value(block, "dnp") == "yes")
+                        sym["dnp"] = dnp_flag or is_dnp("", props)
             if not sheet["in_bom"]:
                 sym["in_bom"] = False
             if sheet["dnp"]:
@@ -1350,12 +1368,16 @@ def main():
     p_analyze.add_argument("--json", action="store_true", help="Output as JSON")
     p_analyze.add_argument("--gaps-only", action="store_true", help="Show only parts with missing fields")
     p_analyze.add_argument("--recursive", action="store_true", help="Include hierarchical sub-sheets")
+    p_analyze.add_argument("--variant", default=None, metavar="NAME",
+                           help="KiCad 10 design variant (default: the default variant)")
 
     # export subcommand
     p_export = subparsers.add_parser("export", help="Export BOM tracking CSV")
     p_export.add_argument("schematic", type=Path, help="Path to .kicad_sch (or KiCad 5 .sch, read only) file")
     p_export.add_argument("-o", "--output", type=Path, required=True, help="Output CSV path")
     p_export.add_argument("--recursive", action="store_true", help="Include hierarchical sub-sheets")
+    p_export.add_argument("--variant", default=None, metavar="NAME",
+                          help="KiCad 10 design variant (default: the default variant)")
     p_export.add_argument("--add-distributor", action="append", default=[],
                          help="Add distributor columns even if not detected (e.g., --add-distributor mouser)")
 
@@ -1421,11 +1443,17 @@ def main():
         if args.schematic.suffix.lower() not in (".kicad_sch", ".sch"):
             print(f"Error: expected a .kicad_sch or .sch file, got {args.schematic.suffix}", file=sys.stderr)
             sys.exit(1)
+        if args.variant is not None:
+            from kicad_core.project import load_kicad_pro, unknown_variant_error
+            variant_error = unknown_variant_error(args.variant, load_kicad_pro(str(args.schematic)))
+            if variant_error:
+                print(f"Error: {variant_error}", file=sys.stderr)
+                sys.exit(2)
 
         if args.command == "analyze":
             group_by = bom_config.get('group_by', 'value+footprint')
             report = analyze(args.schematic, recursive=args.recursive,
-                             group_by=group_by)
+                             group_by=group_by, variant=args.variant)
             # Config override: preferred_suppliers takes precedence
             if preferred_suppliers_cfg:
                 report['convention']['preferred_distributor'] = (
@@ -1441,7 +1469,7 @@ def main():
         elif args.command == "export":
             group_by = bom_config.get('group_by', 'value+footprint')
             report = analyze(args.schematic, recursive=args.recursive,
-                             group_by=group_by)
+                             group_by=group_by, variant=args.variant)
             extra_distributors = [_normalize_distributor(s)
                                   for s in args.add_distributor]
             # Config-preferred suppliers always get CSV columns
