@@ -153,10 +153,13 @@ class RootBusLabelsTest(unittest.TestCase):
             with redirect_stderr(StringIO()):
                 return analyze_schematic(write_project(tmp, root_local))
 
-    def test_local_and_global_names_of_one_width_are_ambiguous(self):
+    def test_local_label_aliases_onto_the_global_driver(self):
+        # KiCad drives the bus from the global label; the local ADDR[0..3] members
+        # are renamed onto D0..D3 by position, so the sheet pin still maps from D.
         result = self.analyze("ADDR[0..3]")
-        self.assertIn({"reason": "ambiguous_bus_width", "name": "4"},
-                      result["bus_topology"]["unresolved"])
+        self.assertEqual(result["bus_topology"]["unresolved"], [])
+        self.assertEqual(pin_groups(result), {frozenset({"R1", "R2", "R8"}), frozenset({"R3", "R4", "R5"}),
+                                              frozenset({"R6"}), frozenset({"R7"})})
 
     def test_local_and_global_with_the_same_members_are_not_ambiguous(self):
         result = self.analyze("D[0..3]")

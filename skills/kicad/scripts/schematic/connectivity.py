@@ -14,49 +14,232 @@ from kicad_core.diagnostics import record
 from kicad_core.model import Net
 
 
-_VECTOR_RE = re.compile(r"^(?P<prefix>[^\[\]{}\s]+)\[(?P<a>\d+)\.\.(?P<b>\d+)\]$")
-_GROUP_RE = re.compile(r"^(?P<prefix>[^\[\]{}\s]*)\{(?P<members>[^{}]+)\}$")
 _MAX_DEPTH = 4
+# KiCad text markup: a brace after one of these is formatting, not a bus group.
+_MARKUP = ("_", "^", "~")
+
+
+def _parse_bus_vector(name):
+    """(prefix, suffix, ascending indices) for a KiCad vector bus name, else None.
+
+    Port of NET_SETTINGS::ParseBusVector: a descending range is read ascending,
+    ``[n..n]`` is not a bus, the suffix may only be ``+ - P N``, and markup may sit
+    in the prefix (``R_{C}[0..1]``), wrap the name (``~{BE[0..3]}``) or decorate
+    the range (``D_{[1..2]}``).
+    """
+    prefix, nest, wraps, i, n = "", 0, False, 0, len(name)
+    while True:
+        if i >= n:
+            return None
+        ch = name[i]
+        if ch == "{":
+            if i > 0 and name[i - 1] in _MARKUP:
+                nest += 1
+                prefix += ch
+                i += 1
+                continue
+            return None
+        if ch == "}":
+            nest -= 1
+            prefix += ch
+            i += 1
+            continue
+        if ch == "\\" and i + 1 < n and name[i + 1] == " ":
+            prefix += " "
+            i += 2
+            continue
+        if ch in " ]":
+            return None
+        if ch == "[":
+            if nest > 0:
+                f = prefix.rfind("{")
+                if f > 0 and prefix[f - 1] in _MARKUP:
+                    if f == len(prefix) - 1:
+                        prefix = prefix[:f - 1]
+                    else:
+                        wraps = True
+            break
+        prefix += ch
+        i += 1
+    j = name.find("..", i + 1)
+    if j < 0 or not (name[i + 1:j].isdigit() or name[i + 1:j] == ""):
+        return None
+    k = name.find("]", j + 2)
+    if k < 0 or not (name[j + 2:k].isdigit() or name[j + 2:k] == ""):
+        return None
+    begin, end = int(name[i + 1:j] or 0), int(name[j + 2:k] or 0)
+    suffix = ""
+    for ch in name[k + 1:]:
+        if ch == "}":
+            nest -= 1
+            if wraps:
+                suffix += ch
+        elif ch in "+-PN":
+            suffix += ch
+        else:
+            return None
+    if nest != 0 or begin == end:
+        return None
+    return prefix, suffix, list(range(min(begin, end), max(begin, end) + 1))
+
+
+def _parse_bus_group(name):
+    """(prefix, [member tokens]) for a KiCad group bus name, else None.
+
+    Port of NET_SETTINGS::ParseBusGroup: members are separated by spaces or
+    commas, keep their markup (``~{OE}``), and text after the closing brace is
+    ignored.
+    """
+    prefix, nest, i, n = "", 0, 0, len(name)
+    while i < n:
+        ch = name[i]
+        if ch == "{":
+            if i > 0 and name[i - 1] in _MARKUP:
+                nest += 1
+                prefix += ch
+                i += 1
+                continue
+            break
+        if ch == "}":
+            nest -= 1
+            prefix += ch
+            i += 1
+            continue
+        if ch == "\\" and i + 1 < n and name[i + 1] == " ":
+            prefix += " "
+            i += 2
+            continue
+        if ch in " []":
+            return None
+        prefix += ch
+        i += 1
+    if nest != 0 or i + 1 >= n:
+        return None
+    i += 1
+    members, tok = [], ""
+    while i < n:
+        ch = name[i]
+        if ch == "{":
+            if name[i - 1] in _MARKUP:
+                nest += 1
+                tok += ch
+                i += 1
+                continue
+            return None
+        if ch == "}":
+            if nest:
+                nest -= 1
+                tok += ch
+                i += 1
+                continue
+            if tok:
+                members.append(tok)
+            return prefix, members
+        if ch == "\\" and i + 1 < n and name[i + 1] == " ":
+            tok += " "
+            i += 2
+            continue
+        if ch in " ,":
+            if tok:
+                members.append(tok)
+            tok = ""
+            i += 1
+            continue
+        tok += ch
+        i += 1
+    return None
+
+
+_KICAD_ESCAPE_RE = re.compile(
+    r"(?<![$~^_])\{(dblquote|quote|lt|gt|backslash|slash|bar|comma|colon|space|dollar"
+    r"|tab|return|brace)\}")
+_KICAD_ESCAPE_CHARS = {
+    "dblquote": '"', "quote": "'", "lt": "<", "gt": ">", "backslash": "\\", "slash": "/",
+    "bar": "|", "comma": ",", "colon": ":", "space": " ", "dollar": "$", "tab": "\t",
+    "return": "\n", "brace": "{",
+}
+
+
+def _unescape(name):
+    """KiCad parses a label as a bus after UnescapeString (sch_connection.cpp)."""
+    if "{" not in name:
+        return name
+    return _KICAD_ESCAPE_RE.sub(lambda m: _KICAD_ESCAPE_CHARS[m.group(1)], name)
+
+
+def bus_kind(name):
+    """'vector', 'group' or None, as KiCad classifies a label name."""
+    if not isinstance(name, str) or not name:
+        return None
+    name = _unescape(name)
+    if _parse_bus_vector(name):
+        return "vector"
+    group = _parse_bus_group(name)
+    return "group" if group and group[1] else None
 
 
 def expand_bus_name(name, aliases=None, _depth=0):
-    """Ordered member expansion for a KiCad bus name; None if not a bus."""
+    """Ordered member expansion for a KiCad bus name; None if not a bus.
+
+    Vector members come in ascending index order; group members in written
+    order, ``<prefix>.<member>`` when the group has a prefix. A group member
+    that names a bus alias expands to the alias's members.
+    """
     if _depth > _MAX_DEPTH or not isinstance(name, str) or not name:
         return None
-    m = _VECTOR_RE.match(name)
-    if m:
-        a, b = int(m.group("a")), int(m.group("b"))
-        step = 1 if b >= a else -1
-        return [f"{m.group('prefix')}{i}" for i in range(a, b + step, step)]
-    m = _GROUP_RE.match(name)
-    if m:
-        prefix = m.group("prefix")
-        # _{...}/^{...}/~{...} is KiCad subscript/superscript/overline markup.
-        # On a plain net name it is not a bus (~{OE}, C_{Out}). But when the
-        # wrapped content is itself a bus, KiCad distributes the markup over
-        # each expanded member — the overline/subscript stays on every member:
-        #   ~{IPL[0..2]}      -> ~{IPL0} ~{IPL1} ~{IPL2}
-        #   SIMM_~{CAS[0..3]} -> SIMM_~{CAS0} SIMM_~{CAS1} ...
-        if prefix.endswith(("_", "^", "~")):
-            markup = prefix[-1]
-            base = prefix[:-1]
-            inner = expand_bus_name(m.group("members"), aliases, _depth + 1)
-            if inner is None:
-                return None
-            return [f"{base}{markup}{{{mem}}}" for mem in inner]
-        members = []
-        for tok in m.group("members").split():
-            if aliases and tok in aliases:
-                sub = []
-                for am in aliases[tok]:
-                    nested = expand_bus_name(am, aliases, _depth + 1)
-                    sub.extend(nested if nested else [am])
-            else:
-                sub = expand_bus_name(tok, aliases, _depth + 1) or [tok]
-            for member in sub:
-                members.append(f"{prefix}.{member}" if prefix else member)
-        return members or None
-    return None
+    name = _unescape(name)
+    vector = _parse_bus_vector(name)
+    if vector:
+        prefix, suffix, indices = vector
+        return [f"{prefix}{i}{suffix}" for i in indices]
+    group = _parse_bus_group(name)
+    if not group:
+        return None
+    prefix, tokens = group
+    members = []
+    for tok in tokens:
+        if aliases and tok in aliases:
+            sub = []
+            for am in aliases[tok]:
+                nested = expand_bus_name(am, aliases, _depth + 1)
+                sub.extend(nested if nested else [am])
+        else:
+            sub = expand_bus_name(tok, aliases, _depth + 1) or [tok]
+        for member in sub:
+            members.append(f"{prefix}.{member}" if prefix else member)
+    return members or None
+
+
+def _local_member_names(name, members):
+    """A group bus's members without the group prefix (KiCad LocalName)."""
+    group = _parse_bus_group(_unescape(name)) if isinstance(name, str) else None
+    if not group or not group[0]:
+        return list(members)
+    pre = group[0] + "."
+    return [m[len(pre):] if m.startswith(pre) else m for m in members]
+
+
+def pair_bus_members(a_name, a_members, b_name, b_members):
+    """Member pairs KiCad joins when bus ``a`` reaches bus ``b`` across a sheet pin.
+
+    Two vectors pair by position up to the narrower one; two groups pair by
+    member name without the group prefix; mixed kinds pair by position only at
+    equal width. Returns ``(pairs, reason)``; ``reason`` is set only when
+    nothing pairs.
+    """
+    ka, kb = bus_kind(a_name), bus_kind(b_name)
+    if ka == kb == "group":
+        local_a = _local_member_names(a_name, a_members)
+        index_b = {m: i for i, m in enumerate(_local_member_names(b_name, b_members))}
+        pairs = [(a_members[i], b_members[index_b[m]])
+                 for i, m in enumerate(local_a) if m in index_b]
+        return pairs, (None if pairs else "bus_member_mismatch")
+    if ka == kb == "vector":
+        width = min(len(a_members), len(b_members))
+        return list(zip(a_members[:width], b_members[:width])), None
+    if len(a_members) != len(b_members):
+        return [], "bus_width_mismatch"
+    return list(zip(a_members, b_members)), None
 
 
 _EPSILON = 0.01
@@ -89,7 +272,7 @@ class BusGraph:
     they touch, and resolves bus-entry taps to their wire-side endpoint.
     """
 
-    def __init__(self, sheet, bus_wires, bus_entries, aliases):
+    def __init__(self, sheet, bus_wires, bus_entries, aliases, junctions=()):
         self.sheet = sheet
         self._bus_entries = bus_entries
         self._aliases = aliases or {}
@@ -102,8 +285,15 @@ class BusGraph:
         self.taps = []
         self.ports = []
         self.unresolved = []
+        self.last_label = None  # name of the label cluster_ordered() last used
 
         self._build_clusters(bus_wires)
+        # A junction joins every bus passing through it, interiors included.
+        for j in junctions:
+            hit = [k1 for k1, _k2, x1, y1, x2, y2 in self._segments
+                   if _point_on_segment(j["x"], j["y"], x1, y1, x2, y2)]
+            for k in hit[1:]:
+                self._union(hit[0], k)
 
     # -- union-find over rounded endpoint coordinates --
 
@@ -191,31 +381,71 @@ class BusGraph:
     def cluster_member_set(self, cid):
         return self._cluster_members.get(cid)
 
+    # Bus label kinds that drive a bus subgraph, strongest first (a sheet pin never does).
+    _DRIVER_RANK = {"global": 0, "local": 1, "hier": 2}
+
+    def cluster_driver(self, cid):
+        """The bus label KiCad picks to drive the cluster, or None.
+
+        ResolveDrivers: the strongest kind, then a strict superset of members,
+        then the alphabetically first name.
+        """
+        atts = [a for a in self._cluster_labels.get(cid, []) if a["role"] in self._DRIVER_RANK]
+        if not atts:
+            return None
+        top = min(self._DRIVER_RANK[a["role"]] for a in atts)
+        cands = sorted((a for a in atts if self._DRIVER_RANK[a["role"]] == top),
+                       key=lambda a: _driver_sort_name(a["name"]))
+        best = cands[0]
+        for a in cands[1:]:
+            if set(best["expansion"]) < set(a["expansion"]):
+                best = a
+        return best
+
+    def member_aliases(self, cid):
+        """``(member, driver member)`` pairs joining the cluster's other labels onto its driver.
+
+        KiCad matchBusMember: a vector driver matches by position; a group driver
+        matches by member name, and a vector member it cannot name by position;
+        a group label on a vector driver matches nothing.
+        """
+        drv = self.cluster_driver(cid)
+        if drv is None:
+            return []
+        dk = bus_kind(drv["name"])
+        out, seen = [], {drv["name"]}
+        for a in self._cluster_labels.get(cid, []):
+            if a["role"] not in self._DRIVER_RANK or a["name"] in seen:
+                continue
+            seen.add(a["name"])
+            sk = bus_kind(a["name"])
+            if dk == sk == "group":
+                pairs, _reason = pair_bus_members(a["name"], a["expansion"],
+                                                  drv["name"], drv["expansion"])
+            elif dk == sk == "vector":
+                pairs = list(zip(a["expansion"], drv["expansion"]))
+            elif dk == "group" and sk == "vector":
+                flat = drv["expansion"]
+                by_name = dict(zip(_local_member_names(drv["name"], flat), flat))
+                pairs = [(m, by_name[m] if m in by_name else flat[i])
+                         for i, m in enumerate(a["expansion"]) if m in by_name or i < len(flat)]
+            else:
+                pairs = []
+            out.extend((m, d) for m, d in pairs if m != d)
+        return out
+
+    def labelled_clusters(self):
+        return sorted(self._cluster_labels)
+
     def cluster_ordered(self, cid, width):
-        # The cluster's own member naming comes from a local or global bus label
-        # if it has one, else from a hierarchical one — each names the local
-        # wire, so a co-clustered sheet pin maps positionally to them. A sheet
-        # PIN never participates: it carries the FAR-side (child's) member
-        # names, which map positionally, not the local ordering. Local wins
-        # over hier so a local relabel (e.g. m68k's SIMM_~{CAS[0..3]} over a
-        # ~{CAS[0..3]} pin) still governs; hier is the fallback that lets a
-        # root/pass-through bus label (openmd's {PHASES} feeding OUT{PHASES}
-        # and V{PHASES} pins) canonicalize the cluster. Local and global labels
-        # rank together, so two different same-width names of either kind stay
-        # ambiguous.
-        atts = self._cluster_labels.get(cid, [])
-        for roles in (("local", "global"), ("hier",)):
-            matches = [att["expansion"] for att in atts
-                       if att["role"] in roles and len(att["expansion"]) == width]
-            # Ambiguity is two DIFFERENT expansions of the same width — the same
-            # bus labeled twice along one wire (readability) is not ambiguous.
-            distinct = {tuple(m) for m in matches}
-            if len(distinct) == 1:
-                return list(matches[0])
-            if len(distinct) > 1:
-                self.note_unresolved("ambiguous_bus_width", str(width))
-                return None
-        return None
+        """The member list a co-clustered sheet pin maps from: the cluster driver's.
+
+        KiCad clones the driver's connection onto the pin whatever its width;
+        ``width`` is kept for callers. Sets ``last_label`` to the driver's name.
+        """
+        drv = self.cluster_driver(cid)
+        self.last_label = drv["name"] if drv else None
+        return list(drv["expansion"]) if drv else None
 
     def note_unresolved(self, reason, name=None):
         # cluster_ordered() is called once per co-clustered sheet pin, so an
@@ -226,6 +456,13 @@ class BusGraph:
             self.unresolved.append(entry)
 
 
+def _parent_side(pin):
+    """(members, bus name) a sheet pin maps from: its cluster's driver label, else the pin."""
+    if pin.get("parent_ordered"):
+        return pin["parent_ordered"], pin.get("parent_name") or pin["name"]
+    return pin["members"], pin["name"]
+
+
 def match_ports(pin_ports, hier_ports, unresolved):
     """Pair parent-side sheet-pin ports with child-side hier-label ports.
 
@@ -233,11 +470,12 @@ def match_ports(pin_ports, hier_ports, unresolved):
     if two hier ports share a key the sheet is malformed: first one wins
     the index slot and a note is appended to unresolved). For each pin port
     in pin_ports (in list order) finds its counterpart by the same key and
-    pairs member slots positionally: parent = port["parent_ordered"] or
-    port["members"] (an anonymous parent cluster falls back to the pin's
-    own expansion — spec rule 3/5); child = hier port's "members". A width
-    mismatch appends a note to unresolved and contributes no pairs for that
-    port (no partial mapping). A missing counterpart in either direction
+    pairs member slots with pair_bus_members: parent = port["parent_ordered"]
+    (named port["parent_name"]) or port["members"] (an anonymous parent
+    cluster falls back to the pin's own expansion); child = hier port's
+    "members". Vectors pair by position up to the narrower bus, groups by
+    member name; a port where nothing pairs appends a note to unresolved.
+    A missing counterpart in either direction
     (a pin port with no hier port at that key, or vice versa) also appends
     a note; the hier-side pass runs after the pin-side pass, iterating
     hier_ports in list order. Returns
@@ -271,18 +509,15 @@ def match_ports(pin_ports, hier_ports, unresolved):
                 "name": pin["name"],
             })
             continue
-        parent = pin["parent_ordered"] or pin["members"]
-        child = hier["members"]
-        if len(parent) != len(child):
-            unresolved.append({
-                "reason": "bus_width_mismatch",
-                "name": pin["name"],
-            })
-            continue
-        for i in range(len(parent)):
+        parent, parent_name = _parent_side(pin)
+        member_pairs, reason = pair_bus_members(parent_name, parent,
+                                                hier["name"], hier["members"])
+        if reason:
+            unresolved.append({"reason": reason, "name": pin["name"]})
+        for pm, cm in member_pairs:
             pairs.append((
-                (pin["sheet"], pin["cluster"], parent[i]),
-                (hier["sheet"], hier["cluster"], child[i]),
+                (pin["sheet"], pin["cluster"], pm),
+                (hier["sheet"], hier["cluster"], cm),
             ))
 
     for hier in hier_ports:
@@ -479,9 +714,13 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
             wires_by_sheet.setdefault(bw.get("_sheet", 0), []).append(bw)
         for be_ in bus_elements.get("bus_entries", []):
             entries_by_sheet.setdefault(be_.get("_sheet", 0), []).append(be_)
+        junctions_by_sheet: dict[int, list] = {}
+        for j in junctions:
+            junctions_by_sheet.setdefault(j.get("_sheet", 0), []).append(j)
         for s in wires_by_sheet:
             bus_graphs[s] = BusGraph(s, wires_by_sheet[s],
-                                     entries_by_sheet.get(s, []), bus_aliases)
+                                     entries_by_sheet.get(s, []), bus_aliases,
+                                     junctions_by_sheet.get(s, ()))
         for idx, lbl in enumerate(labels):
             s = lbl.get("_sheet", 0)
             g = bus_graphs.get(s)
@@ -633,8 +872,9 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
     #   (B) by bus entry — an entry-tapped wire, resolved by intersecting the
     #       tapped net's local labels with the cluster member set (covers
     #       unlabelled tapped wires that (A) can't reach);
-    #   (C) across a sheet pin — the parent's pin-port members map positionally
-    #       onto the matching child hier-port members.
+    #   (C) across a sheet pin — the parent's pin-port members map onto the
+    #       matching child hier-port members (vectors by position, groups by
+    #       member name).
     if bus_active and bus_graphs:
         def bus_slot(sheet, cid, member):
             sk = ("bus", sheet, cid, member)
@@ -695,6 +935,15 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
                     if gk:
                         union(slot, gk[0])
 
+        # (A2) Several bus labels on one bus wire: KiCad renames the other
+        # labels' members onto the label that drives the bus (matchBusMember),
+        # so D[4..7] on a D[0..7] wire joins D4 with D0.
+        for s in sorted(bus_graphs):
+            g = bus_graphs[s]
+            for cid in g.labelled_clusters():
+                for m, d in g.member_aliases(cid):
+                    union(bus_slot(s, cid, m), bus_slot(s, cid, d))
+
         # (B1) Register every bus-entry tap point and union it with the wires
         # it lands on. This must precede the root_names sweep so a tapped
         # wire's labels are visible on the tap's net.
@@ -743,7 +992,7 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
             else:
                 g.note_unresolved("unlabeled_entry_tap", None)
 
-        # (C) Positional sheet-pin port matching.
+        # (C) Sheet-pin port matching.
         pin_ports, hier_ports = [], []
         for s in sorted(bus_graphs):
             g = bus_graphs[s]
@@ -752,6 +1001,7 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
                 if p["role"] == "pin":
                     p["parent_ordered"] = g.cluster_ordered(
                         p["cluster"], len(p["members"]))
+                    p["parent_name"] = g.last_label
                     pin_ports.append(p)
                 else:
                     hier_ports.append(p)
@@ -760,7 +1010,7 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
         # routed straight from one sub-sheet symbol's pin to another's on a
         # single cluster (no relabeling local label to canonicalize it), the
         # two differently-named pins are the same wire, so bit i of each is one
-        # net. Join their member slots positionally, using the SAME effective
+        # net. Join their member slots with pair_bus_members, using the SAME effective
         # ordering (C) uses — the cluster's local-label ordering if present,
         # else the pin's own members — so this stays consistent with the
         # pin↔hier mapping below. With a local label all pins already share
@@ -773,14 +1023,13 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
         for grp in pins_by_cluster.values():
             if len(grp) < 2:
                 continue
-            ref = grp[0]["parent_ordered"] or grp[0]["members"]
+            ref, ref_name = _parent_side(grp[0])
             for other in grp[1:]:
-                eff = other["parent_ordered"] or other["members"]
-                if len(eff) != len(ref):
-                    continue
-                for i in range(len(ref)):
-                    union(bus_slot(grp[0]["sheet"], grp[0]["cluster"], ref[i]),
-                          bus_slot(other["sheet"], other["cluster"], eff[i]))
+                eff, eff_name = _parent_side(other)
+                member_pairs, _reason = pair_bus_members(ref_name, ref, eff_name, eff)
+                for rm, em in member_pairs:
+                    union(bus_slot(grp[0]["sheet"], grp[0]["cluster"], rm),
+                          bus_slot(other["sheet"], other["cluster"], em))
 
         all_unresolved: list = []
         for (ps, pc, pm), (cs, cc, cm) in match_ports(
