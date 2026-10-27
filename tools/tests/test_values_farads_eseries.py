@@ -19,6 +19,17 @@ class CapacitorFarads(unittest.TestCase):
 
     def test_untyped_f_is_unchanged(self):
         self.assertEqual(parse_value("1F"), 1.0)
+        self.assertAlmostEqual(parse_value("0.1f"), 0.1)
+
+    def test_signed_explicit_si_is_not_rescaled(self):
+        for text, ctype, want in [("+1e-6", "capacitor", 1e-6), ("+1F", "capacitor", 1.0),
+                                  ("-12", "resistor", -12.0)]:
+            self.assertAlmostEqual(parse_value(text, component_type=ctype) / want, 1.0, places=9, msg=text)
+
+    def test_lowercase_f_is_femto_with_a_unit_or_off_a_capacitor(self):
+        for text, ctype, want in [("10fF", "capacitor", 1e-14), ("10 fF", "capacitor", 1e-14),
+                                  ("10f", "resistor", 1e-14), ("2fH", "inductor", 2e-15)]:
+            self.assertAlmostEqual(parse_value(text, component_type=ctype) / want, 1.0, places=9, msg=text)
 
 
 class ESeriesSnap(unittest.TestCase):

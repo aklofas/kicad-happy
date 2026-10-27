@@ -278,8 +278,12 @@ A label's net name is its shown text with `/` escaped as `{slash}` (KiCad's net-
 | `"4K7"` | 4700.0 | Embedded multiplier |
 | `"0R1"` | 0.1 | R as decimal point |
 | `"100n"` | 1e-7 | |
-| `"300µ"` | 0.0003 | Unicode micro |
-| `"0.3mOhm"` | 0.0003 | Ohm suffix stripped |
+| `"300µ"` | 0.0003 | Unicode micro (µ or Greek μ) |
+| `"0.3mOhm"` | 0.0003 | Ohm suffix stripped (also Ω / Ω signs) |
+| `"1Meg"` | 1e6 | SPICE mega |
+| `"4,7k"` | 4700.0 | Decimal comma, separators inferred as KiCad does |
+| `"1,000"` | None | Ambiguous separator; `ambiguous_separator()` is True |
+| `"0.1uF, 50V"` | 1e-7 | Leading value of a comma-separated list |
 | `"220k/R0402"` | 220000.0 | Splits on "/" first |
 | `"4.7k 1%"` | 4700.0 | Tolerance stripped |
 | `"DNP"` | None | Not parseable |

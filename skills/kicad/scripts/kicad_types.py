@@ -14,16 +14,35 @@ from pathlib import Path
 from kicad_core.model import PinNetEntry
 from kicad_core.netquery import build_pin_to_net_map
 from kicad_core.netnames import is_ground_name, is_power_net_name
-from kicad_core.values import parse_value
+from kicad_core.diagnostics import record
+from kicad_core.values import AmbiguousValueSeparator, ambiguous_separator, parse_value
+
+_AMBIGUOUS_RECORD_CAP = 20
+_AMBIGUOUS_EFFECT = "value not parsed; value-based checks skip the part"
 
 
-def index_components(components: list[dict]) -> tuple[dict[str, dict], dict[str, float]]:
+def index_components(components: list[dict], diagnostics: list | None = None
+                     ) -> tuple[dict[str, dict], dict[str, float]]:
     comp_lookup = {c["reference"]: c for c in components}
     parsed_values: dict[str, float] = {}
+    ambiguous: list[str] = []
     for c in components:
         val = parse_value(c.get("value", ""), component_type=c.get("type"))
         if val is not None:
             parsed_values[c["reference"]] = val
+        elif (c.get("type") in ("resistor", "capacitor", "inductor")
+              and ambiguous_separator(c.get("value", ""))):
+            ambiguous.append(f"{c['reference']} value {c.get('value')!r}: separator may be a "
+                             f"decimal mark or a thousands separator")
+    if diagnostics is not None:
+        for message in ambiguous[:_AMBIGUOUS_RECORD_CAP]:
+            record(diagnostics, "kicad_types.index_components",
+                   AmbiguousValueSeparator(message), _AMBIGUOUS_EFFECT)
+        if len(ambiguous) > _AMBIGUOUS_RECORD_CAP:
+            record(diagnostics, "kicad_types.index_components",
+                   AmbiguousValueSeparator(f"{len(ambiguous) - _AMBIGUOUS_RECORD_CAP} more "
+                                           f"ambiguous values not listed"),
+                   _AMBIGUOUS_EFFECT)
     return comp_lookup, parsed_values
 
 
@@ -136,7 +155,8 @@ def build_analysis_context(components: list[dict], nets: dict[str, dict], lib_sy
     one) is used as given; ``no_connects`` is kept by reference.
     """
     pin_net = build_pin_to_net_map(nets)
-    comp_lookup, parsed_values = index_components(components)
+    diagnostics: list = []
+    comp_lookup, parsed_values = index_components(components, diagnostics)
     rails = scan_power_rails(nets) if known_power_rails is None else known_power_rails
     ctx = AnalysisContext(
         components=components, nets=nets, lib_symbols=lib_symbols, pin_net=pin_net,
@@ -144,7 +164,7 @@ def build_analysis_context(components: list[dict], nets: dict[str, dict], lib_sy
         ref_pins=index_ref_pins(pin_net),
         no_connects=no_connects if no_connects is not None else [],
         generator_version=generator_version, source=source,
-        cache_dir=cache_dir, project_dir=project_dir, diagnostics=[],
+        cache_dir=cache_dir, project_dir=project_dir, diagnostics=diagnostics,
     )
     from netlist_queries import NetlistQueries  # local: netlist_queries annotates with this class
     ctx.nq = NetlistQueries(ctx)
