@@ -6,6 +6,8 @@ are user fields named by their last quoted token, a sheet used twice takes each 
 reference from the symbol's `AR Path=` record, and KiCad 5 has no in_bom or dnp flag.
 """
 import os, subprocess, sys, tempfile, unittest
+from contextlib import redirect_stderr
+from io import StringIO
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -73,6 +75,15 @@ class LegacyBom(unittest.TestCase):
         report = bom_manager.analyze(root, recursive=True)
         self.assertEqual(self.refs(report), ["R10", "R20"])
         self.assertEqual(self.refs(bom_manager.analyze(root)), [])
+
+    def test_sheet_including_its_ancestor_is_skipped_with_a_warning(self):
+        self.write("child.sch", comp("R2", "5F000010") + sheet("5F0000B1", "root.sch"))
+        root = self.write("root.sch", comp("R1", "5F000001") + sheet("5F0000A1", "child.sch"))
+        err = StringIO()
+        with redirect_stderr(err):
+            report = bom_manager.analyze(root, recursive=True)
+        self.assertEqual(self.refs(report), ["R1", "R2"])
+        self.assertEqual(err.getvalue().count("recursive sheet skipped"), 1)
 
     def test_units_of_one_part_are_one_line(self):
         root = self.write("a.sch",
