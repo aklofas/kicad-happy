@@ -1048,6 +1048,7 @@ def analyze_legacy_schematic(path: str, analysis_dir: str | Path | None = None) 
             if sym_def.get("is_power") and comp.get("type") != "power_symbol":
                 comp["_global_power_part"] = True
             comp["pins"] = compute_pin_positions(comp, {lib_id: sym_def})
+            comp["_unit_count"] = sym_def.get("unit_count", 1)
             comp["_pin_source"] = "builtin" if sym_def.get("_builtin") else _pin_src
             # KH-216: Store unit-valid pin numbers for pin_nets filtering
             comp["_unit_pins"] = {p["number"] for p in comp["pins"]}

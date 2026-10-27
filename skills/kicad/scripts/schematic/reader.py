@@ -861,9 +861,9 @@ def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
         in_bom = get_value(sym, "in_bom") != "no"
         dnp_token = get_value(sym, "dnp")
         on_board = get_value(sym, "on_board") != "no"
+        unit_count = sum(1 for u in (sym_def.get("unit_pins") or {}) if u > 0)
         if text_ctx is not None:
             fields = _symbol_fields(sym, value, footprint, tilde_empty)
-            unit_count = sum(1 for u in (sym_def.get("unit_pins") or {}) if u > 0)
             flags = {"in_bom": in_bom, "on_board": on_board, "dnp": dnp_token == "yes",
                      "exclude_from_sim": get_value(sym, "exclude_from_sim") == "yes"}
             text = SymbolText(fields, ref, unit_num, unit_count, lib_id, sym_def, flags, text_ctx)
@@ -928,6 +928,7 @@ def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
             "pin_uuids": pin_uuids,
             "_body_style": body_style,
             "_pin_alternates": pin_alternates,
+            "_unit_count": unit_count,
         }
 
         # Determine component type from reference prefix, lib_id, and lib_symbol flags

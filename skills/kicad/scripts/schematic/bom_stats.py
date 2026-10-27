@@ -15,24 +15,32 @@ _PACKAGE_FIELDS = ("value", "footprint", "datasheet", "description", "mpn", "man
 
 
 def package_fields(components: list[dict]) -> dict[str, dict]:
-    """reference -> the part's fields; a multi-unit part takes each field from the lowest
-    unit that sets it (KiCad's netlist rule), a single-unit symbol keeps its own."""
+    """reference -> the merged fields of each multi-unit part: each field from the lowest
+    unit that sets it (KiCad's netlist rule). Single-unit symbols are absent; they keep
+    their own fields."""
     by_ref: dict[str, list[dict]] = {}
     for c in components:
         if c["type"] not in _NON_PARTS:
             by_ref.setdefault(c["reference"], []).append(c)
     out = {}
     for ref, records in by_ref.items():
-        # Only a symbol with more than one unit places a unit above 1.
-        if len(records) > 1 and any((c.get("unit") or 1) > 1 for c in records):
-            # Distributor fields are already alias-merged, so a blank one counts as unset.
-            merged = merge_unit_fields(
-                (c.get("unit") or 1, {f: c[f] for f in _PACKAGE_FIELDS if c.get(f)})
-                for c in records)
-            out[ref] = {f: merged.get(f, "") for f in _PACKAGE_FIELDS}
-        else:
-            out[ref] = {f: records[0][f] for f in _PACKAGE_FIELDS}
+        if not any(_unit_count(c) > 1 for c in records):
+            continue
+        # Distributor fields are already alias-merged, so a blank one counts as unset.
+        merged = merge_unit_fields(
+            (c.get("unit") or 1, {f: c[f] for f in _PACKAGE_FIELDS if c.get(f)})
+            for c in records)
+        out[ref] = {f: merged.get(f, "") for f in _PACKAGE_FIELDS}
     return out
+
+
+def _unit_count(comp: dict) -> int:
+    """The library symbol's unit count; without a resolved library symbol, a placed unit
+    above 1 still shows the part has several."""
+    count = comp.get("_unit_count")
+    if not count:
+        return 2 if (comp.get("unit") or 1) > 1 else 1
+    return count
 
 
 def generate_bom(components: list[dict]) -> list[dict]:
@@ -51,7 +59,7 @@ def generate_bom(components: list[dict]) -> list[dict]:
         if comp["reference"] in seen_refs:
             continue
         seen_refs.add(comp["reference"])
-        comp = dict(comp, **package[comp["reference"]])
+        comp = dict(comp, **package.get(comp["reference"], {}))
 
         # Group key: value + footprint + MPN; fitted and DNP parts never share a line
         group_key = (comp["value"], comp["footprint"], comp["mpn"], comp["dnp"])
@@ -95,7 +103,7 @@ def compute_statistics(components: list[dict], nets: dict, bom: list[dict],
         if c["reference"] in seen_refs:
             continue
         seen_refs.add(c["reference"])
-        non_power.append(dict(c, **package[c["reference"]]))
+        non_power.append(dict(c, **package.get(c["reference"], {})))
     bom_items = [b for b in bom if not b["dnp"]]
     dnp_items = [b for b in bom if b["dnp"]]
 

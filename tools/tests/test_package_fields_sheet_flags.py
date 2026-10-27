@@ -4,7 +4,8 @@ Expected values follow KiCad 10: the netlist takes each field of a multi-unit pa
 lowest unit that sets it (single-unit symbols keep their own fields); a sheet's
 in_bom/dnp/on_board flag applies to every symbol below it, through nested sheets (KiCad 9+);
 the kicad-cli 10.0.6 BOM and netlist of the same files agree (R1, R3 in the BOM; R2 DNP;
-R3 off the board; U201 footprint DIP-14; fitted and DNP parts on separate lines)."""
+R3 off the board; U201, and U300 with only unit 1 placed twice, footprint DIP-14; R60 the
+footprint of its in-BOM copy; fitted and DNP parts on separate lines)."""
 import os, shutil, sys, tempfile, unittest
 from contextlib import redirect_stderr
 from io import StringIO
@@ -14,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "skills" / "kicad" / "scripts"))
 
 from kicad_core.fields import merge_unit_fields  # noqa: E402
+from schematic.legacy_reader import _parse_legacy_lib  # noqa: E402
 from schematic.pipeline import analyze_schematic  # noqa: E402
 
 LIB = '''(lib_symbols
@@ -49,12 +51,12 @@ def _prop(name, val):
 
 
 def _sym(uid, ref, value, path, *, lib_id="Device:R", unit=1, fp="", extra=(), dnp="no",
-         pins=("1", "2"), at=(0, 0)):
+         pins=("1", "2"), at=(0, 0), in_bom="yes"):
     props = [_prop("Reference", ref), _prop("Value", value), _prop("Footprint", fp), _prop("Datasheet", "")]
     props += [_prop(k, v) for k, v in extra]
     pl = " ".join(f'(pin "{p}" (uuid "{uid()}"))' for p in pins)
     return (f'(symbol (lib_id "{lib_id}") (at {at[0]} {at[1]} 0) (unit {unit}) (exclude_from_sim no)'
-            f' (in_bom yes) (on_board yes) (dnp {dnp}) (uuid "{uid()}") ' + " ".join(props)
+            f' (in_bom {in_bom}) (on_board yes) (dnp {dnp}) (uuid "{uid()}") ' + " ".join(props)
             + f' {pl} (instances (project "pf" (path "{path}" (reference "{ref}") (unit {unit})))))')
 
 
@@ -87,6 +89,12 @@ def write_project(tmp):
         _sym(uid, "U201", "LM324", rp, lib_id="T:Quad", unit=1, pins=("1",), at=(20, 10)),
         _sym(uid, "U201", "LM324", rp, lib_id="T:Quad", unit=2, pins=("2",), fp=DIP, at=(30, 10)),
         _sym(uid, "U201", "LM324", rp, lib_id="T:Quad", unit=4, pins=("4",), at=(40, 10)),
+        # A multi-unit symbol whose duplicated reference places only unit 1: KiCad still merges.
+        _sym(uid, "U300", "LM324", rp, lib_id="T:Quad", unit=1, pins=("1",), at=(10, 50)),
+        _sym(uid, "U300", "LM324", rp, lib_id="T:Quad", unit=1, pins=("1",), fp=DIP, at=(20, 50)),
+        # A single-unit duplicate: the BOM line takes the fields of the symbol in the BOM.
+        _sym(uid, "R60", "4k7", rp, in_bom="no", at=(10, 60)),
+        _sym(uid, "R60", "4k7", rp, fp="Resistor_SMD:R_0402_1005Metric", at=(20, 60)),
         # Fitted and DNP parts that share value, footprint and MPN.
         _sym(uid, "R10", "10k", rp, fp="Resistor_SMD:R_0603_1608Metric", at=(10, 30)),
         _sym(uid, "R11", "10k", rp, fp="Resistor_SMD:R_0603_1608Metric", dnp="yes", at=(20, 30)),
@@ -139,6 +147,20 @@ class MergeUnitFieldsTest(unittest.TestCase):
         self.assertEqual(merged, {"Value": "a", "Datasheet": ""})
 
 
+class LegacyUnitCountTest(unittest.TestCase):
+    def test_unit_count_is_the_def_line_field(self):
+        # DEF name ref unused text_offset draw_pinnumber draw_pinname unit_count locked flag
+        lib = ("EESchema-LIBRARY Version 2.4\n"
+               "DEF 74LS04 U 0 40 Y Y 7 F N\nDRAW\nX ~ 1 0 0 100 R 50 50 1 1 I\nENDDRAW\nENDDEF\n"
+               "DEF R R 0 0 N Y 1 F N\nDRAW\nX ~ 1 0 0 100 R 50 50 1 1 P\nENDDRAW\nENDDEF\n")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "t.lib")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(lib)
+            syms = _parse_legacy_lib(path)
+        self.assertEqual((syms["74LS04"]["unit_count"], syms["R"]["unit_count"]), (7, 1))
+
+
 class AnalyzerProjectTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -161,6 +183,16 @@ class AnalyzerProjectTest(unittest.TestCase):
         self.assertNotIn("U201", self.out["statistics"]["missing_footprint"])
         self.assertNotIn("U201", self.out["statistics"]["missing_mpn"])
 
+    def test_multi_unit_symbol_merges_even_with_only_unit_1_placed(self):
+        self.assertEqual(self.bom["U300"]["footprint"], DIP)
+        self.assertNotIn("U300", self.out["statistics"]["missing_footprint"])
+
+    def test_single_unit_duplicate_takes_the_bom_symbol_fields(self):
+        self.assertEqual(self.bom["R60"]["footprint"], "Resistor_SMD:R_0402_1005Metric")
+
+    def test_unit_count_stays_internal(self):
+        self.assertFalse(any("_unit_count" in c for c in self.out["components"]))
+
     def test_sheet_flags_reach_their_symbols(self):
         self.assertEqual((self.comps["R1"]["in_bom"], self.comps["R1"]["dnp"]), (True, False))
         self.assertEqual((self.comps["R2"]["in_bom"], self.comps["R2"]["dnp"]), (False, True))
@@ -171,7 +203,7 @@ class AnalyzerProjectTest(unittest.TestCase):
         self.assertFalse(self.comps["R12"]["in_bom"])
 
     def test_bom_holds_only_kicad_bom_parts(self):
-        self.assertEqual(set(self.bom) - {"R10", "R11", "U201"}, {"R1", "R3"})
+        self.assertEqual(set(self.bom) - {"R10", "R11", "U201", "U300", "R60"}, {"R1", "R3"})
 
     def test_bom_line_never_mixes_dnp_and_fitted(self):
         self.assertIsNot(self.bom["R10"], self.bom["R11"])

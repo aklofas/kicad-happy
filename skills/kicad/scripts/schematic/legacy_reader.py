@@ -298,6 +298,7 @@ def _parse_legacy_lib(path: str) -> dict:
     current_has_alt = False
     current_datasheet = ""
     current_is_power = False
+    current_unit_count = 1
     in_draw = False
 
     for line in lines:
@@ -309,6 +310,10 @@ def _parse_legacy_lib(path: str) -> dict:
                 current_name = parts[1].lstrip("~")
                 # DEF name ref unused text_offset pin_numbers pin_names units locked power
                 current_is_power = len(parts) >= 10 and parts[9] == "P"
+                try:
+                    current_unit_count = int(parts[7]) if len(parts) >= 8 else 1
+                except ValueError:
+                    current_unit_count = 1
                 current_aliases = []
                 current_pins = []
                 current_unit_pins = {}
@@ -380,6 +385,7 @@ def _parse_legacy_lib(path: str) -> dict:
                 "is_power": current_is_power,
                 "ki_fp_filters": "",
                 "alternates": None,
+                "unit_count": current_unit_count,
             }
             if current_datasheet:
                 sym_def["datasheet"] = current_datasheet
