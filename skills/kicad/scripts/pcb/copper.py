@@ -6,8 +6,8 @@ import re
 
 from kicad_core.netnames import is_ground_name
 from pcb.dfm import _degenerate_drills, _is_real_drill, _pad_drills
-from pcb.geometry import (ZoneFills, _pad_sample_points, _point_in_pad, copper_connected,
-                          outline_edge_distance)
+from pcb.geometry import (ZoneFills, _pad_on_layer, _pad_sample_points, _point_in_pad,
+                          copper_connected, outline_edge_distance)
 
 
 def _find_thermal_pads(fp: dict) -> list[dict]:
@@ -1002,11 +1002,17 @@ def analyze_copper_presence(footprints: list[dict], zones: list[dict],
                     if nn:
                         opp_nets.add(nn)
 
-            # Same-layer foreign zone check
+            # Same-layer foreign zone check, on the copper side the pad is on (an SMD pad
+            # can sit on the other side of its footprint, e.g. a hot-swap socket)
+            if _pad_on_layer(pad, fp_layer, fp_layer):
+                pad_side = fp_layer
+            else:
+                flip = "B.Cu" if fp_layer == "F.Cu" else "F.Cu"
+                pad_side = flip if _pad_on_layer(pad, flip, fp_layer) else None
             same_other = [
-                z for z in zone_fills.zones_at_point(px, py, fp_layer, zones)
+                z for z in zone_fills.zones_at_point(px, py, pad_side, zones)
                 if z.get("net", 0) != pad_net and pad_net > 0
-            ]
+            ] if pad_side else []
             if same_other:
                 foreign_pads.append({
                     "pad": str(pad.get("number", "")),

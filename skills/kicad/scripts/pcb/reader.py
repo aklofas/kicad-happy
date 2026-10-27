@@ -9,7 +9,8 @@ from __future__ import annotations
 import math
 import re
 
-from kicad_core.sexp import find_all, find_first, get_at, get_property, get_value, has_flag, raw_text
+from kicad_core.sexp import (find_all, find_first, get_at, get_property, get_value, has_flag,
+                             is_keyword, raw_text)
 from kicad_core.diagnostics import record
 from kicad_core.fields import get_mpn_property
 from kicad_core.model import PcbReaderState
@@ -17,6 +18,66 @@ from pcb.geometry import (
     ZoneFills, _chain_segments, _extract_polygon_coords, _polygon_bbox, _shoelace_area,
     _shoelace_area_from_coords,
 )
+
+
+_CANONICAL_CU = re.compile(r"(?:F|B|In\d+)\.Cu")
+# Every layer type KiCad parses as copper; the copper run ends at the first other type.
+_CU_LAYER_TYPES = ("signal", "power", "mixed", "jumper", "auxiliary", "front", "back")
+
+
+def canonicalize_copper_layers(root: list) -> dict[str, str]:
+    """Rewrite renamed copper layers to their canonical names, in place.
+
+    KiCad maps the copper run of the (layers ...) table by position, not by name: the
+    first is F.Cu, the last B.Cu, an inner one keeps a canonical In<n>.Cu name or becomes
+    In<i>.Cu. KiCad 5 files write the user's name (e.g. "Top") on every item. Each
+    (layer ...) / (layers ...) member is rewritten and the table entry keeps the user's
+    name as its alias. Returns {file name: canonical name}.
+    """
+    layers_node = find_first(root, "layers")
+    if not layers_node:
+        return {}
+    cu = []
+    for item in layers_node[1:]:
+        if not (isinstance(item, list) and len(item) >= 3 and isinstance(item[1], str)):
+            continue
+        if item[2] not in _CU_LAYER_TYPES:
+            break
+        cu.append(item)
+    n = len(cu)
+    if n < 2:  # KiCad maps a lone copper layer to B.Cu; no renamed board needs it
+        return {}
+    mapping: dict[str, str] = {}
+    for i, item in enumerate(cu):
+        name = item[1]
+        if i == 0:
+            canon = "F.Cu"
+        elif i == n - 1:
+            canon = "B.Cu"
+        else:
+            canon = name if _CANONICAL_CU.fullmatch(name) else f"In{i}.Cu"
+        if name != canon:
+            mapping[name] = canon
+    if not mapping:
+        return {}
+    for item in cu:
+        user = item[1]
+        if user in mapping:
+            item[1] = mapping[user]
+            if len(item) > 3 and is_keyword(item[3], "hide"):
+                item[3:4] = [user, "hide"]
+            else:
+                item.insert(3, user)
+
+    stack = [child for child in root if isinstance(child, list) and child is not layers_node]
+    while stack:
+        node = stack.pop()
+        if node and node[0] in ("layer", "layers"):
+            for k in range(1, len(node)):
+                if isinstance(node[k], str) and node[k] in mapping:
+                    node[k] = mapping[node[k]]
+        stack.extend(child for child in node if isinstance(child, list))
+    return mapping
 
 
 def extract_layers(root: list) -> list[dict]:
@@ -32,7 +93,9 @@ def extract_layers(root: list) -> list[dict]:
                 "number": int(item[0]) if str(item[0]).isdigit() else item[0],
                 "name": item[1],
                 "type": item[2],
-                "alias": item[3] if len(item) > 3 and isinstance(item[3], str) else None,
+                # a 4th token "hide" is the visibility flag, not a user name
+                "alias": (item[3] if len(item) > 3 and isinstance(item[3], str)
+                          and not is_keyword(item[3], "hide") else None),
             })
     return layers
 

@@ -127,6 +127,7 @@ def read_board(path: str, *, state: PcbReaderState | None = None) -> BoardData:
     state = state if state is not None else PcbReaderState()
 
     root = parse_file(path)
+    reader.canonicalize_copper_layers(root)
 
     # module attribute on purpose: the harness patches pcb.reader.<name> (ARCHITECTURE.md facade register)
     layers = reader.extract_layers(root)
