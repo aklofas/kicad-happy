@@ -237,7 +237,8 @@ The sheet's UUID comes from the parent's `(sheet ... (uuid "xxx"))` block.
 - `extract_lib_symbols()` stores pins per unit in `unit_pins` dict
 - `extract_components()` reads `(unit N)` from each placed symbol
 - `compute_pin_positions()` filters pins by unit number
-- De Morgan symbols: `unit_pins`/`pins` hold body styles 0 and 1, `alt_unit_pins`/`alt_pins` body styles 0 and 2; a symbol placed with `(convert 2)` / `(body_style 2)` (legacy `U unit 2 ts`) takes the alternate set
+- De Morgan symbols: `unit_pins`/`pins` hold body styles 0 and 1, `alt_unit_pins`/`alt_pins` body styles 0 and 2; a symbol placed with `(convert 2)` / `(body_style 2)` (legacy `U unit 2 ts`) takes the alternate set; a KiCad 10 body style 3 or higher takes its own pins plus body 0's
+- A placed unit takes its own pins plus the common unit-0 pins; a unit with no pins of its own has only the unit-0 pins
 - `generate_bom()` and `compute_statistics()` deduplicate by reference (count U1 once, not per unit)
 
 **Pitfall**: Multi-unit components appear multiple times in `all_components`. Always use reference-based dedup when counting unique components.

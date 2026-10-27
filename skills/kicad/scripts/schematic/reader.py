@@ -80,12 +80,9 @@ def extract_lib_symbols(root: list) -> dict:
 
     symbols = {}
     for sym in find_all(lib_symbols_node, "symbol"):
+        # Every direct child is a symbol; only nested sub-symbols are units, so a name
+        # such as "Connector:Raspberry_Pi_2_3" is a symbol of its own.
         name = sym[1] if len(sym) > 1 else "unknown"
-        # Skip sub-unit symbols (e.g., "Device:C_0_1", "Device:C_1_1")
-        # Real sub-units have _U_V suffix where BOTH U and V are digits.
-        parts = name.split(":")[-1].rsplit("_", 2)
-        if len(parts) >= 3 and parts[-1].isdigit() and parts[-2].isdigit():
-            continue
 
         # Collect pins from sub-unit symbols, keyed by unit number.
         # Sub-symbols named like "SymName_U_V": U is the unit, V the body style.
@@ -96,6 +93,8 @@ def extract_lib_symbols(root: list) -> dict:
         alt_unit_pins: dict[int, list] = {}
         alt_pins = []
         has_alt_body = False
+        # Body style -> unit -> pins, for KiCad 10 body styles beyond the De Morgan pair.
+        body_unit_pins: dict[int, dict[int, list]] = {}
 
         for child in sym:
             if not isinstance(child, list) or len(child) < 2 or child[0] != "symbol":
@@ -115,6 +114,7 @@ def extract_lib_symbols(root: list) -> dict:
                         alt_unit_pins.setdefault(unit_num, []).extend(sub_pins)
                         alt_pins.extend(sub_pins)
                     has_alt_body = has_alt_body or body_style == 2
+                    body_unit_pins.setdefault(body_style, {}).setdefault(unit_num, []).extend(sub_pins)
 
         # If no sub-unit pins found, fall back to find_deep on the whole symbol
         if not all_pins and not has_alt_body:
@@ -166,6 +166,8 @@ def extract_lib_symbols(root: list) -> dict:
             "ki_fp_filters": ki_fp_filters,
             "alternates": alternates if alternates else None,
         }
+        if any(b >= 3 for b in body_unit_pins):
+            symbols[name]["_body_unit_pins"] = {b: m for b, m in body_unit_pins.items() if b == 0 or b >= 3}
         if has_alt_body:
             symbols[name]["alt_unit_pins"] = alt_unit_pins
             symbols[name]["alt_pins"] = alt_pins
@@ -202,13 +204,26 @@ def compute_pin_positions(component: dict, lib_symbols: dict) -> list[Pin]:
     # In KiCad, sub-symbol _0_1 contains pins shared by all units (e.g., power pins).
     # A symbol placed with body style 2 (De Morgan) takes the alternate body's pins.
     unit_num = component.get("unit")
-    alt_body = component.get("_body_style", 1) == 2 and "alt_pins" in sym_def
+    body_style = component.get("_body_style", 1)
+    alt_body = body_style == 2 and "alt_pins" in sym_def
     unit_pins_map = sym_def.get("alt_unit_pins") if alt_body else sym_def.get("unit_pins")
-    if alt_body and unit_num and sym_def.get("unit_pins"):
+    if body_style >= 3 and "_body_unit_pins" in sym_def:
+        # KiCad keeps a library pin whose body style is 0 or the placed one.
+        pins = []
+        for unit_map in (sym_def["_body_unit_pins"].get(body_style, {}),
+                         sym_def["_body_unit_pins"].get(0, {})):
+            if unit_num:
+                pins += list(unit_map.get(unit_num, [])) + list(unit_map.get(0, []))
+            else:
+                pins += [p for u in sorted(unit_map) for p in unit_map[u]]
+    elif alt_body and unit_num and sym_def.get("unit_pins"):
         # KiCad draws this unit's body-0/2 items plus unit 0's; a unit with no
         # alternate-body pins of its own shows only the shared ones.
         unit_pins_map = unit_pins_map or {}
         pins = list(unit_pins_map.get(unit_num, [])) + list(unit_pins_map.get(0, []))
+    elif unit_num and unit_pins_map and unit_num not in unit_pins_map:
+        # KiCad's GetPins: a unit with no pins of its own has only the common unit-0 pins.
+        pins = list(unit_pins_map.get(0, []))
     elif unit_num and unit_pins_map and unit_num in unit_pins_map:
         pins = list(unit_pins_map[unit_num])
         # Also include unit 0 (shared/common) pins if they exist

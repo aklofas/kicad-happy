@@ -159,7 +159,7 @@ def assemble_result(ctx, parsed, nets, bom, analyses, *, path, sheets_parsed,
     for _comp in all_components:
         _all_pn = _pin_nets.get(_comp.get('reference', ''), {})
         _valid = _comp.get("_unit_pins")
-        if _valid and len(_all_pn) > len(_valid):
+        if _valid is not None and (len(_all_pn) > len(_valid) or not _valid):
             _comp['pin_nets'] = {k: v for k, v in _all_pn.items() if k in _valid}
         else:
             _comp['pin_nets'] = _all_pn
@@ -424,7 +424,7 @@ def assemble_legacy_result(*, nets, all_components, signal_analysis, real_compon
     for _comp in all_components:
         _all_pn = _pin_nets_l.get(_comp.get('reference', ''), {})
         _valid = _comp.get("_unit_pins")
-        if _valid and len(_all_pn) > len(_valid):
+        if _valid is not None and (len(_all_pn) > len(_valid) or not _valid):
             _comp['pin_nets'] = {k: v for k, v in _all_pn.items() if k in _valid}
         else:
             _comp['pin_nets'] = _all_pn
