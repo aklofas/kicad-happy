@@ -47,7 +47,7 @@ python3 <skill-path>/scripts/sync_datasheet_urls.py path/to/schematic.kicad_sch 
 # (`pnp --bom` filter drops orphan designators — see skills/jlcpcb/SKILL.md
 # for the 3-step PCBA upload workflow)
 python3 <skill-path>/scripts/translate_bom_pnp.py bom input_bom.csv -o jlc_bom.csv
-python3 <skill-path>/scripts/translate_bom_pnp.py pnp input_cpl.csv -o jlc_cpl.csv --bom jlc_bom.csv
+python3 <skill-path>/scripts/translate_bom_pnp.py pnp input_cpl.csv -o jlc_cpl.csv --units in --bom jlc_bom.csv
 ```
 
 ## Workflow

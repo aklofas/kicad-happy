@@ -157,6 +157,10 @@ UNIT_TO_MM = {
 }
 
 
+class UnitsRequired(ValueError):
+    """A coordinate has no unit and none was given."""
+
+
 def _parse_units_from_header(header_cell: str) -> str:
     """Extract a unit hint from a header cell like 'Mid X (mil)' → 'mil'.
 
@@ -207,8 +211,12 @@ def _coord_to_mm(cell: str, default_unit: str) -> float | None:
         value = float(s)
     except ValueError:
         return None
-    factor = UNIT_TO_MM.get(default_unit, 1.0) if default_unit else 1.0
-    return value * factor
+    if default_unit not in UNIT_TO_MM:
+        raise UnitsRequired(
+            "coordinates carry no unit; pass --units mm|in|mil "
+            "(KiCad position CSVs have no unit marker; kicad-cli exports inches by default)"
+        )
+    return value * UNIT_TO_MM[default_unit]
 
 
 def _normalize_layer(cell: str) -> str:
@@ -273,6 +281,13 @@ def main(argv: list[str] | None = None) -> int:
     p_pnp.add_argument("input", help="Input CPL file (.csv).")
     p_pnp.add_argument("-o", "--output", required=True, help="Output CSV path.")
     p_pnp.add_argument(
+        "--units",
+        choices=("mm", "in", "mil"),
+        help="Unit of bare-number coordinates. A unit in the header or in a "
+             "cell wins. Required for a KiCad position CSV (no unit marker; "
+             "kicad-cli exports inches by default).",
+    )
+    p_pnp.add_argument(
         "--bom",
         help="BOM CSV path. If supplied, CPL rows whose designators are not in "
              "the BOM are dropped (avoids JLCPCB upload rejection on orphans).",
@@ -289,7 +304,12 @@ def main(argv: list[str] | None = None) -> int:
             parser.error(f"{args.input}: xlsx input is not supported; save the BOM as CSV and rerun")
         stats = translate_bom(args.input, args.output)
     elif args.cmd == "pnp":
-        stats = translate_pnp(args.input, args.output, bom_filter_path=args.bom)
+        try:
+            stats = translate_pnp(
+                args.input, args.output, bom_filter_path=args.bom, units=args.units
+            )
+        except UnitsRequired as exc:
+            parser.error(str(exc))
     else:
         parser.error(f"Unknown command: {args.cmd}")
 
@@ -488,14 +508,24 @@ def _read_bom_designators(bom_path: str) -> set[str]:
 
 
 def translate_pnp(
-    input_path: str, output_path: str, *, bom_filter_path: str | None = None
+    input_path: str,
+    output_path: str,
+    *,
+    bom_filter_path: str | None = None,
+    units: str | None = None,
 ) -> dict:
     """Translate a CPL file to JLCPCB Pick-and-Place format.
 
     If ``bom_filter_path`` is supplied, CPL rows whose designators are
     not present in the BOM are dropped (avoids JLCPCB upload rejection
     on orphan designators).
+
+    A unit named in the Mid X / Mid Y header wins over ``units``, which
+    fills in when the header has none. A bare-number coordinate with
+    neither raises ``UnitsRequired``.
     """
+    if units is not None and units not in ("mm", "in", "mil"):
+        raise ValueError(f"units must be mm, in or mil, not {units!r}")
     rows = _read_csv_rows(input_path)
     if not rows:
         raise ValueError(f"CPL is empty: {input_path}")
@@ -518,7 +548,7 @@ def translate_pnp(
 
     default_x_unit = _parse_units_from_header(header[col_x])
     default_y_unit = _parse_units_from_header(header[col_y])
-    default_unit = default_x_unit or default_y_unit  # whichever has a hint
+    default_unit = default_x_unit or default_y_unit or (units or "")
     if default_unit:
         default_x_unit = default_x_unit or default_unit
         default_y_unit = default_y_unit or default_unit
@@ -527,7 +557,7 @@ def translate_pnp(
         "input": input_path,
         "output": output_path,
         "header_row": header_idx,
-        "default_unit": default_unit or "mm",
+        "default_unit": default_unit,
         "rows_in": 0,
         "rows_out": 0,
         "skipped_no_coords": 0,
@@ -546,44 +576,48 @@ def translate_pnp(
             return ""
         return (row[idx] or "").strip()
 
+    out_rows: list[list[str]] = []
+
+    for raw in data_rows:
+        stats["rows_in"] += 1
+        if not any((c or "").strip() for c in raw):
+            continue
+
+        ref = _cell(raw, col_ref)
+        if not ref:
+            continue
+
+        if bom_designators is not None and ref not in bom_designators:
+            stats["filtered_orphans"] += 1
+            if len(stats["filtered_orphan_samples"]) < 15:
+                stats["filtered_orphan_samples"].append(ref)
+            continue
+
+        x_mm = _coord_to_mm(_cell(raw, col_x), default_x_unit)
+        y_mm = _coord_to_mm(_cell(raw, col_y), default_y_unit)
+        if x_mm is None or y_mm is None:
+            stats["skipped_no_coords"] += 1
+            continue
+
+        layer = _normalize_layer(_cell(raw, col_layer))
+        rotation = _cell(raw, col_rot) or "0"
+
+        out_rows.append(
+            [
+                ref,
+                f"{x_mm:.4f}mm",
+                f"{y_mm:.4f}mm",
+                layer,
+                rotation,
+            ]
+        )
+        stats["rows_out"] += 1
+
+    # Written only after every row parsed, so a usage error leaves no file.
     with open(output_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(["Designator", "Mid X", "Mid Y", "Layer", "Rotation"])
-
-        for raw in data_rows:
-            stats["rows_in"] += 1
-            if not any((c or "").strip() for c in raw):
-                continue
-
-            ref = _cell(raw, col_ref)
-            if not ref:
-                continue
-
-            if bom_designators is not None and ref not in bom_designators:
-                stats["filtered_orphans"] += 1
-                if len(stats["filtered_orphan_samples"]) < 15:
-                    stats["filtered_orphan_samples"].append(ref)
-                continue
-
-            x_mm = _coord_to_mm(_cell(raw, col_x), default_x_unit)
-            y_mm = _coord_to_mm(_cell(raw, col_y), default_y_unit)
-            if x_mm is None or y_mm is None:
-                stats["skipped_no_coords"] += 1
-                continue
-
-            layer = _normalize_layer(_cell(raw, col_layer))
-            rotation = _cell(raw, col_rot) or "0"
-
-            writer.writerow(
-                [
-                    ref,
-                    f"{x_mm:.4f}mm",
-                    f"{y_mm:.4f}mm",
-                    layer,
-                    rotation,
-                ]
-            )
-            stats["rows_out"] += 1
+        writer.writerows(out_rows)
 
     return stats
 

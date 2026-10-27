@@ -116,6 +116,8 @@ Export from KiCad: Fabrication > Generate Placement Files (CSV format).
 
 Both JLCPCB and PCBWay use the same CPL format.
 
+KiCad's position CSV (`Ref,Val,Package,PosX,PosY,Rot,Side`) has no unit marker, and `kicad-cli pcb export pos` writes inches unless told `--units mm`. To convert it for JLCPCB, name the unit: `translate_bom_pnp.py pnp pos.csv -o jlc_cpl.csv --units in`; without `--units` the translator exits 2.
+
 ### Stencil Ordering
 
 Order a **framed stencil** alongside bare prototype PCBs (~$7 from JLCPCB). Generated from F.Paste gerber layer. Rigid frame for use with a stencil jig.
