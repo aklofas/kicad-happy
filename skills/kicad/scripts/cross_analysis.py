@@ -448,12 +448,18 @@ def _units_by_ref(schematic: dict) -> dict[str, list[dict]]:
     return units
 
 
-def _package_fields(units: list[dict]) -> dict[str, str]:
+def _legacy_schematic(schematic: dict) -> bool:
+    """True for analyzer output read from a legacy .sch (schematic/presentation.py)."""
+    return schematic.get('kicad_version') == '5 (legacy)'
+
+
+def _package_fields(units: list[dict], legacy: bool = False) -> dict[str, str]:
     """Value, Footprint and MPN of one reference, merged across its units as KiCad's
-    netlist merges them (kicad_core.fields.merge_unit_fields)."""
+    netlist merges them (kicad_core.fields.merge_unit_fields). In a legacy .sch a `~`
+    Value or Footprint is unassigned (KiCad 4/5 assigned footprints outside the schematic)."""
     def fields(c):
         out = {name: c.get(key) for name, key in (('Value', 'value'), ('Footprint', 'footprint'))
-               if isinstance(c.get(key), str)}
+               if isinstance(c.get(key), str) and not (legacy and c.get(key) == '~')}
         mpn = c.get('mpn')
         if isinstance(mpn, str) and mpn.strip():
             out['MPN'] = mpn
@@ -468,6 +474,7 @@ def _pair_fields(schematic: dict, pairs) -> list[tuple[str, dict, dict]]:
     path compares with its own symbol (with the other units of a multi-unit part); one paired
     by reference compares with every symbol of that reference."""
     units = _units_by_ref(schematic)
+    legacy = _legacy_schematic(schematic)
     by_path = {}
     for c in schematic.get('components', []):
         path = c.get('instance_path')
@@ -483,7 +490,7 @@ def _pair_fields(schematic: dict, pairs) -> list[tuple[str, dict, dict]]:
         else:
             key, members = ('ref', ref), units[ref]
         if key not in cache:
-            cache[key] = _package_fields(members)
+            cache[key] = _package_fields(members, legacy)
         out.append((ref, fp, cache[key]))
     return out
 

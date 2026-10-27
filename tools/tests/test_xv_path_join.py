@@ -117,6 +117,11 @@ def _xv(sch_comps, fps):
     return out
 
 
+def _xv_doc(schematic, fps):
+    return (ca.check_cross_validation(schematic, {"footprints": fps})
+            + ca.check_mpn_parity(schematic, {"footprints": fps}))
+
+
 def _rules(findings, rule):
     return [f for f in findings if f["rule_id"] == rule]
 
@@ -288,6 +293,37 @@ class DecouplingPackagesTest(unittest.TestCase):
         comps = [_c("U?", "/A", ctype="ic", pin_nets=nets), _c("U?", "/B", ctype="ic", pin_nets=nets)]
         out = ca.check_decoupling_adequacy(self._sch(comps, [{}]), None)
         self.assertIn("1 caps for 2 ICs", out[0]["summary"])
+
+
+class LegacyTildeFieldTest(unittest.TestCase):
+    """KiCad's legacy .sch loader keeps a `~` field literally, but in KiCad 4/5 projects a `~`
+    footprint means the footprint was assigned outside the schematic (CvPcb .cmp), so `~` is
+    compared as an empty field; a .kicad_sch field is not affected."""
+
+    @staticmethod
+    def _legacy(value, footprint):
+        body = ("$Comp\nL t:T R1\nU 1 1 5B000001\nP 1000 1000\n"
+                'F 0 "R1" H 1000 1000 50  0000 C CNN\n'
+                f'F 1 "{value}" H 1000 1000 50  0000 C CNN\n'
+                f'F 2 "{footprint}" H 1000 1000 50  0001 C CNN\n'
+                "\t1    1000 1000\n\t1    0    0    -1\n$EndComp\n")
+        return analyze_legacy({"t.sch": body})
+
+    def test_legacy_tilde_fields_not_compared(self):
+        sch = self._legacy("~", "~")
+        self.assertEqual([(c["value"], c["footprint"]) for c in sch["components"]], [("~", "~")])
+        out = _xv_doc(sch, [_fp("R1", "/5B000001", value="10k", lib="Resistor_SMD:R_0402_1005Metric")])
+        self.assertEqual([f for f in out if f["rule_id"] in ("XV-002", "XV-003")], [])
+
+    def test_legacy_real_fields_still_compared(self):
+        sch = self._legacy("4k7", "Resistor_SMD:R_0603_1608Metric")
+        out = _xv_doc(sch, [_fp("R1", "/5B000001", value="10k", lib="Resistor_SMD:R_0402_1005Metric")])
+        self.assertEqual(sorted(f["rule_id"] for f in out), ["XV-002", "XV-003"])
+
+    def test_modern_tilde_unaffected(self):
+        out = _xv([_c("R1", "/U1", value="~", fp="~")],
+                  [_fp("R1", "/U1", value="10k", lib="Resistor_SMD:R_0402_1005Metric")])
+        self.assertEqual(sorted(f["rule_id"] for f in out), ["XV-002", "XV-003"])
 
 
 class CrossVerifyTest(unittest.TestCase):
