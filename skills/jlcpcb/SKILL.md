@@ -181,9 +181,9 @@ python3 skills/bom/scripts/translate_bom_pnp.py bom input_bom.csv -o jlc_bom.csv
 #                                              Layer, Rotation), with mil→mm
 #                                              and TopLayer/BottomLayer
 #                                              normalization
-python3 skills/bom/scripts/translate_bom_pnp.py pnp input_cpl.csv -o jlc_cpl.csv --units in
-# (--units names the unit of bare numbers; a KiCad position CSV has no unit
-#  marker and kicad-cli exports inches by default, so omitting it is an error)
+python3 skills/bom/scripts/translate_bom_pnp.py pnp input_cpl.csv -o jlc_cpl.csv --units <in|mm>
+# (--units must name the unit the file was exported in: a KiCad position CSV
+#  has no unit marker and kicad-cli exports inches unless told --units mm)
 ```
 
 #### The 3-step PCBA upload workflow (avoids rejection)
@@ -202,7 +202,7 @@ translator's `--bom` filter mode solves this:
 2. **Translate the CPL with `--bom` filter** — intersects CPL designators
    with BOM designators, dropping orphans:
    ```bash
-   python3 skills/bom/scripts/translate_bom_pnp.py pnp input_cpl.csv -o jlc_cpl.csv --units in --bom jlc_bom.csv
+   python3 skills/bom/scripts/translate_bom_pnp.py pnp input_cpl.csv -o jlc_cpl.csv --units <in|mm> --bom jlc_bom.csv
    ```
    The returned `filtered_orphans` count plus `filtered_orphan_samples`
    list lets the operator confirm which CPL rows were dropped — sanity-
