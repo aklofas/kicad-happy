@@ -55,6 +55,14 @@ class UnitsAndDnp(unittest.TestCase):
                        + sym("Device:R", "R1", 2, "10k", "R:R_0603", "b"))
         self.assertEqual(self.line(bom, "R1")["footprint"], "")
 
+    def test_two_unit_1_symbols_sharing_a_reference_are_not_merged(self):
+        # A copied single-unit symbol keeps the reference; both are (unit 1), so the gate's
+        # placed-unit fallback must not merge them either, with or without the library entry
+        body = (sym("Device:R", "R1", 1, "10k", "", "a")
+                + sym("Device:R", "R1", 1, "10k", "R:R_0603", "b"))
+        self.assertEqual(self.line(self.bom(body), "R1")["footprint"], "")
+        self.assertEqual(self.line(self.bom(body.replace("Device:R", "Lib:Unknown")), "R1")["footprint"], "")
+
     def test_dnp_part_does_not_join_a_fitted_line(self):
         bom = self.bom(sym("Device:R", "R1", 1, "10k", "R:R_0603", "a")
                        + sym("Device:R", "R2", 1, "10k", "R:R_0603", "b", dnp=True))

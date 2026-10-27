@@ -39,14 +39,13 @@ from pathlib import Path
 
 import _core_path  # noqa: F401
 from kicad_core.diagnostics import record
+from kicad_core.fields import (merge_unit_fields, MPN_FIELD_ALIASES, MPN_FIELD_ALIASES_PRIMARY,
+                               MPN_FIELD_ALIASES_GENERIC, DIGIKEY_FIELD_ALIASES,
+                               normalize_field_name)
 from kicad_core.instances import tilde_is_empty, variant_overrides
 from kicad_core.sexp import get_value, parse
 from kicad_sexp import (find_matching_paren, direct_child, direct_value, find_sub_sheet_entries,
                         iter_placed_symbol_blocks, resolved_instance, sheet_variant, symbol_instances_of)
-
-from kicad_core.fields import (merge_unit_fields, MPN_FIELD_ALIASES, MPN_FIELD_ALIASES_PRIMARY,
-                               MPN_FIELD_ALIASES_GENERIC, DIGIKEY_FIELD_ALIASES,
-                               normalize_field_name)
 
 
 # ---------------------------------------------------------------------------
