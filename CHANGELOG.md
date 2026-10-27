@@ -71,6 +71,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Symbol fields that use KiCad text variables (`${MPN}`, `${REVISION}`, `${SHEETNAME}`, project `text_variables`, cross references such as `${U1:VALUE}`) are read with the variables resolved, as KiCad shows them; they were taken literally, so a value like `${MPN}` reached the BOM and the detectors as written. Pin and net functions (`${SHORT_NET_NAME(1)}`), page numbers (`${#}`) and `@{…}` arithmetic stay as written. (kf/A4-F3)
 - A multi-unit part's BOM line takes each field from the lowest unit that sets it, as KiCad's netlist does (the lowest unit wins when units disagree); a blank first unit no longer leaves the part without a footprint or MPN. (kf/A4-F2)
 - Symbols on a sheet marked 'exclude from BOM', 'do not populate' or 'exclude from board' (KiCad 9+) inherit those marks, through nested sheets, in the BOM, statistics and sourcing audits. A BOM line no longer mixes fitted and DNP parts. (kf/A4-F4)
+- KiCad 10 projects with several top-level sheets are analysed as one schematic: every declared sheet is read, each with its own instance references, even when one of them has sub-sheets; a declared top-level sheet is no longer reported as a sub-sheet, and a project or directory input opens the declared root sheet (a missing declared file falls back to `<project>.kicad_sch`, as KiCad repairs it) (kf/A4-F5, A6-F7)
 
 ---
 

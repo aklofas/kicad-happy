@@ -162,6 +162,50 @@ def load_kicad_pro(file_path: str) -> dict | None:
         return None
 
 
+NIL_UUID = "00000000-0000-0000-0000-000000000000"
+
+
+def declared_top_level_sheets(pro_path: str | None, pro: dict | None = None) -> list[dict]:
+    """The top-level sheets a KiCad 10 project declares (``schematic.top_level_sheets``), in
+    order, as ``{"path", "name", "uuid"}``: *path* absolute, *uuid* "" when nil or absent.
+    A declared file that does not exist becomes ``<project>.kicad_sch`` when that exists
+    (PROJECT_FILE::LoadFromFile), else it is left out; a file listed twice appears once.
+    [] when the project declares none.  *pro* is the parsed project file when the caller
+    already has it."""
+    if not pro_path:
+        return []
+    if pro is None:
+        try:
+            pro = load_jsonc(pro_path)
+        except (ValueError, OSError):
+            return []
+    sch = pro.get("schematic") if isinstance(pro, dict) else None
+    tls = sch.get("top_level_sheets") if isinstance(sch, dict) else None
+    if not isinstance(tls, list):
+        return []
+    project_dir = os.path.dirname(os.path.abspath(pro_path))
+    project_name = os.path.basename(pro_path)[:-len('.kicad_pro')]
+    sheets, seen = [], set()
+    for entry in tls:
+        if not isinstance(entry, dict) or not isinstance(entry.get("filename"), str):
+            continue
+        name = entry.get("name") if isinstance(entry.get("name"), str) else ""
+        path = os.path.abspath(os.path.join(project_dir, entry["filename"]))
+        if not os.path.isfile(path):
+            path = os.path.join(project_dir, project_name + '.kicad_sch')
+            name = project_name
+            if not os.path.isfile(path):
+                continue
+        key = os.path.normcase(os.path.realpath(path))
+        if key in seen:
+            continue
+        seen.add(key)
+        uuid = entry.get("uuid") if isinstance(entry.get("uuid"), str) else ""
+        sheets.append({"path": path, "name": name,
+                       "uuid": "" if uuid.lower() == NIL_UUID else uuid})
+    return sheets
+
+
 def is_referenced_as_child(file_path: str) -> bool:
     """Check if a .kicad_sch is referenced as a child sheet by a sibling.
 
@@ -221,6 +265,16 @@ def _root_references_target(root_sch: str, target: str) -> bool:
     return False
 
 
+def _project_roots(pro_path: str) -> list[str]:
+    """The existing root schematics of a project: its declared top-level sheets, else
+    ``<project>.kicad_sch``; absolute paths."""
+    declared = declared_top_level_sheets(pro_path)
+    if declared:
+        return [d["path"] for d in declared]
+    candidate = os.path.abspath(pro_path[:-len('.kicad_pro')] + '.kicad_sch')
+    return [candidate] if os.path.isfile(candidate) else []
+
+
 def discover_root_schematic(target_path: str) -> str | None:
     """Find the root .kicad_sch for a sub-sheet file.
 
@@ -228,7 +282,8 @@ def discover_root_schematic(target_path: str) -> str | None:
     the root or no root can be found.
 
     Strategy (KH-305, KH-306 hardened):
-    1. Same directory: look for .kicad_pro, derive root .kicad_sch.
+    1. Same directory: look for .kicad_pro, take its declared top-level
+       sheets (else <project>.kicad_sch) as root candidates.
        When multiple .kicad_pro exist (KH-306), verify each candidate's
        sheet tree references the target.
     2. Same directory: scan sibling .kicad_sch files for references.
@@ -251,19 +306,15 @@ def discover_root_schematic(target_path: str) -> str | None:
     pro_files = [f for f in entries if f.endswith('.kicad_pro')]
 
     if len(pro_files) == 1:
-        stem = pro_files[0][:-len('.kicad_pro')]
-        candidate = os.path.join(parent_dir, stem + '.kicad_sch')
-        if os.path.isfile(candidate) and os.path.abspath(candidate) != target:
-            return candidate
+        roots = _project_roots(os.path.join(parent_dir, pro_files[0]))
+        if roots and target not in roots:
+            return next((r for r in roots if _root_references_target(r, target)), roots[0])
     elif len(pro_files) > 1:
         # Multiple projects — check which one's sheet tree references us
         for pro in pro_files:
-            stem = pro[:-len('.kicad_pro')]
-            candidate = os.path.join(parent_dir, stem + '.kicad_sch')
-            if (os.path.isfile(candidate)
-                    and os.path.abspath(candidate) != target
-                    and _root_references_target(candidate, target)):
-                return candidate
+            for candidate in _project_roots(os.path.join(parent_dir, pro)):
+                if candidate != target and _root_references_target(candidate, target):
+                    return candidate
 
     # Tier 2: scan sibling .kicad_sch files for (sheet ...) blocks
     siblings = [f for f in entries
@@ -291,13 +342,21 @@ def discover_root_schematic(target_path: str) -> str | None:
             continue
         for fname in parent_entries:
             if fname.endswith('.kicad_pro'):
-                stem = fname[:-len('.kicad_pro')]
-                candidate = os.path.join(search_dir, stem + '.kicad_sch')
-                if (os.path.isfile(candidate)
-                        and _root_references_target(candidate, target)):
-                    return candidate
+                for candidate in _project_roots(os.path.join(search_dir, fname)):
+                    if _root_references_target(candidate, target):
+                        return candidate
 
     return None
+
+
+def _project_target(pro_path: str, target_ext: str) -> str:
+    """The file a project opens: its first declared top-level sheet for a schematic, else
+    ``<project><target_ext>`` beside the project file."""
+    if target_ext == '.kicad_sch':
+        declared = declared_top_level_sheets(pro_path)
+        if declared:
+            return declared[0]["path"]
+    return pro_path[:-len('.kicad_pro')] + target_ext
 
 
 def resolve_project_input(path: str, target_ext: str = '.kicad_sch') -> tuple:
@@ -334,7 +393,7 @@ def resolve_project_input(path: str, target_ext: str = '.kicad_sch') -> tuple:
             raise FileNotFoundError(
                 f"Multiple .kicad_pro files in {path}: {pro_files}")
         pro_stem = pro_files[0][:-len('.kicad_pro')]
-        candidate = os.path.join(path, pro_stem + target_ext)
+        candidate = _project_target(os.path.join(path, pro_files[0]), target_ext)
         if not os.path.isfile(candidate):
             raise FileNotFoundError(
                 f"Project '{pro_stem}' found but {pro_stem}{target_ext} "
@@ -347,7 +406,7 @@ def resolve_project_input(path: str, target_ext: str = '.kicad_sch') -> tuple:
             raise FileNotFoundError(f"Project file not found: {path}")
         pro_stem = os.path.basename(path)[:-len('.kicad_pro')]
         parent_dir = os.path.dirname(path)
-        candidate = os.path.join(parent_dir, pro_stem + target_ext)
+        candidate = _project_target(path, target_ext)
         if not os.path.isfile(candidate):
             raise FileNotFoundError(
                 f"Project '{pro_stem}' found but {pro_stem}{target_ext} "

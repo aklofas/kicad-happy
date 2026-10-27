@@ -1378,7 +1378,7 @@ def analyze_schematic(path: str, project_root: str | None = None,
     pipeline_diagnostics: list = []
     parsed = parse_all_sheets(path, root_tree=root_tree, diagnostics=pipeline_diagnostics)
 
-    merge_top_level_sheets(parsed, path, root_tree, diagnostics=pipeline_diagnostics)
+    merge_top_level_sheets(parsed, path, diagnostics=pipeline_diagnostics)
 
     all_components = parsed["components"]
     all_wires = parsed["wires"]

@@ -1306,7 +1306,8 @@ def detect_sub_sheet(root_tree: list, file_path: str = None) -> bool:
       2. sheet blocks present AND not referenced by sibling → ROOT
          (KH-304: intermediate nodes also have sheet blocks; check
          whether a sibling file references us as a child.)
-      3. .kicad_pro stem matches file stem → ROOT
+      3. .kicad_pro stem matches file stem, or the project declares the file
+         as a top-level sheet → ROOT
          (KH-306: when multiple .kicad_pro exist, only match if ANY
          stem matches; don't blindly pick the first.)
       4. hierarchical_label presence → SUB-SHEET (original heuristic)
@@ -1341,8 +1342,13 @@ def detect_sub_sheet(root_tree: list, file_path: str = None) -> bool:
             if pro_stems:
                 if file_stem in pro_stems:
                     return False  # This file IS a root
-                else:
-                    return True   # Project(s) exist but this isn't any of them
+                from kicad_core.project import declared_top_level_sheets
+                me = os.path.abspath(file_path)
+                for stem in pro_stems:
+                    pro_path = os.path.join(parent_dir, stem + '.kicad_pro')
+                    if any(d["path"] == me for d in declared_top_level_sheets(pro_path)):
+                        return False  # a top-level sheet the project declares
+                return True   # Project(s) exist but this isn't any of them
         except OSError:
             pass
 
