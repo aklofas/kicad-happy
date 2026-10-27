@@ -238,13 +238,31 @@ class CacheAgainstProjectLibrary(unittest.TestCase):
 
     PRO = "update=0\n[eeschema]\nversion=1\nLibDir=\n[eeschema/libraries]\nLibName1=proj\n"
 
-    def build(self, proj_offset):
+    def build(self, proj_offset, proj_lib=None):
         return analyze_files({
             "t.sch": HEAD + COMP.replace("proj:R", "R") + "$EndSCHEMATC\n",
             "t-cache.lib": LIB_HEAD + RES.format(name="R").replace("300", "200") + "#End Library\n",
-            "proj.lib": LIB_HEAD + RES.format(name="R").replace("300", proj_offset) + "#End Library\n",
+            "proj.lib": LIB_HEAD + (proj_lib or RES.format(name="R").replace("300", proj_offset))
+                        + "#End Library\n",
             "t.pro": self.PRO,
         })
+
+    # KiCad's check (LIB_SYMBOL::PinsConflictWith from the cache copy) runs one way: every
+    # cache pin needs a library pin with the same unit, body style, position, number, name,
+    # type and orientation; visibility, length and extra library pins do not count.
+    def test_library_superset_is_not_a_conflict(self):
+        lib = RES.format(name="R").replace("300", "200").replace(
+            "ENDDRAW", "X ~ 3 100 200 0 U 50 50 1 1 P\nX ~ 4 100 -200 0 D 50 50 1 1 P\nENDDRAW")
+        self.assertEqual(lib_diagnostics(self.build(None, proj_lib=lib)), [])
+
+    def test_visibility_and_length_only_difference_is_not_a_conflict(self):
+        lib = RES.format(name="R").replace("300", "200").replace(
+            "50 50 1 1 P\nX ~ 2", "50 50 1 1 P N\nX ~ 2").replace("-200 0 D", "-200 100 D")
+        self.assertEqual(lib_diagnostics(self.build(None, proj_lib=lib)), [])
+
+    def test_orientation_difference_is_a_conflict(self):
+        lib = RES.format(name="R").replace("300", "200").replace("200 0 U", "200 0 D")
+        self.assertEqual(len(lib_diagnostics(self.build(None, proj_lib=lib))), 1)
 
     def test_conflicting_copy_keeps_cache_pins_and_reports_once(self):
         result = self.build("300")

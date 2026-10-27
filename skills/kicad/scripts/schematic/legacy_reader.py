@@ -470,9 +470,44 @@ def _pro_libraries(base_dir: Path, stem: str, missing: list | None = None) -> li
     return found
 
 
-def _pin_signature(sym_def: dict) -> list:
-    return sorted((p["number"], p["name"], p["type"], tuple(p["offset"]), p["hidden"])
-                  for p in sym_def.get("pins") or [])
+def _legacy_lib_pin_keys(path: str) -> dict:
+    """{symbol name: set of (unit, body style, x, y, number, name, type, orientation)} read from
+    the raw `X` records of a .lib (aliases share their symbol's set)."""
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            lines = f.readlines()
+    except OSError:
+        return {}
+    out: dict = {}
+    names: list = []
+    keys: set = set()
+    for line in lines:
+        parts = line.split()
+        if not parts:
+            continue
+        if parts[0] == "DEF" and len(parts) >= 2:
+            names, keys = [parts[1].lstrip("~")], set()
+        elif parts[0] == "ALIAS" and names:
+            names.extend(a.lstrip("~") for a in parts[1:])
+        elif parts[0] == "X" and names and len(parts) >= 12:
+            # X name number x y length orientation sz sz unit body type [shape]
+            try:
+                pos = (int(parts[3]), int(parts[4]))
+            except ValueError:
+                continue
+            keys.add((parts[9], parts[10], pos, parts[2], parts[1], parts[11], parts[6]))
+        elif parts[0] == "ENDDEF" and names:
+            for name in names:
+                out[name] = keys
+            names = []
+    return out
+
+
+def _pins_conflict(cache_keys: set, lib_keys: set) -> bool:
+    """KiCad's rescue test (LIB_SYMBOL::PinsConflictWith from the cache copy, length not
+    tested): some cache pin has no library pin with the same unit, body style, position,
+    number, name, type and orientation.  Visibility and extra library pins do not count."""
+    return not cache_keys <= lib_keys
 
 
 def _cache_conflicts(sch_path: str, lib_ids) -> tuple[list[str], list[str]]:
@@ -492,14 +527,14 @@ def _cache_conflicts(sch_path: str, lib_ids) -> tuple[list[str], list[str]]:
         return [], []
     project: dict = {}
     for lib_path in lib_paths:
-        for name, sym_def in _parse_legacy_lib(str(lib_path)).items():
-            project.setdefault(name, (lib_path.stem, sym_def))
-    cache = _parse_legacy_lib(str(cache_path))
+        for name, keys in _legacy_lib_pin_keys(str(lib_path)).items():
+            project.setdefault(name, (lib_path.stem, keys))
+    cache = _legacy_lib_pin_keys(str(cache_path))
     libs, names = set(), set()
     for name in wanted:
         if name in cache and name in project:
-            lib_name, sym_def = project[name]
-            if _pin_signature(sym_def) != _pin_signature(cache[name]):
+            lib_name, keys = project[name]
+            if _pins_conflict(cache[name], keys):
                 libs.add(lib_name)
                 names.add(name)
     return sorted(libs), sorted(names)
