@@ -8,6 +8,7 @@ from pathlib import (
     Path,
 )
 from kicad_core.classify import NON_COMPONENT_TYPES
+from kicad_core.sexp import unescape_string
 from kicad_core.netnames import (
     is_ground_name as _is_ground_name,
 )
@@ -96,7 +97,7 @@ def validate_label_shapes(labels: list[dict], nets: dict) -> list[dict]:
                 "type": "inconsistent_shape",
                 "net": net_name,
                 "shapes": sorted(shapes),
-                "message": f"Net '{net_name}' has labels with different shapes: {sorted(shapes)}",
+                "message": f"Net '{unescape_string(net_name)}' has labels with different shapes: {sorted(shapes)}",
             })
 
     # Check for input-shaped labels on nets driven only by other inputs (no source)
@@ -111,7 +112,7 @@ def validate_label_shapes(labels: list[dict], nets: dict) -> list[dict]:
                 warnings.append({
                     "type": "undriven_input_label",
                     "net": net_name,
-                    "message": f"Net '{net_name}' has input-shaped label(s) but no driver pins on the net",
+                    "message": f"Net '{unescape_string(net_name)}' has input-shaped label(s) but no driver pins on the net",
                 })
 
     return warnings
@@ -1295,8 +1296,8 @@ def validate_hierarchical_labels(labels: list[dict], nets: dict,
                                  bus_elements: dict | None = None) -> dict:
     """Validate hierarchical label usage for cross-sheet connectivity.
 
-    Checks for orphaned hierarchical labels (no matching sheet pin), hierarchical
-    labels that don't connect to any net, and naming consistency.
+    Checks for hierarchical labels that don't connect to any net and naming
+    consistency.
     """
     hier_labels = [l for l in labels if l["type"] == "hierarchical_label"]
     global_labels = [l for l in labels if l["type"] == "global_label"]

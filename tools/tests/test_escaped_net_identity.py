@@ -22,6 +22,7 @@ from tools.tests.test_body_style_and_hidden_pins import net_of  # noqa: E402
 from tools.tests.test_bus_conformance import (  # noqa: E402
     CHILD_FILE_UUID, CHILD_PATH, bus, doc, label, sheet_block, tap)
 from tools.tests.test_bus_conformance import analyze as analyze_bus  # noqa: E402
+from tools.tests.test_bus_conformance import across_pin, groups, pin1_groups  # noqa: E402
 from tools.tests.test_same_sheet_power_names import (  # noqa: E402
     CHILD_SHEET_UUID, ROOT_UUID, R_LIB, Sheet, power_lib, run)
 from tools.tests.test_same_sheet_power_names import CHILD_FILE_UUID as SAME_CHILD_FILE_UUID  # noqa: E402
@@ -140,6 +141,34 @@ class SchematicIdentityTest(unittest.TestCase):
         self.assertEqual(net_of(r, "R1", "1"), "ADC2{slash}GPIO2")
         self.assertEqual(members(r, "ADC2{slash}GPIO2"), ["R1.1", "R11.1"])
 
+    def test_escaped_group_member_joins_its_label_across_a_sheet_pin(self):
+        # kicad-cli: /R{slash}W = R1.1 R11.1; /EN = R2.1 R12.1
+        g = "{R{slash}W EN}"
+        r = analyze_bus(across_pin([g], g, g, ["R{slash}W", "EN"], ["R{slash}W", "EN"]))
+        self.assertEqual(pin1_groups(r), groups({"R1", "R11"}, {"R2", "R12"}))
+        self.assertEqual(net_of(r, "R1", "1"), "R{slash}W")
+
+    def test_escaped_vector_members_stay_apart_across_a_sheet_pin(self):
+        # kicad-cli: /A{slash}B0 = R1.1; /A{slash}B1 = R2.1; /child/A{slash}B0 = R11.1;
+        # /child/A{slash}B1 = R12.1 (vector members keep the decoded name, so a tap label
+        # A{slash}B0 is not the member A/B0)
+        v = "A{slash}B[0..1]"
+        r = analyze_bus(across_pin([v], v, v, ["A{slash}B0", "A{slash}B1"],
+                                   ["A{slash}B0", "A{slash}B1"]))
+        self.assertEqual(pin1_groups(r), groups({"R1"}, {"R2"}, {"R11"}, {"R12"}))
+
+    def test_group_prefix_and_nested_vector_keep_slash_members_apart(self):
+        # kicad-cli: P{slash}Q{R{slash}W EN} taps stay on their sheet (four nets); in
+        # {A{slash}B[0..1] EN} only EN joins (R3.1 R13.1), the A{slash}B<n> taps stay apart.
+        g = "P{slash}Q{R{slash}W EN}"
+        taps = ["P{slash}Q.R{slash}W", "P{slash}Q.EN"]
+        r = analyze_bus(across_pin([g], g, g, taps, taps))
+        self.assertEqual(pin1_groups(r), groups({"R1"}, {"R2"}, {"R11"}, {"R12"}))
+        g = "{A{slash}B[0..1] EN}"
+        taps = ["A{slash}B0", "A{slash}B1", "EN"]
+        r = analyze_bus(across_pin([g], g, g, taps, taps))
+        self.assertEqual(pin1_groups(r),
+                         groups({"R1"}, {"R2"}, {"R11"}, {"R12"}, {"R3", "R13"}))
 
     def test_other_escapes_are_decoded_in_the_name(self):
         # kicad-cli: the label's shown text (UnescapeString) escaped as a net name.
@@ -227,6 +256,22 @@ class FindingTextTest(unittest.TestCase):
             for k in ("summary", "description", "recommendation"):
                 self.assertNotIn("{slash}", f.get(k) or "", (f["rule_id"], k))
         self.assertTrue(any("+5V/USB" in f["summary"] for f in hits))
+
+    def test_warning_messages_show_the_decoded_name(self):
+        # KiCad shows a net name through UnescapeString; the net field keeps the identity.
+        from types import SimpleNamespace
+        from schematic.audits import validate_label_shapes
+        from schematic.net_analysis import _check_erc_warnings
+        net = "D1{slash}TX"
+        pin = {"component": "U1", "pin_number": "1", "pin_type": "input"}
+        nets = {net: {"pins": [pin, dict(pin, component="U2")]}}
+        labels = [{"type": "global_label", "name": net, "shape": s} for s in ("input", "output")]
+        ctx = SimpleNamespace(nets=nets, is_ground=lambda n: False, is_power_net=lambda n: False)
+        warnings = validate_label_shapes(labels, nets) + _check_erc_warnings(ctx)
+        self.assertTrue(warnings)
+        for w in warnings:
+            self.assertEqual(w["net"], net)
+            self.assertIn("'D1/TX'", w["message"])
 
     def test_suppression_written_against_the_shown_name_matches(self):
         f = {"rule_id": "RS-001", "nets": ["D1{slash}TX"], "components": []}

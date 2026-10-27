@@ -1313,7 +1313,7 @@ def _check_erc_warnings(ctx: AnalysisContext) -> list:
             erc_warnings.append({
                 "type": "no_driver",
                 "net": net_name,
-                "message": f"Net '{net_name}' has input pins but no output driver",
+                "message": f"Net '{unescape_string(net_name)}' has input pins but no output driver",
                 "pins": [p for p in net_info["pins"] if not p["component"].startswith("#")],
             })
 
@@ -1327,7 +1327,7 @@ def _check_erc_warnings(ctx: AnalysisContext) -> list:
                 erc_warnings.append({
                     "type": "output_conflict",
                     "net": net_name,
-                    "message": f"Net '{net_name}' has {len(hard_outputs)} output drivers (potential conflict)",
+                    "message": f"Net '{unescape_string(net_name)}' has {len(hard_outputs)} output drivers (potential conflict)",
                     "drivers": hard_outputs,
                 })
 

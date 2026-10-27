@@ -1,9 +1,8 @@
 """Schematic hierarchy: sheet traversal and the merge of a KiCad 10 project's other
 top-level sheets.
 
-parse_all_sheets is a verbatim move from analyze_schematic.py; merge_top_level_sheets folds
-in the other declared top-level sheets of a multi-root project, each walked by
-parse_all_sheets.
+parse_all_sheets walks one top-level sheet's hierarchy; merge_top_level_sheets folds in the
+other declared top-level sheets of a multi-root project, each walked by parse_all_sheets.
 """
 from __future__ import annotations
 
@@ -118,7 +117,8 @@ def _settle_kicad6_values(symbol_instances: dict, root_path: str, root_tree: lis
 
 def _top_sheet_node(sheet_path: str, uuid: str, pro: dict | None, default_name: str) -> dict:
     """A top-level sheet of the text-variable chain: named by its .kicad_pro top_level_sheets
-    entry, else *default_name* (the project name, as kicad-cli names a lone root)."""
+    entry, else *default_name* (as kicad-cli names a lone root: the project name, or "Root"
+    when there is no .kicad_pro)."""
     name = default_name
     tls = ((pro or {}).get("schematic") or {}).get("top_level_sheets") or []
     for entry in tls if isinstance(tls, list) else ():
@@ -234,8 +234,12 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
         if top["uuid"] and str(Path(top["path"]).resolve()) == me:
             root_uuid = top["uuid"]
     root_kiid = "/" + root_uuid if root_uuid else ""
+    # Without a .kicad_pro KiCad has no project: ${PROJECTNAME} is empty and the root sheet is
+    # "Root". Instance selection still prefers the file stem.
+    has_pro = Path(project_path).with_suffix(".kicad_pro").exists()
     registry = TextVarRegistry()
-    text_shared = text_context(pro, project_name, os.path.basename(root_path), registry)
+    text_shared = text_context(pro, project_name if has_pro else "",
+                               os.path.basename(root_path), registry)
     pending = []
 
     all_components = []
@@ -252,7 +256,8 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
     # Each queue entry carries the chain of sheet files above it: a sheet that
     # names one of its own ancestors would otherwise expand forever.
     to_parse = [(str(Path(root_path).resolve()), "", (),
-                 (_top_sheet_node(root_path, root_uuid, pro, project_name),))]
+                 (_top_sheet_node(root_path, root_uuid, pro,
+                                  project_name if has_pro else "Root"),))]
     parsed = set()
     skipped = set()
 

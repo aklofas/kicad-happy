@@ -10,7 +10,7 @@ from __future__ import annotations
 from kicad_core.coords import segment_hit_iu, to_iu
 from kicad_core.diagnostics import record
 from kicad_core.model import Net
-from kicad_core.sexp import unescape_string
+from kicad_core.sexp import net_name_escape, unescape_string
 
 
 _MAX_DEPTH = 4
@@ -187,7 +187,9 @@ def expand_bus_name(name, aliases=None, _depth=0):
                 nested = expand_bus_name(am, aliases, _depth + 1)
                 sub.extend(nested if nested else [am])
         else:
-            sub = expand_bus_name(tok, aliases, _depth + 1) or [tok]
+            # A plain group member is escaped as a net name; the group prefix and a nested
+            # vector's members stay decoded, so kicad-cli joins neither to an escaped tap label.
+            sub = expand_bus_name(tok, aliases, _depth + 1) or [net_name_escape(tok)]
         for member in sub:
             members.append(f"{prefix}.{member}" if prefix else member)
     return members or None
@@ -431,9 +433,7 @@ class BusGraph:
         return list(drv["expansion"]) if drv else None
 
     def note_unresolved(self, reason, name=None):
-        # cluster_ordered() is called once per co-clustered sheet pin, so an
-        # ambiguous width is re-reported for every pin sharing the cluster —
-        # collapse to one note per distinct (reason, name) pair.
+        # One note per distinct (reason, name) pair.
         entry = {"reason": reason, "name": name}
         if entry not in self.unresolved:
             self.unresolved.append(entry)

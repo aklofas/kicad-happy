@@ -397,7 +397,8 @@ def compute_trust_summary(findings, bom=None):
 
 
 def show_decoded_names(findings):
-    """Print net names in finding text as KiCad shows them ({slash} -> /).
+    """Print net names in finding text as KiCad shows them: every brace escape token
+    in the text is decoded (UnescapeString: {slash} -> /, {space} -> ' ', ...).
 
     ``nets`` keeps the escaped identity; summary, description and
     recommendation are read by people. Mutates in place, returns the list.

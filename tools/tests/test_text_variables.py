@@ -210,5 +210,19 @@ class FieldTextVariablesTest(unittest.TestCase):
         self.assertEqual(lines, [(("J1",), "PartA"), (("J2",), "PartB")])
 
 
+class NoProjectFileTest(unittest.TestCase):
+    def test_project_and_root_sheet_names_without_a_kicad_pro(self):
+        # kicad-cli 10.0.6, no nopro.kicad_pro beside the file: P=|S=Root|F=nopro.kicad_sch|SP=/
+        uid = _Ids()
+        value = "P=${PROJECTNAME}|S=${SHEETNAME}|F=${FILENAME}|SP=${SHEETPATH}"
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "nopro.kicad_sch")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(_doc(ROOT_UUID, [_sym(uid, "R1", value, "/" + ROOT_UUID)], ""))
+            with redirect_stderr(StringIO()):
+                parsed = parse_all_sheets(path)
+        self.assertEqual(parsed["components"][0]["value"], "P=|S=Root|F=nopro.kicad_sch|SP=/")
+
+
 if __name__ == "__main__":
     unittest.main()
