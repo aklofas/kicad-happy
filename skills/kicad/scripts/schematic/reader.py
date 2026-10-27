@@ -12,6 +12,7 @@ from kicad_core.sexp import (find_all, find_first, find_deep, get_value, get_pro
                              get_properties, get_at, has_flag, parse_file)
 from kicad_core.classify import classify_component, classify_connector, classify_ic_function
 from kicad_core.fields import DIGIKEY_FIELD_ALIASES, pick_field, pick_mpn
+from kicad_core.instances import inline_instances, resolve_instance, tilde_is_empty
 from kicad_core.model import Component, Pin, SheetData
 
 
@@ -51,6 +52,7 @@ def extract_lib_symbols(root: list) -> dict:
     lib_symbols_node = find_first(root, "lib_symbols")
     if not lib_symbols_node:
         return {}
+    tilde_empty = tilde_is_empty(get_value(root, "version"))
 
     def _parse_single_pin(pin):
         """Parse a single pin S-expression node into a dict."""
@@ -118,10 +120,10 @@ def extract_lib_symbols(root: list) -> dict:
             all_pins = [_parse_single_pin(pin) for pin in find_deep(sym, "pin") if len(pin) >= 3]
 
         # Get symbol properties
-        desc = get_property(sym, "Description") or ""
-        ki_keywords = get_property(sym, "ki_keywords") or ""
-        ki_fp_filters = get_property(sym, "ki_fp_filters") or ""
-        lib_value = get_property(sym, "Value") or ""
+        desc = _field(get_property(sym, "Description"), tilde_empty)
+        ki_keywords = _field(get_property(sym, "ki_keywords"), tilde_empty)
+        ki_fp_filters = _field(get_property(sym, "ki_fp_filters"), tilde_empty)
+        lib_value = _field(get_property(sym, "Value"), tilde_empty)
 
         # Check for (power) flag — marks this as a power symbol regardless of lib name
         # KiCad 8+ writes (power global) or (power local); pre-8.0 writes bare (power)
@@ -286,6 +288,7 @@ def extract_symbol_instances(root: list) -> dict:
     si_node = find_first(root, "symbol_instances")
     if not si_node:
         return result
+    tilde_empty = tilde_is_empty(get_value(root, "version"))
     for path_node in si_node[1:]:
         if not isinstance(path_node, list) or path_node[0] != "path":
             continue
@@ -301,21 +304,44 @@ def extract_symbol_instances(root: list) -> dict:
         result[path_str] = {
             "reference": ref,
             "unit": unit,
+            "value": _field(get_value(path_node, "value"), tilde_empty),
+            "footprint": _field(get_value(path_node, "footprint"), tilde_empty),
         }
     return result
 
 
+def _field(text, tilde_empty: bool) -> str:
+    """A field's text, "" when absent; "~" is empty in files older than 20250318."""
+    if text is None or (tilde_empty and text == "~"):
+        return ""
+    return text
+
+
 def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
-                       symbol_instances: dict | None = None) -> list[Component]:
+                       symbol_instances: dict | None = None, *,
+                       instance_path: str | None = None, root_kiid: str = "",
+                       project_name: str = "") -> list[Component]:
     """Extract all placed component instances.
 
-    If instance_uuid is provided, remap references from the (instances) block
-    for the specified sheet instance (supports multi-instance hierarchical sheets).
+    With *instance_path* (the sheet's full KIID path, root sheet uuid first) each symbol's
+    reference and unit come from the instance KiCad 10 uses on that path (see
+    kicad_core.instances.resolve_instance); candidates are the root's KiCad 6
+    *symbol_instances* entries for the symbol (keyed without the root uuid, so *root_kiid* is
+    prefixed) and its inline (instances).  The KiCad 6 entry for this exact path also sets the
+    symbol's value and footprint when non-empty; an inline instance's value / footprint sets
+    them whichever path carries it.  The caller passes *symbol_instances* only for roots older
+    than 20221002, already settled across repeated sheets (schematic.hierarchy).
 
-    If symbol_instances is provided (from root schematic), use it as a fallback
-    when a symbol has no inline (instances) block (common in older KiCad projects).
+    Without *instance_path*, *instance_uuid* remaps references from the inline instance whose
+    path contains it, falling back to *symbol_instances*.
     """
     components = []
+    tilde_empty = tilde_is_empty(get_value(root, "version"))
+    si_by_uuid: dict = {}
+    if instance_path is not None and symbol_instances:
+        for si_path, entry in symbol_instances.items():
+            sheet_path, _, sym_uuid = si_path.rpartition("/")
+            si_by_uuid.setdefault(sym_uuid.lower(), []).append((sheet_path, entry))
 
     # Placed symbols are direct children of root with (symbol (lib_id ...))
     for sym in root:
@@ -350,8 +376,10 @@ def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
         except (ValueError, TypeError):
             body_style = 1
 
-        ref = get_property(sym, "Reference") or ""
+        ref = _field(get_property(sym, "Reference"), tilde_empty)
         value = get_property(sym, "Value")
+        if tilde_empty and value == "~":
+            value = ""
         # KH-088: Eagle-imported schematics often have NO instance Value property.
         # Fall back to the lib_symbol's Value property only when the property is
         # missing entirely (None), not when it exists but is empty string (KH-230).
@@ -360,15 +388,35 @@ def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
             value = sym_def_val.get("value", "") or ""
         else:
             value = value or ""
-        footprint = get_property(sym, "Footprint") or ""
-        datasheet = get_property(sym, "Datasheet") or ""
-        description = get_property(sym, "Description") or ""
+        footprint = _field(get_property(sym, "Footprint"), tilde_empty)
+        datasheet = _field(get_property(sym, "Datasheet"), tilde_empty)
+        description = _field(get_property(sym, "Description"), tilde_empty)
         uuid_val = get_value(sym, "uuid") or ""
 
-        # Remap reference from (instances) block for multi-instance sheets.
-        # Two sources: inline (instances) in each symbol (KiCad 7+), or
-        # centralized (symbol_instances) in the root schematic (KiCad 6/older projects).
-        if instance_uuid:
+        if instance_path is not None:
+            candidates = []
+            here = instance_path.rstrip("/").lower()
+            for sheet_path, entry in si_by_uuid.get(uuid_val.lower(), ()) if uuid_val else ():
+                candidates.append({"path": root_kiid + sheet_path, "project": "",
+                                   "reference": entry["reference"], "unit": entry["unit"]})
+                if (root_kiid + sheet_path).rstrip("/").lower() == here:
+                    if entry["value"]:
+                        value = entry["value"]
+                    if entry["footprint"]:
+                        footprint = entry["footprint"]
+            for entry in inline_instances(sym, tilde_empty):
+                candidates.append(entry)
+                if "value" in entry:
+                    value = entry["value"]
+                if "footprint" in entry:
+                    footprint = entry["footprint"]
+            hit = resolve_instance(candidates, instance_path, project_name)
+            if hit is not None:
+                if hit["reference"]:
+                    ref = hit["reference"]
+                if hit["unit"]:
+                    unit_num = hit["unit"]
+        elif instance_uuid:
             remapped = False
             instances_node = find_first(sym, "instances")
             if instances_node:
@@ -405,6 +453,8 @@ def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
                     if si_entry.get("unit"):
                         unit_num = si_entry["unit"]
         _props = get_properties(sym)
+        if tilde_empty:
+            _props = {k: _field(v, True) for k, v in _props.items()}
         mpn = pick_mpn(_props)
         manufacturer = pick_field(_props, _MANUFACTURER_KEYS)
         digikey = pick_field(_props, DIGIKEY_FIELD_ALIASES)
@@ -715,7 +765,9 @@ def extract_title_block(root: list) -> dict:
 
 
 def parse_single_sheet(path: str, instance_uuid: str = "",
-                       symbol_instances: dict | None = None) -> SheetData:
+                       symbol_instances: dict | None = None, *,
+                       instance_path: str | None = None, root_kiid: str = "",
+                       project_name: str = "") -> SheetData:
     """Parse a single .kicad_sch file and return raw extracted data.
 
     If instance_uuid is provided, remap component references from the
@@ -724,13 +776,17 @@ def parse_single_sheet(path: str, instance_uuid: str = "",
     If symbol_instances is provided, use it as fallback for remapping when
     inline (instances) blocks are absent.
 
+    instance_path / root_kiid / project_name: see extract_components.
+
     Returns: a SheetData (root, components, wires, labels, junctions, no_connects,
               sub_sheet_paths, lib_symbols, text_annotations, bus_elements, title_block)
     """
     root = parse_file(path)
     lib_symbols = extract_lib_symbols(root)
     components = extract_components(root, lib_symbols, instance_uuid=instance_uuid,
-                                    symbol_instances=symbol_instances)
+                                    symbol_instances=symbol_instances,
+                                    instance_path=instance_path, root_kiid=root_kiid,
+                                    project_name=project_name)
     wires = extract_wires(root)
     labels = extract_labels(root)
     junctions = extract_junctions(root)

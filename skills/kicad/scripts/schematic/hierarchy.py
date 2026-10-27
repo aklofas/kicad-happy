@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 from kicad_core.diagnostics import record
-from kicad_core.sexp import find_first, get_value, parse_file
+from kicad_core.sexp import find_all, find_first, get_at, get_property, get_value, parse_file
 from kicad_core.project import empty_input_error, load_kicad_pro
 from schematic.reader import (
     extract_power_symbols,
@@ -22,6 +22,8 @@ from schematic.reader import (
 
 # KiCad renames legacy power symbols on load when the root file predates this version.
 _POWER_RENAME_BEFORE = 20230221
+# KiCad applies the root's (symbol_instances) only when the root file predates this version.
+_SYMBOL_INSTANCES_BEFORE = 20221002
 
 
 def _renames_legacy_power_symbols(file_version) -> bool:
@@ -30,6 +32,82 @@ def _renames_legacy_power_symbols(file_version) -> bool:
         return int(file_version) < _POWER_RENAME_BEFORE
     except (TypeError, ValueError):
         return False
+
+
+def _applies_symbol_instances(file_version) -> bool:
+    """True when the root schematic's version is older than 20221002 (unreadable: True)."""
+    try:
+        return int(file_version) < _SYMBOL_INSTANCES_BEFORE
+    except (TypeError, ValueError):
+        return True
+
+
+def _sheet_list(root_path: str, root_tree: list) -> dict:
+    """Sheet path (below the root, lowercase) -> (index, sheet file) in KiCad's sheet list as
+    built when KiCad 6 instance data is applied: depth first, child sheets sorted by position,
+    then uuid (SCH_SHEET_LIST::BuildSheetList, SCH_SCREEN::GetSheets); page numbers are not
+    set yet."""
+    order: dict = {}
+    trees = {}
+
+    def walk(tree, file_path, path, ancestors):
+        order.setdefault(path.lower(), (len(order), file_path))
+        kids = []
+        for sheet in find_all(tree, "sheet"):
+            fname = get_property(sheet, "Sheetfile") or get_property(sheet, "Sheet file")
+            at = get_at(sheet) or (0, 0, 0)
+            kids.append((at[0], at[1], (get_value(sheet, "uuid") or "").lower(), fname))
+        for _x, _y, suuid, fname in sorted(kids, key=lambda k: k[:3]):
+            if not fname:
+                continue
+            sub = str((Path(file_path).parent / fname).resolve())
+            if sub in ancestors or not os.path.isfile(sub):
+                continue
+            if sub not in trees:
+                try:
+                    trees[sub] = parse_file(sub)
+                except Exception:
+                    continue
+            walk(trees[sub], sub, path + "/" + suuid, ancestors | {sub})
+
+    root_abs = str(Path(root_path).resolve())
+    walk(root_tree, root_abs, "", {root_abs})
+    return order
+
+
+def _settle_kicad6_values(symbol_instances: dict, root_path: str, root_tree: list) -> dict:
+    """KiCad 6 entries as KiCad applies them.  Each entry's non-empty value / footprint
+    overwrites the field of the one symbol it names, sheet by sheet in sheet-list order, so a
+    symbol on a repeated sheet shows the last sheet's value on every sheet.  Only when one
+    symbol uuid carries different values is the sheet list walked: entries are then put in that
+    order and each takes the last non-empty value / footprint of its (sheet file, uuid) group."""
+    groups: dict = {}
+    for si_path, entry in symbol_instances.items():
+        values, footprints = groups.setdefault(si_path.rpartition("/")[2].lower(), (set(), set()))
+        if entry.get("value"):
+            values.add(entry["value"])
+        if entry.get("footprint"):
+            footprints.add(entry["footprint"])
+    if all(len(v) <= 1 and len(f) <= 1 for v, f in groups.values()):
+        return symbol_instances
+    sheets = _sheet_list(root_path, root_tree)
+    last = (len(sheets), None)
+    ordered = sorted(symbol_instances.items(),
+                     key=lambda kv: sheets.get(kv[0].rpartition("/")[0].lower(), last)[0])
+    winners: dict = {}
+    for si_path, entry in ordered:
+        sheet_path, _, sym_uuid = si_path.rpartition("/")
+        win = winners.setdefault((sheets.get(sheet_path.lower(), last)[1], sym_uuid.lower()),
+                                 {"value": "", "footprint": ""})
+        for key in ("value", "footprint"):
+            if entry.get(key):
+                win[key] = entry[key]
+    settled = {}
+    for si_path, entry in ordered:
+        sheet_path, _, sym_uuid = si_path.rpartition("/")
+        settled[si_path] = dict(entry, **winners[(sheets.get(sheet_path.lower(), last)[1],
+                                                  sym_uuid.lower())])
+    return settled
 
 
 def namespace_hierarchical_labels(labels: list[dict], inst_path: str) -> None:
@@ -98,6 +176,15 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
 
     generator_version = get_value(root_tree, "generator_version") or "unknown"
     file_version = get_value(root_tree, "version") or "unknown"
+    if not _applies_symbol_instances(file_version):
+        root_symbol_instances = {}
+    elif root_symbol_instances:
+        root_symbol_instances = _settle_kicad6_values(root_symbol_instances, root_path,
+                                                      root_tree)
+    # Instance paths start with the root sheet's uuid, which is the root file's (uuid).
+    root_uuid = get_value(root_tree, "uuid") or ""
+    root_kiid = "/" + root_uuid if root_uuid else ""
+    project_name = Path(root_path).stem
 
     all_components = []
     all_wires = []
@@ -131,7 +218,9 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
             continue
 
         sd = parse_single_sheet(sheet_path, instance_uuid=inst_path,
-                                symbol_instances=root_symbol_instances)
+                                symbol_instances=root_symbol_instances,
+                                instance_path=root_kiid + inst_path, root_kiid=root_kiid,
+                                project_name=project_name)
         (root, components, wires, labels, junctions, no_connects,
          sub_sheets, lib_symbols, text_annotations, bus_elements, title_block) = (
             sd.root, sd.components, sd.wires, sd.labels, sd.junctions, sd.no_connects,
