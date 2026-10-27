@@ -1,8 +1,9 @@
 """PCB reader: .kicad_pcb extraction — layers, setup, nets, footprints, tracks,
 vias, zones, outline, silkscreen, metadata, dimensions, groups, net classes.
 
-Verbatim moves from analyze_pcb.py; no behaviour change. Reads only: the KiCad-10 synthetic
-net map is built here (_build_net_mapping → PcbReaderState) and applied by pcb.pipeline.read_board.
+canonicalize_copper_layers rewrites renamed copper layers in the parsed tree to KiCad's
+canonical names before any extractor runs; the rest only reads. The KiCad-10 synthetic net map
+is built here (_build_net_mapping → PcbReaderState) and applied by pcb.pipeline.read_board.
 """
 from __future__ import annotations
 

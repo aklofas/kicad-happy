@@ -1,6 +1,6 @@
 """Legacy schematic reader: KiCad 5 .sch / .lib → component and wire records.
 
-Verbatim moves from analyze_schematic.py; no behaviour change.
+Also walks a legacy sheet hierarchy for the BOM path (walk_legacy_sheets, read_legacy_symbols).
 """
 from __future__ import annotations
 
