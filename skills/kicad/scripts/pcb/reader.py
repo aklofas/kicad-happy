@@ -916,9 +916,88 @@ def extract_copper_graphics(root: list) -> list[dict]:
     return out
 
 
+def _front_back(node: list) -> tuple[bool | None, bool | None]:
+    """Front/back flags of a (tenting ...) node as KiCad 10 parses them; None = not set.
+
+    Flat form `(tenting front back)`: a named side is set, `none` clears both back to
+    "not set". Nested form `(tenting (front yes|no|none) (back ...))`."""
+    front = back = None
+    items = node[1:]
+    if all(isinstance(t, str) for t in items):
+        for token in items:
+            if token == "front":
+                front = True
+            elif token == "back":
+                back = True
+            elif token == "none":
+                front = back = None
+        return front, back
+    for item in items:
+        if isinstance(item, list) and len(item) >= 2 and item[0] in ("front", "back"):
+            value = {"yes": True, "no": False}.get(item[1])
+            if item[0] == "front":
+                front = value
+            else:
+                back = value
+    return front, back
+
+
+def board_via_tenting(root: list) -> tuple[bool, bool]:
+    """Board default via tenting (front, back): tented unless the setup says otherwise.
+
+    A setup (tenting ...) sets both sides, a side it does not name is untented; a KiCad <= 8
+    pcbplotparams (viasonmask X) sets both to not X; the later entry wins."""
+    front = back = True
+    for child in (find_first(root, "setup") or [])[1:]:
+        if not isinstance(child, list) or not child:
+            continue
+        if child[0] == "tenting":
+            f, b = _front_back(child)
+            front, back = bool(f), bool(b)
+        elif child[0] == "pcbplotparams":
+            on_mask = get_value(child, "viasonmask")
+            if on_mask in ("true", "yes", "false", "no"):
+                front = back = on_mask in ("false", "no")
+    return front, back
+
+
+def _legacy_via_drills(root: list) -> tuple[dict[str, tuple[float, float]], tuple[float, float]]:
+    """KiCad 5 net-class via drills: ({net_name: (via_drill, uvia_drill)}, default).
+
+    Setup (via_drill)/(uvia_drill) set the Default class and a (net_class Default ...)
+    replaces it; a file with no (net_class) keeps neither (KiCad takes the project's classes).
+    A value a class does not give is KiCad's NETCLASS default, 0.3 / 0.1 mm."""
+    def _mm(node, key, fallback):
+        value = get_value(node, key)
+        try:
+            return float(value) if value else fallback
+        except ValueError:
+            return fallback
+
+    classes = find_all(root, "net_class")
+    if not classes:
+        return {}, (0.3, 0.1)
+    setup = find_first(root, "setup") or []
+    default = (_mm(setup, "via_drill", 0.3), _mm(setup, "uvia_drill", 0.1))
+    by_net: dict[str, tuple[float, float]] = {}
+    for nc in classes:
+        if len(nc) < 2:
+            continue
+        drills = (_mm(nc, "via_drill", 0.3), _mm(nc, "uvia_drill", 0.1))
+        if nc[1] == "Default":
+            default = drills
+        for item in find_all(nc, "add_net"):
+            if len(item) > 1:
+                by_net.setdefault(raw_text(item[1]), drills)
+    return by_net, default
+
+
 def extract_vias(root: list) -> dict:
     """Extract vias with statistics."""
     vias = []
+    board_tenting = board_via_tenting(root)
+    class_drills = None
+    net_names: dict[int, str] = {}
     for via in find_all(root, "via"):
         at = get_at(via)
         size = get_value(via, "size")
@@ -953,13 +1032,25 @@ def extract_vias(root: list) -> dict:
             via_info["_net_name"] = net
         if layers_node and len(layers_node) > 1:
             via_info["layers"] = [l for l in layers_node[1:] if isinstance(l, str)]
+        # KiCad 5 omitted the drill of a via using its net class's drill.
+        if not via_info["drill"]:
+            if class_drills is None:
+                class_drills = _legacy_via_drills(root)
+                net_names = extract_nets(root)
+            name = via_info.get("_net_name") or net_names.get(via_info["net"], "")
+            via_drill, uvia_drill = class_drills[0].get(name, class_drills[1])
+            via_info["drill"] = uvia_drill if via_type == "micro" else via_drill
         # Free (unanchored) vias — typically stitching or thermal
         if get_value(via, "free") == "yes":
             via_info["free"] = True
-        # Via tenting
+        # Tented sides: the via's own setting, else the board default. KiCad 10 reads a
+        # KiCad 9 via (tenting none) as "board default", not as untented.
         tenting = find_first(via, "tenting")
-        if tenting and len(tenting) > 1:
-            via_info["tenting"] = [t for t in tenting[1:] if isinstance(t, str)]
+        own = _front_back(tenting) if tenting else (None, None)
+        sides = [side for side, mine, board in zip(("front", "back"), own, board_tenting)
+                 if (board if mine is None else mine)]
+        if sides:
+            via_info["tenting"] = sides
 
         vias.append(via_info)
 
