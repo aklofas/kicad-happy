@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """BOM Manager — analyze KiCad schematic BOM properties and manage BOM files.
 
-Reads KiCad 6+ .kicad_sch files, detects the project's part number convention,
-classifies existing part numbers by distributor, identifies gaps, and outputs a
+Reads KiCad 6+ .kicad_sch files and KiCad 5 .sch files (read only), detects the
+project's part number convention, classifies existing part numbers by distributor, identifies gaps, and outputs a
 structured report. Can also export/merge BOM tracking CSV files.
 
 Usage:
@@ -642,12 +642,29 @@ def _sheet_list_order(sheets: list[dict]) -> list[int]:
     return order
 
 
+def _legacy_symbols(input_path: Path, recursive: bool) -> list[dict]:
+    """Symbols of a KiCad 5 .sch project in the shape _placed_symbols returns. KiCad 5 has no
+    in_bom or dnp flag; a "~" field is empty."""
+    import schematic.legacy_reader as legacy
+    out = []
+    for rec in legacy.read_legacy_symbols(str(input_path), recursive=recursive):
+        props = {name: "" if text == "~" else text for name, text in rec["fields"].items()}
+        ref = rec["reference"]
+        out.append({"reference": ref, "type": classify_reference(ref), "in_bom": True,
+                    "dnp": is_dnp("", props), "unit": rec["unit"], "uuid": rec["uuid"],
+                    "raw_properties": props, "source_file": rec["source_file"]})
+    return out
+
+
 def analyze(
     input_path: Path,
     recursive: bool = False,
     group_by: str = 'value+footprint',
 ) -> dict:
     """Analyze a KiCad schematic and return full BOM report."""
+    if input_path.suffix == ".sch":
+        all_symbols = _legacy_symbols(input_path, recursive)
+        return _report(input_path, all_symbols, sorted({s["source_file"] for s in all_symbols}), group_by)
     texts: dict[Path, str] = {}
 
     def read(path: Path) -> str:
@@ -725,6 +742,10 @@ def analyze(
                 sym["dnp"] = True
             all_symbols.append(sym)
 
+    return _report(input_path, all_symbols, [str(f) for f in files_to_parse], group_by)
+
+
+def _report(input_path: Path, all_symbols: list[dict], schematic_files: list[str], group_by: str) -> dict:
     # Detect convention
     convention = detect_convention(all_symbols)
 
@@ -737,7 +758,7 @@ def analyze(
     active_parts = [e for e in real_parts if not e["dnp"]]
 
     stats = {
-        "schematic_files": [str(f) for f in files_to_parse],
+        "schematic_files": schematic_files,
         "total_bom_lines": len(real_parts),
         "total_components": sum(e["quantity"] for e in real_parts),
         "dnp_lines": len(dnp_parts),
@@ -1325,14 +1346,14 @@ def main():
 
     # analyze subcommand
     p_analyze = subparsers.add_parser("analyze", help="Analyze schematic BOM properties")
-    p_analyze.add_argument("schematic", type=Path, help="Path to .kicad_sch file")
+    p_analyze.add_argument("schematic", type=Path, help="Path to .kicad_sch (or KiCad 5 .sch, read only) file")
     p_analyze.add_argument("--json", action="store_true", help="Output as JSON")
     p_analyze.add_argument("--gaps-only", action="store_true", help="Show only parts with missing fields")
     p_analyze.add_argument("--recursive", action="store_true", help="Include hierarchical sub-sheets")
 
     # export subcommand
     p_export = subparsers.add_parser("export", help="Export BOM tracking CSV")
-    p_export.add_argument("schematic", type=Path, help="Path to .kicad_sch file")
+    p_export.add_argument("schematic", type=Path, help="Path to .kicad_sch (or KiCad 5 .sch, read only) file")
     p_export.add_argument("-o", "--output", type=Path, required=True, help="Output CSV path")
     p_export.add_argument("--recursive", action="store_true", help="Include hierarchical sub-sheets")
     p_export.add_argument("--add-distributor", action="append", default=[],
@@ -1352,7 +1373,7 @@ def main():
     p_order.add_argument("--json", action="store_true", help="Output result as JSON")
 
     # Backwards compat: if first arg is a .kicad_sch file with no subcommand, assume "analyze"
-    if len(sys.argv) > 1 and sys.argv[1].endswith(".kicad_sch"):
+    if len(sys.argv) > 1 and sys.argv[1].endswith((".kicad_sch", ".sch")):
         sys.argv.insert(1, "analyze")
 
     args = parser.parse_args()
@@ -1397,8 +1418,8 @@ def main():
         if not args.schematic.exists():
             print(f"Error: {args.schematic} not found", file=sys.stderr)
             sys.exit(1)
-        if args.schematic.suffix != ".kicad_sch":
-            print(f"Error: expected a .kicad_sch file, got {args.schematic.suffix}", file=sys.stderr)
+        if args.schematic.suffix not in (".kicad_sch", ".sch"):
+            print(f"Error: expected a .kicad_sch or .sch file, got {args.schematic.suffix}", file=sys.stderr)
             sys.exit(1)
 
         if args.command == "analyze":

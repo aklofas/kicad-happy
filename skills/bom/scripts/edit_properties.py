@@ -323,7 +323,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="Edit KiCad schematic symbol properties"
     )
-    parser.add_argument("schematic", type=Path, help="Path to .kicad_sch file")
+    parser.add_argument("schematic", type=Path, help="Path to .kicad_sch file (KiCad 5 .sch is rejected)")
     parser.add_argument(
         "--updates", type=Path,
         help="Path to JSON file with updates (or pipe via stdin)",
@@ -340,6 +340,10 @@ def main():
 
     if not args.schematic.exists():
         print(f"Error: {args.schematic} not found", file=sys.stderr)
+        sys.exit(1)
+    if args.schematic.suffix == ".sch":
+        print("Error: KiCad 5 .sch files are read only; edit properties in a .kicad_sch file",
+              file=sys.stderr)
         sys.exit(1)
 
     # Check for KiCad lock file — indicates schematic is open in KiCad

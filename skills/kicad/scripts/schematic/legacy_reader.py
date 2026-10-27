@@ -4,6 +4,7 @@ Verbatim moves from analyze_schematic.py; no behaviour change.
 """
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from kicad_core.sexp import find_all, parse_file
 from kicad_core.coords import to_iu
 from kicad_core.values import _MIL_MM, snap_to_mil_grid as _snap_mil
 from kicad_core.classify import classify_component
+from kicad_core.diagnostics import record
 from kicad_core.fields import (
     MPN_FIELD_ALIASES_PRIMARY, MPN_FIELD_ALIASES_GENERIC,
     DIGIKEY_FIELD_ALIASES, normalize_field_name,
@@ -795,6 +797,74 @@ def _snap_pins_to_wires(components: list[dict], wires: list[dict],
 _AR_LINE = re.compile(r'AR\s+Path="([^"]*)"\s+Ref="([^"]*)"\s+Part="([^"]*)"')
 
 
+_STANDARD_FIELDS = ("Reference", "Value", "Footprint", "Datasheet")
+
+
+def apply_instance_reference(components: list[dict], inst_path: str) -> None:
+    """Pop each component's ``_ar`` records and take the reference and unit of the sheet
+    instance *inst_path*. KiCad 5 keys them by the sheet timestamp path without the root,
+    then the symbol's own timestamp."""
+    for c in components:
+        ar = c.pop("_ar", None)
+        if ar and inst_path:
+            hit = ar.get((inst_path + "/" + c.get("uuid", "")).upper())
+            if hit:
+                c["reference"] = hit[0]
+                try:
+                    c["unit"] = int(hit[1])
+                except ValueError:
+                    pass
+
+
+def walk_legacy_sheets(path: str, diagnostics: list, source: str):
+    """Yield ``(sheet_path, inst_path, parsed)`` for every instance of every sheet below
+    the root, breadth first; *parsed* is :func:`_parse_legacy_single_sheet`'s tuple. A sheet
+    naming one of its own ancestors is skipped with one diagnostic."""
+    to_parse = [(str(Path(path).resolve()), "", ())]
+    parsed = set()
+    skipped = set()
+    while to_parse:
+        sheet_path, inst_path, ancestors = to_parse.pop(0)
+        if (sheet_path, inst_path) in parsed:
+            continue
+        parsed.add((sheet_path, inst_path))
+        result = _parse_legacy_single_sheet(sheet_path)
+        yield sheet_path, inst_path, result
+        chain = ancestors + (sheet_path,)
+        for sub_path, sub_ts in result[5]:
+            if sub_path in chain:
+                if sub_path not in skipped:
+                    skipped.add(sub_path)
+                    record(diagnostics, source,
+                           ValueError(f"sheet file {os.path.basename(sheet_path)} includes its own "
+                                      f"ancestor {os.path.basename(sub_path)}"),
+                           "recursive sheet skipped")
+                continue
+            child_path = inst_path + "/" + sub_ts if sub_ts else inst_path
+            if (sub_path, child_path) not in parsed:
+                to_parse.append((sub_path, child_path, chain))
+
+
+def read_legacy_symbols(path: str, recursive: bool = True) -> list[dict]:
+    """One record per placed symbol of every sheet instance: reference and unit as the
+    instance's ``AR`` record sets them, ``lib_id``, ``uuid``, ``fields`` (name -> text,
+    file order, empty ones included) and ``source_file``. With *recursive* False only
+    the root sheet."""
+    out = []
+    for sheet_path, inst_path, parsed in walk_legacy_sheets(path, [], "schematic.legacy_reader.read_legacy_symbols"):
+        if not recursive and inst_path:
+            continue
+        components = parsed[0]
+        apply_instance_reference(components, inst_path)
+        for c in components:
+            fields = dict(c.get("_fields", {}))
+            fields["Reference"] = c["reference"]
+            out.append({"reference": c["reference"], "unit": c.get("unit", 1),
+                        "lib_id": c["lib_id"], "uuid": c.get("uuid", ""),
+                        "fields": fields, "source_file": sheet_path})
+    return out
+
+
 def _parse_legacy_single_sheet(path: str) -> tuple:
     """Parse a single legacy .sch file and return raw extracted data.
 
@@ -879,6 +949,12 @@ def _parse_legacy_single_sheet(path: str) -> tuple:
                     if fq:
                         field_num = int(fm.group(1))
                         field_val, field_end = fq
+                        if field_num < len(_STANDARD_FIELDS):
+                            comp.setdefault("_fields", {})[_STANDARD_FIELDS[field_num]] = field_val
+                        else:
+                            at = cl.find('"', field_end)
+                            nm = _quoted(cl, at) if at >= 0 else None
+                            comp.setdefault("_fields", {})[nm[0] if nm else f"Field{field_num}"] = field_val
                         if field_num == 0:
                             comp["reference"] = field_val
                         elif field_num == 1:

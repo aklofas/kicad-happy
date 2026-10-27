@@ -41,7 +41,8 @@ from schematic.legacy_reader import (
     _cache_conflicts,
     _resolve_legacy_libs,
     _snap_pins_to_wires,
-    _parse_legacy_single_sheet,
+    apply_instance_reference,
+    walk_legacy_sheets,
 )
 from kicad_types import (
     AnalysisContext,
@@ -930,21 +931,9 @@ def analyze_legacy_schematic(path: str, analysis_dir: str | Path | None = None) 
     all_sch_lines = {}  # path -> LIBS: lines for lib resolution
     parse_diagnostics: list = []
 
-    # Each queue entry carries the chain of sheet files above it: a sheet that
-    # names one of its own ancestors would otherwise expand forever.
-    to_parse = [(str(Path(path).resolve()), "", ())]
-    parsed = set()
-    skipped = set()
-
-    while to_parse:
-        sheet_path, inst_path, ancestors = to_parse.pop(0)
-        parse_key = (sheet_path, inst_path)
-        if parse_key in parsed:
-            continue
-        parsed.add(parse_key)
-
-        components, wires, labels, junctions, no_connects, sub_sheets, lib_lines = \
-            _parse_legacy_single_sheet(sheet_path)
+    for sheet_path, inst_path, parsed_sheet in walk_legacy_sheets(
+            path, parse_diagnostics, "schematic.pipeline.analyze_legacy_schematic"):
+        components, wires, labels, junctions, no_connects, sub_sheets, lib_lines = parsed_sheet
 
         all_sch_lines[sheet_path] = lib_lines
 
@@ -952,6 +941,7 @@ def analyze_legacy_schematic(path: str, analysis_dir: str | Path | None = None) 
         sheet_idx = len(sheets_parsed)
         for c in components:
             c["_sheet"] = sheet_idx
+            c.pop("_fields", None)
         for w in wires:
             w["_sheet"] = sheet_idx
         for lbl in labels:
@@ -961,18 +951,7 @@ def analyze_legacy_schematic(path: str, analysis_dir: str | Path | None = None) 
         for nc in no_connects:
             nc["_sheet"] = sheet_idx
 
-        # KiCad 5 keys a symbol's per-instance reference by the sheet timestamp
-        # path without the root, then the symbol's own timestamp.
-        for c in components:
-            ar = c.pop("_ar", None)
-            if ar and inst_path:
-                hit = ar.get((inst_path + "/" + c.get("uuid", "")).upper())
-                if hit:
-                    c["reference"] = hit[0]
-                    try:
-                        c["unit"] = int(hit[1])
-                    except ValueError:
-                        pass
+        apply_instance_reference(components, inst_path)
         namespace_hierarchical_labels(labels, inst_path)
 
         all_components.extend(components)
@@ -981,20 +960,6 @@ def analyze_legacy_schematic(path: str, analysis_dir: str | Path | None = None) 
         all_junctions.extend(junctions)
         all_no_connects.extend(no_connects)
         sheets_parsed.append(sheet_path)
-
-        chain = ancestors + (sheet_path,)
-        for sub_path, sub_ts in sub_sheets:
-            if sub_path in chain:
-                if sub_path not in skipped:
-                    skipped.add(sub_path)
-                    record(parse_diagnostics, "schematic.pipeline.analyze_legacy_schematic",
-                           ValueError(f"sheet file {os.path.basename(sheet_path)} includes its own "
-                                      f"ancestor {os.path.basename(sub_path)}"),
-                           "recursive sheet skipped")
-                continue
-            child_path = inst_path + "/" + sub_ts if sub_ts else inst_path
-            if (sub_path, child_path) not in parsed:
-                to_parse.append((sub_path, child_path, chain))
 
     # Resolve .lib files and parse pin data
     root_path = str(Path(path).resolve())

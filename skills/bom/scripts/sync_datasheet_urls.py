@@ -334,7 +334,7 @@ def main():
     )
     parser.add_argument(
         "schematic",
-        help="Path to root .kicad_sch file",
+        help="Path to root .kicad_sch file (KiCad 5 .sch is rejected)",
     )
     parser.add_argument(
         "--datasheets", "-d",
@@ -361,6 +361,11 @@ def main():
         help="Output summary as JSON to stdout",
     )
     args = parser.parse_args()
+
+    if args.schematic.lower().endswith(".sch"):
+        print("Error: KiCad 5 .sch files are read only; sync Datasheet URLs in a .kicad_sch file",
+              file=sys.stderr)
+        sys.exit(1)
 
     result = sync_datasheet_urls(
         schematic_path=args.schematic,
