@@ -16,7 +16,7 @@ from kicad_core.fields import get_mpn_property
 from kicad_core.model import PcbReaderState
 from pcb.geometry import (
     ZoneFills, _chain_segments, _extract_polygon_coords, _polygon_bbox, _shoelace_area,
-    _shoelace_area_from_coords,
+    _shoelace_area_from_coords, pts_coords,
 )
 
 
@@ -511,10 +511,7 @@ def extract_footprints(root: list, diagnostics: list | None = None) -> list[dict
                 if gtype == "fp_poly":
                     pts = find_first(item, "pts")
                     if pts:
-                        poly = []
-                        for xy in find_all(pts, "xy"):
-                            if len(xy) >= 3:
-                                poly.append(_fp_to_abs(float(xy[1]), float(xy[2])))
+                        poly = [_fp_to_abs(x, y) for x, y in pts_coords(pts)]
                         if len(poly) >= 3:
                             crtyd_polys.append(poly)
                         crtyd_pts.extend(poly)
@@ -1098,10 +1095,7 @@ def extract_board_outline(root: list) -> dict:
             elif item_type == "gr_poly":
                 pts = find_first(item, "pts")
                 if pts:
-                    points = []
-                    for xy in pts:
-                        if isinstance(xy, list) and len(xy) >= 3 and xy[0] == "xy":
-                            points.append([float(xy[1]), float(xy[2])])
+                    points = [list(p) for p in pts_coords(pts)]
                     if points:
                         edges.append({"type": "polygon", "points": points})
             elif item_type == "gr_curve":

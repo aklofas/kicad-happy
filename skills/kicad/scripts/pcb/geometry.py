@@ -15,9 +15,67 @@ from kicad_core.sexp import find_all
 # Geometry helpers
 # ---------------------------------------------------------------------------
 
+def arc_points(start, mid, end, tol: float = 0.002,
+               max_chords: int = 64) -> list[tuple[float, float]]:
+    """Points along a start/mid/end arc, chords within `tol` of the curve."""
+    (sx, sy), (ex, ey) = start, end
+    if not mid:
+        return [(sx, sy), (ex, ey)]
+    mx, my = mid
+    d = 2.0 * (sx * (my - ey) + mx * (ey - sy) + ex * (sy - my))
+    if abs(d) < 1e-12:
+        return [(sx, sy), (mx, my), (ex, ey)]
+    ss, ms, es = sx * sx + sy * sy, mx * mx + my * my, ex * ex + ey * ey
+    cx = (ss * (my - ey) + ms * (ey - sy) + es * (sy - my)) / d
+    cy = (ss * (ex - mx) + ms * (sx - ex) + es * (mx - sx)) / d
+    r = math.hypot(sx - cx, sy - cy)
+    tau = 2.0 * math.pi
+    a_s = math.atan2(sy - cy, sx - cx)
+    nm = (math.atan2(my - cy, mx - cx) - a_s) % tau
+    ne = (math.atan2(ey - cy, ex - cx) - a_s) % tau
+    if (sx, sy) == (ex, ey):
+        ne = tau
+    sweep = ne if nm <= ne else ne - tau
+    max_step = 2.0 * math.acos(max(-1.0, 1.0 - tol / r)) if r > tol else math.pi
+    n = min(max_chords, max(2, math.ceil(abs(sweep) / max_step)))
+    pts = [(sx, sy)]
+    for k in range(1, n):
+        a = a_s + sweep * k / n
+        pts.append((cx + r * math.cos(a), cy + r * math.sin(a)))
+    pts.append((ex, ey))
+    return pts
+
+
+def pts_coords(pts_node: list) -> list[tuple[float, float]]:
+    """Ordered (x, y) points of a (pts (xy x y) (arc (start) (mid) (end)) ...) node.
+
+    KiCad's outline parser appends each arc to the chain; arcs are expanded to chords
+    and a joint shared by two entries is kept once."""
+    out: list[tuple[float, float]] = []
+
+    def add(p):
+        if not out or abs(out[-1][0] - p[0]) > 1e-9 or abs(out[-1][1] - p[1]) > 1e-9:
+            out.append(p)
+
+    for it in pts_node[1:]:
+        if not isinstance(it, list) or not it:
+            continue
+        if it[0] == "xy" and len(it) >= 3:
+            add((float(it[1]), float(it[2])))
+        elif it[0] == "arc":
+            ends = {}
+            for sub in it[1:]:
+                if isinstance(sub, list) and len(sub) >= 3 and sub[0] in ("start", "mid", "end"):
+                    ends[sub[0]] = (float(sub[1]), float(sub[2]))
+            if "start" in ends and "end" in ends:
+                for p in arc_points(ends["start"], ends.get("mid"), ends["end"]):
+                    add(p)
+    return out
+
+
 def _extract_polygon_coords(pts_node: list) -> list[tuple[float, float]]:
-    """Extract (x, y) coordinate tuples from a (pts (xy x y) ...) node."""
-    return [(float(xy[1]), float(xy[2])) for xy in find_all(pts_node, "xy")]
+    """Extract (x, y) coordinate tuples from a (pts (xy x y) (arc ...) ...) node."""
+    return pts_coords(pts_node)
 
 
 def _point_segment_distance(px: float, py: float, x1: float, y1: float,
