@@ -756,6 +756,9 @@ def _pad_on_layer(pad: dict, layer: str, default_layer: str) -> bool:
     a literal membership test (KH-413).
     """
     layers = pad.get("layers")
+    if (pad.get("type") == "np_thru_hole" and layer.endswith(".Cu")
+            and not npth_flashes_copper(pad)):
+        return False
     if not layers:
         return layer == default_layer
     if layer in layers:
@@ -849,13 +852,48 @@ def _point_in_pad(vx: float, vy: float, px: float, py: float,
     return abs(dx) <= hw and abs(dy) <= hh
 
 
+def _nm(v) -> int:
+    return round(float(v or 0) * 1e6)
+
+
+def npth_flashes_copper(pad: dict) -> bool:
+    """True when an NPTH pad carries copper, as KiCad's PAD::IsOnCopperLayer decides: it
+    has none when, on any of its padstack layers, a centred circle pad is no wider than
+    the hole or a centred oval pad fits inside it; other shapes always keep copper."""
+    dx = _nm(pad.get("drill"))
+    dy = _nm(pad.get("drill_h", pad.get("drill"))) if pad.get("drill_shape") == "oval" else dx
+    main = {"shape": pad.get("shape", ""), "width": pad.get("width", 0),
+            "height": pad.get("height", 0), "offset": pad.get("_drill_offset", False)}
+    stack = [{**main, **e} for e in pad.get("_padstack") or ()]
+    # A padstack entry for F.Cu replaces the pad's own (front) properties.
+    if not any(e["layer"] == "F.Cu" for e in stack):
+        stack.append(main)
+    for props in stack:
+        if props["offset"]:
+            continue
+        w, h = _nm(props["width"]), _nm(props["height"])
+        if props["shape"] == "circle" and w <= dx:
+            return False
+        if props["shape"] == "oval" and w <= dx and h <= dy:
+            return False
+    return True
+
+
 def pad_copper_layers(pad: dict, copper_layers: list[str]) -> list[str]:
-    """Copper layers a pad has copper on: ``*.Cu`` is every board copper layer,
-    ``F&B.Cu`` the two outer ones; an NPTH pad has none."""
+    """Copper layers a pad connects on: ``*.Cu`` is every board copper layer,
+    ``F&B.Cu`` the two outer ones. An NPTH pad connects only when it carries copper,
+    and then on its first copper layer in stack order only (KiCad's CN_LIST::Add)."""
+    layers = pad.get("layers") or []
     if pad.get("type") == "np_thru_hole":
-        return []
+        if not npth_flashes_copper(pad):
+            return []
+        if "*.Cu" in layers or "F&B.Cu" in layers:
+            return ["F.Cu"]
+        order = {name: i for i, name in enumerate(copper_layers)}
+        own = [layer for layer in layers if layer.endswith(".Cu")]
+        return [min(own, key=lambda name: order.get(name, len(order)))] if own else []
     out: list[str] = []
-    for layer in pad.get("layers") or []:
+    for layer in layers:
         if layer == "*.Cu":
             out.extend(copper_layers)
         elif layer == "F&B.Cu":

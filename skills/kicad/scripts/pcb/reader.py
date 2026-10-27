@@ -431,6 +431,9 @@ def extract_footprints(root: list, diagnostics: list | None = None) -> list[dict
                     except (ValueError, TypeError):
                         pass  # skip malformed drill entries
 
+            if pad_type == "np_thru_hole":
+                pad_info.update(_npth_copper_props(pad, pad_drill))
+
             if pad_net and len(pad_net) >= 3:
                 # KiCad ≤9: (net number "name")
                 pad_info["net_number"] = _net_id(pad_net[1])
@@ -857,6 +860,39 @@ def shape_geometry(item: list, gtype: str):
 
 # KiCad's DEFAULT_LINE_WIDTH: what it gives an unfilled shape saved with a zero width.
 _DEFAULT_LINE_WIDTH = 0.10
+
+
+def _nonzero_offset(node: list | None) -> bool:
+    try:
+        return bool(node) and len(node) >= 3 and (float(node[1]) != 0 or float(node[2]) != 0)
+    except (TypeError, ValueError):
+        return False
+
+
+def _npth_copper_props(pad: list, pad_drill: list | None) -> dict:
+    """Internal pad keys `npth_flashes_copper` reads: a non-zero drill offset and the
+    shape, size and offset of each padstack layer entry."""
+    out: dict = {}
+    if pad_drill and _nonzero_offset(find_first(pad_drill, "offset")):
+        out["_drill_offset"] = True
+    entries = []
+    for lay in find_all(find_first(pad, "padstack"), "layer"):
+        if len(lay) < 2 or not isinstance(lay[1], str):
+            continue
+        entry: dict = {"layer": lay[1], "offset": _nonzero_offset(find_first(lay, "offset"))}
+        shape = get_value(lay, "shape")
+        if shape:
+            entry["shape"] = shape
+        size = find_first(lay, "size")
+        try:
+            if size and len(size) >= 3:
+                entry["width"], entry["height"] = float(size[1]), float(size[2])
+        except (TypeError, ValueError):
+            pass
+        entries.append(entry)
+    if entries:
+        out["_padstack"] = entries
+    return out
 
 
 def _custom_pad_primitives(primitives: list | None, x: float, y: float,

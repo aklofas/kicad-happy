@@ -1,7 +1,7 @@
 # tools/tests/test_pcb_copper_contact.py
 """The --full copper graph joins copper that overlaps: every track a pad touches (ends and
 interiors), arc tracks, overlapping tracks and vias inside pads, judged against the real pad
-shape, with `*.Cu` / `F&B.Cu` pad layers expanded and NPTH pads left out."""
+shape, with `*.Cu` / `F&B.Cu` pad layers expanded and NPTH pads without copper left out."""
 import math, os, sys, tempfile, unittest
 from pathlib import Path
 SCRIPTS = Path(__file__).resolve().parents[2] / "skills" / "kicad" / "scripts"
@@ -15,11 +15,14 @@ from tools.tests._fixtures import fixture  # noqa: E402
 NETS = {1: "N"}
 
 
-def _pad(ref, x, y, w, h, layers=("F.Cu",), shape="rect", angle=0, typ="smd", num="1"):
+def _pad(ref, x, y, w, h, layers=("F.Cu",), shape="rect", angle=0, typ="smd", num="1",
+         drill=None):
     d = {"number": num, "abs_x": x, "abs_y": y, "width": w, "height": h,
          "layers": list(layers), "shape": shape, "type": typ, "net_name": "N"}
     if angle:
         d["angle"] = angle
+    if drill is not None:
+        d["drill"] = drill
     return {"reference": ref, "pads": [d]}
 
 
@@ -80,9 +83,10 @@ class TestPadCopperLayers(unittest.TestCase):
         self.assertEqual(geo.pad_copper_layers({"type": "smd", "layers": ["F.Cu", "F.Paste"]},
                                            self.CU), ["F.Cu"])
 
-    def test_npth_has_no_copper(self):
-        self.assertEqual(geo.pad_copper_layers({"type": "np_thru_hole", "layers": ["*.Cu", "*.Mask"]},
-                                           self.CU), [])
+    def test_npth_hole_covering_the_pad_has_no_copper(self):
+        self.assertEqual(geo.pad_copper_layers({"type": "np_thru_hole", "shape": "circle",
+                                                "width": 3, "height": 3, "drill": 3.2,
+                                                "layers": ["*.Cu", "*.Mask"]}, self.CU), [])
 
 
 class TestCopperGraph(unittest.TestCase):
@@ -147,9 +151,9 @@ class TestCopperGraph(unittest.TestCase):
                    [_seg(100.5, 100, 110, 100, layer="B.Cu")], vias=[via])
         self.assertEqual(g["islands"], 1)
 
-    def test_npth_pad_is_not_a_node(self):
+    def test_npth_pad_without_copper_is_not_a_node(self):
         g = _graph([_pad("H", 100, 100, 3, 3, layers=("*.Cu", "*.Mask"), shape="circle",
-                         typ="np_thru_hole", num=""),
+                         typ="np_thru_hole", num="", drill=3.2),
                     _pad("B", 110, 100, 1, 1)], [_seg(100, 100, 110, 100)])
         self.assertEqual(sorted(g["components"]), ["B:1"])
 
