@@ -156,6 +156,35 @@ def junction_case(with_junction):
     return {"t.kicad_sch": doc(p), "child.kicad_sch": doc(c, CHILD_FILE_UUID, root=False)}
 
 
+SHEET_B_UUID = "00000000-0000-0000-0000-0000000000b2"
+FILE_B_UUID = "00000000-0000-0000-0000-0000000000c2"
+
+
+def two_sheet_pins(pin_a, pin_b, members_a, members_b, root_members=()):
+    """One unlabelled root bus from sheet pin ``pin_a`` (sheet cpu) to ``pin_b`` (sheet io),
+    optionally tapped to R1..; each child's bus carries the hierarchical label of its pin and is
+    tapped to R11.. (cpu) and R21.. (io)."""
+    _n[0] = 0
+    p = [bus(100, 50, 150, 50), bus(100, 50, 100, 120), bus(100, 120, 150, 120)]
+    for k, m in enumerate(root_members):
+        p += tap(110 + 10 * k, 50, m, f"R{k + 1}")
+    files = {}
+    for suuid, fuuid, sname, pin, y, members, first, page in (
+            (CHILD_SHEET_UUID, CHILD_FILE_UUID, "cpu", pin_a, 40, members_a, 11, 2),
+            (SHEET_B_UUID, FILE_B_UUID, "io", pin_b, 110, members_b, 21, 3)):
+        p.append(f'(sheet (at 150 {y}) (size 30 30) (uuid "{suuid}")'
+                 f' (property "Sheetname" "{sname}" (at 150 {y} 0) {FONT})'
+                 f' (property "Sheetfile" "{sname}.kicad_sch" (at 150 {y} 0) {FONT})'
+                 f' (pin "{pin}" bidirectional (at 150 {y + 10} 180) {FONT} (uuid "{_uuid()}"))'
+                 f' (instances (project "t" (path "/{ROOT_UUID}" (page "{page}")))))')
+        c = [bus(40, 50, 140, 50), label("hierarchical_label", pin, 40, 50)]
+        for k, m in enumerate(members):
+            c += tap(45 + 10 * k, 50, m, f"R{k + first}", f"/{ROOT_UUID}/{suuid}")
+        files[f"{sname}.kicad_sch"] = doc(c, fuuid, root=False)
+    files["t.kicad_sch"] = doc(p)
+    return files
+
+
 def groups(*sets):
     return {frozenset(s) for s in sets}
 
@@ -342,6 +371,56 @@ class LabelsOnOneBusTest(unittest.TestCase):
         c += tap(55, 50, "Q0", "R11", CHILD_PATH) + tap(65, 50, "Q1", "R12", CHILD_PATH)
         files = {"t.kicad_sch": doc(p), "child.kicad_sch": doc(c, CHILD_FILE_UUID, root=False)}
         self.check(files, groups({"R1", "R11"}, {"R2", "R12"}))
+
+
+class CoClusteredSheetPinsTest(unittest.TestCase):
+    """Two sheet pins on one unlabelled bus: KiCad clones the driving pin's bus onto the other
+    pin, so each child maps by position onto the driving pin's members."""
+
+    def check(self, files, expected):
+        self.assertEqual(pin1_groups(analyze(files)), expected)
+
+    def test_shifted_range_maps_by_position_without_chaining(self):
+        self.check(two_sheet_pins("X[0..5]", "X[2..5]", [f"X{i}" for i in range(6)],
+                                  [f"X{i}" for i in range(2, 6)]),
+                   groups({"R11", "R21"}, {"R12", "R22"}, {"R13", "R23"}, {"R14", "R24"},
+                          {"R15"}, {"R16"}))
+        self.check(two_sheet_pins("A[0..3]", "A[1..3]", [f"A{i}" for i in range(4)],
+                                  [f"A{i}" for i in range(1, 4)]),
+                   groups({"R11", "R21"}, {"R12", "R22"}, {"R13", "R23"}, {"R14"}))
+
+    def test_equal_width_pins_join_member_by_member(self):
+        self.check(two_sheet_pins("X[0..3]", "X[0..3]", [f"X{i}" for i in range(4)],
+                                  [f"X{i}" for i in range(4)]),
+                   groups({"R11", "R21"}, {"R12", "R22"}, {"R13", "R23"}, {"R14", "R24"}))
+
+    def test_root_tap_joins_the_driving_pins_member(self):
+        self.check(two_sheet_pins("X[0..5]", "X[2..5]", [f"X{i}" for i in range(6)],
+                                  [f"X{i}" for i in range(2, 6)], ["X3"]),
+                   groups({"R11", "R21"}, {"R12", "R22"}, {"R13", "R23"}, {"R1", "R14", "R24"},
+                          {"R15"}, {"R16"}))
+
+    def test_root_tap_named_after_the_other_pin_stays_apart(self):
+        self.check(two_sheet_pins("P[0..1]", "Q[0..1]", ["P0", "P1"], ["Q0", "Q1"], ["Q1", "P0"]),
+                   groups({"R1"}, {"R2", "R11", "R21"}, {"R12", "R22"}))
+
+    def test_alphabetical_pin_drives_when_neither_is_a_superset(self):
+        # X[0..1] drives Y[0..3]: Y's child maps Y0, Y1 onto X0, X1; a root tap Y3 stays apart.
+        self.check(two_sheet_pins("Y[0..3]", "X[0..1]", ["Y0", "Y1", "Y2", "Y3"], ["X0", "X1"],
+                                  ["Y3", "X1"]),
+                   groups({"R1"}, {"R11", "R21"}, {"R2", "R12", "R22"}, {"R13"}, {"R14"}))
+
+    def test_group_pins_map_by_member_name_onto_the_driving_pin(self):
+        # C{A B} drives P{A B C}: a root tap C.A joins A, a root tap P.B stays apart.
+        self.check(two_sheet_pins("P{A B C}", "C{A B}", ["P.A", "P.B", "P.C"], ["C.A", "C.B"],
+                                  ["C.A", "P.B"]),
+                   groups({"R1", "R11", "R21"}, {"R2"}, {"R12", "R22"}, {"R13"}))
+
+    def test_vector_beside_a_group_joins_by_member_name(self):
+        self.check(two_sheet_pins("{X0 X1 Y}", "X[0..1]", ["X0", "X1", "Y"], ["X0", "X1"]),
+                   groups({"R11", "R21"}, {"R12", "R22"}, {"R13"}))
+        self.check(two_sheet_pins("{Y X1 X0}", "X[0..1]", ["Y", "X1", "X0"], ["X0", "X1"]),
+                   groups({"R13", "R21"}, {"R12", "R22"}, {"R11"}))
 
 
 if __name__ == "__main__":

@@ -1007,27 +1007,32 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
                 else:
                     hier_ports.append(p)
 
-        # (C0) Co-clustered sheet pins are one physical bus. When a bus is
-        # routed straight from one sub-sheet symbol's pin to another's on a
-        # single cluster (no relabeling local label to canonicalize it), the
-        # two differently-named pins are the same wire, so bit i of each is one
-        # net. Join their member slots with pair_bus_members, using the SAME effective
-        # ordering (C) uses — the cluster's local-label ordering if present,
-        # else the pin's own members — so this stays consistent with the
-        # pin↔hier mapping below. With a local label all pins already share
-        # that ordering, so this is a no-op there; it only bridges the
-        # no-local-label case (e.g. m68k's Bus sheet routing PEP_AD↔AD,
-        # ISA_D↔D, ATA_D↔D straight through to the peripheral sub-sheets).
+        # (C0) Co-clustered sheet pins with no bus label on their wire: KiCad picks one
+        # pin to drive the bus (ResolveDrivers: a superset of members, then the name)
+        # and clones its bus onto the other pins, so every child maps by position onto
+        # the driving pin's members in (C). The pins' own member names stay apart:
+        # X[2..5] beside X[0..5] maps its X2 onto X0, it does not join X2. Pins of
+        # mixed kinds (a vector beside a group) keep their own members and join pin to
+        # pin with pair_bus_members.
         pins_by_cluster: dict[tuple, list] = {}
         for p in pin_ports:
             pins_by_cluster.setdefault((p["sheet"], p["cluster"]), []).append(p)
         for grp in pins_by_cluster.values():
-            if len(grp) < 2:
+            if len(grp) < 2 or any(q["parent_ordered"] for q in grp):
                 continue
-            ref, ref_name = _parent_side(grp[0])
+            if len({bus_kind(q["name"]) for q in grp}) == 1:
+                ranked = sorted(grp, key=lambda q: _driver_sort_name(q["name"]))
+                drv = ranked[0]
+                for q in ranked[1:]:
+                    if set(drv["members"]) < set(q["members"]):
+                        drv = q
+                for q in grp:
+                    q["parent_ordered"] = list(drv["members"])
+                    q["parent_name"] = drv["name"]
+                continue
             for other in grp[1:]:
-                eff, eff_name = _parent_side(other)
-                member_pairs, _reason = pair_bus_members(ref_name, ref, eff_name, eff)
+                member_pairs, _reason = pair_bus_members(
+                    grp[0]["name"], grp[0]["members"], other["name"], other["members"])
                 for rm, em in member_pairs:
                     union(bus_slot(grp[0]["sheet"], grp[0]["cluster"], rm),
                           bus_slot(other["sheet"], other["cluster"], em))
