@@ -149,7 +149,8 @@ def check_component_matching(sch: dict, pcb: dict) -> dict:
             "ref": ref,
             "pcb_value": pcb_by_ref[ref].get("value", ""),
             "status": "fail",
-            "message": f"{ref} in PCB but not in schematic (stale placement?)",
+            "message": (f"{ref} in PCB is not linked to a schematic symbol (the reference is used by another symbol)"
+                        if ref in sch_comps else f"{ref} in PCB but not in schematic (stale placement?)"),
         })
 
     # Missing: in schematic but not in PCB

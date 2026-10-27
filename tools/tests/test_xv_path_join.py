@@ -335,6 +335,17 @@ class CrossVerifyTest(unittest.TestCase):
         self.assertEqual([m["ref"] for m in res["value_mismatches"]], ["R5"])
         self.assertEqual([(m["ref"], m["pcb_ref"]) for m in res["reference_mismatches"]], [("R5", "R7")])
 
+    def test_unlinked_footprint_worded_as_such(self):
+        res = cv.check_component_matching({"components": [_c("R5", "/U")]},
+                                          {"footprints": [_fp("R7", "/U"), _fp("R5", "/stale"), _fp("R9", "/x")]})
+        msgs = {o["ref"]: o["message"] for o in res["orphans"]}
+        self.assertIn("not linked to a schematic symbol", msgs["R5"])
+        self.assertIn("but not in schematic", msgs["R9"])
+
+    def test_reference_mismatch_counts_in_the_summary(self):
+        res = cv.cross_verify({"components": [_c("R5", "/U")]}, {"footprints": [_fp("R7", "/U")]})
+        self.assertEqual(res["summary"]["warning"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()
