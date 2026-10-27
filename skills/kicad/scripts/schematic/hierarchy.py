@@ -131,6 +131,22 @@ def _top_sheet_node(sheet_path: str, uuid: str, pro: dict | None, default_name: 
                                    "exclude_from_sim": False})
 
 
+def apply_sheet_flags(components: list[dict], sheet_chain: list[dict]) -> None:
+    """Sheet attributes reach every symbol below the sheet, in place: a symbol is out of the
+    BOM, DNP or off the board when it or any sheet on its path says so (KiCad 9+
+    SCH_SHEET_PATH flags OR over the path; a nested sheet cannot re-include)."""
+    ex_bom = any(not node["in_bom"] for node in sheet_chain)
+    dnp = any(node["dnp"] for node in sheet_chain)
+    ex_board = any(not node["on_board"] for node in sheet_chain)
+    for c in components:
+        if ex_bom:
+            c["in_bom"] = False
+        if dnp:
+            c["dnp"] = True
+        if ex_board:
+            c["on_board"] = False
+
+
 def namespace_hierarchical_labels(labels: list[dict], inst_path: str) -> None:
     """Prefix each hierarchical label and sheet pin with its sheet instance path, in place.
 
@@ -253,6 +269,7 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
          sub_sheets, lib_symbols, text_annotations, bus_elements, title_block) = (
             sd.root, sd.components, sd.wires, sd.labels, sd.junctions, sd.no_connects,
             sd.sub_sheet_paths, sd.lib_symbols, sd.text_annotations, sd.bus_elements, sd.title_block)
+        apply_sheet_flags(components, text_chain)
 
         sheet_idx = len(sheets_parsed)
         for c in components:
@@ -307,6 +324,7 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
     registry.ready = True
     for sheet_idx, start, root, lib_symbols, sheet_kwargs in pending:
         components = extract_components(root, lib_symbols, **sheet_kwargs)
+        apply_sheet_flags(components, sheet_kwargs["text_ctx"]["sheet_chain"])
         for c in components:
             c["_sheet"] = sheet_idx
         all_components[start:start + len(components)] = components
@@ -403,6 +421,7 @@ def merge_top_level_sheets(parsed: dict, path: str, root_tree: list, *,
                                 sd.root, sd.components, sd.wires, sd.labels, sd.junctions,
                                 sd.no_connects, sd.sub_sheet_paths, sd.lib_symbols,
                                 sd.text_annotations, sd.bus_elements, sd.title_block)
+                            apply_sheet_flags(comps, text_chain)
                         except Exception as exc:
                             record(diagnostics, "schematic.hierarchy.merge_top_level_sheets", exc,
                                    f"sheet {os.path.basename(sheet_path)} skipped (parse failed)")

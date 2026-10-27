@@ -5,6 +5,8 @@ file-order-stable field pickers (KH-414, KH-418). The names live here, in
 kicad_core; callers import them from kicad_core.fields.
 """
 
+from collections.abc import Iterable, Mapping
+
 from kicad_core.sexp import is_keyword
 
 # ---------------------------------------------------------------------------
@@ -117,3 +119,29 @@ def get_mpn_property(node: list):
     return (_get_property_ci_nonblank(node, MPN_FIELD_ALIASES_PRIMARY)
             or _get_property_ci_nonblank(node, MPN_FIELD_ALIASES_GENERIC)
             or get_property_ci(node, MPN_FIELD_ALIASES))
+
+
+# KiCad's mandatory symbol fields: a blank one never hides another unit's text.
+_MANDATORY_FIELDS = frozenset({"Value", "Footprint", "Datasheet", "Description"})
+
+
+def merge_unit_fields(units: Iterable[tuple[int, Mapping[str, str]]]) -> dict[str, str]:
+    """One field set for a multi-unit part, as KiCad's netlist builds it.
+
+    *units* yields (unit number, fields) per placed unit, in file order. Value,
+    Footprint, Datasheet and Description come from the lowest-numbered unit whose
+    text is non-empty (blank when none is); every other field comes from the
+    lowest-numbered unit that carries it, empty or not. Ties keep file order, so
+    units with different non-blank text resolve to the lowest unit's.
+    """
+    picked: dict[str, tuple[float, str]] = {}
+    for unit, fields in units:
+        for name, text in fields.items():
+            current = picked.get(name)
+            if name in _MANDATORY_FIELDS and not text:
+                if current is None:
+                    picked[name] = (float("inf"), "")
+                continue
+            if current is None or unit < current[0]:
+                picked[name] = (unit, text)
+    return {name: text for name, (_, text) in picked.items()}

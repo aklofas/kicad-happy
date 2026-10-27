@@ -1,6 +1,7 @@
-"""BOM generation and statistics: verbatim move from analyze_schematic.py; no behaviour change."""
+"""BOM generation and statistics."""
 from __future__ import annotations
 
+from kicad_core.fields import merge_unit_fields
 from kicad_core.netnames import (
     _clean_hierarchical_name,
     is_power_net_name as _is_power_net_name,
@@ -8,24 +9,52 @@ from kicad_core.netnames import (
 )
 
 
+_NON_PARTS = ("power_symbol", "power_flag", "flag")
+_PACKAGE_FIELDS = ("value", "footprint", "datasheet", "description", "mpn", "manufacturer",
+                   "digikey", "mouser", "lcsc", "element14")
+
+
+def package_fields(components: list[dict]) -> dict[str, dict]:
+    """reference -> the part's fields; a multi-unit part takes each field from the lowest
+    unit that sets it (KiCad's netlist rule), a single-unit symbol keeps its own."""
+    by_ref: dict[str, list[dict]] = {}
+    for c in components:
+        if c["type"] not in _NON_PARTS:
+            by_ref.setdefault(c["reference"], []).append(c)
+    out = {}
+    for ref, records in by_ref.items():
+        # Only a symbol with more than one unit places a unit above 1.
+        if len(records) > 1 and any((c.get("unit") or 1) > 1 for c in records):
+            # Distributor fields are already alias-merged, so a blank one counts as unset.
+            merged = merge_unit_fields(
+                (c.get("unit") or 1, {f: c[f] for f in _PACKAGE_FIELDS if c.get(f)})
+                for c in records)
+            out[ref] = {f: merged.get(f, "") for f in _PACKAGE_FIELDS}
+        else:
+            out[ref] = {f: records[0][f] for f in _PACKAGE_FIELDS}
+    return out
+
+
 def generate_bom(components: list[dict]) -> list[dict]:
     """Generate grouped BOM from components."""
     groups: dict[tuple, dict] = {}
+    package = package_fields(components)
 
     # Deduplicate multi-unit symbols — only count each reference once
     seen_refs = set()
 
     for comp in components:
-        if comp["type"] in ("power_symbol", "power_flag", "flag"):
+        if comp["type"] in _NON_PARTS:
             continue
         if not comp["in_bom"]:
             continue
         if comp["reference"] in seen_refs:
             continue
         seen_refs.add(comp["reference"])
+        comp = dict(comp, **package[comp["reference"]])
 
-        # Group key: value + footprint + MPN (or just value + footprint if no MPN)
-        group_key = (comp["value"], comp["footprint"], comp["mpn"])
+        # Group key: value + footprint + MPN; fitted and DNP parts never share a line
+        group_key = (comp["value"], comp["footprint"], comp["mpn"], comp["dnp"])
 
         if group_key not in groups:
             groups[group_key] = {
@@ -59,13 +88,14 @@ def compute_statistics(components: list[dict], nets: dict, bom: list[dict],
     # Deduplicate multi-unit symbols by reference
     seen_refs = set()
     non_power = []
+    package = package_fields(components)
     for c in components:
-        if c["type"] in ("power_symbol", "power_flag", "flag"):
+        if c["type"] in _NON_PARTS:
             continue
         if c["reference"] in seen_refs:
             continue
         seen_refs.add(c["reference"])
-        non_power.append(c)
+        non_power.append(dict(c, **package[c["reference"]]))
     bom_items = [b for b in bom if not b["dnp"]]
     dnp_items = [b for b in bom if b["dnp"]]
 
