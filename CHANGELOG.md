@@ -43,6 +43,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Fixed
 
+- Symbol and sheet mandatory fields (Reference, Value, Footprint, Datasheet, Description, sheet name, sheet file) lose leading and trailing spaces, the sheet-file property is read in any case, and a KiCad 6 value on a repeated sheet reaches every instance, as KiCad 10 reads them. A `" ~"` Datasheet reads as `~`; user fields keep their spaces. (KH-708, KH-705)
 - `bom_manager` takes a multi-unit part's Value, Footprint, Datasheet, Description and other fields from its lowest unit that sets them, as KiCad's netlist does, instead of from whichever unit comes first in the file; a DNP part no longer joins a fitted part's BOM line and gets a line of its own. (kf/A13-F4)
 - Power-net routing statistics include arc tracks, so `track_count`, `total_length_mm` and `min_width_mm` can change (a narrow arc lowers the minimum width). (kf/A9-F6)
 - Board outlines, zone outlines and courtyards drawn as polygons with arc segments are read whole; a board outline made only of arcs no longer reads as empty. (kf/A11-F9)

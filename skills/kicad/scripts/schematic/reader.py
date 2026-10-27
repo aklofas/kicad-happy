@@ -162,10 +162,10 @@ def extract_lib_symbols(root: list) -> dict:
             all_pins = [_parse_single_pin(pin) for pin in find_deep(sym, "pin") if len(pin) >= 3]
 
         # Get symbol properties
-        desc = _field(get_property(sym, "Description"), tilde_empty)
+        desc = mandatory_field(get_property(sym, "Description"), tilde_empty)
         ki_keywords = _field(get_property(sym, "ki_keywords"), tilde_empty)
         ki_fp_filters = _field(get_property(sym, "ki_fp_filters"), tilde_empty)
-        lib_value = _field(get_property(sym, "Value"), tilde_empty)
+        lib_value = mandatory_field(get_property(sym, "Value"), tilde_empty)
 
         # Check for (power) flag — marks this as a power symbol regardless of lib name
         # KiCad 8+ writes (power global) or (power local); pre-8.0 writes bare (power)
@@ -381,8 +381,8 @@ def extract_symbol_instances(root: list) -> dict:
         result[path_str] = {
             "reference": ref,
             "unit": unit,
-            "value": _field(get_value(path_node, "value"), tilde_empty),
-            "footprint": _field(get_value(path_node, "footprint"), tilde_empty),
+            "value": mandatory_field(get_value(path_node, "value"), tilde_empty),
+            "footprint": mandatory_field(get_value(path_node, "footprint"), tilde_empty),
         }
     return result
 
@@ -396,8 +396,8 @@ _SIM_FIELDS = frozenset({"SIM.DEVICE", "SIM.TYPE", "SIM.PINS", "SIM.PARAMS", "SI
                          "SIM.NAME"})
 _TITLE_BLOCK_KEYS = {"ISSUE_DATE": "date", "REVISION": "rev", "TITLE": "title",
                      "COMPANY": "company", **{f"COMMENT{n}": f"comment_{n}" for n in range(1, 10)}}
-_SHEET_NAME_FIELDS = {"Sheetname": "SHEETNAME", "Sheet name": "SHEETNAME",
-                      "Sheetfile": "SHEETFILE", "Sheet file": "SHEETFILE"}
+_SHEET_NAME_FIELDS = {"sheetname": "SHEETNAME", "sheet name": "SHEETNAME",
+                      "sheetfile": "SHEETFILE", "sheet file": "SHEETFILE"}
 
 
 def _has_text_vars(text: str) -> bool:
@@ -415,14 +415,26 @@ def _raw_fields(node: list) -> list[tuple[str, str]]:
     return fields
 
 
+def sheet_property(sheet: list, name: str) -> str | None:
+    """A (sheet ...) block's name or file property by its SHEETNAME / SHEETFILE role, matched
+    in any case under either spelling as KiCad does, with mandatory-field trimming."""
+    for key, text in sheet_block_fields(sheet, False)["fields"]:
+        if key == name and text:
+            return text
+    return None
+
+
 def sheet_block_fields(sheet: list, tilde_empty: bool, overrides: dict | None = None) -> dict:
     """A (sheet ...) block's fields (name and file fields named SHEETNAME / SHEETFILE, the
     names KiCad resolves them by) and its attribute flags; *overrides* are a design variant's
     (kicad_core.instances.variant_overrides)."""
     overrides = overrides or {}
-    fields = [(_SHEET_NAME_FIELDS.get(name, name),
-               overrides.get("fields", {}).get(name, _field(text, tilde_empty)))
-              for name, text in _raw_fields(sheet)]
+    fields = []
+    for name, text in _raw_fields(sheet):
+        key = _SHEET_NAME_FIELDS.get(name.lower(), name)
+        fields.append((key, overrides.get("fields", {}).get(
+            name, mandatory_field(text, tilde_empty) if key in ("SHEETNAME", "SHEETFILE")
+            else _field(text, tilde_empty))))
     flags = {"in_bom": get_value(sheet, "in_bom") != "no",
              "on_board": get_value(sheet, "on_board") != "no",
              "dnp": get_value(sheet, "dnp") == "yes",
@@ -698,6 +710,9 @@ def text_context(pro: dict | None, project_name: str, filename: str,
             "registry": registry}
 
 
+MANDATORY_STRIP = " \t\r\n"
+
+
 def _field(text, tilde_empty: bool) -> str:
     """A field's text, "" when absent; "~" is empty in files older than 20250318."""
     if text is None or (tilde_empty and text == "~"):
@@ -705,10 +720,17 @@ def _field(text, tilde_empty: bool) -> str:
     return text
 
 
+def mandatory_field(text, tilde_empty: bool) -> str:
+    """A mandatory field's text as KiCad's SetText keeps it: "~" is tested on the raw token,
+    then both ends lose spaces, tabs and line breaks."""
+    return _field(text, tilde_empty).strip(MANDATORY_STRIP)
+
+
 def _symbol_fields(sym: list, value: str, footprint: str, tilde_empty: bool) -> list[tuple[str, str]]:
     """A placed symbol's fields in KiCad's order: the five mandatory fields (Value and
     Footprint as resolved from the instance), then the others as written."""
-    raw = [(name, _field(text, tilde_empty)) for name, text in _raw_fields(sym)]
+    raw = [(name, mandatory_field(text, tilde_empty) if name in _MANDATORY_FIELDS
+            else _field(text, tilde_empty)) for name, text in _raw_fields(sym)]
     given = dict(reversed(raw))
     fields = [(name, value if name == "Value" else footprint if name == "Footprint"
                else given.get(name, "")) for name in _MANDATORY_FIELDS]
@@ -788,7 +810,7 @@ def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
         except (ValueError, TypeError):
             body_style = 1
 
-        ref = _field(get_property(sym, "Reference"), tilde_empty)
+        ref = mandatory_field(get_property(sym, "Reference"), tilde_empty)
         value = get_property(sym, "Value")
         if tilde_empty and value == "~":
             value = ""
@@ -799,10 +821,10 @@ def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
             sym_def_val = (lib_symbols.get(lib_name) if lib_name else None) or lib_symbols.get(lib_id, {})
             value = sym_def_val.get("value", "") or ""
         else:
-            value = value or ""
-        footprint = _field(get_property(sym, "Footprint"), tilde_empty)
-        datasheet = _field(get_property(sym, "Datasheet"), tilde_empty)
-        description = _field(get_property(sym, "Description"), tilde_empty)
+            value = (value or "").strip(MANDATORY_STRIP)
+        footprint = mandatory_field(get_property(sym, "Footprint"), tilde_empty)
+        datasheet = mandatory_field(get_property(sym, "Datasheet"), tilde_empty)
+        description = mandatory_field(get_property(sym, "Description"), tilde_empty)
         uuid_val = get_value(sym, "uuid") or ""
         overrides = {}
 
@@ -1299,7 +1321,7 @@ def parse_single_sheet(path: str, instance_uuid: str = "",
         # Sheet file property name varies by KiCad version:
         # KiCad 6+: (property "Sheetfile" "filename.kicad_sch")
         # KiCad 7+: (property "Sheet file" "filename.kicad_sch")
-        sheet_file = get_property(sheet, "Sheetfile") or get_property(sheet, "Sheet file")
+        sheet_file = sheet_property(sheet, "SHEETFILE")
         if sheet_file:
             sub_path = base_dir / sheet_file
             if sub_path.exists():

@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 from kicad_core.diagnostics import record
-from kicad_core.sexp import find_all, get_at, get_property, get_value, parse_file
+from kicad_core.sexp import find_all, get_at, get_value, parse_file
 from kicad_core.project import (declared_top_level_sheets, empty_input_error,
                                  find_project_settings_file, load_kicad_pro)
 from schematic.reader import (
@@ -21,6 +21,7 @@ from schematic.reader import (
     extract_symbol_instances,
     parse_single_sheet,
     rename_legacy_power_symbols,
+    sheet_property,
     sheet_chain_node,
     text_context,
 )
@@ -59,7 +60,7 @@ def _sheet_list(root_path: str, root_tree: list) -> dict:
         order.setdefault(path.lower(), (len(order), file_path))
         kids = []
         for sheet in find_all(tree, "sheet"):
-            fname = get_property(sheet, "Sheetfile") or get_property(sheet, "Sheet file")
+            fname = sheet_property(sheet, "SHEETFILE")
             at = get_at(sheet) or (0, 0, 0)
             kids.append((at[0], at[1], (get_value(sheet, "uuid") or "").lower(), fname))
         for _x, _y, suuid, fname in sorted(kids, key=lambda k: k[:3]):
@@ -83,18 +84,9 @@ def _sheet_list(root_path: str, root_tree: list) -> dict:
 def _settle_kicad6_values(symbol_instances: dict, root_path: str, root_tree: list) -> dict:
     """KiCad 6 entries as KiCad applies them.  Each entry's non-empty value / footprint
     overwrites the field of the one symbol it names, sheet by sheet in sheet-list order, so a
-    symbol on a repeated sheet shows the last sheet's value on every sheet.  Only when one
-    symbol uuid carries different values is the sheet list walked: entries are then put in that
-    order and each takes the last non-empty value / footprint of its (sheet file, uuid) group."""
-    groups: dict = {}
-    for si_path, entry in symbol_instances.items():
-        values, footprints = groups.setdefault(si_path.rpartition("/")[2].lower(), (set(), set()))
-        if entry.get("value"):
-            values.add(entry["value"])
-        if entry.get("footprint"):
-            footprints.add(entry["footprint"])
-    if all(len(v) <= 1 and len(f) <= 1 for v, f in groups.values()):
-        return symbol_instances
+    symbol on a repeated sheet shows the last sheet's value on every sheet: entries are put in
+    that order and each takes the last non-empty value / footprint of its (sheet file, uuid)
+    group."""
     sheets = _sheet_list(root_path, root_tree)
     last = (len(sheets), None)
     ordered = sorted(symbol_instances.items(),

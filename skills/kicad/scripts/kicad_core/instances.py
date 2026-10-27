@@ -72,7 +72,7 @@ def inline_instances(sym: list, tilde_empty: bool) -> list[dict]:
             for key in ("value", "footprint"):
                 text = get_value(path_node, key)
                 if text is not None:
-                    entry[key] = "" if (tilde_empty and text == "~") else text
+                    entry[key] = ("" if (tilde_empty and text == "~") else text).strip(" \t\r\n")
             variants = variant_blocks(path_node)
             if variants:
                 entry["variants"] = variants

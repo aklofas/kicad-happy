@@ -950,6 +950,8 @@ def _parse_legacy_single_sheet(path: str) -> tuple:
                         field_num = int(fm.group(1))
                         field_val, field_end = fq
                         if field_num < len(_STANDARD_FIELDS):
+                            field_val = field_val.strip(" \t\r\n")
+                        if field_num < len(_STANDARD_FIELDS):
                             comp.setdefault("_fields", {})[_STANDARD_FIELDS[field_num]] = field_val
                         else:
                             at = cl.find('"', field_end)
@@ -1044,8 +1046,8 @@ def _parse_legacy_single_sheet(path: str) -> tuple:
                 sl = lines[i].strip()
                 # F1 "filename.sch" size — the sheet filename field
                 sq = _quoted(sl, 2) if re.match(r'F1\s', sl) else None
-                if sq and sq[0].endswith(".sch"):
-                    sheet_file = sq[0]
+                if sq and sq[0].strip(" \t\r\n").endswith(".sch"):
+                    sheet_file = sq[0].strip(" \t\r\n")
                 um = re.match(r'U\s+([0-9A-Fa-f]+)', sl)
                 if um:
                     sheet_ts = um.group(1).upper()
