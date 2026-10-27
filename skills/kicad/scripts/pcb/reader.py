@@ -464,6 +464,13 @@ def extract_footprints(root: list, diagnostics: list | None = None) -> list[dict
             if pad_shape == "custom":
                 pad_info["is_custom"] = True
                 primitives = find_first(pad, "primitives")
+                if "abs_x" in pad_info:
+                    opts = find_first(pad, "options")
+                    anchor = get_value(opts, "anchor") if opts else None
+                    pad_info["_anchor"] = "rect" if anchor == "rect" else "circle"
+                    pad_info["_prims"] = _custom_pad_primitives(
+                        primitives, pad_info["abs_x"], pad_info["abs_y"],
+                        pad_at[2] if pad_at else 0)
                 if primitives:
                     custom_area = 0.0
                     for prim in find_all(primitives, "gr_poly"):
@@ -850,6 +857,34 @@ def shape_geometry(item: list, gtype: str):
 
 # KiCad's DEFAULT_LINE_WIDTH: what it gives an unfilled shape saved with a zero width.
 _DEFAULT_LINE_WIDTH = 0.10
+
+
+def _custom_pad_primitives(primitives: list | None, x: float, y: float,
+                           pad_angle: float) -> list[dict]:
+    """A custom pad's drawn primitives in board coordinates: KiCad rotates each one by the
+    (absolute) pad angle and moves it to the pad position; gr_bbox / gr_vector are proxies,
+    not copper."""
+    out: list[dict] = []
+    if not primitives:
+        return out
+    rad = math.radians(-(pad_angle or 0))
+    c, s = math.cos(rad), math.sin(rad)
+    for prim in primitives[1:]:
+        if not (isinstance(prim, list) and prim and prim[0] in (
+                "gr_line", "gr_arc", "gr_circle", "gr_rect", "gr_poly", "gr_curve")):
+            continue
+        geo = shape_geometry(prim, prim[0])
+        if not geo or not geo[0]:
+            continue
+        pts, closed = geo
+        kind = prim[0].split("_", 1)[1]
+        width = _stroke_width(prim)
+        filled = closed and len(pts) >= 3 and _shape_filled(prim, kind, width, None)
+        if width <= 0 and not filled:
+            width = _DEFAULT_LINE_WIDTH
+        out.append({"pts": [(x + lx * c - ly * s, y + lx * s + ly * c) for lx, ly in pts],
+                    "closed": closed, "width": width, "filled": filled})
+    return out
 
 
 def extract_copper_graphics(root: list) -> list[dict]:

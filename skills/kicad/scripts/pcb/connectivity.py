@@ -286,6 +286,11 @@ def build_connectivity_graph(
             width = pad.get('width', 0) or 0
             height = pad.get('height', 0) or 0
             copper_radius = max(width, height) / 2.0 if (width or height) else 0.0
+            reach = math.hypot(width, height) / 2.0
+            for prim in pad.get('_prims', ()):
+                hw = prim['width'] / 2.0
+                for px, py in prim['pts']:
+                    reach = max(reach, math.hypot(px - x, py - y) + hw)
             for layer in layers:
                 net_nodes.setdefault(net_name, []).append({
                     'key': pad_key,
@@ -294,7 +299,7 @@ def build_connectivity_graph(
                     'y': y,
                     'layer': layer,
                     'copper_radius': copper_radius,
-                    'reach': math.hypot(width, height) / 2.0,
+                    'reach': reach,
                     'shape': pad,
                     'kind': 'pad',
                 })

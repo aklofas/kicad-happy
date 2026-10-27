@@ -851,14 +851,17 @@ def _segment_box_distance(ax: float, ay: float, bx: float, by: float,
 def segment_to_pad_distance(seg: dict, pad: dict) -> float:
     """Distance from a track centreline (x1, y1)-(x2, y2) to a pad's copper; 0 when they
     overlap. circle, oval (stadium), rect/trapezoid (box), roundrect (inner box grown by
-    the corner radius, ``roundrect_rratio`` x the short side, KiCad default 0.25); custom
-    pads use the max(w, h)/2 circle. The pad angle is absolute, as in `_point_in_pad`."""
+    the corner radius, ``roundrect_rratio`` x the short side, KiCad default 0.25); a custom
+    pad is its anchor plus its primitives (``_anchor``/``_prims`` from the reader), or the
+    max(w, h)/2 circle without them. The pad angle is absolute, as in `_point_in_pad`."""
     w = pad.get("width", 0) or 0
     h = pad.get("height", 0) or 0
     px, py = pad["abs_x"], pad["abs_y"]
     ax, ay = seg["x1"] - px, seg["y1"] - py
     bx, by = seg["x2"] - px, seg["y2"] - py
     shape = pad.get("shape", "rect")
+    if shape == "custom" and "_anchor" in pad:
+        return _custom_pad_distance(seg, pad)
     if shape in ("circle", "custom"):
         d = _point_segment_distance(0.0, 0.0, ax, ay, bx, by)
         return max(0.0, d - max(w, h) / 2.0)
@@ -882,3 +885,31 @@ def segment_to_pad_distance(seg: dict, pad: dict) -> float:
         ratio = pad.get("roundrect_rratio", 0.25)
         rr = min(max(ratio, 0.0), 0.5) * min(w, h)
     return max(0.0, _segment_box_distance(ax, ay, bx, by, hw - rr, hh - rr) - rr)
+
+
+def _custom_pad_distance(seg: dict, pad: dict) -> float:
+    """`segment_to_pad_distance` for a custom pad: KiCad's copper is the anchor (a circle of
+    the size's x, or the size box) plus every primitive, each stroked by its width."""
+    anchor = {k: pad[k] for k in ("abs_x", "abs_y", "width", "height", "angle") if k in pad}
+    anchor["shape"] = pad["_anchor"]
+    if anchor["shape"] == "circle":
+        anchor["height"] = anchor.get("width", 0)
+    best = segment_to_pad_distance(seg, anchor)
+    x1, y1, x2, y2 = seg["x1"], seg["y1"], seg["x2"], seg["y2"]
+    for prim in pad["_prims"]:
+        if best <= 0:
+            break
+        pts = prim["pts"]
+        n = len(pts)
+        if prim["filled"] and (_point_in_polygon(x1, y1, pts) or _point_in_polygon(x2, y2, pts)):
+            return 0.0
+        hw = prim["width"] / 2.0
+        if n == 1:
+            d = _point_segment_distance(pts[0][0], pts[0][1], x1, y1, x2, y2)
+            best = min(best, max(0.0, d - hw))
+            continue
+        for i in range(n if prim["closed"] and n >= 3 else n - 1):
+            (qx1, qy1), (qx2, qy2) = pts[i], pts[(i + 1) % n]
+            d = _segment_segment_distance(x1, y1, x2, y2, qx1, qy1, qx2, qy2)
+            best = min(best, max(0.0, d - hw))
+    return best
