@@ -33,7 +33,15 @@ class ValueNotation(unittest.TestCase):
                     ("0,100", "resistor", 0.1), ("1,000.5", "resistor", 1000.5),
                     ("1.000,5", "resistor", 1000.5), ("1,000,000", "resistor", 1e6),
                     ("19,6 kΩ", "resistor", 19600.0), ("4,7 µH", "inductor", 4.7e-6),
-                    ("78 182", "resistor", 78182.0), (".022uF", "capacitor", 2.2e-8)])
+                    ("78 182", "resistor", 78182.0),
+                    ("1 000 000", "resistor", 1e6), ("824 500 500", "diode", 824500500.0), (".022uF", "capacitor", 2.2e-8)])
+
+    def test_a_package_code_does_not_start_a_digit_group(self):
+        # The joined groups must form one mantissa; a 4-digit package code is not its first group.
+        self.check([("1 000.5", "resistor", 1000.5)])
+        for text in ("0402 270 OHM 5%", "0603 470 1%", "3296 104"):
+            got = parse_value(text, component_type="resistor")
+            self.assertLess(got, 1e4, msg=text)
 
     def test_dot_with_three_digits_is_decimal(self):
         self.check([("1.000", "resistor", 1.0), ("4.700k", "resistor", 4700.0),

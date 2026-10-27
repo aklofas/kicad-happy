@@ -123,10 +123,13 @@ def _parse_value(value_str: str, component_type: str | None) -> float | None:
     # KiCad 9 uses space-separated units: "18 pF", "4.7 uF" — rejoin if
     # the second token starts with an SI prefix letter.
     parts = value_str.strip().split("/")[0].split()
-    # KiCad drops spaces inside a mantissa: "78 182" is 78182.
-    while (len(parts) >= 2 and re.fullmatch(r"[+-]?\d{1,3}", parts[0])
-           and re.fullmatch(r"\d{3}(?:[.,]\d+)?", parts[1])):
-        parts[0:2] = [parts[0] + parts[1]]
+    # KiCad drops spaces inside a mantissa: "78 182" is 78182, "1 000 000" is 1e6. The first
+    # group must be 1-3 digits so a package code ("0402 100 OHM") does not start a join.
+    if parts and re.fullmatch(r"[+-]?\d{1,3}", parts[0]):
+        while len(parts) >= 2 and re.fullmatch(r"\d{3}", parts[1]):
+            parts[0:2] = [parts[0] + parts[1]]
+        if len(parts) >= 2 and re.fullmatch(r"\d{3}[.,]\d+", parts[1]):
+            parts[0:2] = [parts[0] + parts[1]]
     if len(parts) >= 2 and parts[1] and (parts[1][0] in "pnumkKMGRr" or parts[1] in ("F", "f", "fF", "fH")):
         s = parts[0] + parts[1]
     else:
