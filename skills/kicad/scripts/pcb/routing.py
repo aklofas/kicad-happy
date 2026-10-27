@@ -108,6 +108,18 @@ def analyze_power_nets(footprints: list[dict], tracks: dict,
             dy = seg["y2"] - seg["y1"]
             power_nets[net]["total_length_mm"] += math.sqrt(dx * dx + dy * dy)
 
+    for arc in tracks.get("arcs", []):
+        net = arc["net"]
+        if net in power_nets:
+            s, e, m = arc["start"], arc["end"], arc.get("mid")
+            if m:
+                length = _arc_length_3pt(s[0], s[1], m[0], m[1], e[0], e[1])
+            else:
+                length = math.hypot(e[0] - s[0], e[1] - s[1])
+            power_nets[net]["widths"].add(arc["width"])
+            power_nets[net]["track_count"] += 1
+            power_nets[net]["total_length_mm"] += length
+
     result = []
     for net_num, info in sorted(power_nets.items(), key=lambda x: x[1]["name"]):
         if info["track_count"] == 0:

@@ -39,6 +39,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Fixed
 
+- Power-net routing statistics include arc tracks. (kf/A9-F6)
 - Board outlines, zone outlines and courtyards drawn as polygons with arc segments are read whole; a board outline made only of arcs no longer reads as empty. (kf/A11-F9)
 - A double quote inside an unquoted word (a KiCad 5 board value such as `0.96"_OLED`) no longer swallows the rest of the board; four corpus boards regain their footprints and copper. A `#` mid-line is part of a word, a quoted `"private"` or `"hide"` is a string and not the keyword, `(hide)` with no value reads as hidden, and quoted `\x41`, octal and `\a`/`\t` escapes decode as KiCad reads them. (kf/A1-F2, kf/A1-F3, kf/A1-F4, kf/A1-F5, kf/A1-F6)
 - A quoted `(` or `)` in a text or property value no longer swallows the rest of the file: the schematic and PCB parsers read it as a string. Components, tracks, zones and board outlines that followed such a value now appear in the analysis. (KH-510)
