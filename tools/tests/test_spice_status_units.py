@@ -139,5 +139,17 @@ class InfoStatusTest(unittest.TestCase):
         self.assertIn("1 info", ss._summary_line(rep))
 
 
+class DiffInfoTest(unittest.TestCase):
+    def test_diff_reports_info_count(self):
+        sys.path.insert(0, str(ROOT / "skills" / "kicad" / "scripts"))
+        from diff_engine import diff_spice
+        run = {"subcircuit_type": "opamp_circuit", "components": ["U1"]}
+        base = R.build_report([dict(run, status="pass")])
+        head = R.build_report([dict(run, status="info")])
+        delta = diff_spice(base, head, 0)["summary"]
+        self.assertEqual(delta["summary.pass"]["delta"], -1)
+        self.assertEqual(delta["summary.info"], {"base": 0, "head": 1, "delta": 1})
+
+
 if __name__ == "__main__":
     unittest.main()

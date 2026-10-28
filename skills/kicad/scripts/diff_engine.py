@@ -667,7 +667,7 @@ def diff_spice(base, head, threshold):
 
     # Summary deltas
     sum_paths = ["summary.pass", "summary.warn", "summary.fail", "summary.skip",
-                 "summary.total"]
+                 "summary.info", "summary.total"]
     sum_delta = _diff_counts(base, head, sum_paths)
     if sum_delta:
         result["summary"] = sum_delta

@@ -120,7 +120,7 @@ Diff function: `diff_spice(base, head, threshold)`
 
 | Section | Identity Key | Compared Fields | Source Path |
 |---------|-------------|-----------------|-------------|
-| Summary counts | n/a (scalar paths) | `pass`, `warn`, `fail`, `skip`, `total` | `summary.*` |
+| Summary counts | n/a (scalar paths) | `pass`, `warn`, `fail`, `skip`, `info`, `total` | `summary.*` |
 | Simulation results | `subcircuit_type::sorted(components)` | `status` (transitions annotated) | `simulation_results[]` |
 | Monte Carlo concerns | `subcircuit_type::metric` | new/resolved (set diff) | `monte_carlo_summary.concerns[]` |
 
