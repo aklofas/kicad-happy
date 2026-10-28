@@ -22,7 +22,10 @@ def _run(gen, ev, det, tmp, **kw):
     tb = gen(det, "b.out", **kw)
     with open(os.path.join(tmp, "b.cir"), "w", encoding="utf-8") as f:
         f.write(tb.render(NgspiceBackend(), "b.out"))
-    subprocess.run(["ngspice", "-b", "b.cir"], cwd=tmp, capture_output=True, timeout=60)
+    run = subprocess.run(["ngspice", "-b", "b.cir"], cwd=tmp, capture_output=True, text=True,
+                         encoding="utf-8", errors="replace", timeout=60)
+    if run.returncode != 0:
+        raise AssertionError(f"ngspice exited {run.returncode}:\n{run.stdout[-2000:]}{run.stderr[-2000:]}")
     sim = R.parse_output_file(os.path.join(tmp, "b.out"))
     for k, v in tb.extra_vars.items():
         sim.setdefault(k, v)
@@ -137,6 +140,21 @@ class InfoStatusTest(unittest.TestCase):
         import simulate_subcircuits as ss
         rep = R.build_report([{"subcircuit_type": "opamp_circuit", "components": ["U1"], "status": "info"}])
         self.assertIn("1 info", ss._summary_line(rep))
+
+
+@unittest.skipUnless(shutil.which("ngspice"), "ngspice not installed")
+class BenchHelperTest(unittest.TestCase):
+    def test_ngspice_failure_is_reported(self):
+        def broken(det, output_file, **kw):
+            class Bench:
+                extra_vars = {}
+
+                def render(self, backend, out):
+                    return "broken\nR1 a\n.end\n"
+            return Bench()
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaisesRegex(AssertionError, "ngspice exited 1"):
+                _run(broken, R.evaluate_rc_filter, {}, tmp)
 
 
 class PhaseUnitTest(unittest.TestCase):
