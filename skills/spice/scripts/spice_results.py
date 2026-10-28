@@ -8,6 +8,9 @@ pass/warn/fail/skip/info status for each simulation.
 
 import math
 
+import _core_path  # noqa: F401
+from kicad_core.parts import is_family_default_vref_key, regulator_vref_key
+
 # Measurements taken with ngspice vp(), which returns radians. The other
 # backends' parsers pass their values through unconverted.
 _RADIAN_KEYS = ("phase_fc", "phase_at_bw")
@@ -785,9 +788,22 @@ def evaluate_regulator_feedback(det, sim_results):
 
     result["simulated"]["vfb_V"] = round(vfb_sim, 4)
 
+    components = {c.get("reference"): c for c in (det.get("_context") or {}).get("components", [])
+                  if isinstance(c, dict)}
     vref_source = det.get("vref_source")
+    vref_key = None
+    if vref_source == "lookup":
+        part = components.get(reg_ref) or {}
+        vref_key = regulator_vref_key(det.get("value") or "", det.get("lib_id") or "",
+                                      part.get("mpn") or "")
+    adjustable = [ref for arm in (r_top, r_bot) for ref in arm.get("parallel_refs") or [arm.get("ref")]
+                  if ref and _is_adjustable(ref, components)]
     if vref_source not in ("lookup", "datasheet") or not vref:
         why = "Vref is not from the part"
+    elif vref_source == "lookup" and (vref_key is None or is_family_default_vref_key(vref_key)):
+        why = f"Vref {vref} V is a family default ({vref_key or 'unmatched'}), not this part's datasheet value"
+    elif adjustable:
+        why = f"divider arm {', '.join(adjustable)} is adjustable"
     elif sim_results.get("vin_from") != "rail_name" or not vin:
         why = "the rail's name carries no voltage"
     else:
@@ -813,6 +829,12 @@ def evaluate_regulator_feedback(det, sim_results):
         result["note"] = (f"FB voltage at the rail's named voltage is {err:.1f}% from Vref {vref} V"
                           " — the divider sets a different output")
     return result
+
+
+def _is_adjustable(ref, components):
+    """A potentiometer, trimmer or rheostat: RV/VR designator or a pot/trim symbol."""
+    lib_id = ((components.get(ref) or {}).get("lib_id") or "").lower()
+    return str(ref).upper().startswith(("RV", "VR")) or "pot" in lib_id or "trim" in lib_id
 
 
 def evaluate_rf_matching(det, sim_results):
@@ -906,7 +928,6 @@ def evaluate_bridge_circuit(det, sim_results):
         result["note"] = "ngspice DC sweep measurement failed"
         return result
 
-    result["status"] = "pass"
     if vth_lo is None:
         result["status"] = "warn"
         result["note"] = "not measured: low-side turn-on threshold not found in the sweep"
@@ -914,7 +935,10 @@ def evaluate_bridge_circuit(det, sim_results):
         result["status"] = "warn"
         result["note"] = "Very low on-state current — FET may not be switching"
     else:
-        result["note"] = f"Low-side FET turns on, Vth≈{vth_lo:.2f}V" if vth_lo else "FET conducting"
+        # the bench runs the generic FET model, so Vth and on-current describe the model
+        result["status"] = "info"
+        result["note"] = (f"Low-side FET turns on, Vth≈{vth_lo:.2f}V on the generic model; "
+                          "not compared against the part")
 
     return result
 

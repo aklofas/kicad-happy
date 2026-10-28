@@ -63,7 +63,8 @@ _REGULATOR_VREF: dict[str, float] = {
     "LT871": 1.213,                                               # LT8710 FBX = 1.213V
     "LTM46": 0.6,                                                 # LTM4600 VFB = 0.6V
     # Richtek
-    "RT5": 0.6,         "RT6": 0.6,                              # RT5785/RT6150 VFB = 0.6V
+    "RT5": 0.6,         "RT6": 0.6,                              # family default (RT5785 VFB = 0.6V)
+    "RT6150": 0.5,                                                # RT6150A/B VFB = 0.5V (DS6150A/B-06)
     "RT2875": 0.6,                                                # RT2875 VFB = 0.6V
     # MPS — split per DigiKey verification (was single 'MP2': 0.8)
     "MP1": 0.8,                                                    # MP1584 VFB = 0.8V
@@ -197,17 +198,46 @@ def _lookup_vref(candidates: list[str]) -> tuple[float | None, str]:
             fixed_v = float(digits[0] + "." + digits[1])
             if 0.5 <= fixed_v <= 9.9:
                 return fixed_v, "fixed_suffix"
-    # Longest-prefix-match: collect all matching prefixes, pick the longest
     for candidate in candidates:
-        best_prefix = ""
-        best_vref = None
-        for prefix, vref in _REGULATOR_VREF.items():
-            if candidate.startswith(prefix.upper()) and len(prefix) > len(best_prefix):
-                best_prefix = prefix
-                best_vref = vref
-        if best_vref is not None:
-            return best_vref, "lookup"
+        key = _longest_vref_key(candidate)
+        if key is not None:
+            return _REGULATOR_VREF[key], "lookup"
     return None, ""
+
+
+def _longest_vref_key(candidate: str) -> str | None:
+    """The longest _REGULATOR_VREF prefix of *candidate*, or None."""
+    best = None
+    for prefix in _REGULATOR_VREF:
+        if candidate.startswith(prefix.upper()) and len(prefix) > len(best or ""):
+            best = prefix
+    return best
+
+
+# Keys longer than three characters that still name a family by one member's
+# Vref (see their table comments), not a part's datasheet value
+_FAMILY_DEFAULT_VREF_KEYS = frozenset({"LMZ2", "LTM46", "MIC29", "XL70", "LD33"})
+
+
+def is_family_default_vref_key(key: str) -> bool:
+    """True when a _REGULATOR_VREF key is a family default: three characters
+    or fewer (RT5, RT6, MP1, SY8) or one of _FAMILY_DEFAULT_VREF_KEYS."""
+    return len(key) <= 3 or key in _FAMILY_DEFAULT_VREF_KEYS
+
+
+def regulator_vref_key(value: str, lib_id: str, mpn: str = "") -> str | None:
+    """The _REGULATOR_VREF key that lookup_regulator_vref takes a "lookup"
+    Vref from (same candidate order), or None when the Vref is not a table hit."""
+    candidates = [value.upper()]
+    if ":" in lib_id:
+        candidates.append(lib_id.split(":")[-1].upper())
+    vref, source = _lookup_vref(candidates)
+    if vref is None and mpn:
+        candidates = [mpn.upper()]
+        vref, source = _lookup_vref(candidates)
+    if source != "lookup":
+        return None
+    return next(k for k in map(_longest_vref_key, candidates) if k is not None)
 
 
 # ---------------------------------------------------------------------------

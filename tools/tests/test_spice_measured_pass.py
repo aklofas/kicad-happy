@@ -40,7 +40,7 @@ def _simulate(findings, types):
     return report["simulation_results"]
 
 
-def _regulator(r_top, r_bot, rail, vref, vref_source, reference=None, value="TPS54331"):
+def _regulator(r_top, r_bot, rail, vref, vref_source, reference=None, value="TPS54160"):
     fd = {"r_top": {"ref": "R1", "ohms": r_top}, "r_bottom": {"ref": "R2", "ohms": r_bot},
           "ratio": r_bot / (r_top + r_bot)}
     if reference:
@@ -77,7 +77,7 @@ class RegulatorVrefTest(unittest.TestCase):
         return _run(T.generate_regulator_feedback, R.evaluate_regulator_feedback, det)
 
     def test_divider_off_vref_fails(self):
-        # Vfb = 3.3 * 10k/92k = 0.3587 V against Vref 0.8 V: 55.16 % off
+        # TPS54160 FB = 0.8 V; Vfb = 3.3 * 10k/92k = 0.3587 V: 55.16 % off
         r = self._eval(_regulator(82e3, 10e3, "+3V3", 0.8, "lookup"))
         self.assertEqual(r["status"], "fail")
         self.assertAlmostEqual(r["delta"]["vfb_vs_vref_pct"], 55.16, delta=0.01)
@@ -90,8 +90,8 @@ class RegulatorVrefTest(unittest.TestCase):
         self.assertAlmostEqual(r["delta"]["vfb_vs_vref_pct"], 0.84, delta=0.01)
 
     def test_out_adj_compares_across_out_and_adj(self):
-        # LM338: Vref across OUT-ADJ; 5 - 5*820/1090 = 1.2385 V, 0.92 % from 1.25 V
-        r = self._eval(_regulator(270, 820, "+5V", 1.25, "lookup", reference="out_adj", value="LM338"))
+        # LM317: Vref 1.25 V across OUT-ADJ; 5 - 5*820/1090 = 1.2385 V, 0.92 % from 1.25 V
+        r = self._eval(_regulator(270, 820, "+5V", 1.25, "lookup", reference="out_adj", value="LM317"))
         self.assertEqual(r["status"], "pass")
         self.assertAlmostEqual(r["delta"]["vfb_vs_vref_pct"], 0.92, delta=0.01)
 
@@ -108,13 +108,44 @@ class RegulatorVrefTest(unittest.TestCase):
     def test_carrier_board_lm338_does_not_fail(self):
         # cl3m3nt0n1 Bridge---Canyon-on-Hardware carrier_board, as the analyzer reports it:
         # Vout = 1.25 * (1 + 820/270) = 5.05 V, the +5V rail
-        det = {"ref": "U2", "value": "LM338_TO220", "topology": "LDO", "output_rail": "+5V",
+        det = {"ref": "U2", "value": "LM338_TO220", "lib_id": "Regulator_Linear:LM337_TO220",
+               "topology": "LDO", "output_rail": "+5V",
                "assumed_vref": 1.25, "vref_source": "lookup", "estimated_vout": 5.046,
                "feedback_divider": {"r_top": {"ref": "R1", "ohms": 270.0, "value": "270"},
                                     "r_bottom": {"ref": "R3", "ohms": 820.0, "value": "820"},
                                     "ratio": 0.752294, "reference": "out_adj"}}
         r = self._eval(det)
         self.assertEqual(r["status"], "pass")
+
+    def test_rt6150_reference_from_its_datasheet(self):
+        # RT6150A/B datasheet (DS6150A/B-06): VFB = 0.5 V; hackquad U7's 487k/86.6k on +3V3:
+        # 3.3 * 86.6/573.6 = 0.4982 V, 0.36 % from 0.5 V
+        from kicad_core.parts import lookup_regulator_vref
+        vref, source = lookup_regulator_vref("RT6150AGQW", "")
+        self.assertEqual((vref, source), (0.5, "lookup"))
+        det = _regulator(487e3, 86.6e3, "+3V3", vref, source, value="RT6150AGQW")
+        r = self._eval(det)
+        self.assertEqual(r["status"], "pass")
+        self.assertAlmostEqual(r["delta"]["vfb_vs_vref_pct"], 0.36, delta=0.01)
+
+    def test_family_default_reference_is_info(self):
+        # 'SY8' names a family by one member's 0.6 V, not this part's datasheet value:
+        # a match (100k/22k: 0.595 V) and a miss (82k/10k: 0.359 V) both stay unjudged
+        for r_top, r_bot in ((100e3, 22e3), (82e3, 10e3)):
+            r = self._eval(_regulator(r_top, r_bot, "+3V3", 0.6, "lookup", value="SY8253ADC"))
+            self.assertEqual(r["status"], "info")
+            self.assertIn("family", r["note"])
+            self.assertNotIn("vfb_vs_vref_pct", r["delta"])
+
+    def test_adjustable_arm_is_info(self):
+        # a trimmer's setting is not its full value: 31.6k/10k would pass, but the top is RV1
+        det = _regulator(31.6e3, 10e3, "+3V3", 0.8, "lookup")
+        det["feedback_divider"]["r_top"]["ref"] = "RV1"
+        self.assertEqual(self._eval(det)["status"], "info")
+        # a pot symbol with an R designator, seen through the analysis's components
+        det = _regulator(31.6e3, 10e3, "+3V3", 0.8, "lookup")
+        det["_context"] = {"components": [{"reference": "R2", "lib_id": "Device:R_Potentiometer_Trim"}]}
+        self.assertEqual(self._eval(det)["status"], "info")
 
     def test_no_feedback_divider_never_passes(self):
         # the analyzer drops feedback_divider when a trimmer sets the output
@@ -155,9 +186,10 @@ class HalfBridgeTest(unittest.TestCase):
                                   "low_side_type": lo_type}]}
 
     def test_low_side_switch_measured(self):
-        # generic NMOS Vth 1.5 V; on-state current = 12 V / 100 ohm load = 120 mA
+        # generic NMOS Vth 1.5 V; on-state current = 12 V / 100 ohm load = 120 mA.
+        # Both are the generic model's, not the part's: info, not pass
         r = _run(T.generate_bridge_circuit, R.evaluate_bridge_circuit, self._det())
-        self.assertEqual(r["status"], "pass")
+        self.assertEqual(r["status"], "info")
         self.assertAlmostEqual(r["simulated"]["vth_low_side_V"], 1.5, delta=0.1)
         self.assertAlmostEqual(r["simulated"]["id_on_mA"], 120.0, delta=2.0)
 
@@ -166,7 +198,7 @@ class HalfBridgeTest(unittest.TestCase):
         det = self._det()
         det["half_bridges"][0]["high_side_type"] = "PMOS"
         r = _run(T.generate_bridge_circuit, R.evaluate_bridge_circuit, det)
-        self.assertEqual(r["status"], "pass")
+        self.assertEqual(r["status"], "info")
         self.assertAlmostEqual(r["simulated"]["id_on_mA"], 120.0, delta=2.0)
 
     def test_pmos_low_side_is_skipped(self):
@@ -202,6 +234,20 @@ class PassiveElementNameTest(unittest.TestCase):
         r = _run(T.generate_voltage_divider, R.evaluate_voltage_divider, det)
         self.assertEqual(r["status"], "pass")
         self.assertAlmostEqual(r["simulated"]["vout_V"], 2.6455, delta=0.001)
+
+
+class RailNameVoltageTest(unittest.TestCase):
+    def test_voltage_written_in_the_name(self):
+        cases = {
+            "+3V3": 3.3, "12VAA": 12.0, "0V9": 0.9, "VCC-5V": 5.0, "/Power/+1V8": 1.8,
+            "USB2VBUS": None,   # USB 2.0 VBUS: the '2' is the USB version
+            "-5V": None,        # a negative rail is not a positive regulator output
+            "0V": None,         # ground
+            "CONN_21": None,    # a connector pin number
+            "VBUS": None, "VCC": None,
+        }
+        for name, volts in cases.items():
+            self.assertEqual(T._rail_name_voltage(name), volts, name)
 
 
 class NoExpectedValueTest(unittest.TestCase):

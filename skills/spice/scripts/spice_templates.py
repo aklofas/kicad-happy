@@ -838,11 +838,14 @@ def _infer_negative_rail(net_name):
 
 def _rail_name_voltage(net_name):
     """Positive voltage written in a rail's name: '+3V3', '5V0', '+3.3V',
-    '+5VA', 'VCC_1V8', '/PWR/12V' -> the number; 'VCC', 'VBUS', '-5V',
-    'USB2VBUS' -> None. Only the leaf's '_'-separated tokens that begin with
-    the number count, so a number that is not a voltage is not read as one."""
+    '+5VA', 'VCC_1V8', 'VCC-5V', '/PWR/12V' -> the number; 'VCC', 'VBUS',
+    '-5V', 'USB2VBUS' -> None. Only the leaf's '_'/'-'-separated tokens that
+    begin with the number count, so a number that is not a voltage is not
+    read as one; a leading '-' is a negative rail."""
     leaf = (net_name or "").rsplit("/", 1)[-1].upper().strip()
-    for tok in re.split(r"[_\s]+", leaf):
+    if leaf.startswith("-"):
+        return None
+    for tok in re.split(r"[_\s-]+", leaf):
         m = re.fullmatch(r"\+?(\d+)V(\d*)[A-Z]*", tok)
         v = float(f"{m.group(1)}.{m.group(2) or 0}") if m else None
         m = re.fullmatch(r"\+?(\d+\.\d+)V[A-Z]*", tok)
