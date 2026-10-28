@@ -279,6 +279,8 @@ def analyze_sleep_current(ctx: AnalysisContext,
 
     def _rail_voltage(name: str) -> float | None:
         v = _estimate_rail_voltage(name)
+        if v is None:
+            v = ctx.rail_voltage(name)
         if v is None and signal_analysis:
             v = signal_analysis.get("rail_voltages", {}).get(_clean_hierarchical_name(name))
         if v is None:

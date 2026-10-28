@@ -300,6 +300,46 @@ def _build_net_classifications(results: dict) -> dict[str, dict]:
     return classifications
 
 
+def build_rail_map(ctx: AnalysisContext, power_regulators: list[dict]) -> dict[str, float]:
+    """Rail voltages keyed by full net name, one source per pass in priority order.
+
+    A pass fills only nets no earlier pass set: a regulator's estimated output on
+    its output net (the last regulator on a net wins), then the voltage in the
+    name of a power or ground net.
+    """
+    by_net: dict[str, float] = {}
+    for reg in power_regulators:
+        out_rail = reg.get("output_rail")
+        v_out = reg.get("estimated_vout")
+        if out_rail and v_out is not None:
+            by_net[out_rail] = v_out
+    for net_name in sorted(ctx.nets):
+        if net_name not in by_net and (ctx.is_power_net(net_name) or ctx.is_ground(net_name)):
+            v = _estimate_rail_voltage(net_name)
+            if v is not None:
+                by_net[net_name] = v
+    return by_net
+
+
+def public_rail_voltages(ctx: AnalysisContext, power_regulators: list[dict],
+                         by_net: dict[str, float]) -> dict[str, float]:
+    """The output's ``rail_voltages``: *by_net* keyed by UUID-stripped name.
+
+    Instances that strip to one key share it: regulator outputs first (the last
+    regulator wins), then the first named net in netlist order.
+    """
+    rail_voltages: dict[str, float] = {}
+    for reg in power_regulators:
+        out_rail = reg.get("output_rail")
+        if out_rail in by_net and reg.get("estimated_vout") is not None:
+            rail_voltages[_clean_hierarchical_name(out_rail)] = by_net[out_rail]
+    for net_name in ctx.nets:
+        clean = _clean_hierarchical_name(net_name)
+        if clean not in rail_voltages and net_name in by_net:
+            rail_voltages[clean] = by_net[net_name]
+    return rail_voltages
+
+
 def detect_topologies(ctx: AnalysisContext) -> dict:
     """Phase 1: topology detectors in dependency order.
 
@@ -327,20 +367,8 @@ def detect_topologies(ctx: AnalysisContext) -> dict:
     integrated_ldos = detect_integrated_ldos(ctx, power_regulators)
     power_regulators.extend(integrated_ldos)
 
-    # Build rail_voltages: net name → voltage from regulator outputs + power symbol names
-    rail_voltages: dict[str, float] = {}
-    for reg in power_regulators:
-        out_rail = reg.get("output_rail")
-        v_out = reg.get("estimated_vout")
-        if out_rail and v_out is not None:
-            rail_voltages[_clean_hierarchical_name(out_rail)] = v_out
-    # Augment with voltages inferred from the names of power and ground nets
-    for net_name in ctx.nets:
-        clean = _clean_hierarchical_name(net_name)
-        if clean not in rail_voltages and (ctx.is_power_net(net_name) or ctx.is_ground(net_name)):
-            v = _estimate_rail_voltage(clean)
-            if v is not None:
-                rail_voltages[clean] = v
+    ctx.rail_by_net = build_rail_map(ctx, power_regulators)
+    rail_voltages = public_rail_voltages(ctx, power_regulators, ctx.rail_by_net)
 
     protection_devices = detect_protection_devices(ctx)
     bridge_circuits, matched_fets, fet_pins = detect_bridge_circuits(ctx)
@@ -390,7 +418,6 @@ def run_domain_detectors(ctx: AnalysisContext, topo: dict) -> dict:
 
     Returns the phase-3 records keyed by their historical local names.
     """
-    rail_voltages = topo["rail_voltages"]
     crystal_circuits = topo["crystal_circuits"]
     rc_filters = topo["rc_filters"]
     power_regulators = topo["power_regulators"]
@@ -443,9 +470,9 @@ def run_domain_detectors(ctx: AnalysisContext, topo: dict) -> dict:
     # Lookup detectors (Phase 4c) — consume v1.4 datasheet facts via lookup().
     # Soft-skip when get_facts() returns None (no MPN cache). Synonym-resolved
     # rail keys per addendum §A2; per-pin Pin.absolute_max overrides rail-level.
-    am_001_findings = detect_absolute_max_violations(ctx, rail_voltages)
-    ov_001_findings = detect_vcc_outside_recommended(ctx, rail_voltages)
-    ft_001_findings = detect_5v_on_non_tolerant_pin(ctx, rail_voltages)
+    am_001_findings = detect_absolute_max_violations(ctx, ctx.rail_by_net)
+    ov_001_findings = detect_vcc_outside_recommended(ctx, ctx.rail_by_net)
+    ft_001_findings = detect_5v_on_non_tolerant_pin(ctx, ctx.rail_by_net)
     pm_001_findings = detect_wrong_signal_type(ctx)
     ex_001_findings = detect_missing_required_components(ctx, power_regulators)
 

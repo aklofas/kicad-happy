@@ -97,11 +97,14 @@ class AnalysisContext:
             installs ``nq``.
         diagnostics: Sink for guarded failures (``kicad_core.diagnostics.record``); the
             schematic pipeline merges it into the envelope's ``diagnostics``.
+        rail_by_net: Rail voltages keyed by full net name, filled by the schematic
+            pipeline; two instances of one sheet keep separate entries.
 
     Methods:
         is_power_net(name): True if *name* is a known power rail or matches
             common power net name patterns (VCC, +3V3, VBUS, etc.).
         is_ground(name): True if *name* matches ground patterns (GND, VSS, etc.).
+        rail_voltage(net): Voltage of the exact net from ``rail_by_net``, or None.
         get_two_pin_nets(ref): Returns ``(net1, net2)`` for a 2-pin component.
             Handles standard "1"/"2" numbering and falls back to enumerating
             all pins for non-standard numbering (Eagle imports, diodes A/K).
@@ -123,12 +126,21 @@ class AnalysisContext:
     project_dir: str | None = field(default=None, repr=False)
     diagnostics: list = field(default_factory=list, repr=False)
     pin_guarded_signals: frozenset = field(default_factory=frozenset, repr=False)
+    rail_by_net: dict[str, float] = field(default_factory=dict, repr=False)
 
     def is_power_net(self, name: str | None) -> bool:
         return name not in self.pin_guarded_signals and is_power_net_name(name, self.known_power_rails)
 
     def is_ground(self, name: str | None) -> bool:
         return is_ground_name(name, self.known_power_rails)
+
+    def rail_voltage(self, net: str | None) -> float | None:
+        """Voltage of the exact net *net* (full hierarchical name) from the rail map.
+
+        The map is built by the schematic pipeline (``build_rail_map``); a context
+        it has not run on knows no rail voltages.
+        """
+        return self.rail_by_net.get(net) if net else None
 
     def get_two_pin_nets(self, ref: str) -> tuple[str | None, str | None]:
         n1, _ = self.pin_net.get((ref, "1"), (None, None))
