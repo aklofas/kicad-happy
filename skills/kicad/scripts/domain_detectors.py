@@ -4135,7 +4135,8 @@ def _infer_voltage(ctx: AnalysisContext, net_name: str | None) -> float | None:
     if not net_name:
         return None
     from kicad_core.netnames import parse_voltage_from_net_name
-    v = parse_voltage_from_net_name(net_name)
+    v = (parse_voltage_from_net_name(net_name) if ctx is None
+         else ctx.rail_voltage_or(net_name, parse_voltage_from_net_name))
     return abs(v) if v is not None else None
 
 
@@ -5036,7 +5037,7 @@ def audit_led_circuits(ctx: AnalysisContext,
 
         # Estimate current for resistor-limited LEDs
         if series_resistor and supply_net:
-            v_supply = parse_voltage_from_net_name(supply_net)
+            v_supply = ctx.rail_voltage_or(supply_net, parse_voltage_from_net_name)
             if v_supply:
                 v_supply = abs(v_supply)
                 vf = _estimate_led_vf(comp)
@@ -5057,7 +5058,7 @@ def audit_led_circuits(ctx: AnalysisContext,
         # color floor, the LED can't forward-bias at all. rc.2 4.1
         # expansion (Manas review).
         if supply_net:
-            v_supply = parse_voltage_from_net_name(supply_net)
+            v_supply = ctx.rail_voltage_or(supply_net, parse_voltage_from_net_name)
             color = _detect_led_color(comp)
             floor = _LED_VF_FLOOR.get(color) if color else None
             if v_supply is not None and v_supply >= 0 and floor is not None and v_supply < floor:
@@ -5428,7 +5429,8 @@ def build_power_sequencing_graph(ctx: AnalysisContext,
         if rail and threshold:
             # Find nominal voltage of monitored rail
             src = output_rails.get(rail)
-            nominal = src.get("voltage") if src else parse_voltage_from_net_name(rail)
+            nominal = ctx.rail_voltage_or(
+                rail, lambda n: src.get("voltage") if src else parse_voltage_from_net_name(n))
             if nominal:
                 nominal = abs(nominal)
             if nominal and threshold > nominal:

@@ -2177,7 +2177,7 @@ def _estimate_regulator_dissipation(ctx: AnalysisContext, power_regulators: list
         vin_rail = reg.get("input_rail")
         vout = reg.get("estimated_vout")
         if topology == "LDO" and vin_rail and vout and vout > 0:
-            vin = _infer_rail_voltage(vin_rail)
+            vin = ctx.rail_voltage_or(vin_rail, _infer_rail_voltage)
             if vin and vin > vout:
                 dropout = vin - vout
                 # Estimate load current from output cap total (heuristic:
@@ -2199,7 +2199,7 @@ def _estimate_regulator_dissipation(ctx: AnalysisContext, power_regulators: list
                     },
                 }
         elif topology == "switching" and vout and vout > 0:
-            vin = _infer_rail_voltage(vin_rail)
+            vin = ctx.rail_voltage_or(vin_rail, _infer_rail_voltage)
             if vin and vin > 0:
                 # Estimate load current from output cap total (same heuristic as LDO,
                 # but cap at 2.0A for switching regulators)

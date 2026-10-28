@@ -482,6 +482,14 @@ def _estimate_rail_voltage_for_ic(ctx: AnalysisContext, ref: str) -> float | Non
     Returns the magnitude so a +/- supplied IC does not read as a different
     domain depending on pin order.
     """
+    return _ic_rail_voltage(ctx, ref)[0]
+
+
+def _ic_rail_voltage(ctx: AnalysisContext, ref: str) -> tuple[float | None, bool]:
+    """``_estimate_rail_voltage_for_ic`` and whether the voltage is a config override."""
+    def pin_voltage(net):
+        return ctx.rail_voltage_or(net, parse_voltage_from_net_name)
+
     comp = ctx.comp_lookup.get(ref, {})
     mpn = comp.get('mpn') or comp.get('value', '')
     feat = get_regulator_features(mpn, project_dir=ctx.project_dir) if mpn else None
@@ -492,9 +500,9 @@ def _estimate_rail_voltage_for_ic(ctx: AnalysisContext, ref: str) -> float | Non
         pins = ctx.ref_pins.get(ref, {})
         for pnum, (net, _) in pins.items():
             if str(pnum) == vin_pin and net and ctx.is_power_net(net) and not ctx.is_ground(net):
-                v = parse_voltage_from_net_name(net)
+                v = pin_voltage(net)
                 if v is not None:
-                    return abs(v)
+                    return abs(v), ctx.config_rail_voltage(net) is not None
 
     # The positive supply sets a split-supply IC's logic swing; a negative rail counts
     # only for an IC that has no positive one.
@@ -502,12 +510,12 @@ def _estimate_rail_voltage_for_ic(ctx: AnalysisContext, ref: str) -> float | Non
     pins = ctx.ref_pins.get(ref, {})
     for pnum, (net, _) in pins.items():
         if net and ctx.is_power_net(net) and not ctx.is_ground(net):
-            v = parse_voltage_from_net_name(net)
+            v = pin_voltage(net)
             if v is not None and v > 0:
-                return v
+                return v, ctx.config_rail_voltage(net) is not None
             if v is not None and negative is None:
-                negative = abs(v)
-    return negative
+                negative = (abs(v), ctx.config_rail_voltage(net) is not None)
+    return negative if negative is not None else (None, False)
 
 
 def _closest_threshold(voltage: float) -> tuple:
@@ -529,10 +537,13 @@ def validate_voltage_levels(ctx: AnalysisContext, level_shifters: list[dict] | N
     cache_dir = getattr(ctx, 'cache_dir', None)
 
     ic_voltages: dict[str, float] = {}
+    config_voltage_ics: set[str] = set()
     for ic in get_unique_ics(ctx):
         v = _estimate_rail_voltage_for_ic(ctx, ic['reference'])
         if v is not None:
             ic_voltages[ic['reference']] = v
+            if ctx.rail_overrides and _ic_rail_voltage(ctx, ic['reference'])[1]:
+                config_voltage_ics.add(ic['reference'])
             # 4b lookup probe (informational; future v1.5 will use
             # facts.base.recommended_operating.VDD to validate the rail estimate).
             mpn = ic.get('mpn') or ic.get('value') or ''
@@ -643,6 +654,8 @@ def validate_voltage_levels(ctx: AnalysisContext, level_shifters: list[dict] | N
                 continue
 
         refs = sorted(set(p['ref'] for p in ic_pins_on_net))
+        config_extra = ({'rail_voltage_source': 'config'}
+                        if config_voltage_ics.intersection(refs) else {})
         findings.append(make_finding(
             detector='validate_voltage_levels',
             rule_id='VM-001',
@@ -671,7 +684,8 @@ def validate_voltage_levels(ctx: AnalysisContext, level_shifters: list[dict] | N
             impact='Risk of damage or unreliable logic levels',
             provenance=make_provenance('vm_rail_mismatch', 'heuristic'),
             schema_era='v1.4',
-            source=ctx.source,))
+            source=ctx.source,
+            **config_extra))
 
     return findings
 
@@ -1152,6 +1166,8 @@ def validate_led_resistors(ctx: AnalysisContext) -> list[dict]:
         n1, n2 = ctx.get_two_pin_nets(ref)
         if not n1 or not n2:
             continue
+        if ctx.rail_ignored(n1) or ctx.rail_ignored(n2):
+            continue
 
         anode_net = cathode_net = None
         if ctx.is_power_net(n1) and not ctx.is_ground(n1):
@@ -1217,11 +1233,12 @@ def validate_led_resistors(ctx: AnalysisContext) -> list[dict]:
             if_max_ma = _LED_IF_MAX_DEFAULT_MA
 
         for sr in series_resistors:
-            rail_v = parse_voltage_from_net_name(sr['rail'])
+            rail_v = ctx.rail_voltage_or(sr['rail'], parse_voltage_from_net_name)
             rail_v = abs(rail_v) if rail_v is not None else None
             if rail_v is None or rail_v <= vf:
                 continue
             current_ma = (rail_v - vf) / sr['ohms'] * 1000
+            config_extra = ctx.rail_source_fields(sr['rail'])
 
             if current_ma > if_max_ma * 2:
                 findings.append(make_finding(
@@ -1235,7 +1252,8 @@ def validate_led_resistors(ctx: AnalysisContext) -> list[dict]:
                     impact='LED overcurrent reduces lifespan',
                     provenance=make_provenance('lr_resistor_check', 'deterministic'),
                     schema_era='v1.4',
-                    source=ctx.source,))
+                    source=ctx.source,
+                    **config_extra))
 
             power_w = (current_ma / 1000) ** 2 * sr['ohms']
             if power_w > 0.25:
@@ -1248,7 +1266,8 @@ def validate_led_resistors(ctx: AnalysisContext) -> list[dict]:
                     recommendation='Use a larger package resistor or increase resistance.',
                     provenance=make_provenance('lr_resistor_check', 'deterministic'),
                     schema_era='v1.4',
-                    source=ctx.source,))
+                    source=ctx.source,
+                    **config_extra))
 
     return findings
 

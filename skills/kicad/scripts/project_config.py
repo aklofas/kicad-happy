@@ -34,6 +34,7 @@ from kicad_core.model import ResolvedConfig
 from kicad_core.diagnostics import record
 from kicad_core.render import normalize_severity
 from kicad_core.sexp import unescape_string
+from kicad_core.netnames import configured_rail_voltage, rail_matches
 
 
 # ---------------------------------------------------------------------------
@@ -727,7 +728,12 @@ def apply_power_rails_config(
 ) -> tuple:
     """Apply power_rails config to analysis output.
 
-    Filters ignored rails, marks flagged rails, applies voltage overrides.
+    Filters ignored rails, marks flagged rails, applies voltage overrides. The
+    schematic pipeline already applies ``ignore`` and ``voltage_overrides`` before
+    detection, so on its output this only adds what the summary lists need: an
+    override for a listed rail that had no voltage, and ``source: "config"`` on
+    overridden ``power_rails`` entries. ``ignore`` and overrides match a name by
+    its full name or leaf; ``flag`` matches the name as written.
 
     Args:
         rail_voltages: {net_name: voltage} dict from signal analysis.
@@ -746,33 +752,31 @@ def apply_power_rails_config(
     flag_patterns = pr_cfg.get('flag', [])
     voltage_overrides = pr_cfg.get('voltage_overrides', {})
 
-    def _is_ignored(name: str) -> bool:
-        return any(fnmatch(name, pat) for pat in ignore_patterns)
-
-    def _is_flagged(name: str) -> bool:
-        return any(fnmatch(name, pat) for pat in flag_patterns)
-
     # Filter rail_voltages
     filtered_rv = {}
     for name, voltage in rail_voltages.items():
-        if _is_ignored(name):
+        if rail_matches(ignore_patterns, name):
             continue
-        v = voltage_overrides.get(name, voltage)
-        filtered_rv[name] = v
+        v = configured_rail_voltage(voltage_overrides, name)
+        filtered_rv[name] = voltage if v is None else v
 
     # Filter power_rails list
     filtered_pr = []
     for rail in power_rails_list:
         rname = rail.get('name', '')
-        if _is_ignored(rname):
+        if rail_matches(ignore_patterns, rname):
             continue
         entry = dict(rail)
-        if rname in voltage_overrides:
-            entry['voltage'] = voltage_overrides[rname]
+        v = configured_rail_voltage(voltage_overrides, rname)
+        if v is not None:
+            entry['voltage'] = v
+            entry['source'] = 'config'
+            filtered_rv.setdefault(rname, v)
         filtered_pr.append(entry)
 
     # Collect flagged rails
-    flagged = [name for name in filtered_rv if _is_flagged(name)]
+    flagged = [name for name in filtered_rv
+               if any(fnmatch(name, pat) for pat in flag_patterns)]
 
     return filtered_rv, filtered_pr, flagged
 

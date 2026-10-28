@@ -1,5 +1,6 @@
 """Net-name heuristics: rail/ground/USB recognition and voltage-from-name (kicad_core). Each predicate is one named policy; do not union them with other skills' lists (see product review U2)."""
 import re
+from fnmatch import fnmatch
 
 from kicad_core.sexp import unescape_string
 
@@ -13,6 +14,27 @@ def net_leaf(name: str) -> str:
     if name.startswith("/"):
         return name.rsplit("/", 1)[-1]
     return name
+
+
+def configured_rail_voltage(overrides: dict, net: str | None) -> float | None:
+    """The ``voltage_overrides`` entry for *net*: by full name, then its leaf, then the
+    leaf as KiCad displays it (users write ``+3V3``, not ``/<uuid>/+3V3``)."""
+    if not net or not overrides:
+        return None
+    leaf = net_leaf(net)
+    for key in (net, leaf, unescape_string(leaf)):
+        v = overrides.get(key)
+        if v is not None:
+            return v
+    return None
+
+
+def rail_matches(patterns, net: str | None) -> bool:
+    """True if an ``ignore``/``flag`` glob matches *net*'s full name or its leaf."""
+    if not net or not patterns:
+        return False
+    leaf = net_leaf(net)
+    return any(fnmatch(net, pat) or fnmatch(leaf, pat) for pat in patterns)
 
 
 def parse_voltage_from_net_name(net_name: str) -> float | None:

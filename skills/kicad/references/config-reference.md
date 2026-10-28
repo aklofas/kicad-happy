@@ -154,9 +154,9 @@ Filter and annotate power rails in analysis output. All patterns use fnmatch glo
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `ignore` | array of strings | Net name patterns to exclude from analysis. Ignored rails are removed from `rail_voltages`, `power_rails`, sleep current audit, and power tree figures. |
+| `ignore` | array of strings | Net name patterns to exclude from analysis. A pattern matches the full net name or the name after its sheet path. Ignored rails get no voltage in any check and are removed from `rail_voltages`, `power_rails`, the sleep current audit and the power budget. |
 | `flag` | array of strings | Net name patterns to highlight for extra scrutiny. Flagged rails appear in top-level `flagged_rails`. |
-| `voltage_overrides` | object | Manual voltage assignments: `{net_name: voltage_float}`. Overrides auto-detected voltages from regulator outputs and power symbol name inference. |
+| `voltage_overrides` | object | Manual voltage assignments: `{net_name: voltage_float}`, matched by full net name or the name after its sheet path (`+3V3` also sets `/<sheet>/+3V3`). Overrides auto-detected voltages from regulator outputs and power symbol name inference in every check (a regulator's own `estimated_vout` is kept). Findings that used an override carry `rail_voltage_source: "config"`; `power_rails` entries carry `source: "config"`. |
 
 `ignore` and `flag` must be arrays; `voltage_overrides` values must be numeric. Invalid entries are warned and skipped.
 

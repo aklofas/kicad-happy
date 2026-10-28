@@ -560,7 +560,7 @@ def _detect_i2c_buses(ctx: AnalysisContext) -> list[dict]:
                 # Voltage level from pull-up rail
                 voltage_level = None
                 for pu in pullups:
-                    v = _estimate_rail_voltage(pu.get("to_rail", ""))
+                    v = ctx.rail_voltage_or(pu.get("to_rail", ""), _estimate_rail_voltage)
                     if v is not None:
                         voltage_level = v
                         break
@@ -645,7 +645,7 @@ def _detect_i2c_buses(ctx: AnalysisContext) -> list[dict]:
                     speed_mode = None
                 voltage_level = None
                 for pu in pullups:
-                    v = _estimate_rail_voltage(pu.get("to_rail", ""))
+                    v = ctx.rail_voltage_or(pu.get("to_rail", ""), _estimate_rail_voltage)
                     if v is not None:
                         voltage_level = v
                         break
@@ -1355,7 +1355,7 @@ def _check_passive_ratings(ctx: AnalysisContext) -> list:
                 # Rough rail voltage estimation from name
                 for net in [c_n1, c_n2]:
                     if net:
-                        v_est = abs(_estimate_rail_voltage(net) or 0)
+                        v_est = abs(ctx.rail_voltage_or(net, _estimate_rail_voltage) or 0)
                         if v_est and rated_v < v_est * 1.5:
                             passive_warnings.append({
                                 "component": c["reference"],

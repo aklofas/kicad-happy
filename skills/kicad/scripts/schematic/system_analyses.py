@@ -277,7 +277,7 @@ def analyze_sleep_current(ctx: AnalysisContext,
             if _out_rail and _vout:
                 _reg_vout_by_rail.setdefault(_out_rail, _vout)
 
-    def _rail_voltage(name: str) -> float | None:
+    def _estimated_rail_voltage(name: str) -> float | None:
         v = _estimate_rail_voltage(name)
         if v is None:
             v = ctx.rail_voltage(name)
@@ -287,6 +287,10 @@ def analyze_sleep_current(ctx: AnalysisContext,
             v = _reg_vout_by_rail.get(name)
         if v is None and name and _battery_rail_re.match(name):
             v = 3.7
+        return v
+
+    def _rail_voltage(name: str) -> float | None:
+        v = ctx.rail_voltage_or(name, _estimated_rail_voltage)
         # Sleep draw scales with the rail's magnitude, so a negative rail
         # contributes |V|/R like a positive one.
         return abs(v) if v is not None else None
@@ -736,13 +740,16 @@ def analyze_voltage_derating(ctx: AnalysisContext, signal_analysis: dict,
             return "ceramic"
         return "unknown"
 
-    def _get_rail_voltage(net_name):
+    def _estimated_rail_voltage(net_name):
         for reg in signal_analysis.get("power_regulators", []):
             if reg.get("output_rail") == net_name:
                 v = reg.get("estimated_vout")
                 if v:
                     return v
         return _estimate_rail_voltage(net_name)
+
+    def _get_rail_voltage(net_name):
+        return ctx.rail_voltage_or(net_name, _estimated_rail_voltage)
 
     def _find_power_net(ref):
         n1, _ = pin_net.get((ref, "1"), (None, None))
@@ -836,6 +843,7 @@ def analyze_voltage_derating(ctx: AnalysisContext, signal_analysis: dict,
                 derating_rule=derating_rule, rail=pwr_net, rail_voltage=v_rail,
                 rated_voltage=rated_v, margin_pct=round(margin_pct, 1), dielectric=dielectric,
             schema_era="v3.0",
+                **ctx.rail_source_fields(pwr_net),
             ))
         elif margin_pct > profile["over_designed_cap_margin"] * 100:
             suggested_v = v_rail * 2.5
@@ -855,6 +863,7 @@ def analyze_voltage_derating(ctx: AnalysisContext, signal_analysis: dict,
                 derating_rule="over_designed", rail=pwr_net, rail_voltage=v_rail,
                 rated_voltage=rated_v, margin_pct=round(margin_pct, 1),
             schema_era="v3.0",
+                **ctx.rail_source_fields(pwr_net),
             ))
 
     # ---- IC absolute max voltage check ----
@@ -903,6 +912,7 @@ def analyze_voltage_derating(ctx: AnalysisContext, signal_analysis: dict,
                 derating_rule="exceeds_abs_max", rail=max_rail_name, rail_voltage=max_rail_v,
                 abs_max_vin=vin_max, margin_pct=round(margin_pct, 1),
             schema_era="v3.0",
+                **ctx.rail_source_fields(max_rail_name),
             ))
         elif margin_pct < 10:
             findings.append(make_finding(
@@ -917,6 +927,7 @@ def analyze_voltage_derating(ctx: AnalysisContext, signal_analysis: dict,
                 derating_rule="ic_10pct_abs_max", rail=max_rail_name, rail_voltage=max_rail_v,
                 abs_max_vin=vin_max, margin_pct=round(margin_pct, 1),
             schema_era="v3.0",
+                **ctx.rail_source_fields(max_rail_name),
             ))
 
     # ---- Resistor power dissipation check ----
@@ -978,6 +989,7 @@ def analyze_voltage_derating(ctx: AnalysisContext, signal_analysis: dict,
                 estimated_power_w=round(power_w, 4), rated_power_w=rated_power, package=pkg,
                 margin_pct=round(margin_pct, 1),
                 schema_era="v3.0",
+                **ctx.rail_source_fields(pwr_net, n1, n2),
             ))
         elif margin_pct > profile["over_designed_res_margin"] * 100:
             pkg_sizes = ["0201", "0402", "0603", "0805", "1206", "1210", "2010", "2512"]
@@ -1002,6 +1014,7 @@ def analyze_voltage_derating(ctx: AnalysisContext, signal_analysis: dict,
                 derating_rule="over_designed", estimated_power_w=round(power_w, 4),
                 rated_power_w=rated_power, package=pkg, margin_pct=round(margin_pct, 1),
             schema_era="v3.0",
+                **ctx.rail_source_fields(pwr_net, n1, n2),
             ))
 
     # ---- Return findings ----
@@ -1468,6 +1481,8 @@ def analyze_power_budget(ctx: AnalysisContext,
     observations = []
 
     for rail in sorted(all_rails):
+        if ctx.rail_ignored(rail):
+            continue
         ics = rail_ics.get(rail, [])
         total_ic_mA = sum(ic["estimated_mA"] for ic in ics)
         other = rail_other.get(rail, [])
@@ -1495,7 +1510,7 @@ def analyze_power_budget(ctx: AnalysisContext,
             # LDO thermal dissipation: uses the rail's total load (ICs +
             # other loads like LEDs) -- KH-375/KH-386 need the same number.
             if reg.get("topology") == "LDO" and v_in_rail and v_out:
-                v_in = abs(_estimate_rail_voltage(v_in_rail) or 0)
+                v_in = abs(ctx.rail_voltage_or(v_in_rail, _estimate_rail_voltage) or 0)
                 if v_in and v_in > v_out:
                     total_load_mA = rail_info["estimated_load_mA"]
                     v_drop = v_in - v_out
@@ -2556,7 +2571,7 @@ def analyze_inrush_current(ctx: AnalysisContext,
 
     for reg in regulators:
         out_rail = reg.get("output_rail")
-        if not out_rail or out_rail not in nets:
+        if not out_rail or out_rail not in nets or ctx.rail_ignored(out_rail):
             continue
 
         # Find total output capacitance on this rail
@@ -2585,7 +2600,9 @@ def analyze_inrush_current(ctx: AnalysisContext,
         if not output_caps:
             continue
 
-        v_out = reg.get("estimated_vout") or abs(_estimate_rail_voltage(out_rail) or 0)
+        v_cfg = ctx.config_rail_voltage(out_rail)
+        v_out = (abs(v_cfg) if v_cfg is not None
+                 else reg.get("estimated_vout") or abs(_estimate_rail_voltage(out_rail) or 0))
         if not v_out or v_out <= 0:
             continue
 

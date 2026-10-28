@@ -13,7 +13,9 @@ from pathlib import Path
 
 from kicad_core.model import PinNetEntry
 from kicad_core.netquery import build_pin_to_net_map
-from kicad_core.netnames import is_ground_name, is_pin_guarded_signal, is_power_net_name
+from kicad_core.netnames import (
+    configured_rail_voltage, is_ground_name, is_pin_guarded_signal, is_power_net_name, rail_matches,
+)
 from kicad_core.diagnostics import record
 from kicad_core.values import AmbiguousValueSeparator, ambiguous_separator, parse_value
 
@@ -99,12 +101,21 @@ class AnalysisContext:
             schematic pipeline merges it into the envelope's ``diagnostics``.
         rail_by_net: Rail voltages keyed by full net name, filled by the schematic
             pipeline; two instances of one sheet keep separate entries.
+        rail_overrides: ``analysis.power_rails.voltage_overrides`` from the project
+            config, ``{net_name: volts}``.
+        rail_ignore: ``analysis.power_rails.ignore`` glob patterns.
 
     Methods:
         is_power_net(name): True if *name* is a known power rail or matches
             common power net name patterns (VCC, +3V3, VBUS, etc.).
         is_ground(name): True if *name* matches ground patterns (GND, VSS, etc.).
-        rail_voltage(net): Voltage of the exact net from ``rail_by_net``, or None.
+        rail_voltage(net): The configured voltage, else the exact net's entry in
+            ``rail_by_net``; None for an ignored rail.
+        config_rail_voltage(net): The user's override for *net*, or None.
+        rail_ignored(net): True if *net* matches an ``ignore`` pattern.
+        rail_voltage_or(net, estimate): None for an ignored rail, else the override,
+            else ``estimate(net)``.
+        rail_source_fields(*nets): The finding key marking a config-sourced voltage.
         get_two_pin_nets(ref): Returns ``(net1, net2)`` for a 2-pin component.
             Handles standard "1"/"2" numbering and falls back to enumerating
             all pins for non-standard numbering (Eagle imports, diodes A/K).
@@ -127,6 +138,8 @@ class AnalysisContext:
     diagnostics: list = field(default_factory=list, repr=False)
     pin_guarded_signals: frozenset = field(default_factory=frozenset, repr=False)
     rail_by_net: dict[str, float] = field(default_factory=dict, repr=False)
+    rail_overrides: dict[str, float] = field(default_factory=dict, repr=False)
+    rail_ignore: tuple[str, ...] = field(default=(), repr=False)
 
     def is_power_net(self, name: str | None) -> bool:
         return name not in self.pin_guarded_signals and is_power_net_name(name, self.known_power_rails)
@@ -137,10 +150,35 @@ class AnalysisContext:
     def rail_voltage(self, net: str | None) -> float | None:
         """Voltage of the exact net *net* (full hierarchical name) from the rail map.
 
-        The map is built by the schematic pipeline (``build_rail_map``); a context
-        it has not run on knows no rail voltages.
+        The user's override comes first and an ignored rail has none. The map is built
+        by the schematic pipeline (``build_rail_map``); a context it has not run on
+        knows only the overrides.
         """
-        return self.rail_by_net.get(net) if net else None
+        return self.rail_voltage_or(net, self.rail_by_net.get)
+
+    def config_rail_voltage(self, net: str | None) -> float | None:
+        """The configured voltage for *net* (``configured_rail_voltage``), or None."""
+        return configured_rail_voltage(self.rail_overrides, net)
+
+    def rail_ignored(self, net: str | None) -> bool:
+        return rail_matches(self.rail_ignore, net)
+
+    def rail_source_fields(self, *nets: str | None) -> dict:
+        """``{"rail_voltage_source": "config"}`` for a finding whose rail voltage came
+        from a config override on one of *nets*, else ``{}``."""
+        if any(not self.rail_ignored(n) and self.config_rail_voltage(n) is not None
+               for n in nets):
+            return {"rail_voltage_source": "config"}
+        return {}
+
+    def rail_voltage_or(self, net: str | None, estimate) -> float | None:
+        """None for an ignored rail, else the configured voltage, else ``estimate(net)``."""
+        if not net:
+            return None
+        if self.rail_ignored(net):
+            return None
+        v = self.config_rail_voltage(net)
+        return v if v is not None else estimate(net)
 
     def get_two_pin_nets(self, ref: str) -> tuple[str | None, str | None]:
         n1, _ = self.pin_net.get((ref, "1"), (None, None))
@@ -170,13 +208,16 @@ def build_analysis_context(components: list[dict], nets: dict[str, dict], lib_sy
                            no_connects: list[dict] | None = None,
                            generator_version: str = "unknown", source: str = "unknown",
                            cache_dir: Path | None = None, project_dir: str | None = None,
-                           known_power_rails: set[str] | None = None) -> AnalysisContext:
+                           known_power_rails: set[str] | None = None,
+                           power_rails_config: dict | None = None) -> AnalysisContext:
     """The single construction point for production contexts (spec §4.2).
 
     Builds ``pin_net`` and every index, installs the ``NetlistQueries`` layer and
     returns a context no detector has to complete. ``known_power_rails`` overrides
     the power-symbol scan (synthetic fixtures); an explicit set (including an empty
-    one) is used as given; ``no_connects`` is kept by reference.
+    one) is used as given; ``no_connects`` is kept by reference. ``power_rails_config``
+    is the project config's ``analysis.power_rails`` (its ``voltage_overrides`` and
+    ``ignore`` reach every detector).
     """
     pin_net = build_pin_to_net_map(nets)
     diagnostics: list = []
@@ -191,6 +232,12 @@ def build_analysis_context(components: list[dict], nets: dict[str, dict], lib_sy
         cache_dir=cache_dir, project_dir=project_dir, diagnostics=diagnostics,
         pin_guarded_signals=pin_guarded_signal_nets(nets, comp_lookup, rails),
     )
+    if power_rails_config:
+        ctx.rail_overrides = {
+            k: v for k, v in (power_rails_config.get("voltage_overrides") or {}).items()
+            if isinstance(v, (int, float)) and not isinstance(v, bool)}
+        ctx.rail_ignore = tuple(
+            p for p in (power_rails_config.get("ignore") or ()) if isinstance(p, str))
     from netlist_queries import NetlistQueries  # local: netlist_queries annotates with this class
     ctx.nq = NetlistQueries(ctx)
     return ctx

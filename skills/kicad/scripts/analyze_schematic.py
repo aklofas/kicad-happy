@@ -108,7 +108,8 @@ def main(argv: list[str] | None = None) -> int:
                                project_root=args.project_root,
                                no_hierarchy=args.no_hierarchy,
                                analysis_dir=_analysis_dir_for_ctx,
-                               variant=args.variant)
+                               variant=args.variant,
+                               power_rails_config=analysis_cfg.get("power_rails"))
     # Inject provenance and drop the legacy 'file' key (already removed
     # from internal result assembly, but belt-and-suspenders).
     diagnostics = result.pop("diagnostics", [])

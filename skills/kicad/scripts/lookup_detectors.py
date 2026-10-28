@@ -177,6 +177,7 @@ def detect_absolute_max_violations(ctx, rail_voltages: dict) -> list[dict]:
                 rail_voltage=rail_v,
                 absolute_max_v=absolute_max_v,
                 domain=domain,
+                **ctx.rail_source_fields(net),
             ))
     return findings
 
@@ -261,6 +262,7 @@ def detect_vcc_outside_recommended(ctx, rail_voltages: dict) -> list[dict]:
                     rail_voltage=rail_v,
                     recommended_min=v_min,
                     domain=domain,
+                    **ctx.rail_source_fields(net),
                 ))
             elif v_max is not None and rail_v > v_max:
                 findings.append(make_finding(
@@ -289,6 +291,7 @@ def detect_vcc_outside_recommended(ctx, rail_voltages: dict) -> list[dict]:
                     rail_voltage=rail_v,
                     recommended_max=v_max,
                     domain=domain,
+                    **ctx.rail_source_fields(net),
                 ))
     return findings
 
@@ -452,6 +455,7 @@ def detect_5v_on_non_tolerant_pin(ctx, rail_voltages: dict) -> list[dict]:
                 schema_era="v1.4",
                 signal_voltage=sig_v,
                 is_5v_tolerant=False,
+                **ctx.rail_source_fields(net),
             ))
     return findings
 

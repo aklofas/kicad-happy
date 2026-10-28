@@ -305,7 +305,8 @@ def build_rail_map(ctx: AnalysisContext, power_regulators: list[dict]) -> dict[s
 
     A pass fills only nets no earlier pass set: a regulator's estimated output on
     its output net (the last regulator on a net wins), then the voltage in the
-    name of a power or ground net.
+    name of a power or ground net. The project config has the last word: an
+    ignored rail is dropped and an override is set on every net it names.
     """
     by_net: dict[str, float] = {}
     for reg in power_regulators:
@@ -316,6 +317,14 @@ def build_rail_map(ctx: AnalysisContext, power_regulators: list[dict]) -> dict[s
     for net_name in sorted(ctx.nets):
         if net_name not in by_net and (ctx.is_power_net(net_name) or ctx.is_ground(net_name)):
             v = _estimate_rail_voltage(net_name)
+            if v is not None:
+                by_net[net_name] = v
+    if ctx.rail_overrides or ctx.rail_ignore:
+        for net_name in sorted(ctx.nets):
+            if ctx.rail_ignored(net_name):
+                by_net.pop(net_name, None)
+                continue
+            v = ctx.config_rail_voltage(net_name)
             if v is not None:
                 by_net[net_name] = v
     return by_net
@@ -936,7 +945,8 @@ def _record_library_gaps(components: list[dict], missing: list, root_path: str,
                "cache copy used, as KiCad 10's rescue default keeps it")
 
 
-def analyze_legacy_schematic(path: str, analysis_dir: str | Path | None = None) -> dict:
+def analyze_legacy_schematic(path: str, analysis_dir: str | Path | None = None,
+                             power_rails_config: dict | None = None) -> dict:
     """Parse a KiCad 5 legacy .sch file and return the same structure as analyze_schematic.
 
     Legacy format uses line-oriented text with $Comp/$EndComp blocks, coordinates
@@ -948,7 +958,7 @@ def analyze_legacy_schematic(path: str, analysis_dir: str | Path | None = None) 
     ``AR`` records (else the ``L``/``F0`` reference).
 
     Parses .lib files to populate component pin data for pin-to-net mapping
-    and signal analysis.
+    and signal analysis. *power_rails_config* is as for ``analyze_schematic``.
     """
     all_components = []
     all_wires = []
@@ -1096,7 +1106,8 @@ def analyze_legacy_schematic(path: str, analysis_dir: str | Path | None = None) 
     ctx = build_analysis_context(
         all_components, nets, lib_symbols,
         no_connects=all_no_connects, source=ANALYZER_SOURCE,
-        cache_dir=_cache_dir, project_dir=str(Path(path).parent))
+        cache_dir=_cache_dir, project_dir=str(Path(path).parent),
+        power_rails_config=power_rails_config)
 
     subcircuits = identify_subcircuits(ctx)
 
@@ -1296,7 +1307,8 @@ def run_analyses(ctx: AnalysisContext, parsed: dict, path: str, nets: dict, bom:
 def analyze_schematic(path: str, project_root: str | None = None,
                       no_hierarchy: bool = False,
                       analysis_dir: str | Path | None = None,
-                      variant: str | None = None) -> dict:
+                      variant: str | None = None,
+                      power_rails_config: dict | None = None) -> dict:
     """Main analysis function. Returns complete structured data.
 
     For hierarchical designs (multi-sheet), recursively parses all sub-sheets
@@ -1316,13 +1328,16 @@ def analyze_schematic(path: str, project_root: str | None = None,
             Useful when analysing a sub-sheet in isolation.
         variant: A KiCad 10 design variant name; None is the default variant.  The selected
             name is reported as ``project_settings.variant``.
+        power_rails_config: The project config's ``analysis.power_rails``; its
+            ``voltage_overrides`` and ``ignore`` apply before detection.
     """
     # Detect legacy format
     with open(path, "r", encoding="utf-8", errors="replace") as f:
         first_line = f.readline().strip()
 
     if first_line.startswith("EESchema"):
-        return analyze_legacy_schematic(path, analysis_dir=analysis_dir)
+        return analyze_legacy_schematic(path, analysis_dir=analysis_dir,
+                                        power_rails_config=power_rails_config)
 
     # Parse root sheet and all sub-sheets recursively via parse_all_sheets().
     root_tree = parse_file(path)
@@ -1342,7 +1357,8 @@ def analyze_schematic(path: str, project_root: str | None = None,
             print(f"Note: {original_basename} is a sub-sheet — analyzing "
                   f"full project from root {root_basename}",
                   file=sys.stderr)
-            result = analyze_schematic(root_path, no_hierarchy=True, variant=variant)
+            result = analyze_schematic(root_path, no_hierarchy=True, variant=variant,
+                                       power_rails_config=power_rails_config)
             result["_redirected_from"] = original_basename
 
             # Stale file check: is the original file in the project tree?
@@ -1417,7 +1433,8 @@ def analyze_schematic(path: str, project_root: str | None = None,
     ctx = build_analysis_context(
         all_components, nets, all_lib_symbols,
         no_connects=all_no_connects, generator_version=generator_version,
-        source=ANALYZER_SOURCE, cache_dir=_cache_dir, project_dir=str(Path(path).parent))
+        source=ANALYZER_SOURCE, cache_dir=_cache_dir, project_dir=str(Path(path).parent),
+        power_rails_config=power_rails_config)
 
     analyses = run_analyses(ctx, parsed, path, nets, bom)
     result = assemble_result(ctx, parsed, nets, bom, analyses, path=path,
