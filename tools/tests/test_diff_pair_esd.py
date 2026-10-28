@@ -146,6 +146,56 @@ class DiffPairEsdCredit(unittest.TestCase):
         self.assertTrue(p["has_esd"])
         self.assertEqual(p["esd_protection"], ["U_esd"])
 
+    def _transceiver_pair(self, comp, a, b):
+        nets = {"RS485+": [(comp["reference"], a, "A", "bidirectional")],
+                "RS485-": [(comp["reference"], b, "B", "bidirectional")],
+                "GND": [(comp["reference"], "5", "GND", "power_in")],
+                "RX": [(comp["reference"], "1", "R", "output"), ("U1", "4", "PA0", "bidirectional")]}
+        return _pairs([MCU, comp], nets)[("RS485+", "RS485-")]
+
+    def test_rs485_transceiver_with_esd_rating_is_not_protection(self):
+        thvd = dict(_comp("U5", "ic", "THVD1420DRLR", "Interface_UART:THVD1420D",
+                          [("1", "R", "output"), ("2", "~{RE}", "input"), ("3", "DE", "input"),
+                           ("4", "D", "input"), ("5", "GND", "power_in"), ("6", "A", "bidirectional"),
+                           ("7", "B", "bidirectional"), ("8", "VCC", "power_in")]),
+                    description="Half duplex RS-485/RS-422, 12 Mbps, 3V - 5.5V supply, ±12kV "
+                                "electro-static discharge (ESD) protection, with receiver/driver "
+                                "enable, 32 receiver drive capacity, SOIC-8")
+        p = self._transceiver_pair(thvd, "6", "7")
+        self.assertFalse(p["has_esd"])
+        self.assertNotIn("esd_protection", p)
+
+    def test_can_transceiver_with_esd_protection_is_not_protection(self):
+        tcan = dict(_comp("U6", "ic", "TCAN1042", "Interface_CAN_LIN:TCAN1042",
+                          [("1", "R", "output"), ("2", "GND", "power_in"), ("3", "VCC", "power_in"),
+                           ("4", "TXD", "input"), ("5", "VIO", "power_in"), ("6", "CANL", "bidirectional"),
+                           ("7", "CANH", "bidirectional"), ("8", "STB", "input")]),
+                    description="CAN transceiver with ESD protection")
+        nets = {"CAN_P": [("U6", "7", "CANH", "bidirectional")],
+                "CAN_N": [("U6", "6", "CANL", "bidirectional")],
+                "GND": [("U6", "2", "GND", "power_in")],
+                "RX": [("U6", "1", "R", "output"), ("U1", "4", "PA0", "bidirectional")]}
+        p = _pairs([MCU, tcan], nets)[("CAN_P", "CAN_N")]
+        self.assertFalse(p["has_esd"])
+        self.assertNotIn("esd_protection", p)
+
+    def test_array_described_as_esd_protection_is_credited(self):
+        # No keyword in its name, and connector-side nets without a pair suffix: only the
+        # description identifies it.
+        arr = dict(_comp("U7", "ic", "XA2", "custom:XA2",
+                         [("1", "IO1", "passive"), ("2", "GND", "passive"), ("3", "IO2", "passive"),
+                          ("4", "IO3", "passive"), ("6", "IO4", "passive")]),
+                   description="2-line ESD protection array")
+        conn = _comp("J1", "connector", "USB_B", "Connector:USB_B",
+                     [("2", "D-", "bidirectional"), ("3", "D+", "bidirectional")])
+        nets = _usb([("U7", "4", "IO3", "passive")], [("U7", "6", "IO4", "passive")],
+                    [("U7", "2", "GND", "passive")])
+        nets["CONN1"] = [("U7", "1", "IO1", "passive"), ("J1", "3", "D+", "bidirectional")]
+        nets["CONN2"] = [("U7", "3", "IO2", "passive"), ("J1", "2", "D-", "bidirectional")]
+        p = _pairs([MCU, arr, conn], nets)[("USB_D+", "USB_D-")]
+        self.assertTrue(p["has_esd"])
+        self.assertEqual(p["esd_protection"], ["U7"])
+
     def _four_line(self, ref, value, io_type):
         part = _comp(ref, "ic", value, "custom:" + value,
                      [("1", "GND", "passive"), ("2", "IO1", io_type), ("3", "IO2", io_type),

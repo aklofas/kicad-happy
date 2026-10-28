@@ -121,13 +121,15 @@ def is_protection_part(comp: dict, ctx: AnalysisContext, pair_suffixes) -> bool:
         return True
     if ctype != "ic":
         return False
-    if classify_ic_function(comp.get("lib_id", ""), comp.get("value", ""),
-                            comp.get("description", "")) == "protection":
-        return True
+    # A part that drives a pin is a transceiver or buffer even when its description
+    # mentions its own ESD rating ("CAN transceiver with ESD protection").
     ref = comp.get("reference")
     if any(p.get("type") in _DRIVER_PIN_TYPES
            for c in ctx.components if c.get("reference") == ref for p in c.get("pins") or []):
         return False
+    if classify_ic_function(comp.get("lib_id", ""), comp.get("value", ""),
+                            comp.get("description", "")) == "protection":
+        return True
     nets = {net for net, _ in ctx.ref_pins.get(ref, {}).values() if net}
     if not any(ctx.is_ground(n) for n in nets):
         return False
