@@ -258,6 +258,8 @@ def evaluate_opamp_circuit(det, sim_results):
         model_note = f"{part_name} behavioral ({model_source}, GBW={model_gbw/1e6:.1f}MHz)"
     else:
         model_note = "ideal opamp (Aol=1e6, GBW~10MHz) — real part may limit bandwidth"
+    if sim_results.get("vee_assumed"):
+        model_note += "; negative rail assumed at -VCC (its net name gives no voltage)"
 
     result = {
         "subcircuit_type": "opamp_circuit",

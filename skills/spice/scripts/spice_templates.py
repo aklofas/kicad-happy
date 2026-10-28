@@ -396,6 +396,29 @@ def generate_opamp_circuit(det, output_file, context=None, parasitics=None,
     if out_net == "0":
         return None  # Output is ground — can't measure
 
+    # Power supply rails — infer from context or default to +/-5V
+    vcc_net = "VCC"
+    vee_net = "VEE"
+    vcc_v = 5
+    vee_v = -5
+    rail_notes = []
+
+    # Try to infer from analyzer context
+    if context:
+        vcc_v, vee_v = _infer_opamp_rails(det, context, rail_notes)
+        if vee_v == 0:
+            vee_net = "GND_VEE"  # Avoid conflict with node 0
+
+    # A single-supply stage is biased at mid-supply (its AC ground); at 0 V DC
+    # the output sits on the negative clamp and the small-signal gain collapses.
+    vmid = (vcc_v + vee_v) / 2
+    ref_node = "vmid_ref" if vmid else "0"
+    stim_dc = vmid if vmid else 0
+    pos_pin = pos_net or neg_net
+    if pos_pin == "0":
+        pos_pin = ref_node
+    vmid_line = f"\nV_MID vmid_ref 0 DC {vmid}" if vmid else ""
+
     # Build feedback network from analyzer data
     netlist_lines = []
 
@@ -439,38 +462,26 @@ def generate_opamp_circuit(det, output_file, context=None, parasitics=None,
             # it should be from neg_net to ground
             netlist_lines = [l for l in netlist_lines if not l.startswith(spice_ident(ri["ref"]))]
             netlist_lines.append(
-                spice_element_for_passive(ri["ref"], ri["ohms"], neg_net, "0")
+                spice_element_for_passive(ri["ref"], ri["ohms"], neg_net, ref_node)
             )
     elif config == "inverting":
         stim_net = in_net
         # Inverting amp: non-inverting input goes to ground (reference)
         if pos_net and pos_net != "0":
-            netlist_lines.append(f"Rpos_bias {pos_net} 0 0.001")
+            netlist_lines.append(f"Rpos_bias {pos_net} {ref_node} 0.001")
     elif config in ("integrator", "compensator"):
         stim_net = in_net
         # Same as inverting — pos input to ground
         if pos_net and pos_net != "0":
-            netlist_lines.append(f"Rpos_bias {pos_net} 0 0.001")
+            netlist_lines.append(f"Rpos_bias {pos_net} {ref_node} 0.001")
     elif config == "transimpedance_or_buffer":
         use_current_source = True
         stim_net = neg_net  # Drive current into summing junction
         # Pos input to ground
         if pos_net and pos_net != "0":
-            netlist_lines.append(f"Rpos_bias {pos_net} 0 0.001")
+            netlist_lines.append(f"Rpos_bias {pos_net} {ref_node} 0.001")
     else:
         stim_net = in_net
-
-    # Power supply rails — infer from context or default to +/-5V
-    vcc_net = "VCC"
-    vee_net = "VEE"
-    vcc_v = 5
-    vee_v = -5
-
-    # Try to infer from analyzer context
-    if context:
-        vcc_v, vee_v = _infer_opamp_rails(det, context)
-        if vee_v == 0:
-            vee_net = "GND_VEE"  # Avoid conflict with node 0
 
     # --- Model resolution (Phase 2) ---
     # Try to get a per-part behavioral model; fall back to ideal
@@ -528,6 +539,8 @@ def generate_opamp_circuit(det, output_file, context=None, parasitics=None,
         "model_source": model_source,
         "model_gbw": str(model_specs.get("gbw_hz", 0) if model_specs else 0),
     }
+    if rail_notes:
+        model_extra["vee_assumed"] = "1"
 
     # Transimpedance uses current source stimulus
     if use_current_source:
@@ -547,10 +560,10 @@ V_VCC {vcc_net} 0 DC {vcc_v}
 V_VEE {vee_net} 0 DC {vee_v}
 
 * Opamp instance
-X{spice_ident(ref)} {pos_net or neg_net} {neg_net} {out_net} {vcc_net} {vee_net} {model_name}
+X{spice_ident(ref)} {pos_pin} {neg_net} {out_net} {vcc_net} {vee_net} {model_name}
 
 * Feedback network
-{chr(10).join(feedback_components)}
+{chr(10).join(feedback_components)}{vmid_line}
 
 * Current source stimulus into summing junction (inverting input)
 IAC 0 {stim_net} DC 0 AC 1u
@@ -583,13 +596,13 @@ V_VCC {vcc_net} 0 DC {vcc_v}
 V_VEE {vee_net} 0 DC {vee_v}
 
 * Opamp instance
-X{spice_ident(ref)} {pos_net or neg_net} {neg_net} {out_net} {vcc_net} {vee_net} {model_name}
+X{spice_ident(ref)} {pos_pin} {neg_net} {out_net} {vcc_net} {vee_net} {model_name}
 
 * Feedback network
-{chr(10).join(feedback_components)}
+{chr(10).join(feedback_components)}{vmid_line}
 
 * AC stimulus
-VAC {stim_net} 0 DC 0 AC 1
+VAC {stim_net} 0 DC {stim_dc} AC 1
 """
     analyses = [("ac", "dec 100 1 100Meg")]
     measurements = [
@@ -705,7 +718,7 @@ def _sanitize_mpn_for_spice(mpn):
     return re.sub(r'[^A-Za-z0-9_]', '_', mpn.strip()) if mpn else "UNKNOWN"
 
 
-def _infer_opamp_rails(det, context):
+def _infer_opamp_rails(det, context, notes=None):
     """Infer opamp VCC/VEE voltages from analyzer context.
 
     Looks up the opamp's power pins in the component/net data to find
@@ -714,6 +727,8 @@ def _infer_opamp_rails(det, context):
     Args:
         det: Opamp detection dict (has 'reference')
         context: Full analysis JSON dict
+        notes: Optional list; a note is appended when the negative rail is
+            named without a voltage and assumed to mirror VCC
 
     Returns:
         (vcc_voltage, vee_voltage) tuple of floats
@@ -745,6 +760,8 @@ def _infer_opamp_rails(det, context):
             # VEE/VSS/V- pins
             elif pname in ("VEE", "VSS", "V-", "VS-", "V_N", "VN", "GND", "AVSS", "DVSS"):
                 v = _infer_voltage(net_name, default=None)
+                if v is None:
+                    v = _infer_negative_rail(net_name)
                 if v is not None:
                     vee_v = v
                     found_vee = True
@@ -755,12 +772,38 @@ def _infer_opamp_rails(det, context):
     # If we only found VCC and not VEE, assume single-supply (VEE=0)
     if found_vcc and not found_vee:
         vee_v = 0
+    if vee_v == _MIRROR_VCC:
+        vee_v = -vcc_v
+        if notes is not None:
+            notes.append("negative rail named without a voltage; assumed -VCC")
 
     # Sanity check: VEE must be less than VCC
     if vee_v >= vcc_v:
         vee_v = 0  # Fall back to single-supply
 
     return vcc_v, vee_v
+
+
+_MIRROR_VCC = "mirror"
+_NAMED_NEGATIVE_RAILS = ("VEE", "V-", "-V", "-VCC", "-VDD", "-VS", "VS-", "VSS-", "VNEG", "V_NEG", "NEG")
+
+
+def _infer_negative_rail(net_name):
+    """Negative supply from a net name: '-12V' -> -12.0, 'NEG15V' -> -15.0,
+    '-3V3' -> -3.3; a negative rail named without a voltage ('VEE', 'V-',
+    '-VCC', 'VNEG') -> _MIRROR_VCC; anything else -> None."""
+    if not net_name:
+        return None
+    name = net_name.upper().strip().replace("\u2212", "-")
+    m = re.match(r'^(?:-|NEG|VNEG|V-)_?(\d+)V(\d+)', name)
+    if m:
+        return -float(f"{m.group(1)}.{m.group(2)}")
+    m = re.match(r'^(?:-|NEG|VNEG|V-)_?(\d+\.?\d*)V', name)
+    if m:
+        return -float(m.group(1))
+    if name in _NAMED_NEGATIVE_RAILS:
+        return _MIRROR_VCC
+    return None
 
 
 def _infer_voltage(net_name, default=3.3):
