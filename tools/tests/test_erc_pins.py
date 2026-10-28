@@ -57,12 +57,18 @@ class PinToPinTest(unittest.TestCase):
             ("power_out", "power_out", "error"),
             ("passive", "unspecified", "warning"),
             ("input", "passive", None),
-            ("no_connect", "passive", "error"),
-            ("unconnected", "input", "error"),   # legacy 'N' pin = no_connect
+            # NC-type pins never join a net (SCH_PIN::ConnectionPropagatesTo), so no marker.
+            ("no_connect", "passive", None),
+            ("unconnected", "input", None),   # legacy 'N' pin = no_connect
         ]
         for t1, t2, want in cases:
             with self.subTest(t1=t1, t2=t2):
                 self.assertEqual(self.level(t1, t2), want)
+
+    def test_pin_map_nc_row(self):
+        from schematic.erc_pins import ERROR, pair_level
+        self.assertEqual(pair_level("no_connect", "passive"), ERROR)
+        self.assertEqual(pair_level("unconnected", "input"), ERROR)
 
     def test_record_lists_the_pair(self):
         nets, comps = two_pin_net("output", "output")
@@ -82,14 +88,34 @@ class PinToPinTest(unittest.TestCase):
         nets = {"N": {"pins": [pin("U1", "1", "output", "Q"), pin("U1", "2", "output", "Q")]}}
         self.assertEqual([r["severity"] for r in by_type(erc(nets, c), "pin_to_pin")], ["error"])
 
-    def test_record_severity_is_the_worst_pair(self):
-        c = [comp("U1", [("1", "output", "A", 0, 0)]), comp("U2", [("1", "tri_state", "B", 5, 0)]),
-             comp("U3", [("1", "output", "C", 9, 0)])]
-        nets = {"N": {"pins": [pin("U1", "1", "output"), pin("U2", "1", "tri_state"),
-                               pin("U3", "1", "output")]}}
+    def test_one_marker_per_pin_as_kicad_places_them(self):
+        # TestPinToPin: by descending type weight (tri_state 5, output 3; equal weights in the
+        # order a hinted multimap insert leaves them) each pin takes its remaining conflicts and
+        # names the nearest other pin. kicad-cli 10.0.7 on the same layout (test below):
+        # U2 -> U3 warning, U3 -> U1 error; U1 gets no marker of its own.
+        c = [comp("U1", [("1", "output", "A", 50, 50)]), comp("U2", [("1", "tri_state", "A", 55, 50)]),
+             comp("U3", [("1", "output", "A", 59, 50)])]
+        nets = {"N": {"pins": [pin("U1", "1", "output", "A"), pin("U2", "1", "tri_state", "A"),
+                               pin("U3", "1", "output", "A")]}}
         rec = by_type(erc(nets, c), "pin_to_pin")[0]
         self.assertEqual(rec["severity"], "error")
-        self.assertEqual(sorted(p["severity"] for p in rec["pairs"]), ["error", "warning", "warning"])
+        self.assertEqual([(p["pins"], p["severity"]) for p in rec["pairs"]],
+                         [(["U2.1", "U3.1"], "warning"), (["U3.1", "U1.1"], "error")])
+
+    def test_one_pin_against_many_gets_one_marker(self):
+        # An unspecified pin (weight 10) outranks passives (9) and takes all its conflicts.
+        c = [comp("U1", [("1", "unspecified", "A", 0, 0)])] + [
+            comp(f"R{k}", [("1", "passive", "~", 10 * k, 0)]) for k in range(1, 6)]
+        nets = {"N": {"pins": [pin("U1", "1", "unspecified")]
+                      + [pin(f"R{k}", "1", "passive") for k in range(1, 6)]}}
+        rec = by_type(erc(nets, c), "pin_to_pin")[0]
+        self.assertEqual([p["pins"] for p in rec["pairs"]], [["U1.1", "R1.1"]])
+
+    def test_numeric_reference_order(self):
+        from schematic.erc_pins import str_num_cmp
+        self.assertEqual(str_num_cmp("U9", "U10"), -1)
+        self.assertEqual(str_num_cmp("R10", "R10"), 0)
+        self.assertEqual(str_num_cmp("A1", "A1B"), -1)
 
     def test_output_conflict_is_retired(self):
         nets, comps = two_pin_net("output", "output")
@@ -134,6 +160,11 @@ class UndrivenTest(unittest.TestCase):
 
     def test_no_connect_marker_silences(self):
         self.assertEqual(self.kinds(two_pin_net("input", "input", no_connect=True)[0]), [])
+
+    def test_nc_pin_does_not_silence_the_drive_test(self):
+        # The NC pin is not part of the net; only a no-connect marker silences the test.
+        self.assertEqual(self.kinds(two_pin_net("input", "no_connect", no_connect=True)[0]),
+                         [("no_driver", "error")])
 
     def test_lone_input_pin(self):
         nets = {"__unnamed_0": {"pins": [pin("U1", "1", "input")]}}
@@ -187,6 +218,12 @@ def _u_lib(ptype):
             f' (symbol "U_1_1" (pin {ptype} line (at -5.08 0 0) (length 0) (name "A") (number "1"))))')
 
 
+def _one_pin_lib(name, ptype):
+    return (f'(symbol "t:{name}" (in_bom yes) (on_board yes)'
+            f' (property "Reference" "U" (at 0 0 0)) (property "Value" "{name}" (at 0 0 0))'
+            f' (symbol "{name}_1_1" (pin {ptype} line (at 0 0 270) (length 0) (name "A") (number "1"))))')
+
+
 class SchematicTest(unittest.TestCase):
     def test_pwr_flag_on_a_power_input(self):
         # U1 power_in wired to R1 with a PWR_FLAG on the wire: driven, no record.
@@ -205,6 +242,33 @@ class SchematicTest(unittest.TestCase):
         r = run({"t.kicad_sch": s.text([R_LIB, _u_lib("power_in")])})
         recs = [w for w in r["design_analysis"]["erc_warnings"] if w["type"] == "power_pin_not_driven"]
         self.assertEqual([sorted(p["component"] for p in w["pins"]) for w in recs], [["R1", "U1"]])
+
+    def test_pin_to_pin_markers_match_kicad(self):
+        # kicad-cli 10.0.7 sch erc on this file: pin_to_pin error [U3 Pin 1, U1 Pin 1],
+        # pin_to_pin warning [U2 Pin 1, U3 Pin 1].
+        s = Sheet(20250114)
+        s.symbol("t:O", "U1", "O", 50, 50, ("1",))
+        s.symbol("t:T", "U2", "T", 55, 50, ("1",))
+        s.symbol("t:O", "U3", "O", 59, 50, ("1",))
+        s.wire(50, 50, 55, 50); s.wire(55, 50, 59, 50)
+        r = run({"t.kicad_sch": s.text([_one_pin_lib("O", "output"), _one_pin_lib("T", "tri_state")])})
+        recs = [w for w in r["design_analysis"]["erc_warnings"] if w["type"] == "pin_to_pin"]
+        self.assertEqual([sorted((p["pins"][0], p["pins"][1], p["severity"]) for p in w["pairs"])
+                          for w in recs],
+                         [[("U2.1", "U3.1", "warning"), ("U3.1", "U1.1", "error")]])
+
+    def test_wired_nc_pin_as_kicad(self):
+        # kicad-cli 10.0.7: only no_connect_connected [U2 Pin 1, wire]; netlist keeps U2.1 on
+        # its own unconnected net, U1 (input) and U3 (passive) share a driven net.
+        s = Sheet(20250114)
+        s.symbol("t:I", "U1", "I", 50, 50, ("1",))
+        s.symbol("t:N", "U2", "N", 60, 50, ("1",))
+        s.symbol("t:P", "U3", "P", 70, 50, ("1",))
+        s.wire(50, 50, 60, 50); s.wire(60, 50, 70, 50)
+        r = run({"t.kicad_sch": s.text([_one_pin_lib("I", "input"), _one_pin_lib("N", "no_connect"),
+                                        _one_pin_lib("P", "passive")])})
+        kinds = sorted((w["type"], w["severity"]) for w in r["design_analysis"]["erc_warnings"])
+        self.assertEqual(kinds, [("no_connect_connected", "warning")])
 
     def test_no_connect_marker_on_a_wired_pin(self):
         s = Sheet(20250114)

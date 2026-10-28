@@ -1366,7 +1366,8 @@ def _check_erc_warnings(ctx: AnalysisContext) -> list:
 
     Every net is checked (power, ground, unnamed and single-pin nets too), power-symbol
     pins included: pin_to_pin (pin map), no_driver / power_pin_not_driven (drive test,
-    silenced by a no-connect on the net) and no_connect_connected.
+    silenced by a no-connect marker) and no_connect_connected. NC-type pins only feed
+    no_connect_connected: KiCad never joins them to a net (SCH_PIN::ConnectionPropagatesTo).
     """
     positions = erc_pins.pin_positions(getattr(ctx, "components", None) or [])
     erc_warnings = []
@@ -1376,26 +1377,29 @@ def _check_erc_warnings(ctx: AnalysisContext) -> list:
         if net_info.get("has_pwr_flag"):
             pins = pins + [_PWR_FLAG_PIN]
         shown = unescape_string(net_name)
+        all_pins = pins
+        pins = [p for p in pins if erc_pins.pin_kind(p.get("pin_type")) != "no_connect"]
         real = [p for p in pins if not p["component"].startswith("#")]
 
-        conflicts = erc_pins.net_pin_conflicts(pins, positions)
-        if conflicts:
+        markers = erc_pins.pin_to_pin_markers(pins, positions)
+        if markers:
             erc_warnings.append({
                 "type": "pin_to_pin",
                 "net": net_name,
-                "severity": erc_pins.SEVERITY[max(c[2] for c in conflicts)],
-                "message": f"Net '{shown}' connects conflicting pin types ({len(conflicts)} pair(s))",
+                "severity": erc_pins.SEVERITY[max(m[2] for m in markers)],
+                "message": f"Net '{shown}' connects conflicting pin types ({len(markers)} pin(s))",
                 "pairs": [{
                     "pins": [f"{pins[i]['component']}.{pins[i]['pin_number']}",
                              f"{pins[j]['component']}.{pins[j]['pin_number']}"],
                     "pin_types": [erc_pins.pin_kind(pins[i].get("pin_type")),
                                   erc_pins.pin_kind(pins[j].get("pin_type"))],
                     "severity": erc_pins.SEVERITY[level],
-                } for i, j, level in conflicts],
+                } for i, j, level in markers],
             })
 
-        # A no-connect marker or NC-type pin on the net silences the drive test (erc.cpp).
-        undriven = None if net_info.get("no_connect") else erc_pins.undriven_kind(pins)
+        # A no-connect marker on the net silences the drive test (erc.cpp has_noconnect).
+        nc_marker = net_info.get("no_connect") and len(pins) == len(all_pins)
+        undriven = None if nc_marker else erc_pins.undriven_kind(pins)
         if undriven == "pin_not_driven":
             erc_warnings.append({
                 "type": "no_driver",
@@ -1413,7 +1417,7 @@ def _check_erc_warnings(ctx: AnalysisContext) -> list:
                 "pins": real,
             })
 
-        if net_info.get("no_connect") and _no_connect_connected(pins, net_info, positions):
+        if net_info.get("no_connect") and _no_connect_connected(all_pins, net_info, positions):
             erc_warnings.append({
                 "type": "no_connect_connected",
                 "net": net_name,
