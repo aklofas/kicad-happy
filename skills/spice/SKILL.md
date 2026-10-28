@@ -134,11 +134,11 @@ The script selects subcircuits from the analyzer's `findings[]` array (grouped b
 | Detector | Analysis | What's Measured | Model Fidelity | Trustworthiness |
 |----------|----------|-----------------|----------------|-----------------|
 | `rc_filters` | AC sweep | -3dB frequency, phase at fc | Exact (ideal passives) | High — mathematically exact |
-| `lc_filters` | AC sweep | Resonant frequency, Q factor, bandwidth | Near-exact (ideal L/C + ESR) | High — small Q error from ESR |
+| `lc_filters` | AC sweep | Resonant frequency (status); Q factor, bandwidth of the assumed ESR | Near-exact (ideal L/C + assumed ESR) | High for resonance; Q is the bench's assumption |
 | `voltage_dividers` | DC operating point | Output voltage, error % | Exact (ideal passives) | High — unloaded |
 | `feedback_networks` | DC operating point | FB pin voltage, regulator Vout | Exact (ideal passives) | High — cross-refs power_regulators |
 | `opamp_circuits` | AC sweep | Gain, -3dB bandwidth | Per-part or ideal | High with behavioral model, medium with ideal |
-| `crystal_circuits` | AC impedance | Load capacitance validation | Approximate (generic BVD) | Medium |
+| `crystal_circuits` | AC sweep | Series and load resonance, pulling, Rm (`info`); calculated CL range | Approximate (generic BVD) | Medium |
 | `transistor_circuits` | DC sweep | Threshold voltage, on-state current (`info`: generic model's values) | Approximate (generic FET/BJT) | Low |
 | `current_sense` | DC operating point | Current at 50mV/100mV drop | Exact (ideal resistor) | High |
 | `protection_devices` | DC sweep | Diode presence, clamping onset | Approximate (generic diode) | Low |
@@ -222,7 +222,7 @@ For opamps with behavioral models, gain-bandwidth limitation warnings are inform
 
 ### Crystal circuits
 
-Crystal simulations validate load capacitor selection — they check that the effective load capacitance is in a reasonable range for the crystal's specified CL. They use a generic Butterworth-Van Dyke equivalent circuit model with typical parameters, not the specific crystal's data. The primary value is catching missing or grossly wrong load capacitors, not precise frequency prediction.
+Crystal simulations measure series resonance on the crystal alone and load resonance with the load caps (summed per leg) in the C1 – crystal – C2 loop, and report the pulling as `info`: the generic Butterworth-Van Dyke model is built from the nominal frequency, not the specific crystal's data, so the bench has no pass criterion. They `warn` when the analyzer's calculated CL is outside 4-30 pF (catching missing or grossly wrong load capacitors) or the series resonance was not measured.
 
 ### When simulations fail or skip
 
@@ -328,7 +328,7 @@ Models are cached project-locally in a `spice/` directory beside the schematic t
 ## Known Limitations
 
 - **Voltage dividers are simulated unloaded.** The analyzer's ratio is R_bot/(R_top+R_bot) without loading. Adding a load resistor would make the simulation more "real" but would create false "errors" relative to the analyzer's calculated value. The purpose is to validate the calculation, not model the full circuit.
-- **LC filter Q factor uses estimated inductor ESR.** A default Q=100 is assumed for the inductor. Real inductor Q varies from 10 (power inductors) to 300+ (RF inductors). The resonant frequency is accurate regardless of Q.
+- **LC filter Q factor uses estimated inductor ESR.** A default Q=100 is assumed for the inductor, so the reported `Q_factor` reflects that assumption (`model_note`) and never sets the status. Real inductor Q varies from 10 (power inductors) to 300+ (RF inductors). The resonant frequency is accurate regardless of Q.
 - **Opamp supply rails are inferred from net names.** May default to +/-5V if the power nets aren't labeled with voltage. Negative rails are read from names like `-12V`, `NEG15V` or `-3V3`; a negative rail named without a voltage (`VEE`, `V-`, `-VCC`) is assumed at -VCC and the result's `model_note` says so. Single-supply designs are detected when only VCC is found (VEE defaults to 0V); their benches are biased at mid-supply, the stage's AC ground. A supply below the part model's minimum is never a pass: `warn` when the rails' voltages are in their net names, `info` when the supply was assumed.
 - **Per-part models cover ~100 common parts.** Uncommon opamps/LDOs fall back to ideal models. The lookup table can be extended by adding entries to `spice_part_library.py`.
 - **High-gain opamp circuits with realistic GBW** may show lower-than-expected gain at the 1 kHz measurement point when bandwidth is limited. This is physically correct behavior (the model correctly captures the GBW limitation) but may need lower-frequency measurement for accurate gain comparison.

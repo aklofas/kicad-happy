@@ -20,6 +20,7 @@ import re
 import _core_path  # noqa: F401
 from kicad_core.diagnostics import record
 from kicad_core.netnames import is_ground_name
+from spice_results import crystal_load_legs
 from spice_models import (
     get_generic_models,
     get_ideal_opamp,
@@ -270,8 +271,8 @@ def generate_lc_filter(det, output_file, context=None, parasitics=None):
     f_stop = f_res * 100
 
     # LC tank: L from input to shared_net, C from shared_net to ground
-    # Add small series resistance to inductor for realism (Q=100 default)
-    r_series = 2 * math.pi * f_res * l_henries / 100  # Q=100
+    # Assumed inductor ESR (Q=100 at f_res): the bench's Q reflects this, not the part
+    r_series = 2 * math.pi * f_res * l_henries / 100
     in_net = "ac_in"
 
     circuit = f"""\
@@ -632,9 +633,9 @@ VAC {stim_net} 0 DC {stim_dc} AC 1
 def generate_crystal_circuit(det, output_file, context=None, parasitics=None):
     """Generate testbench for a crystal circuit detection.
 
-    Tests the oscillation condition: negative resistance seen by the crystal
-    must exceed the crystal's motional resistance (ESR). Uses a simplified
-    Colpitts/Pierce analysis.
+    Measures series resonance and motional resistance of a generic crystal
+    model and its load resonance with the load caps (summed per leg) in the
+    Pierce loop.
 
     Args:
         det: Finding dict from findings[] — detector:crystal_circuits[] with keys:
@@ -657,14 +658,13 @@ def generate_crystal_circuit(det, output_file, context=None, parasitics=None):
 
     ref = det["reference"]
     value = det.get("value", "crystal")
-    load_caps = det.get("load_caps", [])
+    legs = crystal_load_legs(det.get("load_caps", []))
     cl_eff = det.get("effective_load_pF")
 
-    if len(load_caps) < 2:
-        return None  # Need both load caps for meaningful analysis
+    if len(legs) < 2:
+        return None  # Need a load cap on each crystal pin for the oscillator loop
 
-    c1 = load_caps[0]
-    c2 = load_caps[1]
+    leg1, leg2 = legs[0], legs[1]
 
     # Crystal equivalent circuit parameters (typical AT-cut values)
     # These are generic — real crystals vary significantly
@@ -680,43 +680,56 @@ def generate_crystal_circuit(det, output_file, context=None, parasitics=None):
         lm = 1 / ((2 * math.pi * freq) ** 2 * cm)
         c0 = 5e-12
 
+    def _leg_text(leg):
+        return f"{'||'.join(spice_text(r) for r in leg['refs'])}={_format_eng(leg['farads'])}F"
+
+    cl_line = f"* Effective CL: {cl_eff:.1f} pF (calculated by analyzer)\n" if cl_eff is not None else ""
     circuit = f"""\
 * Auto-generated testbench for crystal circuit: {spice_text(ref)} ({spice_text(value)})
 * Frequency: {freq:.0f} Hz
-* Load caps: {spice_text(c1['ref'])}={_format_eng(c1['farads'])}F, {spice_text(c2['ref'])}={_format_eng(c2['farads'])}F
-* Effective CL: {cl_eff:.1f} pF (calculated by analyzer)
-* Model: generic crystal equivalent circuit (Rm={rm} ohms)
+* Load caps per leg: {_leg_text(leg1)}, {_leg_text(leg2)}
+{cl_line}* Model: generic crystal equivalent circuit (Rm={rm} ohms)
 *
-* This testbench measures the impedance seen by the crystal to verify
-* that load capacitance is in a reasonable range. It does NOT simulate
-* the full oscillator loop (that requires the driving IC model).
+* Measures series resonance of the crystal alone and load resonance with the
+* load caps in the loop the oscillator sees. It does NOT simulate the
+* oscillator's gain (that requires the driving IC model).
 
-* Crystal equivalent circuit (Butterworth-Van Dyke model)
-Lm xtal1_int xtal2 {_format_eng(lm)}
-Cm xtal1_int xtal2 {_format_eng(cm)}
-Rm xtal1_int xtal2 {rm}
-C0 xtal1 xtal2 {_format_eng(c0)}
-Rxtal xtal1 xtal1_int 0.001
+* Butterworth-Van Dyke model: series Lm-Cm-Rm, C0 across the terminals
+* (a) crystal alone, driven across its terminals: series resonance where the
+*     phase of Z rises through 0
+Lma a1 am1 {_format_eng(lm)}
+Cma am1 am2 {_format_eng(cm)}
+Rma am2 a2 {rm}
+C0a a1 a2 {_format_eng(c0)}
+VA a1 0 DC 0 AC 1
+VSA a2 0 DC 0
 
-* Load capacitors
-{spice_element_for_passive(c1['ref'], c1['farads'], 'xtal1', '0', "C")}
-{spice_element_for_passive(c2['ref'], c2['farads'], 'xtal2', '0', "C")}
-
-* AC stimulus across crystal to measure impedance
-VAC xtal1 xtal1_drv DC 0 AC 1
-IAC 0 xtal1_drv DC 0 AC 0
+* (b) C1 - crystal - C2 through ground: load resonance
+*     f_L = f_s * (1 + Cm / (2 * (C0 + CL)))
+Lmb b1 bm1 {_format_eng(lm)}
+Cmb bm1 bm2 {_format_eng(cm)}
+Rmb bm2 b2 {rm}
+C0b b1 b2 {_format_eng(c0)}
+VB b0 0 DC 0 AC 1
+{spice_element_for_passive(leg1['refs'][0], leg1['farads'], 'b0', 'b1', "C")}
+{spice_element_for_passive(leg2['refs'][0], leg2['farads'], 'b2', 'bret', "C")}
+VSB bret 0 DC 0
+Rdcb1 b1 0 1G
+Rdcb2 b2 0 1G
 """
 
-    analyses = [("ac", f"dec 1000 {_format_eng(freq * 0.99)} {_format_eng(freq * 1.01)}")]
+    # +/-0.5 % in 40,000 steps: 0.25 ppm resolution, finer than any pulling of interest
+    analyses = [("ac", f"lin 40001 {_format_eng(freq * 0.995)} {_format_eng(freq * 1.005)}")]
     measurements = [
-        ("z_mag", "let", "v(xtal1) / i(VAC)"),
-        ("z_real", "let", "real(z_mag)"),
-        ("f_series", "when", "abs(z_real)", "minimum(abs(z_real))"),
-        ("cl_series", "let", f"1/(1/{c1['farads']} + 1/{c2['farads']})"),
+        ("za_ph", "let", "cph(1/i(VSA))"),
+        ("f_series", "when", "za_ph", "0", "rise=1"),
+        ("zb_ph", "let", "cph(1/i(VSB))"),
+        ("f_load", "when", "zb_ph", "0", "rise=1"),
+        ("za_mag", "let", "mag(1/i(VSA))"),
+        ("rm", "find", "za_mag", "at=f_series"),
     ]
-    extra = {"cl_pF": str(cl_eff), "rm": str(rm)}
 
-    return SpiceTestbench(circuit, analyses, measurements, extra)
+    return SpiceTestbench(circuit, analyses, measurements)
 
 
 # ---------------------------------------------------------------------------

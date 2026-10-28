@@ -73,7 +73,7 @@ Real inductor Q values:
 | Wire-wound chip inductor | 40-100 |
 | Air-core RF inductor | 100-300 |
 
-If the simulated Q factor matters (e.g., for a filter selectivity assessment), note that Q=100 is an assumption and the real value depends on the specific inductor.
+The simulated Q factor reflects Q=100, not the circuit, so it never changes the result's status (the result's `model_note` says so); the real value depends on the specific inductor.
 
 ---
 
@@ -196,22 +196,21 @@ xtal1 ---[===]---||---[===]--- xtal2
 
 ### What the Crystal Simulation Tests
 
-The testbench validates that the **load capacitor values produce a reasonable effective CL**:
+The testbench builds the model twice: driven alone across its terminals (series resonance f_s where the phase of Z rises through 0; Rm = |Z| there), and in the C1 – crystal – C2 loop through ground the oscillator sees (load resonance):
 
 ```
-CL_effective = (C1 * C2) / (C1 + C2) + C_stray
+f_L = f_s * (1 + Cm / (2 * (C0 + CL)))      CL = (C1 * C2) / (C1 + C2)
 ```
 
-Where C_stray ≈ 3 pF (typical PCB stray capacitance). The analyzer calculates this and the simulation confirms the cap values. The primary check is:
-- Are both load caps present?
-- Is the effective CL in a reasonable range (4-30 pF)?
-- If the crystal datasheet specifies CL, does it match?
+C1 and C2 are the load capacitance on each crystal pin (parallel caps on one pin sum). The result reports `f_series_hz`, `f_load_hz`, `pulling_ppm` and the measured `motional_resistance_ohm` as `info`: the model is generic, so these show the effect of the load caps, not a pass/fail. The analyzer's calculated CL (`(C1 * C2) / (C1 + C2) + C_stray`, C_stray ≈ 3 pF) stays in `expected`; the result warns when:
+- the calculated CL is outside a reasonable range (4-30 pF), or
+- the series resonance was not found in the sweep.
 
 ### What It Does NOT Test
 
 - Whether the oscillator will actually start (requires the driving amplifier model)
 - Negative resistance margin (requires the IC's crystal driver model)
-- Frequency pulling from CL mismatch (requires precise crystal parameters)
+- Frequency pulling against the crystal's specified CL (requires the crystal's own Cm, C0 and CL)
 - Drive level and crystal aging effects
 
 ---

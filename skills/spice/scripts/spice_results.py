@@ -159,6 +159,7 @@ def evaluate_lc_filter(det, sim_results):
         q_sim = f_peak / bw
         result["simulated"]["Q_factor"] = round(q_sim, 1)
         result["simulated"]["bandwidth_hz"] = round(bw, 1)
+        result["model_note"] = "inductor ESR assumed (Q=100) — Q_factor reflects the assumption, not the circuit"
 
     f_error = abs(f_peak - expected_f) / expected_f * 100
     result["delta"]["f_error_pct"] = round(f_error, 2)
@@ -171,21 +172,6 @@ def evaluate_lc_filter(det, sim_results):
     else:
         result["status"] = "fail"
         result["note"] = f"{f_error:.1f}% deviation from expected resonance"
-
-    # Q factor evaluation for power supply LC filters
-    if bw_lo is not None and bw_hi is not None and bw_hi > bw_lo:
-        q_sim = result["simulated"]["Q_factor"]
-        if q_sim > 20:
-            if result.get("status") != "fail":
-                result["status"] = "warn"
-            warnings = result.get("warnings", [])
-            warnings.append(f"High Q factor ({q_sim:.1f}) — underdamped, risk of oscillation or ringing in power path")
-            result["warnings"] = warnings
-        elif q_sim > 10 and result.get("status") == "pass":
-            result["status"] = "warn"
-            warnings = result.get("warnings", [])
-            warnings.append(f"Q={q_sim:.1f} — moderately underdamped, consider adding series resistance for damping")
-            result["warnings"] = warnings
 
     return result
 
@@ -367,12 +353,34 @@ def evaluate_opamp_circuit(det, sim_results):
     return result
 
 
+def crystal_load_legs(load_caps):
+    """Load caps grouped per crystal pin (net), legs in first-seen order:
+    ``[{"net", "refs", "farads"}]``; parallel caps on one leg sum."""
+    legs = {}
+    seen = set()
+    for lc in load_caps:
+        if lc["ref"] in seen:
+            continue
+        seen.add(lc["ref"])
+        leg = legs.setdefault(lc["net"], {"net": lc["net"], "refs": [], "farads": 0.0})
+        leg["refs"].append(lc["ref"])
+        leg["farads"] += lc["farads"]
+    return list(legs.values())
+
+
 def evaluate_crystal_circuit(det, sim_results):
-    """Evaluate crystal circuit simulation results."""
+    """Evaluate crystal circuit simulation results.
+
+    The generic model is built from the nominal frequency, so the bench has no
+    acceptance criterion of its own: the measured series and load resonance are
+    reported as `info`. `warn` when the series resonance was not measured or the
+    analyzer's calculated CL is outside 4-30 pF (typical crystal CL specs).
+    """
     freq = det.get("frequency")
     cl_eff = det.get("effective_load_pF")
-    rm = sim_results.get("rm")
     f_series = sim_results.get("f_series")
+    f_load = sim_results.get("f_load")
+    rm = sim_results.get("rm")
 
     result = {
         "subcircuit_type": "crystal_circuit",
@@ -387,46 +395,32 @@ def evaluate_crystal_circuit(det, sim_results):
         result["expected"]["frequency_hz"] = freq
     if cl_eff:
         result["expected"]["load_capacitance_pF"] = cl_eff
-        cl_sim = sim_results.get("cl_pF")
-        if cl_sim is not None:
-            result["simulated"]["load_capacitance_pF"] = cl_sim
 
-    # For crystals, we primarily check that load caps are present and reasonable
-    load_caps = det.get("load_caps", [])
-    if len(load_caps) >= 2:
-        result["status"] = "pass"
-        result["note"] = f"Load caps present: {load_caps[0]['ref']}, {load_caps[1]['ref']}"
-        if cl_eff:
-            # Typical crystal CL spec: 6-20 pF. Flag if outside range.
-            if cl_eff < 4 or cl_eff > 30:
-                result["status"] = "warn"
-                result["note"] = f"Effective CL={cl_eff:.1f}pF — unusual range, verify crystal datasheet"
-    else:
+    if f_series is None or not freq:
         result["status"] = "warn"
-        result["note"] = "Missing or insufficient load capacitors"
+        result["note"] = "not measured: series resonance not found in the sweep"
+        return result
 
-    # Evaluate series resonance accuracy
-    if f_series is not None and det.get("frequency"):
-        nominal_freq = det["frequency"]
-        if nominal_freq > 0:
-            f_error_pct = abs(f_series - nominal_freq) / nominal_freq * 100
-            result["simulated"]["f_series_hz"] = f_series
-            result["simulated"]["f_error_pct"] = round(f_error_pct, 2)
-            if f_error_pct > 1:
-                result["status"] = "warn"
-                result["note"] = (result.get("note", "") +
-                    f" Series resonance {f_series/1e6:.3f} MHz deviates {f_error_pct:.1f}% from nominal.").strip()
-
+    result["simulated"]["f_series_hz"] = f_series
+    result["simulated"]["f_error_pct"] = round(abs(f_series - freq) / freq * 100, 3)
+    if f_load is not None:
+        result["simulated"]["f_load_hz"] = f_load
+        result["simulated"]["pulling_ppm"] = round((f_load - f_series) / f_series * 1e6, 1)
     if rm is not None:
         result["simulated"]["motional_resistance_ohm"] = round(rm, 1)
-        freq_val = det.get("frequency", 0) or 0
-        rm_limit = 50000 if freq_val < 100e3 else 100  # 32kHz crystals have high Rm
-        if rm > rm_limit:
-            if result["status"] == "pass":
-                result["status"] = "warn"
-            result["note"] = (result.get("note", "") +
-                f" High motional resistance ({rm:.0f}\u03a9) \u2014 verify oscillator IC can drive this crystal.").strip()
 
+    legs = crystal_load_legs(det.get("load_caps", []))
+    caps = ", ".join("||".join(leg["refs"]) for leg in legs[:2])
+    if cl_eff and (cl_eff < 4 or cl_eff > 30):
+        result["status"] = "warn"
+        result["note"] = f"Effective CL={cl_eff:.1f}pF (calculated) — unusual range, verify crystal datasheet"
+    else:
+        result["status"] = "info"
+        if f_load is not None:
+            result["note"] = (f"Series resonance measured; load resonance {f_load:.0f} Hz "
+                              f"({result['simulated']['pulling_ppm']:+.1f} ppm) with load caps {caps}")
+        else:
+            result["note"] = f"Series resonance measured; load caps {caps}"
     return result
 
 
