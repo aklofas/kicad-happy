@@ -347,10 +347,18 @@ def evaluate_opamp_circuit(det, sim_results):
         result["simulated"]["phase_at_bw_deg"] = round(phase_at_bw, 2)
 
     # A bench run below the part's minimum supply is not a pass: the design runs the
-    # part out of spec (rails read from net names) or the assumed supply leaves no criterion
-    if below_min and result["status"] == "pass":
-        result["status"] = "warn" if str(sim_results.get("rails_named")) in ("1", "1.0") else "info"
-        result["note"] = supply_note
+    # part out of spec (rails read from net names), or the assumed supply leaves no
+    # criterion, so neither its pass nor its warn means anything
+    if below_min:
+        rails_named = str(sim_results.get("rails_named")) in ("1", "1.0")
+        new_status = None
+        if rails_named and result["status"] == "pass":
+            new_status = "warn"
+        elif not rails_named and result["status"] in ("pass", "warn"):
+            new_status = "info"
+        if new_status:
+            result["status"] = new_status
+            result["note"] = f"{result.get('note') or ''} {supply_note}".strip()
 
     return result
 

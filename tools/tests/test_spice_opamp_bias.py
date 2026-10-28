@@ -132,11 +132,26 @@ class NegativeRailTest(unittest.TestCase):
         self.assertEqual(info, {"vee_assumed": False, "rails_named": True})
 
     def test_rails_without_a_voltage_in_the_name_are_not_named(self):
-        for vcc, vee in (("VAA", "GND"), ("VCC", "GND"), ("+12V", "VEE")):
+        # VBAT (3.7 V) and VCC (3.3 V) on the V- pin are guesses from a bare name
+        for vcc, vee in (("VAA", "GND"), ("VCC", "GND"), ("+12V", "VEE"), ("+12V", "VBAT"), ("+12V", "VCC")):
             with self.subTest(vcc=vcc, vee=vee):
                 info = {}
                 T._infer_opamp_rails({"reference": "U1"}, _rails(vcc, vee), info)
                 self.assertFalse(info["rails_named"])
+
+    def test_any_ground_net_on_the_negative_pin_is_named_zero(self):
+        for vee in ("GND", "AGND", "GNDA", "GND1", "/Analog/GND", "0V"):
+            with self.subTest(vee=vee):
+                info = {}
+                self.assertEqual(T._infer_opamp_rails({"reference": "U1"}, _rails("+6V", vee), info), (6, 0))
+                self.assertTrue(info["rails_named"])
+
+    def test_numeric_negative_rails_are_named(self):
+        for vee in ("-12V", "NEG12V", "-12VA"):
+            with self.subTest(vee=vee):
+                info = {}
+                T._infer_opamp_rails({"reference": "U1"}, _rails("+12V", vee), info)
+                self.assertTrue(info["rails_named"])
 
     def test_mirrored_rail_is_named_in_model_note(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -167,10 +182,33 @@ class SupplyBelowMinimumTest(unittest.TestCase):
         self.assertEqual(r["status"], "info")
         self.assertIn("supply 5 V below the part's minimum 8 V", r["model_note"])
 
+    def test_named_ground_on_negative_pin_warns(self):
+        r = _opamp(dict(_INVERTING, value="TL074"), _rails("+6V", "AGND"))
+        self.assertEqual(r["status"], "warn")
+        self.assertIn("supply 6 V below the part's minimum 7 V", r["model_note"])
+
+    def test_guessed_negative_rail_is_info(self):
+        # VBAT carries no voltage in its name (3.7 V guess): supply 6 - 3.7 = 2.3 V
+        r = _opamp(dict(_INVERTING, value="TL074"), _rails("+6V", "VBAT"))
+        self.assertEqual(r["status"], "info")
+        self.assertIn("supply 2.3 V below the part's minimum 7 V", r["model_note"])
+
     def test_part_within_its_supply_range_passes(self):
         r = _opamp(_INVERTING, _SINGLE_5V)
         self.assertEqual(r["status"], "pass")
         self.assertNotIn("minimum", r["model_note"])
+
+
+class SupplyNoteTest(unittest.TestCase):
+    def test_supply_note_keeps_the_flatness_note(self):
+        # gain 20 dB at f_meas, 15 dB at f_high: a 5 dB spread note, then the supply note
+        sim = {"gain_1k": 20.0, "gain_low": 20.0, "gain_high": 15.0, "bw_3db": 9.0e4,
+               "model_source": "lookup:TL074", "model_gbw": "3000000",
+               "supply_v": 6.0, "supply_min": 7.0, "rails_named": 1.0}
+        r = R.evaluate_opamp_circuit(dict(_INVERTING, value="TL074"), sim)
+        self.assertEqual(r["status"], "warn")
+        self.assertIn("Gain varies 5.0 dB across frequency", r["note"])
+        self.assertIn("supply 6 V below the part's minimum 7 V", r["note"])
 
 
 class GroundReferenceNoteTest(unittest.TestCase):

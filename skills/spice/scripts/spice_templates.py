@@ -776,13 +776,15 @@ def _infer_opamp_rails(det, context, info=None):
             # VEE/VSS/V- pins
             elif pname in ("VEE", "VSS", "V-", "VS-", "V_N", "VN", "GND", "AVSS", "DVSS"):
                 v = _infer_voltage(net_name, default=None)
+                named = v is not None and _voltage_in_name(net_name)
                 if v is None:
                     v = _infer_negative_rail(net_name)
+                    named = v is not None and v != _MIRROR_VCC
                 if v is not None:
                     vee_v = v
                     found_vee = True
-                    vee_named = v != _MIRROR_VCC
-                elif net_name.upper() in ("GND", "EARTH", "VSS"):
+                    vee_named = named
+                elif net_name.upper() == "EARTH" or is_ground_name(net_name):
                     vee_v = 0
                     found_vee = True
                     vee_named = True
