@@ -163,7 +163,7 @@ class CanTerminationPerBus(unittest.TestCase):
         self.assertFalse(findings[0]["has_termination"])
         self.assertIsNone(findings[0]["issues"])
         self.assertEqual(findings[0]["observations"],
-                         ["CAN 120\u03a9 termination R1 is DNP (fit it on the bus-end nodes)"])
+                         ["CAN termination R1 (120) is DNP (fit it on the bus-end nodes)"])
 
     def test_dnp_terminator_on_a_named_pair_is_an_unfitted_option(self):
         x1 = _comp("U7", "ic", "MCP2562", "Interface_CAN_LIN:MCP2562", CAN_XCVR)
@@ -174,7 +174,16 @@ class CanTerminationPerBus(unittest.TestCase):
         self.assertFalse(findings[0]["has_termination"])
         self.assertIsNone(findings[0]["issues"])
         self.assertEqual(findings[0]["observations"],
-                         ["CAN 120\u03a9 termination R1 is DNP (fit it on the bus-end nodes)"])
+                         ["CAN termination R1 (120) is DNP (fit it on the bus-end nodes)"])
+
+    def test_dnp_terminator_observation_names_its_own_value(self):
+        # A DNP 60 ohm across a CAN differential pair is not a 120 ohm terminator.
+        x1 = _comp("U7", "ic", "MCP2562", "Interface_CAN_LIN:MCP2562", CAN_XCVR)
+        nets = {"CAN_P": [("U7", "7", "CANH", "bidirectional"), ("R1", "1", "~", "passive")],
+                "CAN_N": [("U7", "6", "CANL", "bidirectional"), ("R1", "2", "~", "passive")]}
+        _, findings = _can_findings([x1, dict(_res("R1", "60"), dnp=True)], nets)
+        self.assertEqual(findings[0]["observations"],
+                         ["CAN termination R1 (60) is DNP (fit it on the bus-end nodes)"])
 
     def test_fitted_beside_dnp_terminator_is_present(self):
         x1 = _comp("U7", "ic", "MCP2562", "Interface_CAN_LIN:MCP2562", CAN_XCVR)

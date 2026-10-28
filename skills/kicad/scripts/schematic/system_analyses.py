@@ -1314,11 +1314,15 @@ def analyze_protocol_compliance(components: list[dict], nets: dict,
     judged: set = set()
     findings_before_can = len(findings)
 
+    values_by_ref = {c.get("reference"): c.get("value") or "" for c in components}
+
     def _judge(nets_of_bus, has_term, term_value, dnp_ref=None):
         issues, obs = [], []
         if not has_term and dnp_ref:
             # A placed-but-unfitted terminator is the per-node option, not an omission
-            obs.append(f"CAN 120Ω termination {dnp_ref} is DNP (fit it on the bus-end nodes)")
+            value = values_by_ref.get(dnp_ref, "")
+            named = f"{dnp_ref} ({value})" if value else dnp_ref
+            obs.append(f"CAN termination {named} is DNP (fit it on the bus-end nodes)")
         elif not has_term:
             issues.append("CAN bus missing 120Ω termination resistor")
         elif term_value and abs(term_value - 120) > 12:
