@@ -74,6 +74,12 @@ def evaluate_rc_filter(det, sim_results):
         Result dict with status, expected, simulated, delta fields
     """
     expected_fc = det["cutoff_hz"]
+    # The bench simulates the record's R and C, so 1/(2*pi*R*C) is the exact expectation;
+    # cutoff_hz is rounded to 0.01 Hz, a few percent of a sub-Hz cutoff.
+    r_ohms = det["resistor"].get("ohms")
+    c_farads = det["capacitor"].get("farads")
+    exact_fc = (1.0 / (2 * math.pi * r_ohms * c_farads)
+                if r_ohms and c_farads and r_ohms > 0 and c_farads > 0 else expected_fc)
     sim_fc = sim_results.get("fc_sim")
     phase_fc = sim_results.get("phase_fc")
 
@@ -94,7 +100,7 @@ def evaluate_rc_filter(det, sim_results):
         result["note"] = "ngspice could not measure -3dB frequency"
         return result
 
-    if expected_fc == 0:
+    if exact_fc == 0:
         result["status"] = "skip"
         result["note"] = "expected cutoff frequency is 0 Hz — detection may be invalid"
         return result
@@ -103,7 +109,7 @@ def evaluate_rc_filter(det, sim_results):
     if phase_fc is not None:
         result["simulated"]["phase_at_fc_deg"] = round(phase_fc, 2)
 
-    fc_error = abs(sim_fc - expected_fc) / expected_fc * 100
+    fc_error = abs(sim_fc - exact_fc) / exact_fc * 100
     result["delta"]["fc_error_pct"] = round(fc_error, 2)
 
     # For ideal passives, error should be <1%. Any significant error

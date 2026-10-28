@@ -264,6 +264,35 @@ class PassiveElementNameTest(unittest.TestCase):
         self.assertAlmostEqual(r["simulated"]["vout_V"], 2.6455, delta=0.001)
 
 
+class RcCutoffTest(unittest.TestCase):
+    # 1 Mohm / 1.5 uF: fc = 1/(2*pi*1e6*1.5e-6) = 0.106103 Hz; the analyzer rounds cutoff_hz to 0.11
+    _DET = {"resistor": {"ref": "R1", "ohms": 1e6}, "capacitor": {"ref": "C1", "farads": 1.5e-6},
+            "cutoff_hz": 0.11, "type": "low-pass", "input_net": "IN", "output_net": "OUT",
+            "ground_net": "GND"}
+
+    def test_sub_hz_cutoff_compared_with_the_exact_value(self):
+        r = R.evaluate_rc_filter(dict(self._DET), {"fc_sim": 0.10612})
+        self.assertEqual(r["status"], "pass")
+        self.assertEqual(r["expected"]["cutoff_hz"], 0.11)
+        self.assertLess(r["delta"]["fc_error_pct"], 1)
+
+    def test_simulated_cutoff_off_the_rc_value_still_warns(self):
+        # 3 % above 1/(2*pi*R*C), as a loaded or mis-read network would measure
+        r = R.evaluate_rc_filter(dict(self._DET), {"fc_sim": 0.106103 * 1.03})
+        self.assertEqual(r["status"], "warn")
+        self.assertAlmostEqual(r["delta"]["fc_error_pct"], 3.0, delta=0.01)
+
+    def test_missing_part_values_fall_back_to_the_cutoff(self):
+        det = dict(self._DET, resistor={"ref": "R1"})
+        r = R.evaluate_rc_filter(det, {"fc_sim": 0.10612})
+        self.assertEqual(r["status"], "warn")
+
+    @unittest.skipUnless(shutil.which("ngspice"), "ngspice not installed")
+    def test_sub_hz_bench_passes(self):
+        r = _run(T.generate_rc_filter, R.evaluate_rc_filter, dict(self._DET))
+        self.assertEqual(r["status"], "pass")
+
+
 class RailNameVoltageTest(unittest.TestCase):
     def test_voltage_written_in_the_name(self):
         cases = {
