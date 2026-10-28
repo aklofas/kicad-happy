@@ -979,26 +979,38 @@ def _detect_can_buses(ctx: AnalysisContext) -> list[dict]:
     canl_nets = [n for n in can_nets_found if "CANL" in n.upper() or "CAN_L" in n.upper()]
     pairs = can_bus_pairs(canh_nets, canl_nets)
     term_by_net: dict = {}
+    dnp_by_net: dict = {}
     for canh_net, canl_net in pairs:
-        termination = None
+        termination = dnp_ref = None
         for p in (nets[canh_net]["pins"] if canh_net in nets else []):
             comp = comp_lookup.get(p["component"])
-            if not comp or comp["type"] != "resistor" or comp.get("dnp"):
+            if not comp or comp["type"] != "resistor":
                 continue
             r_val = parsed_values.get(p["component"])
             if r_val and 100 <= r_val <= 150:
                 other_pin = "1" if p["pin_number"] == "2" else "2"
                 other_net, _ = pin_net.get((p["component"], other_pin), (None, None))
-                if other_net == canl_net:
-                    termination = f"{int(r_val)}\u03A9 ({p['component']})"
-                    break
+                if other_net != canl_net:
+                    continue
+                if comp.get("dnp"):
+                    # An unfitted terminator is the per-node option: only bus-end nodes fit it
+                    dnp_ref = dnp_ref or p["component"]
+                    continue
+                termination = f"{int(r_val)}\u03A9 ({p['component']})"
+                break
         term_by_net[canh_net] = termination
+        dnp_by_net[canh_net] = dnp_ref
         if term_by_net.get(canl_net) is None:
             term_by_net[canl_net] = termination
+            dnp_by_net[canl_net] = dnp_ref
     # Logic-side entries (TX/RX, the transceiver placeholder) belong to a bus only on a one-bus design
     single = term_by_net[pairs[0][0]] if len(pairs) == 1 else None
+    single_dnp = dnp_by_net.get(pairs[0][0]) if len(pairs) == 1 else None
     for key, entry in can_nets_found.items():
         entry["termination"] = term_by_net.get(key, single)
+        dnp_ref = dnp_by_net.get(key, single_dnp) if entry["termination"] is None else None
+        if dnp_ref:
+            entry["termination_dnp"] = dnp_ref
 
     return list(can_nets_found.values())
 
@@ -1308,18 +1320,21 @@ def _detect_differential_pairs(ctx: AnalysisContext) -> list:
                     if protocol == "CAN":
                         term_resistors = []
                         for c in components:
-                            if c["type"] == "resistor" and not c.get("dnp"):
+                            if c["type"] == "resistor":
                                 r_n1 = pin_net.get((c["reference"], "1"), (None, None))[0]
                                 r_n2 = pin_net.get((c["reference"], "2"), (None, None))[0]
                                 if r_n1 and r_n2:
                                     if ({r_n1, r_n2} == {pos_real, neg_real}):
-                                        term_resistors.append({
+                                        term = {
                                             "ref": c["reference"],
                                             "value": c["value"],
                                             "ohms": parsed_values.get(c["reference"]),
-                                        })
+                                        }
+                                        if c.get("dnp"):
+                                            term["dnp"] = True
+                                        term_resistors.append(term)
                         entry["termination"] = term_resistors
-                        entry["has_termination"] = len(term_resistors) > 0
+                        entry["has_termination"] = any(not t.get("dnp") for t in term_resistors)
 
                     # Series resistors on either net
                     series_res = []

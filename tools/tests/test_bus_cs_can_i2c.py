@@ -153,22 +153,42 @@ class CanTerminationPerBus(unittest.TestCase):
         self.assertEqual([(f["nets"], f["issues"]) for f in findings],
                          [(["CAN_P", "CAN_N"], ["CAN bus missing 120Ω termination resistor"])])
 
-    def test_dnp_terminator_on_a_diff_pair_is_not_termination(self):
+    def test_dnp_terminator_on_a_diff_pair_is_an_unfitted_option(self):
+        # A placed-but-DNP 120 ohm is the per-node option (only the bus-end nodes fit it)
         x1 = _comp("U7", "ic", "MCP2562", "Interface_CAN_LIN:MCP2562", CAN_XCVR)
         nets = {"CAN_P": [("U7", "7", "CANH", "bidirectional"), ("R1", "1", "~", "passive")],
                 "CAN_N": [("U7", "6", "CANL", "bidirectional"), ("R1", "2", "~", "passive")]}
         _, findings = _can_findings([x1, dict(_res("R1", "120"), dnp=True)], nets)
         self.assertEqual(len(findings), 1)
         self.assertFalse(findings[0]["has_termination"])
-        self.assertEqual(findings[0]["issues"], ["CAN bus missing 120Ω termination resistor"])
+        self.assertIsNone(findings[0]["issues"])
+        self.assertEqual(findings[0]["observations"],
+                         ["CAN 120\u03a9 termination R1 is DNP (fit it on the bus-end nodes)"])
 
-    def test_dnp_terminator_on_a_named_pair_is_not_termination(self):
+    def test_dnp_terminator_on_a_named_pair_is_an_unfitted_option(self):
         x1 = _comp("U7", "ic", "MCP2562", "Interface_CAN_LIN:MCP2562", CAN_XCVR)
         nets = {"CAN_H": [("U7", "7", "CANH", "bidirectional"), ("R1", "1", "~", "passive")],
                 "CAN_L": [("U7", "6", "CANL", "bidirectional"), ("R1", "2", "~", "passive")]}
         term, findings = _can_findings([x1, dict(_res("R1", "120"), dnp=True)], nets)
         self.assertEqual(term, {"CAN_H": None, "CAN_L": None})
         self.assertFalse(findings[0]["has_termination"])
+        self.assertIsNone(findings[0]["issues"])
+        self.assertEqual(findings[0]["observations"],
+                         ["CAN 120\u03a9 termination R1 is DNP (fit it on the bus-end nodes)"])
+
+    def test_fitted_beside_dnp_terminator_is_present(self):
+        x1 = _comp("U7", "ic", "MCP2562", "Interface_CAN_LIN:MCP2562", CAN_XCVR)
+        for h, l in (("CAN_H", "CAN_L"), ("CAN_P", "CAN_N")):
+            nets = {h: [("U7", "7", "CANH", "bidirectional"), ("R1", "1", "~", "passive"),
+                        ("R2", "1", "~", "passive")],
+                    l: [("U7", "6", "CANL", "bidirectional"), ("R1", "2", "~", "passive"),
+                        ("R2", "2", "~", "passive")]}
+            _, findings = _can_findings([x1, dict(_res("R1", "120"), dnp=True), _res("R2", "120")], nets)
+            self.assertEqual(len(findings), 1, h)
+            self.assertTrue(findings[0]["has_termination"], h)
+            self.assertIsNone(findings[0]["issues"], h)
+            self.assertEqual(findings[0]["observations"],
+                             ["CAN 120\u03a9 termination present (verify remote end has matching termination)"], h)
 
 
 def _i2c_line(pullup_ohms, n_devices):

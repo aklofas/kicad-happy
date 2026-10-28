@@ -1313,9 +1313,12 @@ def analyze_protocol_compliance(components: list[dict], nets: dict,
     judged: set = set()
     findings_before_can = len(findings)
 
-    def _judge(nets_of_bus, has_term, term_value):
+    def _judge(nets_of_bus, has_term, term_value, dnp_ref=None):
         issues, obs = [], []
-        if not has_term:
+        if not has_term and dnp_ref:
+            # A placed-but-unfitted terminator is the per-node option, not an omission
+            obs.append(f"CAN 120Ω termination {dnp_ref} is DNP (fit it on the bus-end nodes)")
+        elif not has_term:
             issues.append("CAN bus missing 120Ω termination resistor")
         elif term_value and abs(term_value - 120) > 12:
             issues.append(f"CAN termination is {term_value}Ω (expected 120Ω ±10%)")
@@ -1330,18 +1333,20 @@ def analyze_protocol_compliance(components: list[dict], nets: dict,
         if key in judged:
             return
         judged.add(key)
-        terms = dp.get("termination") or []
-        _judge(list(key), bool(terms), terms[0].get("ohms") if terms else None)
+        terms = [t for t in dp.get("termination") or [] if not t.get("dnp")]
+        dnp = next((t.get("ref") for t in dp.get("termination") or [] if t.get("dnp")), None)
+        _judge(list(key), bool(terms), terms[0].get("ohms") if terms else None, dnp)
 
     def _judge_unnamed_bus(can):
-        # One result, credited by any terminated CAN pair (a choke or connector can split one
-        # bus into two differential pairs); else "missing", naming the first CAN pair if any
-        dp = next((d for d in can_dps if d.get("termination")), None)
+        # One result, credited by a terminated CAN pair (fitted first, else a DNP option; a choke
+        # or connector can split one bus into two pairs); else "missing", naming the first pair
+        dp = (next((d for d in can_dps if d.get("has_termination")), None)
+              or next((d for d in can_dps if d.get("termination")), None))
         if dp:
             _judge_dp(dp)
         else:
             _judge([can_dps[0].get("positive"), can_dps[0].get("negative")] if can_dps else [],
-                   bool(can.get("termination")), None)
+                   bool(can.get("termination")), None, can.get("termination_dnp"))
 
     for can in can_entries:
         net = can.get("net", "")
@@ -1352,14 +1357,14 @@ def analyze_protocol_compliance(components: list[dict], nets: dict,
         elif pair:
             if pair not in judged:
                 judged.add(pair)
-                _judge(list(pair), bool(can.get("termination")), None)
+                _judge(list(pair), bool(can.get("termination")), None, can.get("termination_dnp"))
         elif can.get("transceiver"):
             _judge_unnamed_bus(can)
         elif net in canh or net in canl:
             # An unpaired bus line is judged alone only when its bus is unambiguous (at most one CANL net)
             if len(canl) <= 1 and (net,) not in judged:
                 judged.add((net,))
-                _judge([net], bool(can.get("termination")), None)
+                _judge([net], bool(can.get("termination")), None, can.get("termination_dnp"))
         # TX/RX nets are the transceiver's logic side: no termination of their own
     if can_entries and len(findings) == findings_before_can:
         # CAN on the board but no bus net named CANH/CANL (TX/RX only, or a CAN_P/CAN_N pair)
