@@ -79,7 +79,12 @@ def _recalc_crystal_load(det: dict) -> None:
     if not isinstance(caps, list):
         return
     legs: dict = {}
+    seen: set = set()
     for i, cap in enumerate(caps):
+        if cap.get("ref") is not None:
+            if cap["ref"] in seen:
+                continue  # the IC-pin path can list one cap under two pins on one net
+            seen.add(cap["ref"])
         leg = cap.get("net") or i  # a cap with no net is a leg of its own
         legs[leg] = legs.get(leg, 0) + cap.get("farads", 0)
     if len(legs) >= 2:

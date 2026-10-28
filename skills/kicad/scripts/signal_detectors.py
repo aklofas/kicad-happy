@@ -262,6 +262,8 @@ def detect_voltage_dividers(ctx: AnalysisContext) -> dict:
                 if ctx.is_ground(top_net) and not ctx.is_ground(bot_net):
                     top_net, bot_net = bot_net, top_net
                     r1, r2 = r2, r1
+                if _divider_is_degenerate(ctx, top_net, bot_net):
+                    continue
 
                 # One end should be power, other should be ground (or another power)
                 if not (ctx.is_power_net(top_net) and (ctx.is_ground(bot_net) or ctx.is_power_net(bot_net))):
@@ -382,6 +384,11 @@ def detect_voltage_dividers(ctx: AnalysisContext) -> dict:
     return {"voltage_dividers": voltage_dividers, "feedback_networks": feedback_networks}
 
 
+def _divider_is_degenerate(ctx: AnalysisContext, top_net: str, bot_net: str) -> bool:
+    """Both ends on one net, or both on ground: no voltage across the divider."""
+    return top_net == bot_net or (ctx.is_ground(top_net) and ctx.is_ground(bot_net))
+
+
 def _chain_link(ctx: AnalysisContext, ref: str, ohms: float) -> dict:
     link = {"ref": ref, "ohms": ohms}
     members = group_members(ctx, ref)
@@ -451,6 +458,8 @@ def _merge_series_dividers(voltage_dividers: list[dict], ctx: AnalysisContext) -
         if not top_extra and not bot_extra:
             result.append(vd)
             continue
+        if _divider_is_degenerate(ctx, new_top_net, new_bot_net):
+            continue  # the chain closes on the other arm's end: a parallel leg, not a divider
 
         new_vd = dict(vd)
 

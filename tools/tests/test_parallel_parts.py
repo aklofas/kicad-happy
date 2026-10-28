@@ -123,6 +123,34 @@ class Divider(unittest.TestCase):
         vds, _ = _dividers(ctx)
         self.assertEqual(vds, [])
 
+    def test_chain_back_to_ground_is_not_a_divider(self):
+        # FB node: R14 680k from VDD, R17 150k to GND, and R18 10M + R24 2M2 in series to GND.
+        # R18/R17 extended through R24 runs GND -> FB -> GND: no divider. The regulator takes
+        # R14/R17: TLV62569 Vref 0.6 V, ratio 150/830, Vout = 0.6 * 830/150 = 3.32 V.
+        comps = [{"reference": "U1", "type": "ic", "value": "TLV62569",
+                  "lib_id": "Regulator_Switching:TLV62569DBV"},
+                 _r("R14", "680k"), _r("R17", "150k"), _r("R18", "10M"), _r("R24", "2M2"),
+                 {"reference": "L1", "type": "inductor", "value": "2u2"}]
+        nets = {"+5V": [("U1", "1", "VIN", "power_in")],
+                "GND": [("U1", "2", "GND", "power_in"), _p("R17", "2"), _p("R24", "2")],
+                "SW": [("U1", "3", "SW", "output"), _p("L1", "1")],
+                "VDD": [_p("L1", "2"), _p("R14", "1")],
+                "FB": [("U1", "4", "FB", "input"), _p("R14", "2"), _p("R17", "1"), _p("R18", "1")],
+                "LEG": [_p("R18", "2"), _p("R24", "1")]}
+        ctx = _ctx(comps, nets, rails=("+5V", "VDD"))
+        vds, _ = _dividers(ctx)
+        self.assertFalse(any(v["top_net"] == v["bottom_net"] for v in vds), vds)
+        self.assertNotIn(("R18", "R17"), [(v["r_top"]["ref"], v["r_bottom"]["ref"]) for v in vds])
+        regs = sd.detect_power_regulators(ctx, vds)
+        self.assertEqual([(r["feedback_divider"]["r_top"]["ref"], r["feedback_divider"]["r_bottom"]["ref"],
+                           r["estimated_vout"]) for r in regs], [("R14", "R17", 3.32)])
+
+    def test_both_ends_on_ground_is_not_a_divider(self):
+        comps = [_r("R1", "10k"), _r("R2", "10k")]
+        nets = {"GND": [_p("R1", "1")], "MID": [_p("R1", "2"), _p("R2", "1")], "AGND": [_p("R2", "2")]}
+        vds, _ = _dividers(_ctx(comps, nets))
+        self.assertEqual(vds, [])
+
     def test_single_member_keeps_its_value_bit_exact(self):
         # 1/(1/6800.0) != 6800.0 in floating point
         self.assertNotEqual(1 / (1 / 6800.0), 6800.0)
@@ -197,6 +225,12 @@ class CrystalLegs(unittest.TestCase):
         _recalc_crystal_load(det)
         self.assertEqual(det["effective_load_pF"], 16.5)
         det = {"load_caps": [{"ref": "C1", "farads": 22e-12}, {"ref": "C2", "farads": 22e-12}]}
+        _recalc_crystal_load(det)
+        self.assertEqual(det["effective_load_pF"], 14.0)
+        # the IC-pin path can list one cap twice (two XTAL pins on one net): counted once
+        det = {"load_caps": [{"ref": "C2", "farads": 22e-12, "net": "XI"},
+                             {"ref": "C2", "farads": 22e-12, "net": "XI"},
+                             {"ref": "C4", "farads": 22e-12, "net": "XO"}]}
         _recalc_crystal_load(det)
         self.assertEqual(det["effective_load_pF"], 14.0)
 

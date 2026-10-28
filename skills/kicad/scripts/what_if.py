@@ -156,16 +156,19 @@ def _find_refs_in_det(det: dict) -> dict:
 
     Returns {ref: [(key_path_to_value, value_key), ...]}
     where key_path_to_value is like ["resistor"] and value_key is "ohms".
+    Every member of a parallel group (``parallel_refs``) and every link of a
+    series chain (``chain_resistors``) maps to the part dict that holds the
+    combined value.
     """
     refs = {}
 
     def _check(sub, path):
         if not isinstance(sub, dict) or "ref" not in sub:
             return
-        ref = sub["ref"]
         for vkey in ("ohms", "farads", "henries"):
             if vkey in sub and isinstance(sub[vkey], (int, float)):
-                refs.setdefault(ref, []).append((path, vkey))
+                for ref in _part_member_refs(sub):
+                    refs.setdefault(ref, []).append((path, vkey))
 
     for key, val in det.items():
         if isinstance(val, dict):
@@ -179,6 +182,62 @@ def _find_refs_in_det(det: dict) -> dict:
                     _check(item, [key, idx])
 
     return refs
+
+
+def _part_member_refs(part: dict) -> list:
+    """Refs whose values make up *part*'s value: its chain links and parallel members."""
+    links = part.get("chain_resistors") or [part]
+    out = []
+    for link in links:
+        for ref in link.get("parallel_refs") or [link.get("ref")]:
+            if ref and ref not in out:
+                out.append(ref)
+    return out
+
+
+def _part_values(analysis: dict) -> dict:
+    """``{ref: parsed value}`` for the analysis's components."""
+    values = {}
+    for comp in analysis.get("components", []):
+        ref = comp.get("reference")
+        if ref:
+            v = parse_value(comp.get("value", ""), component_type=comp.get("type"))
+            if v is not None:
+                values[ref] = v
+    return values
+
+
+def _combine(values: list, vkey: str) -> float:
+    """Parallel parts as one: capacitors add, resistors and inductors as 1/sum(1/x)."""
+    if len(values) == 1:
+        return values[0]
+    if vkey == "farads":
+        return sum(values)
+    if any(v <= 0 for v in values):
+        return 0.0
+    return 1.0 / sum(1.0 / v for v in values)
+
+
+def _patched_value(part: dict, vkey: str, changes: dict, part_values: dict):
+    """*part*'s value with *changes* applied to its members, or None when an
+    unchanged member's value is unknown."""
+    def link_value(link):
+        members = link.get("parallel_refs") or [link.get("ref")]
+        if not any(m in changes for m in members):
+            return link.get(vkey)
+        vals = []
+        for m in members:
+            v = changes[m][0] if m in changes else (part_values or {}).get(m)
+            if v is None:
+                return None
+            vals.append(v)
+        return _combine(vals, vkey)
+
+    links = part.get("chain_resistors")
+    if not links:
+        return link_value(part)
+    vals = [link_value(link) for link in links]
+    return None if any(v is None for v in vals) else sum(vals)
 
 
 def _find_affected(signal_analysis: dict, changes: dict) -> list:
@@ -208,8 +267,13 @@ def _find_affected(signal_analysis: dict, changes: dict) -> list:
 # ---------------------------------------------------------------------------
 
 def _apply_changes(det: dict, changes: dict, matched_refs: dict,
-                   det_type: str = None) -> dict:
-    """Deep-copy detection, apply value changes, recalculate derived fields."""
+                   det_type: str = None, part_values: dict = None) -> dict:
+    """Deep-copy detection, apply value changes, recalculate derived fields.
+
+    A change to one member of a parallel group or a series chain recomputes the
+    combined value from the changed member and the others' values in
+    *part_values* (``_part_values(analysis)``).
+    """
     from detection_schema import recalc_derived
 
     patched = copy.deepcopy(det)
@@ -221,6 +285,18 @@ def _apply_changes(det: dict, changes: dict, matched_refs: dict,
             obj = patched
             for key in path:
                 obj = obj[key]
+            orig = det
+            for key in path:
+                orig = orig[key]
+            if orig.get("parallel_refs") or orig.get("chain_resistors"):
+                combined = _patched_value(orig, vkey, changes, part_values)
+                if combined is None:
+                    print(f"Warning: {'/'.join(map(str, path))} combines several parts and one "
+                          f"of their values is unknown; {ref}'s change is not applied there",
+                          file=sys.stderr)
+                    continue
+                obj[vkey] = combined
+                continue
             obj[vkey] = new_val
             # Update the value string too
             if "value" in obj:
@@ -368,6 +444,7 @@ def _run_sweep(analysis: dict, sweep: SweepSpec, fixed_changes: dict,
                spice: bool = False) -> dict:
     """Run the what-if pipeline for each sweep value, collect tabular results."""
     signal = group_findings_by_detection_type(analysis)
+    part_values = _part_values(analysis)
     results_per_step = []
 
     for val, val_str in zip(sweep.values, sweep.value_strs):
@@ -378,7 +455,8 @@ def _run_sweep(analysis: dict, sweep: SweepSpec, fixed_changes: dict,
         affected = _find_affected(signal, step_changes)
         step_subcircuits = []
         for det_type, idx, det, matched in affected:
-            patched = _apply_changes(det, step_changes, matched, det_type=det_type)
+            patched = _apply_changes(det, step_changes, matched, det_type=det_type,
+                                     part_values=part_values)
             deltas = _compare(det, patched, det_type)
             label = _get_det_label(det, det_type)
             step_subcircuits.append({
@@ -426,11 +504,13 @@ def _run_tolerance(analysis: dict, changes: dict, spice: bool = False) -> list:
     affected = _find_affected(signal, changes_legacy)
     if not affected:
         return []
+    part_values = _part_values(analysis)
 
     results = []
     for det_type, idx, det, matched in affected:
         # Nominal
-        patched_nom = _apply_changes(det, changes_legacy, matched, det_type=det_type)
+        patched_nom = _apply_changes(det, changes_legacy, matched, det_type=det_type,
+                                     part_values=part_values)
         nominal_deltas = _compare(det, patched_nom, det_type)
         label = _get_det_label(det, det_type)
 
@@ -450,7 +530,8 @@ def _run_tolerance(analysis: dict, changes: dict, spice: bool = False) -> list:
                 ref, (val, vstr, tol) = tol_refs[i]
                 factor = (1 + tol) if (bits >> i) & 1 else (1 - tol)
                 corner_changes[ref] = (val * factor, vstr)
-            corner_patched = _apply_changes(det, corner_changes, matched, det_type=det_type)
+            corner_patched = _apply_changes(det, corner_changes, matched, det_type=det_type,
+                                            part_values=part_values)
             corners.append(corner_patched)
 
         # For each derived field, find worst-case bounds
@@ -825,6 +906,24 @@ def _solve_fix(det: dict, det_type: str, target_field: str,
 
     suggestions = inverse(det, target_field, target_value)
 
+    # A suggestion for a parallel group or a series chain is the combined value the
+    # group needs, not a value for its first ref
+    parts = {}
+    for val in det.values():
+        if isinstance(val, dict) and "ref" in val:
+            parts.setdefault(val["ref"], val)
+    for s in suggestions:
+        part = parts.get(s["ref"], {"ref": s["ref"]})
+        members = _part_member_refs(part)
+        if len(members) > 1:
+            kind = "series chain" if part.get("chain_resistors") else "parallel group"
+            s["combined_refs"] = members
+            s["note"] = (f"ideal is the combined value of the {kind} {', '.join(members)}; "
+                         f"change the group, not {s['ref']} alone")
+        anchor = parts.get(s.get("anchor_ref"))
+        if anchor is not None and len(_part_member_refs(anchor)) > 1:
+            s["anchor_combined_refs"] = _part_member_refs(anchor)
+
     # Add E-series snapped values
     for s in suggestions:
         s["e_series"] = {}
@@ -1007,7 +1106,17 @@ def _suggest_all_fixes(issues: list, pcb_analysis: dict = None) -> dict:
             # Compute before/after for the best suggestion (first one)
             best = suggestions[0]
             best_e24 = best.get("e_series", {}).get("E24", {}).get("value")
-            if best_e24 and best_e24 > 0:
+            if best_e24 and best_e24 > 0 and best.get("combined_refs"):
+                # The E24 value replaces the group's combined value
+                from detection_schema import recalc_derived
+                patched = copy.deepcopy(det)
+                for key, val in patched.items():
+                    if isinstance(val, dict) and val.get("ref") == best["ref"] and best["field"] in val:
+                        val[best["field"]] = best_e24
+                        break
+                recalc_derived(patched, det_type)
+                delta = _compare(det, patched, det_type)
+            elif best_e24 and best_e24 > 0:
                 # Simulate fix with E24 value
                 changes = {best["ref"]: (best_e24, _format_value(best_e24, best["field"]))}
                 matched = {best["ref"]: _find_refs_in_det(det).get(best["ref"], [])}
@@ -1097,6 +1206,8 @@ def _format_fix(fix_result: dict) -> str:
             vkey = s["field"]
             anchor = s.get("anchor_ref")
             anchor_note = f" (keeping {anchor})" if anchor else ""
+            if s.get("combined_refs"):
+                ref = "combined " + "+".join(s["combined_refs"])
             lines.append(f"  {ref}{anchor_note}:")
             lines.append(f"    Ideal:  {_format_value(ideal, vkey)}")
             for series in ("E96", "E24", "E12"):
@@ -1139,6 +1250,8 @@ def _format_suggestions(result: dict) -> str:
             vkey = s["field"]
             anchor = s.get("anchor_ref")
             anchor_note = " (keeping {a})".format(a=anchor) if anchor else ""
+            if s.get("combined_refs"):
+                ref = "combined " + "+".join(s["combined_refs"])
             lines.append("  {ref}{note}:".format(ref=ref, note=anchor_note))
             lines.append("    Current: {cur}".format(
                 cur=_format_value(current, vkey)))
@@ -1461,8 +1574,10 @@ def main(argv: list[str] | None = None) -> int:
 
     # Apply changes to each affected detection
     patched_dets = []
+    part_values = _part_values(analysis)
     for det_type, idx, det, matched in affected:
-        patched = _apply_changes(det, changes_legacy, matched, det_type=det_type)
+        patched = _apply_changes(det, changes_legacy, matched, det_type=det_type,
+                                 part_values=part_values)
         patched_dets.append(patched)
 
     # Build before/after comparisons
