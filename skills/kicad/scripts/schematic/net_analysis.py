@@ -6,6 +6,7 @@ from kicad_types import (
     AnalysisContext,
 )
 from kicad_core.coords import to_iu
+from detector_helpers import is_protection_part
 from kicad_core.sexp import unescape_string
 from kicad_core.parts import (
     _OUTPUT_DRIVE_KEYWORDS,
@@ -1212,6 +1213,7 @@ def _detect_differential_pairs(ctx: AnalysisContext) -> list:
             prefix = ""
         net_names_upper[(prefix, disp.upper())] = k
     found_pairs: set[tuple[str, str]] = set()  # track to avoid duplicates
+    pair_suffixes = tuple(sfx.upper() for pair in _diff_suffix_pairs for sfx in pair)
 
     for pos_sfx, neg_sfx in _diff_suffix_pairs:
         for (prefix, nu), real_name in net_names_upper.items():
@@ -1248,12 +1250,14 @@ def _detect_differential_pairs(ctx: AnalysisContext) -> list:
                     if shared:
                         entry["shared_ics"] = sorted(shared)
 
-                    # Check for ESD protection
-                    esd_chips = [c for c in sorted(shared)
-                                 if comp_lookup.get(c, {}).get("type") == "ic"]
-                    entry["has_esd"] = len(esd_chips) > 0
-                    if esd_chips:
-                        entry["esd_protection"] = esd_chips
+                    # ESD protection: a clamp on each leg; a device on both lines is what it protects
+                    pos_esd = {c for c in pos_comps
+                               if is_protection_part(comp_lookup.get(c, {}), ctx, pair_suffixes)}
+                    neg_esd = {c for c in neg_comps
+                               if is_protection_part(comp_lookup.get(c, {}), ctx, pair_suffixes)}
+                    entry["has_esd"] = bool(pos_esd and neg_esd)
+                    if entry["has_esd"]:
+                        entry["esd_protection"] = sorted(pos_esd | neg_esd)
 
                     # CAN-specific: check for termination resistor
                     if protocol == "CAN":

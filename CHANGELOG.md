@@ -97,6 +97,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - AM-001, OV-001, FT-001 and the sleep-current audit read the voltage of the exact net a pin sits on, so two instances of one sheet with different supplies are checked separately (kc/R3-F1).
 - A regulator on a hierarchical sheet net is no longer read as inverting because of a hyphen in the sheet UUID; an output named `V-` is negative. A regulator's part number and a trusted datasheet extraction give its reference voltage (new table entries: TPS63020, TPS82084/85), and the estimate's provenance names the reference it used. A regulator with no output estimate gives its output net the voltage in its sheet's name (`/5V_regulator/VOUT_SEN` is 5 V again); its input, switch node and an IC's internal-regulator pin do not. (KH-675, kc/R5-F7)
 - A boost converter's input rail is no longer recorded as its output: the output is the rail at the top of its feedback divider. LM317-style adjustable regulators use their own output formula, Vref × (1 + R2/R1) with Vref across the OUT–ADJ resistor; with a potentiometer in the divider no output voltage is estimated, and the rail keeps the voltage in its name. `what_if --suggest-fixes` solves those dividers with the same formula. (kc/R5-F1)
+- A differential pair's `esd_protection` lists only protection parts (TVS/ESD diodes and arrays, varistors) and `has_esd` requires one on each leg; transceivers, MCUs and hubs on both lines no longer count as protection. (kc/R3-F3)
 
 ---
 

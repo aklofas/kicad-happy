@@ -6,6 +6,8 @@ domain_detectors.py to eliminate boilerplate and reduce copy-paste risk.
 
 from __future__ import annotations
 
+from kicad_core.classify import classify_ic_function
+from kicad_core.netnames import net_leaf
 from kicad_types import AnalysisContext
 
 
@@ -74,3 +76,43 @@ def match_ic_keywords(component: dict, keywords: list[str] | tuple[str, ...]) ->
         return False
     val_lib = (component.get("value", "") + " " + component.get("lib_id", "")).lower()
     return any(k in val_lib for k in keywords)
+
+
+# TVS/ESD part-name fragments: the protection-device and USB VBUS keyword sets, plus
+# SRV05, SM712 and CDSOT families and the USBUF/NUF2 USB filters with ESD clamps.
+_PROTECTION_KEYWORDS = ("tvs", "esd", "pesd", "prtr", "usblc", "sp0", "tpd", "ip4", "rclamp",
+                        "smaj", "smbj", "p6ke", "1.5ke", "lesd", "nup", "srv05", "sm712", "cdsot",
+                        "usbuf", "nuf2")
+_DRIVER_PIN_TYPES = ("output", "tri_state", "power_out")
+
+
+def is_protection_part(comp: dict, ctx: AnalysisContext, pair_suffixes) -> bool:
+    """True when *comp* is a clamp (TVS/ESD diode or array, varistor), not a protected device.
+
+    An IC without a protection name still counts when it only reaches ground, supplies and
+    differential-pair lines (upper-case net suffixes in *pair_suffixes*) and drives none of
+    them: an unnamed ESD array.
+    """
+    ctype = comp.get("type")
+    if ctype in ("varistor", "surge_arrester"):
+        return True
+    if ctype not in ("diode", "ic", "other"):
+        return False
+    text = " ".join((comp.get("value") or "", comp.get("lib_id") or "", comp.get("mpn") or "")).lower()
+    if any(k in text for k in _PROTECTION_KEYWORDS):
+        return True
+    if ctype != "ic":
+        return False
+    if classify_ic_function(comp.get("lib_id", ""), comp.get("value", ""),
+                            comp.get("description", "")) == "protection":
+        return True
+    ref = comp.get("reference")
+    if any(p.get("type") in _DRIVER_PIN_TYPES
+           for c in ctx.components if c.get("reference") == ref for p in c.get("pins") or []):
+        return False
+    nets = {net for net, _ in ctx.ref_pins.get(ref, {}).values() if net}
+    if not any(ctx.is_ground(n) for n in nets):
+        return False
+    signals = [net_leaf(n).upper() for n in sorted(nets)
+               if not ctx.is_ground(n) and not ctx.is_power_net(n)]
+    return len(signals) >= 2 and all(s.endswith(tuple(pair_suffixes)) for s in signals)
