@@ -6,6 +6,8 @@ domain_detectors.py to eliminate boilerplate and reduce copy-paste risk.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 from kicad_core.classify import classify_ic_function
 from kicad_core.netnames import net_leaf
 from kicad_types import AnalysisContext
@@ -76,6 +78,30 @@ def match_ic_keywords(component: dict, keywords: list[str] | tuple[str, ...]) ->
         return False
     val_lib = (component.get("value", "") + " " + component.get("lib_id", "")).lower()
     return any(k in val_lib for k in keywords)
+
+
+def match_family(comp: dict, families: dict[str, Iterable[str]]) -> str | None:
+    """Return the family of a part's longest keyword, or None.
+
+    Reads the first of ``mpn``, ``value``, ``lib_id`` that contains any keyword
+    (case-insensitive substring). A tie in length between two families is None.
+    ``families`` holds one detector's own tables; never pool families across
+    detectors, since a part can belong to one family in each.
+    """
+    for field in ("mpn", "value", "lib_id"):
+        text = (comp.get(field) or "").lower()
+        if not text:
+            continue
+        best: dict[str, int] = {}
+        for fam, keywords in families.items():
+            n = max((len(k) for k in keywords if k in text), default=0)
+            if n:
+                best[fam] = n
+        if best:
+            top = max(best.values())
+            winners = [f for f, n in best.items() if n == top]
+            return winners[0] if len(winners) == 1 else None
+    return None
 
 
 # TVS/ESD part-name fragments: the protection-device and USB VBUS keyword sets, plus

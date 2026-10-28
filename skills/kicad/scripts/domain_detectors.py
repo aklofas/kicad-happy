@@ -19,7 +19,7 @@ from kicad_core.parts import lookup_regulator_vref
 from kicad_core.values import parse_value
 from kicad_core.netnames import parse_voltage_from_net_name
 from signal_detectors import _get_net_components
-from detector_helpers import match_ic_keywords, get_unique_ics
+from detector_helpers import match_family, match_ic_keywords, get_unique_ics
 from finding_schema import make_finding, make_provenance
 
 
@@ -843,8 +843,8 @@ def detect_lvds_interfaces(ctx: AnalysisContext) -> list[dict]:
         "sn65lvds", "thc63", "max9217", "max9247",
         "ub924", "ub925",
     )
-    _serializer_hints = ("ser", "driver", "transmit", "tx", "encoder", "ub925")
-    _deserializer_hints = ("des", "receiver", "rx", "decoder", "ub924")
+    _serializer_hints = ("ser", "serializer", "driver", "transmit", "tx", "encoder", "ub925")
+    _deserializer_hints = ("des", "deserializer", "receiver", "rx", "decoder", "ub924")
 
     for comp in ctx.components:
         if comp["type"] != "ic":
@@ -853,17 +853,10 @@ def detect_lvds_interfaces(ctx: AnalysisContext) -> list[dict]:
         if not any(k in val_lib for k in _lvds_keywords):
             continue
 
-        # Classify role
-        role = "unknown"
-        if any(h in val_lib for h in _serializer_hints):
-            role = "serializer"
-        elif any(h in val_lib for h in _deserializer_hints):
-            role = "deserializer"
-        else:
-            # Heuristic: DS90Cx8xx — even last digit = serializer, odd = deserializer
-            # e.g., DS90C124 (ser), DS90C125 (des), DS90CR286 (ser), DS90CF386 (des)
-            # Not perfectly reliable, so leave as "unknown" if no strong hint
-            pass
+        # DS90Cx8xx part numbers hint the role by their last digit, but not
+        # reliably, so no hint leaves the role "unknown".
+        role = match_family(comp, {"serializer": _serializer_hints,
+                                   "deserializer": _deserializer_hints}) or "unknown"
 
         lvds_interfaces.append({
             "reference": comp["reference"],
@@ -1015,7 +1008,7 @@ def detect_rf_chains(ctx: AnalysisContext) -> list[dict]:
     )
     rf_amp_keywords = (
         "mga-", "bga-", "maal", "pga-", "gali-", "maa-", "bfp7", "bfr5",
-        "hmc58", "hmc31", "lna", "mmic",
+        "hmc31", "lna", "mmic",
         "bgb7", "trf37", "sga-", "tqp3", "sky67",
         "maam", "admv",
     )
@@ -1032,7 +1025,7 @@ def detect_rf_chains(ctx: AnalysisContext) -> list[dict]:
     )
     # KH-085: New RF component categories
     rf_attenuator_keywords = (
-        "hmc47", "hmc54", "pe43", "pe44", "dat-", "rfsa",
+        "hmc47", "hmc540", "hmc542", "pe43", "pe44", "dat-", "rfsa",
     )
     rf_coupler_keywords = (
         "fpc0", "tcd-", "adc-", "bd-", "mdc-",
@@ -1044,58 +1037,47 @@ def detect_rf_chains(ctx: AnalysisContext) -> list[dict]:
         "xx1000", "hmc57", "hmc20",
     )
 
-    rf_switches = []
-    rf_mixers = []
-    rf_amplifiers = []
-    rf_transceivers = []
-    rf_filters = []
-    rf_baluns = []
-    rf_attenuators = []
-    rf_couplers = []
-    rf_power_detectors = []
-    rf_freq_multipliers = []
-    seen_rf_refs = set()
+    rf_families = {
+        "switch": rf_switch_keywords,
+        "mixer": rf_mixer_keywords,
+        "amplifier": rf_amp_keywords,
+        "transceiver": rf_transceiver_keywords,
+        "filter": rf_filter_keywords,
+        "attenuator": rf_attenuator_keywords,
+        "coupler": rf_coupler_keywords,
+        "power_detector": rf_power_detector_keywords,
+        "freq_multiplier": rf_freq_multiplier_keywords,
+    }
+    by_role: dict[str, list[dict]] = {role: [] for role in (*rf_families, "balun")}
+    rf_roles: dict[str, str] = {}
 
     for c in ctx.components:
-        if c["reference"] in seen_rf_refs:
+        if c["reference"] in rf_roles:
             continue
-        val_lib = (c.get("value", "") + " " + c.get("lib_id", "")).lower()
-
+        role = None
         # KH-120: Also check "other" type — some RF ICs use non-standard
         # reference designators and get classified as "other"
         if c["type"] in ("ic", "other"):
-            if any(k in val_lib for k in rf_switch_keywords):
-                rf_switches.append(c)
-                seen_rf_refs.add(c["reference"])
-            elif any(k in val_lib for k in rf_mixer_keywords):
-                rf_mixers.append(c)
-                seen_rf_refs.add(c["reference"])
-            elif any(k in val_lib for k in rf_amp_keywords):
-                rf_amplifiers.append(c)
-                seen_rf_refs.add(c["reference"])
-            elif any(k in val_lib for k in rf_transceiver_keywords):
-                rf_transceivers.append(c)
-                seen_rf_refs.add(c["reference"])
-            elif any(k in val_lib for k in rf_filter_keywords):
-                rf_filters.append(c)
-                seen_rf_refs.add(c["reference"])
-            # KH-085: New RF categories
-            elif any(k in val_lib for k in rf_attenuator_keywords):
-                rf_attenuators.append(c)
-                seen_rf_refs.add(c["reference"])
-            elif any(k in val_lib for k in rf_coupler_keywords):
-                rf_couplers.append(c)
-                seen_rf_refs.add(c["reference"])
-            elif any(k in val_lib for k in rf_power_detector_keywords):
-                rf_power_detectors.append(c)
-                seen_rf_refs.add(c["reference"])
-            elif any(k in val_lib for k in rf_freq_multiplier_keywords):
-                rf_freq_multipliers.append(c)
-                seen_rf_refs.add(c["reference"])
+            role = match_family(c, rf_families)
         elif c["type"] == "transformer":
+            val_lib = (c.get("value", "") + " " + c.get("lib_id", "")).lower()
             if any(k in val_lib for k in ("balun", "bal-", "b0310", "bl14")):
-                rf_baluns.append(c)
-                seen_rf_refs.add(c["reference"])
+                role = "balun"
+        if role:
+            by_role[role].append(c)
+            rf_roles[c["reference"]] = role
+
+    rf_switches = by_role["switch"]
+    rf_mixers = by_role["mixer"]
+    rf_amplifiers = by_role["amplifier"]
+    rf_transceivers = by_role["transceiver"]
+    rf_filters = by_role["filter"]
+    rf_baluns = by_role["balun"]
+    rf_attenuators = by_role["attenuator"]
+    rf_couplers = by_role["coupler"]
+    rf_power_detectors = by_role["power_detector"]
+    rf_freq_multipliers = by_role["freq_multiplier"]
+    seen_rf_refs = set(rf_roles)
 
     rf_component_count = (
         len(rf_switches) + len(rf_mixers) + len(rf_amplifiers)
@@ -1127,32 +1109,7 @@ def detect_rf_chains(ctx: AnalysisContext) -> list[dict]:
                     })
 
         def _rf_role(ref):
-            comp = ctx.comp_lookup.get(ref)
-            if not comp:
-                return "unknown"
-            val_lib = (comp.get("value", "") + " " + comp.get("lib_id", "")).lower()
-            if any(k in val_lib for k in rf_switch_keywords):
-                return "switch"
-            if any(k in val_lib for k in rf_mixer_keywords):
-                return "mixer"
-            if any(k in val_lib for k in rf_amp_keywords):
-                return "amplifier"
-            if any(k in val_lib for k in rf_transceiver_keywords):
-                return "transceiver"
-            if any(k in val_lib for k in rf_filter_keywords):
-                return "filter"
-            # KH-085: New RF roles
-            if any(k in val_lib for k in rf_attenuator_keywords):
-                return "attenuator"
-            if any(k in val_lib for k in rf_coupler_keywords):
-                return "coupler"
-            if any(k in val_lib for k in rf_power_detector_keywords):
-                return "power_detector"
-            if any(k in val_lib for k in rf_freq_multiplier_keywords):
-                return "freq_multiplier"
-            if comp["type"] == "transformer":
-                return "balun"
-            return "unknown"
+            return rf_roles.get(ref, "unknown")
 
         all_rf_chain_refs = [c["reference"] for c in (
             rf_switches + rf_mixers + rf_amplifiers + rf_transceivers +
@@ -3344,6 +3301,10 @@ _WATCHDOG_IC_KEYWORDS = (
     "adm6316", "adm6320", "stwd100",
 )
 
+# NXP LPC LQFP48 part numbers (LPC1114FBD48, LPC845M301JBD48) contain ROHM's
+# "bd48"; the longer match keeps them out of both families.
+_NOT_RESET_IC_KEYWORDS = ("fbd48", "jbd48")
+
 _RESET_OUTPUT_PINS = {"RST", "RESET", "NRST", "NRESET", "~{RST}", "~{RESET}",
                       "~{NRST}", "~{NRESET}", "RSTN", "RESETN", "MR", "RESETOUT",
                       "RESET_OUT", "RST_OUT", "RSTOUT"}
@@ -3386,13 +3347,12 @@ def detect_reset_supervisors(ctx: AnalysisContext) -> list[dict]:
         ref = comp["reference"]
         if ref in matched_refs:
             continue
-        val = comp.get("value", "").lower()
-        lib = comp.get("lib_id", "").lower()
-        combined = val + " " + lib
-
         # Classify
-        is_supervisor = any(kw in combined for kw in _SUPERVISOR_IC_KEYWORDS)
-        is_watchdog = any(kw in combined for kw in _WATCHDOG_IC_KEYWORDS)
+        family = match_family(comp, {"supervisor": _SUPERVISOR_IC_KEYWORDS,
+                                     "watchdog": _WATCHDOG_IC_KEYWORDS,
+                                     "other": _NOT_RESET_IC_KEYWORDS})
+        is_supervisor = family == "supervisor"
+        is_watchdog = family == "watchdog"
         if not is_supervisor and not is_watchdog:
             continue
         matched_refs.add(ref)
@@ -4007,18 +3967,10 @@ def detect_sensor_interfaces(ctx: AnalysisContext) -> list[dict]:
         ref = comp["reference"]
         if ref in matched_refs:
             continue
-        val = comp.get("value", "").lower()
-        lib = comp.get("lib_id", "").lower()
-        combined = val + " " + lib
-
         # Classify sensor type
-        sensor_type = None
-        if any(kw in combined for kw in _IMU_KEYWORDS):
-            sensor_type = "motion"
-        elif any(kw in combined for kw in _ENV_SENSOR_KEYWORDS):
-            sensor_type = "environmental"
-        elif any(kw in combined for kw in _MAG_KEYWORDS):
-            sensor_type = "magnetic"
+        sensor_type = match_family(comp, {"motion": _IMU_KEYWORDS,
+                                          "environmental": _ENV_SENSOR_KEYWORDS,
+                                          "magnetic": _MAG_KEYWORDS})
 
         if not sensor_type:
             continue
@@ -5729,7 +5681,7 @@ _WIFI_BLE_KEYWORDS = (
     'cc2640', 'cc2652', 'cc1352', 'cc3220',
     'cyw43', 'cyw20',
     'da1469', 'da1458',
-    'stm32wb', 'stm32wl', 'stm32wba',
+    'stm32wb', 'stm32wba',
     'rp2040w', 'pico_w',
     'atecc', 'atwinc', 'atwilc',
     'bg22', 'bg24', 'mg24',
@@ -5770,15 +5722,8 @@ def detect_wireless_modules(ctx: AnalysisContext) -> list[dict]:
     for ic in get_unique_ics(ctx):
         ref = ic['reference']
         val = ic.get('value', '')
-        wl_type = None
-        if match_ic_keywords(ic, _WIFI_BLE_KEYWORDS):
-            wl_type = 'wifi_ble'
-        elif match_ic_keywords(ic, _LORA_KEYWORDS):
-            wl_type = 'lora'
-        elif match_ic_keywords(ic, _CELLULAR_KEYWORDS):
-            wl_type = 'cellular'
-        elif match_ic_keywords(ic, _GPS_KEYWORDS):
-            wl_type = 'gps'
+        wl_type = match_family(ic, {'wifi_ble': _WIFI_BLE_KEYWORDS, 'lora': _LORA_KEYWORDS,
+                                    'cellular': _CELLULAR_KEYWORDS, 'gps': _GPS_KEYWORDS})
         if not wl_type:
             continue
 
