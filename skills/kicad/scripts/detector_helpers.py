@@ -79,20 +79,37 @@ def match_ic_keywords(component: dict, keywords: list[str] | tuple[str, ...]) ->
 
 
 # TVS/ESD part-name fragments: the protection-device and USB VBUS keyword sets, plus
-# SRV05, SM712 and CDSOT families and the USBUF/NUF2 USB filters with ESD clamps.
+# families without either word in their names (SRV05, SM712, CDSOT, USBUF/USBULC,
+# NUF2/STF202 USB filters, AOZ89xx, H5VU, CM121x/CM123x, BSD5C, SP300x/SP301x,
+# Wurth 82400xxx, CDDFN, ECMF).  Not "sp30": SP30xx also names RS-485 transceivers.
 _PROTECTION_KEYWORDS = ("tvs", "esd", "pesd", "prtr", "usblc", "sp0", "tpd", "ip4", "rclamp",
                         "smaj", "smbj", "p6ke", "1.5ke", "lesd", "nup", "srv05", "sm712", "cdsot",
-                        "usbuf", "nuf2")
+                        "usbuf", "usbulc", "nuf2", "stf202", "aoz89", "h5vu", "cm121", "cm123",
+                        "bsd5c", "sp300", "sp301", "82400", "cddfn", "ecmf")
 _DRIVER_PIN_TYPES = ("output", "tri_state", "power_out")
+
+
+def _only_this_part_drives(ctx: AnalysisContext, ref: str, net: str) -> bool:
+    """True when every other part on *net* has passive pins and *ref* has no input there.
+
+    Such a net is a clamp's own supply/reference node (an ESD array's VP pin left open or
+    decoupled), not a line the part protects.
+    """
+    pins = [p for p in ctx.nets.get(net, {}).get("pins", []) if not p["component"].startswith("#")]
+    return (all(p.get("pin_type") == "passive" for p in pins if p["component"] != ref)
+            and not any(p.get("pin_type") == "input" for p in pins if p["component"] == ref))
 
 
 def is_protection_part(comp: dict, ctx: AnalysisContext, pair_suffixes) -> bool:
     """True when *comp* is a clamp (TVS/ESD diode or array, varistor), not a protected device.
 
-    An IC without a protection name still counts when it only reaches ground, supplies and
-    differential-pair lines (upper-case net suffixes in *pair_suffixes*) and drives none of
-    them: an unnamed ESD array.
+    SPICE source symbols and parts left out of the BOM never count.  An IC without a
+    protection name still counts when it only reaches ground, supplies, at most one node of
+    its own (open or decoupled) and differential-pair lines (upper-case net suffixes in
+    *pair_suffixes*) and drives none of them: an unnamed ESD array.
     """
+    if comp.get("in_bom") is False or (comp.get("lib_id") or "").startswith("Simulation_SPICE:"):
+        return False
     ctype = comp.get("type")
     if ctype in ("varistor", "surge_arrester"):
         return True
@@ -113,6 +130,16 @@ def is_protection_part(comp: dict, ctx: AnalysisContext, pair_suffixes) -> bool:
     nets = {net for net, _ in ctx.ref_pins.get(ref, {}).values() if net}
     if not any(ctx.is_ground(n) for n in nets):
         return False
-    signals = [net_leaf(n).upper() for n in sorted(nets)
-               if not ctx.is_ground(n) and not ctx.is_power_net(n)]
-    return len(signals) >= 2 and all(s.endswith(tuple(pair_suffixes)) for s in signals)
+    suffixes = tuple(pair_suffixes)
+    pair_lines = own_nodes = 0
+    for n in sorted(nets):
+        if ctx.is_ground(n) or ctx.is_power_net(n):
+            continue
+        if net_leaf(n).upper().endswith(suffixes):
+            pair_lines += 1
+        elif _only_this_part_drives(ctx, ref, n):
+            own_nodes += 1
+        else:
+            return False
+    # One own node is an array's VP/VBUS pin; an MCU or switch leaves several such nets.
+    return pair_lines >= 2 and own_nodes <= 1

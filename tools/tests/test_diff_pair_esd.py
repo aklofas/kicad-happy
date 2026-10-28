@@ -25,7 +25,7 @@ def _pairs(components, nets):
 
 MCU = _comp("U1", "ic", "STM32F103C8Tx", "MCU_ST_STM32F1:STM32F103C8Tx",
             [("1", "PA12", "bidirectional"), ("2", "PA11", "bidirectional"), ("3", "VSS", "power_in"),
-             ("4", "PA0", "bidirectional")])
+             ("4", "PA0", "bidirectional"), ("5", "PA1", "bidirectional")])
 USBLC6 = _comp("U_esd", "ic", "USBLC6-2SC6", "Power_Protection:USBLC6-2SC6",
                [("1", "I/O1", "passive"), ("2", "GND", "passive"), ("3", "I/O2", "passive"),
                 ("5", "VBUS", "passive")])
@@ -38,7 +38,8 @@ def _usb(extra_dp=(), extra_dm=(), extra_gnd=()):
     return {"USB_D+": [("U1", "1", "PA12", "bidirectional"), *extra_dp],
             "USB_D-": [("U1", "2", "PA11", "bidirectional"), *extra_dm],
             "GND": [("U1", "3", "VSS", "power_in"), *extra_gnd],
-            "LED": [("U1", "4", "PA0", "bidirectional")]}
+            "LED": [("U1", "4", "PA0", "bidirectional")],
+            "BOOT": [("U1", "5", "PA1", "bidirectional")]}
 
 
 class DiffPairEsdCredit(unittest.TestCase):
@@ -86,6 +87,48 @@ class DiffPairEsdCredit(unittest.TestCase):
         p = _pairs([MCU, filt], nets)[("USB_D+", "USB_D-")]
         self.assertTrue(p["has_esd"])
         self.assertEqual(p["esd_protection"], ["U5"])
+
+    def test_usbulc6_array_is_credited_by_name(self):
+        # USBULC6-2M6 (ST): its name does not contain "usblc", and its VBUS pin carries a cap.
+        arr = _comp("U3", "ic", "USBULC6-2M6", "libs:USBULC6-2M6",
+                    [("1", "1", "unspecified"), ("2", "2", "unspecified"), ("3", "3", "unspecified"),
+                     ("4", "4", "unspecified"), ("5", "5", "unspecified"), ("6", "6", "unspecified")])
+        cap = _comp("C10", "capacitor", "100n", "Device:C", [("1", "~", "passive"), ("2", "~", "passive")])
+        nets = _usb([("U3", "4", "4", "unspecified")], [("U3", "6", "6", "unspecified")],
+                    [("U3", "2", "2", "unspecified"), ("C10", "2", "~", "passive")])
+        nets["USBC_D+"] = [("U3", "3", "3", "unspecified")]
+        nets["USBC_D-"] = [("U3", "1", "1", "unspecified")]
+        nets["__unnamed_0"] = [("U3", "5", "5", "unspecified"), ("C10", "1", "~", "passive")]
+        p = _pairs([MCU, arr, cap], nets)[("USB_D+", "USB_D-")]
+        self.assertTrue(p["has_esd"])
+        self.assertEqual(p["esd_protection"], ["U3"])
+
+    def test_unnamed_array_with_open_vp_pin_is_credited(self):
+        # AOZ8904-style four-line array: VP left on an unnamed net no other part touches.
+        arr = _comp("U4", "ic", "ARRAY4", "custom:ARRAY4",
+                    [("1", "CH1", "bidirectional"), ("2", "VN", "unspecified"), ("3", "CH2", "bidirectional"),
+                     ("4", "CH3", "bidirectional"), ("5", "VP", "unspecified"), ("6", "CH4", "bidirectional")])
+        nets = {"TRD0_P": [("U4", "1", "CH1", "bidirectional")],
+                "TRD0_N": [("U4", "3", "CH2", "bidirectional")],
+                "TRD1_P": [("U4", "4", "CH3", "bidirectional")],
+                "TRD1_N": [("U4", "6", "CH4", "bidirectional")],
+                "GND": [("U4", "2", "VN", "unspecified")],
+                "__unnamed_98": [("U4", "5", "VP", "unspecified")]}
+        pairs = _pairs([arr], nets)
+        for key in (("TRD0_P", "TRD0_N"), ("TRD1_P", "TRD1_N")):
+            self.assertTrue(pairs[key]["has_esd"], key)
+            self.assertEqual(pairs[key]["esd_protection"], ["U4"])
+
+    def test_spice_source_on_a_pair_is_not_protection(self):
+        # Simulation_SPICE:VSIN classifies as a varistor by its V reference; it is a source.
+        srcs = [dict(_comp(r, "varistor", "VSIN", "Simulation_SPICE:VSIN",
+                           [("1", "~", "passive"), ("2", "~", "passive")]), in_bom=False)
+                for r in ("V1", "V2")]
+        nets = {"VOUTL+": [("V1", "1", "~", "passive")], "VOUTL-": [("V2", "1", "~", "passive")],
+                "GND": [("V1", "2", "~", "passive"), ("V2", "2", "~", "passive")]}
+        p = _pairs(srcs, nets)[("VOUTL+", "VOUTL-")]
+        self.assertFalse(p["has_esd"])
+        self.assertNotIn("esd_protection", p)
 
     def _four_line(self, ref, value, io_type):
         part = _comp(ref, "ic", value, "custom:" + value,
