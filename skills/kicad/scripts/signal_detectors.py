@@ -510,7 +510,9 @@ def detect_rc_filters(ctx: AnalysisContext, voltage_dividers: list[dict],
     """Detect RC filters. Takes voltage_dividers/crystal_circuits/opamp_circuits to exclude."""
     results_rc: list[dict] = []
 
-    resistors = get_components_by_type(ctx, "resistor", with_parsed_values=True)
+    # A 3-pin potentiometer is not a two-terminal filter resistor.
+    resistors = [r for r in group_reps(ctx, get_components_by_type(ctx, "resistor", with_parsed_values=True))
+                 if not (_is_potentiometer(ctx, r["reference"]) and len(ctx.ref_pins.get(r["reference"], {})) > 2)]
     resistor_nets, _ = index_two_pin_components(ctx, resistors)
 
     # ---- RC Filters ----
@@ -550,18 +552,21 @@ def detect_rc_filters(ctx: AnalysisContext, voltage_dividers: list[dict],
         elif isinstance(fb, str) and fb:
             crystal_refs.add(fb)
 
-    capacitors = get_components_by_type(ctx, "capacitor", with_parsed_values=True)
+    capacitors = group_reps(ctx, get_components_by_type(ctx, "capacitor", with_parsed_values=True))
     cap_nets, net_to_caps = index_two_pin_components(ctx, capacitors)
+
+    def _in(refs: set[str], ref: str) -> bool:
+        return any(m in refs for m in group_members(ctx, ref))
 
     # KH-121: Track seen R-C pairs to prevent bidirectional duplicates
     seen_rc_pairs: set[frozenset[str]] = set()
 
     for res in resistors:
-        if res["reference"] in vd_resistor_refs:
+        if _in(vd_resistor_refs, res["reference"]):
             continue  # Skip voltage divider resistors
-        if res["reference"] in crystal_refs:
+        if _in(crystal_refs, res["reference"]):
             continue  # KH-107: Skip crystal circuit components
-        if res["reference"] in opamp_exclude_refs:
+        if _in(opamp_exclude_refs, res["reference"]):
             continue  # KH-145: Skip opamp feedback/input resistors
         if res["reference"] not in resistor_nets:
             continue
@@ -576,9 +581,9 @@ def detect_rc_filters(ctx: AnalysisContext, voltage_dividers: list[dict],
                     candidate_caps.add(cref)
 
         for cap_ref in sorted(candidate_caps):
-            if cap_ref in crystal_refs:
+            if _in(crystal_refs, cap_ref):
                 continue  # KH-107: Skip crystal circuit components
-            if cap_ref in opamp_exclude_refs:
+            if _in(opamp_exclude_refs, cap_ref):
                 continue  # KH-145: Skip opamp feedback capacitors
 
             # KH-121: Skip if this R-C pair was already found from the other direction
@@ -624,8 +629,8 @@ def detect_rc_filters(ctx: AnalysisContext, voltage_dividers: list[dict],
             if r_other == c_other:
                 continue
 
-            r_val = ctx.parsed_values[res["reference"]]
-            c_val = ctx.parsed_values[cap_ref]
+            r_val = group_value(ctx, res["reference"])
+            c_val = group_value(ctx, cap_ref)
 
             # Skip pairs where R or C has no valid value (None or zero) — a
             # 0-ohm resistor or unparsed capacitor is not a filter.
@@ -650,14 +655,21 @@ def detect_rc_filters(ctx: AnalysisContext, voltage_dividers: list[dict],
                 if r_val < 10:
                     continue
 
+                # High-pass: C in series from the source, R from the R-C node to ground.
+                if filter_type == "low-pass":
+                    in_net, out_net = r_other, shared_net
+                elif filter_type == "high-pass":
+                    in_net, out_net = c_other, shared_net
+                else:
+                    in_net, out_net = shared_net, r_other
                 rc_entry = {
                     "type": filter_type,
-                    "resistor": {"ref": res["reference"], "value": ctx.comp_lookup[res["reference"]]["value"], "ohms": r_val},
-                    "capacitor": {"ref": cap_ref, "value": ctx.comp_lookup[cap_ref]["value"], "farads": c_val},
+                    "resistor": group_part(ctx, res["reference"], "ohms"),
+                    "capacitor": group_part(ctx, cap_ref, "farads"),
                     "cutoff_hz": round(fc, 2),
                     "time_constant_s": tau,
-                    "input_net": r_other if filter_type == "low-pass" else shared_net,
-                    "output_net": shared_net if filter_type == "low-pass" else r_other,
+                    "input_net": in_net,
+                    "output_net": out_net,
                     # KH-116: Use c_other as ground if it IS ground, else use
                     # r_other only if it IS ground; otherwise report c_other
                     # (the capacitor's far end) to avoid output==ground
@@ -674,7 +686,7 @@ def detect_rc_filters(ctx: AnalysisContext, voltage_dividers: list[dict],
                 rc_entry["evidence_source"] = "topology"
                 rc_entry["summary"] = f"RC filter {res['reference']}/{cap_ref} at {round(fc, 2)}Hz"
                 rc_entry["description"] = f"{filter_type} RC filter"
-                rc_entry["components"] = [res["reference"], cap_ref]
+                rc_entry["components"] = group_members(ctx, res["reference"]) + group_members(ctx, cap_ref)
                 rc_entry["nets"] = []
                 rc_entry["pins"] = []
                 rc_entry["recommendation"] = ""
@@ -699,25 +711,28 @@ def detect_rc_filters(ctx: AnalysisContext, voltage_dividers: list[dict],
             r_val = entries[0]["resistor"]["ohms"]
             fc = 1.0 / (2.0 * math.pi * r_val * total_c)
             tau = r_val * total_c
-            cap_refs = [e["capacitor"]["ref"] for e in entries]
+            cap_refs = [m for e in entries for m in e["capacitor"].get("parallel_refs", [e["capacitor"]["ref"]])]
             base = entries[0].copy()
             base["capacitor"] = {
                 "ref": cap_refs[0],
-                "value": f"{len(entries)} caps parallel",
+                "value": f"{len(cap_refs)} caps parallel",
                 "farads": total_c,
+                "parallel_refs": cap_refs,
                 "parallel_caps": cap_refs,
             }
             base["cutoff_hz"] = round(fc, 2)
             base["time_constant_s"] = tau
             base["cutoff_formatted"] = _format_frequency(fc)
+            base["summary"] = f"RC filter {base['resistor']['ref']}/{cap_refs[0]} at {round(fc, 2)}Hz"
+            base["components"] = group_members(ctx, base["resistor"]["ref"]) + cap_refs
             merged_rc.append(base)
     return merged_rc
 
 
 def detect_lc_filters(ctx: AnalysisContext) -> list[dict]:
     """Detect LC filters."""
-    capacitors = get_components_by_type(ctx, "capacitor", with_parsed_values=True)
-    inductors = get_components_by_type(ctx, ("inductor", "ferrite_bead"), with_parsed_values=True)
+    capacitors = group_reps(ctx, get_components_by_type(ctx, "capacitor", with_parsed_values=True))
+    inductors = group_reps(ctx, get_components_by_type(ctx, ("inductor", "ferrite_bead"), with_parsed_values=True))
 
     # Collect LC pairs grouped by (inductor, shared_net). Multiple caps on
     # the same inductor output node are parallel decoupling, not separate
@@ -783,8 +798,8 @@ def detect_lc_filters(ctx: AnalysisContext) -> list[dict]:
             if is_bootstrap:
                 continue
 
-            l_val = ctx.parsed_values[ind["reference"]]
-            c_val = ctx.parsed_values[cap["reference"]]
+            l_val = group_value(ctx, ind["reference"])
+            c_val = group_value(ctx, cap["reference"])
 
             if l_val > 0 and c_val > 0:
                 # EQ-021: f₀ = 1/(2π√(LC)) (LC resonant frequency)
@@ -793,8 +808,8 @@ def detect_lc_filters(ctx: AnalysisContext) -> list[dict]:
                 z0 = math.sqrt(l_val / c_val)  # characteristic impedance
 
                 lc_entry = {
-                    "inductor": {"ref": ind["reference"], "value": ctx.comp_lookup[ind["reference"]]["value"], "henries": l_val},
-                    "capacitor": {"ref": cap["reference"], "value": ctx.comp_lookup[cap["reference"]]["value"], "farads": c_val},
+                    "inductor": group_part(ctx, ind["reference"], "henries"),
+                    "capacitor": group_part(ctx, cap["reference"], "farads"),
                     "resonant_hz": round(f0, 2),
                     "impedance_ohms": round(z0, 2),
                     "shared_net": shared_net_lc,
@@ -808,13 +823,14 @@ def detect_lc_filters(ctx: AnalysisContext) -> list[dict]:
                 lc_entry["confidence"] = "deterministic"
                 lc_entry["evidence_source"] = "topology"
                 lc_entry["summary"] = f"LC filter at {round(f0, 2)}Hz"
-                lc_entry["description"] = "LC filter or resonant network detected"
-                lc_entry["components"] = [ind["reference"], cap["reference"]]
+                lc_entry["description"] = ("LC filter with parallel capacitors" if "parallel_refs" in lc_entry["capacitor"]
+                                           else "LC filter or resonant network detected")
+                lc_entry["components"] = group_members(ctx, ind["reference"]) + group_members(ctx, cap["reference"])
                 lc_entry["nets"] = []
                 lc_entry["pins"] = []
                 lc_entry["recommendation"] = ""
                 lc_entry["report_context"] = {"section": "Passive Filters", "impact": "", "standard_ref": ""}
-                lc_entry["provenance"] = make_provenance("lc_topology", "deterministic", [ind["reference"], cap["reference"]])
+                lc_entry["provenance"] = make_provenance("lc_topology", "deterministic", lc_entry["components"])
 
                 cap_other_net_for_group = (c_nets - {shared_net_lc}).pop()
                 _lc_groups.setdefault((ind["reference"], shared_net_lc, cap_other_net_for_group), []).append(lc_entry)
@@ -840,13 +856,14 @@ def detect_lc_filters(ctx: AnalysisContext) -> list[dict]:
             l_val = entries[0]["inductor"]["henries"]
             f0 = 1.0 / (2.0 * math.pi * math.sqrt(l_val * total_c))
             z0 = math.sqrt(l_val / total_c)
-            cap_refs = [e["capacitor"]["ref"] for e in entries]
+            cap_refs = [m for e in entries for m in e["capacitor"].get("parallel_refs", [e["capacitor"]["ref"]])]
             merged = {
                 "inductor": entries[0]["inductor"],
                 "capacitor": {
                     "ref": cap_refs[0],
-                    "value": f"{len(entries)} caps parallel",
+                    "value": f"{len(cap_refs)} caps parallel",
                     "farads": total_c,
+                    "parallel_refs": cap_refs,
                     "parallel_caps": cap_refs,
                 },
                 "resonant_hz": round(f0, 2),
@@ -862,7 +879,7 @@ def detect_lc_filters(ctx: AnalysisContext) -> list[dict]:
             merged["evidence_source"] = "topology"
             merged["summary"] = f"LC filter at {round(f0, 2)}Hz"
             merged["description"] = "LC filter with parallel capacitors"
-            merged["components"] = [entries[0]["inductor"]["ref"]] + cap_refs
+            merged["components"] = group_members(ctx, entries[0]["inductor"]["ref"]) + cap_refs
             merged["nets"] = []
             merged["pins"] = []
             merged["recommendation"] = ""
@@ -3638,7 +3655,8 @@ def detect_design_observations(ctx: AnalysisContext, results: dict) -> list[dict
             comp = ctx.comp_lookup.get(p["component"])
             if comp and comp["type"] in ("connector", "test_point"):
                 connector_nets.add(net_name)
-    protected_nets = {p["protected_net"] for p in results.get("protection_devices", [])}
+    protected_nets = {n for p in results.get("protection_devices", [])
+                      for n in (p.get("protected_nets") or [p["protected_net"]])}
 
     # KH-148: Deduplicate multi-unit ICs (same ref, different units)
     unique_ics = get_unique_ics(ctx)

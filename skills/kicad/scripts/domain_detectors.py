@@ -3065,16 +3065,16 @@ def detect_adc_circuits(ctx: AnalysisContext,
     results: list[dict] = []
     matched_refs: set[str] = set()
 
-    # Build net → RC filter index for anti-aliasing cross-reference
+    # Anti-aliasing: a series R into the ADC input with C from that node to ground or
+    # across the differential pair, so the channel net is the R-C junction.
     rc_by_net: dict[str, list[dict]] = {}
     for rcf in rc_filters:
-        for key in ("resistor", "capacitor"):
-            comp = rcf.get(key, {})
-            ref = comp.get("reference")
-            if ref:
-                for pin_num, (net, _) in ctx.ref_pins.get(ref, {}).items():
-                    if net:
-                        rc_by_net.setdefault(net, []).append(rcf)
+        if rcf.get("type") not in ("low-pass", "RC-network"):
+            continue
+        r_nets = {n for n, _ in ctx.ref_pins.get(rcf.get("resistor", {}).get("ref", ""), {}).values() if n}
+        c_nets = {n for n, _ in ctx.ref_pins.get(rcf.get("capacitor", {}).get("ref", ""), {}).values() if n}
+        for junction in sorted(r_nets & c_nets):
+            rc_by_net.setdefault(junction, []).append(rcf)
 
     # Build net → protection device index
     prot_by_net: dict[str, list[dict]] = {}
@@ -3230,10 +3230,10 @@ def detect_adc_circuits(ctx: AnalysisContext,
                 aa_entry = {"channel": ch_name}
                 r_comp = rcf.get("resistor", {})
                 c_comp = rcf.get("capacitor", {})
-                if r_comp.get("reference"):
-                    aa_entry["rc_ref_r"] = r_comp["reference"]
-                if c_comp.get("reference"):
-                    aa_entry["rc_ref_c"] = c_comp["reference"]
+                if r_comp.get("ref"):
+                    aa_entry["rc_ref_r"] = r_comp["ref"]
+                if c_comp.get("ref"):
+                    aa_entry["rc_ref_c"] = c_comp["ref"]
                 if rcf.get("cutoff_hz"):
                     aa_entry["cutoff_hz"] = rcf["cutoff_hz"]
                 anti_aliasing.append(aa_entry)
@@ -3705,7 +3705,7 @@ def detect_clock_distribution(ctx: AnalysisContext,
             "ref": osc_ref,
             "value": xc.get("value", ""),
             "type": "oscillator_output",
-            "frequency_hz": xc.get("frequency_hz"),
+            "frequency_hz": xc.get("frequency"),
             "output_net": output_net,
             "consumers": consumers,
             "series_termination": term,
@@ -3715,7 +3715,7 @@ def detect_clock_distribution(ctx: AnalysisContext,
             "severity": "info",
             "confidence": "deterministic",
             "evidence_source": "topology",
-            "summary": f"Oscillator output {osc_ref} ({xc.get('value', '')})" + (f" {xc.get('frequency_hz', '')/1e6:.3g} MHz" if xc.get("frequency_hz") else ""),
+            "summary": f"Oscillator output {osc_ref} ({xc.get('value', '')})" + (f" {xc['frequency']/1e6:.3g} MHz" if xc.get("frequency") else ""),
             "description": f"Detected active oscillator {osc_ref} driving clock output.",
             "components": [osc_ref] + consumers,
             "nets": [output_net] if output_net else [],
