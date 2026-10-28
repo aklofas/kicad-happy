@@ -46,6 +46,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Part families are matched by the longest keyword (part number first, then value, then library id); ties are left unclassified. A LIS3MDL is a magnetometer, a TPS3823 a watchdog, an STM32WL a LoRa part, an HMC540 an attenuator, and an HMC5883L no longer an RF amplifier (kc/R6-F4).
 - I2C address conflicts compare resolved 7-bit addresses across part models (built-in tables by longest part-number prefix); devices whose address pins cannot be resolved give one info per bus instead of an error (kc/R6-F2).
 - Schematic ERC lists follow KiCad 10's pin-conflict table and default severities: `output_conflict` becomes `pin_to_pin` with a per-record `severity` and KiCad's markers (one per marked pin, naming the nearest conflicting pin); no-connect-type pins never join a net; `multi_driver_nets` lists only error-level driver conflicts; `no_driver` follows KiCad (passive pins drive, open-collector pins do not, unnamed and single-pin nets checked) and power nets report `power_pin_not_driven`; NC pins and markers on connected nets report `no_connect_connected` (kf/A14-F2, F3, F4).
+- Footprint-filter warnings match as KiCad does (lower-case; a filter with `:` matches `library:name`, otherwise the footprint name; only `*` and `?` are wildcards) and each record carries `severity: "info"`, since KiCad ignores the check by default (kf/A14-F5).
 
 ### Fixed
 
@@ -103,6 +104,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A differential pair's `esd_protection` lists only protection parts (TVS/ESD diodes and arrays, varistors) and `has_esd` requires one on each leg; transceivers, MCUs and hubs on both lines no longer count as protection. (kc/R3-F3)
 - SPI chip-select conflicts count slave chip-select inputs only: the controller and a part's repeated pins are not a conflict, and nets such as `VSS` or `SSP1_SCK` are no longer read as chip selects. CAN termination is judged per bus: each CANH/CANL pair gets its own terminator (a placed DNP terminator is reported as the unfitted per-node option, not as missing), and protocol checks report one result per bus with the bus nets named (TX/RX nets get none; a bus seen only as a CAN differential pair is still checked). An I2C line whose rise time exceeds the Standard-mode limit has no `max_speed_mode` and a `rise_time_warning`, instead of reporting Standard. (kc/R3-F5, R3-F4, R3-F7)
 - The I2C VOL check uses the pull-up's lower bound (VDD − 0.4 V)/3 mA with parallel pull-ups combined; it no longer warns on every standard pull-up (`max_for_vol` is now `min_for_vol`) (kc/R4-F1).
+- Missing-unit warnings use the library's unit count, so a missing last unit (usually the power unit) is reported; each record carries `type` and `severity`, and missing units with power-input, input or bidirectional pins add `missing_power_pin` (error), `missing_input_pin` and `missing_bidi_pin` records as KiCad's ERC does. Unannotated references (`U?`) are not grouped (kf/A14-F1).
 
 ---
 

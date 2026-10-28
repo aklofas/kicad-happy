@@ -1261,7 +1261,7 @@ def run_analyses(ctx: AnalysisContext, parsed: dict, path: str, nets: dict, bom:
     property_issues = audit_property_patterns(all_components)
     placement = spatial_clustering(all_components)
     pin_coverage = verify_pin_coverage(all_components, all_lib_symbols)
-    instance_issues = check_instance_consistency(all_components)
+    instance_issues = check_instance_consistency(all_components, all_lib_symbols)
     hier_label_analysis = validate_hierarchical_labels(all_labels, nets, merged_bus)
     generic_sym_warnings = check_generic_transistor_symbols(all_components, str(path))
 

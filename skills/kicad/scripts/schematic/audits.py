@@ -169,7 +169,8 @@ def validate_footprint_filters(components: list[dict], lib_symbols: dict) -> lis
         if not c["footprint"]:
             continue
 
-        sym_def = lib_symbols.get(c["lib_id"], {})
+        sym_def = ((lib_symbols.get(c.get("lib_name")) if c.get("lib_name") else None)
+                   or lib_symbols.get(c["lib_id"], {}))
         fp_filters_str = sym_def.get("ki_fp_filters", "")
         if not fp_filters_str:
             continue
@@ -183,10 +184,12 @@ def validate_footprint_filters(components: list[dict], lib_symbols: dict) -> lis
         fp_name = c["footprint"].split(":")[-1] if ":" in c["footprint"] else c["footprint"]
         fp_full = c["footprint"]
 
-        # Check if any pattern matches
+        # KiCad matches lower-case, a filter with ':' against lib:name, else the name only;
+        # its wildcards are * and ? alone, so '[' is literal.
         matched = False
         for pat in patterns:
-            if fnmatch.fnmatch(fp_name, pat) or fnmatch.fnmatch(fp_full, pat):
+            pat = pat.lower().replace("[", "[[]")
+            if fnmatch.fnmatchcase((fp_full if ":" in pat else fp_name).lower(), pat):
                 matched = True
                 break
 
@@ -212,7 +215,9 @@ def validate_footprint_filters(components: list[dict], lib_symbols: dict) -> lis
                 or fp_lib not in _STANDARD_FP_LIBS
             ))
 
+            # KiCad 10 ignores this check by default.
             warnings.append({
+                "severity": "info",
                 "component": c["reference"],
                 "footprint": c["footprint"],
                 "filters": patterns,
@@ -1227,42 +1232,72 @@ def verify_pin_coverage(components: list[dict], lib_symbols: dict) -> list[dict]
     return warnings
 
 
-def check_instance_consistency(components: list[dict]) -> list[dict]:
+_MISSING_PIN_RECORDS = (
+    ("missing_power_pin", "power_in", "error", "input power"),
+    ("missing_input_pin", "input", "warning", "input"),
+    ("missing_bidi_pin", "bidirectional", "warning", "bidirectional"),
+)
+
+
+def _unit_pin_types(sym_def: dict, unit: int) -> set[str]:
+    """Pin types of one unit in every body style, common unit-0 pins included."""
+    maps = [sym_def.get("unit_pins"), sym_def.get("alt_unit_pins")]
+    maps += list((sym_def.get("_body_unit_pins") or {}).values())
+    return {p.get("type") for m in maps if m for u in (0, unit) for p in m.get(u) or []}
+
+
+def check_instance_consistency(components: list[dict], lib_symbols: dict | None = None) -> list[dict]:
     """Check multi-unit and multi-instance symbol consistency.
 
-    For multi-unit symbols (e.g., quad op-amp), verify all expected units are placed.
+    Missing units follow KiCad's ERC: every unit of the library symbol up to its unit count,
+    checked when fewer instances are placed than the symbol has units, with separate records
+    for missing units that carry power-input, input or bidirectional pins.
     For multi-instance sheets, verify reference numbering doesn't collide.
     """
     warnings = []
+    lib_symbols = lib_symbols or {}
 
-    # Group by lib_id to find multi-unit symbols
-    lib_groups: dict[str, list[dict]] = {}
+    by_ref: dict[str, list[dict]] = {}
     for c in components:
         if c["type"] in ("power_symbol", "power_flag", "flag"):
             continue
-        lib_groups.setdefault(c["lib_id"], []).append(c)
+        # KiCad never groups unannotated references.
+        if c["reference"].endswith("?"):
+            continue
+        by_ref.setdefault(c["reference"], []).append(c)
 
-    # Check for partial unit placement
-    for lib_id, comp_list in lib_groups.items():
-        # Group by reference
-        ref_units: dict[str, set[int]] = {}
-        for c in comp_list:
-            if c["unit"] is not None:
-                ref_units.setdefault(c["reference"], set()).add(c["unit"])
-
-        for ref, units in ref_units.items():
-            if not units:
-                continue
-            max_unit = max(units)
-            expected = set(range(1, max_unit + 1))
-            missing = expected - units
-            if missing:
+    for ref, comps in by_ref.items():
+        first = comps[0]
+        sym_def = ((lib_symbols.get(first.get("lib_name")) if first.get("lib_name") else None)
+                   or lib_symbols.get(first["lib_id"]) or {})
+        unit_count = sym_def.get("unit_count") or 1
+        if unit_count <= 1 or len(comps) == unit_count:
+            continue
+        placed = {c["unit"] or 1 for c in comps}
+        missing = [u for u in range(1, unit_count + 1) if u not in placed]
+        if not missing:
+            continue
+        lib_id = first["lib_id"]
+        warnings.append({
+            "type": "missing_unit",
+            "severity": "warning",
+            "component": ref,
+            "lib_id": lib_id,
+            "placed_units": sorted(placed),
+            "missing_units": missing,
+            "message": f"{ref}: units {missing} not placed (of {unit_count} total)",
+        })
+        unit_types = {u: _unit_pin_types(sym_def, u) for u in missing}
+        for kind, pin_type, severity, label in _MISSING_PIN_RECORDS:
+            units = [u for u in missing if pin_type in unit_types[u]]
+            if units:
                 warnings.append({
+                    "type": kind,
+                    "severity": severity,
                     "component": ref,
                     "lib_id": lib_id,
-                    "placed_units": sorted(units),
-                    "missing_units": sorted(missing),
-                    "message": f"{ref}: units {sorted(missing)} not placed (of {max_unit} total)",
+                    "missing_units": units,
+                    "message": f"{ref}: {label} pins in units {units} are not placed",
                 })
 
     # Check for reference collisions across sheets

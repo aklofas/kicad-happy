@@ -136,6 +136,8 @@ def extract_lib_symbols(root: list) -> dict:
         has_alt_body = False
         # Body style -> unit -> pins, for KiCad 10 body styles beyond the De Morgan pair.
         body_unit_pins: dict[int, dict[int, list]] = {}
+        # KiCad's unit count is the highest unit number, with or without pins of its own.
+        unit_count = 1
 
         for child in sym:
             if not isinstance(child, list) or len(child) < 2 or child[0] != "symbol":
@@ -146,6 +148,7 @@ def extract_lib_symbols(root: list) -> dict:
             if len(parts) >= 3 and parts[-1].isdigit() and parts[-2].isdigit():
                 unit_num = int(parts[-2])
                 body_style = int(parts[-1])
+                unit_count = max(unit_count, unit_num)
                 sub_pins = _extract_pins_from_node(child)
                 if sub_pins:
                     if body_style in (0, 1):
@@ -208,6 +211,7 @@ def extract_lib_symbols(root: list) -> dict:
         symbols[name] = {
             "pins": all_pins,
             "unit_pins": unit_pins if unit_pins else None,
+            "unit_count": unit_count,
             "value": lib_value,
             "description": desc,
             "keywords": ki_keywords,
