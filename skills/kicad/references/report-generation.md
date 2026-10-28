@@ -135,7 +135,7 @@ If no prior review exists, omit this section entirely.]
 ## Power Tree
 [ASCII art showing the power distribution hierarchy]
 [Include: input source, each regulator with type (LDO/buck/boost/inverting), input->output voltages, enable conditions, key caps with values, feedback divider calculations]
-[Note vref_source for each regulator: "lookup" (datasheet-verified) or "heuristic" (needs manual verification)]
+[Note vref_source for each regulator: "datasheet" (trusted extraction), "lookup" (datasheet-verified table) or "heuristic" (needs manual verification)]
 
 ## Analyzer Verification
 [Spot-checks proving the analyzer data is trustworthy]
@@ -664,7 +664,7 @@ The analyzer can silently produce plausible but incorrect results. Cross-referen
 
 Document these when they affect the report — it helps the designer understand what the tool can and can't catch:
 
-- **Vref coverage**: Feedback divider Vout calculations use a lookup table (~60 regulator families) with heuristic fallback. When `vref_source` is `"heuristic"`, the assumed Vref may be wrong — always verify against the datasheet. The `vout_net_mismatch` field flags cases where estimated Vout differs >15% from the output rail name voltage.
+- **Vref coverage**: Feedback divider Vout calculations use a lookup table (~60 regulator families) with heuristic fallback. A trusted datasheet extraction's reference voltage wins (`vref_source` `"datasheet"`). When `vref_source` is `"heuristic"`, the assumed Vref may be wrong — always verify against the datasheet; it was picked to match the rail name when one of the common references does (`_estimated_vout_provenance.source` `"divider_plus_rail_name"`), so a match with the name proves nothing there. The `vout_net_mismatch` field flags cases where estimated Vout differs >15% from the output rail name voltage.
 - **Legacy format**: KiCad 5 `.sch` files get full analysis when `.lib` files are available in the repo (92–100% typical coverage). Components whose `.lib` files are missing will lack pin data and won't participate in signal analysis or subcircuit detection.
 - **Sleep current model**: Reports both worst-case (`total_estimated_sleep_uA`) and realistic (`realistic_total_uA`) estimates. Worst-case assumes all pull-ups driven low simultaneously; realistic uses topology-aware state estimation (LEDs off, disableable regulators off, rails from EN-equipped regulators disabled). The realistic estimate may still overcount if the design has additional sleep-mode controls not visible in the schematic topology.
 - **Cross-domain analysis**: Uses voltage equivalence (parsing voltage from rail names) to reduce false positives, but rails without parseable voltages in their names may still trigger false cross-domain warnings.

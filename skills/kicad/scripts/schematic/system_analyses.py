@@ -748,7 +748,8 @@ def analyze_voltage_derating(ctx: AnalysisContext, signal_analysis: dict,
                 v = reg.get("estimated_vout")
                 if v:
                     return v
-        return _estimate_rail_voltage(net_name)
+        v = ctx.rail_by_net.get(net_name)
+        return v if v is not None else _estimate_rail_voltage(net_name)
 
     def _get_rail_voltage(net_name):
         return ctx.rail_voltage_or(net_name, _estimated_rail_voltage)
@@ -2604,7 +2605,8 @@ def analyze_inrush_current(ctx: AnalysisContext,
 
         v_cfg = ctx.config_rail_voltage(out_rail)
         v_out = (abs(v_cfg) if v_cfg is not None
-                 else reg.get("estimated_vout") or abs(_estimate_rail_voltage(out_rail) or 0))
+                 else reg.get("estimated_vout")
+                 or abs(ctx.rail_by_net.get(out_rail) or _estimate_rail_voltage(out_rail) or 0))
         if not v_out or v_out <= 0:
             continue
 

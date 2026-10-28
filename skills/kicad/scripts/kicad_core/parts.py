@@ -30,6 +30,9 @@ _REGULATOR_VREF: dict[str, float] = {
     # TPS63 buck-boost
     "TPS6300": 0.5,    "TPS6301": 0.5,                           # TPS63000/01 VFB = 0.5V
     "TPS6310": 0.5,                                               # TPS631000 VFB = 0.5V
+    "TPS63020": 0.5,                                              # TPS63020 VFB = 500 mV (SLVS916I §6.5); TPS63021 is fixed 3.3 V
+    # TI power modules
+    "TPS82084": 0.8,   "TPS82085": 0.8,                          # TPS82084/85 VFB = 800 mV (SLVSCN4D §6.5)
     # TI LMR family
     "LMR51410": 0.6,   "LMR51420": 0.6,   "LMR51430": 0.6,       # LMR51410/20/30 Vref = 0.6V
     "LMR51440": 0.8,   "LMR51460": 0.8,                          # LMR51440/60 Vref = 0.8V
@@ -144,16 +147,24 @@ _OUTPUT_DRIVE_KEYWORDS: tuple[str, ...] = (
 )
 
 
-def lookup_regulator_vref(value: str, lib_id: str) -> tuple[float | None, str]:
-    """Look up a regulator's internal Vref from its value or lib_id.
+def lookup_regulator_vref(value: str, lib_id: str, mpn: str = "") -> tuple[float | None, str]:
+    """Look up a regulator's internal Vref from its value, lib_id or MPN.
 
-    Returns (vref, source) where source is "lookup" if found, or (None, "")
-    if not.  Tries the value field first (usually the part number), then the
-    lib_id part name after the colon.
+    Returns (vref, source) where source is "fixed_suffix" for a fixed-output
+    part number, "lookup" for a table hit, or (None, "") if not found.  Tries
+    the value field first (usually the part number), then the lib_id part name
+    after the colon; the MPN is consulted only when neither gives an answer.
     """
     candidates = [value.upper()]
     if ":" in lib_id:
         candidates.append(lib_id.split(":")[-1].upper())
+    vref, source = _lookup_vref(candidates)
+    if vref is None and mpn:
+        vref, source = _lookup_vref([mpn.upper()])
+    return vref, source
+
+
+def _lookup_vref(candidates: list[str]) -> tuple[float | None, str]:
     # LM78xx/LM79xx fixed-output convention: voltage digits embedded without
     # separator. LM7805=5V, LM78L12=12V, LM78M05CT=5V, LM7805_TO220=5V.
     # These families ONLY exist as fixed-output — no adjustable variant.

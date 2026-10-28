@@ -1758,6 +1758,46 @@ def _screen_regulator_candidate(ctx: AnalysisContext, ic: dict) -> _RegulatorCan
     )
 
 
+# Common feedback reference voltages, tried in order when the part is not known.
+_HEURISTIC_VREFS = (0.6, 0.8, 1.0, 1.22, 1.25)
+
+
+def _heuristic_vref(ratio: float, rail: str | None) -> tuple[float | None, str]:
+    """Vref and provenance source for an unknown part's divider *ratio*.
+
+    The reference whose output lands closest to the voltage in the output rail's
+    own name, within 10 %, else the first that gives a 0.5-60 V output.
+    """
+    rail_v = _parse_voltage_from_net_name(rail) if rail else None
+    if rail_v:
+        fits = [v for v in _HEURISTIC_VREFS
+                if 0.5 < v / ratio < 60 and abs(v / ratio - abs(rail_v)) <= 0.1 * abs(rail_v)]
+        if fits:
+            return min(fits, key=lambda v: abs(v / ratio - abs(rail_v))), "divider_plus_rail_name"
+    for v in _HEURISTIC_VREFS:
+        if 0.5 < v / ratio < 60:
+            return v, "divider_plus_heuristic"
+    return None, ""
+
+
+def _datasheet_vref(ctx: AnalysisContext, ic: dict) -> float | None:
+    """Feedback reference voltage (V, typ) from a trusted datasheet extraction, or None.
+
+    Trusted as in ``datasheet_features``: score at least 60 and the PDF unchanged;
+    the value itself needs medium extractor confidence.
+    """
+    mpn = ic.get("mpn") or ic.get("value") or ""
+    facts = get_facts(mpn, cache_dir=getattr(ctx, "cache_dir", None),
+                      diagnostics=getattr(ctx, "diagnostics", None)) if mpn else None
+    reg = getattr(facts, "regulator", None)
+    if reg is None or facts.stale or not isinstance(facts.quality, (int, float)) or facts.quality < 60:
+        return None
+    sv = best(reg.reference_voltage, min_confidence="medium") if has_data(reg.reference_voltage) else None
+    if sv is None or sv.typ is None or sv.unit != "V":
+        return None
+    return sv.typ
+
+
 def _build_regulator_record(ctx: AnalysisContext, cand: _RegulatorCandidate,
                             voltage_dividers: list[dict]) -> dict:
     """Topology, rails, Vout estimate, switching frequency and the PR-DET envelope for one candidate."""
@@ -1854,9 +1894,11 @@ def _build_regulator_record(ctx: AnalysisContext, cand: _RegulatorCandidate,
         reg_info["input_rail"] = vin_pin[1]
     if vout_pin:
         reg_info["output_rail"] = vout_pin[1]
-        # Also check if output rail name suggests negative voltage
-        out_net_u = vout_pin[1].upper()
-        if re.search(r'[-](\d)', out_net_u) or "NEG" in out_net_u or out_net_u.startswith("-"):
+        # Also check if the output rail's own name suggests a negative voltage (-5V, NEG12, V-);
+        # a sheet path is not part of it (a UUID path holds "-<digit>")
+        out_net_u = net_leaf(vout_pin[1]).upper()
+        if re.search(r'[-](\d)', out_net_u) or "NEG" in out_net_u or out_net_u.startswith("-") \
+                or out_net_u.endswith("-"):
             is_inverting = True
     if is_inverting:
         reg_info["inverting"] = True
@@ -1892,7 +1934,7 @@ def _build_regulator_record(ctx: AnalysisContext, cand: _RegulatorCandidate,
 
     # Check for fixed-output regulator (voltage encoded in part number)
     fixed_vout, fixed_source = _lookup_regulator_vref(
-        ic.get("value", ""), ic.get("lib_id", ""))
+        ic.get("value", ""), ic.get("lib_id", ""), ic.get("mpn") or "")
     if fixed_source == "fixed_suffix" and fixed_vout is not None:
         reg_info["estimated_vout"] = round(fixed_vout, 3)
         reg_info["vref_source"] = "fixed_suffix"
@@ -1907,50 +1949,41 @@ def _build_regulator_record(ctx: AnalysisContext, cand: _RegulatorCandidate,
     if fb_pin:
         fb_net = fb_pin[1]
         reg_info["fb_net"] = fb_net
-        # Try part-specific Vref lookup first, fall back to heuristic sweep
+        # Vref from a trusted datasheet extraction, then the part-number table, then a heuristic sweep
         known_vref, vref_source = _lookup_regulator_vref(
-            ic.get("value", ""), ic.get("lib_id", ""))
+            ic.get("value", ""), ic.get("lib_id", ""), ic.get("mpn") or "")
         # Skip feedback divider analysis for fixed-output parts
         if vref_source == "fixed_suffix":
             known_vref = None
+        else:
+            ds_vref = _datasheet_vref(ctx, ic)
+            if ds_vref is not None:
+                known_vref, vref_source = ds_vref, "datasheet"
         # Find matching voltage divider
         for vd in voltage_dividers:
             if vd["mid_net"] == fb_net:
                 ratio = vd["ratio"]
+                if ratio <= 0:
+                    break
                 if known_vref is not None:
-                    # Use the known Vref from the lookup table
-                    v_out = known_vref / ratio if ratio > 0 else 0
-                    if 0.5 < v_out < 60:
-                        reg_info["estimated_vout"] = round(v_out, 3)
-                        reg_info["_estimated_vout_provenance"] = {
-                            "source": "divider_plus_" + reg_info.get("vref_source", "lookup"),
-                            "confidence": "deterministic" if reg_info.get("vref_source") == "datasheet" else "heuristic",
-                        }
-                        reg_info["assumed_vref"] = known_vref
-                        reg_info["vref_source"] = "lookup"
-                        reg_info["feedback_divider"] = {
-                            "r_top": {"ref": vd["r_top"]["ref"], "ohms": vd["r_top"]["ohms"], "value": vd["r_top"]["value"]},
-                            "r_bottom": {"ref": vd["r_bottom"]["ref"], "ohms": vd["r_bottom"]["ohms"], "value": vd["r_bottom"]["value"]},
-                            "ratio": ratio,
-                        }
+                    vref, prov_source = known_vref, "divider_plus_" + vref_source
                 else:
-                    # Heuristic: try common Vref values
-                    for vref in [0.6, 0.8, 1.0, 1.22, 1.25]:
-                        v_out = vref / ratio if ratio > 0 else 0
-                        if 0.5 < v_out < 60:
-                            reg_info["estimated_vout"] = round(v_out, 3)
-                            reg_info["_estimated_vout_provenance"] = {
-                                "source": "divider_plus_" + reg_info.get("vref_source", "lookup"),
-                                "confidence": "deterministic" if reg_info.get("vref_source") == "datasheet" else "heuristic",
-                            }
-                            reg_info["assumed_vref"] = vref
-                            reg_info["vref_source"] = "heuristic"
-                            reg_info["feedback_divider"] = {
-                                "r_top": {"ref": vd["r_top"]["ref"], "ohms": vd["r_top"]["ohms"], "value": vd["r_top"]["value"]},
-                                "r_bottom": {"ref": vd["r_bottom"]["ref"], "ohms": vd["r_bottom"]["ohms"], "value": vd["r_bottom"]["value"]},
-                                "ratio": ratio,
-                            }
-                            break
+                    vref, prov_source = _heuristic_vref(
+                        ratio, reg_info.get("output_rail") or vd.get("top_net"))
+                    vref_source = "heuristic"
+                if vref is not None and 0.5 < vref / ratio < 60:
+                    reg_info["estimated_vout"] = round(vref / ratio, 3)
+                    reg_info["_estimated_vout_provenance"] = {
+                        "source": prov_source,
+                        "confidence": "deterministic" if vref_source == "datasheet" else "heuristic",
+                    }
+                    reg_info["assumed_vref"] = vref
+                    reg_info["vref_source"] = vref_source
+                    reg_info["feedback_divider"] = {
+                        "r_top": {"ref": vd["r_top"]["ref"], "ohms": vd["r_top"]["ohms"], "value": vd["r_top"]["value"]},
+                        "r_bottom": {"ref": vd["r_bottom"]["ref"], "ohms": vd["r_bottom"]["ohms"], "value": vd["r_bottom"]["value"]},
+                        "ratio": ratio,
+                    }
                 break
 
     # KH-090: Fixed-output LDOs are never inverting

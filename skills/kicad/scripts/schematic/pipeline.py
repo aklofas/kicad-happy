@@ -26,7 +26,7 @@ from typing import Any
 from kicad_core.diagnostics import merge, record
 from kicad_core.sexp import parse_file
 from kicad_core.values import snap_to_mil_grid as _snap_mil
-from kicad_core.netnames import _clean_hierarchical_name
+from kicad_core.netnames import _clean_hierarchical_name, parse_voltage_from_net_name
 from kicad_core.netquery import (
     build_bridge_facts,
     build_ref_pins,
@@ -300,13 +300,26 @@ def _build_net_classifications(results: dict) -> dict[str, dict]:
     return classifications
 
 
+def _sheet_stem_voltage(net: str) -> float | None:
+    """The voltage in the name of the sheet holding *net* (``/5V_regulator/VOUT_SEN`` → 5.0).
+
+    None when the net's own name carries a voltage (that wins) or the net is not on a sheet.
+    """
+    parts = net.split("/")
+    if not net.startswith("/") or len(parts) < 3 or parse_voltage_from_net_name(net) is not None:
+        return None
+    return parse_voltage_from_net_name(parts[-2])
+
+
 def build_rail_map(ctx: AnalysisContext, power_regulators: list[dict]) -> dict[str, float]:
     """Rail voltages keyed by full net name, one source per pass in priority order.
 
     A pass fills only nets no earlier pass set: a regulator's estimated output on
-    its output net (the last regulator on a net wins), then the voltage in the
-    name of a power or ground net. The project config has the last word: an
-    ignored rail is dropped and an override is set on every net it names.
+    its output net (the last regulator on a net wins), then, for a regulator with
+    no estimate, the voltage in the name of the sheet holding its output net (the
+    regulator records it as ``_output_rail_voltage_provenance``), then
+    the voltage in the name of a power or ground net. The project config has the
+    last word: an ignored rail is dropped and an override is set on every net it names.
     """
     by_net: dict[str, float] = {}
     for reg in power_regulators:
@@ -314,6 +327,17 @@ def build_rail_map(ctx: AnalysisContext, power_regulators: list[dict]) -> dict[s
         v_out = reg.get("estimated_vout")
         if out_rail and v_out is not None:
             by_net[out_rail] = v_out
+    # A switch node or an input is never an output, and an IC's internal regulator
+    # output (a core-voltage pin) has nothing to do with its sheet's name.
+    not_outputs = {n for reg in power_regulators for n in (reg.get("sw_net"), reg.get("input_rail")) if n}
+    for reg in power_regulators:
+        out_rail = reg.get("output_rail")
+        if (out_rail and reg.get("estimated_vout") is None and out_rail not in not_outputs
+                and reg.get("topology") != "ic_with_internal_regulator"):
+            v = _sheet_stem_voltage(out_rail)
+            if v is not None and out_rail not in by_net:
+                by_net[out_rail] = v
+                reg["_output_rail_voltage_provenance"] = {"source": "sheet name", "voltage": v}
     for net_name in sorted(ctx.nets):
         if net_name not in by_net and (ctx.is_power_net(net_name) or ctx.is_ground(net_name)):
             v = _estimate_rail_voltage(net_name)
