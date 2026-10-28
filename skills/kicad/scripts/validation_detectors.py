@@ -536,13 +536,16 @@ def _closest_threshold(voltage: float) -> tuple:
     return best
 
 
-_EN_PIN_PATTERNS = ('EN', 'ENABLE', 'CE', 'SHDN', 'nSHDN', 'ON', 'ON_OFF', 'RUN')
+# Upper-cased pin names of a regulator's enable input and of its open-drain power-good output
+# (the pull-up, not the regulator's supply, sets the power-good level).
+_EN_PIN_PATTERNS = ('EN', 'ENABLE', 'CE', 'SHDN', 'NSHDN', 'ON', 'ON_OFF', 'RUN')
+_PG_PIN_PATTERNS = ('PG', 'PGOOD', 'PWRGD', 'NPG')
 
 
 def _en_endpoint_compatible(ctx: AnalysisContext, p: dict, net_name: str, v_min: float) -> bool:
     """True when pin *p* on *net_name* is a regulator enable input that tolerates a net
     whose lowest domain is *v_min*: by the datasheet EN threshold when one is extracted,
-    else by an EN-named pin on a regulator-family part."""
+    else by an EN- or power-good-named pin on a regulator-family part."""
     comp = ctx.comp_lookup.get(p['ref'], {})
     p_mpn = comp.get('mpn') or comp.get('value', '')
     ds_feat = get_regulator_features(p_mpn, project_dir=ctx.project_dir) if p_mpn else None
@@ -562,7 +565,8 @@ def _en_endpoint_compatible(ctx: AnalysisContext, p: dict, net_name: str, v_min:
         'LDO', 'BOOST', 'BUCK', 'REG',
     ))
     if is_regulator_like or comp.get('type') == 'power_regulator':
-        return (p.get('pin') or '').upper().strip() in _EN_PIN_PATTERNS
+        name = (p.get('pin') or '').upper().strip()
+        return name in _EN_PIN_PATTERNS or name in _PG_PIN_PATTERNS
     return False
 
 
@@ -1390,7 +1394,8 @@ _INTERNALLY_COMPENSATED_KEYWORDS = (
 # 120-240 ohm on OUT-ADJ (LM317 datasheet, R1 = 240 ohm), so a low divider impedance is intended.
 _MIN_LOAD_ADJ_KEYWORDS = ('lm317', 'lm337', 'lm338', 'lm350', 'lm1117', 'ams1117', 'ld1117',
                           'lm1086', 'lt1083', 'lt1084', 'lt1085', 'lt1086', 'az1117', 'ap1117',
-                          'ncp1117', 'spx1117', 'tlv1117')
+                          'ncp1117', 'spx1117', 'tlv1117', 'lm1084', 'lm1085', 'lt1117',
+                          'lt317a', 'lm117', 'lm217', 'ld1085', 'ld1086')
 
 _FB_IMPEDANCE_MIN = 1000
 _FB_IMPEDANCE_MAX = 1000000

@@ -160,6 +160,36 @@ class EnableEndpoints(unittest.TestCase):
         self.assertEqual(vm001(ctx_of(comps, nets, {"+3V3", "+BATT", "+5V", "GND"})), [])
 
 
+class RegulatorStatusPins(unittest.TestCase):
+    # A 5 V-supplied regulator's open-drain power-good output and its active-low shutdown input
+    # on a 3.3 V MCU net: the pull-up sets PG's level, and nSHDN is an enable input.
+    def _vm(self, reg_value, pin):
+        comps = [ic("U7", reg_value), ic("U6", "MCU3V3")]
+        nets = {"+5V": [("U7", "1", "VIN", "power_in")], "+3V3": [("U6", "1", "VDD", "power_in")],
+                "SIG": [("U7", "3", pin, "open_collector"), ("U6", "3", "PB0", "input")]}
+        return vm001(ctx_of(comps, nets, {"+5V", "+3V3"}))
+
+    def test_power_good_pin_is_a_compatible_endpoint(self):
+        for pin in ("PG", "PGOOD", "PWRGD", "nPG"):
+            self.assertEqual(self._vm("TPS62130", pin), [], pin)
+
+    def test_active_low_shutdown_pin_is_a_compatible_endpoint(self):
+        self.assertEqual(self._vm("TPS62130", "nSHDN"), [])
+
+    def test_pg_named_pin_on_a_non_regulator_is_still_checked(self):
+        (f,) = self._vm("MCU5V", "PG")
+        self.assertEqual(f["severity"], "error")
+
+
+class MinLoadAdjustable(unittest.TestCase):
+    # Minimum-load adjustable linears whose datasheet OUT-ADJ resistor is 120-240 ohm, as the
+    # LM317's, so 240 || 720 = 180 ohm is intended.
+    def test_min_load_adjustables_get_no_low_impedance_info(self):
+        for value in ("LM1084IT-ADJ", "LM1085IS-ADJ", "LT1117CST", "LT317AT", "LM117K",
+                      "LM217T", "LD1085V", "LD1086D2T"):
+            self.assertEqual(FeedbackImpedance._run(self, value), [], value)
+
+
 class UsbDataNets(unittest.TestCase):
     # USB D+/D- swing at most 3.6 V whatever the device supply (USB 2.0, 7.1.1), so a 5 V-
     # supplied device and a 3.3 V device on D+/D- are no domain crossing.
