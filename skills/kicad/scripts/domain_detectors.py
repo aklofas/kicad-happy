@@ -403,6 +403,15 @@ def detect_isolation_barriers(ctx: AnalysisContext) -> list[dict]:
     return isolation_barriers
 
 
+# Jacks with the 1:1 Ethernet transformers built in (HanRun HR911/HY911, Bel MagJack/SI-60/08B0,
+# Pulse J0011D/J1011F/JXD, Amphenol ARJP/ARJM, Wurth RJLBC, ... per the vendor datasheets).
+_INTEGRATED_MAG_KEYWORDS = (
+    "magjack", "mag_jack", "hr911", "hr961", "hy911", "hfj11", "lpj0", "lpj1", "lpj4",
+    "arjp", "arjm", "rjlbc", "j0011d", "j1011f", "jxd0", "jxd1", "08b0", "rb1-1", "si-60",
+    "with_magnetics", "integrated_magnetics", "rj45_magnetic",
+)
+
+
 def detect_ethernet_interfaces(ctx: AnalysisContext) -> list[dict]:
     """Detect Ethernet PHY + magnetics + connector chains."""
     ethernet_interfaces: list[dict] = []
@@ -593,8 +602,15 @@ def detect_ethernet_interfaces(ctx: AnalysisContext) -> list[dict]:
 
             # Impedance advisory: magnetics provide both isolation and 100Ω
             # differential impedance matching for Ethernet
-            has_magnetics = bool(found_magnetics)
-            if not has_magnetics:
+            integrated = [c for c in found_connectors
+                          if any(k in (c.get("value", "") + " " + c.get("lib_id", "")).lower()
+                                 for k in _INTEGRATED_MAG_KEYWORDS)]
+            if not found_magnetics and integrated:
+                impedance_advisory = {
+                    "status": "pass",
+                    "detail": f"Magnetics integrated in connector {integrated[0]['reference']}",
+                }
+            elif not found_magnetics:
                 impedance_advisory = {
                     "status": "warning",
                     "detail": ("No magnetics/transformer detected between PHY and connector. "
@@ -2103,6 +2119,8 @@ def detect_motor_drivers(ctx: AnalysisContext) -> list[dict]:
         for vb_name, vb_net in vb_nets.items():
             # Find matching VS pin (VB1↔VS1, VB↔VS)
             suffix = vb_name[2:]  # "" or "1" or "2"
+            if suffix and not suffix.isdigit():
+                continue  # VBOOT is not a VB/VS pair
             vs_net = vs_nets.get("VS" + suffix)
             if not vs_net or vb_net not in ctx.nets:
                 continue
@@ -2763,6 +2781,25 @@ _VBUS_PINS = {"VBUS", "V_BUS"}
 _CC_PINS = {"CC1", "CC2", "CC"}
 _SBU_PINS = {"SBU1", "SBU2", "SBU"}
 
+# USB Type-C source Rp (nominal ohms) by pull-up rail: default USB / 1.5 A / 3 A.
+_CC_RP_5V = ((56000, "source_default", "default USB current"),
+             (22000, "source_1_5A", "1.5A advertisement"),
+             (10000, "source_3A", "3A advertisement"))
+_CC_RP_3V3 = ((36000, "source_default", "default USB current"),
+              (12000, "source_1_5A", "1.5A advertisement"),
+              (4700, "source_3A", "3A advertisement"))
+
+
+def _cc_rp_table(rail_v: float | None):
+    """The Rp table for a pull-up rail at *rail_v* (5 V or 3.3 V), else None."""
+    if rail_v is None:
+        return None
+    if 4.75 <= rail_v <= 5.5:
+        return _CC_RP_5V
+    if 3.0 <= rail_v <= 3.6:
+        return _CC_RP_3V3
+    return None
+
 
 def detect_power_path(ctx: AnalysisContext) -> list[dict]:
     """Detect load switches, ideal diodes, power MUXes, and USB PD controllers."""
@@ -2894,85 +2931,63 @@ def detect_power_path(ctx: AnalysisContext) -> list[dict]:
             entry["cc_nets"] = cc_nets
             entry["sbu_nets"] = sbu_nets
 
-            # USB-C CC resistor validation
-            # UFP (sink) requires 5.1kΩ ±10% pull-down on each CC pin to GND
-            # DFP (source) uses 56kΩ (default USB), 22kΩ (1.5A), or 10kΩ (3A)
-            # PD controller IC on CC nets means discrete resistors not required
+            # USB-C CC resistor validation. Every listed controller presents Rd/Rp
+            # itself, so a CC net without resistors is fine; discrete ones are checked:
+            # a pull-down is a sink Rd, a pull-up to a 5 V or 3.3 V rail a source Rp.
             cc_resistor_findings = []
-            has_pd_controller = bool(entry.get("pd_controller"))
-
-            if cc_nets and not has_pd_controller:
-                for cc_net in cc_nets:
-                    if cc_net not in ctx.nets:
+            for cc_net in cc_nets:
+                if cc_net not in ctx.nets:
+                    continue
+                for pin in ctx.nets[cc_net].get("pins", []):
+                    comp = ctx.comp_lookup.get(pin["component"])
+                    if not comp or comp["type"] != "resistor":
                         continue
-                    cc_resistors = []
-                    for pin in ctx.nets[cc_net].get("pins", []):
-                        comp = ctx.comp_lookup.get(pin["component"])
-                        if not comp or comp["type"] != "resistor":
-                            continue
-                        r_val = ctx.parsed_values.get(pin["component"])
-                        if r_val is None:
-                            continue
-                        # Check which net the other pin connects to
-                        n1, n2 = ctx.get_two_pin_nets(pin["component"])
-                        other_net = n2 if n1 == cc_net else n1
-                        if other_net and ctx.is_ground(other_net):
-                            cc_resistors.append({
-                                "ref": pin["component"],
-                                "ohms": r_val,
-                                "value": comp.get("value", ""),
-                                "to_net": other_net,
+                    r = ctx.parsed_values.get(pin["component"])
+                    if r is None:
+                        continue
+                    n1, n2 = ctx.get_two_pin_nets(pin["component"])
+                    other_net = n2 if n1 == cc_net else n1
+                    if not other_net:
+                        continue
+                    r_ref = pin["component"]
+                    label = f"{r_ref} ({comp.get('value', '')})"
+                    if ctx.is_ground(other_net):
+                        if 4590 <= r <= 5610:  # 5.1kΩ ±10%
+                            cc_resistor_findings.append({
+                                "net": cc_net,
+                                "ref": r_ref,
+                                "ohms": r,
+                                "status": "correct_sink",
+                                "message": f"{label} on {cc_net} — "
+                                           f"correct for UFP/sink role",
                             })
-
-                    if not cc_resistors:
+                        else:
+                            cc_resistor_findings.append({
+                                "net": cc_net, "ref": r_ref, "ohms": r,
+                                "status": "unexpected_value",
+                                "message": f"{label} = {r:.0f}Ω pull-down on {cc_net} — "
+                                           f"a USB-C sink Rd is 5.1kΩ",
+                            })
+                        continue
+                    if not ctx.is_power_net(other_net):
+                        continue
+                    table = _cc_rp_table(ctx.rail_voltage(other_net))
+                    if table is None:
+                        continue
+                    hit = next((t for t in table if t[0] * 0.9 <= r <= t[0] * 1.1), None)
+                    if hit:
                         cc_resistor_findings.append({
-                            "net": cc_net,
-                            "status": "missing",
-                            "message": f"No pull-down resistor on {cc_net} — "
-                                       f"required for USB-C sink (UFP) role",
+                            "net": cc_net, "ref": r_ref, "ohms": r,
+                            "status": hit[1],
+                            "message": f"{label} — DFP source, {hit[2]}",
                         })
                     else:
-                        for cr in cc_resistors:
-                            r = cr["ohms"]
-                            # 5.1kΩ ±10% for sink (UFP)
-                            if 4590 <= r <= 5610:
-                                cc_resistor_findings.append({
-                                    "net": cc_net,
-                                    "ref": cr["ref"],
-                                    "ohms": r,
-                                    "status": "correct_sink",
-                                    "message": f"{cr['ref']} ({cr['value']}) on {cc_net} — "
-                                               f"correct for UFP/sink role",
-                                })
-                            elif 50400 <= r <= 61600:  # 56kΩ ±10% = default USB
-                                cc_resistor_findings.append({
-                                    "net": cc_net, "ref": cr["ref"], "ohms": r,
-                                    "status": "source_default",
-                                    "message": f"{cr['ref']} ({cr['value']}) — "
-                                               f"DFP source, default USB current",
-                                })
-                            elif 19800 <= r <= 24200:  # 22kΩ ±10% = 1.5A
-                                cc_resistor_findings.append({
-                                    "net": cc_net, "ref": cr["ref"], "ohms": r,
-                                    "status": "source_1_5A",
-                                    "message": f"{cr['ref']} ({cr['value']}) — "
-                                               f"DFP source, 1.5A advertisement",
-                                })
-                            elif 9000 <= r <= 11000:  # 10kΩ ±10% = 3A
-                                cc_resistor_findings.append({
-                                    "net": cc_net, "ref": cr["ref"], "ohms": r,
-                                    "status": "source_3A",
-                                    "message": f"{cr['ref']} ({cr['value']}) — "
-                                               f"DFP source, 3A advertisement",
-                                })
-                            else:
-                                cc_resistor_findings.append({
-                                    "net": cc_net, "ref": cr["ref"], "ohms": r,
-                                    "status": "unexpected_value",
-                                    "message": f"{cr['ref']} ({cr['value']}) = {r:.0f}Ω on {cc_net} — "
-                                               f"not a standard USB-C CC value "
-                                               f"(expected 5.1kΩ sink or 56k/22k/10k source)",
-                                })
+                        cc_resistor_findings.append({
+                            "net": cc_net, "ref": r_ref, "ohms": r,
+                            "status": "unexpected_value",
+                            "message": f"{label} = {r:.0f}Ω pull-up on {cc_net} — "
+                                       f"not a standard USB-C Rp value",
+                        })
 
             if cc_resistor_findings:
                 entry["cc_resistor_check"] = cc_resistor_findings
