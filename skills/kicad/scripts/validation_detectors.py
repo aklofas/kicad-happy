@@ -490,6 +490,13 @@ def _ic_rail_voltage(ctx: AnalysisContext, ref: str) -> tuple[float | None, bool
     def pin_voltage(net):
         return ctx.rail_voltage_or(net, parse_voltage_from_net_name)
 
+    pins = ctx.ref_pins.get(ref, {})
+    # A supply on an ignored rail has an unknown voltage; the IC's other supply does not
+    # stand in for it.
+    if any(net and ctx.is_power_net(net) and not ctx.is_ground(net) and ctx.rail_ignored(net)
+           for net, _ in pins.values()):
+        return None, False
+
     comp = ctx.comp_lookup.get(ref, {})
     mpn = comp.get('mpn') or comp.get('value', '')
     feat = get_regulator_features(mpn, project_dir=ctx.project_dir) if mpn else None
@@ -497,7 +504,6 @@ def _ic_rail_voltage(ctx: AnalysisContext, ref: str) -> tuple[float | None, bool
         feat = None   # deterministic detectors keep the v1.4 trust gate (v2.0 §3.A.1)
     if feat and feat.get('vin_pin'):
         vin_pin = str(feat['vin_pin'])
-        pins = ctx.ref_pins.get(ref, {})
         for pnum, (net, _) in pins.items():
             if str(pnum) == vin_pin and net and ctx.is_power_net(net) and not ctx.is_ground(net):
                 v = pin_voltage(net)
@@ -507,7 +513,6 @@ def _ic_rail_voltage(ctx: AnalysisContext, ref: str) -> tuple[float | None, bool
     # The positive supply sets a split-supply IC's logic swing; a negative rail counts
     # only for an IC that has no positive one.
     negative = None
-    pins = ctx.ref_pins.get(ref, {})
     for pnum, (net, _) in pins.items():
         if net and ctx.is_power_net(net) and not ctx.is_ground(net):
             v = pin_voltage(net)
@@ -529,6 +534,36 @@ def _closest_threshold(voltage: float) -> tuple:
             best_dist = dist
             best = thresh
     return best
+
+
+_EN_PIN_PATTERNS = ('EN', 'ENABLE', 'CE', 'SHDN', 'nSHDN', 'ON', 'ON_OFF', 'RUN')
+
+
+def _en_endpoint_compatible(ctx: AnalysisContext, p: dict, net_name: str, v_min: float) -> bool:
+    """True when pin *p* on *net_name* is a regulator enable input that tolerates a net
+    whose lowest domain is *v_min*: by the datasheet EN threshold when one is extracted,
+    else by an EN-named pin on a regulator-family part."""
+    comp = ctx.comp_lookup.get(p['ref'], {})
+    p_mpn = comp.get('mpn') or comp.get('value', '')
+    ds_feat = get_regulator_features(p_mpn, project_dir=ctx.project_dir) if p_mpn else None
+    if ds_feat and not ds_feat.get('quality', {}).get('trusted', True):
+        ds_feat = None   # deterministic detectors keep the v1.4 trust gate (v2.0 §3.A.1)
+    if ds_feat and ds_feat.get('en_pin'):
+        for pnum, (net, _) in ctx.ref_pins.get(p['ref'], {}).items():
+            if net == net_name and str(pnum) == str(ds_feat['en_pin']):
+                en_ih = ds_feat.get('en_v_ih_max')
+                if en_ih is not None:
+                    return v_min >= 2 * en_ih
+                break
+    val_mpn = ((comp.get('mpn') or '') + ' ' + (comp.get('value') or '')).upper()
+    is_regulator_like = any(pfx in val_mpn for pfx in (
+        'TPS6', 'TPS5', 'LM25', 'LM33', 'LM317', 'AP21', 'AMS11',
+        'MP23', 'MP15', 'XL40', 'RT8', 'SY8', 'MIC29', 'NCP',
+        'LDO', 'BOOST', 'BUCK', 'REG',
+    ))
+    if is_regulator_like or comp.get('type') == 'power_regulator':
+        return (p.get('pin') or '').upper().strip() in _EN_PIN_PATTERNS
+    return False
 
 
 def validate_voltage_levels(ctx: AnalysisContext, level_shifters: list[dict] | None = None) -> list[dict]:
@@ -588,44 +623,16 @@ def validate_voltage_levels(ctx: AnalysisContext, level_shifters: list[dict] | N
         v_max = max(voltages)
         v_min = min(voltages)
 
-        # Check if this is a regulator EN pin — skip if threshold is compatible
-        _EN_PIN_PATTERNS = ('EN', 'ENABLE', 'CE', 'SHDN', 'nSHDN', 'ON', 'ON_OFF', 'RUN')
-        skip_en = False
-        for p in ic_pins_on_net:
-            comp = ctx.comp_lookup.get(p['ref'], {})
-            p_mpn = comp.get('mpn') or comp.get('value', '')
-            # Datasheet-backed path: check EN pin threshold
-            ds_feat = get_regulator_features(p_mpn, project_dir=ctx.project_dir) if p_mpn else None
-            if ds_feat and not ds_feat.get('quality', {}).get('trusted', True):
-                ds_feat = None   # deterministic detectors keep the v1.4 trust gate (v2.0 §3.A.1)
-            ds_decided = False
-            if ds_feat and ds_feat.get('en_pin'):
-                pin_names = ctx.ref_pins.get(p['ref'], {})
-                for pnum, (net, pname) in pin_names.items():
-                    if net == net_name and str(pnum) == str(ds_feat['en_pin']):
-                        en_ih = ds_feat.get('en_v_ih_max')
-                        if en_ih is not None:
-                            ds_decided = True
-                            if v_min >= 2 * en_ih:
-                                skip_en = True
-                        break
-                if skip_en:
-                    break
-            # Heuristic fallback: pin name matches EN pattern on a regulator-family part
-            if not ds_decided:
-                val_mpn = ((comp.get('mpn') or '') + ' ' + (comp.get('value') or '')).upper()
-                is_regulator_like = any(pfx in val_mpn for pfx in (
-                    'TPS6', 'TPS5', 'LM25', 'LM33', 'LM317', 'AP21', 'AMS11',
-                    'MP23', 'MP15', 'XL40', 'RT8', 'SY8', 'MIC29', 'NCP',
-                    'LDO', 'BOOST', 'BUCK', 'REG',
-                ))
-                if is_regulator_like or comp.get('type') == 'power_regulator':
-                    pin_name = (p.get('pin') or '').upper().strip()
-                    if pin_name in _EN_PIN_PATTERNS:
-                        skip_en = True
-                        break
-        if skip_en:
-            continue
+        # A regulator EN input that tolerates the drive is one compatible endpoint; the
+        # other endpoints on the net are still checked against each other.
+        en_ok = [p for p in ic_pins_on_net if _en_endpoint_compatible(ctx, p, net_name, v_min)]
+        if en_ok:
+            ic_pins_on_net = [p for p in ic_pins_on_net if p not in en_ok]
+            voltages = set(p['voltage'] for p in ic_pins_on_net)
+            if len(ic_pins_on_net) < 2 or len(voltages) <= 1:
+                continue
+            v_max = max(voltages)
+            v_min = min(voltages)
 
         low_thresh = _closest_threshold(v_min)
         if low_thresh is None:
@@ -1039,7 +1046,7 @@ def validate_power_sequencing(
     for start in adj:
         cycle = _has_cycle(start)
         if cycle:
-            cycle_key = '->'.join(sorted(cycle))
+            cycle_key = '->'.join(sorted(set(cycle)))
             if cycle_key not in reported_cycles:
                 reported_cycles.add(cycle_key)
                 findings.append(make_finding(
@@ -1376,7 +1383,11 @@ _INTERNALLY_COMPENSATED_KEYWORDS = (
     'ap6',                     # Diodes Inc. AP6xxx synchronous buck family
 )
 
-_FB_PIN_NAMES = ('FB', 'VFEEDBACK', 'VFB', 'ADJ', 'VADJ', 'COMP', 'VSEN')
+# Adjustable linear regulators that need a minimum load: their datasheet divider is
+# 120-240 ohm on OUT-ADJ (LM317 datasheet, R1 = 240 ohm), so a low divider impedance is intended.
+_MIN_LOAD_ADJ_KEYWORDS = ('lm317', 'lm337', 'lm338', 'lm350', 'lm1117', 'ams1117', 'ld1117',
+                          'lm1086', 'lt1083', 'lt1084', 'lt1085', 'lt1086', 'az1117', 'ap1117',
+                          'ncp1117', 'spx1117', 'tlv1117')
 
 _FB_IMPEDANCE_MIN = 1000
 _FB_IMPEDANCE_MAX = 1000000
@@ -1413,7 +1424,10 @@ def validate_feedback_stability(
         facts = get_facts(mpn, cache_dir=cache_dir, diagnostics=getattr(ctx, "diagnostics", None)) if mpn else None
         # facts probe is informational — confidence stays heuristic regardless.
 
-        if parallel_impedance < _FB_IMPEDANCE_MIN:
+        comp = ctx.comp_lookup.get(ref)
+        min_load_adj = (fb_div.get('reference') == 'out_adj'
+                        or bool(comp and match_ic_keywords(comp, _MIN_LOAD_ADJ_KEYWORDS)))
+        if parallel_impedance < _FB_IMPEDANCE_MIN and not min_load_adj:
             findings.append(make_finding(
                 detector='validate_feedback_stability', rule_id='FS-001', category='power_integrity',
                 summary=f'Regulator {ref}: feedback divider impedance too low ({parallel_impedance:.0f}R)',
@@ -1437,12 +1451,11 @@ def validate_feedback_stability(
                 schema_era='v1.4',
                 source=ctx.source,))
 
-        comp = ctx.comp_lookup.get(ref)
+        # Only a compensation pin takes an external network; a capacitor on the feedback
+        # node of an internally compensated part is not a compensation network.
         if (comp and match_ic_keywords(comp, _REQUIRES_COMPENSATION_KEYWORDS)
                 and not match_ic_keywords(comp, _INTERNALLY_COMPENSATED_KEYWORDS)):
-            fb_net = _get_pin_net(ctx, ref, _FB_PIN_NAMES)
-            comp_net = _get_pin_net(ctx, ref, ('COMP', 'CC', 'RC'))
-            check_net = comp_net or fb_net
+            check_net = _get_pin_net(ctx, ref, ('COMP', 'CC', 'RC'))
             if check_net:
                 caps_on_fb = [p['component'] for p in ctx.nets.get(check_net, {}).get('pins', [])
                               if ctx.comp_lookup.get(p['component'], {}).get('type') == 'capacitor']
