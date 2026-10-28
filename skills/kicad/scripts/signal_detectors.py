@@ -1780,6 +1780,19 @@ def _heuristic_vref(ratio: float, rail: str | None) -> tuple[float | None, str]:
     return None, ""
 
 
+def _negative_rail_name(net: str) -> bool:
+    """True when the rail's own name reads negative (-5V, NEG12, V-); a sheet path is not
+    part of it (a UUID path holds "-<digit>")."""
+    leaf = net_leaf(net).upper()
+    return bool(re.search(r'[-](\d)', leaf)) or "NEG" in leaf or leaf.startswith("-") or leaf.endswith("-")
+
+
+def _is_potentiometer(ctx: AnalysisContext, ref: str) -> bool:
+    """A potentiometer or trimmer: RV designator or a pot/trim symbol."""
+    lib_id = (ctx.comp_lookup.get(ref) or {}).get("lib_id", "").lower()
+    return ref.upper().startswith("RV") or "pot" in lib_id or "trim" in lib_id
+
+
 def _datasheet_vref(ctx: AnalysisContext, ic: dict) -> float | None:
     """Feedback reference voltage (V, typ) from a trusted datasheet extraction, or None.
 
@@ -1818,6 +1831,8 @@ def _build_regulator_record(ctx: AnalysisContext, cand: _RegulatorCandidate,
         "value": ic["value"],
         "lib_id": ic.get("lib_id", ""),
     }
+    # Boost/inverting stages run the inductor from the input to SW; its far side is not the output.
+    far_side_is_input = False
 
     # Determine topology
     if sw_pin:
@@ -1845,7 +1860,9 @@ def _build_regulator_record(ctx: AnalysisContext, cand: _RegulatorCandidate,
             if inductor_ref and not vout_pin:
                 ind_n1, ind_n2 = ctx.get_two_pin_nets(inductor_ref)
                 out_rail = ind_n2 if ind_n1 == sw_net else ind_n1
-                if out_rail and out_rail != sw_net:
+                if out_rail and vin_pin and out_rail == vin_pin[1]:
+                    far_side_is_input = True
+                elif out_rail and out_rail != sw_net:
                     reg_info["output_rail"] = out_rail
         else:
             reg_info["topology"] = "switching"  # SW pin but no inductor found
@@ -1894,11 +1911,7 @@ def _build_regulator_record(ctx: AnalysisContext, cand: _RegulatorCandidate,
         reg_info["input_rail"] = vin_pin[1]
     if vout_pin:
         reg_info["output_rail"] = vout_pin[1]
-        # Also check if the output rail's own name suggests a negative voltage (-5V, NEG12, V-);
-        # a sheet path is not part of it (a UUID path holds "-<digit>")
-        out_net_u = net_leaf(vout_pin[1]).upper()
-        if re.search(r'[-](\d)', out_net_u) or "NEG" in out_net_u or out_net_u.startswith("-") \
-                or out_net_u.endswith("-"):
+        if _negative_rail_name(vout_pin[1]):
             is_inverting = True
     if is_inverting:
         reg_info["inverting"] = True
@@ -1915,7 +1928,9 @@ def _build_regulator_record(ctx: AnalysisContext, cand: _RegulatorCandidate,
         ind_n1, ind_n2 = ctx.get_two_pin_nets(ind_ref)
         sw_net_2 = sw_pin[1] if sw_pin else None
         out_rail = ind_n2 if ind_n1 == sw_net_2 else ind_n1
-        if out_rail and not ctx.is_ground(out_rail):
+        if out_rail and vin_pin and out_rail == vin_pin[1]:
+            far_side_is_input = True
+        elif out_rail and not ctx.is_ground(out_rail):
             reg_info["output_rail"] = out_rail
 
     # KH-087: Trace input rail through ferrite bead
@@ -1959,20 +1974,32 @@ def _build_regulator_record(ctx: AnalysisContext, cand: _RegulatorCandidate,
             ds_vref = _datasheet_vref(ctx, ic)
             if ds_vref is not None:
                 known_vref, vref_source = ds_vref, "datasheet"
+        # A three-terminal adjustable (LM317 family) has no ground pin: its ADJ pin floats on the divider
+        three_terminal = "ADJ" in {p.strip() for p in fb_pin[0].split("/")} and not any(
+            net and ctx.is_ground(net) for pname, (net, _) in ic_pins.items() if pname != fb_pin[0])
         # Find matching voltage divider
         for vd in voltage_dividers:
             if vd["mid_net"] == fb_net:
                 ratio = vd["ratio"]
                 if ratio <= 0:
                     break
+                vref_ratio = ratio
+                if three_terminal:
+                    # A trimmer's end stop is not the operating point
+                    if any(_is_potentiometer(ctx, vd[arm]["ref"]) for arm in ("r_top", "r_bottom")):
+                        break
+                    # LM317 datasheet: Vref sits across the OUT-ADJ (top) resistor, Vout = Vref x (1 + Rbot/Rtop)
+                    vref_ratio = 1 - ratio
+                    if vref_ratio <= 0:
+                        break
                 if known_vref is not None:
                     vref, prov_source = known_vref, "divider_plus_" + vref_source
                 else:
                     vref, prov_source = _heuristic_vref(
-                        ratio, reg_info.get("output_rail") or vd.get("top_net"))
+                        vref_ratio, reg_info.get("output_rail") or vd.get("top_net"))
                     vref_source = "heuristic"
-                if vref is not None and 0.5 < vref / ratio < 60:
-                    reg_info["estimated_vout"] = round(vref / ratio, 3)
+                if vref is not None and 0.5 < vref / vref_ratio < 60:
+                    reg_info["estimated_vout"] = round(vref / vref_ratio, 3)
                     reg_info["_estimated_vout_provenance"] = {
                         "source": prov_source,
                         "confidence": "deterministic" if vref_source == "datasheet" else "heuristic",
@@ -1984,7 +2011,21 @@ def _build_regulator_record(ctx: AnalysisContext, cand: _RegulatorCandidate,
                         "r_bottom": {"ref": vd["r_bottom"]["ref"], "ohms": vd["r_bottom"]["ohms"], "value": vd["r_bottom"]["value"]},
                         "ratio": ratio,
                     }
+                    if three_terminal:
+                        reg_info["feedback_divider"]["reference"] = "out_adj"
                 break
+
+    # The boost output is the regulated rail at the top of the feedback divider
+    if far_side_is_input and not reg_info.get("output_rail"):
+        for vd in voltage_dividers:
+            if fb_pin and vd["mid_net"] == fb_pin[1] and not ctx.is_ground(vd["top_net"]):
+                reg_info["output_rail"] = vd["top_net"]
+                if _negative_rail_name(vd["top_net"]):
+                    reg_info["inverting"] = True
+                break
+        else:
+            # read by _cross_reference_feedback_dividers, which removes it
+            reg_info["_far_side_is_input"] = True
 
     # KH-090: Fixed-output LDOs are never inverting
     if reg_info.get("inverting") and reg_info.get("topology") == "LDO" and not fb_pin:
@@ -2069,6 +2110,8 @@ def _cross_reference_feedback_dividers(power_regulators: list[dict], voltage_div
     # KH-084: Cross-reference feedback dividers with regulators.
     # For dividers whose top_net matches a regulator's output_rail, mark as feedback.
     for reg in power_regulators:
+        # an LED boost's FB-at-top node is its current sense, not an output rail
+        far_side_is_input = reg.pop("_far_side_is_input", False)
         fb_net = reg.get("fb_net")
         if not fb_net or reg.get("feedback_divider"):
             continue
@@ -2083,7 +2126,7 @@ def _cross_reference_feedback_dividers(power_regulators: list[dict], voltage_div
                     "ratio": ratio,
                     "topology": "fb_at_top",
                 }
-                if not reg.get("output_rail"):
+                if not reg.get("output_rail") and not far_side_is_input:
                     reg["output_rail"] = fb_net
                 break
 

@@ -872,8 +872,11 @@ def _scan_fixable(signal_analysis: dict) -> list:
         error_pct = abs(vout - rail_v) / rail_v * 100
         if error_pct < 2.0:
             continue  # Close enough — not fixable
-        # Target ratio: Vref / desired_Vout
+        # Target ratio: Vref / desired_Vout (Rbot/(Rtop+Rbot)); on a three-terminal
+        # adjustable Vref sits across the top resistor instead
         target_ratio = vref / rail_v
+        if fb.get("reference") == "out_adj":
+            target_ratio = 1 - target_ratio
         if target_ratio <= 0 or target_ratio >= 1:
             continue
         # Find this divider in voltage_dividers or feedback_networks
