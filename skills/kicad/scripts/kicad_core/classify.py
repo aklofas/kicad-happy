@@ -6,6 +6,22 @@ import re
 NON_COMPONENT_TYPES = frozenset({"power_symbol", "power_flag", "flag", "test_point",
                                  "mounting_hole", "fiducial", "graphic"})
 
+_LED_WORD = re.compile(r'(?<![a-z])led(?![a-z])')
+_NON_LED_DIODE_SYMBOL = re.compile(r'(?<![a-z])(zener|schottky|tvs|1n4\d{3}|bat\d{2}|bav\d{2}|d_small|d_bridge)'
+                                   r'|^d(_[a-z]+)?$|^diode')
+
+
+def _led_lib_evidence(lib_low: str, val_low: str) -> bool:
+    """A D-prefixed part is an LED when its symbol name or value says LED, or its library
+    nickname does, unless the nickname is a rescue library (KiCad names it after the
+    project) or the symbol name names another diode kind."""
+    nick, _, sym = lib_low.rpartition(":")
+    if _LED_WORD.search(sym + " " + val_low):
+        return True
+    if not nick or nick.endswith(("-rescue", "_rescue")) or _NON_LED_DIODE_SYMBOL.search(sym):
+        return False
+    return bool(_LED_WORD.search(nick))
+
 
 def classify_component(ref: str, lib_id: str, value: str, is_power: bool = False,
                        footprint: str = "", in_bom: bool = False,
@@ -162,7 +178,7 @@ def classify_component(ref: str, lib_id: str, value: str, is_power: bool = False
         if result == "thermistor" and any(x in lib_low or x in val_low
                                           for x in ("mov", "varistor")):
             return "varistor"
-        if result == "diode" and re.search(r'(?<![a-z])led(?![a-z])', lib_low + " " + val_low):
+        if result == "diode" and _led_lib_evidence(lib_low, val_low):
             return "led"
         # KH-122: Addressable LEDs (SK6812, WS2812) with D prefix
         if result == "diode" and any(k in val_low or k in lib_low

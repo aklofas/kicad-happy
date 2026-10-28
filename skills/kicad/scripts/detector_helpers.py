@@ -282,3 +282,21 @@ def group_part(ctx: AnalysisContext, ref: str, unit_key: str) -> dict:
     if comp_type == "capacitor":
         part["parallel_caps"] = list(g["refs"])
     return part
+
+
+def is_led_rail(ctx: AnalysisContext, net: str) -> bool:
+    """True when *net* is a supply rail as an LED sees it: a net with a power symbol, or a
+    power-like name with more than three pins.  An LED's own node named like a rail
+    (``VBUS_LED_A``) holds only the LED and its resistor."""
+    if net in ctx.known_power_rails:
+        return True
+    return ctx.is_power_net(net) and len(ctx.nets.get(net, {}).get("pins", [])) > 3
+
+
+def led_forward_voltage(comp: dict, table: dict[str, float], default: float = 2.0) -> float:
+    """Forward voltage of the first colour in *table* named by the LED's value or lib_id."""
+    combined = (comp.get("value", "") + " " + comp.get("lib_id", "")).lower()
+    for color, vf in table.items():
+        if color in combined:
+            return vf
+    return default

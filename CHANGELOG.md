@@ -114,6 +114,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - ADC detections list their anti-aliasing filters, matched by the R–C junction on each input channel (the cross-reference never matched) (kc/R6-F6).
 - Clock-distribution records for an active oscillator carry its frequency in `frequency_hz` and the summary (kc/R6-F6).
 - Non-inverting op-amp stages are recognised (gain 1 + Rf/Rg, the ground leg recorded as `input_resistor`); they were reported as transimpedance or buffer stages with no gain. A resistor from the inverting input to a power rail is a bias, not the gain leg. A stage whose gain network holds a potentiometer or trimmer, or another resistor beside Rf or the gain leg, keeps its configuration but carries no `gain`/`gain_dB` (the gain is adjustable). Parallel feedback and input resistors and feedback capacitors count as one equivalent, with every member in `parallel_refs` (kc/R5-F2, R5-F3).
+- LR-001 and the LED audit take the resistor in the LED's own current path (high or low side), recognise resistor networks and transistor drivers, sum forward voltage along an LED string, and no longer report a missing resistor when one leads to a transistor, IC or network; a diode from a rescue library whose project name contains "LED" is no longer typed as an LED. The LED audit no longer names an IC on the supply rail or ground as the LED's driver, nor ground as its supply (kc/R7-F2, KH-672, kc/R6-F1, KH-699).
 
 ---
 

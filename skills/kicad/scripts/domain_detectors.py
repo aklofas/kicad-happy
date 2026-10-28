@@ -19,7 +19,8 @@ from kicad_core.parts import lookup_regulator_vref
 from kicad_core.values import format_frequency, parse_value
 from kicad_core.netnames import parse_voltage_from_net_name
 from signal_detectors import _get_net_components
-from detector_helpers import match_family, match_ic_keywords, get_unique_ics
+from detector_helpers import (is_led_rail, led_forward_voltage, match_family,
+                              match_ic_keywords, get_unique_ics)
 from finding_schema import make_finding, make_provenance
 
 
@@ -4780,15 +4781,6 @@ _LED_VF_FLOOR = {
 }
 
 
-def _estimate_led_vf(comp: dict) -> float:
-    """Estimate LED forward voltage from value/lib_id color hints."""
-    combined = (comp.get("value", "") + " " + comp.get("lib_id", "")).lower()
-    for color, vf in _LED_VF.items():
-        if color in combined:
-            return vf
-    return 2.0  # default to red/generic
-
-
 def _detect_led_color(comp: dict) -> str | None:
     """Return the lowercase color string for an LED, or None if no color
     hint is present in value/lib_id."""
@@ -4867,7 +4859,12 @@ def audit_led_circuits(ctx: AnalysisContext,
         series_resistor = None
         has_unparsed_resistor = False
         driver_source = None
-        check_nets = [n for n in (n1, n2) if n and not ctx.is_ground(n)]
+        # Only the LED's own node(s) carry its series resistor; a rail holds pull-ups
+        # and every other part on that supply.  Fewest pins first.
+        check_nets = sorted((n for n in (n1, n2) if n and not ctx.is_ground(n) and not is_led_rail(ctx, n)),
+                            key=lambda n: (len(ctx.nets.get(n, {}).get("pins", [])), n))
+        led_nets = {n1, n2}
+        string_leds = [comp]
 
         def _scan_net_for_resistor(net, exclude_ref):
             """Scan a net for a current-limiting resistor. Returns (resistor_dict, unparsed_flag)."""
@@ -4881,6 +4878,12 @@ def audit_led_circuits(ctx: AnalysisContext,
                 rc = ctx.comp_lookup.get(p["component"])
                 if not rc:
                     continue
+                if rc["type"] == "resistor_network":
+                    r_val = parse_value(rc.get("value", ""))
+                    if r_val is None:
+                        found_unparsed = True
+                        continue
+                    return {"ref": rc["reference"], "ohms": r_val}, False
                 if rc["type"] == "resistor":
                     r_val = parse_value(rc.get("value", ""))
                     if r_val is None:
@@ -4892,9 +4895,13 @@ def audit_led_circuits(ctx: AnalysisContext,
                     # Check what's on the resistor's other side
                     rn1, rn2 = ctx.get_two_pin_nets(rc["reference"])
                     r_other = rn2 if rn1 == net else rn1
-                    if r_other and not supply_net and ctx.is_power_net(r_other):
+                    if not r_other or r_other in led_nets:
+                        continue  # a bleeder across the LED, or an unconnected part
+                    if not supply_net and ctx.is_power_net(r_other) and not ctx.is_ground(r_other):
                         supply_net = r_other
-                    if r_other and r_other in ctx.nets:
+                    # An IC on the resistor's far node drives the LED; one on a rail only
+                    # draws from it.
+                    if r_other in ctx.nets and not is_led_rail(ctx, r_other):
                         for rp in ctx.nets[r_other]["pins"]:
                             if rp["component"] == rc["reference"]:
                                 continue
@@ -4903,7 +4910,7 @@ def audit_led_circuits(ctx: AnalysisContext,
                                 driver_source = rp["component"]
                                 break
                     return res, False
-                elif rc["type"] == "ic" and not driver_source:
+                elif rc["type"] in ("ic", "transistor") and not driver_source:
                     driver_source = rc["reference"]
             return None, found_unparsed
 
@@ -4913,11 +4920,21 @@ def audit_led_circuits(ctx: AnalysisContext,
                 has_unparsed_resistor = True
             if series_resistor:
                 break
+        # A driver on the LED's other node (GPIO -> LED -> R -> GND) is past the
+        # node where the resistor scan stopped.
+        if not driver_source:
+            driver_source = next((p["component"] for net in check_nets
+                                  for p in ctx.nets.get(net, {}).get("pins", [])
+                                  if p["component"] != ref
+                                  and ctx.comp_lookup.get(p["component"], {}).get("type") in ("ic", "transistor")),
+                                 None)
 
         # If no resistor found, trace through LED chains (LED→LED→...→resistor)
         if not series_resistor:
             visited_leds: set[str] = {ref}
             frontier_nets = list(check_nets)
+            # LEDs from this one to each reached net, for the string's forward voltage
+            path: dict[str, list[dict]] = {n: [comp] for n in frontier_nets}
             for _ in range(5):  # max 5 hops through LED chain
                 next_nets: list[str] = []
                 for net in frontier_nets:
@@ -4934,16 +4951,19 @@ def audit_led_circuits(ctx: AnalysisContext,
                             visited_leds.add(p["component"])
                             ln1, ln2 = ctx.get_two_pin_nets(p["component"])
                             for ln in (ln1, ln2):
-                                if ln and ln != net and not ctx.is_ground(ln):
+                                if ln and ln != net and not ctx.is_ground(ln) and not is_led_rail(ctx, ln):
                                     next_nets.append(ln)
+                                    path.setdefault(ln, path.get(net, [comp]) + [pc])
                 if not next_nets:
                     break
                 # Check the next set of nets for a resistor
                 for net in next_nets:
+                    led_nets = set(ctx.get_two_pin_nets(path[net][-1]["reference"]))
                     series_resistor, unparsed = _scan_net_for_resistor(net, "")
                     if unparsed:
                         has_unparsed_resistor = True
                     if series_resistor:
+                        string_leds = path[net]
                         break
                 if series_resistor:
                     break
@@ -4992,7 +5012,7 @@ def audit_led_circuits(ctx: AnalysisContext,
             v_supply = ctx.rail_voltage_or(supply_net, parse_voltage_from_net_name)
             if v_supply:
                 v_supply = abs(v_supply)
-                vf = _estimate_led_vf(comp)
+                vf = sum(led_forward_voltage(c, _LED_VF) for c in string_leds)
                 if v_supply > vf:
                     i_ma = (v_supply - vf) / series_resistor["ohms"] * 1000
                     entry["estimated_current_mA"] = round(i_ma, 1)

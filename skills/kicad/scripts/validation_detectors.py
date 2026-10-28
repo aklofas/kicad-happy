@@ -29,7 +29,7 @@ except ImportError:
 
 from detector_helpers import (
     get_components_by_type, get_unique_ics, index_two_pin_components,
-    match_ic_keywords,
+    is_led_rail, led_forward_voltage, match_ic_keywords,
 )
 from finding_schema import make_finding, make_provenance
 from lookup_helpers import get_facts, has_data, best
@@ -1119,14 +1119,6 @@ _LED_IF_MAX_DEFAULT_MA = 20
 _LED_IF_RECOMMENDED_MA = 10
 
 
-def _guess_led_color(value: str, lib_id: str) -> str | None:
-    combined = (value + ' ' + lib_id).lower()
-    for color in _LED_VF_BY_COLOR:
-        if color in combined:
-            return color
-    return None
-
-
 def validate_led_resistors(ctx: AnalysisContext) -> list[dict]:
     """LR-001: Check LED current-limiting resistor values."""
     findings: list[dict] = []
@@ -1169,29 +1161,36 @@ def validate_led_resistors(ctx: AnalysisContext) -> list[dict]:
         if ctx.rail_ignored(n1) or ctx.rail_ignored(n2):
             continue
 
-        anode_net = cathode_net = None
-        if ctx.is_power_net(n1) and not ctx.is_ground(n1):
-            anode_net, cathode_net = n1, n2
-        elif ctx.is_power_net(n2) and not ctx.is_ground(n2):
-            anode_net, cathode_net = n2, n1
-        elif ctx.is_ground(n2):
-            anode_net, cathode_net = n1, n2
-        elif ctx.is_ground(n1):
-            anode_net, cathode_net = n2, n1
-        else:
-            anode_net, cathode_net = n1, n2
-
+        # The series resistor sits on the LED's own node(s), not on a rail or ground
+        # (those carry pull-ups and every other part on the supply).
+        own_nets = [n for n in (n1, n2) if not ctx.is_ground(n) and not is_led_rail(ctx, n)]
         series_resistors = []
-        for net in (n1, n2):
+        has_series_r = False
+        for net in own_nets:
+            led_other = n2 if net == n1 else n1
             for rref in net_to_resistors.get(net, []):
                 rn1, rn2 = resistor_nets.get(rref, (None, None))
                 if not rn1 or not rn2:
                     continue
                 other = rn2 if rn1 == net else rn1
-                if ctx.is_power_net(other) or ctx.is_ground(other):
-                    ohms = ctx.parsed_values.get(rref)
-                    if ohms is not None and ohms > 0:
-                        series_resistors.append({'ref': rref, 'ohms': ohms, 'rail': other})
+                if other in (n1, n2):
+                    continue  # a bleeder across the LED
+                has_series_r = True
+                if ctx.is_power_net(other) and not ctx.is_ground(other):
+                    rail = other  # high side: rail -> R -> LED
+                elif (ctx.is_ground(other) and ctx.is_power_net(led_other)
+                      and not ctx.is_ground(led_other)):
+                    rail = led_other  # low side: rail -> LED -> R -> ground
+                else:
+                    continue  # through a transistor or IC: the current is not computable
+                ohms = ctx.parsed_values.get(rref)
+                if ohms is not None and ohms > 0:
+                    series_resistors.append({'ref': rref, 'ohms': ohms, 'rail': rail})
+        if not has_series_r:
+            has_series_r = any(ctx.comp_lookup.get(p['component'], {}).get('type') == 'resistor_network'
+                               for net in own_nets for p in ctx.nets.get(net, {}).get('pins', []))
+        if not series_resistors and has_series_r:
+            continue
 
         if not series_resistors:
             has_driver = False
@@ -1218,12 +1217,11 @@ def validate_led_resistors(ctx: AnalysisContext) -> list[dict]:
                     source=ctx.source,))
             continue
 
-        color = _guess_led_color(led.get('value', ''), led.get('lib_id', ''))
         # Use datasheet Vf (typ) if available; fall back to color-heuristic or default.
         if ds_vf is not None and ds_vf.typ is not None:
             vf = ds_vf.typ
         else:
-            vf = _LED_VF_BY_COLOR.get(color, _LED_VF_DEFAULT) if color else _LED_VF_DEFAULT
+            vf = led_forward_voltage(led, _LED_VF_BY_COLOR, _LED_VF_DEFAULT)
         # Use datasheet If_max (max, else typ) if available; fall back to constant.
         if ds_if is not None and ds_if.max is not None:
             if_max_ma = ds_if.max * 1000  # SpecValue in amps → mA
