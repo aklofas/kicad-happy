@@ -203,7 +203,7 @@ if [ "${INPUT_SPICE:-true}" = "true" ] && [ -n "$SCH_JSON" ]; then
         echo "::group::SPICE Simulation"
         SPICE_JSON="$OUTDIR/spice.json"
         if python3 "$SPICE_SCRIPTS/simulate_subcircuits.py" "$SCH_JSON" --compact -o "$SPICE_JSON" 2>"$OUTDIR/spice.err"; then
-            SUMMARY=$(python3 -c "import json; d=json.load(open('$SPICE_JSON')); s=d.get('summary',{}); print(f\"{s.get('pass',0)} pass, {s.get('warn',0)} warn, {s.get('fail',0)} fail, {s.get('skip',0)} skip\")" 2>/dev/null || echo "?")
+            SUMMARY=$(python3 -c "import json; d=json.load(open('$SPICE_JSON')); s=d.get('summary',{}); print(f\"{s.get('pass',0)} pass, {s.get('warn',0)} warn, {s.get('fail',0)} fail, {s.get('skip',0)} skip, {s.get('info',0)} info\")" 2>/dev/null || echo "?")
             echo "SPICE: $SUMMARY"
         else
             echo "::notice::SPICE simulation failed (non-blocking)"

@@ -87,5 +87,26 @@ class FilterRowsTest(unittest.TestCase):
         self.assertNotIn("{'ref'", full)
 
 
+class SpiceCountsTest(unittest.TestCase):
+    def test_spice_counts_add_up_to_total(self):
+        import sys as _sys
+        _sys.path.insert(0, str(ROOT / "skills" / "spice" / "scripts"))
+        from spice_results import build_report
+        runs = [{"subcircuit_type": "rc_filter", "components": ["R1", "C1"], "status": s}
+                for s in ("pass", "warn", "fail", "skip", "info", "info")]
+        rc = {"detector": "detect_rc_filters", "rule_id": "RC-DET", "type": "low-pass",
+              "resistor": {"ref": "R1", "value": "1k", "ohms": 1000.0},
+              "capacitor": {"ref": "C1", "value": "10n", "farads": 1e-08}, "cutoff_hz": 15915.5}
+        with tempfile.TemporaryDirectory() as tmp:
+            sch, sp = os.path.join(tmp, "sch.json"), os.path.join(tmp, "spice.json")
+            with open(sch, "w", encoding="utf-8") as f:
+                json.dump({"analyzer_type": "schematic", "findings": [rc]}, f)
+            with open(sp, "w", encoding="utf-8") as f:
+                json.dump(build_report(runs), f)
+            md, full = _render(tmp, schematic=sch, spice=sp)
+        self.assertIn("6 subcircuits — **1 pass**, 1 warn, 1 fail, 1 skip, 2 info", md)
+        self.assertIn("6 subcircuits verified: 1 pass, 1 warn, 1 fail, 1 skip, 2 info", full)
+
+
 if __name__ == "__main__":
     unittest.main()

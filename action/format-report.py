@@ -812,10 +812,13 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
         passed = summary.get("pass", 0)
         warn = summary.get("warn", 0)
         fail = summary.get("fail", 0)
+        skip = summary.get("skip", 0)
+        info = summary.get("info", 0)
 
         L.append("### SPICE")
         L.append("")
-        L.append(f"{total} subcircuits — **{passed} pass**, {warn} warn, {fail} fail")
+        L.append(f"{total} subcircuits — **{passed} pass**, {warn} warn, {fail} fail, "
+                 f"{skip} skip, {info} info")
 
         # Show failures and warnings
         for r in spice.get("simulation_results", []):
@@ -1122,7 +1125,8 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
             summary = spice.get("summary", {})
             a(f"{summary.get('total',0)} subcircuits verified: "
               f"{summary.get('pass',0)} pass, {summary.get('warn',0)} warn, "
-              f"{summary.get('fail',0)} fail, {summary.get('skip',0)} skip")
+              f"{summary.get('fail',0)} fail, {summary.get('skip',0)} skip, "
+              f"{summary.get('info',0)} info")
             a("")
             results = spice.get("simulation_results", [])
             if results:
