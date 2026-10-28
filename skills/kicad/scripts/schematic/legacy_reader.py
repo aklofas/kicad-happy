@@ -15,7 +15,7 @@ from kicad_core.classify import classify_component
 from kicad_core.diagnostics import record
 from kicad_core.fields import (
     MPN_FIELD_ALIASES_PRIMARY, MPN_FIELD_ALIASES_GENERIC,
-    DIGIKEY_FIELD_ALIASES, normalize_field_name,
+    DIGIKEY_FIELD_ALIASES, MANDATORY_STRIP, normalize_field_name,
 )
 from schematic.reader import (
     _ANGLE_TRANSFORM, _MANUFACTURER_KEYS, _MOUSER_KEYS, _LCSC_KEYS, _ELEMENT14_KEYS,
@@ -950,8 +950,7 @@ def _parse_legacy_single_sheet(path: str) -> tuple:
                         field_num = int(fm.group(1))
                         field_val, field_end = fq
                         if field_num < len(_STANDARD_FIELDS):
-                            field_val = field_val.strip(" \t\r\n")
-                        if field_num < len(_STANDARD_FIELDS):
+                            field_val = field_val.strip(MANDATORY_STRIP)
                             comp.setdefault("_fields", {})[_STANDARD_FIELDS[field_num]] = field_val
                         else:
                             at = cl.find('"', field_end)
@@ -1046,8 +1045,8 @@ def _parse_legacy_single_sheet(path: str) -> tuple:
                 sl = lines[i].strip()
                 # F1 "filename.sch" size — the sheet filename field
                 sq = _quoted(sl, 2) if re.match(r'F1\s', sl) else None
-                if sq and sq[0].strip(" \t\r\n").endswith(".sch"):
-                    sheet_file = sq[0].strip(" \t\r\n")
+                if sq and sq[0].strip(MANDATORY_STRIP).endswith(".sch"):
+                    sheet_file = sq[0].strip(MANDATORY_STRIP)
                 um = re.match(r'U\s+([0-9A-Fa-f]+)', sl)
                 if um:
                     sheet_ts = um.group(1).upper()

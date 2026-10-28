@@ -7,6 +7,7 @@ instance (``SCH_SHEET_PATH::CheckForMissingSymbolInstances``).
 """
 from __future__ import annotations
 
+from kicad_core.fields import MANDATORY_STRIP
 from kicad_core.sexp import find_first, get_value
 
 
@@ -72,7 +73,7 @@ def inline_instances(sym: list, tilde_empty: bool) -> list[dict]:
             for key in ("value", "footprint"):
                 text = get_value(path_node, key)
                 if text is not None:
-                    entry[key] = ("" if (tilde_empty and text == "~") else text).strip(" \t\r\n")
+                    entry[key] = ("" if (tilde_empty and text == "~") else text).strip(MANDATORY_STRIP)
             variants = variant_blocks(path_node)
             if variants:
                 entry["variants"] = variants

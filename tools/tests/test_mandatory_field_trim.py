@@ -52,6 +52,11 @@ class ModernTrimTest(unittest.TestCase):
         self.assertEqual(c["description"], "Chip")
         self.assertEqual(c["mpn"], " ABC ")
 
+    def test_vertical_tab_and_form_feed_trimmed(self):
+        # wxString::Strip trims every wxSafeIsspace character: space, \t \n \v \f \r
+        c = one(20231120, value="\v10k\f", fp="\fResistor_SMD:R_0603\v")
+        self.assertEqual((c["value"], c["footprint"]), ("10k", "Resistor_SMD:R_0603"))
+
     def test_new_format_tilde_is_literal(self):
         self.assertEqual(one(20250318, ds="~")["datasheet"], "~")
         self.assertEqual(one(20250318, ds=" ~ ")["datasheet"], "~")
@@ -73,6 +78,14 @@ class Kicad6Test(unittest.TestCase):
         files = {"k.kicad_sch": sch(20211123, ROOT_UUID, body,
                                     tail=f'(sheet_instances (path "/" (page "1"))) {si}')}
         self.assertEqual(parse(files, "k.kicad_sch")["components"][0]["value"], "5.1k")
+
+    def test_inline_instance_value_vertical_tab_trimmed(self):
+        inst = (f' (instances (project "t" (path "/{ROOT_UUID}" (reference "R1") (unit 1)'
+                f' (value "\v4.7k\f"))))')
+        body = sym(u(10), "R1", "", 50, inst=inst)
+        files = {"k.kicad_sch": sch(20211123, ROOT_UUID, body,
+                                    tail='(sheet_instances (path "/" (page "1")))')}
+        self.assertEqual(parse(files, "k.kicad_sch")["components"][0]["value"], "4.7k")
 
     def test_value_on_repeated_sheet_reaches_every_instance(self):
         a, b = u(170), u(180)
@@ -130,6 +143,11 @@ class LegacyTest(unittest.TestCase):
 
     def test_f_fields_trimmed_tilde_literal(self):
         res = analyze_legacy({"root.sch": self.comp("10k ", " ~")})
+        c = res["components"][0]
+        self.assertEqual((c["value"], c["datasheet"]), ("10k", "~"))
+
+    def test_f_fields_vertical_tab_form_feed_trimmed(self):
+        res = analyze_legacy({"root.sch": self.comp("\f10k\v", "\v~")})
         c = res["components"][0]
         self.assertEqual((c["value"], c["datasheet"]), ("10k", "~"))
 

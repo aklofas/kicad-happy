@@ -12,7 +12,7 @@ from kicad_core.sexp import (find_all, find_first, find_deep, get_value, get_pro
                              get_properties, get_at, has_flag, is_keyword, net_name_escape,
                              parse_file, raw_text, unescape_string)
 from kicad_core.classify import classify_component, classify_connector, classify_ic_function
-from kicad_core.fields import DIGIKEY_FIELD_ALIASES, pick_field, pick_mpn
+from kicad_core.fields import DIGIKEY_FIELD_ALIASES, MANDATORY_STRIP, pick_field, pick_mpn
 from kicad_core.instances import (inline_instances, instance_variants, resolve_instance,
                                   tilde_is_empty, variant_overrides)
 from kicad_core.model import Component, Pin, SheetData
@@ -714,9 +714,6 @@ def text_context(pro: dict | None, project_name: str, filename: str,
             "registry": registry}
 
 
-MANDATORY_STRIP = " \t\r\n"
-
-
 def _field(text, tilde_empty: bool) -> str:
     """A field's text, "" when absent; "~" is empty in files older than 20250318."""
     if text is None or (tilde_empty and text == "~"):
@@ -726,7 +723,7 @@ def _field(text, tilde_empty: bool) -> str:
 
 def mandatory_field(text, tilde_empty: bool) -> str:
     """A mandatory field's text as KiCad's SetText keeps it: "~" is tested on the raw token,
-    then both ends lose spaces, tabs and line breaks."""
+    then both ends lose whitespace (space, \t, \n, \v, \f, \r)."""
     return _field(text, tilde_empty).strip(MANDATORY_STRIP)
 
 

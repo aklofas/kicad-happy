@@ -20,6 +20,11 @@ from kicad_core.sexp import is_keyword
 # analyzers (bom_manager keeps them as bom-local extras).
 # ---------------------------------------------------------------------------
 
+# Characters KiCad's SCH_FIELD::SetText strips from both ends of a mandatory field
+# (wxString::Strip tests wxSafeIsspace: space, \t \n \v \f \r).
+MANDATORY_STRIP = " \t\n\v\f\r"
+
+
 def normalize_field_name(name: str) -> str:
     """Lowercase, trim, collapse internal whitespace.
 
