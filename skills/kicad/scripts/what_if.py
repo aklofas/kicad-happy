@@ -296,6 +296,8 @@ def _apply_changes(det: dict, changes: dict, matched_refs: dict,
                           file=sys.stderr)
                     continue
                 obj[vkey] = combined
+                if "value" in obj:
+                    obj["value"] = _format_value(combined, vkey)
                 continue
             obj[vkey] = new_val
             # Update the value string too

@@ -8,12 +8,14 @@ WHAT_IF = Path(__file__).resolve().parents[2] / "skills" / "kicad" / "scripts" /
 
 # 10k / (R2 || R3, 10k each = 5k), as detect_voltage_dividers emits it
 DIVIDER = {"detector": "detect_voltage_dividers", "rule_id": "VD-DET",
+           "detection_id": "voltage_dividers:000000000001",
            "r_top": {"ref": "R1", "value": "10k", "ohms": 10000.0},
            "r_bottom": {"ref": "R2", "value": "2 resistors parallel", "ohms": 5000.0,
                         "parallel_refs": ["R2", "R3"]},
            "top_net": "+3V3", "mid_net": "FB", "bottom_net": "GND", "ratio": 0.333333,
            "components": ["R1", "R2", "R3"]}
 REGULATOR = {"detector": "detect_power_regulators", "rule_id": "PR-DET", "ref": "U1",
+             "detection_id": "power_regulators:000000000002",
              "value": "TPS54040", "output_rail": "+3V3", "estimated_vout": 2.4,
              "assumed_vref": 0.8, "vref_source": "lookup", "fb_net": "FB",
              "feedback_divider": {"r_top": {"ref": "R1", "ohms": 10000.0, "value": "10k"},
@@ -23,14 +25,19 @@ REGULATOR = {"detector": "detect_power_regulators", "rule_id": "PR-DET", "ref": 
 COMPONENTS = [{"reference": r, "type": "resistor", "value": "10k"} for r in ("R1", "R2", "R3")]
 
 
-def _run(*args):
+def _run(*args, patched=False):
     with tempfile.TemporaryDirectory() as tmp:
         p = os.path.join(tmp, "sch.json")
+        out = os.path.join(tmp, "patched.json")
         with open(p, "w", encoding="utf-8") as f:
             json.dump({"analyzer_type": "schematic", "findings": [DIVIDER, REGULATOR],
                        "components": COMPONENTS}, f)
-        r = subprocess.run([sys.executable, str(WHAT_IF), p, *args], capture_output=True,
-                           text=True, encoding="utf-8")
+        extra = ["--output", out] if patched else []
+        r = subprocess.run([sys.executable, str(WHAT_IF), p, *args, *extra], capture_output=True,
+                           text=True, encoding="utf-8", cwd=tmp)
+        if patched:
+            with open(out, encoding="utf-8") as f:
+                return r, json.load(f)
     return r
 
 
@@ -49,6 +56,21 @@ class ParallelArm(unittest.TestCase):
 
     def test_changing_the_second_member_is_found(self):
         self.assertEqual(self._ratio_after("R3=20k"), 0.4)
+
+    def test_recomputed_arm_value_names_the_new_equivalent(self):
+        # 20k || 10k = 6.667k; the arm no longer reads "2 resistors parallel"
+        r, out = _run("R2=20k", patched=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        vd = next(f for f in out["findings"] if f["rule_id"] == "VD-DET")
+        self.assertEqual(vd["r_bottom"]["value"], "6.67k\u03a9")
+        self.assertAlmostEqual(vd["r_bottom"]["ohms"], 20000.0 * 10000.0 / 30000.0, places=6)
+
+    def test_unchanged_arm_keeps_its_group_value(self):
+        r, out = _run("R1=20k", patched=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        vd = next(f for f in out["findings"] if f["rule_id"] == "VD-DET")
+        self.assertEqual(vd["r_bottom"]["value"], "2 resistors parallel")
+        self.assertEqual(vd["r_top"]["value"], "20k")
 
     def test_suggest_fixes_names_the_group(self):
         # +3V3 at Vref 0.8 V: target ratio 0.8/3.3; bottom equivalent = 10k * t / (1 - t) = 3200 ohms
