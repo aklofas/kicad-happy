@@ -222,6 +222,16 @@ class RegulatorPhases(unittest.TestCase):
         self.assertEqual(regs[0]["_output_rail_voltage_provenance"], {"source": "sheet name", "voltage": 5.0})
         self.assertNotIn("_output_rail_voltage_provenance", regs[1])
 
+    def test_sheet_naming_two_voltages_gives_no_stem_voltage(self):
+        # "12V_to_5V" names the input and the output; the first token is not the output.
+        ctx = _ctx([("U1", "Custom:TPS630701", "TPS630701RNMR",
+                     {"1": ("VIN", "/12V_to_5V/VIN"), "2": ("VOUT", "/12V_to_5V/VOUT_SEN"),
+                      "5": ("GND", "GND")})])
+        regs = [{"ref": "U1", "input_rail": "/12V_to_5V/VIN", "output_rail": "/12V_to_5V/VOUT_SEN"}]
+        by_net = build_rail_map(ctx, regs)
+        self.assertNotIn("/12V_to_5V/VOUT_SEN", by_net)
+        self.assertNotIn("_output_rail_voltage_provenance", regs[0])
+
     def test_boost_output_is_the_divider_top_not_the_input(self):
         # MT3608: L1 from +5V to SW, D1 SW -> +12V, 19k/1k feedback; Vref 0.6 V: 0.6 x 20 = 12.0 V
         ctx = _ctx([("U1", "Regulator_Switching:MT3608", "MT3608",

@@ -18,6 +18,7 @@ Every body is verbatim from analyze_schematic.py; only the seams are new.
 """
 
 import os
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -300,13 +301,20 @@ def _build_net_classifications(results: dict) -> dict[str, dict]:
     return classifications
 
 
+# The two voltage spellings parse_voltage_from_net_name reads: 3V3, and 3.3V / 5V.
+_VOLTAGE_TOKEN = re.compile(r"\d+V\d+|\d+(?:\.\d+)?V", re.IGNORECASE)
+
+
 def _sheet_stem_voltage(net: str) -> float | None:
     """The voltage in the name of the sheet holding *net* (``/5V_regulator/VOUT_SEN`` → 5.0).
 
-    None when the net's own name carries a voltage (that wins) or the net is not on a sheet.
+    None when the net's own name carries a voltage (that wins), the net is not on a sheet, or
+    the sheet names more than one voltage (``12V_to_5V``: which one is the output is unknown).
     """
     parts = net.split("/")
     if not net.startswith("/") or len(parts) < 3 or parse_voltage_from_net_name(net) is not None:
+        return None
+    if len(_VOLTAGE_TOKEN.findall(parts[-2])) > 1:
         return None
     return parse_voltage_from_net_name(parts[-2])
 
