@@ -1127,7 +1127,8 @@ def analyze_protocol_compliance(components: list[dict], nets: dict,
                 v_pu = r_pu * sum(v / pu["ohms"] for v, pu in zip(vol_rails, vol_pullups))
                 iol_ma = 3
                 speed = "fast" if checks.get("rise_time", {}).get("sda", {}).get("valid_400khz") else "standard"
-                if v_pu > 0.4:
+                # UM10204 specifies buses up to 5.5 V; a higher pull-up voltage is a bad rail estimate.
+                if 0.4 < v_pu <= 5.5:
                     r_min = (v_pu - 0.4) / (iol_ma * 1e-3)
                     if r_pu < r_min:
                         issues.append(

@@ -24,7 +24,7 @@ def _res(ref, value, dnp=False):
     return comp
 
 
-def _vol(sda_pullups, scl_rail="+3V3", power_rails_config=None):
+def _vol(sda_pullups, scl_rail="+3V3", power_rails_config=None, regulators=()):
     """VOL record for a sensor whose SDA pull-ups are ``[(value, rail[, dnp])]`` (SCL: 4.7k)."""
     comps = [SENSOR, _res("R9", "4.7k")]
     nets = {"SDA": [("U1", "1", "SDA", "bidirectional")],
@@ -41,7 +41,7 @@ def _vol(sda_pullups, scl_rail="+3V3", power_rails_config=None):
     rails = {r for _, r, *_ in sda_pullups} | {scl_rail}
     ctx = build_analysis_context(comps, full, {}, known_power_rails=rails,
                                  power_rails_config=power_rails_config)
-    ctx.rail_by_net = build_rail_map(ctx, [])
+    ctx.rail_by_net = build_rail_map(ctx, list(regulators))
     design = {"bus_analysis": {"i2c": _detect_i2c_buses(ctx)}}
     out = analyze_protocol_compliance(comps, ctx.nets, design, {}, ctx.pin_net, ctx=ctx)
     i2c = [f for f in out.get("findings", []) if f["protocol"] == "i2c"]
@@ -85,6 +85,12 @@ class I2cVolLowerBound(unittest.TestCase):
         self.assertIsNone(_vol([("820", "VDD_IO")], power_rails_config=cfg))  # (1.8-0.4)/3mA = 467
         vc = _vol([("390", "VDD_IO")], power_rails_config=cfg)
         self.assertEqual(vc["min_for_vol"], 467)
+
+    def test_rail_estimate_beyond_the_i2c_range_is_not_checked(self):
+        reg = {"output_rail": "VDD", "estimated_vout": 49.4}
+        self.assertIsNone(_vol([("5.1k", "VDD")], regulators=[reg]))
+        reg = {"output_rail": "VDD", "estimated_vout": 5.0}
+        self.assertEqual(_vol([("1k", "VDD")], regulators=[reg])["min_for_vol"], 1533)
 
     def test_usb_data_line_is_not_a_5v_pull_up_rail(self):
         self.assertEqual(_estimate_rail_voltage("USB_FS_DM"), 5.0)  # the name parse alone would say 5 V
