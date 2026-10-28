@@ -1280,7 +1280,8 @@ def run_analyses(ctx: AnalysisContext, parsed: dict, path: str, nets: dict, bom:
     assembly_complexity = analyze_assembly_complexity(all_components)
     usb_compliance = analyze_usb_compliance(ctx, signal_analysis)
     inrush_analysis = analyze_inrush_current(ctx, signal_analysis)
-    protocol_compliance = analyze_protocol_compliance(all_components, nets, design_analysis, signal_analysis, pin_net)
+    protocol_compliance = analyze_protocol_compliance(all_components, nets, design_analysis, signal_analysis, pin_net,
+                                                      ctx=ctx)
 
     return SchematicAnalyses(
         subcircuits=subcircuits,

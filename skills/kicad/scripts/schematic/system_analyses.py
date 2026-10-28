@@ -1027,8 +1027,12 @@ def analyze_voltage_derating(ctx: AnalysisContext, signal_analysis: dict,
 
 def analyze_protocol_compliance(components: list[dict], nets: dict,
                                 design_analysis: dict, signal_analysis: dict,
-                                pin_net: dict) -> dict:
-    """Validate electrical characteristics of detected communication buses."""
+                                pin_net: dict, *, ctx: AnalysisContext | None = None) -> dict:
+    """Validate electrical characteristics of detected communication buses.
+
+    The I2C VOL check reads pull-up rail voltages from ``ctx``'s rail map and is
+    skipped without a context.
+    """
     # EQ-063: t_rise = 0.8473 × R × C (I2C rise time estimation)
     buses = design_analysis.get("bus_analysis", {})
     cross_domain = design_analysis.get("cross_domain_signals", [])
@@ -1111,36 +1115,32 @@ def analyze_protocol_compliance(components: list[dict], nets: dict,
                     if mismatched:
                         issues.append(f"Pull-up rail {pu_rail} ({pu_voltage}V) but device(s) on "
                                       f"{', '.join(f'{v}V' for v in mismatched)} — voltage mismatch")
-            # KH: I2C open-drain VOL compatibility
-            # I2C spec: VOL_max = 0.4V for standard/fast mode
-            # With pull-up R and sink current I_OL: VOL = I_OL × R_on
-            # If pull-up too strong (low R) relative to device sink current,
-            # VOL may exceed 0.4V threshold
-            if sda_pullups:
-                min_pu_ohms = min(pu.get("ohms", 10000) for pu in sda_pullups)
-                # I2C spec sink current: 3mA standard, 6mA fast, 20mA fast+
-                # Derive speed mode from rise time checks
-                speed = "standard"
-                if "rise_time" in checks:
-                    rt = checks["rise_time"]
-                    sda_rt = rt.get("sda", {})
-                    if sda_rt.get("valid_400khz"):
-                        speed = "fast"
-                iol_ma = {"standard": 3, "fast": 6, "fast_plus": 20,
-                          "high_speed": 20}.get(speed, 3)
-                # Max pull-up for VOL < 0.4V: R_max = 0.4V / I_OL
-                r_max_for_vol = 0.4 / (iol_ma * 1e-3) if iol_ma > 0 else 10000
-                if min_pu_ohms > r_max_for_vol:
-                    issues.append(
-                        f"Pull-up {min_pu_ohms:.0f}\u03a9 may not meet VOL<0.4V spec "
-                        f"at {speed} mode ({iol_ma}mA sink): max {r_max_for_vol:.0f}\u03a9")
-                    checks["vol_compatibility"] = {
-                        "status": "warning",
-                        "pull_up_ohms": min_pu_ohms,
-                        "max_for_vol": round(r_max_for_vol),
-                        "iol_ma": iol_ma,
-                        "speed_mode": speed,
-                    }
+            # UM10204 eq. 1 and Table 10: Rp(min) = (VDD - 0.4 V) / 3 mA in Standard and
+            # Fast mode. The fitted pull-ups on the line sink together, so they combine
+            # as one Thevenin source.
+            vol_pullups = [pu for pu in sda_pullups if ctx and pu.get("ohms", 0) > 0
+                           and not ctx.comp_lookup.get(pu.get("ref"), {}).get("dnp")]
+            vol_rails = [ctx.rail_voltage(pu.get("to_rail")) for pu in vol_pullups]
+            if vol_pullups and all(v is not None for v in vol_rails):
+                g_total = sum(1 / pu["ohms"] for pu in vol_pullups)
+                r_pu = 1 / g_total
+                v_pu = r_pu * sum(v / pu["ohms"] for v, pu in zip(vol_rails, vol_pullups))
+                iol_ma = 3
+                speed = "fast" if checks.get("rise_time", {}).get("sda", {}).get("valid_400khz") else "standard"
+                if v_pu > 0.4:
+                    r_min = (v_pu - 0.4) / (iol_ma * 1e-3)
+                    if r_pu < r_min:
+                        issues.append(
+                            f"SDA pull-up {r_pu:.0f}\u03a9 to {v_pu:g}V is below the "
+                            f"{r_min:.0f}\u03a9 minimum for VOL \u2264 0.4V at {iol_ma}mA sink")
+                        checks["vol_compatibility"] = {
+                            "status": "warning",
+                            "pull_up_ohms": round(r_pu),
+                            "min_for_vol": round(r_min),
+                            "pull_up_voltage": round(v_pu, 3),
+                            "iol_ma": iol_ma,
+                            "speed_mode": speed,
+                        }
 
             # I2C bus current budget
             # Each device on the bus contributes leakage current (typically 1-10µA)
