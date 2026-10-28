@@ -214,6 +214,16 @@ class LedStrings(unittest.TestCase):
                              ["LED resistor R1: power dissipation 436mW"], top_r)
 
 
+    def test_dissipation_once_when_string_leds_number_pins_differently(self):
+        # +12V -> R1 100R -> D1 -> D2 -> GND, D2 with its anode on pin 1.
+        ctx = _ctx([_led("D1"), _led("D2"), _r("R1", "100")],
+                   {"+12V": [_p("R1", "1")], "N0": [_p("R1", "2"), _p("D1", "2")],
+                    "N1": [_p("D1", "1"), _p("D2", "1")], "GND": [_p("D2", "2")]}, {"+12V", "GND"})
+        # (12 V - 2 x 1.8 V) / 100 Ohm = 84 mA; P = 0.084^2 x 100 = 706 mW
+        self.assertEqual([f["summary"] for f in _lr(ctx) if f["severity"] == "info"],
+                         ["LED resistor R1: power dissipation 706mW"])
+
+
 class SharedLedNode(unittest.TestCase):
     def test_power_named_led_node_is_not_a_rail(self):
         from detector_helpers import is_led_rail

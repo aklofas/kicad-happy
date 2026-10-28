@@ -1261,7 +1261,7 @@ def validate_led_resistors(ctx: AnalysisContext) -> list[dict]:
                     **config_extra))
 
             power_w = (current_ma / 1000) ** 2 * sr['ohms']
-            if power_w > 0.25 and ref == string[0]:  # once per string
+            if power_w > 0.25 and ref == min(string):  # once per string, whichever LED starts it
                 findings.append(make_finding(
                     detector='validate_led_resistors', rule_id='LR-001', category='component_integrity',
                     summary=f'LED resistor {sr["ref"]}: power dissipation {power_w*1000:.0f}mW',
