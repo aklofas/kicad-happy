@@ -24,6 +24,7 @@ from spice_models import (
     get_generic_models,
     get_ideal_opamp,
     spice_element_for_passive,
+    spice_passive_name,
     _sanitize_net,
     _format_eng,
     spice_ident,
@@ -197,24 +198,24 @@ def generate_rc_filter(det, output_file, context=None, parasitics=None):
         if has_parasitics:
             # R → trace_R → C (parasitic between R output and C input)
             mid = f"{out_net}_trace"
-            r_line = spice_element_for_passive(r_ref, r_ohms, in_net, mid)
+            r_line = spice_element_for_passive(r_ref, r_ohms, in_net, mid, "R")
             trace_r, trace_note = _get_parasitic_lines(parasitics, det.get("output_net", ""), mid, out_net)
             if trace_r:
                 parasitic_lines = trace_r
                 parasitic_note = trace_note
             else:
                 # No parasitic for this net — connect directly
-                r_line = spice_element_for_passive(r_ref, r_ohms, in_net, out_net)
-            c_line = spice_element_for_passive(c_ref, c_farads, out_net, "0")
+                r_line = spice_element_for_passive(r_ref, r_ohms, in_net, out_net, "R")
+            c_line = spice_element_for_passive(c_ref, c_farads, out_net, "0", "C")
         else:
-            r_line = spice_element_for_passive(r_ref, r_ohms, in_net, out_net)
-            c_line = spice_element_for_passive(c_ref, c_farads, out_net, "0")
+            r_line = spice_element_for_passive(r_ref, r_ohms, in_net, out_net, "R")
+            c_line = spice_element_for_passive(c_ref, c_farads, out_net, "0", "C")
     elif ftype == "high-pass":
-        c_line = spice_element_for_passive(c_ref, c_farads, in_net, out_net)
-        r_line = spice_element_for_passive(r_ref, r_ohms, out_net, "0")
+        c_line = spice_element_for_passive(c_ref, c_farads, in_net, out_net, "C")
+        r_line = spice_element_for_passive(r_ref, r_ohms, out_net, "0", "R")
     else:
-        r_line = spice_element_for_passive(r_ref, r_ohms, in_net, out_net)
-        c_line = spice_element_for_passive(c_ref, c_farads, out_net, "0")
+        r_line = spice_element_for_passive(r_ref, r_ohms, in_net, out_net, "R")
+        c_line = spice_element_for_passive(c_ref, c_farads, out_net, "0", "C")
 
     model_note = "* Model: ideal passives (exact for RC)"
     if parasitic_lines:
@@ -280,8 +281,8 @@ def generate_lc_filter(det, output_file, context=None, parasitics=None):
 
 * Topology: source → R_esr → L → shared_net, C from shared_net → gnd
 R_{spice_ident(l_ref)}_esr {in_net} {in_net}_mid {_format_eng(r_series)}
-{spice_element_for_passive(l_ref, l_henries, in_net + "_mid", shared)}
-{spice_element_for_passive(c_ref, c_farads, shared, "0")}
+{spice_element_for_passive(l_ref, l_henries, in_net + "_mid", shared, "L")}
+{spice_element_for_passive(c_ref, c_farads, shared, "0", "C")}
 
 * AC stimulus
 VAC {in_net} 0 DC 0 AC 1
@@ -347,8 +348,8 @@ def generate_voltage_divider(det, output_file, vin=3.3, context=None, parasitics
 * Model: ideal passives (exact, unloaded)
 
 VIN {top_net} 0 DC {vin}
-{spice_element_for_passive(rt_ref, rt_ohms, top_net, mid_net)}
-{spice_element_for_passive(rb_ref, rb_ohms, mid_net, "0")}
+{spice_element_for_passive(rt_ref, rt_ohms, top_net, mid_net, "R")}
+{spice_element_for_passive(rb_ref, rb_ohms, mid_net, "0", "R")}
 """
 
     analyses = [("op", "")]
@@ -431,14 +432,14 @@ def generate_opamp_circuit(det, output_file, context=None, parasitics=None,
     rf = det.get("feedback_resistor")
     if rf:
         netlist_lines.append(
-            spice_element_for_passive(rf["ref"], rf["ohms"], out_net, neg_net)
+            spice_element_for_passive(rf["ref"], rf["ohms"], out_net, neg_net, "R")
         )
 
     # Feedback capacitor (integrator/compensator) — skip absurd values
     fc = det.get("feedback_capacitor")
     if fc and fc["farads"] < 1.0:  # >1F is not a real capacitor
         netlist_lines.append(
-            spice_element_for_passive(fc["ref"], fc["farads"], out_net, neg_net)
+            spice_element_for_passive(fc["ref"], fc["farads"], out_net, neg_net, "C")
         )
 
     # Input resistor: from signal input to inverting input
@@ -446,7 +447,7 @@ def generate_opamp_circuit(det, output_file, context=None, parasitics=None,
     if ri:
         in_net = "sig_in"
         netlist_lines.append(
-            spice_element_for_passive(ri["ref"], ri["ohms"], in_net, neg_net)
+            spice_element_for_passive(ri["ref"], ri["ohms"], in_net, neg_net, "R")
         )
     else:
         in_net = "sig_in"
@@ -465,9 +466,9 @@ def generate_opamp_circuit(det, output_file, context=None, parasitics=None,
             # Input resistor is actually the ground-leg resistor
             # Already placed above from sig_in to neg_net — need to fix:
             # it should be from neg_net to ground
-            netlist_lines = [l for l in netlist_lines if not l.startswith(spice_ident(ri["ref"]))]
+            netlist_lines = [l for l in netlist_lines if not l.startswith(spice_passive_name(ri["ref"], "R"))]
             netlist_lines.append(
-                spice_element_for_passive(ri["ref"], ri["ohms"], neg_net, ref_node)
+                spice_element_for_passive(ri["ref"], ri["ohms"], neg_net, ref_node, "R")
             )
     elif config == "inverting":
         stim_net = in_net
@@ -698,8 +699,8 @@ C0 xtal1 xtal2 {_format_eng(c0)}
 Rxtal xtal1 xtal1_int 0.001
 
 * Load capacitors
-{spice_element_for_passive(c1['ref'], c1['farads'], 'xtal1', '0')}
-{spice_element_for_passive(c2['ref'], c2['farads'], 'xtal2', '0')}
+{spice_element_for_passive(c1['ref'], c1['farads'], 'xtal1', '0', "C")}
+{spice_element_for_passive(c2['ref'], c2['farads'], 'xtal2', '0', "C")}
 
 * AC stimulus across crystal to measure impedance
 VAC xtal1 xtal1_drv DC 0 AC 1
@@ -835,6 +836,23 @@ def _infer_negative_rail(net_name):
     return None
 
 
+def _rail_name_voltage(net_name):
+    """Positive voltage written in a rail's name: '+3V3', '5V0', '+3.3V',
+    '+5VA', 'VCC_1V8', '/PWR/12V' -> the number; 'VCC', 'VBUS', '-5V',
+    'USB2VBUS' -> None. Only the leaf's '_'-separated tokens that begin with
+    the number count, so a number that is not a voltage is not read as one."""
+    leaf = (net_name or "").rsplit("/", 1)[-1].upper().strip()
+    for tok in re.split(r"[_\s]+", leaf):
+        m = re.fullmatch(r"\+?(\d+)V(\d*)[A-Z]*", tok)
+        v = float(f"{m.group(1)}.{m.group(2) or 0}") if m else None
+        m = re.fullmatch(r"\+?(\d+\.\d+)V[A-Z]*", tok)
+        if m:
+            v = float(m.group(1))
+        if v:
+            return v
+    return None
+
+
 def _infer_voltage(net_name, default=3.3):
     """Try to guess a voltage from a power rail net name.
 
@@ -906,8 +924,8 @@ def generate_feedback_network(det, output_file, vin=3.3, context=None, parasitic
 * Model: ideal passives (exact, unloaded)
 
 VIN {top_net} 0 DC {vin}
-{spice_element_for_passive(rt_ref, rt_ohms, top_net, mid_net)}
-{spice_element_for_passive(rb_ref, rb_ohms, mid_net, "0")}
+{spice_element_for_passive(rt_ref, rt_ohms, top_net, mid_net, "R")}
+{spice_element_for_passive(rb_ref, rb_ohms, mid_net, "0", "R")}
 """
 
     analyses = [("op", "")]
@@ -1024,7 +1042,8 @@ Vgate {gate} 0 DC {vdd}
             ("id", "let", "i(VDD)"),
             ("vg", "let", f"v({gate})"),
             ("vth", "when", "abs(id)", "1m"),
-            ("i_on", "let", "abs(vecmax(id))", True),
+            # i(VDD) is negative while sourcing, so take the largest magnitude
+            ("i_on", "let", "vecmax(abs(id))", True),
         ]
         extra = {"vdd": str(vdd)}
 
@@ -1186,7 +1205,7 @@ def generate_current_sense(det, output_file, context=None, parasitics=None):
 * Expected max current at 100mV: {spice_text(max_100)} A
 * Model: ideal resistor (exact)
 
-{spice_element_for_passive(r_ref, r_ohms, "sense_hi", "0")}
+{spice_element_for_passive(r_ref, r_ohms, "sense_hi", "0", "R")}
 
 * Apply known current and measure voltage drop
 I1 sense_hi 0 DC {_format_eng(i_at_50mv)}
@@ -1320,7 +1339,7 @@ def generate_decoupling(det, output_file, context=None, parasitics=None):
         n2 = f"n_lpar_{i}"
         cap_lines.append(f"R_esr_{spice_ident(ref)} rail {n1} {_format_eng(esr)}")
         cap_lines.append(f"L_par_{spice_ident(ref)} {n1} {n2} {_format_eng(l_par)}")
-        cap_lines.append(f"{spice_ident(ref)} {n2} 0 {_format_eng(farads)}")
+        cap_lines.append(f"{spice_passive_name(ref, 'C')} {n2} 0 {_format_eng(farads)}")
 
     cap_netlist = "\n".join(cap_lines)
     n_caps = len(valid_caps)
@@ -1388,12 +1407,19 @@ def generate_regulator_feedback(det, output_file, context=None, parasitics=None)
     reg_ref = det.get("ref", "?")
     topology = fd.get("topology", "standard")
 
-    # Infer Vout from output rail name, or use estimated_vout
-    vin = _infer_voltage(output_rail, default=None)
+    # Vout from a voltage written in the rail's name; else a guess from the
+    # name, the analyzer's estimate or 3.3 V, which the evaluator does not compare
+    vin = _rail_name_voltage(output_rail)
+    vin_from = "rail_name"
+    if vin is None:
+        vin = _infer_voltage(output_rail, default=None)
+        vin_from = "rail_default"
     if vin is None and estimated_vout:
         vin = estimated_vout
+        vin_from = "estimated"
     if vin is None:
         vin = 3.3  # fallback
+        vin_from = "fallback"
 
     expected_vfb = vin * ratio
     mid_net = "fb_net"
@@ -1406,17 +1432,16 @@ def generate_regulator_feedback(det, output_file, context=None, parasitics=None)
 * Model: ideal passives (exact for DC divider)
 
 VIN out_rail 0 DC {vin}
-{spice_element_for_passive(rt_ref, rt_ohms, "out_rail", mid_net)}
-{spice_element_for_passive(rb_ref, rb_ohms, mid_net, "0")}
+{spice_element_for_passive(rt_ref, rt_ohms, "out_rail", mid_net, "R")}
+{spice_element_for_passive(rb_ref, rb_ohms, mid_net, "0", "R")}
 """
 
     analyses = [("op", "")]
     measurements = [
         ("vfb_sim", "let", f"v({mid_net})", True),
-        ("expected", "let", str(expected_vfb)),
-        ("error_pct", "let", "abs(vfb_sim - expected) / expected * 100", True),
     ]
-    extra = {"expected": str(expected_vfb), "vin": str(vin), "vref": str(vref or 0)}
+    extra = {"expected": str(expected_vfb), "vin": str(vin), "vref": str(vref or 0),
+             "vin_from": vin_from}
 
     return SpiceTestbench(circuit, analyses, measurements, extra)
 
@@ -1447,6 +1472,8 @@ def generate_rf_matching(det, output_file, context=None, parasitics=None):
 
     if len(valid) < 2:
         return None
+    if topology in ("L_match", "pi_match", "T_match"):
+        raise ValueError(f"{topology} has shunt elements; the series-chained bench does not model it")
 
     # Build series L/C network: antenna_port → components → ic_port
     # For impedance measurement, connect all components in series from
@@ -1456,8 +1483,9 @@ def generate_rf_matching(det, output_file, context=None, parasitics=None):
     for i, c in enumerate(valid):
         ref = c["ref"]
         next_net = f"n{i+1}" if i < len(valid) - 1 else "0"
-        val = c.get("farads") or c.get("henries") or c.get("ohms")
-        netlist_lines.append(spice_element_for_passive(ref, val, prev_net, next_net))
+        kind, val = next((k, c[key]) for k, key in (("C", "farads"), ("L", "henries"), ("R", "ohms"))
+                         if c.get(key))
+        netlist_lines.append(spice_element_for_passive(ref, val, prev_net, next_net, kind))
         prev_net = next_net
 
     comp_netlist = "\n".join(netlist_lines)
@@ -1525,7 +1553,7 @@ def generate_inrush(det, output_file, context=None, parasitics=None):
     # Build parallel caps
     cap_lines = []
     for i, c in enumerate(valid_caps):
-        cap_lines.append(f"{spice_ident(c['ref'])} out 0 {_format_eng(c['farads'])}")
+        cap_lines.append(f"{spice_passive_name(c['ref'], 'C')} out 0 {_format_eng(c['farads'])}")
     cap_netlist = "\n".join(cap_lines)
     cap_refs = [c["ref"] for c in valid_caps[:5]]
     total_uf = sum(c["farads"] for c in valid_caps) * 1e6
@@ -1537,8 +1565,9 @@ def generate_inrush(det, output_file, context=None, parasitics=None):
 
 * Voltage source with linear ramp (soft-start) — 10us delay before ramp
 Vreg ramp 0 PWL(0 0 10u 0 {_format_eng(ramp_time + 10e-6)} {v_out})
-* Regulator output impedance
-Rout ramp out {_format_eng(r_out)}
+* Regulator output impedance; 0 V source in series measures the current
+Rout ramp sense {_format_eng(r_out)}
+Vsense sense out DC 0
 
 * Output capacitors
 {cap_netlist}
@@ -1546,9 +1575,11 @@ Rout ramp out {_format_eng(r_out)}
 
     analyses = [("tran", f"{_format_eng(ramp_time / 500)} {_format_eng(sim_time)}")]
     measurements = [
-        ("i_out", "let", "abs(i(Rout))"),
+        ("i_out", "let", "abs(i(Vsense))"),
         ("i_peak", "let", "vecmax(i_out)", True),
-        ("t_peak", "let", "i_out[vecmin(abs(i_out - i_peak))]", True),
+        # first time the current reaches the peak (within 0.1 %): a soft-start ramp holds a plateau
+        ("i_tgt", "let", "i_peak * 0.999"),
+        ("t_peak", "when", "i_out", "i_tgt", "rise=1"),
         ("v_settled", "find", "v(out)", f"at={_format_eng(sim_time * 0.9)}"),
     ]
     extra = {"v_target": str(v_out), "r_out": str(r_out)}
@@ -1559,9 +1590,9 @@ Rout ramp out {_format_eng(r_out)}
 def generate_bridge_circuit(det, output_file, context=None, parasitics=None):
     """Generate testbench for a half-bridge circuit.
 
-    For each half-bridge, verifies that the high-side and low-side FETs
-    can be turned on independently by sweeping gate voltage and checking
-    drain current.
+    Sweeps the low-side FET's gate with the high side held off and a load
+    from the supply to the switch node, measuring the low side's turn-on
+    threshold and on-state current.
 
     Args:
         det: Finding dict from findings[] — detector:bridge_circuits[] with keys:
@@ -1583,6 +1614,8 @@ def generate_bridge_circuit(det, output_file, context=None, parasitics=None):
     lo_ref = hb["low_side"]
     hi_type = hb.get("high_side_type", "NMOS")
     lo_type = hb.get("low_side_type", "NMOS")
+    if lo_type == "PMOS":
+        raise ValueError("P-channel low side: not a half bridge the bench can drive (a power mux)")
 
     hi_model = "PMOS_GENERIC" if hi_type == "PMOS" else "NMOS_GENERIC"
     lo_model = "PMOS_GENERIC" if lo_type == "PMOS" else "NMOS_GENERIC"
@@ -1596,6 +1629,13 @@ def generate_bridge_circuit(det, output_file, context=None, parasitics=None):
         if v and v > 0:
             v_supply = v
 
+    if hi_type == "PMOS":
+        hi_line = (f"M{spice_ident(hi_ref)} mid hi_gate vdd vdd {hi_model} L=1u W=100u\n"
+                   "Rhi_gnd hi_gate vdd 100k")
+    else:
+        hi_line = (f"M{spice_ident(hi_ref)} vdd hi_gate mid mid {hi_model} L=1u W=100u\n"
+                   "Rhi_gnd hi_gate 0 100k")
+
     circuit = f"""\
 * Auto-generated testbench for bridge circuit: {spice_text(topology)}
 * Half-bridge: {spice_text(hi_ref)} (high, {spice_text(hi_type)}) / {spice_text(lo_ref)} (low, {spice_text(lo_type)})
@@ -1608,12 +1648,11 @@ VDD vdd 0 DC {v_supply}
 
 * Low-side FET: gate swept, drain to mid, source to ground
 M{spice_ident(lo_ref)} mid lo_gate 0 0 {lo_model} L=1u W=100u
-* High-side kept off (gate tied to source/ground)
-M{spice_ident(hi_ref)} vdd hi_gate mid mid {hi_model} L=1u W=100u
-Rhi_gnd hi_gate {"mid" if hi_type == "PMOS" else "0"} 100k
+* High-side kept off: a P-channel's source and bulk sit at the supply, gate tied to it
+{hi_line}
 
-* Load resistor at output
-Rload mid 0 100
+* Load from the supply to the switch node: the low side conducts through it
+Rload vdd mid 100
 
 * Gate sweep source
 Vgate lo_gate 0 DC 0
@@ -1623,7 +1662,8 @@ Vgate lo_gate 0 DC 0
     measurements = [
         ("id_lo", "let", "abs(i(VDD))"),
         ("vth_lo", "when", "id_lo", "100u"),
-        ("id_on", "find", "id_lo", f"at={v_supply}"),
+        # inside the sweep: its endpoint is out of the measurement's interval
+        ("id_on", "find", "id_lo", f"at={v_supply * 0.99}"),
     ]
     extra = {"v_supply": str(v_supply), "topology": topology}
 
@@ -1677,7 +1717,7 @@ def generate_bms_balance(det, output_file, context=None, parasitics=None):
 * Worst-case: 4.2V fully-charged Li-ion cell
 
 Vcell cell 0 DC 4.2
-{spice_ident(r_ref)} cell 0 {_format_eng(r_ohms)}
+{spice_passive_name(r_ref, "R")} cell 0 {_format_eng(r_ohms)}
 """
 
     analyses = [("op", "")]
@@ -1731,8 +1771,8 @@ def generate_snubber(det, output_file, context=None, parasitics=None):
 * R={_format_eng(r_ohms)} ohm, C={_format_eng(c_farads)} F
 * Analytical: tau={_format_eng(tau)}s, f_snub={f_analytical:.1f} Hz
 
-{spice_ident(r_ref)} drain mid {_format_eng(r_ohms)}
-{spice_ident(c_ref)} mid 0 {_format_eng(c_farads)}
+{spice_passive_name(r_ref, "R")} drain mid {_format_eng(r_ohms)}
+{spice_passive_name(c_ref, "C")} mid 0 {_format_eng(c_farads)}
 
 * AC current source — V(drain) = Z(f)
 IAC 0 drain DC 0 AC 1

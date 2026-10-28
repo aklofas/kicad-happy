@@ -232,7 +232,8 @@ def evaluate_voltage_divider(det, sim_results):
             result["delta"]["vout_error_pct"] = round(err, 3)
             result["status"] = "pass" if err < 0.1 else "warn" if err < 1 else "fail"
         else:
-            result["status"] = "pass"
+            result["status"] = "info"
+            result["note"] = "No expected output voltage to compare — reporting the simulated value"
 
     return result
 
@@ -498,7 +499,8 @@ def evaluate_feedback_network(det, sim_results):
             result["delta"]["vout_error_pct"] = round(err, 3)
             result["status"] = "pass" if err < 0.1 else "warn" if err < 1 else "fail"
         else:
-            result["status"] = "pass"
+            result["status"] = "info"
+            result["note"] = "No expected output voltage to compare — reporting the simulated value"
 
     return result
 
@@ -744,8 +746,10 @@ def evaluate_decoupling(det, sim_results):
 def evaluate_regulator_feedback(det, sim_results):
     """Evaluate regulator feedback divider simulation results.
 
-    Checks that the simulated FB voltage matches the expected Vref,
-    confirming the regulator's output voltage setpoint.
+    With the rail at the voltage its name carries, the divider must put the
+    part's reference voltage on FB (across OUT-ADJ for an LM317-family
+    regulator). Compared only when Vref comes from the part (lookup table or
+    datasheet) and the rail's name carries its voltage; otherwise `info`.
     """
     fd = det.get("feedback_divider", {})
     r_top = fd.get("r_top", {}) if isinstance(fd.get("r_top"), dict) else {}
@@ -754,7 +758,6 @@ def evaluate_regulator_feedback(det, sim_results):
     vref = det.get("assumed_vref")
 
     vfb_sim = sim_results.get("vfb_sim")
-    error_pct = sim_results.get("error_pct")
     expected = sim_results.get("expected")
     vin = sim_results.get("vin")
 
@@ -782,20 +785,33 @@ def evaluate_regulator_feedback(det, sim_results):
 
     result["simulated"]["vfb_V"] = round(vfb_sim, 4)
 
-    if error_pct is not None:
-        result["delta"]["vfb_error_pct"] = round(error_pct, 3)
-        if error_pct < 0.1:
-            result["status"] = "pass"
-        elif error_pct < 1:
-            result["status"] = "warn"
-            result["note"] = f"{error_pct:.2f}% error in feedback voltage"
-        else:
-            result["status"] = "fail"
-            result["note"] = f"{error_pct:.1f}% error — regulator output voltage may be wrong"
+    vref_source = det.get("vref_source")
+    if vref_source not in ("lookup", "datasheet") or not vref:
+        why = "Vref is not from the part"
+    elif sim_results.get("vin_from") != "rail_name" or not vin:
+        why = "the rail's name carries no voltage"
     else:
-        result["status"] = "pass"
-        result["note"] = "Feedback divider simulated"
+        why = None
+    if why:
+        result["status"] = "info"
+        result["note"] = f"Divider simulated; not compared against Vref ({why})"
+        return result
 
+    out_adj = fd.get("reference") == "out_adj"
+    # LM317 family: Vref sits across OUT-ADJ, so the reference is Vout - V(ADJ)
+    v_ref_sim = float(vin) - vfb_sim if out_adj else vfb_sim
+    err = abs(v_ref_sim - vref) / vref * 100
+    result["delta"]["vfb_vs_vref_pct"] = round(err, 2)
+    # E96 rounding plus 1 % resistors stay within 2 %
+    if err <= 2:
+        result["status"] = "pass"
+    elif err <= 5:
+        result["status"] = "warn"
+        result["note"] = f"FB voltage at the rail's named voltage is {err:.1f}% from Vref {vref} V"
+    else:
+        result["status"] = "fail"
+        result["note"] = (f"FB voltage at the rail's named voltage is {err:.1f}% from Vref {vref} V"
+                          " — the divider sets a different output")
     return result
 
 
@@ -803,7 +819,7 @@ def evaluate_rf_matching(det, sim_results):
     """Evaluate RF matching network simulation results.
 
     Reports impedance profile — minimum impedance and key frequency points.
-    Without a target frequency, evaluation is informational (pass/warn only).
+    Without a target frequency there is no acceptance criterion: `info`.
     """
     comps = det.get("components", [])
     topology = det.get("topology", "?")
@@ -842,7 +858,7 @@ def evaluate_rf_matching(det, sim_results):
         return result
 
     # Informational — without a target frequency we can only report the profile
-    result["status"] = "pass"
+    result["status"] = "info"
     if f_at_zmin is not None and z_min is not None:
         result["note"] = f"Z_min={z_min:.3f}Ω at {f_at_zmin/1e6:.1f}MHz"
     else:
@@ -891,7 +907,10 @@ def evaluate_bridge_circuit(det, sim_results):
         return result
 
     result["status"] = "pass"
-    if id_on is not None and id_on < 1e-6:
+    if vth_lo is None:
+        result["status"] = "warn"
+        result["note"] = "not measured: low-side turn-on threshold not found in the sweep"
+    elif id_on is not None and id_on < 1e-6:
         result["status"] = "warn"
         result["note"] = "Very low on-state current — FET may not be switching"
     else:
@@ -945,11 +964,12 @@ def evaluate_inrush(det, sim_results):
         v_err = abs(v_settled - float(v_target)) / float(v_target) * 100
         result["delta"]["v_settle_error_pct"] = round(v_err, 2)
 
+    if i_peak is None:
+        result["status"] = "warn"
+        result["note"] = "not measured: inrush current not available from the simulation"
+        return result
     result["status"] = "pass"
-    if i_peak is not None:
-        result["note"] = f"Peak inrush {i_peak*1000:.1f}mA at {t_peak*1e6:.0f}µs" if t_peak else f"Peak inrush {i_peak*1000:.1f}mA"
-    else:
-        result["note"] = "Transient simulated"
+    result["note"] = f"Peak inrush {i_peak*1000:.1f}mA at {t_peak*1e6:.0f}µs" if t_peak else f"Peak inrush {i_peak*1000:.1f}mA"
 
     return result
 

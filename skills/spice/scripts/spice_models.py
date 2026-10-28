@@ -164,19 +164,32 @@ def spice_ident(s):
                    for ch in str(s))
 
 
-def spice_element_for_passive(ref, value_si, net1, net2):
+def spice_passive_name(ref, kind):
+    """Element name for a passive of *kind* ('R', 'C' or 'L').
+
+    SPICE reads the element type from the name's first letter, so a
+    designator that starts with another letter is prefixed by the kind
+    ('VR1' -> 'R_VR1'); 'R5' stays 'R5'.
+    """
+    name = spice_ident(ref)
+    return name if name[:1].upper() == kind else f"{kind}_{name}"
+
+
+def spice_element_for_passive(ref, value_si, net1, net2, kind):
     """Generate a SPICE line for a passive component (R, C, or L).
 
     Args:
-        ref: Component reference (e.g., 'R5', 'C3', 'L1')
+        ref: Component reference (e.g., 'R5', 'C3', 'L1', 'VR1')
         value_si: Value in SI base units (ohms, farads, henries)
         net1: First net name
         net2: Second net name
+        kind: 'R', 'C' or 'L'
 
     Returns:
         SPICE element string, e.g., 'R5 net_in net_out 10k'
     """
-    return f"{spice_ident(ref)} {_sanitize_net(net1)} {_sanitize_net(net2)} {_format_eng(value_si)}"
+    return (f"{spice_passive_name(ref, kind)} {_sanitize_net(net1)} {_sanitize_net(net2)} "
+            f"{_format_eng(value_si)}")
 
 
 def _sanitize_net(name):

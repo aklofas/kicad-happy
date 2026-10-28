@@ -143,13 +143,13 @@ The script selects subcircuits from the analyzer's `findings[]` array (grouped b
 | `current_sense` | DC operating point | Current at 50mV/100mV drop | Exact (ideal resistor) | High |
 | `protection_devices` | DC sweep | Diode presence, clamping onset | Approximate (generic diode) | Low |
 | `decoupling_analysis` | AC impedance | PDN impedance profile | Exact + ESR estimates | High for passives |
-| `power_regulators` | DC operating point | Feedback divider Vout | Exact (ideal passives) | High |
-| `rf_matching` | AC sweep | Matching network resonance | Exact (ideal L/C) | High |
-| `bridge_circuits` | DC sweep | FET switching verification | Approximate (generic) | Medium |
+| `power_regulators` | DC operating point | FB voltage vs the part's Vref at the rail's named voltage (`info` when Vref is not from the part or the rail name carries no voltage) | Exact (ideal passives) | High |
+| `rf_matching` | AC sweep | Impedance profile (`info`); L/pi/T networks with shunt elements are skipped | Exact (ideal L/C) | Low — series-chained bench |
+| `bridge_circuits` | DC sweep | Low-side turn-on threshold and on-state current | Approximate (generic) | Medium |
 | `snubber_circuits` | AC impedance | Snubber damping frequency | Exact (ideal R/C) | High |
 | `rf_chains` | Gain budget | Per-stage gain/loss estimate | Heuristic | Low — role-based |
 | `bms_systems` | DC operating point | Cell balance resistor validation | Exact | High |
-| `inrush_analysis` | Transient | Inrush current profile | Approximate | Medium |
+| `inrush_analysis` | Transient | Peak inrush current and the time it is first reached | Approximate | Medium |
 
 ### What is NOT simulated
 

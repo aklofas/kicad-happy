@@ -1,0 +1,228 @@
+"""A SPICE `pass` means the check's measurement was taken and is in
+tolerance: inrush measures its current, regulator feedback is compared
+against the part's reference voltage, RF networks the bench cannot model are
+skipped, the half bridge powers its low-side switch, P-channel switches
+report their on-state current, and passives whose designator names another
+element type still simulate as passives. Expected values are hand-derived."""
+import os, shutil, subprocess, sys, tempfile, unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+SPICE = ROOT / "skills" / "spice" / "scripts"
+sys.path.insert(0, str(SPICE))
+
+import spice_results as R  # noqa: E402
+import spice_templates as T  # noqa: E402
+
+
+def _run(gen, ev, det, **kw):
+    """Render the bench, run ngspice in a temp dir, evaluate."""
+    from spice_simulator import NgspiceBackend
+    with tempfile.TemporaryDirectory() as tmp:
+        tb = gen(det, "b.out", **kw)
+        with open(os.path.join(tmp, "b.cir"), "w", encoding="utf-8") as f:
+            f.write(tb.render(NgspiceBackend(), "b.out"))
+        run = subprocess.run(["ngspice", "-b", "b.cir"], cwd=tmp, capture_output=True, text=True,
+                             encoding="utf-8", errors="replace", timeout=60)
+        if run.returncode != 0:
+            raise AssertionError(f"ngspice exited {run.returncode}:\n{run.stdout[-2000:]}{run.stderr[-2000:]}")
+        sim = R.parse_output_file(os.path.join(tmp, "b.out"))
+    return ev(det, sim)
+
+
+def _simulate(findings, types):
+    """Run the full simulate_subcircuits path (records, generator skips)."""
+    import simulate_subcircuits as S
+    from spice_model_cache import ModelOptions
+    with tempfile.TemporaryDirectory() as tmp:
+        report = S.simulate_subcircuits({"findings": findings}, workdir=tmp, types=types,
+                                        model_options=ModelOptions(cache_dir=tmp, offline=True))
+    return report["simulation_results"]
+
+
+def _regulator(r_top, r_bot, rail, vref, vref_source, reference=None, value="TPS54331"):
+    fd = {"r_top": {"ref": "R1", "ohms": r_top}, "r_bottom": {"ref": "R2", "ohms": r_bot},
+          "ratio": r_bot / (r_top + r_bot)}
+    if reference:
+        fd["reference"] = reference
+    return {"detector": "detect_power_regulators", "ref": "U1", "value": value,
+            "output_rail": rail, "assumed_vref": vref, "vref_source": vref_source,
+            "estimated_vout": round(vref / (fd["ratio"] if not reference else 1 - fd["ratio"]), 3),
+            "feedback_divider": fd}
+
+
+@unittest.skipUnless(shutil.which("ngspice"), "ngspice not installed")
+class InrushTest(unittest.TestCase):
+    def test_inrush_current_measured(self):
+        # I = C*dV/dt = 100 uF * 3.3 V / 0.5 ms = 0.660 A; with the 0.1 ohm LDO source
+        # (tau = 10 us) the current reaches 99.9 % after 6.9 tau, ramp starts at 10 us -> 79 us
+        det = {"regulator": "U1", "output_voltage": 3.3, "topology": "LDO",
+               "output_caps": [{"ref": "C1", "farads": 100e-6}], "assumed_soft_start_ms": 0.5,
+               "estimated_inrush_A": 0.66}
+        r = _run(T.generate_inrush, R.evaluate_inrush, det)
+        self.assertEqual(r["status"], "pass")
+        self.assertAlmostEqual(r["simulated"]["i_peak_A"], 0.660, delta=0.0066)
+        self.assertAlmostEqual(r["simulated"]["t_peak_us"], 79.0, delta=3.0)
+
+    def test_inrush_without_current_is_not_a_pass(self):
+        r = R.evaluate_inrush({"regulator": "U1", "output_caps": []},
+                              {"v_settled": 3.3, "v_target": "3.3"})
+        self.assertEqual(r["status"], "warn")
+        self.assertTrue(r["note"].startswith("not measured"))
+
+
+@unittest.skipUnless(shutil.which("ngspice"), "ngspice not installed")
+class RegulatorVrefTest(unittest.TestCase):
+    def _eval(self, det):
+        return _run(T.generate_regulator_feedback, R.evaluate_regulator_feedback, det)
+
+    def test_divider_off_vref_fails(self):
+        # Vfb = 3.3 * 10k/92k = 0.3587 V against Vref 0.8 V: 55.16 % off
+        r = self._eval(_regulator(82e3, 10e3, "+3V3", 0.8, "lookup"))
+        self.assertEqual(r["status"], "fail")
+        self.assertAlmostEqual(r["delta"]["vfb_vs_vref_pct"], 55.16, delta=0.01)
+        self.assertNotIn("vfb_error_pct", r["delta"])
+
+    def test_divider_at_vref_passes(self):
+        # Vfb = 3.3 * 10k/41.6k = 0.7933 V: 0.84 % from 0.8 V
+        r = self._eval(_regulator(31.6e3, 10e3, "+3V3", 0.8, "lookup"))
+        self.assertEqual(r["status"], "pass")
+        self.assertAlmostEqual(r["delta"]["vfb_vs_vref_pct"], 0.84, delta=0.01)
+
+    def test_out_adj_compares_across_out_and_adj(self):
+        # LM338: Vref across OUT-ADJ; 5 - 5*820/1090 = 1.2385 V, 0.92 % from 1.25 V
+        r = self._eval(_regulator(270, 820, "+5V", 1.25, "lookup", reference="out_adj", value="LM338"))
+        self.assertEqual(r["status"], "pass")
+        self.assertAlmostEqual(r["delta"]["vfb_vs_vref_pct"], 0.92, delta=0.01)
+
+    def test_rail_without_voltage_in_name_is_info(self):
+        # VCC is a guess (3.3 V), not a voltage the designer wrote
+        r = self._eval(_regulator(56e3, 10e3, "VCC", 0.595, "lookup", value="TPS61023"))
+        self.assertEqual(r["status"], "info")
+        self.assertNotIn("vfb_vs_vref_pct", r["delta"])
+
+    def test_heuristic_vref_is_info(self):
+        r = self._eval(_regulator(31.6e3, 10e3, "+3V3", 0.8, "heuristic"))
+        self.assertEqual(r["status"], "info")
+
+    def test_carrier_board_lm338_does_not_fail(self):
+        # cl3m3nt0n1 Bridge---Canyon-on-Hardware carrier_board, as the analyzer reports it:
+        # Vout = 1.25 * (1 + 820/270) = 5.05 V, the +5V rail
+        det = {"ref": "U2", "value": "LM338_TO220", "topology": "LDO", "output_rail": "+5V",
+               "assumed_vref": 1.25, "vref_source": "lookup", "estimated_vout": 5.046,
+               "feedback_divider": {"r_top": {"ref": "R1", "ohms": 270.0, "value": "270"},
+                                    "r_bottom": {"ref": "R3", "ohms": 820.0, "value": "820"},
+                                    "ratio": 0.752294, "reference": "out_adj"}}
+        r = self._eval(det)
+        self.assertEqual(r["status"], "pass")
+
+    def test_no_feedback_divider_never_passes(self):
+        # the analyzer drops feedback_divider when a trimmer sets the output
+        det = {"ref": "U1", "value": "LM317", "output_rail": "+5V", "assumed_vref": 1.25,
+               "vref_source": "lookup"}
+        self.assertIsNone(T.generate_regulator_feedback(det, "b.out"))
+        self.assertEqual(R.evaluate_regulator_feedback(det, {})["status"], "skip")
+        self.assertEqual(_simulate([dict(det, detector="detect_power_regulators")],
+                                   ["power_regulators"]), [])
+
+
+@unittest.skipUnless(shutil.which("ngspice"), "ngspice not installed")
+class RfMatchingTest(unittest.TestCase):
+    _COMPS = [{"ref": "C1", "type": "capacitor", "farads": 1e-12},
+              {"ref": "L1", "type": "inductor", "henries": 3.3e-9},
+              {"ref": "C2", "type": "capacitor", "farads": 1e-12}]
+
+    def test_pi_match_is_skipped(self):
+        res = _simulate([{"detector": "detect_rf_matching", "topology": "pi_match",
+                          "components": self._COMPS}], ["rf_matching"])
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0]["status"], "skip")
+        self.assertIn("pi_match has shunt elements", res[0]["note"])
+
+    def test_other_network_reports_info(self):
+        det = {"topology": "matching_network", "components": self._COMPS}
+        r = _run(T.generate_rf_matching, R.evaluate_rf_matching, det)
+        self.assertEqual(r["status"], "info")
+        self.assertIn("z_min_ohms", r["simulated"])
+
+
+@unittest.skipUnless(shutil.which("ngspice"), "ngspice not installed")
+class HalfBridgeTest(unittest.TestCase):
+    def _det(self, lo_type="NMOS"):
+        return {"topology": "half_bridge",
+                "half_bridges": [{"high_side": "Q1", "low_side": "Q2", "power_net": "+12V",
+                                  "ground_net": "GND", "high_side_type": "NMOS",
+                                  "low_side_type": lo_type}]}
+
+    def test_low_side_switch_measured(self):
+        # generic NMOS Vth 1.5 V; on-state current = 12 V / 100 ohm load = 120 mA
+        r = _run(T.generate_bridge_circuit, R.evaluate_bridge_circuit, self._det())
+        self.assertEqual(r["status"], "pass")
+        self.assertAlmostEqual(r["simulated"]["vth_low_side_V"], 1.5, delta=0.1)
+        self.assertAlmostEqual(r["simulated"]["id_on_mA"], 120.0, delta=2.0)
+
+    def test_p_channel_high_side_stays_off(self):
+        # source at the supply, gate tied to it: only the 100 ohm load carries current
+        det = self._det()
+        det["half_bridges"][0]["high_side_type"] = "PMOS"
+        r = _run(T.generate_bridge_circuit, R.evaluate_bridge_circuit, det)
+        self.assertEqual(r["status"], "pass")
+        self.assertAlmostEqual(r["simulated"]["id_on_mA"], 120.0, delta=2.0)
+
+    def test_pmos_low_side_is_skipped(self):
+        with self.assertRaises(ValueError):
+            T.generate_bridge_circuit(self._det("PMOS"), "b.out")
+
+    def test_threshold_not_found_is_not_a_pass(self):
+        r = R.evaluate_bridge_circuit(self._det(), {"vth_lo": None, "id_on": 0.12})
+        self.assertEqual(r["status"], "warn")
+        self.assertTrue(r["note"].startswith("not measured"))
+
+
+@unittest.skipUnless(shutil.which("ngspice"), "ngspice not installed")
+class PChannelTest(unittest.TestCase):
+    def test_on_state_current(self):
+        # P-channel high-side: 3.3 V across the 1 k load when on -> 3.3 mA
+        det = {"reference": "Q1", "type": "mosfet", "value": "AO3401", "is_pchannel": True,
+               "gate_net": "G", "drain_net": "D", "source_net": "+3V3", "load_type": "unknown"}
+        r = _run(T.generate_transistor_circuit, R.evaluate_transistor_circuit, det)
+        self.assertEqual(r["status"], "pass")
+        self.assertAlmostEqual(r["simulated"]["i_on_mA"], 3.3, delta=0.05)
+
+
+@unittest.skipUnless(shutil.which("ngspice"), "ngspice not installed")
+class PassiveElementNameTest(unittest.TestCase):
+    def test_potentiometer_top_is_a_resistor(self):
+        # Vout = 5 V * 1000 / (890 + 1000) = 2.6455 V
+        det = {"r_top": {"ref": "VR1", "ohms": 890.0}, "r_bottom": {"ref": "R2", "ohms": 1000.0},
+               "top_net": "+5V", "mid_net": "MID", "bottom_net": "GND", "ratio": 1000 / 1890}
+        tb = T.generate_voltage_divider(det, "b.out")
+        self.assertIn("\nR_VR1 ", tb.circuit)
+        self.assertIn("\nR2 ", tb.circuit)
+        r = _run(T.generate_voltage_divider, R.evaluate_voltage_divider, det)
+        self.assertEqual(r["status"], "pass")
+        self.assertAlmostEqual(r["simulated"]["vout_V"], 2.6455, delta=0.001)
+
+
+class NoExpectedValueTest(unittest.TestCase):
+    _DIV = {"r_top": {"ref": "R1", "ohms": 10e3}, "r_bottom": {"ref": "R2", "ohms": 10e3},
+            "ratio": 0.5}
+
+    def test_divider_without_expected_is_info(self):
+        r = R.evaluate_voltage_divider(dict(self._DIV), {"vout_sim": 1.65})
+        self.assertEqual(r["status"], "info")
+
+    def test_feedback_network_without_expected_is_info(self):
+        r = R.evaluate_feedback_network(dict(self._DIV), {"vout_sim": 1.65})
+        self.assertEqual(r["status"], "info")
+
+    def test_divider_with_expected_keeps_its_verdict(self):
+        # 3.3 V * 0.5 = 1.65 V expected, 1.65 simulated
+        r = R.evaluate_voltage_divider(dict(self._DIV), {"vout_sim": 1.65, "expected": "1.65"})
+        self.assertEqual(r["status"], "pass")
+        r = R.evaluate_voltage_divider(dict(self._DIV), {"vout_sim": 1.80, "expected": "1.65"})
+        self.assertEqual(r["status"], "fail")
+
+
+if __name__ == "__main__":
+    unittest.main()
