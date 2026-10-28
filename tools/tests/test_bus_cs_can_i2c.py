@@ -143,6 +143,34 @@ class CanTerminationPerBus(unittest.TestCase):
         self.assertEqual(findings[0]["nets"], ["CAN_H1", "CAN_L1"])
 
 
+    def test_bus_only_as_a_diff_pair_beside_tx_rx_is_still_judged(self):
+        x1 = _comp("U7", "ic", "MCP2562", "Interface_CAN_LIN:MCP2562", CAN_XCVR)
+        nets = {"CAN_P": [("U7", "7", "CANH", "bidirectional")],
+                "CAN_N": [("U7", "6", "CANL", "bidirectional")],
+                "CAN_TX": [("U1", "1", "PA4", "bidirectional"), ("U7", "1", "TXD", "input")],
+                "CAN_RX": [("U1", "2", "PA5", "bidirectional"), ("U7", "4", "RXD", "output")]}
+        _, findings = _can_findings([MCU, x1], nets)
+        self.assertEqual([(f["nets"], f["issues"]) for f in findings],
+                         [(["CAN_P", "CAN_N"], ["CAN bus missing 120Ω termination resistor"])])
+
+    def test_dnp_terminator_on_a_diff_pair_is_not_termination(self):
+        x1 = _comp("U7", "ic", "MCP2562", "Interface_CAN_LIN:MCP2562", CAN_XCVR)
+        nets = {"CAN_P": [("U7", "7", "CANH", "bidirectional"), ("R1", "1", "~", "passive")],
+                "CAN_N": [("U7", "6", "CANL", "bidirectional"), ("R1", "2", "~", "passive")]}
+        _, findings = _can_findings([x1, dict(_res("R1", "120"), dnp=True)], nets)
+        self.assertEqual(len(findings), 1)
+        self.assertFalse(findings[0]["has_termination"])
+        self.assertEqual(findings[0]["issues"], ["CAN bus missing 120Ω termination resistor"])
+
+    def test_dnp_terminator_on_a_named_pair_is_not_termination(self):
+        x1 = _comp("U7", "ic", "MCP2562", "Interface_CAN_LIN:MCP2562", CAN_XCVR)
+        nets = {"CAN_H": [("U7", "7", "CANH", "bidirectional"), ("R1", "1", "~", "passive")],
+                "CAN_L": [("U7", "6", "CANL", "bidirectional"), ("R1", "2", "~", "passive")]}
+        term, findings = _can_findings([x1, dict(_res("R1", "120"), dnp=True)], nets)
+        self.assertEqual(term, {"CAN_H": None, "CAN_L": None})
+        self.assertFalse(findings[0]["has_termination"])
+
+
 def _i2c_line(pullup_ohms, n_devices):
     devs = [_comp(f"U{i}", "ic", "TMP102", "Sensor_Temperature:TMP102",
                   [("1", "SDA", "bidirectional"), ("2", "V+", "power_in")]) for i in range(1, n_devices + 1)]

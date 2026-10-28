@@ -983,7 +983,7 @@ def _detect_can_buses(ctx: AnalysisContext) -> list[dict]:
         termination = None
         for p in (nets[canh_net]["pins"] if canh_net in nets else []):
             comp = comp_lookup.get(p["component"])
-            if not comp or comp["type"] != "resistor":
+            if not comp or comp["type"] != "resistor" or comp.get("dnp"):
                 continue
             r_val = parsed_values.get(p["component"])
             if r_val and 100 <= r_val <= 150:
@@ -1308,7 +1308,7 @@ def _detect_differential_pairs(ctx: AnalysisContext) -> list:
                     if protocol == "CAN":
                         term_resistors = []
                         for c in components:
-                            if c["type"] == "resistor":
+                            if c["type"] == "resistor" and not c.get("dnp"):
                                 r_n1 = pin_net.get((c["reference"], "1"), (None, None))[0]
                                 r_n2 = pin_net.get((c["reference"], "2"), (None, None))[0]
                                 if r_n1 and r_n2:
