@@ -199,14 +199,16 @@ class UsbDataNets(unittest.TestCase):
 
     def test_usb_data_net_is_not_a_domain_crossing(self):
         comps = [ic("U5", "MCU5V"), ic("U6", "MCU3V3")]
-        for name in ("USB_D+", "/USB/D-", "USBDP"):
+        for name in ("USB_D+", "/USB/D-", "USBDP", "/usb_c/USB_DN", "USB_DATA_P"):
             self.assertEqual(vm001(ctx_of(comps, self._nets(name), {"+5V", "+3V3", "GND"})), [],
                              name)
 
     def test_non_usb_net_between_the_same_ics_is_still_an_error(self):
+        # USB_DTR (a UART modem line, cheyao icepi-zero FT231X DTR) and USB_DET are not D+/D-
         comps = [ic("U5", "MCU5V"), ic("U6", "MCU3V3")]
-        (f,) = vm001(ctx_of(comps, self._nets("DATA"), {"+5V", "+3V3", "GND"}))
-        self.assertEqual(f["severity"], "error")
+        for name in ("DATA", "~{USB_DTR}", "USB_DET"):
+            (f,) = vm001(ctx_of(comps, self._nets(name), {"+5V", "+3V3", "GND"}))
+            self.assertEqual(f["severity"], "error", name)
 
 
 class IgnoredSupply(unittest.TestCase):

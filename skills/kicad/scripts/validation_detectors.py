@@ -11,6 +11,8 @@ returns a list of rich finding dicts via finding_schema.make_finding(
 
 from __future__ import annotations
 
+import re
+
 from kicad_types import AnalysisContext
 from kicad_core.netnames import is_usb_data_net_name, parse_voltage_from_net_name
 
@@ -570,6 +572,15 @@ def _en_endpoint_compatible(ctx: AnalysisContext, p: dict, net_name: str, v_min:
     return False
 
 
+# USB_DTR, USB_DET: a USB_D marker followed by a letter that spells none of DP/DM/DN/DATA
+_USB_D_NOT_DATA = re.compile(r"USB_D[B-LOQ-Z]")
+
+
+def _is_usb_dp_dm(net_name: str) -> bool:
+    name = net_name.upper()
+    return is_usb_data_net_name(name) and not _USB_D_NOT_DATA.search(name)
+
+
 def validate_voltage_levels(ctx: AnalysisContext, level_shifters: list[dict] | None = None) -> list[dict]:
     """VM-001: Detect signal nets crossing power domain boundaries without level shifting."""
     findings: list[dict] = []
@@ -607,7 +618,7 @@ def validate_voltage_levels(ctx: AnalysisContext, level_shifters: list[dict] | N
         if net_name in shifted_nets:
             continue
         # USB D+/D- swing at most 3.6 V whatever the device supply (USB 2.0, 7.1.1 drivers).
-        if is_usb_data_net_name(net_name.upper()):
+        if _is_usb_dp_dm(net_name):
             continue
 
         ic_pins_on_net = []
