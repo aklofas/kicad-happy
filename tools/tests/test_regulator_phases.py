@@ -10,6 +10,7 @@ from kicad_types import build_analysis_context  # noqa: E402
 from schematic.pipeline import build_rail_map  # noqa: E402
 from signal_detectors import detect_power_regulators  # noqa: E402
 from what_if import _scan_fixable  # noqa: E402
+from detection_schema import _recalc_regulator_feedback  # noqa: E402
 
 EXAMPLE_EXTRACTION = SCRIPTS.parents[1] / "datasheets" / "examples" / "lm2596-adj.json"
 
@@ -237,6 +238,17 @@ class RegulatorPhases(unittest.TestCase):
         self.assertEqual(by_net.get("+5V"), 5.0)
         self.assertEqual(by_net.get("+12V"), 12.0)
 
+    def test_boost_output_with_a_hyphenated_name_is_positive(self):
+        # SX1308 from PSOUT, 73.2k/10k, Vref 0.6 V: 0.6 x 83.2 / 10 = 4.992 V on VCC-5V
+        ctx = _ctx([("U1", "Regulator_Switching:SX1308", "SX1308",
+                     {"1": ("SW", "SW"), "2": ("GND", "GND"), "3": ("FB", "FB"),
+                      "4": ("EN", "PSOUT"), "5": ("IN", "PSOUT")}),
+                    ("L1", "Device:L", "4.7uH", {"1": ("1", "PSOUT"), "2": ("2", "SW")})])
+        r = detect_power_regulators(ctx, [_fb_divider("VCC-5V", 73200.0, 10000.0)])[0]
+        self.assertEqual(r["output_rail"], "VCC-5V")
+        self.assertNotIn("inverting", r)
+        self.assertEqual(r["estimated_vout"], 4.992)
+
     def test_inverting_stage_with_inductor_on_the_input_has_no_output_rail(self):
         # LT1617: L1 from +5V to SW, the negative output sits behind a coupling cap; NFB is not an FB pin
         ctx = _ctx([("U1", "Regulator_Switching:LT1617", "LT1617",
@@ -270,6 +282,22 @@ class RegulatorPhases(unittest.TestCase):
         r = detect_power_regulators(_ctx([_three_terminal("LM317L", "+3V3_ISO")]),
                                     [_fb_divider("+3V3_ISO", 240.0, 390.0, mid="ADJ")])[0]
         self.assertEqual(r["estimated_vout"], 3.281)         # 1.25 x 630 / 240
+
+    def test_three_terminal_adjustable_without_a_table_entry_uses_1v25(self):
+        # AZ1117-ADJ: 1.25 V x (100 + 750) / 100 = 10.625 V (the rail-name sweep would pick 0.6 V)
+        r = detect_power_regulators(_ctx([_three_terminal("AZ1117-ADJ", "VDDA")]),
+                                    [_fb_divider("VDDA", 100.0, 750.0, mid="ADJ")])[0]
+        self.assertEqual(r["estimated_vout"], 10.625)
+        self.assertEqual(r["assumed_vref"], 1.25)
+        self.assertEqual(r["vref_source"], "heuristic")
+
+    def test_what_if_recalculates_out_adj_with_its_formula(self):
+        # R12 2.73k -> 2.7k: 1.25 x (249 + 2700) / 249 = 14.804 V
+        r = detect_power_regulators(_ctx([_three_terminal("LM317", "+15V")]),
+                                    [_fb_divider("+15V", 249.0, 2730.0, mid="ADJ")])[0]
+        r["feedback_divider"]["r_bottom"]["ohms"] = 2700.0
+        _recalc_regulator_feedback(r)
+        self.assertEqual(r["estimated_vout"], 14.804)
 
     def test_three_terminal_adjustable_with_a_potentiometer_has_no_estimate(self):
         r = detect_power_regulators(_ctx([_three_terminal("LM317", "+12V")]),

@@ -1780,13 +1780,6 @@ def _heuristic_vref(ratio: float, rail: str | None) -> tuple[float | None, str]:
     return None, ""
 
 
-def _negative_rail_name(net: str) -> bool:
-    """True when the rail's own name reads negative (-5V, NEG12, V-); a sheet path is not
-    part of it (a UUID path holds "-<digit>")."""
-    leaf = net_leaf(net).upper()
-    return bool(re.search(r'[-](\d)', leaf)) or "NEG" in leaf or leaf.startswith("-") or leaf.endswith("-")
-
-
 def _is_potentiometer(ctx: AnalysisContext, ref: str) -> bool:
     """A potentiometer or trimmer: RV designator or a pot/trim symbol."""
     lib_id = (ctx.comp_lookup.get(ref) or {}).get("lib_id", "").lower()
@@ -1911,7 +1904,11 @@ def _build_regulator_record(ctx: AnalysisContext, cand: _RegulatorCandidate,
         reg_info["input_rail"] = vin_pin[1]
     if vout_pin:
         reg_info["output_rail"] = vout_pin[1]
-        if _negative_rail_name(vout_pin[1]):
+        # Also check if the output rail's own name suggests a negative voltage (-5V, NEG12, V-);
+        # a sheet path is not part of it (a UUID path holds "-<digit>")
+        out_net_u = net_leaf(vout_pin[1]).upper()
+        if re.search(r'[-](\d)', out_net_u) or "NEG" in out_net_u or out_net_u.startswith("-") \
+                or out_net_u.endswith("-"):
             is_inverting = True
     if is_inverting:
         reg_info["inverting"] = True
@@ -1994,6 +1991,10 @@ def _build_regulator_record(ctx: AnalysisContext, cand: _RegulatorCandidate,
                         break
                 if known_vref is not None:
                     vref, prov_source = known_vref, "divider_plus_" + vref_source
+                elif three_terminal:
+                    # LM317/LM338/LM350/LT1085/LM1086/AZ1117-ADJ datasheets: 1.25 V across OUT-ADJ
+                    vref, prov_source = 1.25, "divider_plus_heuristic"
+                    vref_source = "heuristic"
                 else:
                     vref, prov_source = _heuristic_vref(
                         vref_ratio, reg_info.get("output_rail") or vd.get("top_net"))
@@ -2020,7 +2021,9 @@ def _build_regulator_record(ctx: AnalysisContext, cand: _RegulatorCandidate,
         for vd in voltage_dividers:
             if fb_pin and vd["mid_net"] == fb_pin[1] and not ctx.is_ground(vd["top_net"]):
                 reg_info["output_rail"] = vd["top_net"]
-                if _negative_rail_name(vd["top_net"]):
+                # only a leading minus or NEG: a boost's VCC-5V is positive
+                top_leaf = net_leaf(vd["top_net"]).upper()
+                if top_leaf.startswith("-") or "NEG" in top_leaf:
                     reg_info["inverting"] = True
                 break
         else:

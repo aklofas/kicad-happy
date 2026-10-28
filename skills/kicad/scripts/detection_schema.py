@@ -86,7 +86,8 @@ def _recalc_crystal_load(det: dict) -> None:
 
 def _recalc_regulator_feedback(det: dict) -> None:
     """Regulator feedback divider: nested ratio, then estimated_vout = Vref / ratio
-    (negative for an inverting regulator, as the detector reports it)."""
+    (Vref / (1 - ratio) on a three-terminal adjustable, whose Vref sits across the top
+    resistor; negative for an inverting regulator, as the detector reports it)."""
     fd = det.get("feedback_divider")
     if isinstance(fd, dict) and "r_top" in fd and "r_bottom" in fd:
         r_top = fd["r_top"].get("ohms")
@@ -97,7 +98,8 @@ def _recalc_regulator_feedback(det: dict) -> None:
             vout = det.get("estimated_vout")
             if (isinstance(vref, (int, float)) and vref > 0
                     and isinstance(vout, (int, float)) and fd["ratio"] > 0):
-                new_vout = round(vref / fd["ratio"], 3)
+                vref_ratio = 1 - fd["ratio"] if fd.get("reference") == "out_adj" else fd["ratio"]
+                new_vout = round(vref / vref_ratio, 3)
                 det["estimated_vout"] = -new_vout if vout < 0 else new_vout
 
 
