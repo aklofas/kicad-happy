@@ -284,13 +284,54 @@ def group_part(ctx: AnalysisContext, ref: str, unit_key: str) -> dict:
     return part
 
 
+_SUPPLY_PIN_TYPES = ("power_in", "power_out")
+
+
+def _is_led_node(ctx: AnalysisContext, pins: list[dict]) -> bool:
+    """True when every part on a net other than resistors is an LED and no pin takes or
+    gives power: the node LEDs share with their resistor, whatever its name."""
+    types = [ctx.comp_lookup.get(p["component"], {}).get("type") for p in pins]
+    return ("led" in types and all(t in ("led", "resistor") for t in types)
+            and not any(p.get("pin_type") in _SUPPLY_PIN_TYPES for p in pins))
+
+
 def is_led_rail(ctx: AnalysisContext, net: str) -> bool:
     """True when *net* is a supply rail as an LED sees it: a net with a power symbol, or a
-    power-like name with more than three pins.  An LED's own node named like a rail
-    (``VBUS_LED_A``) holds only the LED and its resistor."""
+    power-like name with more than three pins that is not an LED node (``+5V_LED`` shared
+    by parallel LEDs and their resistor, ``VBUS_LED_A``)."""
     if net in ctx.known_power_rails:
         return True
-    return ctx.is_power_net(net) and len(ctx.nets.get(net, {}).get("pins", [])) > 3
+    pins = ctx.nets.get(net, {}).get("pins", [])
+    return ctx.is_power_net(net) and len(pins) > 3 and not _is_led_node(ctx, pins)
+
+
+def led_string(ctx: AnalysisContext, ref: str) -> tuple[list[str], str | None, str | None]:
+    """The series string *ref* belongs to: its LEDs in order, and the string's end nets on
+    the side of pin 1 and of pin 2.  Two LEDs are in series when a net holds exactly their
+    two pins.  A lone LED is a string of one ending on its own nets."""
+    n1, n2 = ctx.get_two_pin_nets(ref)
+    seen = {ref}
+
+    def walk(net):
+        chain = []
+        while net and not ctx.is_ground(net) and not is_led_rail(ctx, net):
+            pins = ctx.nets.get(net, {}).get("pins", [])
+            others = [p["component"] for p in pins if p["component"] not in seen]
+            if len(pins) != 2 or len(others) != 1:
+                break
+            nxt = others[0]
+            if (ctx.comp_lookup.get(nxt, {}).get("type") != "led"
+                    or len(ctx.ref_pins.get(nxt, {})) != 2):
+                break
+            seen.add(nxt)
+            chain.append(nxt)
+            a, b = ctx.get_two_pin_nets(nxt)
+            net = b if a == net else a
+        return chain, net
+
+    up, end1 = walk(n1)
+    down, end2 = walk(n2)
+    return list(reversed(up)) + [ref] + down, end1, end2
 
 
 def led_forward_voltage(comp: dict, table: dict[str, float], default: float = 2.0) -> float:

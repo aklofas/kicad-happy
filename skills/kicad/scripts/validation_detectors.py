@@ -29,7 +29,7 @@ except ImportError:
 
 from detector_helpers import (
     get_components_by_type, get_unique_ics, index_two_pin_components,
-    is_led_rail, led_forward_voltage, match_ic_keywords,
+    is_led_rail, led_forward_voltage, led_string, match_ic_keywords,
 )
 from finding_schema import make_finding, make_provenance
 from lookup_helpers import get_facts, has_data, best
@@ -1161,20 +1161,24 @@ def validate_led_resistors(ctx: AnalysisContext) -> list[dict]:
         if ctx.rail_ignored(n1) or ctx.rail_ignored(n2):
             continue
 
-        # The series resistor sits on the LED's own node(s), not on a rail or ground
-        # (those carry pull-ups and every other part on the supply).
-        own_nets = [n for n in (n1, n2) if not ctx.is_ground(n) and not is_led_rail(ctx, n)]
+        # The series resistor sits on the own node(s) at the ends of the LED's series
+        # string, not on a rail or ground (those carry pull-ups and every other part
+        # on the supply).
+        string, e1, e2 = led_string(ctx, ref)
+        if not e1 or not e2:
+            continue
+        own_nets = [n for n in (e1, e2) if not ctx.is_ground(n) and not is_led_rail(ctx, n)]
         series_resistors = []
         has_series_r = False
         for net in own_nets:
-            led_other = n2 if net == n1 else n1
+            led_other = e2 if net == e1 else e1
             for rref in net_to_resistors.get(net, []):
                 rn1, rn2 = resistor_nets.get(rref, (None, None))
                 if not rn1 or not rn2:
                     continue
                 other = rn2 if rn1 == net else rn1
-                if other in (n1, n2):
-                    continue  # a bleeder across the LED
+                if other in (e1, e2):
+                    continue  # a bleeder across the LED or its string
                 has_series_r = True
                 if ctx.is_power_net(other) and not ctx.is_ground(other):
                     rail = other  # high side: rail -> R -> LED
@@ -1222,6 +1226,9 @@ def validate_led_resistors(ctx: AnalysisContext) -> list[dict]:
             vf = ds_vf.typ
         else:
             vf = led_forward_voltage(led, _LED_VF_BY_COLOR, _LED_VF_DEFAULT)
+        # A string drops every LED's forward voltage.
+        vf += sum(led_forward_voltage(ctx.comp_lookup[r], _LED_VF_BY_COLOR, _LED_VF_DEFAULT)
+                  for r in string if r != ref)
         # Use datasheet If_max (max, else typ) if available; fall back to constant.
         if ds_if is not None and ds_if.max is not None:
             if_max_ma = ds_if.max * 1000  # SpecValue in amps → mA
@@ -1254,7 +1261,7 @@ def validate_led_resistors(ctx: AnalysisContext) -> list[dict]:
                     **config_extra))
 
             power_w = (current_ma / 1000) ** 2 * sr['ohms']
-            if power_w > 0.25:
+            if power_w > 0.25 and ref == string[0]:  # once per string
                 findings.append(make_finding(
                     detector='validate_led_resistors', rule_id='LR-001', category='component_integrity',
                     summary=f'LED resistor {sr["ref"]}: power dissipation {power_w*1000:.0f}mW',

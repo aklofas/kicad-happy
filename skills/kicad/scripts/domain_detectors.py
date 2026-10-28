@@ -19,7 +19,7 @@ from kicad_core.parts import lookup_regulator_vref
 from kicad_core.values import format_frequency, parse_value
 from kicad_core.netnames import parse_voltage_from_net_name
 from signal_detectors import _get_net_components
-from detector_helpers import (is_led_rail, led_forward_voltage, match_family,
+from detector_helpers import (is_led_rail, led_forward_voltage, led_string, match_family,
                               match_ic_keywords, get_unique_ics)
 from finding_schema import make_finding, make_provenance
 
@@ -4840,10 +4840,15 @@ def audit_led_circuits(ctx: AnalysisContext,
         if not n1 or not n2:
             continue
 
-        # Classify each net: power, ground, signal
+        # The series string this LED belongs to; its resistor sits at one of the ends.
+        string, e1, e2 = led_string(ctx, ref)
+        if not e1 or not e2:
+            continue
+
+        # Classify each end net: power, ground, signal
         supply_net = None
         signal_net = None
-        for net in (n1, n2):
+        for net in (e1, e2):
             if ctx.is_ground(net):
                 continue
             if ctx.is_power_net(net):
@@ -4861,10 +4866,10 @@ def audit_led_circuits(ctx: AnalysisContext,
         driver_source = None
         # Only the LED's own node(s) carry its series resistor; a rail holds pull-ups
         # and every other part on that supply.  Fewest pins first.
-        check_nets = sorted((n for n in (n1, n2) if n and not ctx.is_ground(n) and not is_led_rail(ctx, n)),
+        check_nets = sorted((n for n in (e1, e2) if not ctx.is_ground(n) and not is_led_rail(ctx, n)),
                             key=lambda n: (len(ctx.nets.get(n, {}).get("pins", [])), n))
-        led_nets = {n1, n2}
-        string_leds = [comp]
+        led_nets = {e1, e2}
+        string_leds = [ctx.comp_lookup[r] for r in string]
 
         def _scan_net_for_resistor(net, exclude_ref):
             """Scan a net for a current-limiting resistor. Returns (resistor_dict, unparsed_flag)."""
@@ -4901,7 +4906,7 @@ def audit_led_circuits(ctx: AnalysisContext,
                         supply_net = r_other
                     # An IC on the resistor's far node drives the LED; one on a rail only
                     # draws from it.
-                    if r_other in ctx.nets and not is_led_rail(ctx, r_other):
+                    if r_other in ctx.nets and not ctx.is_ground(r_other) and not is_led_rail(ctx, r_other):
                         for rp in ctx.nets[r_other]["pins"]:
                             if rp["component"] == rc["reference"]:
                                 continue
@@ -4931,10 +4936,10 @@ def audit_led_circuits(ctx: AnalysisContext,
 
         # If no resistor found, trace through LED chains (LED→LED→...→resistor)
         if not series_resistor:
-            visited_leds: set[str] = {ref}
+            visited_leds: set[str] = set(string)
             frontier_nets = list(check_nets)
             # LEDs from this one to each reached net, for the string's forward voltage
-            path: dict[str, list[dict]] = {n: [comp] for n in frontier_nets}
+            path: dict[str, list[dict]] = {n: list(string_leds) for n in frontier_nets}
             for _ in range(5):  # max 5 hops through LED chain
                 next_nets: list[str] = []
                 for net in frontier_nets:
@@ -4953,7 +4958,7 @@ def audit_led_circuits(ctx: AnalysisContext,
                             for ln in (ln1, ln2):
                                 if ln and ln != net and not ctx.is_ground(ln) and not is_led_rail(ctx, ln):
                                     next_nets.append(ln)
-                                    path.setdefault(ln, path.get(net, [comp]) + [pc])
+                                    path.setdefault(ln, path.get(net, string_leds) + [pc])
                 if not next_nets:
                     break
                 # Check the next set of nets for a resistor
@@ -4972,10 +4977,10 @@ def audit_led_circuits(ctx: AnalysisContext,
         # Determine drive method
         if series_resistor:
             drive_method = "resistor_limited"
-        elif driver_source:
-            drive_method = "ic_direct"
         elif has_unparsed_resistor:
             drive_method = "resistor_unparsed"
+        elif driver_source:
+            drive_method = "ic_direct"
         else:
             drive_method = "direct_drive"
 

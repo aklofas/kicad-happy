@@ -92,6 +92,7 @@ class LR001(unittest.TestCase):
 
     def test_dangling_led_keeps_its_missing_resistor_error(self):
         # Anode net holds nothing but D1; a 10k from GND to a rail is not its resistor.
+        # No IC or transistor sits on GND here: one there still silences the error.
         ctx = _ctx([_led("D1"), _r("R5", "10k")],
                    {"LED_A": [_p("D1", "2")], "GND": [_p("D1", "1"), _p("R5", "1")],
                     "+5V": [_p("R5", "2")]}, {"+5V", "GND"})
@@ -163,6 +164,86 @@ class LedAudit(unittest.TestCase):
         e = _audit(ctx, "D1")
         self.assertEqual((e["drive_method"], e.get("driver_source"), e.get("issue")),
                          ("ic_direct", "Q1", None))
+
+
+def _string(top_r, r="1k"):
+    """+12V -> D1 -> D2 -> D3 -> GND with R1 at the top or the bottom of the string."""
+    comps = [_led("D1"), _led("D2"), _led("D3"), _r("R1", r)]
+    if top_r:
+        nets = {"+12V": [_p("R1", "1")], "N0": [_p("R1", "2"), _p("D1", "2")],
+                "N1": [_p("D1", "1"), _p("D2", "2")], "N2": [_p("D2", "1"), _p("D3", "2")],
+                "GND": [_p("D3", "1")]}
+    else:
+        nets = {"+12V": [_p("D1", "2")], "N1": [_p("D1", "1"), _p("D2", "2")],
+                "N2": [_p("D2", "1"), _p("D3", "2")], "N3": [_p("D3", "1"), _p("R1", "1")],
+                "GND": [_p("R1", "2")]}
+    return _ctx(comps, nets, {"+12V", "GND"})
+
+
+def _shared_led_node(rail_symbol):
+    """+5V -> R1 330R -> +5V_LED -> D1..D4 -> GND (parallel LEDs on one resistor)."""
+    leds = [_led(f"D{i}") for i in range(1, 5)]
+    nets = {"+5V": [_p("R1", "1")], "+5V_LED": [_p("R1", "2")] + [_p(f"D{i}", "2") for i in range(1, 5)],
+            "GND": [_p(f"D{i}", "1") for i in range(1, 5)]}
+    rails = {"+5V", "GND"} | ({"+5V_LED"} if rail_symbol else set())
+    return _ctx(leds + [_r("R1", "330")], nets, rails)
+
+
+class LedStrings(unittest.TestCase):
+    def test_every_led_in_a_string_gets_the_string_current(self):
+        for top_r in (True, False):
+            ctx = _string(top_r)
+            # (12 V - 3 x 2.0 V red) / 1 kOhm = 6.0 mA for each LED
+            self.assertEqual([_audit(ctx, d).get("estimated_current_mA") for d in ("D1", "D2", "D3")],
+                             [6.0, 6.0, 6.0], top_r)
+            self.assertEqual([_audit(ctx, d)["series_resistor"]["ref"] for d in ("D1", "D2", "D3")],
+                             ["R1"] * 3, top_r)
+
+    def test_upper_leds_of_a_string_have_their_resistor(self):
+        for top_r in (True, False):
+            self.assertEqual(_lr(_string(top_r)), [], top_r)
+
+    def test_string_current_in_lr001(self):
+        for top_r in (True, False):
+            lr = _lr(_string(top_r, r="100"))
+            # (12 V - 3 x 1.8 V red) / 100 Ohm = 66 mA, over 2 x 20 mA, for each LED
+            self.assertEqual(sorted(f["summary"] for f in lr if f["severity"] == "warning"),
+                             [f"LED D{i}: current too high (66mA via R1)" for i in (1, 2, 3)], top_r)
+            # P = 0.066^2 x 100 = 436 mW, reported once for the string
+            self.assertEqual([f["summary"] for f in lr if f["severity"] == "info"],
+                             ["LED resistor R1: power dissipation 436mW"], top_r)
+
+
+class SharedLedNode(unittest.TestCase):
+    def test_power_named_led_node_is_not_a_rail(self):
+        from detector_helpers import is_led_rail
+        self.assertFalse(is_led_rail(_shared_led_node(False), "+5V_LED"))
+        ctx = _shared_led_node(False)
+        self.assertEqual(_lr(ctx), [])
+        e = _audit(ctx, "D1")
+        self.assertEqual((e["drive_method"], e["series_resistor"]["ref"]), ("resistor_limited", "R1"))
+
+    def test_power_symbol_rail_feeding_leds_stays_a_rail(self):
+        from detector_helpers import is_led_rail
+        self.assertTrue(is_led_rail(_shared_led_node(True), "+5V_LED"))
+
+
+class DriveMethod(unittest.TestCase):
+    def test_unparsed_resistor_before_transistor(self):
+        ctx = _ctx([_led("D1"), _r("R1", "R"), {"reference": "Q1", "type": "transistor", "value": "2N7002"}],
+                   {"+5V": [_p("R1", "1")], "N1": [_p("R1", "2"), _p("D1", "2")],
+                    "N2": [_p("D1", "1"), _p("Q1", "3")], "GND": [_p("Q1", "2")]}, {"+5V", "GND"})
+        e = _audit(ctx, "D1")
+        self.assertEqual((e["drive_method"], e.get("issue")), ("resistor_unparsed", "has_resistor_unparsed_value"))
+
+    def test_ic_on_ground_without_a_power_symbol_is_not_the_driver(self):
+        # STAT (U1) -> LED -> 1k -> GND, U2 on GND; no power symbols anywhere.
+        ctx = _ctx([_led("D1"), _r("R1", "1k"), {"reference": "U1", "type": "ic", "value": "CHG"},
+                    {"reference": "U2", "type": "ic", "value": "MCU"}],
+                   {"STAT": [_p("D1", "2"), _p("U1", "5", "open_collector")],
+                    "N1": [_p("D1", "1"), _p("R1", "1")],
+                    "GND": [_p("R1", "2"), _p("U2", "8", "power_in")]})
+        self.assertEqual(_audit(ctx, "D1").get("driver_source"), "U1")
 
 
 class RescueDiodes(unittest.TestCase):
