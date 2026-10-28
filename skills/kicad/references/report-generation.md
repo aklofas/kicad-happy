@@ -200,7 +200,7 @@ was skipped or degraded (no datasheets), state the per-IC gaps here.
 ### Simulation Verification
 [**Include when ngspice is available.** Run `simulate_subcircuits.py` on the analyzer JSON output (from the `spice` skill). The output JSON has top-level key `simulation_results` (list). Each entry has `reference` (e.g. "R5/C3"), `components` (list), `subcircuit_type`, `status`, `expected` (dict of metric values like `cutoff_hz`), `simulated` (dict of measured values), and `delta` (dict of error percentages). Use `summary` for totals. Present results as a summary table grouped by status:]
 
-[Summary line: "ngspice verified N subcircuits in X.Xs. N pass, N warn, N fail, N skip."]
+[Summary line: "ngspice verified N subcircuits in X.Xs. N pass, N warn, N fail, N skip, N info." `info` is a bench with nothing to compare against (e.g. an op-amp stage with no expected gain): report its measured values without a verdict.]
 
 [**Pass** — one line each, grouped: "RC filter R5/C3 (fc=15.9kHz): confirmed, <0.3% error." Build this from `result['reference']`, `result['expected']['cutoff_hz']`, and `result['delta']`.]
 
