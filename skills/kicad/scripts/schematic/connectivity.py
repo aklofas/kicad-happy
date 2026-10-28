@@ -1122,8 +1122,9 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
 
         # Check if any member of this group is a no-connect marker OR a
         # library-defined NC pin (pin type "no_connect" in the symbol def).
+        nc_marker = any(i["source"] == "no_connect" for i in all_info)
         has_nc_marker = (
-            any(i["source"] == "no_connect" for i in all_info)
+            nc_marker
             or any(i.get("pin_type") in ("no_connect", "unconnected")
                    for i in all_info if i["source"] == "pin")
         )
@@ -1160,6 +1161,7 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
                 "point_count": len([m for m in members if m[0] != "bus"]),
                 "no_connect": has_nc_marker,
                 "has_pwr_flag": has_pwr_flag,
+                "nc_marker": nc_marker,
                 "labels": net_labels,
             })
 
@@ -1198,6 +1200,8 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
                 "has_pwr_flag": e["has_pwr_flag"],
                 "labels": e["labels"],
             }
+            if e["nc_marker"]:
+                entry["_nc_marker"] = True  # a no-connect marker, not only an NC-type pin
             # The key keeps KiCad's escaped name; display_name is the name KiCad shows.
             shown = unescape_string(bare)
             if k != shown:

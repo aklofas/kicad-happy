@@ -159,12 +159,19 @@ class UndrivenTest(unittest.TestCase):
         self.assertEqual(self.kinds(two_pin_net("power_in", "passive", has_pwr_flag=True)[0]), [])
 
     def test_no_connect_marker_silences(self):
-        self.assertEqual(self.kinds(two_pin_net("input", "input", no_connect=True)[0]), [])
+        self.assertEqual(self.kinds(two_pin_net("input", "input", no_connect=True, _nc_marker=True)[0]), [])
 
     def test_nc_pin_does_not_silence_the_drive_test(self):
         # The NC pin is not part of the net; only a no-connect marker silences the test.
         self.assertEqual(self.kinds(two_pin_net("input", "no_connect", no_connect=True)[0]),
                          [("no_driver", "error")])
+
+    def test_marker_silences_with_an_nc_pin_on_the_net(self):
+        c = [comp("U1", [("1", "input", "A", 0, 0)]), comp("U2", [("1", "no_connect", "NC", 5, 0)]),
+             comp("U3", [("1", "input", "B", 9, 0)])]
+        nets = {"N": {"pins": [pin("U1", "1", "input"), pin("U2", "1", "no_connect", "NC"),
+                               pin("U3", "1", "input")], "no_connect": True, "_nc_marker": True}}
+        self.assertEqual(self.kinds(nets, c), [])
 
     def test_lone_input_pin(self):
         nets = {"__unnamed_0": {"pins": [pin("U1", "1", "input")]}}
@@ -181,6 +188,8 @@ class NoConnectConnectedTest(unittest.TestCase):
         nets, comps = two_pin_net("no_connect", "passive", no_connect=True)
         recs = by_type(erc(nets, comps), "no_connect_connected")
         self.assertEqual([(r["net"], r["severity"]) for r in recs], [("N", "warning")])
+        # KiCad's marker names the NC pin.
+        self.assertEqual(sorted(p["component"] for p in recs[0]["pins"]), ["U1", "U2"])
 
     def test_stacked_nc_pins_alone(self):
         # TestNoConnectPins skips a point where every item is an NC-type pin.
@@ -197,12 +206,12 @@ class NoConnectConnectedTest(unittest.TestCase):
         self.assertEqual(by_type(erc(nets, c), "no_connect_connected"), [])
 
     def test_marker_on_a_two_pin_net(self):
-        nets, comps = two_pin_net("passive", "passive", no_connect=True)
+        nets, comps = two_pin_net("passive", "passive", no_connect=True, _nc_marker=True)
         recs = by_type(erc(nets, comps), "no_connect_connected")
         self.assertEqual([[p["component"] for p in r["pins"]] for r in recs], [["U1", "U2"]])
 
     def test_marker_on_one_pin(self):
-        nets = {"N": {"pins": [pin("U1", "1", "input")], "no_connect": True}}
+        nets = {"N": {"pins": [pin("U1", "1", "input")], "no_connect": True, "_nc_marker": True}}
         self.assertEqual(erc(nets), [])
 
 
@@ -269,6 +278,21 @@ class SchematicTest(unittest.TestCase):
                                         _one_pin_lib("P", "passive")])})
         kinds = sorted((w["type"], w["severity"]) for w in r["design_analysis"]["erc_warnings"])
         self.assertEqual(kinds, [("no_connect_connected", "warning")])
+
+    def test_marker_and_wired_nc_pin_as_kicad(self):
+        # kicad-cli 10.0.7: no_connect_connected [U2 Pin 1, wire] and no_connect_connected on the
+        # marker; no pin_not_driven (the marker on the U1/U3 net silences the drive test).
+        s = Sheet(20250114)
+        s.symbol("t:I", "U1", "I", 50, 50, ("1",))
+        s.symbol("t:N", "U2", "N", 60, 50, ("1",))
+        s.symbol("t:I", "U3", "I", 70, 50, ("1",))
+        s.wire(50, 50, 60, 50); s.wire(60, 50, 70, 50)
+        s.items.append('(no_connect (at 70 50) (uuid "00000000-0000-0000-0000-00000000fffe"))')
+        r = run({"t.kicad_sch": s.text([_one_pin_lib("I", "input"), _one_pin_lib("N", "no_connect")])})
+        recs = r["design_analysis"]["erc_warnings"]
+        self.assertEqual(sorted(w["type"] for w in recs), ["no_connect_connected"])
+        self.assertEqual(sorted(p["component"] for p in recs[0]["pins"]), ["U1", "U2", "U3"])
+        self.assertNotIn("_nc_marker", r["nets"][recs[0]["net"]])
 
     def test_no_connect_marker_on_a_wired_pin(self):
         s = Sheet(20250114)

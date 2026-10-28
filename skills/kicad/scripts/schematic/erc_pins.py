@@ -148,26 +148,15 @@ def str_num_cmp(a: str, b: str) -> int:
 def _descending_hinted(keys: list[tuple[int, int]]) -> list[int]:
     """Order of std::inserter(multimap<..., greater>, begin()) fed (key, item) in turn.
 
-    libstdc++ _M_get_insert_hint_equal_pos: equal keys do not keep insertion order.
+    A hinted multimap insert puts the element "as close as possible to the position just
+    prior to" the hint ([associative.reqmts]), so equal keys do not keep insertion order.
     """
     out: list[tuple[int, int]] = []
     hint = 0
     for k, item in keys:
-        n = len(out)
-        if hint == n:
-            if n and k <= out[-1][0]:
-                at = n
-            else:
-                at = sum(1 for e in out if e[0] >= k)          # upper bound
-        elif out[hint][0] <= k:
-            if hint == 0 or k <= out[hint - 1][0]:
-                at = hint
-            else:
-                at = sum(1 for e in out if e[0] >= k)
-        elif hint == n - 1 or out[hint + 1][0] <= k:
-            at = hint + 1
-        else:
-            at = sum(1 for e in out if e[0] > k)               # lower bound
+        lower = sum(1 for e in out if e[0] > k)
+        upper = sum(1 for e in out if e[0] >= k)
+        at = min(max(hint, lower), upper)
         out.insert(at, (k, item))
         hint = at + 1
     return [item for _k, item in out]

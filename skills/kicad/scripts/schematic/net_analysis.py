@@ -1398,8 +1398,7 @@ def _check_erc_warnings(ctx: AnalysisContext) -> list:
             })
 
         # A no-connect marker on the net silences the drive test (erc.cpp has_noconnect).
-        nc_marker = net_info.get("no_connect") and len(pins) == len(all_pins)
-        undriven = None if nc_marker else erc_pins.undriven_kind(pins)
+        undriven = None if net_info.get("_nc_marker") else erc_pins.undriven_kind(pins)
         if undriven == "pin_not_driven":
             erc_warnings.append({
                 "type": "no_driver",
@@ -1423,7 +1422,7 @@ def _check_erc_warnings(ctx: AnalysisContext) -> list:
                 "net": net_name,
                 "severity": "warning",
                 "message": f"Net '{shown}' has a no-connect and other connections",
-                "pins": real,
+                "pins": [p for p in all_pins if not p["component"].startswith("#")],
             })
 
     return erc_warnings
@@ -1434,8 +1433,8 @@ def _no_connect_connected(pins: list[dict], net_info: dict, positions: dict) -> 
 
     An NC-type pin is connected when anything but NC-type pins touches it (TestNoConnectPins):
     another pin type, a label, or a wire to an NC pin elsewhere. A no-connect marker is
-    connected when the net has more than one pin, stacked pins counted once
-    (ercCheckNoConnects).
+    connected when the net has more than one other pin, stacked pins counted once
+    (ercCheckNoConnects; NC-type pins never join the marker's net).
     """
     nc = [p for p in pins if erc_pins.pin_kind(p.get("pin_type")) == "no_connect"]
     if nc:
@@ -1443,9 +1442,14 @@ def _no_connect_connected(pins: list[dict], net_info: dict, positions: dict) -> 
             return True
         points = {positions.get((p["component"], p["pin_number"]), (p["component"], p["pin_number"]))[:3]
                   for p in nc}
-        return len(points) > 1
+        if len(points) > 1:
+            return True
+    if not net_info.get("_nc_marker"):
+        return False
     unique: list[dict] = []
     for p in pins:
+        if p in nc:
+            continue
         if not any(erc_pins.is_stacked(p, q, positions) for q in unique):
             unique.append(p)
     return len(unique) > 1
