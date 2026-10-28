@@ -1015,6 +1015,11 @@ def _generate_mosfet_testbench(det, output_file, context=None, parasitics=None):
         vdd = _infer_voltage(det.get("drain_net"), default=3.3)
         if drain_is_pwr:
             vdd = _infer_voltage(det.get("drain_net"), default=3.3)
+    # a 0 V supply makes the gate sweep zero-span, which ngspice never completes
+    if vdd <= 0:
+        supply = "source" if is_p else "drain"
+        net = det.get("source_net") if is_p else det.get("drain_net")
+        raise ValueError(f"{supply} supply {vdd} V from net '{net}' leaves no gate sweep")
 
     # Build a simple switching testbench
     # N-channel: VDD → R_load → drain, source → GND, gate swept 0→VDD
@@ -1112,6 +1117,9 @@ def _generate_bjt_testbench(det, output_file, context=None, parasitics=None):
     polarity = "PNP" if is_pnp else "NPN"
 
     vcc = _infer_voltage(det.get("collector_net") if not is_pnp else det.get("emitter_net"), default=3.3)
+    # the PNP base sweep spans vcc/2..vcc; a 0 V supply makes it zero-span
+    if is_pnp and vcc <= 0:
+        raise ValueError(f"emitter supply {vcc} V from net '{det.get('emitter_net')}' leaves no base sweep")
 
     # Emitter resistor for degeneration
     emitter_r = det.get("emitter_resistor")

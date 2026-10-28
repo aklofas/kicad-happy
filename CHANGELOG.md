@@ -123,6 +123,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The RT6150A/B buck-boost's reference voltage is 0.5 V (its datasheet), not the 0.6 V of the `RT6` family default, so its estimated output voltage and the regulator output-voltage checks no longer report a mismatch on a correct divider (sk/R2-F1).
 - SPICE half-bridge benches power the low-side switch through the load (they never conducted, so every bench was skipped) and hold a P-channel high side off with its source at the supply; a P-channel low side (a power mux, not a half bridge) is skipped. P-channel switch benches measure their on-state current (the off-state current was read, giving a false "very low on-state current" warning). Potentiometers, thermistors, fuses and other passives whose designator starts with another SPICE element letter (`VR1`, `TH1`, `F1`) are simulated as resistors, capacitors or inductors, not as sources or other SPICE elements (sk/R2-F4).
 - LC benches no longer warn about a Q factor that is the bench's own assumed inductor ESR; the crystal bench measures series and load resonance and reports them as `info` (sk/R2-F5, R2-F3; KH-611, KH-612).
+- A transistor bench on a supply that reads 0 V is skipped with a reason instead of hanging the simulator (KH-676).
 
 ---
 
