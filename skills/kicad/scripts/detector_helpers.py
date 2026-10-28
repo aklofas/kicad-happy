@@ -103,12 +103,13 @@ def _only_this_part_drives(ctx: AnalysisContext, ref: str, net: str) -> bool:
 def is_protection_part(comp: dict, ctx: AnalysisContext, pair_suffixes) -> bool:
     """True when *comp* is a clamp (TVS/ESD diode or array, varistor), not a protected device.
 
-    SPICE source symbols and parts left out of the BOM never count.  An IC without a
+    SPICE source symbols and unfitted parts (DNP or off the board) never count.  An IC without a
     protection name still counts when it only reaches ground, supplies, at most one node of
     its own (open or decoupled) and differential-pair lines (upper-case net suffixes in
     *pair_suffixes*) and drives none of them: an unnamed ESD array.
     """
-    if comp.get("in_bom") is False or (comp.get("lib_id") or "").startswith("Simulation_SPICE:"):
+    if (comp.get("dnp") or comp.get("on_board") is False
+            or (comp.get("lib_id") or "").startswith("Simulation_SPICE:")):
         return False
     ctype = comp.get("type")
     if ctype in ("varistor", "surge_arrester"):

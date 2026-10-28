@@ -130,6 +130,22 @@ class DiffPairEsdCredit(unittest.TestCase):
         self.assertFalse(p["has_esd"])
         self.assertNotIn("esd_protection", p)
 
+    def _usblc6_pair(self, **flags):
+        nets = _usb([("U_esd", "1", "I/O1", "passive")], [("U_esd", "3", "I/O2", "passive")],
+                    [("U_esd", "2", "GND", "passive")])
+        nets["VBUS"] = [("U_esd", "5", "VBUS", "passive")]
+        return _pairs([MCU, dict(USBLC6, **flags)], nets)[("USB_D+", "USB_D-")]
+
+    def test_dnp_clamp_in_the_bom_is_not_credited(self):
+        p = self._usblc6_pair(dnp=True, in_bom=True, on_board=True)
+        self.assertFalse(p["has_esd"])
+        self.assertNotIn("esd_protection", p)
+
+    def test_fitted_clamp_on_a_bom_excluded_sheet_is_credited(self):
+        p = self._usblc6_pair(dnp=False, in_bom=False, on_board=True)
+        self.assertTrue(p["has_esd"])
+        self.assertEqual(p["esd_protection"], ["U_esd"])
+
     def _four_line(self, ref, value, io_type):
         part = _comp(ref, "ic", value, "custom:" + value,
                      [("1", "GND", "passive"), ("2", "IO1", io_type), ("3", "IO2", io_type),
