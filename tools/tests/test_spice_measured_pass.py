@@ -107,7 +107,8 @@ class RegulatorVrefTest(unittest.TestCase):
 
     def test_carrier_board_lm338_does_not_fail(self):
         # cl3m3nt0n1 Bridge---Canyon-on-Hardware carrier_board, as the analyzer reports it:
-        # Vout = 1.25 * (1 + 820/270) = 5.05 V, the +5V rail
+        # Vout = 1.25 * (1 + 820/270) = 5.05 V, the +5V rail. The 1.25 V is the LM337 symbol's
+        # (a negative regulator); the value names an LM338, so it is not this part's criterion.
         det = {"ref": "U2", "value": "LM338_TO220", "lib_id": "Regulator_Linear:LM337_TO220",
                "topology": "LDO", "output_rail": "+5V",
                "assumed_vref": 1.25, "vref_source": "lookup", "estimated_vout": 5.046,
@@ -115,7 +116,15 @@ class RegulatorVrefTest(unittest.TestCase):
                                     "r_bottom": {"ref": "R3", "ohms": 820.0, "value": "820"},
                                     "ratio": 0.752294, "reference": "out_adj"}}
         r = self._eval(det)
-        self.assertEqual(r["status"], "pass")
+        self.assertEqual(r["status"], "info")
+        self.assertIn("Vref from the symbol; the value names another part", r["note"])
+        self.assertNotIn("vfb_vs_vref_pct", r["delta"])
+
+    def test_value_and_symbol_naming_the_same_part_is_judged(self):
+        # LM317 value on the LM317 symbol: 5 - 5*820/1090 = 1.2385 V, 0.92 % from 1.25 V
+        det = _regulator(270, 820, "+5V", 1.25, "lookup", reference="out_adj", value="LM317_TO220")
+        det["lib_id"] = "Regulator_Linear:LM317_TO220"
+        self.assertEqual(self._eval(det)["status"], "pass")
 
     def test_rt6150_reference_from_its_datasheet(self):
         # RT6150A/B datasheet (DS6150A/B-06): VFB = 0.5 V; hackquad U7's 487k/86.6k on +3V3:

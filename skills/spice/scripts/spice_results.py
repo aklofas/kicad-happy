@@ -9,7 +9,7 @@ pass/warn/fail/skip/info status for each simulation.
 import math
 
 import _core_path  # noqa: F401
-from kicad_core.parts import regulator_vref_key, vref_key_covers_part
+from kicad_core.parts import part_number_core, regulator_vref_key, vref_key_covers_part
 
 # Measurements taken with ngspice vp(), which returns radians. The other
 # backends' parsers pass their values through unconverted.
@@ -819,12 +819,20 @@ def evaluate_regulator_feedback(det, sim_results):
                                         part.get("mpn") or "")
     adjustable = [ref for arm in (r_top, r_bot) for ref in arm.get("parallel_refs") or [arm.get("ref")]
                   if ref and _is_adjustable(ref, components)]
+    value = (det.get("value") or "").upper()
+    lib_part = (det.get("lib_id") or "").split(":")[-1].upper()
+    # the key came from the symbol name while the value names a part of its own
+    symbol_only = bool(vref_match and lib_part and vref_match[1] == lib_part and vref_match[1] != value
+                       and part_number_core(value)
+                       and part_number_core(value) != part_number_core(lib_part))
     if vref_source not in ("lookup", "datasheet") or not vref:
         why = "Vref is not from the part"
     elif vref_source == "lookup" and not (vref_match and vref_key_covers_part(*vref_match)):
         # a shorter table prefix is a family default: members of one family differ
         why = (f"Vref {vref} V is a family default ({vref_match[0] if vref_match else 'unmatched'}), "
                "not this part's own value")
+    elif symbol_only:
+        why = "Vref from the symbol; the value names another part"
     elif adjustable:
         why = f"divider arm {', '.join(adjustable)} is adjustable"
     elif sim_results.get("vin_from") != "rail_name" or not vin:
