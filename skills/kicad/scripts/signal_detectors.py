@@ -2831,9 +2831,10 @@ def detect_opamp_circuits(ctx: AnalysisContext) -> list[dict]:
         neg_net = neg_in[1]
         pos_net = pos_in[1] if pos_in else None
 
-        # Find feedback resistor
+        # Find feedback resistor; *_members = the parallel group a part stands for
         rf_ref = None
         rf_val = None
+        rf_members = cf_members = []
         if out_net in ctx.nets and neg_net != out_net:
             out_comps = {p["component"] for p in ctx.nets[out_net]["pins"] if p["component"] != ref}
             neg_comps = {p["component"] for p in ctx.nets[neg_net]["pins"] if p["component"] != ref}
@@ -2844,8 +2845,10 @@ def detect_opamp_circuits(ctx: AnalysisContext) -> list[dict]:
                     # KH-149: Verify direct connection — one pin on out_net, other on neg_net
                     fb_n1, fb_n2 = ctx.get_two_pin_nets(fb_ref)
                     if {fb_n1, fb_n2} == {out_net, neg_net}:
-                        rf_ref = fb_ref
-                        rf_val = ctx.parsed_values[fb_ref]
+                        if group_value(ctx, fb_ref) is None:
+                            continue
+                        rf_members = group_members(ctx, fb_ref)
+                        rf_ref, rf_val = rf_members[0], group_value(ctx, fb_ref)
                         break
 
             # Capacitor feedback (integrator/compensator)
@@ -2858,8 +2861,10 @@ def detect_opamp_circuits(ctx: AnalysisContext) -> list[dict]:
                     # KH-149: Verify direct connection
                     fb_n1, fb_n2 = ctx.get_two_pin_nets(fb_cref)
                     if {fb_n1, fb_n2} == {out_net, neg_net}:
-                        cf_ref = fb_cref
-                        cf_val = ctx.parsed_values[fb_cref]
+                        if group_value(ctx, fb_cref) is None:
+                            continue
+                        cf_members = group_members(ctx, fb_cref)
+                        cf_ref, cf_val = cf_members[0], group_value(ctx, fb_cref)
                         break
 
             # 2-hop feedback
@@ -2885,9 +2890,11 @@ def detect_opamp_circuits(ctx: AnalysisContext) -> list[dict]:
                                 if oc["type"] == "resistor" and out_comp_ref in ctx.parsed_values:
                                     rf_ref = out_comp_ref
                                     rf_val = ctx.parsed_values[out_comp_ref]
+                                    rf_members = [rf_ref]
                                 elif c2["type"] == "resistor" and fb2 in ctx.parsed_values:
                                     rf_ref = fb2
                                     rf_val = ctx.parsed_values[fb2]
+                                    rf_members = [rf_ref]
                                 break
                     if rf_ref:
                         break
@@ -2895,21 +2902,32 @@ def detect_opamp_circuits(ctx: AnalysisContext) -> list[dict]:
             cf_ref = None
             cf_val = None
 
-        # Find input resistor
-        ri_ref = None
-        ri_val = None
+        # Input resistor (- to a signal net) and ground leg Rg (- to ground). A resistor
+        # from - to a power rail biases the input; it is neither.
+        ri_ref = ri_val = rg_ref = rg_val = None
+        ri_members = rg_members = []
         if neg_net in ctx.nets:
             for p in ctx.nets[neg_net]["pins"]:
-                if p["component"] == ref or p["component"] == rf_ref:
+                if p["component"] == ref or p["component"] in rf_members:
                     continue
                 comp = ctx.comp_lookup.get(p["component"])
                 if comp and comp["type"] == "resistor" and p["component"] in ctx.parsed_values:
+                    r_val = group_value(ctx, p["component"])
+                    if r_val is None:
+                        continue
+                    r_members = group_members(ctx, p["component"])
                     r_n1, r_n2 = ctx.get_two_pin_nets(p["component"])
                     other = r_n2 if r_n1 == neg_net else r_n1
-                    if other != out_net and not ctx.is_power_net(other) and not ctx.is_ground(other):
-                        ri_ref = p["component"]
-                        ri_val = ctx.parsed_values[p["component"]]
-                        break
+                    if other == out_net:
+                        continue
+                    if not ctx.is_power_net(other) and not ctx.is_ground(other):
+                        if ri_ref is None:
+                            ri_ref, ri_val, ri_members = r_members[0], r_val, r_members
+                    elif (ctx.is_ground(other) and rg_ref is None
+                          and not (_is_potentiometer(ctx, p["component"])
+                                   and len({n for n, _ in ctx.ref_pins.get(p["component"], {}).values()
+                                            if n}) > 2)):
+                        rg_ref, rg_val, rg_members = r_members[0], r_val, r_members
 
         # Determine configuration
         config = "unknown"
@@ -2917,19 +2935,15 @@ def detect_opamp_circuits(ctx: AnalysisContext) -> list[dict]:
         if out_net == neg_net:
             config = "buffer"
             gain = 1.0
+        elif (rf_ref and rf_val and rg_val and not ri_ref and pos_net and pos_net != neg_net
+              and not ctx.is_power_net(pos_net) and not ctx.is_ground(pos_net)):
+            config = "non_inverting"
+            gain = 1.0 + rf_val / rg_val
+            # The ground leg is recorded as input_resistor, where SPICE and what_if read it
+            ri_ref, ri_val, ri_members = rg_ref, rg_val, rg_members
         elif rf_ref and ri_ref and ri_val and rf_val:
-            if pos_net and pos_net != neg_net:
-                pos_has_signal = pos_net and not ctx.is_power_net(pos_net) and not ctx.is_ground(pos_net)
-                neg_has_signal = ri_ref is not None
-                if pos_has_signal and not neg_has_signal:
-                    config = "non_inverting"
-                    gain = 1.0 + rf_val / ri_val
-                else:
-                    config = "inverting"
-                    gain = -rf_val / ri_val
-            else:
-                config = "inverting"
-                gain = -rf_val / ri_val
+            config = "inverting"
+            gain = -rf_val / ri_val
         elif cf_ref and not rf_ref and ri_ref:
             config = "integrator"
         elif cf_ref and rf_ref:
@@ -2962,12 +2976,14 @@ def detect_opamp_circuits(ctx: AnalysisContext) -> list[dict]:
         if gain is not None:
             entry["gain"] = round(gain, 3)
             entry["gain_dB"] = round(20 * math.log10(abs(gain)), 1) if gain != 0 else None
-        if rf_ref:
-            entry["feedback_resistor"] = {"ref": rf_ref, "ohms": rf_val}
-        if cf_ref:
-            entry["feedback_capacitor"] = {"ref": cf_ref, "farads": cf_val}
-        if ri_ref:
-            entry["input_resistor"] = {"ref": ri_ref, "ohms": ri_val}
+        for key, part_ref, unit_key, part_val, members in (
+                ("feedback_resistor", rf_ref, "ohms", rf_val, rf_members),
+                ("feedback_capacitor", cf_ref, "farads", cf_val, cf_members),
+                ("input_resistor", ri_ref, "ohms", ri_val, ri_members)):
+            if part_ref:
+                entry[key] = {"ref": part_ref, unit_key: part_val}
+                if len(members) > 1:
+                    entry[key]["parallel_refs"] = list(members)
 
         # ---- Advanced opamp checks ----
         warnings = []

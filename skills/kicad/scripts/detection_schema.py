@@ -37,6 +37,9 @@ class DetectionSchema:
     value_fields: list              # fields to compare in diffs (e.g., ["ratio"])
     derived: list = field(default_factory=list)  # DerivedField instances
     primary_metric: str = None      # for Monte Carlo sensitivity analysis
+    # identity field -> default value left out of the hash, so ids from before the
+    # field joined the identity stay the same for detections carrying the default
+    default_omitted: dict = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -312,7 +315,8 @@ SCHEMAS = {
         primary_metric="fb_voltage_V",
     ),
     "opamp_circuits": DetectionSchema(
-        identity_fields=["reference"],
+        identity_fields=["reference", "unit"],
+        default_omitted={"unit": 1},
         value_fields=["gain", "gain_dB", "configuration"],
         derived=[
             DerivedField("gain", _recalc_opamp_gain, _inverse_opamp_gain),
@@ -648,7 +652,8 @@ def compute_detection_id(det, det_type):
 
     Deterministic: same detection -> same ID across runs.  List-valued
     identity fields are sorted before hashing so upstream set/dict
-    iteration order doesn't affect the ID (KH-316).
+    iteration order doesn't affect the ID (KH-316).  An identity field holding its
+    schema's ``default_omitted`` value is left out of the hash.
 
     Format: det_type:xxxxxxxxxxxx (12-char SHA-256 prefix).
     """
@@ -665,6 +670,8 @@ def compute_detection_id(det, det_type):
             else:
                 val = None
                 break
+        if field in schema.default_omitted and val in (None, schema.default_omitted[field]):
+            continue
         if isinstance(val, list):
             val = sorted(val, key=str)
         parts.append(str(val) if val is not None else "")
