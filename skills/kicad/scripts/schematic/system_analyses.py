@@ -561,6 +561,8 @@ def analyze_sleep_current(ctx: AnalysisContext,
                 "note": f"estimated Iq ({'can be disabled via EN' if has_en else 'always-on, no EN pin detected'})",
             })
 
+    for _rail_name in [r for r in rail_currents if ctx.rail_ignored(r)]:
+        del rail_currents[_rail_name]
     if not rail_currents:
         return {}
 

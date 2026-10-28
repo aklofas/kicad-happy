@@ -168,6 +168,15 @@ class IgnoredRail(unittest.TestCase):
         self.assertNotIn("+12V", got["sleep_current_audit"].get("rails", {}))
         self.assertEqual(rule(got, "LR-001"), [])
 
+    def test_ignored_regulator_output_leaves_sleep_audit_and_power_budget(self):
+        base = run()
+        self.assertEqual([p["type"] for p in base["sleep_current_audit"]["rails"]["+3V3"]["current_paths"]],
+                         ["regulator_iq"])
+        self.assertIn("+3V3", base["power_budget"]["rails"])
+        got = run({"ignore": ["+3V3"]})
+        self.assertNotIn("+3V3", got["sleep_current_audit"]["rails"])
+        self.assertNotIn("+3V3", got["power_budget"]["rails"])
+
 
 class NoConfig(unittest.TestCase):
     def test_empty_config_is_byte_identical(self):
