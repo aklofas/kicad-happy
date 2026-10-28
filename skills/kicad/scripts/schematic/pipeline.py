@@ -334,10 +334,10 @@ def detect_topologies(ctx: AnalysisContext) -> dict:
         v_out = reg.get("estimated_vout")
         if out_rail and v_out is not None:
             rail_voltages[_clean_hierarchical_name(out_rail)] = v_out
-    # Augment with voltages inferred from power symbol / net names
+    # Augment with voltages inferred from the names of power and ground nets
     for net_name in ctx.nets:
         clean = _clean_hierarchical_name(net_name)
-        if clean not in rail_voltages:
+        if clean not in rail_voltages and (ctx.is_power_net(net_name) or ctx.is_ground(net_name)):
             v = _estimate_rail_voltage(clean)
             if v is not None:
                 rail_voltages[clean] = v

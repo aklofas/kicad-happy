@@ -22,6 +22,7 @@ from kicad_core.netnames import (
     is_ground_name,
     is_power_net_name,
     is_usb_data_net_name,
+    net_leaf,
     parse_voltage_from_net_name as _parse_voltage_from_net_name,
 )
 from kicad_core.netquery import build_bridge_facts, build_ref_pins
@@ -1513,7 +1514,7 @@ def _infer_rail_voltage(net_name):
     """Infer voltage from a power rail net name. Returns float or None."""
     if not net_name:
         return None
-    name = net_name.upper().strip()
+    name = net_leaf(net_name).upper().strip()
     # VxPy notation: V3P3 → 3.3, V1P8 → 1.8
     m = re.match(r'V(\d+)P(\d+)', name)
     if m:

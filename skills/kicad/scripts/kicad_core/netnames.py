@@ -4,25 +4,36 @@ import re
 from kicad_core.sexp import unescape_string
 
 
+def net_leaf(name: str) -> str:
+    """The net's own name: a sheet path (``/<sheet>/<label>``) names the sheet, not the net.
+
+    Only a name starting with '/' carries a path, and an escaped ``{slash}`` is part of
+    the label; a legacy root label such as ``1V/Oct`` is returned whole.
+    """
+    if name.startswith("/"):
+        return name.rsplit("/", 1)[-1]
+    return name
+
+
 def parse_voltage_from_net_name(net_name: str) -> float | None:
-    """Try to extract a voltage value from a power net name.
+    """Try to extract a voltage value from a power net name's own name (its leaf).
 
     A leading '-' or 'NEG' makes the rail negative.
 
     Examples: '+3V3' → 3.3, '+5V' → 5.0, '+12V' → 12.0, '+1V8' → 1.8,
     'VCC_3V3' → 3.3, '+2.5V' → 2.5, '-5V' → -5.0, 'NEG12V' → -12.0,
-    'VBAT' → None
+    '/Analog/-5V' → -5.0, '/3v3_buck/SW' → None, 'VBAT' → None
     """
     if not net_name:
         return None
-    net_name = unescape_string(net_name)
+    net_name = unescape_string(net_leaf(net_name))
     sign = -1.0 if re.match(r'(-|NEG)', net_name, re.IGNORECASE) else 1.0
     # Pattern: digits V digits  (e.g. 3V3 → 3.3, 1V8 → 1.8)
     m = re.search(r'(\d+)V(\d+)', net_name, re.IGNORECASE)
     if m:
         return sign * float(f"{m.group(1)}.{m.group(2)}")
     # Pattern: digits.digits V  or  digits V  (e.g. 3.3V, 5V, 12V)
-    m = re.search(r'(\d+\.?\d*)V', net_name, re.IGNORECASE)
+    m = re.search(r'(\d+(?:\.\d+)?)V', net_name, re.IGNORECASE)
     if m:
         return sign * float(m.group(1))
     return None
