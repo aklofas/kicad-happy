@@ -38,6 +38,7 @@ from pcb.reader import (
 )
 from pcb.routing import (
     analyze_connectivity,
+    board_pin_signals,
     analyze_power_nets,
     analyze_pad_to_pad_distances,
     analyze_return_path_continuity,
@@ -278,6 +279,7 @@ def run_facts(board: BoardData, *, include_trace_segments: bool, return_path_rad
     zone_fills = board.zone_fills
     outline = board.outline
     _resolved_power_rails = resolved_power_rails
+    pin_signals = board_pin_signals(footprints, _resolved_power_rails)
 
     # Connectivity analysis (zone-aware)
     connectivity = analyze_connectivity(footprints, tracks, vias, net_names, zones,
@@ -318,7 +320,7 @@ def run_facts(board: BoardData, *, include_trace_segments: bool, return_path_rad
 
     # Power net routing analysis
     power_routing = analyze_power_nets(footprints, tracks, net_names,
-                                       power_rails=_resolved_power_rails)
+                                       power_rails=_resolved_power_rails, pin_signals=pin_signals)
 
     # Pad-to-pad routed distance analysis (only with --full, needs segment data)
     pad_distances = None
@@ -331,11 +333,13 @@ def run_facts(board: BoardData, *, include_trace_segments: bool, return_path_rad
 
     # Current capacity facts
     current_capacity = analyze_current_capacity(tracks, vias, zones, net_names, setup,
-                                                power_rails=_resolved_power_rails)
+                                                power_rails=_resolved_power_rails,
+                                                pin_signals=pin_signals)
 
     # Layer transitions for ground return path analysis
     layer_transitions = analyze_layer_transitions(tracks, vias, net_names,
-                                                  power_rails=_resolved_power_rails)
+                                                  power_rails=_resolved_power_rails,
+                                                  pin_signals=pin_signals)
 
     # Silkscreen text extraction
     silkscreen = extract_silkscreen(root, footprints)
@@ -400,7 +404,8 @@ def run_facts(board: BoardData, *, include_trace_segments: bool, return_path_rad
             debug_samples=gp001_samples,
             vias=vias,
             power_rails=_resolved_power_rails,
-            copper_order=_copper_order_from_stackup(setup.get("stackup", [])))
+            copper_order=_copper_order_from_stackup(setup.get("stackup", [])),
+            pin_signals=pin_signals)
 
     keepout_zones = _extract_keepout_zones(zones, footprints)
 

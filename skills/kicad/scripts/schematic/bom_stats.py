@@ -4,6 +4,7 @@ from __future__ import annotations
 from kicad_core.fields import merge_unit_fields
 from kicad_core.netnames import (
     _clean_hierarchical_name,
+    is_pin_guarded_signal as _is_pin_guarded_signal,
     is_power_net_name as _is_power_net_name,
     parse_voltage_from_net_name as _parse_voltage_from_net_name,
 )
@@ -116,8 +117,11 @@ def compute_statistics(components: list[dict], nets: dict, bom: list[dict],
     power_rail_names = sorted(set(
         comp["value"] for comp in components if comp["type"] == "power_symbol"
     ))
-    for net_name in nets:
-        if _is_power_net_name(net_name):
+    comp_type = {c.get("reference"): c.get("type") for c in components}
+    for net_name, net_info in nets.items():
+        pins = net_info.get("pins", [])
+        if _is_power_net_name(net_name) and not _is_pin_guarded_signal(
+                net_name, [(p.get("pin_type"), comp_type.get(p.get("component")) == "ic") for p in pins]):
             clean = _clean_hierarchical_name(net_name)
             if clean not in power_rail_names:
                 power_rail_names.append(clean)

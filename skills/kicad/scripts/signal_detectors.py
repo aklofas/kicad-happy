@@ -4130,7 +4130,7 @@ def detect_solder_jumpers(ctx: AnalysisContext) -> list[dict]:
             if net and net not in net_list:
                 net_list.append(net)
 
-        power_nets = [n for n in net_list if is_power_net_name(n, None)]
+        power_nets = [n for n in net_list if is_power_net_name(n, None) and n not in ctx.pin_guarded_signals]
         ground_nets = [n for n in net_list if is_ground_name(n)]
 
         if state == "bridged":
@@ -4278,7 +4278,7 @@ def audit_rail_sources(ctx: AnalysisContext,
         # not a bootstrap pin (a BST net is fed by its capacitor, never a source).
         if net_name.startswith("__unnamed_"):
             return False
-        if is_power_net_name(net_name, None):
+        if is_power_net_name(net_name, None) and net_name not in ctx.pin_guarded_signals:
             return True
         return any(p.get("pin_type") == "power_in"
                    and not _is_bootstrap_pin_name(p.get("pin_name") or "")
@@ -4472,7 +4472,8 @@ def detect_label_aliases(ctx: AnalysisContext) -> list[dict]:
         # silent decoupling. If the user genuinely needs to audit
         # power-net label entropy, a separate rule (LB-002) could be
         # added later; for now we treat this as noise.
-        if is_power_net_name(net_name, None) or is_ground_name(net_name):
+        if ((is_power_net_name(net_name, None) and net_name not in ctx.pin_guarded_signals)
+                or is_ground_name(net_name)):
             continue
         findings.append({
             "detector": "detect_label_aliases",

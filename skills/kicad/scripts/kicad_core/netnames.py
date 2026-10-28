@@ -185,6 +185,25 @@ def is_power_net_name(net_name: str | None, power_rails: set[str] | None = None)
     return False
 
 
+# Supply-pin names that also name signals: a PIC's MCLR/VPP line, a measured node "VM".
+PIN_GUARDED_RAIL_NAMES = frozenset({"VPP", "VM"})
+IC_SIGNAL_PIN_TYPES = frozenset({"input", "output", "bidirectional", "tri_state",
+                                 "open_collector", "open_emitter"})
+
+
+def is_pin_guarded_signal(net_name: str | None, pins) -> bool:
+    """True when *net_name* is power only by its VPP/VM name and its pins say it is a
+    signal: an IC signal pin on it and no power_in/power_out pin. *pins* holds
+    ``(pin_type, on_ic)`` per pin, ``on_ic`` None where the part kind is unknown (a board
+    pad; KiCad 7+ pads carry the pin type). Callers skip nets in the rail set first."""
+    if not net_name or unescape_string(net_name).rsplit("/", 1)[-1].upper() not in PIN_GUARDED_RAIL_NAMES:
+        return False
+    kinds = [(str(t or "").split("+")[0], on_ic) for t, on_ic in pins]
+    if any(t in ("power_in", "power_out") for t, _ in kinds):
+        return False
+    return any(t in IC_SIGNAL_PIN_TYPES and on_ic is not False for t, on_ic in kinds)
+
+
 def is_ground_name(net_name: str | None, power_rails: set[str] | None = None) -> bool:
     """Check if a net name looks like a ground rail.
 

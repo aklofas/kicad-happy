@@ -10,7 +10,7 @@ import re
 from kicad_core.diagnostics import record
 from kicad_core.netnames import is_ground_name, is_power_net_name
 from pcb.connectivity import build_connectivity_graph
-from pcb.routing import analyze_trace_proximity
+from pcb.routing import analyze_trace_proximity, board_pin_signals
 from pcb.dfm import analyze_design_rule_compliance
 from pcb.assembly import (
     _compute_switching_loop_areas,
@@ -148,6 +148,7 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
     return_path = analyses.return_path
     gp001_samples = analyses.gp001_samples
     _resolved_power_rails = resolved_power_rails
+    pin_signals = board_pin_signals(board.footprints, _resolved_power_rails)
     _power_rails_source = power_rails_source
 
     # Compact footprint output — include pad-to-net mapping but omit pad geometry
@@ -214,7 +215,8 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
     # resolution actually used, and where that resolution came from.
     result["power_net_resolution"] = {
         "power": sorted({n for n in net_names.values()
-                         if n and is_power_net_name(n, _resolved_power_rails)}),
+                         if n and n not in pin_signals
+                         and is_power_net_name(n, _resolved_power_rails)}),
         "ground": sorted({n for n in net_names.values()
                           if n and is_ground_name(n)}),
         "source": _power_rails_source,
@@ -256,7 +258,7 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
     result["silkscreen"] = silkscreen
     if proximity:
         result["trace_proximity"] = analyze_trace_proximity(
-            tracks, net_names, power_rails=_resolved_power_rails)
+            tracks, net_names, power_rails=_resolved_power_rails, pin_signals=pin_signals)
 
     # board_metadata + design_rule_compliance are required envelope keys
     # (schema declares them dict not Optional[dict]). Always emit, even

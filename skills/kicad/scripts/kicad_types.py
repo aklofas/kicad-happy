@@ -13,7 +13,7 @@ from pathlib import Path
 
 from kicad_core.model import PinNetEntry
 from kicad_core.netquery import build_pin_to_net_map
-from kicad_core.netnames import is_ground_name, is_power_net_name
+from kicad_core.netnames import is_ground_name, is_pin_guarded_signal, is_power_net_name
 from kicad_core.diagnostics import record
 from kicad_core.values import AmbiguousValueSeparator, ambiguous_separator, parse_value
 
@@ -122,9 +122,10 @@ class AnalysisContext:
     cache_dir: Path | None = field(default=None, repr=False)
     project_dir: str | None = field(default=None, repr=False)
     diagnostics: list = field(default_factory=list, repr=False)
+    pin_guarded_signals: frozenset = field(default_factory=frozenset, repr=False)
 
     def is_power_net(self, name: str | None) -> bool:
-        return is_power_net_name(name, self.known_power_rails)
+        return name not in self.pin_guarded_signals and is_power_net_name(name, self.known_power_rails)
 
     def is_ground(self, name: str | None) -> bool:
         return is_ground_name(name, self.known_power_rails)
@@ -140,6 +141,17 @@ class AnalysisContext:
             nets = [net for net, _ in pins.values()]
             return nets[0], nets[1]
         return n1, n2
+
+
+def pin_guarded_signal_nets(nets: dict[str, dict], comp_lookup: dict[str, dict],
+                            power_rails: set[str] | None = None) -> frozenset[str]:
+    """Nets named VPP/VM that carry an IC signal pin and no power pin (is_pin_guarded_signal)."""
+    rails = power_rails or set()
+    return frozenset(
+        name for name, info in nets.items()
+        if name not in rails and is_pin_guarded_signal(name, [
+            (p.get("pin_type"), (comp_lookup.get(p.get("component")) or {}).get("type") == "ic")
+            for p in info.get("pins", [])]))
 
 
 def build_analysis_context(components: list[dict], nets: dict[str, dict], lib_symbols: dict, *,
@@ -165,6 +177,7 @@ def build_analysis_context(components: list[dict], nets: dict[str, dict], lib_sy
         no_connects=no_connects if no_connects is not None else [],
         generator_version=generator_version, source=source,
         cache_dir=cache_dir, project_dir=project_dir, diagnostics=diagnostics,
+        pin_guarded_signals=pin_guarded_signal_nets(nets, comp_lookup, rails),
     )
     from netlist_queries import NetlistQueries  # local: netlist_queries annotates with this class
     ctx.nq = NetlistQueries(ctx)

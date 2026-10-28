@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from finding_schema import make_finding, compute_trust_summary, assign_finding_ids, show_decoded_names
 from kicad_core.fields import merge_unit_fields
-from kicad_core.netnames import is_ground_name, is_power_net_name
+from kicad_core.netnames import is_ground_name, is_pin_guarded_signal, is_power_net_name
 from kicad_core.netquery import build_net_id_map as _build_net_id_map
 from kicad_core.pairing import pair_by_path
 from envelopes.cross_analysis import CrossAnalysisEnvelope
@@ -316,6 +316,10 @@ def check_esd_coverage_gaps(schematic: dict, pcb: dict | None, recorder=None) ->
 
     components = schematic.get('components', [])
     connectors = [c for c in components if c.get('type') == 'connector']
+    comp_type = {c.get('reference'): c.get('type') for c in components}
+    pin_signals = {n for n, info in (schematic.get('nets') or {}).items()
+                   if is_pin_guarded_signal(n, [(p.get('pin_type'), comp_type.get(p.get('component')) == 'ic')
+                                                for p in info.get('pins', [])])}
 
     for conn in connectors:
         val_lib = (conn.get('value', '') + ' ' + conn.get('lib_id', '')).lower()
@@ -327,7 +331,7 @@ def check_esd_coverage_gaps(schematic: dict, pcb: dict | None, recorder=None) ->
         pin_nets = conn.get('pin_nets') or {}
         for _, net in sorted(pin_nets.items()):
             if (not net or _is_power_net(net) or is_cross_analysis_ground_name(net)
-                    or is_ground_name(net) or is_power_net_name(net)):
+                    or is_ground_name(net) or (is_power_net_name(net) and net not in pin_signals)):
                 continue
             if net not in protected_nets:
                 unprotected_nets.append(net)

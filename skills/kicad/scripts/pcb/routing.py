@@ -5,8 +5,21 @@ Verbatim moves from analyze_pcb.py."""
 import heapq
 import math
 
-from kicad_core.netnames import is_ground_name, is_power_net_name
+from kicad_core.netnames import is_ground_name, is_pin_guarded_signal, is_power_net_name
 from pcb.geometry import CopperPresence, _arc_length_3pt
+
+
+def board_pin_signals(footprints: list[dict], power_rails: set[str] | None = None) -> frozenset[str]:
+    """Board nets named VPP/VM whose pads say signal (is_pin_guarded_signal), unless the
+    rail set names them. A board without pad pin types (before KiCad 7) keeps the name rule."""
+    pin_types: dict[str, list[str]] = {}
+    for fp in footprints:
+        for pad in fp.get("pads", []):
+            if pad.get("net_name"):
+                pin_types.setdefault(pad["net_name"], []).append(pad.get("pintype", ""))
+    return frozenset(
+        n for n, types in pin_types.items()
+        if n not in (power_rails or ()) and is_pin_guarded_signal(n, [(t, None) for t in types]))
 
 
 def analyze_connectivity(footprints: list[dict], tracks: dict, vias: dict,
@@ -86,13 +99,14 @@ def analyze_connectivity(footprints: list[dict], tracks: dict, vias: dict,
 
 def analyze_power_nets(footprints: list[dict], tracks: dict,
                        net_names: dict[int, str],
-                       power_rails: set[str] | None = None) -> list[dict]:
+                       power_rails: set[str] | None = None,
+                       pin_signals: frozenset = frozenset()) -> list[dict]:
     """Analyze routing of power/ground nets — track widths, via counts."""
     # EQ-052: d = √(Δx²+Δy²) (Euclidean distance)
     # Identify power/ground nets
     power_nets = {}
     for net_num, name in net_names.items():
-        if is_power_net_name(name, power_rails) or is_ground_name(name):
+        if (name not in pin_signals and is_power_net_name(name, power_rails)) or is_ground_name(name):
             power_nets[net_num] = {"name": name, "widths": set(), "track_count": 0,
                                    "total_length_mm": 0.0}
 
@@ -344,7 +358,7 @@ def analyze_return_path_continuity(tracks, net_names, zones, zone_fills,
                                     signal_nets=None, ref_layer_map=None,
                                     footprints=None, radius_mm=0.5,
                                     debug_samples=None, vias=None,
-                                    power_rails=None, copper_order=None):
+                                    power_rails=None, copper_order=None, pin_signals=frozenset()):
     """Check ground/power plane continuity under signal traces.
 
     For each signal net's trace segments, samples points along the trace
@@ -404,7 +418,7 @@ def analyze_return_path_continuity(tracks, net_names, zones, zone_fills,
         if net <= 0:
             continue
         net_name = net_names.get(net, "")
-        if is_power_net_name(net_name, power_rails) or is_ground_name(net_name):
+        if (net_name not in pin_signals and is_power_net_name(net_name, power_rails)) or is_ground_name(net_name):
             continue
         if signal_nets and net_name not in signal_nets:
             continue
@@ -882,7 +896,8 @@ def analyze_ground_domains(footprints: list[dict], net_names: dict[int, str],
 
 def analyze_trace_proximity(tracks: dict, net_names: dict[int, str],
                             grid_size: float = 0.5,
-                            power_rails: set[str] | None = None) -> dict:
+                            power_rails: set[str] | None = None,
+                            pin_signals: frozenset = frozenset()) -> dict:
     """Identify signal nets with traces running close together on the same layer.
 
     Uses a spatial grid to find net pairs sharing grid cells, indicating
@@ -925,7 +940,8 @@ def analyze_trace_proximity(tracks: dict, net_names: dict[int, str],
     pair_counts: dict[tuple[str, int, int], int] = {}
     for (_layer, _gx, _gy), nets in grid.items():
         signal = sorted(n for n in nets
-                        if not (is_power_net_name(net_names.get(n, ""), power_rails) or is_ground_name(net_names.get(n, ""))))
+                        if not ((net_names.get(n, "") not in pin_signals and is_power_net_name(net_names.get(n, ""), power_rails))
+                                or is_ground_name(net_names.get(n, ""))))
         if len(signal) < 2:
             continue
         for i in range(len(signal)):
@@ -957,7 +973,8 @@ def analyze_trace_proximity(tracks: dict, net_names: dict[int, str],
 def analyze_current_capacity(tracks: dict, vias: dict, zones: list[dict],
                              net_names: dict[int, str],
                              setup: dict,
-                             power_rails: set[str] | None = None) -> dict:
+                             power_rails: set[str] | None = None,
+                             pin_signals: frozenset = frozenset()) -> dict:
     """Provide facts for current capacity assessment (IPC-2221).
 
     For each net, reports the minimum track width and total copper cross-section
@@ -1041,7 +1058,7 @@ def analyze_current_capacity(tracks: dict, vias: dict, zones: list[dict],
         if data["min_width"] == float("inf"):
             continue
         name = net_names.get(net_num, f"net_{net_num}")
-        is_power = is_power_net_name(name, power_rails) or is_ground_name(name)
+        is_power = (name not in pin_signals and is_power_net_name(name, power_rails)) or is_ground_name(name)
 
         entry = {
             "net": name,
@@ -1117,7 +1134,8 @@ def analyze_current_capacity(tracks: dict, vias: dict, zones: list[dict],
 
 def analyze_layer_transitions(tracks: dict, vias: dict,
                                net_names: dict[int, str],
-                               power_rails: set[str] | None = None) -> list[dict]:
+                               power_rails: set[str] | None = None,
+                               pin_signals: frozenset = frozenset()) -> list[dict]:
     """Identify signal net layer transitions (via usage patterns).
 
     For ground return path analysis, higher-level logic needs to know which
@@ -1160,7 +1178,7 @@ def analyze_layer_transitions(tracks: dict, vias: dict,
         if len(data["layers"]) < 2:
             continue
         name = net_names.get(net_num, f"net_{net_num}")
-        if is_power_net_name(name, power_rails) or is_ground_name(name):
+        if (name not in pin_signals and is_power_net_name(name, power_rails)) or is_ground_name(name):
             continue  # Power/ground layer transitions are expected
 
         entry = {
