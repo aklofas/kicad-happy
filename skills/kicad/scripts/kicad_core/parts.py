@@ -214,20 +214,26 @@ def _longest_vref_key(candidate: str) -> str | None:
     return best
 
 
-# Keys longer than three characters that still name a family by one member's
-# Vref (see their table comments), not a part's datasheet value
-_FAMILY_DEFAULT_VREF_KEYS = frozenset({"LMZ2", "LTM46", "MIC29", "XL70", "LD33"})
+def part_number_core(part: str) -> str:
+    """The part number without suffix letters, package or option codes:
+    'TPS61023DRLR' -> 'TPS61023', 'LM2596S-ADJ' -> 'LM2596',
+    'TPS7A4901DGNR' -> 'TPS7A4901'; '' when it does not start with one."""
+    m = re.match(r"[A-Z]+\d+(?:[A-Z]\d+)*", part.upper())
+    return m.group(0) if m else ""
 
 
-def is_family_default_vref_key(key: str) -> bool:
-    """True when a _REGULATOR_VREF key is a family default: three characters
-    or fewer (RT5, RT6, MP1, SY8) or one of _FAMILY_DEFAULT_VREF_KEYS."""
-    return len(key) <= 3 or key in _FAMILY_DEFAULT_VREF_KEYS
+def vref_key_covers_part(key: str, part: str) -> bool:
+    """True when a _REGULATOR_VREF key names the whole part number of *part*
+    (its value for that part), not a shorter family prefix: 'TPS61023' covers
+    TPS61023DRLR, 'TPS6102' does not cover TPS61025."""
+    core = part_number_core(part)
+    return bool(core) and part.upper().startswith(key.upper()) and len(key) >= len(core)
 
 
-def regulator_vref_key(value: str, lib_id: str, mpn: str = "") -> str | None:
-    """The _REGULATOR_VREF key that lookup_regulator_vref takes a "lookup"
-    Vref from (same candidate order), or None when the Vref is not a table hit."""
+def regulator_vref_key(value: str, lib_id: str, mpn: str = "") -> tuple[str, str] | None:
+    """(key, part): the _REGULATOR_VREF key that lookup_regulator_vref takes a
+    "lookup" Vref from and the value, lib_id part name or MPN it matched (same
+    candidate order), or None when the Vref is not a table hit."""
     candidates = [value.upper()]
     if ":" in lib_id:
         candidates.append(lib_id.split(":")[-1].upper())
@@ -237,7 +243,7 @@ def regulator_vref_key(value: str, lib_id: str, mpn: str = "") -> str | None:
         vref, source = _lookup_vref(candidates)
     if source != "lookup":
         return None
-    return next(k for k in map(_longest_vref_key, candidates) if k is not None)
+    return next((k, c) for c in candidates if (k := _longest_vref_key(c)) is not None)
 
 
 # ---------------------------------------------------------------------------

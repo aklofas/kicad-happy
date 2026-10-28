@@ -9,7 +9,7 @@ pass/warn/fail/skip/info status for each simulation.
 import math
 
 import _core_path  # noqa: F401
-from kicad_core.parts import is_family_default_vref_key, regulator_vref_key
+from kicad_core.parts import regulator_vref_key, vref_key_covers_part
 
 # Measurements taken with ngspice vp(), which returns radians. The other
 # backends' parsers pass their values through unconverted.
@@ -547,11 +547,14 @@ def evaluate_transistor_circuit(det, sim_results):
             result["note"] = "ngspice DC sweep measurement failed"
             return result
 
-        # Generic NMOS Vth=1.5V, PMOS Vth=-1.5V — just verify the FET turns on
-        result["status"] = "pass"
+        # the bench runs the generic model (NMOS Vth 1.5 V, PMOS -1.5 V) with a fixed load
+        # and a full gate sweep, so its threshold and on-current describe the model
         if i_on is not None and i_on < 1e-6:
             result["status"] = "warn"
             result["note"] = "Very low on-state current — FET may not be switching properly"
+        else:
+            result["status"] = "info"
+            result["note"] = "FET turns on in the generic model; not compared against the part"
     else:
         # BJT
         if vbe_on is not None:
@@ -564,7 +567,8 @@ def evaluate_transistor_circuit(det, sim_results):
             result["note"] = "ngspice DC sweep measurement failed"
             return result
 
-        result["status"] = "pass"
+        result["status"] = "info"
+        result["note"] = "BJT turns on in the generic model; not compared against the part"
         # VBE should be ~0.6-0.7V for silicon BJT
         if vbe_on is not None:
             if vbe_on < 0.4 or vbe_on > 0.9:
@@ -791,17 +795,19 @@ def evaluate_regulator_feedback(det, sim_results):
     components = {c.get("reference"): c for c in (det.get("_context") or {}).get("components", [])
                   if isinstance(c, dict)}
     vref_source = det.get("vref_source")
-    vref_key = None
+    vref_match = None
     if vref_source == "lookup":
         part = components.get(reg_ref) or {}
-        vref_key = regulator_vref_key(det.get("value") or "", det.get("lib_id") or "",
-                                      part.get("mpn") or "")
+        vref_match = regulator_vref_key(det.get("value") or "", det.get("lib_id") or "",
+                                        part.get("mpn") or "")
     adjustable = [ref for arm in (r_top, r_bot) for ref in arm.get("parallel_refs") or [arm.get("ref")]
                   if ref and _is_adjustable(ref, components)]
     if vref_source not in ("lookup", "datasheet") or not vref:
         why = "Vref is not from the part"
-    elif vref_source == "lookup" and (vref_key is None or is_family_default_vref_key(vref_key)):
-        why = f"Vref {vref} V is a family default ({vref_key or 'unmatched'}), not this part's datasheet value"
+    elif vref_source == "lookup" and not (vref_match and vref_key_covers_part(*vref_match)):
+        # a shorter table prefix is a family default: members of one family differ
+        why = (f"Vref {vref} V is a family default ({vref_match[0] if vref_match else 'unmatched'}), "
+               "not this part's own value")
     elif adjustable:
         why = f"divider arm {', '.join(adjustable)} is adjustable"
     elif sim_results.get("vin_from") != "rail_name" or not vin:

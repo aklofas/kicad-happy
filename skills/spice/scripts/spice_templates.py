@@ -841,18 +841,19 @@ def _rail_name_voltage(net_name):
     '+5VA', 'VCC_1V8', 'VCC-5V', '/PWR/12V' -> the number; 'VCC', 'VBUS',
     '-5V', 'USB2VBUS' -> None. Only the leaf's '_'/'-'-separated tokens that
     begin with the number count, so a number that is not a voltage is not
-    read as one; a leading '-' is a negative rail."""
+    read as one; a '-' right before the voltage at the start of the name or
+    after '_', '-' or a space ('-5V', 'ATX_-5V') is a negative rail -> None."""
     leaf = (net_name or "").rsplit("/", 1)[-1].upper().strip()
-    if leaf.startswith("-"):
-        return None
-    for tok in re.split(r"[_\s-]+", leaf):
+    for tok_m in re.finditer(r"[^_\s-]+", leaf):
+        tok, at = tok_m.group(0), tok_m.start()
+        signed = at > 0 and leaf[at - 1] == "-" and (at == 1 or leaf[at - 2] in "_- \t")
         m = re.fullmatch(r"\+?(\d+)V(\d*)[A-Z]*", tok)
         v = float(f"{m.group(1)}.{m.group(2) or 0}") if m else None
         m = re.fullmatch(r"\+?(\d+\.\d+)V[A-Z]*", tok)
         if m:
             v = float(m.group(1))
         if v:
-            return v
+            return None if signed else v
     return None
 
 

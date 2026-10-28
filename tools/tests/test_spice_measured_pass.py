@@ -128,6 +128,23 @@ class RegulatorVrefTest(unittest.TestCase):
         self.assertEqual(r["status"], "pass")
         self.assertAlmostEqual(r["delta"]["vfb_vs_vref_pct"], 0.36, delta=0.01)
 
+    def test_key_must_cover_the_part_number(self):
+        from kicad_core.parts import vref_key_covers_part
+        self.assertTrue(vref_key_covers_part("TPS61023", "TPS61023DRLR"))
+        self.assertTrue(vref_key_covers_part("RT6150", "RT6150AGQW"))
+        self.assertFalse(vref_key_covers_part("TPS6103", "TPS61032"))
+        self.assertFalse(vref_key_covers_part("TPS6102", "TPS61025"))
+        self.assertFalse(vref_key_covers_part("LT860", "LT8606"))
+
+    def test_shorter_table_key_is_info(self):
+        # TPS61032 (FB 0.5 V) on the 'TPS6103' 0.595 V row; LT8606 (FB 0.778 V) on 'LT860' 0.97 V:
+        # a design correct for its part stays unjudged instead of failing
+        for value, vref, r_top, r_bot in (("TPS61032PWPR", 0.595, 90.9e3, 10e3),
+                                          ("LT8606EMSE", 0.97, 324e3, 100e3)):
+            r = self._eval(_regulator(r_top, r_bot, "+5V", vref, "lookup", value=value))
+            self.assertEqual(r["status"], "info", value)
+            self.assertNotIn("vfb_vs_vref_pct", r["delta"])
+
     def test_family_default_reference_is_info(self):
         # 'SY8' names a family by one member's 0.6 V, not this part's datasheet value:
         # a match (100k/22k: 0.595 V) and a miss (82k/10k: 0.359 V) both stay unjudged
@@ -212,14 +229,25 @@ class HalfBridgeTest(unittest.TestCase):
 
 
 @unittest.skipUnless(shutil.which("ngspice"), "ngspice not installed")
-class PChannelTest(unittest.TestCase):
-    def test_on_state_current(self):
+class TransistorGenericModelTest(unittest.TestCase):
+    # The bench runs the generic FET/BJT model with a fixed 1 k load and a full gate
+    # (base) sweep, so its threshold and on-current describe the model, not the part
+
+    def test_p_channel_on_state_current(self):
         # P-channel high-side: 3.3 V across the 1 k load when on -> 3.3 mA
         det = {"reference": "Q1", "type": "mosfet", "value": "AO3401", "is_pchannel": True,
                "gate_net": "G", "drain_net": "D", "source_net": "+3V3", "load_type": "unknown"}
         r = _run(T.generate_transistor_circuit, R.evaluate_transistor_circuit, det)
-        self.assertEqual(r["status"], "pass")
+        self.assertEqual(r["status"], "info")
         self.assertAlmostEqual(r["simulated"]["i_on_mA"], 3.3, delta=0.05)
+
+    def test_npn_switch_is_info(self):
+        # generic NPN: VBE at 1 mA ~0.65 V, inside the 0.5-0.8 V window
+        det = {"reference": "Q2", "type": "bjt", "value": "MMBT3904", "lib_id": "Transistor_BJT:MMBT3904",
+               "base_net": "B", "collector_net": "C", "emitter_net": "GND", "load_type": "unknown"}
+        r = _run(T.generate_transistor_circuit, R.evaluate_transistor_circuit, det)
+        self.assertEqual(r["status"], "info")
+        self.assertTrue(0.5 < r["simulated"]["vbe_on_V"] < 0.8)
 
 
 @unittest.skipUnless(shutil.which("ngspice"), "ngspice not installed")
@@ -245,6 +273,8 @@ class RailNameVoltageTest(unittest.TestCase):
             "0V": None,         # ground
             "CONN_21": None,    # a connector pin number
             "VBUS": None, "VCC": None,
+            "ATX_-5V": None, "analog_-15V": None,   # '-' before the voltage after a separator
+            "3V3-5V": 3.3, "+5V-ISO": 5.0, "VCC-IO": None,
         }
         for name, volts in cases.items():
             self.assertEqual(T._rail_name_voltage(name), volts, name)
