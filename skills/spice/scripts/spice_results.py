@@ -373,14 +373,16 @@ def evaluate_crystal_circuit(det, sim_results):
 
     The generic model is built from the nominal frequency, so the bench has no
     acceptance criterion of its own: the measured series and load resonance are
-    reported as `info`. `warn` when the series resonance was not measured or the
-    analyzer's calculated CL is outside 4-30 pF (typical crystal CL specs).
+    reported as `info`. `warn` when either resonance was not measured, the read
+    Rm shows the sweep did not resolve the resonance, or the analyzer's
+    calculated CL is outside 4-30 pF (typical crystal CL specs).
     """
     freq = det.get("frequency")
     cl_eff = det.get("effective_load_pF")
     f_series = sim_results.get("f_series")
     f_load = sim_results.get("f_load")
     rm = sim_results.get("rm")
+    rm_model = sim_results.get("rm_model")
 
     result = {
         "subcircuit_type": "crystal_circuit",
@@ -401,11 +403,22 @@ def evaluate_crystal_circuit(det, sim_results):
         result["note"] = "not measured: series resonance not found in the sweep"
         return result
 
+    # |Z| at the 0.25 ppm phase-zero step is within 1 % of Rm for any Q below 5e5 (real crystals:
+    # 1e4-1e5); outside +/-50 % of the model's Rm the sweep did not resolve the resonance
+    if rm is not None and rm_model and not 0.5 * float(rm_model) <= rm <= 1.5 * float(rm_model):
+        result["status"] = "warn"
+        result["note"] = (f"not measured: the sweep does not resolve the series resonance "
+                          f"(|Z| {rm:.4g} ohm vs model Rm {float(rm_model):.4g} ohm)")
+        return result
     result["simulated"]["f_series_hz"] = f_series
     result["simulated"]["f_error_pct"] = round(abs(f_series - freq) / freq * 100, 3)
-    if f_load is not None:
-        result["simulated"]["f_load_hz"] = f_load
-        result["simulated"]["pulling_ppm"] = round((f_load - f_series) / f_series * 1e6, 1)
+    if f_load is None:
+        result["status"] = "warn"
+        result["note"] = "not measured: load resonance not found in the sweep"
+        return result
+
+    result["simulated"]["f_load_hz"] = f_load
+    result["simulated"]["pulling_ppm"] = round((f_load - f_series) / f_series * 1e6, 1)
     if rm is not None:
         result["simulated"]["motional_resistance_ohm"] = round(rm, 1)
 
@@ -416,11 +429,8 @@ def evaluate_crystal_circuit(det, sim_results):
         result["note"] = f"Effective CL={cl_eff:.1f}pF (calculated) — unusual range, verify crystal datasheet"
     else:
         result["status"] = "info"
-        if f_load is not None:
-            result["note"] = (f"Series resonance measured; load resonance {f_load:.0f} Hz "
-                              f"({result['simulated']['pulling_ppm']:+.1f} ppm) with load caps {caps}")
-        else:
-            result["note"] = f"Series resonance measured; load caps {caps}"
+        result["note"] = (f"Series resonance measured; load resonance {f_load:.0f} Hz "
+                          f"({result['simulated']['pulling_ppm']:+.1f} ppm) with load caps {caps}")
     return result
 
 

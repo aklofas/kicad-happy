@@ -204,7 +204,8 @@ f_L = f_s * (1 + Cm / (2 * (C0 + CL)))      CL = (C1 * C2) / (C1 + C2)
 
 C1 and C2 are the load capacitance on each crystal pin (parallel caps on one pin sum). The result reports `f_series_hz`, `f_load_hz`, `pulling_ppm` and the measured `motional_resistance_ohm` as `info`: the model is generic, so these show the effect of the load caps, not a pass/fail. The analyzer's calculated CL (`(C1 * C2) / (C1 + C2) + C_stray`, C_stray ≈ 3 pF) stays in `expected`; the result warns when:
 - the calculated CL is outside a reasonable range (4-30 pF), or
-- the series resonance was not found in the sweep.
+- the series or load resonance was not found in the sweep, or
+- |Z| at the series resonance is outside ±50 % of the model's Rm (the sweep did not resolve the resonance, e.g. a misread sub-Hz frequency); then no Rm, resonance or pulling is reported.
 
 ### What It Does NOT Test
 

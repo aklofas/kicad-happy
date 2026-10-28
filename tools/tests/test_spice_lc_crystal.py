@@ -128,7 +128,38 @@ class CrystalMonteCarloTest(unittest.TestCase):
         self.assertAlmostEqual(stats["pulling_ppm"]["nominal"], 625.0, delta=3.125)
 
 
+@unittest.skipUnless(shutil.which("ngspice"), "ngspice not installed")
+class CrystalUnresolvedTest(unittest.TestCase):
+    def test_misread_frequency_is_not_measured(self):
+        # "32768_1206_12.5pF" read as 0.0328 Hz: at that frequency the 12 pF load caps
+        # (~4e11 ohm) sit behind the bench's 1 Gohm DC returns, and Q = 1/(2*pi*f*Cm*Rm)
+        # ~ 6e10 is far beyond the 0.25 ppm sweep step; nothing it reads is a measurement
+        det = _crystal(0.0327681206125, [("C22", 12e-12, "D23"), ("C21", 12e-12, "N1")])
+        r = _run(T.generate_crystal_circuit, R.evaluate_crystal_circuit, det)
+        self.assertEqual(r["status"], "warn")
+        self.assertTrue(r["note"].startswith("not measured"))
+        self.assertNotIn("motional_resistance_ohm", r["simulated"])
+        self.assertNotIn("f_series_hz", r["simulated"])
+
+
 class CrystalUnitTest(unittest.TestCase):
+    def test_load_resonance_not_measured_warns(self):
+        det = _crystal(8e6, [("C1", 22e-12, "X1"), ("C2", 22e-12, "X2")])
+        r = R.evaluate_crystal_circuit(det, {"f_series": 8e6, "rm": 30.0, "rm_model": 30.0})
+        self.assertEqual(r["status"], "warn")
+        self.assertEqual(r["note"], "not measured: load resonance not found in the sweep")
+        self.assertNotIn("motional_resistance_ohm", r["simulated"])
+
+    def test_unresolved_rm_is_not_reported(self):
+        # Rm read 983,759,000 ohm against the bench's 30 ohm model: outside +/-50 %
+        det = _crystal(8e6, [("C1", 22e-12, "X1"), ("C2", 22e-12, "X2")])
+        r = R.evaluate_crystal_circuit(det, {"f_series": 8e6, "f_load": 8.005e6,
+                                             "rm": 983759000.0, "rm_model": 30.0})
+        self.assertEqual(r["status"], "warn")
+        self.assertTrue(r["note"].startswith("not measured"))
+        self.assertNotIn("motional_resistance_ohm", r["simulated"])
+        self.assertNotIn("pulling_ppm", r["simulated"])
+
     def test_series_resonance_not_measured_warns(self):
         det = _crystal(8e6, [("C1", 22e-12, "X1"), ("C2", 22e-12, "X2")])
         r = R.evaluate_crystal_circuit(det, {})

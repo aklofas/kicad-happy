@@ -222,7 +222,7 @@ For opamps with behavioral models, gain-bandwidth limitation warnings are inform
 
 ### Crystal circuits
 
-Crystal simulations measure series resonance on the crystal alone and load resonance with the load caps (summed per leg) in the C1 – crystal – C2 loop, and report the pulling as `info`: the generic Butterworth-Van Dyke model is built from the nominal frequency, not the specific crystal's data, so the bench has no pass criterion. They `warn` when the analyzer's calculated CL is outside 4-30 pF (catching missing or grossly wrong load capacitors) or the series resonance was not measured.
+Crystal simulations measure series resonance on the crystal alone and load resonance with the load caps (summed per leg) in the C1 – crystal – C2 loop, and report the pulling as `info`: the generic Butterworth-Van Dyke model is built from the nominal frequency, not the specific crystal's data, so the bench has no pass criterion. They `warn` when the analyzer's calculated CL is outside 4-30 pF (catching missing or grossly wrong load capacitors) or a resonance was not measured (not found in the sweep, or an Rm read far from the model's showing the sweep did not resolve it).
 
 ### When simulations fail or skip
 

@@ -11,7 +11,7 @@ Supported detector types (Phase 1):
   - LC filters (AC analysis → resonant frequency, Q factor)
   - Voltage dividers (DC operating point → output voltage)
   - Opamp circuits (AC analysis → gain, bandwidth)
-  - Crystal circuits (AC analysis → negative resistance margin)
+  - Crystal circuits (AC analysis → series and load resonance, pulling)
 """
 
 import math
@@ -729,7 +729,7 @@ Rdcb2 b2 0 1G
         ("rm", "find", "za_mag", "at=f_series"),
     ]
 
-    return SpiceTestbench(circuit, analyses, measurements)
+    return SpiceTestbench(circuit, analyses, measurements, {"rm_model": str(rm)})
 
 
 # ---------------------------------------------------------------------------
