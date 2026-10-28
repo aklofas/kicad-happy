@@ -5839,27 +5839,46 @@ def detect_transformer_feedback(ctx: AnalysisContext) -> list[dict]:
 # IA-001: I2C address conflict detection
 # ---------------------------------------------------------------------------
 
+# Per part: (base 7-bit address, ((strap pin, weight, states), ...)); address = base +
+# sum(code * weight) with code GND/VDD/SDA/SCL = 0/1/2/3. A 2-state pin takes GND or VDD only.
 _I2C_DEVICE_ADDRESSES = {
-    'ina219': {'base': 0x40, 'pins': ('A0', 'A1')},
-    'ina226': {'base': 0x40, 'pins': ('A0', 'A1')},
-    'ina228': {'base': 0x40, 'pins': ('A0', 'A1')},
-    'pca9685': {'base': 0x40, 'pins': ('A0', 'A1', 'A2', 'A3', 'A4', 'A5')},
-    'ads1115': {'base': 0x48, 'pins': ('ADDR',)},
-    'ads1015': {'base': 0x48, 'pins': ('ADDR',)},
-    'bme280': {'base': 0x76, 'pins': ('SDO',)},
-    'bmp280': {'base': 0x76, 'pins': ('SDO',)},
-    'sht3': {'base': 0x44, 'pins': ('ADDR',)},
-    'mcp4725': {'base': 0x60, 'pins': ('A0', 'A1', 'A2')},
-    'at24c': {'base': 0x50, 'pins': ('A0', 'A1', 'A2')},
-    'pcf8574': {'base': 0x20, 'pins': ('A0', 'A1', 'A2')},
-    'pcf8575': {'base': 0x20, 'pins': ('A0', 'A1', 'A2')},
-    'mcp23017': {'base': 0x20, 'pins': ('A0', 'A1', 'A2')},
-    'ds1307': {'base': 0x68, 'pins': ()},
-    'ds3231': {'base': 0x68, 'pins': ()},
+    # INA219 Table 2, INA226 Table 2, INA228 Table 7-2: 0x40 + 4*A1 + A0, four states each.
+    'ina219': (0x40, (('A1', 4, 4), ('A0', 1, 4))),
+    'ina226': (0x40, (('A1', 4, 4), ('A0', 1, 4))),
+    'ina228': (0x40, (('A1', 4, 4), ('A0', 1, 4))),
+    # PCA9685 section 7.1.1: 1 A5 A4 A3 A2 A1 A0.
+    'pca9685': (0x40, tuple((f'A{i}', 1 << i, 2) for i in range(6))),
+    # ADS1115 Table 4, ADS1015 Table 2: ADDR to GND/VDD/SDA/SCL = 0x48..0x4B.
+    'ads1115': (0x48, (('ADDR', 1, 4),)),
+    'ads1015': (0x48, (('ADDR', 1, 4),)),
+    # BME280 section 6.2, BMP280 section 5.2: 111011x, x = SDO.
+    'bme280': (0x76, (('SDO', 1, 2),)),
+    'bmp280': (0x76, (('SDO', 1, 2),)),
+    # SHT3x-DIS Table 8: ADDR low 0x44, high 0x45.
+    'sht3': (0x44, (('ADDR', 1, 2),)),
+    # MCP4725 section 7.2: 1100 A2 A1 A0; A2:A1 from the ordering code (A0..A3 = 00..11),
+    # only A0 is a pin.
+    'mcp4725': (0x60, (('A0', 1, 2),)),
+    'mcp4725a1': (0x62, (('A0', 1, 2),)),
+    'mcp4725a2': (0x64, (('A0', 1, 2),)),
+    'mcp4725a3': (0x66, (('A0', 1, 2),)),
+    # AT24CS32 section 8: 1010 A2 A1 A0.
+    'at24c': (0x50, (('A0', 1, 2), ('A1', 2, 2), ('A2', 4, 2))),
+    # NXP PCF8574/74A Table 4 / Table 5: 0100 A2 A1 A0 / 0111 A2 A1 A0.
+    'pcf8574': (0x20, (('A0', 1, 2), ('A1', 2, 2), ('A2', 4, 2))),
+    'pcf8574a': (0x38, (('A0', 1, 2), ('A1', 2, 2), ('A2', 4, 2))),
+    # PCF8575 section 8.3.3, MCP23017 Figure 3-5: 0100 A2 A1 A0.
+    'pcf8575': (0x20, (('A0', 1, 2), ('A1', 2, 2), ('A2', 4, 2))),
+    'mcp23017': (0x20, (('A0', 1, 2), ('A1', 2, 2), ('A2', 4, 2))),
+    # DS3231 Figures 3-5: 1101000. DS1307: no datasheet at hand, entry kept as it was.
+    'ds1307': (0x68, ()),
+    'ds3231': (0x68, ()),
 }
+_I2C_ADDR_FAMILIES = {k: (k,) for k in _I2C_DEVICE_ADDRESSES}
+_I2C_STRAP_CODES = {'gnd': 0, 'vcc': 1, 'sda': 2, 'scl': 3}
 
 
-def _resolve_addr_pin(ctx: AnalysisContext, ref: str, pin_name: str) -> str:
+def _resolve_addr_pin(ctx: AnalysisContext, ref: str, pin_name: str, sda_net: str, scl_net: str) -> str:
     net = _get_pin_net_domain(ctx, ref, (pin_name,))
     if not net:
         return 'unknown'
@@ -5867,62 +5886,76 @@ def _resolve_addr_pin(ctx: AnalysisContext, ref: str, pin_name: str) -> str:
         return 'gnd'
     if ctx.is_power_net(net):
         return 'vcc'
-    net_lower = net.lower()
-    if 'sda' in net_lower:
+    if net == sda_net:
         return 'sda'
-    if 'scl' in net_lower:
+    if net == scl_net:
         return 'scl'
     return 'unknown'
 
 
+def _resolve_i2c_address(ctx: AnalysisContext, ref: str, device_type: str,
+                         sda_net: str, scl_net: str) -> int | None:
+    """7-bit address from the strap pins, or None when any strap is not a table state."""
+    base, straps = _I2C_DEVICE_ADDRESSES[device_type]
+    addr = base
+    for pin, weight, states in straps:
+        code = _I2C_STRAP_CODES.get(_resolve_addr_pin(ctx, ref, pin, sda_net, scl_net))
+        if code is None or code >= states:
+            return None
+        addr += code * weight
+    return addr
+
+
 def detect_i2c_address_conflicts(ctx: AnalysisContext) -> list[dict]:
-    """IA-001: Detect I2C devices with potentially conflicting addresses."""
+    """IA-001: Detect I2C devices that resolve to the same 7-bit address on one bus."""
     results: list[dict] = []
     buses: dict = {}
 
     for ic in get_unique_ics(ctx):
         ref = ic['reference']
-        combined = (ic.get('value', '') + ' ' + ic.get('lib_id', '')).lower()
-        device_type = None
-        for keyword in _I2C_DEVICE_ADDRESSES:
-            if keyword in combined:
-                device_type = keyword
-                break
+        device_type = match_family(ic, _I2C_ADDR_FAMILIES)
         if not device_type:
             continue
         sda_net = _get_pin_net_domain(ctx, ref, ('SDA', 'I2C_SDA'))
         scl_net = _get_pin_net_domain(ctx, ref, ('SCL', 'I2C_SCL'))
         if not sda_net or not scl_net:
             continue
-        dev_info = _I2C_DEVICE_ADDRESSES[device_type]
-        addr_config = {pin: _resolve_addr_pin(ctx, ref, pin) for pin in dev_info['pins']}
         buses.setdefault((sda_net, scl_net), []).append({
-            'ref': ref, 'value': ic.get('value', ''), 'device_type': device_type,
-            'addr_config': addr_config, 'base_addr': dev_info['base'],
+            'ref': ref, 'device_type': device_type,
+            'addr': _resolve_i2c_address(ctx, ref, device_type, sda_net, scl_net),
         })
 
     for (sda_net, scl_net), devices in buses.items():
-        addr_groups: dict = {}
+        by_addr: dict = {}
         for dev in devices:
-            config_str = f"{dev['device_type']}:{','.join(f'{k}={v}' for k, v in sorted(dev['addr_config'].items()))}"
-            addr_groups.setdefault(config_str, []).append(dev)
-        for config_str, group in addr_groups.items():
+            if dev['addr'] is not None:
+                by_addr.setdefault(dev['addr'], []).append(dev)
+        for addr, group in sorted(by_addr.items()):
             if len(group) < 2:
                 continue
             refs = [d['ref'] for d in group]
-            dev_type = group[0]['device_type']
-            base = group[0]['base_addr']
+            types = sorted({d['device_type'] for d in group})
             results.append(make_finding(
                 detector='detect_i2c_address_conflicts', rule_id='IA-001', category='protocol_integrity',
-                summary=f'I2C address conflict: {len(refs)}x {dev_type} at same address on {sda_net}/{scl_net}',
-                description=f'{len(refs)} instances of {dev_type} ({", ".join(refs)}) have identical address configs ({config_str.split(":", 1)[1]}).',
+                summary=f'I2C address conflict: {len(refs)} devices at 0x{addr:02X} on {sda_net}/{scl_net}',
+                description=f'{", ".join(refs)} ({", ".join(types)}) all resolve to 7-bit address 0x{addr:02X}.',
                 severity='error', confidence='deterministic', evidence_source='topology',
                 components=refs, nets=[sda_net, scl_net],
                 recommendation='Reconfigure address pins (A0/A1/A2) to assign unique addresses.',
-                fix_params={'type': 'swap_connection', 'components': refs[1:], 'change': 'Rewire address pins', 'basis': f'{dev_type} base 0x{base:02X}'},
+                fix_params={'type': 'swap_connection', 'components': refs[1:], 'change': 'Rewire address pins', 'basis': f'0x{addr:02X}'},
                 impact='Bus corruption — multiple devices respond to same address',
                 provenance=make_provenance('i2c_addr_conflict', 'deterministic', claimed_components=refs),
-            
+                source=ctx.source, schema_era="v3.0",))
+        unresolved = [d['ref'] for d in devices if d['addr'] is None]
+        if unresolved and len(devices) >= 2:
+            results.append(make_finding(
+                detector='detect_i2c_address_conflicts', rule_id='IA-001', category='protocol_integrity',
+                summary=f'I2C address could not be resolved for {", ".join(unresolved)} on {sda_net}/{scl_net}',
+                description='Address pins are not tied to ground, the supply or the bus SDA/SCL, so a conflict cannot be ruled out.',
+                severity='info', confidence='heuristic', evidence_source='topology',
+                components=unresolved, nets=[sda_net, scl_net],
+                recommendation='Check the address strapping of these devices against their datasheets.',
+                provenance=make_provenance('i2c_addr_unresolved', 'heuristic', claimed_components=unresolved),
                 source=ctx.source, schema_era="v3.0",))
     return results
 

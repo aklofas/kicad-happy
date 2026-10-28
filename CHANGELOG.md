@@ -44,6 +44,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `analysis.power_rails.voltage_overrides` and `ignore` now apply before detection (VM-001, AM-001, OV-001, FT-001, LR-001, sleep audit, power budget, regulator dissipation), not only to the summary (entry 9).
 - An unknown regulator's reference voltage is chosen to agree with its rail name when one of the common references does (0.6, 0.8, 1.0, 1.22, 1.25 V): a 511 k / 162 k divider on `3V3` reads 3.32 V, not 2.49 V. A known part keeps its own reference even when its divider disagrees with the rail name. (KH-675)
 - Part families are matched by the longest keyword (part number first, then value, then library id); ties are left unclassified. A LIS3MDL is a magnetometer, a TPS3823 a watchdog, an STM32WL a LoRa part, an HMC540 an attenuator, and an HMC5883L no longer an RF amplifier (kc/R6-F4).
+- I2C address conflicts compare resolved 7-bit addresses across part models (built-in tables by longest part-number prefix); devices whose address pins cannot be resolved give one info per bus instead of an error (kc/R6-F2).
 
 ### Fixed
 
