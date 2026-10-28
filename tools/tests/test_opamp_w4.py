@@ -76,6 +76,64 @@ class NonInverting(unittest.TestCase):
         self.assertNotIn("gain", oa[0])
 
 
+def _pot(ref, value):
+    return {"reference": ref, "type": "resistor", "value": value, "lib_id": "Device:R_Potentiometer"}
+
+
+class AdjustableGain(unittest.TestCase):
+    """A potentiometer in the gain network, or another resistor beside Rf or the gain leg,
+    makes the gain adjustable: the configuration stays, no single gain is claimed."""
+
+    def test_rheostat_across_rf_leaves_gain_unset(self):
+        # 33k Rf with a 50k rheostat across it (pin 1 on -, pins 2 and 3 on OUT), Rg 2.2k:
+        # the gain spans 1.0 .. 1 + (33k || 50k)/2.2k = 10.04, never 1 + 33k/2.2k = 16
+        oa = _opamps([_oa("U1"), _r("R16", "33k"), _r("R10", "2.2k"), _pot("RV1", "50k")],
+                     {"OUT": [("U1", "6", "OUT", "output"), _p("R16", "1"), _p("RV1", "2"), _p("RV1", "3")],
+                      "INN": [("U1", "2", "-", "input"), _p("R16", "2"), _p("R10", "1"), _p("RV1", "1")],
+                      "AGND": [_p("R10", "2")], "SIG": [("U1", "3", "+", "input")]},
+                     )
+        self.assertEqual(oa[0]["configuration"], "non_inverting")
+        self.assertNotIn("gain", oa[0])
+        self.assertNotIn("gain_dB", oa[0])
+        self.assertEqual(oa[0]["input_resistor"], {"ref": "R10", "ohms": 2200.0})
+
+    def test_rheostat_as_rf_leaves_gain_unset(self):
+        # RV5 100k as Rf (pin 1 on -, pins 2 and 3 on OUT), Rg 100k: gain 1 .. 2, not a fixed 2.0
+        oa = _opamps([_oa("U3"), _pot("RV5", "100k"), _r("R21", "100k")],
+                     {"OUT": [("U3", "1", "OUT", "output"), _p("RV5", "2"), _p("RV5", "3")],
+                      "INN": [("U3", "2", "-", "input"), _p("RV5", "1"), _p("R21", "2")],
+                      "GND": [_p("R21", "1")], "SIG": [("U3", "3", "+", "input")]})
+        self.assertEqual(oa[0]["configuration"], "non_inverting")
+        self.assertNotIn("gain", oa[0])
+
+    def test_rheostat_as_rg_leaves_gain_unset(self):
+        # Rf 100k, ground leg a 10k rheostat (pins 1 and 2 on -, pin 3 on GND)
+        oa = _opamps([_oa("U3"), _r("R7", "100k"), _pot("RV1", "10k")],
+                     {"OUT": [("U3", "6", "OUT", "output"), _p("R7", "1")],
+                      "INN": [("U3", "2", "-", "input"), _p("R7", "2"), _p("RV1", "1"), _p("RV1", "2")],
+                      "GND": [_p("RV1", "3")], "SIG": [("U3", "3", "+", "input")]})
+        self.assertEqual(oa[0]["configuration"], "non_inverting")
+        self.assertNotIn("gain", oa[0])
+
+    def test_inverting_with_trimmer_across_ri_leaves_gain_unset(self):
+        # Ri 10k with a 3-pin trimmer from the same signal net to -: adjustable inverting gain
+        oa = _opamps([_oa("U1"), _r("R1", "100k"), _r("R2", "10k"), _pot("RV2", "20k")],
+                     {"OUT": [("U1", "1", "OUT", "output"), _p("R1", "1")],
+                      "INN": [("U1", "2", "-", "input"), _p("R1", "2"), _p("R2", "2"), _p("RV2", "2")],
+                      "SIG": [_p("R2", "1"), _p("RV2", "1")], "NC1": [_p("RV2", "3")],
+                      "GND": [("U1", "3", "+", "input")]})
+        self.assertEqual(oa[0]["configuration"], "inverting")
+        self.assertNotIn("gain", oa[0])
+
+    def test_offset_trim_on_the_rails_keeps_the_gain(self):
+        # A trimmer between the rails with its wiper on - biases the input; the gain stays -10
+        oa = _opamps([_oa("U1"), _r("R1", "100k"), _r("R2", "10k"), _pot("RV3", "10k")],
+                     {"OUT": [("U1", "1", "OUT", "output"), _p("R1", "1")],
+                      "INN": [("U1", "2", "-", "input"), _p("R1", "2"), _p("R2", "2"), _p("RV3", "2")],
+                      "SIG": [_p("R2", "1")], "+5V": [_p("RV3", "1")], "GND": [_p("RV3", "3"), ("U1", "3", "+", "input")]})
+        self.assertEqual((oa[0]["configuration"], oa[0]["gain"]), ("inverting", -10.0))
+
+
 class Unchanged(unittest.TestCase):
     def test_unity_follower(self):
         oa = _opamps([_oa("U1")], {"OUT": [("U1", "1", "OUT", "output"), ("U1", "2", "-", "input")],

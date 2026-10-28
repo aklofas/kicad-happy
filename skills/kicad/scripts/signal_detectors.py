@@ -524,11 +524,10 @@ def detect_rc_filters(ctx: AnalysisContext, voltage_dividers: list[dict],
     # A potentiometer on three distinct nets is not a two-terminal filter resistor; one
     # wired as a rheostat (two of its pins on one net) is.
     resistors = [r for r in group_reps(ctx, get_components_by_type(ctx, "resistor", with_parsed_values=True))
-                 if not (_is_potentiometer(ctx, r["reference"])
-                         and len({n for n, _ in ctx.ref_pins.get(r["reference"], {}).values() if n}) > 2)]
+                 if not _is_three_net_pot(ctx, r["reference"])]
     resistor_nets, _ = index_two_pin_components(ctx, resistors)
     for r in resistors:
-        rheostat_nets = sorted({n for n, _ in ctx.ref_pins.get(r["reference"], {}).values() if n})
+        rheostat_nets = _part_nets(ctx, r["reference"])
         if _is_potentiometer(ctx, r["reference"]) and len(rheostat_nets) == 2:
             resistor_nets[r["reference"]] = tuple(rheostat_nets)
 
@@ -1855,6 +1854,17 @@ def _is_potentiometer(ctx: AnalysisContext, ref: str) -> bool:
     return ref.upper().startswith("RV") or "pot" in lib_id or "trim" in lib_id
 
 
+def _part_nets(ctx: AnalysisContext, ref: str) -> list[str]:
+    """The distinct nets on ``ref``'s pins, sorted."""
+    return sorted({n for n, _ in ctx.ref_pins.get(ref, {}).values() if n})
+
+
+def _is_three_net_pot(ctx: AnalysisContext, ref: str) -> bool:
+    """A potentiometer on three distinct nets: not a two-terminal resistor.  One wired as a
+    rheostat (two of its pins on one net) is a resistor between its two nets."""
+    return _is_potentiometer(ctx, ref) and len(_part_nets(ctx, ref)) > 2
+
+
 def _datasheet_vref(ctx: AnalysisContext, ic: dict) -> float | None:
     """Feedback reference voltage (V, typ) from a trusted datasheet extraction, or None.
 
@@ -2710,6 +2720,28 @@ def detect_protection_devices(ctx: AnalysisContext) -> list[dict]:
     return protection_devices
 
 
+def _opamp_gain_adjustable(ctx: AnalysisContext, opamp_ref: str, out_net: str, neg_net: str,
+                           gain_parts: set[str], leg_ref: str | None) -> bool:
+    """True when a potentiometer sets the gain, or another resistor bridges the inverting
+    input to the output or to the gain leg's far net: the stage has no single gain."""
+    if any(_is_potentiometer(ctx, r) for r in gain_parts):
+        return True
+    leg_far = None
+    if leg_ref:
+        leg_far = next((n for n in _part_nets(ctx, leg_ref) if n != neg_net), None)
+    for p in ctx.nets.get(neg_net, {}).get("pins", []):
+        r = p["component"]
+        comp = ctx.comp_lookup.get(r)
+        if r == opamp_ref or r in gain_parts or not comp or comp.get("dnp"):
+            continue
+        if comp["type"] != "resistor" and not (comp["type"] == "varistor" and _is_potentiometer(ctx, r)):
+            continue
+        nets = _part_nets(ctx, r)
+        if out_net in nets or (leg_far is not None and leg_far in nets):
+            return True
+    return False
+
+
 def detect_opamp_circuits(ctx: AnalysisContext) -> list[dict]:
     """Detect op-amp gain stage configurations."""
     # EQ-071: G = 1+Rf/Ri or -Rf/Ri; G_dB = 20log₁₀|G| (opamp gain)
@@ -2834,7 +2866,9 @@ def detect_opamp_circuits(ctx: AnalysisContext) -> list[dict]:
         # Find feedback resistor; *_members = the parallel group a part stands for
         rf_ref = None
         rf_val = None
-        rf_members = cf_members = []
+        rf_members: list[str] = []
+        cf_members: list[str] = []
+        rf_chain: list[str] = []  # a 2-hop feedback path: both of its parts
         if out_net in ctx.nets and neg_net != out_net:
             out_comps = {p["component"] for p in ctx.nets[out_net]["pins"] if p["component"] != ref}
             neg_comps = {p["component"] for p in ctx.nets[neg_net]["pins"] if p["component"] != ref}
@@ -2891,10 +2925,12 @@ def detect_opamp_circuits(ctx: AnalysisContext) -> list[dict]:
                                     rf_ref = out_comp_ref
                                     rf_val = ctx.parsed_values[out_comp_ref]
                                     rf_members = [rf_ref]
+                                    rf_chain = [out_comp_ref, fb2]
                                 elif c2["type"] == "resistor" and fb2 in ctx.parsed_values:
                                     rf_ref = fb2
                                     rf_val = ctx.parsed_values[fb2]
                                     rf_members = [rf_ref]
+                                    rf_chain = [out_comp_ref, fb2]
                                 break
                     if rf_ref:
                         break
@@ -2905,7 +2941,8 @@ def detect_opamp_circuits(ctx: AnalysisContext) -> list[dict]:
         # Input resistor (- to a signal net) and ground leg Rg (- to ground). A resistor
         # from - to a power rail biases the input; it is neither.
         ri_ref = ri_val = rg_ref = rg_val = None
-        ri_members = rg_members = []
+        ri_members: list[str] = []
+        rg_members: list[str] = []
         if neg_net in ctx.nets:
             for p in ctx.nets[neg_net]["pins"]:
                 if p["component"] == ref or p["component"] in rf_members:
@@ -2917,16 +2954,15 @@ def detect_opamp_circuits(ctx: AnalysisContext) -> list[dict]:
                         continue
                     r_members = group_members(ctx, p["component"])
                     r_n1, r_n2 = ctx.get_two_pin_nets(p["component"])
+                    if _is_potentiometer(ctx, p["component"]) and len(_part_nets(ctx, p["component"])) == 2:
+                        r_n1, r_n2 = _part_nets(ctx, p["component"])
                     other = r_n2 if r_n1 == neg_net else r_n1
                     if other == out_net:
                         continue
                     if not ctx.is_power_net(other) and not ctx.is_ground(other):
                         if ri_ref is None:
                             ri_ref, ri_val, ri_members = r_members[0], r_val, r_members
-                    elif (ctx.is_ground(other) and rg_ref is None
-                          and not (_is_potentiometer(ctx, p["component"])
-                                   and len({n for n, _ in ctx.ref_pins.get(p["component"], {}).values()
-                                            if n}) > 2)):
+                    elif ctx.is_ground(other) and rg_ref is None and not _is_three_net_pot(ctx, p["component"]):
                         rg_ref, rg_val, rg_members = r_members[0], r_val, r_members
 
         # Determine configuration
@@ -2962,6 +2998,10 @@ def detect_opamp_circuits(ctx: AnalysisContext) -> list[dict]:
             config = "transimpedance_or_buffer"
         elif not rf_ref:
             config = "comparator_or_open_loop"
+
+        if gain is not None and config != "buffer" and _opamp_gain_adjustable(
+                ctx, ref, out_net, neg_net, set(rf_chain or rf_members) | set(ri_members), ri_ref):
+            gain = None
 
         entry = {
             "reference": ref,
