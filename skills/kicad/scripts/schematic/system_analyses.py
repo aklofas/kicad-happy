@@ -15,6 +15,7 @@ from kicad_core.netnames import (
 )
 from schematic.net_analysis import (
     _estimate_rail_voltage,
+    can_bus_pairs,
 )
 from kicad_core.values import (
     format_frequency as _format_frequency,
@@ -1301,27 +1302,60 @@ def analyze_protocol_compliance(components: list[dict], nets: dict,
                 uart_finding["issues"] = uart_issues
             findings.append(uart_finding)
 
-    # ---- CAN validation ----
+    # ---- CAN validation: one result per bus ----
     diff_pairs = design_analysis.get("differential_pairs", [])
-    for can in buses.get("can", []):
+    can_entries = buses.get("can", [])
+    can_names = [c.get("net", "") for c in can_entries]
+    canh = [n for n in can_names if "CANH" in n.upper() or "CAN_H" in n.upper()]
+    canl = [n for n in can_names if "CANL" in n.upper() or "CAN_L" in n.upper()]
+    pairs = can_bus_pairs(canh, canl)
+    can_dps = [dp for dp in diff_pairs if dp.get("type") == "CAN"]
+    judged: set = set()
+
+    def _judge(nets_of_bus, has_term, term_value):
         issues, obs = [], []
-        has_term = can.get("has_termination", False)
-        term_value = can.get("termination_ohms")
-        if not has_term:
-            for dp in diff_pairs:
-                if dp.get("type") == "CAN" or "CAN" in dp.get("name", "").upper():
-                    if dp.get("has_termination"):
-                        has_term, term_value = True, dp.get("termination_ohms")
         if not has_term:
             issues.append("CAN bus missing 120Ω termination resistor")
         elif term_value and abs(term_value - 120) > 12:
             issues.append(f"CAN termination is {term_value}Ω (expected 120Ω ±10%)")
-        elif term_value:
+        else:
             obs.append("CAN 120Ω termination present (verify remote end has matching termination)")
-        if issues or obs:
-            findings.append({"protocol": "can", "nets": [can.get("canh_net", ""), can.get("canl_net", "")],
-                             "has_termination": has_term, "termination_ohms": term_value,
-                             "issues": issues or None, "observations": obs or None})
+        findings.append({"protocol": "can", "nets": nets_of_bus,
+                         "has_termination": has_term, "termination_ohms": term_value,
+                         "issues": issues or None, "observations": obs or None})
+
+    def _judge_dp(dp):
+        key = (dp.get("positive"), dp.get("negative"))
+        if key in judged:
+            return
+        judged.add(key)
+        terms = dp.get("termination") or []
+        _judge(list(key), bool(terms), terms[0].get("ohms") if terms else None)
+
+    for can in can_entries:
+        net = can.get("net", "")
+        dp = next((d for d in can_dps if net in (d.get("positive"), d.get("negative"))), None)
+        pair = next((p for p in pairs if net in p), None)
+        if dp:
+            _judge_dp(dp)
+        elif pair:
+            if pair not in judged:
+                judged.add(pair)
+                _judge(list(pair), bool(can.get("termination")), None)
+        elif can.get("transceiver"):
+            # A transceiver with no named bus nets: one result, credited by any terminated CAN pair
+            # (a choke or connector can split one bus into two differential pairs)
+            dp = next((d for d in can_dps if d.get("termination")), None)
+            if dp:
+                _judge_dp(dp)
+            else:
+                _judge([], bool(can.get("termination")), None)
+        elif net in canh or net in canl:
+            # An unpaired bus line is judged alone only when its bus is unambiguous (at most one CANL net)
+            if len(canl) <= 1 and (net,) not in judged:
+                judged.add((net,))
+                _judge([net], bool(can.get("termination")), None)
+        # TX/RX nets are the transceiver's logic side: no termination of their own
 
     if not findings:
         return {}

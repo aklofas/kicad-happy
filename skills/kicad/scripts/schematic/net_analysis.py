@@ -5,6 +5,7 @@ import re
 from kicad_types import (
     AnalysisContext,
 )
+from kicad_core.classify import classify_ic_function
 from kicad_core.coords import to_iu
 from detector_helpers import is_protection_part
 from kicad_core.sexp import unescape_string
@@ -695,13 +696,17 @@ def _detect_i2c_buses(ctx: AnalysisContext) -> list[dict]:
                             ("Fast-mode",  300),
                             ("Standard",  1000),
                         ]
-                        max_mode = "Standard"
+                        max_mode = None
                         for mode_name, limit_ns in _I2C_MODES:
                             if rise_time_ns <= limit_ns:
                                 max_mode = mode_name
                                 break
 
                         entry["max_speed_mode"] = max_mode
+                        if max_mode is None:
+                            entry["rise_time_warning"] = (
+                                f"Rise time {rise_time_ns:.0f}ns exceeds the "
+                                f"Standard-mode limit (1000ns)")
 
                         # Warning if rise time is marginal (within 20% of limit)
                         for mode_name, limit_ns in _I2C_MODES:
@@ -969,32 +974,56 @@ def _detect_can_buses(ctx: AnalysisContext) -> list[dict]:
                     "devices": [_enrich_device_ref(comp["reference"], comp_lookup)],
                 }
 
-    # CAN termination detection: look for 100-150 ohm resistors between CANH and CANL
+    # CAN termination per bus (ISO 11898-2): a 100-150 ohm resistor between that bus's CANH and CANL
     canh_nets = [n for n in can_nets_found if "CANH" in n.upper() or "CAN_H" in n.upper()]
     canl_nets = [n for n in can_nets_found if "CANL" in n.upper() or "CAN_L" in n.upper()]
-    termination = None
-    for canh_net in canh_nets:
-        if canh_net not in nets:
-            continue
-        for p in nets[canh_net]["pins"]:
+    pairs = can_bus_pairs(canh_nets, canl_nets)
+    term_by_net: dict = {}
+    for canh_net, canl_net in pairs:
+        termination = None
+        for p in (nets[canh_net]["pins"] if canh_net in nets else []):
             comp = comp_lookup.get(p["component"])
             if not comp or comp["type"] != "resistor":
                 continue
             r_val = parsed_values.get(p["component"])
             if r_val and 100 <= r_val <= 150:
-                # Check if other end goes to a CANL net
                 other_pin = "1" if p["pin_number"] == "2" else "2"
                 other_net, _ = pin_net.get((p["component"], other_pin), (None, None))
-                if other_net and any(other_net == cl for cl in canl_nets):
+                if other_net == canl_net:
                     termination = f"{int(r_val)}\u03A9 ({p['component']})"
                     break
-        if termination:
-            break
-    # Attach termination to all CAN bus entries
-    for entry in can_nets_found.values():
-        entry["termination"] = termination
+        term_by_net[canh_net] = termination
+        if term_by_net.get(canl_net) is None:
+            term_by_net[canl_net] = termination
+    # Logic-side entries (TX/RX, the transceiver placeholder) belong to a bus only on a one-bus design
+    single = term_by_net[pairs[0][0]] if len(pairs) == 1 else None
+    for key, entry in can_nets_found.items():
+        entry["termination"] = term_by_net.get(key, single)
 
     return list(can_nets_found.values())
+
+
+def can_pair_key(net_name: str) -> str | None:
+    """A CANH or CANL net's bus key: the name with its last CANH/CANL (CAN_H/CAN_L) marker blanked."""
+    u = net_name.upper()
+    best = None
+    for marker, blank in (("CANH", "CAN#"), ("CANL", "CAN#"), ("CAN_H", "CAN_#"), ("CAN_L", "CAN_#")):
+        i = u.rfind(marker)
+        if i >= 0 and (best is None or i > best[0]):
+            best = (i, u[:i] + blank + u[i + len(marker):])
+    return best[1] if best else None
+
+
+def can_bus_pairs(canh_nets: list, canl_nets: list) -> list[tuple[str, str]]:
+    """(CANH, CANL) per bus: the same name with H for L; a CANH with no such partner takes the
+    design's only CANL net, if there is exactly one."""
+    pairs = []
+    for h in canh_nets:
+        cands = [lo for lo in canl_nets if can_pair_key(lo) == can_pair_key(h)]
+        if not cands and len(canl_nets) == 1:
+            cands = list(canl_nets)
+        pairs += [(h, lo) for lo in cands]
+    return pairs
 
 
 def _detect_rs485_buses(ctx: AnalysisContext) -> list[dict]:
@@ -1059,6 +1088,22 @@ def _detect_rs485_buses(ctx: AnalysisContext) -> list[dict]:
     return results
 
 
+_CS_TOKEN = re.compile(r"^N?(CS|SS|NSS|CSN|CSB|SSEL|CSEL)\d*N?$")
+
+
+def _is_chip_select_net(net_name: str) -> bool:
+    """A word of the net's own name is a chip select (``FLASH_CS``, ``~{CS0}``), not a
+    substring of another word (``DAC_VSS``, ``SSP1_SCK``)."""
+    leaf = net_leaf(net_name).upper().replace("~{", "").replace("}", "")
+    return any(_CS_TOKEN.match(t) for t in re.split(r"[^A-Z0-9]+", leaf) if t)
+
+
+def _ic_function(comp: dict) -> str:
+    """The IC's functional class; legacy components carry none and are classified here."""
+    return comp.get("functional_class") or classify_ic_function(
+        comp.get("lib_id", ""), comp.get("value", ""), comp.get("description", ""))
+
+
 def _analyze_bus_protocols(ctx: AnalysisContext) -> dict:
     """Detect I2C, SPI, UART, CAN, SDIO, RS-485 buses and check configuration."""
     nets = ctx.nets
@@ -1087,23 +1132,23 @@ def _analyze_bus_protocols(ctx: AnalysisContext) -> dict:
         bus_id = spi_entry.get("bus_id", "")
         for net_name in nets:
             nu = net_name.upper()
-            if any(kw in nu for kw in ("CS", "SS", "NSS", "SPI_CS", "SPI_SS",
-                                       "CSN", "NCS", "SSEL", "CSEL")):
+            if _is_chip_select_net(net_name):
                 if bus_id in ("0", "") or bus_id in nu.replace("_", ""):
                     cs_nets.append(net_name)
         spi_entry["chip_select_count"] = len(cs_nets)
-        # SPI CS conflict: find cases where multiple ICs share the same CS net
+        # SPI CS conflict: two or more slave CS inputs on one net (the controller drives it)
         cs_device_map = {}  # net_name -> [device_refs]
         for net_name in cs_nets:
             if net_name not in nets:
                 continue
-            devices_on_cs = []
+            slaves = set()
             for p in nets[net_name]["pins"]:
                 comp = comp_lookup.get(p["component"])
-                if comp and comp["type"] == "ic":
-                    devices_on_cs.append(p["component"])
-            if len(devices_on_cs) > 1:
-                cs_device_map[net_name] = devices_on_cs
+                if (comp and comp["type"] == "ic" and (p.get("pin_type") or "") == "input"
+                        and _ic_function(comp) not in ("mcu", "fpga")):
+                    slaves.add(p["component"])
+            if len(slaves) > 1:
+                cs_device_map[net_name] = sorted(slaves)
 
         if cs_device_map:
             spi_entry["cs_conflicts"] = [
