@@ -160,6 +160,25 @@ class EnableEndpoints(unittest.TestCase):
         self.assertEqual(vm001(ctx_of(comps, nets, {"+3V3", "+BATT", "+5V", "GND"})), [])
 
 
+class UsbDataNets(unittest.TestCase):
+    # USB D+/D- swing at most 3.6 V whatever the device supply (USB 2.0, 7.1.1), so a 5 V-
+    # supplied device and a 3.3 V device on D+/D- are no domain crossing.
+    def _nets(self, name):
+        return dict(VM_NETS_POWER, **{name: [("U5", "3", "D+", "bidirectional"),
+                                             ("U6", "3", "USB_DP", "bidirectional")]})
+
+    def test_usb_data_net_is_not_a_domain_crossing(self):
+        comps = [ic("U5", "MCU5V"), ic("U6", "MCU3V3")]
+        for name in ("USB_D+", "/USB/D-", "USBDP"):
+            self.assertEqual(vm001(ctx_of(comps, self._nets(name), {"+5V", "+3V3", "GND"})), [],
+                             name)
+
+    def test_non_usb_net_between_the_same_ics_is_still_an_error(self):
+        comps = [ic("U5", "MCU5V"), ic("U6", "MCU3V3")]
+        (f,) = vm001(ctx_of(comps, self._nets("DATA"), {"+5V", "+3V3", "GND"}))
+        self.assertEqual(f["severity"], "error")
+
+
 class IgnoredSupply(unittest.TestCase):
     def test_ic_with_a_supply_on_an_ignored_rail_has_no_domain(self):
         # U1 VDD on +5V (ignored) and VIO on +3V3; U2 on +1V8. Without the rule U1 would read

@@ -12,7 +12,7 @@ returns a list of rich finding dicts via finding_schema.make_finding(
 from __future__ import annotations
 
 from kicad_types import AnalysisContext
-from kicad_core.netnames import parse_voltage_from_net_name
+from kicad_core.netnames import is_usb_data_net_name, parse_voltage_from_net_name
 
 try:
     import os as _os, sys as _sys
@@ -601,6 +601,9 @@ def validate_voltage_levels(ctx: AnalysisContext, level_shifters: list[dict] | N
         if net_name in checked_nets or ctx.is_power_net(net_name) or ctx.is_ground(net_name):
             continue
         if net_name in shifted_nets:
+            continue
+        # USB D+/D- swing at most 3.6 V whatever the device supply (USB 2.0, 7.1.1 drivers).
+        if is_usb_data_net_name(net_name.upper()):
             continue
 
         ic_pins_on_net = []
