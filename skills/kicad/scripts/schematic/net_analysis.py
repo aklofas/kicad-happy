@@ -9,6 +9,7 @@ from kicad_core.classify import classify_ic_function
 from kicad_core.coords import to_iu
 from detector_helpers import is_protection_part
 from kicad_core.sexp import unescape_string
+from schematic import erc_pins
 from kicad_core.parts import (
     _OUTPUT_DRIVE_KEYWORDS,
 )
@@ -25,7 +26,7 @@ def analyze_connectivity(components: list[dict], nets: dict, no_connects: list[d
     Returns a dict with:
     - unconnected_pins: pins not on any net (and not marked no-connect)
     - single_pin_nets: nets with only one pin (likely unfinished connections)
-    - multi_driver_nets: nets with multiple output/bidirectional drivers
+    - multi_driver_nets: nets where two driving pins conflict at KiCad's error level
     - power_net_summary: per power rail, which components connect
     """
 
@@ -139,18 +140,23 @@ def analyze_connectivity(components: list[dict], nets: dict, no_connects: list[d
             },
         })
 
-    # Find multi-driver nets (multiple outputs driving the same net)
-    # Exclude power flags (#FLG, #PWR) — they're virtual, not real drivers
+    # Driving pins whose pair is an error in KiCad's pin map. Power symbols and
+    # flags (#PWR, #FLG) are virtual, not real drivers.
     multi_driver_nets = []
-    output_types = {"output", "tri_state", "power_out"}
+    positions = erc_pins.pin_positions(components)
     for net_name, net_info in nets.items():
         drivers = [p for p in net_info["pins"]
-                   if p["pin_type"] in output_types
-                   and not p["component"].startswith("#")]
-        if len(drivers) > 1:
+                   if not p["component"].startswith("#")
+                   and erc_pins.pin_kind(p.get("pin_type")) in erc_pins.DRIVERS]
+        hit = set()
+        for i, j, level in erc_pins.net_pin_conflicts(drivers, positions):
+            if level == erc_pins.ERROR:
+                hit.update((i, j))
+        if hit:
             multi_driver_nets.append({
                 "net": net_name,
-                "drivers": drivers,
+                "drivers": [drivers[k] for k in sorted(hit)],
+                "severity": "error",
             })
 
     # Power net summary — for each named power rail, which real components connect
@@ -1351,52 +1357,94 @@ def _detect_differential_pairs(ctx: AnalysisContext) -> list:
     return diff_pairs
 
 
-def _check_erc_warnings(ctx: AnalysisContext) -> list:
-    """Check for ERC-style warnings (no driver, output conflicts)."""
-    nets = ctx.nets
-    is_ground = ctx.is_ground
-    is_power_net = ctx.is_power_net
+# PWR_FLAG symbols are not net pins here; KiCad counts their one power output pin.
+_PWR_FLAG_PIN = {"component": "#FLG", "pin_number": "1", "pin_name": "pwr", "pin_type": "power_out"}
 
+
+def _check_erc_warnings(ctx: AnalysisContext) -> list:
+    """ERC records as KiCad 10 reports them with its default pin map and severities.
+
+    Every net is checked (power, ground, unnamed and single-pin nets too), power-symbol
+    pins included: pin_to_pin (pin map), no_driver / power_pin_not_driven (drive test,
+    silenced by a no-connect on the net) and no_connect_connected.
+    """
+    positions = erc_pins.pin_positions(getattr(ctx, "components", None) or [])
     erc_warnings = []
 
-    for net_name, net_info in nets.items():
-        if is_power_net(net_name) or is_ground(net_name):
-            continue
-        if net_name.startswith("__unnamed_"):
-            continue
+    for net_name, net_info in ctx.nets.items():
+        pins = net_info["pins"]
+        if net_info.get("has_pwr_flag"):
+            pins = pins + [_PWR_FLAG_PIN]
+        shown = unescape_string(net_name)
+        real = [p for p in pins if not p["component"].startswith("#")]
 
-        pin_types = [p["pin_type"] for p in net_info["pins"] if not p["component"].startswith("#")]
-        type_set = set(pin_types)
+        conflicts = erc_pins.net_pin_conflicts(pins, positions)
+        if conflicts:
+            erc_warnings.append({
+                "type": "pin_to_pin",
+                "net": net_name,
+                "severity": erc_pins.SEVERITY[max(c[2] for c in conflicts)],
+                "message": f"Net '{shown}' connects conflicting pin types ({len(conflicts)} pair(s))",
+                "pairs": [{
+                    "pins": [f"{pins[i]['component']}.{pins[i]['pin_number']}",
+                             f"{pins[j]['component']}.{pins[j]['pin_number']}"],
+                    "pin_types": [erc_pins.pin_kind(pins[i].get("pin_type")),
+                                  erc_pins.pin_kind(pins[j].get("pin_type"))],
+                    "severity": erc_pins.SEVERITY[level],
+                } for i, j, level in conflicts],
+            })
 
-        # Input-only net: all pins are inputs, no driver
-        outputs = {"output", "tri_state", "power_out", "open_collector", "open_emitter"}
-        drivers = {"output", "tri_state", "power_out", "open_collector", "open_emitter", "bidirectional"}
-        has_driver = bool(type_set & drivers)
-        has_input = bool(type_set & {"input", "power_in"})
-
-        if has_input and not has_driver and len(pin_types) > 1:
+        # A no-connect marker or NC-type pin on the net silences the drive test (erc.cpp).
+        undriven = None if net_info.get("no_connect") else erc_pins.undriven_kind(pins)
+        if undriven == "pin_not_driven":
             erc_warnings.append({
                 "type": "no_driver",
                 "net": net_name,
-                "message": f"Net '{unescape_string(net_name)}' has input pins but no output driver",
-                "pins": [p for p in net_info["pins"] if not p["component"].startswith("#")],
+                "severity": "error",
+                "message": f"Net '{shown}' has input pins but no output driver",
+                "pins": real,
+            })
+        elif undriven == "power_pin_not_driven":
+            erc_warnings.append({
+                "type": "power_pin_not_driven",
+                "net": net_name,
+                "severity": "error",
+                "message": f"Net '{shown}' has power input pins but no power output driver",
+                "pins": real,
             })
 
-        # Multiple outputs on same net (non-tristate)
-        hard_outputs = [p for p in net_info["pins"]
-                        if p["pin_type"] == "output" and not p["component"].startswith("#")]
-        if len(hard_outputs) > 1:
-            # Suppress when all drivers are from the same component (paralleled pins)
-            driver_components = {p["component"] for p in hard_outputs}
-            if len(driver_components) > 1:
-                erc_warnings.append({
-                    "type": "output_conflict",
-                    "net": net_name,
-                    "message": f"Net '{unescape_string(net_name)}' has {len(hard_outputs)} output drivers (potential conflict)",
-                    "drivers": hard_outputs,
-                })
+        if net_info.get("no_connect") and _no_connect_connected(pins, net_info, positions):
+            erc_warnings.append({
+                "type": "no_connect_connected",
+                "net": net_name,
+                "severity": "warning",
+                "message": f"Net '{shown}' has a no-connect and other connections",
+                "pins": real,
+            })
 
     return erc_warnings
+
+
+def _no_connect_connected(pins: list[dict], net_info: dict, positions: dict) -> bool:
+    """KiCad's no_connect_connected test for one net that carries a no-connect.
+
+    An NC-type pin is connected when anything but NC-type pins touches it (TestNoConnectPins):
+    another pin type, a label, or a wire to an NC pin elsewhere. A no-connect marker is
+    connected when the net has more than one pin, stacked pins counted once
+    (ercCheckNoConnects).
+    """
+    nc = [p for p in pins if erc_pins.pin_kind(p.get("pin_type")) == "no_connect"]
+    if nc:
+        if len(nc) < len(pins) or net_info.get("labels"):
+            return True
+        points = {positions.get((p["component"], p["pin_number"]), (p["component"], p["pin_number"]))[:3]
+                  for p in nc}
+        return len(points) > 1
+    unique: list[dict] = []
+    for p in pins:
+        if not any(erc_pins.is_stacked(p, q, positions) for q in unique):
+            unique.append(p)
+    return len(unique) > 1
 
 
 def _check_passive_ratings(ctx: AnalysisContext) -> list:
