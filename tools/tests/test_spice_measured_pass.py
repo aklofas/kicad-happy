@@ -345,6 +345,34 @@ class NoExpectedValueTest(unittest.TestCase):
         r = R.evaluate_feedback_network(dict(self._DIV), {"vout_sim": 1.65})
         self.assertEqual(r["status"], "info")
 
+    def test_current_sense_without_expected_is_info(self):
+        # 0.1 ohm: I = V/R gives 0.5 A at 50 mV, but the record carries no current to compare
+        det = {"shunt": {"ref": "R1", "ohms": 0.1}}
+        r = R.evaluate_current_sense(det, {"i_at_50mV": 0.5, "i_at_100mV": 1.0})
+        self.assertEqual(r["status"], "info")
+
+    def test_current_sense_with_expected_keeps_its_verdict(self):
+        det = {"shunt": {"ref": "R1", "ohms": 0.1}, "max_current_50mV_A": 0.5}
+        self.assertEqual(R.evaluate_current_sense(det, {"i_at_50mV": 0.5})["status"], "pass")
+        self.assertEqual(R.evaluate_current_sense(det, {"i_at_50mV": 0.6})["status"], "fail")
+
+    def test_snubber_without_time_constant_is_info(self):
+        det = {"reference": "Q1", "snubber_data": {"resistor_ref": "R1", "capacitor_ref": "C1"}}
+        r = R.evaluate_snubber(det, {"z_min": 10.0, "f_at_zmin": 1e6})
+        self.assertEqual(r["status"], "info")
+
+    def test_snubber_with_time_constant_keeps_its_verdict(self):
+        # 10 ohm x 1 nF = 10 ns, inside 1 ns-100 us
+        det = {"reference": "Q1", "snubber_data": {"resistor_ref": "R1", "capacitor_ref": "C1"}}
+        r = R.evaluate_snubber(det, {"z_min": 10.0, "tau": "1e-8", "f_analytical": "15.9e6"})
+        self.assertEqual(r["status"], "pass")
+
+    def test_rf_chain_on_heuristic_gains_is_info(self):
+        det = {"stage_gains": {"U1": {"role": "lna", "gain_dB": 15}}, "frequency_band": "2.4GHz",
+               "component_roles": {"U1": "lna"}}
+        r = R.evaluate_rf_chain(det, {"gain_budget": "15", "freq_hz": "2.4e9", "n_stages": "1"})
+        self.assertEqual(r["status"], "info")
+
     def test_divider_with_expected_keeps_its_verdict(self):
         # 3.3 V * 0.5 = 1.65 V expected, 1.65 simulated
         r = R.evaluate_voltage_divider(dict(self._DIV), {"vout_sim": 1.65, "expected": "1.65"})

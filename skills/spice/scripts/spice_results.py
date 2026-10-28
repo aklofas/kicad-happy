@@ -656,8 +656,8 @@ def evaluate_current_sense(det, sim_results):
             result["status"] = "fail"
             result["note"] = f"{max_err:.1f}% deviation — check sense resistor value"
     else:
-        result["status"] = "pass"
-        result["note"] = "Simulation ran but no expected values to compare"
+        result["status"] = "info"
+        result["note"] = "No expected current to compare — reporting measured values"
 
     return result
 
@@ -1126,8 +1126,8 @@ def evaluate_snubber(det, sim_results):
             result["status"] = "warn"
             result["note"] = f"Snubber τ={tau_f*1e6:.2f}µs — outside typical 1ns-100µs range"
     else:
-        result["status"] = "pass"
-        result["note"] = "Snubber impedance measured"
+        result["status"] = "info"
+        result["note"] = "Snubber impedance measured; no time constant to judge"
 
     return result
 
@@ -1178,8 +1178,10 @@ def evaluate_rf_chain(det, sim_results):
         return result
 
     if -30 <= gain_budget <= 40:
-        result["status"] = "pass"
-        result["note"] = f"Link budget: {gain_budget:+.1f}dB across {n_stages} stages at {freq/1e6:.0f}MHz"
+        # the budget adds per-role guesses, not the parts' gains, so it judges nothing
+        result["status"] = "info"
+        result["note"] = (f"Link budget: {gain_budget:+.1f}dB across {n_stages} stages at "
+                          f"{freq/1e6:.0f}MHz from heuristic per-role gains")
     else:
         result["status"] = "warn"
         result["note"] = f"Unusual link budget: {gain_budget:+.1f}dB — verify chain detection"
