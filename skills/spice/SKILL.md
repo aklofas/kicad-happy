@@ -143,7 +143,7 @@ The script selects subcircuits from the analyzer's `findings[]` array (grouped b
 | `current_sense` | DC operating point | Current at 50mV/100mV drop (`info` without an expected current) | Exact (ideal resistor) | High |
 | `protection_devices` | DC sweep | Diode presence, clamping onset | Approximate (generic diode) | Low |
 | `decoupling_analysis` | AC impedance | PDN impedance profile | Exact + ESR estimates | High for passives |
-| `power_regulators` | DC operating point | FB voltage vs the part's Vref at the rail's named voltage (`info` when Vref is not from the part or its table entry is a family prefix shorter than the part number, an arm is a pot/trimmer, or the rail name carries no voltage) | Exact (ideal passives) | High |
+| `power_regulators` | DC operating point | FB voltage vs the part's Vref at the rail's named voltage (`info` when Vref is not from the part, its table entry is a family prefix shorter than the part number or comes from a symbol whose value names another part, an arm is a pot/trimmer, the divider top is not on the output rail, or the rail name carries no voltage) | Exact (ideal passives) | High |
 | `rf_matching` | AC sweep | Impedance profile (`info`); L/pi/T networks with shunt elements are skipped | Exact (ideal L/C) | Low — series-chained bench |
 | `bridge_circuits` | DC sweep | Low-side turn-on threshold and on-state current (`info`: generic model's values) | Approximate (generic) | Low |
 | `snubber_circuits` | AC impedance | Snubber damping frequency (`info` without a time constant) | Exact (ideal R/C) | High |

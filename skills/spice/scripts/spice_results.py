@@ -835,6 +835,8 @@ def evaluate_regulator_feedback(det, sim_results):
         why = "Vref from the symbol; the value names another part"
     elif adjustable:
         why = f"divider arm {', '.join(adjustable)} is adjustable"
+    elif _top_off_output_rail(det, r_top):
+        why = "divider top is not on the output rail; reconstruction unverified"
     elif sim_results.get("vin_from") != "rail_name" or not vin:
         why = "the rail's name carries no voltage"
     else:
@@ -860,6 +862,23 @@ def evaluate_regulator_feedback(det, sim_results):
         result["note"] = (f"FB voltage at the rail's named voltage is {err:.1f}% from Vref {vref} V"
                           " — the divider sets a different output")
     return result
+
+
+def _top_off_output_rail(det, r_top):
+    """True when the analysis's nets show no resistor of the top arm on the output rail, so
+    the bench's rail-to-FB divider is not the one the board has. False when unknown."""
+    nets = (det.get("_context") or {}).get("nets")
+    rail = det.get("output_rail")
+    if not isinstance(nets, dict) or not rail or rail not in nets:
+        return False
+    refs = {ref for link in r_top.get("chain_resistors") or [r_top]
+            for ref in link.get("parallel_refs") or [link.get("ref")] if ref}
+    on_any_net = {p.get("component") for net in nets.values() if isinstance(net, dict)
+                  for p in net.get("pins", []) if isinstance(p, dict)}
+    if not refs or not refs <= on_any_net:
+        return False
+    return not any(isinstance(p, dict) and p.get("component") in refs
+                   for p in nets[rail].get("pins", []))
 
 
 def _is_adjustable(ref, components):

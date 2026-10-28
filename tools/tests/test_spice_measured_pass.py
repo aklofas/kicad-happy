@@ -126,6 +126,39 @@ class RegulatorVrefTest(unittest.TestCase):
         det["lib_id"] = "Regulator_Linear:LM317_TO220"
         self.assertEqual(self._eval(det)["status"], "pass")
 
+    # bluesat owr-502 U220 MP2459 (VFB 0.81 V): +12V -R220 100k- 12V_{FBM} -R221 47k- 12V_{FB}
+    # (FB) -R222 10k- GND. The analyzer's divider is R221/R222, whose top is 12V_{FBM}, not +12V.
+    _BLUESAT_NETS = {
+        "+12V": {"pins": [{"component": "R220", "pin_number": "1"}]},
+        "12V_{FBM}": {"pins": [{"component": "R220", "pin_number": "2"},
+                               {"component": "R221", "pin_number": "1"}]},
+        "12V_{FB}": {"pins": [{"component": "R221", "pin_number": "2"},
+                              {"component": "R222", "pin_number": "1"},
+                              {"component": "U220", "pin_number": "3"}]},
+        "GND": {"pins": [{"component": "R222", "pin_number": "2"}]}}
+
+    def _bluesat(self, r_top_ref, r_top_ohms):
+        det = _regulator(r_top_ohms, 10e3, "+12V", 0.81, "lookup", value="MP2459GJ-Z")
+        det["ref"] = "U220"
+        det["fb_net"] = "12V_{FB}"
+        det["feedback_divider"]["r_top"]["ref"] = r_top_ref
+        det["feedback_divider"]["r_bottom"]["ref"] = "R222"
+        det["_context"] = {"components": [], "nets": self._BLUESAT_NETS}
+        return self._eval(det)
+
+    def test_divider_top_off_the_output_rail_is_info(self):
+        # judged as built the bench would read 12 * 10/57 = 2.105 V on FB: a false 160 % fail
+        r = self._bluesat("R221", 47e3)
+        self.assertEqual(r["status"], "info")
+        self.assertIn("divider top is not on the output rail", r["note"])
+        self.assertNotIn("vfb_vs_vref_pct", r["delta"])
+
+    def test_divider_top_on_the_output_rail_is_still_judged(self):
+        # R220 sits on +12V: 12 * 10/110 = 1.091 V, 34.7 % from 0.81 V
+        r = self._bluesat("R220", 100e3)
+        self.assertEqual(r["status"], "fail")
+        self.assertAlmostEqual(r["delta"]["vfb_vs_vref_pct"], 34.68, delta=0.01)
+
     def test_rt6150_reference_from_its_datasheet(self):
         # RT6150A/B datasheet (DS6150A/B-06): VFB = 0.5 V; hackquad U7's 487k/86.6k on +3V3:
         # 3.3 * 86.6/573.6 = 0.4982 V, 0.36 % from 0.5 V
