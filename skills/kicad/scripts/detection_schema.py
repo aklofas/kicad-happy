@@ -328,7 +328,7 @@ SCHEMAS = {
         identity_fields=["reference"],
         value_fields=["frequency", "effective_load_pF"],
         derived=[DerivedField("effective_load_pF", _recalc_crystal_load, _inverse_crystal_load)],
-        primary_metric="load_capacitance_pF",
+        primary_metric="pulling_ppm",
     ),
     "current_sense": DetectionSchema(
         identity_fields=["shunt.ref"],

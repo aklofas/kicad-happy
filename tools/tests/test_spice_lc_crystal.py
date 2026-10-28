@@ -112,6 +112,22 @@ class CrystalTest(unittest.TestCase):
         self.assertIn("50003", r["note"])
 
 
+@unittest.skipUnless(shutil.which("ngspice"), "ngspice not installed")
+class CrystalMonteCarloTest(unittest.TestCase):
+    def test_tolerance_reports_the_pulling(self):
+        # load-cap tolerance moves CL and so the pulling; the calculated CL is not simulated
+        import simulate_subcircuits as S
+        from spice_model_cache import ModelOptions
+        det = dict(_crystal(8e6, [("C1", 22e-12, "X1"), ("C2", 22e-12, "X2")]),
+                   detector="detect_crystal_circuits")
+        with tempfile.TemporaryDirectory() as tmp:
+            report = S.simulate_subcircuits({"findings": [det]}, workdir=tmp, monte_carlo_n=5,
+                                            model_options=ModelOptions(cache_dir=tmp, offline=True))
+        stats = report["simulation_results"][0]["tolerance_analysis"]["statistics"]
+        self.assertEqual(list(stats), ["pulling_ppm"])
+        self.assertAlmostEqual(stats["pulling_ppm"]["nominal"], 625.0, delta=3.125)
+
+
 class CrystalUnitTest(unittest.TestCase):
     def test_series_resonance_not_measured_warns(self):
         det = _crystal(8e6, [("C1", 22e-12, "X1"), ("C2", 22e-12, "X2")])
