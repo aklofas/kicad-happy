@@ -16,7 +16,7 @@ from collections import Counter
 
 from kicad_types import AnalysisContext
 from kicad_core.parts import lookup_regulator_vref
-from kicad_core.values import parse_value
+from kicad_core.values import format_frequency, parse_value
 from kicad_core.netnames import parse_voltage_from_net_name
 from signal_detectors import _get_net_components
 from detector_helpers import match_family, match_ic_keywords, get_unique_ics
@@ -3715,7 +3715,7 @@ def detect_clock_distribution(ctx: AnalysisContext,
             "severity": "info",
             "confidence": "deterministic",
             "evidence_source": "topology",
-            "summary": f"Oscillator output {osc_ref} ({xc.get('value', '')})" + (f" {xc['frequency']/1e6:.3g} MHz" if xc.get("frequency") else ""),
+            "summary": f"Oscillator output {osc_ref} ({xc.get('value', '')})" + (f" {format_frequency(xc['frequency'])}" if xc.get("frequency") else ""),
             "description": f"Detected active oscillator {osc_ref} driving clock output.",
             "components": [osc_ref] + consumers,
             "nets": [output_net] if output_net else [],

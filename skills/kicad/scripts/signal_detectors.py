@@ -504,16 +504,33 @@ def _merge_series_dividers(voltage_dividers: list[dict], ctx: AnalysisContext) -
     return result
 
 
+def _merged_caps(ctx: AnalysisContext, cap_refs: list[str], farads: float) -> dict:
+    """Capacitor dict for caps merged on one filter node; ``parallel_refs`` only when
+    every cap shares both nets with the first."""
+    part = {"ref": cap_refs[0], "value": f"{len(cap_refs)} caps parallel", "farads": farads}
+    nets = {frozenset(ctx.get_two_pin_nets(r)) for r in cap_refs}
+    if len(nets) == 1:
+        part["parallel_refs"] = cap_refs
+    part["parallel_caps"] = cap_refs
+    return part
+
+
 def detect_rc_filters(ctx: AnalysisContext, voltage_dividers: list[dict],
                       crystal_circuits: list[dict] | None = None,
                       opamp_circuits: list[dict] | None = None) -> list[dict]:
     """Detect RC filters. Takes voltage_dividers/crystal_circuits/opamp_circuits to exclude."""
     results_rc: list[dict] = []
 
-    # A 3-pin potentiometer is not a two-terminal filter resistor.
+    # A potentiometer on three distinct nets is not a two-terminal filter resistor; one
+    # wired as a rheostat (two of its pins on one net) is.
     resistors = [r for r in group_reps(ctx, get_components_by_type(ctx, "resistor", with_parsed_values=True))
-                 if not (_is_potentiometer(ctx, r["reference"]) and len(ctx.ref_pins.get(r["reference"], {})) > 2)]
+                 if not (_is_potentiometer(ctx, r["reference"])
+                         and len({n for n, _ in ctx.ref_pins.get(r["reference"], {}).values() if n}) > 2)]
     resistor_nets, _ = index_two_pin_components(ctx, resistors)
+    for r in resistors:
+        rheostat_nets = sorted({n for n, _ in ctx.ref_pins.get(r["reference"], {}).values() if n})
+        if _is_potentiometer(ctx, r["reference"]) and len(rheostat_nets) == 2:
+            resistor_nets[r["reference"]] = tuple(rheostat_nets)
 
     # ---- RC Filters ----
     # R and C must share a SIGNAL net (not power/ground) to form a real filter.
@@ -713,13 +730,7 @@ def detect_rc_filters(ctx: AnalysisContext, voltage_dividers: list[dict],
             tau = r_val * total_c
             cap_refs = [m for e in entries for m in e["capacitor"].get("parallel_refs", [e["capacitor"]["ref"]])]
             base = entries[0].copy()
-            base["capacitor"] = {
-                "ref": cap_refs[0],
-                "value": f"{len(cap_refs)} caps parallel",
-                "farads": total_c,
-                "parallel_refs": cap_refs,
-                "parallel_caps": cap_refs,
-            }
+            base["capacitor"] = _merged_caps(ctx, cap_refs, total_c)
             base["cutoff_hz"] = round(fc, 2)
             base["time_constant_s"] = tau
             base["cutoff_formatted"] = _format_frequency(fc)
@@ -859,13 +870,7 @@ def detect_lc_filters(ctx: AnalysisContext) -> list[dict]:
             cap_refs = [m for e in entries for m in e["capacitor"].get("parallel_refs", [e["capacitor"]["ref"]])]
             merged = {
                 "inductor": entries[0]["inductor"],
-                "capacitor": {
-                    "ref": cap_refs[0],
-                    "value": f"{len(cap_refs)} caps parallel",
-                    "farads": total_c,
-                    "parallel_refs": cap_refs,
-                    "parallel_caps": cap_refs,
-                },
+                "capacitor": _merged_caps(ctx, cap_refs, total_c),
                 "resonant_hz": round(f0, 2),
                 "impedance_ohms": round(z0, 2),
                 "shared_net": _shared_net,

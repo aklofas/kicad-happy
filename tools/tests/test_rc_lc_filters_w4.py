@@ -142,6 +142,38 @@ class ParallelParts(unittest.TestCase):
         self.assertNotIn("RV1", [r for r, _ in got])
         self.assertIn(("R24", "C10"), got)
 
+    def test_rheostat_wired_potentiometer_is_a_filter_resistor(self):
+        # RV1 with wiper (2) tied to end 3: two terminals, 10k from SIG to FILT; with 100 nF
+        # to GND it is a 159.15 Hz low-pass
+        pot = _r("RV1", "10k", lib_id="Device:R_Potentiometer_Trim")
+        ctx = _ctx([pot, _c("C1", "100n")],
+                   {"SIG": [_p("RV1", "1")], "FILT": [_p("RV1", "2"), _p("RV1", "3"), _p("C1", "1")],
+                    "GND": [_p("C1", "2")]})
+        got = [(f["type"], f["resistor"]["ref"], f["input_net"], f["output_net"], f["cutoff_hz"])
+               for f in _rc(ctx)]
+        self.assertEqual(got, [("low-pass", "RV1", "SIG", "FILT", 159.15)])
+
+    def test_rheostat_with_wiper_on_pin_one(self):
+        # wiper (2) tied to end 1 on SIG, end 3 on FILT: the same two-terminal 10k
+        pot = _r("RV1", "10k", lib_id="Device:R_Potentiometer_Trim")
+        ctx = _ctx([pot, _c("C1", "100n")],
+                   {"SIG": [_p("RV1", "1"), _p("RV1", "2")], "FILT": [_p("RV1", "3"), _p("C1", "1")],
+                    "GND": [_p("C1", "2")]})
+        got = [(f["type"], f["resistor"]["ref"], f["input_net"], f["output_net"], f["cutoff_hz"])
+               for f in _rc(ctx)]
+        self.assertEqual(got, [("low-pass", "RV1", "SIG", "FILT", 159.15)])
+
+    def test_caps_to_different_grounds_are_not_labelled_parallel(self):
+        # C1 FILT->GND and C2 FILT->AGND merge into one low-pass (the caps' far nets differ),
+        # but they do not share both nets, so the record has no parallel_refs
+        ctx = _ctx([_r("R1", "10k"), _c("C1", "100n"), _c("C2", "100n")],
+                   {"SIG": [_p("R1", "1")], "FILT": [_p("R1", "2"), _p("C1", "1"), _p("C2", "1")],
+                    "GND": [_p("C1", "2")], "AGND": [_p("C2", "2")]})
+        rcs = _rc(ctx)
+        self.assertEqual(len(rcs), 1)
+        self.assertEqual(rcs[0]["capacitor"]["parallel_caps"], ["C1", "C2"])
+        self.assertNotIn("parallel_refs", rcs[0]["capacitor"])
+
 
 _ADS1115_PINS = [("1", "ADDR", "GND", "input"), ("2", "ALERT/RDY", "ALRT", "output"),
                  ("3", "GND", "GND", "power_in"), ("4", "AIN0", "AIN0", "input"),
@@ -186,12 +218,12 @@ class AntiAliasing(unittest.TestCase):
 
 
 class ClockFrequency(unittest.TestCase):
-    def test_oscillator_frequency_reaches_clock_distribution(self):
+    def _cd(self, value):
         osc_pins = [("1", "EN", "+3V3", "input"), ("2", "GND", "GND", "power_in"),
                     ("3", "OUT", "CLK", "output"), ("4", "VDD", "+3V3", "power_in")]
         mcu_pins = [("1", "OSC_IN", "CLK", "input"), ("2", "VDD", "+3V3", "power_in"),
                     ("3", "VSS", "GND", "power_in")]
-        osc = {"reference": "X1", "type": "oscillator", "value": "16MHz",
+        osc = {"reference": "X1", "type": "oscillator", "value": value,
                "lib_id": "Oscillator:ASE-xxxMHz",
                "pins": [{"number": n, "name": nm} for n, nm, _, _ in osc_pins]}
         mcu = _ic("U2", "STM32F103C8T6", "MCU_ST_STM32F1:STM32F103C8Tx", mcu_pins)
@@ -199,8 +231,17 @@ class ClockFrequency(unittest.TestCase):
         xcs = sd.detect_crystal_circuits(ctx)
         cds = [c for c in dd.detect_clock_distribution(ctx, xcs) if c["ref"] == "X1"]
         self.assertEqual(len(cds), 1)
-        self.assertEqual(cds[0]["frequency_hz"], 16e6)
-        self.assertEqual(cds[0]["summary"], "Oscillator output X1 (16MHz) 16 MHz")
+        return cds[0]
+
+    def test_oscillator_frequency_reaches_clock_distribution(self):
+        cd = self._cd("16MHz")
+        self.assertEqual(cd["frequency_hz"], 16e6)
+        self.assertEqual(cd["summary"], "Oscillator output X1 (16MHz) 16.00 MHz")
+
+    def test_sub_megahertz_oscillator_reads_in_kilohertz(self):
+        cd = self._cd("32.768kHz")
+        self.assertEqual(cd["frequency_hz"], 32768.0)
+        self.assertEqual(cd["summary"], "Oscillator output X1 (32.768kHz) 32.77 kHz")
 
 
 class EsdArray(unittest.TestCase):
