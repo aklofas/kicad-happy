@@ -385,7 +385,7 @@ def detect_topologies(ctx: AnalysisContext) -> dict:
     voltage_dividers = vd_result["voltage_dividers"]
     # KH-105/KH-115: Merge series resistors in divider chains
     voltage_dividers = _merge_series_dividers(voltage_dividers, ctx)
-    feedback_networks = vd_result["feedback_networks"]
+    feedback_networks = [fn for fn in vd_result["feedback_networks"] if not fn.get("_closed_chain")]
 
     lc_filters = detect_lc_filters(ctx)
     crystal_circuits = detect_crystal_circuits(ctx)

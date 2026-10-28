@@ -459,7 +459,10 @@ def _merge_series_dividers(voltage_dividers: list[dict], ctx: AnalysisContext) -
             result.append(vd)
             continue
         if _divider_is_degenerate(ctx, new_top_net, new_bot_net):
-            continue  # the chain closes on the other arm's end: a parallel leg, not a divider
+            # The chain closes on the other arm's end: a parallel leg, not a divider.
+            # The pipeline drops the same record from feedback_networks.
+            vd["_closed_chain"] = True
+            continue
 
         new_vd = dict(vd)
 

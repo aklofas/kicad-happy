@@ -39,7 +39,9 @@ def _p(ref, pin="1"):
 def _dividers(ctx):
     d = sd.detect_voltage_dividers(ctx)
     vds = sd._merge_series_dividers(d["voltage_dividers"], ctx)
-    return sd.postfilter_vd_and_dedup(vds, d["feedback_networks"], [], ctx.nets)
+    # as schematic/pipeline.py: a chain that closed on itself leaves feedback_networks too
+    fns = [fn for fn in d["feedback_networks"] if not fn.get("_closed_chain")]
+    return sd.postfilter_vd_and_dedup(vds, fns, [], ctx.nets)
 
 
 def _divider_ctx(top, bottoms, top_net="+3V3"):
@@ -138,9 +140,11 @@ class Divider(unittest.TestCase):
                 "FB": [("U1", "4", "FB", "input"), _p("R14", "2"), _p("R17", "1"), _p("R18", "1")],
                 "LEG": [_p("R18", "2"), _p("R24", "1")]}
         ctx = _ctx(comps, nets, rails=("+5V", "VDD"))
-        vds, _ = _dividers(ctx)
+        vds, fns = _dividers(ctx)
         self.assertFalse(any(v["top_net"] == v["bottom_net"] for v in vds), vds)
-        self.assertNotIn(("R18", "R17"), [(v["r_top"]["ref"], v["r_bottom"]["ref"]) for v in vds])
+        for records in (vds, fns):
+            self.assertNotIn(("R18", "R17"), [(v["r_top"]["ref"], v["r_bottom"]["ref"]) for v in records])
+        self.assertEqual([(f["r_top"]["ref"], f["r_bottom"]["ref"]) for f in fns], [("R14", "R17")])
         regs = sd.detect_power_regulators(ctx, vds)
         self.assertEqual([(r["feedback_divider"]["r_top"]["ref"], r["feedback_divider"]["r_bottom"]["ref"],
                            r["estimated_vout"]) for r in regs], [("R14", "R17", 3.32)])
