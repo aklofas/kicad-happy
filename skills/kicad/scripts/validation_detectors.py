@@ -496,13 +496,18 @@ def _estimate_rail_voltage_for_ic(ctx: AnalysisContext, ref: str) -> float | Non
                 if v is not None:
                     return abs(v)
 
+    # The positive supply sets a split-supply IC's logic swing; a negative rail counts
+    # only for an IC that has no positive one.
+    negative = None
     pins = ctx.ref_pins.get(ref, {})
     for pnum, (net, _) in pins.items():
         if net and ctx.is_power_net(net) and not ctx.is_ground(net):
             v = parse_voltage_from_net_name(net)
-            if v is not None:
-                return abs(v)
-    return None
+            if v is not None and v > 0:
+                return v
+            if v is not None and negative is None:
+                negative = abs(v)
+    return negative
 
 
 def _closest_threshold(voltage: float) -> tuple:

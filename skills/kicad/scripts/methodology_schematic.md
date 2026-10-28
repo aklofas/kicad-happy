@@ -342,13 +342,14 @@ Returns `None` for:
 
 A net is classified as a power rail by two complementary methods:
 
-**Method 1 — Power symbol registration**: Any net that has a pin from a `#PWR` or `#FLG` component is added to the `known_power_rails` set. This is authoritative — it captures whatever the designer connected via power symbols.
+**Method 1 — Power symbol registration**: Any net that has a pin from a `#PWR` or `#FLG` component is added to the `known_power_rails` set. This is authoritative — it captures whatever the designer connected via power symbols. Membership is by the net's full name: a sheet-local net `/Sheet/X` is its own net, not the rail `X`.
 
 **Method 2 — Name heuristics** (`is_power_net_name()`): Checks the net name against common power naming conventions:
 
 - **Exact matches**: `VCC`, `VDD`, `AVCC`, `AVDD`, `DVCC`, `DVDD`, `VBUS`, `VIO`, `VMAIN`, `VPWR`, `VSYS`, `VBAT`, `VCORE`, `VIN`, `VOUT`, `VREG`
 - **Patterns**: Names starting with `+` (e.g., `+3V3`, `+5V`, `+12V`), `V` followed by digits (e.g., `V3V3`, `V1V8`)
 - **Prefixes**: `VDD_*`, `VCC_*`, `VBAT_*`, `VSYS_*`, `VBUS_*`, etc.
+- **Negative, decimal and prefixed rails**: `-12V`, `-5V_F`, `-BATT`, `-VIN`, `3.3V`, `1.25V_REF`, `VEE`, `VPP`, `VM`, `VNEG`, `MCU3V3`, `D+5V`. A leading `-` before anything but a voltage or a supply name (`-RESET`) is an active-low signal; a control prefix (`PWM3V3`, `PG3V3`) or a signal word after a decimal level (`3.3V_SDA`) keeps the name a signal.
 - **Control suffixes win**: a name whose last `_` part is a control or status word (`VCC_EN`, `3V3_PG`, `VBUS_SENSE`, `PWR_ON`) is a signal about the rail, not the rail, unless the net is in the power-symbol or project power-rail set.
 
 A net is considered a power net if **either** method matches.

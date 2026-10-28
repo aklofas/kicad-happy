@@ -40,7 +40,7 @@ _SIGNAL_PREFIXES = frozenset({
     "SDA", "SCL", "SCK", "MOSI", "MISO", "CS", "SS", "INT", "IRQ",
     "RST", "RESET", "DIR", "STEP", "CLK", "CLOCK", "ALERT", "FAULT",
     "FLAG", "IO", "GPIO", "INTR", "TRIG", "SYNC", "CTRL", "DATA", "SIG",
-    "DRV", "FB", "COMP", "ADC", "DAC",
+    "DRV", "FB", "COMP", "ADC", "DAC", "ENA", "SWD", "SWDIO", "SWCLK", "VSNS",
 })
 # Prefixes that make <prefix>_<voltage> / <prefix>_VOUT a rail
 # (RAW_5V, USB_5V, ISO_3V3, SYS_VOUT, BOOST_VOUT).
@@ -55,6 +55,9 @@ _SUPPLY_TAILS = frozenset({"VCC", "VDD", "AVCC", "AVDD", "DVCC", "DVDD",
 # <tail>s that can also name a sense tap (ADC_VBUS, SNS_VIN) — gated on the
 # prefix not being a signal prefix.
 _RAIL_TAILS_GATED = frozenset({"VBUS", "VIN", "VBAT", "VBATT", "VSYS", "VREG"})
+# -<name> with one of these is a negative supply (-BATT, -VIN), not an active-low signal.
+_NEGATIVE_SUPPLY_NAMES = frozenset({"BAT", "BATT", "VBAT", "VBATT", "VIN", "VCC",
+                                    "VDD", "VEE", "VS"})
 # <voltage><suffix> with these suffixes is a control/monitor line (5VEN,
 # 12VPG, 5VOK), not a rail.
 _VOLTAGE_SIGNAL_SUFFIXES = frozenset({"EN", "ENABLE", "ON", "OFF", "FB", "PG",
@@ -96,17 +99,25 @@ def is_power_net_name(net_name: str | None, power_rails: set[str] | None = None)
     # never rails, no matter what pattern rule below would otherwise match
     # (KH-407). Excludes 0V<digit> (0V9, 0V85, 0V95, 0V5) — those are
     # sub-1V rails under the nnVn convention, not ground.
-    if re.match(r'^\+?0+V(?!\d)', nu):
+    if re.match(r'^\+?0+(\.0+)?V(?!\d)', nu):
         return False
     if "_" in nu and nu.rsplit("_", 1)[-1] in _RAIL_SIGNAL_SUFFIXES:
         return False
+    # Negative rails (-12V, -2V5, -5V_F, -BATT, -VIN). A leading '-' also marks an
+    # active-low signal (-RESET, -CS), so the rest must be a voltage or a supply name.
+    if nu.startswith("-"):
+        rest = nu[1:]
+        if rest.split("_")[0] in _NEGATIVE_SUPPLY_NAMES or (
+                re.match(r'^\d', rest) and is_power_net_name(rest)):
+            return True
     # Explicit known names
     if nu in ("GND", "VSS", "AGND", "DGND", "PGND", "GNDPWR", "GNDA", "GNDD",
               "VCC", "VDD", "AVCC", "AVDD", "DVCC", "DVDD", "VBUS",
               "VAA", "VIO", "VMAIN", "VPWR", "VSYS", "VBAT", "VCORE",
               "VIN", "VOUT", "VREG", "VBATT",
               "V3P3", "V1P8", "V1P2", "V2P5", "V5P0", "V12P0",
-              "VCCA", "VCCD", "VCCIO", "VDDA", "VDDD", "VDDIO"):
+              "VCCA", "VCCD", "VCCIO", "VDDA", "VDDD", "VDDIO",
+              "VEE", "VPP", "VM", "VNEG"):
         return True
     # Pattern-based detection
     if nu.startswith("+") or nu.startswith("V+"):
@@ -123,6 +134,12 @@ def is_power_net_name(net_name: str | None, power_rails: set[str] | None = None)
     m = re.match(r'^(\d+)V([A-Z][0-9A-Z]*)?$', nu)
     if m and int(m.group(1)) != 0 and (m.group(2) or "") not in _VOLTAGE_SIGNAL_SUFFIXES:
         return True
+    # Decimal voltages (3.3V, 5.5V, 3.3V_OUT, 1.25V_REF). 3.3VPG and 3.3V_SDA are
+    # signals at or about the rail.
+    m = re.match(r'^\d+\.\d+V([A-Z][0-9A-Z]*)?(_.*)?$', nu)
+    if m and (m.group(1) or "") not in _RAIL_SIGNAL_SUFFIXES and not (
+            m.group(2) and any(seg in _SIGNAL_PREFIXES for seg in m.group(2).split("_"))):
+        return True
     # Negative voltage rails (Neg6v, NEG12V)
     if re.match(r'^NEG\d+V', nu):
         return True
@@ -131,6 +148,12 @@ def is_power_net_name(net_name: str | None, power_rails: set[str] | None = None)
         return True
     # nV_xxx patterns (5V_INT, 12V_SW, 3V_AUX)
     if "_" in nu and re.match(r'^\d+V', nu.split("_")[0]):
+        return True
+    # A voltage behind a domain prefix (MCU3V3, AVDD1V8_PLL, D+5V, CAN+5V); a control
+    # prefix (PWM3V3, EN1V8, PWRGD1V2, SWDIO1V8, TX+5V) names a signal at or about the rail.
+    m = (re.match(r'^([A-Z]{2,5})\d+V\d+$', nu.split("_")[0])
+         or re.match(r'^([A-Z]{1,4})\+\d+(\.\d+)?V\d*$', nu))
+    if m and m.group(1) not in _SIGNAL_PREFIXES and m.group(1) not in _RAIL_SIGNAL_SUFFIXES:
         return True
     # PWRnVn patterns (PWR3V3, PWR1V8, PWR5V0)
     if re.match(r'^PWR\d', nu):
