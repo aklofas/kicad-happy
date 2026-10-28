@@ -275,6 +275,7 @@ class RailNameVoltageTest(unittest.TestCase):
             "VBUS": None, "VCC": None,
             "ATX_-5V": None, "analog_-15V": None,   # '-' before the voltage after a separator
             "3V3-5V": 3.3, "+5V-ISO": 5.0, "VCC-IO": None,
+            "F-15V": 15.0,      # a bare letter before '-' is ambiguous (like VCC-5V): read as a separator
         }
         for name, volts in cases.items():
             self.assertEqual(T._rail_name_voltage(name), volts, name)
