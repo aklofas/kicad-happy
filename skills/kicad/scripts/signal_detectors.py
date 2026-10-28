@@ -29,6 +29,7 @@ from kicad_core.netquery import build_bridge_facts, build_ref_pins
 from kicad_types import AnalysisContext
 from finding_schema import make_provenance, make_finding, Det
 from detector_helpers import index_two_pin_components, get_components_by_type, get_unique_ics
+from detector_helpers import group_members, group_part, group_reps, group_value, parallel_groups
 
 from lookup_helpers import get_facts, has_data, best
 
@@ -210,8 +211,9 @@ def detect_voltage_dividers(ctx: AnalysisContext) -> dict:
     feedback_networks: list[dict] = []
 
     # ---- Voltage Dividers ----
-    # Two resistors in series between different nets, with a mid-point net
-    resistors = get_components_by_type(ctx, "resistor", with_parsed_values=True)
+    # Two resistors in series between different nets, with a mid-point net; parallel
+    # resistors on one arm count as one equivalent resistor
+    resistors = group_reps(ctx, get_components_by_type(ctx, "resistor", with_parsed_values=True))
     resistor_nets, net_to_resistors = index_two_pin_components(ctx, resistors)
 
     # Check pairs of resistors that share a net (potential dividers)
@@ -270,8 +272,8 @@ def detect_voltage_dividers(ctx: AnalysisContext) -> dict:
                     if not ctx.is_ground(bot_net):
                         continue
 
-                r1_val = ctx.parsed_values[r1["reference"]]
-                r2_val = ctx.parsed_values[r2["reference"]]
+                r1_val = group_value(ctx, r1["reference"])
+                r2_val = group_value(ctx, r2["reference"])
                 if r1_val <= 0 or r2_val <= 0:
                     continue
                 # Extreme ratio → pull-up/pull-down pair, not a real divider.
@@ -295,8 +297,8 @@ def detect_voltage_dividers(ctx: AnalysisContext) -> dict:
                     ratio = r_bot / (r_top + r_bot)
 
                     divider = {
-                        "r_top": {"ref": r_top_ref, "value": ctx.comp_lookup[r_top_ref]["value"], "ohms": r_top},
-                        "r_bottom": {"ref": r_bot_ref, "value": ctx.comp_lookup[r_bot_ref]["value"], "ohms": r_bot},
+                        "r_top": group_part(ctx, r_top_ref, "ohms"),
+                        "r_bottom": group_part(ctx, r_bot_ref, "ohms"),
                         "top_net": top_net,
                         "mid_net": mid_net,
                         "bottom_net": bot_net,
@@ -326,10 +328,14 @@ def detect_voltage_dividers(ctx: AnalysisContext) -> dict:
                     # either preserve the double-emission OR be compensated
                     # upstream in NEW_V14_RULES at the gate side. Coordinate
                     # with the harness before changing this.
+                    arm_refs = group_members(ctx, r_top_ref) + group_members(ctx, r_bot_ref)
+                    # The arms and any DNP part beside them are not mid-point connections
+                    groups = parallel_groups(ctx, "resistor")
+                    arm_nets = {groups[r]["nets"] for r in (r_top_ref, r_bot_ref) if r in groups}
                     if mid_net in ctx.nets:
                         mid_pins = [p for p in ctx.nets[mid_net]["pins"]
-                                    if p["component"] != r_top_ref
-                                    and p["component"] != r_bot_ref
+                                    if p["component"] not in arm_refs
+                                    and groups.get(p["component"], {}).get("nets") not in arm_nets
                                     and not p["component"].startswith("#")]
                         if mid_pins:
                             divider["mid_point_connections"] = mid_pins
@@ -345,7 +351,7 @@ def detect_voltage_dividers(ctx: AnalysisContext) -> dict:
                                     divider["evidence_source"] = "topology"
                                     divider["summary"] = f"Voltage divider {r_top_ref}/{r_bot_ref}"
                                     divider["description"] = "Feedback network voltage divider detected"
-                                    divider["components"] = [r_top_ref, r_bot_ref]
+                                    divider["components"] = arm_refs
                                     divider["nets"] = []
                                     divider["pins"] = []
                                     divider["recommendation"] = ""
@@ -364,7 +370,7 @@ def detect_voltage_dividers(ctx: AnalysisContext) -> dict:
                     divider["evidence_source"] = "topology"
                     divider["summary"] = f"Voltage divider {r_top_ref}/{r_bot_ref}"
                     divider["description"] = "Resistive voltage divider detected"
-                    divider["components"] = [r_top_ref, r_bot_ref]
+                    divider["components"] = arm_refs
                     divider["nets"] = []
                     divider["pins"] = []
                     divider["recommendation"] = ""
@@ -376,6 +382,14 @@ def detect_voltage_dividers(ctx: AnalysisContext) -> dict:
     return {"voltage_dividers": voltage_dividers, "feedback_networks": feedback_networks}
 
 
+def _chain_link(ctx: AnalysisContext, ref: str, ohms: float) -> dict:
+    link = {"ref": ref, "ohms": ohms}
+    members = group_members(ctx, ref)
+    if len(members) > 1:
+        link["parallel_refs"] = members
+    return link
+
+
 def _merge_series_dividers(voltage_dividers: list[dict], ctx: AnalysisContext) -> list[dict]:
     """Merge series resistors in voltage divider chains (KH-105, KH-115).
 
@@ -383,12 +397,13 @@ def _merge_series_dividers(voltage_dividers: list[dict], ctx: AnalysisContext) -
     to exactly 2 resistors and no IC/active pins), extend the chain through
     it, combining series resistances.
     """
-    # Build resistor-net index
-    all_resistors = get_components_by_type(ctx, "resistor", with_parsed_values=True)
+    # Build resistor-net index (one entry per parallel group)
+    all_resistors = group_reps(ctx, get_components_by_type(ctx, "resistor", with_parsed_values=True))
     resistor_nets, net_to_resistors = index_two_pin_components(ctx, all_resistors)
 
     def _is_passthrough(net_name):
-        """A pass-through node connects exactly 2 resistors and no active components."""
+        """A pass-through node connects exactly 2 resistors (a parallel group counts once)
+        and no active components."""
         if ctx.is_power_net(net_name) or ctx.is_ground(net_name):
             return False
         r_at_net = net_to_resistors.get(net_name, [])
@@ -413,9 +428,9 @@ def _merge_series_dividers(voltage_dividers: list[dict], ctx: AnalysisContext) -
             if len(others) != 1:
                 break
             nxt = others[0]
-            if nxt not in ctx.parsed_values:
+            if group_value(ctx, nxt) is None:
                 break
-            extra.append((nxt, ctx.parsed_values[nxt]))
+            extra.append((nxt, group_value(ctx, nxt)))
             n1, n2 = resistor_nets[nxt]
             cur_net = n2 if n1 == cur_net else n1
             cur_ref = nxt
@@ -444,9 +459,7 @@ def _merge_series_dividers(voltage_dividers: list[dict], ctx: AnalysisContext) -
             total_top = sum(o for _, o in all_top)
             new_vd["r_top"] = dict(vd["r_top"])
             new_vd["r_top"]["ohms"] = total_top
-            new_vd["r_top"]["chain_resistors"] = [
-                {"ref": r, "ohms": o} for r, o in all_top
-            ]
+            new_vd["r_top"]["chain_resistors"] = [_chain_link(ctx, r, o) for r, o in all_top]
             new_vd["top_net"] = new_top_net
             for r, _ in all_top:
                 chain_member_refs.add(r)
@@ -456,9 +469,7 @@ def _merge_series_dividers(voltage_dividers: list[dict], ctx: AnalysisContext) -
             total_bot = sum(o for _, o in all_bot)
             new_vd["r_bottom"] = dict(vd["r_bottom"])
             new_vd["r_bottom"]["ohms"] = total_bot
-            new_vd["r_bottom"]["chain_resistors"] = [
-                {"ref": r, "ohms": o} for r, o in all_bot
-            ]
+            new_vd["r_bottom"]["chain_resistors"] = [_chain_link(ctx, r, o) for r, o in all_bot]
             new_vd["bottom_net"] = new_bot_net
             for r, _ in all_bot:
                 chain_member_refs.add(r)
@@ -497,8 +508,9 @@ def detect_rc_filters(ctx: AnalysisContext, voltage_dividers: list[dict],
     # divider resistor with an output decoupling cap is a common false positive.
     vd_resistor_refs = set()
     for vd in voltage_dividers:
-        vd_resistor_refs.add(vd["r_top"]["ref"])
-        vd_resistor_refs.add(vd["r_bottom"]["ref"])
+        for arm in ("r_top", "r_bottom"):
+            vd_resistor_refs.add(vd[arm]["ref"])
+            vd_resistor_refs.update(vd[arm].get("parallel_refs", ()))
 
     # KH-145: Exclude opamp feedback resistors, capacitors, and input resistors
     opamp_exclude_refs = set()
@@ -873,6 +885,21 @@ def detect_lc_filters(ctx: AnalysisContext) -> list[dict]:
     return lc_filters
 
 
+def _load_legs(load_caps: list[dict]) -> list[float]:
+    """Load capacitance per oscillator leg (net), legs in first-seen order."""
+    legs: dict[str, float] = {}
+    seen: set[str] = set()
+    for lc in load_caps:
+        if lc["ref"] not in seen:
+            seen.add(lc["ref"])
+            legs[lc["net"]] = legs.get(lc["net"], 0.0) + lc["farads"]
+    return list(legs.values())
+
+
+def _dnp_cap_beside_fitted(ctx: AnalysisContext, ref: str) -> bool:
+    return parallel_groups(ctx, "capacitor").get(ref, {}).get("excluded", False)
+
+
 def detect_crystal_circuits(ctx: AnalysisContext) -> list[dict]:
     """Detect crystal oscillator circuits."""
     crystal_circuits: list[dict] = []
@@ -910,7 +937,9 @@ def detect_crystal_circuits(ctx: AnalysisContext) -> list[dict]:
             if net_name not in ctx.nets:
                 continue
             for p in ctx.nets[net_name]["pins"]:
-                if p["component"] != xtal["reference"] and ctx.comp_lookup.get(p["component"], {}).get("type") == "capacitor":
+                if (p["component"] != xtal["reference"]
+                        and ctx.comp_lookup.get(p["component"], {}).get("type") == "capacitor"
+                        and not _dnp_cap_beside_fitted(ctx, p["component"])):
                     cap_ref = p["component"]
                     cap_val = ctx.parsed_values.get(cap_ref)
                     if cap_val:
@@ -932,14 +961,19 @@ def detect_crystal_circuits(ctx: AnalysisContext) -> list[dict]:
             "load_caps": load_caps,
         }
 
-        # Compute effective load capacitance: CL = (C1 * C2) / (C1 + C2) + C_stray
-        if len(load_caps) >= 2:
-            c1 = load_caps[0]["farads"]
-            c2 = load_caps[1]["farads"]
+        # Compute effective load capacitance: CL = (C1 * C2) / (C1 + C2) + C_stray,
+        # C1 and C2 the total capacitance on each leg (Pierce load, ST AN2867)
+        legs = _load_legs(load_caps)
+        if len(legs) >= 2:
+            c1, c2 = legs[0], legs[1]
             c_stray = 3e-12  # typical stray capacitance estimate
             cl_eff = (c1 * c2) / (c1 + c2) + c_stray
             xtal_entry["effective_load_pF"] = round(cl_eff * 1e12, 2)
-            xtal_entry["note"] = f"CL_eff = ({load_caps[0]['value']} * {load_caps[1]['value']}) / ({load_caps[0]['value']} + {load_caps[1]['value']}) + ~3pF stray"
+            if len(legs) == len(load_caps):
+                xtal_entry["note"] = f"CL_eff = ({load_caps[0]['value']} * {load_caps[1]['value']}) / ({load_caps[0]['value']} + {load_caps[1]['value']}) + ~3pF stray"
+            else:
+                xtal_entry["note"] = (f"CL_eff = ({c1 * 1e12:g}pF * {c2 * 1e12:g}pF) / ({c1 * 1e12:g}pF + {c2 * 1e12:g}pF)"
+                                      f" + ~3pF stray (load capacitance summed per leg)")
 
         # Crystal load capacitance validation
         target_load_pF = None
@@ -1117,7 +1151,7 @@ def detect_crystal_circuits(ctx: AnalysisContext) -> list[dict]:
                 if not comp or comp["type"] != "capacitor":
                     continue
                 cap_ref = p["component"]
-                if cap_ref in detected_refs:
+                if cap_ref in detected_refs or _dnp_cap_beside_fitted(ctx, cap_ref):
                     continue
                 cap_val = ctx.parsed_values.get(cap_ref)
                 if cap_val and 5e-12 <= cap_val <= 50e-12:
@@ -1162,9 +1196,9 @@ def detect_crystal_circuits(ctx: AnalysisContext) -> list[dict]:
                 }
                 if fb_resistor:
                     entry["feedback_resistor"] = fb_resistor
-                if len(load_caps) >= 2:
-                    c1 = load_caps[0]["farads"]
-                    c2 = load_caps[1]["farads"]
+                legs = _load_legs(load_caps)
+                if len(legs) >= 2:
+                    c1, c2 = legs[0], legs[1]
                     cl_eff = (c1 * c2) / (c1 + c2) + 3e-12
                     entry["effective_load_pF"] = round(cl_eff * 1e12, 2)
                 entry["detector"] = "detect_crystal_circuits"
@@ -1250,10 +1284,10 @@ def detect_decoupling(ctx: AnalysisContext) -> list[dict]:
 def detect_current_sense(ctx: AnalysisContext) -> list[dict]:
     """Detect current sense circuits."""
     current_sense: list[dict] = []
+    # Parallel shunts are one equivalent shunt
     shunt_candidates = [
-        c for c in ctx.components
-        if c["type"] == "resistor" and c["reference"] in ctx.parsed_values
-        and 0 < ctx.parsed_values[c["reference"]] <= 0.5
+        c for c in group_reps(ctx, get_components_by_type(ctx, "resistor", with_parsed_values=True))
+        if 0 < group_value(ctx, c["reference"]) <= 0.5
     ]
 
     _SENSE_PIN_PREFIXES = frozenset({
@@ -1281,6 +1315,7 @@ def detect_current_sense(ctx: AnalysisContext) -> list[dict]:
     })
 
     for shunt in shunt_candidates:
+        shunt_refs = group_members(ctx, shunt["reference"])
         # Support both 2-pin and 4-pin Kelvin shunts (R_Shunt: pins 1,4=current; 2,3=sense)
         sense_n1, sense_n2 = None, None
         # Check for 4-pin Kelvin first (pins 1,4=current path; 2,3=sense)
@@ -1304,7 +1339,7 @@ def detect_current_sense(ctx: AnalysisContext) -> list[dict]:
         if s1_pwr_or_gnd and s2_pwr_or_gnd:
             continue
 
-        shunt_ohms = ctx.parsed_values[shunt["reference"]]
+        shunt_ohms = group_value(ctx, shunt["reference"])
 
         # Find ICs connected to BOTH sides of the shunt.
         # Ground-net exclusion: GND connects to every IC on the board, so it
@@ -1329,13 +1364,13 @@ def detect_current_sense(ctx: AnalysisContext) -> list[dict]:
             for nn in check_nets_1:
                 if nn in ctx.nets:
                     for p in ctx.nets[nn]["pins"]:
-                        if p["component"] != shunt["reference"]:
+                        if p["component"] not in shunt_refs:
                             comps_on_n1.add(p["component"])
         if not side2_is_pwr:
             for nn in check_nets_2:
                 if nn in ctx.nets:
                     for p in ctx.nets[nn]["pins"]:
-                        if p["component"] != shunt["reference"]:
+                        if p["component"] not in shunt_refs:
                             comps_on_n2.add(p["component"])
 
         if has_pwr_side:
@@ -1379,7 +1414,7 @@ def detect_current_sense(ctx: AnalysisContext) -> list[dict]:
                         continue
                     for p in ctx.nets[nn]["pins"]:
                         r_comp = ctx.comp_lookup.get(p["component"])
-                        if r_comp and r_comp["type"] == "resistor" and p["component"] != shunt["reference"]:
+                        if r_comp and r_comp["type"] == "resistor" and p["component"] not in shunt_refs:
                             r_other = ctx.get_two_pin_nets(p["component"])
                             if r_other[0] and r_other[1]:
                                 hop_net = r_other[1] if r_other[0] == nn else r_other[0]
@@ -1391,7 +1426,7 @@ def detect_current_sense(ctx: AnalysisContext) -> list[dict]:
                         continue
                     for p in ctx.nets[nn]["pins"]:
                         r_comp = ctx.comp_lookup.get(p["component"])
-                        if r_comp and r_comp["type"] == "resistor" and p["component"] != shunt["reference"]:
+                        if r_comp and r_comp["type"] == "resistor" and p["component"] not in shunt_refs:
                             r_other = ctx.get_two_pin_nets(p["component"])
                             if r_other[0] and r_other[1]:
                                 hop_net = r_other[1] if r_other[0] == nn else r_other[0]
@@ -1399,7 +1434,7 @@ def detect_current_sense(ctx: AnalysisContext) -> list[dict]:
                                     for hp in ctx.nets[hop_net]["pins"]:
                                         comps_on_n2.add(hp["component"])
                 sense_ics = comps_on_n1 & comps_on_n2
-        for ic_ref in sense_ics:
+        for ic_ref in sorted(sense_ics):
             ic_comp = ctx.comp_lookup.get(ic_ref)
             if not ic_comp:
                 continue
@@ -1408,11 +1443,7 @@ def detect_current_sense(ctx: AnalysisContext) -> list[dict]:
                 continue
 
             current_sense.append({
-                "shunt": {
-                    "ref": shunt["reference"],
-                    "value": shunt["value"],
-                    "ohms": shunt_ohms,
-                },
+                "shunt": group_part(ctx, shunt["reference"], "ohms"),
                 "sense_ic": {
                     "ref": ic_ref,
                     "value": ic_comp.get("value", ""),
@@ -1431,7 +1462,7 @@ def detect_current_sense(ctx: AnalysisContext) -> list[dict]:
                 "summary": f"Current sense {shunt['reference']}",
                 "description": "Current sense shunt with amplifier IC detected",
                 "provenance": make_provenance("cs_ic_differential", "deterministic", [shunt["reference"], ic_ref]),
-                "components": [shunt["reference"], ic_ref],
+                "components": shunt_refs + [ic_ref],
                 "nets": [],
                 "pins": [],
                 "recommendation": "",
@@ -1450,7 +1481,7 @@ def detect_current_sense(ctx: AnalysisContext) -> list[dict]:
     for shunt in shunt_candidates:
         if shunt["reference"] in matched_shunts:
             continue
-        shunt_ohms = ctx.parsed_values.get(shunt["reference"])
+        shunt_ohms = group_value(ctx, shunt["reference"])
         if not shunt_ohms or shunt_ohms > 1.0:
             continue
 
@@ -1473,11 +1504,7 @@ def detect_current_sense(ctx: AnalysisContext) -> list[dict]:
                 pn = p.get("pin_name", "").upper().rstrip("0123456789").rstrip("_")
                 if pn in _integrated_csa_pins:
                     current_sense.append({
-                        "shunt": {
-                            "ref": shunt["reference"],
-                            "value": shunt["value"],
-                            "ohms": shunt_ohms,
-                        },
+                        "shunt": group_part(ctx, shunt["reference"], "ohms"),
                         "sense_ic": {
                             "ref": p["component"],
                             "value": ic_comp.get("value", ""),
@@ -1495,7 +1522,7 @@ def detect_current_sense(ctx: AnalysisContext) -> list[dict]:
                         "evidence_source": "topology",
                         "summary": f"Current sense {shunt['reference']}",
                         "description": "Current sense shunt with integrated CSA detected",
-                        "components": [shunt["reference"], p["component"]],
+                        "components": group_members(ctx, shunt["reference"]) + [p["component"]],
                         "nets": [],
                         "pins": [],
                         "recommendation": "",
@@ -1780,6 +1807,14 @@ def _heuristic_vref(ratio: float, rail: str | None) -> tuple[float | None, str]:
     return None, ""
 
 
+def _feedback_arm(arm: dict) -> dict:
+    """A divider arm as a regulator's ``feedback_divider`` records it."""
+    out = {"ref": arm["ref"], "ohms": arm["ohms"], "value": arm["value"]}
+    if "parallel_refs" in arm:
+        out["parallel_refs"] = arm["parallel_refs"]
+    return out
+
+
 def _is_potentiometer(ctx: AnalysisContext, ref: str) -> bool:
     """A potentiometer or trimmer: RV designator or a pot/trim symbol."""
     lib_id = (ctx.comp_lookup.get(ref) or {}).get("lib_id", "").lower()
@@ -1983,7 +2018,8 @@ def _build_regulator_record(ctx: AnalysisContext, cand: _RegulatorCandidate,
                 vref_ratio = ratio
                 if three_terminal:
                     # A trimmer's end stop is not the operating point
-                    if any(_is_potentiometer(ctx, vd[arm]["ref"]) for arm in ("r_top", "r_bottom")):
+                    if any(_is_potentiometer(ctx, ref) for arm in ("r_top", "r_bottom")
+                           for ref in vd[arm].get("parallel_refs") or [vd[arm]["ref"]]):
                         break
                     # LM317 datasheet: Vref sits across the OUT-ADJ (top) resistor, Vout = Vref x (1 + Rbot/Rtop)
                     vref_ratio = 1 - ratio
@@ -2008,8 +2044,8 @@ def _build_regulator_record(ctx: AnalysisContext, cand: _RegulatorCandidate,
                     reg_info["assumed_vref"] = vref
                     reg_info["vref_source"] = vref_source
                     reg_info["feedback_divider"] = {
-                        "r_top": {"ref": vd["r_top"]["ref"], "ohms": vd["r_top"]["ohms"], "value": vd["r_top"]["value"]},
-                        "r_bottom": {"ref": vd["r_bottom"]["ref"], "ohms": vd["r_bottom"]["ohms"], "value": vd["r_bottom"]["value"]},
+                        "r_top": _feedback_arm(vd["r_top"]),
+                        "r_bottom": _feedback_arm(vd["r_bottom"]),
                         "ratio": ratio,
                     }
                     if three_terminal:
@@ -2124,8 +2160,8 @@ def _cross_reference_feedback_dividers(power_regulators: list[dict], voltage_div
                 ratio = vd["ratio"]
                 # In FB-at-top, Vout = Vfb (the top of the divider IS the output)
                 reg["feedback_divider"] = {
-                    "r_top": {"ref": vd["r_top"]["ref"], "ohms": vd["r_top"]["ohms"], "value": vd["r_top"]["value"]},
-                    "r_bottom": {"ref": vd["r_bottom"]["ref"], "ohms": vd["r_bottom"]["ohms"], "value": vd["r_bottom"]["value"]},
+                    "r_top": _feedback_arm(vd["r_top"]),
+                    "r_bottom": _feedback_arm(vd["r_bottom"]),
                     "ratio": ratio,
                     "topology": "fb_at_top",
                 }
@@ -3491,24 +3527,14 @@ def postfilter_vd_and_dedup(voltage_dividers: list[dict], feedback_networks: lis
     for vd in voltage_dividers:
         key = (vd["top_net"], vd["mid_net"], vd["bottom_net"])
         _vd_groups.setdefault(key, []).append(vd)
-    deduped_vds: list[dict] = []
-    for key, entries in _vd_groups.items():
-        rep = entries[0]
-        if len(entries) > 1:
-            rep["parallel_count"] = len(entries)
-        deduped_vds.append(rep)
+    deduped_vds = [entries[0] for entries in _vd_groups.values()]
 
     # Also deduplicate feedback_networks the same way
     _fn_groups: dict[tuple[str, str, str], list[dict]] = {}
     for fn in feedback_networks:
         key = (fn["top_net"], fn["mid_net"], fn["bottom_net"])
         _fn_groups.setdefault(key, []).append(fn)
-    deduped_fns: list[dict] = []
-    for key, entries in _fn_groups.items():
-        rep = entries[0]
-        if len(entries) > 1:
-            rep["parallel_count"] = len(entries)
-        deduped_fns.append(rep)
+    deduped_fns = [entries[0] for entries in _fn_groups.values()]
 
     return deduped_vds, deduped_fns
 

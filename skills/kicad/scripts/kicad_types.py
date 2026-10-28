@@ -104,6 +104,7 @@ class AnalysisContext:
         rail_overrides: ``analysis.power_rails.voltage_overrides`` from the project
             config, ``{net_name: volts}``.
         rail_ignore: ``analysis.power_rails.ignore`` glob patterns.
+        parallel_group_cache: ``detector_helpers.parallel_groups`` results per part type.
 
     Methods:
         is_power_net(name): True if *name* is a known power rail or matches
@@ -140,6 +141,7 @@ class AnalysisContext:
     rail_by_net: dict[str, float] = field(default_factory=dict, repr=False)
     rail_overrides: dict[str, float] = field(default_factory=dict, repr=False)
     rail_ignore: tuple[str, ...] = field(default=(), repr=False)
+    parallel_group_cache: dict = field(default_factory=dict, init=False, repr=False, compare=False)
 
     def is_power_net(self, name: str | None) -> bool:
         return name not in self.pin_guarded_signals and is_power_net_name(name, self.known_power_rails)

@@ -233,6 +233,19 @@ print(json.dumps([par, list(res[("rc_filters", 0)])]))
         self.assertEqual(got[0]["R1"]["net"], "N4")
         self.assertEqual(got[1], ["m_a", "m_b", "m_c", "m_d", "m_e"])
 
+    def test_current_sense_ics_in_ref_order(self):
+        # Five ICs each with a pin on both sides of one shunt: one record per IC, sorted
+        code = """
+import signal_detectors as sd
+ics = ["U5", "U3", "U1", "U4", "U2"]
+comps = [{"reference": "R1", "type": "resistor", "value": "0.01"}]
+comps += [{"reference": u, "type": "ic", "value": "SENSE"} for u in ics]
+nets = {"VA": [("R1", "1", "~", "passive")] + [(u, "1", "INP", "input") for u in ics],
+        "VB": [("R1", "2", "~", "passive")] + [(u, "2", "INN", "input") for u in ics]}
+print(json.dumps([c["sense_ic"]["ref"] for c in sd.detect_current_sense(ctx_of(comps, nets))]))
+"""
+        self.assertSeedsAgree(code, ["U1", "U2", "U3", "U4", "U5"])
+
 
 if __name__ == "__main__":
     unittest.main()

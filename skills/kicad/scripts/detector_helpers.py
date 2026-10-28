@@ -172,3 +172,113 @@ def is_protection_part(comp: dict, ctx: AnalysisContext, pair_suffixes) -> bool:
             return False
     # One own node is an array's VP/VBUS pin; an MCU or switch leaves several such nets.
     return pair_lines >= 2 and own_nodes <= 1
+
+
+_PARALLEL_VALUE_NOUN = {"resistor": "resistors", "inductor": "inductors", "capacitor": "caps"}
+
+
+def parallel_groups(ctx: AnalysisContext, comp_type: str) -> dict[str, dict]:
+    """``{member_ref: group}`` for two-terminal parts of ``comp_type`` (resistor, inductor
+    or capacitor) that share both nets; every such part has a group, alone or not.
+
+    A group is ``{"refs": [sorted refs], "nets": (n1, n2), "value": float | None}``;
+    ``refs[0]`` represents it.  Resistors and inductors combine as 1/sum(1/x), capacitors
+    as sum(x); a lone member keeps its parsed value.  A member whose value did not parse
+    makes the value None.  A DNP part beside a fitted one maps to a one-ref group marked
+    ``"excluded"``.  Potentiometers and networks (not two pins) and parts sharing a
+    reference with another part have no group.
+    """
+    cache = ctx.parallel_group_cache
+    if comp_type in cache:
+        return cache[comp_type]
+    of_type = [c for c in ctx.components if c.get("type") == comp_type]
+    ref_count: dict[str, int] = {}
+    for comp in of_type:
+        ref_count[comp["reference"]] = ref_count.get(comp["reference"], 0) + 1
+    by_nets: dict[frozenset, dict[str, bool]] = {}
+    nets_of: dict[frozenset, tuple[str, str]] = {}
+    for comp in of_type:
+        ref = comp["reference"]
+        if ref_count[ref] != 1 or len(ctx.ref_pins.get(ref, {})) != 2:
+            continue
+        n1, n2 = ctx.get_two_pin_nets(ref)
+        if not n1 or not n2 or n1 == n2:
+            continue
+        key = frozenset((n1, n2))
+        by_nets.setdefault(key, {})[ref] = not comp.get("dnp")
+        nets_of.setdefault(key, (n1, n2))
+    groups: dict[str, dict] = {}
+    for key, members in by_nets.items():
+        fitted = sorted(r for r, fit in members.items() if fit)
+        refs = fitted or sorted(members)
+        if fitted:
+            for r in sorted(set(members) - set(fitted)):
+                groups[r] = {"refs": [r], "nets": nets_of[key], "value": None, "excluded": True}
+        vals = [ctx.parsed_values.get(r) for r in refs]
+        if any(v is None for v in vals):
+            value = None
+        elif len(vals) == 1:
+            value = vals[0]
+        elif comp_type == "capacitor":
+            value = sum(vals)
+        elif any(v <= 0 for v in vals):
+            value = 0.0
+        else:
+            value = 1.0 / sum(1.0 / v for v in vals)
+        group = {"refs": refs, "nets": nets_of[key], "value": value}
+        for r in refs:
+            groups[r] = group
+    cache[comp_type] = groups
+    return groups
+
+
+def _group_of(ctx: AnalysisContext, ref: str) -> dict | None:
+    comp = ctx.comp_lookup.get(ref)
+    if not comp or comp.get("type") not in _PARALLEL_VALUE_NOUN:
+        return None
+    return parallel_groups(ctx, comp["type"]).get(ref)
+
+
+def group_reps(ctx: AnalysisContext, components: list[dict]) -> list[dict]:
+    """``components`` with each parallel group reduced to its representative (first ref);
+    groups whose value is unknown and DNP parts beside fitted ones are dropped."""
+    out = []
+    seen: set[str] = set()
+    for c in components:
+        g = _group_of(ctx, c["reference"])
+        if g is None:
+            out.append(c)
+            continue
+        rep = g["refs"][0]
+        if g.get("excluded") or g["value"] is None or rep in seen:
+            continue
+        seen.add(rep)
+        out.append(ctx.comp_lookup[rep])
+    return out
+
+
+def group_value(ctx: AnalysisContext, ref: str) -> float | None:
+    """The equivalent value of ``ref``'s parallel group, else its own parsed value."""
+    g = _group_of(ctx, ref)
+    return ctx.parsed_values.get(ref) if g is None else g["value"]
+
+
+def group_members(ctx: AnalysisContext, ref: str) -> list[str]:
+    """Every fitted member of ``ref``'s parallel group, sorted; ``[ref]`` when alone."""
+    g = _group_of(ctx, ref)
+    return list(g["refs"]) if g else [ref]
+
+
+def group_part(ctx: AnalysisContext, ref: str, unit_key: str) -> dict:
+    """The part dict a detector records for ``ref``'s parallel group:
+    ``{"ref", "value", unit_key, "parallel_refs"?}`` (``parallel_refs`` only for more
+    than one member; capacitor groups also keep ``parallel_caps``)."""
+    g = _group_of(ctx, ref)
+    if not g or len(g["refs"]) == 1:
+        return {"ref": ref, "value": ctx.comp_lookup[ref]["value"], unit_key: group_value(ctx, ref)}
+    comp_type = ctx.comp_lookup[ref]["type"]
+    part = {"ref": g["refs"][0], "value": f"{len(g['refs'])} {_PARALLEL_VALUE_NOUN[comp_type]} parallel",
+            unit_key: g["value"], "parallel_refs": list(g["refs"])}
+    if comp_type == "capacitor":
+        part["parallel_caps"] = list(g["refs"])
+    return part

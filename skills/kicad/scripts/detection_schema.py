@@ -73,11 +73,17 @@ def _recalc_lc_filter(det: dict) -> None:
 
 
 def _recalc_crystal_load(det: dict) -> None:
-    """Crystal: effective_load_pF = (C1*C2)/(C1+C2) + stray."""
+    """Crystal: effective_load_pF = (C1*C2)/(C1+C2) + stray, C1 and C2 the total
+    load capacitance on each leg (net), legs in first-seen order."""
     caps = det.get("load_caps")
-    if isinstance(caps, list) and len(caps) >= 2:
-        c1 = caps[0].get("farads", 0)
-        c2 = caps[1].get("farads", 0)
+    if not isinstance(caps, list):
+        return
+    legs: dict = {}
+    for i, cap in enumerate(caps):
+        leg = cap.get("net") or i  # a cap with no net is a leg of its own
+        legs[leg] = legs.get(leg, 0) + cap.get("farads", 0)
+    if len(legs) >= 2:
+        c1, c2 = list(legs.values())[:2]
         if c1 > 0 and c2 > 0:
             c_series = (c1 * c2) / (c1 + c2)
             stray_pf = det.get("stray_capacitance_pF", 3.0)
