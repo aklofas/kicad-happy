@@ -93,6 +93,12 @@ class MidSupplyNetlistTest(unittest.TestCase):
         self.assertIn("R1 INN vmid_ref 10k", cir)
         self.assertIn("VAC IN 0 DC 2.5 AC 1", cir)
 
+    def test_mid_supply_value_is_rounded(self):
+        # +3.3 V / -5 V: (3.3 - 5)/2 = -0.85 V
+        cir = _circuit(_INVERTING, _rails("+3V3", "-5V"))
+        self.assertIn("V_MID vmid_ref 0 DC -0.85\n", cir)
+        self.assertIn("VAC sig_in 0 DC -0.85 AC 1", cir)
+
     def test_symmetric_supply_netlist_unchanged(self):
         # +/-12 V: mid-supply is 0 V, so the bench is the ground-referenced one, byte for byte
         det = dict(_INVERTING, value="")
@@ -116,17 +122,23 @@ class NegativeRailTest(unittest.TestCase):
                 self.assertEqual(T._infer_opamp_rails({"reference": "U1"}, _rails(vcc, vee)), want)
 
     def test_named_negative_rail_mirrors_vcc(self):
-        notes = []
-        self.assertEqual(T._infer_opamp_rails({"reference": "U1"}, _rails("+15V", "VEE"), notes), (15, -15))
-        self.assertEqual(len(notes), 1)
+        info = {}
+        self.assertEqual(T._infer_opamp_rails({"reference": "U1"}, _rails("+15V", "VEE"), info), (15, -15))
+        self.assertEqual(info, {"vee_assumed": True, "rails_named": False})
 
     def test_vee_pin_on_ground_is_single_supply(self):
-        notes = []
-        self.assertEqual(T._infer_opamp_rails({"reference": "U1"}, _rails("+15V", "GND", "VEE"), notes), (15, 0))
-        self.assertEqual(notes, [])
+        info = {}
+        self.assertEqual(T._infer_opamp_rails({"reference": "U1"}, _rails("+15V", "GND", "VEE"), info), (15, 0))
+        self.assertEqual(info, {"vee_assumed": False, "rails_named": True})
+
+    def test_rails_without_a_voltage_in_the_name_are_not_named(self):
+        for vcc, vee in (("VAA", "GND"), ("VCC", "GND"), ("+12V", "VEE")):
+            with self.subTest(vcc=vcc, vee=vee):
+                info = {}
+                T._infer_opamp_rails({"reference": "U1"}, _rails(vcc, vee), info)
+                self.assertFalse(info["rails_named"])
 
     def test_mirrored_rail_is_named_in_model_note(self):
-        tb_extra = {}
         with tempfile.TemporaryDirectory() as tmp:
             from spice_model_cache import ModelOptions
             tb = T.generate_opamp_circuit(_INVERTING, "b.out", context=_rails("+15V", "VEE"),
@@ -137,6 +149,46 @@ class NegativeRailTest(unittest.TestCase):
         self.assertIn("negative rail assumed", note)
         sim_named = dict(gain_1k=20.0, bw_3db=9.0e4, model_source="lookup:LM358", model_gbw="1000000")
         self.assertNotIn("negative rail", R.evaluate_opamp_circuit(_INVERTING, sim_named)["model_note"])
+
+
+@unittest.skipUnless(shutil.which("ngspice"), "ngspice not installed")
+class SupplyBelowMinimumTest(unittest.TestCase):
+    """A part run below its minimum supply is not a pass: library minimums
+    TL074 7 V, NE5532 8 V, LM358 3 V."""
+
+    def test_named_rails_below_minimum_warn(self):
+        r = _opamp(dict(_INVERTING, value="TL074"), _rails("+6V", "GND"))
+        self.assertEqual(r["status"], "warn")
+        self.assertIn("supply 6 V below the part's minimum 7 V", r["model_note"])
+
+    def test_defaulted_rails_below_minimum_are_info(self):
+        # VAA carries no voltage: the bench assumes 5 V
+        r = _opamp(dict(_INVERTING, value="NE5532"), _rails("VAA", "GND"))
+        self.assertEqual(r["status"], "info")
+        self.assertIn("supply 5 V below the part's minimum 8 V", r["model_note"])
+
+    def test_part_within_its_supply_range_passes(self):
+        r = _opamp(_INVERTING, _SINGLE_5V)
+        self.assertEqual(r["status"], "pass")
+        self.assertNotIn("minimum", r["model_note"])
+
+
+class GroundReferenceNoteTest(unittest.TestCase):
+    def _note(self, pos_net, ctx):
+        with tempfile.TemporaryDirectory() as tmp:
+            from spice_model_cache import ModelOptions
+            tb = T.generate_opamp_circuit(dict(_INVERTING, non_inverting_input_net=pos_net), "b.out",
+                                          context=ctx, model_options=ModelOptions(cache_dir=tmp, offline=True))
+        sim = dict(tb.extra_vars, gain_1k=20.0, bw_3db=9.0e4)
+        return R.evaluate_opamp_circuit(_INVERTING, sim)["model_note"]
+
+    def test_ground_named_reference_moved_to_mid_supply_is_noted(self):
+        self.assertIn("reference input on a ground net re-biased to mid-supply", self._note("GNDA", _SINGLE_5V))
+
+    def test_bench_ground_and_dual_supply_carry_no_note(self):
+        self.assertNotIn("re-biased", self._note("GND", _SINGLE_5V))
+        self.assertNotIn("re-biased", self._note("GNDA", _rails("+12V", "-12V")))
+        self.assertNotIn("re-biased", self._note("REF", _SINGLE_5V))
 
 
 if __name__ == "__main__":

@@ -19,6 +19,7 @@ import re
 
 import _core_path  # noqa: F401
 from kicad_core.diagnostics import record
+from kicad_core.netnames import is_ground_name
 from spice_models import (
     get_generic_models,
     get_ideal_opamp,
@@ -401,23 +402,27 @@ def generate_opamp_circuit(det, output_file, context=None, parasitics=None,
     vee_net = "VEE"
     vcc_v = 5
     vee_v = -5
-    rail_notes = []
+    rail_info = {"vee_assumed": False, "rails_named": False}
 
     # Try to infer from analyzer context
     if context:
-        vcc_v, vee_v = _infer_opamp_rails(det, context, rail_notes)
+        vcc_v, vee_v = _infer_opamp_rails(det, context, rail_info)
         if vee_v == 0:
             vee_net = "GND_VEE"  # Avoid conflict with node 0
 
     # A single-supply stage is biased at mid-supply (its AC ground); at 0 V DC
     # the output sits on the negative clamp and the small-signal gain collapses.
-    vmid = (vcc_v + vee_v) / 2
+    vmid = round((vcc_v + vee_v) / 2, 6)
     ref_node = "vmid_ref" if vmid else "0"
     stim_dc = vmid if vmid else 0
     pos_pin = pos_net or neg_net
     if pos_pin == "0":
         pos_pin = ref_node
     vmid_line = f"\nV_MID vmid_ref 0 DC {vmid}" if vmid else ""
+    # A design ground other than the bench's node 0 (GNDA, GND1) goes to mid-supply too
+    ref_on_ground = (bool(vmid) and pos_net != "0"
+                     and config in ("inverting", "integrator", "compensator", "transimpedance_or_buffer")
+                     and is_ground_name(det.get("non_inverting_input_net")))
 
     # Build feedback network from analyzer data
     netlist_lines = []
@@ -539,8 +544,15 @@ def generate_opamp_circuit(det, output_file, context=None, parasitics=None,
         "model_source": model_source,
         "model_gbw": str(model_specs.get("gbw_hz", 0) if model_specs else 0),
     }
-    if rail_notes:
+    if rail_info["vee_assumed"]:
         model_extra["vee_assumed"] = "1"
+    if ref_on_ground:
+        model_extra["ref_on_ground"] = "1"
+    supply_min = (model_specs or {}).get("supply_min")
+    if supply_min and vcc_v - vee_v < supply_min:
+        model_extra["supply_v"] = str(round(vcc_v - vee_v, 6))
+        model_extra["supply_min"] = str(supply_min)
+        model_extra["rails_named"] = "1" if rail_info["rails_named"] else "0"
 
     # Transimpedance uses current source stimulus
     if use_current_source:
@@ -718,7 +730,7 @@ def _sanitize_mpn_for_spice(mpn):
     return re.sub(r'[^A-Za-z0-9_]', '_', mpn.strip()) if mpn else "UNKNOWN"
 
 
-def _infer_opamp_rails(det, context, notes=None):
+def _infer_opamp_rails(det, context, info=None):
     """Infer opamp VCC/VEE voltages from analyzer context.
 
     Looks up the opamp's power pins in the component/net data to find
@@ -727,8 +739,9 @@ def _infer_opamp_rails(det, context, notes=None):
     Args:
         det: Opamp detection dict (has 'reference')
         context: Full analysis JSON dict
-        notes: Optional list; a note is appended when the negative rail is
-            named without a voltage and assumed to mirror VCC
+        info: Optional dict; receives ``vee_assumed`` (a negative rail named
+            without a voltage, assumed to mirror VCC) and ``rails_named``
+            (both rails read from voltages in their net names)
 
     Returns:
         (vcc_voltage, vee_voltage) tuple of floats
@@ -742,6 +755,8 @@ def _infer_opamp_rails(det, context, notes=None):
     vee_v = -5
     found_vcc = False
     found_vee = False
+    vcc_named = False
+    vee_named = False
 
     for net_name, net_data in nets.items():
         pins = net_data.get("pins", [])
@@ -757,6 +772,7 @@ def _infer_opamp_rails(det, context, notes=None):
                 if v is not None and v > 0:
                     vcc_v = v
                     found_vcc = True
+                    vcc_named = _voltage_in_name(net_name)
             # VEE/VSS/V- pins
             elif pname in ("VEE", "VSS", "V-", "VS-", "V_N", "VN", "GND", "AVSS", "DVSS"):
                 v = _infer_voltage(net_name, default=None)
@@ -765,23 +781,34 @@ def _infer_opamp_rails(det, context, notes=None):
                 if v is not None:
                     vee_v = v
                     found_vee = True
+                    vee_named = v != _MIRROR_VCC
                 elif net_name.upper() in ("GND", "EARTH", "VSS"):
                     vee_v = 0
                     found_vee = True
+                    vee_named = True
 
     # If we only found VCC and not VEE, assume single-supply (VEE=0)
     if found_vcc and not found_vee:
         vee_v = 0
-    if vee_v == _MIRROR_VCC:
+    vee_assumed = vee_v == _MIRROR_VCC
+    if vee_assumed:
         vee_v = -vcc_v
-        if notes is not None:
-            notes.append("negative rail named without a voltage; assumed -VCC")
 
     # Sanity check: VEE must be less than VCC
     if vee_v >= vcc_v:
         vee_v = 0  # Fall back to single-supply
+        vee_named = False
 
+    if info is not None:
+        info["vee_assumed"] = vee_assumed
+        info["rails_named"] = vcc_named and vee_named
     return vcc_v, vee_v
+
+
+def _voltage_in_name(net_name):
+    """True when the net name itself carries the voltage ('+5V', '3V3', '-12V'),
+    not a guess from a bare name such as 'VCC' or 'VBUS'."""
+    return bool(re.match(r'[+-]?\d', (net_name or "").strip()))
 
 
 _MIRROR_VCC = "mirror"

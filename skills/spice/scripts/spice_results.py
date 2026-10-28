@@ -260,6 +260,17 @@ def evaluate_opamp_circuit(det, sim_results):
         model_note = "ideal opamp (Aol=1e6, GBW~10MHz) — real part may limit bandwidth"
     if sim_results.get("vee_assumed"):
         model_note += "; negative rail assumed at -VCC (its net name gives no voltage)"
+    if sim_results.get("ref_on_ground"):
+        model_note += "; reference input on a ground net re-biased to mid-supply"
+    try:
+        supply_v = float(sim_results["supply_v"])
+        supply_min = float(sim_results["supply_min"])
+    except (KeyError, TypeError, ValueError):
+        supply_v = supply_min = None
+    below_min = supply_v is not None and supply_v < supply_min
+    if below_min:
+        supply_note = f"supply {supply_v:g} V below the part's minimum {supply_min:g} V"
+        model_note += f"; {supply_note}"
 
     result = {
         "subcircuit_type": "opamp_circuit",
@@ -334,6 +345,12 @@ def evaluate_opamp_circuit(det, sim_results):
     phase_at_bw = sim_results.get("phase_at_bw")
     if phase_at_bw is not None:
         result["simulated"]["phase_at_bw_deg"] = round(phase_at_bw, 2)
+
+    # A bench run below the part's minimum supply is not a pass: the design runs the
+    # part out of spec (rails read from net names) or the assumed supply leaves no criterion
+    if below_min and result["status"] == "pass":
+        result["status"] = "warn" if str(sim_results.get("rails_named")) in ("1", "1.0") else "info"
+        result["note"] = supply_note
 
     return result
 
