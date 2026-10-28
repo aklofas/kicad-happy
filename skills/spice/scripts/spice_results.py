@@ -529,6 +529,8 @@ def evaluate_transistor_circuit(det, sim_results):
     ttype = det.get("type", "unknown")
     value = det.get("value", "")
     is_p = det.get("is_pchannel", False) if ttype == "mosfet" else False
+    # the bench picks the BJT polarity from lib_id the same way
+    is_pnp = ttype not in ("mosfet", "jfet") and "PNP" in (det.get("lib_id") or "").upper()
 
     vth = sim_results.get("vth")
     i_on = sim_results.get("ic_on") or sim_results.get("i_on")
@@ -543,7 +545,7 @@ def evaluate_transistor_circuit(det, sim_results):
         "expected": {},
         "simulated": {},
         "delta": {},
-        "model_note": f"generic {'PMOS' if is_p else 'NMOS' if ttype == 'mosfet' else 'PNP' if is_p else 'NPN'} model — real threshold depends on part",
+        "model_note": f"generic {'PMOS' if is_p else 'NMOS' if ttype == 'mosfet' else 'PNP' if is_pnp else 'NPN'} model — real threshold depends on part",
     }
 
     if ttype in ("mosfet", "jfet"):
@@ -567,6 +569,11 @@ def evaluate_transistor_circuit(det, sim_results):
             result["note"] = "FET turns on in the generic model; not compared against the part"
     else:
         # BJT
+        if is_pnp and (vbe_on is not None or i_on is not None):
+            # the PNP bench's sweep never biases the part on, so its numbers are not a measurement
+            result["status"] = "warn"
+            result["note"] = "not measured: the PNP bench does not reach a valid on-state"
+            return result
         if vbe_on is not None:
             result["simulated"]["vbe_on_V"] = round(vbe_on, 3)
         if i_on is not None:

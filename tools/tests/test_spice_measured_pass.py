@@ -250,6 +250,29 @@ class TransistorGenericModelTest(unittest.TestCase):
         self.assertTrue(0.5 < r["simulated"]["vbe_on_V"] < 0.8)
 
 
+class PnpBenchTest(unittest.TestCase):
+    # dvhx smd-soldering-exercise Q11: the PNP bench measures VBE(on) 2.647 V and IC 2.54e16 mA,
+    # values no silicon PNP reaches (VBE ~0.65 V), so the bench did not reach an on-state
+    _SIM = {"vbe_on": 2.647, "ic_on": 2.54e13}
+
+    def test_pnp_bench_is_not_measured(self):
+        det = {"reference": "Q11", "type": "bjt", "value": "MMBT3906", "lib_id": "Device:Q_PNP_BEC",
+               "base_net": "B", "collector_net": "C", "emitter_net": "+5V"}
+        r = R.evaluate_transistor_circuit(det, dict(self._SIM))
+        self.assertEqual(r["status"], "warn")
+        self.assertEqual(r["note"], "not measured: the PNP bench does not reach a valid on-state")
+        self.assertEqual(r["simulated"], {})
+        self.assertIn("generic PNP model", r["model_note"])
+
+    def test_npn_label_and_values_unchanged(self):
+        det = {"reference": "Q2", "type": "bjt", "value": "MMBT3904", "lib_id": "Device:Q_NPN_BEC",
+               "base_net": "B", "collector_net": "C", "emitter_net": "GND"}
+        r = R.evaluate_transistor_circuit(det, {"vbe_on": 0.65, "ic_on": 3.3e-3})
+        self.assertEqual(r["status"], "info")
+        self.assertIn("generic NPN model", r["model_note"])
+        self.assertEqual(r["simulated"], {"vbe_on_V": 0.65, "ic_on_mA": 3.3})
+
+
 @unittest.skipUnless(shutil.which("ngspice"), "ngspice not installed")
 class PassiveElementNameTest(unittest.TestCase):
     def test_potentiometer_top_is_a_resistor(self):
