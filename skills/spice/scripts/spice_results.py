@@ -8,14 +8,19 @@ pass/warn/fail/skip/info status for each simulation.
 
 import math
 
+# Measurements taken with ngspice vp(), which returns radians. The other
+# backends' parsers pass their values through unconverted.
+_RADIAN_KEYS = ("phase_fc", "phase_at_bw")
+
 
 def parse_output_file(filepath):
     """Parse an ngspice echo output file into a dict of key=value pairs.
 
     Expected format (one line):
-        fc_sim=1.592e+04 gain_dc=-0.015 phase_fc=-45.1
+        fc_sim=1.592e+04 gain_dc=-0.015 phase_fc=-7.842e-01
 
-    Also handles ngspice "failed" measurement markers.
+    Also handles ngspice "failed" measurement markers. Phase measurements
+    (_RADIAN_KEYS) are converted from radians to degrees.
 
     Args:
         filepath: Path to the ASCII output file written by .control block
@@ -49,6 +54,9 @@ def parse_output_file(filepath):
                 results[key] = float(val)
             except ValueError:
                 results[key] = val  # Keep as string if not numeric
+    for key in _RADIAN_KEYS:
+        if isinstance(results.get(key), float):
+            results[key] = math.degrees(results[key])
     return results
 
 
@@ -90,7 +98,7 @@ def evaluate_rc_filter(det, sim_results):
 
     result["simulated"]["cutoff_hz"] = sim_fc
     if phase_fc is not None:
-        result["simulated"]["phase_at_fc_deg"] = round(math.degrees(phase_fc), 2)
+        result["simulated"]["phase_at_fc_deg"] = round(phase_fc, 2)
 
     fc_error = abs(sim_fc - expected_fc) / expected_fc * 100
     result["delta"]["fc_error_pct"] = round(fc_error, 2)
@@ -323,7 +331,7 @@ def evaluate_opamp_circuit(det, sim_results):
     # Phase at bandwidth (M6 — stability indicator)
     phase_at_bw = sim_results.get("phase_at_bw")
     if phase_at_bw is not None:
-        result["simulated"]["phase_at_bw_deg"] = round(math.degrees(phase_at_bw), 2)
+        result["simulated"]["phase_at_bw_deg"] = round(phase_at_bw, 2)
 
     return result
 

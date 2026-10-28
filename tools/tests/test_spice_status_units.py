@@ -139,6 +139,36 @@ class InfoStatusTest(unittest.TestCase):
         self.assertIn("1 info", ss._summary_line(rep))
 
 
+class PhaseUnitTest(unittest.TestCase):
+    """ngspice vp() returns radians and is converted once, where its output is
+    parsed; a backend whose phase unit is not established is passed through."""
+    _RC = {"resistor": {"ref": "R1", "ohms": 1000.0}, "capacitor": {"ref": "C1", "farads": 10e-9},
+           "cutoff_hz": 15915.49, "type": "low-pass", "input_net": "IN", "output_net": "OUT"}
+
+    def test_ngspice_output_is_read_in_degrees(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, "b.out")
+            with open(out, "w", encoding="utf-8") as f:
+                f.write("fc_sim=1.58777e+04 phase_fc=-7.853982e-01 phase_at_bw=2.356194e+00")
+            sim = R.parse_output_file(out)
+        self.assertAlmostEqual(sim["phase_fc"], -45.0, places=4)
+        self.assertAlmostEqual(sim["phase_at_bw"], 135.0, places=4)
+        self.assertEqual(R.evaluate_rc_filter(self._RC, sim)["simulated"]["phase_at_fc_deg"], -45.0)
+
+    def test_other_backends_are_not_converted(self):
+        from spice_simulator import LtspiceBackend, XyceBackend
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, "b.out")
+            with open(os.path.join(tmp, "b.mt0"), "w", encoding="utf-8") as f:
+                f.write("fc_sim = 15877.7\nphase_fc = -45.0\n")
+            with open(os.path.join(tmp, "b.log"), "w", encoding="utf-8") as f:
+                f.write("fc_sim: vdb(out)=-3 AT=15877.7\nphase_fc: vp(out)=-45.0\n")
+            for backend in (XyceBackend(), LtspiceBackend()):
+                sim = backend.parse_results(out, "", "")
+                self.assertEqual(sim["phase_fc"], -45.0)
+                self.assertEqual(R.evaluate_rc_filter(self._RC, sim)["simulated"]["phase_at_fc_deg"], -45.0)
+
+
 class DiffInfoTest(unittest.TestCase):
     def test_diff_reports_info_count(self):
         sys.path.insert(0, str(ROOT / "skills" / "kicad" / "scripts"))
