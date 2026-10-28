@@ -564,7 +564,7 @@ IAC 0 {stim_net} DC 0 AC 1u
             ("tz_ohms", "let", "tz_mag / 1e-6", True),
             ("target", "let", "gain_1k - 3"),
             ("bw_3db", "when", f"vdb({out_net})", "target", "fall=1"),
-            ("phase_at_bw", "find", f"vp({out_net})", "bw_3db"),
+            ("phase_at_bw", "find", f"vp({out_net})", "at=bw_3db"),
         ]
         model_extra["expected_tz"] = str(expected_tz)
         return SpiceTestbench(circuit, analyses, measurements, model_extra, tb_diagnostics)
@@ -598,7 +598,7 @@ VAC {stim_net} 0 DC 0 AC 1
         ("gain_high", "find", f"vdb({out_net})", f"at={f_high_str}"),
         ("target", "let", "gain_1k - 3"),
         ("bw_3db", "when", f"vdb({out_net})", "target", "fall=1"),
-        ("phase_at_bw", "find", f"vp({out_net})", "bw_3db"),
+        ("phase_at_bw", "find", f"vp({out_net})", "at=bw_3db"),
     ]
     return SpiceTestbench(circuit, analyses, measurements, model_extra, tb_diagnostics)
 

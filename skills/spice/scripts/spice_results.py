@@ -3,8 +3,10 @@ Parse ngspice .control block ASCII output and generate structured results.
 
 ngspice .control blocks write measurement results via `echo` to text files.
 This module parses those files and produces a structured report with
-pass/warn/fail/skip status for each simulation.
+pass/warn/fail/skip/info status for each simulation.
 """
+
+import math
 
 
 def parse_output_file(filepath):
@@ -88,7 +90,7 @@ def evaluate_rc_filter(det, sim_results):
 
     result["simulated"]["cutoff_hz"] = sim_fc
     if phase_fc is not None:
-        result["simulated"]["phase_at_fc_deg"] = phase_fc
+        result["simulated"]["phase_at_fc_deg"] = round(math.degrees(phase_fc), 2)
 
     fc_error = abs(sim_fc - expected_fc) / expected_fc * 100
     result["delta"]["fc_error_pct"] = round(fc_error, 2)
@@ -301,7 +303,7 @@ def evaluate_opamp_circuit(det, sim_results):
             result["status"] = "fail"
             result["note"] = f"Gain differs by {gain_error:.1f} dB — check feedback network"
     else:
-        result["status"] = "pass"
+        result["status"] = "info"
         result["note"] = "No expected gain to compare — reporting measured values"
 
     # Multi-frequency gain flatness (Q6)
@@ -321,7 +323,7 @@ def evaluate_opamp_circuit(det, sim_results):
     # Phase at bandwidth (M6 — stability indicator)
     phase_at_bw = sim_results.get("phase_at_bw")
     if phase_at_bw is not None:
-        result["simulated"]["phase_at_bw_deg"] = round(phase_at_bw, 1)
+        result["simulated"]["phase_at_bw_deg"] = round(math.degrees(phase_at_bw), 2)
 
     return result
 
@@ -1118,14 +1120,14 @@ def build_report(simulation_runs):
         if "reference" not in run and "components" in run:
             run["reference"] = "/".join(run["components"])
 
-    counts = {"pass": 0, "warn": 0, "fail": 0, "skip": 0}
+    counts = {"pass": 0, "warn": 0, "fail": 0, "skip": 0, "info": 0}
     for run in simulation_runs:
         status = run.get("status", "skip")
         counts[status] = counts.get(status, 0) + 1
 
     # Synthesize finding-shaped entries for simulations that didn't pass —
     # keeps the v1.3 envelope contract (findings[] + trust_summary)
-    # consistent across all analyzers. Pass/skip results stay
+    # consistent across all analyzers. Pass/skip/info results stay
     # informational and are reflected only in simulation_results and the
     # status counts, not in findings[].
     findings = []
@@ -1200,7 +1202,7 @@ def build_report(simulation_runs):
             "by_severity": {
                 "error": counts["fail"],
                 "warning": counts["warn"],
-                "info": counts["pass"] + counts["skip"],
+                "info": counts["pass"] + counts["skip"] + counts["info"],
             },
         },
         "findings": findings,

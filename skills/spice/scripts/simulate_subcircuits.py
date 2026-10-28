@@ -483,7 +483,7 @@ def _summary_line(report: dict) -> str:
     elapsed = report.get("total_elapsed_s") or 0.0
     return (f"Simulation complete: {s['total']} subcircuits — "
             f"{s['pass']} pass, {s['warn']} warn, {s['fail']} fail, "
-            f"{s['skip']} skip ({elapsed:.1f}s)")
+            f"{s['skip']} skip, {s.get('info', 0)} info ({elapsed:.1f}s)")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -688,7 +688,8 @@ def main(argv: list[str] | None = None) -> int:
                    if isinstance(_elapsed, (int, float)) else "")
         print(f"SPICE simulation: {s.get('total', 0)} subcircuits — "
               f"{s.get('pass', 0)} pass, {s.get('warn', 0)} warn, "
-              f"{s.get('fail', 0)} fail, {s.get('skip', 0)} skip{_suffix}")
+              f"{s.get('fail', 0)} fail, {s.get('skip', 0)} skip, "
+              f"{s.get('info', 0)} info{_suffix}")
         from output_filters import format_text
         print(format_text(report.get("findings", []), "designer"))
         if args.output:

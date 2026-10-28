@@ -173,7 +173,7 @@ The script selects subcircuits from the analyzer's `findings[]` array (grouped b
       "filter_type": "low-pass",
       "status": "pass",
       "expected": {"fc_hz": 15915, "type": "low-pass"},
-      "simulated": {"fc_hz": 15878, "phase_at_fc_deg": -0.78},
+      "simulated": {"fc_hz": 15878, "phase_at_fc_deg": -45},
       "delta": {"fc_error_pct": 0.23},
       "cir_file": "/tmp/spice_sim_xxx/rc-filter_R5_C3.cir",
       "log_file": "/tmp/spice_sim_xxx/rc-filter_R5_C3.log",
