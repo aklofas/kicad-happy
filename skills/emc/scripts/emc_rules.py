@@ -38,7 +38,7 @@ from kicad_core.parts import (
     lookup_switching_freq as _estimate_switching_freq,
     default_switching_freq as _default_switching_freq,
 )
-from kicad_core.netnames import is_ground_name, is_power_net_name
+from kicad_core.netnames import is_ground_name, is_power_net_name, net_leaf
 from kicad_core.netquery import build_net_id_map
 from kicad_core.diagnostics import record
 from kicad_core.render import normalize_severity
@@ -330,9 +330,22 @@ def _resolve_usb_speed(pair: dict, schematic: dict):
     return None
 
 
-# The 25 ps skew budget is a USB 2.0 high-speed layout guideline; full speed
-# (12 Mb/s, 4-20 ns edges) has none at board scale, so an unknown speed is full speed.
-_USB_SPEED_PROTOCOL = {'HS': 'USB-HS', 'SS': 'USB3'}
+_SUPERSPEED_NET = re.compile(r'SS_?[TR]X|(^|[^A-Z])[TR]X\d*_?[PN+-]')
+
+
+def _usb_pair_protocol(pair: dict, usb_speed) -> str:
+    """DIFF_PAIR_PROTOCOLS key for a USB pair given its part's USB speed.
+
+    The 25 ps skew budget is a USB 2.0 high-speed layout guideline; full speed
+    (12 Mb/s, 4-20 ns edges) has none at board scale, so an unknown speed is full
+    speed. On a USB 3 part D+/D- is still a USB 2.0 HS link; only the SuperSpeed
+    TX/RX lanes take the USB 3 budget.
+    """
+    if usb_speed == 'SS' and all(
+            _SUPERSPEED_NET.search(net_leaf(pair.get(k) or '').upper())
+            for k in ('positive', 'negative')):
+        return 'USB3'
+    return 'USB-HS' if usb_speed in ('HS', 'SS') else 'USB-FS'
 
 
 # ---------------------------------------------------------------------------
@@ -872,8 +885,7 @@ def check_connector_filtering(pcb: Dict, schematic: Optional[Dict] = None) -> Li
                     # A fuse or a reverse-polarity diode does not filter or clamp an I/O line.
                     if pd.get('type') in ('fuse', 'reverse_polarity') or pd.get('ref') in dnp:
                         continue
-                    prot_net = pd.get('protected_net', '')
-                    if prot_net in conn_nets:
+                    if conn_nets & {pd.get('protected_net'), *(pd.get('protected_nets') or [])}:
                         has_nearby_filter = True
                         break
 
@@ -2095,7 +2107,7 @@ def check_diff_pair_skew(pcb: Optional[Dict],
         delta_mm = abs(pos_len - neg_len)
         skew = diff_pair_skew_ps(delta_mm, epsilon_r)
         if protocol == 'USB':
-            protocol = _USB_SPEED_PROTOCOL.get(_resolve_usb_speed(pair, schematic), 'USB-FS')
+            protocol = _usb_pair_protocol(pair, _resolve_usb_speed(pair, schematic))
         proto_info = DIFF_PAIR_PROTOCOLS.get(protocol, {})
         max_skew = proto_info.get('max_skew_ps', 50)
 
@@ -2156,7 +2168,8 @@ def check_diff_pair_cm_radiation(pcb: Optional[Dict],
         usb_speed_resolved = None
         if protocol == 'USB':
             usb_speed_resolved = _resolve_usb_speed(pair, schematic)
-            proto_info = DIFF_PAIR_PROTOCOLS.get(_USB_SPEED_PROTOCOL.get(usb_speed_resolved, 'USB-FS'))
+            usb_key = _usb_pair_protocol(pair, usb_speed_resolved)
+            proto_info = DIFF_PAIR_PROTOCOLS.get(usb_key)
         else:
             proto_info = DIFF_PAIR_PROTOCOLS.get(protocol)
         if not proto_info:
@@ -2205,6 +2218,8 @@ def check_diff_pair_cm_radiation(pcb: Optional[Dict],
             else:
                 severity = 'HIGH' if margin < 0 else 'MEDIUM'
             proto_label = f'USB-{usb_speed_resolved}' if protocol == 'USB' and usb_speed_resolved else protocol
+            if protocol == 'USB' and usb_key == 'USB-HS':
+                proto_label = 'USB-HS'
             findings.append(_make_finding(
                 'diff_pair', severity, 'DP-002',
                 title=f'{proto_label} skew-induced CM radiation risk',

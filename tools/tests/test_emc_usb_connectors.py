@@ -20,11 +20,17 @@ PCB_PAIR = {"setup": {"stackup": [{"name": "F.Cu", "type": "copper"},
             "footprints": []}
 
 
-def _pair_schematic(project_dir):
+def _pair_schematic(project_dir, positive=DP, negative=DM):
     return {"inputs": {"source_files": [str(Path(project_dir) / "board.kicad_sch")]},
             "components": [{"reference": "U1", "type": "ic", "value": "RP2040", "mpn": "RP2040"}],
             "design_analysis": {"differential_pairs": [
-                {"type": "USB", "positive": DP, "negative": DM, "shared_ics": ["U1"]}]}}
+                {"type": "USB", "positive": positive, "negative": negative, "shared_ics": ["U1"]}]}}
+
+
+def _pcb_pair(positive, negative):
+    pcb = json.loads(json.dumps(PCB_PAIR))
+    pcb["net_lengths"][0]["net"], pcb["net_lengths"][1]["net"] = positive, negative
+    return pcb
 
 
 def _write_extraction(project_dir, speed, score=8.0):
@@ -61,6 +67,31 @@ class UsbSpeed(unittest.TestCase):
         self.assertIn("(33.8 ps skew)", fs[0]["description"])
         self.assertIn("limit of 25 ps by 35%", fs[0]["description"])
         self.assertIn("USB-HS", fs[0]["summary"])
+
+    def test_superspeed_part_holds_its_d_pair_to_the_hs_budget(self):
+        # On a USB 3 part D+/D- is a USB 2.0 HS link: 25 ps, not the SuperSpeed 5 ps.
+        with tempfile.TemporaryDirectory() as tmp:
+            _write_extraction(tmp, "SS")
+            fs = check_diff_pair_skew(PCB_PAIR, _pair_schematic(tmp))
+        self.assertEqual(len(fs), 1)
+        self.assertEqual(fs[0]["severity"], "error")
+        self.assertIn("(33.8 ps skew)", fs[0]["description"])
+        self.assertIn("limit of 25 ps by 35%", fs[0]["description"])
+        self.assertIn("USB-HS", fs[0]["summary"])
+
+    def test_superspeed_lane_on_the_same_part_takes_the_5ps_budget(self):
+        # 33.8 ps / 5 ps − 1 = 575 %.
+        skew = 6.105 * math.sqrt((4.5 + 1) / 2) / 0.299792458
+        self.assertEqual(f"{(skew / 5 - 1) * 100:.0f}", "575")
+        tx_p, tx_n = "/USB/USB3_TX_P", "/USB/USB3_TX_N"
+        with tempfile.TemporaryDirectory() as tmp:
+            _write_extraction(tmp, "SS")
+            fs = check_diff_pair_skew(_pcb_pair(tx_p, tx_n), _pair_schematic(tmp, tx_p, tx_n))
+        self.assertEqual(len(fs), 1)
+        self.assertEqual(fs[0]["severity"], "error")
+        self.assertIn("(33.8 ps skew)", fs[0]["description"])
+        self.assertIn("limit of 5 ps by 575%", fs[0]["description"])
+        self.assertIn("USB3", fs[0]["summary"])
 
     def test_untrusted_high_speed_extraction_is_not_used(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -107,6 +138,18 @@ class ConnectorPadNets(unittest.TestCase):
     def test_esd_ic_on_the_connector_data_net_clears_io001(self):
         sch = {"components": [], "findings": [_prot("U2", "esd_ic", "USB_D+")]}
         self.assertEqual(_io001(self._pcb(_usb_c(USB_PADS)), sch), [])
+
+    def test_esd_array_clears_through_any_of_its_protected_nets(self):
+        # A multi-line array lists every line; its first sorted net need not be on this connector.
+        esd = dict(_prot("U2", "esd_ic", "AUX_SDA"), protected_nets=["AUX_SDA", "USB_D+", "USB_D-"])
+        self.assertEqual(_io001(self._pcb(_usb_c(USB_PADS)), {"components": [], "findings": [esd]}), [])
+
+    def test_excluded_parts_clear_nothing_through_protected_nets(self):
+        for ptype, comps in (("fuse", []), ("reverse_polarity", []),
+                             ("esd_ic", [{"reference": "U2", "type": "ic", "dnp": True}])):
+            pd = dict(_prot("U2", ptype, "AUX_SDA"), protected_nets=["AUX_SDA", "USB_D+", "USB_D-"])
+            self.assertEqual(_io001(self._pcb(_usb_c(USB_PADS)), {"components": comps, "findings": [pd]}),
+                             [(["J1"], "error")], ptype)
 
     def test_fuse_on_vbus_clears_nothing(self):
         sch = {"components": [], "findings": [_prot("F1", "fuse", "VBUS")]}

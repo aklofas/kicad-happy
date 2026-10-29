@@ -57,7 +57,7 @@ Quantitative design rules used by the EMC analyzer. Each rule has a threshold, r
 
 ### IO-001: No EMC filtering near connector
 - **Severity:** HIGH (external connectors like USB, Ethernet), LOW (internal headers)
-- **Threshold:** No ferrite bead, CM choke, or ESD/TVS device within 25mm, and no schematic protection device (fuses, reverse-polarity diodes and DNP parts excluded) on one of the connector's signal pad nets
+- **Threshold:** No ferrite bead, CM choke, or ESD/TVS device within 25mm, and no schematic protection device (fuses, reverse-polarity diodes and DNP parts excluded) on one of the connector's signal pad nets (any net an ESD array lists)
 - **Rationale:** Common-mode currents on cables dominate radiated emissions at 30–300 MHz. Even microamps of CM current can exceed emission limits (5 µA on a 1m cable at 100 MHz = 46.4 dBµV/m, exceeding FCC Class B by ~3 dB).
 - **Source:** Ott, *EMC Engineering*, Ch. 19 — common-mode cable radiation is the dominant emission mechanism. The 25mm threshold is a heuristic for geometric proximity checking. TI ESD layout guides (SLVA680, SLVAEX9) recommend placement "as close to the connector as PCB design rules allow" but do not specify a numeric distance.
 
@@ -223,7 +223,7 @@ Source: Goldfarb, E. & Pucha, R. "Modeling Via Grounds in Microstrip." IEEE Micr
 ### DP-001: Intra-pair skew
 - **Severity:** HIGH (exceeds protocol limit), MEDIUM (>50% of limit)
 - **Threshold:** Protocol-specific — USB HS: 25 ps, USB SS: 5 ps, Ethernet: 50 ps, HDMI: 20 ps, PCIe: 5 ps
-- **USB speed:** taken from a trusted datasheet extraction of the pair's IC; a USB pair whose speed is unknown is held to the full-speed budget (no board-scale skew limit), not the HS 25 ps.
+- **USB speed:** taken from a trusted datasheet extraction of the pair's IC; a USB pair whose speed is unknown is held to the full-speed budget (no board-scale skew limit), not the HS 25 ps. On a USB 3 part the D+/D- pair is held to HS (25 ps) and only the SuperSpeed TX/RX lanes to 5 ps.
 - **Formula:** `skew_ps = ΔL_mm × propagation_delay_ps_per_mm(εr)`. For FR4 microstrip (εr=4.4): ~5.5 ps/mm.
 - **Source:** USB 2.0 spec §7.1.2; IEEE 802.3 §40.6.1; PCI Express Base Spec §4.3.3; HDMI 2.1 spec §4.2.1.1.
 
