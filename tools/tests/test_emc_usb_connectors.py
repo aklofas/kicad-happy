@@ -6,8 +6,8 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "skills" / "kicad" / "scripts"))
 sys.path.insert(0, str(ROOT / "skills" / "emc" / "scripts"))
 
-from emc_rules import (check_connector_filtering, check_diff_pair_skew,  # noqa: E402
-                       generate_test_plan)
+from emc_rules import (_is_superspeed_net, check_connector_filtering,  # noqa: E402
+                       check_diff_pair_skew, generate_test_plan)
 from finding_schema import Det  # noqa: E402
 
 # m258 (RP2040 board): USB-RP2040-DP 141.489 mm, USB-RP2040-DM 135.384 mm on εr 4.5.
