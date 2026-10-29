@@ -26,9 +26,10 @@ from kicad_core.project import (load_kicad_pro, extract_pro_net_classes,
                                 extract_pro_design_rules, extract_pro_text_variables,
                                 load_kicad_dru, load_lib_tables,
                                 find_project_settings_file, ignored_drc_checks)
+from kicad_core.diagnostics import record
 from kicad_core.model import PcbReaderState
 from pcb import reader
-from pcb.geometry import ZoneFills
+from pcb.geometry import ZoneFills, outline_loops
 from pcb.reader import (
     _extract_keepout_zones,
     extract_silkscreen,
@@ -181,6 +182,10 @@ def read_board(path: str, *, state: PcbReaderState | None = None) -> BoardData:
     vias = reader.extract_vias(root)
     zones, zone_fills = reader.extract_zones(root)
     outline = reader.extract_board_outline(root)
+    if outline.get("edges") and outline_loops(outline["edges"]) is None:
+        record(diagnostics, "pcb.pipeline.read_board",
+               ValueError("board outline (Edge.Cuts) does not close"),
+               "edge clearance measured to the outline's bounding box")
     graphics = reader.extract_copper_graphics(root)
 
     # KiCad 10: no net declarations — build synthetic mapping from content

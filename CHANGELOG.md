@@ -57,6 +57,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Checks the KiCad project sets to `ignore` (courtyard overlap, items in keepouts, track width, via size, hole size, annular width) are not reported (kf/A11-X1, A6-F3).
 - Footprint `type` and flags follow KiCad: `board_only`, `virtual` and the exclude flags no longer imply each other, a footprint with no technology attribute is `unspecified` (KiCad 5 boards: through-hole), and pad fiducial / test-point properties count for FD-001 / TE-001 (kf/A7-F2, A11-F5).
 - A board with no stackup gets KiCad's default stackup for its copper count and thickness (`setup.stackup_source: inferred`) for impedance, copper presence and return paths; dielectric sublayers add their thickness and weight εr by thickness (kf/A8-F4, A8-F7).
+- PM-002 measures component clearance to the real board outline (curves, notches, slots and cutouts) instead of its bounding box. A courtyard partly outside the outline reports its overhang, one wholly outside (including inside a cutout) is off-board; an outline that does not close keeps the bounding-box measure and records one diagnostic (kf/A11-F2).
 
 ### Fixed
 

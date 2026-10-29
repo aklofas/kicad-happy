@@ -167,6 +167,108 @@ def outline_edge_distance(px: float, py: float, edges: list[dict]) -> float | No
     return best
 
 
+# KiCad board.h DEFAULT_CHAINING_EPSILON_MM: Edge.Cuts ends this close (Euclidean) are joined
+OUTLINE_CHAINING_EPSILON_MM = 0.01
+_OUTLINE_MAX_CHORDS = 512
+
+
+def _outline_shape_points(e: dict) -> tuple[list, bool] | None:
+    """(points, closed) for one board_outline edge; None when the edge is unusable."""
+    t = e.get("type")
+    if t == "line" and e.get("start") and e.get("end"):
+        return [tuple(e["start"]), tuple(e["end"])], False
+    if t == "arc" and e.get("start") and e.get("end"):
+        return arc_points(e["start"], e.get("mid"), e["end"], max_chords=_OUTLINE_MAX_CHORDS), False
+    if t == "curve" and e.get("points") and len(e["points"]) == 4:
+        return [tuple(p) for p in _bezier_points(e["points"])], False
+    if t == "rect" and e.get("start") and e.get("end"):
+        (x1, y1), (x2, y2) = e["start"], e["end"]
+        return [(x1, y1), (x2, y1), (x2, y2), (x1, y2)], True
+    if t == "polygon" and e.get("points") and len(e["points"]) >= 3:
+        return [tuple(p) for p in e["points"]], True
+    if t == "circle" and e.get("center") and e.get("end"):
+        cx, cy = e["center"]
+        ex, ey = e["end"]
+        r = math.hypot(ex - cx, ey - cy)
+        if r <= 0.0:
+            return None
+        # chord count as arc_points: sagitta within 0.002 mm
+        n = min(_OUTLINE_MAX_CHORDS,
+                max(8, math.ceil(2.0 * math.pi / (2.0 * math.acos(max(-1.0, 1.0 - 0.002 / r))))))
+        a0 = math.atan2(ey - cy, ex - cx)
+        return [(cx + r * math.cos(a0 + 2.0 * math.pi * k / n),
+                 cy + r * math.sin(a0 + 2.0 * math.pi * k / n)) for k in range(n)], True
+    return None
+
+
+def outline_loops(edges: list[dict]) -> list[list[tuple[float, float]]] | None:
+    """Closed loops of a board outline (``board_outline.edges``), as KiCad chains Edge.Cuts.
+
+    Rects, polygons and circles are loops of their own; lines, arcs and curves are joined end to
+    end within OUTLINE_CHAINING_EPSILON_MM. None when any chain does not close or an edge is
+    unusable: KiCad then uses the outline's bounding box (BuildBoardPolygonOutlines).
+    """
+    eps = OUTLINE_CHAINING_EPSILON_MM
+    loops: list[list[tuple[float, float]]] = []
+    open_paths: list[list[tuple[float, float]]] = []
+    for e in edges:
+        shape = _outline_shape_points(e)
+        if shape is None:
+            return None
+        pts, closed = shape
+        if closed:
+            loops.append(pts)
+        elif math.hypot(pts[0][0] - pts[-1][0], pts[0][1] - pts[-1][1]) > 0.0:
+            open_paths.append(pts)
+
+    # endpoint grid with cell size eps: a neighbour sits in the same or an adjacent cell
+    grid: dict[tuple[int, int], list[tuple[int, int]]] = {}
+    for i, p in enumerate(open_paths):
+        for end in (0, -1):
+            x, y = p[end]
+            grid.setdefault((math.floor(x / eps), math.floor(y / eps)), []).append((i, end))
+    used = [False] * len(open_paths)
+
+    def _nearest(pt):
+        gx, gy = math.floor(pt[0] / eps), math.floor(pt[1] / eps)
+        best = None
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for i, end in grid.get((gx + dx, gy + dy), ()):
+                    if used[i]:
+                        continue
+                    q = open_paths[i][end]
+                    d = math.hypot(q[0] - pt[0], q[1] - pt[1])
+                    if d <= eps and (best is None or (d, i, end) < best):
+                        best = (d, i, end)
+        return best
+
+    for seed in range(len(open_paths)):
+        if used[seed]:
+            continue
+        used[seed] = True
+        path = list(open_paths[seed])
+        while True:
+            head, tail = path[0], path[-1]
+            if len(path) > 2 and math.hypot(head[0] - tail[0], head[1] - tail[1]) <= eps:
+                break
+            nxt = _nearest(tail)
+            if nxt is None:
+                return None
+            _, i, end = nxt
+            used[i] = True
+            seg = open_paths[i] if end == 0 else open_paths[i][::-1]
+            path.extend(seg[1:])
+        loops.append(path[:-1])
+    loops = [lp for lp in loops if len(lp) >= 3]
+    return loops or None
+
+
+def point_in_outline(px: float, py: float, loops: list) -> bool:
+    """Even-odd membership: a point inside a slot or cutout loop is off the board."""
+    return _point_in_polys(px, py, loops)
+
+
 def _shoelace_area_from_coords(coords: list[tuple[float, float]]) -> float:
     """Compute polygon area from coordinate list using shoelace formula."""
     n = len(coords)

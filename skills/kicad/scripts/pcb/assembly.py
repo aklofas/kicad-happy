@@ -6,7 +6,9 @@ import math
 import re
 
 from kicad_core.netnames import is_ground_name
-from pcb.geometry import _refined_overlap_mm2, courtyards_collide, overlap_area_mm2
+from pcb.geometry import (_outline_shape_points, _refined_overlap_mm2, courtyards_collide,
+                          outline_edge_distance, outline_loops, overlap_area_mm2,
+                          point_in_outline)
 
 
 _ESD_TVS_PREFIXES = ("esd", "prtr", "usblc", "tpd", "pesd", "sp05",
@@ -201,6 +203,81 @@ def _is_edge_mount_footprint(fp: dict) -> bool:
     return False
 
 
+def _clearance_points(fp: dict) -> list[tuple[float, float]]:
+    """Courtyard polygon vertices, else courtyard bbox corners, else the anchor."""
+    pts = [(p[0], p[1]) for poly in (fp.get("_courtyard_poly") or fp.get("courtyard_poly") or [])
+           for p in poly]
+    if not pts and fp.get("courtyard"):
+        c = fp["courtyard"]
+        pts = [(c["min_x"], c["min_y"]), (c["max_x"], c["min_y"]),
+               (c["max_x"], c["max_y"]), (c["min_x"], c["max_y"])]
+    return pts or [(fp["x"], fp["y"])]
+
+
+def _edge_boxes(edges: list[dict]) -> list[tuple[tuple[float, float, float, float], dict]]:
+    """(min_x, min_y, max_x, max_y) of each outline edge, 0.01 mm loose for tessellation."""
+    out = []
+    for e in edges:
+        shape = _outline_shape_points(e)
+        if shape is None:
+            continue
+        xs = [p[0] for p in shape[0]]
+        ys = [p[1] for p in shape[0]]
+        out.append(((min(xs) - 0.01, min(ys) - 0.01, max(xs) + 0.01, max(ys) + 0.01), e))
+    return out
+
+
+def _outline_clearance(fp: dict, loops: list, edges: list[dict],
+                       edge_boxes: list) -> tuple[float, bool]:
+    """(clearance, off_board) against the closed outline: the nearest edge distance when every
+    point is on the board, else minus the farthest outside distance; off-board when no point is
+    on it. Slots and cutouts are board edge (even-odd)."""
+    pts = _clearance_points(fp)
+    # an edge more than 1 mm from the points' box cannot decide a clearance under 1 mm
+    x0 = min(p[0] for p in pts) - 1.0
+    y0 = min(p[1] for p in pts) - 1.0
+    x1 = max(p[0] for p in pts) + 1.0
+    y1 = max(p[1] for p in pts) + 1.0
+    near = [e for (ex0, ey0, ex1, ey1), e in edge_boxes
+            if ex0 <= x1 and ex1 >= x0 and ey0 <= y1 and ey1 >= y0]
+    inside_d: list[float] = []
+    outside_d: list[float] = []
+    for x, y in pts:
+        d = outline_edge_distance(x, y, near)
+        d = math.inf if d is None else d
+        # a point on the edge (closer than the reported 0.01 mm) is on the board
+        if d < 0.005 or point_in_outline(x, y, loops):
+            inside_d.append(d)
+        else:
+            outside_d.append(outline_edge_distance(x, y, edges) or 0.0)
+    if not outside_d:
+        return min(inside_d), False
+    return -max(outside_d), not inside_d
+
+
+def _bbox_clearance(fp: dict, bx_min: float, by_min: float,
+                    bx_max: float, by_max: float) -> tuple[float, bool]:
+    """(clearance, off_board) against the outline's bounding box."""
+    cx, cy = fp["x"], fp["y"]
+    min_edge = min(cx - bx_min, bx_max - cx, cy - by_min, by_max - cy)
+    fp_min_x = fp_max_x = cx
+    fp_min_y = fp_max_y = cy
+    if fp.get("courtyard"):
+        cy_box = fp["courtyard"]
+        fp_min_x, fp_max_x = cy_box["min_x"], cy_box["max_x"]
+        fp_min_y, fp_max_y = cy_box["min_y"], cy_box["max_y"]
+        min_edge = min(
+            cy_box["min_x"] - bx_min,
+            bx_max - cy_box["max_x"],
+            cy_box["min_y"] - by_min,
+            by_max - cy_box["max_y"],
+        )
+    # KH-389: a bbox entirely outside the outline bbox isn't "near the edge" — it's off the board
+    is_off_board = (fp_max_x < bx_min or fp_min_x > bx_max or
+                    fp_max_y < by_min or fp_min_y > by_max)
+    return min_edge, is_off_board
+
+
 def analyze_placement(footprints: list[dict], outline: dict, *,
                       check_overlaps: bool = True) -> dict:
     """Component placement analysis — courtyard overlaps and edge clearance.
@@ -298,45 +375,28 @@ def analyze_placement(footprints: list[dict], outline: dict, *,
 
     overlaps.sort(key=lambda o: o["overlap_mm2"], reverse=True)
 
-    # Edge clearance — distance from component center to nearest board edge
+    # Edge clearance — distance from the courtyard to the nearest board edge
     edge_close: list[dict] = []
     bbox = outline.get("bounding_box")
+    edges = outline.get("edges") or []
+    # an outline that does not close is measured as its bounding box, as KiCad does
+    loops = outline_loops(edges)
+    edge_boxes = _edge_boxes(edges) if loops else []
     if bbox:
         bx_min, by_min = bbox["min_x"], bbox["min_y"]
         bx_max, by_max = bbox["max_x"], bbox["max_y"]
         for fp in footprints:
             if not fp.get("reference"):
                 continue
-            cx, cy = fp["x"], fp["y"]
-            # Distance to nearest edge (simplified — board outline as rectangle)
-            d_left = cx - bx_min
-            d_right = bx_max - cx
-            d_top = cy - by_min
-            d_bottom = by_max - cy
-            min_edge = min(d_left, d_right, d_top, d_bottom)
-            fp_min_x = fp_max_x = cx
-            fp_min_y = fp_max_y = cy
-
-            # Use courtyard if available for tighter estimate
-            if fp.get("courtyard"):
-                cy_box = fp["courtyard"]
-                fp_min_x, fp_max_x = cy_box["min_x"], cy_box["max_x"]
-                fp_min_y, fp_max_y = cy_box["min_y"], cy_box["max_y"]
-                min_edge = min(
-                    cy_box["min_x"] - bx_min,
-                    bx_max - cy_box["max_x"],
-                    cy_box["min_y"] - by_min,
-                    by_max - cy_box["max_y"],
-                )
+            if loops:
+                min_edge, is_off_board = _outline_clearance(fp, loops, edges, edge_boxes)
+            else:
+                min_edge, is_off_board = _bbox_clearance(fp, bx_min, by_min, bx_max, by_max)
 
             if min_edge < 1.0:  # Flag components within 1mm of edge
                 clearance = round(min_edge, 2)
-                # KH-389: a bbox entirely outside the outline bbox isn't "near
-                # the edge" — it's off the board. Distinct classification,
-                # checked ahead of the RF/edge-mount exemptions below (those
-                # are for by-design partial overhang, not fully-off-board).
-                is_off_board = (fp_max_x < bx_min or fp_min_x > bx_max or
-                                 fp_max_y < by_min or fp_min_y > by_max)
+                # KH-389: off-board is checked ahead of the RF/edge-mount
+                # exemptions below (those are for by-design partial overhang).
                 # RF module footprints deliberately put the courtyard past the
                 # board edge to expose the antenna to free space (WROOM-1 etc.).
                 # Edge-mount footprints (SMA_Edge, USB_C vertical, MagJack,
