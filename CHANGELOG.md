@@ -129,6 +129,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A regulator output on a sheet whose name carries two voltages (`12V_to_5V`) no longer takes the first one as its voltage (kc/R5-F7).
 - A DNP CAN terminator's observation names the part's own value instead of a fixed 120 Ω; a what_if change to a member of a parallel group or series chain writes the arm's new equivalent value, not the old group label (kc/R3-F4, kc/R5-F3).
 - SPICE: an RC bench is judged against 1/(2πRC) of its own parts, so sub-hertz filters no longer warn about the analyzer's 0.01 Hz rounding; a PNP transistor bench is labelled PNP and warns "not measured" instead of reporting a VBE(on) and collector current it never reached; current sense without an expected current, a snubber without a time constant and an RF link budget built from heuristic per-role gains report `info`, not `pass`; a regulator bench reports `info` when its Vref comes from a symbol whose value names another part, or when the divider's top resistor is not on the output rail (sk/R2-N4, R2-F1, R2-F4).
+- KO-001 no longer reports footprints or vias inside a rule area that allows them (`allowed` was read as prohibited) (kf/A11-F1).
 
 ---
 

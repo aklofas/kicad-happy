@@ -974,6 +974,11 @@ def analyze_silkscreen_pad_overlaps(footprints: list[dict], board_texts: list[di
     return findings
 
 
+def _prohibits(restrictions: dict, key: str) -> bool:
+    # KiCad rule areas carry "allowed" or "not_allowed" per item type.
+    return restrictions.get(key) == "not_allowed"
+
+
 def analyze_keepout_violations(footprints: list[dict], vias: dict,
                                 keepout_zones: list[dict]) -> list[dict]:
     """KO-001: Check for components or vias inside keepout zones (bbox check)."""
@@ -999,7 +1004,7 @@ def analyze_keepout_violations(footprints: list[dict], vias: dict,
         kz_allowed_net_name = kz.get("net_name") or ""
 
         # Check footprints
-        if restrictions.get("footprints", False):
+        if _prohibits(restrictions, "footprints"):
             for fp in footprints:
                 ref = fp.get("reference", "")
                 fx = fp.get("x", 0)
@@ -1043,7 +1048,7 @@ def analyze_keepout_violations(footprints: list[dict], vias: dict,
                     })
 
         # Check vias
-        if restrictions.get("vias", False):
+        if _prohibits(restrictions, "vias"):
             for via in via_list:
                 vx = via.get("x")
                 vy = via.get("y")

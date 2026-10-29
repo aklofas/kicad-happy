@@ -1,0 +1,51 @@
+# tools/tests/test_pcb_keepout_permissions.py
+"""KO-001 reports only what a rule area prohibits; `allowed` is permission."""
+import os, sys, tempfile, unittest
+from pathlib import Path
+SCRIPTS = Path(__file__).resolve().parents[2] / "skills" / "kicad" / "scripts"
+sys.path.insert(0, str(SCRIPTS))
+
+from pcb.pipeline import read_board  # noqa: E402
+from pcb.reader import _extract_keepout_zones  # noqa: E402
+from pcb.assembly import analyze_keepout_violations  # noqa: E402
+
+
+def _ko001(footprints, vias):
+    board = f'''(kicad_pcb (version 20221018) (generator pcbnew)
+  (general (thickness 1.6))
+  (layers (0 "F.Cu" signal) (31 "B.Cu" signal) (44 "Edge.Cuts" user))
+  (net 0 "")
+  (via (at 110 110) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 0))
+  (footprint "L:F" (layer "F.Cu") (at 105 105)
+    (property "Reference" "R1") (property "Value" "v")
+    (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu" "F.Paste" "F.Mask")))
+  (zone (net 0) (net_name "") (layers "F.Cu" "B.Cu") (name "ko") (hatch edge 0.5)
+    (keepout (tracks allowed) (vias {vias}) (pads allowed) (copperpour allowed) (footprints {footprints}))
+    (polygon (pts (xy 100 100) (xy 120 100) (xy 120 120) (xy 100 120))))
+)
+'''
+    with tempfile.TemporaryDirectory() as d:
+        p = os.path.join(d, "b.kicad_pcb")
+        with open(p, "w", encoding="utf-8") as f:
+            f.write(board)
+        st = read_board(p)
+        return analyze_keepout_violations(st.footprints, st.vias, _extract_keepout_zones(st.zones, st.footprints))
+
+
+class TestKeepoutPermissions(unittest.TestCase):
+    def test_footprints_allowed_is_silent(self):
+        self.assertEqual(_ko001("allowed", "allowed"), [])
+
+    def test_footprints_not_allowed_reports_footprint(self):
+        f = _ko001("not_allowed", "allowed")
+        self.assertEqual([x.get("component") for x in f], ["R1"])
+
+    def test_via_prohibited_footprint_allowed(self):
+        f = _ko001("allowed", "not_allowed")
+        self.assertEqual(len(f), 1)
+        self.assertIn("via_x", f[0])
+        self.assertNotIn("component", f[0])
+
+
+if __name__ == "__main__":
+    unittest.main()
