@@ -101,6 +101,26 @@ def extract_layers(root: list) -> list[dict]:
     return layers
 
 
+def _merged_sublayers(items: list) -> dict:
+    """One dielectric's `addsublayer` parts as a single layer: summed thickness and the
+    thickness-weighted epsilon_r. A part without a value takes KiCad's default (the first part
+    epsilon_r 4.5, an added part 1.0, thickness 0: BOARD_STACKUP_ITEM, DIELECTRIC_PRMS)."""
+    parts = [{"thickness": 0.0, "epsilon_r": 4.5}]
+    for item in items:
+        if is_keyword(item, "addsublayer"):
+            parts.append({"thickness": 0.0, "epsilon_r": 1.0})
+        elif isinstance(item, list) and len(item) >= 2 and item[0] in ("thickness", "epsilon_r"):
+            try:
+                parts[-1][item[0]] = float(item[1])
+            except (ValueError, TypeError):
+                pass
+    total = sum(p["thickness"] for p in parts)
+    merged = {"thickness": round(total, 6)}
+    if total > 0:
+        merged["epsilon_r"] = round(sum(p["thickness"] * p["epsilon_r"] for p in parts) / total, 6)
+    return merged
+
+
 def extract_setup(root: list) -> dict:
     """Extract board setup, stackup, and design rules."""
     setup_node = find_first(root, "setup")
@@ -132,6 +152,8 @@ def extract_setup(root: list) -> dict:
                         except (ValueError, TypeError):
                             pass
                     layer_info[key] = val
+            if any(is_keyword(item, "addsublayer") for item in layer[2:]):
+                layer_info.update(_merged_sublayers(layer[2:]))
             stack_layers.append(layer_info)
         result["stackup"] = stack_layers
 

@@ -15,6 +15,7 @@ Every body is verbatim from analyze_pcb.py; only the seams are new.
 
 import json
 import os
+import re
 import sys
 from dataclasses import dataclass, field, fields
 from pathlib import Path
@@ -105,6 +106,43 @@ def resolve_power_rails(power_rails: set[str] | None,
     return _resolved_power_rails, _power_rails_source
 
 
+_INNER_CU = re.compile(r"In(\d+)\.Cu")
+
+
+def _infer_stackup(copper_layers: list[str], board_thickness_mm: float | None,
+                   mask_layers: int = 2) -> list[dict]:
+    """The stackup KiCad builds for a board whose file has none
+    (BOARD_STACKUP::BuildDefaultStackupList, board_stackup.cpp:678-770): copper 0.035 mm,
+    each dielectric (thickness - 0.035 per copper - 0.01 per mask layer) / (copper - 1) in
+    whole nm, FR4 epsilon_r 4.5, core and prepreg alternating from the top."""
+    inner = sorted((int(m.group(1)), n) for n in copper_layers
+                   if (m := _INNER_CU.fullmatch(n)))
+    order = (["F.Cu"] if "F.Cu" in copper_layers else []) + [n for _, n in inner] \
+        + (["B.Cu"] if "B.Cu" in copper_layers else [])
+    if not order:
+        order = ["F.Cu", "B.Cu"]
+    thickness_nm = round((board_thickness_mm if board_thickness_mm is not None else 1.6) * 1e6)
+    diel_nm = int((thickness_nm - 35000 * len(order) - 10000 * mask_layers)
+                  / max(1, len(order) - 1))
+    stackup = []
+    for i, name in enumerate(order):
+        stackup.append({"name": name, "type": "copper", "thickness": 0.035})
+        if name == "B.Cu":
+            break
+        stackup.append({"name": f"dielectric {i + 1}", "type": "core" if i % 2 == 0 else "prepreg",
+                        "thickness": diel_nm / 1e6, "epsilon_r": 4.5, "material": "FR4"})
+    return stackup
+
+
+def _board_stackup(layers: list[dict], setup: dict) -> list[dict]:
+    """The file's stackup, else the one KiCad infers from the copper and mask layers."""
+    if setup.get("stackup"):
+        return setup["stackup"]
+    names = [l.get("name") for l in layers]
+    return _infer_stackup(names, setup.get("board_thickness_mm"),
+                          mask_layers=sum(1 for n in names if n in ("F.Mask", "B.Mask")))
+
+
 @dataclass
 class BoardData:
     """Phase-1 output: the parsed board and everything the extractors pulled from it."""
@@ -134,6 +172,8 @@ def read_board(path: str, *, state: PcbReaderState | None = None) -> BoardData:
     # module attribute on purpose: the harness patches pcb.reader.<name> (ARCHITECTURE.md facade register)
     layers = reader.extract_layers(root)
     setup = reader.extract_setup(root)
+    if not setup.get("stackup"):
+        setup["stackup_source"] = "inferred"
     net_names = reader.extract_nets(root)
     diagnostics: list = []
     footprints = reader.extract_footprints(root, diagnostics)
@@ -306,16 +346,7 @@ def run_facts(board: BoardData, *, include_trace_segments: bool, return_path_rad
     component_groups = group_components(footprints)
 
     # Per-net trace length measurement
-    # Pass stackup for impedance calculation. If no stackup defined, use
-    # a default 2-layer FR4 board (1.6mm total, 1oz copper, εr=4.5).
-    _stackup = setup.get("stackup")
-    if include_trace_segments and not _stackup:
-        _stackup = [
-            {"name": "F.Cu", "type": "copper", "thickness": 0.035},
-            {"name": "dielectric", "type": "core", "thickness": 1.53,
-             "epsilon_r": 4.5, "material": "FR4"},
-            {"name": "B.Cu", "type": "copper", "thickness": 0.035},
-        ]
+    _stackup = _board_stackup(layers, setup)
     net_lengths = analyze_net_lengths(tracks, vias, net_names,
                                       include_segments=include_trace_segments,
                                       stackup=_stackup if include_trace_segments else None)
@@ -395,8 +426,7 @@ def run_facts(board: BoardData, *, include_trace_segments: bool, return_path_rad
     if lib_tables.get('footprint_libs'):
         project_settings['footprint_libs'] = lib_tables['footprint_libs']
 
-    # Build reference layer map from stackup for multi-layer boards
-    ref_layer_map = _build_reference_layer_map(setup.get("stackup", []))
+    ref_layer_map = _build_reference_layer_map(_stackup)
 
     # Return path continuity (only with --full, expensive)
     return_path = None
@@ -410,7 +440,7 @@ def run_facts(board: BoardData, *, include_trace_segments: bool, return_path_rad
             debug_samples=gp001_samples,
             vias=vias,
             power_rails=_resolved_power_rails,
-            copper_order=_copper_order_from_stackup(setup.get("stackup", [])),
+            copper_order=_copper_order_from_stackup(_stackup),
             pin_signals=pin_signals)
 
     keepout_zones = _extract_keepout_zones(zones, footprints)

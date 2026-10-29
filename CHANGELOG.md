@@ -56,6 +56,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Design-rule compliance uses KiCad's own minima when the project sets none, a KiCad 5 board's setup minima (its project's board settings are then ignored, as in KiCad), and holds micro vias to the net class micro-via size instead of the through-via minima (kf/A6-F5, A8-F2, A6-F4).
 - Checks the KiCad project sets to `ignore` (courtyard overlap, items in keepouts, track width, via size, hole size, annular width) are not reported (kf/A11-X1, A6-F3).
 - Footprint `type` and flags follow KiCad: `board_only`, `virtual` and the exclude flags no longer imply each other, a footprint with no technology attribute is `unspecified` (KiCad 5 boards: through-hole), and pad fiducial / test-point properties count for FD-001 / TE-001 (kf/A7-F2, A11-F5).
+- A board with no stackup gets KiCad's default stackup for its copper count and thickness (`setup.stackup_source: inferred`) for impedance, copper presence and return paths; dielectric sublayers add their thickness and weight εr by thickness (kf/A8-F4, A8-F7).
 
 ### Fixed
 
