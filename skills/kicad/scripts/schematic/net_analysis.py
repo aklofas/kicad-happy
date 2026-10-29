@@ -184,6 +184,97 @@ def analyze_connectivity(components: list[dict], nets: dict, no_connects: list[d
     }
 
 
+# Net-class keywords, checked in order; the first class with a hit wins.
+_NET_CLASS_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("clock", ("SCL", "SCK", "CLK", "MCLK", "SCLK", "XTAL", "OSC")),
+    ("data", ("SDA", "MOSI", "MISO", "SDI", "SDO", "UART", "TXD", "RXD", "TX", "RX")),
+    ("high_speed", ("USB", "CAN", "LVDS", "ETH")),
+    ("analog", ("ADC", "AIN", "VREF", "VSENSE", "ISENSE")),
+    ("control", ("RESET", "NRST", "RST", "EN", "ENABLE")),
+    ("chip_select", ("CS", "SS", "NSS", "CE", "SEL")),
+    ("interrupt", ("INT", "IRQ", "ALERT", "DRDY")),
+    ("output_drive", _OUTPUT_DRIVE_KEYWORDS),
+    ("debug", ("SWD", "SWCLK", "SWDIO", "SWO", "JTAG", "TCK", "TMS", "TDI", "TDO")),
+    ("config", ("BOOT", "TEST")),
+)
+# KH-097: video sync signals are not chip selects
+_SYNC_KEYWORDS = ("CSYNC", "HSYNC", "VSYNC", "SYNC")
+# A token starting with a supply stem (VCCINT, VDDIO, AVDD_ADC) names a rail, never a keyword
+_SUPPLY_STEMS = ("VCC", "VDD", "AVCC", "AVDD", "DVCC", "DVDD", "PVDD", "IOVDD")
+# Supply-input pin names besides the stems above (V+, VIN, PVIN, IN, VBAT, BAT, VS, VM, ...)
+_SUPPLY_PIN_NAMES = frozenset({
+    "V", "VIN", "PVIN", "AVIN", "IN", "VBAT", "BAT", "VS", "VM", "VBUS", "VSUP", "VSYS",
+    "VPWR", "PWR"})
+# Pins typed power_in that are not supply inputs: grounds, switch nodes, regulator caps, references
+_NOT_SUPPLY_PIN_NAMES = frozenset({"GND", "VSS", "L", "LX", "SW", "AREF"})
+_NOT_SUPPLY_PIN_PREFIXES = ("GND", "VSS", "VLX", "VCAP", "VREF")
+
+
+def _name_tokens(name: str) -> list[str]:
+    """Upper-case tokens of *name*: split on non-alphanumerics and letter/digit boundaries,
+    with active-low markers (``nINT``, ``INTn``, ``_N``) removed."""
+    tokens = []
+    for part in re.split(r'[^0-9A-Za-z]+', unescape_string(name)):
+        for t in re.findall(r'[A-Za-z]+|[0-9]+', part):
+            if len(t) > 2 and t[0] == "n" and t[1].isupper():
+                t = t[1:]
+            elif len(t) > 2 and t[-1] == "n" and t[-2].isupper():
+                t = t[:-1]
+            t = t.upper()
+            if t != "N":
+                tokens.append(t)
+    return tokens
+
+
+def _keyword_hit(tokens: list[str], keywords) -> bool:
+    """A keyword of three or more letters hits anywhere in a token; a two-letter one (TX, EN,
+    CS) only as the whole token, its start or its end, also before an active-low B/N (ROMCSB).
+    A supply-stem token hits only as that rail's enable (VCCOEN)."""
+    for t in tokens:
+        if t.startswith(_SUPPLY_STEMS):
+            if any(k in ("EN", "ENABLE") and t.endswith(k) for k in keywords):
+                return True
+            continue
+        forms = (t, t[:-1]) if len(t) > 2 and t[-1] in "BN" else (t,)
+        for k in keywords:
+            if len(k) > 2:
+                if k in t:
+                    return True
+            elif any(f == k or f.startswith(k) or f.endswith(k) for f in forms):
+                return True
+    return False
+
+
+def _keyword_class(net_name: str) -> str:
+    tokens = _name_tokens(net_name)
+    for cls, keywords in _NET_CLASS_KEYWORDS:
+        if _keyword_hit(tokens, keywords):
+            if cls == "chip_select" and _keyword_hit(tokens, _SYNC_KEYWORDS):
+                return "signal"
+            return cls
+    return "signal"
+
+
+def _is_supply_pin_name(pin_name: str) -> bool:
+    tokens = _name_tokens(pin_name or "")
+    compact = "".join(tokens)
+    if not tokens or compact.startswith(_NOT_SUPPLY_PIN_PREFIXES) or any(
+            t in _NOT_SUPPLY_PIN_NAMES or t.startswith(_NOT_SUPPLY_PIN_PREFIXES) for t in tokens):
+        return False
+    # "3V3" and "V+" tokenise to a bare "V"
+    return any("VCC" in t or "VDD" in t or t in _SUPPLY_PIN_NAMES for t in tokens)
+
+
+def _is_ic_supply_input_net(net_info: dict, comp_lookup: dict) -> bool:
+    """True when the net has IC pins and every non-passive one is a power_in supply input."""
+    ic_pins = [p for p in net_info.get("pins", [])
+               if (comp_lookup.get(p.get("component")) or {}).get("type") == "ic"
+               and str(p.get("pin_type") or "").split("+")[0] != "passive"]
+    return bool(ic_pins) and all(
+        str(p.get("pin_type") or "").split("+")[0] == "power_in"
+        and _is_supply_pin_name(p.get("pin_name", "")) for p in ic_pins)
+
+
 def _classify_nets(ctx: AnalysisContext) -> dict:
     """Classify all nets by type (ground, power, clock, data, etc.)."""
     nets = ctx.nets
@@ -202,37 +293,15 @@ def _classify_nets(ctx: AnalysisContext) -> dict:
                 net_classes[net_name] = "signal"
             continue
 
-        nu = unescape_string(net_name).upper()
         if is_ground(net_name):
             net_classes[net_name] = "ground"
         elif is_power_net(net_name):
             net_classes[net_name] = "power"
-        elif any(kw in nu for kw in ("SCL", "SCK", "CLK", "MCLK", "SCLK", "XTAL", "OSC")):
-            net_classes[net_name] = "clock"
-        elif any(kw in nu for kw in ("SDA", "MOSI", "MISO", "SDI", "SDO", "UART", "TX", "RX")):
-            net_classes[net_name] = "data"
-        elif any(kw in nu for kw in ("USB", "CAN", "LVDS", "ETH")):
-            net_classes[net_name] = "high_speed"
-        elif any(kw in nu for kw in ("ADC", "AIN", "VREF", "VSENSE", "ISENSE")):
-            net_classes[net_name] = "analog"
-        elif any(kw in nu for kw in ("RESET", "NRST", "RST", "EN", "ENABLE")):
-            net_classes[net_name] = "control"
-        elif any(kw in nu for kw in ("CS", "SS", "NSS", "CE", "SEL")):
-            # KH-097: Exclude video sync signals (CSYNC, HSYNC, VSYNC)
-            if any(sync in nu for sync in ("CSYNC", "HSYNC", "VSYNC", "SYNC")):
-                net_classes[net_name] = "signal"
-            else:
-                net_classes[net_name] = "chip_select"
-        elif any(kw in nu for kw in ("INT", "IRQ", "ALERT", "DRDY")):
-            net_classes[net_name] = "interrupt"
-        elif any(kw in nu for kw in _OUTPUT_DRIVE_KEYWORDS):
-            net_classes[net_name] = "output_drive"
-        elif any(kw in nu for kw in ("SWD", "SWCLK", "SWDIO", "SWO", "JTAG", "TCK", "TMS", "TDI", "TDO")):
-            net_classes[net_name] = "debug"
-        elif any(kw in nu for kw in ("BOOT", "TEST")):
-            net_classes[net_name] = "config"
         else:
-            net_classes[net_name] = "signal"
+            cls = _keyword_class(net_name)
+            if cls == "signal" and _is_ic_supply_input_net(net_info, ctx.comp_lookup):
+                cls = "power"
+            net_classes[net_name] = cls
 
     return net_classes
 
