@@ -5,6 +5,7 @@ Without --full it means every multi-pad net has copper, and one diagnostics reco
 Expected values are kicad-cli 10 DRC unconnected_items on the same boards (n islands holding
 a net's pads = n - 1 items)."""
 import contextlib, io, os, sys, tempfile, unittest
+from unittest import mock
 from pathlib import Path
 SCRIPTS = Path(__file__).resolve().parents[2] / "skills" / "kicad" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
@@ -158,6 +159,19 @@ class TestRoutingFromGraph(unittest.TestCase):
     def test_no_copper_net_keeps_its_text(self):
         res = _analyze(_board(TWO), full=True)
         self.assertEqual(_rt001(res), ["Unrouted net N (2 pads)"])
+
+    def test_graph_error_records_itself_and_no_routing_note(self):
+        # A failed graph build is its own diagnostic; the default-path note would be wrong there
+        with mock.patch("pcb.presentation.build_connectivity_graph",
+                        side_effect=RuntimeError("boom")):
+            res = _analyze(_board(TWO, _seg(10, 14)), full=True)
+        self.assertEqual(res["connectivity_graph_error"],
+                         "connectivity graph unavailable: RuntimeError: boom")
+        self.assertEqual([(d["source"], d["effect"]) for d in res["diagnostics"]
+                          if d["effect"] == "connectivity_graph omitted"],
+                         [("pcb.presentation.assemble_result", "connectivity_graph omitted")])
+        self.assertTrue(res["connectivity"]["routing_complete"])
+        self.assertEqual(_notes(res), [])
 
     def test_returns_a_new_dict(self):
         from pcb.presentation import _routing_from_graph
