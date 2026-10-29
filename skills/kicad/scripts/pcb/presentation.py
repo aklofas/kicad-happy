@@ -277,7 +277,7 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
     # has minima, so the schema-required key always carries a result.
     design_compliance = analyze_design_rule_compliance(
         tracks, vias, project_settings or {}, footprints=footprints,
-        minima=analyses.board_minima)
+        minima=analyses.board_minima, board_layers=[l["name"] for l in layers or []])
     result["design_rule_compliance"] = design_compliance or {}
 
     # Manufacturing and assembly analysis

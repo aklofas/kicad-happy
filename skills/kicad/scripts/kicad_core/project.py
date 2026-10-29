@@ -1,6 +1,7 @@
 """KiCad project discovery and project-file readers: .kicad_pro, .kicad_dru, lib tables, root-schematic resolution (kicad_core). Moved verbatim from kicad_utils.py."""
 import json
 import os
+import re
 
 from kicad_core.sexp import parse as _sexp_parse, parse_file as _sexp_parse_file, find_all, find_first, get_value
 
@@ -577,6 +578,18 @@ def extract_pro_text_variables(pro: dict) -> dict:
     return pro.get('text_variables', {}) or {}
 
 
+# A .kicad_dru length: a number with one of KiCad's length units (pcbexpr_evaluator.cpp). A bare
+# number is a "Missing units" error, and arithmetic is an expression neither of which is read here.
+_DRU_LENGTH = re.compile(r'\s*([-+]?(?:\d+\.?\d*|\.\d+))\s*(mm|mil|in)\s*')
+_DRU_UNIT_MM = {'mm': 1.0, 'mil': 0.0254, 'in': 25.4}
+
+
+def parse_dru_length(text: str) -> float | None:
+    """mm value of a .kicad_dru length such as ``0.2mm``, ``5mil`` or ``6 mil``; None otherwise."""
+    m = _DRU_LENGTH.fullmatch(text)
+    return round(float(m[1]) * _DRU_UNIT_MM[m[2]], 6) if m else None
+
+
 def load_kicad_dru(file_path: str) -> list[dict] | None:
     """Load custom design rules from ``.kicad_dru`` adjacent to a KiCad file.
 
@@ -587,7 +600,8 @@ def load_kicad_dru(file_path: str) -> list[dict] | None:
          "condition": "A.Type == 'track'",
          "constraints": [{"type": "track_width", "min": 0.127}]}
 
-    Conditions are kept as raw strings — not evaluated.
+    Bounds are mm (`parse_dru_length`); a bound that is not a plain length stays its text.
+    Conditions are kept as raw strings — not evaluated. ``severity`` is kept when set.
     Returns None if no ``.kicad_dru`` found.
 
     Only the board reads rules, and KiCad takes the file named like the board,
@@ -627,14 +641,12 @@ def load_kicad_dru(file_path: str) -> list[dict] | None:
             ctype = c[1]
             entry: dict = {'type': ctype}
             for key in ('min', 'max', 'opt'):
-                val = get_value(c, key)
-                if val is not None:
-                    # Strip 'mm' suffix if present
-                    val_str = str(val).rstrip('m').rstrip('m')
-                    try:
-                        entry[key] = float(val_str)
-                    except ValueError:
-                        entry[key] = val
+                node = find_first(c, key)
+                if node is None or len(node) < 2:
+                    continue
+                text = ' '.join(str(t) for t in node[1:] if not isinstance(t, list))
+                value = parse_dru_length(text)
+                entry[key] = value if value is not None else text
             constraints.append(entry)
 
         rule_dict: dict = {'name': name}
@@ -642,6 +654,9 @@ def load_kicad_dru(file_path: str) -> list[dict] | None:
             rule_dict['layer'] = layer
         if condition:
             rule_dict['condition'] = condition
+        severity = get_value(r, 'severity')
+        if severity:
+            rule_dict['severity'] = severity
         if constraints:
             rule_dict['constraints'] = constraints
         rules.append(rule_dict)
