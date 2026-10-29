@@ -14,7 +14,8 @@ import math
 import re
 
 from pcb.geometry import (
-    _point_in_polygon, _segment_segment_distance, pad_copper_layers, segment_to_pad_distance,
+    _point_in_polygon, _segment_segment_distance, pad_copper_layers, pads_touch,
+    segment_to_pad_distance,
 )
 
 # Copper closer than this counts as touching (rounding in the board file).
@@ -50,7 +51,8 @@ def _node_fill_regions(node: dict,
     if x is None or y is None or not layer:
         return set()
     regions: set[int] = set()
-    # A track end is copper at one point; a pad or via probes its outline.
+    # A track probes its end point only (KiCad also joins a track whose body overlaps
+    # the fill; not modelled). A pad or via probes its outline.
     points = ([(x, y)] if node.get('kind') == 'track'
               else _node_probe_points(x, y, node.get('copper_radius', 0.0)))
     for px, py in points:
@@ -270,9 +272,13 @@ def build_connectivity_graph(
     net_nodes: dict[str, list[dict]] = {}
     net_track_segments: dict[str, list[dict]] = {}
 
+    # Each pad is its own node: pads sharing a reference and number join only through
+    # copper or the footprint's jumper settings, as in KiCad.
+    pad_instance_counts: dict[str, int] = {}
+    jumper_pads: list[list[str]] = []
     for fp in footprints:
         ref = fp.get('reference', '')
-        pad_instance_counts: dict[str, int] = {}
+        fp_pad_keys: dict[str, list[str]] = {}
         for pad in fp.get('pads', []):
             net_name = pad.get('net_name', '')
             if not net_name:
@@ -285,6 +291,7 @@ def build_connectivity_graph(
             instance_idx = pad_instance_counts.get(report_key, 0)
             pad_instance_counts[report_key] = instance_idx + 1
             pad_key = report_key if instance_idx == 0 else f"{report_key}#{instance_idx}"
+            fp_pad_keys.setdefault(str(pad.get('number', '?')), []).append(pad_key)
             layers = pad_copper_layers(pad, copper_layers)
             width = pad.get('width', 0) or 0
             height = pad.get('height', 0) or 0
@@ -297,7 +304,7 @@ def build_connectivity_graph(
             for layer in layers:
                 net_nodes.setdefault(net_name, []).append({
                     'key': pad_key,
-                    'report_key': report_key,
+                    'report_key': pad_key,
                     'x': x,
                     'y': y,
                     'layer': layer,
@@ -306,6 +313,13 @@ def build_connectivity_graph(
                     'shape': pad,
                     'kind': 'pad',
                 })
+
+        if fp.get('_duplicate_pad_jumpers'):
+            jumper_pads.extend(keys for keys in fp_pad_keys.values() if len(keys) > 1)
+        for group in fp.get('_jumper_pad_groups', ()):
+            keys = [k for number in group for k in fp_pad_keys.get(number, ())]
+            if len(keys) > 1:
+                jumper_pads.append(keys)
 
     for i, via in enumerate(via_list):
         net_id = via.get('net', 0)
@@ -450,11 +464,10 @@ def build_connectivity_graph(
                 report_keys.add(report_key)
                 logical_groups.setdefault(report_key, []).append(key)
 
-        # Compound pads can be represented by multiple copper primitives with
-        # the same reference/pad number. They are a single electrical node.
-        for members in logical_groups.values():
-            for i in range(1, len(members)):
-                uf.union(members[0], members[i])
+        for keys in jumper_pads:
+            present = [k for k in keys if k in all_keys]
+            for i in range(1, len(present)):
+                uf.union(present[0], present[i])
 
         node_layers = list(dict.fromkeys(node['layer'] for node in nodes))
         key_positions = {node['key']: (node['x'], node['y']) for node in nodes}
@@ -525,6 +538,20 @@ def build_connectivity_graph(
                 point = {'x1': x, 'y1': y, 'x2': x, 'y2': y}
                 if segment_to_pad_distance(point, pad['shape']) <= r + _CONTACT_EPS:
                     uf.union(via['key'], pad['key'])
+
+        # Pads whose copper overlaps on a shared layer are one conductor (stacked and
+        # castellated pads, compound pads written as several pads of one number).
+        for i, node in enumerate(pv_nodes):
+            grid = pad_grids.get(node['layer'])
+            if node['kind'] != 'pad' or not grid:
+                continue
+            r = node['reach']
+            for j in grid.query(node['x'] - r, node['y'] - r, node['x'] + r, node['y'] + r):
+                other = pv_nodes[j]
+                if j <= i or uf.find(other['key']) == uf.find(node['key']):
+                    continue
+                if pads_touch(node['shape'], other['shape']):
+                    uf.union(node['key'], other['key'])
 
         # A filled copper graphic joins the pads, vias and track ends inside it.
         for reg in net_regions.get(net_name, ()):

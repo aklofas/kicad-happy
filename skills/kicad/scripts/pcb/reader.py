@@ -403,6 +403,12 @@ def extract_footprints(root: list, diagnostics: list | None = None) -> list[dict
         if net_tie_node and len(net_tie_node) > 1:
             net_tie_groups = net_tie_node[1]
 
+        # Pads that KiCad joins without copper (connectivity_algo.cpp updateJumperPads)
+        dup_jumpers = get_value(fp, "duplicate_pad_numbers_are_jumpers") == "yes"
+        jumper_node = find_first(fp, "jumper_pad_groups")
+        jumper_groups = [[n for n in g if isinstance(n, str)]
+                         for g in (jumper_node or [])[1:] if isinstance(g, list)]
+
         # Extended properties (MPN, manufacturer, etc.)
         manufacturer = get_property(fp, "Manufacturer") or ""
         digikey_pn = get_property(fp, "DigiKey Part") or ""
@@ -720,6 +726,10 @@ def extract_footprints(root: list, diagnostics: list | None = None) -> list[dict
         # Net tie
         if net_tie_groups:
             fp_entry["net_tie_pad_groups"] = net_tie_groups
+        if dup_jumpers:
+            fp_entry["_duplicate_pad_jumpers"] = True
+        if jumper_groups:
+            fp_entry["_jumper_pad_groups"] = jumper_groups
 
         # Extended properties
         if manufacturer:

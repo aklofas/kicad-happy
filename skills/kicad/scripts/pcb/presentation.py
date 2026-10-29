@@ -102,19 +102,24 @@ def _routing_from_graph(connectivity: dict, graph: dict, *,
                         net_ids: dict[str, int] | None = None) -> dict:
     """A copy of *connectivity* whose unrouted nets are those with pads on more than one
     copper island of *graph*. A net without copper keeps its entry; pads the graph joins
-    (one footprint's pads sharing a number) do not make a net unrouted."""
+    (overlapping copper, KiCad jumper pads) do not make a net unrouted. `routed_nets`
+    counts the multi-pad nets that are not unrouted."""
     kept = {u["net_name"]: u for u in connectivity.get("unrouted", [])}
     unrouted = [u for name, u in kept.items() if name not in graph]
+    multi_pad = len(unrouted)
     for net in sorted(graph):
         comps = graph[net].get("components", {})
         pads = sorted(k for k in comps if not k.startswith("via_"))
+        if len(pads) > 1:
+            multi_pad += 1
         islands = len({comps[k] for k in pads})
         if islands < 2:
             continue
         if net in kept:
             unrouted.append(kept[net])
             continue
-        names = [k.replace(":", ".", 1) for k in pads]
+        # graph keys are REF:NUMBER, later pads with the same pair add #n
+        names = [re.sub(r"#\d+$", "", k).replace(":", ".", 1) for k in pads]
         unrouted.append({
             "net_number": (net_ids or {}).get(net, 0),
             "net_name": net,
@@ -135,6 +140,7 @@ def _routing_from_graph(connectivity: dict, graph: dict, *,
             "report_context": {"section": "Connectivity", "impact": "functionality", "standard_ref": ""},
         })
     out = dict(connectivity)
+    out["routed_nets"] = multi_pad - len(unrouted)
     out["unrouted_count"] = len(unrouted)
     out["routing_complete"] = not unrouted
     out["unrouted"] = sorted(unrouted, key=lambda u: u["net_name"])
@@ -197,7 +203,7 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
     # Compact footprint output — include pad-to-net mapping but omit pad geometry
     footprint_summary = []
     for fp in footprints:
-        fp_summary = {k: v for k, v in fp.items() if k not in ("pads", "_courtyard_poly")}
+        fp_summary = {k: v for k, v in fp.items() if k not in ("pads", "_courtyard_poly", "_duplicate_pad_jumpers", "_jumper_pad_groups")}
         # Alias: 'footprint' mirrors 'library' for cross-analyzer consistency
         # (schematic analyzer uses 'footprint', PCB uses 'library' for same data)
         if "library" in fp_summary and "footprint" not in fp_summary:
@@ -392,7 +398,8 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
             result["connectivity"] = routing
             result["statistics"] = {**stats, "routing_complete": routing["routing_complete"],
                                     "unrouted_net_count": routing["unrouted_count"]}
-    if conn_graph is None and connectivity.get("routing_complete"):
+    if (conn_graph is None and "connectivity_graph_error" not in result
+            and connectivity.get("routing_complete")):
         record(diagnostics, "pcb.presentation.assemble_result",
                ValueError("pads are not checked for a copper path between them"),
                "routing_complete means every multi-pad net has copper; "

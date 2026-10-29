@@ -140,6 +140,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Custom `.kicad_dru` rules check maximum bounds, plated pad holes and annuli, honour their layer and `(severity ignore)`, read `mil`/`in` units, and a custom minimum outranks the board minimum as in KiCad (kf/A6-F1, A6-F3, A6-F8, A8-F5, KH-427).
 - Touching courtyards are not an overlap (KiCad's 0.005 mm allowance), thin crossings are no longer missed by the overlap sample, and an open courtyard outline is reported in `diagnostics` instead of judged by its bounding box (kf/A11-F6, A11-F7, A11-F8).
 - Thermal-pad via counts include only vias on the pad's net inside the pad's real outline, with exposure judged on the pad's open side; via-in-pad checks a footprint's signal pads even when it has a thermal pad (kc/R9-F2, kc/R9-F6, KH-710).
+- The `--full` copper graph joins pads that share a reference and number only when their copper touches or the footprint marks them as jumpers (`duplicate_pad_numbers_are_jumpers`, `jumper_pad_groups`), and joins overlapping pads of different footprints, as KiCad does; a repeated pad is listed as `REF:N#k` in `connectivity_graph` (kc/R9-F1).
 
 ---
 

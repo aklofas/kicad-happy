@@ -1190,6 +1190,58 @@ def segment_to_pad_distance(seg: dict, pad: dict) -> float:
     return max(0.0, _segment_box_distance(ax, ay, bx, by, hw - rr, hh - rr) - rr)
 
 
+def _pad_cores(pad: dict) -> list[tuple[dict, float]]:
+    """A pad's copper as segments with a radius whose union covers its outline (a circle is
+    its centre, an oval its core segment, a box or roundrect its edges, a custom pad its
+    anchor plus its primitives); together with `segment_to_pad_distance` in the other
+    direction this finds overlap and containment."""
+    px, py = pad["abs_x"], pad["abs_y"]
+    w = pad.get("width", 0) or 0
+    h = pad.get("height", 0) or 0
+    shape = pad.get("shape", "rect")
+    if shape == "custom" and "_anchor" in pad:
+        anchor = {k: pad[k] for k in ("abs_x", "abs_y", "width", "height", "angle") if k in pad}
+        anchor["shape"] = pad["_anchor"]
+        if anchor["shape"] == "circle":
+            anchor["height"] = anchor.get("width", 0)
+        cores = _pad_cores(anchor)
+        for prim in pad["_prims"]:
+            pts, hw = prim["pts"], prim["width"] / 2.0
+            n = len(pts)
+            if n == 1:
+                cores.append(({"x1": pts[0][0], "y1": pts[0][1], "x2": pts[0][0], "y2": pts[0][1]}, hw))
+            for i in range(n if prim["closed"] and n >= 3 else n - 1):
+                (x1, y1), (x2, y2) = pts[i], pts[(i + 1) % n]
+                cores.append(({"x1": x1, "y1": y1, "x2": x2, "y2": y2}, hw))
+        return cores
+    if shape in ("circle", "custom"):
+        return [({"x1": px, "y1": py, "x2": px, "y2": py}, max(w, h) / 2.0)]
+    hw, hh = w / 2.0, h / 2.0
+    if shape == "oval":
+        r = min(hw, hh)
+        local = [((-(hw - r), 0.0), (hw - r, 0.0))] if hw >= hh else [((0.0, -(hh - r)), (0.0, hh - r))]
+    else:
+        r = 0.0
+        if shape == "roundrect":
+            r = min(max(pad.get("roundrect_rratio", 0.25), 0.0), 0.5) * min(w, h)
+        bx, by = hw - r, hh - r
+        corners = ((-bx, -by), (bx, -by), (bx, by), (-bx, by))
+        local = [(corners[i], corners[(i + 1) % 4]) for i in range(4)]
+    rad = math.radians(-(pad.get("angle") or 0))
+    c, s = math.cos(rad), math.sin(rad)
+    cores = []
+    for (ax, ay), (bx_, by_) in local:
+        cores.append(({"x1": px + ax * c - ay * s, "y1": py + ax * s + ay * c,
+                       "x2": px + bx_ * c - by_ * s, "y2": py + bx_ * s + by_ * c}, r))
+    return cores
+
+
+def pads_touch(a: dict, b: dict, eps: float = 0.005) -> bool:
+    """True when the copper of pads *a* and *b* overlaps (or one contains the other)."""
+    return any(segment_to_pad_distance(seg, b) <= r + eps for seg, r in _pad_cores(a)) or \
+        any(segment_to_pad_distance(seg, a) <= r + eps for seg, r in _pad_cores(b))
+
+
 def _custom_pad_distance(seg: dict, pad: dict) -> float:
     """`segment_to_pad_distance` for a custom pad: KiCad's copper is the anchor (a circle of
     the size's x, or the size box) plus every primitive, each stroked by its width."""
