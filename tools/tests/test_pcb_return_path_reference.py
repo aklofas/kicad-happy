@@ -129,6 +129,14 @@ class ReferenceLayer(unittest.TestCase):
                          {"F.Cu": "B.Cu", "In1.Cu": "B.Cu", "In2.Cu": "B.Cu",
                           "B.Cu": "In2.Cu"})
 
+    def test_a_layer_is_never_its_own_reference(self):
+        # A file stackup that lists its copper twice (seen in the corpus).
+        st = [{"name": "F.Cu", "type": "copper"}, {"type": "core", "thickness": 1.5},
+              {"name": "B.Cu", "type": "copper"}, {"name": "F.Cu", "type": "copper"},
+              {"type": "core", "thickness": 1.5}, {"name": "B.Cu", "type": "copper"}]
+        self.assertEqual(_build_reference_layer_map(st, {"B.Cu"}),
+                         {"F.Cu": "B.Cu", "B.Cu": "F.Cu"})
+
 
 if __name__ == "__main__":
     unittest.main()

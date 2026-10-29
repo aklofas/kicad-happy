@@ -587,7 +587,8 @@ def _build_reference_layer_map(stackup: list[dict],
         candidates = adjacent
         if ref_layers is not None:
             candidates = [n for n in range(len(copper_layers))
-                          if n != ci and copper_layers[n][1] in ref_layers] or adjacent
+                          if copper_layers[n][1] != name and copper_layers[n][1] in ref_layers] \
+                or adjacent
         # Thinnest dielectric, then fewest layers away, then the layer above.
         best = min(candidates, key=lambda n: (dielectric_between(idx, copper_layers[n][0]),
                                               abs(n - ci), n > ci))
