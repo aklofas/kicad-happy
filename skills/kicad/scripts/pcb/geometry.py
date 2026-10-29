@@ -586,11 +586,12 @@ def _dist_point_to_segment(px, py, x1, y1, x2, y2):
 
 
 class CopperPresence:
-    """Unified copper presence check across zones, tracks, and pads.
+    """Copper presence check across zones, tracks, and pads.
 
     Given a point (x, y) on a given layer, returns True if any copper
-    object is within radius_mm.  Credits zone fills, track segments, and
-    pads equally -- all provide valid return-current paths.
+    object is within radius_mm.  Zone fills, track segments and pads all
+    count as copper; a return-path caller asks for zone fills only, since
+    a track or pad of another net is not a reference plane.
 
     Replaces bare ``ZoneFills.has_copper_at`` point-in-polygon checks
     that hit false negatives in KiCad zone fills (clearance channels

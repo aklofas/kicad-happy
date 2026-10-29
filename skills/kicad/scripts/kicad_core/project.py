@@ -115,7 +115,9 @@ def find_project_settings_file(file_path: str, ext: str, exact: bool = False) ->
 
     With ``exact`` only a file whose stem equals ``file_path``'s stem (ignoring
     case, as on KiCad's case-insensitive platforms) qualifies: a board opens
-    the project and rules files carrying its own name and no other.
+    the project and rules files carrying its own name and no other. Linux
+    KiCad needs the exact case, so it loads no file whose name differs from
+    the board's only in case; here the first such file (sorted) loads.
 
     Returns the chosen file's full path, or None if no candidate exists
     or the directory can't be listed.
@@ -590,7 +592,7 @@ def extract_pro_text_variables(pro: dict) -> dict:
 
 
 # A .kicad_dru length: a number with one of KiCad's length units (pcbexpr_evaluator.cpp). A bare
-# number is a "Missing units" error, and arithmetic is an expression neither of which is read here.
+# number is a "Missing units" error; arithmetic is an expression. Neither is read here.
 _DRU_LENGTH = re.compile(r'\s*([-+]?(?:\d+\.?\d*|\.\d+))\s*(mm|mil|in)\s*')
 _DRU_UNIT_MM = {'mm': 1.0, 'mil': 0.0254, 'in': 25.4}
 
