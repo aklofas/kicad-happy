@@ -273,14 +273,12 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
     if project_settings:
         result["project_settings"] = project_settings
 
-    # Design rule compliance (project rules vs actual layout) — always emit
-    # at least an empty dict so the schema-required key is present.
-    if project_settings:
-        design_compliance = analyze_design_rule_compliance(
-            tracks, vias, project_settings, footprints=footprints)
-        result["design_rule_compliance"] = design_compliance or {}
-    else:
-        result["design_rule_compliance"] = {}
+    # Design rule compliance (board minima and project rules vs actual layout); every board
+    # has minima, so the schema-required key always carries a result.
+    design_compliance = analyze_design_rule_compliance(
+        tracks, vias, project_settings or {}, footprints=footprints,
+        minima=analyses.board_minima)
+    result["design_rule_compliance"] = design_compliance or {}
 
     # Manufacturing and assembly analysis
     if dfm:

@@ -560,6 +560,14 @@ def extract_pro_design_rules(pro: dict) -> dict:
             if isinstance(v, (int, float)) and k.startswith('min_')}
 
 
+def extract_pro_default_netclass(pro: dict) -> dict | None:
+    """The Default net class entry of .kicad_pro ``net_settings.classes`` as written, or None."""
+    for c in (pro.get('net_settings') or {}).get('classes') or []:
+        if isinstance(c, dict) and c.get('name') == 'Default':
+            return c
+    return None
+
+
 def extract_pro_text_variables(pro: dict) -> dict:
     """Extract text variables from .kicad_pro.
 

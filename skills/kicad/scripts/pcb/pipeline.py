@@ -57,7 +57,7 @@ from pcb.copper import (
     analyze_via_in_pad,
     analyze_board_edge_via_clearance,
 )
-from pcb.dfm import analyze_dfm
+from pcb.dfm import analyze_dfm, effective_board_minima
 from pcb.assembly import (
     analyze_decoupling_placement,
     analyze_placement,
@@ -193,6 +193,7 @@ class PcbFacts:
     groups: Any
     net_classes: Any
     project_settings: Any
+    board_minima: Any
     ref_layer_map: Any
     return_path: Any
     gp001_samples: Any
@@ -245,6 +246,7 @@ class PcbAnalyses:
     groups: Any
     net_classes: Any
     project_settings: Any
+    board_minima: Any
     dfm: Any
     tombstoning: Any
     thermal_pad_vias: Any
@@ -378,6 +380,7 @@ def run_facts(board: BoardData, *, include_trace_segments: bool, return_path_rad
             project_settings['text_variables'] = pro_text_vars
     else:
         net_classes = extract_net_classes(root)
+    board_minima = effective_board_minima(root, pro)
 
     # Custom design rules (.kicad_dru)
     custom_rules = load_kicad_dru(str(path))
@@ -428,6 +431,7 @@ def run_facts(board: BoardData, *, include_trace_segments: bool, return_path_rad
         groups=groups,
         net_classes=net_classes,
         project_settings=project_settings,
+        board_minima=board_minima,
         ref_layer_map=ref_layer_map,
         return_path=return_path,
         gp001_samples=gp001_samples,

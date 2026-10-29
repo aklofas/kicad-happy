@@ -3,6 +3,102 @@ Fab tables at module level; analyze_dfm composes the _measure_* scans and the _e
 
 import math
 
+from kicad_core.project import extract_pro_default_netclass, extract_pro_design_rules
+from kicad_core.sexp import find_all, find_first, get_value
+
+# KiCad 10.0.7 BOARD_DESIGN_SETTINGS constructor (include/board_design_settings.h)
+_KICAD_DEFAULT_MINIMA = {
+    'min_track_width': 0.2,
+    'min_via_diameter': 0.5,
+    'min_via_drill': 0.3,
+    'min_microvia_diameter': 0.2,
+    'min_microvia_drill': 0.1,
+}
+# KiCad 10.0.7 netclass.cpp DEFAULT_UVIA_DIAMETER
+_KICAD_DEFAULT_UVIA_DIAMETER = 0.3
+# .kicad_pro design_settings.rules key per minimum
+_PRO_MINIMA = {
+    'min_track_width': 'min_track_width',
+    'min_via_diameter': 'min_via_diameter',
+    'min_via_drill': 'min_through_hole_diameter',
+    'min_microvia_diameter': 'min_microvia_diameter',
+    'min_microvia_drill': 'min_microvia_drill',
+}
+# KiCad 5 (setup ...) token per minimum (pcb_io_kicad_sexpr_parser.cpp parseSetup)
+_LEGACY_SETUP_MINIMA = {
+    'trace_min': 'min_track_width',
+    'via_min_size': 'min_via_diameter',
+    'through_hole_min': 'min_via_drill',
+    'via_min_drill': 'min_via_drill',
+    'uvia_min_size': 'min_microvia_diameter',
+    'uvia_min_drill': 'min_microvia_drill',
+}
+# Any of these in (setup ...) sets m_LegacyDesignSettingsLoaded, and board.cpp then does not
+# load the project's board settings at all.
+_LEGACY_SETUP_TOKENS = frozenset((
+    'last_trace_width', 'user_trace_width', 'trace_clearance', 'zone_clearance', 'zone_45_only',
+    'clearance_min', 'trace_min', 'via_size', 'via_drill', 'via_min_annulus', 'via_min_size',
+    'through_hole_min', 'via_min_drill', 'hole_to_hole_min', 'user_via', 'uvia_size', 'uvia_drill',
+    'uvias_allowed', 'blind_buried_vias_allowed', 'uvia_min_size', 'uvia_min_drill',
+    'user_diff_pair', 'segment_width', 'edge_width', 'mod_edge_width', 'pcb_text_width',
+    'mod_text_width', 'pcb_text_size', 'mod_text_size', 'defaults', 'pad_size', 'pad_drill',
+    'max_error',
+))
+_MINIMUM_LABEL = {'project': 'project', 'board_setup': 'board setup',
+                  'kicad_default': 'KiCad default'}
+
+
+def _as_mm(text) -> float | None:
+    try:
+        return float(text)
+    except (TypeError, ValueError):
+        return None
+
+
+def effective_board_minima(root: list, pro: dict | None) -> dict[str, tuple[float, str]]:
+    """{rule: (value_mm, source)} for the board minima KiCad 10 enforces, source one of
+    ``kicad_default`` / ``board_setup`` / ``project``.
+
+    ``min_microvia_diameter`` is the Default net class micro-via diameter when that class has
+    one: KiCad's net class micro-via rule replaces the board micro-via minimum with it
+    (drc_engine.cpp). A class read from .kicad_pro without the key has none."""
+    out = {k: (v, 'kicad_default') for k, v in _KICAD_DEFAULT_MINIMA.items()}
+    setup = find_first(root, 'setup') or []
+    legacy = False
+    for item in setup[1:]:
+        if not (isinstance(item, list) and item and item[0] in _LEGACY_SETUP_TOKENS):
+            continue
+        legacy = True
+        key = _LEGACY_SETUP_MINIMA.get(item[0])
+        value = _as_mm(item[1]) if key and len(item) > 1 else None
+        if value is not None:
+            out[key] = (value, 'board_setup')
+    if pro and not legacy:
+        rules = extract_pro_design_rules(pro)
+        for key, pro_key in _PRO_MINIMA.items():
+            value = rules.get(pro_key)
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                out[key] = (float(value), 'project')
+
+    uvia = (_KICAD_DEFAULT_UVIA_DIAMETER, 'kicad_default')
+    board_classes = find_all(root, 'net_class')
+    pro_default = extract_pro_default_netclass(pro) if pro else None
+    if board_classes:
+        # A KiCad 5 board's own net classes replace the project's (board.cpp SetProject); its
+        # Default class starts from KiCad's defaults, else the (setup ...) default class stays.
+        default = next((nc for nc in board_classes if len(nc) > 1 and nc[1] == 'Default'), None)
+        value = (_as_mm(get_value(default, 'uvia_dia')) if default
+                 else _as_mm(get_value(setup, 'uvia_size')))
+        if value is not None:
+            uvia = (value, 'board_setup')
+    elif pro_default is not None:
+        value = pro_default.get('microvia_diameter')
+        uvia = ((float(value), 'project')
+                if isinstance(value, (int, float)) and not isinstance(value, bool) else None)
+    if uvia is not None:
+        out['min_microvia_diameter'] = uvia
+    return out
+
 
 # KH-412: drills below this are file artefacts (e.g. `(drill 0.00001)` pads
 # in HamedMasafi/MeloCar remote_3.kicad_pcb), not holes a fab will drill.
@@ -764,13 +860,14 @@ def analyze_design_rule_compliance(
     tracks: dict, vias: dict,
     project_settings: dict,
     footprints: list[dict] | None = None,
+    minima: dict[str, tuple[float, str]] | None = None,
 ) -> dict | None:
     """Check layout against project-defined design rules.
 
     Compares actual track widths, via sizes, and drill diameters against
     the designer's own rules from ``.kicad_pro`` (global minimums) and
-    ``.kicad_dru`` (per-context constraints).  Returns None if no
-    project rules are available.
+    ``.kicad_dru`` (per-context constraints).  Returns None when neither
+    board minima nor project rules are given.
 
     This is separate from DFM analysis — DFM checks fab capabilities
     (can this be manufactured?), while this checks design intent
@@ -779,13 +876,21 @@ def analyze_design_rule_compliance(
     ``footprints`` (KH-383) lets the min-drill check also see
     thru_hole/np_thru_hole pad drills, not just board vias — optional so
     existing callers keep working unchanged.
+
+    ``minima`` is `effective_board_minima` (every board has one); without it the
+    ``.kicad_pro`` minima present in ``project_settings`` are checked.
     """
     design_rules = project_settings.get('design_rules', {})
     custom_rules = project_settings.get('custom_rules', [])
     net_classes = project_settings.get('net_classes', [])
 
-    if not design_rules and not custom_rules and not net_classes:
+    if not design_rules and not custom_rules and not net_classes and not minima:
         return None
+    if minima is None:
+        minima = {key: (design_rules[pro_key], 'project')
+                  for key, pro_key in _PRO_MINIMA.items() if design_rules.get(pro_key) is not None}
+        if 'min_via_drill' not in minima and design_rules.get('min_via_drill'):
+            minima['min_via_drill'] = (design_rules['min_via_drill'], 'project')
 
     violations = []
     rules_checked = 0
@@ -799,45 +904,54 @@ def analyze_design_rule_compliance(
     min_track_width = min(all_widths) if all_widths else None
 
     all_vias = vias.get("vias", [])
-    via_diameters = [v["size"] for v in all_vias if v.get("size", 0) > 0]
     via_drills = [v["drill"] for v in all_vias if _is_real_drill(v.get("drill", 0))]
-    min_via_diameter = min(via_diameters) if via_diameters else None
     # KH-383: the smallest drilled hole may be a footprint pad, not a via.
     min_drill, drill_source = _min_drill_with_source(via_drills, footprints)
 
-    # --- Check .kicad_pro global minimums ---
+    # KiCad holds micro vias to the micro-via minima only (drc_engine.cpp implicit rules).
+    def _smallest(values):
+        return min(values) if values else None
+    through = [v for v in all_vias if v.get("type") != "micro"]
+    micro = [v for v in all_vias if v.get("type") == "micro"]
+    min_through_drill, through_drill_source = _min_drill_with_source(
+        [v["drill"] for v in through if _is_real_drill(v.get("drill", 0))], footprints)
+
+    # --- Check the board minima ---
     checks = [
-        ('min_track_width', min_track_width, design_rules.get('min_track_width')),
-        ('min_via_diameter', min_via_diameter, design_rules.get('min_via_diameter')),
-        ('min_via_drill', min_drill,
-         design_rules.get('min_through_hole_diameter')
-         or design_rules.get('min_via_drill')),
+        ('min_track_width', min_track_width),
+        ('min_via_diameter', _smallest([v["size"] for v in through if v.get("size", 0) > 0])),
+        ('min_via_drill', min_through_drill),
+        ('min_microvia_diameter', _smallest([v["size"] for v in micro if v.get("size", 0) > 0])),
+        ('min_microvia_drill',
+         _smallest([v["drill"] for v in micro if _is_real_drill(v.get("drill", 0))])),
     ]
-    for rule_name, actual, required in checks:
+    for rule_name, actual in checks:
+        required, source = minima.get(rule_name, (None, None))
         if actual is None or required is None:
             continue
         rules_checked += 1
         if actual < required - 0.001:  # 1µm tolerance for float comparison
             message = (f"{rule_name.replace('_', ' ').title()} "
-                       f"{actual:.3f}mm violates project minimum "
+                       f"{actual:.3f}mm violates {_MINIMUM_LABEL[source]} minimum "
                        f"({required:.3f}mm)")
-            if rule_name == 'min_via_drill' and drill_source.startswith('pad '):
+            if rule_name == 'min_via_drill' and through_drill_source.startswith('pad '):
                 message += (f" (smallest: pad drill {actual:.3f}mm on "
-                            f"{drill_source[4:]})")
+                            f"{through_drill_source[4:]})")
             v = {
                 'rule': rule_name,
-                'source': 'project',
+                'source': source,
                 'required_mm': round(required, 4),
                 'actual_mm': round(actual, 4),
                 'message': message,
                 # KH-412: attribute a pad-sourced min_via_drill minimum to its pad.
-                'drill_source': ('pad' if rule_name == 'min_via_drill' and drill_source.startswith('pad ')
+                'drill_source': ('pad' if rule_name == 'min_via_drill'
+                                 and through_drill_source.startswith('pad ')
                                  else 'via') if rule_name == 'min_via_drill' else None,
             }
             if v['drill_source'] is None:
                 del v['drill_source']
             elif v['drill_source'] == 'pad':
-                v['source_ref'] = drill_source[4:]
+                v['source_ref'] = through_drill_source[4:]
             violations.append(v)
 
     # --- Net class summary (informational) ---
