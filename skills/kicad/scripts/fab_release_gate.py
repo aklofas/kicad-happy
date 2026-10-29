@@ -60,8 +60,11 @@ def check_routing(pcb: Dict) -> List[Dict]:
         return [_check("routing", "routing_completeness", "pass",
                         f"All nets routed ({total}/{total})")]
 
-    unrouted_list = [u.get("net_name", "?")
-                     for u in conn.get("unrouted", [])[:10]]
+    # The analyzer moves its unrouted entries into findings[] as RT-001.
+    unrouted_list = sorted({n for f in pcb.get("findings", [])
+                            if isinstance(f, dict) and f.get("rule_id") == "RT-001"
+                            for n in (f.get("nets") or [])[:1]}
+                           | {u.get("net_name", "?") for u in conn.get("unrouted", [])})
     return [_check("routing", "routing_completeness", "fail",
                     f"{unrouted} unrouted net(s) out of {total}",
                     {"unrouted_count": unrouted, "unrouted_nets": unrouted_list})]

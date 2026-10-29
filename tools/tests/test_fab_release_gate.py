@@ -106,6 +106,25 @@ class EmcThermalTest(unittest.TestCase):
         self.assertIn("?", c["message"])
 
 
+def _rt001(net, summary):
+    return {"rule_id": "RT-001", "detector": "analyze_connectivity", "category": "connectivity",
+            "severity": "error", "nets": [net], "summary": summary}
+
+
+class RoutingTest(unittest.TestCase):
+    # The PCB analyzer pops connectivity.unrouted into findings[] as RT-001 entries:
+    # "Unrouted net" (no copper, default path) and "Incompletely routed net" (--full graph).
+    PCB = {"connectivity": {"total_nets_with_pads": 60, "unrouted_count": 2,
+                            "routing_complete": False},
+           "findings": [_rt001("/SW_MAIN", "Incompletely routed net /SW_MAIN (2 copper islands hold its 4 pads)"),
+                        _rt001("+BATT", "Unrouted net +BATT (3 pads)")]}
+
+    def test_fail_lists_unrouted_nets(self):
+        c = gate.check_routing(self.PCB)[0]
+        self.assertEqual(c["status"], "fail")
+        self.assertEqual(c["details"]["unrouted_nets"], ["+BATT", "/SW_MAIN"])
+
+
 class ExitCodeTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
