@@ -2828,6 +2828,53 @@ def check_crosstalk_3h_rule(pcb: Dict,
 # Category 12: EMI Filter Verification
 # ---------------------------------------------------------------------------
 
+# A ferrite_bead value is trusted as an inductance only below this; larger
+# numbers are impedances at 100 MHz or free text.
+_FERRITE_MAX_HENRY = 10e-3
+
+
+def _input_lc_filter(schematic: Dict, input_rail: str) -> tuple:
+    """(found, lowest fc in Hz) of series-L / shunt-C filters on a regulator input rail.
+
+    C_in is every non-DNP capacitor from input_rail to ground; the inductor has
+    one pin on input_rail and the other on a different power net, so a boost
+    inductor to the switch node is not a filter. fc = 1 / (2 pi sqrt(L C_in)).
+    """
+    if not input_rail:
+        return False, None
+    parts = [c for c in schematic.get('components', []) if not c.get('dnp')]
+
+    c_in = 0.0
+    for c in parts:
+        if c.get('type') != 'capacitor':
+            continue
+        nets = set((c.get('pin_nets') or {}).values())
+        if input_rail in nets and any(is_ground_name(n) for n in nets - {input_rail}):
+            c_in += c.get('parsed_value') or 0.0
+    if c_in <= 0:
+        return False, None
+
+    best = None
+    for l in parts:
+        kind = l.get('type')
+        henry = l.get('parsed_value')
+        if kind not in ('inductor', 'ferrite_bead') or not henry or henry <= 0:
+            continue
+        if kind == 'ferrite_bead' and henry >= _FERRITE_MAX_HENRY:
+            continue
+        nets = set((l.get('pin_nets') or {}).values())
+        other = nets - {input_rail}
+        if input_rail not in nets or len(other) != 1:
+            continue
+        far = next(iter(other))
+        if is_ground_name(far) or not is_power_net_name(far):
+            continue
+        fc = 1 / (2 * math.pi * math.sqrt(henry * c_in))
+        if best is None or fc < best:
+            best = fc
+    return best is not None, best
+
+
 def check_emi_filter_effectiveness(pcb: Optional[Dict],
                                    schematic: Optional[Dict],
                                    spice_backend=None) -> List[Dict]:
@@ -2846,8 +2893,6 @@ def check_emi_filter_effectiveness(pcb: Optional[Dict],
         return findings
 
     regulators = get_findings(schematic, Det.POWER_REGULATORS)
-    lc_filters = get_findings(schematic, Det.LC_FILTERS)
-    rc_filters = get_findings(schematic, Det.RC_FILTERS)
 
     if not regulators:
         return findings
@@ -2865,22 +2910,7 @@ def check_emi_filter_effectiveness(pcb: Optional[Dict],
 
         input_rail = reg.get('input_rail', '')
 
-        # Look for an LC filter on the input rail
-        # Match by shared nets between filter components and regulator input
-        has_input_filter = False
-        filter_fc = None
-
-        for lc in lc_filters:
-            # Check if the LC filter shares the input rail net
-            inductor_ref = lc.get('inductor', '')
-            lc_freq = lc.get('resonant_frequency', lc.get('resonant_hz', 0))
-            if lc_freq and lc_freq > 0:
-                # Check if this filter's frequency is in the right range
-                # (well below switching frequency = good EMI filter)
-                if lc_freq < sw_freq:
-                    has_input_filter = True
-                    filter_fc = lc_freq
-                    break
+        has_input_filter, filter_fc = _input_lc_filter(schematic, input_rail)
 
         if not has_input_filter:
             # No input filter detected — INFO only (many designs rely on
