@@ -41,7 +41,7 @@ def _node_fill_regions(node: dict,
                        zone_fills,
                        zones: list[dict],
                        net_name: str) -> set[int]:
-    """Return same-net fill-region ids touching a pad or via."""
+    """Return same-net fill-region ids touching a pad, via or track end."""
     if zone_fills is None or not zone_fills.has_data:
         return set()
     x = node.get('x')
@@ -50,7 +50,10 @@ def _node_fill_regions(node: dict,
     if x is None or y is None or not layer:
         return set()
     regions: set[int] = set()
-    for px, py in _node_probe_points(x, y, node.get('copper_radius', 0.0)):
+    # A track end is copper at one point; a pad or via probes its outline.
+    points = ([(x, y)] if node.get('kind') == 'track'
+              else _node_probe_points(x, y, node.get('copper_radius', 0.0)))
+    for px, py in points:
         for fill_id, _zone_idx in zone_fills.fill_regions_at_point(
                 px, py, layer, zones, net_name=net_name):
             regions.add(fill_id)
@@ -420,6 +423,7 @@ def build_connectivity_graph(
         })
 
     result: dict[str, dict] = {}
+    zone_nets = {z.get('net_name') for z in zones}
 
     for net_name, nodes in net_nodes.items():
         if len(nodes) < 2:
@@ -533,13 +537,14 @@ def build_connectivity_graph(
                         and _point_in_polygon(x, y, reg['pts'])):
                     uf.union(reg['key'], node['key'])
 
-        # Phase 3: Zone fills — only probe pads, vias and copper graphics (track
-        # endpoints are already connected via Phase 1).
+        # Phase 3: Zone fills join the pads, vias, track ends and copper graphics
+        # inside the same fill region.
         if zone_fills is not None and zone_fills.has_data:
+            probe_kinds = ('pad', 'via', 'track') if net_name in zone_nets else ('pad', 'via')
             for layer in node_layers:
                 layer_pv = [node for node in nodes
                             if node['layer'] == layer
-                            and node.get('kind') in ('pad', 'via')]
+                            and node.get('kind') in probe_kinds]
                 layer_gr = [g for g in net_graphics.get(net_name, ())
                             if g['layer'] == layer and g['key'] in all_keys]
                 if len(layer_pv) + len(layer_gr) < 2:

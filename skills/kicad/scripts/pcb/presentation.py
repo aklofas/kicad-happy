@@ -98,6 +98,49 @@ def compute_statistics(footprints: list[dict], tracks: dict, vias: dict,
     }
 
 
+def _routing_from_graph(connectivity: dict, graph: dict, *,
+                        net_ids: dict[str, int] | None = None) -> dict:
+    """A copy of *connectivity* whose unrouted nets are those with pads on more than one
+    copper island of *graph*. A net without copper keeps its entry; pads the graph joins
+    (one footprint's pads sharing a number) do not make a net unrouted."""
+    kept = {u["net_name"]: u for u in connectivity.get("unrouted", [])}
+    unrouted = [u for name, u in kept.items() if name not in graph]
+    for net in sorted(graph):
+        comps = graph[net].get("components", {})
+        pads = sorted(k for k in comps if not k.startswith("via_"))
+        islands = len({comps[k] for k in pads})
+        if islands < 2:
+            continue
+        if net in kept:
+            unrouted.append(kept[net])
+            continue
+        names = [k.replace(":", ".", 1) for k in pads]
+        unrouted.append({
+            "net_number": (net_ids or {}).get(net, 0),
+            "net_name": net,
+            "pad_count": len(pads),
+            "pads": names,
+            "detector": "analyze_connectivity",
+            "rule_id": "RT-001",
+            "category": "connectivity",
+            "severity": "error",
+            "confidence": "deterministic",
+            "evidence_source": "topology",
+            "summary": f"Incompletely routed net {net} ({islands} copper islands hold its {len(pads)} pads)",
+            "description": f"Net {net} has {len(pads)} pads on {islands} separate copper islands.",
+            "components": sorted({n.split(".", 1)[0] for n in names}),
+            "nets": [net],
+            "pins": [],
+            "recommendation": f"Connect the {islands} copper islands of net {net}",
+            "report_context": {"section": "Connectivity", "impact": "functionality", "standard_ref": ""},
+        })
+    out = dict(connectivity)
+    out["unrouted_count"] = len(unrouted)
+    out["routing_complete"] = not unrouted
+    out["unrouted"] = sorted(unrouted, key=lambda u: u["net_name"])
+    return out
+
+
 def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: bool,
                     include_trace_segments: bool, schematic_data: dict | None,
                     resolved_power_rails: set[str] | None,
@@ -316,6 +359,7 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
     if keepout_violations:
         result["keepout_violations"] = keepout_violations
 
+    conn_graph = None
     if include_trace_segments:
         via_in_pad = analyses.via_in_pad
         if via_in_pad:
@@ -337,10 +381,22 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
             if conn_graph:
                 result["connectivity_graph"] = conn_graph
         except Exception as e:
+            conn_graph = None
             err_str = str(e)[:200]
             result["connectivity_graph_error"] = (
                 f"connectivity graph unavailable: {type(e).__name__}: {err_str}")
             record(diagnostics, "pcb.presentation.assemble_result", e, "connectivity_graph omitted")
+        if conn_graph is not None:
+            routing = _routing_from_graph(connectivity, conn_graph,
+                                          net_ids=result["net_name_to_id"])
+            result["connectivity"] = routing
+            result["statistics"] = {**stats, "routing_complete": routing["routing_complete"],
+                                    "unrouted_net_count": routing["unrouted_count"]}
+    if conn_graph is None and connectivity.get("routing_complete"):
+        record(diagnostics, "pcb.presentation.assemble_result",
+               ValueError("pads are not checked for a copper path between them"),
+               "routing_complete means every multi-pad net has copper; "
+               "completeness not proven without --full")
 
     # --- Harmonization: collect all findings into top-level list ---
     findings = []
@@ -408,11 +464,11 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
         if 'board_thickness_mm' in current_cap:
             result['board_thickness_mm'] = current_cap['board_thickness_mm']
 
-    connectivity_dict = result.get('connectivity', {})
-    if isinstance(connectivity_dict, dict):
-        unrouted = connectivity_dict.pop('unrouted', None)
-        if unrouted:
-            findings.extend(unrouted)
+    unrouted = connectivity.pop('unrouted', None)
+    if result['connectivity'] is not connectivity:
+        unrouted = result['connectivity'].pop('unrouted', None)
+    if unrouted:
+        findings.extend(unrouted)
 
     copper = result.pop('copper_presence', None)
     if copper:
