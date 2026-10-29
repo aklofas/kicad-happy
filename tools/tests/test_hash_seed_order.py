@@ -155,9 +155,9 @@ sch = {"design_analysis": {"differential_pairs": [
     {"positive": "USB_DP", "negative": "USB_DN", "type": "USB"},
     {"positive": "SS_TX_P", "negative": "SS_TX_N", "type": "differential"},
     {"positive": "HDMI_D0_P", "negative": "HDMI_D0_N", "type": "HDMI"}]}}
-pads = [{"net_name": n} for n in ("USB_DP", "USB_DN", "SS_TX_P", "SS_TX_N",
-                                  "HDMI_D0_P", "HDMI_D0_N", "GND")]
-pcb = {"footprints": [{"reference": "J1", "value": "USB_C", "pads": pads, "x": 1, "y": 1}]}
+pad_nets = {str(i): {"net": n, "pin": str(i)} for i, n in enumerate(
+    ("USB_DP", "USB_DN", "SS_TX_P", "SS_TX_N", "HDMI_D0_P", "HDMI_D0_N", "GND"), 1)}
+pcb = {"footprints": [{"reference": "J1", "value": "USB_C", "pad_nets": pad_nets, "x": 1, "y": 1}]}
 plan = generate_test_plan(sch, pcb, [])
 print(json.dumps([[r["connector"], r["protocol"], r["risk_score"]] for r in plan["interface_risks"]]))
 """

@@ -38,6 +38,7 @@ from kicad_core.parts import (
     lookup_switching_freq as _estimate_switching_freq,
     default_switching_freq as _default_switching_freq,
 )
+from kicad_core.netnames import is_ground_name, is_power_net_name
 from kicad_core.netquery import build_net_id_map
 from kicad_core.diagnostics import record
 from kicad_core.render import normalize_severity
@@ -305,6 +306,33 @@ def _connector_refs(footprints: list) -> list:
         elif 'connector' in lib or 'conn_' in lib or 'usb' in lib:
             connectors.append(fp)
     return connectors
+
+
+def _connector_net_names(conn: dict) -> list:
+    """Net names on a connector's pads, from the PCB output's `pad_nets`."""
+    return sorted({v['net'] for v in (conn.get('pad_nets') or {}).values()
+                   if isinstance(v, dict) and v.get('net')})
+
+
+def _resolve_usb_speed(pair: dict, schematic: dict):
+    """USB speed ('FS' / 'HS' / 'SS') from the first trusted MCU extraction among the
+    pair's non-connector ICs, or None."""
+    for ic_ref in pair.get('shared_ics', []):
+        comp = next((c for c in (schematic or {}).get('components', [])
+                     if c.get('reference') == ic_ref), None)
+        if comp and comp.get('type') not in ('connector',):
+            mcu_mpn = comp.get('mpn') or comp.get('value', '')
+            mcu_feat = _get_mcu_features(mcu_mpn, project_dir=_schematic_project_dir(schematic)) if mcu_mpn else None
+            if mcu_feat and not mcu_feat.get('quality', {}).get('trusted', True):
+                mcu_feat = None   # deterministic detectors keep the v1.4 trust gate (v2.0 §3.A.1)
+            if mcu_feat:
+                return mcu_feat.get('usb_speed')
+    return None
+
+
+# The 25 ps skew budget is a USB 2.0 high-speed layout guideline; full speed
+# (12 Mb/s, 4-20 ns edges) has none at board scale, so an unknown speed is full speed.
+_USB_SPEED_PROTOCOL = {'HS': 'USB-HS', 'SS': 'USB3'}
 
 
 # ---------------------------------------------------------------------------
@@ -818,12 +846,6 @@ def check_connector_filtering(pcb: Dict, schematic: Optional[Dict] = None) -> Li
         if is_filter:
             filters.append(fp)
 
-    # Also include protection devices from schematic
-    protection_refs = set()
-    if schematic:
-        for pd in get_findings(schematic, Det.PROTECTION_DEVICES):
-            protection_refs.add(pd.get('reference', ''))
-
     # For each connector, check if there's a filter component nearby
     for conn in connectors:
         cx = conn.get('x') or 0
@@ -841,15 +863,15 @@ def check_connector_filtering(pcb: Dict, schematic: Optional[Dict] = None) -> Li
                 break
 
         # Also check schematic-detected protection
-        if not has_nearby_filter:
-            conn_nets = set()
-            for pad in conn.get('pads', []):
-                n = pad.get('net_name', '')
-                if n and not _is_power_or_ground(n):
-                    conn_nets.add(n)
-
-            if schematic:
+        if not has_nearby_filter and schematic:
+            conn_nets = {n for n in _connector_net_names(conn)
+                         if not (is_ground_name(n) or is_power_net_name(n))}
+            dnp = {c.get('reference') for c in schematic.get('components', []) if c.get('dnp')}
+            if conn_nets:
                 for pd in get_findings(schematic, Det.PROTECTION_DEVICES):
+                    # A fuse or a reverse-polarity diode does not filter or clamp an I/O line.
+                    if pd.get('type') in ('fuse', 'reverse_polarity') or pd.get('ref') in dnp:
+                        continue
                     prot_net = pd.get('protected_net', '')
                     if prot_net in conn_nets:
                         has_nearby_filter = True
@@ -2072,6 +2094,8 @@ def check_diff_pair_skew(pcb: Optional[Dict],
 
         delta_mm = abs(pos_len - neg_len)
         skew = diff_pair_skew_ps(delta_mm, epsilon_r)
+        if protocol == 'USB':
+            protocol = _USB_SPEED_PROTOCOL.get(_resolve_usb_speed(pair, schematic), 'USB-FS')
         proto_info = DIFF_PAIR_PROTOCOLS.get(protocol, {})
         max_skew = proto_info.get('max_skew_ps', 50)
 
@@ -2129,26 +2153,10 @@ def check_diff_pair_cm_radiation(pcb: Optional[Dict],
         neg_net = pair.get('negative', '')
         protocol = pair.get('type', 'unknown')
 
-        # Classify USB speed from MCU endpoint extraction
         usb_speed_resolved = None
         if protocol == 'USB':
-            for ic_ref in pair.get('shared_ics', []):
-                comp = next((c for c in (schematic or {}).get('components', [])
-                             if c.get('reference') == ic_ref), None)
-                if comp and comp.get('type') not in ('connector',):
-                    mcu_mpn = comp.get('mpn') or comp.get('value', '')
-                    mcu_feat = _get_mcu_features(mcu_mpn, project_dir=_schematic_project_dir(schematic)) if mcu_mpn else None
-                    if mcu_feat and not mcu_feat.get('quality', {}).get('trusted', True):
-                        mcu_feat = None   # deterministic detectors keep the v1.4 trust gate (v2.0 §3.A.1)
-                    if mcu_feat:
-                        usb_speed_resolved = mcu_feat.get('usb_speed')
-                        break
-            if usb_speed_resolved == 'HS':
-                proto_info = DIFF_PAIR_PROTOCOLS.get('USB-HS')
-            elif usb_speed_resolved == 'SS':
-                proto_info = DIFF_PAIR_PROTOCOLS.get('USB3')
-            else:
-                proto_info = DIFF_PAIR_PROTOCOLS.get('USB-FS')
+            usb_speed_resolved = _resolve_usb_speed(pair, schematic)
+            proto_info = DIFF_PAIR_PROTOCOLS.get(_USB_SPEED_PROTOCOL.get(usb_speed_resolved, 'USB-FS'))
         else:
             proto_info = DIFF_PAIR_PROTOCOLS.get(protocol)
         if not proto_info:
@@ -2936,21 +2944,9 @@ def check_esd_protection_path(pcb: Dict,
 
     # Build footprint position lookup
     fp_positions = {}
-    fp_pads = {}
     for fp in footprints:
         ref = fp.get('reference', '')
         fp_positions[ref] = (fp.get('x') or 0, fp.get('y') or 0)
-        fp_pads[ref] = fp.get('pads', [])
-
-    # Map protection devices to their positions
-    prot_refs = set()
-    prot_by_net = {}
-    for pd in protection:
-        ref = pd.get('reference', pd.get('ref', ''))
-        prot_refs.add(ref)
-        pnet = pd.get('protected_net', '')
-        if pnet:
-            prot_by_net.setdefault(pnet, []).append(pd)
 
     # Count ground vias near each protection device
     vias_data = pcb.get('vias', {})
@@ -3874,18 +3870,7 @@ def check_layer_transition_stitching(pcb: Dict,
     if not all_vias:
         return findings  # Can't check without individual via positions
 
-    # Build set of ground nets
-    gnd_nets = set()
     nets = pcb.get('nets', {})
-    if isinstance(nets, dict):
-        for name in nets:
-            if is_emc_ground_name(name):
-                gnd_nets.add(name)
-    elif isinstance(nets, list):
-        for n in nets:
-            name = n.get('name', '') if isinstance(n, dict) else ''
-            if is_emc_ground_name(name):
-                gnd_nets.add(name)
 
     # Identify which vias are ground vias (connected to ground nets)
     gnd_via_positions = []
@@ -3920,8 +3905,7 @@ def check_layer_transition_stitching(pcb: Dict,
 
     search_radius = max(default_h * 2, 1.0)  # At least 1mm, or 2× dielectric height
 
-    # Classify nets as high-speed or diff-pair for severity
-    hs_nets = set()
+    # Diff-pair nets for severity
     dp_nets = set()
     if schematic:
         for pair in schematic.get('design_analysis', {}).get('differential_pairs', []):
@@ -4140,14 +4124,8 @@ def generate_test_plan(schematic: Optional[Dict], pcb: Optional[Dict],
             score = 3  # base
             reasons = []
 
-            # Check protocol
-            conn_nets = set()
-            for pad in conn.get('pads', []):
-                n = pad.get('net_name', '')
-                if n:
-                    conn_nets.add(n)
             # A connector carrying several pair types is ranked by its riskiest one.
-            proto = max((dp_nets[n] for n in conn_nets if n in dp_nets),
+            proto = max((dp_nets[n] for n in _connector_net_names(conn) if n in dp_nets),
                         key=lambda p: (protocol_speeds.get(p, 4), p), default=None)
             if proto:
                 score = protocol_speeds.get(proto, 4)
@@ -4156,9 +4134,6 @@ def generate_test_plan(schematic: Optional[Dict], pcb: Optional[Dict],
             if ref in unfiltered_refs:
                 score += 2
                 reasons.append('No EMC filtering detected')
-
-            if not pair.get('has_esd', True) if proto else True:
-                pass  # Can't easily check per-connector ESD from here
 
             plan['interface_risks'].append({
                 'connector': ref,

@@ -142,6 +142,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Touching courtyards are not an overlap (KiCad's 0.005 mm allowance), thin crossings are no longer missed by the overlap sample, and an open courtyard outline is reported in `diagnostics` instead of judged by its bounding box (kf/A11-F6, A11-F7, A11-F8).
 - Thermal-pad via counts include only vias on the pad's net inside the pad's real outline, with exposure judged on the pad's open side; via-in-pad checks a footprint's signal pads even when it has a thermal pad (kc/R9-F2, kc/R9-F6, KH-710).
 - The `--full` copper graph joins pads that share a reference and number only when their copper touches or the footprint marks them as jumpers (`duplicate_pad_numbers_are_jumpers`, `jumper_pad_groups`), and joins overlapping pads of different footprints, as KiCad does; a repeated pad is listed as `REF:N#k` in `connectivity_graph` (kc/R9-F1).
+- EMC holds USB pairs to the full-speed skew budget unless the part is known to be high-speed, and the IO-001 fallback and the test plan read the PCB's connector pad nets (fuses, reverse-polarity diodes and DNP parts do not count as I/O protection) (sk/R1-F6, sk/R1-F3).
 
 ---
 
