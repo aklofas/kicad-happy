@@ -432,6 +432,17 @@ def extract_footprints(root: list, diagnostics: list | None = None) -> list[dict
                     except (ValueError, TypeError):
                         pass  # skip malformed drill entries
 
+            # Pad annulus inputs (pcb.dfm): a drill offset and the chamfer ratio.
+            offset = find_first(pad_drill, "offset") if pad_drill else None
+            try:
+                if offset and any(float(v) for v in offset[1:3]):
+                    pad_info["_drill_offset"] = True
+                chamfer_ratio = get_value(pad, "chamfer_ratio")
+                if chamfer_ratio is not None:
+                    pad_info["_chamfer_ratio"] = float(chamfer_ratio)
+            except (TypeError, ValueError):
+                pass
+
             if pad_type == "np_thru_hole":
                 pad_info.update(_npth_copper_props(pad, pad_drill))
 

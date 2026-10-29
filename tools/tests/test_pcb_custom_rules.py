@@ -138,5 +138,28 @@ class CustomRuleTest(unittest.TestCase):
         self.assertEqual(violations(result), [("custom:r", "min", 0.2, 0.1)])
 
 
+    def test_bare_number_drops_every_custom_rule(self):
+        # "Missing units" for (min 0.2): kicad-cli loads none of the file's rules, so the strict
+        # track rule is not applied and the board minimum still fails the 0.25 mm hole
+        # ("board setup constraints min hole 0.3000 mm; actual 0.2500 mm").
+        dru = ("(rule bare (constraint hole_size (min 0.2)))\n"
+               "(rule strict (constraint track_width (min 0.3mm)))\n")
+        result = compliance(via(0.6, 0.25) + track(0.25), dru,
+                            pro({"min_through_hole_diameter": 0.3, "min_via_diameter": 0.5}))
+        self.assertEqual(violations(result), [("min_via_drill", None, 0.3, 0.25)])
+
+    def test_custom_pad_annulus_is_not_estimated_from_its_anchor(self):
+        # The anchor gives (0.9 - 0.8) / 2 = 0.05 mm, but KiCad measures the pad outline (anchor
+        # plus a 2 mm copper circle): kicad-cli reports no annular_width.
+        pad = ('  (footprint "T:C1" (layer "F.Cu") (at 20 20)\n'
+               '    (fp_text reference "C1" (at 0 -3) (layer "F.SilkS")\n'
+               '      (effects (font (size 1 1) (thickness 0.15))))\n'
+               '    (pad "1" thru_hole custom (at 0 0) (size 0.9 0.9) (drill 0.8)'
+               ' (layers "*.Cu" "*.Mask") (options (clearance outline) (anchor circle))\n'
+               '      (primitives (gr_circle (center 0 0) (end 1 0) (width 0) (fill yes)))))\n')
+        dru = "(rule r (constraint annular_width (min 0.2mm)))\n"
+        self.assertEqual(violations(compliance(pad, dru, LOW_MINIMA)), [])
+
+
 if __name__ == "__main__":
     unittest.main()

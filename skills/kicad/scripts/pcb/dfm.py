@@ -869,6 +869,26 @@ _BOARD_MINIMUM_ITEMS = (
 )
 _BOARD_MINIMUM_FOR = {kind: name for name, kinds in _BOARD_MINIMUM_ITEMS for kind in kinds}
 _CUSTOM_CHECKED_TYPES = ('track_width', 'via_diameter', 'hole_size', 'annular_width')
+_ANNULUS_DIRECT_SHAPES = ('circle', 'oval', 'rect', 'roundrect')
+# Constraint types whose values take no unit (drc_rule_parser.cpp parseConstraint).
+_UNITLESS_CONSTRAINTS = frozenset(('via_count', 'min_resolved_spokes', 'track_angle',
+                                   'via_dangling', 'bridged_mask'))
+_BARE_NUMBER = re.compile(r'\s*[-+]?(?:\d+\.?\d*|\.\d+)\s*')
+
+
+def _dru_loads_in_kicad(custom_rules: list[dict]) -> bool:
+    """False when a length bound is a bare number: KiCad's "Missing units" parse error drops
+    every custom rule of the file and keeps only the board's implicit rules (drc_engine.cpp
+    InitEngine)."""
+    for rule in custom_rules:
+        for constraint in rule.get('constraints', []):
+            if constraint.get('type') in _UNITLESS_CONSTRAINTS:
+                continue
+            for bound in ('min', 'max', 'opt'):
+                value = constraint.get(bound)
+                if isinstance(value, str) and _BARE_NUMBER.fullmatch(value):
+                    return False
+    return True
 
 
 def _is_length(value) -> bool:
@@ -903,6 +923,7 @@ def _rule_items(tracks: dict, all_vias: list[dict], footprints: list[dict] | Non
             items.append(('annular_width', kind, 'F.Cu', ring, ring, 'via'))
     for fp in footprints or []:
         src = f"pad {fp.get('reference', '')}"
+        numbers = [pad.get('number') for pad in fp.get('pads', [])]
         for pad in fp.get('pads', []):
             if pad.get('type') not in ('thru_hole', 'np_thru_hole'):
                 continue
@@ -912,8 +933,13 @@ def _rule_items(tracks: dict, all_vias: list[dict], footprints: list[dict] | Non
             if _is_real_drill(minor):
                 items.append(('hole_size', 'pad', None, minor, max(d, h), src))
             w, ph = pad.get('width', 0), pad.get('height', 0)
-            # drc_test_provider_annular_width.cpp: plated pads only
-            if pad['type'] == 'thru_hole' and d > 0 and w > 0 and ph > 0:
+            # drc_test_provider_annular_width.cpp takes (size - drill) / 2 only for a plated pad
+            # of these shapes, chamfer ratio <= 0.30, no drill offset; any other pad, or one
+            # merged with a same-number pad, is measured on its outline, which is not done here.
+            if (pad['type'] == 'thru_hole' and d > 0 and w > 0 and ph > 0
+                    and pad.get('shape') in _ANNULUS_DIRECT_SHAPES
+                    and pad.get('_chamfer_ratio', 0) <= 0.30 and not pad.get('_drill_offset')
+                    and numbers.count(pad.get('number')) == 1):
                 ring = min(w - d, ph - h) / 2.0
                 items.append(('annular_width', 'pad', 'F.Cu', ring, ring, src))
     return items
@@ -1004,8 +1030,9 @@ def analyze_design_rule_compliance(
     rules_checked = 0
 
     all_vias = vias.get("vias", [])
+    rules_load = _dru_loads_in_kicad(custom_rules or [])
     rules_by_type: dict[str, list] = {}
-    for ri, rule in enumerate(custom_rules or []):
+    for ri, rule in enumerate(custom_rules if rules_load else []):
         for ci, constraint in enumerate(rule.get('constraints', [])):
             if constraint.get('type') in _CUSTOM_CHECKED_TYPES:
                 rules_by_type.setdefault(constraint['type'], []).append((ri, ci, rule, constraint))
@@ -1167,6 +1194,8 @@ def analyze_design_rule_compliance(
     for ri, rule in enumerate(custom_rules or []):
         if rule.get('condition'):
             conditional_rules_skipped.append(rule.get('name', ''))
+            continue
+        if not rules_load:
             continue
         if rule.get('severity') == 'ignore':
             continue
