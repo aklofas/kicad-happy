@@ -59,6 +59,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A board with no stackup gets KiCad's default stackup for its copper count and thickness (`setup.stackup_source: inferred`) for impedance, copper presence and return paths; dielectric sublayers add their thickness and weight εr by thickness (kf/A8-F4, A8-F7).
 - PM-002 measures component clearance to the real board outline (curves, notches, slots and cutouts) instead of its bounding box. A courtyard partly outside the outline (including into a cutout or notch) reports its overhang; a part is off-board only when neither its courtyard nor any pad is on the board. An outline that does not close, or a shape drawn twice, keeps the bounding-box measure and records one diagnostic (kf/A11-F2).
 - With `--full`, `routing_complete` and `unrouted_count` come from proven copper connectivity (track ends inside a same-net fill now join it): a net whose pads sit on separate copper islands is unrouted (RT-001 'Incompletely routed'). Without `--full` the value means every multi-pad net has copper, and a diagnostics note says so; the fab gate's routing check follows (kc/R9-F1, KH-364).
+- Return-path coverage counts only ground or power-rail zone copper on the adjacent layer; other nets' copper, tracks and pads no longer count as a reference plane (more GP-001 / RP-002 findings where signals run over foreign copper). The reference layer is the nearest layer that carries ground or power zone copper, so an empty inner layer is never the reference (kc-b R8 O2, KH-417).
 
 ### Fixed
 

@@ -446,7 +446,8 @@ def run_facts(board: BoardData, *, include_trace_segments: bool, return_path_rad
             vias=vias,
             power_rails=_resolved_power_rails,
             copper_order=_copper_order_from_stackup(_stackup),
-            pin_signals=pin_signals)
+            pin_signals=pin_signals,
+            stackup=_stackup)
 
     keepout_zones = _extract_keepout_zones(zones, footprints)
 

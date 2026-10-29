@@ -358,17 +358,21 @@ def analyze_return_path_continuity(tracks, net_names, zones, zone_fills,
                                     signal_nets=None, ref_layer_map=None,
                                     footprints=None, radius_mm=0.5,
                                     debug_samples=None, vias=None,
-                                    power_rails=None, copper_order=None, pin_signals=frozenset()):
+                                    power_rails=None, copper_order=None, pin_signals=frozenset(),
+                                    stackup=None):
     """Check ground/power plane continuity under signal traces.
 
     For each signal net's trace segments, samples points along the trace
-    and checks if the opposite layer has a ground or power zone fill.
+    and checks if the reference layer has a ground or power zone fill.
     Flags gaps in the reference plane that could cause return path
     discontinuities and EMI issues.
 
-    Uses :class:`CopperPresence` for radius-based copper detection that
-    credits zone fills, tracks, and pads — avoids false negatives from
-    KiCad zone-fill clearance channels ("swiss cheese" polygons).
+    Only ground or power-rail zone fills count as the reference: the return
+    current of a microstrip flows in the nearest plane, and a power plane
+    serves when it is decoupled to ground (Ott, EMC Engineering ch. 16).
+    Other nets' fills, tracks and pads are not a reference plane. A fill
+    within radius_mm of the sample counts, so KiCad's clearance channels
+    ("swiss cheese" fill polygons) are not gaps.
 
     Args:
         tracks: Track data dict with segments
@@ -376,8 +380,9 @@ def analyze_return_path_continuity(tracks, net_names, zones, zone_fills,
         zones: Zone list (for zone metadata)
         zone_fills: ZoneFills spatial index
         signal_nets: Optional set of net names to check (default: all non-power)
-        ref_layer_map: Layer → opposite reference layer mapping
-        footprints: Footprint list (for pad copper credit)
+        ref_layer_map: Layer → opposite reference layer mapping (used when
+            no stackup is given)
+        footprints: Accepted for callers; pads are not a reference plane.
         radius_mm: Radius (mm) for copper-presence search (default 0.5)
         debug_samples: If a list is passed, per-sample dicts are appended
             with keys {net, x, y, layer, hit} for GP-001 diagnostics.
@@ -395,6 +400,9 @@ def analyze_return_path_continuity(tracks, net_names, zones, zone_fills,
             `_copper_order_from_stackup`) used to test via layer span
             (KH-397). Missing data falls back to the through-via
             assumption (never reduces credit).
+        stackup: Board stackup (the file's or the inferred one). When given,
+            each layer's reference is the nearest layer carrying ground or
+            power zone copper (`_build_reference_layer_map`).
 
     Returns:
         List of gap findings: [{net, layer, gap_start_mm, gap_length_mm, ...}]
@@ -403,9 +411,15 @@ def analyze_return_path_continuity(tracks, net_names, zones, zone_fills,
     if not zone_fills.has_data:
         return []
 
-    cp = CopperPresence(zone_fills, tracks.get('segments', []), footprints)
-
     from kicad_core.netnames import is_power_net_name, is_ground_name
+
+    cp = CopperPresence(zone_fills, None, None)
+    ref_idxs = {i for i, z in enumerate(zones)
+                if (name := z.get("net_name") or "")
+                and (is_ground_name(name)
+                     or (name not in pin_signals and is_power_net_name(name, power_rails)))}
+    if stackup is not None:
+        ref_layer_map = _build_reference_layer_map(stackup, zone_fills.fill_layers(ref_idxs))
 
     findings = []
     # Only check signal nets (not power/ground — they ARE the reference)
@@ -480,9 +494,8 @@ def analyze_return_path_continuity(tracks, net_names, zones, zone_fills,
                 py = y1 + t * dy
                 total_samples += 1
 
-                # Check for ANY copper (zone, track, pad) on opposite layer
-                hit = cp.has_coverage_near(px, py, opp_layer,
-                                           radius_mm=radius_mm)
+                hit = cp.has_coverage_near(px, py, opp_layer, radius_mm=radius_mm,
+                                           zone_idxs=ref_idxs, fills_only=True)
                 antipad_credit = False
                 if not hit and _in_via_antipad(px, py, opp_layer):
                     hit = True  # expected void — via's own antipad (KH-392)
@@ -529,12 +542,18 @@ def _safe_num(val, default=0):
         return default
 
 
-def _build_reference_layer_map(stackup: list[dict]) -> dict[str, str]:
+def _build_reference_layer_map(stackup: list[dict],
+                               ref_layers: set[str] | None = None) -> dict[str, str]:
     """Map each copper layer to its adjacent reference plane copper layer.
 
     Walks the stackup in order and for each copper layer, finds the nearest
     other copper layer (above or below, preferring the one separated by
     thinner dielectric). Returns a mapping like {"F.Cu": "In1.Cu", "In1.Cu": "F.Cu", ...}.
+
+    With ref_layers (the layers carrying ground or power zone copper), the
+    reference is the nearest other layer in that set, at any distance; a
+    layer with none of it is never a reference plane. A layer with no such
+    layer elsewhere keeps its adjacent layer.
 
     Falls back to simple F.Cu<->B.Cu when no stackup is available.
     """
@@ -550,34 +569,30 @@ def _build_reference_layer_map(stackup: list[dict]) -> dict[str, str]:
     if len(copper_layers) < 2:
         return {"F.Cu": "B.Cu", "B.Cu": "F.Cu"}
 
+    def dielectric_between(a: int, b: int) -> float:
+        thickness = 0.0
+        for k in range(min(a, b) + 1, max(a, b)):
+            if stackup[k].get("type") in ("core", "prepreg"):
+                t = stackup[k].get("thickness")
+                if t is not None:
+                    try:
+                        thickness += float(t)
+                    except (ValueError, TypeError):
+                        thickness += 0.2
+        return thickness
+
     ref_map: dict[str, str] = {}
     for ci, (idx, name) in enumerate(copper_layers):
-        # Find dielectric thickness to adjacent copper layers above and below
-        best_neighbor = None
-        best_thickness = float("inf")
-
-        for direction, neighbor_ci in [(-1, ci - 1), (1, ci + 1)]:
-            if neighbor_ci < 0 or neighbor_ci >= len(copper_layers):
-                continue
-            n_idx, n_name = copper_layers[neighbor_ci]
-            # Sum dielectric thickness between this layer and the neighbor
-            lo = min(idx, n_idx)
-            hi = max(idx, n_idx)
-            thickness = 0.0
-            for k in range(lo + 1, hi):
-                if stackup[k].get("type") in ("core", "prepreg"):
-                    t = stackup[k].get("thickness")
-                    if t is not None:
-                        try:
-                            thickness += float(t)
-                        except (ValueError, TypeError):
-                            thickness += 0.2
-            if thickness < best_thickness:
-                best_thickness = thickness
-                best_neighbor = n_name
-
-        if best_neighbor:
-            ref_map[name] = best_neighbor
+        adjacent = [n for n in (ci - 1, ci + 1) if 0 <= n < len(copper_layers)]
+        candidates = adjacent
+        if ref_layers is not None:
+            candidates = [n for n in range(len(copper_layers))
+                          if n != ci and copper_layers[n][1] in ref_layers] or adjacent
+        # Thinnest dielectric, then fewest layers away, then the layer above.
+        best = min(candidates, key=lambda n: (dielectric_between(idx, copper_layers[n][0]),
+                                              abs(n - ci), n > ci))
+        if copper_layers[best][1]:
+            ref_map[name] = copper_layers[best][1]
 
     return ref_map
 

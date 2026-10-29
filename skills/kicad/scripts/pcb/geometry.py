@@ -430,6 +430,11 @@ class ZoneFills:
         """True if any filled polygon data was loaded."""
         return len(self._fills) > 0
 
+    def fill_layers(self, zone_idxs) -> set[str]:
+        """Layers on which any of zone_idxs has filled copper."""
+        return {layer for _fid, zone_idx, layer, _coords, _bbox in self._fills
+                if zone_idx in zone_idxs}
+
     def zones_at_point(self, x: float, y: float, layer: str,
                        zones: list[dict]) -> list[dict]:
         """Return zone dicts that have filled copper at (x, y) on layer."""
@@ -464,10 +469,12 @@ class ZoneFills:
             results.append((fill_id, zone_idx))
         return results
 
-    def has_copper_at(self, x: float, y: float, layer: str) -> bool:
-        """Check if any zone has filled copper at (x, y) on layer."""
+    def has_copper_at(self, x: float, y: float, layer: str, zone_idxs=None) -> bool:
+        """Check if any zone (of zone_idxs, when given) has filled copper at (x, y) on layer."""
         for _fill_id, _zone_idx, fill_layer, coords, bbox in self._fills:
             if fill_layer != layer:
+                continue
+            if zone_idxs is not None and _zone_idx not in zone_idxs:
                 continue
             if x < bbox[0] or x > bbox[2] or y < bbox[1] or y > bbox[3]:
                 continue
@@ -620,23 +627,27 @@ class CopperPresence:
 
     # EQ-099: Perimeter sample at (x + r·cos(iπ/4), y + r·sin(iπ/4)) for i=0..7
     # Source: Self-evident — 8-point circle sampling at 45° intervals.
-    def has_coverage_near(self, x, y, layer, *, radius_mm=0.5):
+    def has_coverage_near(self, x, y, layer, *, radius_mm=0.5, zone_idxs=None,
+                          fills_only=False):
         """True if any copper on *layer* is within *radius_mm* of (x, y).
 
         Checks zone fills (center + 8-point perimeter), tracks, and pads.
+        zone_idxs limits the fills to those zones; fills_only skips tracks and pads.
         """
         zf = self.zone_fills
         if zf is not None and zf.has_data:
             # Center point -- fast path
-            if zf.has_copper_at(x, y, layer):
+            if zf.has_copper_at(x, y, layer, zone_idxs):
                 return True
             # 8-point perimeter at radius_mm
             for i in range(8):
                 ang = i * math.pi / 4.0
                 px = x + radius_mm * math.cos(ang)
                 py = y + radius_mm * math.sin(ang)
-                if zf.has_copper_at(px, py, layer):
+                if zf.has_copper_at(px, py, layer, zone_idxs):
                     return True
+        if fills_only:
+            return False
 
         # Track segments on this layer within radius
         for seg in self._tracks_by_layer.get(layer, []):
