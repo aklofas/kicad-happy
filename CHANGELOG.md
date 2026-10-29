@@ -143,6 +143,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Thermal-pad via counts include only vias on the pad's net inside the pad's real outline, with exposure judged on the pad's open side; via-in-pad checks a footprint's signal pads even when it has a thermal pad (kc/R9-F2, kc/R9-F6, KH-710).
 - The `--full` copper graph joins pads that share a reference and number only when their copper touches or the footprint marks them as jumpers (`duplicate_pad_numbers_are_jumpers`, `jumper_pad_groups`), and joins overlapping pads of different footprints, as KiCad does; a repeated pad is listed as `REF:N#k` in `connectivity_graph` (kc/R9-F1).
 - EMC holds USB pairs to the full-speed skew budget unless the part is known to be high-speed (a USB 3 part's D+/D- pair is held to the high-speed budget, its SuperSpeed TX/RX lanes to the USB 3 one), and the IO-001 fallback and the test plan read the PCB's connector pad nets and every net an ESD array protects (fuses, reverse-polarity diodes and DNP parts do not count as I/O protection) (sk/R1-F6, sk/R1-F3).
+- PDN impedance adds capacitor and regulator branches as complex impedances, so anti-resonance peaks are no longer understated (EMC PD-001/PD-004 and the schematic `pdn_impedance` now agree on the combination); trace inductance uses the free-space phase velocity (sk/R1-F1, R1-F8, R1-F2, kc/R4-F3).
 
 ---
 

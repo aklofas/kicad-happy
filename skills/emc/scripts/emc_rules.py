@@ -3799,6 +3799,7 @@ def check_pdn_distributed(pcb: Optional[Dict],
 
         upstream_v = node['voltage']
         total_reflected = 0.0
+        worst_i = 0.0
         worst_freq = 0
         worst_downstream_ref = ''
 
@@ -3815,7 +3816,8 @@ def check_pdn_distributed(pcb: Optional[Dict],
             i_trans, f_sw = cross_rail_transient_current(ds_node, upstream_v)
             if i_trans > 0 and f_sw > 0:
                 total_reflected += i_trans
-                if i_trans > total_reflected - i_trans:  # this one is the worst
+                if i_trans > worst_i:
+                    worst_i = i_trans
                     worst_freq = f_sw
                     worst_downstream_ref = ds_ref
 

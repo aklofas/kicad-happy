@@ -28,6 +28,10 @@ from kicad_core.parts import (
     MLCC_ESL,
     MLCC_ESR,
 )
+from kicad_core.pdn import (
+    cap_branch_z,
+    parallel_impedance,
+)
 
 
 def analyze_pdn_impedance(ctx: AnalysisContext, signal_analysis: dict | None = None) -> dict:
@@ -75,12 +79,6 @@ def analyze_pdn_impedance(ctx: AnalysisContext, signal_analysis: dict | None = N
         if "tht" in fp or "radial" in fp or "axial" in fp:
             return True
         return False
-
-    def _cap_impedance(f: float, c_farads: float, esr: float, esl: float) -> float:
-        # EQ-061: |Z| = √(ESR²+(2πfL-1/(2πfC))²) at given frequency
-        x_c = 1.0 / (2.0 * math.pi * f * c_farads) if c_farads > 0 else 1e12
-        x_l = 2.0 * math.pi * f * esl
-        return math.sqrt(esr ** 2 + (x_l - x_c) ** 2)
 
     # Build power rail -> caps mapping
     rail_caps: dict[str, list[dict]] = {}
@@ -173,16 +171,14 @@ def analyze_pdn_impedance(ctx: AnalysisContext, signal_analysis: dict | None = N
         # Compute combined impedance at each frequency point
         impedance_profile = []
         for f in freq_points:
-            z_parallel_inv = 0.0
-            for cap in caps:
-                z_i = _cap_impedance(f, cap["farads"], cap["esr_ohm"], cap["esl_nH"] * 1e-9)
-                if z_i > 0:
-                    z_parallel_inv += 1.0 / z_i
-            z_total = 1.0 / z_parallel_inv if z_parallel_inv > 0 else 1e12
+            # EQ-061: Z = ESR + j(2πfL - 1/(2πfC)) per cap, branches in parallel
+            branches = [cap_branch_z(f, cap["farads"], cap["esr_ohm"], cap["esl_nH"] * 1e-9)
+                        for cap in caps]
             if vrm_r_out is not None:
-                # VRM output impedance: flat R_out below BW, rising at +20dB/decade above
-                z_vrm = vrm_r_out * max(1.0, f / vrm_bw)
-                z_total = 1.0 / (1.0 / z_total + 1.0 / z_vrm) if z_total < 1e12 else z_vrm
+                # VRM output impedance: R_out, inductive above its bandwidth (+20 dB/decade)
+                branches.append(complex(vrm_r_out, vrm_r_out * f / vrm_bw))
+            z = parallel_impedance(branches)
+            z_total = abs(z) if z is not None else 1e12
             impedance_profile.append({
                 "freq_hz": round(f),
                 "freq_formatted": _format_frequency(f),
