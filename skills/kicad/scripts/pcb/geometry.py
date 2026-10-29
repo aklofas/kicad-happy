@@ -804,8 +804,8 @@ def _chain_segments(segs: list, tol: float = 0.02) -> list | None:
     closure) or None when any chain fails to close within tolerance —
     callers then keep the AABB-only behavior.
     """
-    def _close(p, q):
-        return abs(p[0] - q[0]) <= tol and abs(p[1] - q[1]) <= tol
+    def _close(p, q):  # Euclidean, as KiCad's close_enough (convert_shape_list_to_polygon.cpp)
+        return math.hypot(p[0] - q[0], p[1] - q[1]) <= tol
 
     remaining = [s for s in segs if not _close(s[0], s[1])]
     polys = []

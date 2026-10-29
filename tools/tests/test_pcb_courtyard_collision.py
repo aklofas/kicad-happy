@@ -154,6 +154,15 @@ class TestOpenCourtyard(unittest.TestCase):
         self.assertEqual(st.diagnostics, [])
         self.assertEqual(len(st.footprints[0]["courtyard_poly"]), 1)
 
+    def test_diagonal_gap_past_chaining_epsilon_stays_open(self):
+        # 0.015 mm on each axis is 0.0212 mm apart, past KiCad's 0.02 mm (Euclidean);
+        # kicad-cli 10.0.7: malformed_courtyard "not a closed shape"
+        sq = _lines((0, 0), (2, 0), (2, 2), (0, 2)).replace("(start 0 2)", "(start 0.015 2.015)")
+        st = _read(_fp("U1", sq))
+        self.assertNotIn("courtyard_poly", st.footprints[0])
+        self.assertEqual([d["message"] for d in st.diagnostics],
+                         ["U1: courtyard outline is not closed"])
+
 
 if __name__ == "__main__":
     unittest.main()
