@@ -6,6 +6,7 @@ import math
 
 def cap_branch_z(f_hz: float, c_f: float, esr_ohm: float, esl_h: float) -> complex:
     """Series RLC impedance of a capacitor: ESR + j(ωL − 1/ωC)."""
+    # EQ-013: Z = ESR + j(ωL - 1/ωC) (series RLC impedance)
     omega = 2 * math.pi * f_hz
     return complex(esr_ohm, omega * esl_h - 1.0 / (omega * c_f))
 

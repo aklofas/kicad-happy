@@ -3376,6 +3376,70 @@ def _fmt_cap(farads: float) -> str:
     return s + unit
 
 
+# Thinnest dielectric that still makes a rail's zone and a ground zone a plane pair.
+_PLANE_PAIR_MAX_DIELECTRIC_MM = 0.3
+
+
+def _zone_layer_area_mm2(zone: Dict, layer: str) -> float:
+    """Filled copper of *zone* on *layer* (0 without fill data for that layer)."""
+    per_layer = zone.get('filled_layers')
+    if isinstance(per_layer, dict):
+        return per_layer.get(layer) or 0.0
+    if zone.get('layers') == [layer]:
+        return zone.get('filled_area_mm2') or 0.0
+    return 0.0
+
+
+def _rail_plane_cap_f(pcb: Optional[Dict], rail: str) -> float:
+    """Interplane capacitance of *rail*'s own zone copper facing a ground zone.
+
+    Takes the tightest adjacent copper pair (dielectric under 0.3 mm) where the
+    rail fills one layer and a ground net fills the other, and sizes the
+    capacitance by the overlap bound min(rail fill, ground fill) on that pair.
+    0 when the rail has no such plane.
+    """
+    if not pcb or not rail:
+        return 0.0
+    stackup = (pcb.get('setup') or {}).get('stackup') or []
+    copper = [i for i, layer in enumerate(stackup)
+              if isinstance(layer, dict) and layer.get('type') == 'copper']
+    rail_area: Dict[str, float] = {}
+    gnd_area: Dict[str, float] = {}
+    for zone in pcb.get('zones') or []:
+        if not isinstance(zone, dict) or zone.get('is_keepout'):
+            continue
+        net = zone.get('net_name') or ''
+        if net == rail:
+            target = rail_area
+        elif is_ground_name(net):
+            target = gnd_area
+        else:
+            continue
+        for layer in zone.get('layers') or []:
+            target[layer] = target.get(layer, 0.0) + _zone_layer_area_mm2(zone, layer)
+    best = None
+    for a, b in zip(copper, copper[1:]):
+        d_mm, er = 0.0, 4.4
+        for layer in stackup[a + 1:b]:
+            try:
+                d_mm += float(layer.get('thickness') or 0)
+                if layer.get('epsilon_r'):
+                    er = float(layer['epsilon_r'])
+            except (ValueError, TypeError, AttributeError):
+                pass
+        if not 0 < d_mm < _PLANE_PAIR_MAX_DIELECTRIC_MM:
+            continue
+        la, lb = stackup[a].get('name'), stackup[b].get('name')
+        overlap = max(min(rail_area.get(la, 0.0), gnd_area.get(lb, 0.0)),
+                      min(rail_area.get(lb, 0.0), gnd_area.get(la, 0.0)))
+        if overlap > 0 and (best is None or d_mm < best[0]):
+            best = (d_mm, er, overlap)
+    if best is None:
+        return 0.0
+    d_mm, er, area_mm2 = best
+    return interplane_capacitance_pf_per_cm2(d_mm, er) * (area_mm2 / 100.0) * 1e-12
+
+
 def check_pdn_impedance(pcb: Optional[Dict],
                         schematic: Optional[Dict],
                         spice_backend=None,
@@ -3405,41 +3469,6 @@ def check_pdn_impedance(pcb: Optional[Dict],
     if not regulators:
         return findings
 
-    # Get interplane capacitance from PCB stackup
-    plane_cap_f = 0
-    if pcb:
-        setup = pcb.get('setup', {})
-        stackup = setup.get('stackup', [])
-        # Find tightest power/ground plane pair
-        for i in range(len(stackup) - 1):
-            l1 = stackup[i]
-            l2 = stackup[i + 1] if i + 1 < len(stackup) else {}
-            # Look for adjacent copper layers (potential plane pair)
-            if l1.get('type') == 'copper' and l2.get('type') != 'copper':
-                # Check the next copper layer after this dielectric
-                for j in range(i + 2, len(stackup)):
-                    if stackup[j].get('type') == 'copper':
-                        d_mm = 0
-                        er = 4.4
-                        for k in range(i + 1, j):
-                            if stackup[k].get('type') != 'copper':
-                                try:
-                                    d_mm += float(stackup[k].get('thickness', 0))
-                                    er_val = stackup[k].get('epsilon_r')
-                                    if er_val:
-                                        er = float(er_val)
-                                except (ValueError, TypeError):
-                                    pass
-                        if d_mm > 0 and d_mm < 0.3:
-                            # Estimate board area from stats
-                            stats = pcb.get('statistics', {})
-                            w = (stats.get('board_width_mm') or 50)
-                            h = (stats.get('board_height_mm') or 50)
-                            area_cm2 = (w * h) / 100
-                            c_pf_per_cm2 = interplane_capacitance_pf_per_cm2(d_mm, er)
-                            plane_cap_f = c_pf_per_cm2 * area_cm2 * 1e-12  # Convert pF to F
-                        break
-
     for reg in regulators:
         ref = reg.get('ref', reg.get('reference', ''))
         val = reg.get('value', '')
@@ -3449,6 +3478,8 @@ def check_pdn_impedance(pcb: Optional[Dict],
 
         if not output_caps or not vout:
             continue
+
+        plane_cap_f = _rail_plane_cap_f(pcb, output_rail)
 
         # Build cap models for PDN sweep
         cap_models = []
@@ -3676,32 +3707,6 @@ def check_pdn_distributed(pcb: Optional[Dict],
     if pcb:
         enrich_power_tree_with_pcb(tree, pcb)
 
-    # Interplane capacitance (reuse same logic as check_pdn_impedance)
-    plane_cap_f = 0
-    if pcb:
-        setup = pcb.get('setup', {})
-        stackup = setup.get('stackup', [])
-        if stackup:
-            stats = pcb.get('statistics', {})
-            w = stats.get('board_width_mm', 0)
-            h = stats.get('board_height_mm', 0)
-            board_area_cm2 = (w * h) / 100.0 if w and h else 0
-            # Find tightest power/ground plane pair
-            for i in range(len(stackup) - 1):
-                layer = stackup[i]
-                if not isinstance(layer, dict):
-                    continue
-                if layer.get('type') not in ('core', 'prepreg'):
-                    continue
-                try:
-                    d_mm = float(layer.get('thickness', 0))
-                    er = float(layer.get('epsilon_r', 4.4))
-                except (ValueError, TypeError):
-                    continue
-                if 0 < d_mm < 0.3 and board_area_cm2 > 0:
-                    cpf = interplane_capacitance_pf_per_cm2(d_mm, er)
-                    plane_cap_f = max(plane_cap_f, cpf * board_area_cm2 * 1e-12)
-
     # --- PD-003: Distributed rail impedance at IC load point ---
     for rail_name, node in tree.items():
         if not node.get('load_ics'):
@@ -3728,7 +3733,7 @@ def check_pdn_distributed(pcb: Optional[Dict],
 
         # Run distributed sweep
         sweep_result = distributed_pdn_impedance_sweep(
-            node, plane_cap_f=plane_cap_f)
+            node, plane_cap_f=_rail_plane_cap_f(pcb, rail_name))
 
         ic_sweep = sweep_result.get('sweep_at_worst_ic', [])
         worst_ic = sweep_result.get('worst_ic_ref', '')

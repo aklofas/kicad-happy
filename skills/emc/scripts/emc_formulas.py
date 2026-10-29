@@ -574,22 +574,6 @@ def round_to_e12(value: float) -> float:
     return snapped
 
 
-def cap_impedance_at_freq(freq_hz: float, capacitance_f: float,
-                          esr_ohm: float, esl_h: float) -> float:
-    """Impedance magnitude of a capacitor (series RLC model) at frequency.
-
-    |Z| = √(ESR² + (2πfL - 1/(2πfC))²)
-    """
-    if freq_hz <= 0:
-        return float('inf')
-    omega = 2 * math.pi * freq_hz
-    x_l = omega * esl_h
-    x_c = 1.0 / (omega * capacitance_f) if capacitance_f > 0 else float('inf')
-    x_net = x_l - x_c
-    # EQ-013: |Z| = √(ESR² + (ωL - 1/ωC)²) (series RLC impedance)
-    return math.sqrt(esr_ohm**2 + x_net**2)
-
-
 # ---------------------------------------------------------------------------
 # ESR/ESL lookup by package size (typical MLCC values)
 # ---------------------------------------------------------------------------
@@ -640,7 +624,7 @@ def parallel_cap_impedance_complex(freq_hz: float, caps: List[Dict]):
     if freq_hz <= 0 or not caps:
         return None
     return parallel_impedance([
-        cap_branch_z(freq_hz, cap['farads'], cap.get('esr_ohm', 0.1), cap.get('esl_h', 1e-9))
+        cap_branch_z(freq_hz, cap['farads'], cap.get('esr_ohm') or 0.1, cap.get('esl_h', 1e-9))
         for cap in caps if cap.get('farads', 0) > 0])
 
 
