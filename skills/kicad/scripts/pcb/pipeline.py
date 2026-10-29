@@ -354,7 +354,7 @@ def run_facts(board: BoardData, *, include_trace_segments: bool, return_path_rad
     groups = extract_groups(root)
 
     # Net classes — try .kicad_pro first (KiCad 6+), fall back to PCB file (KiCad 5)
-    pro = load_kicad_pro(str(path))
+    pro = load_kicad_pro(str(path), exact=True)
     project_settings = {}
     if pro:
         pro_net_classes = extract_pro_net_classes(pro)
@@ -368,7 +368,7 @@ def run_facts(board: BoardData, *, include_trace_segments: bool, return_path_rad
         # independent (and previously unsorted, first-glob-wins) rescan.
         project_settings = {
             'source': os.path.basename(
-                find_project_settings_file(str(path), '.kicad_pro') or ''),
+                find_project_settings_file(str(path), '.kicad_pro', exact=True) or ''),
         }
         if pro_net_classes:
             project_settings['net_classes'] = pro_net_classes

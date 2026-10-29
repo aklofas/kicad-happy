@@ -99,7 +99,7 @@ def load_user_config() -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def find_project_settings_file(file_path: str, ext: str) -> str | None:
+def find_project_settings_file(file_path: str, ext: str, exact: bool = False) -> str | None:
     """Find the ``ext`` file (e.g. ``.kicad_pro``, ``.kicad_dru``) matching
     ``file_path``'s project, in ``file_path``'s directory.
 
@@ -111,6 +111,10 @@ def find_project_settings_file(file_path: str, ext: str) -> str | None:
     stem match, deterministically picks the first (sorted) candidate and
     warns on stderr (a directory with several projects previously took
     whatever the OS listed first).
+
+    With ``exact`` only a file whose stem equals ``file_path``'s stem (ignoring
+    case, as on KiCad's case-insensitive platforms) qualifies: a board opens
+    the project and rules files carrying its own name and no other.
 
     Returns the chosen file's full path, or None if no candidate exists
     or the directory can't be listed.
@@ -126,9 +130,14 @@ def find_project_settings_file(file_path: str, ext: str) -> str | None:
     if not candidates:
         return None
 
-    exact = [f for f in candidates if os.path.splitext(f)[0] == stem]
-    if exact:
-        chosen = exact[0]
+    same_stem = [f for f in candidates if os.path.splitext(f)[0] == stem]
+    if exact and not same_stem:
+        same_stem = [f for f in candidates
+                     if os.path.splitext(f)[0].lower() == stem.lower()]
+    if same_stem:
+        chosen = same_stem[0]
+    elif exact:
+        return None
     elif len(candidates) == 1:
         chosen = candidates[0]
     else:
@@ -143,17 +152,19 @@ def find_project_settings_file(file_path: str, ext: str) -> str | None:
     return os.path.join(parent, chosen)
 
 
-def load_kicad_pro(file_path: str) -> dict | None:
+def load_kicad_pro(file_path: str, *, exact: bool = False) -> dict | None:
     """Load .kicad_pro from the same directory as a .kicad_sch or .kicad_pcb file.
 
     Discovery is stem-matched via `find_project_settings_file` (KH-362) —
     in a multi-project directory, the ``.kicad_pro`` sharing this file's
     stem is preferred over whatever the OS lists first.
+    With ``exact`` (a board: KiCad opens the project named like the board)
+    only the ``.kicad_pro`` with the same stem is read.
     Returns the parsed JSON dict, or None if not found, not valid JSON, or a
     KiCad 5 ``.pro`` file (which uses a different, non-JSON format).
     Tolerates JS-style comments / trailing commas (KH-368-style JSONC).
     """
-    pro_path = find_project_settings_file(file_path, '.kicad_pro')
+    pro_path = find_project_settings_file(file_path, '.kicad_pro', exact)
     if not pro_path:
         return None
     try:
@@ -571,10 +582,10 @@ def load_kicad_dru(file_path: str) -> list[dict] | None:
     Conditions are kept as raw strings — not evaluated.
     Returns None if no ``.kicad_dru`` found.
 
-    Discovery is stem-matched via `find_project_settings_file`, same rule
-    as ``load_kicad_pro`` (KH-362).
+    Only the board reads rules, and KiCad takes the file named like the board,
+    so discovery is exact-stem via `find_project_settings_file`.
     """
-    dru_path = find_project_settings_file(file_path, '.kicad_dru')
+    dru_path = find_project_settings_file(file_path, '.kicad_dru', exact=True)
     if not dru_path:
         return None
 
