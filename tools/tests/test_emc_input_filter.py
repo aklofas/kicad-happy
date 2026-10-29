@@ -38,7 +38,22 @@ class InputFilter(unittest.TestCase):
         parts = [_part("L1", "inductor", 10e-6, ["VIN", "SW"]), FILTER[1]]
         self.assertEqual(_input_lc_filter(_sch(parts), "VIN"), (False, None))
 
-    def test_lc_on_a_signal_net_is_ignored(self):
+    def test_switch_node_named_like_a_rail_is_excluded(self):
+        parts = [_part("L1", "inductor", 10e-6, ["VIN", "+SW"]), FILTER[1]]
+        self.assertTrue(_input_lc_filter(_sch(parts), "VIN")[0])
+        for sw in ("+SW", "VSW"):
+            parts = [_part("L1", "inductor", 10e-6, ["VIN", sw]), FILTER[1]]
+            self.assertEqual(_input_lc_filter(_sch(parts), "VIN", exclude={sw}), (False, None))
+
+    def test_inductor_to_ground_is_not_a_filter(self):
+        parts = [_part("L1", "inductor", 10e-6, ["VIN", "GND"]), FILTER[1]]
+        self.assertEqual(_input_lc_filter(_sch(parts), "VIN"), (False, None))
+
+    def test_caps_only_upstream_of_the_inductor_give_no_filter(self):
+        parts = [FILTER[0], _part("C1", "capacitor", 10e-6, ["VIN_RAW", "GND"])]
+        self.assertEqual(_input_lc_filter(_sch(parts), "VIN"), (False, None))
+
+    def test_lc_signal_net_is_ignored(self):
         parts = [_part("L1", "inductor", 10e-6, ["SIG_A", "SIG_B"]),
                  _part("C1", "capacitor", 10e-6, ["SIG_B", "GND"])]
         self.assertEqual(_input_lc_filter(_sch(parts), "VIN"), (False, None))
@@ -82,6 +97,16 @@ class Findings(unittest.TestCase):
         sch = _sch([_part("L9", "inductor", 10e-6, ["SIG_A", "SIG_B"])])
         sch["findings"] += [{"detector": Det.LC_FILTERS, "inductor": "L9", "resonant_hz": 1e3}]
         self.assertEqual(check_emi_filter_effectiveness(None, sch), [])
+
+    def test_boost_inductor_to_a_power_named_switch_node_gives_no_finding(self):
+        # sw_net-named +SW must not turn the boost inductor into a filter
+        parts = [_part("L1", "inductor", 10e-6, ["VIN", "+SW"]), FILTER[1]]
+        sch = _sch(parts, sw_hz=50e3)
+        sch["findings"][0]["sw_net"] = "+SW"
+        self.assertEqual(check_emi_filter_effectiveness(None, sch), [])
+
+    def test_cutoff_above_the_switching_frequency_is_no_filter(self):
+        self.assertEqual(self._run(FILTER, sw_hz=10e3), [])
 
     def test_unresolved_input_rail_yields_no_finding(self):
         self.assertEqual(self._run(FILTER, rail=""), [])

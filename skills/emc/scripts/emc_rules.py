@@ -2833,12 +2833,13 @@ def check_crosstalk_3h_rule(pcb: Dict,
 _FERRITE_MAX_HENRY = 10e-3
 
 
-def _input_lc_filter(schematic: Dict, input_rail: str) -> tuple:
+def _input_lc_filter(schematic: Dict, input_rail: str, *, exclude=()) -> tuple:
     """(found, lowest fc in Hz) of series-L / shunt-C filters on a regulator input rail.
 
     C_in is every non-DNP capacitor from input_rail to ground; the inductor has
     one pin on input_rail and the other on a different power net, so a boost
-    inductor to the switch node is not a filter. fc = 1 / (2 pi sqrt(L C_in)).
+    inductor to the switch node is not a filter; nets in `exclude` (the regulator's
+    own switch and output nets) are never the far side. fc = 1 / (2 pi sqrt(L C_in)).
     """
     if not input_rail:
         return False, None
@@ -2867,7 +2868,7 @@ def _input_lc_filter(schematic: Dict, input_rail: str) -> tuple:
         if input_rail not in nets or len(other) != 1:
             continue
         far = next(iter(other))
-        if is_ground_name(far) or not is_power_net_name(far):
+        if far in exclude or is_ground_name(far) or not is_power_net_name(far):
             continue
         fc = 1 / (2 * math.pi * math.sqrt(henry * c_in))
         if best is None or fc < best:
@@ -2910,7 +2911,13 @@ def check_emi_filter_effectiveness(pcb: Optional[Dict],
 
         input_rail = reg.get('input_rail', '')
 
-        has_input_filter, filter_fc = _input_lc_filter(schematic, input_rail)
+        has_input_filter, filter_fc = _input_lc_filter(
+            schematic, input_rail,
+            exclude={n for n in (reg.get('sw_net'), reg.get('output_rail')) if n})
+        # A filter whose cutoff is at or above f_sw does not attenuate it; as
+        # before, that is no filter rather than a finding.
+        if has_input_filter and filter_fc >= sw_freq:
+            has_input_filter = False
 
         if not has_input_filter:
             # No input filter detected — INFO only (many designs rely on
