@@ -746,6 +746,15 @@ def _fiducial_severity_from_pitch(min_pad_dim: float | None) -> tuple[str, str]:
     return "info", f" (finest pad dim {min_pad_dim:.2f}mm — coarse pitch only)"
 
 
+def _has_pad_property(fp: dict, prop: str) -> bool:
+    return any(p.get("_property") == prop for p in fp.get("pads", []))
+
+
+def _is_test_point(fp: dict) -> bool:
+    return (fp.get("reference", "").upper().startswith("TP")
+            or _has_pad_property(fp, "pad_prop_testpoint"))
+
+
 def analyze_fiducials(footprints: list[dict]) -> dict:
     """FD-001: Check for assembly fiducial markers."""
     fiducials_by_side: dict[str, list[str]] = {"F.Cu": [], "B.Cu": []}
@@ -760,7 +769,9 @@ def analyze_fiducials(footprints: list[dict]) -> dict:
         layer = fp.get("layer", "F.Cu")
         side = layer if layer in fiducials_by_side else "F.Cu"
 
-        if any(k in lib for k in ("fiducial", "fid_", "fiducial_")):
+        # Local fiducials (pad_prop_fiducial_loc) serve one part, not board alignment
+        if (any(k in lib for k in ("fiducial", "fid_", "fiducial_"))
+                or _has_pad_property(fp, "pad_prop_fiducial_glob")):
             fiducials_by_side[side].append(ref)
 
         # Count SMD components per side
@@ -814,10 +825,13 @@ def analyze_test_point_coverage(footprints: list[dict], net_names: dict) -> dict
     """TE-001: Check test point coverage across nets."""
     tp_nets: set[str] = set()
     for fp in footprints:
-        ref = fp.get("reference", "")
-        if not ref.upper().startswith("TP"):
+        if not _is_test_point(fp):
             continue
+        # A TP footprint tests every pad; elsewhere only the pads marked as test points
+        tp_ref = fp.get("reference", "").upper().startswith("TP")
         for pad in fp.get("pads", []):
+            if not tp_ref and pad.get("_property") != "pad_prop_testpoint":
+                continue
             net = pad.get("net_name", "")
             if net:
                 tp_nets.add(net)
@@ -847,7 +861,7 @@ def analyze_test_point_coverage(footprints: list[dict], net_names: dict) -> dict
         "total_signal_nets": total,
         "nets_with_test_points": covered,
         "coverage_pct": round(pct, 1),
-        "test_point_count": len([fp for fp in footprints if fp.get("reference", "").upper().startswith("TP")]),
+        "test_point_count": len([fp for fp in footprints if _is_test_point(fp)]),
         "detector": "analyze_test_point_coverage",
         "rule_id": "TE-001",
         "category": "testability",

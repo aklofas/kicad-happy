@@ -298,6 +298,22 @@ def _build_net_mapping(footprints: list[dict], tracks: dict, vias: dict,
     return net_names
 
 
+# `attr` tokens that set a footprint attribute bit (allow_* are separate flags)
+_ATTRIBUTE_TOKENS = frozenset(("smd", "through_hole", "virtual", "board_only",
+                               "exclude_from_pos_files", "exclude_from_bom", "dnp"))
+_PAD_PROPERTIES = frozenset(("pad_prop_bga", "pad_prop_fiducial_glob", "pad_prop_fiducial_loc",
+                             "pad_prop_testpoint", "pad_prop_castellated", "pad_prop_heatsink",
+                             "pad_prop_mechanical", "pad_prop_pressfit"))
+
+
+def _file_version(root: list) -> int:
+    """The board's file version; a missing one reads as 20201115 (KiCad's parser)."""
+    try:
+        return int(get_value(root, "version") or 20201115)
+    except ValueError:
+        return 20201115
+
+
 def extract_footprints(root: list, diagnostics: list | None = None) -> list[dict]:
     """Extract all placed footprints with pad details.
 
@@ -305,6 +321,7 @@ def extract_footprints(root: list, diagnostics: list | None = None) -> list[dict
     """
     # EQ-060: x'=x·cosθ-y·sinθ, y'=x·sinθ+y·cosθ (2D rotation)
     footprints = []
+    file_version = _file_version(root)
 
     # KiCad 6+: (footprint ...), KiCad 5: (module ...)
     fp_nodes = find_all(root, "footprint") or find_all(root, "module")
@@ -334,25 +351,24 @@ def extract_footprints(root: list, diagnostics: list | None = None) -> list[dict
         # exact-case lookup of "MPN" / "Mfg Part" only).
         mpn = get_mpn_property(fp) or ""
 
-        # Determine SMD vs through-hole + extended attributes
+        # Technology and flags as KiCad's parser sets them: legacy `virtual` only
+        # excludes from pos/BOM, and a pre-20200826 footprint with no attribute is
+        # through-hole; otherwise no technology token leaves it unspecified.
         attr_node = find_first(fp, "attr")
-        attr_flags: list[str] = []
-        if attr_node and len(attr_node) > 1:
-            attr_flags = [a for a in attr_node[1:] if isinstance(a, str)]
-            attr = attr_flags[0] if attr_flags else "smd"
+        attr_flags = [a for a in attr_node[1:] if isinstance(a, str)] if attr_node else []
+        if "smd" in attr_flags:
+            attr = "smd"
+        elif "through_hole" in attr_flags:
+            attr = "through_hole"
+        elif file_version < 20200826 and not _ATTRIBUTE_TOKENS.intersection(attr_flags):
+            attr = "through_hole"
         else:
-            # Infer from pad types if attr not present (KiCad 5)
-            has_tht = any(p[2] == "thru_hole" for p in find_all(fp, "pad") if len(p) > 2)
-            attr = "through_hole" if has_tht else "smd"
-            # KiCad 5 uses "virtual" for board-only items
-            if attr_node and len(attr_node) > 1 and attr_node[1] == "virtual":
-                attr = "smd"
-                attr_flags = ["virtual"]
+            attr = "unspecified"
 
         is_dnp = "dnp" in attr_flags
-        is_board_only = "board_only" in attr_flags or "virtual" in attr_flags
-        exclude_from_bom = "exclude_from_bom" in attr_flags or is_board_only
-        exclude_from_pos = "exclude_from_pos_files" in attr_flags or is_board_only
+        is_board_only = "board_only" in attr_flags
+        exclude_from_bom = "exclude_from_bom" in attr_flags or "virtual" in attr_flags
+        exclude_from_pos = "exclude_from_pos_files" in attr_flags or "virtual" in attr_flags
 
         # Schematic cross-reference (KiCad 6+)
         sch_path = get_value(fp, "path") or ""
@@ -445,6 +461,12 @@ def extract_footprints(root: list, diagnostics: list | None = None) -> list[dict
 
             if pad_type == "np_thru_hole":
                 pad_info.update(_npth_copper_props(pad, pad_drill))
+
+            # Fabrication property (fiducial, test point, ...); the last token wins
+            prop_node = find_first(pad, "property")
+            prop = prop_node[-1] if prop_node and len(prop_node) > 1 else None
+            if isinstance(prop, str) and prop in _PAD_PROPERTIES:
+                pad_info["_property"] = prop
 
             if pad_net and len(pad_net) >= 3:
                 # KiCad ≤9: (net number "name")
