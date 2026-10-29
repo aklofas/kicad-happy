@@ -78,6 +78,15 @@ class BoardMinimaTest(unittest.TestCase):
         self.assertEqual(v["min_track_width"]["source"], "board_setup")
         self.assertEqual(v["min_track_width"]["required_mm"], 0.25)
 
+    def test_last_trace_width_alone_keeps_the_project_minima(self):
+        # parseSetup reads last_trace_width without setting m_LegacyDesignSettingsLoaded
+        # (pcb_io_kicad_sexpr_parser.cpp), so the project's board settings still load;
+        # kicad-cli 10.0.7: track_width "min width 0.1500 mm; actual 0.1200 mm"
+        text = LEGACY.format(setup="(last_trace_width 0.25)", items=track(0.12))
+        v = by_rule(compliance(text, pro({"min_track_width": 0.15})))
+        self.assertEqual(v["min_track_width"]["source"], "project")
+        self.assertEqual(v["min_track_width"]["required_mm"], 0.15)
+
     def test_micro_vias_held_to_netclass_microvia_diameter(self):
         # tomu-fpga: kicad-cli 10.0.7 via_diameter "min diameter 0.3000 mm; actual 0.2" (the
         # Default net class micro-via diameter); not the 0.5/0.3 through-via minima

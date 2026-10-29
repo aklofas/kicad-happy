@@ -36,9 +36,9 @@ _LEGACY_SETUP_MINIMA = {
     'uvia_min_drill': 'min_microvia_drill',
 }
 # Any of these in (setup ...) sets m_LegacyDesignSettingsLoaded, and board.cpp then does not
-# load the project's board settings at all.
+# load the project's board settings at all. parseSetup reads last_trace_width without setting it.
 _LEGACY_SETUP_TOKENS = frozenset((
-    'last_trace_width', 'user_trace_width', 'trace_clearance', 'zone_clearance', 'zone_45_only',
+    'user_trace_width', 'trace_clearance', 'zone_clearance', 'zone_45_only',
     'clearance_min', 'trace_min', 'via_size', 'via_drill', 'via_min_annulus', 'via_min_size',
     'through_hole_min', 'via_min_drill', 'hole_to_hole_min', 'user_via', 'uvia_size', 'uvia_drill',
     'uvias_allowed', 'blind_buried_vias_allowed', 'uvia_min_size', 'uvia_min_drill',
@@ -74,11 +74,10 @@ def effective_board_minima(root: list, pro: dict | None) -> dict[str, tuple[floa
     (drc_engine.cpp). A class read from .kicad_pro without the key has none."""
     out = {k: (v, 'kicad_default') for k, v in _KICAD_DEFAULT_MINIMA.items()}
     setup = find_first(root, 'setup') or []
-    legacy = False
+    legacy = has_legacy_design_settings(root)
     for item in setup[1:]:
-        if not (isinstance(item, list) and item and item[0] in _LEGACY_SETUP_TOKENS):
+        if not (isinstance(item, list) and item):
             continue
-        legacy = True
         key = _LEGACY_SETUP_MINIMA.get(item[0])
         value = _as_mm(item[1]) if key and len(item) > 1 else None
         if value is not None:
