@@ -29,7 +29,9 @@ PARTS = [_comp("U1", "ic", "XC7A35T"), _comp("U2", "ic", "STM32F103C8Tx"),
          _comp("U7", "ic", "AD5697R"), _comp("U8", "ic", "AMS1117-3.3"),
          _comp("C1", "capacitor", "100n"), _comp("C2", "capacitor", "10u"),
          _comp("R1", "resistor", "1k"), _comp("R2", "resistor", "1k"),
-         _comp("L1", "inductor", "10n"), _comp("FB1", "ferrite_bead", "600R")]
+         _comp("L1", "inductor", "10n"), _comp("FB1", "ferrite_bead", "600R"),
+         _comp("U9", "ic", "IR2104"), _comp("U10", "ic", "DPBW03F-05"),
+         _comp("U11", "ic", "LTSR25-NP"), _comp("U12", "ic", "OPA2134")]
 
 
 def _signal_pin(net_pin_name):
@@ -51,7 +53,8 @@ class KeywordTokens(unittest.TestCase):
         self.assertEqual({n: got[n] for n in names}, {n: "interrupt" for n in names})
 
     def test_glued_keywords_keep_their_class(self):
-        want = {"TXD": "data", "CLKOUT": "clock", "CANH": "high_speed", "USBP": "high_speed"}
+        want = {"TXD": "data", "CLKOUT": "clock", "CANH": "high_speed", "USBP": "high_speed",
+                "SSTXP1": "data", "HOST_SSRXP": "data", "MGTPTXP0_213": "data", "CMC_TRXP": "data"}
         got = _classes(PARTS, {n: _signal_pin("PA2") for n in want})
         self.assertEqual({n: got[n] for n in want}, want)
 
@@ -85,6 +88,28 @@ class PowerInputNets(unittest.TestCase):
     def test_module_3v3_pin_is_a_supply_input(self):
         pins = [("U5", "36", "3V3", "power_in"), ("C1", "1", "~", "passive")]
         self.assertEqual(_classes(PARTS, {"NODE_C": pins})["NODE_C"], "power")
+
+    def test_ground_reference_and_input_returns_are_not_promoted(self):
+        nets = {"NODE_E": [("U11", "3", "0V", "power_in")],
+                "NODE_F": [("U10", "2", "VIN-", "power_in")],
+                "NODE_G": [("U10", "2", "-VIN", "power_in")],
+                "NODE_H": [("U10", "2", "VIN_N", "power_in")]}
+        got = _classes(PARTS, nets)
+        self.assertEqual({n: got[n] for n in nets}, {n: "signal" for n in nets})
+
+    def test_high_side_driver_vs_is_a_switch_node(self):
+        nets = {"Z_OUT": [("U9", "6", "VS", "power_in"), ("L1", "1", "~", "passive")],
+                "NODE_VB": [("U9", "8", "VB", "power_in"), ("C1", "1", "~", "passive")],
+                "NODE_VS": [("U12", "8", "VS", "power_in"), ("C2", "1", "~", "passive")]}
+        got = _classes(PARTS, nets)
+        # VS beside a VB pin is the half-bridge midpoint; an opamp's VS is its supply
+        self.assertEqual((got["Z_OUT"], got["NODE_VS"]), ("signal", "power"))
+
+    def test_excluded_pin_names_are_not_supply_inputs(self):
+        nets = {"NODE_D": [("U2", "8", "V_{SS}", "power_in")],
+                "MCU_REF": [("U2", "21", "VDDA/VREF+", "power_in"), ("C1", "1", "~", "passive")]}
+        got = _classes(PARTS, nets)
+        self.assertEqual((got["NODE_D"], got["MCU_REF"]), ("signal", "signal"))
 
     def test_switch_node_is_not_promoted(self):
         pins = [("U3", "40", "VLXSMPS", "power_in"), ("L1", "1", "~", "passive")]

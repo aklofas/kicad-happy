@@ -187,7 +187,8 @@ def analyze_connectivity(components: list[dict], nets: dict, no_connects: list[d
 # Net-class keywords, checked in order; the first class with a hit wins.
 _NET_CLASS_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("clock", ("SCL", "SCK", "CLK", "MCLK", "SCLK", "XTAL", "OSC")),
-    ("data", ("SDA", "MOSI", "MISO", "SDI", "SDO", "UART", "TXD", "RXD", "TX", "RX")),
+    ("data", ("SDA", "MOSI", "MISO", "SDI", "SDO", "UART", "TXD", "RXD",
+              "TXP", "TXN", "TXM", "RXP", "RXN", "RXM", "TX", "RX")),
     ("high_speed", ("USB", "CAN", "LVDS", "ETH")),
     ("analog", ("ADC", "AIN", "VREF", "VSENSE", "ISENSE")),
     ("control", ("RESET", "NRST", "RST", "EN", "ENABLE")),
@@ -208,6 +209,8 @@ _SUPPLY_PIN_NAMES = frozenset({
 # Pins typed power_in that are not supply inputs: grounds, switch nodes, regulator caps, references
 _NOT_SUPPLY_PIN_NAMES = frozenset({"GND", "VSS", "L", "LX", "SW", "AREF"})
 _NOT_SUPPLY_PIN_PREFIXES = ("GND", "VSS", "VLX", "VCAP", "VREF")
+# The return of an isolated module's input (VIN-, -VIN, VIN_N)
+_SUPPLY_RETURN_PIN = re.compile(r'-VIN\d*|VIN\d*-|VIN\d*_N')
 
 
 def _name_tokens(name: str) -> list[str]:
@@ -226,7 +229,7 @@ def _name_tokens(name: str) -> list[str]:
     return tokens
 
 
-def _keyword_hit(tokens: list[str], keywords) -> bool:
+def _keyword_hit(tokens: list[str], keywords: tuple[str, ...]) -> bool:
     """A keyword of three or more letters hits anywhere in a token; a two-letter one (TX, EN,
     CS) only as the whole token, its start or its end, also before an active-low B/N (ROMCSB).
     A supply-stem token hits only as that rail's enable (VCCOEN)."""
@@ -258,21 +261,37 @@ def _keyword_class(net_name: str) -> str:
 def _is_supply_pin_name(pin_name: str) -> bool:
     tokens = _name_tokens(pin_name or "")
     compact = "".join(tokens)
-    if not tokens or compact.startswith(_NOT_SUPPLY_PIN_PREFIXES) or any(
+    # "0V" is a ground reference
+    if not tokens or compact == "0V" or compact.startswith(_NOT_SUPPLY_PIN_PREFIXES) or any(
             t in _NOT_SUPPLY_PIN_NAMES or t.startswith(_NOT_SUPPLY_PIN_PREFIXES) for t in tokens):
+        return False
+    if _SUPPLY_RETURN_PIN.fullmatch(re.sub(r'\s+', '', unescape_string(pin_name).upper())):
         return False
     # "3V3" and "V+" tokenise to a bare "V"
     return any("VCC" in t or "VDD" in t or t in _SUPPLY_PIN_NAMES for t in tokens)
 
 
-def _is_ic_supply_input_net(net_info: dict, comp_lookup: dict) -> bool:
+def _has_bootstrap_pin(ref: str, ref_pins: dict) -> bool:
+    """True when IC *ref* has a VB pin: its VS is a high-side driver's switch node."""
+    for num, (_net, info) in ref_pins.get(ref, {}).items():
+        for p in info.get("pins", []):
+            if (p.get("component") == ref and p.get("pin_number") == num
+                    and "".join(_name_tokens(p.get("pin_name") or "")) == "VB"):
+                return True
+    return False
+
+
+def _is_ic_supply_input_net(net_info: dict, comp_lookup: dict, ref_pins: dict) -> bool:
     """True when the net has IC pins and every non-passive one is a power_in supply input."""
     ic_pins = [p for p in net_info.get("pins", [])
                if (comp_lookup.get(p.get("component")) or {}).get("type") == "ic"
                and str(p.get("pin_type") or "").split("+")[0] != "passive"]
     return bool(ic_pins) and all(
         str(p.get("pin_type") or "").split("+")[0] == "power_in"
-        and _is_supply_pin_name(p.get("pin_name", "")) for p in ic_pins)
+        and _is_supply_pin_name(p.get("pin_name", ""))
+        and not ("".join(_name_tokens(p.get("pin_name") or "")) == "VS"
+                 and _has_bootstrap_pin(p.get("component"), ref_pins))
+        for p in ic_pins)
 
 
 def _classify_nets(ctx: AnalysisContext) -> dict:
@@ -299,7 +318,7 @@ def _classify_nets(ctx: AnalysisContext) -> dict:
             net_classes[net_name] = "power"
         else:
             cls = _keyword_class(net_name)
-            if cls == "signal" and _is_ic_supply_input_net(net_info, ctx.comp_lookup):
+            if cls == "signal" and _is_ic_supply_input_net(net_info, ctx.comp_lookup, ctx.ref_pins):
                 cls = "power"
             net_classes[net_name] = cls
 
