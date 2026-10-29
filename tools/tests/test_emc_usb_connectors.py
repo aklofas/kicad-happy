@@ -93,6 +93,21 @@ class UsbSpeed(unittest.TestCase):
         self.assertIn("limit of 5 ps by 575%", fs[0]["description"])
         self.assertIn("USB3", fs[0]["summary"])
 
+    def test_superspeed_part_tx_rx_pairs_need_usb_in_their_own_name(self):
+        # A sheet path typed these pairs USB; their leaf names are Ethernet / RS-485 lanes, so
+        # they keep the HS 25 ps of a USB pair. USB3_TX1± names a SuperSpeed lane: 5 ps.
+        cases = (("/USB_ETH/ETH_TX_P", "/USB_ETH/ETH_TX_N", "limit of 25 ps by 35%", "USB-HS"),
+                 ("/USB_RS485/TX+", "/USB_RS485/TX-", "limit of 25 ps by 35%", "USB-HS"),
+                 ("USB3_TX1+", "USB3_TX1-", "limit of 5 ps by 575%", "USB3"))
+        for pos, neg, text, label in cases:
+            with tempfile.TemporaryDirectory() as tmp:
+                _write_extraction(tmp, "SS")
+                fs = check_diff_pair_skew(_pcb_pair(pos, neg), _pair_schematic(tmp, pos, neg))
+            self.assertEqual(len(fs), 1, pos)
+            self.assertEqual(fs[0]["severity"], "error", pos)
+            self.assertIn(text, fs[0]["description"], pos)
+            self.assertIn(label, fs[0]["summary"], pos)
+
     def test_untrusted_high_speed_extraction_is_not_used(self):
         with tempfile.TemporaryDirectory() as tmp:
             _write_extraction(tmp, "HS", score=3.0)

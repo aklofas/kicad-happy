@@ -330,7 +330,16 @@ def _resolve_usb_speed(pair: dict, schematic: dict):
     return None
 
 
-_SUPERSPEED_NET = re.compile(r'SS_?[TR]X|(^|[^A-Z])[TR]X\d*_?[PN+-]')
+_SUPERSPEED_LANE = re.compile(r'SS_?[TR]X')
+_TX_RX_LANE = re.compile(r'(^|[^A-Z])[TR]X\d*_?[PN+-]')
+
+
+def _is_superspeed_net(name: str) -> bool:
+    """A SuperSpeed lane name. A bare TX/RX lane counts only when its own name (not its
+    sheet path, which typed the pair USB) says USB or SS: ETH_TX_P under a USB sheet is not."""
+    leaf = net_leaf(name or '').upper()
+    return bool(_SUPERSPEED_LANE.search(leaf)
+                or (_TX_RX_LANE.search(leaf) and ('USB' in leaf or 'SS' in leaf)))
 
 
 def _usb_pair_protocol(pair: dict, usb_speed) -> str:
@@ -341,9 +350,7 @@ def _usb_pair_protocol(pair: dict, usb_speed) -> str:
     speed. On a USB 3 part D+/D- is still a USB 2.0 HS link; only the SuperSpeed
     TX/RX lanes take the USB 3 budget.
     """
-    if usb_speed == 'SS' and all(
-            _SUPERSPEED_NET.search(net_leaf(pair.get(k) or '').upper())
-            for k in ('positive', 'negative')):
+    if usb_speed == 'SS' and all(_is_superspeed_net(pair.get(k)) for k in ('positive', 'negative')):
         return 'USB3'
     return 'USB-HS' if usb_speed in ('HS', 'SS') else 'USB-FS'
 
