@@ -201,7 +201,8 @@ def _is_edge_mount_footprint(fp: dict) -> bool:
     return False
 
 
-def analyze_placement(footprints: list[dict], outline: dict) -> dict:
+def analyze_placement(footprints: list[dict], outline: dict, *,
+                      check_overlaps: bool = True) -> dict:
     """Component placement analysis — courtyard overlaps and edge clearance.
 
     Reports:
@@ -209,10 +210,14 @@ def analyze_placement(footprints: list[dict], outline: dict) -> dict:
       bounding boxes overlap (potential physical collision or assembly issue)
     - Edge clearance: components closest to board edges (flagged if <0.5mm)
     - Placement density per board side
+
+    ``check_overlaps`` False skips the overlaps (the project ignores KiCad's
+    ``courtyards_overlap`` check).
     """
     # Courtyard overlap detection (AABB intersection, same side only)
     overlaps = []
-    fp_with_cy = [(fp, fp["courtyard"]) for fp in footprints if fp.get("courtyard")]
+    fp_with_cy = [(fp, fp["courtyard"]) for fp in footprints
+                  if check_overlaps and fp.get("courtyard")]
 
     for i in range(len(fp_with_cy)):
         fp_a, cy_a = fp_with_cy[i]

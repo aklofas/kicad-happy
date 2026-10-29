@@ -24,7 +24,7 @@ from kicad_core.sexp import get_value, parse_file
 from kicad_core.project import (load_kicad_pro, extract_pro_net_classes,
                                 extract_pro_design_rules, extract_pro_text_variables,
                                 load_kicad_dru, load_lib_tables,
-                                find_project_settings_file)
+                                find_project_settings_file, ignored_drc_checks)
 from kicad_core.model import PcbReaderState
 from pcb import reader
 from pcb.geometry import ZoneFills
@@ -57,7 +57,7 @@ from pcb.copper import (
     analyze_via_in_pad,
     analyze_board_edge_via_clearance,
 )
-from pcb.dfm import analyze_dfm, effective_board_minima
+from pcb.dfm import analyze_dfm, effective_board_minima, has_legacy_design_settings
 from pcb.assembly import (
     analyze_decoupling_placement,
     analyze_placement,
@@ -381,6 +381,9 @@ def run_facts(board: BoardData, *, include_trace_segments: bool, return_path_rad
     else:
         net_classes = extract_net_classes(root)
     board_minima = effective_board_minima(root, pro)
+    ignored = ignored_drc_checks(None if has_legacy_design_settings(root) else pro)
+    if ignored:
+        project_settings['_ignored_drc_checks'] = ignored
 
     # Custom design rules (.kicad_dru)
     custom_rules = load_kicad_dru(str(path))
@@ -466,7 +469,9 @@ def run_checks(board: BoardData, facts: PcbFacts, *, include_trace_segments: boo
     thermal = analyze_thermal_vias(footprints, vias, zones)
 
     # Placement analysis (courtyard overlaps, edge clearance, density)
-    placement = analyze_placement(footprints, outline)
+    ignored_checks = project_settings.get('_ignored_drc_checks', frozenset())
+    placement = analyze_placement(footprints, outline,
+                                  check_overlaps='courtyards_overlap' not in ignored_checks)
 
     # DFM (Design for Manufacturing) scoring
     design_rules = (project_settings.get('design_rules')
@@ -495,7 +500,8 @@ def run_checks(board: BoardData, facts: PcbFacts, *, include_trace_segments: boo
         footprints, silkscreen.get("board_texts", []))
 
     keepout_list = facts.keepout_zones
-    keepout_violations = analyze_keepout_violations(footprints, vias, keepout_list)
+    keepout_violations = ([] if 'items_not_allowed' in ignored_checks
+                          else analyze_keepout_violations(footprints, vias, keepout_list))
 
     via_in_pad = None
     edge_via = None

@@ -57,6 +57,14 @@ def _as_mm(text) -> float | None:
         return None
 
 
+def has_legacy_design_settings(root: list) -> bool:
+    """True when the board's (setup ...) carries KiCad 5 design-rule tokens: KiCad then keeps
+    the board's design settings and does not load the project's (board.cpp SetProject)."""
+    setup = find_first(root, 'setup') or []
+    return any(isinstance(item, list) and item and item[0] in _LEGACY_SETUP_TOKENS
+               for item in setup[1:])
+
+
 def effective_board_minima(root: list, pro: dict | None) -> dict[str, tuple[float, str]]:
     """{rule: (value_mm, source)} for the board minima KiCad 10 enforces, source one of
     ``kicad_default`` / ``board_setup`` / ``project``.
@@ -876,6 +884,13 @@ _UNITLESS_CONSTRAINTS = frozenset(('via_count', 'min_resolved_spokes', 'track_an
 _BARE_NUMBER = re.compile(r'\s*[-+]?(?:\d+\.?\d*|\.\d+)\s*')
 
 
+def _drc_check_key(ctype: str, kind: str) -> str:
+    """KiCad's DRC check key (rule_severities) for one item of a size rule."""
+    if ctype == 'hole_size':
+        return 'microvia_drill_out_of_range' if kind == 'micro' else 'drill_out_of_range'
+    return ctype
+
+
 def _dru_loads_in_kicad(custom_rules: list[dict]) -> bool:
     """False when a length bound is a bare number: KiCad's "Missing units" parse error drops
     every custom rule of the file and keeps only the board's implicit rules (drc_engine.cpp
@@ -990,6 +1005,7 @@ def analyze_design_rule_compliance(
     footprints: list[dict] | None = None,
     minima: dict[str, tuple[float, str]] | None = None,
     board_layers: list[str] | None = None,
+    ignored_checks: frozenset[str] = frozenset(),
 ) -> dict | None:
     """Check layout against project-defined design rules.
 
@@ -1043,6 +1059,8 @@ def analyze_design_rule_compliance(
     present: set[tuple] = set()
     custom_applies: set[tuple] = set()
     for ctype, kind, layer, low, high, src in _rule_items(tracks, all_vias, footprints):
+        if _drc_check_key(ctype, kind) in ignored_checks:
+            continue
         present.add((ctype, kind))
         mins, maxs, severities = _resolve_bounds(ctype, kind, layer, minima,
                                                  rules_by_type.get(ctype, ()), board_layers,

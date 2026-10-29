@@ -270,6 +270,7 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
         result["groups"] = groups
     if net_classes:
         result["net_classes"] = net_classes
+    ignored_checks = (project_settings or {}).pop('_ignored_drc_checks', frozenset())
     if project_settings:
         result["project_settings"] = project_settings
 
@@ -277,7 +278,8 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
     # has minima, so the schema-required key always carries a result.
     design_compliance = analyze_design_rule_compliance(
         tracks, vias, project_settings or {}, footprints=footprints,
-        minima=analyses.board_minima, board_layers=[l["name"] for l in layers or []])
+        minima=analyses.board_minima, board_layers=[l["name"] for l in layers or []],
+        ignored_checks=ignored_checks)
     result["design_rule_compliance"] = design_compliance or {}
 
     # Manufacturing and assembly analysis

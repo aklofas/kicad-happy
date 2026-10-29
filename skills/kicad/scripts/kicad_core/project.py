@@ -561,6 +561,17 @@ def extract_pro_design_rules(pro: dict) -> dict:
             if isinstance(v, (int, float)) and k.startswith('min_')}
 
 
+def ignored_drc_checks(pro: dict | None) -> frozenset[str]:
+    """The DRC check keys .kicad_pro ``board.design_settings.rule_severities`` sets to
+    ``ignore``; KiCad's DRC never reports those checks (drc_engine.cpp RunTests). Only the exact
+    string ``ignore`` silences a check (SeverityFromString)."""
+    severities = (((pro or {}).get('board') or {}).get('design_settings') or {}).get(
+        'rule_severities')
+    if not isinstance(severities, dict):
+        return frozenset()
+    return frozenset(k for k, v in severities.items() if v == 'ignore')
+
+
 def extract_pro_default_netclass(pro: dict) -> dict | None:
     """The Default net class entry of .kicad_pro ``net_settings.classes`` as written, or None."""
     for c in (pro.get('net_settings') or {}).get('classes') or []:
