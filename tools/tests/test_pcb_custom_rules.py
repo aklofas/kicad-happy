@@ -96,6 +96,26 @@ class CustomRuleTest(unittest.TestCase):
         self.assertEqual(violations(result), [("custom:a", "max", 6.3, 6.4)])
         self.assertEqual(result["violations"][0]["source_ref"], "H1")
 
+    def test_custom_via_diameter_min_and_max(self):
+        # kicad-cli: via_diameter "(rule 'v' min diameter 0.7000 mm; actual 0.6000 mm)" and
+        # "(rule 'v' max diameter 0.9000 mm; actual 1.0000 mm)"
+        dru = "(rule v (constraint via_diameter (min 0.7mm) (max 0.9mm)))\n"
+        self.assertEqual(violations(compliance(via(0.6, 0.3), dru, LOW_MINIMA)),
+                         [("custom:v", "min", 0.7, 0.6)])
+        self.assertEqual(violations(compliance(via(1.0, 0.3), dru, LOW_MINIMA)),
+                         [("custom:v", "max", 0.9, 1.0)])
+
+    def test_layer_rule_on_holes_follows_the_enabled_layers(self):
+        # A hole has no layer of its own: an In1.Cu rule applies to an NPTH hole because the board
+        # enables In1.Cu; an In3.Cu rule does not (kicad-cli: drill_out_of_range "(rule 'h' min
+        # hole 0.5000 mm; actual 0.3000 mm)" for In1.Cu only)
+        hole = footprint("H1", "np_thru_hole", 0.3, 0.3)
+        in1 = "(rule h (layer In1.Cu) (constraint hole_size (min 0.5mm)))\n"
+        in3 = "(rule h (layer In3.Cu) (constraint hole_size (min 0.5mm)))\n"
+        self.assertEqual(violations(compliance(hole, in1, LOW_MINIMA)),
+                         [("custom:h", "min", 0.5, 0.3)])
+        self.assertEqual(violations(compliance(hole, in3, LOW_MINIMA)), [])
+
     def test_unconditional_custom_minimum_replaces_the_board_minimum(self):
         # KH-427; kicad-cli: no drill_out_of_range for the 0.25 mm hole
         dru = "(rule h (constraint hole_size (min 0.2mm)))\n"
