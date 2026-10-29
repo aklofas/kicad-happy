@@ -83,7 +83,7 @@ Each `(footprint ...)` or `(module ...)` block produces:
 
 **SMD vs. through-hole classification**: Determined from `(attr smd)` or `(attr through_hole)`. Falls back to pad type inspection for KiCad 5 files.
 
-**Courtyard extraction**: Bounding box computed from `fp_line`, `fp_rect`, `fp_circle`, `fp_arc` and `fp_poly` on `CrtYd` layers, transformed to absolute coordinates. Circles become 32-sided polygons and arcs (including KiCad 5 centre/angle arcs) are tessellated, so the outline chains into `courtyard_poly` for the PM-001 overlap test. F.CrtYd and B.CrtYd are chained separately, and the same outline on both sides counts once. A side that draws a segment twice is malformed, as in KiCad (`malformed_courtyard`): the footprint gets no courtyard and one `diagnostics` record.
+**Courtyard extraction**: Bounding box computed from `fp_line`, `fp_rect`, `fp_circle`, `fp_arc` and `fp_poly` on `CrtYd` layers, transformed to absolute coordinates. Circles become 32-sided polygons and arcs (including KiCad 5 centre/angle arcs) are tessellated, so the outline chains into `courtyard_poly` for the PM-001 overlap test. F.CrtYd and B.CrtYd are chained separately, and the same outline on both sides counts once. A side that draws a segment twice, or whose outline does not close (ends more than 0.02 mm apart), is malformed, as in KiCad (`malformed_courtyard`): the footprint gets no courtyard and one `diagnostics` record.
 
 ### 2.5 Track Extraction
 
@@ -299,7 +299,7 @@ Power/ground nets are excluded (layer transitions are expected for planes).
 ## 13. Placement Analysis
 
 ### Courtyard Overlap Detection
-Checks all footprint pairs for courtyard bounding box overlap. Uses spatial bucketing (10mm cells) to avoid O(n²) comparisons. Reports overlapping pairs with overlap area.
+Checks all footprint pairs for courtyard overlap. As in KiCad, each courtyard is shrunk by 0.005 mm first, so courtyards that touch or overlap by less than 0.01 mm do not collide. Reports overlapping pairs with overlap area (measured on the unshrunk courtyards).
 
 ### Edge Clearance
 Checks component courtyard proximity to board Edge.Cuts outline. Reports components closer than 0.5mm to board edge.

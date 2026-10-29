@@ -621,7 +621,12 @@ def extract_footprints(root: list, diagnostics: list | None = None) -> list[dict
                     continue
                 _chained = _chain_segments(_unique)
                 if not _chained:
-                    crtyd_unchainable = True
+                    # KiCad marks an outline that does not close malformed_courtyard
+                    # and leaves it out of the overlap test
+                    crtyd_pts = []
+                    record(diagnostics, "pcb.reader.extract_footprints",
+                           ValueError(f"{ref}: courtyard outline is not closed"),
+                           "courtyard not used for placement checks")
                     break
                 crtyd_polys.extend(_chained)
 
@@ -696,6 +701,8 @@ def extract_footprints(root: list, diagnostics: list | None = None) -> list[dict
                     [[round(vx_, 3), round(vy_, 3)] for vx_, vy_ in poly]
                     for poly in crtyd_polys
                 ]
+                # unrounded for the collision test, whose tolerance is 0.005 mm
+                fp_entry["_courtyard_poly"] = crtyd_polys
 
         footprints.append(fp_entry)
 

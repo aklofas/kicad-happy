@@ -676,7 +676,7 @@ def _arc_length_3pt(sx: float, sy: float, mx: float, my: float,
     return R * arc_angle
 
 
-def _chain_segments(segs: list, tol: float = 0.01) -> list | None:
+def _chain_segments(segs: list, tol: float = 0.02) -> list | None:
     """Chain undirected 2D segments into closed loops (KH-350).
 
     Returns a list of polygons (each a list of (x, y) vertices, implicit
@@ -726,11 +726,122 @@ def _point_in_polys(px: float, py: float, polys: list) -> bool:
     return inside
 
 
+def _signed_depth(px: float, py: float, polys: list) -> float:
+    """Distance from (px, py) to the polygon set's boundary, negative outside."""
+    d = min(_point_segment_distance(px, py, poly[i - 1][0], poly[i - 1][1], poly[i][0], poly[i][1])
+            for poly in polys for i in range(len(poly)))
+    return d if _point_in_polys(px, py, polys) else -d
+
+
+def _signed_area(ring: list) -> float:
+    return sum(ring[i - 1][0] * ring[i][1] - ring[i][0] * ring[i - 1][1]
+               for i in range(len(ring))) / 2
+
+
+def _inset_polys(polys: list, inset: float) -> list:
+    """Shrink an even-odd polygon set by ``inset``: every edge moves ``inset`` towards the
+    set's inside and neighbouring edges meet at their mitred intersection, as KiCad's
+    courtyard deflate does. A ring that shrinks away is dropped."""
+    out = []
+    for k, poly in enumerate(polys):
+        ring = [(float(p[0]), float(p[1])) for i, p in enumerate(poly)
+                if (float(p[0]), float(p[1])) != (float(poly[i - 1][0]), float(poly[i - 1][1]))]
+        area = _signed_area(ring) if len(ring) >= 3 else 0.0
+        if area == 0:
+            continue
+        nested = sum(1 for j, other in enumerate(polys)
+                     if j != k and _point_in_polygon(ring[0][0], ring[0][1],
+                                                     [(q[0], q[1]) for q in other]))
+        # left normal points inside a counter-clockwise ring; a hole's inside is its outside
+        sign = (1 if area > 0 else -1) * (-1 if nested % 2 else 1)
+        lines = []
+        for i in range(len(ring)):
+            (ax, ay), (bx, by) = ring[i - 1], ring[i]
+            ln = math.hypot(bx - ax, by - ay)
+            nx, ny = -(by - ay) / ln * sign * inset, (bx - ax) / ln * sign * inset
+            lines.append((ax + nx, ay + ny, bx - ax, by - ay))
+        shrunk = []
+        for i in range(len(lines)):
+            px, py, dx, dy = lines[i - 1]
+            qx, qy, ex, ey = lines[i]
+            den = dx * ey - dy * ex
+            if abs(den) < 1e-12 * (dx * dx + dy * dy + ex * ex + ey * ey):
+                shrunk.append((qx, qy))
+                continue
+            t = ((qx - px) * ey - (qy - py) * ex) / den
+            mx, my = px + t * dx, py + t * dy
+            vx, vy = ring[i - 1]
+            if den * sign < 0 and math.hypot(mx - vx, my - vy) > 2 * inset:
+                # a sharp inward notch: bevel instead of a long mitre spike
+                shrunk.extend(((px + dx, py + dy), (qx, qy)))
+            else:
+                shrunk.append((mx, my))
+        # a ring narrower than twice the inset turns inside out
+        if _signed_area(shrunk) * area > 0:
+            out.append(shrunk)
+    return out
+
+
+def courtyards_collide(polys_a: list, polys_b: list, inset: float = 0.005) -> bool:
+    """True when the two polygon sets (even-odd) still meet after each is shrunk by ``inset``.
+
+    KiCad shrinks every courtyard by 0.005 mm before its collision test, so courtyards that
+    touch or overlap by less than 0.01 mm are legal; shrunk shapes that touch (to 0.1 nm,
+    below KiCad's 1 nm unit) collide.
+    """
+    sa, sb = _inset_polys(polys_a, inset), _inset_polys(polys_b, inset)
+    if not sa or not sb:
+        return False
+    bxa = _polygon_bbox([p for poly in sa for p in poly])
+    bxb = _polygon_bbox([p for poly in sb for p in poly])
+    if (bxa[0] > bxb[2] + 1e-7 or bxb[0] > bxa[2] + 1e-7
+            or bxa[1] > bxb[3] + 1e-7 or bxb[1] > bxa[3] + 1e-7):
+        return False
+    edges_b = [(*poly[i - 1], *poly[i]) for poly in sb for i in range(len(poly))]
+    for poly in sa:
+        for i in range(len(poly)):
+            ax, ay = poly[i - 1]
+            bx, by = poly[i]
+            for edge in edges_b:
+                if _segment_segment_distance(ax, ay, bx, by, *edge) <= 1e-7:
+                    return True
+    # boundaries apart: the sets meet only if one holds the other
+    return (any(_point_in_polys(poly[0][0], poly[0][1], sb) for poly in sa)
+            or any(_point_in_polys(poly[0][0], poly[0][1], sa) for poly in sb))
+
+
+def overlap_area_mm2(polys_a: list, polys_b: list,
+                     ix1: float, iy1: float, ix2: float, iy2: float) -> float:
+    """Overlap area of two polygon sets inside the box, by adaptive subdivision: a cell whose
+    centre lies deeper inside both (or further outside either) than its half-diagonal is
+    wholly in (out); others split along their long side down to 1/1024 of the box."""
+    min_side = max(ix2 - ix1, iy2 - iy1) / 1024
+    area = 0.0
+    cells = [(ix1, iy1, ix2, iy2)]
+    while cells:
+        x1, y1, x2, y2 = cells.pop()
+        mx, my = (x1 + x2) / 2, (y1 + y2) / 2
+        depth = min(_signed_depth(mx, my, polys_a), _signed_depth(mx, my, polys_b))
+        half_diag = math.hypot(x2 - x1, y2 - y1) / 2
+        if depth >= half_diag:
+            area += (x2 - x1) * (y2 - y1)
+        elif depth <= -half_diag:
+            continue
+        elif max(x2 - x1, y2 - y1) <= min_side:
+            if depth > 0:
+                area += (x2 - x1) * (y2 - y1)
+        elif x2 - x1 >= y2 - y1:
+            cells.extend(((x1, y1, mx, y2), (mx, y1, x2, y2)))
+        else:
+            cells.extend(((x1, y1, x2, my), (x1, my, x2, y2)))
+    return area
+
+
 def _refined_overlap_mm2(polys_a: list, polys_b: list,
                          ix1: float, iy1: float, ix2: float, iy2: float,
                          samples: int = 24) -> float:
-    """True courtyard overlap area inside the AABB-intersection box,
-    estimated by grid-sampling membership in both polygon sets (KH-350)."""
+    """Courtyard overlap area inside the box (ix1, iy1)-(ix2, iy2), estimated by grid-sampling
+    membership in both polygon sets (KH-350). A thin overlap can fall between the samples."""
     w = ix2 - ix1
     h = iy2 - iy1
     if w <= 0 or h <= 0:

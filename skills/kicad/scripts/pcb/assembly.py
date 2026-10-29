@@ -6,7 +6,7 @@ import math
 import re
 
 from kicad_core.netnames import is_ground_name
-from pcb.geometry import _refined_overlap_mm2
+from pcb.geometry import _refined_overlap_mm2, courtyards_collide, overlap_area_mm2
 
 
 _ESD_TVS_PREFIXES = ("esd", "prtr", "usblc", "tpd", "pesd", "sp05",
@@ -226,19 +226,26 @@ def analyze_placement(footprints: list[dict], outline: dict, *,
             # Only check components on the same side
             if fp_a["layer"] != fp_b["layer"]:
                 continue
-            # AABB overlap check
-            if (cy_a["min_x"] < cy_b["max_x"] and cy_a["max_x"] > cy_b["min_x"] and
-                    cy_a["min_y"] < cy_b["max_y"] and cy_a["max_y"] > cy_b["min_y"]):
-                # Compute overlap area
-                ox = min(cy_a["max_x"], cy_b["max_x"]) - max(cy_a["min_x"], cy_b["min_x"])
-                oy = min(cy_a["max_y"], cy_b["max_y"]) - max(cy_a["min_y"], cy_b["min_y"])
+            # AABB overlap check; KiCad shrinks each courtyard by 0.005 mm, so
+            # courtyards that touch or overlap by less than 0.01 mm do not collide
+            # (the 0.001 mm slack covers the bbox's rounding)
+            ox = min(cy_a["max_x"], cy_b["max_x"]) - max(cy_a["min_x"], cy_b["min_x"])
+            oy = min(cy_a["max_y"], cy_b["max_y"]) - max(cy_a["min_y"], cy_b["min_y"])
+            if ox >= 0.009 and oy >= 0.009:
                 overlap_mm2 = round(ox * oy, 3)
                 # KH-350: AABB is only a pre-filter — notched courtyards
                 # (QFP cross shapes) fill their corners in bbox space. With
-                # chained polygons on both parts, measure the true overlap.
+                # chained polygons on both parts, test the real shapes; the
+                # area is measured on the unshrunk shapes.
                 _polys_a = fp_a.get("courtyard_poly")
                 _polys_b = fp_b.get("courtyard_poly")
-                if _polys_a and _polys_b:
+                if not (_polys_a and _polys_b):
+                    if ox < 0.01 - 1e-7 or oy < 0.01 - 1e-7:
+                        continue
+                else:
+                    if not courtyards_collide(fp_a.get("_courtyard_poly") or _polys_a,
+                                              fp_b.get("_courtyard_poly") or _polys_b):
+                        continue
                     _refined = _refined_overlap_mm2(
                         _polys_a, _polys_b,
                         max(cy_a["min_x"], cy_b["min_x"]),
@@ -246,7 +253,13 @@ def analyze_placement(footprints: list[dict], outline: dict, *,
                         min(cy_a["max_x"], cy_b["max_x"]),
                         min(cy_a["max_y"], cy_b["max_y"]))
                     if _refined <= 0.0:
-                        continue
+                        # a thin crossing fell between the samples
+                        _refined = overlap_area_mm2(
+                            _polys_a, _polys_b,
+                            max(cy_a["min_x"], cy_b["min_x"]),
+                            max(cy_a["min_y"], cy_b["min_y"]),
+                            min(cy_a["max_x"], cy_b["max_x"]),
+                            min(cy_a["max_y"], cy_b["max_y"]))
                     overlap_mm2 = round(_refined, 3)
                 is_rf_overlap = _is_rf_module(fp_a) or _is_rf_module(fp_b)
                 # RF module courtyards deliberately encode the antenna RF

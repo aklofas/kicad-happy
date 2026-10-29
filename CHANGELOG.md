@@ -134,6 +134,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - SPICE: an RC bench is judged against 1/(2πRC) of its own parts, so sub-hertz filters no longer warn about the analyzer's 0.01 Hz rounding; a PNP transistor bench is labelled PNP and warns "not measured" instead of reporting a VBE(on) and collector current it never reached; current sense without an expected current, a snubber without a time constant and an RF link budget built from heuristic per-role gains report `info`, not `pass`; a regulator bench reports `info` when its Vref comes from a symbol whose value names another part, or when the divider's top resistor is not on the output rail (sk/R2-N4, R2-F1, R2-F4).
 - KO-001 no longer reports footprints or vias inside a rule area that allows them (`allowed` was read as prohibited) (kf/A11-F1).
 - Custom `.kicad_dru` rules check maximum bounds, plated pad holes and annuli, honour their layer and `(severity ignore)`, read `mil`/`in` units, and a custom minimum outranks the board minimum as in KiCad (kf/A6-F1, A6-F3, A6-F8, A8-F5, KH-427).
+- Touching courtyards are not an overlap (KiCad's 0.005 mm allowance), thin crossings are no longer missed by the overlap sample, and an open courtyard outline is reported in `diagnostics` instead of judged by its bounding box (kf/A11-F6, A11-F7, A11-F8).
 
 ---
 
