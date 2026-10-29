@@ -184,7 +184,7 @@ def read_board(path: str, *, state: PcbReaderState | None = None) -> BoardData:
     outline = reader.extract_board_outline(root)
     if outline.get("edges") and outline_loops(outline["edges"]) is None:
         record(diagnostics, "pcb.pipeline.read_board",
-               ValueError("board outline (Edge.Cuts) does not close"),
+               ValueError("board outline (Edge.Cuts) does not close or is drawn twice"),
                "edge clearance measured to the outline's bounding box")
     graphics = reader.extract_copper_graphics(root)
 

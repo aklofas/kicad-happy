@@ -205,8 +205,9 @@ def outline_loops(edges: list[dict]) -> list[list[tuple[float, float]]] | None:
     """Closed loops of a board outline (``board_outline.edges``), as KiCad chains Edge.Cuts.
 
     Rects, polygons and circles are loops of their own; lines, arcs and curves are joined end to
-    end within OUTLINE_CHAINING_EPSILON_MM. None when any chain does not close or an edge is
-    unusable: KiCad then uses the outline's bounding box (BuildBoardPolygonOutlines).
+    end within OUTLINE_CHAINING_EPSILON_MM. None when any chain does not close, an edge is
+    unusable or a loop is drawn twice: KiCad then uses the outline's bounding box
+    (BuildBoardPolygonOutlines).
     """
     eps = OUTLINE_CHAINING_EPSILON_MM
     loops: list[list[tuple[float, float]]] = []
@@ -261,6 +262,13 @@ def outline_loops(edges: list[dict]) -> list[list[tuple[float, float]]] | None:
             path.extend(seg[1:])
         loops.append(path[:-1])
     loops = [lp for lp in loops if len(lp) >= 3]
+    # a shape drawn twice cancels itself under even-odd; KiCad rejects overlapping outlines
+    seen: set = set()
+    for lp in loops:
+        key = frozenset((round(x, 4), round(y, 4)) for x, y in lp)
+        if key in seen:
+            return None
+        seen.add(key)
     return loops or None
 
 

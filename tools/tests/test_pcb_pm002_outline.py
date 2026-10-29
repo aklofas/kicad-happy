@@ -1,7 +1,7 @@
 # tools/tests/test_pcb_pm002_outline.py
 """PM-002 measures courtyards to the board outline KiCad builds from Edge.Cuts (curves, notches,
-slots and cutouts); an outline that does not close is measured as its bounding box, with one
-diagnostic."""
+slots and cutouts); an outline that does not close or is drawn twice is measured as its bounding
+box, with one diagnostic."""
 import contextlib, io, math, os, sys, tempfile, unittest
 from pathlib import Path
 SCRIPTS = Path(__file__).resolve().parents[2] / "skills" / "kicad" / "scripts"
@@ -15,13 +15,16 @@ from pcb.geometry import outline_loops, point_in_outline  # noqa: E402
 _dirs = []
 
 
-def _fp(ref, x1, y1, x2, y2):
-    """Footprint at the origin with a rectangular F.CrtYd courtyard (x1, y1)-(x2, y2)."""
+def _fp(ref, x1, y1, x2, y2, pads=(), lib="L:F"):
+    """Footprint at the origin with a rectangular F.CrtYd courtyard (x1, y1)-(x2, y2) and
+    1 x 1 mm SMD pads at ``pads``."""
     pts = [(x1, y1), (x2, y1), (x2, y2), (x1, y2)]
     lines = "".join(f'(fp_line (start {a[0]} {a[1]}) (end {b[0]} {b[1]}) (layer "F.CrtYd") (width 0.05))\n'
                     for a, b in zip(pts, pts[1:] + pts[:1]))
-    return (f'(footprint "L:F" (layer "F.Cu") (at 0 0)\n'
-            f'  (property "Reference" "{ref}")\n  (property "Value" "v")\n{lines})\n')
+    pad_txt = "".join(f'(pad "{n + 1}" smd rect (at {x} {y}) (size 1 1) (layers "F.Cu"))\n'
+                      for n, (x, y) in enumerate(pads))
+    return (f'(footprint "{lib}" (layer "F.Cu") (at 0 0)\n'
+            f'  (property "Reference" "{ref}")\n  (property "Value" "v")\n{lines}{pad_txt})\n')
 
 
 def _edges(*pts, close=True):
@@ -104,6 +107,18 @@ class TestPm002Outline(unittest.TestCase):
         w = _pm002(_read(L_OUTLINE, _fp("C14", 25, 25, 30, 30)))["C14"]
         self.assertIn("off-board", w["summary"])
 
+    def test_part_in_the_notch_with_pads_on_board_overhangs(self):
+        # body in the notch, pads at (18, 27) on the board: an overhang, not off-board; the
+        # farthest corner (30, 30) is 10 mm from the notch edges x = 20 and y = 20
+        w = _pm002(_read(L_OUTLINE, _fp("J1", 25, 25, 30, 30, pads=[(18, 27)])))["J1"]
+        self.assertEqual((w["severity"], w["edge_clearance_mm"]), ("error", -10.0))
+        self.assertIn("overhangs", w["summary"])
+
+    def test_edge_mount_part_in_the_notch_keeps_its_exemption(self):
+        w = _pm002(_read(L_OUTLINE, _fp("J2", 25, 25, 30, 30, pads=[(18, 27)],
+                                        lib="Connector:USB_C_Receptacle_X")))["J2"]
+        self.assertEqual((w["severity"], w["edge_clearance_mm"]), ("info", -10.0))
+
     def test_slot_is_board_edge(self):
         slot = '(gr_rect (start 10 10) (end 20 12) (layer "Edge.Cuts") (width 0.1))\n'
         board = '(gr_rect (start 0 0) (end 40 40) (layer "Edge.Cuts") (width 0.1))\n'
@@ -122,6 +137,17 @@ class TestPm002Outline(unittest.TestCase):
         diags = [d for d in st.diagnostics if d["source"] == "pcb.pipeline.read_board"]
         self.assertEqual(len(diags), 1)
         self.assertIn("does not close", diags[0]["message"])
+
+    def test_board_drawn_twice_keeps_the_bounding_box(self):
+        # the same rect twice (and once more as lines) would cancel under even-odd; KiCad rejects
+        # overlapping outlines and uses the bounding box: courtyard x = 0.4 -> error 0.4
+        rect = '(gr_rect (start 0 0) (end 40 30) (layer "Edge.Cuts") (width 0.1))\n'
+        for outline in (rect + rect, rect + _edges((0, 0), (40, 0), (40, 30), (0, 30))):
+            st = _read(outline, _fp("R3", 0.4, 10, 5, 12))
+            w = _pm002(st)["R3"]
+            self.assertEqual((w["severity"], w["edge_clearance_mm"]), ("error", 0.4))
+            self.assertEqual(len([d for d in st.diagnostics
+                                  if d["source"] == "pcb.pipeline.read_board"]), 1)
 
     def test_closed_outline_no_diagnostic(self):
         st = _read(L_OUTLINE, _fp("C13", 17, 17, 19, 19))

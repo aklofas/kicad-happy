@@ -230,8 +230,8 @@ def _edge_boxes(edges: list[dict]) -> list[tuple[tuple[float, float, float, floa
 def _outline_clearance(fp: dict, loops: list, edges: list[dict],
                        edge_boxes: list) -> tuple[float, bool]:
     """(clearance, off_board) against the closed outline: the nearest edge distance when every
-    point is on the board, else minus the farthest outside distance; off-board when no point is
-    on it. Slots and cutouts are board edge (even-odd)."""
+    point is on the board, else minus the farthest outside distance; off-board when no point and
+    no pad is on it. Slots and cutouts are board edge (even-odd)."""
     pts = _clearance_points(fp)
     # an edge more than 1 mm from the points' box cannot decide a clearance under 1 mm
     x0 = min(p[0] for p in pts) - 1.0
@@ -252,7 +252,12 @@ def _outline_clearance(fp: dict, loops: list, edges: list[dict],
             outside_d.append(outline_edge_distance(x, y, edges) or 0.0)
     if not outside_d:
         return min(inside_d), False
-    return -max(outside_d), not inside_d
+    # a part whose pads reach the board (a mid-mount part in a cutout) overhangs, it is not off it
+    on_board = bool(inside_d) or any(
+        point_in_outline(p["abs_x"], p["abs_y"], loops)
+        or (outline_edge_distance(p["abs_x"], p["abs_y"], edges) or 0.0) < 0.005
+        for p in fp.get("pads", []) if "abs_x" in p and "abs_y" in p)
+    return -max(outside_d), not on_board
 
 
 def _bbox_clearance(fp: dict, bx_min: float, by_min: float,

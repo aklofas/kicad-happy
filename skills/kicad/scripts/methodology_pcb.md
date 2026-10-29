@@ -302,7 +302,7 @@ Power/ground nets are excluded (layer transitions are expected for planes).
 Checks all footprint pairs for courtyard overlap. As in KiCad, each courtyard is shrunk by 0.005 mm first, so courtyards that touch or overlap by less than 0.01 mm do not collide. Reports overlapping pairs with overlap area (measured on the unshrunk courtyards).
 
 ### Edge Clearance
-Checks component courtyard proximity to board Edge.Cuts outline. Reports components closer than 0.5mm to board edge. The outline is the closed Edge.Cuts loops (slots and cutouts are board edge); when they do not close, the outline's bounding box is used and one diagnostic is recorded.
+Checks component courtyard proximity to board Edge.Cuts outline. Reports components closer than 0.5mm to board edge. The outline is the closed Edge.Cuts loops (slots and cutouts are board edge); a part is off-board only when neither its courtyard nor a pad is on the board. When the loops do not close or a shape is drawn twice, the outline's bounding box is used and one diagnostic is recorded.
 
 ### Density Metrics
 Component density per unit area, front/back distribution.
