@@ -10,6 +10,9 @@ from pcb.reader import _extract_keepout_zones  # noqa: E402
 from pcb.assembly import analyze_keepout_violations  # noqa: E402
 
 
+CRTYD = ' (fp_rect (start -1 -1) (end 1 1) (layer "F.CrtYd") (stroke (width 0.05) (type solid)))'
+
+
 def _ko001(footprints, vias, crtyd=""):
     board = f'''(kicad_pcb (version 20221018) (generator pcbnew)
   (general (thickness 1.6))
@@ -37,14 +40,14 @@ class TestKeepoutPermissions(unittest.TestCase):
         self.assertEqual(_ko001("allowed", "allowed"), [])
 
     def test_footprints_not_allowed_reports_footprint(self):
-        f = _ko001("not_allowed", "allowed")
+        # KiCad tests a footprint against a keepout by its courtyard (pcbexpr_functions.cpp);
+        # kicad-cli 10.0.7: items_not_allowed "Footprint R1"
+        f = _ko001("not_allowed", "allowed", CRTYD)
         self.assertEqual([x.get("component") for x in f], ["R1"])
 
     def test_footprint_prohibited_via_allowed_reports_only_the_footprint(self):
         # kicad-cli 10.0.7: one items_not_allowed, "Footprint R1", no via item
-        crtyd = (' (fp_rect (start -1 -1) (end 1 1) (layer "F.CrtYd")'
-                 ' (stroke (width 0.05) (type solid)))')
-        f = _ko001("not_allowed", "allowed", crtyd)
+        f = _ko001("not_allowed", "allowed", CRTYD)
         self.assertEqual([(x.get("component"), "via_x" in x) for x in f], [("R1", False)])
 
     def test_via_prohibited_footprint_allowed(self):
