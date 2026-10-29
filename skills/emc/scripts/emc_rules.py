@@ -330,8 +330,9 @@ def _resolve_usb_speed(pair: dict, schematic: dict):
     return None
 
 
-_SUPERSPEED_LANE = re.compile(r'SS_?[TR]X')
+_SUPERSPEED_LANE = re.compile(r'(^|[^A-Z])SS_?[TR]X')
 _TX_RX_LANE = re.compile(r'(^|[^A-Z])[TR]X\d*_?[PN+-]')
+_USB_OR_SS_TOKEN = re.compile(r'(^|[^A-Z])(USB|SS)')
 
 
 def _is_superspeed_net(name: str) -> bool:
@@ -339,7 +340,7 @@ def _is_superspeed_net(name: str) -> bool:
     sheet path, which typed the pair USB) says USB or SS: ETH_TX_P under a USB sheet is not."""
     leaf = net_leaf(name or '').upper()
     return bool(_SUPERSPEED_LANE.search(leaf)
-                or (_TX_RX_LANE.search(leaf) and ('USB' in leaf or 'SS' in leaf)))
+                or (_TX_RX_LANE.search(leaf) and _USB_OR_SS_TOKEN.search(leaf)))
 
 
 def _usb_pair_protocol(pair: dict, usb_speed) -> str:

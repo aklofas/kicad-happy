@@ -108,6 +108,12 @@ class UsbSpeed(unittest.TestCase):
             self.assertIn(text, fs[0]["description"], pos)
             self.assertIn(label, fs[0]["summary"], pos)
 
+    def test_superspeed_needs_usb_or_ss_as_a_token(self):
+        for name in ("USB3_TX1+", "SSTX1+", "SS_TX+", "/USB/SSRX_N"):
+            self.assertTrue(_is_superspeed_net(name), name)
+        for name in ("CLASS_TX+", "PASS_RX-", "/USB/BUSS_TX_P"):
+            self.assertFalse(_is_superspeed_net(name), name)
+
     def test_untrusted_high_speed_extraction_is_not_used(self):
         with tempfile.TemporaryDirectory() as tmp:
             _write_extraction(tmp, "HS", score=3.0)
