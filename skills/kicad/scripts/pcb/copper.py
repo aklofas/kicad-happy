@@ -14,13 +14,25 @@ def _via_exposed_by_pad(via: dict, pad_layers: list | None) -> bool:
     """True when a pad's own mask opening uncovers a via inside it. KiCad plots the pad's
     aperture on every mask layer in the pad's layer set whatever the via's tenting; the
     via shows wherever it reaches that side."""
+    return bool(_via_open_sides(via, pad_layers))
+
+
+def _via_open_sides(via: dict, pad_layers: list | None) -> list[str]:
+    """Outer sides ("F", "B") where the pad opens the mask and the via reaches the copper."""
     layers = set(pad_layers or ())
     reaches = via.get("layers") or ["F.Cu", "B.Cu"]
-    for side in ("F", "B"):
-        if (f"{side}.Cu" in reaches
-                and layers & {f"{side}.Mask", "*.Mask", "F&B.Mask"}):
-            return True
-    return False
+    return [side for side in ("F", "B")
+            if f"{side}.Cu" in reaches and layers & {f"{side}.Mask", "*.Mask", "F&B.Mask"}]
+
+
+def _mask_opening_size(pad: dict, w: float, h: float) -> tuple[float, float] | None:
+    """Size of the pad's mask opening: a negative solder_mask_margin shrinks it on every
+    side (KiCad's PAD::GetSolderMaskExpansion), and None when nothing is left open."""
+    margin = pad.get("solder_mask_margin") or 0
+    if margin >= 0:
+        return w, h
+    ow, oh = w + 2 * margin, h + 2 * margin
+    return (ow, oh) if ow > 0 and oh > 0 else None
 
 
 def _find_thermal_pads(fp: dict) -> list[dict]:
@@ -547,7 +559,8 @@ def analyze_thermal_pad_vias(footprints: list[dict], vias: dict,
     """Thermal pad via adequacy assessment for QFN/BGA/DFN packages.
 
     For packages with exposed/thermal pads (large center pads), checks:
-    - Tier 1: vias inside the rotated 1.5x pad bounding box (any net)
+    - Tier 1: vias on the pad's net (any net when the pad has none) inside the
+      rotated 1.5x pad bounding box
     - Tier 1b: footprint-embedded thru_hole pads on the pad's net
     - Tier 2: same-net vias outside the pad bbox but within an expanded
       search radius (max(w,h)*2.0 + 2.0 mm) whose copper continuity to
@@ -660,7 +673,12 @@ def analyze_thermal_pad_vias(footprints: list[dict], vias: dict,
             vias_untented = 0
             vias_exposed = 0
 
+            pad_shape = pad.get("shape", "rect")
+            opening = _mask_opening_size(pad, w, h)
             for via in all_vias:
+                # A via of another net inside the pad is a short, not thermal copper.
+                if net_num > 0 and via.get("net", -1) != net_num:
+                    continue
                 vx, vy = via["x"], via["y"]
                 # Transform via position into pad-local coordinates
                 dx, dy = vx - ax, vy - ay
@@ -676,14 +694,23 @@ def analyze_thermal_pad_vias(footprints: list[dict], vias: dict,
                     drill = via.get("drill", 0.3)
                     drill_sum += drill
                     effective_vias_in_pad += (drill / 0.3) ** 2
-                    tented = len(via.get("tenting", [])) > 0
+                    # Solder reaches the via on the side the pad opens; tenting elsewhere
+                    # does not cover it.
+                    open_sides = _via_open_sides(via, pad.get("layers"))
+                    tenting = via.get("tenting", [])
+                    if open_sides:
+                        tented = all(("front" if side == "F" else "back") in tenting
+                                     for side in open_sides)
+                    else:
+                        tented = len(tenting) > 0
                     if tented:
                         vias_tented += 1
                     else:
                         vias_untented += 1
-                    # Inside the pad outline the pad's mask opening decides, not tenting.
-                    if not tented or (abs(dx) <= half_w and abs(dy) <= half_h
-                                      and _via_exposed_by_pad(via, pad.get("layers"))):
+                    # Inside the pad's mask opening the opening decides, not tenting.
+                    in_opening = bool(open_sides) and opening is not None and _point_in_pad(
+                        vx, vy, ax, ay, opening[0], opening[1], pad_shape, total_angle)
+                    if not tented or in_opening:
                         vias_exposed += 1
 
             # Count thru_hole pads in the same footprint on the same net
@@ -1230,8 +1257,12 @@ def analyze_copper_presence(footprints: list[dict], zones: list[dict],
     return result
 
 
-def analyze_via_in_pad(footprints: list[dict], vias: dict, thermal_pad_refs: set) -> list[dict]:
-    """VP-001: Detect vias inside SMD pads; warn when solder can reach them."""
+def analyze_via_in_pad(footprints: list[dict], vias: dict,
+                       thermal_pads: set[tuple[str, str]]) -> list[dict]:
+    """VP-001: Detect vias inside SMD pads; warn when solder can reach them.
+
+    ``thermal_pads`` holds the (reference, pad number) pairs TV-001 already reports; they and
+    pads with the heatsink fabrication property are skipped."""
     findings: list[dict] = []
     via_list = vias.get("vias", [])
     if not via_list:
@@ -1241,10 +1272,12 @@ def analyze_via_in_pad(footprints: list[dict], vias: dict, thermal_pad_refs: set
     smd_pads: list[tuple[str, str, str, float, float, float, float]] = []
     for fp in footprints:
         ref = fp.get("reference", "")
-        if ref in thermal_pad_refs:
-            continue
         for pad in fp.get("pads", []):
             if pad.get("type") != "smd":
+                continue
+            # A pad KiCad marks as a heatsink carries its vias on purpose.
+            if ((ref, str(pad.get("number", ""))) in thermal_pads
+                    or pad.get("_property") == "pad_prop_heatsink"):
                 continue
             # KH-349: pads "disabled" by clearing all copper layers
             # (e.g. (layers "Dwgs.User")) can't have via-in-pad issues.

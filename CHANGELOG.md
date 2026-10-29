@@ -138,6 +138,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - KO-001 no longer reports footprints or vias inside a rule area that allows them (`allowed` was read as prohibited) (kf/A11-F1).
 - Custom `.kicad_dru` rules check maximum bounds, plated pad holes and annuli, honour their layer and `(severity ignore)`, read `mil`/`in` units, and a custom minimum outranks the board minimum as in KiCad (kf/A6-F1, A6-F3, A6-F8, A8-F5, KH-427).
 - Touching courtyards are not an overlap (KiCad's 0.005 mm allowance), thin crossings are no longer missed by the overlap sample, and an open courtyard outline is reported in `diagnostics` instead of judged by its bounding box (kf/A11-F6, A11-F7, A11-F8).
+- Thermal-pad via counts include only vias on the pad's net inside the pad's real outline, with exposure judged on the pad's open side; via-in-pad checks a footprint's signal pads even when it has a thermal pad (kc/R9-F2, kc/R9-F6, KH-710).
 
 ---
 

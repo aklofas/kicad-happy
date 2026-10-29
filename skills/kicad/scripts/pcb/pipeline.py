@@ -543,7 +543,8 @@ def run_checks(board: BoardData, facts: PcbFacts, *, include_trace_segments: boo
     if include_trace_segments:
         via_in_pad = analyze_via_in_pad(
             footprints, vias,
-            {e.get("component", "") for e in (thermal_pad_vias or [])})
+            {(e.get("component", ""), str(e.get("pad_number", "")))
+             for e in (thermal_pad_vias or [])})
 
         edge_via = analyze_board_edge_via_clearance(vias, outline)
 
