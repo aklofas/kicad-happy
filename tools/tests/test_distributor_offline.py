@@ -49,6 +49,7 @@ class Oracle(unittest.TestCase):
                 sys.path[:0] = [str(other / "skills" / "datasheets"), str(other / "skills" / "kicad" / "scripts"),
                                 str(other / "skills" / "digikey" / "scripts")]
                 names = ["_core_path", "provider_digikey", "kicad_core", "schematic"]
+                preloaded = do._drop_provider_modules()
                 for name in names:
                     importlib.import_module(name)
                     self.assertTrue(Path(sys.modules[name].__file__).resolve().is_relative_to(other.resolve()))
@@ -57,11 +58,19 @@ class Oracle(unittest.TestCase):
                         mod = sys.modules.get(name) or importlib.import_module(name)
                         loaded = Path(mod.__file__).resolve()
                         self.assertTrue(loaded.is_relative_to((repo / "skills").resolve()), f"{name}: {loaded}")
-                leftovers = [m for m in sys.modules if m.split(".")[0] in ("provider_digikey", "distributor_core")]
-                self.assertFalse(leftovers)
+                restored = Path(sys.modules["provider_digikey"].__file__).resolve()
+                self.assertTrue(restored.is_relative_to(other.resolve()))
             finally:
                 sys.path[:] = saved
                 do._drop_provider_modules()
+                sys.modules.update(preloaded)
+
+    def test_provider_env_restores_the_modules_it_evicted(self):
+        import distributor_offline as do
+        import kicad_core
+        with tempfile.TemporaryDirectory() as w, do._provider_env("digikey", TOOLS.parent, Path(w)):
+            pass
+        self.assertIs(sys.modules["kicad_core"], kicad_core)
 
     def test_second_provider_gets_its_own_core_path(self):
         import distributor_offline as do

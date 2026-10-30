@@ -260,14 +260,16 @@ def _in_a_skills_tree(path: str) -> bool:
     return any(a == "skills" for a in parts[:-2])
 
 
-def _drop_provider_modules() -> None:
+def _drop_provider_modules() -> dict:
     """Evict every module a product tree supplied, whichever tree loaded it, so a run never
-    reuses another tree's copy."""
+    reuses another tree's copy. Returns what was evicted."""
+    dropped = {}
     for name, mod in list(sys.modules.items()):
         top = name.split(".")[0]
         f = getattr(mod, "__file__", None)
         if top in _TREE_MODULES or top.startswith(_TREE_PREFIXES) or (f and _in_a_skills_tree(f)):
-            del sys.modules[name]
+            dropped[name] = sys.modules.pop(name)
+    return dropped
 
 
 @contextlib.contextmanager
@@ -275,7 +277,8 @@ def _provider_env(provider: str, product: Path, workdir: Path):
     """Import the provider's modules fresh, apply every seam patch, chdir into the work dir."""
     scripts = product / "skills" / provider / "scripts"
     saved_path, saved_cwd, saved_argv = list(sys.path), os.getcwd(), list(sys.argv)
-    _drop_provider_modules()
+    evicted = _drop_provider_modules()
+    sys.path.insert(0, str(product / "skills" / "kicad" / "scripts"))
     sys.path.insert(0, str(product / "skills" / "datasheets"))
     sys.path.insert(0, str(scripts))
     try:
@@ -296,6 +299,7 @@ def _provider_env(provider: str, product: Path, workdir: Path):
         sys.path[:] = saved_path
         sys.argv[:] = saved_argv
         _drop_provider_modules()
+        sys.modules.update(evicted)
 
 
 def _sync_call(sync_mod, provider: str, spec: dict, workdir: Path, fixtures: str | None) -> dict:
