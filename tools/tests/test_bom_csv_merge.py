@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "skills" / "bom" / "scripts"))
 
 import bom_manager
+import kicad_sexp
 
 COLS = ["Reference", "Qty", "Value", "Footprint", "MPN", "Manufacturer", "Datasheet", "DNP",
         "Chosen_Distributor", "Validated", "Notes", "DigiKey", "DK_Stock", "Mouser", "MO_Stock"]
@@ -131,23 +132,30 @@ class TrackingCsvMergeTest(unittest.TestCase):
         bom_manager.export_csv(report(line(["R1"], "A")), self.csv)
         self.assertEqual(stat.S_IMODE(self.csv.stat().st_mode), 0o640)
 
-    def test_existing_private_file_is_rewritten_through_a_private_temp(self):
-        write(self.csv, [{"Reference": "R1", "Qty": "1", "MPN": "A"}])
-        os.chmod(self.csv, 0o600)
-        real, seen = os.replace, []
+    def _temp_open_modes(self):
+        real, modes = os.open, []
 
-        def spy(src, dst):
-            seen.append(stat.S_IMODE(os.stat(src).st_mode))
-            real(src, dst)
-        old = os.umask(0o022)
-        os.replace = spy
-        try:
-            bom_manager.export_csv(report(line(["R1"], "A")), self.csv)
-        finally:
-            os.replace = real
-            os.umask(old)
-        self.assertEqual(seen, [0o600])
-        self.assertEqual(stat.S_IMODE(self.csv.stat().st_mode), 0o600)
+        def spy(path, flags, mode=0o777, *a, **kw):
+            if str(path).endswith(".tmp"):
+                modes.append(mode)
+            return real(path, flags, mode, *a, **kw)
+        return spy, modes
+
+    def test_temp_is_private_for_an_existing_file_and_umask_governed_for_a_new_one(self):
+        for existing, expected in ((True, [0o600]), (False, [0o666])):
+            with self.subTest(existing=existing):
+                if existing:
+                    write(self.csv, [{"Reference": "R1", "Qty": "1", "MPN": "A"}])
+                elif self.csv.exists():
+                    self.csv.unlink()
+                spy, modes = self._temp_open_modes()
+                real = kicad_sexp.os.open
+                kicad_sexp.os.open = spy
+                try:
+                    bom_manager.export_csv(report(line(["R1"], "A")), self.csv)
+                finally:
+                    kicad_sexp.os.open = real
+                self.assertEqual(modes, expected)
 
     def test_empty_known_distributor_column_is_not_moved_to_the_end(self):
         write(self.csv, [{"Reference": "R1", "Qty": "1", "MPN": "A"}])
