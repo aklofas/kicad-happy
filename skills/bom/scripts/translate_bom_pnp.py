@@ -51,8 +51,9 @@ _DNP_MARKER_RE = re.compile(
 # whether the part is fitted.
 DNP_COL_FIELDS = ("dnp", "${dnp}", "do not populate", "do not place", "dnm", "dni")
 POP_COL_FIELDS = ("populate", "fitted")
-_DNP_COL_CLEAR = ("", "0", "no", "false", "n")
-_POP_COL_UNFITTED = ("0", "no", "false", "n", "dnp", "not fitted", "unfitted")
+_DNP_COL_CLEAR = ("", "0", "no", "false", "n", "-", "n/a", "na", "none")
+_POP_COL_UNFITTED = ("0", "no", "false", "n", "dnp", "dnf", "do not fit",
+                     "do not populate", "not fitted", "unfitted")
 
 # KiCad writes a run of three or more references as R1-R4 (same prefix at both ends).
 _RANGE_RE = re.compile(r"^(.*\D)(\d+)-\1(\d+)$")
@@ -140,7 +141,8 @@ def _row_is_dnp(raw: list[str], val: str, col_dnp: int | None, col_pop: int | No
         if (raw[col_dnp] or "").strip().lower() not in _DNP_COL_CLEAR:
             return True
     if col_pop is not None and col_pop < len(raw):
-        if (raw[col_pop] or "").strip().lower() in _POP_COL_UNFITTED:
+        cell = (raw[col_pop] or "").strip()
+        if cell.lower() in _POP_COL_UNFITTED or _is_dnp(cell):
             return True
     return False
 
@@ -515,6 +517,8 @@ def _expand_designators(field: str) -> list[str]:
     ['C1', 'C2', 'C5']
     >>> _expand_designators("R1-R3,R7")
     ['R1', 'R2', 'R3', 'R7']
+    >>> _expand_designators("R01-R03")
+    ['R01', 'R02', 'R03']
     >>> _expand_designators("R4-R1")
     ['R4-R1']
     >>> _expand_designators("R1")
@@ -531,8 +535,11 @@ def _expand_designators(field: str) -> list[str]:
     out: list[str] = []
     for tok in field.split():
         m = _RANGE_RE.match(tok)
-        if m and 0 < int(m.group(3)) - int(m.group(2)) < _RANGE_MAX:
-            out.extend(f"{m.group(1)}{n}" for n in range(int(m.group(2)), int(m.group(3)) + 1))
+        lo, hi = (m.group(2), m.group(3)) if m else ("", "")
+        padded = lo.startswith("0") or hi.startswith("0")
+        # R01-R03 keeps its width; ends with different widths and a leading zero are not a range
+        if m and 0 < int(hi) - int(lo) < _RANGE_MAX and (not padded or len(lo) == len(hi)):
+            out.extend(f"{m.group(1)}{n:0{len(lo) if padded else 0}d}" for n in range(int(lo), int(hi) + 1))
         else:
             out.append(tok)
     return out

@@ -59,12 +59,23 @@ class BomTranslation(Case):
 
     def test_population_column(self):
         for header, cell, fitted in (("Populate", "0", False), ("Populate", "1", True),
-                                     ("Fitted", "Not Fitted", False), ("Fitted", "Fitted", True)):
+                                     ("Fitted", "Not Fitted", False), ("Fitted", "Fitted", True),
+                                     ("Populate", "DNF", False), ("Populate", "Do not populate", False),
+                                     ("Populate", "Do not fit", False), ("Populate", "DNP", False)):
             with self.subTest(header=header, cell=cell):
                 src = self.write("bom.csv", f"Designator,Value,Footprint,{header}\nR1,10k,R_0603,{cell}\n")
                 out = self.d / "jlc.csv"
                 tb.translate_bom(str(src), str(out))
                 self.assertEqual([r["Designator"] for r in read_rows(out)], ["R1"] if fitted else [])
+
+    def test_dnp_column_values(self):
+        for cell, dnp in (("", False), ("-", False), ("n/a", False), ("NA", False), ("None", False),
+                          ("0", False), ("DNP", True), ("Yes", True), ("x", True)):
+            with self.subTest(cell=cell):
+                src = self.write("bom.csv", f"Designator,Value,Footprint,DNP\nR1,10k,R_0603,{cell}\n")
+                out = self.d / "jlc.csv"
+                tb.translate_bom(str(src), str(out))
+                self.assertEqual([r["Designator"] for r in read_rows(out)], [] if dnp else ["R1"])
 
     def test_population_header_is_exact(self):
         # "Do Not Populate" is a DNP-polarity column, not a population column
@@ -115,8 +126,13 @@ class Helpers(unittest.TestCase):
         self.assertEqual(tb._expand_designators("USB-HOST2-USB-HOST4"),
                          ["USB-HOST2", "USB-HOST3", "USB-HOST4"])
 
+    def test_zero_padded_ranges(self):
+        self.assertEqual(tb._expand_designators("R01-R03"), ["R01", "R02", "R03"])
+        self.assertEqual(tb._expand_designators("R008-R010"), ["R008", "R009", "R010"])
+        self.assertEqual(tb._expand_designators("R8-R10"), ["R8", "R9", "R10"])
+
     def test_not_ranges(self):
-        for tok in ("R4-R1", "J1-A", "MKB-1", "R1-C4", "R3-R3"):
+        for tok in ("R1-R03", "R01-R3", "R4-R1", "J1-A", "MKB-1", "R1-C4", "R3-R3"):
             with self.subTest(tok=tok):
                 self.assertEqual(tb._expand_designators(tok), [tok])
 
