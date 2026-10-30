@@ -51,7 +51,7 @@ This step is interactive — it requires the agent to read PDF pages and produce
 
 ### Stage 3: Cache extractions
 
-Extraction JSON files are stored in `datasheets/extracted/` with filenames derived from the MPN (non-alphanumeric characters replaced with underscores). An optional `manifest.json` (legacy name `index.json`) provides case-insensitive MPN-to-file mapping.
+Extraction JSON files are stored in `datasheets/extracted/`, named from the MPN (the cache manager appends a short hash; the planner and merger keep dots and hyphens). `manifest.json` (legacy name `index.json`) maps each MPN, matched case-insensitively, to its file, which must sit directly in that folder.
 
 ```
 datasheets/extracted/

@@ -21,13 +21,14 @@ def _load_extraction(extract_dir: str, mpn: str) -> dict:
     """Load extraction JSON for an MPN. Always returns dict; never None.
 
     Returns {} only for: missing dir, missing MPN, file not found, JSON
-    parse error, or OSError. Quality is NOT a gate here (v2.0 spec
+    parse error, undecodable or non-object file, or OSError. Quality is NOT a gate here (v2.0 spec
     §3.A.2) — callers emit an `extraction_quality_low` info finding via
     `_quality_finding` instead.
 
     Two cache shapes supported:
     - v1.4: extraction.quality_score on 0-100 scale.
-    - v1.3 legacy: meta.extraction_score on 0-10 scale.
+    - v1.3 legacy: extraction_metadata.extraction_score (cache manager) or
+      meta.extraction_score on 0-10 scale.
     """
     if not extract_dir or not mpn:
         return {}
@@ -42,15 +43,11 @@ def _load_extraction(extract_dir: str, mpn: str) -> dict:
     # Direct file lookup
     path = os.path.join(extract_dir, f"{sanitized}.json")
     if os.path.isfile(path):
-        try:
-            with open(path, encoding="utf-8") as f:
-                extraction = json.load(f)
-            return extraction
-        except (json.JSONDecodeError, OSError):
-            return {}
+        return _read_extraction_file(path)
 
-    # Manifest-based lookup (case-insensitive); try manifest.json, fall back
-    # to legacy index.json.
+    # Manifest-based lookup; try manifest.json, fall back to legacy
+    # index.json. The cache manager keys entries by a hashed file stem and
+    # records the requested MPN in `mpn`, so match either.
     idx_path = os.path.join(extract_dir, "manifest.json")
     if not os.path.isfile(idx_path):
         idx_path = os.path.join(extract_dir, "index.json")
@@ -58,18 +55,34 @@ def _load_extraction(extract_dir: str, mpn: str) -> dict:
         try:
             with open(idx_path, encoding="utf-8") as f:
                 idx = json.load(f)
-            for k, v in idx.get("extractions", {}).items():
-                if k.upper() == sanitized.upper():
-                    fname = v.get("file", "")
-                    fpath = os.path.join(extract_dir, fname)
-                    if os.path.isfile(fpath):
-                        with open(fpath, encoding="utf-8") as f:
-                            extraction = json.load(f)
-                        return extraction
-        except (json.JSONDecodeError, OSError):
+            entries = idx.get("extractions", {})
+            for k, v in entries.items():
+                if not isinstance(v, dict):
+                    continue
+                if (k.upper() != sanitized.upper()
+                        and str(v.get("mpn") or "").strip().upper() != mpn.strip().upper()):
+                    continue
+                fname = v.get("file", "")
+                # Leaf names only: a manifest must not point outside its folder.
+                if not isinstance(fname, str) or not fname or os.path.basename(fname) != fname or fname == "..":
+                    continue
+                fpath = os.path.join(extract_dir, fname)
+                if os.path.isfile(fpath):
+                    return _read_extraction_file(fpath)
+        except (ValueError, OSError, AttributeError):
             pass
 
     return {}
+
+
+def _read_extraction_file(path: str) -> dict:
+    """Read one extraction file; {} when unreadable, undecodable or not an object."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            extraction = json.load(f)
+    except (ValueError, OSError):
+        return {}
+    return extraction if isinstance(extraction, dict) else {}
 
 
 def _is_v2_format(extraction: dict) -> bool:
@@ -182,6 +195,15 @@ def _not_verifiable_finding(mpn: str, detail: str) -> dict:
     }
 
 
+def _v13_score(extraction: dict):
+    """Legacy 0-10 score: the cache manager's `extraction_metadata`, else `meta`."""
+    for block in ("extraction_metadata", "meta"):
+        score = (extraction.get(block) or {}).get("extraction_score")
+        if isinstance(score, (int, float)):
+            return score
+    return None
+
+
 def _passes_trust_gate(extraction: dict) -> bool:
     """Return True if extraction quality is acceptable (or unknown).
 
@@ -192,7 +214,7 @@ def _passes_trust_gate(extraction: dict) -> bool:
     quality_v14 = (extraction.get("extraction") or {}).get("quality_score")
     if isinstance(quality_v14, (int, float)):
         return quality_v14 >= 60
-    quality_v13 = (extraction.get("meta") or {}).get("extraction_score")
+    quality_v13 = _v13_score(extraction)
     if isinstance(quality_v13, (int, float)):
         return quality_v13 >= 6.0
     return True
@@ -207,7 +229,7 @@ def _quality_finding(mpn, extraction):
     if not extraction or _passes_trust_gate(extraction):
         return None
     q14 = (extraction.get("extraction") or {}).get("quality_score")
-    q13 = (extraction.get("meta") or {}).get("extraction_score")
+    q13 = _v13_score(extraction)
     score = q14 if isinstance(q14, (int, float)) else q13
     return {
         "type": "extraction_quality_low",
@@ -642,6 +664,26 @@ def verify_decoupling(components: list, nets: dict, extraction_dir: str,
     return findings
 
 
+def _merge_ic_units(components):
+    """One entry per IC reference: the analysis lists each unit of a multi-unit
+    part separately, with only that unit's pins."""
+    out, by_ref = [], {}
+    for c in components:
+        ref = c.get("reference", "")
+        if c.get("type") != "ic" or not ref:
+            out.append(c)
+            continue
+        if ref not in by_ref:
+            merged = dict(c)
+            merged["pin_nets"] = dict(c.get("pin_nets") or {})
+            by_ref[ref] = merged
+            out.append(merged)
+        else:
+            for pin, net in (c.get("pin_nets") or {}).items():
+                by_ref[ref]["pin_nets"].setdefault(pin, net)
+    return out
+
+
 def run_datasheet_verification(analysis: dict, project_dir: str = "") -> dict:
     """Run all datasheet verification checks.
 
@@ -653,7 +695,7 @@ def run_datasheet_verification(analysis: dict, project_dir: str = "") -> dict:
         findings: list of verification findings
         summary: {ics_checked, ics_with_extractions, total_findings, by_severity}
     """
-    components = analysis.get("components", [])
+    components = _merge_ic_units(analysis.get("components", []))
     nets = analysis.get("nets", {})
     rail_voltages = analysis.get("rail_voltages", {})
     parsed_values = {}

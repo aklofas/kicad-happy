@@ -476,7 +476,7 @@ DigiKey is best (direct PDF URLs). element14 is reliable (no bot protection). LC
 python3 -c "import sys; sys.path.insert(0, '<datasheets-skill-path>/scripts'); from datasheet_page_selector import suggest_pages; s = suggest_pages('<pdf_path>', '<mpn>', '<category>'); print(s.pages, s.reasons)"
 ```
 
-After reading the selected pages and producing an extraction JSON, score and cache it using `datasheet_score` and `datasheet_extract_cache` modules. Extractions are stored in `datasheets/extracted/<MPN>.json` and reused across reviews. The **`datasheets` skill** owns the full extraction pipeline (schema, page selection, scoring rubric, consumer API) — see `skills/datasheets/SKILL.md` and its reference guides.
+After reading the selected pages and producing an extraction JSON, score and cache it using `datasheet_score` and `datasheet_extract_cache` modules. Extractions are stored in `datasheets/extracted/` (named by the cache manager, listed in `manifest.json`) and reused across reviews. The **`datasheets` skill** owns the full extraction pipeline (schema, page selection, scoring rubric, consumer API) — see `skills/datasheets/SKILL.md` and its reference guides.
 
 **What to extract from each datasheet** (note page/section/figure/equation numbers for citations):
 - Pin function table (pin number → name → function)
