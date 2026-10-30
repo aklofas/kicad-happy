@@ -8,6 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "skills" / "kicad" / "scripts"))
 sys.path.insert(0, str(ROOT / "skills" / "emc" / "scripts"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from pcb.pipeline import analyze_pcb  # noqa: E402
 from emc_rules import check_return_path_coverage  # noqa: E402
@@ -47,8 +48,26 @@ class EmptyResult(unittest.TestCase):
         out = analyze(board(""))
         self.assertNotIn("return_path_continuity", out)
         (f,) = check_return_path_coverage(out)
-        self.assertIn("no ground or power plane fill", f["description"])
+        self.assertIn("no ground or power plane fill", f["summary"])
         self.assertNotIn("--full", f["recommendation"])
+
+    def test_zone_flagged_filled_without_polygons_says_no_plane_fill(self):
+        # (fill yes ...) but the file holds no filled_polygon: the pour was never filled/saved
+        z = ('(zone (net 2) (net_name "GND") (layer "B.Cu") (hatch edge 0.5)'
+             ' (connect_pads (clearance 0.2)) (min_thickness 0.25) (fill yes (thermal_gap 0.5)'
+             ' (thermal_bridge_width 0.5)) (polygon (pts (xy 0 5) (xy 20 5) (xy 20 15) (xy 0 15))))\n')
+        out = analyze(board(z))
+        self.assertTrue(out["zones"][0]["is_filled"])
+        self.assertNotIn("return_path_continuity", out)
+        (f,) = check_return_path_coverage(out)
+        self.assertIn("no ground or power plane fill", f["summary"])
+
+    def test_fills_present_but_key_missing_points_at_older_analyzer(self):
+        out = analyze(board(zone("GND", "B.Cu")))
+        del out["return_path_continuity"]
+        (f,) = check_return_path_coverage(out)
+        self.assertIn("older analyzer", f["description"])
+        self.assertEqual(f["summary"], "Return path analysis data not available")
 
     def test_a_real_gap_is_still_reported(self):
         out = analyze(board(zone("GND", "B.Cu", 40, 45, 40, 45)))
