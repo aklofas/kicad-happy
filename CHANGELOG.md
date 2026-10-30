@@ -170,6 +170,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Datasheet pin-voltage checks on v1.4 extractions check every number of a grouped pin record (only the first was checked), use a pin's own recommended limit before its power domain's, and give a 5 V-tolerant pin only its own limits: without them it gets no check instead of the domain's supply limit. (sk/R3-F7, KH-621)
 - The page selector keeps the last page (package and ordering information) when it caps the page list, and `validate_sanity_vector.py --help` works without PyYAML. (sk/R3-F11)
 - The datasheet schemas `base`, `pinout` and `extraction` carry a version, so the capability record lists them. Regulator extractions may say `ceramic` for a generic ceramic output capacitor (regulator schema 0.4). The extraction prompts ask only for shapes the schemas accept: pin types from the KiCad ERC vocabulary, alternate functions as objects, MSL and compliance as objects, and `"pinout": []` in the base task (KH-330, KH-633).
+- Lifecycle audit: temperature ranges parse negative maxima, decimal and Unicode-minus bounds; the cold-side shortfall is positive like the hot side; lead times in days round up to whole weeks, so 90 days crosses the 12-week threshold; a blank-padded status label counts as no status (KH-579, KH-602).
 
 ---
 

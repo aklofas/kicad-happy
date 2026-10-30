@@ -30,6 +30,7 @@ import re
 import sys
 import tempfile
 import time
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -120,11 +121,16 @@ def _worse_status(a: str, b: str) -> str:
     return a if _STATUS_RANK.index(a) <= _STATUS_RANK.index(b) else b
 
 
+def _stated(label) -> bool:
+    """A status label counts only when it has text; blank padding is no label."""
+    return bool(label.strip()) if isinstance(label, str) else bool(label)
+
+
 def _source_status(data: dict) -> str | None:
     """One distributor's status: the worse of its label and its discontinuation
     flag, or None when it states neither."""
     status = None
-    if data.get("status"):
+    if _stated(data.get("status")):
         status = _normalize_status(data["status"])
     if data.get("discontinued") is True:
         status = _worse_status(status or "unknown", "discontinued")
@@ -158,9 +164,12 @@ def _parse_temp_range(text: str) -> tuple[float, float] | None:
     """
     if not text:
         return None
-    m = re.search(r'(-?\d+)\s*°?\s*C?\s*[~\-–—to]+\s*\+?(-?\d+)\s*°?\s*C?', text)
+    num = r'([+\-\u2212\u2013]?\d+(?:\.\d+)?)'
+    m = re.search(r'(?<![\w.])' + num + r'\s*°?\s*C?\s*(?:~|to|[\-\u2013\u2014])\s*' + num,
+                  unicodedata.normalize('NFKC', text))
     if m:
-        return float(m.group(1)), float(m.group(2))
+        return tuple(float(g.replace('\u2212', '-').replace('\u2013', '-'))
+                     for g in m.groups())
     return None
 
 
@@ -808,7 +817,7 @@ def audit_bom(analysis_json: dict, project_dir: str | None = None,
             per_source = data.get('per_source_status', {})
             responded = [s for s, d in all_responded.items()
                          if s != 'lcsc'
-                         and (d.get('status') or d.get('discontinued') is True)]
+                         and (_stated(d.get('status')) or d.get('discontinued') is True)]
             active_confirmed = sorted(s for s in responded if per_source.get(s) == 'active')
 
             total_attempted = len(attempted)
@@ -859,7 +868,7 @@ def audit_bom(analysis_json: dict, project_dir: str | None = None,
                     if m:
                         weeks = int(m.group(1))
                         if 'day' in lt.lower():
-                            weeks = weeks // 7
+                            weeks = -(-weeks // 7)
                 if weeks > max_lead_weeks:
                     max_lead_weeks = weeks
                     lead_source = src_name
@@ -914,7 +923,7 @@ def audit_bom(analysis_json: dict, project_dir: str | None = None,
                     "violations": {
                         "below_min": below_min,
                         "above_max": above_max,
-                        "min_shortfall_c": design_min - comp_min if below_min else 0,
+                        "min_shortfall_c": comp_min - design_min if below_min else 0,
                         "max_shortfall_c": design_max - comp_max if above_max else 0,
                     },
                     "detector": "audit_bom",
