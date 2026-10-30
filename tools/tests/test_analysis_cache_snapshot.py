@@ -91,6 +91,27 @@ class CliSnapshotTest(unittest.TestCase):
         self.assertEqual(m["runs"][base]["outputs"], {"schematic": "schematic.json", "pcb": "pcb.json"})
         self.assertIn("thermal.json dropped from the run", r.stderr)
 
+    def test_dropped_emc_takes_its_input_hashes_with_it(self):
+        _proj, ad, base = self._base()
+        run = os.path.join(ad, base)
+        self._run(str(ROOT / "skills" / "emc" / "scripts" / "analyze_emc.py"),
+                  "--schematic", os.path.join(run, "schematic.json"),
+                  "--pcb", os.path.join(run, "pcb.json"), "--analysis-dir", ad)
+        m = _manifest(ad)
+        self.assertEqual(m["current"], base)
+        self.assertEqual(m["runs"][base]["source_hashes"]["schematic.json"],
+                         "sha256:" + _sha(os.path.join(run, "schematic.json")))
+        self._change_r_value()
+        r = self._run("analyze_schematic.py", self.sch, "--analysis-dir", ad)
+        m = _manifest(ad)
+        new = m["current"]
+        self.assertNotEqual(new, base)
+        self.assertEqual(sorted(os.listdir(os.path.join(ad, new))), ["pcb.json", "schematic.json"])
+        self.assertIn("emc.json dropped from the run", r.stderr)
+        self.assertEqual(m["runs"][new]["source_hashes"],
+                         {"simple.kicad_sch": "sha256:" + _sha(self.sch),
+                          "simple.kicad_pcb": "sha256:" + _sha(self.pcb)})
+
     def test_unchanged_reruns_keep_thermal(self):
         _proj, ad, base = self._base()
         base_files = _run_files(ad, base)
@@ -176,6 +197,62 @@ class CreateRunTest(unittest.TestCase):
         self.assertNotIn("emc", run["outputs"])
         self.assertEqual(files, ["cross_analysis.json", "pcb.json", "schematic.json", "spice.json",
                                  "thermal.json"])
+
+
+class OverwriteTest(unittest.TestCase):
+    """overwrite_current on a hand-built current run holding a derived thermal.json."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.ad = os.path.join(self.tmp, "analysis")
+        self.cur = os.path.join(self.ad, "cur")
+        os.makedirs(self.cur)
+        _write_json(os.path.join(self.cur, "schematic.json"), {"analyzer_type": "schematic", "n": 1})
+        _write_json(os.path.join(self.cur, "pcb.json"), {"analyzer_type": "pcb", "n": 1})
+        sch_sha = _sha(os.path.join(self.cur, "schematic.json"))
+        _write_json(os.path.join(self.cur, "thermal.json"), {"inputs": {"upstream_artifacts": {
+            "schematic": {"path": os.path.join(self.cur, "schematic.json"), "sha256": sch_sha,
+                          "schema_version": "1.4.0", "run_id": "20261030T000000Z-000000"}}}})
+        _write_json(os.path.join(self.ad, "manifest.json"), {
+            "version": 1, "project": "", "current": "cur", "runs": {"cur": {
+                "source_hashes": {"a.kicad_sch": "sha256:aa"},
+                "outputs": {"schematic": "schematic.json", "pcb": "pcb.json", "thermal": "thermal.json"},
+                "scripts": {}, "generated": "2026-10-30T00:00:00+00:00", "pinned": False}}})
+        self.out = os.path.join(self.tmp, "out")
+        os.makedirs(self.out)
+        _write_json(os.path.join(self.out, "schematic.json"), {"analyzer_type": "schematic", "n": 2})
+
+    def _overwrite(self):
+        with redirect_stderr(io.StringIO()) as err:
+            ok = analysis_cache.overwrite_current(self.ad, self.out, source_hashes={"a.kicad_sch": "sha256:cc"})
+        return ok, err.getvalue(), _manifest(self.ad)["runs"]["cur"]
+
+    def test_stale_output_leaves_when_another_file_is_refused(self):
+        outside = os.path.join(self.tmp, "outside.json")
+        Path(outside).write_text("outside", encoding="utf-8")
+        os.unlink(os.path.join(self.cur, "pcb.json"))
+        os.symlink(outside, os.path.join(self.cur, "pcb.json"))
+        _write_json(os.path.join(self.out, "pcb.json"), {"analyzer_type": "pcb", "n": 2})
+        ok, err, run = self._overwrite()
+        self.assertFalse(ok)
+        self.assertEqual(_sha(os.path.join(self.cur, "schematic.json")),
+                         _sha(os.path.join(self.out, "schematic.json")))
+        self.assertFalse(os.path.lexists(os.path.join(self.cur, "thermal.json")))
+        self.assertNotIn("thermal", run["outputs"])
+        self.assertIn("thermal.json dropped from the run", err)
+        self.assertEqual(Path(outside).read_text(encoding="utf-8"), "outside")
+
+    def test_symlinked_thermal_is_unlinked_and_its_target_untouched(self):
+        outside = os.path.join(self.tmp, "outside-thermal.json")
+        Path(outside).write_text('{"precious": true}', encoding="utf-8")
+        os.unlink(os.path.join(self.cur, "thermal.json"))
+        os.symlink(outside, os.path.join(self.cur, "thermal.json"))
+        ok, _err, run = self._overwrite()
+        self.assertTrue(ok)
+        self.assertFalse(os.path.lexists(os.path.join(self.cur, "thermal.json")))
+        self.assertNotIn("thermal", run["outputs"])
+        self.assertEqual(Path(outside).read_text(encoding="utf-8"), '{"precious": true}')
 
 
 if __name__ == "__main__":

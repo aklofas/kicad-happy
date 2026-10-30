@@ -395,22 +395,31 @@ def _built_from(run_dir: str, filename: str) -> Dict[str, Optional[str]]:
 
 
 def _derived_stale(run_dir: str, filename: str,
-                   replaced: Dict[str, Optional[str]]) -> Optional[str]:
-    """Name of the input that makes derived *filename* in *run_dir* stale, or None.
+                   replaced: Dict[str, Optional[str]]) -> List[str]:
+    """Names of the inputs that make derived *filename* in *run_dir* stale (empty = fresh).
 
     *replaced* maps each upstream output that changes in the next state of the run to the
     file that will hold it (None = it leaves the run); upstreams not listed stay as they are.
     """
+    stale = []
     for name, recorded in sorted(_built_from(run_dir, filename).items()):
         if name not in replaced:
             continue
         new_path = replaced[name]
-        if new_path is None:
-            return name
         expected = recorded or _sha256_hex(os.path.join(run_dir, name))
-        if expected is None or _sha256_hex(new_path) != expected:
-            return name
-    return None
+        if new_path is None or expected is None or _sha256_hex(new_path) != expected:
+            stale.append(name)
+    return stale
+
+
+def _prune_output_hashes(hashes: Dict[str, str], run_dir: str) -> None:
+    """Drop the schematic.json/pcb.json hashes an EMC or SPICE write recorded unless such an
+    output is still in *run_dir* and the run holds that same file."""
+    keep = any(os.path.lexists(os.path.join(run_dir, name)) for name in ('emc.json', 'spice.json'))
+    for name in _UPSTREAM_OUTPUTS:
+        if name in hashes and not (keep and hashes[name] == 'sha256:%s' % _sha256_hex(
+                os.path.join(run_dir, name))):
+            del hashes[name]
 
 
 def _incoming_outputs(outputs_dir: str) -> Dict[str, str]:
@@ -502,7 +511,7 @@ def create_run(analysis_dir: str,
             if not stale and filename in _DERIVED_OUTPUTS and filename not in incoming:
                 upstream = _derived_stale(prev_run_dir, filename, replaced)
                 if upstream:
-                    _note_dropped(filename, upstream)
+                    _note_dropped(filename, upstream[0])
                     stale = True
             prev_file = os.path.join(prev_run_dir, filename)
             new_file = os.path.join(run_dir, filename)
@@ -536,6 +545,7 @@ def create_run(analysis_dir: str,
     run_hashes = {}
     if prev_run_id and prev_run_id in manifest.get('runs', {}):
         run_hashes.update(manifest['runs'][prev_run_id].get('source_hashes', {}) or {})
+        _prune_output_hashes(run_hashes, run_dir)
     run_hashes.update(source_hashes or {})
 
     # Update manifest
@@ -608,26 +618,35 @@ def overwrite_current(analysis_dir: str,
 
     # Overwrite files
     refused = False
+    copied = set()
     for filename in os.listdir(outputs_dir):
         src = os.path.join(outputs_dir, filename)
         if os.path.isfile(src) and filename.endswith('.json'):
-            if not _copy_regular(src, os.path.join(current_dir, filename), "overwrite_current"):
+            if _copy_regular(src, os.path.join(current_dir, filename), "overwrite_current"):
+                copied.add(filename)
+            else:
                 refused = True
 
     # Update manifest entry
     run_entry = manifest['runs'][current_id]
-    if not refused:
-        for filename, upstream in sorted(stale.items()):
-            try:
-                os.unlink(os.path.join(current_dir, filename))
-            except OSError as exc:
-                record(None, "analysis_cache.overwrite_current", exc, "stale output kept")
-                continue
-            _note_dropped(filename, upstream)
-            outputs_map = run_entry.get('outputs')
-            if isinstance(outputs_map, dict):
-                for atype in [t for t, fn in outputs_map.items() if fn == filename]:
-                    del outputs_map[atype]
+    dropped = False
+    for filename, upstreams in sorted(stale.items()):
+        upstream = next((name for name in upstreams if name in copied), None)
+        if upstream is None:
+            continue
+        try:
+            os.unlink(os.path.join(current_dir, filename))
+        except OSError as exc:
+            record(None, "analysis_cache.overwrite_current", exc, "stale output kept")
+            continue
+        dropped = True
+        _note_dropped(filename, upstream)
+        outputs_map = run_entry.get('outputs')
+        if isinstance(outputs_map, dict):
+            for atype in [t for t, fn in outputs_map.items() if fn == filename]:
+                del outputs_map[atype]
+    if dropped and isinstance(run_entry.get('source_hashes'), dict):
+        _prune_output_hashes(run_entry['source_hashes'], current_dir)
     if source_hashes is not None and not refused:
         # Merge, don't replace — running pcb after schematic should keep
         # the schematic's hash alongside the pcb's, so staleness detection
