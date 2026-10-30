@@ -135,7 +135,7 @@ def main(argv: list[str] | None = None) -> int:
 
     finalize_for_cli(result, config, pcb_path=args.pcb, analysis_dir_arg=args.analysis_dir,
                      return_path_radius_mm=args.return_path_radius_mm,
-                     stage=args.stage, audience=args.audience)
+                     stage=args.stage, audience=args.audience, output_arg=args.output)
 
     if args.text:
         from output_filters import format_text

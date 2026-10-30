@@ -622,24 +622,30 @@ def analyze_pcb(path: str, *, proximity: bool = False,
 
 def finalize_for_cli(result: dict, config: dict, *, pcb_path: str, analysis_dir_arg: str | None,
                      return_path_radius_mm: float, stage: str | None,
-                     audience: str | None) -> None:
+                     audience: str | None, output_arg: str | None = None) -> None:
     """Phase 5: command-specific annotation; mutates *result*."""
     # GP-001 debug: write per-sample diagnostics to disk and strip from output
     gp001_debug_data = result.pop("_gp001_debug_samples", None)
     if gp001_debug_data is not None:
-        debug_dir = analysis_dir_arg or str(Path(pcb_path).parent)
+        # Beside --output when given, else the analysis dir, else the board's directory
+        if output_arg:
+            debug_dir = str(Path(output_arg).parent)
+        else:
+            debug_dir = analysis_dir_arg or str(Path(pcb_path).parent)
         debug_path = os.path.join(debug_dir, "gp001_debug.json")
         try:
+            if os.path.islink(debug_path):
+                raise OSError("target is a symlink")
             os.makedirs(debug_dir, exist_ok=True)
-            with open(debug_path, "w", encoding="utf-8") as f:
-                json.dump({
-                    "description": "GP-001 return-path per-sample diagnostics",
-                    "radius_mm": return_path_radius_mm,
-                    "total_samples": len(gp001_debug_data),
-                    "hits": sum(1 for s in gp001_debug_data if s["hit"]),
-                    "misses": sum(1 for s in gp001_debug_data if not s["hit"]),
-                    "samples": gp001_debug_data,
-                }, f, indent=2)
+            from kicad_core.fileio import atomic_write_text
+            atomic_write_text(debug_path, json.dumps({
+                "description": "GP-001 return-path per-sample diagnostics",
+                "radius_mm": return_path_radius_mm,
+                "total_samples": len(gp001_debug_data),
+                "hits": sum(1 for s in gp001_debug_data if s["hit"]),
+                "misses": sum(1 for s in gp001_debug_data if not s["hit"]),
+                "samples": gp001_debug_data,
+            }, indent=2))
             print(f"GP-001 debug: {len(gp001_debug_data)} samples written to {debug_path}",
                   file=sys.stderr)
         except OSError as e:
