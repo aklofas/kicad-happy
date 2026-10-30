@@ -33,7 +33,7 @@ from pathlib import Path
 import _core_path  # noqa: F401
 from distributor_core.manifest import DEFAULT_FILE_MODE, manifest_file_path
 from kicad_core.diagnostics import record
-from kicad_core.project import project_dir_from_analysis  # noqa: F401  (re-exported)
+from kicad_core.project import extraction_project_dir, project_dir_from_analysis  # noqa: F401  (re-exported)
 from spice_part_library import lookup_part_specs
 from spice_spec_fetcher import _read_spice_specs
 from spice_model_generator import (
@@ -356,8 +356,8 @@ def get_model_for_part(mpn, component_type=None, context=None, options=None, *, 
     if not opts.offline:
         try:
             from spice_spec_fetcher import fetch_specs
-            # Derive project dir from context for datasheet fallback
-            project_dir = project_dir_from_analysis(context)
+            # Datasheet fallback: only a project the analysis really names, never the cwd
+            project_dir = extraction_project_dir(context)
             if project_dir is not None:
                 project_dir = str(project_dir)
 
