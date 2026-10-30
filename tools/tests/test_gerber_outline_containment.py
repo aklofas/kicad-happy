@@ -157,5 +157,28 @@ class ExcellonHeaderTest(unittest.TestCase):
         self.assertFalse(self._is("%\n(mill pocket)\nG21 G90 G17\nG0 Z5 M48\nG1 X10 Y10 F300\nM2\n%\n"))
 
 
+
+def _line(func, x0, y0, x1, y1):
+    return (f"%TF.FileFunction,{func}*%\n{HEAD_MM}"
+            f"X{x0 * 1_000_000}Y{y0 * 1_000_000}D02*\nX{x1 * 1_000_000}Y{y1 * 1_000_000}D01*\nM02*\n")
+
+
+class DegenerateOutlineTest(unittest.TestCase):
+    def test_edge_cuts_line_is_not_an_outline(self):
+        # An Edge.Cuts file holding one 0..10 line at y 0 bounds no area, so it
+        # cannot contain the 10 x 10 copper: no outline, nothing to report.
+        r = _run({"b-F_Cu.gtl": _square("Copper,L1,Top", 0, 0, 10, 10),
+                  "b-Edge_Cuts.gm1": _line("Profile,NP", 0, 0, 10, 0)})
+        self.assertTrue(r["alignment"]["aligned"])
+        self.assertEqual(r["alignment"]["issues"], [])
+        self.assertEqual(_gr002(r), [])
+
+    def test_copper_line_past_a_real_outline_is_still_reported(self):
+        # One copper line from x 0 to 15 at y 5: 5 mm past the 0..10 outline.
+        r = _run({"b-F_Cu.gtl": _line("Copper,L1,Top", 0, 5, 15, 5),
+                  "b-Edge_Cuts.gm1": EDGE})
+        self.assertEqual(r["alignment"]["issues"],
+                         ["F.Cu extends 5.0mm outside the board outline"])
+
 if __name__ == "__main__":
     unittest.main()

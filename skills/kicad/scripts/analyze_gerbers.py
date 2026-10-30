@@ -1108,8 +1108,11 @@ def check_alignment(gerbers: list[dict], drills: list[dict]) -> dict:
                 "width": round(cr["x_max"] - cr["x_min"], 3),
                 "height": round(cr["y_max"] - cr["y_min"], 3),
             }
-            if ((lt == "Edge.Cuts" or lt in ("F.Cu", "B.Cu") or (lt.startswith("In") and lt.endswith(".Cu")))
-                    and (cr["x_max"] > cr["x_min"] or cr["y_max"] > cr["y_min"])):
+            wide, tall = cr["x_max"] > cr["x_min"], cr["y_max"] > cr["y_min"]
+            # An outline must bound an area; copper with extent on one axis still counts.
+            if ((lt == "Edge.Cuts" and wide and tall)
+                    or ((lt in ("F.Cu", "B.Cu") or (lt.startswith("In") and lt.endswith(".Cu")))
+                        and (wide or tall))):
                 box = (cr["x_min"], cr["y_min"], cr["x_max"], cr["y_max"])
                 if lt == "Edge.Cuts" and lt in boxes:
                     # Several outline files (e.g. .gbr and .gko) all bound the board.
