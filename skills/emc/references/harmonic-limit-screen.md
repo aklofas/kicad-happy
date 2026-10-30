@@ -15,7 +15,7 @@ python3 skills/emc/scripts/analyze_harmonic_limits.py \
 
 ## Spectrum format
 
-The input must use schema `harmonic-lines/1` and `level_unit: dbuv_rms`. Frequencies are positive finite hertz values, levels are finite RMS-referenced dBµV values, and duplicate frequencies are rejected.
+The input must use schema `harmonic-lines/1` and `level_unit: dbuv_rms`. Frequencies are positive finite hertz values, levels are finite RMS-referenced dBµV values, and duplicate frequencies are rejected. An optional `source` must be an object; it is echoed to the output as `spectrum_source` (`null` when absent). Input files must be UTF-8 (a leading byte-order mark is accepted), and JSON objects with duplicate keys are rejected rather than resolved last-wins.
 
 ```json
 {
@@ -34,7 +34,7 @@ The input must use schema `harmonic-lines/1` and `level_unit: dbuv_rms`. Frequen
 
 ## Limit-profile format
 
-Profiles use schema `emc-limit-profile/1`. `profile_id`, `source.kind`, and `source.citation` are required. Each uniquely named band has an inclusive positive frequency range and at least one finite dBµV limit named `peak`, `quasi_peak`, or `average`.
+Profiles use schema `emc-limit-profile/1`. `profile_id`, `source.kind`, and `source.citation` are required, and any additional `source` fields (for example a URL or edition) are copied to the output unchanged. A profile needs at least one band. Each uniquely named band has an inclusive positive frequency range and at least one finite dBµV limit named `peak`, `quasi_peak`, or `average`.
 
 The repository does not provide regulatory tables. The following values are fictional and must not be used for a product decision:
 
@@ -63,7 +63,7 @@ The repository does not provide regulatory tables. The following values are fict
 
 ## Comparison and output
 
-For each band, the tool selects the in-band point with the greatest `level_dbuv`; equal levels choose the lower frequency deterministically. Band endpoints are inclusive, and overlapping bands are evaluated independently. `margin_db` is `limit_dbuv - level_dbuv`.
+For each band, the tool selects the in-band point with the greatest `level_dbuv`; equal levels choose the lower frequency deterministically. Band endpoints are inclusive, and overlapping bands are evaluated independently. `margin_db` is `limit_dbuv - level_dbuv`, rounded to 1e-6 dB before it is classified or written, so decimal inputs such as a 3 dB design margin classify as written rather than by binary floating-point noise. A margin that is not finite (for example from extreme finite inputs) is rejected with an error naming the band.
 
 | Status | Meaning |
 |---|---|
@@ -72,7 +72,34 @@ For each band, the tool selects the in-band point with the greatest `level_dbuv`
 | `above_limit_screen` | Margin is negative. |
 | `not_assessed` | The band has no points or no limit for the selected detector. |
 
-An empty band has null worst-point fields. A missing detector limit has a null limit and margin but retains the worst point when one exists. Every result uses `result_class: screening_only` and includes `This comparison is not a compliance determination.`
+`--detector` only selects which profile limit is compared. It does not emulate or validate the detector used for the measurement, so `margin_db` is not a detector-specific receiver margin.
+
+An empty band has null worst-point fields. A missing detector limit has a null limit and margin but retains the worst point when one exists. Every result uses `result_class: screening_only` and includes `This comparison is not a compliance determination.` The result also carries `spectrum_source` (the spectrum's `source` object, or `null`) and `profile.source` (the profile's complete `source` object) for provenance.
+
+```json
+{
+  "schema_version": "harmonic-limit-screen/1",
+  "result_class": "screening_only",
+  "detector": "peak",
+  "design_margin_db": 3.0,
+  "spectrum_source": {"kind": "simulation", "description": "synthetic spectral lines"},
+  "profile": {
+    "profile_id": "fictional-user-profile",
+    "source": {"kind": "user_supplied", "citation": "Fictional example — not a regulatory source"}
+  },
+  "bands": [
+    {
+      "name": "fictional-band",
+      "worst_frequency_hz": 1000000.0,
+      "level_dbuv": 42.0,
+      "limit_dbuv": 54.0,
+      "margin_db": 12.0,
+      "status": "below_limit_screen"
+    }
+  ],
+  "claim_boundary": "This comparison is not a compliance determination."
+}
+```
 
 ## Limitations
 
