@@ -26,7 +26,7 @@ import re
 import subprocess
 import sys
 
-from diff_engine import finding_key
+from diff_engine import _canonical, _fid_stem, finding_key
 
 # ---------------------------------------------------------------------------
 # Severity ranking: lower number = higher priority
@@ -111,9 +111,64 @@ def marker_id(body: "str | None") -> "tuple[str, str | None] | None":
     return parse_marker(first)
 
 
-def _is_stable(finding: dict) -> bool:
-    fid = " ".join(str(finding.get("finding_id")).split())
-    return finding_key(finding) == finding.get("finding_id") and bool(fid)
+def positional_stems(findings: "list[dict]") -> set:
+    """Id stems that follow list order in this run, as diff_engine.match_findings finds them.
+
+    A stem is positional when two findings share it or any member carries a
+    ``#N`` suffix; the unsuffixed member of such a group is positional too.
+    """
+    counts: dict[str, int] = {}
+    positional: set = set()
+    for f in findings:
+        fid = f.get("finding_id")
+        if isinstance(fid, str) and fid:
+            stem = _fid_stem(fid)
+            counts[stem] = counts.get(stem, 0) + 1
+            if stem != fid:
+                positional.add(stem)
+    positional.update(stem for stem, n in counts.items() if n > 1)
+    return positional
+
+
+def _sig(finding: dict) -> str:
+    return json.dumps(finding, sort_keys=True, default=str)
+
+
+def _distinct(findings: "list[dict]") -> "list[dict]":
+    """The findings with exact duplicates (the same object content) dropped."""
+    seen: set = set()
+    unique = []
+    for f in findings:
+        sig = _sig(f)
+        if sig not in seen:
+            seen.add(sig)
+            unique.append(f)
+    return unique
+
+
+def claim_plan(findings: "list[dict]") -> dict:
+    """Map the finding's JSON text -> (unstable, rank) for a run's findings.
+
+    An unstable finding is identified by its content key only. Findings that
+    share a key take ranks 0, 1, ... in canonical content order, so which
+    open issue each one claims never depends on input order.
+    """
+    stems = positional_stems(findings)
+    groups: dict[str, list] = {}
+    plan: dict = {}
+    for f in findings:
+        fid = f.get("finding_id")
+        if not (isinstance(fid, str) and fid.strip()):
+            continue
+        if finding_key(f, positional=_fid_stem(fid) in stems) != fid:
+            groups.setdefault(finding_key(f, positional=True), []).append(f)
+        else:
+            plan[_sig(f)] = (False, 0)
+    for members in groups.values():
+        members.sort(key=lambda f: (_canonical(f), f.get("finding_id")))
+        for rank, f in enumerate(members):
+            plan[_sig(f)] = (True, rank)
+    return plan
 
 
 def load_findings(path: str) -> list[dict]:
@@ -385,7 +440,7 @@ class IssueIndex:
     def __init__(self, issues: "list[dict]"):
         self.used: set = set()
         self.by_id: dict[str, object] = {}
-        self.by_key: dict[str, object] = {}
+        self.by_key: dict[str, list] = {}
         self.keyless: dict[str, object] = {}
         self.legacy: dict[str, list] = {}
         for issue in issues:
@@ -402,34 +457,41 @@ class IssueIndex:
         fid, key = parsed
         self.by_id.setdefault(fid, num)
         if key:
-            self.by_key.setdefault(key, num)
+            self.by_key.setdefault(key, []).append(num)
         else:
             self.keyless.setdefault(fid, num)
 
-    def add_created(self, num, finding: dict, title: str) -> None:
+    def add_created(self, num, finding: dict, title: str, unstable: bool = False) -> None:
+        """Record an issue made this run. An unstable finding is already
+        accounted for by its rank, so it is not added to the key counts."""
         parsed = parse_marker(finding_marker(finding))
+        if unstable and parsed:
+            return
         if parsed:
             self.add_marker(num, parsed)
         else:
             self.legacy.setdefault(title, []).append(num)
 
-    def claim(self, finding: dict, titles: "list[str]") -> "object | None":
+    def claim(self, finding: dict, titles: "list[str]",
+              unstable: bool = False, rank: int = 0) -> "object | None":
         """Return the open issue for this finding and mark it as used.
 
-        A finding with a stable id matches by id. One whose id is positional
-        or names an unnamed net matches by content key; a marker without a key
-        matches by id only. An unmarked issue is matched by exact title and
-        serves one finding only.
+        A stable id matches by id. An unstable finding (positional id or
+        unnamed-net locator) matches by content key as a multiset: the open
+        issues carrying a key serve the first ``n`` findings of that key in
+        ``rank`` order. A marker without a key matches by id only. An unmarked
+        issue is matched by exact title and serves one finding only.
         """
         parsed = parse_marker(finding_marker(finding))
         if parsed:
             fid, key = parsed
-            if _is_stable(finding):
+            if not unstable:
                 if fid in self.by_id:
                     return self.by_id[fid]
             else:
-                if key in self.by_key:
-                    return self.by_key[key]
+                nums = self.by_key.get(key, [])
+                if rank < len(nums):
+                    return nums[rank]
                 if fid in self.keyless:
                     return self.keyless[fid]
         for title in titles:
@@ -650,6 +712,9 @@ def main(argv: "list[str] | None" = None) -> int:  # noqa: C901 (intentionally l
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
+    plan = claim_plan(_distinct(all_findings))
+    findings = _distinct(findings)
+
     created = 0
     skipped = 0
     errors = 0
@@ -658,7 +723,9 @@ def main(argv: "list[str] | None" = None) -> int:  # noqa: C901 (intentionally l
         rule_id = finding.get("rule_id", "")
 
         title = format_issue_title(finding)
-        existing = index.claim(finding, [title, format_issue_title(finding, inert=False)])
+        unstable, rank = plan.get(_sig(finding), (False, 0))
+        existing = index.claim(
+            finding, [title, format_issue_title(finding, inert=False)], unstable, rank)
         if existing is not None:
             summary = (finding.get("summary") or "")[:60]
             print(f"SKIP  [{rule_id}] {summary}  (already open: #{existing})")
@@ -674,7 +741,7 @@ def main(argv: "list[str] | None" = None) -> int:  # noqa: C901 (intentionally l
             print(f"CREATED  {url}")
             created += 1
             tail = url.rstrip("/").rsplit("/", 1)[-1]
-            index.add_created(int(tail) if tail.isdigit() else tail, finding, title)
+            index.add_created(int(tail) if tail.isdigit() else tail, finding, title, unstable)
         else:
             print(f"ERROR  [{rule_id}] {title[:60]}", file=sys.stderr)
             errors += 1

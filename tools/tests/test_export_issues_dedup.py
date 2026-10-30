@@ -198,6 +198,45 @@ class ExportDedupTest(unittest.TestCase):
         self.assertIn("truncated", err.getvalue())
         self.assertFalse([c for c in calls if c[:2] == ["issue", "create"]])
 
+    def test_head_of_a_collision_group_is_not_matched_by_id(self):
+        a = {"rule_id": "RG-001", "nets": ["N1"], "components": ["U1"], "summary": "A summary"}
+        b = {"rule_id": "RG-001", "nets": ["N2"], "components": ["U1"], "summary": "B summary"}
+        # B was filed when it held the bare id; A now sorts first and takes it
+        issues = [{"number": 8, "title": "t",
+                   "body": keyed_marker("schematic:RG-001:u1", "RG-001::N2::U1::B summary")}]
+        r, creates = self.run_export(
+            [dict(a, finding_id="schematic:RG-001:u1"),
+             dict(b, finding_id="schematic:RG-001:u1#1")], issues)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(len(creates), 1)
+        self.assertEqual(self.kv(creates[0], "title"), "[RG-001] A summary (U1)")
+
+    def nt_pair(self):
+        return [{"rule_id": "NT-001", "finding_id": f"NT-001:__unnamed_{n}",
+                 "nets": [f"__unnamed_{n}"], "components": ["BV10"],
+                 "summary": f"Single-pin net: __unnamed_{n} only connects to BV10"}
+                for n in (3, 4)]
+
+    def nt_issues(self, count):
+        content = "NT-001::__unnamed::BV10::Single-pin net: __unnamed only connects to BV10"
+        return [{"number": i + 1, "title": "t",
+                 "body": keyed_marker(f"NT-001:__unnamed_{i + 10}", content)}
+                for i in range(count)]
+
+    def test_same_key_findings_are_not_collapsed(self):
+        for open_count, expected in ((0, 2), (1, 1), (2, 0)):
+            r, creates = self.run_export(self.nt_pair(), self.nt_issues(open_count))
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(len(creates), expected, open_count)
+        three = self.nt_pair() + [dict(self.nt_pair()[0], finding_id="NT-001:__unnamed_5",
+                                       nets=["__unnamed_5"])]
+        r, creates = self.run_export(three, [])
+        self.assertEqual(len(creates), 3)
+        # input order does not change which finding is left to file
+        r1, c1 = self.run_export(self.nt_pair(), self.nt_issues(1))
+        r2, c2 = self.run_export(self.nt_pair()[::-1], self.nt_issues(1))
+        self.assertEqual(self.kv(c1[0], "title"), self.kv(c2[0], "title"))
+
     def test_values_are_passed_as_one_flag_each(self):
         r, creates = self.run_export([finding("RG-001:aaa", "--web")], [])
         self.assertEqual(creates[0][:2], ["issue", "create"])
