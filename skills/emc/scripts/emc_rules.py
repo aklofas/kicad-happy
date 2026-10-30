@@ -1886,7 +1886,7 @@ def check_input_cap_loop_area(pcb: Optional[Dict],
 
     def _not_estimated(ref, val, inductor_ref, cap_ref):
         return _make_finding(
-            'switching_emc', 'INFO', 'SW-003',
+            'switching_emc', 'INFO', rule_id='SW-003', detector='emc_switching_emc',
             title=f'Hot loop for {ref} not estimated',
             description=(
                 f'{ref} ({val}): the centres of {cap_ref}, {ref} and '
