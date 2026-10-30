@@ -1579,7 +1579,7 @@ def finalize_for_cli(result: dict, config: dict, *, schematic_path: str, lifecyc
         except ImportError:
             _lifecycle_skip_reason = "lifecycle_audit.py not found"
             print("Warning: lifecycle_audit.py not found", file=sys.stderr)
-        except (OSError, ValueError, TypeError, KeyError) as e:
+        except (OSError, ValueError, TypeError, KeyError, AttributeError) as e:
             _lifecycle_skip_reason = f"audit raised {type(e).__name__}: {e}"
             print(f"Warning: lifecycle audit failed: {e}", file=sys.stderr)
 

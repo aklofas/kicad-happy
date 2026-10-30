@@ -33,6 +33,7 @@ from pathlib import Path
 import _core_path  # noqa: F401
 from distributor_core.manifest import DEFAULT_FILE_MODE, manifest_file_path
 from kicad_core.diagnostics import record
+from kicad_core.project import project_dir_from_analysis  # noqa: F401  (re-exported)
 from spice_part_library import lookup_part_specs
 from spice_spec_fetcher import _read_spice_specs
 from spice_model_generator import (
@@ -45,21 +46,6 @@ from spice_model_generator import (
 
 
 _PROCESS_CACHE_DIR = None  # per-process fallback root, created lazily
-
-
-def project_dir_from_analysis(analysis_json):
-    """Return the directory of the first source file the analysis JSON names
-    ("file", else inputs.source_files[0]), or None when it names none."""
-    if not isinstance(analysis_json, dict):
-        return None
-    source_file = analysis_json.get("file")
-    if not (isinstance(source_file, str) and source_file):
-        inputs = analysis_json.get("inputs")
-        sources = inputs.get("source_files") if isinstance(inputs, dict) else None
-        source_file = sources[0] if isinstance(sources, list) and sources else None
-    if isinstance(source_file, str) and source_file:
-        return Path(source_file).parent
-    return None
 
 
 def resolve_cache_dir(analysis_json, override_dir=None):

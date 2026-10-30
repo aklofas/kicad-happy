@@ -2,8 +2,24 @@
 import json
 import os
 import re
+from pathlib import Path
 
 from kicad_core.sexp import parse as _sexp_parse, parse_file as _sexp_parse_file, find_all, find_first, get_value
+
+
+def project_dir_from_analysis(analysis_json):
+    """Return the directory of the first source file the analysis JSON names
+    ("file", else inputs.source_files[0]), or None when it names none."""
+    if not isinstance(analysis_json, dict):
+        return None
+    source_file = analysis_json.get("file")
+    if not (isinstance(source_file, str) and source_file):
+        inputs = analysis_json.get("inputs")
+        sources = inputs.get("source_files") if isinstance(inputs, dict) else None
+        source_file = sources[0] if isinstance(sources, list) and sources else None
+    if isinstance(source_file, str) and source_file:
+        return Path(source_file).parent
+    return None
 
 
 # ======================================================================

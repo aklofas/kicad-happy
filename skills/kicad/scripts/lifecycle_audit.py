@@ -25,6 +25,7 @@ Environment:
 
 import argparse
 import json
+import math
 import os
 import re
 import sys
@@ -38,6 +39,7 @@ from datetime import datetime
 from pathlib import Path
 
 from kicad_core import token_cache
+from kicad_core.project import project_dir_from_analysis
 from kicad_core.cli import add_only_deterministic_arg, add_output_arg
 
 
@@ -165,12 +167,27 @@ def _parse_temp_range(text: str) -> tuple[float, float] | None:
     if not text:
         return None
     num = r'([+\-\u2212\u2013]?\d+(?:\.\d+)?)'
-    m = re.search(r'(?<![\w.])' + num + r'\s*°?\s*C?\s*(?:~|to|[\-\u2013\u2014])\s*' + num,
+    m = re.search(r'(?<![\w.])' + num + r'\s*°?\s*C?\s*(?:~|to|[\-\u2013\u2014])\s*' + num
+                  + r'(?!\d|\.\d|\s*°?\s*F)',
                   unicodedata.normalize('NFKC', text))
     if m:
-        return tuple(float(g.replace('\u2212', '-').replace('\u2013', '-'))
-                     for g in m.groups())
+        return tuple(sorted(float(g.replace('\u2212', '-').replace('\u2013', '-'))
+                            for g in m.groups()))
     return None
+
+
+def _lead_weeks(lead_time) -> int:
+    """Whole weeks for a distributor lead time ("14 Weeks", "90 Days", 12.5), rounded up."""
+    if isinstance(lead_time, bool):
+        return 0
+    if isinstance(lead_time, (int, float)):
+        return math.ceil(lead_time) if math.isfinite(lead_time) else 0
+    if isinstance(lead_time, str):
+        m = re.search(r'(\d+(?:\.\d+)?)', lead_time)
+        if m:
+            n = float(m.group(1))
+            return math.ceil(n / 7 if 'day' in lead_time.lower() else n)
+    return 0
 
 
 # ---------------------------------------------------------------------------
@@ -426,49 +443,123 @@ def query_lifecycle_element14(mpn: str) -> dict | None:
 # Datasheet extraction cache (local, no network)
 # ---------------------------------------------------------------------------
 
+# Ambient operating-range keys, most specific first; junction (TJ*) and storage
+# ranges are never read as the part's operating rating.
+_TA_KEYS = ("TA", "T_A", "T_AMB", "T_OPERATING", "TOPR", "T_OPR")
+
+
+def _is_number(v) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def _v2_operating_temperature(ext: dict) -> tuple[float, float] | None:
+    """Ambient operating range in degrees C from a v2 extraction's SpecValues.
+
+    TA-style keys in base.recommended_operating, then the same keys in
+    base.absolute_max, then any recommended_operating entry whose condition
+    names an ambient or operating temperature and not the junction or storage.
+    """
+    base = ext.get("base")
+    if not isinstance(base, dict):
+        return None
+    sections = [base.get(k) for k in ("recommended_operating", "absolute_max")]
+    sections = [sec if isinstance(sec, dict) else {} for sec in sections]
+
+    def celsius_range(values, need_condition):
+        for v in values if isinstance(values, list) else []:
+            if not isinstance(v, dict):
+                continue
+            unit = unicodedata.normalize("NFKC", str(v.get("unit") or "")).replace(" ", "")
+            if unit not in ("°C", "C", "degC"):
+                continue
+            if need_condition:
+                cond = str(v.get("condition") or "").lower()
+                if "junction" in cond or "storage" in cond \
+                        or not ("ambient" in cond or "operating" in cond):
+                    continue
+            lo, hi = v.get("min"), v.get("max")
+            if _is_number(lo) and _is_number(hi):
+                return tuple(sorted((float(lo), float(hi))))
+        return None
+
+    for sec in sections:
+        by_key = {str(k).upper(): k for k in sorted(sec, key=str)}
+        for key in _TA_KEYS:
+            if key in by_key:
+                got = celsius_range(sec[by_key[key]], False)
+                if got:
+                    return got
+    for key in sorted(sections[0], key=str):
+        if not str(key).upper().startswith("TJ"):
+            got = celsius_range(sections[0][key], True)
+            if got:
+                return got
+    return None
+
+
+def _v1_operating_temperature(ext: dict, path) -> tuple | None:
+    ops = ext.get("recommended_operating_conditions")
+    if ops is None:
+        return None
+    if not isinstance(ops, dict):
+        print(f"Warning: {path}: recommended_operating_conditions is not an object; "
+              f"extraction temperature ignored", file=sys.stderr)
+        return None
+    lo, hi = ops.get("temp_min_c"), ops.get("temp_max_c")
+    if _is_number(lo) and _is_number(hi):
+        return tuple(sorted((lo, hi)))
+    return None
+
+
 def read_extraction_temperature(mpn: str, project_dir: str) -> dict | None:
-    """Read temperature data from datasheet extraction cache."""
+    """Operating temperature range from the project's datasheet extraction cache.
+
+    Looks the MPN up in <project_dir>/datasheets/extracted the way the
+    datasheet consumers do (manifest, then <mpn>.json), then under the older
+    underscore-only file name. A file that is not a readable JSON object is
+    skipped with one warning.
+    """
     if not project_dir:
         return None
+    ds_scripts = str(Path(__file__).resolve().parents[2] / "datasheets" / "scripts")
+    if ds_scripts not in sys.path:
+        sys.path.insert(0, ds_scripts)
+    from datasheet_extract_cache import get_cached_extraction
+    from datasheet_types.cache_reader import read_json_object, sanitize_mpn
+    from distributor_core.manifest import manifest_file_path
 
-    sanitized = re.sub(r'[^A-Za-z0-9_]', '_', mpn.strip())
-    extract_path = Path(project_dir) / "datasheets" / "extracted" / f"{sanitized}.json"
-
-    if not extract_path.exists():
-        # Try index lookup
-        extracted_dir = Path(project_dir) / "datasheets" / "extracted"
-        idx_path = extracted_dir / "manifest.json"
-        if not idx_path.exists():
-            idx_path = extracted_dir / "index.json"
-        if idx_path.exists():
-            try:
-                with open(idx_path) as f:
-                    idx = json.load(f)
-                for k, v in idx.get("extractions", {}).items():
-                    if k.upper() == sanitized.upper():
-                        extract_path = Path(project_dir) / "datasheets" / "extracted" / v.get("file", "")
+    extract_dir = Path(project_dir) / "datasheets" / "extracted"
+    ext, path = get_cached_extraction(extract_dir, mpn), extract_dir
+    if ext is None:
+        legacy = re.sub(r'[^A-Za-z0-9_]', '_', mpn.strip())
+        candidates = [f"{sanitize_mpn(mpn)}.json", f"{legacy}.json"]
+        for idx_name in ("manifest.json", "index.json"):
+            idx = read_json_object(extract_dir / idx_name)
+            if idx is not None:
+                entries = idx.get("extractions")
+                for k, v in (entries.items() if isinstance(entries, dict) else ()):
+                    if str(k).upper() == legacy.upper() and isinstance(v, dict) \
+                            and isinstance(v.get("file"), str):
+                        candidates.append(v["file"])
                         break
-            except (json.JSONDecodeError, OSError):
-                pass
-        if not extract_path.exists():
-            return None
-
-    try:
-        with open(extract_path) as f:
-            data = json.load(f)
-    except (json.JSONDecodeError, OSError):
+                break
+        for name in dict.fromkeys(candidates):
+            p = manifest_file_path(extract_dir, name)
+            if p is None or not p.is_file():
+                continue
+            ext, path = read_json_object(p), p
+            if ext is None:
+                print(f"Warning: {p}: not a readable JSON object; extraction ignored",
+                      file=sys.stderr)
+                return None
+            break
+    if ext is None:
         return None
 
-    ops = data.get("recommended_operating_conditions", {})
-    temp_min = ops.get("temp_min_c")
-    temp_max = ops.get("temp_max_c")
-    if temp_min is not None and temp_max is not None:
-        return {
-            "temp_min_c": temp_min,
-            "temp_max_c": temp_max,
-            "source": "extraction_cache",
-        }
-    return None
+    rng = _v2_operating_temperature(ext) or _v1_operating_temperature(ext, path)
+    if rng is None:
+        return None
+    return {"temp_min_c": rng[0], "temp_max_c": rng[1], "source": "extraction_cache"}
 
 
 # ---------------------------------------------------------------------------
@@ -860,15 +951,7 @@ def audit_bom(analysis_json: dict, project_dir: str | None = None,
         for src_name, src_data in finding.get('sources', {}).items():
             lt = src_data.get('lead_time')
             if lt:
-                weeks = 0
-                if isinstance(lt, (int, float)):
-                    weeks = int(lt)
-                elif isinstance(lt, str):
-                    m = re.search(r'(\d+)', lt)
-                    if m:
-                        weeks = int(m.group(1))
-                        if 'day' in lt.lower():
-                            weeks = -(-weeks // 7)
+                weeks = _lead_weeks(lt)
                 if weeks > max_lead_weeks:
                     max_lead_weeks = weeks
                     lead_source = src_name
@@ -1086,8 +1169,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(f"input {input_path}: cannot read ({e}); {expected}")
 
     # Resolve project directory from analyzer JSON
-    source_file = analysis.get("file", "")
-    project_dir = str(Path(source_file).parent) if source_file else str(input_path.parent)
+    project_dir = str(project_dir_from_analysis(analysis) or input_path.parent)
 
     # Parse temperature range
     temp_range = None
@@ -1132,7 +1214,7 @@ def main(argv: list[str] | None = None) -> int:
         filename = CANONICAL_OUTPUTS.get("lifecycle", "lifecycle.json")
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_out = os.path.join(tmp_dir, filename)
-            with open(tmp_out, "w") as f:
+            with open(tmp_out, "w", encoding="utf-8") as f:
                 f.write(output_json)
             written = overwrite_current(analysis_dir, tmp_dir, source_hashes=None)
         current = get_current_run(analysis_dir)
@@ -1143,7 +1225,7 @@ def main(argv: list[str] | None = None) -> int:
         if written:
             print(f"Audit written to {out_path}", file=sys.stderr)
     elif output_path:
-        with open(output_path, "w") as f:
+        with open(output_path, "w", encoding="utf-8") as f:
             f.write(output_json)
         print(f"Audit written to {output_path}", file=sys.stderr)
     else:
