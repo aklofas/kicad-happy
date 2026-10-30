@@ -1,0 +1,56 @@
+{
+  "analyzer_type": "schematic",
+  "bom": [
+    {
+      "references": [
+        "U14"
+      ],
+      "value": "PRESENT1",
+      "mpn": "PRESENT1",
+      "manufacturer": "Mfg",
+      "description": "Refreshed desc",
+      "datasheet": "https://example.com/present1-refresh.pdf",
+      "type": "ic",
+      "dnp": false,
+      "lib_id": "Acme:PRESENT1",
+      "digikey": "",
+      "mouser": "",
+      "lcsc": "",
+      "element14": ""
+    },
+    {
+      "references": [
+        "U17"
+      ],
+      "value": "PRESENT2",
+      "mpn": "PRESENT2",
+      "manufacturer": "Mfg",
+      "description": "Refreshed desc",
+      "datasheet": "https://example.com/nope.pdf",
+      "type": "ic",
+      "dnp": false,
+      "lib_id": "Acme:PRESENT2",
+      "digikey": "",
+      "mouser": "",
+      "lcsc": "",
+      "element14": ""
+    },
+    {
+      "references": [
+        "U18"
+      ],
+      "value": "OUTAGE3",
+      "mpn": "OUTAGE3",
+      "manufacturer": "Acme",
+      "description": "Unreachable host",
+      "datasheet": "https://example.com/outage3.pdf",
+      "type": "ic",
+      "dnp": false,
+      "lib_id": "Acme:OUTAGE3",
+      "digikey": "",
+      "mouser": "",
+      "lcsc": "",
+      "element14": ""
+    }
+  ]
+}

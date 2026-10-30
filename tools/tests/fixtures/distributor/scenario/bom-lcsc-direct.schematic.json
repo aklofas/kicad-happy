@@ -1,0 +1,23 @@
+{
+  "analyzer_type": "schematic",
+  "bom": [
+    {
+      "references": [
+        "C11",
+        "C12"
+      ],
+      "value": "10uF",
+      "mpn": "",
+      "manufacturer": "",
+      "description": "",
+      "datasheet": "",
+      "type": "capacitor",
+      "dnp": false,
+      "lib_id": "Device:C",
+      "digikey": "",
+      "mouser": "",
+      "lcsc": "C15525",
+      "element14": ""
+    }
+  ]
+}

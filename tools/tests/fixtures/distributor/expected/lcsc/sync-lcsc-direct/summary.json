@@ -1,0 +1,11 @@
+{
+  "already_present": 0,
+  "downloaded": 1,
+  "failed": 0,
+  "index_path": "<WORK>/datasheets/manifest.json",
+  "output_dir": "<WORK>/datasheets",
+  "skipped_no_identifier": 0,
+  "skipped_previous_failures": 0,
+  "total_identified_parts": 1,
+  "verification_warnings": 0
+}

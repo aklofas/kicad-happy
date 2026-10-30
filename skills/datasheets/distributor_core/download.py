@@ -11,6 +11,7 @@ import ipaddress
 import math
 import os
 import socket
+import ssl
 import sys
 import tempfile
 import threading
@@ -87,6 +88,15 @@ def take_transport_failure() -> str | None:
     failure = getattr(_transport, "failure", None)
     _transport.failure = None
     return failure
+
+
+def _local_failure(exc: BaseException) -> bool:
+    """True for an OSError of this machine (a file the download could not write, a full disk),
+    which ``is_transport_error`` would count as the network's."""
+    network = (ConnectionError, TimeoutError, socket.gaierror, ssl.SSLError, urllib.error.URLError)
+    if _requests is not None:
+        network += (_requests.exceptions.RequestException,)
+    return isinstance(exc, OSError) and _http_status(exc) is None and not isinstance(exc, network)
 
 
 class DownloadRefused(urllib.error.URLError):
@@ -362,6 +372,9 @@ def download_pdf(url: str, output_path: str, *, resolve_redirects: bool = True) 
     a uniquely named ``.part`` file beside ``output_path``, which replaces
     ``output_path`` only once it sniffs as a PDF, so a failed attempt never removes a
     file already there and a planted link is never written through.
+
+    A method that fails in transport (``is_transport_error``, not a local file error) is
+    recorded with ``note_transport_failure``, so the sync retries the part next run.
     """
     url = _encode_spaces(normalize_url(url, resolve_redirects=resolve_redirects))
     allow_private = _allow_private_hosts()
@@ -387,7 +400,19 @@ def download_pdf(url: str, output_path: str, *, resolve_redirects: bool = True) 
     try:
         for name, fn in methods:
             try:
-                if fn(url, part_path):
+                fetched = fn(url, part_path)
+            except DownloadRefused as exc:
+                print(f"Warning: download refused: {url}: {exc.reason}", file=sys.stderr)
+                return False
+            except DownloadLimitExceeded as exc:
+                print(f"Warning: download stopped: {url}: {exc}", file=sys.stderr)
+                return False
+            except Exception as exc:
+                if not _local_failure(exc):
+                    note_transport_failure(exc)
+                fetched = False
+            if fetched:
+                try:
                     # Verify it's actually a PDF
                     with open(part_path, "rb") as f:
                         header = f.read(8)
@@ -398,14 +423,8 @@ def download_pdf(url: str, output_path: str, *, resolve_redirects: bool = True) 
                         print(f"Downloaded {size:,} bytes via {name}: {output_path}")
                         return True
                     # Not a PDF (probably HTML error page or JS redirect)
-            except DownloadRefused as exc:
-                print(f"Warning: download refused: {url}: {exc.reason}", file=sys.stderr)
-                return False
-            except DownloadLimitExceeded as exc:
-                print(f"Warning: download stopped: {url}: {exc}", file=sys.stderr)
-                return False
-            except Exception:
-                pass
+                except OSError:
+                    pass
             if os.path.exists(part_path):
                 os.truncate(part_path, 0)
         return False

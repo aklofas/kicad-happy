@@ -171,8 +171,13 @@ def get_oauth_token() -> tuple[str, str] | None:
         return None
 
 
-def search_digikey_with_token(mpn: str, token: str, client_id: str, allow_family: bool = False) -> dict | None:
-    """Search DigiKey API using a pre-fetched OAuth token."""
+_RATE_LIMIT_RETRIES = 3
+
+
+def search_digikey_with_token(mpn: str, token: str, client_id: str, allow_family: bool = False,
+                              _retry: int = 0) -> dict | None:
+    """Search DigiKey API using a pre-fetched OAuth token. A rate limit (HTTP 429) is retried
+    ``_RATE_LIMIT_RETRIES`` times, 10 s apart, then recorded as a transport failure."""
     try:
         search_body = json.dumps({"Keywords": mpn, "Limit": 3}).encode()
         req = urllib.request.Request(
@@ -187,10 +192,10 @@ def search_digikey_with_token(mpn: str, token: str, client_id: str, allow_family
         with urllib.request.urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read())
     except urllib.error.HTTPError as e:
-        if e.code == 429:
+        if e.code == 429 and _retry < _RATE_LIMIT_RETRIES:
             print(f"  Rate limited, waiting 10s...", file=sys.stderr)
             time.sleep(10)
-            return search_digikey_with_token(mpn, token, client_id, allow_family)
+            return search_digikey_with_token(mpn, token, client_id, allow_family, _retry + 1)
         note_transport_failure(e)
         if e.code == 401:
             return None  # Token expired — caller should refresh

@@ -1,0 +1,14 @@
+Analyzing bom-lcsc-direct.schematic.json...
+Found 1 unique parts with identifiers (0 skipped without an MPN or LCSC part number)
+[1/1] C15525
+  Searching LCSC for 'C15525'...
+  Downloading from LCSC CDN...
+  OK: CL05A106MQ5NUNC_10uF_6.3V_X5R_0402.pdf (87 bytes)
+
+Datasheet sync complete:
+  Downloaded: 1
+    C15525
+  Already present: 0
+  Failed: 0
+  Skipped (no MPN or LCSC part number): 0
+  Output: <WORK>/datasheets/

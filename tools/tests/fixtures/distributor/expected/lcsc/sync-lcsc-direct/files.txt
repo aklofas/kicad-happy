@@ -1,0 +1,3 @@
+bom-lcsc-direct.schematic.json:399
+datasheets/CL05A106MQ5NUNC_10uF_6.3V_X5R_0402.pdf:87
+datasheets/manifest.json:666

@@ -18,10 +18,35 @@
       "mfr": "AMS1117-3.3",
       "price": null,
       "stock": 5000
+    },
+    "C15525": {
+      "datasheet": "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/C15525.pdf",
+      "description": "10uF 6.3V X5R 0402",
+      "extra": {
+        "datasheet": {
+          "pdf": "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/C15525.pdf"
+        },
+        "description": "10uF 6.3V X5R 0402",
+        "manufacturer": {
+          "name": "Samsung Electro-Mechanics"
+        },
+        "mpn": "CL05A106MQ5NUNC",
+        "number": "C15525"
+      },
+      "lcsc": "15525",
+      "mfr": "CL05A106MQ5NUNC",
+      "price": null,
+      "stock": 0
     }
   },
   "downloads": {
     "https://example.com/nope.pdf": false,
+    "https://example.com/outage3.pdf": {
+      "transport": "ConnectionResetError"
+    },
+    "https://example.com/present1-refresh.pdf": {
+      "transport": "ConnectionResetError"
+    },
     "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/fixture/2n7002v.pdf": "2N7002V fixture datasheet text for the offline oracle (page 1).",
     "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/fixture/atmega.pdf": false,
     "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/fixture/failall.pdf": false,
@@ -29,6 +54,7 @@
     "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/fixture/lm358.pdf": "LM358DR fixture datasheet text for the offline oracle (page 1).",
     "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/fixture/si2302.pdf": "SI2302 fixture datasheet text for the offline oracle (page 1).",
     "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/C14663.pdf": "AMS1117-3.3 fixture datasheet text for the offline oracle (page 1).",
+    "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/C15525.pdf": "CL05A106MQ5NUNC fixture datasheet text for the offline oracle (page 1).",
     "https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATMEGA328P-AU-DataSheet.pdf": "ATMEGA328P-AU datasheet",
     "https://www.ti.com/lit/ds/symlink/tps61023.pdf": "TPS61023DRLR fixture datasheet text for the offline oracle (page 1)."
   },

@@ -2,6 +2,12 @@
   "direct": {},
   "downloads": {
     "https://example.com/nope.pdf": false,
+    "https://example.com/outage3.pdf": {
+      "transport": "ConnectionResetError"
+    },
+    "https://example.com/present1-refresh.pdf": {
+      "transport": "ConnectionResetError"
+    },
     "https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATMEGA328P-AU-DataSheet.pdf": "ATMEGA328P-AU datasheet",
     "https://www.farnell.com/datasheets/fixture/2n7002v.pdf": "2N7002V fixture datasheet text for the offline oracle (page 1).",
     "https://www.farnell.com/datasheets/fixture/atmega.pdf": false,

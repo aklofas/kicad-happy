@@ -68,32 +68,31 @@ def download_pdf(url, output_path):
 
 
 def search_element14(query: str, api_key: str, store: str = _DEFAULT_STORE,
-                     allow_family: bool = False) -> dict | None:
+                     allow_family: bool = False, accept=None) -> dict | None:
     """Search element14 API for a part. Returns first match with datasheet URL.
 
     Accepts MPN, Newark/Farnell SKU, or keyword search terms.
     Detects the query type automatically:
       - If it looks like a numeric/alphanumeric SKU (e.g., "94AK6874"), uses id: search
       - Otherwise uses manuPartNum: search, falling back to any: keyword search
+
+    With ``accept``, a hit it rejects moves on to the next search mode; when no mode gives
+    an accepted hit the first rejected one is returned.
     """
     # Determine search mode
     # Newark/Farnell SKUs are typically alphanumeric codes like "94AK6874"
     # MPNs usually have dashes, longer alphanumeric strings
     query = query.strip()
 
-    # Try MPN search first (most common case)
-    result = _search_element14_raw(f"manuPartNum:{query}", api_key, store, allow_family)
-    if result:
-        return result
-
-    # Try as distributor SKU
-    result = _search_element14_raw(f"id:{query}", api_key, store, allow_family)
-    if result:
-        return result
-
-    # Fall back to keyword search
-    result = _search_element14_raw(f"any:{query}", api_key, store, allow_family)
-    return result
+    # MPN search first (most common case), then as distributor SKU, then keyword search
+    rejected = None
+    for mode in ("manuPartNum", "id", "any"):
+        result = _search_element14_raw(f"{mode}:{query}", api_key, store, allow_family)
+        if result:
+            if accept is None or accept(result):
+                return result
+            rejected = rejected or result
+    return rejected
 
 
 def _search_element14_raw(term: str, api_key: str, store: str, allow_family: bool = False) -> dict | None:
@@ -230,7 +229,6 @@ def sync_one_part(
     time.sleep(delay)
     print(f"  Searching element14 for '{search_term}'...", file=sys.stderr)
     family = mpn_from_value(part)
-    product = search_element14(search_term, api_key, store, family and bool(mpn))
 
     def _other(hit, by_pn):
         if hit is None:
@@ -238,6 +236,8 @@ def sync_one_part(
         return other_part(element14_pn if by_pn else mpn, _get_mpn(hit), [_get_sku(hit)],
                           by_pn=by_pn, allow_family=family, part_mpn=mpn)
 
+    product = search_element14(search_term, api_key, store, family and bool(mpn),
+                               accept=lambda hit: not _other(hit, not mpn))
     closest = _other(product, not mpn)
     if closest:
         product = None
@@ -246,7 +246,8 @@ def sync_one_part(
     if product is None and mpn and element14_pn:
         time.sleep(delay)
         print(f"  MPN not found, trying SKU '{element14_pn}'...", file=sys.stderr)
-        product = search_element14(element14_pn, api_key, store)
+        product = search_element14(element14_pn, api_key, store,
+                                   accept=lambda hit: not _other(hit, True))
         mismatch = _other(product, True)
         if mismatch:
             closest, product = mismatch, None

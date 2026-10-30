@@ -146,10 +146,12 @@ def search_lcsc_direct(lcsc_code: str) -> dict | None:
         with urllib.request.urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read())
     except Exception as e:
+        note_transport_failure(e)
         print(f"[LCSC] Direct lookup failed for {lcsc_code}: {e}", file=sys.stderr)
         return None
 
-    result = data.get("result") or data
+    # {"result": null} is "no such product", not an empty one
+    result = data.get("result") if isinstance(data, dict) and "result" in data else data
     if not result or isinstance(result, str):
         return None
 
@@ -327,6 +329,15 @@ def sync_one_part(
     closest = _other(component, bool(lcsc_pn))
     if closest:
         component = None
+
+    # jlcsearch does not list every LCSC code; LCSC's own product page does
+    if component is None and lcsc_pn:
+        direct = search_lcsc_direct(lcsc_pn)
+        mismatch = _other(direct, True)
+        if mismatch:
+            closest = closest or mismatch
+        else:
+            component = direct
 
     # If LCSC code search failed but we have an MPN, try that
     if component is None and lcsc_pn and mpn:

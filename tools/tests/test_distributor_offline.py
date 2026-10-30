@@ -22,12 +22,30 @@ class Oracle(unittest.TestCase):
             self.assertFalse((Path(d) / "b.pdf").exists())
             self.assertFalse(t.download("https://x/unknown.pdf", str(Path(d) / "c.pdf")))
 
+    def test_fake_transport_download_failure_is_recorded(self):
+        import distributor_offline as do
+        sys.path.insert(0, str(TOOLS.parent / "skills" / "datasheets"))
+        from distributor_core.download import take_transport_failure
+        t = do.FakeTransport({"downloads": {"https://x/a.pdf": {"transport": "ConnectionResetError"}}})
+        take_transport_failure()
+        with tempfile.TemporaryDirectory() as d:
+            self.assertFalse(t.download("https://x/a.pdf", str(Path(d) / "a.pdf")))
+            self.assertFalse((Path(d) / "a.pdf").exists())
+        self.assertEqual(take_transport_failure(),
+                         "network failure, retried next run: ConnectionResetError: fixture transport failure")
+
+    def test_provider_only_runs(self):
+        import distributor_offline as do
+        self.assertIn("sync-sch-dry (digikey)", do.runs_for("digikey"))
+        self.assertNotIn("sync-sch-dry (digikey)", do.runs_for("lcsc"))
+        self.assertIn("sync-lcsc-direct (lcsc)", do.runs_for("lcsc"))
+        self.assertNotIn("sync-lcsc-direct (lcsc)", do.runs_for("mouser"))
+        self.assertEqual(do.run_dir_name("sync-lcsc-direct (lcsc)"), "sync-lcsc-direct")
+
     def test_every_provider_and_run_matches_expected(self):
         import distributor_offline as do
         for provider in ("digikey", "mouser", "lcsc", "element14"):
-            for run in do.RUNS:
-                if run.endswith("(digikey)") and provider != "digikey":
-                    continue
+            for run in do.runs_for(provider):
                 with self.subTest(provider=provider, run=run):
                     diffs = do.compare_run(provider, run, FX / "expected")
                     self.assertEqual(diffs, [], f"{provider}/{run}: {diffs[:3]}")

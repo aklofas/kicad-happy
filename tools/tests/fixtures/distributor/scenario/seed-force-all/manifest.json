@@ -1,0 +1,36 @@
+{
+  "schematic": "old.kicad_sch",
+  "last_sync": "2026-01-01T00:00:00+00:00",
+  "parts": {
+    "PRESENT1": {
+      "file": "PRESENT1.pdf",
+      "manufacturer": "Mfg",
+      "description": "Old Desc",
+      "value": "PRESENT1",
+      "datasheet_url": "https://example.com/present1.pdf",
+      "downloaded_date": "2026-01-01T00:00:00+00:00",
+      "source": "digikey",
+      "status": "ok",
+      "references": [
+        "U14"
+      ],
+      "size_bytes": 10,
+      "verification": "verified"
+    },
+    "PRESENT2": {
+      "file": "PRESENT2.pdf",
+      "manufacturer": "Mfg",
+      "description": "Old Desc",
+      "value": "PRESENT2",
+      "datasheet_url": "https://example.com/present2.pdf",
+      "downloaded_date": "2026-01-01T00:00:00+00:00",
+      "source": "digikey",
+      "status": "ok",
+      "references": [
+        "U17"
+      ],
+      "size_bytes": 10,
+      "verification": "verified"
+    }
+  }
+}

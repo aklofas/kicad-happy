@@ -1,0 +1,23 @@
+{
+  "schematic": "<WORK>/bom-lcsc-direct.schematic.json",
+  "last_sync": "2026-10-16T00:00:00+00:00",
+  "parts": {
+    "C15525": {
+      "file": "CL05A106MQ5NUNC_10uF_6.3V_X5R_0402.pdf",
+      "manufacturer": "Samsung Electro-Mechanics",
+      "description": "10uF 6.3V X5R 0402",
+      "value": "10uF",
+      "datasheet_url": "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/C15525.pdf",
+      "downloaded_date": "2026-10-16T00:00:00+00:00",
+      "source": "lcsc",
+      "lcsc": "C15525",
+      "status": "ok",
+      "references": [
+        "C11",
+        "C12"
+      ],
+      "size_bytes": 87,
+      "verification": "verified"
+    }
+  }
+}

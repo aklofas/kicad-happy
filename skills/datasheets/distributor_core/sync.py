@@ -7,9 +7,9 @@ the identifier sets (``ID_KEYS``, ``KEY_PRIORITY``, ``SEARCH_KEY``), the console
 parts (analyzer BOM or MPN list), decides which need a download, fetches them serially or on a
 thread pool, records each outcome in ``manifest.json`` and prints the summary.
 
-A ``not_found`` whose search failed in transport (``distributor_core.download`` records it) is
-stored as ``error`` so the next run retries it, and an ``ok`` entry whose file is still on disk
-is kept.
+A ``not_found`` or ``failed`` whose search or download failed in transport
+(``distributor_core.download`` records it) is stored as ``error`` so the next run retries it, and
+a failed refresh keeps an ``ok`` entry whose file is still on disk.
 
 Imports ``distributor_core.inputs``/``manifest``/``download`` and the stdlib only; never a provider.
 """
@@ -38,14 +38,15 @@ from distributor_core.manifest import (
 
 
 def _outage_entry(result: dict, previous: dict, out_dir: Path) -> tuple[dict, dict]:
-    """(entry to store, result to report) for one part. A ``not_found`` caused by a network
-    failure, a rate limit or refused access is not an answer: report it as ``error`` (not a
-    skipped previous failure, so the next run retries) and keep a previous ``ok`` entry whose
-    file is still on disk."""
+    """(entry to store, result to report) for one part. A ``not_found`` or ``failed`` caused by
+    a network failure, a rate limit or refused access is not an answer: report it as ``error``
+    (not a skipped previous failure, so the next run retries). Any result other than ``ok``
+    keeps a previous ``ok`` entry whose file is still on disk."""
     outage = take_transport_failure()
-    if outage is None or result.get("status") != "not_found":
+    if outage is not None and result.get("status") in ("not_found", "failed"):
+        result = {**result, "status": "error", "error": outage}
+    if result.get("status") == "ok":
         return result, result
-    result = {**result, "status": "error", "error": outage}
     prev_file = manifest_file_path(out_dir, previous.get("file", ""))
     if previous.get("status") == "ok" and prev_file is not None and prev_file.is_file():
         return previous, result
@@ -65,7 +66,7 @@ class _Run:
         self.counter = 0
         self.downloaded = []
         self.failed = []
-        self.kept_errors = {}  # part key -> error, for an outage that kept the previous ok entry
+        self.kept_errors = {}  # part key -> error, for a failure that kept the previous ok entry
         self.warnings = []  # parts whose verification says the datasheet is probably wrong
 
 

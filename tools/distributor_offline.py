@@ -24,6 +24,7 @@ Stdlib only.
 from __future__ import annotations
 
 import argparse
+import builtins
 import contextlib
 import copy
 import datetime as _dt
@@ -82,6 +83,11 @@ class FakeTransport:
 
     def download(self, url, output_path) -> bool:
         text = self.responses.get("downloads", {}).get(url)
+        if isinstance(text, dict) and "transport" in text:
+            # download_pdf's contract when the network fails: record it, return False
+            exc = getattr(builtins, text["transport"])("fixture transport failure")
+            importlib.import_module("distributor_core.download").note_transport_failure(exc)
+            return False
         if not isinstance(text, str):
             return False
         with open(output_path, "wb") as f:
@@ -154,10 +160,12 @@ FETCH_ENV = {"element14": {"ELEMENT14_API_KEY": "KEY"}}
 SYNC_KWARGS = {"element14": {"api_key": "KEY"}}
 
 # Scenario BOMs a sync run can read ("input"); "mpns" reads mpns.txt, "fx-sch" the harness schematic.
-SCENARIO_BOMS = {"bom": "bom.schematic.json", "bom-identity": "bom-identity.schematic.json"}
+SCENARIO_BOMS = {"bom": "bom.schematic.json", "bom-identity": "bom-identity.schematic.json",
+                 "bom-lcsc-direct": "bom-lcsc-direct.schematic.json",
+                 "bom-force-all": "bom-force-all.schematic.json"}
 
-# run name -> spec. kind: sync | fetch. A key ending in " (digikey)" runs for DigiKey only and
-# stores its artefacts under the name without that suffix.
+# run name -> spec. kind: sync | fetch. A key ending in " (<provider>)" runs for that provider
+# only and stores its artefacts under the name without that suffix.
 RUNS: dict[str, dict] = {
     "sync-default": {"kind": "sync", "seed": "seed", "input": "bom"},
     "sync-dry-json": {"kind": "sync", "seed": "seed", "input": "bom", "kwargs": {"dry_run": True, "as_json": True}},
@@ -166,6 +174,9 @@ RUNS: dict[str, dict] = {
     "sync-legacy-index": {"kind": "sync", "seed": "seed-legacy", "input": "bom"},
     "sync-sch-dry (digikey)": {"kind": "sync", "seed": None, "input": "fx-sch", "kwargs": {"dry_run": True, "as_json": True}},
     "sync-identity": {"kind": "sync", "seed": None, "input": "bom-identity"},
+    "sync-lcsc-direct (lcsc)": {"kind": "sync", "seed": None, "input": "bom-lcsc-direct"},
+    "sync-force-all": {"kind": "sync", "seed": "seed-force-all", "input": "bom-force-all",
+                       "kwargs": {"force_all": True}},
     "fetch-search-ok": {"kind": "fetch", "argv": ["--search", "LM358DR", "--json", "--output", "{work}/out.pdf"]},
     "fetch-search-nourl": {"kind": "fetch", "argv": ["--search", "NODATA1234", "--json"]},
     "fetch-search-miss": {"kind": "fetch", "argv": ["--search", "MISSING9999", "--json"]},
@@ -184,12 +195,21 @@ class RunResult:
     exit_code: int | None = None
 
 
+def run_provider(run: str) -> str | None:
+    """The one provider a run is limited to (its " (<provider>)" suffix), else None."""
+    for p in PROVIDERS:
+        if run.endswith(f" ({p})"):
+            return p
+    return None
+
+
 def run_dir_name(run: str) -> str:
-    return run[:-len(" (digikey)")] if run.endswith(" (digikey)") else run
+    p = run_provider(run)
+    return run[:-len(f" ({p})")] if p else run
 
 
 def runs_for(provider: str) -> list[str]:
-    return [r for r in RUNS if not r.endswith(" (digikey)") or provider == "digikey"]
+    return [r for r in RUNS if run_provider(r) in (None, provider)]
 
 
 def _fx_root(fixtures: str | None) -> Path:
@@ -443,8 +463,8 @@ def main(argv=None) -> int:
         return 1 if bad else 0
     if not (args.provider and args.run and args.out):
         ap.error("give --provider P --run R --out DIR, or --all")
-    if args.run.endswith(" (digikey)") and args.provider != "digikey":
-        ap.error(f"{args.run} runs for digikey only")
+    if run_provider(args.run) not in (None, args.provider):
+        ap.error(f"{args.run} runs for {run_provider(args.run)} only")
     if not run_available(args.run, args.fixtures):
         print(f"{args.run}: fixtures absent", file=sys.stderr)
         return 2
