@@ -184,6 +184,7 @@ def find_pdf(datasheets_dir, mpn):
 
 
 _DASH_RE = re.compile("[\u2212\u2013\u2010\u2011]")
+_PLUSMINUS_RE = re.compile("\\+/?[-\u2014]")     # +/- and +- with any dash
 # One token per comparison operator or per run of letters/digits. A run
 # keeps a decimal point or comma between digits ("5.5", "1,000") and a
 # leading minus that starts a number outside a word ("-40", "(−40"; not
@@ -200,8 +201,8 @@ def _norm_text(s):
     # NFKC folds ligatures/fullwidth forms and µ into μ; other symbols and
     # punctuation (degree signs, dashes, curly quotes) are word breaks.
     s = unicodedata.normalize("NFKC", s).lower()
-    s = s.replace("+/-", "±").replace("+-", "±").replace("≤", "<=").replace("≥", ">=")
     s = _DASH_RE.sub("-", s)
+    s = _PLUSMINUS_RE.sub("±", s).replace("≤", "<=").replace("≥", ">=")
     return " ".join(_TOKEN_RE.findall(s))
 
 

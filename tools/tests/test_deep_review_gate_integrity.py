@@ -61,6 +61,18 @@ QUOTE_CASES = [
     ("+/- 15 V", "± 15 V", True, "spaced +/- spelling of a spaced ±"),
     ("±15V", "+-15 V", True, "+- spelling of ±"),
     ("a ± b", "a ± b", True, "± between words"),
+    ("-15 V", "+/−15 V", False, "minus vs +/−15 V"),
+    ("15 V", "+/−15 V", False, "unsigned vs +/−15 V"),
+    ("±15 V", "+/−15 V", True, "± vs +/−15 V"),
+    ("-15 V", "+/–15 V", False, "minus vs +/–15 V"),
+    ("15 V", "+/–15 V", False, "unsigned vs +/–15 V"),
+    ("±15 V", "+/–15 V", True, "± vs +/–15 V"),
+    ("-15 V", "+–15 V", False, "minus vs +–15 V"),
+    ("15 V", "+–15 V", False, "unsigned vs +–15 V"),
+    ("±15 V", "+–15 V", True, "± vs +–15 V"),
+    ("-15 V", "+—15 V", False, "minus vs +—15 V"),
+    ("15 V", "+—15 V", False, "unsigned vs +—15 V"),
+    ("±15 V", "+—15 V", True, "± vs +—15 V"),
 ]
 
 
