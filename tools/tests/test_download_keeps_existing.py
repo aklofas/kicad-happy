@@ -289,7 +289,7 @@ class DownloadTransportNoteTest(unittest.TestCase):
         noted = self._two_methods(download.DownloadRefused("private"), before=TimeoutError("search timed out"))
         self.assertEqual(noted, "network failure, retried next run: TimeoutError: search timed out")
 
-    def test_redirect_limit_is_not_a_transport_failure(self):
+    def test_redirect_limit_lets_the_next_method_try(self):
         from distributor_core import download
         resp = SimpleNamespace(status_code=302, headers={"Location": "/again"}, close=lambda: None)
         fake = SimpleNamespace(get=lambda *a, **k: resp, exceptions=_FAKE_REQUESTS.exceptions)
@@ -300,8 +300,33 @@ class DownloadTransportNoteTest(unittest.TestCase):
                 mock.patch.object(download, "_download_urllib", _writer(GOOD)), \
                 redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
             ok = download.download_pdf("https://example.invalid/x.pdf", os.path.join(d, "x.pdf"))
-        self.assertFalse(ok)  # the redirect limit ends the call, as a refused redirect does
+        self.assertTrue(ok)  # the next method finishes what the redirect limit stopped
         self.assertIsNone(download.take_transport_failure())
+
+    def test_redirect_limit_alone_is_not_a_transport_failure(self):
+        from distributor_core import download
+        resp = SimpleNamespace(status_code=302, headers={"Location": "/again"}, close=lambda: None)
+        fake = SimpleNamespace(get=lambda *a, **k: resp, exceptions=_FAKE_REQUESTS.exceptions)
+        download.take_transport_failure()
+        with tempfile.TemporaryDirectory() as d, \
+                mock.patch.object(download, "_requests", fake), \
+                mock.patch.object(download, "_sync_playwright", None), \
+                mock.patch.object(download, "_download_urllib", lambda *a: False), \
+                redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            ok = download.download_pdf("https://example.invalid/x.pdf", os.path.join(d, "x.pdf"))
+        self.assertFalse(ok)
+        self.assertIsNone(download.take_transport_failure())
+
+    def test_closed_stdout_does_not_fail_a_download(self):
+        from distributor_core import download
+        out = io.StringIO()
+        out.close()
+        with tempfile.TemporaryDirectory() as d, \
+                mock.patch.object(download, "_requests", None), \
+                mock.patch.object(download, "_sync_playwright", None), \
+                mock.patch.object(download, "_download_urllib", _writer(GOOD)), \
+                redirect_stdout(out):
+            self.assertTrue(download.download_pdf("https://example.invalid/x.pdf", os.path.join(d, "x.pdf")))
 
     def test_unprintable_path_does_not_fail_a_download(self):
         from distributor_core import download

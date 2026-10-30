@@ -110,7 +110,8 @@ class DownloadRefused(urllib.error.URLError):
 
 
 class DownloadRedirectLimit(DownloadRefused):
-    """More than ``_MAX_REDIRECTS`` redirects: an answer from the server, not an outage."""
+    """More than ``_MAX_REDIRECTS`` redirects: an answer from the server, not an outage. Unlike
+    a refused hop it does not end the download; the next method is tried."""
 
 
 class DownloadLimitExceeded(OSError):
@@ -414,6 +415,9 @@ def download_pdf(url: str, output_path: str, *, resolve_redirects: bool = True) 
         for name, fn in methods:
             try:
                 fetched = fn(url, part_path)
+            except DownloadRedirectLimit:
+                # Not an outage; a browser (cookies) may finish a loop that requests cannot
+                fetched = False
             except DownloadRefused as exc:
                 _transport.failure = prior_failure
                 print(f"Warning: download refused: {url}: {exc.reason}", file=sys.stderr)
@@ -437,7 +441,7 @@ def download_pdf(url: str, output_path: str, *, resolve_redirects: bool = True) 
                         size = os.path.getsize(output_path)
                         try:
                             print(f"Downloaded {size:,} bytes via {name}: {output_path}")
-                        except (OSError, UnicodeError):
+                        except (OSError, UnicodeError, ValueError):
                             pass
                         return True
                     # Not a PDF (probably HTML error page or JS redirect)
