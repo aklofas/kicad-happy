@@ -250,12 +250,12 @@ def _stub(role: str, transport: FakeTransport, provider: str):
     raise KeyError(role)
 
 
-def _drop_provider_modules(product: Path) -> None:
-    roots = [str((product / "skills" / p).resolve()) for p in PROVIDERS]
-    roots.append(str((product / "skills" / "datasheets").resolve()))
-    for name, mod in list(sys.modules.items()):
-        f = getattr(mod, "__file__", None)
-        if f and any(str(Path(f).resolve()).startswith(r + os.sep) for r in roots):
+def _drop_provider_modules() -> None:
+    """Evict the provider modules by name, so a tree imported earlier never shadows this one."""
+    prefixes = ("provider_", "fetch_datasheet_", "sync_datasheets_")
+    for name in list(sys.modules):
+        top = name.split(".")[0]
+        if top == "distributor_core" or top.startswith(prefixes):
             del sys.modules[name]
 
 
@@ -264,7 +264,7 @@ def _provider_env(provider: str, product: Path, workdir: Path):
     """Import the provider's modules fresh, apply every seam patch, chdir into the work dir."""
     scripts = product / "skills" / provider / "scripts"
     saved_path, saved_cwd, saved_argv = list(sys.path), os.getcwd(), list(sys.argv)
-    _drop_provider_modules(product)
+    _drop_provider_modules()
     sys.path.insert(0, str(product / "skills" / "datasheets"))
     sys.path.insert(0, str(scripts))
     try:
@@ -284,7 +284,7 @@ def _provider_env(provider: str, product: Path, workdir: Path):
         os.chdir(saved_cwd)
         sys.path[:] = saved_path
         sys.argv[:] = saved_argv
-        _drop_provider_modules(product)
+        _drop_provider_modules()
 
 
 def _sync_call(sync_mod, provider: str, spec: dict, workdir: Path, fixtures: str | None) -> dict:
