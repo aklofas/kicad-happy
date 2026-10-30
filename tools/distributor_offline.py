@@ -250,12 +250,23 @@ def _stub(role: str, transport: FakeTransport, provider: str):
     raise KeyError(role)
 
 
+_TREE_MODULES = ("_core_path", "distributor_core", "kicad_core", "schematic", "datasheet_types",
+                 "extraction_schema")
+_TREE_PREFIXES = ("provider_", "fetch_datasheet_", "sync_datasheets_", "datasheet_")
+
+
+def _in_a_skills_tree(path: str) -> bool:
+    parts = Path(path).resolve().parts
+    return any(a == "skills" for a in parts[:-2])
+
+
 def _drop_provider_modules() -> None:
-    """Evict the provider modules by name, so a tree imported earlier never shadows this one."""
-    prefixes = ("provider_", "fetch_datasheet_", "sync_datasheets_")
-    for name in list(sys.modules):
+    """Evict every module a product tree supplied, whichever tree loaded it, so a run never
+    reuses another tree's copy."""
+    for name, mod in list(sys.modules.items()):
         top = name.split(".")[0]
-        if top == "distributor_core" or top.startswith(prefixes):
+        f = getattr(mod, "__file__", None)
+        if top in _TREE_MODULES or top.startswith(_TREE_PREFIXES) or (f and _in_a_skills_tree(f)):
             del sys.modules[name]
 
 

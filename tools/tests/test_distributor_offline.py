@@ -35,27 +35,42 @@ class Oracle(unittest.TestCase):
                          "network failure, retried next run: ConnectionResetError: fixture transport failure")
 
     def test_provider_modules_are_loaded_from_the_selected_tree(self):
+        import importlib
         import shutil
         import distributor_offline as do
         repo = TOOLS.parent
         with tempfile.TemporaryDirectory() as d:
             other = Path(d) / "other"
-            for name in ("datasheets", "digikey", "mouser", "lcsc", "element14"):
+            for name in ("datasheets", "digikey", "mouser", "lcsc", "element14", "kicad"):
                 shutil.copytree(repo / "skills" / name, other / "skills" / name,
                                 ignore=shutil.ignore_patterns("__pycache__"))
             saved = list(sys.path)
             try:
-                sys.path[:0] = [str(other / "skills" / "datasheets"), str(other / "skills" / "digikey" / "scripts"),
-                                str(repo / "skills" / "kicad" / "scripts")]
-                import provider_digikey  # noqa: F401  (loaded from the other tree)
+                sys.path[:0] = [str(other / "skills" / "datasheets"), str(other / "skills" / "kicad" / "scripts"),
+                                str(other / "skills" / "digikey" / "scripts")]
+                names = ["_core_path", "provider_digikey", "kicad_core", "schematic"]
+                for name in names:
+                    importlib.import_module(name)
+                    self.assertTrue(Path(sys.modules[name].__file__).resolve().is_relative_to(other.resolve()))
                 with tempfile.TemporaryDirectory() as w, do._provider_env("digikey", repo, Path(w)):
-                    for name in ("provider_digikey", "distributor_core.sync"):
-                        loaded = Path(sys.modules[name].__file__).resolve()
+                    for name in names + ["distributor_core.sync"]:
+                        mod = sys.modules.get(name) or importlib.import_module(name)
+                        loaded = Path(mod.__file__).resolve()
                         self.assertTrue(loaded.is_relative_to((repo / "skills").resolve()), f"{name}: {loaded}")
-                self.assertFalse([m for m in sys.modules if m == "provider_digikey" or m.startswith("distributor_core")])
+                leftovers = [m for m in sys.modules if m.split(".")[0] in ("provider_digikey", "distributor_core")]
+                self.assertFalse(leftovers)
             finally:
                 sys.path[:] = saved
                 do._drop_provider_modules()
+
+    def test_second_provider_gets_its_own_core_path(self):
+        import distributor_offline as do
+        repo = TOOLS.parent
+        seen = []
+        for provider in ("digikey", "lcsc"):
+            with tempfile.TemporaryDirectory() as w, do._provider_env(provider, repo, Path(w)):
+                seen.append(Path(sys.modules["_core_path"].__file__).resolve())
+        self.assertEqual(seen, [repo / "skills" / p / "scripts" / "_core_path.py" for p in ("digikey", "lcsc")])
 
     def test_provider_only_runs(self):
         import distributor_offline as do
