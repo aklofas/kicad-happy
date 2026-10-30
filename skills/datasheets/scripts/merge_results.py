@@ -106,8 +106,8 @@ def _classify(result: "dict | None", schema: dict,
         return "failed", f"schema validation: {err}"
     bound = result.get("pdf_sha256")
     if not bound:
-        return "failed", ("result has no pdf_sha256; re-dispatch this task "
-                          "and copy pdf_sha256 from the plan into the wrapper")
+        return "failed", ("result has no pdf_sha256, so it cannot be tied to the planned PDF; "
+                          "re-dispatch this task and copy pdf_sha256 from the plan into the wrapper")
     if bound != pdf_sha256:
         return "failed", (f"result is bound to PDF {bound}, not the planned PDF "
                           f"{pdf_sha256}; re-dispatch this task")

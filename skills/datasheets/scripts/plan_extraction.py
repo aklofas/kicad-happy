@@ -11,7 +11,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,6 +21,7 @@ if _SKILL_ROOT not in sys.path:
 
 from datasheet_types.cache_reader import read_json_object, sanitize_mpn  # noqa: E402
 from distributor_core.manifest import write_json_atomic  # noqa: E402
+from merge_results import _SAFE_TASK_ID  # noqa: E402
 
 PLAN_VERSION = "1.0"
 
@@ -77,9 +77,6 @@ def _is_cache_current(existing: dict, pdf_sha: str) -> bool:
     return src_sha == pdf_sha
 
 
-_SAFE_TASK_ID = re.compile(r"[A-Za-z0-9_.\-]+")
-
-
 def _drop_stale_results(cache_dir: Path, mpn: str, pdf_sha: str) -> None:
     """Remove the previous plan's task results when the PDF changed, so a
     re-dispatch cannot reuse facts read from another revision."""
@@ -95,8 +92,7 @@ def _drop_stale_results(cache_dir: Path, mpn: str, pdf_sha: str) -> None:
         if p.parent == cache_dir and (p.is_file() or p.is_symlink()):
             p.unlink()
             removed += 1
-    print(f"{mpn}: PDF changed since the previous plan; removed {removed} stale task result(s)"
-          " (the cached scout predates the PDF, re-run the scout if its page lists are stale)",
+    print(f"{mpn}: PDF changed since the previous plan; removed {removed} stale task result(s)",
           file=sys.stderr)
 
 
@@ -205,6 +201,14 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     scout = _load_scout(args.cache_dir, args.mpn)
+    if scout.get("pdf_sha256") != pdf_sha:
+        print(
+            f"error: the cached scout for {args.mpn} was not made from this PDF "
+            f"(scout pdf_sha256 {scout.get('pdf_sha256')!r}, PDF {pdf_sha}); "
+            "re-run the scout on this PDF and write its pdf_sha256 into the scout file.",
+            file=sys.stderr,
+        )
+        return 2
     _drop_stale_results(args.cache_dir, args.mpn, pdf_sha)
 
     verdict = (scout.get("quality_verdict") or {}).get("verdict")

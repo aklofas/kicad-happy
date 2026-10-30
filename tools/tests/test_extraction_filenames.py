@@ -12,8 +12,10 @@ def _tree(root):
     return sorted(str(p.relative_to(root)) for p in Path(root).rglob("*"))
 
 
-def _scout(cache, stem):
+def _scout(cache, stem, pdf):
+    import plan_extraction
     (cache / f"{stem}.scout.json").write_text(json.dumps({
+        "pdf_sha256": plan_extraction._sha256(pdf),
         "categories": [],
         "extraction_pages": {"base": [1], "pinout": [1]},
         "quality_verdict": {"verdict": "ok"},
@@ -31,7 +33,7 @@ class PlanExtraction(unittest.TestCase):
             root = Path(d)
             pdf = root / "x.pdf"; pdf.write_bytes(b"%PDF-1.4")
             cache = root / "cache"; cache.mkdir()
-            _scout(cache, "LM317_NOPB")
+            _scout(cache, "LM317_NOPB", pdf)
             self.assertEqual(self._run("LM317/NOPB", cache, pdf), 0)
             plan = json.loads((cache / "LM317_NOPB.plan.json").read_text(encoding="utf-8"))
             self.assertEqual(plan["mpn"], "LM317/NOPB")
@@ -43,7 +45,7 @@ class PlanExtraction(unittest.TestCase):
             pdf = root / "x.pdf"; pdf.write_bytes(b"%PDF-1.4")
             cache = root / "a" / "b" / "cache"; cache.mkdir(parents=True)
             # ".." and "/" each become "_": ".._.._escape"
-            _scout(cache, ".._.._escape")
+            _scout(cache, ".._.._escape", pdf)
             before = _tree(root)
             self._run("../../escape", cache, pdf)
             new = set(_tree(root)) - set(before)

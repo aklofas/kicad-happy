@@ -56,7 +56,7 @@ Per task: `<cache_dir>/<mpn>.<task_id>.result.json` — the **wrapped result fil
 | **MAY** | Append a per-task entry to a cost ledger JSONL file (format: `{run_id, mpn, task_id, tier, model_id, tokens_in, tokens_out, cost_usd, success}`). Cost ledger location and format are documented per dispatcher. |
 | **MUST NOT** | Modify `plan.json` itself. `merge_results.py` owns `execution.outcomes`. |
 | **MUST NOT** | Skip schema validation. A result file with `status: "complete"` implies schema-valid by contract. |
-| **MUST NOT** | Overwrite an existing `status: "complete"` result file without an explicit `--force` flag passed to the dispatcher. |
+| **MUST NOT** | Overwrite an existing `status: "complete"` result file that is bound to `plan.pdf_sha256` without an explicit `--force` flag passed to the dispatcher. A result with no `pdf_sha256`, or a different one, is not complete for this plan and is re-dispatched. |
 | **MUST NOT** | Edit or merge into `<mpn>.json` directly. That's `merge_results.py`'s job. |
 | **MUST NOT** | Read or generate `<mpn>.json` (except for resume-safety idempotence checks against the result files, which is fine). |
 
