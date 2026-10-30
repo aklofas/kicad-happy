@@ -3,9 +3,7 @@
     "PRESENT1"
   ],
   "skipped_no_identifier": 5,
-  "skipped_previous_failures": [
-    "PREVFAIL3"
-  ],
+  "skipped_previous_failures": [],
   "would_download": [
     "TPS61023DRLR",
     "LM358DR",
@@ -15,6 +13,7 @@
     "FAILALL77",
     "SI2302",
     "94AK6874",
-    "GONE2"
+    "GONE2",
+    "PREVFAIL3"
   ]
 }

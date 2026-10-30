@@ -6,5 +6,5 @@ datasheets/LM358DR_Dual_Operational_Amplifier.pdf:79
 datasheets/PRESENT1_Old_Desc.pdf:10
 datasheets/SI2302_N-Channel_MOSFET_20V.pdf:78
 datasheets/TPS61023DRLR_Boost_Converter.pdf:84
-datasheets/manifest.json:4901
+datasheets/manifest.json:5117
 mpns.txt:84

@@ -8,13 +8,12 @@
     "FAILALL77",
     "SI2302",
     "C14663",
-    "GONE2"
+    "GONE2",
+    "PREVFAIL3"
   ],
   "already_present": [
     "PRESENT1"
   ],
-  "skipped_previous_failures": [
-    "PREVFAIL3"
-  ],
+  "skipped_previous_failures": [],
   "skipped_no_identifier": 5
 }

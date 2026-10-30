@@ -5,5 +5,5 @@ datasheets/GONE2_Gone_part_revised.pdf:77
 datasheets/LM358DR_Dual_Operational_Amplifier.pdf:79
 datasheets/SI2302_N-Channel_MOSFET_20V.pdf:78
 datasheets/TPS61023DRLR_Boost_Converter.pdf:84
-datasheets/manifest.json:4739
+datasheets/manifest.json:5006
 mpns.txt:84

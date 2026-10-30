@@ -6,5 +6,5 @@ datasheets/PRESENT1_Old_Desc.pdf:10
 datasheets/REALMPN123_Buck_regulator_1A.pdf:82
 datasheets/SI2302_N-Channel_MOSFET_20V.pdf:78
 datasheets/TPS61023DRLR_Boost_Converter.pdf:84
-datasheets/manifest.json:4791
+datasheets/manifest.json:5021
 mpns.txt:84

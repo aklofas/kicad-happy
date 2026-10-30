@@ -41,7 +41,10 @@
       ],
       "status": "not_found",
       "error": "No Mouser results for 'PREVFAIL3'",
-      "last_attempt": "2026-10-16T00:00:00+00:00"
+      "last_attempt": "2026-10-16T00:00:00+00:00",
+      "failed_providers": [
+        "mouser"
+      ]
     },
     "ORPHAN4": {
       "status": "not_found",
@@ -92,7 +95,10 @@
       ],
       "status": "failed",
       "error": "All download methods failed",
-      "last_attempt": "2026-10-16T00:00:00+00:00"
+      "last_attempt": "2026-10-16T00:00:00+00:00",
+      "failed_providers": [
+        "mouser"
+      ]
     },
     "ATMEGA328P-AU": {
       "file": "ATMEGA328P-AU_8-bit_AVR_Microcontroller.pdf",
@@ -118,7 +124,10 @@
       ],
       "status": "not_found",
       "error": "No Mouser results for 'MISSING9999'",
-      "last_attempt": "2026-10-16T00:00:00+00:00"
+      "last_attempt": "2026-10-16T00:00:00+00:00",
+      "failed_providers": [
+        "mouser"
+      ]
     },
     "FAILALL77": {
       "manufacturer": "Acme",
@@ -130,7 +139,10 @@
       ],
       "status": "failed",
       "error": "All download methods failed",
-      "last_attempt": "2026-10-16T00:00:00+00:00"
+      "last_attempt": "2026-10-16T00:00:00+00:00",
+      "failed_providers": [
+        "mouser"
+      ]
     },
     "SI2302": {
       "file": "SI2302_N-Channel_MOSFET_20V.pdf",

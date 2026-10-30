@@ -1,4 +1,4 @@
 bom-identity.schematic.json:1844
 datasheets/LM358DRG4_Dual_Operational_Amplifier.pdf:79
 datasheets/LM358_Dual_Operational_Amplifier.pdf:79
-datasheets/manifest.json:1799
+datasheets/manifest.json:1907

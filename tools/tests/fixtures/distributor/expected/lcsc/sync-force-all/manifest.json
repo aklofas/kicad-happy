@@ -26,7 +26,10 @@
       ],
       "status": "not_found",
       "error": "No LCSC results for 'PRESENT2'",
-      "last_attempt": "2026-10-16T00:00:00+00:00"
+      "last_attempt": "2026-10-16T00:00:00+00:00",
+      "failed_providers": [
+        "lcsc"
+      ]
     },
     "OUTAGE3": {
       "manufacturer": "Acme",

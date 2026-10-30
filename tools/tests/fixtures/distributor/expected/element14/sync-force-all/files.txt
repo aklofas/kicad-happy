@@ -1,4 +1,4 @@
 bom-force-all.schematic.json:1214
 datasheets/PRESENT1.pdf:10
 datasheets/PRESENT2.pdf:10
-datasheets/manifest.json:1241
+datasheets/manifest.json:1298

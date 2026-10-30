@@ -27,7 +27,10 @@
       ],
       "status": "not_found",
       "error": "No matching element14 result for 'TPS61023' (closest: 'TPS61023DRLR', a different part)",
-      "last_attempt": "2026-10-16T00:00:00+00:00"
+      "last_attempt": "2026-10-16T00:00:00+00:00",
+      "failed_providers": [
+        "element14"
+      ]
     },
     "LM358": {
       "file": "LM358DR_Dual_Operational_Amplifier.pdf",
@@ -54,7 +57,10 @@
       ],
       "status": "not_found",
       "error": "No matching element14 result for '2N7002' (closest: '2N7002V', a different part)",
-      "last_attempt": "2026-10-16T00:00:00+00:00"
+      "last_attempt": "2026-10-16T00:00:00+00:00",
+      "failed_providers": [
+        "element14"
+      ]
     }
   }
 }

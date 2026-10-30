@@ -26,7 +26,10 @@
       ],
       "status": "not_found",
       "error": "No element14 results for 'PRESENT2'",
-      "last_attempt": "2026-10-16T00:00:00+00:00"
+      "last_attempt": "2026-10-16T00:00:00+00:00",
+      "failed_providers": [
+        "element14"
+      ]
     },
     "OUTAGE3": {
       "manufacturer": "Acme",
