@@ -348,7 +348,8 @@ def parse_gerber(path: str) -> dict:
             result["coordinate_range"][key] = 0
 
     # Identify layer type
-    result["layer_type"] = identify_layer_type(Path(path).name, result["x2_attributes"])
+    result["layer_type"] = identify_layer_type(Path(path).name, result["x2_attributes"],
+                                               _kicad_major(content, result["x2_attributes"]))
     if result["layer_type"] == "Edge.Cuts":
         result["outline_has_loop"] = _outline_has_loop(content, result["format"], result["units"])
 
@@ -596,8 +597,23 @@ def parse_drill(path: str) -> dict:
 # Layer identification
 # ---------------------------------------------------------------------------
 
-def identify_layer_type(filename: str, x2_attrs: dict) -> str:
-    """Identify layer type from X2 attributes or filename patterns."""
+_KICAD_COMMENT_VERSION = re.compile(r"Created by KiCad \(PCBNEW \(?(\d+)\.")
+_KICAD_X2_VERSION = re.compile(r"KiCad,Pcbnew,\(?(\d+)\.")
+
+
+def _kicad_major(content: str, x2_attrs: dict) -> int | None:
+    """Major version of the KiCad that wrote a Gerber, or None for other tools."""
+    m = (_KICAD_X2_VERSION.match(x2_attrs.get("GenerationSoftware", ""))
+         or _KICAD_COMMENT_VERSION.search(content))
+    return int(m.group(1)) if m else None
+
+
+def identify_layer_type(filename: str, x2_attrs: dict, kicad_major: int | None = None) -> str:
+    """Identify layer type from X2 attributes or filename patterns.
+
+    ``kicad_major`` is the version of the KiCad that wrote the file, used for
+    bare Protel ``.g<n>`` inner-layer names.
+    """
     file_function = x2_attrs.get("FileFunction", "").lower()
     if file_function:
         if "copper" in file_function:
@@ -637,6 +653,8 @@ def identify_layer_type(filename: str, x2_attrs: dict) -> str:
     protel_inner = re.search(r"\.g(\d+)l?$", name)
     if protel_inner:
         layer_num = int(protel_inner.group(1))
+        if kicad_major is not None and kicad_major <= 8:
+            layer_num -= 1  # KiCad 4-8 numbered .g<n> from the layer id (In1 = .g2)
         if layer_num >= 1:
             return f"In{layer_num}.Cu"
 
@@ -828,6 +846,29 @@ def classify_drill_tools(drills: list[dict]) -> dict:
 
 
 _INNER_COPPER_EXT = re.compile(r"\.(?:g\d+l?|gl\d+)$", re.IGNORECASE)
+_INNER_COPPER = re.compile(r"In\d+\.Cu")
+# KiCad 9.0.0-9.0.4 job files list inner copper as Copper,L<layer id + 1>
+# (In1.Cu = L5, In2.Cu = L7); fixed by KiCad commit 9725ac2215 (9.0.5).
+_KICAD9_JOB_INNER_BUG = re.compile(r"Pcbnew 9\.0\.[0-4](?!\d)")
+
+
+def _implied_inner_absent(gerbers: list[dict], covered: set,
+                          stackup_layers: int | None) -> set:
+    """Inner copper layers the stackup implies that ``covered`` lacks.
+
+    Inner-copper files without X2 carry no reliable layer index (CAM tools
+    number .GL<n>/.G<n>L differently), so they only count toward the implied
+    inner layers; only the shortfall is returned.
+    """
+    if not stackup_layers or stackup_layers < 3:
+        return set()
+    unindexed = sum(1 for g in gerbers if g.get("layer_type") == "unknown"
+                    and _INNER_COPPER_EXT.search(g.get("filename", "")))
+    implied = [f"In{i}.Cu" for i in range(1, stackup_layers - 1)]
+    absent = [lt for lt in implied if lt not in covered]
+    covered_inner = sum(1 for lt in covered if lt.startswith("In") and lt.endswith(".Cu"))
+    shortfall = len(implied) - covered_inner - unindexed
+    return set(absent[:max(0, shortfall)])
 
 
 def check_completeness(gerbers: list[dict], drills: list[dict],
@@ -837,7 +878,8 @@ def check_completeness(gerbers: list[dict], drills: list[dict],
 
     ``stackup_layers`` is the copper layer count from positional evidence
     (X2 copper positions, drill spans, job file); when it is 3 or more the
-    inner layers it implies are required.
+    inner layers it implies are required. A job file lists only the plotted
+    files, so it implies inner copper only when it lists both outer sides.
     """
     found_layers = set()
     for g in gerbers:
@@ -847,10 +889,23 @@ def check_completeness(gerbers: list[dict], drills: list[dict],
 
     expected_from_job = set()
     if job_info and "expected_files" in job_info:
+        # A listed file that is present names its own layer; the job's
+        # FileFunction is only read for a listed file that is absent.
+        by_name = {g.get("filename"): g.get("layer_type") for g in gerbers}
+        kicad9_inner_bug = bool(_KICAD9_JOB_INNER_BUG.match(job_info.get("generator", "")))
         for ef in job_info["expected_files"]:
-            lt = identify_layer_type(ef["path"], {"FileFunction": ef["function"]})
+            lt = by_name.get(Path(ef["path"]).name)
+            if not lt or lt == "unknown":
+                func = ef["function"]
+                inner = re.match(r"Copper,L(\d+),Inr", func)
+                if kicad9_inner_bug and inner:
+                    func = f"Copper,L{(int(inner.group(1)) - 3) // 2 + 1},Inr"
+                lt = identify_layer_type(ef["path"], {"FileFunction": func})
             if lt != "unknown":
                 expected_from_job.add(lt)
+        if {"F.Cu", "B.Cu"} <= expected_from_job:
+            expected_from_job |= _implied_inner_absent(
+                gerbers, found_layers | expected_from_job, stackup_layers)
 
     if expected_from_job:
         missing = expected_from_job - found_layers
@@ -868,16 +923,7 @@ def check_completeness(gerbers: list[dict], drills: list[dict],
 
     inner_layers = {lt for lt in found_layers if lt.startswith("In") and lt.endswith(".Cu")}
     required = {"F.Cu", "B.Cu", "F.Mask", "B.Mask", "Edge.Cuts"} | inner_layers
-    if stackup_layers and stackup_layers >= 3:
-        # Inner-copper files without X2 carry no reliable layer index (CAM
-        # tools number .GL<n>/.G<n>L differently), so they only count toward
-        # the implied inner layers; only the shortfall is reported missing.
-        unindexed = sum(1 for g in gerbers if g.get("layer_type") == "unknown"
-                        and _INNER_COPPER_EXT.search(g.get("filename", "")))
-        implied = [f"In{i}.Cu" for i in range(1, stackup_layers - 1)]
-        absent = [lt for lt in implied if lt not in found_layers]
-        shortfall = len(implied) - len(inner_layers) - unindexed
-        required |= set(absent[:max(0, shortfall)])
+    required |= _implied_inner_absent(gerbers, found_layers, stackup_layers)
     recommended = {"F.SilkS", "F.Paste"}
 
     return {
@@ -1553,7 +1599,7 @@ def _build_gerber_findings(completeness, alignment, drill_classification,
         required_layers.update(completeness.get('missing_required', []))
 
     for layer in missing:
-        is_required = layer in required_layers
+        is_required = layer in required_layers or _INNER_COPPER.fullmatch(layer) is not None
         findings.append({
             'detector': 'analyze_gerbers',
             'rule_id': 'GR-001',
