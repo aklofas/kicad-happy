@@ -17,7 +17,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-import analyze_harmonic_limits as harmonic
+import analyze_harmonic_limits as harmonic  # noqa: E402
 
 
 VALID_SPECTRUM = {
@@ -614,6 +614,29 @@ class TestHarmonicLimitCli(unittest.TestCase):
         parsed = json.loads(output_text)
         self.assertEqual(parsed["design_margin_db"], 3.0)
         self.assertTrue(output_text.endswith("\n"))
+
+    def test_output_cannot_overwrite_either_input(self):
+        for source in (self.spectrum_path, self.profile_path):
+            with self.subTest(source=source.name):
+                original = source.read_bytes()
+                code, stdout, stderr = self._run(("--output", str(source)))
+                after = source.read_bytes()
+                source.write_bytes(original)
+                self.assertEqual(code, 1)
+                self.assertEqual(stdout, "")
+                self.assertIn("would overwrite input", stderr)
+                self.assertIn(str(source), stderr)
+                self.assertEqual(after, original)
+
+    def test_output_cannot_overwrite_input_through_a_hard_link(self):
+        alias = self.root / "alias.json"
+        alias.hardlink_to(self.spectrum_path)
+        original = self.spectrum_path.read_bytes()
+        code, stdout, stderr = self._run(("--output", str(alias)))
+        self.assertEqual(code, 1)
+        self.assertEqual(stdout, "")
+        self.assertIn("would overwrite input", stderr)
+        self.assertEqual(self.spectrum_path.read_bytes(), original)
 
     def test_invalid_json_returns_actionable_error(self):
         self.spectrum_path.write_text("{invalid", encoding="utf-8")

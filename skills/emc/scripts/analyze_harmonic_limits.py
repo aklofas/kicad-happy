@@ -357,6 +357,16 @@ def main(argv: list[str] | None = None) -> int:
     """Run the command-line tool and return a process exit code."""
     args = _build_parser().parse_args(argv)
     try:
+        if args.output is not None:
+            for source in (args.spectrum, args.limits):
+                if args.output.resolve() == source.resolve() or (
+                    args.output.exists()
+                    and source.exists()
+                    and args.output.samefile(source)
+                ):
+                    raise ValidationError(
+                        f"--output would overwrite input {source}: {args.output}"
+                    )
         spectrum = validate_spectrum(_load_json(args.spectrum))
         profile = validate_limit_profile(_load_json(args.limits))
         result = screen_harmonics(
