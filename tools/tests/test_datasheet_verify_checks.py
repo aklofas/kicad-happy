@@ -27,6 +27,11 @@ class CapRecommendation(unittest.TestCase):
         ("47uF max ESR 10mOhm", 1, 47e-6),
         ("0.1uF x 4 near pins", 4, 0.1e-6),
         ("10x10mm pad, 10uF", 1, 10e-6),
+        ("2 x 10\u03bcF", 2, 10e-6),
+        ("22uFx2", 2, 22e-6),
+        ("100nFx4", 4, 100e-9),
+        ("1.5 x 10uF", 1, 10e-6),
+        ("10\u03bcF X7R", 1, 10e-6),
     ]
 
     def test_count_and_value(self):
@@ -104,6 +109,23 @@ class DecouplingRoles(unittest.TestCase):
                            ground="PGND2")
                 self.assertEqual(got, [])
 
+    def test_null_direction_power_pins_take_their_role_like_passive(self):
+        pins = [dict(p, direction=None) for p in PASSIVE]
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(_ldo(tmp, pins, RECS, [("C2", 10e-6, "+3V3", "GND")]),
+                             [("input_cap_recommended", "error", 0, [])])
+
+    def test_ground_function_pin_typed_power_is_ground(self):
+        # AVSS is not a ground name; the extraction types the pin power but
+        # gives it function GND, so C1 (+5V to AVSS) is a bypass cap and
+        # AVSS is no supply net.
+        pins = [{"number": "1", "name": "VDD", "type": "power", "direction": "passive"},
+                {"number": "2", "name": "AVSS", "function": "GND", "type": "power",
+                 "direction": "passive"}]
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(_ldo(tmp, pins, {"decoupling_cap": "100nF"},
+                                  [("C1", 100e-9, "+5V", "GND")], ground="AVSS"), [])
+
     def test_passive_supply_pin_gets_a_decoupling_check(self):
         pins = [{"number": "1", "name": "VDD", "type": "power", "direction": "passive"},
                 {"number": "2", "name": "VSS", "type": "ground", "direction": "passive"}]
@@ -111,6 +133,21 @@ class DecouplingRoles(unittest.TestCase):
             self.assertEqual(_ldo(tmp, pins, {"decoupling_cap": "100nF x2"},
                                   [("C1", 100e-9, "+5V", "GND")]),
                              [("decoupling_cap", "warning", 1, ["C1"])])
+
+
+class PowerPinRoles(unittest.TestCase):
+    def test_roles_of_passive_pins(self):
+        cases = [({"name": "VO1"}, ("output",)), ({"name": "VO2"}, ("output",)),
+                 ({"name": "LDO_OUT"}, ("output",)), ({"name": "VOS"}, ("input",)),
+                 ({"name": "VDD"}, ("input",)), ({"name": "LX", "function": "SW"}, ()),
+                 ({"name": "VFB", "function": "FB"}, ()), ({"name": "PGND", "function": "GND"}, ()),
+                 ({"name": "IN", "function": "VIN"}, ("input",)),
+                 ({"name": "VREG", "function": "VOUT"}, ("output",))]
+        for pin, roles in cases:
+            for direction in ("passive", None):
+                with self.subTest(pin=pin, direction=direction):
+                    self.assertEqual(dv._power_pin_roles(dict(pin, type="power", direction=direction)),
+                                     roles)
 
 
 SV = lambda mx: [{"min": None, "typ": None, "max": mx, "unit": "V",

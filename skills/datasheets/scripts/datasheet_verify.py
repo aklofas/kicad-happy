@@ -516,6 +516,12 @@ def verify_required_externals(components: list, nets: dict, extraction_dir: str,
     return findings
 
 
+# Capacitance units, micro as "u", the micro sign or Greek mu.
+_CAP_UNIT = r'(?:uf|\u00b5f|\u03bcf|nf|pf)'
+# A count is not followed by more digits/letters or by a capacitance unit.
+_NOT_A_VALUE = r'(?![\w.]|\s*' + _CAP_UNIT + ')'
+
+
 def _parse_cap_recommendation(text: str) -> dict:
     """Parse a capacitor recommendation string into structured requirements.
 
@@ -534,11 +540,13 @@ def _parse_cap_recommendation(text: str) -> dict:
 
     text_lower = text.lower()
 
-    # Count: a number multiplying a capacitance ("2 x 10uF"), else a
-    # standalone "x2"/"x 2". The digit of X5R/X7R is a temperature code and
+    # Count: a number multiplying a capacitance ("2 x 10uF"), an "x2" glued
+    # to the unit ("22uFx2"), else a standalone "x2"/"x 2" that is not itself
+    # followed by a value. The digit of X5R/X7R is a temperature code and
     # "max 10mm" / "10x10mm" are not quantities.
-    count_match = (re.search(r'(?<![\w.])(\d+)\s*[x\u00d7]\s*\d+\.?\d*\s*(?:uf|\u00b5f|nf|pf)', text_lower)
-                   or re.search(r'(?<![a-z0-9])[x\u00d7]\s*(\d+)(?![a-z0-9.])', text_lower))
+    count_match = (re.search(r'(?<![\w.])(\d+)\s*[x\u00d7]\s*\d+\.?\d*\s*' + _CAP_UNIT, text_lower)
+                   or re.search(_CAP_UNIT + r'\s*[x\u00d7]\s*(\d+)' + _NOT_A_VALUE, text_lower)
+                   or re.search(r'(?<![a-z0-9])[x\u00d7]\s*(\d+)' + _NOT_A_VALUE, text_lower))
     if count_match:
         result["count"] = int(count_match.group(1))
 
@@ -555,7 +563,7 @@ def _parse_cap_recommendation(text: str) -> dict:
             result["dielectric"].append(d)
 
     # Extract capacitance value
-    cap_match = re.search(r'(\d+\.?\d*)\s*(uF|\u00b5F|nF|pF|u|n|p)', text, re.IGNORECASE)
+    cap_match = re.search(r'(\d+\.?\d*)\s*(uF|\u00b5F|\u03bcF|nF|pF|u|\u00b5|\u03bc|n|p)', text, re.IGNORECASE)
     if cap_match:
         val_str = cap_match.group(1) + cap_match.group(2)
         parsed = parse_value(val_str, component_type="capacitor")
@@ -574,23 +582,42 @@ _RECOMMENDATION_ROLES = {
 
 def _power_pin_roles(pin: dict) -> tuple:
     """Supply roles of an extracted power pin. The extraction schema lets
-    power pins carry direction "passive"; their role then comes from the
-    pin's function (VIN/VOUT), else its name (an OUT pin is an output, any
-    other power pin a supply input)."""
+    power pins carry direction "passive" or none; their role then comes from
+    the pin's function (VIN/VOUT; SW, FB and GND pins supply nothing), else
+    its name (an OUT or VO<n> pin is an output, any other a supply input)."""
     direction = (pin.get("direction") or "").lower()
     if direction == "bidirectional":
         return ("input", "output")
     if direction in ("input", "output"):
         return (direction,)
-    if direction != "passive":
+    if direction not in ("passive", ""):
         return ()
     function = (pin.get("function") or "").upper()
+    if function in ("SW", "FB", "GND"):
+        return ()
     if function in ("VIN", "VOUT"):
         return ("input",) if function == "VIN" else ("output",)
     name = (pin.get("name") or "").upper()
-    if "OUT" in name or name == "VO":
+    if "OUT" in name or re.fullmatch(r"VO\d*", name):
         return ("output",)
     return ("input",)
+
+
+def _ic_ground_nets(pin_nets: dict, ext_pins: dict) -> set:
+    """Nets on the IC's own ground pins (type ground, or function GND on a
+    pin typed power): a PGND2 or AVSS that the ground-name rules miss."""
+    out = set()
+    for pin_num, net_name in pin_nets.items():
+        ep = ext_pins.get(pin_num) or {}
+        if ((ep.get("type") or "").lower() == "ground"
+                or (ep.get("function") or "").upper() == "GND"):
+            out.add(net_name)
+    return out
+
+
+def _on_ground(net_name, ic_ground: set) -> bool:
+    from kicad_core.netnames import is_ground_name
+    return net_name in ic_ground or is_ground_name(net_name)
 
 
 def verify_decoupling(components: list, nets: dict, extraction_dir: str,
@@ -648,22 +675,14 @@ def verify_decoupling(components: list, nets: dict, extraction_dir: str,
         if not recommendations:
             continue
 
-        from kicad_core.netnames import is_ground_name
-
-        # Ground is a ground-named net or a net on one of the IC's own
-        # ground pins (a PGND2 the name rules miss).
-        ic_ground = {n for pn, n in pin_nets.items()
-                     if ((ext_pins.get(pn) or {}).get("type") or "").lower() == "ground"}
-
-        def is_ground(net_name):
-            return net_name in ic_ground or is_ground_name(net_name)
+        ic_ground = _ic_ground_nets(pin_nets, ext_pins)
 
         # Supply nets per role; a recommendation is checked only on the
         # pins of its role, and a symbol without such a pin is skipped.
         role_nets = {"input": set(), "output": set()}
         for pin_num, net_name in pin_nets.items():
             ep = ext_pins.get(pin_num)
-            if not ep or (ep.get("type") or "").lower() != "power" or is_ground(net_name):
+            if not ep or (ep.get("type") or "").lower() != "power" or _on_ground(net_name, ic_ground):
                 continue
             for role in _power_pin_roles(ep):
                 role_nets[role].add(net_name)
@@ -687,7 +706,7 @@ def verify_decoupling(components: list, nets: dict, extraction_dir: str,
                         continue
                     cap_nets = c.get("pin_nets")
                     if isinstance(cap_nets, dict) and cap_nets and not any(
-                            n != net_name and is_ground(n) for n in cap_nets.values()):
+                            n != net_name and _on_ground(n, ic_ground) for n in cap_nets.values()):
                         continue
                     seen.add(c_ref)
                     caps.append({
