@@ -140,6 +140,31 @@ def _outline_has_loop(content: str, fmt: dict | None, units: str | None) -> bool
     return False
 
 
+def _gerber_unescape(s: str) -> str:
+    """Decode a Gerber attribute field as KiCad's FormatStringFromGerber does.
+
+    ``\\uXXXX`` (any hex case) becomes that character; a decoded control
+    character (< 0x20) is dropped; anything else, including the old
+    ``\\XXXX`` form, stays as written.
+    """
+    if "\\" not in s:
+        return s
+    out = []
+    i, n = 0, len(s)
+    while i < n:
+        if s[i] == "\\" and i + 5 < n and s[i + 1] == "u":
+            h = s[i + 2:i + 6]
+            if all(ch in "0123456789abcdefABCDEF" for ch in h):
+                v = int(h, 16)
+                if v >= 0x20:
+                    out.append(chr(v))
+                i += 6
+                continue
+        out.append(s[i])
+        i += 1
+    return "".join(out)
+
+
 def parse_gerber(path: str) -> dict:
     """Parse a single Gerber RS-274X file with full X2 object attribute extraction.
 
@@ -147,7 +172,8 @@ def parse_gerber(path: str) -> dict:
     - Format, units, coordinate range, operation counts (flash/draw/region)
     - Aperture definitions with per-aperture TA function tags
     - X2 file attributes (TF) — modern %TF...% and KiCad 5 G04 comment format
-    - X2 object attributes (TO) — component refs, net names, pin mappings
+    - X2 object attributes (TO) — component refs, net names, pin mappings;
+      TA/TO/TD also in the ``G04 #@!`` structured-comment form
     - Trace width distribution from conductor apertures
     """
     with open(path, "r", encoding="utf-8", errors="replace") as f:
@@ -219,12 +245,16 @@ def parse_gerber(path: str) -> dict:
     net_flash_counts = {}       # net_name -> flash count (D03 operations)
     pin_mappings = []           # [{ref, pin, pin_name, net}]
     pending_pin = None          # (ref, pin, pin_name) until the next flash/draw
+    pad_ref = None              # ref of the current %TO.P pad; KiCad writes no %TO.C for pads
 
     # Aperture dimension tracking for trace width / min feature analysis
     aperture_dims = {}          # D-code -> parsed dimension info
 
     for line in lines:
         s = line.strip()
+        # Structured comments (X2 off) carry the same TA/TO/TD commands.
+        if s.startswith("G04 #@! T") and not s.startswith("G04 #@! TF."):
+            s = "%" + s[8:] + ("%" if s.endswith("*") else "*%")
 
         # -- Aperture attribute (TA) --
         m = re.match(r"%TA\.AperFunction,([^*]*)\*%", s)
@@ -260,9 +290,14 @@ def parse_gerber(path: str) -> dict:
             current_component = None
             current_net = None
             pending_pin = None
+            pad_ref = None
             continue
         if s == "%TD.P*%":
             pending_pin = None
+            pad_ref = None
+            continue
+        if s == "%TD.AperFunction*%":
+            pending_aper_function = None
             continue
         if s == "%TD.N*%":
             current_net = None
@@ -274,7 +309,7 @@ def parse_gerber(path: str) -> dict:
         # -- Object attributes (TO) — component, net, pin --
         m = re.match(r"%TO\.C,([^*]*)\*%", s)
         if m:
-            current_component = m.group(1)
+            current_component = _gerber_unescape(m.group(1))
             if current_component not in component_pads:
                 component_pads[current_component] = 0
                 component_nets[current_component] = set()
@@ -282,17 +317,28 @@ def parse_gerber(path: str) -> dict:
 
         m = re.match(r"%TO\.N,([^*]*)\*%", s)
         if m:
-            current_net = m.group(1)
-            net_names.add(current_net)
-            if current_component and current_component in component_nets:
-                component_nets[current_component].add(current_net)
+            current_net = _gerber_unescape(m.group(1))
+            # KiCad writes an empty net for pads that connect to nothing.
+            owner = current_component or pad_ref
+            if current_net:
+                net_names.add(current_net)
+                if owner and owner in component_nets:
+                    component_nets[owner].add(current_net)
             continue
 
         m = re.match(r"%TO\.P,([^,]*),([^,*]*)(?:,([^*]*))?\*%", s)
         if m:
             # The net is often declared after the pin, so the pin is recorded
             # at the object it is attached to.
-            pending_pin = (m.group(1), m.group(2), m.group(3) or "")
+            pending_pin = (_gerber_unescape(m.group(1)), _gerber_unescape(m.group(2)),
+                           _gerber_unescape(m.group(3) or ""))
+            if pending_pin[0]:
+                pad_ref = pending_pin[0]
+                if pad_ref not in component_pads:
+                    component_pads[pad_ref] = 0
+                    component_nets[pad_ref] = set()
+                if current_net:
+                    component_nets[pad_ref].add(current_net)
             continue
 
         # -- Polarity --
@@ -322,8 +368,9 @@ def parse_gerber(path: str) -> dict:
             result["flash_count"] += 1
             if current_aperture:
                 aperture_flash_counts[current_aperture] = aperture_flash_counts.get(current_aperture, 0) + 1
-            if current_component and current_component in component_pads:
-                component_pads[current_component] += 1
+            owner = current_component or pad_ref
+            if owner and owner in component_pads:
+                component_pads[owner] += 1
             if current_net:
                 net_flash_counts[current_net] = net_flash_counts.get(current_net, 0) + 1
         elif "D01" in s:
@@ -348,8 +395,10 @@ def parse_gerber(path: str) -> dict:
             result["coordinate_range"][key] = 0
 
     # Identify layer type
-    result["layer_type"] = identify_layer_type(Path(path).name, result["x2_attributes"],
-                                               _kicad_major(content, result["x2_attributes"]))
+    name = Path(path).name
+    kicad_major = (_kicad_major(content, result["x2_attributes"])
+                   if _PROTEL_INNER.search(name.lower()) else None)
+    result["layer_type"] = identify_layer_type(name, result["x2_attributes"], kicad_major)
     if result["layer_type"] == "Edge.Cuts":
         result["outline_has_loop"] = _outline_has_loop(content, result["format"], result["units"])
 
@@ -381,24 +430,20 @@ def parse_gerber(path: str) -> dict:
     func_counts = {}
     conductor_widths = set()
     all_dims = []
+    # Function totals cover every aperture shape; dimensions only the parsed ones.
+    func_flash_counts = {}
+    for ap_id, func in aperture_functions.items():
+        base_func = func.split(",")[0]  # "SMDPad,CuDef" → "SMDPad"
+        func_counts[base_func] = func_counts.get(base_func, 0) + 1
+        # KH-173: instance counts, not unique defs
+        func_flash_counts[base_func] = (func_flash_counts.get(base_func, 0)
+                                        + aperture_flash_counts.get(ap_id, 0))
     for ap_id, info in aperture_dims.items():
         func = info.get("function", "")
-        if func:
-            base_func = func.split(",")[0]  # "SMDPad,CuDef" → "SMDPad"
-            func_counts[base_func] = func_counts.get(base_func, 0) + 1
         if "Conductor" in func and info["width_mm"] > 0:
             conductor_widths.add(round(info["width_mm"], 4))
         if info["width_mm"] > 0:
             all_dims.append(info["width_mm"])
-
-    # Count flash instances per aperture function (KH-173: instance counts, not unique defs)
-    func_flash_counts = {}
-    for ap_id, info in aperture_dims.items():
-        func = info.get("function", "")
-        if func:
-            base_func = func.split(",")[0]
-            flashes = aperture_flash_counts.get(ap_id, 0)
-            func_flash_counts[base_func] = func_flash_counts.get(base_func, 0) + flashes
 
     if func_counts or conductor_widths or all_dims:
         result["aperture_analysis"] = {}
@@ -599,6 +644,7 @@ def parse_drill(path: str) -> dict:
 
 _KICAD_COMMENT_VERSION = re.compile(r"Created by KiCad \(PCBNEW \(?(\d+)\.")
 _KICAD_X2_VERSION = re.compile(r"KiCad,Pcbnew,\(?(\d+)\.")
+_PROTEL_INNER = re.compile(r"\.g(\d+)l?$")  # .g1 .g2 .g2l ...
 
 
 def _kicad_major(content: str, x2_attrs: dict) -> int | None:
@@ -650,7 +696,7 @@ def identify_layer_type(filename: str, x2_attrs: dict, kicad_major: int | None =
     if inner_match:
         return f"In{inner_match.group(1)}.Cu"
     # Protel-style inner layers: .g1, .g2, .g3, .g4, .g2l, .g3l, .g4l
-    protel_inner = re.search(r"\.g(\d+)l?$", name)
+    protel_inner = _PROTEL_INNER.search(name)
     if protel_inner:
         layer_num = int(protel_inner.group(1))
         if kicad_major is not None and kicad_major <= 8:

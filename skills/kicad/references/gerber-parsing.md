@@ -263,17 +263,17 @@ KiCad 5 embeds X2 attributes as structured comments (`G04 #@!`) rather than nati
 
 ## Gerber Attributes (X2)
 
-Gerber X2 attributes provide machine-readable metadata. KiCad writes file-level attributes (`%TF`) in all versions (5+), but aperture attributes (`%TA`) and object attributes (`%TO`) are only available in KiCad 6+.
+Gerber X2 attributes provide machine-readable metadata. KiCad 5.1+ writes file (`TF`), aperture (`TA`) and object (`TO`) attributes. With X2 output on they are native `%T…*%` commands; with X2 off (`kicad-cli … --no-x2`) KiCad writes the same commands as `G04 #@! T…*` structured comments. Both forms carry the same data, and the analyzer reads both. Object attribute fields escape `\ % * ,` and (in non-UTF-8 output) non-ASCII characters as `\uXXXX`; the analyzer decodes these as KiCad does (the older `\XXXX` form is left as written). KiCad writes `%TO.P` with the reference on outer-copper pads and no `%TO.C`; a pad that connects to nothing gets an empty net (`%TO.N,*%`), which is not counted as a net.
 
 ### Version Compatibility Matrix
 
-| Attribute Type | KiCad 5 | KiCad 6+ | Format (KiCad 5) | Format (KiCad 6+) |
+| Attribute Type | KiCad 5.1 | KiCad 6+ | Format (X2 off) | Format (X2 on) |
 |---------------|---------|----------|-------------------|-------------------|
 | File attributes (`TF`) | Yes | Yes | `G04 #@! TF.*` | `%TF.*%` |
-| Aperture attributes (`TA`) | No | Yes | — | `%TA.*%` |
-| Object attributes (`TO`) | No | Yes | — | `%TO.*%` |
+| Aperture attributes (`TA`) | Yes | Yes | `G04 #@! TA.*` | `%TA.*%` |
+| Object attributes (`TO`) | Yes | Yes | `G04 #@! TO.*` | `%TO.*%` |
 
-This is a critical distinction: with KiCad 5 gerbers, you cannot map copper features back to components or nets from the gerber files alone — you need the KiCad source files for that information.
+Gerbers without these attributes (older KiCad versions, other tools) cannot be mapped back to components or nets from the gerber files alone — you need the source files for that information.
 
 ### File Attributes (%TF)
 
@@ -285,7 +285,7 @@ This is a critical distinction: with KiCad 5 gerbers, you cannot map copper feat
 %TF.FilePolarity,Positive*%
 ```
 
-### Aperture Attributes (%TA) — KiCad 6+ Only
+### Aperture Attributes (%TA) — KiCad 5.1+
 
 ```gerber
 %TA.AperFunction,SMDPad,CuDef*%     ; This aperture is an SMD pad
@@ -298,12 +298,12 @@ This is a critical distinction: with KiCad 5 gerbers, you cannot map copper feat
 %TA.AperFunction,NonConductor*%       ; Non-copper feature
 ```
 
-Without aperture attributes (KiCad 5), you can still classify apertures heuristically:
+Without aperture attributes (older KiCad, other tools), you can still classify apertures heuristically:
 - Small circular apertures used with D01 (draw) commands → traces (diameter = trace width)
 - Apertures used only with D03 (flash) commands → pads or vias
 - Distinguish via vs component pads by cross-referencing drill file positions
 
-### Object Attributes (%TO) — KiCad 6+ Only
+### Object Attributes (%TO) — KiCad 5.1+
 
 ```gerber
 %TO.C,R1*%                           ; This object belongs to component R1
@@ -311,7 +311,7 @@ Without aperture attributes (KiCad 5), you can still classify apertures heuristi
 %TO.P,R1,1*%                         ; This is pin 1 of R1
 ```
 
-These are extremely useful for analysis — they let you map gerber features back to schematic components and nets without needing the KiCad source files. When these attributes are absent (KiCad 5), component/net analysis requires parsing the `.kicad_pcb` source file instead.
+These are extremely useful for analysis — they let you map gerber features back to schematic components and nets without needing the KiCad source files. When these attributes are absent (older KiCad, other tools), component/net analysis requires parsing the `.kicad_pcb` source file instead.
 
 ---
 
@@ -428,9 +428,9 @@ M16                                  ; Router mode off
 
 ---
 
-## Gerber Job File (`.gbrjob`) — KiCad 6+ Only
+## Gerber Job File (`.gbrjob`) — KiCad 5.1+
 
-KiCad 6+ exports a JSON job file alongside gerbers with board-level metadata. KiCad 5 does not generate this file — board dimensions and stackup must be extracted from the gerber/drill files directly or from the `.kicad_pcb` source.
+KiCad 5.1+ exports a JSON job file alongside gerbers with board-level metadata. Without a job file, board dimensions and stackup must be extracted from the gerber/drill files directly or from the `.kicad_pcb` source.
 
 ```json
 {
@@ -472,12 +472,12 @@ Check that all required files are present and consistent:
 - **Coordinate alignment**: All files should have `TF.SameCoordinates,Original` (check both `%TF.*%` and `G04 #@! TF.*` formats)
 - **Date consistency**: All `TF.CreationDate` values should match — different dates mean files were regenerated at different times, risking misalignment
 - **Software version**: All `TF.GenerationSoftware` should match
-- **Job file**: `.gbrjob` present for complete metadata (KiCad 6+ only)
+- **Job file**: `.gbrjob` present for complete metadata (KiCad 5.1+)
 - **Filename prefix**: Auto-detect from the gerber files (project name varies — don't hardcode)
 
-#### 2. X2 Attribute Analysis (Component/Net/Pin Mapping) — KiCad 6+ Only
+#### 2. X2 Attribute Analysis (Component/Net/Pin Mapping) — KiCad 5.1+
 
-KiCad 6+ gerbers contain X2 object attributes that map every copper feature back to schematic. KiCad 5 gerbers lack these entirely — skip this section for KiCad 5 and rely on the `.kicad_pcb` source file for component/net mapping.
+KiCad 5.1+ gerbers contain X2 object attributes (native or as `G04 #@!` comments) that map every copper feature back to schematic. Gerbers without them — skip this section and rely on the `.kicad_pcb` source file for component/net mapping.
 
 ```gerber
 %TO.P,U2,1,FB*%      ; Pin: component U2, pin 1, name "FB"
@@ -606,7 +606,7 @@ Pre-submission check before sending to manufacturer:
 10. **Drill minimums**: PTH ≥ 0.2mm, NPTH ≥ 0.5mm (JLCPCB). Convert from inches if KiCad 5 INCH format.
 11. **Drill units**: Verify METRIC vs INCH — coordinate parsing differs completely
 12. **Board size**: Note if exceeds 100x100mm (JLCPCB pricing threshold)
-13. **Job file**: `.gbrjob` present with correct stackup and design rules (KiCad 6+ only)
+13. **Job file**: `.gbrjob` present with correct stackup and design rules (KiCad 5.1+)
 
 ### KiCad Version Detection
 
@@ -614,12 +614,12 @@ Quickly determine the KiCad version from gerber files:
 
 | Indicator | KiCad 5 | KiCad 6+ |
 |-----------|---------|----------|
-| X2 attribute format | `G04 #@! TF.*` | `%TF.*%` |
-| Aperture attributes | Absent | `%TA.AperFunction,...*%` |
-| Object attributes | Absent | `%TO.P,...*%`, `%TO.N,...*%`, `%TO.C,...*%` |
+| X2 attribute format | `G04 #@! TF.*` (X2 off, default) | `%TF.*%` |
+| Aperture attributes | `G04 #@! TA.*` (5.1) or native | `%TA.AperFunction,...*%` |
+| Object attributes | `G04 #@! TO.*` (5.1) or native | `%TO.P,...*%`, `%TO.N,...*%`, `%TO.C,...*%` |
 | Silkscreen suffix | `_SilkS` | `_Silkscreen` |
 | Drill units | `INCH` (decimal) | `METRIC` (integer microns) |
-| Job file | Absent | `.gbrjob` present |
+| Job file | `.gbrjob` from 5.1 | `.gbrjob` present |
 | Mask/paste pad openings | Regions (G36/G37) | Flashes (D03) |
 | Software string | `Pcbnew,5.x.x` | `Pcbnew,6.x.x` / `7.x.x` / `8.x.x` / `9.x.x` |
 
