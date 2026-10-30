@@ -159,13 +159,15 @@ UNSTUBBED_ROLES = {"alternatives"}
 FETCH_ENV = {"element14": {"ELEMENT14_API_KEY": "KEY"}}
 SYNC_KWARGS = {"element14": {"api_key": "KEY"}}
 
-# Scenario BOMs a sync run can read ("input"); "mpns" reads mpns.txt, "fx-sch" the harness schematic.
+# Scenario BOMs a sync run can read ("input"), MPN lists ("mpns"), and "fx-sch" the harness schematic.
+SCENARIO_MPNS = {"mpns": "mpns.txt", "mpns-present": "mpns-present.txt"}
 SCENARIO_BOMS = {"bom": "bom.schematic.json", "bom-identity": "bom-identity.schematic.json",
                  "bom-lcsc-direct": "bom-lcsc-direct.schematic.json",
                  "bom-force-all": "bom-force-all.schematic.json"}
 
 # run name -> spec. kind: sync | fetch. A key ending in " (<provider>)" runs for that provider
-# only and stores its artefacts under the name without that suffix.
+# only and stores its artefacts under the name without that suffix. "linked_out": the project's
+# datasheets/ is a symlink and no output directory is given.
 RUNS: dict[str, dict] = {
     "sync-default": {"kind": "sync", "seed": "seed", "input": "bom"},
     "sync-dry-json": {"kind": "sync", "seed": "seed", "input": "bom", "kwargs": {"dry_run": True, "as_json": True}},
@@ -178,6 +180,9 @@ RUNS: dict[str, dict] = {
     "sync-force-all": {"kind": "sync", "seed": "seed-force-all", "input": "bom-force-all",
                        "kwargs": {"force_all": True}},
     "sync-second-provider": {"kind": "sync", "seed": "seed-attributed", "input": "mpns", "out": "ds"},
+    "sync-nowork-json": {"kind": "sync", "seed": "seed", "input": "mpns-present", "kwargs": {"as_json": True}},
+    "sync-error-json": {"kind": "sync", "seed": None, "input": "bom", "linked_out": True,
+                        "kwargs": {"as_json": True}},
     "fetch-search-ok": {"kind": "fetch", "argv": ["--search", "LM358DR", "--json", "--output", "{work}/out.pdf"]},
     "fetch-search-nourl": {"kind": "fetch", "argv": ["--search", "NODATA1234", "--json"]},
     "fetch-search-miss": {"kind": "fetch", "argv": ["--search", "MISSING9999", "--json"]},
@@ -283,16 +288,17 @@ def _provider_env(provider: str, product: Path, workdir: Path):
 
 
 def _sync_call(sync_mod, provider: str, spec: dict, workdir: Path, fixtures: str | None) -> dict:
-    out_dir = workdir / spec.get("out", "datasheets")
     kwargs = dict(SYNC_KWARGS.get(provider, {}))
     kwargs.update(spec.get("kwargs", {}))
-    if spec["input"] == "mpns":
-        kwargs["mpn_list"] = str(workdir / "mpns.txt")
+    if not spec.get("linked_out"):
+        kwargs["output_dir"] = str(workdir / spec.get("out", "datasheets"))
+    if spec["input"] in SCENARIO_MPNS:
+        kwargs["mpn_list"] = str(workdir / SCENARIO_MPNS[spec["input"]])
     elif spec["input"] == "fx-sch":
         kwargs["input_path"] = str(_fx_sch(fixtures))
     else:
         kwargs["input_path"] = str(workdir / SCENARIO_BOMS[spec["input"]])
-    return sync_mod.sync_datasheets(output_dir=str(out_dir), **kwargs)
+    return sync_mod.sync_datasheets(**kwargs)
 
 
 def _list_files(workdir: Path) -> list[str]:
@@ -306,6 +312,11 @@ def _prepare(spec: dict, workdir: Path, provider: str) -> None:
             shutil.copyfile(SCENARIO / name, workdir / name)
     elif spec.get("input") in SCENARIO_BOMS:
         shutil.copyfile(SCENARIO / SCENARIO_BOMS[spec["input"]], workdir / SCENARIO_BOMS[spec["input"]])
+    elif spec.get("input") in SCENARIO_MPNS:
+        shutil.copyfile(SCENARIO / SCENARIO_MPNS[spec["input"]], workdir / SCENARIO_MPNS[spec["input"]])
+    if spec.get("linked_out"):
+        (workdir / "elsewhere").mkdir()
+        (workdir / "datasheets").symlink_to(workdir / "elsewhere", target_is_directory=True)
     if spec.get("seed"):
         out = workdir / spec.get("out", "datasheets")
         shutil.copytree(SCENARIO / spec["seed"], out)

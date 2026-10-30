@@ -4,8 +4,10 @@
 the identifier sets (``ID_KEYS``, ``KEY_PRIORITY``, ``SEARCH_KEY``), the console
 ``LABELS``, ``DEFAULT_DELAY``, ``RENAME_PRESENT``, ``FAILED_DETAIL_WITH_URL`` and the hooks
 ``preflight``, ``authenticate``, ``sync_one_part`` and ``report_tail``. The driver reads the
-parts (analyzer BOM or MPN list), decides which need a download, fetches them serially or on a
-thread pool, records each outcome in ``manifest.json`` and prints the summary.
+parts (analyzer BOM or MPN list) as one part per manifest key, decides which need a download,
+fetches them serially or on a thread pool, records each outcome in ``manifest.json`` and prints
+the summary. With ``as_json`` every return, an error included, is printed as JSON on stdout;
+progress and errors go to stderr.
 
 A ``not_found`` or ``failed`` whose search or download failed in transport
 (``distributor_core.download`` records it) is stored as ``error`` so the next run retries it, and
@@ -81,6 +83,41 @@ def _attributed(stored: dict, previous: dict, name: str) -> dict:
     return {**stored, "failed_providers": sorted((prior or set()) | {name})}
 
 
+def _part_key(part: dict, key_priority) -> str:
+    """The manifest key: the MPN, else the first distributor number in ``key_priority``."""
+    return part["mpn"] or next((part.get(k, "") for k in key_priority if part.get(k, "")), "")
+
+
+def _coalesce(parts: list[dict], key_priority) -> list[dict]:
+    """One part per manifest key, in BOM order, so a part on several BOM rows is fetched once.
+    References are unioned in BOM order; every other field takes the first non-empty value. The
+    MPN counts as read from the Value only when no row has it as a property (strict identity)."""
+    merged: dict[str, dict] = {}
+    for part in parts:
+        key = _part_key(part, key_priority)
+        first = merged.get(key)
+        if first is None:
+            merged[key] = {**part, "_key": key, "references": list(part["references"])}
+            continue
+        first["references"] += [r for r in part["references"] if r not in first["references"]]
+        for name, value in part.items():
+            if name not in ("references", "mpn", "mpn_source") and value and not first.get(name):
+                first[name] = value
+        if part["mpn"] and (not first["mpn"] or part.get("mpn_source") != "value"):
+            first["mpn"] = part["mpn"]
+            first["mpn_source"] = part.get("mpn_source", "")
+    return list(merged.values())
+
+
+def _error(message: str, as_json: bool) -> dict:
+    """An error return, reported on stderr and, with ``as_json``, as JSON on stdout."""
+    print(f"Error: {message}", file=sys.stderr)
+    result = {"error": message}
+    if as_json:
+        json.dump(result, sys.stdout, indent=2)
+    return result
+
+
 class _Run:
     """State shared by the fetch workers: the manifest, its path and the outcome tallies."""
 
@@ -148,13 +185,13 @@ def sync_datasheets(
     """Main sync function. Returns summary dict."""
     delay = provider.DEFAULT_DELAY if delay is None else delay
     if input_path is None and mpn_list is None:
-        return {"error": "Must provide either input_path or mpn_list"}
+        return _error("Must provide either input_path or mpn_list", as_json)
     if input_path is not None and mpn_list is not None:
-        return {"error": "Cannot provide both input_path and mpn_list"}
+        return _error("Cannot provide both input_path and mpn_list", as_json)
 
     pre = provider.preflight(**provider_kwargs)
     if "error" in pre:
-        return {"error": pre["error"]}
+        return _error(pre["error"], as_json)
     ctx = pre.get("ctx")
 
     # Determine output directory
@@ -168,7 +205,7 @@ def sync_datasheets(
     # A datasheets/ link found in the project would send every write to its target;
     # only an explicit --output may point elsewhere.
     if not output_dir and out_dir.is_symlink():
-        return {"error": f"{out_dir} is a symlink; pass --output to write datasheets there"}
+        return _error(f"{out_dir} is a symlink; pass --output to write datasheets there", as_json)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     index_path = out_dir / MANIFEST_FILENAME
@@ -178,7 +215,8 @@ def sync_datasheets(
     if mpn_list:
         mpn_list_path = Path(mpn_list).resolve()
         print(f"Loading MPNs from {mpn_list_path.name}...", file=sys.stderr)
-        parts = load_mpn_list(mpn_list_path, id_keys=provider.ID_KEYS)
+        parts = _coalesce(load_mpn_list(mpn_list_path, id_keys=provider.ID_KEYS),
+                          provider.KEY_PRIORITY)
         print(f"Loaded {len(parts)} unique MPNs", file=sys.stderr)
         skipped_no_id = 0
     else:
@@ -186,7 +224,7 @@ def sync_datasheets(
         print(f"Analyzing {resolved_input.name}...", file=sys.stderr)
         analyzer_output = get_analyzer_output(resolved_input)
         if analyzer_output is None:
-            return {"error": "Failed to analyze schematic"}
+            return _error("Failed to analyze schematic", as_json)
 
         # Extract parts with real MPNs
         # A provider searches with an MPN or its own part number; another distributor's number
@@ -197,6 +235,7 @@ def sync_datasheets(
         eligible = sum(1 for e in analyzer_output.get("bom", [])
                        if not e.get("dnp") and e.get("type", "") not in _SKIP_TYPES)
         skipped_no_id = eligible - len(parts)
+        parts = _coalesce(parts, provider.KEY_PRIORITY)
 
         print(provider.LABELS["found"].format(n=len(parts), k=skipped_no_id), file=sys.stderr)
 
@@ -206,9 +245,7 @@ def sync_datasheets(
     skipped_failed = []
 
     for part in parts:
-        # Use MPN as index key if available, otherwise distributor PN
-        part_key = part["mpn"] or next((part.get(k, "") for k in provider.KEY_PRIORITY if part.get(k, "")), "")
-        part["_key"] = part_key
+        part_key = part["_key"]
         existing = index.get("parts", {}).get(part_key, {})
         status = existing.get("status", "")
 
@@ -270,13 +307,16 @@ def sync_datasheets(
         index["schematic"] = str(mpn_list or input_path)
         index["last_sync"] = datetime.now(timezone.utc).isoformat()
         save_index(index_path, index)
-        return {"downloaded": 0, "already_present": len(already_present),
-                "failed": len(skipped_failed)}
+        summary = {"downloaded": 0, "already_present": len(already_present),
+                   "failed": len(skipped_failed)}
+        if as_json:
+            json.dump(summary, sys.stdout, indent=2)
+        return summary
 
     # Get OAuth token
     auth = provider.authenticate()
     if "error" in auth:
-        return {"error": auth["error"]}
+        return _error(auth["error"], as_json)
     if auth.get("ctx") is not None:
         ctx = auth["ctx"]
 

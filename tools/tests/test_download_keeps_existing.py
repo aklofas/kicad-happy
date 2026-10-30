@@ -273,6 +273,19 @@ class PerProviderFailureTest(unittest.TestCase):
             self.assertEqual(m["parts"]["LM358DR"]["status"], "error")
             self.assertNotIn("failed_providers", m["parts"]["LM358DR"])
 
+    def test_two_workers_record_the_same_providers_as_the_serial_run(self):
+        legacy = {"status": "failed", "error": "All download methods failed", "references": ["U1"]}
+        manifests = {}
+        for par in (1, 2):
+            with tempfile.TemporaryDirectory() as d:
+                self._seed(d, legacy)
+                for name in ("digikey", "lcsc"):
+                    self._sync(d, _named(name, lambda p, *a: _failed(p)), parallel=par)
+                m = json.loads((Path(d) / "out" / "manifest.json").read_text(encoding="utf-8"))
+                manifests[par] = m["parts"]
+        self.assertEqual(manifests[1], manifests[2])
+        self.assertEqual(manifests[1]["LM358DR"]["failed_providers"], ["digikey", "lcsc"])
+
     def test_malformed_list_is_read_as_legacy(self):
         for bad in ("digikey", [{"x": 1}, 3], None):
             with self.subTest(bad=bad), tempfile.TemporaryDirectory() as d:
@@ -419,7 +432,7 @@ class DownloadTransportNoteTest(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIsNone(download.take_transport_failure())
 
-    def test_closed_stdout_does_not_fail_a_download(self):
+    def test_closed_stderr_does_not_fail_a_download(self):
         from distributor_core import download
         out = io.StringIO()
         out.close()
@@ -427,7 +440,7 @@ class DownloadTransportNoteTest(unittest.TestCase):
                 mock.patch.object(download, "_requests", None), \
                 mock.patch.object(download, "_sync_playwright", None), \
                 mock.patch.object(download, "_download_urllib", _writer(GOOD)), \
-                redirect_stdout(out):
+                redirect_stderr(out):
             self.assertTrue(download.download_pdf("https://example.invalid/x.pdf", os.path.join(d, "x.pdf")))
 
     def test_unprintable_path_does_not_fail_a_download(self):
@@ -441,7 +454,7 @@ class DownloadTransportNoteTest(unittest.TestCase):
                 mock.patch.object(download, "_requests", None), \
                 mock.patch.object(download, "_sync_playwright", None), \
                 mock.patch.object(download, "_download_urllib", _writer(GOOD)), \
-                redirect_stdout(Ascii()):
+                redirect_stderr(Ascii()):
             self.assertTrue(download.download_pdf("https://example.invalid/x.pdf", os.path.join(d, "µ.pdf")))
 
 

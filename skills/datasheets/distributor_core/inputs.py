@@ -51,8 +51,12 @@ def is_real_mpn(mpn: str) -> bool:
 def get_analyzer_output(input_path: Path) -> dict | None:
     """Get analyzer output, either by running the analyzer or loading JSON."""
     if input_path.suffix == ".json":
-        with open(input_path, "r") as f:
-            return json.load(f)
+        try:
+            with open(input_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (OSError, ValueError) as e:
+            print(f"Error: cannot read {input_path}: {e}", file=sys.stderr)
+            return None
 
     if input_path.suffix in (".kicad_sch", ".sch"):
         # Try importing the analyzer directly

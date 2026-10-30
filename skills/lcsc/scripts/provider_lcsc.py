@@ -225,7 +225,7 @@ def _get_datasheet_url(component: dict) -> str:
     Prefers the direct PDF URL from extra.datasheet.pdf (wmsc.lcsc.com CDN),
     falls back to the top-level datasheet URL (lcsc.com redirect).
     """
-    extra = component.get("extra") or {}
+    extra = _parse_extra(component)
     ds = extra.get("datasheet") or {}
     if isinstance(ds, dict):
         pdf_url = ds.get("pdf", "")
@@ -237,13 +237,13 @@ def _get_datasheet_url(component: dict) -> str:
 
 def _get_mpn(component: dict) -> str:
     """Extract MPN from component."""
-    extra = component.get("extra") or {}
+    extra = _parse_extra(component)
     return extra.get("mpn", "") or component.get("mfr", "")
 
 
 def _get_lcsc_code(component: dict) -> str:
     """Extract LCSC code (Cxxxxx) from component."""
-    extra = component.get("extra") or {}
+    extra = _parse_extra(component)
     num = extra.get("number", "")
     if num:
         return num
@@ -253,7 +253,7 @@ def _get_lcsc_code(component: dict) -> str:
 
 def _get_manufacturer(component: dict) -> str:
     """Extract manufacturer name from component."""
-    extra = component.get("extra") or {}
+    extra = _parse_extra(component)
     mfg = extra.get("manufacturer") or {}
     if isinstance(mfg, dict):
         return mfg.get("name", "")
@@ -262,7 +262,7 @@ def _get_manufacturer(component: dict) -> str:
 
 def _get_description(component: dict) -> str:
     """Extract description from component."""
-    extra = component.get("extra") or {}
+    extra = _parse_extra(component)
     return extra.get("description", "") or component.get("description", "")
 
 

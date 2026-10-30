@@ -45,7 +45,6 @@ def preflight(api_key="", store=_DEFAULT_STORE):
     if not api_key:
         api_key = os.environ.get("ELEMENT14_API_KEY", "")
     if not api_key:
-        print("Error: ELEMENT14_API_KEY not set", file=sys.stderr)
         return {"error": "ELEMENT14_API_KEY not set"}
     return {"ctx": (api_key, store)}
 
@@ -147,9 +146,8 @@ def _search_element14_raw(term: str, api_key: str, store: str, allow_family: boo
 
 def _get_datasheet_url(product: dict) -> str:
     """Extract the best datasheet URL from an element14 product."""
-    datasheets = product.get("datasheets", [])
-    for ds in datasheets:
-        url = ds.get("url", "")
+    for ds in product.get("datasheets") or []:
+        url = ds.get("url", "") if isinstance(ds, dict) else ""
         if url:
             return url
     return ""

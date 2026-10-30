@@ -1,0 +1,54 @@
+{
+  "schematic": "<WORK>/mpns-present.txt",
+  "last_sync": "2026-10-16T00:00:00+00:00",
+  "parts": {
+    "PRESENT1": {
+      "file": "PRESENT1_Old_Desc.pdf",
+      "manufacturer": "Mfg",
+      "description": "Old Desc",
+      "value": "PRESENT1",
+      "datasheet_url": "https://example.com/present1.pdf",
+      "downloaded_date": "2026-01-01T00:00:00+00:00",
+      "source": "digikey",
+      "status": "ok",
+      "references": [],
+      "size_bytes": 10,
+      "verification": "verified"
+    },
+    "GONE2": {
+      "file": "GONE2.pdf",
+      "manufacturer": "Mfg",
+      "description": "Old Desc",
+      "value": "GONE2",
+      "datasheet_url": "https://example.com/gone2.pdf",
+      "downloaded_date": "2026-01-01T00:00:00+00:00",
+      "source": "digikey",
+      "status": "ok",
+      "references": [
+        "U99"
+      ],
+      "size_bytes": 10,
+      "verification": "verified"
+    },
+    "PREVFAIL3": {
+      "manufacturer": "",
+      "description": "",
+      "value": "PREVFAIL3",
+      "references": [
+        "U16"
+      ],
+      "status": "failed",
+      "error": "All download methods failed",
+      "last_attempt": "2026-01-01T00:00:00+00:00"
+    },
+    "ORPHAN4": {
+      "status": "not_found",
+      "error": "No results",
+      "last_attempt": "2026-01-01T00:00:00+00:00",
+      "manufacturer": "",
+      "description": "",
+      "value": "",
+      "references": []
+    }
+  }
+}

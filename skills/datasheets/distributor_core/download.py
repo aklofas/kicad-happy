@@ -440,7 +440,7 @@ def download_pdf(url: str, output_path: str, *, resolve_redirects: bool = True) 
                         os.replace(part_path, output_path)
                         size = os.path.getsize(output_path)
                         try:
-                            print(f"Downloaded {size:,} bytes via {name}: {output_path}")
+                            print(f"Downloaded {size:,} bytes via {name}: {output_path}", file=sys.stderr)
                         except (OSError, UnicodeError, ValueError):
                             pass
                         return True

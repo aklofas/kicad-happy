@@ -63,5 +63,51 @@ class ProviderAdapters(unittest.TestCase):
             self.assertEqual(prov.normalize_url(ti), ti, f"provider_{p}")
 
 
+class NullPayload(unittest.TestCase):
+    """A listing whose fields are JSON null (or unparseable) is a failed part, not a crash."""
+
+    def _sync(self, p, hit, search, extra_patches=(), **kw):
+        import io, json, tempfile
+        from contextlib import ExitStack, redirect_stderr, redirect_stdout
+        from unittest import mock
+        prov = _load(p, "provider")
+        from distributor_core.sync import sync_datasheets
+        results = {}
+        for par in (1, 2):
+            with tempfile.TemporaryDirectory() as d, ExitStack() as stack:
+                d = Path(d)
+                stack.enter_context(mock.patch.object(prov, search, lambda *a, **k: hit))
+                stack.enter_context(mock.patch.object(prov, "try_alternative_sources", lambda *a, **k: False))
+                for name, value in extra_patches:
+                    stack.enter_context(mock.patch.object(prov, name, value))
+                stack.enter_context(redirect_stderr(io.StringIO()))
+                stack.enter_context(redirect_stdout(io.StringIO()))
+                (d / "m.txt").write_text("LM358DR\nNE555P\n", encoding="utf-8")
+                sync_datasheets(prov, mpn_list=str(d / "m.txt"), output_dir=str(d / "o"),
+                                delay=0, parallel=par, **kw)
+                parts = json.loads((d / "o" / "manifest.json").read_text(encoding="utf-8"))["parts"]
+                results[par] = {k: (v["status"], v["error"], v["manufacturer"]) for k, v in parts.items()}
+        self.assertEqual(results[1], results[2])
+        return results[1]
+
+    def test_element14_null_datasheets(self):
+        hit = {"translatedManufacturerPartNumber": "LM358DR", "sku": "1", "datasheets": None}
+        got = self._sync("element14", hit, "search_element14", api_key="KEY")
+        self.assertEqual(got["LM358DR"], ("failed", "No datasheet URL or all download methods failed", ""))
+
+    def test_digikey_null_manufacturer_and_description(self):
+        hit = {"ManufacturerProductNumber": "LM358DR", "Manufacturer": None, "Description": None,
+               "DatasheetUrl": ""}
+        got = self._sync("digikey", hit, "search_digikey_with_token",
+                         extra_patches=(("get_oauth_token", lambda: ("T", "C")),))
+        self.assertEqual(got["LM358DR"], ("no_datasheet", "DigiKey listing has no datasheet URL", ""))
+
+    def test_lcsc_unparseable_extra(self):
+        hit = {"mfr": "LM358DR", "lcsc": "7950", "datasheet": "", "extra": "{not json"}
+        got = self._sync("lcsc", hit, "search_lcsc",
+                         extra_patches=(("search_lcsc_direct", lambda *a, **k: None),))
+        self.assertEqual(got["LM358DR"], ("failed", "No datasheet URL or all download methods failed", ""))
+
+
 if __name__ == "__main__":
     unittest.main()
