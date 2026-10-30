@@ -1526,7 +1526,7 @@ def _gerber_drill(g: dict) -> dict:
         "units": g.get("units"),
         "tools": tools,
         "hole_count": holes,
-        "coordinate_range": dict(g["coordinate_range"]),
+        "coordinate_range": {k: float(v) for k, v in g["coordinate_range"].items()},
         "x2_attributes": g["x2_attributes"],
     }
     if ff.startswith("NonPlated"):
