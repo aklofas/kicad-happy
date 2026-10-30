@@ -285,7 +285,8 @@ fi
 # Diff against base branch (PR only, opt-in)
 # ---------------------------------------------------------------------------
 
-DIFF_JSON=""
+DIFF_JSON=""    # first diff produced (the harness driver reads it); DIFF_JSONS carries all
+DIFF_JSONS=()
 if [ "${INPUT_DIFF_BASE:-false}" = "true" ] && [ -n "${GITHUB_BASE_REF:-}" ]; then
     echo "::group::Diff Analysis"
     # Save HEAD outputs
@@ -321,20 +322,17 @@ if [ "${INPUT_DIFF_BASE:-false}" = "true" ] && [ -n "${GITHUB_BASE_REF:-}" ]; th
                 ${BASE_CFG_ARGS[@]+"${BASE_CFG_ARGS[@]}"} 2>/dev/null || true
         fi
 
-        # Run diff for each matching pair
-        for dtype in schematic pcb emc spice; do
+        # Diff each analyzer pair that exists on both sides; the comment carries every diff
+        # (base EMC and SPICE are never re-run, so only schematic and PCB pair up)
+        for dtype in schematic pcb; do
             if [ -f "$OUTDIR/base/$dtype.json" ] && [ -f "$OUTDIR/head/$dtype.json" ]; then
                 python3 "$SCRIPTS/diff_analysis.py" \
                     "$OUTDIR/base/$dtype.json" "$OUTDIR/head/$dtype.json" \
                     -o "$OUTDIR/diff_$dtype.json" 2>/dev/null || true
-            fi
-        done
-
-        # Use schematic diff as primary (most informative)
-        for dtype in schematic pcb emc spice; do
-            if [ -f "$OUTDIR/diff_$dtype.json" ]; then
-                DIFF_JSON="$OUTDIR/diff_$dtype.json"
-                break
+                if [ -f "$OUTDIR/diff_$dtype.json" ]; then
+                    DIFF_JSONS+=("$OUTDIR/diff_$dtype.json")
+                    [ -n "$DIFF_JSON" ] || DIFF_JSON="$OUTDIR/diff_$dtype.json"
+                fi
             fi
         done
         echo "Diff analysis complete"
@@ -358,7 +356,9 @@ ARGS=()
 [ -n "$PCB_JSON" ] && [ -f "$PCB_JSON" ] && ARGS+=(--pcb "$PCB_JSON")
 [ -n "$SPICE_JSON" ] && [ -f "$SPICE_JSON" ] && ARGS+=(--spice "$SPICE_JSON")
 [ -n "$EMC_JSON" ] && [ -f "$EMC_JSON" ] && ARGS+=(--emc "$EMC_JSON")
-[ -n "$DIFF_JSON" ] && [ -f "$DIFF_JSON" ] && ARGS+=(--diff "$DIFF_JSON")
+for _diff in ${DIFF_JSONS[@]+"${DIFF_JSONS[@]}"}; do
+    [ -f "$_diff" ] && ARGS+=(--diff "$_diff")
+done
 [ -n "$THERMAL_JSON" ] && [ -f "$THERMAL_JSON" ] && ARGS+=(--thermal "$THERMAL_JSON")
 ARGS+=(--severity "${INPUT_SEVERITY:-all}")
 ARGS+=(--derating-profile "${INPUT_DERATING_PROFILE:-commercial}")

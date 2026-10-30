@@ -399,6 +399,111 @@ def _render_trust_evidence(sch, pcb, emc, thermal):
     return L
 
 
+_SEVERITY_ORDER = ("none", "minor", "major", "breaking")
+_ROW_LIMIT = 10
+
+
+def _cell(text):
+    """One markdown table cell: pipes escaped, line breaks flattened."""
+    return str(text).replace("|", "\\|").replace("\r", " ").replace("\n", " ")
+
+
+def _detection_text(item):
+    """Detail cell for an added/removed detection or finding."""
+    if item.get("rule_id") or item.get("summary"):
+        comps = ",".join(str(c) for c in item.get("components") or [])
+        head = " ".join(x for x in (item.get("rule_id", ""), item.get("severity", ""), comps) if x)
+        return f"{head}: {item['summary']}" if item.get("summary") else head
+    parts = []
+    for k, v in item.items():
+        if isinstance(v, list):
+            v = ",".join(str(x) for x in v)
+        parts.append(f"{k}: {v}")
+    return "; ".join(parts)
+
+
+def _diff_rows(diff_detail):
+    """[(first_row_of_item, row)] for one diff; an item with several rows is counted once."""
+    rows = []
+
+    def add(row, first=True):
+        rows.append((first, "| " + " | ".join(_cell(c) for c in row) + " |"))
+
+    comps = diff_detail.get("components", {})
+    for c in comps.get("added", [])[:5]:
+        add((f"+ {c.get('reference', '?')}", f"New: {c.get('value', '')} {c.get('footprint', '')}"))
+    for c in comps.get("removed", [])[:5]:
+        add((f"- {c.get('reference', '?')}", f"Removed: {c.get('value', '')}"))
+    for c in comps.get("modified", [])[:5]:
+        for i, ch in enumerate(c.get("changes", [])):
+            add((f"~ {c.get('reference', '?')} {ch.get('field', '')}",
+                 f"{ch.get('base', '?')} → {ch.get('head', '?')}"), first=i == 0)
+    # Signal analysis changes (diff output may still use signal_analysis key)
+    for det_type, det_diff in diff_detail.get("signal_analysis", {}).items():
+        label = det_type.replace("_", " ").title()
+        for d in det_diff.get("added", [])[:3]:
+            add((f"+ {label}", _detection_text(d)))
+        for d in det_diff.get("removed", [])[:3]:
+            add((f"- {label}", _detection_text(d)))
+        for m in det_diff.get("modified", [])[:3]:
+            for i, ch in enumerate(m.get("changes", [])):
+                pct = ch.get("delta_pct")
+                pct_str = f" ({pct:+.1f}%)" if pct is not None else ""
+                add((f"~ {label} {m.get('identity', '?')}",
+                     f"{ch.get('field', '')}: {ch.get('base', '?')} → {ch.get('head', '?')}{pct_str}"),
+                    first=i == 0)
+    # Rich finding changes (EMC, thermal, PCB)
+    fd = diff_detail.get("findings", {})
+    for f in fd.get("new", [])[:3]:
+        add((f"NEW {f.get('severity', '?')}", f"{f.get('rule_id', '?')}: {summary_or_title(f)}"))
+    for f in fd.get("resolved", [])[:3]:
+        add(("RESOLVED", f"{f.get('rule_id', '?')}: {summary_or_title(f)}"))
+    for f in fd.get("changed_severity", [])[:3]:
+        add(("~ SEVERITY", f"{f.get('rule_id', '?')}: {f.get('base_severity', '?')} → "
+                           f"{f.get('head_severity', '?')} {summary_or_title(f)}"))
+    # SPICE status changes
+    for sc in diff_detail.get("status_changes", [])[:3]:
+        add((f"~ {sc.get('subcircuit_type', '?')} {', '.join(sc.get('components', []))}",
+             f"{sc.get('base_status', '?')} → {sc.get('head_status', '?')}"))
+    return rows
+
+
+def _render_changes(diffs):
+    """The "Changes from Base" section for every diff that recorded a change."""
+    sums = [d.get("summary", {}) for d in diffs]
+    total, metrics, rows = 0, [], []
+    for d, s in zip(diffs, sums):
+        total += s.get("total_changes", 0)
+        metrics += s.get("metric_changes", [])
+        rows += _diff_rows(d.get("diff", {}))
+    sev = max((s.get("severity", "none") for s in sums),
+              key=lambda v: _SEVERITY_ORDER.index(v) if v in _SEVERITY_ORDER else -1)
+    L = ["### Changes from Base", ""]
+    if total:
+        L.append(f"> {total} changes: "
+                 f"+{sum(s.get('added', 0) for s in sums)} added, "
+                 f"-{sum(s.get('removed', 0) for s in sums)} removed, "
+                 f"~{sum(s.get('modified', 0) for s in sums)} modified ({sev})")
+    else:
+        L.append(f"> No added, removed or modified items ({sev})")
+    L.append("")
+    shown = rows[:_ROW_LIMIT]
+    if shown:
+        L.append("| Change | Detail |")
+        L.append("|--------|--------|")
+        L.extend(r for _, r in shown)
+        remaining = total - sum(1 for first, _ in shown if first)
+        if remaining > 0:
+            L.append(f"| | *...and {remaining} more* |")
+        L.append("")
+    if metrics:
+        names = sorted(set(metrics))
+        more = f" and {len(names) - 8} more" if len(names) > 8 else ""
+        L.append(f"Metric changes: {', '.join(names[:8])}{more}")
+        L.append("")
+    return L
+
+
 # ---------------------------------------------------------------------------
 # Tier 1: PR Comment
 # ---------------------------------------------------------------------------
@@ -410,7 +515,8 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
     pcb = _load_json(pcb_path)
     spice = _load_json(spice_path)
     emc = _load_json(emc_path)
-    diff_data = _load_json(diff_path)
+    diff_paths = [diff_path] if isinstance(diff_path, str) else (diff_path or [])
+    diff_datas = [_load_json(p) for p in diff_paths]
     thermal = _load_json(thermal_path)
 
     L = []
@@ -435,53 +541,9 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
         L.append("")
 
     # === Changes from Base (diff section) ===
-    if diff_data and diff_data.get("has_changes"):
-        s = diff_data.get("summary", {})
-        L.append("### Changes from Base")
-        L.append("")
-        L.append(f"> {s.get('total_changes', 0)} changes: "
-                 f"+{s.get('added', 0)} added, "
-                 f"-{s.get('removed', 0)} removed, "
-                 f"~{s.get('modified', 0)} modified "
-                 f"({s.get('severity', 'unknown')})")
-        L.append("")
-        diff_detail = diff_data.get("diff", {})
-        rows = []
-        # Component changes
-        for c in diff_detail.get("components", {}).get("added", [])[:5]:
-            rows.append(f"| + {c.get('reference', '?')} | New: {c.get('value', '')} {c.get('footprint', '')} |")
-        for c in diff_detail.get("components", {}).get("removed", [])[:5]:
-            rows.append(f"| - {c.get('reference', '?')} | Removed: {c.get('value', '')} |")
-        for c in diff_detail.get("components", {}).get("modified", [])[:5]:
-            for ch in c.get("changes", []):
-                rows.append(f"| ~ {c.get('reference', '?')} {ch.get('field', '')} | {ch.get('base', '?')} → {ch.get('head', '?')} |")
-        # Signal analysis changes (diff output may still use signal_analysis key)
-        for det_type, det_diff in diff_detail.get("signal_analysis", {}).items():
-            label = det_type.replace("_", " ").title()
-            for m in det_diff.get("modified", [])[:3]:
-                for ch in m.get("changes", []):
-                    base_v = ch.get("base", "?")
-                    head_v = ch.get("head", "?")
-                    pct = ch.get("delta_pct")
-                    pct_str = f" ({pct:+.1f}%)" if pct is not None else ""
-                    rows.append(f"| ~ {label} {m.get('identity', '?')} | {ch.get('field', '')}: {base_v} → {head_v}{pct_str} |")
-        # EMC finding changes
-        for f in diff_detail.get("findings", {}).get("new", [])[:3]:
-            rows.append(f"| NEW {f.get('severity', '?')} | {f.get('rule_id', '?')}: {summary_or_title(f)} |")
-        for f in diff_detail.get("findings", {}).get("resolved", [])[:3]:
-            rows.append(f"| RESOLVED | {f.get('rule_id', '?')}: {summary_or_title(f)} |")
-        # SPICE status changes
-        for sc in diff_detail.get("status_changes", [])[:3]:
-            comps = ", ".join(sc.get("components", []))
-            rows.append(f"| ~ {sc.get('subcircuit_type', '?')} {comps} | {sc.get('base_status', '?')} → {sc.get('head_status', '?')} |")
-        if rows:
-            L.append("| Change | Detail |")
-            L.append("|--------|--------|")
-            L.extend(rows[:10])
-            remaining = s.get("total_changes", 0) - min(len(rows), 10)
-            if remaining > 0:
-                L.append(f"| | *...and {remaining} more* |")
-            L.append("")
+    diffs = [d for d in diff_datas if d and d.get("has_changes")]
+    if diffs:
+        L.extend(_render_changes(diffs))
 
     # === Top-Risk Summary ===
     risk_lines = _render_top_risks(emc, thermal)
@@ -1385,7 +1447,7 @@ def main():
     parser.add_argument("--pcb", help="Path to PCB analysis JSON")
     parser.add_argument("--spice", help="Path to SPICE simulation JSON")
     parser.add_argument("--emc", help="Path to EMC analysis JSON")
-    parser.add_argument("--diff", help="Path to diff analysis JSON (from diff_analysis.py)")
+    parser.add_argument("--diff", action="append", help="Path to diff analysis JSON (from diff_analysis.py); repeat for each diff")
     parser.add_argument("--thermal", help="Path to thermal analysis JSON (from analyze_thermal.py)")
     parser.add_argument("--severity", default="all", help="Filter: all, warning, critical")
     parser.add_argument("--derating-profile", default="commercial")
