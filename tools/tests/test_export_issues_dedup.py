@@ -1,10 +1,12 @@
 """Exported GitHub issues are matched by finding, not by rule: a fake `gh` on PATH serves
 recorded `issue list` JSON and records every call."""
-import json, os, stat, subprocess, sys, tempfile, unittest
+import contextlib, hashlib, io, json, os, stat, subprocess, sys, tempfile, unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "skills" / "kicad" / "scripts" / "export_issues.py"
+SCRIPTS = ROOT / "skills" / "kicad" / "scripts"
+SCRIPT = SCRIPTS / "export_issues.py"
 
 FAKE_GH = """#!{py}
 import json, os, sys
@@ -35,6 +37,10 @@ def marker(fid):
     return f"<!-- kicad-happy:finding_id={fid} -->"
 
 
+def keyed_marker(fid, content):
+    return f"<!-- kicad-happy:finding_id={fid} key={hashlib.sha256(content.encode()).hexdigest()[:16]} -->"
+
+
 def finding(fid, summary, rule="RG-001"):
     return {"rule_id": rule, "finding_id": fid, "summary": summary, "severity": "warning"}
 
@@ -60,6 +66,7 @@ class ExportDedupTest(unittest.TestCase):
                                encoding="utf-8", env=env)
             st = json.loads(state.read_text(encoding="utf-8"))
         creates = [c for c in st["calls"] if c[:2] == ["issue", "create"]]
+        self.lists = [c for c in st["calls"] if c[:2] == ["issue", "list"]]
         return r, creates
 
     @staticmethod
@@ -73,7 +80,8 @@ class ExportDedupTest(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(len(creates), 1)
         self.assertEqual(self.kv(creates[0], "title"), "[RG-001] Rail Y")
-        self.assertEqual(self.kv(creates[0], "body").split("\n")[0], marker("RG-001:bbb"))
+        self.assertEqual(self.kv(creates[0], "body").split("\n")[0],
+                         keyed_marker("RG-001:bbb", "RG-001::::::Rail Y"))
 
     def test_legacy_title_only_issue_is_not_duplicated_and_serves_one_finding(self):
         issues = [{"number": 7, "title": "[RG-001] Rail X", "body": "old body, no marker"}]
@@ -110,7 +118,7 @@ class ExportDedupTest(unittest.TestCase):
         body = self.kv(creates[1], "body")
         self.assertEqual(body.count("<!--"), 1)
         self.assertEqual(body.count("-->"), 1)
-        self.assertEqual(body.split("\n")[0], marker("RG-001:bbb"))
+        self.assertTrue(body.split("\n")[0].startswith("<!-- kicad-happy:finding_id=RG-001:bbb key="))
 
     def test_positional_id_is_matched_as_emitted(self):
         issues = [{"number": 3, "title": "t", "body": marker("DC-DET:x#1")}]
@@ -118,6 +126,77 @@ class ExportDedupTest(unittest.TestCase):
         self.assertEqual(creates, [])
         r, creates = self.run_export([finding("DC-DET:x#2", "other content now")], issues)
         self.assertEqual(len(creates), 1)
+
+    def test_same_finding_twice_lists_issues_once(self):
+        r, creates = self.run_export(
+            [finding("RG-001:aaa", "Rail X"), finding("RG-001:aaa", "Rail X")], [])
+        self.assertEqual(len(creates), 1)
+        self.assertEqual(len(self.lists), 1)
+
+    def test_unnamed_net_renumbering_does_not_duplicate(self):
+        old = {"rule_id": "NR-001", "finding_id": "NR-001:__unnamed_3", "summary": "Net __unnamed_3 floats",
+               "nets": ["__unnamed_3"], "components": ["R1"]}
+        new = dict(old, finding_id="NR-001:__unnamed_7", summary="Net __unnamed_7 floats",
+                   nets=["__unnamed_7"])
+        content = "NR-001::__unnamed::R1::Net __unnamed floats"
+        issues = [{"number": 4, "title": "t",
+                   "body": keyed_marker("NR-001:__unnamed_3", content) + "\n\nbody"}]
+        r, creates = self.run_export([new], issues)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(creates, [])
+        other = dict(new, summary="Net __unnamed_7 shorts", components=["R2"])
+        r, creates = self.run_export([other], issues)
+        self.assertEqual(len(creates), 1)
+
+    def test_positional_order_swap_does_not_duplicate(self):
+        issues = [
+            {"number": 1, "title": "t", "body": keyed_marker("DC-DET:v#1", "DC-DET::+3V3::C1::caps A")},
+            {"number": 2, "title": "t", "body": keyed_marker("DC-DET:v#2", "DC-DET::+5V::C2::caps B")},
+        ]
+        a = {"rule_id": "DC-DET", "nets": ["+3V3"], "components": ["C1"], "summary": "caps A"}
+        b = {"rule_id": "DC-DET", "nets": ["+5V"], "components": ["C2"], "summary": "caps B"}
+        r, creates = self.run_export(
+            [dict(b, finding_id="DC-DET:v#1"), dict(a, finding_id="DC-DET:v#2")], issues)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(creates, [])
+
+    def test_mentions_are_inert(self):
+        r, creates = self.run_export([finding("RG-001:aaa", "ping @octocat")], [])
+        for call in creates:
+            for a in call:
+                self.assertNotIn("@octocat", a)
+        self.assertIn("@\u200boctocat", self.kv(creates[0], "title"))
+        self.assertIn("@\u200boctocat", self.kv(creates[0], "body"))
+
+    def test_full_listing_page_is_refused(self):
+        issues = [{"number": i, "title": "t", "body": ""} for i in range(3)]
+        sys.path.insert(0, str(SCRIPTS))
+        try:
+            import export_issues
+        finally:
+            sys.path.pop(0)
+        with tempfile.TemporaryDirectory() as tmp:
+            gh = Path(tmp) / "bin" / "gh"
+            gh.parent.mkdir()
+            gh.write_text(FAKE_GH.format(py=sys.executable), encoding="utf-8")
+            gh.chmod(gh.stat().st_mode | stat.S_IXUSR)
+            state = Path(tmp) / "state.json"
+            state.write_text(json.dumps({"issues": issues, "calls": [], "created": []}),
+                             encoding="utf-8")
+            data = Path(tmp) / "a.json"
+            data.write_text(json.dumps({"findings": [finding("RG-001:aaa", "Rail X")]}),
+                            encoding="utf-8")
+            env = {"PATH": f"{gh.parent}{os.pathsep}{os.environ['PATH']}",
+                   "FAKE_GH_STATE": str(state)}
+            err = io.StringIO()
+            with mock.patch.dict(os.environ, env), \
+                    mock.patch.object(export_issues, "LIST_LIMIT", 3), \
+                    contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+                rc = export_issues.main([str(data), "--repo", "o/r", "--create"])
+            calls = json.loads(state.read_text(encoding="utf-8"))["calls"]
+        self.assertEqual(rc, 1)
+        self.assertIn("truncated", err.getvalue())
+        self.assertFalse([c for c in calls if c[:2] == ["issue", "create"]])
 
     def test_values_are_passed_as_one_flag_each(self):
         r, creates = self.run_export([finding("RG-001:aaa", "--web")], [])
