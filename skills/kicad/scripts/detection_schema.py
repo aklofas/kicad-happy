@@ -55,6 +55,8 @@ def _recalc_rc_cutoff(det: dict) -> None:
     c = det.get("capacitor", {}).get("farads")
     if r and c and r > 0 and c > 0:
         det["cutoff_hz"] = round(1.0 / (_PI2 * r * c), 2)
+        if "time_constant_s" in det:
+            det["time_constant_s"] = r * c
 
 
 def _recalc_divider_ratio(det: dict) -> None:
@@ -96,12 +98,28 @@ def _recalc_crystal_load(det: dict) -> None:
             c_series = (c1 * c2) / (c1 + c2)
             stray_pf = det.get("stray_capacitance_pF", 3.0)
             det["effective_load_pF"] = round(c_series * 1e12 + stray_pf, 2)
+            target = det.get("target_load_pF")
+            if target and "load_cap_error_pct" in det:
+                error_pct = (det["effective_load_pF"] - target) / target * 100
+                det["load_cap_error_pct"] = round(error_pct, 1)
+                det["load_cap_status"] = _crystal_load_status(error_pct, det.get("target_load_source"))
+
+
+def _crystal_load_status(error_pct: float, target_source) -> str:
+    """load_cap_status with detect_crystal_circuits' thresholds. A target from the
+    frequency default table is only a guess, so a miss there is "unverified"."""
+    if abs(error_pct) <= 10:
+        return "ok"
+    if target_source == "frequency_default":
+        return "unverified"
+    return "marginal" if abs(error_pct) <= 25 else "out_of_spec"
 
 
 def _recalc_regulator_feedback(det: dict) -> None:
     """Regulator feedback divider: nested ratio, then estimated_vout = Vref / ratio
     (Vref / (1 - ratio) on a three-terminal adjustable, whose Vref sits across the top
     resistor; negative for an inverting regulator, as the detector reports it)."""
+    old_vout = det.get("estimated_vout")
     fd = det.get("feedback_divider")
     if isinstance(fd, dict) and "r_top" in fd and "r_bottom" in fd:
         r_top = fd["r_top"].get("ohms")
@@ -115,6 +133,34 @@ def _recalc_regulator_feedback(det: dict) -> None:
                 vref_ratio = 1 - fd["ratio"] if fd.get("reference") == "out_adj" else fd["ratio"]
                 new_vout = round(vref / vref_ratio, 3)
                 det["estimated_vout"] = -new_vout if vout < 0 else new_vout
+    if det.get("estimated_vout") != old_vout:
+        _recalc_regulator_dissipation(det)
+
+
+def _recalc_regulator_dissipation(det: dict) -> None:
+    """power_dissipation at the regulator's new estimated_vout, from the block's own Vin,
+    load current and efficiency. An LDO whose Vout reaches its Vin gets no block, as the
+    detector emits none."""
+    pd = det.get("power_dissipation")
+    vout = det.get("estimated_vout")
+    if not isinstance(pd, dict) or not isinstance(vout, (int, float)):
+        return
+    vin = pd.get("vin_estimated_V")
+    iout = pd.get("estimated_iout_A")
+    if not isinstance(vin, (int, float)) or not isinstance(iout, (int, float)):
+        return
+    if pd.get("topology") == "switching":
+        eff = pd.get("efficiency_assumed")
+        if not isinstance(eff, (int, float)) or eff <= 0:
+            return
+        pd["vout_V"] = round(vout, 3)
+        pd["estimated_pdiss_W"] = round(vout * iout / eff - vout * iout, 3)
+    elif 0 < vout < vin:
+        pd["vout_V"] = vout
+        pd["dropout_V"] = round(vin - vout, 3)
+        pd["estimated_pdiss_W"] = round((vin - vout) * iout, 3)
+    else:
+        del det["power_dissipation"]
 
 
 def _recalc_opamp_gain(det: dict) -> None:

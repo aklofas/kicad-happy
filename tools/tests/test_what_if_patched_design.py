@@ -200,7 +200,8 @@ class EmcPreview(unittest.TestCase):
         self.assertEqual((got["before_risk"], got["after_risk"]), (74.5, 86.5))
         self.assertEqual([(r["rule"], r["detail"]) for r in got["resolved"]],
                          [("DC-001", "Decoupling cap moderately far from U4")])
-        self.assertEqual(got["improved"], [{"rule": "DC-001", "before": "error", "after": "warning"}])
+        self.assertEqual(got["improved"], [{"rule": "DC-001", "before": "error", "after": "warning",
+                                            "detail": "Decoupling cap moderately far from U3"}])
         self.assertEqual((got["worsened"], got["new_findings"], got["unchanged"]), ([], [], 14))
 
     def test_hand_case(self):
@@ -216,7 +217,8 @@ class EmcPreview(unittest.TestCase):
         before = _emc(80, [("emc:A:1", "A", "warning", "a", ["U1"], [])])
         after = _emc(70, [("emc:A:1", "A", "error", "a", ["U1"], [])])
         got = _preview(before, after)
-        self.assertEqual(got["worsened"], [{"rule": "A", "before": "warning", "after": "error"}])
+        self.assertEqual(got["worsened"], [{"rule": "A", "before": "warning", "after": "error",
+                                            "detail": "a"}])
         self.assertEqual((got["improved"], got["unchanged"]), ([], 0))
 
     def test_positional_twin_resolved_is_the_one_that_left(self):

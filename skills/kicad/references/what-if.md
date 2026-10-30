@@ -69,7 +69,7 @@ python3 what_if.py <input> [changes...] [options]
 |------|---------|
 | 0 | Success |
 | 1 | Invalid input, parse error, or missing data |
-| 2 | Usage error (argparse, or `--spice` with a sweep) |
+| 2 | Usage error (argparse, `--spice` with a sweep, or a log sweep with a bound at or below zero) |
 
 ---
 
@@ -99,7 +99,7 @@ Evaluates the circuit at each listed value. Results are formatted as a markdown 
 R5=1k..100k:10
 ```
 
-Generates `N` logarithmically spaced values between start and stop (inclusive). The step count is capped at 50.
+Generates `N` logarithmically spaced values between start and stop (inclusive). The step count is capped at 50. Both bounds must be above zero (exit 2 otherwise).
 
 **Syntax:** `START..STOP:N`
 
@@ -112,7 +112,7 @@ R5=4.7k+-5%
 R5=4.7k±5%
 ```
 
-Both `+-` and the Unicode `±` character are accepted. The tolerance triggers worst-case corner analysis: all 2^N combinations of each toleranced component at its +tol and -tol extremes. Capped at 6 components (64 corners).
+Both `+-` and the Unicode `±` character are accepted. The tolerance triggers worst-case corner analysis: all 2^N combinations of each toleranced component at its +tol and -tol extremes. Capped at 6 components (64 corners). Every recalculable field of an affected subcircuit gets its corner bounds, including one whose nominal value did not change (`R5=4.7k+-5%` on a part that is already 4.7k).
 
 Default tolerances when the suffix is omitted but tolerance mode is active:
 
@@ -261,8 +261,8 @@ The `--emc` flag runs the full EMC analyzer (`analyze_emc.py`) on both the origi
 | `before_risk` | number | `summary.emc_risk_score` before the change (0 = worst, 100 = lowest risk) |
 | `after_risk` | number | `summary.emc_risk_score` after the change |
 | `resolved` | array | Findings that disappeared after the change (`rule`, `detail`) |
-| `improved` | array | Findings whose severity went down (`rule`, `before`, `after`) |
-| `worsened` | array | Findings whose severity went up (`rule`, `before`, `after`) |
+| `improved` | array | Findings whose severity went down (`rule`, `before`, `after`, `detail`) |
+| `worsened` | array | Findings whose severity went up (`rule`, `before`, `after`, `detail`) |
 | `new_findings` | array | Findings that appeared after the change (`rule`, `detail`) |
 | `unchanged` | integer | Count of findings with no change |
 
@@ -336,6 +336,16 @@ The recalculation engine (`_recalc_derived` in `spice_tolerance.py`) updates the
 | `power_regulators` (feedback divider) | `ratio` | `R_bot / (R_top + R_bot)` | EQ-VD-001 |
 
 The comparison engine also checks for any additional fields present in the detection that were not explicitly registered (e.g., `estimated_vout`).
+
+Numeric fields that restate a recalculated value are recomputed with it, so a patched detection (and the `--output` export) stays consistent:
+
+| Detection Type | Field | Recomputed as |
+|---------------|-------|---------------|
+| `rc_filters` | `time_constant_s` | `R * C` |
+| `crystal_circuits` | `load_cap_error_pct`, `load_cap_status` | error of the new `effective_load_pF` against `target_load_pF`, with the analyzer's thresholds |
+| `power_regulators` | `power_dissipation.vout_V`, `estimated_pdiss_W` (LDO also `dropout_V`) | from the block's Vin, load current and efficiency at the new `estimated_vout`; an LDO whose Vout reaches Vin loses the block, as the analyzer emits none |
+
+Text fields (`summary`, `description`, `cutoff_formatted`, `note`) and `severity` stay as analysed.
 
 ---
 
@@ -470,10 +480,10 @@ Natural-language queries and their corresponding command invocations.
 | "Export the patched design for EMC analysis" | `what_if.py analysis.json R5=4.7k --output patched.json` |
 | "Verify with SPICE" | `what_if.py analysis.json R5=4.7k --spice --text` |
 | "What's the best R value for 1kHz cutoff" | `what_if.py analysis.json --fix 'rc_filters[0]' --target 1000 --text` |
-| "Set the opamp gain to 20 dB" | `what_if.py analysis.json --fix 'opamp_circuits[0]' --target 20 --text` (target field = `gain_dB`) |
+| "Set the opamp gain to 20 dB" | `what_if.py analysis.json --fix 'opamp_circuits[0]' --target 10 --text` (20 dB = 10x; the target is linear gain) |
 | "What shunt resistor for 5A max" | `what_if.py analysis.json --fix 'current_sense[0]' --target 5 --text` |
 
-For fix mode, the `--target` value is in the natural unit of the first derived field for that detection type (ratio for dividers, Hz for filters, linear gain or dB for opamps, pF for crystals, amps for current sense).
+For fix mode, the `--target` value is in the natural unit of the first derived field for that detection type (ratio for dividers, Hz for filters, linear gain for opamps (dB is not accepted), pF for crystals, amps for current sense).
 
 ---
 

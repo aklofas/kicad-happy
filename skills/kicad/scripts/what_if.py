@@ -21,6 +21,8 @@ import copy
 import json
 import math
 import os
+import secrets
+import shutil
 import sys
 from dataclasses import dataclass
 
@@ -116,6 +118,10 @@ def _parse_changes(change_args: list) -> tuple:
             if start is None or stop is None or n < 2:
                 print(f"Error: invalid sweep '{val_str}'", file=sys.stderr)
                 sys.exit(1)
+            if start <= 0 or stop <= 0:
+                print(f"Error: invalid sweep '{val_str}': a log sweep needs both bounds above zero",
+                      file=sys.stderr)
+                sys.exit(2)
             n = min(n, 50)
             values = [start * (stop / start) ** (i / (n - 1)) for i in range(n)]
             strs = [start_str] + [f"{v:.4g}" for v in values[1:-1]] + [stop_str]
@@ -540,9 +546,13 @@ def _run_tolerance(analysis: dict, changes: dict) -> list:
                                             part_values=part_values)
             corners.append(corner_patched)
 
-        # For each derived field, find worst-case bounds
+        # For each derived field, find worst-case bounds; a field whose nominal did not
+        # move is listed when the corners spread it
+        from detection_schema import get_derived_field_names
         tol_results = []
         fields = [d["field"] for d in nominal_deltas]
+        moved = set(fields)
+        fields += [f for f in get_derived_field_names(det_type) if f not in moved]
         for field in fields:
             nom_val = patched_nom.get(field)
             if not isinstance(nom_val, (int, float)):
@@ -554,6 +564,8 @@ def _run_tolerance(analysis: dict, changes: dict) -> list:
             worst_low = min(corner_vals)
             worst_high = max(corner_vals)
             spread = worst_high - worst_low
+            if not spread and field not in moved:
+                continue
             spread_pct = (spread / abs(nom_val) * 100) if nom_val != 0 else 0
             tol_results.append({
                 "field": field,
@@ -594,10 +606,39 @@ def _patch_full_json(analysis_json: dict, affected: list,
             comp["value"] = new_str
             if isinstance(comp.get("parsed_value"), dict):
                 comp["parsed_value"]["value"] = new_val
-            elif isinstance(comp.get("parsed_value"), (int, float)):
+            else:
                 comp["parsed_value"] = new_val
 
     return patched
+
+
+def _write_text_atomic(path: str, text: str) -> None:
+    """Write UTF-8 text to *path* (a symlink's target) through a temp file and os.replace."""
+    target = os.path.realpath(path)
+    exists = os.path.isfile(target)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
+    while True:
+        tmp = os.path.join(os.path.dirname(target),
+                           f".{os.path.basename(target)}.{secrets.token_hex(6)}.tmp")
+        try:
+            # 0o666 lets the kernel apply the umask to a new file; an existing one
+            # gets its mode back through copymode
+            fd = os.open(tmp, flags, 0o600 if exists else 0o666)
+            break
+        except FileExistsError:
+            continue
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        if exists:
+            shutil.copymode(target, tmp)
+        os.replace(tmp, target)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def _change_info(analysis: dict, changes: dict) -> dict:
@@ -852,9 +893,11 @@ def format_text(result: dict) -> str:
         for r in emc.get("resolved", []):
             lines.append(f"  {r['rule']}: RESOLVED \u2014 {r['detail']}")
         for r in emc.get("improved", []):
-            lines.append(f"  {r['rule']}: IMPROVED \u2014 {r['before']} \u2192 {r['after']}")
+            lines.append(f"  {r['rule']}: IMPROVED \u2014 {r['before']} \u2192 {r['after']}"
+                         + (f" ({r['detail']})" if r.get("detail") else ""))
         for r in emc.get("worsened", []):
-            lines.append(f"  {r['rule']}: WORSENED \u2014 {r['before']} \u2192 {r['after']}")
+            lines.append(f"  {r['rule']}: WORSENED \u2014 {r['before']} \u2192 {r['after']}"
+                         + (f" ({r['detail']})" if r.get("detail") else ""))
         for r in emc.get("new_findings", []):
             lines.append(f"  {r['rule']}: NEW \u2014 {r['detail']}")
         if not (emc.get("resolved") or emc.get("improved") or emc.get("worsened")
@@ -1154,6 +1197,17 @@ def _suggest_all_fixes(issues: list, pcb_analysis: dict = None) -> dict:
                 # Simulate fix with E24 value
                 changes = {best["ref"]: (best_e24, _format_value(best_e24, best["field"]))}
                 matched = {best["ref"]: _find_refs_in_det(det).get(best["ref"], [])}
+                leg = {c.get("ref"): c.get("net") for c in det.get("load_caps") or []
+                       if isinstance(c, dict)}
+                if (det_type == "crystal_circuits"
+                        and len({leg.get(sg["ref"]) for sg in suggestions}) == len(suggestions)):
+                    # The load-cap solution sizes one cap per leg: they change together
+                    refs = _find_refs_in_det(det)
+                    for sg in suggestions[1:]:
+                        e24 = sg.get("e_series", {}).get("E24", {}).get("value")
+                        if e24 and e24 > 0 and refs.get(sg["ref"]):
+                            changes[sg["ref"]] = (e24, _format_value(e24, sg["field"]))
+                            matched[sg["ref"]] = refs[sg["ref"]]
                 if matched[best["ref"]]:
                     patched = _apply_changes(det, changes, matched, det_type=det_type)
                     delta = _compare(det, patched, det_type)
@@ -1347,14 +1401,14 @@ def _run_emc_preview(analysis: dict, patched_json: dict,
         fd, sch_path = tempfile.mkstemp(suffix=".json")
         out_path = sch_path + ".emc.json"
         try:
-            with os.fdopen(fd, "w") as f:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
                 json.dump(schematic_json, f, indent=2)
             cmd = [sys.executable, emc_script, "--schematic", sch_path, "--output", out_path]
             if pcb_path:
                 cmd.extend(["--pcb", pcb_path])
             subprocess.run(cmd, capture_output=True, timeout=30, check=False)
             if os.path.exists(out_path):
-                with open(out_path) as f:
+                with open(out_path, encoding="utf-8") as f:
                     return json.load(f)
         except (subprocess.TimeoutExpired, OSError, json.JSONDecodeError) as e:
             print(f"Warning: EMC analysis failed: {e}", file=sys.stderr)
@@ -1377,7 +1431,8 @@ def _run_emc_preview(analysis: dict, patched_json: dict,
     rank = {"info": 0, "warning": 1, "error": 2}
 
     def _severity_row(c):
-        return {"rule": c["rule_id"], "before": c["base_severity"], "after": c["head_severity"]}
+        return {"rule": c["rule_id"], "before": c["base_severity"], "after": c["head_severity"],
+                "detail": c.get("title", "")}
 
     changed = found.get("changed_severity", [])
     worse = [c for c in changed if rank.get(severity_bucket(c["head_severity"]), 0)
@@ -1450,9 +1505,9 @@ def main(argv: list[str] | None = None) -> int:
         return p
 
     try:
-        with open(_resolve_input_path(args.input)) as f:
+        with open(_resolve_input_path(args.input), encoding="utf-8") as f:
             analysis = json.load(f)
-    except (json.JSONDecodeError, OSError) as e:
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
         print(f"Error reading {args.input}: {e}", file=sys.stderr)
         return 1
 
@@ -1472,17 +1527,17 @@ def main(argv: list[str] | None = None) -> int:
     pcb_analysis = None
     if pcb_path:
         try:
-            with open(pcb_path) as f:
+            with open(pcb_path, encoding="utf-8") as f:
                 pcb_analysis = json.load(f)
-        except (json.JSONDecodeError, OSError) as e:
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
             print(f"Warning: cannot load PCB analysis: {e}", file=sys.stderr)
     else:
         auto_pcb = _find_pcb_analysis(args.input)
         if auto_pcb:
             try:
-                with open(auto_pcb) as f:
+                with open(auto_pcb, encoding="utf-8") as f:
                     pcb_analysis = json.load(f)
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError, UnicodeDecodeError):
                 pass
 
     # --- Suggest-fixes branch ---
@@ -1686,8 +1741,11 @@ def main(argv: list[str] | None = None) -> int:
     # Export patched JSON if requested
     if args.output:
         patched_json = _patch_full_json(analysis, affected, patched_dets, changes_legacy)
-        with open(args.output, "w") as f:
-            json.dump(patched_json, f, indent=2)
+        try:
+            _write_text_atomic(args.output, json.dumps(patched_json, indent=2))
+        except OSError as e:
+            print(f"Error: cannot write {args.output}: {e}", file=sys.stderr)
+            return 1
         print(f"Patched JSON written to {args.output}", file=sys.stderr)
 
     # Output results
