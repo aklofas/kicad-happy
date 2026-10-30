@@ -740,9 +740,15 @@ def check_generic_transistor_symbols(components: list[dict],
         # Check datasheet availability by MPN
         has_datasheet = False
         if mpn and ds_index:
-            # index.json keys may be MPN strings or nested under "components"
+            # Sync manifests keep entries under "parts" (only status "ok" means a
+            # downloaded datasheet); legacy index.json keys may be MPN strings or
+            # nested under "components"
             if isinstance(ds_index, dict):
-                if mpn in ds_index:
+                parts = ds_index.get("parts")
+                entry = parts.get(mpn) if isinstance(parts, dict) else None
+                if isinstance(entry, dict) and entry.get("status") == "ok":
+                    has_datasheet = True
+                elif mpn in ds_index:
                     has_datasheet = True
                 elif "components" in ds_index:
                     comps = ds_index["components"]

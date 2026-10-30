@@ -67,6 +67,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Fixed
 
+- The generic-transistor symbol audit sees datasheets downloaded by the sync tools: a part with an `ok` entry under the manifest's `parts` is reported as having a datasheet in `datasheets/`. (KH-new-audit-manifest)
 - The four `sync_datasheets_*` help texts describe the current behaviour (providers skip parts without an MPN or their own part number, `--force` retries only a distributor's own failures, `--force-all` keeps an entry whose refresh fails, `--json` prints one document on stdout) and no longer cite a tracker id (sk/R4-F11).
 - `search_lcsc` uses LCSC's direct lookup only when it answers for the requested code: an answer for another code is ignored (or reported as not found), and an answer without a code is shown under the requested one. (KH-605)
 - `search_lcsc` shows JLCPCB stock consistently with `--in-stock` and `--sort stock`: a real 0 from jlcsearch is no longer replaced by LCSC's warehouse stock after the filter ran, and an exact-code search whose jlcsearch and direct lookups both fail exits 2. (KH-634)
