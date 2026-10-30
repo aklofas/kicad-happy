@@ -146,14 +146,16 @@ def _distinct(findings: "list[dict]") -> "list[dict]":
     return unique
 
 
-def claim_plan(findings: "list[dict]") -> dict:
+def claim_plan(findings: "list[dict]", open_stems: "set | None" = None) -> dict:
     """Map the finding's JSON text -> (unstable, rank) for a run's findings.
 
     An unstable finding is identified by its content key only. Findings that
     share a key take ranks 0, 1, ... in canonical content order, so which
-    open issue each one claims never depends on input order.
+    open issue each one claims never depends on input order. A stem that an
+    open issue's marker carries with a ``#N`` suffix is positional too: that
+    group has shrunk since the issue was filed.
     """
-    stems = positional_stems(findings)
+    stems = positional_stems(findings) | set(open_stems or ())
     groups: dict[str, list] = {}
     plan: dict = {}
     for f in findings:
@@ -439,6 +441,7 @@ class IssueIndex:
 
     def __init__(self, issues: "list[dict]"):
         self.used: set = set()
+        self.suffixed_stems: set = set()
         self.by_id: dict[str, object] = {}
         self.by_key: dict[str, list] = {}
         self.keyless: dict[str, object] = {}
@@ -455,6 +458,8 @@ class IssueIndex:
 
     def add_marker(self, num, parsed: "tuple[str, str | None]") -> None:
         fid, key = parsed
+        if _fid_stem(fid) != fid:
+            self.suffixed_stems.add(_fid_stem(fid))
         self.by_id.setdefault(fid, num)
         if key:
             self.by_key.setdefault(key, []).append(num)
@@ -468,7 +473,8 @@ class IssueIndex:
         if unstable and parsed:
             return
         if parsed:
-            self.add_marker(num, parsed)
+            # By id only: a later finding with the same content is a different one.
+            self.add_marker(num, (parsed[0], None))
         else:
             self.legacy.setdefault(title, []).append(num)
 
@@ -488,6 +494,10 @@ class IssueIndex:
             if not unstable:
                 if fid in self.by_id:
                     return self.by_id[fid]
+                for num in self.by_key.get(key, []):
+                    if num not in self.used:
+                        self.used.add(num)
+                        return num
             else:
                 nums = self.by_key.get(key, [])
                 if rank < len(nums):
@@ -712,7 +722,7 @@ def main(argv: "list[str] | None" = None) -> int:  # noqa: C901 (intentionally l
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
-    plan = claim_plan(_distinct(all_findings))
+    plan = claim_plan(_distinct(all_findings), index.suffixed_stems)
     findings = _distinct(findings)
 
     created = 0

@@ -211,6 +211,31 @@ class ExportDedupTest(unittest.TestCase):
         self.assertEqual(len(creates), 1)
         self.assertEqual(self.kv(creates[0], "title"), "[RG-001] A summary (U1)")
 
+    def shrunk(self, issues):
+        b = {"rule_id": "RG-001", "nets": ["N2"], "components": ["U1"], "summary": "B summary",
+             "finding_id": "schematic:RG-001:u1"}
+        return self.run_export([b], issues)
+
+    def test_group_shrunk_to_one_keeps_its_issue(self):
+        b_issue = {"number": 2, "title": "t",
+                   "body": keyed_marker("schematic:RG-001:u1#1", "RG-001::N2::U1::B summary")}
+        r, creates = self.shrunk([b_issue])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(creates, [])
+        self.assertIn("#2", r.stdout)
+        a_issue = {"number": 1, "title": "t",
+                   "body": keyed_marker("schematic:RG-001:u1", "RG-001::N1::U1::A summary")}
+        r, creates = self.shrunk([a_issue, b_issue])
+        self.assertEqual(creates, [])
+        self.assertIn("#2", r.stdout)
+        self.assertNotIn("#1", r.stdout)
+
+    def test_stable_finding_without_issue_or_key_match_is_created(self):
+        other = {"number": 1, "title": "t",
+                 "body": keyed_marker("schematic:RG-001:zz", "RG-001::N9::U9::unrelated")}
+        r, creates = self.shrunk([other])
+        self.assertEqual(len(creates), 1)
+
     def nt_pair(self):
         return [{"rule_id": "NT-001", "finding_id": f"NT-001:__unnamed_{n}",
                  "nets": [f"__unnamed_{n}"], "components": ["BV10"],
