@@ -29,10 +29,10 @@ import argparse
 import json
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import sys
-import tempfile
 import unicodedata
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -109,18 +109,27 @@ def load_anchor_sets(analysis_dir, run_id=None):
 
 def write_text_atomic(path, text):
     """Write UTF-8 text through a temp file beside `path`; an existing file
-    keeps its mode."""
+    keeps its mode, a new one gets the umask mode."""
     path = Path(path)
-    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        mode = path.stat().st_mode & 0o7777
+    except OSError:
+        mode = None
+    flags = (os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+             | getattr(os, "O_BINARY", 0))
+    while True:
+        tmp = path.parent / f".{path.name}.{secrets.token_hex(6)}.tmp"
+        try:
+            # 0o666 lets the kernel apply the umask to a new file
+            fd = os.open(tmp, flags, 0o666 if mode is None else 0o600)
+            break
+        except FileExistsError:
+            continue
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(text)
-        if path.exists():
-            os.chmod(tmp, path.stat().st_mode & 0o7777)
-        else:
-            umask = os.umask(0)
-            os.umask(umask)
-            os.chmod(tmp, 0o666 & ~umask)
+        if mode is not None:
+            os.chmod(tmp, mode)
         os.replace(tmp, path)
     except BaseException:
         try:
