@@ -75,6 +75,16 @@ def _suggest(xtal, *extra):
 
 
 class CrystalFix(unittest.TestCase):
+    def test_net_less_load_caps_are_legs_of_their_own(self):
+        # no nets: each cap is its own leg; 10p/10p -> 8.0 pF, both to 18p -> 18*18/36 + 3 = 12.0 pF
+        xtal = _crystal(1e-11, "10pF", 12.0, "parsed_from_value")
+        for cap in xtal["load_caps"]:
+            del cap["net"]
+        r = _suggest(xtal)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(json.loads(r.stdout)["fix_suggestions"][0]["delta_with_e24"],
+                         [{"field": "effective_load_pF", "before": 8.0, "after": 12.0, "delta_pct": 50.0}])
+
     def test_both_load_caps_change_together(self):
         # 10p/10p: 10*10/20 + 3 = 8.0 pF against 12 pF; ideal 2*(12-3) = 18 pF each,
         # 18*18/36 + 3 = 12.0 pF (one cap alone: 18*10/28 + 3 = 9.43 pF)
@@ -200,6 +210,52 @@ class EmcRowsCarryDetail(unittest.TestCase):
                                     "emc_delta": got})
         self.assertIn("DC-001: IMPROVED — error → warning (cap far from U1)", text)
         self.assertIn("DC-001: WORSENED — warning → error (cap far from U2)", text)
+
+
+class CrystalStatusThresholds(unittest.TestCase):
+    """detect_crystal_circuits: |error| <= 10 % ok; a frequency_default target is unverified
+    beyond that; otherwise <= 25 % marginal, above out_of_spec."""
+    CASES = [(10.0, "ok", "ok"), (-10.0, "ok", "ok"), (10.1, "marginal", "unverified"),
+             (-10.1, "marginal", "unverified"), (25.0, "marginal", "unverified"),
+             (-25.0, "marginal", "unverified"), (25.1, "out_of_spec", "unverified"),
+             (-25.1, "out_of_spec", "unverified"), (0.0, "ok", "ok"), (60.0, "out_of_spec", "unverified")]
+
+    def test_boundaries(self):
+        from detection_schema import _crystal_load_status
+        for err, sure, guessed in self.CASES:
+            for source in ("parsed_from_value", "datasheet"):
+                self.assertEqual(_crystal_load_status(err, source), sure, (err, source))
+            self.assertEqual(_crystal_load_status(err, "frequency_default"), guessed, err)
+
+
+class SharedAtomicWriter(unittest.TestCase):
+    def test_one_writer(self):
+        sys.path.insert(0, str(SCRIPTS.parents[1] / "bom" / "scripts"))
+        import kicad_sexp
+        from kicad_core import fileio
+        self.assertIs(kicad_sexp.atomic_write_text, fileio.atomic_write_text)
+        self.assertIs(what_if.atomic_write_text, fileio.atomic_write_text)
+        self.assertFalse(hasattr(what_if, "_write_text_atomic"))
+
+    @unittest.skipIf(os.name == "nt", "POSIX modes")
+    def test_modes_and_newline(self):
+        code = ("import os, sys; sys.path.insert(0, sys.argv[1]); os.umask(int(sys.argv[3], 8)); "
+                "from kicad_core.fileio import atomic_write_text as w; "
+                "w(sys.argv[2], 'a' + chr(13) + chr(10) + 'b' + chr(10), newline='')")
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, "f.txt")
+            link = os.path.join(tmp, "link.txt")
+            run = lambda p, um: subprocess.run([sys.executable, "-c", code, str(SCRIPTS), p, um], check=True)
+            run(out, "027")
+            self.assertEqual(stat.S_IMODE(os.stat(out).st_mode), 0o640)
+            with open(out, "rb") as f:
+                self.assertEqual(f.read(), b"a\r\nb\n")
+            os.chmod(out, 0o604)
+            os.symlink(out, link)
+            run(link, "077")  # through the symlink to its target, whose mode is kept
+            self.assertTrue(os.path.islink(link))
+            self.assertEqual(stat.S_IMODE(os.stat(out).st_mode), 0o604)
+            self.assertEqual(sorted(os.listdir(tmp)), ["f.txt", "link.txt"])
 
 
 class Export(unittest.TestCase):

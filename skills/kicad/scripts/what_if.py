@@ -21,8 +21,6 @@ import copy
 import json
 import math
 import os
-import secrets
-import shutil
 import sys
 from dataclasses import dataclass
 
@@ -33,6 +31,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
 
 from kicad_core.values import parse_value
 from kicad_core.render import fmt_g4, fmt_signed, severity_bucket
+from kicad_core.fileio import atomic_write_text
 from kicad_core.cli import add_only_deterministic_arg, add_output_arg, add_text_arg, utf8_text_stdout
 from finding_schema import group_findings_by_detection_type, is_old_schema
 
@@ -612,35 +611,6 @@ def _patch_full_json(analysis_json: dict, affected: list,
     return patched
 
 
-def _write_text_atomic(path: str, text: str) -> None:
-    """Write UTF-8 text to *path* (a symlink's target) through a temp file and os.replace."""
-    target = os.path.realpath(path)
-    exists = os.path.isfile(target)
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
-    while True:
-        tmp = os.path.join(os.path.dirname(target),
-                           f".{os.path.basename(target)}.{secrets.token_hex(6)}.tmp")
-        try:
-            # 0o666 lets the kernel apply the umask to a new file; an existing one
-            # gets its mode back through copymode
-            fd = os.open(tmp, flags, 0o600 if exists else 0o666)
-            break
-        except FileExistsError:
-            continue
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(text)
-        if exists:
-            shutil.copymode(target, tmp)
-        os.replace(tmp, target)
-    except BaseException:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        raise
-
-
 def _change_info(analysis: dict, changes: dict) -> dict:
     """{ref: before/after values and strings} for the changed components."""
     info = {}
@@ -1197,8 +1167,9 @@ def _suggest_all_fixes(issues: list, pcb_analysis: dict = None) -> dict:
                 # Simulate fix with E24 value
                 changes = {best["ref"]: (best_e24, _format_value(best_e24, best["field"]))}
                 matched = {best["ref"]: _find_refs_in_det(det).get(best["ref"], [])}
-                leg = {c.get("ref"): c.get("net") for c in det.get("load_caps") or []
-                       if isinstance(c, dict)}
+                # a load cap with no net is a leg of its own, as in the recalculation
+                leg = {c.get("ref"): c.get("net") or i
+                       for i, c in enumerate(det.get("load_caps") or []) if isinstance(c, dict)}
                 if (det_type == "crystal_circuits"
                         and len({leg.get(sg["ref"]) for sg in suggestions}) == len(suggestions)):
                     # The load-cap solution sizes one cap per leg: they change together
@@ -1742,7 +1713,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.output:
         patched_json = _patch_full_json(analysis, affected, patched_dets, changes_legacy)
         try:
-            _write_text_atomic(args.output, json.dumps(patched_json, indent=2))
+            atomic_write_text(args.output, json.dumps(patched_json, indent=2))
         except OSError as e:
             print(f"Error: cannot write {args.output}: {e}", file=sys.stderr)
             return 1

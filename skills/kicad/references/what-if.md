@@ -345,7 +345,7 @@ Numeric fields that restate a recalculated value are recomputed with it, so a pa
 | `crystal_circuits` | `load_cap_error_pct`, `load_cap_status` | error of the new `effective_load_pF` against `target_load_pF`, with the analyzer's thresholds |
 | `power_regulators` | `power_dissipation.vout_V`, `estimated_pdiss_W` (LDO also `dropout_V`) | from the block's Vin, load current and efficiency at the new `estimated_vout`; an LDO whose Vout reaches Vin loses the block, as the analyzer emits none |
 
-Text fields (`summary`, `description`, `cutoff_formatted`, `note`) and `severity` stay as analysed.
+Text fields (`summary`, `description`, `cutoff_formatted`, `note`) and `severity` stay as analysed, and so do a switching regulator's `efficiency_assumed` and `sub_topology` when its patched Vout crosses Vin.
 
 ---
 

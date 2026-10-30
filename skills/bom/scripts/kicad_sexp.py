@@ -6,14 +6,12 @@ and sync_datasheet_urls.py.
 
 from __future__ import annotations
 
-import os
 import re
-import secrets
-import shutil
 from pathlib import Path
 from typing import NamedTuple
 
 import _core_path  # noqa: F401
+from kicad_core.fileio import atomic_write_text  # noqa: F401  (bom scripts import it from here)
 from kicad_core.instances import (inline_instances, instance_variants, resolve_instance,
                                   variant_overrides)
 from kicad_core.sexp import parse
@@ -91,37 +89,6 @@ def escape_kicad_string(s: str) -> str:
     """Escape a string for use in a KiCad S-expression property value."""
     return (s.replace('\\', '\\\\').replace('"', '\\"')
              .replace('\n', '\\n').replace('\r', '\\r'))
-
-
-def atomic_write_text(path: Path, text: str, newline: str | None = None) -> None:
-    """Write UTF-8 text to path (symlinks resolved) via a temp file and os.replace.
-
-    *newline* is passed to the file object ("" keeps the text's line endings as given)."""
-    target = Path(path).resolve()
-    # A new target gets 0o666 so the kernel applies the umask; an existing one is rewritten
-    # through a private temp until copymode gives it the old mode
-    flags = (os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
-             | getattr(os, "O_BINARY", 0))
-    mode = 0o600 if target.exists() else 0o666
-    while True:
-        tmp = str(target.parent / f"{target.name}.{secrets.token_hex(6)}.tmp")
-        try:
-            fd = os.open(tmp, flags, mode)
-            break
-        except FileExistsError:
-            continue
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline=newline) as f:
-            f.write(text)
-        if target.exists():
-            shutil.copymode(target, tmp)
-        os.replace(tmp, target)
-    except BaseException:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        raise
 
 
 def direct_children(block: str):

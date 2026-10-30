@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "skills" / "bom" / "scripts"))
 
 import bom_manager
-import kicad_sexp
+from kicad_core import fileio
 
 COLS = ["Reference", "Qty", "Value", "Footprint", "MPN", "Manufacturer", "Datasheet", "DNP",
         "Chosen_Distributor", "Validated", "Notes", "DigiKey", "DK_Stock", "Mouser", "MO_Stock"]
@@ -149,12 +149,12 @@ class TrackingCsvMergeTest(unittest.TestCase):
                 elif self.csv.exists():
                     self.csv.unlink()
                 spy, modes = self._temp_open_modes()
-                real = kicad_sexp.os.open
-                kicad_sexp.os.open = spy
+                real = fileio.os.open
+                fileio.os.open = spy
                 try:
                     bom_manager.export_csv(report(line(["R1"], "A")), self.csv)
                 finally:
-                    kicad_sexp.os.open = real
+                    fileio.os.open = real
                 self.assertEqual(modes, expected)
 
     def test_empty_known_distributor_column_is_not_moved_to_the_end(self):
