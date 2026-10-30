@@ -103,5 +103,52 @@ class DecouplingRoles(unittest.TestCase):
                              [("decoupling_cap", "warning", 1, ["C1"])])
 
 
+SV = lambda mx: [{"min": None, "typ": None, "max": mx, "unit": "V",
+                  "condition": None, "notes": None, "evidence": None}]
+
+
+def _pin(nums, name, typ="io", **kw):
+    return dict({"numbers": nums, "name": name, "type": typ, "power_domain": "VDD",
+                 "absolute_max": None, "recommended": None, "is_5v_tolerant": None}, **kw)
+
+
+class PinAdapter(unittest.TestCase):
+    def test_grouped_numbers_per_pin_limits_and_5v_tolerance(self):
+        # Domain VDD: abs max 4.0 V, recommended max 3.6 V. Every pin on +5V
+        # except pin 1. Expected by hand: pin 2 (second number of the VDD
+        # record) exceeds abs max 4.0; PA9 is inside its own 5.5/6.0 V
+        # limits; PA10 is 5 V tolerant with no limit of its own (no check);
+        # PA11 takes the domain abs max 4.0.
+        ext = {"extraction": {"quality_score": 80}, "base": {
+            "absolute_max": {"VDD_max": SV(4.0)}, "recommended_operating": {"VDD": SV(3.6)},
+            "pinout": [_pin(["1", "2"], "VDD", "power"),
+                       _pin(["30"], "PA9", recommended=SV(5.5), absolute_max=SV(6.0)),
+                       _pin(["31"], "PA10", is_5v_tolerant=True),
+                       _pin(["32"], "PA11")]}}
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, "MCU1.json"), "w", encoding="utf-8") as fh:
+                json.dump(ext, fh)
+            comps = [{"reference": "U1", "type": "ic", "mpn": "MCU1",
+                      "pin_nets": {"1": "+3V3", "2": "+5V", "30": "+5V", "31": "+5V", "32": "+5V"}}]
+            got = sorted((f["type"], f["severity"], f["pin_number"])
+                         for f in dv.verify_pin_voltages(comps, {}, tmp, {}))
+        self.assertEqual(got, [("pin_voltage_abs_max_exceeded", "error", "2"),
+                               ("pin_voltage_abs_max_exceeded", "error", "32")])
+
+    def test_per_pin_recommended_beats_the_domain(self):
+        # 3.6 V domain op max, 4.0 V abs; the pin's own recommended max is
+        # 3.0 V, so a 3.3 V net exceeds it (margin to 4.0 V abs = 17.5 %).
+        ext = {"extraction": {"quality_score": 80}, "base": {
+            "absolute_max": {"VDD_max": SV(4.0)}, "recommended_operating": {"VDD": SV(3.6)},
+            "pinout": [_pin(["7"], "VREF", recommended=SV(3.0))]}}
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, "MCU2.json"), "w", encoding="utf-8") as fh:
+                json.dump(ext, fh)
+            comps = [{"reference": "U1", "type": "ic", "mpn": "MCU2", "pin_nets": {"7": "+3V3"}}]
+            got = [(f["type"], f["severity"], f["operating_max_V"], f["abs_max_V"])
+                   for f in dv.verify_pin_voltages(comps, {}, tmp, {})]
+        self.assertEqual(got, [("pin_voltage_operating_exceeded", "warning", 3.0, 4.0)])
+
+
 if __name__ == "__main__":
     unittest.main()

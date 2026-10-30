@@ -133,11 +133,13 @@ def _v1_view(extraction: dict) -> dict:
     v1-shaped (has 'pins'): returned unchanged — v1 behavior byte-identical.
     v2-shaped (has 'base'): synthesize the v1 keys the verifiers READ:
       - 'pins': list of dicts with 'number', 'name', 'type', 'voltage_abs_max',
-        'voltage_operating_max'.  Derived from base.pinout[] by taking
-        numbers[0] as the pin number and resolving per-domain voltage limits
-        from base.absolute_max / base.recommended_operating via power_domain.
-        A per-pin absolute_max SpecValue list (pinout.schema.json) overrides
-        the domain-level abs-max lookup.
+        'voltage_operating_max'.  One entry per number of each base.pinout[]
+        record, with voltage limits resolved per-domain from
+        base.absolute_max / base.recommended_operating via power_domain.
+        A pin's own absolute_max / recommended SpecValue lists
+        (pinout.schema.json) override the domain values. A 5 V-tolerant pin
+        takes only its own limits: the domain's are not its limits, so
+        without its own it gets no check.
         'required_external' is NOT synthesised (no v2 equivalent) — verifiers
         skip pins without it, so externals/decoupling remain unverifiable.
       - 'application_circuit': NOT synthesised — no v2 equivalent key.
@@ -158,33 +160,33 @@ def _v1_view(extraction: dict) -> dict:
     v1_pins = []
     for pin in pinout:
         numbers = pin.get("numbers") or []
-        pin_number = str(numbers[0]) if numbers else None
-        if not pin_number:
+        if isinstance(numbers, str):
+            numbers = [numbers]
+        numbers = [str(n) for n in numbers if str(n)]
+        if not numbers:
             continue
         pin_type = pin.get("type") or ""
         domain = pin.get("power_domain")
-        # Resolve voltage limits via power_domain → base blocks
-        v_abs_max = None
-        v_op_max = None
-        # First check pin-level absolute_max (array-of-SpecValue per
-        # pinout.schema.json, usually null) — overrides the domain lookup
-        pin_abs_max = _spec_max_voltage(pin.get("absolute_max"))
-        if isinstance(pin_abs_max, (int, float)):
-            v_abs_max = pin_abs_max
-        # Then domain-level lookup
-        if domain:
+        v_abs_max = _spec_max_voltage(pin.get("absolute_max"))
+        if not isinstance(v_abs_max, (int, float)):
+            v_abs_max = None
+        v_op_max = _spec_max_voltage(pin.get("recommended"))
+        if not isinstance(v_op_max, (int, float)):
+            v_op_max = None
+        if domain and pin.get("is_5v_tolerant") is not True:
             if v_abs_max is None:
                 v_abs_max = _v2_domain_voltage_max(base, domain)
             if v_op_max is None:
                 v_op_max = _v2_domain_voltage_op_max(base, domain)
-        v1_pins.append({
-            "number": pin_number,
-            "name": pin.get("name") or f"pin {pin_number}",
-            "type": pin_type,
-            "voltage_abs_max": v_abs_max,
-            "voltage_operating_max": v_op_max,
-            # required_external intentionally absent — no v2 equivalent
-        })
+        for pin_number in numbers:
+            v1_pins.append({
+                "number": pin_number,
+                "name": pin.get("name") or f"pin {pin_number}",
+                "type": pin_type,
+                "voltage_abs_max": v_abs_max,
+                "voltage_operating_max": v_op_max,
+                # required_external intentionally absent — no v2 equivalent
+            })
     # Build the minimal v1 view; no application_circuit (no v2 equivalent)
     return {"pins": v1_pins, "_v2_adapted": True}
 

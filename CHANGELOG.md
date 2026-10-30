@@ -163,6 +163,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A failing `fab_release_gate.py` routing check names the unrouted nets in its details (`unrouted_nets`, taken from the PCB's RT-001 findings); the list was always empty (kc/R9-F1).
 - Datasheet sync fetches a part used on several BOM rows once and records every reference (other fields from the first row that has them; the MPN is matched strictly when any row has it as a property), keeps progress messages off stdout, prints JSON for every `--json` run (including one with nothing to do or one that stops on an error), and reports errors such as a refused symlinked `datasheets/` folder or a missing analyzer JSON instead of exiting silently or with a traceback. A distributor listing with null fields is a failed part, not a crash (KH-616).
 - Datasheet decoupling checks no longer read the X5R/X7R digit, "max" or a pad size as a capacitor count, and read "2 x 10uF" as two capacitors. Input and output capacitor recommendations are checked on the pins of their role (a power pin marked `passive` takes its role from its function or name), and a capacitor not returned to ground is not counted. (KH-620)
+- Datasheet pin-voltage checks on v1.4 extractions check every number of a grouped pin record (only the first was checked), use a pin's own recommended limit before its power domain's, and give a 5 V-tolerant pin only its own limits: without them it gets no check instead of the domain's supply limit. (KH-621)
 
 ---
 

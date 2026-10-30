@@ -12,7 +12,8 @@ Expected behavior (v2.0 KH-337 fix):
 - ics_with_extractions=1 (LM2596-ADJ passes the v1.4 trust gate).
 - Pin-voltage checks run via the v2→v1 adapter (domain-level limits).
   With VIN=12V (well within op_max=40V / abs_max=45V), no voltage
-  violation findings are produced.
+  violation findings are produced; on a 50V rail, VIN (pin 1) gets one
+  abs-max error (45V).
 - One extraction_not_verifiable INFO finding is emitted because
   required-external and decoupling checks have no v2 equivalent data.
 
@@ -118,6 +119,20 @@ def main() -> int:
             print(
                 f"FAIL: unexpected voltage violation findings for 12V input "
                 f"(abs_max=45V, op_max=40V): {voltage_violations}",
+                file=sys.stderr,
+            )
+            return 1
+
+        # The same part on a 50 V rail: pin 1 (VIN) exceeds its 45 V
+        # absolute maximum, so the adapter's limits reach a finding.
+        over = build_synthetic_analysis()
+        over["rail_voltages"]["VIN"] = 50.0
+        over_findings = run_datasheet_verification(over, project_dir=str(tmp_path))["findings"]
+        abs_max = [(f.get("pin_number"), f.get("abs_max_V"), f.get("severity"))
+                   for f in over_findings if f.get("type") == "pin_voltage_abs_max_exceeded"]
+        if abs_max != [("1", 45, "error")]:
+            print(
+                f"FAIL: expected one abs-max error on pin 1 (50V > 45V), got {abs_max}",
                 file=sys.stderr,
             )
             return 1
