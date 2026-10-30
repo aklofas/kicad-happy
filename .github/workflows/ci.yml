@@ -70,6 +70,12 @@ jobs:
       - name: analyze_emc.py --help
         run: python3 skills/emc/scripts/analyze_emc.py --help > /dev/null
 
+      - name: analyze_harmonic_limits.py --help
+        run: python3 skills/emc/scripts/analyze_harmonic_limits.py --help > /dev/null
+
+      - name: analyze_harmonic_limits unit tests
+        run: python3 -m unittest skills/emc/scripts/test_analyze_harmonic_limits.py
+
       - name: simulate_subcircuits.py --help
         run: python3 skills/spice/scripts/simulate_subcircuits.py --help > /dev/null
 
