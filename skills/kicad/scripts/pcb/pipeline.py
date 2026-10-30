@@ -627,11 +627,14 @@ def finalize_for_cli(result: dict, config: dict, *, pcb_path: str, analysis_dir_
     # GP-001 debug: write per-sample diagnostics to disk and strip from output
     gp001_debug_data = result.pop("_gp001_debug_samples", None)
     if gp001_debug_data is not None:
-        # Beside --output when given, else the analysis dir, else the board's directory
-        if output_arg:
+        # The analysis dir when given (as for every other file), else beside --output,
+        # else the board's directory
+        if analysis_dir_arg:
+            debug_dir = analysis_dir_arg
+        elif output_arg:
             debug_dir = str(Path(output_arg).parent)
         else:
-            debug_dir = analysis_dir_arg or str(Path(pcb_path).parent)
+            debug_dir = str(Path(pcb_path).parent)
         debug_path = os.path.join(debug_dir, "gp001_debug.json")
         try:
             if os.path.islink(debug_path):

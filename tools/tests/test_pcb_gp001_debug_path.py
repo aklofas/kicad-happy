@@ -1,5 +1,6 @@
 # tools/tests/test_pcb_gp001_debug_path.py
-"""--gp001-debug writes its file beside --output, never into the board's directory."""
+"""--gp001-debug writes its file into --analysis-dir when given, else beside --output,
+else beside the board."""
 import os, subprocess, sys, tempfile, unittest
 from pathlib import Path
 
@@ -41,6 +42,20 @@ class TestGp001DebugPath(unittest.TestCase):
         r = _run(self.d, "proj/b.kicad_pcb", "--full", "--gp001-debug")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertTrue(os.path.isfile(os.path.join(self.d, "proj", "gp001_debug.json")))
+
+    def test_analysis_dir_wins_over_output(self):
+        r = _run(self.d, "proj/b.kicad_pcb", "--full", "--gp001-debug",
+                 "--analysis-dir", "A", "--output", "O/pcb.json")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertTrue(os.path.isfile(os.path.join(self.d, "A", "gp001_debug.json")))
+        self.assertFalse(os.path.exists(os.path.join(self.d, "O")))
+        self.assertEqual(os.listdir(os.path.join(self.d, "proj")), ["b.kicad_pcb"])
+
+    def test_analysis_dir_only(self):
+        r = _run(self.d, "proj/b.kicad_pcb", "--full", "--gp001-debug", "--analysis-dir", "A")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertTrue(os.path.isfile(os.path.join(self.d, "A", "gp001_debug.json")))
+        self.assertEqual(os.listdir(os.path.join(self.d, "proj")), ["b.kicad_pcb"])
 
     @unittest.skipUnless(hasattr(os, "symlink"), "no symlinks")
     def test_symlinked_target_is_not_followed(self):
