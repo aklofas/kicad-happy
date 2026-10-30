@@ -126,6 +126,20 @@ class ExtractionTemperatureTest(unittest.TestCase):
         self.assertIsNone(self.put("E", v2(
             {"T_A": [spec(None, 85)]}, {"TOPR": [spec(-40, 125)]})))
 
+    def test_one_bound_entry_is_skipped_within_recommended(self):
+        self.assertEqual(self.put("H1", v2(
+            {"TA": [spec(None, 85)], "T_OPERATING": [spec(-40, 85)]})), (-40.0, 85.0))
+        self.assertEqual(self.put("H2", v2(
+            {"TA": [spec(None, 85, condition="commercial"),
+                    spec(-40, 85, condition="industrial")]})), (-40.0, 85.0))
+
+    def test_case_style_is_not_a_case_temperature(self):
+        self.assertEqual(self.put("K", v2(
+            {"T_range": [spec(-40, 85, condition="Operating ambient temperature, case style SOT-23")]})),
+            (-40.0, 85.0))
+        self.assertIsNone(self.put("K2", v2(
+            {"T_range": [spec(-40, 125, condition="Operating case temperature")]})))
+
     def test_absolute_max_ta_alone_is_not_read(self):
         self.assertIsNone(self.put("B", v2(None, {"TA": [spec(-55, 125)]})))
         self.assertIsNone(self.put("B2", v2(None, {"T_A": [spec(-55, 125)], "T_AMB": [spec(-55, 125)]})))

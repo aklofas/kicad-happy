@@ -453,7 +453,7 @@ def query_lifecycle_element14(mpn: str) -> dict | None:
 # are read there.
 _TA_KEYS = ("TA", "T_A", "T_AMB", "T_OPERATING", "TOPR", "T_OPR")
 _ABS_MAX_KEYS = ("T_OPERATING", "TOPR", "T_OPR")
-_NOT_AMBIENT_RE = re.compile(r"\b(?:junction|storage|case)\b")
+_NOT_AMBIENT_RE = re.compile(r"\b(?:junction|storage)\b|\bcase\s+temp")
 _UNUSABLE = object()
 
 
@@ -462,8 +462,9 @@ def _is_number(v) -> bool:
 
 
 def _celsius_range(values, need_condition):
-    """The first acceptable °C SpecValue as a sorted (min, max); _UNUSABLE when
-    that entry lacks a bound; None when no entry qualifies."""
+    """The first acceptable °C SpecValue with both bounds as a sorted (min, max);
+    _UNUSABLE when the acceptable entries all lack a bound; None when none qualifies."""
+    one_bound = False
     for v in values if isinstance(values, list) else []:
         if not isinstance(v, dict):
             continue
@@ -478,8 +479,8 @@ def _celsius_range(values, need_condition):
         lo, hi = v.get("min"), v.get("max")
         if _is_number(lo) and _is_number(hi):
             return tuple(sorted((float(lo), float(hi))))
-        return _UNUSABLE
-    return None
+        one_bound = True
+    return _UNUSABLE if one_bound else None
 
 
 def _v2_operating_temperature(ext: dict) -> tuple[float, float] | None:
@@ -488,8 +489,9 @@ def _v2_operating_temperature(ext: dict) -> tuple[float, float] | None:
     TA-style keys in base.recommended_operating, then any other
     recommended_operating entry whose condition names an ambient or operating
     temperature, then the operating-named keys in base.absolute_max. Junction,
-    storage and case ranges never count, and the first rating found decides:
-    one with a single bound gives None rather than a wider range read later.
+    storage and case-temperature ranges never count. A row with a single bound
+    is skipped; when recommended_operating has only such rows the result is
+    None, never a wider absolute-maximum range.
     """
     base = ext.get("base")
     if not isinstance(base, dict):
@@ -513,8 +515,17 @@ def _v2_operating_temperature(ext: dict) -> tuple[float, float] | None:
                 if got is not None:
                     yield got
 
-    for got in (*keyed(rec, _TA_KEYS), *by_condition(), *keyed(absmax, _ABS_MAX_KEYS)):
-        return None if got is _UNUSABLE else got
+    one_bound = False
+    for got in (*keyed(rec, _TA_KEYS), *by_condition()):
+        if got is _UNUSABLE:
+            one_bound = True
+        else:
+            return got
+    if one_bound:
+        return None
+    for got in keyed(absmax, _ABS_MAX_KEYS):
+        if got is not _UNUSABLE:
+            return got
     return None
 
 
