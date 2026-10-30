@@ -72,6 +72,11 @@ class SamePart(unittest.TestCase):
             self.assertFalse(same_part(b, a, ordering_suffixes=False))
         for a, b in (("lm358dr", "LM358DR"), ("LM358 DR", "LM358DR"), ("LM2596S-ADJ", "lm2596s adj")):
             self.assertTrue(same_part(a, b, ordering_suffixes=False))
+        for a, b in (("MAX3232ECUE+", "MAX3232ECUE"), ("LT1763CS8#PBF", "LT1763CS8"),
+                     ("AP2112K-3.3", "AP2112K-33")):
+            self.assertTrue(same_part(a, b))
+            self.assertFalse(same_part(a, b, ordering_suffixes=False))
+            self.assertFalse(same_part(b, a, ordering_suffixes=False))
 
     def test_family_members_stay_distinct(self):
         from distributor_core.verify import same_part

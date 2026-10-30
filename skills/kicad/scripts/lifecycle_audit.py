@@ -216,15 +216,31 @@ _SKIP_TYPES = {
 }
 
 
-def _is_requested(mpn: str, hit) -> bool:
-    """True when a provider result's MPN is the requested part number. A family member,
-    sibling or ordering variant is not: its lifecycle status says nothing about this one."""
+def _requested_results(mpn: str, items, mpn_of) -> list:
+    """The provider results whose MPN is the requested part number, literal matches
+    (case and whitespace aside) first. A family member, sibling or ordering variant is
+    not the part: its lifecycle status says nothing about this one."""
     ds_pkg = str(Path(__file__).resolve().parents[2] / "datasheets")
     if ds_pkg not in sys.path:
         sys.path.insert(0, ds_pkg)
     from distributor_core.verify import same_part
-    return isinstance(hit, str) and same_part(
-        mpn, hit, allow_family=False, ordering_suffixes=False)
+    literal, normalised = [], []
+    want = "".join(mpn.split()).upper()
+    for item in items:
+        hit = mpn_of(item)
+        if not isinstance(hit, str):
+            continue
+        if "".join(hit.split()).upper() == want and want:
+            literal.append(item)
+        elif same_part(mpn, hit, allow_family=False, ordering_suffixes=False):
+            normalised.append(item)
+    return literal + normalised
+
+
+def _lcsc_mpn(comp: dict):
+    # jlcsearch rows now carry the MPN as top-level `mfr` and no `extra` block.
+    extra = comp.get("extra") if isinstance(comp.get("extra"), dict) else {}
+    return comp.get("mfr") or extra.get("mpn")
 
 
 def _is_real_mpn(mpn: str) -> bool:
@@ -294,9 +310,8 @@ def query_lifecycle_digikey(mpn: str) -> dict | None:
     except (urllib.error.URLError, OSError, json.JSONDecodeError):
         return None
 
-    for product in data.get("Products", []):
-        if not _is_requested(mpn, product.get("ManufacturerProductNumber")):
-            continue
+    for product in _requested_results(mpn, data.get("Products", []),
+                                      lambda p: p.get("ManufacturerProductNumber")):
 
         result = {}
 
@@ -348,9 +363,8 @@ def query_lifecycle_mouser(mpn: str) -> dict | None:
     except (urllib.error.URLError, OSError, json.JSONDecodeError):
         return None
 
-    for part in data.get("SearchResults", {}).get("Parts", []):
-        if not _is_requested(mpn, part.get("ManufacturerPartNumber")):
-            continue
+    for part in _requested_results(mpn, data.get("SearchResults", {}).get("Parts", []),
+                                   lambda p: p.get("ManufacturerPartNumber")):
         result = {}
         result["status"] = part.get("LifecycleStatus")
         result["discontinued"] = str(part.get("IsDiscontinued", "")).lower() == "true"
@@ -386,11 +400,8 @@ def query_lifecycle_lcsc(mpn: str) -> dict | None:
     except (urllib.error.URLError, OSError, json.JSONDecodeError):
         return None
 
-    for comp in data.get("components", []):
-        # jlcsearch rows now carry the MPN as top-level `mfr` and no `extra` block.
+    for comp in _requested_results(mpn, data.get("components", []), _lcsc_mpn):
         extra = comp.get("extra") if isinstance(comp.get("extra"), dict) else {}
-        if not _is_requested(mpn, comp.get("mfr") or extra.get("mpn")):
-            continue
 
         result = {}
         stock = comp.get("stock", 0)
@@ -438,9 +449,8 @@ def query_lifecycle_element14(mpn: str) -> dict | None:
         return None
 
     products = data.get("manufacturerPartNumberSearchReturn", {}).get("products", [])
-    for product in products:
-        if not _is_requested(mpn, product.get("translatedManufacturerPartNumber")):
-            continue
+    for product in _requested_results(mpn, products,
+                                      lambda p: p.get("translatedManufacturerPartNumber")):
         result = {}
         for attr in product.get("attributes", []):
             label = attr.get("attributeLabel", "").lower()

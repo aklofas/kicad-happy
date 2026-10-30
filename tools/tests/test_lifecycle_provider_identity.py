@@ -114,6 +114,17 @@ class SiblingIsNoAnswerTest(ProviderIdentityBase):
         self.bodies["digikey"] = dk("LM2596S-ADJ/NOPB")
         self.assertIsNone(lifecycle_audit.query_lifecycle_digikey("LM2596S-ADJ"))
 
+    def test_ordering_marks_stay_significant(self):
+        # Maxim/ADI "+" and LT "#PBF" name the lead-free orderable number; the leaded
+        # one is obsoleted separately. AP2112K-3.3 is the 3.3 V part, not AP2112K-33.
+        for requested, variant in (("MAX3232ECUE", "MAX3232ECUE+"),
+                                   ("MAX3232ECUE+", "MAX3232ECUE"),
+                                   ("LT1763CS8", "LT1763CS8#PBF"),
+                                   ("AP2112K-3.3", "AP2112K-33")):
+            self.bodies["digikey"] = dk(variant)
+            self.assertIsNone(lifecycle_audit.query_lifecycle_digikey(requested),
+                              (requested, variant))
+
     def test_lcsc_sibling(self):
         self.bodies["jlcsearch"] = lcsc("LM358DT")
         self.assertIsNone(lifecycle_audit.query_lifecycle_lcsc("LM358DR"))
@@ -145,6 +156,18 @@ class RequestedPartIsReadTest(ProviderIdentityBase):
                          "End of Life")
         self.assertEqual(lifecycle_audit.query_lifecycle_element14("LM358DR")["status"],
                          "Obsolete")
+
+    def test_listing_with_both_variants_uses_the_requested_row(self):
+        self.bodies["mouser"] = {"SearchResults": {"Parts": [
+            mo("MAX3232ECUE", status="Obsolete")["SearchResults"]["Parts"][0],
+            mo("MAX3232ECUE+", status="New Product")["SearchResults"]["Parts"][0]]}}
+        self.assertEqual(lifecycle_audit.query_lifecycle_mouser("MAX3232ECUE+")["status"],
+                         "New Product")
+
+    def test_literal_match_beats_a_normalised_one(self):
+        self.bodies["digikey"] = {"Products": dk("LM358-DR", status="Obsolete")["Products"]
+                                  + dk("LM358DR", status="Active")["Products"]}
+        self.assertEqual(lifecycle_audit.query_lifecycle_digikey("LM358DR")["status"], "Active")
 
     def test_case_and_whitespace_ignored(self):
         self.bodies["digikey"] = dk("LM358DR")

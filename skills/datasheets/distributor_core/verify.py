@@ -14,6 +14,9 @@ ORDERING_SUFFIXES = ("#TRPBF", "#PBF", "#TR", "/NOPB", "T&R", "TR", "REEL", "REE
 _ORDERING_SUFFIX_RE = re.compile(
     "-?(?:" + "|".join(re.escape(s) for s in ORDERING_SUFFIXES) + ")$")
 _MPN_PUNCT_RE = re.compile(r"[\s\-_./,#+()]")
+# Exact part numbers keep + # . : MAX3232ECUE+ (lead-free), LT1763CS8#PBF and AP2112K-3.3
+# are orderable numbers of their own, distinct from MAX3232ECUE, LT1763CS8 and AP2112K-33.
+_EXACT_PUNCT_RE = re.compile(r"[\s\-_/,()]")
 
 
 def _strip_ordering_suffixes(mpn: str) -> str:
@@ -32,19 +35,25 @@ def _part_key(mpn: str) -> str:
     return _MPN_PUNCT_RE.sub("", _strip_ordering_suffixes(mpn))
 
 
+def _exact_key(mpn: str) -> str:
+    """Upper-cased MPN without case, whitespace or ``-_/,()``; ordering marks kept."""
+    return _EXACT_PUNCT_RE.sub("", mpn.upper())
+
+
 def same_part(requested: str, hit: str, *, allow_family: bool = False,
               ordering_suffixes: bool = True) -> bool:
     """True when a search hit's MPN names the requested part.
 
     Case, whitespace and ``-_./,#+()`` are ignored, and so are the ordering suffixes in
-    ``ORDERING_SUFFIXES`` unless ``ordering_suffixes`` is false (lifecycle status belongs to
-    one orderable part number: a ``G4`` variant can be obsolete while the base is active).
+    ``ORDERING_SUFFIXES``. With ``ordering_suffixes`` false the part number must be exact:
+    only case, whitespace and ``-_/,()`` are ignored (lifecycle status belongs to one
+    orderable number: a ``G4`` or ``+`` variant can be obsolete while the base is active).
     With ``allow_family`` a hit that extends the requested string
     also counts (``LM358`` -> ``LM358DR``); use it only when the request is a generic name,
     such as an MPN read from a symbol's Value field. Distributor part numbers are compared
     exactly by the caller, never here.
     """
-    key = _part_key if ordering_suffixes else (lambda m: _MPN_PUNCT_RE.sub("", m.upper()))
+    key = _part_key if ordering_suffixes else _exact_key
     a, b = key(requested or ""), key(hit or "")
     if not a or not b:
         return False
