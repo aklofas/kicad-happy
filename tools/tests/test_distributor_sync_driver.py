@@ -49,6 +49,31 @@ class Driver(unittest.TestCase):
             self.assertEqual(manifests[1], manifests[2])
             self.assertEqual(manifests[1][1:], (1, 3))
 
+    def test_two_workers_keep_a_transport_outage_like_the_serial_run(self):
+        from distributor_core.sync import sync_datasheets
+        from distributor_core import download
+
+        def one(part, out_dir, index, delay, ctx):
+            if part["mpn"] == "NE555P":
+                download.note_transport_failure(TimeoutError("search timed out"))
+            return {"status": "not_found", "error": "none", "manufacturer": "", "description": "",
+                    "value": part["value"], "references": part["references"], "last_attempt": "t"}
+        runs = {}
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            mpns = d / "mpns.txt"
+            mpns.write_text("LM358DR\nNE555P\nTL072\nLM317\n", encoding="utf-8")
+            for par in (1, 2):
+                with redirect_stderr(io.StringIO()) as err, redirect_stdout(io.StringIO()):
+                    sync_datasheets(fake_provider(sync_one_part=one), mpn_list=str(mpns),
+                                    output_dir=str(d / f"out{par}"), parallel=par)
+                m = json.loads((d / f"out{par}" / "manifest.json").read_text(encoding="utf-8"))
+                runs[par] = (m["parts"]["NE555P"]["status"], m["parts"]["NE555P"]["error"],
+                             m["parts"]["TL072"]["error"])
+            self.assertEqual(runs[1], runs[2])
+            self.assertEqual(runs[1][:2], ("error", "network failure, retried next run: TimeoutError: search timed out"))
+            self.assertEqual(runs[1][2], "none")
+
     def test_preflight_error_wins_before_output_dir_is_created(self):
         from distributor_core.sync import sync_datasheets
         with tempfile.TemporaryDirectory() as d:

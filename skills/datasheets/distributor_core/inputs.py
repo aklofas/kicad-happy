@@ -148,7 +148,7 @@ def extract_parts(analyzer_output: dict, id_keys=("digikey", "mouser", "lcsc")) 
 
 
 def load_mpn_list(path: Path, id_keys=("digikey", "mouser", "lcsc")) -> list[dict]:
-    """Read MPNs from a text file, one per line (KH-312).
+    """Read MPNs from a text file, one per line.
 
     Skips blank lines, full-line comments (``# ...``), and inline
     ``# ...`` comments. Filters non-MPN strings via ``is_real_mpn()``

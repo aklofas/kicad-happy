@@ -70,32 +70,33 @@ class _Run:
         self.warnings = []  # parts whose verification says the datasheet is probably wrong
 
 
-def _record(ctx, part, outcome) -> None:
+def _record(run, part, outcome) -> None:
     """Store one part's outcome in the manifest, count it, print its progress line and save the
-    index. Callers hold ``ctx.lock`` when several workers run."""
+    index. Callers hold ``run.lock`` when several workers run. It must run on the thread that
+    fetched the part: the transport failure it reads is recorded per thread."""
     part_key = part["_key"]
-    stored, result = _outage_entry(outcome, ctx.index.get("parts", {}).get(part_key, {}), ctx.out_dir)
-    ctx.index.setdefault("parts", {})[part_key] = stored
+    stored, result = _outage_entry(outcome, run.index.get("parts", {}).get(part_key, {}), run.out_dir)
+    run.index.setdefault("parts", {})[part_key] = stored
     if stored is not result:
-        ctx.kept_errors[part_key] = result["error"]
+        run.kept_errors[part_key] = result["error"]
 
     if result["status"] == "ok":
-        ctx.downloaded.append(part_key)
+        run.downloaded.append(part_key)
         vconf = result.get("verification", "")
         vmark = ""
         if vconf == "wrong":
             vmark = " ⚠ WRONG DATASHEET?"
-            ctx.warnings.append(part_key)
+            run.warnings.append(part_key)
         elif vconf == "unverified":
             vmark = " (unverified)"
         print(f"  OK: {result['file']} ({result['size_bytes']:,} bytes){vmark}", file=sys.stderr)
     else:
-        ctx.failed.append(part_key)
+        run.failed.append(part_key)
         print(f"  {result['status'].upper()}: {result.get('error', '')}", file=sys.stderr)
 
-    ctx.index["schematic"] = ctx.source
-    ctx.index["last_sync"] = datetime.now(timezone.utc).isoformat()
-    save_index(ctx.index_path, ctx.index)
+    run.index["schematic"] = run.source
+    run.index["last_sync"] = datetime.now(timezone.utc).isoformat()
+    save_index(run.index_path, run.index)
 
 
 def sync_datasheets(
