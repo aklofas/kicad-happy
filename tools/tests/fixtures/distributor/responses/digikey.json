@@ -139,6 +139,16 @@
         "Name": "Texas Instruments"
       },
       "ManufacturerProductNumber": "TPS61023DRLR"
+    },
+    "2N7002V": {
+      "DatasheetUrl": "https://www.digikey.com/fixture/2n7002v.pdf",
+      "Description": {
+        "ProductDescription": "Dual N-Channel MOSFET"
+      },
+      "Manufacturer": {
+        "Name": "onsemi"
+      },
+      "ManufacturerProductNumber": "2N7002V"
     }
   }
 }

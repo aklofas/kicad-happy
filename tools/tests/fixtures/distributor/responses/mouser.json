@@ -105,6 +105,13 @@
       "Manufacturer": "Texas Instruments",
       "ManufacturerPartNumber": "TPS61023DRLR",
       "ProductDetailUrl": ""
+    },
+    "2N7002V": {
+      "DataSheetUrl": "https://www.mouser.com/datasheet/2/fixture/2n7002v.pdf",
+      "Description": "Dual N-Channel MOSFET",
+      "Manufacturer": "onsemi",
+      "ManufacturerPartNumber": "2N7002V",
+      "ProductDetailUrl": ""
     }
   }
 }

@@ -1,29 +1,39 @@
 Analyzing bom-identity.schematic.json...
-Found 5 unique parts with identifiers (0 skipped without an MPN or LCSC part number)
-[1/5] LM358DRG4
+Found 7 unique parts with identifiers (0 skipped without an MPN or LCSC part number)
+[1/7] LM358DRG4
   Searching LCSC for 'LM358DRG4'...
   Downloading from LCSC CDN...
   OK: LM358DR_Dual_Operational_Amplifier.pdf (79 bytes)
-[2/5] TPS61023
+[2/7] TPS61023
   Searching LCSC for 'TPS61023'...
   Trying alternative sources...
   NOT_FOUND: No matching LCSC result for 'TPS61023' (closest: 'TPS61023DRLR', a different part)
-[3/5] LM358
+[3/7] LM358
   Searching LCSC for 'LM358'...
   Downloading from LCSC CDN...
   OK: LM358DR_Dual_Operational_Amplifier.pdf (79 bytes)
-[4/5] 2N7002
+[4/7] 2N7002
   Searching LCSC for '2N7002'...
   Trying alternative sources...
   NOT_FOUND: No matching LCSC result for '2N7002' (closest: '2N7002V', a different part)
-[5/5] C9999999
+[5/7] C9999999
   Searching LCSC for 'C9999999'...
   NOT_FOUND: No matching LCSC result for 'C9999999' (closest: 'C14663', a different part)
+[6/7] SI2302
+  Searching LCSC for 'SI2302'...
+  Downloading from LCSC CDN...
+  OK: SI2302_N-Channel_MOSFET_20V.pdf (78 bytes)
+[7/7] 2N7002V
+  Searching LCSC for '2N7002V'...
+  Downloading from LCSC CDN...
+  OK: 2N7002V_Dual_N-Channel_MOSFET.pdf (79 bytes)
 
 Datasheet sync complete:
-  Downloaded: 2
+  Downloaded: 4
     LM358DRG4
     LM358
+    SI2302
+    2N7002V
   Already present: 0
   Failed: 3
     TPS61023 — No matching LCSC result for 'TPS61023' (closest: 'TPS61023DRLR', a different part)

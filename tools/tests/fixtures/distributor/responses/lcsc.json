@@ -295,6 +295,25 @@
       "mfr": "TPS61023DRLR",
       "price": 0.1,
       "stock": 100
+    },
+    "2N7002V": {
+      "datasheet": "",
+      "description": "Dual N-Channel MOSFET",
+      "extra": {
+        "datasheet": {
+          "pdf": "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/fixture/2n7002v.pdf"
+        },
+        "description": "Dual N-Channel MOSFET",
+        "manufacturer": {
+          "name": "onsemi"
+        },
+        "mpn": "2N7002V",
+        "number": "C1007"
+      },
+      "lcsc": "1007",
+      "mfr": "2N7002V",
+      "price": 0.1,
+      "stock": 100
     }
   }
 }

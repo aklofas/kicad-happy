@@ -59,6 +59,38 @@
       "failed_providers": [
         "mouser"
       ]
+    },
+    "SI2302": {
+      "file": "SI2302_N-Channel_MOSFET_20V.pdf",
+      "manufacturer": "Vishay",
+      "description": "N-Channel MOSFET 20V",
+      "value": "SI2302",
+      "datasheet_url": "https://www.mouser.com/datasheet/2/fixture/si2302.pdf",
+      "downloaded_date": "2026-10-16T00:00:00+00:00",
+      "source": "mouser",
+      "status": "ok",
+      "references": [
+        "Q3",
+        "Q2",
+        "Q4"
+      ],
+      "size_bytes": 78,
+      "verification": "verified"
+    },
+    "2N7002V": {
+      "file": "2N7002V_Dual_N-Channel_MOSFET.pdf",
+      "manufacturer": "onsemi",
+      "description": "Dual N-Channel MOSFET",
+      "value": "2N7002V",
+      "datasheet_url": "https://www.mouser.com/datasheet/2/fixture/2n7002v.pdf",
+      "downloaded_date": "2026-10-16T00:00:00+00:00",
+      "source": "mouser",
+      "status": "ok",
+      "references": [
+        "Q5"
+      ],
+      "size_bytes": 79,
+      "verification": "verified"
     }
   }
 }

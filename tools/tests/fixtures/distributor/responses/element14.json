@@ -147,6 +147,17 @@
       "displayName": "Boost Converter 5.5V",
       "sku": "10AB1000",
       "translatedManufacturerPartNumber": "TPS61023DRLR"
+    },
+    "2N7002V": {
+      "brandName": "onsemi",
+      "datasheets": [
+        {
+          "url": "https://www.farnell.com/datasheets/fixture/2n7002v.pdf"
+        }
+      ],
+      "displayName": "Dual N-Channel MOSFET",
+      "sku": "17AB1007",
+      "translatedManufacturerPartNumber": "2N7002V"
     }
   }
 }

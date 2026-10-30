@@ -1,3 +1,5 @@
-bom-identity.schematic.json:1844
+bom-identity.schematic.json:2961
+datasheets/2N7002V_Dual_N-Channel_MOSFET.pdf:79
 datasheets/LM358DR_Dual_Operational_Amplifier.pdf:79
-datasheets/manifest.json:1987
+datasheets/SI2302_N-Channel_MOSFET_20V.pdf:78
+datasheets/manifest.json:3003

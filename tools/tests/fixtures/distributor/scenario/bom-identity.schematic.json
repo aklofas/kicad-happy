@@ -85,6 +85,58 @@
       "mouser": "",
       "lcsc": "C9999999",
       "element14": ""
+    },
+    {
+      "references": [
+        "Q3"
+      ],
+      "value": "SI2302",
+      "mpn": "SI2302",
+      "manufacturer": "",
+      "description": "",
+      "datasheet": "",
+      "type": "transistor",
+      "dnp": false,
+      "lib_id": "Transistor_FET:SI2302",
+      "digikey": "",
+      "mouser": "",
+      "lcsc": "",
+      "element14": ""
+    },
+    {
+      "references": [
+        "Q2",
+        "Q4"
+      ],
+      "value": "SI2302",
+      "mpn": "SI2302",
+      "manufacturer": "Vishay",
+      "description": "N-Channel MOSFET 20V",
+      "datasheet": "",
+      "type": "transistor",
+      "dnp": false,
+      "lib_id": "Transistor_FET:SI2302",
+      "digikey": "",
+      "mouser": "",
+      "lcsc": "",
+      "element14": ""
+    },
+    {
+      "references": [
+        "Q5"
+      ],
+      "value": "2N7002V",
+      "mpn": "2N7002V",
+      "manufacturer": "onsemi",
+      "description": "Dual N-Channel MOSFET",
+      "datasheet": "",
+      "type": "transistor",
+      "dnp": false,
+      "lib_id": "Transistor_FET:2N7002V",
+      "digikey": "",
+      "mouser": "",
+      "lcsc": "",
+      "element14": ""
     }
   ]
 }
