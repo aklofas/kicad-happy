@@ -1,46 +1,40 @@
 Analyzing bom.schematic.json...
-Found 13 unique parts with part numbers (4 skipped without any identifier)
-[1/12] TPS61023DRLR
+Found 11 unique parts with part numbers (6 skipped without any identifier)
+[1/10] TPS61023DRLR
   Trying schematic URL...
   OK: TPS61023DRLR_Boost_Converter.pdf (84 bytes)
-[2/12] LM358DR
+[2/10] LM358DR
   Searching DigiKey for 'LM358DR'...
   Downloading from https://www.digikey.com/fixture/lm358.pdf...
   OK: LM358DR_Dual_Operational_Amplifier.pdf (79 bytes)
-[3/12] NODATA1234
+[3/10] NODATA1234
   Searching DigiKey for 'NODATA1234'...
   NO_DATASHEET: DigiKey listing has no datasheet URL
-[4/12] ATMEGA328P-AU
+[4/10] ATMEGA328P-AU
   Searching DigiKey for 'ATMEGA328P-AU'...
   Downloading from https://www.digikey.com/fixture/atmega.pdf...
   Primary failed, trying alternatives...
   OK: ATMEGA328P-AU_8-bit_AVR_Microcontroller.pdf (39 bytes) (unverified)
-[5/12] MISSING9999
+[5/10] MISSING9999
   Searching DigiKey for 'MISSING9999'...
   NOT_FOUND: No DigiKey results for 'MISSING9999'
-[6/12] FAILALL77
+[6/10] FAILALL77
   Searching DigiKey for 'FAILALL77'...
   Downloading from https://www.digikey.com/fixture/failall.pdf...
   Primary failed, trying alternatives...
   FAILED: All download methods failed
-[7/12] SI2302
+[7/10] SI2302
   Searching DigiKey for 'SI2302'...
   Downloading from https://www.digikey.com/fixture/si2302.pdf...
   OK: SI2302_N-Channel_MOSFET_20V.pdf (78 bytes)
-[8/12] 296-1234-ND
+[8/10] 296-1234-ND
   Searching DigiKey for '296-1234-ND'...
   Downloading from https://www.digikey.com/fixture/realmpn123.pdf...
   OK: REALMPN123_Buck_regulator_1A.pdf (82 bytes)
-[9/12] 595-TPS7A05
-  Searching DigiKey for ''...
-  NOT_FOUND: No DigiKey results for ''
-[10/12] C14663
-  Searching DigiKey for ''...
-  NOT_FOUND: No DigiKey results for ''
-[11/12] PRESENT1
+[9/10] PRESENT1
   Searching DigiKey for 'PRESENT1'...
   NOT_FOUND: No DigiKey results for 'PRESENT1'
-[12/12] GONE2
+[10/10] GONE2
   Searching DigiKey for 'GONE2'...
   Downloading from https://www.digikey.com/fixture/gone2.pdf...
   OK: GONE2_Gone_part_revised.pdf (77 bytes)
@@ -54,15 +48,13 @@ Datasheet sync complete:
     296-1234-ND
     GONE2
   Already present: 0
-  Failed: 6
+  Failed: 4
     NODATA1234 — DigiKey listing has no datasheet URL
     MISSING9999 — No DigiKey results for 'MISSING9999'
     FAILALL77 — https://www.digikey.com/fixture/failall.pdf
-    595-TPS7A05 — No DigiKey results for ''
-    C14663 — No DigiKey results for ''
     PRESENT1 — No DigiKey results for 'PRESENT1'
   Skipped (previous failures, use --force): 1
-  Skipped (no identifier): 4
+  Skipped (no identifier): 6
   Output: <WORK>/datasheets/
 
   Tip: Try LCSC or element14 sync to fill gaps — they share the same datasheets/ directory and skip already-downloaded parts.

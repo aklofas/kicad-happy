@@ -147,17 +147,6 @@
       "size_bytes": 78,
       "verification": "verified"
     },
-    "": {
-      "manufacturer": "",
-      "description": "Sensor",
-      "value": "SENSOR",
-      "references": [
-        "U11"
-      ],
-      "status": "not_found",
-      "error": "No Mouser results for ''",
-      "last_attempt": "2026-10-16T00:00:00+00:00"
-    },
     "595-TPS7A05": {
       "file": "595-TPS7A05_LDO_Voltage_Regulators_200mA.pdf",
       "manufacturer": "Texas Instruments",

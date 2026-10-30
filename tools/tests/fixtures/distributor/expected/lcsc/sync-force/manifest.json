@@ -148,28 +148,6 @@
       "size_bytes": 78,
       "verification": "verified"
     },
-    "296-1234-ND": {
-      "manufacturer": "",
-      "description": "Regulator",
-      "value": "REG",
-      "references": [
-        "U8"
-      ],
-      "status": "not_found",
-      "error": "No LCSC results for ''",
-      "last_attempt": "2026-10-16T00:00:00+00:00"
-    },
-    "595-TPS7A05": {
-      "manufacturer": "",
-      "description": "LDO",
-      "value": "LDO",
-      "references": [
-        "U9"
-      ],
-      "status": "not_found",
-      "error": "No LCSC results for ''",
-      "last_attempt": "2026-10-16T00:00:00+00:00"
-    },
     "C14663": {
       "file": "AMS1117-3.3_1A_Low_Dropout_Regulator_3.3V.pdf",
       "manufacturer": "Advanced Monolithic Systems",

@@ -7,9 +7,6 @@
     "MISSING9999",
     "FAILALL77",
     "SI2302",
-    "296-1234-ND",
-    "595-TPS7A05",
-    "C14663",
     "94AK6874",
     "GONE2"
   ],
@@ -19,5 +16,5 @@
   "skipped_previous_failures": [
     "PREVFAIL3"
   ],
-  "skipped_no_identifier": 3
+  "skipped_no_identifier": 6
 }

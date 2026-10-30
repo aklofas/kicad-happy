@@ -1,2 +1,2 @@
 Analyzing bom.schematic.json...
-Found 14 unique parts with MPNs (7 skipped without MPN)
+Found 11 unique parts with MPNs (6 skipped without MPN)

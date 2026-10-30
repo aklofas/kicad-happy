@@ -2,7 +2,7 @@
   "already_present": [
     "PRESENT1"
   ],
-  "skipped_no_mpn": 7,
+  "skipped_no_mpn": 6,
   "skipped_previous_failures": [
     "PREVFAIL3"
   ],
@@ -14,10 +14,7 @@
     "MISSING9999",
     "FAILALL77",
     "SI2302",
-    "",
     "595-TPS7A05",
-    "",
-    "",
     "GONE2"
   ]
 }

@@ -2,7 +2,7 @@
   "already_present": [
     "PRESENT1"
   ],
-  "skipped_no_identifier": 4,
+  "skipped_no_identifier": 6,
   "skipped_previous_failures": [
     "PREVFAIL3"
   ],
@@ -15,8 +15,6 @@
     "FAILALL77",
     "SI2302",
     "296-1234-ND",
-    "595-TPS7A05",
-    "C14663",
     "GONE2"
   ]
 }

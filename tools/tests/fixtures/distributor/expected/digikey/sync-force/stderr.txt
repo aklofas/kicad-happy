@@ -1,38 +1,30 @@
 Analyzing bom.schematic.json...
-Found 13 unique parts with part numbers (4 skipped without any identifier)
+Found 11 unique parts with part numbers (6 skipped without any identifier)
   Renamed: REALMPN123_Buck_regulator_1A.pdf -> 296-1234-ND_Buck_regulator_1A.pdf
-[1/6] NODATA1234
+[1/4] NODATA1234
   Searching DigiKey for 'NODATA1234'...
   NO_DATASHEET: DigiKey listing has no datasheet URL
-[2/6] MISSING9999
+[2/4] MISSING9999
   Searching DigiKey for 'MISSING9999'...
   NOT_FOUND: No DigiKey results for 'MISSING9999'
-[3/6] FAILALL77
+[3/4] FAILALL77
   Searching DigiKey for 'FAILALL77'...
   Downloading from https://www.digikey.com/fixture/failall.pdf...
   Primary failed, trying alternatives...
   FAILED: All download methods failed
-[4/6] 595-TPS7A05
-  Searching DigiKey for ''...
-  NOT_FOUND: No DigiKey results for ''
-[5/6] C14663
-  Searching DigiKey for ''...
-  NOT_FOUND: No DigiKey results for ''
-[6/6] PREVFAIL3
+[4/4] PREVFAIL3
   Searching DigiKey for 'PREVFAIL3'...
   NOT_FOUND: No DigiKey results for 'PREVFAIL3'
 
 Datasheet sync complete:
   Downloaded: 0
   Already present: 7
-  Failed: 6
+  Failed: 4
     NODATA1234 — DigiKey listing has no datasheet URL
     MISSING9999 — No DigiKey results for 'MISSING9999'
     FAILALL77 — https://www.digikey.com/fixture/failall.pdf
-    595-TPS7A05 — No DigiKey results for ''
-    C14663 — No DigiKey results for ''
     PREVFAIL3 — No DigiKey results for 'PREVFAIL3'
-  Skipped (no identifier): 4
+  Skipped (no identifier): 6
   Output: <WORK>/datasheets/
 
   Tip: Try LCSC or element14 sync to fill gaps — they share the same datasheets/ directory and skip already-downloaded parts.

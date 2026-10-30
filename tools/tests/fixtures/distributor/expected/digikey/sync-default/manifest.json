@@ -160,28 +160,6 @@
       ],
       "size_bytes": 82,
       "verification": "verified"
-    },
-    "595-TPS7A05": {
-      "manufacturer": "",
-      "description": "LDO",
-      "value": "LDO",
-      "references": [
-        "U9"
-      ],
-      "status": "not_found",
-      "error": "No DigiKey results for ''",
-      "last_attempt": "2026-10-16T00:00:00+00:00"
-    },
-    "C14663": {
-      "manufacturer": "",
-      "description": "LDO 3.3V",
-      "value": "AMS",
-      "references": [
-        "U10"
-      ],
-      "status": "not_found",
-      "error": "No DigiKey results for ''",
-      "last_attempt": "2026-10-16T00:00:00+00:00"
     }
   }
 }
