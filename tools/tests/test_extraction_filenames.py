@@ -72,7 +72,8 @@ class MergeResults(unittest.TestCase):
             cache = Path(d)
             self._plan(cache, "LM317_NOPB", "base")
             (cache / "LM317_NOPB.base.result.json").write_text(json.dumps(
-                {"task_id": "base", "status": "complete", "data": {"family": "LM317"}}), encoding="utf-8")
+                {"task_id": "base", "status": "complete", "pdf_sha256": "sha256:0",
+                 "data": {"family": "LM317"}}), encoding="utf-8")
             self.assertEqual(self._merge(cache, "LM317/NOPB"), 0)
             out = json.loads((cache / "LM317_NOPB.json").read_text(encoding="utf-8"))
             self.assertEqual(out["source"]["mpn"], "LM317/NOPB")

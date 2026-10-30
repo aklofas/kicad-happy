@@ -14,8 +14,6 @@ import json
 import sys
 from pathlib import Path
 
-import yaml
-
 
 DEFAULT_TOLERANCE_PCT = 5.0
 
@@ -146,6 +144,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("extraction_path", type=Path)
     args = ap.parse_args(argv)
 
+    import yaml
     vector = yaml.safe_load(args.vector_path.read_text(encoding="utf-8"))
     extraction = json.loads(args.extraction_path.read_text(encoding="utf-8"))
     report = diff(vector, extraction)

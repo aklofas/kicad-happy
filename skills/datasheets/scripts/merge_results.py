@@ -93,8 +93,10 @@ def _read_result(cache: Path, mpn: str, task_id: str) -> "dict | None":
         }
 
 
-def _classify(result: "dict | None", schema: dict) -> "tuple[str, str | None]":
-    """Return ('complete'|'failed', error_message)."""
+def _classify(result: "dict | None", schema: dict,
+              pdf_sha256: "str | None" = None) -> "tuple[str, str | None]":
+    """Return ('complete'|'failed', error_message). A result must name the
+    PDF the plan was built from, so facts from another revision never merge."""
     if result is None:
         return "failed", "no result file found"
     if result.get("status") != "complete":
@@ -102,6 +104,13 @@ def _classify(result: "dict | None", schema: dict) -> "tuple[str, str | None]":
     err = validate_against_schema(result.get("data"), schema)
     if err:
         return "failed", f"schema validation: {err}"
+    bound = result.get("pdf_sha256")
+    if not bound:
+        return "failed", ("result has no pdf_sha256; re-dispatch this task "
+                          "and copy pdf_sha256 from the plan into the wrapper")
+    if bound != pdf_sha256:
+        return "failed", (f"result is bound to PDF {bound}, not the planned PDF "
+                          f"{pdf_sha256}; re-dispatch this task")
     return "complete", None
 
 
@@ -229,7 +238,7 @@ def merge(cache: Path, mpn: str, *, retry_failed: bool = False) -> int:
         schema_path = resolve_skill_resource(task["schema"])
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
         result = _read_result(cache, mpn, tid)
-        status, err = _classify(result, schema)
+        status, err = _classify(result, schema, plan.get("pdf_sha256"))
 
         # Track attempt count — start from any prior recorded attempts.
         prior = next(

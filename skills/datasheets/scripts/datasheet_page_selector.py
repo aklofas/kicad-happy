@@ -408,7 +408,7 @@ def suggest_pages(pdf_path, mpn="", category="", max_pages=None):
                 if s > 3.0:  # only add pages with meaningful content
                     selected[p] = f"keyword scored ({s:.1f})"
 
-        pages = sorted(selected.keys())[:max_pages]
+        pages = _cap_pages(selected.keys(), max_pages, total_pages)
         reasons = {p: selected[p] for p in pages}
         return PageSelection(
             pages=pages, reasons=reasons,
@@ -438,6 +438,15 @@ def suggest_pages(pdf_path, mpn="", category="", max_pages=None):
         pages=pages, reasons=reasons,
         confidence="keyword_scored", total_pages=total_pages,
     )
+
+
+def _cap_pages(pages, max_pages, total_pages):
+    """Sorted pages limited to max_pages, always keeping page 1 and the last
+    page (package and ordering information)."""
+    chosen = set(pages)
+    keep = [p for p in (1, total_pages) if p in chosen][:max_pages]
+    rest = [p for p in sorted(chosen) if p not in keep]
+    return sorted(keep + rest[:max(0, max_pages - len(keep))])
 
 
 def _fallback_page_selection(total_pages, max_pages):
@@ -472,4 +481,4 @@ def _fallback_page_selection(total_pages, max_pages):
                 break
             pages.add(remaining[i])
 
-    return sorted(pages)[:max_pages]
+    return _cap_pages(pages, max_pages, total_pages)

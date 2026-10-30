@@ -43,6 +43,8 @@ For each task:
    - `description: "Datasheet <task.subagent_role> extractor for <mpn>"`
    - `prompt`: the substituted prompt (which includes the page list as part of the agent's instructions and the schema path as the validation contract)
 
+Skip a task only when its result file is complete and carries the plan's `pdf_sha256`. A result written under an older schema major version still passes; delete it or pass `--force` to re-run it.
+
 **All three (base, pinout, regulator) for LM2596-ADJ go in one message.** Claude Code dispatches them concurrently. Wait for all to return.
 
 ### Step 3 — Wrap and validate each agent output
@@ -55,6 +57,7 @@ For each returned agent output:
    ```json
    {
      "task_id": "<task.task_id>",
+     "pdf_sha256": "<plan.pdf_sha256>",
      "schema_version": "<schema's x-schema-version>",
      "status": "complete" or "failed",
      "extracted_at": "<now ISO-8601>",

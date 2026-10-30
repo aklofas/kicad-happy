@@ -21,6 +21,7 @@ Per task: `<cache_dir>/<mpn>.<task_id>.result.json` — the **wrapped result fil
 ```json
 {
   "task_id": "regulator",
+  "pdf_sha256": "sha256:<64 hex>",
   "schema_version": "0.3",
   "status": "complete",
   "extracted_at": "2026-04-25T11:00:00Z",
@@ -33,6 +34,7 @@ Per task: `<cache_dir>/<mpn>.<task_id>.result.json` — the **wrapped result fil
 `status` ∈ `{"complete", "failed"}`. Other fields:
 
 - `task_id`: matches `task.task_id` exactly.
+- `pdf_sha256`: copied from `plan.pdf_sha256`. Required: `merge_results.py` rejects a result without it, or with a different value, so facts read from another revision of the PDF never merge. `plan_extraction.py` deletes the previous plan's result files when it re-plans for a changed PDF.
 - `schema_version`: schema version of the task's output (e.g. `"0.3"` for regulator). Read from the schema's `x-schema-version` field if present; otherwise `"1.0"`.
 - `extracted_at`: ISO-8601 UTC timestamp.
 - `model_tier`: `A` or `B` per `task.tier`.
@@ -47,7 +49,7 @@ Per task: `<cache_dir>/<mpn>.<task_id>.result.json` — the **wrapped result fil
 | **MUST** | For each task in `plan.tasks` where `status: "pending"`: instantiate the subagent with `task.prompt_template` (placeholders substituted) and the task's PDF page list, capture subagent output, write the wrapped result file to `<cache_dir>/<mpn>.<task_id>.result.json`. |
 | **MUST** | Set `status: "complete"` if subagent output passes JSON-schema validation against `task.schema`; set `status: "failed"` with an `error` field if validation fails or the subagent reports an explicit error. |
 | **MUST** | Respect `task.depends_on` — never dispatch a task whose dependencies haven't all reached `status: "complete"`. (Phase 3a tasks all have `depends_on: []`, so this is a future-proofing constraint.) |
-| **MUST** | Be idempotent — if a result file already exists with `status: "complete"`, skip that task (resume-safe). |
+| **MUST** | Be idempotent — if a result file already exists with `status: "complete"` and its `pdf_sha256` equals `plan.pdf_sha256`, skip that task (resume-safe). A schema major-version bump does not invalidate old results; pass `--force` to re-run them. |
 | **MUST** | Substitute prompt placeholders: `{{MPN}}` ← `plan.mpn`, `{{PDF_PATH}}` ← `plan.pdf_path`, `{{PAGES}}` ← `task.pages` (formatted as a human-readable list, e.g. "5, 6, 13–15"), `{{SCHEMA_PATH}}` ← `task.schema`. |
 | **MAY** | Dispatch parallel-eligible tasks (empty or fully-satisfied `depends_on`) concurrently. Single-threaded dispatch is also valid. |
 | **MAY** | Do its own internal retry on transient failures (network errors, rate limits). This is distinct from the plan-level retry semantics owned by `merge_results.py`. |

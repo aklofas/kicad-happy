@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -19,7 +20,8 @@ _SKILL_ROOT = str(Path(__file__).resolve().parent.parent)
 if _SKILL_ROOT not in sys.path:
     sys.path.insert(0, _SKILL_ROOT)
 
-from datasheet_types.cache_reader import sanitize_mpn  # noqa: E402
+from datasheet_types.cache_reader import read_json_object, sanitize_mpn  # noqa: E402
+from distributor_core.manifest import write_json_atomic  # noqa: E402
 
 PLAN_VERSION = "1.0"
 
@@ -73,6 +75,29 @@ def _is_cache_current(existing: dict, pdf_sha: str) -> bool:
     """Cache is current iff the recorded SHA matches the PDF's SHA."""
     src_sha = (existing.get("source") or {}).get("sha256")
     return src_sha == pdf_sha
+
+
+_SAFE_TASK_ID = re.compile(r"[A-Za-z0-9_.\-]+")
+
+
+def _drop_stale_results(cache_dir: Path, mpn: str, pdf_sha: str) -> None:
+    """Remove the previous plan's task results when the PDF changed, so a
+    re-dispatch cannot reuse facts read from another revision."""
+    old = read_json_object(cache_dir / f"{sanitize_mpn(mpn)}.plan.json")
+    if not old or old.get("pdf_sha256") == pdf_sha:
+        return
+    removed = 0
+    for task in old.get("tasks") or []:
+        tid = task.get("task_id") if isinstance(task, dict) else None
+        if not isinstance(tid, str) or tid in (".", "..") or not _SAFE_TASK_ID.fullmatch(tid):
+            continue
+        p = cache_dir / f"{sanitize_mpn(mpn)}.{tid}.result.json"
+        if p.parent == cache_dir and (p.is_file() or p.is_symlink()):
+            p.unlink()
+            removed += 1
+    print(f"{mpn}: PDF changed since the previous plan; removed {removed} stale task result(s)"
+          " (the cached scout predates the PDF, re-run the scout if its page lists are stale)",
+          file=sys.stderr)
 
 
 def _load_scout(cache_dir: Path, mpn: str) -> dict:
@@ -180,12 +205,13 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     scout = _load_scout(args.cache_dir, args.mpn)
+    _drop_stale_results(args.cache_dir, args.mpn, pdf_sha)
 
     verdict = (scout.get("quality_verdict") or {}).get("verdict")
     plan_path = args.cache_dir / f"{sanitize_mpn(args.mpn)}.plan.json"
     if verdict == "skip":
         plan = _build_skip_plan(args.mpn, args.pdf_path, pdf_sha, args.cache_dir)
-        plan_path.write_text(json.dumps(plan, indent=2), encoding="utf-8")
+        write_json_atomic(plan_path, plan)
         reason = (scout.get("quality_verdict") or {}).get("reason")
         print(
             f"{args.mpn}: scout verdict 'skip' ({reason}); empty plan written, no extraction dispatched",
@@ -194,7 +220,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     plan = _build_plan(args.mpn, args.pdf_path, pdf_sha, args.cache_dir, scout)
-    plan_path.write_text(json.dumps(plan, indent=2), encoding="utf-8")
+    write_json_atomic(plan_path, plan)
     print(f"{args.mpn}: plan written to {plan_path} ({len(plan['tasks'])} tasks)")
     print(f"  next: run dispatcher per skills/datasheets/references/dispatch-claude-code.md")
     return 0
