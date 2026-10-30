@@ -13,7 +13,7 @@ import _core_path  # noqa: F401
 from kicad_core import token_cache
 from distributor_core.download import download_pdf, note_transport_failure, try_alternative_sources
 from distributor_core.inputs import mpn_from_value
-from distributor_core.verify import other_part, same_part, verify_datasheet
+from distributor_core.verify import other_part, pick_requested, verify_datasheet
 from distributor_core.manifest import friendly_filename
 
 NAME = "digikey"
@@ -171,7 +171,7 @@ def get_oauth_token() -> tuple[str, str] | None:
         return None
 
 
-def search_digikey_with_token(mpn: str, token: str, client_id: str) -> dict | None:
+def search_digikey_with_token(mpn: str, token: str, client_id: str, allow_family: bool = False) -> dict | None:
     """Search DigiKey API using a pre-fetched OAuth token."""
     try:
         search_body = json.dumps({"Keywords": mpn, "Limit": 3}).encode()
@@ -190,7 +190,7 @@ def search_digikey_with_token(mpn: str, token: str, client_id: str) -> dict | No
         if e.code == 429:
             print(f"  Rate limited, waiting 10s...", file=sys.stderr)
             time.sleep(10)
-            return search_digikey_with_token(mpn, token, client_id)
+            return search_digikey_with_token(mpn, token, client_id, allow_family)
         note_transport_failure(e)
         if e.code == 401:
             return None  # Token expired — caller should refresh
@@ -205,10 +205,15 @@ def search_digikey_with_token(mpn: str, token: str, client_id: str) -> dict | No
     if not products:
         return None
 
-    # Prefer the requested part itself over a family member that merely starts with it
+    # Prefer the requested part: its DigiKey number, then its MPN, before a family member
+    query = mpn.strip().upper()
     for p in products:
-        if same_part(mpn, p.get("ManufacturerProductNumber", "")):
+        if query in {pn.strip().upper() for pn in _digikey_pns(p) if pn}:
             return p
+    hit = pick_requested(products, mpn, lambda p: p.get("ManufacturerProductNumber", ""),
+                         allow_family=allow_family)
+    if hit is not None:
+        return hit
     for p in products:
         if p.get("ManufacturerProductNumber", "").upper().startswith(mpn.upper()):
             return p
@@ -277,13 +282,14 @@ def sync_one_part(
     search_term = digikey_pn or mpn
     time.sleep(delay)  # Rate limit
     print(f"  Searching DigiKey for '{search_term}'...", file=sys.stderr)
-    product = search_digikey_with_token(search_term, token, client_id)
+    family = mpn_from_value(part)
+    product = search_digikey_with_token(search_term, token, client_id, family and not digikey_pn)
 
     def _other(hit, by_pn):
         if hit is None:
             return ""
         return other_part(digikey_pn if by_pn else mpn, hit.get("ManufacturerProductNumber", ""),
-                          _digikey_pns(hit), by_pn=by_pn, allow_family=mpn_from_value(part))
+                          _digikey_pns(hit), by_pn=by_pn, allow_family=family, part_mpn=mpn)
 
     closest = _other(product, bool(digikey_pn))
     if closest:
@@ -293,7 +299,7 @@ def sync_one_part(
     if product is None and digikey_pn and mpn:
         time.sleep(delay)
         print(f"  DK PN not found, trying MPN '{mpn}'...", file=sys.stderr)
-        product = search_digikey_with_token(mpn, token, client_id)
+        product = search_digikey_with_token(mpn, token, client_id, family)
         mismatch = _other(product, False)
         if mismatch:
             closest, product = mismatch, None
@@ -305,8 +311,10 @@ def sync_one_part(
             "value": part["value"],
             "references": part["references"],
             "status": "not_found",
-            "error": f"No DigiKey results for '{search_term}'" + (f" or '{mpn}'" if digikey_pn and mpn else "")
-                     + (f"; closest result '{closest}' is a different part" if closest else ""),
+            "error": (f"No matching DigiKey result for '{search_term}'" if closest
+                      else f"No DigiKey results for '{search_term}'")
+                     + (f" or '{mpn}'" if digikey_pn and mpn else "")
+                     + (f" (closest: '{closest}', a different part)" if closest else ""),
             "last_attempt": now,
         }
 

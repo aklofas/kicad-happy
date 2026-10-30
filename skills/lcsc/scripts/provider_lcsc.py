@@ -19,7 +19,7 @@ from distributor_core.download import (
     try_alternative_sources,
 )
 from distributor_core.inputs import mpn_from_value
-from distributor_core.verify import other_part, verify_datasheet
+from distributor_core.verify import other_part, pick_requested, verify_datasheet
 from distributor_core.manifest import friendly_filename
 
 NAME = "lcsc"
@@ -76,7 +76,7 @@ def _parse_extra(component: dict) -> dict:
     return extra if isinstance(extra, dict) else {}
 
 
-def search_lcsc(query: str) -> dict | None:
+def search_lcsc(query: str, allow_family: bool = False) -> dict | None:
     """Search jlcsearch API for a part. Returns first match with datasheet URL.
 
     Accepts MPN, LCSC code (Cxxxxx), or keyword search terms.
@@ -101,7 +101,10 @@ def search_lcsc(query: str) -> dict | None:
     for c in components:
         _parse_extra(c)
 
-    # Prefer exact MPN or LCSC code match
+    # Prefer the requested part (exact or ordering-suffix MPN), then an exact MPN or LCSC code
+    hit = pick_requested(components, query, _get_mpn)
+    if hit is not None:
+        return hit
     for c in components:
         mpn = c.get("mfr", "")
         extra = c.get("extra") or {}
@@ -116,6 +119,10 @@ def search_lcsc(query: str) -> dict | None:
     # Only return fuzzy matches for longer, more specific queries.
     if len(query.strip()) < 6:
         return None
+
+    hit = pick_requested(components, query, _get_mpn, allow_family=allow_family)
+    if hit is not None:
+        return hit
 
     # Return first result as fuzzy match
     return components[0]
@@ -307,14 +314,15 @@ def sync_one_part(
     search_term = lcsc_pn or mpn
     time.sleep(delay)
     print(f"  Searching LCSC for '{search_term}'...", file=sys.stderr)
-    component = search_lcsc(search_term)
+    family = mpn_from_value(part)
+    component = search_lcsc(search_term, family and not lcsc_pn)
     component = enrich_with_wmsc(component)
 
     def _other(hit, by_pn):
         if hit is None:
             return ""
         return other_part(lcsc_pn if by_pn else mpn, _get_mpn(hit), [_get_lcsc_code(hit)],
-                          by_pn=by_pn, allow_family=mpn_from_value(part))
+                          by_pn=by_pn, allow_family=family, part_mpn=mpn)
 
     closest = _other(component, bool(lcsc_pn))
     if closest:
@@ -324,7 +332,7 @@ def sync_one_part(
     if component is None and lcsc_pn and mpn:
         time.sleep(delay)
         print(f"  LCSC code not found, trying MPN '{mpn}'...", file=sys.stderr)
-        component = search_lcsc(mpn)
+        component = search_lcsc(mpn, family)
         component = enrich_with_wmsc(component)
         mismatch = _other(component, False)
         if mismatch:
@@ -399,8 +407,10 @@ def sync_one_part(
             "value": part["value"],
             "references": part["references"],
             "status": "not_found",
-            "error": f"No LCSC results for '{search_term}'" + (f" or '{mpn}'" if lcsc_pn and mpn else "")
-                     + (f"; closest result '{closest}' is a different part" if closest else ""),
+            "error": (f"No matching LCSC result for '{search_term}'" if closest
+                      else f"No LCSC results for '{search_term}'")
+                     + (f" or '{mpn}'" if lcsc_pn and mpn else "")
+                     + (f" (closest: '{closest}', a different part)" if closest else ""),
             "last_attempt": now,
         }
 

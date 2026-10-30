@@ -7,7 +7,7 @@ Found 4 unique parts with MPNs (1 skipped without an MPN or Mouser part number)
 [2/4] TPS61023
   Searching Mouser for 'TPS61023'...
   Trying alternative sources...
-  NOT_FOUND: No Mouser results for 'TPS61023'; closest result 'TPS61023DRLR' is a different part
+  NOT_FOUND: No matching Mouser result for 'TPS61023' (closest: 'TPS61023DRLR', a different part)
 [3/4] LM358
   Searching Mouser for 'LM358'...
   Trying Mouser datasheet URL...
@@ -15,7 +15,7 @@ Found 4 unique parts with MPNs (1 skipped without an MPN or Mouser part number)
 [4/4] 2N7002
   Searching Mouser for '2N7002'...
   Trying alternative sources...
-  NOT_FOUND: No Mouser results for '2N7002'; closest result '2N7002V' is a different part
+  NOT_FOUND: No matching Mouser result for '2N7002' (closest: '2N7002V', a different part)
 
 Datasheet sync complete:
   Downloaded: 2
@@ -23,7 +23,7 @@ Datasheet sync complete:
     LM358
   Already present: 0
   Failed: 2
-    TPS61023 — No Mouser results for 'TPS61023'; closest result 'TPS61023DRLR' is a different part
-    2N7002 — No Mouser results for '2N7002'; closest result '2N7002V' is a different part
+    TPS61023 — No matching Mouser result for 'TPS61023' (closest: 'TPS61023DRLR', a different part)
+    2N7002 — No matching Mouser result for '2N7002' (closest: '2N7002V', a different part)
   Skipped (no MPN or Mouser part number): 1
   Output: <WORK>/datasheets/

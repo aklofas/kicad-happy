@@ -15,7 +15,7 @@ import _core_path  # noqa: F401
 from distributor_core.download import (_USER_AGENT, _requests, download_pdf, note_transport_failure,
                                        try_alternative_sources)
 from distributor_core.inputs import mpn_from_value
-from distributor_core.verify import other_part, verify_datasheet
+from distributor_core.verify import other_part, pick_requested, verify_datasheet
 from distributor_core.manifest import friendly_filename
 
 NAME = "mouser"
@@ -62,7 +62,7 @@ def _get_api_key() -> str:
     return key
 
 
-def search_mouser(mpn: str, api_key: str) -> dict | None:
+def search_mouser(mpn: str, api_key: str, allow_family: bool = False) -> dict | None:
     """Search Mouser API for a part by MPN. Returns first match."""
     url = f"https://api.mouser.com/api/v1/search/partnumber?apiKey={api_key}"
     body = json.dumps({
@@ -94,10 +94,14 @@ def search_mouser(mpn: str, api_key: str) -> dict | None:
     if not parts:
         return None
 
-    # Prefer exact MPN match
+    # Prefer the requested part (exact or ordering-suffix MPN), then an exact MPN or Mouser number
+    hit = pick_requested(parts, mpn, lambda p: p.get("ManufacturerPartNumber", ""),
+                         allow_family=allow_family)
+    if hit is not None:
+        return hit
     mpn_upper = mpn.upper()
     for p in parts:
-        if p.get("ManufacturerPartNumber", "").upper() == mpn_upper:
+        if mpn_upper in (p.get("ManufacturerPartNumber", "").upper(), (p.get("MouserPartNumber") or "").upper()):
             return p
     return parts[0]
 
@@ -218,14 +222,15 @@ def sync_one_part(
     time.sleep(delay)  # Rate limit
     search_query = mpn or mouser_pn
     print(f"  Searching Mouser for '{search_query}'...", file=sys.stderr)
-    mouser_part = search_mouser(search_query, mouser_api_key)
+    family = mpn_from_value(part)
+    mouser_part = search_mouser(search_query, mouser_api_key, family and bool(mpn))
 
     def _other(hit, by_pn):
         if not hit:
             return ""
         return other_part(mouser_pn if by_pn else mpn, hit.get("ManufacturerPartNumber", ""),
                           [hit.get("MouserPartNumber") or ""], by_pn=by_pn,
-                          allow_family=mpn_from_value(part))
+                          allow_family=family, part_mpn=mpn)
 
     closest = _other(mouser_part, not mpn)
     if closest:
@@ -338,8 +343,8 @@ def sync_one_part(
             "value": part["value"],
             "references": part["references"],
             "status": "not_found",
-            "error": f"No Mouser results for '{display_pn}'"
-                     + (f"; closest result '{closest}' is a different part" if closest else ""),
+            "error": (f"No matching Mouser result for '{display_pn}' (closest: '{closest}', a different part)"
+                      if closest else f"No Mouser results for '{display_pn}'"),
             "last_attempt": now,
         }
 

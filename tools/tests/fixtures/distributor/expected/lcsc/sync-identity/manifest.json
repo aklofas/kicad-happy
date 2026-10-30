@@ -26,7 +26,7 @@
         "U2"
       ],
       "status": "not_found",
-      "error": "No LCSC results for 'TPS61023'; closest result 'TPS61023DRLR' is a different part",
+      "error": "No matching LCSC result for 'TPS61023' (closest: 'TPS61023DRLR', a different part)",
       "last_attempt": "2026-10-16T00:00:00+00:00"
     },
     "LM358": {
@@ -53,7 +53,7 @@
         "Q1"
       ],
       "status": "not_found",
-      "error": "No LCSC results for '2N7002'; closest result '2N7002V' is a different part",
+      "error": "No matching LCSC result for '2N7002' (closest: '2N7002V', a different part)",
       "last_attempt": "2026-10-16T00:00:00+00:00"
     },
     "C9999999": {
@@ -64,7 +64,7 @@
         "U4"
       ],
       "status": "not_found",
-      "error": "No LCSC results for 'C9999999'; closest result 'C14663' is a different part",
+      "error": "No matching LCSC result for 'C9999999' (closest: 'C14663', a different part)",
       "last_attempt": "2026-10-16T00:00:00+00:00"
     }
   }

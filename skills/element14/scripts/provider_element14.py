@@ -18,7 +18,7 @@ from distributor_core.download import (
     try_alternative_sources,
 )
 from distributor_core.inputs import mpn_from_value
-from distributor_core.verify import other_part, verify_datasheet
+from distributor_core.verify import other_part, pick_requested, verify_datasheet
 from distributor_core.manifest import friendly_filename
 
 _DEFAULT_STORE = "www.newark.com"
@@ -67,7 +67,8 @@ def download_pdf(url, output_path):
     return _download_pdf(url, output_path, resolve_redirects=False)
 
 
-def search_element14(query: str, api_key: str, store: str = _DEFAULT_STORE) -> dict | None:
+def search_element14(query: str, api_key: str, store: str = _DEFAULT_STORE,
+                     allow_family: bool = False) -> dict | None:
     """Search element14 API for a part. Returns first match with datasheet URL.
 
     Accepts MPN, Newark/Farnell SKU, or keyword search terms.
@@ -81,21 +82,21 @@ def search_element14(query: str, api_key: str, store: str = _DEFAULT_STORE) -> d
     query = query.strip()
 
     # Try MPN search first (most common case)
-    result = _search_element14_raw(f"manuPartNum:{query}", api_key, store)
+    result = _search_element14_raw(f"manuPartNum:{query}", api_key, store, allow_family)
     if result:
         return result
 
     # Try as distributor SKU
-    result = _search_element14_raw(f"id:{query}", api_key, store)
+    result = _search_element14_raw(f"id:{query}", api_key, store, allow_family)
     if result:
         return result
 
     # Fall back to keyword search
-    result = _search_element14_raw(f"any:{query}", api_key, store)
+    result = _search_element14_raw(f"any:{query}", api_key, store, allow_family)
     return result
 
 
-def _search_element14_raw(term: str, api_key: str, store: str) -> dict | None:
+def _search_element14_raw(term: str, api_key: str, store: str, allow_family: bool = False) -> dict | None:
     """Execute a single element14 API search."""
     params = {
         "term": term,
@@ -130,8 +131,11 @@ def _search_element14_raw(term: str, api_key: str, store: str) -> dict | None:
     if not products:
         return None
 
-    # Prefer exact MPN match
+    # Prefer the requested part, then an exact MPN or SKU match
     query_part = term.split(":", 1)[-1].upper() if ":" in term else term.upper()
+    hit = pick_requested(products, query_part, _get_mpn, allow_family=allow_family)
+    if hit is not None:
+        return hit
     for p in products:
         mpn = (p.get("translatedManufacturerPartNumber") or "").upper()
         sku = (p.get("sku") or "").upper()
@@ -225,13 +229,14 @@ def sync_one_part(
     search_term = mpn or element14_pn
     time.sleep(delay)
     print(f"  Searching element14 for '{search_term}'...", file=sys.stderr)
-    product = search_element14(search_term, api_key, store)
+    family = mpn_from_value(part)
+    product = search_element14(search_term, api_key, store, family and bool(mpn))
 
     def _other(hit, by_pn):
         if hit is None:
             return ""
         return other_part(element14_pn if by_pn else mpn, _get_mpn(hit), [_get_sku(hit)],
-                          by_pn=by_pn, allow_family=mpn_from_value(part))
+                          by_pn=by_pn, allow_family=family, part_mpn=mpn)
 
     closest = _other(product, not mpn)
     if closest:
@@ -315,9 +320,10 @@ def sync_one_part(
             "value": part["value"],
             "references": part["references"],
             "status": "not_found",
-            "error": f"No element14 results for '{search_term}'"
+            "error": (f"No matching element14 result for '{search_term}'" if closest
+                      else f"No element14 results for '{search_term}'")
                      + (f" or '{element14_pn}'" if mpn and element14_pn else "")
-                     + (f"; closest result '{closest}' is a different part" if closest else ""),
+                     + (f" (closest: '{closest}', a different part)" if closest else ""),
             "last_attempt": now,
         }
 

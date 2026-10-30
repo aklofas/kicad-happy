@@ -6,14 +6,14 @@ Found 4 unique parts with part numbers (1 skipped without an MPN or DigiKey part
   OK: LM358DRG4_Dual_Operational_Amplifier.pdf (79 bytes)
 [2/4] TPS61023
   Searching DigiKey for 'TPS61023'...
-  NOT_FOUND: No DigiKey results for 'TPS61023'; closest result 'TPS61023DRLR' is a different part
+  NOT_FOUND: No matching DigiKey result for 'TPS61023' (closest: 'TPS61023DRLR', a different part)
 [3/4] LM358
   Searching DigiKey for 'LM358'...
   Downloading from https://www.digikey.com/fixture/lm358.pdf...
   OK: LM358_Dual_Operational_Amplifier.pdf (79 bytes)
 [4/4] 2N7002
   Searching DigiKey for '2N7002'...
-  NOT_FOUND: No DigiKey results for '2N7002'; closest result '2N7002V' is a different part
+  NOT_FOUND: No matching DigiKey result for '2N7002' (closest: '2N7002V', a different part)
 
 Datasheet sync complete:
   Downloaded: 2
@@ -21,8 +21,8 @@ Datasheet sync complete:
     LM358
   Already present: 0
   Failed: 2
-    TPS61023 — No DigiKey results for 'TPS61023'; closest result 'TPS61023DRLR' is a different part
-    2N7002 — No DigiKey results for '2N7002'; closest result '2N7002V' is a different part
+    TPS61023 — No matching DigiKey result for 'TPS61023' (closest: 'TPS61023DRLR', a different part)
+    2N7002 — No matching DigiKey result for '2N7002' (closest: '2N7002V', a different part)
   Skipped (no MPN or DigiKey part number): 1
   Output: <WORK>/datasheets/
 

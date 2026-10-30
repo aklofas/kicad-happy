@@ -25,7 +25,7 @@
         "U2"
       ],
       "status": "not_found",
-      "error": "No DigiKey results for 'TPS61023'; closest result 'TPS61023DRLR' is a different part",
+      "error": "No matching DigiKey result for 'TPS61023' (closest: 'TPS61023DRLR', a different part)",
       "last_attempt": "2026-10-16T00:00:00+00:00"
     },
     "LM358": {
@@ -51,7 +51,7 @@
         "Q1"
       ],
       "status": "not_found",
-      "error": "No DigiKey results for '2N7002'; closest result '2N7002V' is a different part",
+      "error": "No matching DigiKey result for '2N7002' (closest: '2N7002V', a different part)",
       "last_attempt": "2026-10-16T00:00:00+00:00"
     }
   }

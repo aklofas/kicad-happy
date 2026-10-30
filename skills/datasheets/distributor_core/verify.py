@@ -46,23 +46,42 @@ def same_part(requested: str, hit: str, *, allow_family: bool = False) -> bool:
         return False
     if a == b:
         return True
-    return allow_family and len(a) >= 4 and b.startswith(a)
+    if not allow_family:
+        return False
+    # The family name keeps its tail: G4 in STM32G4 is part of the name, not a finish code.
+    name = _MPN_PUNCT_RE.sub("", (requested or "").upper())
+    return len(name) >= 4 and _MPN_PUNCT_RE.sub("", hit.upper()).startswith(name)
+
+
+def pick_requested(results, requested: str, mpn_of, *, allow_family: bool = False):
+    """The first search result that is the requested part, else None: an exact or
+    ordering-suffix match first, then (with ``allow_family``) a family member."""
+    for family in (False, True) if allow_family else (False,):
+        for r in results:
+            if same_part(requested, mpn_of(r), allow_family=family):
+                return r
+    return None
 
 
 def other_part(requested: str, hit_mpn: str, hit_pns=(), *, by_pn: bool = False,
-               allow_family: bool = False) -> str:
+               allow_family: bool = False, part_mpn: str = "") -> str:
     """The hit's identifier when a search hit is not the requested part, else ``""``.
 
     With ``by_pn`` the request is the distributor's own part number: the hit is another part
     when it carries part numbers and none equals the request (case aside). A hit that carries
-    none is taken as the distributor's answer. Otherwise the request is an MPN, compared with
-    ``same_part``.
+    none is checked against the part's own MPN (``part_mpn``) when both have one, and is
+    otherwise taken as the distributor's answer. Without ``by_pn`` the request is an MPN,
+    compared with ``same_part``.
     """
     if by_pn:
         pns = [p for p in hit_pns if p]
-        if not pns or requested.strip().upper() in {p.strip().upper() for p in pns}:
-            return ""
-        return pns[0]
+        if pns:
+            if requested.strip().upper() in {p.strip().upper() for p in pns}:
+                return ""
+            return pns[0]
+        if part_mpn and hit_mpn and not same_part(part_mpn, hit_mpn, allow_family=allow_family):
+            return hit_mpn
+        return ""
     if same_part(requested, hit_mpn, allow_family=allow_family):
         return ""
     return hit_mpn or "(no MPN)"

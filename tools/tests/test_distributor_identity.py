@@ -77,6 +77,20 @@ class SamePart(unittest.TestCase):
             self.assertFalse(same_part("RC0402FR-0710RL", "RC0402FR-07100KL", allow_family=fam))
             self.assertFalse(same_part("RC0402FR-07100KL", "RC0402FR-0710RL", allow_family=fam))
 
+    def test_family_name_keeps_its_tail(self):
+        # G4 ends the family name STM32G4; it is not the TI finish code there.
+        from distributor_core.verify import same_part
+        self.assertFalse(same_part("STM32G4", "STM32G071RB", allow_family=True))
+        self.assertTrue(same_part("STM32G4", "STM32G431CBU6", allow_family=True))
+        self.assertTrue(same_part("LM358", "LM358DR", allow_family=True))
+
+    def test_other_part_checks_the_mpn_of_a_pn_hit_without_a_pn(self):
+        from distributor_core.verify import other_part
+        self.assertEqual(other_part("296-1-ND", "TPS61023DRLR", [], by_pn=True, part_mpn="LM358DR"), "TPS61023DRLR")
+        self.assertEqual(other_part("296-1-ND", "LM358DRG4", [], by_pn=True, part_mpn="LM358DR"), "")
+        self.assertEqual(other_part("296-1-ND", "REALMPN123", [], by_pn=True, part_mpn=""), "")
+        self.assertEqual(other_part("296-1-ND", "TPS61023DRLR", ["296-1-ND"], by_pn=True, part_mpn="LM358DR"), "")
+
     def test_family_needs_the_request_as_prefix(self):
         from distributor_core.verify import same_part
         self.assertTrue(same_part("LM358", "LM358DR", allow_family=True))
@@ -149,11 +163,35 @@ SEARCH = {"digikey": "search_digikey_with_token", "mouser": "search_mouser", "lc
 CODES = {"digikey": ("296-1-ND", "296-9-ND"), "mouser": ("595-LM358A", "595-LM358B"),
          "lcsc": ("C9999999", "C14663"), "element14": ("94AK6874", "11AB1001")}
 URL = "https://example.com/hit.pdf"
+OTHER_URL = "https://example.com/other.pdf"
 PDF_TEXT = "LM358DR Dual Operational Amplifier, low power, wide supply range."
 
 
-def _sync_one(p, part, hits):
-    """Run the provider's sync_one_part with the recorded hits; return (result, files written)."""
+class _Resp(io.BytesIO):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+def _body(p, results):
+    """One API response listing *results*, in the provider's own envelope."""
+    import json
+    if p == "digikey":
+        data = {"Products": results}
+    elif p == "mouser":
+        data = {"Errors": [], "SearchResults": {"Parts": results}}
+    elif p == "lcsc":
+        data = {"components": results}
+    else:
+        data = {"manufacturerPartNumberSearchReturn": {"products": results}}
+    return json.dumps(data).encode()
+
+
+def _sync_one(p, part, hits, body=None):
+    """Run the provider's sync_one_part with the recorded hits (or, with *body*, the real search
+    over that API response); return (result, files written)."""
     prov = _load_provider(p)
     from distributor_core import verify
 
@@ -161,7 +199,7 @@ def _sync_one(p, part, hits):
         return copy.deepcopy(hits.get(query))
 
     def download(url, output_path, *a, **k):
-        if url != URL:
+        if url not in (URL, OTHER_URL):
             return False
         Path(output_path).write_bytes(b"%PDF fixture")
         return True
@@ -169,7 +207,8 @@ def _sync_one(p, part, hits):
     base = {"mpn": "", "manufacturer": "", "value": "", "description": "", "datasheet": "", "references": ["U1"],
             "type": "ic", **{k: "" for k in prov.ID_KEYS}}
     with tempfile.TemporaryDirectory() as d, \
-            mock.patch.object(prov, SEARCH[p], search), \
+            (mock.patch("urllib.request.urlopen", lambda *a, **k: _Resp(body)) if body is not None
+             else mock.patch.object(prov, SEARCH[p], search)), \
             mock.patch.object(prov, "download_pdf", download), \
             mock.patch.object(prov, "try_alternative_sources", lambda *a, **k: False), \
             mock.patch.object(verify, "_extract_pdf_text", lambda *a, **k: PDF_TEXT), \
@@ -192,7 +231,8 @@ class ProviderGuard(unittest.TestCase):
             with self.subTest(provider=p):
                 r, files = _sync_one(p, {"mpn": "2N7002"}, {"2N7002": _hit(p, "2N7002V", CODES[p][1], URL)})
                 self.assertEqual(r["status"], "not_found")
-                self.assertIn("closest result '2N7002V' is a different part", r["error"])
+                self.assertIn("No matching", r["error"])
+                self.assertIn("(closest: '2N7002V', a different part)", r["error"])
                 self.assertEqual(files, [])
 
     def test_fuzzy_code_hit_is_not_found_and_nothing_is_written(self):
@@ -201,7 +241,7 @@ class ProviderGuard(unittest.TestCase):
             with self.subTest(provider=p):
                 r, files = _sync_one(p, {p: req}, {req: _hit(p, "LM358DR", other, URL)})
                 self.assertEqual(r["status"], "not_found")
-                self.assertIn(f"closest result '{other}' is a different part", r["error"])
+                self.assertIn(f"(closest: '{other}', a different part)", r["error"])
                 self.assertEqual(files, [])
 
     def test_exact_code_hit_is_stored(self):
@@ -241,6 +281,44 @@ class ProviderGuard(unittest.TestCase):
                 r, files = _sync_one(p, {"mpn": "LM358DR", p: req}, hits)
                 self.assertEqual(r["status"], "ok")
                 self.assertEqual(r["verification"], "verified")
+
+
+class Pickers(unittest.TestCase):
+    def test_listing_with_the_wrong_part_first_stores_the_requested_one(self):
+        # Neither is a case-exact match: LM358DRG4 is LM358DR with a finish code.
+        for p in PROVIDERS:
+            with self.subTest(provider=p):
+                body = _body(p, [_hit(p, "LM358DRX", CODES[p][1], OTHER_URL), _hit(p, "LM358DRG4", CODES[p][0], URL)])
+                r, files = _sync_one(p, {"mpn": "LM358DR"}, {}, body=body)
+                self.assertEqual(r["status"], "ok")
+                self.assertEqual(r["datasheet_url"], URL)
+
+    def test_value_part_prefers_a_family_member_over_another_part(self):
+        for p in PROVIDERS:
+            with self.subTest(provider=p):
+                body = _body(p, [_hit(p, "TPS62130RGTR", CODES[p][1], OTHER_URL),
+                                 _hit(p, "TPS61023DRLR", CODES[p][0], URL)])
+                r, files = _sync_one(p, {"mpn": "TPS61023", "mpn_source": "value"}, {}, body=body)
+                self.assertEqual(r["status"], "ok")
+                self.assertEqual(r["datasheet_url"], URL)
+
+    def test_pn_hit_without_a_pn_field_must_carry_the_parts_mpn(self):
+        for p in ("digikey", "lcsc"):
+            req, _ = CODES[p]
+            with self.subTest(provider=p):
+                wrong = _hit(p, "TPS61023DRLR", "", OTHER_URL)
+                hits = {req: wrong, "LM358DR": _hit(p, "LM358DR", "", URL)}
+                r, files = _sync_one(p, {"mpn": "LM358DR", p: req}, hits)
+                self.assertEqual(r["status"], "ok")
+                self.assertEqual(r["datasheet_url"], URL)
+
+    def test_digikey_pn_query_prefers_the_product_with_that_number(self):
+        prov = _load_provider("digikey")
+        body = _body("digikey", [_hit("digikey", "LM358DR", "296-9-ND", OTHER_URL),
+                                 _hit("digikey", "LM358DR", "296-1-ND", URL)])
+        with mock.patch("urllib.request.urlopen", lambda *a, **k: _Resp(body)):
+            hit = prov.search_digikey_with_token("296-1-ND", "TOKEN", "CID")
+        self.assertEqual(hit["ProductVariations"][0]["DigiKeyProductNumber"], "296-1-ND")
 
 
 class DigiKeyPicker(unittest.TestCase):

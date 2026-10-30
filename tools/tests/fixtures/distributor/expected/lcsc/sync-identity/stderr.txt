@@ -7,7 +7,7 @@ Found 5 unique parts with identifiers (0 skipped without an MPN or LCSC part num
 [2/5] TPS61023
   Searching LCSC for 'TPS61023'...
   Trying alternative sources...
-  NOT_FOUND: No LCSC results for 'TPS61023'; closest result 'TPS61023DRLR' is a different part
+  NOT_FOUND: No matching LCSC result for 'TPS61023' (closest: 'TPS61023DRLR', a different part)
 [3/5] LM358
   Searching LCSC for 'LM358'...
   Downloading from LCSC CDN...
@@ -15,10 +15,10 @@ Found 5 unique parts with identifiers (0 skipped without an MPN or LCSC part num
 [4/5] 2N7002
   Searching LCSC for '2N7002'...
   Trying alternative sources...
-  NOT_FOUND: No LCSC results for '2N7002'; closest result '2N7002V' is a different part
+  NOT_FOUND: No matching LCSC result for '2N7002' (closest: '2N7002V', a different part)
 [5/5] C9999999
   Searching LCSC for 'C9999999'...
-  NOT_FOUND: No LCSC results for 'C9999999'; closest result 'C14663' is a different part
+  NOT_FOUND: No matching LCSC result for 'C9999999' (closest: 'C14663', a different part)
 
 Datasheet sync complete:
   Downloaded: 2
@@ -26,8 +26,8 @@ Datasheet sync complete:
     LM358
   Already present: 0
   Failed: 3
-    TPS61023 — No LCSC results for 'TPS61023'; closest result 'TPS61023DRLR' is a different part
-    2N7002 — No LCSC results for '2N7002'; closest result '2N7002V' is a different part
-    C9999999 — No LCSC results for 'C9999999'; closest result 'C14663' is a different part
+    TPS61023 — No matching LCSC result for 'TPS61023' (closest: 'TPS61023DRLR', a different part)
+    2N7002 — No matching LCSC result for '2N7002' (closest: '2N7002V', a different part)
+    C9999999 — No matching LCSC result for 'C9999999' (closest: 'C14663', a different part)
   Skipped (no MPN or LCSC part number): 0
   Output: <WORK>/datasheets/
