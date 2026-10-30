@@ -26,7 +26,8 @@ NAME = "element14"
 DEFAULT_DELAY = 0.5
 ID_KEYS = ("element14", "digikey", "mouser", "lcsc")
 KEY_PRIORITY = ("element14", "digikey", "mouser", "lcsc")
-SKIPPED_COUNTS_IDS = ID_KEYS
+SEARCH_KEY = "element14"  # the one distributor-specific number this provider can search with
+SKIPPED_COUNTS_IDS = (SEARCH_KEY,)
 RENAME_PRESENT = False
 FAILED_DETAIL_WITH_URL = False
 # Documentary today: the normalize_url/download_pdf wrappers hard-code the flag; a later version may read it.

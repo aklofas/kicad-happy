@@ -19,7 +19,8 @@ NAME = "digikey"
 DEFAULT_DELAY = 1.0
 ID_KEYS = ("digikey", "mouser", "lcsc")
 KEY_PRIORITY = ("digikey", "mouser", "lcsc")
-SKIPPED_COUNTS_IDS = ID_KEYS
+SEARCH_KEY = "digikey"  # the one distributor-specific number this provider can search with
+SKIPPED_COUNTS_IDS = (SEARCH_KEY,)
 RENAME_PRESENT = True
 FAILED_DETAIL_WITH_URL = True
 # Documentary today: the normalize_url/download_pdf wrappers hard-code the flag; a later version may read it.

@@ -10,7 +10,7 @@ LABELS = {"found": "Found {n} unique parts with part numbers ({k} skipped withou
 
 
 def fake_provider(**over):
-    base = dict(NAME="fake", DEFAULT_DELAY=0.0, ID_KEYS=("digikey",), KEY_PRIORITY=("digikey",), SKIPPED_COUNTS_IDS=("digikey",),
+    base = dict(NAME="fake", DEFAULT_DELAY=0.0, ID_KEYS=("digikey",), KEY_PRIORITY=("digikey",), SKIPPED_COUNTS_IDS=("digikey",), SEARCH_KEY="digikey",
                 RENAME_PRESENT=False, FAILED_DETAIL_WITH_URL=False, NORMALIZE_REDIRECTS=False, LABELS=LABELS,
                 preflight=lambda **kw: {}, authenticate=lambda: {"ctx": "C"}, report_tail=lambda *a: None,
                 sync_one_part=lambda part, out_dir, index, delay, ctx: {"status": "not_found", "error": f"ctx={ctx}", "manufacturer": "", "description": "", "value": part["value"], "references": part["references"], "last_attempt": "t"})
@@ -94,9 +94,48 @@ class Driver(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             err = io.StringIO()
             with redirect_stderr(err), redirect_stdout(io.StringIO()):
-                r = sync_datasheets(fake_provider(SKIPPED_COUNTS_IDS=()), input_path=self._bom(d), output_dir=str(Path(d) / "out"), dry_run=True, as_json=False)
-            self.assertEqual(r["skipped_no_identifier"], 2)   # both id-only parts count under the Mouser rule
-            self.assertIn("Found 2 unique parts with part numbers (2 skipped without any identifier)", err.getvalue())
+                r = sync_datasheets(fake_provider(SKIPPED_COUNTS_IDS=("element14",), SEARCH_KEY="element14", ID_KEYS=("digikey", "element14")),
+                                    input_path=self._bom(d), output_dir=str(Path(d) / "out"), dry_run=True, as_json=False)
+            self.assertEqual(r["skipped_no_identifier"], 1)   # the DigiKey-only part cannot be searched here
+            self.assertIn("Found 2 unique parts with part numbers (1 skipped without any identifier)", err.getvalue())
+
+    def _searched(self, bom_entries, **over):
+        from distributor_core.sync import sync_datasheets
+        seen = []
+
+        def one(part, out_dir, index, delay, ctx):
+            seen.append(part["_key"])
+            return {"status": "not_found", "error": "x", "manufacturer": "", "description": "",
+                    "value": part["value"], "references": part["references"], "last_attempt": "t"}
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "bom.json"
+            p.write_text(json.dumps({"bom": bom_entries}), encoding="utf-8")
+            err = io.StringIO()
+            with redirect_stderr(err), redirect_stdout(io.StringIO()):
+                sync_datasheets(fake_provider(sync_one_part=one, **over), input_path=str(p), output_dir=str(Path(d) / "out"))
+            mf = Path(d) / "out" / "manifest.json"
+            m = json.loads(mf.read_text(encoding="utf-8")) if mf.exists() else {}
+        return seen, err.getvalue(), m
+
+    def test_part_known_only_by_another_distributor_is_not_searched(self):
+        ids = ("digikey", "mouser", "lcsc", "element14")
+        entries = [{"mpn": "", "lcsc": "C14663", "references": ["U1"], "value": "", "type": "ic"}]
+        for key in ids:
+            seen, out, m = self._searched(entries, ID_KEYS=ids, KEY_PRIORITY=(key,), SKIPPED_COUNTS_IDS=(key,), SEARCH_KEY=key)
+            if key == "lcsc":
+                self.assertEqual(seen, ["C14663"])
+            else:
+                self.assertEqual(seen, [], key)
+                self.assertIn("(1 skipped without any identifier)", out, key)
+                self.assertNotIn("", m.get("parts", {}), key)
+
+    def test_part_with_an_mpn_is_searched_by_every_provider(self):
+        ids = ("digikey", "mouser", "lcsc", "element14")
+        entries = [{"mpn": "LM358DR", "lcsc": "C14663", "references": ["U1"], "value": "", "type": "ic"}]
+        for key in ids:
+            seen, out, _ = self._searched(entries, ID_KEYS=ids, KEY_PRIORITY=(key,), SKIPPED_COUNTS_IDS=(key,), SEARCH_KEY=key)
+            self.assertEqual(seen, ["LM358DR"], key)
+            self.assertIn("(0 skipped without any identifier)", out, key)
 
 
 if __name__ == "__main__":
