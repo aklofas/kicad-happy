@@ -12,6 +12,7 @@ SPECTRUM_SCHEMA = "harmonic-lines/1"
 PROFILE_SCHEMA = "emc-limit-profile/1"
 RESULT_SCHEMA = "harmonic-limit-screen/1"
 DETECTORS = ("peak", "quasi_peak", "average")
+MARGIN_DECIMALS = 6
 CLAIM_BOUNDARY = "This comparison is not a compliance determination."
 
 
@@ -40,7 +41,10 @@ def _text(value, path):
 def _number(value, path):
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValidationError(f"{path} must be a finite number")
-    number = float(value)
+    try:
+        number = float(value)
+    except OverflowError:
+        raise ValidationError(f"{path} must be a finite number") from None
     if not math.isfinite(number):
         raise ValidationError(f"{path} must be a finite number")
     return number
@@ -91,7 +95,7 @@ def validate_spectrum(data: object) -> dict:
         "points": normalized_points,
     }
     if "source" in root:
-        normalized["source"] = root["source"]
+        normalized["source"] = _mapping(root["source"], "spectrum.source")
     return normalized
 
 
@@ -105,18 +109,16 @@ def validate_limit_profile(data: object) -> dict:
 
     profile_id = _text(root.get("profile_id"), "profile.profile_id")
     raw_source = _mapping(root.get("source"), "profile.source")
-    source = {
-        "kind": _text(raw_source.get("kind"), "profile.source.kind"),
-        "citation": _text(
-            raw_source.get("citation"), "profile.source.citation"
-        ),
-    }
+    _text(raw_source.get("kind"), "profile.source.kind")
+    _text(raw_source.get("citation"), "profile.source.citation")
+
+    raw_bands = _list(root.get("bands"), "profile.bands")
+    if not raw_bands:
+        raise ValidationError("profile.bands must contain at least one band")
 
     normalized_bands = []
     band_names = set()
-    for index, raw_band in enumerate(
-        _list(root.get("bands"), "profile.bands")
-    ):
+    for index, raw_band in enumerate(raw_bands):
         band = _mapping(raw_band, f"profile.bands[{index}]")
         name = _text(band.get("name"), f"profile.bands[{index}].name")
         if name in band_names:
@@ -171,7 +173,7 @@ def validate_limit_profile(data: object) -> dict:
     return {
         "schema_version": PROFILE_SCHEMA,
         "profile_id": profile_id,
-        "source": source,
+        "source": dict(raw_source),
         "bands": normalized_bands,
     }
 
@@ -194,7 +196,7 @@ def screen_harmonics(
         )
 
     results = []
-    for band in profile["bands"]:
+    for index, band in enumerate(profile["bands"]):
         in_band = [
             point
             for point in spectrum["points"]
@@ -216,7 +218,12 @@ def screen_harmonics(
             margin = None
             status = "not_assessed"
         else:
-            margin = limit - worst["level_dbuv"]
+            # Adding 0.0 turns a rounded -0.0 into 0.0 for clean output.
+            margin = round(limit - worst["level_dbuv"], MARGIN_DECIMALS) + 0.0
+            if not math.isfinite(margin):
+                raise ValidationError(
+                    f"bands[{index}].margin_db is not a finite number"
+                )
             if margin < 0:
                 status = "above_limit_screen"
             elif margin < design_margin:
@@ -242,6 +249,7 @@ def screen_harmonics(
         "result_class": "screening_only",
         "detector": detector,
         "design_margin_db": design_margin,
+        "spectrum_source": spectrum.get("source"),
         "profile": {
             "profile_id": profile["profile_id"],
             "source": profile["source"],
@@ -251,12 +259,29 @@ def screen_harmonics(
     }
 
 
+def _reject_duplicate_keys(pairs):
+    parsed = {}
+    for key, value in pairs:
+        if key in parsed:
+            raise ValidationError(f"duplicate key {key!r}")
+        parsed[key] = value
+    return parsed
+
+
 def _load_json(path: Path):
     try:
-        with path.open("r", encoding="utf-8") as stream:
-            return json.load(stream)
-    except json.JSONDecodeError as exc:
+        with path.open("r", encoding="utf-8-sig") as stream:
+            return json.load(stream, object_pairs_hook=_reject_duplicate_keys)
+    except ValidationError as exc:
+        raise ValidationError(f"{path}: {exc}") from exc
+    except UnicodeDecodeError as exc:
+        raise ValidationError(
+            f"{path} is not valid UTF-8 text: {exc}"
+        ) from exc
+    except ValueError as exc:
         raise ValidationError(f"{path} is not valid JSON: {exc}") from exc
+    except RecursionError as exc:
+        raise ValidationError(f"{path} is nested too deeply") from exc
     except OSError as exc:
         raise ValidationError(f"could not read {path}: {exc}") from exc
 
@@ -276,13 +301,18 @@ def _nonnegative_finite(value: str) -> float:
 
 
 def _write_json(payload: dict, output: Path | None):
+    try:
+        text = json.dumps(payload, indent=2, allow_nan=False) + "\n"
+    except (ValueError, RecursionError) as exc:
+        raise ValidationError(f"result is not valid JSON: {exc}") from exc
     if output is None:
-        json.dump(payload, sys.stdout, indent=2)
-        sys.stdout.write("\n")
+        sys.stdout.write(text)
         return
-    with output.open("w", encoding="utf-8") as stream:
-        json.dump(payload, stream, indent=2)
-        stream.write("\n")
+    try:
+        with output.open("w", encoding="utf-8") as stream:
+            stream.write(text)
+    except OSError as exc:
+        raise ValidationError(f"could not write {output}: {exc}") from exc
 
 
 def _build_parser():
@@ -324,6 +354,7 @@ def _build_parser():
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the command-line tool and return a process exit code."""
     args = _build_parser().parse_args(argv)
     try:
         spectrum = validate_spectrum(_load_json(args.spectrum))

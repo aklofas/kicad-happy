@@ -78,9 +78,7 @@ class TestSpectrumValidation(unittest.TestCase):
     """Reject ambiguous spectrum data and normalize point order."""
 
     def _validate(self, data):
-        validator = getattr(harmonic, "validate_spectrum", None)
-        self.assertIsNotNone(validator, "validate_spectrum is required")
-        return validator(data)
+        return harmonic.validate_spectrum(data)
 
     def test_points_are_sorted_by_frequency(self):
         normalized = self._validate(copy.deepcopy(VALID_SPECTRUM))
@@ -143,19 +141,48 @@ class TestSpectrumValidation(unittest.TestCase):
                 ):
                     self._validate(data)
 
+    def test_integer_too_large_for_float_is_a_validation_error(self):
+        data = copy.deepcopy(VALID_SPECTRUM)
+        data["points"][0]["frequency_hz"] = 10**400
+        with self.assertRaisesRegex(
+            harmonic.ValidationError, "frequency_hz"
+        ):
+            self._validate(data)
+
+    def test_source_must_be_an_object_when_present(self):
+        data = copy.deepcopy(VALID_SPECTRUM)
+        data["source"] = "simulation"
+        with self.assertRaisesRegex(
+            harmonic.ValidationError, "spectrum.source"
+        ):
+            self._validate(data)
+
 
 class TestLimitProfileValidation(unittest.TestCase):
     """Require provenance and unambiguous detector bands."""
 
     def _validate(self, data):
-        validator = getattr(harmonic, "validate_limit_profile", None)
-        self.assertIsNotNone(validator, "validate_limit_profile is required")
-        return validator(data)
+        return harmonic.validate_limit_profile(data)
 
     def test_valid_profile_preserves_required_provenance(self):
         normalized = self._validate(copy.deepcopy(VALID_PROFILE))
         self.assertEqual(normalized["profile_id"], "fictional-user-profile")
         self.assertEqual(normalized["source"], VALID_PROFILE["source"])
+
+    def test_extra_source_fields_are_preserved(self):
+        data = copy.deepcopy(VALID_PROFILE)
+        data["source"]["url"] = "https://example.invalid/profile"
+        data["source"]["edition"] = "fictional-1"
+        normalized = self._validate(data)
+        self.assertEqual(normalized["source"], data["source"])
+
+    def test_profile_requires_at_least_one_band(self):
+        data = copy.deepcopy(VALID_PROFILE)
+        data["bands"] = []
+        with self.assertRaisesRegex(
+            harmonic.ValidationError, "profile.bands must contain"
+        ):
+            self._validate(data)
 
     def test_required_profile_strings_are_enforced(self):
         mutations = (
@@ -235,9 +262,7 @@ class TestScreenHarmonics(unittest.TestCase):
         detector="peak",
         margin=0.0,
     ):
-        screen = getattr(harmonic, "screen_harmonics", None)
-        self.assertIsNotNone(screen, "screen_harmonics is required")
-        return screen(
+        return harmonic.screen_harmonics(
             harmonic.validate_spectrum(copy.deepcopy(spectrum)),
             harmonic.validate_limit_profile(copy.deepcopy(profile)),
             detector,
@@ -376,6 +401,43 @@ class TestScreenHarmonics(unittest.TestCase):
             ["near_limit", "above_limit_screen"],
         )
 
+    def _one_band(self, level, limit, margin=0.0):
+        spectrum = copy.deepcopy(VALID_SPECTRUM)
+        spectrum["points"] = [{"frequency_hz": 100, "level_dbuv": level}]
+        profile = copy.deepcopy(VALID_PROFILE)
+        profile["bands"] = [
+            {
+                "name": "single",
+                "start_hz": 100,
+                "stop_hz": 100,
+                "limits_dbuv": {"peak": limit},
+            }
+        ]
+        return self._screen(spectrum, profile, margin=margin)["bands"][0]
+
+    def test_decimal_design_margin_threshold_is_not_float_noise(self):
+        cases = (
+            (30.3, 33.3, 3.0, 3.0, "below_limit_screen"),
+            (30.4, 33.3, 3.0, 2.9, "near_limit"),
+            (40.1, 40.3, 0.2, 0.2, "below_limit_screen"),
+            (40.2, 40.3, 0.2, 0.1, "near_limit"),
+        )
+        for level, limit, design, expected, status in cases:
+            with self.subTest(level=level, limit=limit):
+                band = self._one_band(level, limit, design)
+                self.assertEqual(band["margin_db"], expected)
+                self.assertEqual(band["status"], status)
+
+    def test_margin_that_rounds_to_zero_is_not_negative_zero(self):
+        margin = self._one_band(5e-324, 0.0)["margin_db"]
+        self.assertEqual(math.copysign(1.0, margin), 1.0)
+
+    def test_margin_that_overflows_to_infinity_is_rejected(self):
+        with self.assertRaisesRegex(
+            harmonic.ValidationError, r"bands\[0\]\.margin_db"
+        ):
+            self._one_band(-1e308, 1e308)
+
     def test_each_supported_detector_uses_its_own_limit(self):
         results = {
             detector: self._screen(detector=detector)["bands"][0][
@@ -445,6 +507,18 @@ class TestScreenHarmonics(unittest.TestCase):
             },
         )
 
+    def test_provenance_of_both_inputs_is_echoed(self):
+        result = self._screen()
+        self.assertEqual(result["spectrum_source"], VALID_SPECTRUM["source"])
+        self.assertEqual(
+            result["profile"]["source"], VALID_PROFILE["source"]
+        )
+
+    def test_missing_spectrum_source_is_reported_as_null(self):
+        spectrum = copy.deepcopy(VALID_SPECTRUM)
+        del spectrum["source"]
+        self.assertIsNone(self._screen(spectrum)["spectrum_source"])
+
     def test_output_carries_screening_boundary_and_never_uses_pass_fail(self):
         result = self._screen()
         self.assertEqual(
@@ -465,16 +539,16 @@ class TestScreenHarmonics(unittest.TestCase):
         profile = harmonic.validate_limit_profile(
             copy.deepcopy(VALID_PROFILE)
         )
-        screen = getattr(harmonic, "screen_harmonics", None)
-        self.assertIsNotNone(screen, "screen_harmonics is required")
         with self.assertRaisesRegex(harmonic.ValidationError, "detector"):
-            screen(spectrum, profile, "rms")
+            harmonic.screen_harmonics(spectrum, profile, "rms")
         for value in (-1, math.nan, math.inf):
             with self.subTest(value=value):
                 with self.assertRaisesRegex(
                     harmonic.ValidationError, "design_margin_db"
                 ):
-                    screen(spectrum, profile, "peak", value)
+                    harmonic.screen_harmonics(
+                        spectrum, profile, "peak", value
+                    )
 
 
 class TestHarmonicLimitCli(unittest.TestCase):
@@ -567,6 +641,102 @@ class TestHarmonicLimitCli(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertEqual(stdout, "")
         self.assertIn(str(self.spectrum_path), stderr)
+
+    def _assert_clean_failure(self, expected, *paths):
+        code, stdout, stderr = self._run()
+        self.assertEqual(code, 1, stderr)
+        self.assertEqual(stdout, "")
+        self.assertTrue(stderr.startswith("Error: "), stderr)
+        self.assertNotIn("Traceback", stderr)
+        self.assertIn(expected, stderr)
+        for path in paths:
+            self.assertIn(str(path), stderr)
+
+    def test_duplicate_json_keys_are_rejected_in_both_inputs(self):
+        self.spectrum_path.write_text(
+            '{"schema_version": "harmonic-lines/1",'
+            ' "level_unit": "dbuv_peak", "level_unit": "dbuv_rms",'
+            ' "points": []}',
+            encoding="utf-8",
+        )
+        self._assert_clean_failure(
+            "duplicate key 'level_unit'", self.spectrum_path
+        )
+
+        self.spectrum_path.write_text(
+            json.dumps(VALID_SPECTRUM), encoding="utf-8"
+        )
+        self.profile_path.write_text(
+            '{"schema_version": "emc-limit-profile/1",'
+            ' "profile_id": "a", "profile_id": "b"}',
+            encoding="utf-8",
+        )
+        self._assert_clean_failure(
+            "duplicate key 'profile_id'", self.profile_path
+        )
+
+    def test_nested_duplicate_json_keys_are_rejected(self):
+        self.profile_path.write_text(
+            '{"source": {"kind": "a", "kind": "b"}}', encoding="utf-8"
+        )
+        self._assert_clean_failure("duplicate key 'kind'")
+
+    def test_undecodable_input_is_a_clean_error(self):
+        payloads = {
+            "invalid utf-8": b"\xff",
+            "utf-16": json.dumps(VALID_SPECTRUM).encode("utf-16"),
+        }
+        for name, payload in payloads.items():
+            with self.subTest(name=name):
+                self.spectrum_path.write_bytes(payload)
+                self._assert_clean_failure("UTF-8", self.spectrum_path)
+
+    def test_utf8_byte_order_mark_is_accepted(self):
+        self.spectrum_path.write_bytes(
+            b"\xef\xbb\xbf" + json.dumps(VALID_SPECTRUM).encode("utf-8")
+        )
+        code, stdout, stderr = self._run()
+        self.assertEqual((code, stderr), (0, ""))
+        self.assertEqual(
+            json.loads(stdout)["schema_version"], "harmonic-limit-screen/1"
+        )
+
+    def test_deeply_nested_json_is_a_clean_error(self):
+        self.spectrum_path.write_bytes(
+            b'{"extra":' + b"[" * 20000 + b"0" + b"]" * 20000 + b"}"
+        )
+        self._assert_clean_failure("nested", self.spectrum_path)
+
+    def test_integer_too_large_for_float_is_a_clean_error(self):
+        data = copy.deepcopy(VALID_SPECTRUM)
+        data["points"][0]["frequency_hz"] = 10**400
+        self.spectrum_path.write_text(json.dumps(data), encoding="utf-8")
+        self._assert_clean_failure("frequency_hz")
+
+    def test_nonfinite_values_never_reach_the_output(self):
+        spectrum = copy.deepcopy(VALID_SPECTRUM)
+        spectrum["source"]["nonfinite"] = math.nan
+        self.spectrum_path.write_text(
+            json.dumps(spectrum, allow_nan=True), encoding="utf-8"
+        )
+        self._assert_clean_failure("JSON")
+
+        spectrum = copy.deepcopy(VALID_SPECTRUM)
+        spectrum["points"][1]["level_dbuv"] = -1e308
+        profile = copy.deepcopy(VALID_PROFILE)
+        profile["bands"][0]["limits_dbuv"]["peak"] = 1e308
+        self.spectrum_path.write_text(json.dumps(spectrum), encoding="utf-8")
+        self.profile_path.write_text(json.dumps(profile), encoding="utf-8")
+        self._assert_clean_failure("margin_db")
+
+    def test_unwritable_output_names_the_path(self):
+        output = self.root / "missing-directory" / "screen.json"
+        code, stdout, stderr = self._run(("--output", str(output)))
+
+        self.assertEqual(code, 1)
+        self.assertEqual(stdout, "")
+        self.assertIn(f"could not write {output}:", stderr)
+        self.assertNotIn("Traceback", stderr)
 
 
 if __name__ == "__main__":
