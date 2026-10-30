@@ -179,6 +179,28 @@ class TestEnrichFromWmsc(unittest.TestCase):
         search_lcsc.enrich_from_wmsc(item)
         mock_direct.assert_not_called()
 
+    @patch("search_lcsc.search_lcsc_direct")
+    def test_enrich_skips_answer_for_another_code(self, mock_direct):
+        other = json.loads(json.dumps(WMSC_DIRECT))
+        other["extra"]["number"] = "C999"
+        other["lcsc"] = "999"
+        mock_direct.return_value = other
+        item = search_lcsc.normalize_component(dict(SEARCH_HIT))
+        before = dict(item)
+        search_lcsc.enrich_from_wmsc(item)
+        self.assertEqual(item, before)
+
+    @patch("search_lcsc.search_lcsc_direct")
+    def test_enrich_uses_answer_without_code(self, mock_direct):
+        bare = json.loads(json.dumps(WMSC_DIRECT))
+        bare["extra"]["number"] = ""
+        bare["lcsc"] = ""
+        mock_direct.return_value = bare
+        item = search_lcsc.normalize_component(dict(SEARCH_HIT))
+        search_lcsc.enrich_from_wmsc(item)
+        self.assertEqual(item["lcsc_code"], "C318884")
+        self.assertEqual(item["manufacturer"], "XKB Connection")
+
     @patch("search_lcsc.search_lcsc_direct", return_value=None)
     def test_enrich_direct_failure_leaves_item(self, mock_direct):
         item = search_lcsc.normalize_component(dict(SEARCH_HIT))
@@ -358,6 +380,32 @@ class TestMainCli(unittest.TestCase):
     def test_cli_jlcsearch_down_direct_not_found_exits_1(self, mock_search, mock_direct):
         code, _ = self._run(["C318884", "--json"])
         self.assertEqual(code, 1)
+
+    @patch("search_lcsc.search_lcsc_direct")
+    @patch("search_lcsc.search_jlcsearch")
+    def test_cli_direct_answer_for_another_code_is_not_found(self, mock_search, mock_direct):
+        mock_search.return_value = []
+        other = json.loads(json.dumps(WMSC_DIRECT))
+        other["extra"]["number"] = "C999"
+        other["lcsc"] = "999"
+        mock_direct.return_value = other
+        code, _ = self._run(["C318884", "--json"])
+        self.assertEqual(code, 1)
+
+    @patch("search_lcsc.search_lcsc_direct")
+    @patch("search_lcsc.search_jlcsearch")
+    def test_cli_direct_answer_without_code_shows_requested_code(self, mock_search, mock_direct):
+        mock_search.return_value = []
+        bare = json.loads(json.dumps(WMSC_DIRECT))
+        bare["extra"]["number"] = ""
+        bare["lcsc"] = ""
+        mock_direct.return_value = bare
+        code, output = self._run(["C318884", "--json"])
+        self.assertEqual(code, 0)
+        item = json.loads(output)["components"][0]
+        self.assertEqual(item["lcsc_code"], "C318884")
+        self.assertEqual(item["lcsc_id"], 318884)
+        self.assertEqual(item["manufacturer"], "XKB Connection")
 
     @patch("search_lcsc.search_lcsc_direct")
     @patch("search_lcsc.search_jlcsearch")

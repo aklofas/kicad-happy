@@ -160,6 +160,26 @@ def normalize_component(c: dict) -> dict:
     }
 
 
+def lookup_direct(code: str) -> dict | None:
+    """The wmsc detail for ``code``, or None when LCSC answered for another part.
+
+    A response without a product code is taken as the answer to the request and
+    carries the requested code.
+    """
+    direct = search_lcsc_direct(code)
+    if not direct:
+        return None
+    answered = _get_lcsc_code(direct).upper()
+    if answered and answered != code.upper():
+        return None
+    if not answered:
+        extra = _parse_extra(direct)
+        extra["number"] = code.upper()
+        direct["extra"] = extra
+        direct["lcsc"] = code[1:]
+    return direct
+
+
 def enrich_from_wmsc(item: dict) -> dict:
     """Fill blanks in a normalized item from LCSC's direct product-detail API.
 
@@ -171,7 +191,7 @@ def enrich_from_wmsc(item: dict) -> dict:
     code = item.get("lcsc_code", "")
     if not _LCSC_CODE_RE.match(code):
         return item
-    direct = search_lcsc_direct(code)
+    direct = lookup_direct(code)
     if not direct:
         return item
     detail = normalize_component(direct)
@@ -294,7 +314,7 @@ def main():
     # Fallback to wmsc direct if jlcsearch returned nothing for Cxxxxx code
     if not raw_components and is_lcsc_code:
         take_transport_failure()
-        direct = search_lcsc_direct(query)
+        direct = lookup_direct(query)
         if direct:
             raw_components = [direct]
         elif jlcsearch_error is not None and take_transport_failure():
