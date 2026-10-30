@@ -201,16 +201,41 @@ def match_findings(base_items, head_items, legacy_key=None, prefer_legacy=False)
             if k in seen:
                 shared.add(k)
             seen.add(k)
-    maps = []
+    groups = []
     for side, keys in zip(sides, keyed):
-        groups = {}
+        g = {}
         for f, k in zip(side, keys):
-            groups.setdefault(k, []).append(f)
+            g.setdefault(k, []).append(f)
+        groups.append(g)
+    numbered = [{}, {}]
+    for k in sorted(shared):
+        # Identical findings pair first, so a removed member of the group is
+        # reported as removed rather than shifting its neighbours' numbers.
+        pools = [sorted(g.get(k, []), key=_canonical) for g in groups]
+        canon = [[_canonical(f) for f in pool] for pool in pools]
+        n = 0
+        head_used = [False] * len(pools[1])
+        base_left = []
+        for bf, bc in zip(pools[0], canon[0]):
+            for j, hc in enumerate(canon[1]):
+                if not head_used[j] and hc == bc:
+                    head_used[j] = True
+                    n += 1
+                    numbered[0].setdefault(k, []).append((f"{k}#{n}", bf))
+                    numbered[1].setdefault(k, []).append((f"{k}#{n}", pools[1][j]))
+                    break
+            else:
+                base_left.append(bf)
+        head_left = [f for f, used in zip(pools[1], head_used) if not used]
+        for side, left in ((0, base_left), (1, head_left)):
+            for m, f in enumerate(left, n + 1):
+                numbered[side].setdefault(k, []).append((f"{k}#{m}", f))
+    maps = []
+    for side in (0, 1):
         out = {}
-        for k, group in groups.items():
+        for k, group in groups[side].items():
             if k in shared:
-                for n, f in enumerate(sorted(group, key=_canonical), 1):
-                    out[f"{k}#{n}"] = f
+                out.update(numbered[side][k])
             else:
                 out[k] = group[0]
         maps.append(out)
@@ -505,20 +530,21 @@ def diff_schematic(base, head, threshold):
                 for mod in det_diff.get("modified", []):
                     # Find changed components referenced in this detection
                     attributed = []
-                    # Check identity string for component refs
-                    identity = set(re.split(r"[^A-Za-z0-9_]+", mod.get("identity", "")))
-                    for ref in comp_changes:
-                        if ref in identity:
-                            attributed.append(ref)
-                    # Also check the items themselves if available
+                    # finding_ids carry refs lowercased; match whole tokens
+                    # without case so C1 never claims C11.
+                    named = {t.lower() for t in re.split(r"[^A-Za-z0-9_]+", mod.get("identity", ""))}
                     for item_key in ("base_item", "head_item"):
                         item = mod.get(item_key, {})
                         if isinstance(item, dict):
                             for key, val in item.items():
-                                if isinstance(val, dict) and "ref" in val:
-                                    r = val["ref"]
-                                    if r in comp_changes and r not in attributed:
-                                        attributed.append(r)
+                                if isinstance(val, dict) and isinstance(val.get("ref"), str):
+                                    named.add(val["ref"].lower())
+                            comps = item.get("components")
+                            if isinstance(comps, list):
+                                named.update(c.lower() for c in comps if isinstance(c, str))
+                    for ref in comp_changes:
+                        if ref.lower() in named:
+                            attributed.append(ref)
                     if attributed:
                         mod["attributed_to"] = [
                             {"ref": ref, **comp_changes[ref]} for ref in sorted(attributed)
@@ -584,12 +610,27 @@ def diff_schematic(base, head, threshold):
         result["connectivity"] = conn_diff
 
     # ERC warnings (list of dicts — key on type/net/message for stable identity)
+    def _pair_in_pin_order(x):
+        # A pair lists its pins in net order, which moves with the net; keep
+        # each pin_type with its pin.
+        if not isinstance(x, dict) or not isinstance(x.get("pins"), list):
+            return x
+        pins, types = x["pins"], x.get("pin_types")
+        out = dict(x)
+        if isinstance(types, list) and len(types) == len(pins):
+            pairs = sorted(zip(pins, types), key=lambda pt: json.dumps(pt, sort_keys=True))
+            out["pins"] = [p for p, _ in pairs]
+            out["pin_types"] = [t for _, t in pairs]
+        else:
+            out["pins"] = sorted(pins, key=lambda p: json.dumps(p, sort_keys=True))
+        return out
+
     def _erc_key(w):
         if isinstance(w, dict):
             net = w.get("net", "")
             if isinstance(net, str) and _UNNAMED_NET.search(net):
                 # the pins name an unnamed net; its number does not
-                pins = sorted(json.dumps(x, sort_keys=True)
+                pins = sorted(json.dumps(_pair_in_pin_order(x), sort_keys=True)
                               for x in (w.get("pins") or []) + (w.get("pairs") or []))
                 return (w.get("type", ""), "__unnamed",
                         _UNNAMED_NET.sub("__unnamed", str(w.get("message", ""))),

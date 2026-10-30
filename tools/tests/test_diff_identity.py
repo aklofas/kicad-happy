@@ -158,6 +158,51 @@ class SchematicFindingIdentity(unittest.TestCase):
         self.assertNotIn("attributed_to", mod[0])
 
 
+    def test_removed_member_of_a_shared_key_is_the_one_reported_removed(self):
+        # Two RC filters share one detection_id; the 100 Hz one goes away, the 900 Hz one stays.
+        rc = _f("detect_rc_filters", "RC-DET", ["R1", "C1"], ["N1"], "RC", "info",
+                detection_id="rc_filters:x", resistor={"ref": "R1"}, capacitor={"ref": "C1"},
+                cutoff_hz=100.0)
+        rc900 = dict(rc, cutoff_hz=900.0)
+        base, head = _doc([rc, rc900]), _doc([rc900])
+        sa = diff_engine.diff_schematic(base, head, 1.0)["signal_analysis"]["rc_filters"]
+        self.assertEqual((len(sa["added"]), len(sa["removed"]), sa["modified"]), (0, 1, []))
+        base_map, head_map = diff_engine.match_findings(base["findings"], head["findings"])
+        gone = [f["cutoff_hz"] for k, f in base_map.items() if k not in head_map]
+        self.assertEqual(gone, [100.0])
+
+    def test_erc_pair_listed_in_the_other_pin_order(self):
+        def erc(n, pins, types):
+            return {"type": "pin_to_pin", "net": f"__unnamed_{n}", "severity": "warning",
+                    "message": f"Net '__unnamed_{n}' connects conflicting pin types (1 pin(s))",
+                    "pairs": [{"pins": pins, "pin_types": types, "severity": "warning"}]}
+        base = _doc([], design_analysis={"erc_warnings": [erc(2, ["U1.1", "U2.1"], ["output", "input"])]})
+        flipped = _doc([], design_analysis={"erc_warnings": [erc(5, ["U2.1", "U1.1"], ["input", "output"])]})
+        diff = diff_engine.diff_schematic(base, flipped, 1.0)
+        self.assertNotIn("erc", diff)
+        self.assertEqual(diff_engine.classify_severity("schematic", diff), "none")
+        # the same pins with their types swapped is a different warning
+        swapped = _doc([], design_analysis={"erc_warnings": [erc(5, ["U2.1", "U1.1"], ["output", "input"])]})
+        self.assertIn("erc", diff_engine.diff_schematic(base, swapped, 1.0))
+
+    def test_value_change_is_attributed_to_the_derated_cap(self):
+        comps = lambda v: [{"reference": "C14", "value": v}]  # noqa: E731
+        base = _doc([_vd("C14", "100nF", "+12V", 12.0, "ceramic", "warning")], components=comps("100nF"))
+        head = _doc([_vd("C14", "100nF", "+12V", 12.0, "ceramic", "error")], components=comps("220nF"))
+        mod = diff_engine.diff_schematic(base, head, 1.0)["signal_analysis"]["analyze_voltage_derating"]["modified"]
+        self.assertEqual(mod[0]["identity"], "schematic:VD-001:c14")
+        self.assertEqual(mod[0]["attributed_to"],
+                         [{"ref": "C14", "base_value": "100nF", "head_value": "220nF"}])
+
+    def test_no_attribution_of_c1_to_a_c11_finding_keyed_by_id(self):
+        comps = lambda v: [{"reference": "C1", "value": v}, {"reference": "C11", "value": "1u"}]  # noqa: E731
+        base = _doc([_vd("C11", "1u", "+12V", 12.0, "ceramic", "warning")], components=comps("100n"))
+        head = _doc([_vd("C11", "1u", "+12V", 12.0, "ceramic", "error")], components=comps("220n"))
+        mod = diff_engine.diff_schematic(base, head, 1.0)["signal_analysis"]["analyze_voltage_derating"]["modified"]
+        self.assertEqual(len(mod), 1)
+        self.assertNotIn("attributed_to", mod[0])
+
+
 class FindingKey(unittest.TestCase):
     def test_finding_id_is_the_key_when_it_is_not_positional(self):
         f = _doc([_vd("C14", "100nF", "+12V", 12.0, "ceramic", "warning")])["findings"][0]
