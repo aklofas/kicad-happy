@@ -2,10 +2,14 @@
 """Unit tests for the standalone harmonic-limit screening CLI."""
 
 import copy
+from contextlib import redirect_stderr, redirect_stdout
+import io
+import json
 import math
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import unittest
 
 
@@ -471,6 +475,98 @@ class TestScreenHarmonics(unittest.TestCase):
                     harmonic.ValidationError, "design_margin_db"
                 ):
                     screen(spectrum, profile, "peak", value)
+
+
+class TestHarmonicLimitCli(unittest.TestCase):
+    """Exercise deterministic JSON I/O and actionable CLI failures."""
+
+    def setUp(self):
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tempdir.cleanup)
+        self.root = Path(self.tempdir.name)
+        self.spectrum_path = self.root / "spectrum.json"
+        self.profile_path = self.root / "limits.json"
+        self.spectrum_path.write_text(
+            json.dumps(VALID_SPECTRUM), encoding="utf-8"
+        )
+        self.profile_path.write_text(
+            json.dumps(VALID_PROFILE), encoding="utf-8"
+        )
+
+    def _run(self, extra=()):
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        arguments = [
+            "--spectrum",
+            str(self.spectrum_path),
+            "--limits",
+            str(self.profile_path),
+            "--detector",
+            "peak",
+            *extra,
+        ]
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            code = harmonic.main(arguments)
+        return code, stdout.getvalue(), stderr.getvalue()
+
+    def test_valid_input_produces_deterministic_stdout_json(self):
+        first = self._run()
+        second = self._run()
+
+        self.assertEqual(first, second)
+        self.assertEqual(first[0], 0)
+        self.assertEqual(first[2], "")
+        self.assertTrue(first[1], "successful CLI must emit JSON")
+        self.assertEqual(
+            json.loads(first[1])["result_class"], "screening_only"
+        )
+
+    def test_output_file_receives_json_and_stdout_stays_empty(self):
+        output = self.root / "screen.json"
+        code, stdout, stderr = self._run(
+            (
+                "--design-margin-db",
+                "3",
+                "--output",
+                str(output),
+            )
+        )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stdout, "")
+        self.assertEqual(stderr, "")
+        self.assertTrue(output.exists(), "successful CLI must write output")
+        output_text = output.read_text(encoding="utf-8")
+        parsed = json.loads(output_text)
+        self.assertEqual(parsed["design_margin_db"], 3.0)
+        self.assertTrue(output_text.endswith("\n"))
+
+    def test_invalid_json_returns_actionable_error(self):
+        self.spectrum_path.write_text("{invalid", encoding="utf-8")
+        code, stdout, stderr = self._run()
+
+        self.assertEqual(code, 1)
+        self.assertEqual(stdout, "")
+        self.assertIn(str(self.spectrum_path), stderr)
+        self.assertIn("valid JSON", stderr)
+
+    def test_validation_error_returns_nonzero_without_output(self):
+        data = copy.deepcopy(VALID_SPECTRUM)
+        data["level_unit"] = "dbuv_peak"
+        self.spectrum_path.write_text(json.dumps(data), encoding="utf-8")
+        code, stdout, stderr = self._run()
+
+        self.assertEqual(code, 1)
+        self.assertEqual(stdout, "")
+        self.assertIn("level_unit", stderr)
+
+    def test_missing_input_returns_actionable_error(self):
+        self.spectrum_path.unlink()
+        code, stdout, stderr = self._run()
+
+        self.assertEqual(code, 1)
+        self.assertEqual(stdout, "")
+        self.assertIn(str(self.spectrum_path), stderr)
 
 
 if __name__ == "__main__":

@@ -2,8 +2,10 @@
 """Compare RMS dBµV spectral lines with a user-supplied limit profile."""
 
 import argparse
+import json
 import math
 from pathlib import Path
+import sys
 
 
 SPECTRUM_SCHEMA = "harmonic-lines/1"
@@ -249,6 +251,40 @@ def screen_harmonics(
     }
 
 
+def _load_json(path: Path):
+    try:
+        with path.open("r", encoding="utf-8") as stream:
+            return json.load(stream)
+    except json.JSONDecodeError as exc:
+        raise ValidationError(f"{path} is not valid JSON: {exc}") from exc
+    except OSError as exc:
+        raise ValidationError(f"could not read {path}: {exc}") from exc
+
+
+def _nonnegative_finite(value: str) -> float:
+    try:
+        number = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            "must be a finite number greater than or equal to zero"
+        ) from exc
+    if not math.isfinite(number) or number < 0:
+        raise argparse.ArgumentTypeError(
+            "must be a finite number greater than or equal to zero"
+        )
+    return number
+
+
+def _write_json(payload: dict, output: Path | None):
+    if output is None:
+        json.dump(payload, sys.stdout, indent=2)
+        sys.stdout.write("\n")
+        return
+    with output.open("w", encoding="utf-8") as stream:
+        json.dump(payload, stream, indent=2)
+        stream.write("\n")
+
+
 def _build_parser():
     parser = argparse.ArgumentParser(
         description=(
@@ -275,6 +311,7 @@ def _build_parser():
     )
     parser.add_argument(
         "--design-margin-db",
+        type=_nonnegative_finite,
         default=0.0,
         help="Nonnegative engineering margin in dB (default: 0)",
     )
@@ -287,7 +324,20 @@ def _build_parser():
 
 
 def main(argv: list[str] | None = None) -> int:
-    _build_parser().parse_args(argv)
+    args = _build_parser().parse_args(argv)
+    try:
+        spectrum = validate_spectrum(_load_json(args.spectrum))
+        profile = validate_limit_profile(_load_json(args.limits))
+        result = screen_harmonics(
+            spectrum,
+            profile,
+            detector=args.detector,
+            design_margin_db=args.design_margin_db,
+        )
+        _write_json(result, args.output)
+    except (ValidationError, OSError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
     return 0
 
 
