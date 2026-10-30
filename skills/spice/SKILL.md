@@ -91,7 +91,7 @@ python3 <skill-path>/scripts/run_external_deck.py example.cir \
   --output external-deck-result.json
 ```
 
-PSpice is explicit-only. It is not part of generated-subcircuit simulation, `SPICE_SIMULATOR`, or automatic simulator detection. The runner executes the deck in its own directory so relative includes retain their normal meaning. It does not copy libraries, generate measurements, parse waveforms, or determine whether the circuit behaves correctly.
+PSpice is explicit-only. It is not part of generated-subcircuit simulation, `SPICE_SIMULATOR`, or automatic simulator detection. For PSpice the runner launches the simulator with the deck's directory as the working directory so relative includes keep their normal meaning; other simulators run with their usual settings. `--timeout` defaults to 600 seconds and the whole simulator process tree is killed when it expires. The runner does not copy libraries, generate measurements, parse waveforms, or determine whether the circuit behaves correctly.
 
 ### Step 2b (optional): PCB parasitic-aware simulation
 
