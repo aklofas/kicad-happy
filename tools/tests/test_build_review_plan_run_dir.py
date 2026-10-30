@@ -69,12 +69,15 @@ class RunDirTest(unittest.TestCase):
         self.assertEqual(sorted(p.name for p in self.ad.iterdir()), ["review_plan.json"])
 
     def test_new_output_gets_the_umask_mode(self):
-        out = self.ad / "new_plan.json"
-        r = subprocess.run(["sh", "-c", 'umask 027 && exec "$0" "$@"', sys.executable,
-                            str(SCRIPT), "--analysis-dir", str(self.ad), "--output", str(out)],
-                           capture_output=True, text=True, encoding="utf-8", timeout=120)
-        self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(out.stat().st_mode & 0o777, 0o640)    # 0o666 & ~0o027
+        for umask, mode in (("022", 0o644), ("027", 0o640)):    # 0o666 & ~umask
+            with self.subTest(umask=umask):
+                out = self.ad / f"new_plan_{umask}.json"
+                r = subprocess.run(["sh", "-c", f'umask {umask} && exec "$0" "$@"',
+                                    sys.executable, str(SCRIPT), "--analysis-dir", str(self.ad),
+                                    "--output", str(out)],
+                                   capture_output=True, text=True, encoding="utf-8", timeout=120)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertEqual(out.stat().st_mode & 0o777, mode)
 
 
 if __name__ == "__main__":

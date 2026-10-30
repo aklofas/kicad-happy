@@ -78,24 +78,26 @@ def load_anchor_sets(analysis_dir, run_id=None):
     A physical net carries up to three identities (KH-347): schematic
     internal name, annotated display_name, PCB net name. All three are
     accepted as citations.
-    Returns (components: set[str], nets: set[str]).
+    Returns (components: set[str], nets: set[str]); raises ValueError
+    naming the file when one cannot be read as a JSON object.
     """
     run_dir = resolve_run_dir(analysis_dir, run_id)
     comps, nets = set(), set()
     sch = run_dir / "schematic.json"
     if sch.is_file():
-        data = json.loads(sch.read_text(encoding="utf-8"))
-        for c in data.get("components") or []:
+        data = _load_object(sch)
+        for c in _as_list(data.get("components")):
             if isinstance(c, dict) and c.get("reference"):
                 comps.add(str(c["reference"]).upper())
-        for name, info in (data.get("nets") or {}).items():
+        sch_nets = data.get("nets")
+        for name, info in (sch_nets.items() if isinstance(sch_nets, dict) else ()):
             nets.add(str(name).upper())
             if isinstance(info, dict) and info.get("display_name"):
                 nets.add(str(info["display_name"]).upper())
     pcb = run_dir / "pcb.json"
     if pcb.is_file():
-        data = json.loads(pcb.read_text(encoding="utf-8"))
-        for fp in data.get("footprints") or []:
+        data = _load_object(pcb)
+        for fp in _as_list(data.get("footprints")):
             if isinstance(fp, dict) and fp.get("reference"):
                 comps.add(str(fp["reference"]).upper())
         net_map = data.get("nets")
@@ -108,28 +110,26 @@ def load_anchor_sets(analysis_dir, run_id=None):
 
 
 def write_text_atomic(path, text):
-    """Write UTF-8 text through a temp file beside `path`; an existing file
-    keeps its mode, a new one gets the umask mode."""
+    """Write UTF-8 text through a temp file beside `path` and os.replace.
+    An existing file keeps its mode, a new one gets the umask mode; a
+    symlink at `path` is replaced by a regular file, never followed."""
     path = Path(path)
-    try:
-        mode = path.stat().st_mode & 0o7777
-    except OSError:
-        mode = None
+    exists = path.is_file() and not path.is_symlink()
     flags = (os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
              | getattr(os, "O_BINARY", 0))
     while True:
         tmp = path.parent / f".{path.name}.{secrets.token_hex(6)}.tmp"
         try:
             # 0o666 lets the kernel apply the umask to a new file
-            fd = os.open(tmp, flags, 0o666 if mode is None else 0o600)
+            fd = os.open(tmp, flags, 0o600 if exists else 0o666)
             break
         except FileExistsError:
             continue
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(text)
-        if mode is not None:
-            os.chmod(tmp, mode)
+        if exists:
+            shutil.copymode(path, tmp)
         os.replace(tmp, path)
     except BaseException:
         try:
@@ -137,6 +137,20 @@ def write_text_atomic(path, text):
         except OSError:
             pass
         raise
+
+
+def _load_object(path):
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        raise ValueError(f"{path}: {e}") from None
+    if not isinstance(data, dict):
+        raise ValueError(f"{path}: not a JSON object")
+    return data
+
+
+def _as_list(value):
+    return value if isinstance(value, list) else []
 
 
 def check_anchors(ev, comps, nets):
@@ -173,10 +187,12 @@ _DASH_RE = re.compile("[\u2212\u2013\u2010\u2011]")
 # One token per comparison operator or per run of letters/digits. A run
 # keeps a decimal point or comma between digits ("5.5", "1,000") and a
 # leading minus that starts a number outside a word ("-40", "(−40"; not
-# "SOT-23" or "3.3-5.5"). Unit letters such as µ and ω are letters.
+# "SOT-23" or "3.3-5.5"), and a ± written against its number ("±15",
+# "+/-15"), so "15" is neither "-15" nor "±15". Unit letters such as µ
+# and ω are letters.
 _TOKEN_RE = re.compile(
-    r"<=|>=|±|<|>|="
-    r"|(?:(?<![0-9a-z.])-(?=[0-9]))?"
+    r"<=|>=|±(?![0-9])|<|>|="
+    r"|(?:(?<![0-9a-z.])-(?=[0-9])|±(?=[0-9]))?"
     r"(?:[^\W_]|(?<=[0-9])[.,](?=[0-9]))+")
 
 
@@ -190,8 +206,9 @@ def _norm_text(s):
 
 
 def _squash(s):
-    # Two numbers side by side stay apart: "0.9 1.0" is not "0.91.0".
-    return re.sub(r"(?<=[0-9]) (?=[-0-9])", "|", _norm_text(s)).replace(" ", "")
+    # Two numbers side by side stay apart ("0.9 1.0" is not "0.91.0"), and
+    # so does a ± set apart from its number ("± 12" is not "±12").
+    return re.sub(r"(?<=[0-9]) (?=[-±0-9])|(?<=±) ", "|", _norm_text(s)).replace(" ", "")
 
 
 _ELISION_RE = re.compile(r"\.\.\.|…")
@@ -235,7 +252,7 @@ def _find_outside_numbers(t, q, pos):
     while idx != -1:
         before = t[idx - 1] if idx else ""
         after = t[idx + len(q):idx + len(q) + 1]
-        inside = ((q[0].isdigit() and before and (before.isdigit() or before in ".-"))
+        inside = ((q[0].isdigit() and before and (before.isdigit() or before in ".-±"))
                   or (q[0] == "." and before.isdigit())
                   or (q[-1].isdigit() and after and (after.isdigit() or after == ".")))
         if not inside:
@@ -417,7 +434,11 @@ def main():
                   file=sys.stderr)
             return 2
 
-    comps, nets = load_anchor_sets(args.analysis_dir, args.run)
+    try:
+        comps, nets = load_anchor_sets(args.analysis_dir, args.run)
+    except ValueError as e:
+        print(f"deep_review_gate: cannot load inputs: {e}", file=sys.stderr)
+        return 2
     item_schema = schema["properties"]["findings"]["items"]
 
     kept, quarantined = [], []

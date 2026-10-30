@@ -51,6 +51,16 @@ QUOTE_CASES = [
     ("VCC + 0.3 V", "VCC + 0.3 V", True, "plus spaced"),
     ("VIN-0.3V", "VIN – 0.3V", True, "binary minus spelled differently"),
     ("0.9 1.0", "0.91.0", False, "two numbers are not one"),
+    ("15 V", "±15 V", False, "± dropped"),
+    ("15 V", "+/-15 V", False, "+/- dropped"),
+    ("-15 V", "±15 V", False, "± read as minus"),
+    ("+15 V", "±15 V", False, "± read as plus"),
+    ("0.5 V", "5 V ±0.5 V", False, "tolerance read as a value"),
+    ("±15 V", "±15 V", True, "same ±"),
+    ("±15 V", "+/-15 V", True, "+/- spelling of ±"),
+    ("+/- 15 V", "± 15 V", True, "spaced +/- spelling of a spaced ±"),
+    ("±15V", "+-15 V", True, "+- spelling of ±"),
+    ("a ± b", "a ± b", True, "± between words"),
 ]
 
 
@@ -201,6 +211,30 @@ class GateCliTest(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(out["findings"], [])
 
+    def test_unloadable_analyzer_json_exits_2_naming_the_file(self):
+        doc = self._doc([self._finding()])
+        for name, raw in (("schematic.json", b"[1]"), ("schematic.json", b"{not json"),
+                          ("schematic.json", b'{"components": "\xff"}'),
+                          ("pcb.json", b'"a string"')):
+            with self.subTest(name=name, raw=raw):
+                (self.tmp / "analysis" / "schematic.json").write_text(
+                    json.dumps({"components": [{"reference": "U1"}]}), encoding="utf-8")
+                (self.tmp / "analysis" / "pcb.json").unlink(missing_ok=True)
+                (self.tmp / "analysis" / name).write_bytes(raw)
+                r, out = self._gate(doc)
+                self.assertEqual(r.returncode, 2, r.stderr)
+                self.assertIn("cannot load inputs", r.stderr)
+                self.assertIn(name, r.stderr)
+                self.assertIsNone(out)
+
+    def test_odd_shapes_inside_analyzer_json_are_ignored(self):
+        (self.tmp / "analysis" / "schematic.json").write_text(json.dumps(
+            {"components": [{"reference": "U1"}], "nets": ["VCC"]}), encoding="utf-8")
+        (self.tmp / "analysis" / "pcb.json").write_text(
+            json.dumps({"footprints": 7}), encoding="utf-8")
+        r, out = self._gate(self._doc([self._finding()]))
+        self.assertEqual(r.returncode, 0, r.stderr)
+
     def test_rewrite_keeps_the_file_mode_and_leaves_no_temp(self):
         path = self.tmp / "deep_review.json"
         path.write_text(json.dumps(self._doc([])), encoding="utf-8")
@@ -210,6 +244,17 @@ class GateCliTest(unittest.TestCase):
         self.assertEqual(path.stat().st_mode & 0o777, 0o640)
         self.assertEqual(sorted(p.name for p in self.tmp.iterdir()),
                          ["analysis", "datasheets", "deep_review.json"])
+
+    def test_symlinked_document_is_replaced_not_followed(self):
+        real = self.tmp / "elsewhere.json"
+        real.write_text(json.dumps(self._doc([self._finding()])), encoding="utf-8")
+        before = real.read_bytes()
+        link = self.tmp / "deep_review.json"
+        link.symlink_to(real)
+        deep_review_gate.write_text_atomic(link, "{}\n")
+        self.assertFalse(link.is_symlink())
+        self.assertEqual(link.read_text(encoding="utf-8"), "{}\n")
+        self.assertEqual(real.read_bytes(), before)
 
     def test_utf8_under_an_ascii_locale(self):
         f = self._finding(quote="Quiescent current 10 µA", page=2)
