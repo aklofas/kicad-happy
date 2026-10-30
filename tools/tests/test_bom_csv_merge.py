@@ -131,6 +131,31 @@ class TrackingCsvMergeTest(unittest.TestCase):
         bom_manager.export_csv(report(line(["R1"], "A")), self.csv)
         self.assertEqual(stat.S_IMODE(self.csv.stat().st_mode), 0o640)
 
+    def test_existing_private_file_is_rewritten_through_a_private_temp(self):
+        write(self.csv, [{"Reference": "R1", "Qty": "1", "MPN": "A"}])
+        os.chmod(self.csv, 0o600)
+        real, seen = os.replace, []
+
+        def spy(src, dst):
+            seen.append(stat.S_IMODE(os.stat(src).st_mode))
+            real(src, dst)
+        old = os.umask(0o022)
+        os.replace = spy
+        try:
+            bom_manager.export_csv(report(line(["R1"], "A")), self.csv)
+        finally:
+            os.replace = real
+            os.umask(old)
+        self.assertEqual(seen, [0o600])
+        self.assertEqual(stat.S_IMODE(self.csv.stat().st_mode), 0o600)
+
+    def test_empty_known_distributor_column_is_not_moved_to_the_end(self):
+        write(self.csv, [{"Reference": "R1", "Qty": "1", "MPN": "A"}])
+        bom_manager.export_csv(report(line(["R1"], "A")), self.csv)
+        with open(self.csv, newline="", encoding="utf-8") as f:
+            head = next(csv.reader(f))
+        self.assertEqual(head, bom_manager._build_csv_columns([]))
+
     def test_user_added_columns_and_awkward_manual_rows_round_trip(self):
         with open(self.csv, "w", newline="", encoding="utf-8") as f:
             w = csv.DictWriter(f, fieldnames=COLS + ["Link"])

@@ -98,12 +98,15 @@ def atomic_write_text(path: Path, text: str, newline: str | None = None) -> None
 
     *newline* is passed to the file object ("" keeps the text's line endings as given)."""
     target = Path(path).resolve()
-    # Created with 0o666 so the kernel applies the umask (mkstemp would force 0o600)
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    # A new target gets 0o666 so the kernel applies the umask; an existing one is rewritten
+    # through a private temp until copymode gives it the old mode
+    flags = (os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+             | getattr(os, "O_BINARY", 0))
+    mode = 0o600 if target.exists() else 0o666
     while True:
         tmp = str(target.parent / f"{target.name}.{secrets.token_hex(6)}.tmp")
         try:
-            fd = os.open(tmp, flags, 0o666)
+            fd = os.open(tmp, flags, mode)
             break
         except FileExistsError:
             continue

@@ -1044,10 +1044,11 @@ def export_csv(report: dict, output_path: Path, extra_distributors: list[str] | 
         csv_columns = _build_csv_columns(active_distributors)
 
     # Columns the user added to the CSV travel with their rows
+    known_columns = set(_build_csv_columns(list(_DIST_ORDER)))
     extra_columns = []
     for erow in existing:
         for col in erow:
-            if col and col not in csv_columns and col not in extra_columns:
+            if col and col not in known_columns and col not in extra_columns:
                 extra_columns.append(col)
     csv_columns = csv_columns + extra_columns
 
