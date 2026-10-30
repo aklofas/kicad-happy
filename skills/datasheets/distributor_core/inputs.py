@@ -1,6 +1,6 @@
 """Distributor sync inputs: BOM projection, MPN-list reading, analyzer output.
-Verbatim from sync_datasheets_digikey.py; id_keys parameterises the per-provider identifier set
-(order = the dict-key order each provider wrote)."""
+Reads the analyzer BOM or an MPN list; id_keys sets the per-provider identifier keys
+(their order is the dict-key order of each part)."""
 
 import json
 import re
@@ -118,7 +118,7 @@ def extract_parts(analyzer_output: dict, id_keys=("digikey", "mouser", "lcsc")) 
         # Need at least one identifier to search for a datasheet
         has_mpn = is_real_mpn(mpn)
         has_distributor_pn = any(ids.values())
-        # F2: fall back to Value field when MPN is empty but the Value
+        # Fall back to Value field when MPN is empty but the Value
         # looks MPN-shaped (and the symbol isn't a generic Device:R/C/L
         # passive). Common pattern — many KiCad library symbols put the
         # MPN string in the Value field and leave the MPN property empty.

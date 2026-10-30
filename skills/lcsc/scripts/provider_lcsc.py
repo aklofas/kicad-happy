@@ -1,4 +1,4 @@
-"""LCSC adapter: auth, search, response accessors, and the provider's sync_one_part strategy chain — verbatim from fetch_datasheet_lcsc.py / sync_datasheets_lcsc.py; the driver is distributor_core.sync. Adapter constants are the thirteen measured per-provider differences of the old drivers."""
+"""LCSC adapter: auth, search, response accessors, and the provider's sync_one_part strategy chain; the driver is distributor_core.sync. The adapter constants are the per-provider differences the driver reads."""
 
 import json
 import os
@@ -179,7 +179,7 @@ def search_lcsc_direct(lcsc_code: str) -> dict | None:
 def enrich_with_wmsc(component: dict) -> dict:
     """Fill datasheet URL / MPN / manufacturer from LCSC's product-detail
     endpoint when a jlcsearch hit lacks them (jlcsearch dropped its `extra`
-    block in 2026-09 — KH-405). Keeps jlcsearch's stock/price."""
+    block). Keeps jlcsearch's stock/price."""
     if not component or _get_datasheet_url(component):
         return component
     code = _get_lcsc_code(component)
@@ -193,8 +193,8 @@ def enrich_with_wmsc(component: dict) -> dict:
     component_extra = _parse_extra(component) or {}
     merged_extra = {**direct_extra, **component_extra}
     # The shallow merge above lets component_extra['datasheet'] clobber
-    # wmsc's — including an empty {} block a stale jlcsearch hit carries
-    # (KH-405). Fall through to wmsc's datasheet block when the
+    # wmsc's — including an empty {} block a stale jlcsearch hit carries.
+    # Fall through to wmsc's datasheet block when the
     # component's own has no pdf URL.
     component_ds = component_extra.get("datasheet")
     if not (isinstance(component_ds, dict) and component_ds.get("pdf")):

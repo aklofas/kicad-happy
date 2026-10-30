@@ -1,38 +1,17 @@
 """One datasheet-sync driver over the provider adapters.
 
-``sync_datasheets(provider, ...)`` is the DigiKey ``sync_datasheets`` body of
-935b429 verbatim, with exactly these thirteen substitutions (and nothing else);
-the provider module (``provider_<p>.py``) arrives as the first argument:
+``sync_datasheets(provider, ...)`` takes a provider module (``provider_<p>.py``) that supplies
+the identifier sets (``ID_KEYS``, ``KEY_PRIORITY``, ``SKIPPED_COUNTS_IDS``), the console
+``LABELS``, ``DEFAULT_DELAY``, ``RENAME_PRESENT``, ``FAILED_DETAIL_WITH_URL`` and the hooks
+``preflight``, ``authenticate``, ``sync_one_part`` and ``report_tail``. The driver reads the
+parts (analyzer BOM or MPN list), decides which need a download, fetches them serially or on a
+thread pool, records each outcome in ``manifest.json`` and prints the summary.
 
-  1. ``delay`` defaults to ``provider.DEFAULT_DELAY`` (first statement).
-  2. ``provider.preflight(**provider_kwargs)`` after the input validation and
-     before the output-dir block (where element14 checked its API key); an
-     ``error`` returns early, otherwise its ``ctx`` is kept.
-  3. ``load_mpn_list`` / ``extract_parts`` take ``id_keys=provider.ID_KEYS``.
-  4. The no-identifier count tests ``provider.SKIPPED_COUNTS_IDS`` (an empty
-     tuple counts every part without a real MPN — the Mouser rule).
-  5. The "Found ..." line is ``provider.LABELS["found"]``.
-  6. The manifest key is the MPN, else the first non-empty
-     ``provider.KEY_PRIORITY`` identifier.
-  7. The already-present friendly rename runs only if ``provider.RENAME_PRESENT``.
-  8. The dry-run summary key / line are ``LABELS["skipped_key"]`` /
-     ``LABELS["dry_skipped"]``.
-  9. ``provider.authenticate()`` after the "nothing to download" early return;
-     an ``error`` returns early; only a non-None ``ctx`` replaces preflight's.
- 10. ``provider.sync_one_part(part, out_dir, index, delay, ctx)`` in both the
-     parallel and the serial branch (the dead DigiKey not_found ``pass`` block
-     is kept verbatim).
- 11. The summary keys ``LABELS["skipped_key"]`` / ``LABELS["total_key"]``.
- 12. The failed-list line: with the datasheet URL if
-     ``provider.FAILED_DETAIL_WITH_URL``, else ``<key> — <error>``.
- 13. The closing skipped line is ``LABELS["summary_skipped"]``; the DigiKey
-     tips became ``provider.report_tail(out_dir, downloaded, already_present, failed)``.
+A ``not_found`` whose search failed in transport (``distributor_core.download`` records it) is
+stored as ``error`` so the next run retries it, and an ``ok`` entry whose file is still on disk
+is kept.
 
-Later fixes: a ``not_found`` whose search failed in transport (``distributor_core.download``
-records it) is stored as ``error`` so the next run retries it, and an ``ok`` entry whose file
-is still on disk is kept.
-
-Imports ``distributor_core.inputs``/``manifest``/``download`` and the stdlib only — never a provider.
+Imports ``distributor_core.inputs``/``manifest``/``download`` and the stdlib only; never a provider.
 """
 
 import json
@@ -72,6 +51,51 @@ def _outage_entry(result: dict, previous: dict, out_dir: Path) -> tuple[dict, di
     if previous.get("status") == "ok" and prev_file is not None and prev_file.is_file():
         return previous, result
     return result, result
+
+
+class _Run:
+    """State shared by the fetch workers: the manifest, its path and the outcome tallies."""
+
+    def __init__(self, *, out_dir, index, index_path, source, total):
+        self.out_dir = out_dir
+        self.index = index
+        self.index_path = index_path
+        self.source = source
+        self.total = total
+        self.lock = threading.Lock()
+        self.counter = 0
+        self.downloaded = []
+        self.failed = []
+        self.kept_errors = {}  # part key -> error, for an outage that kept the previous ok entry
+        self.warnings = []  # parts whose verification says the datasheet is probably wrong
+
+
+def _record(ctx, part, outcome) -> None:
+    """Store one part's outcome in the manifest, count it, print its progress line and save the
+    index. Callers hold ``ctx.lock`` when several workers run."""
+    part_key = part["_key"]
+    stored, result = _outage_entry(outcome, ctx.index.get("parts", {}).get(part_key, {}), ctx.out_dir)
+    ctx.index.setdefault("parts", {})[part_key] = stored
+    if stored is not result:
+        ctx.kept_errors[part_key] = result["error"]
+
+    if result["status"] == "ok":
+        ctx.downloaded.append(part_key)
+        vconf = result.get("verification", "")
+        vmark = ""
+        if vconf == "wrong":
+            vmark = " ⚠ WRONG DATASHEET?"
+            ctx.warnings.append(part_key)
+        elif vconf == "unverified":
+            vmark = " (unverified)"
+        print(f"  OK: {result['file']} ({result['size_bytes']:,} bytes){vmark}", file=sys.stderr)
+    else:
+        ctx.failed.append(part_key)
+        print(f"  {result['status'].upper()}: {result.get('error', '')}", file=sys.stderr)
+
+    ctx.index["schematic"] = ctx.source
+    ctx.index["last_sync"] = datetime.now(timezone.utc).isoformat()
+    save_index(ctx.index_path, ctx.index)
 
 
 def sync_datasheets(
@@ -222,90 +246,33 @@ def sync_datasheets(
         ctx = auth["ctx"]
 
     # Process each part
-    downloaded = []
-    failed = []
-    kept_errors = {}  # part key -> error, for an outage that kept the previous ok entry
-    warnings = []  # verification warnings
+    run = _Run(out_dir=out_dir, index=index, index_path=index_path,
+               source=str(mpn_list or input_path), total=len(to_download))
+
+    def _fetch(part):
+        take_transport_failure()
+        return provider.sync_one_part(part, out_dir, index, delay, ctx)
 
     if parallel > 1:
-        lock = threading.Lock()
-        counter = [0]
-
         def _process_part(part):
-            part_key = part["_key"]
-            with lock:
-                counter[0] += 1
-                n = counter[0]
-            print(f"[{n}/{len(to_download)}] {part_key}", file=sys.stderr)
-
-            take_transport_failure()
-            result = provider.sync_one_part(part, out_dir, index, delay, ctx)
-
-            with lock:
-                stored, result = _outage_entry(result, index.get("parts", {}).get(part_key, {}), out_dir)
-                index.setdefault("parts", {})[part_key] = stored
-                if stored is not result:
-                    kept_errors[part_key] = result["error"]
-
-                if result["status"] == "ok":
-                    downloaded.append(part_key)
-                    vconf = result.get("verification", "")
-                    vmark = ""
-                    if vconf == "wrong":
-                        vmark = " ⚠ WRONG DATASHEET?"
-                        warnings.append(part_key)
-                    elif vconf == "unverified":
-                        vmark = " (unverified)"
-                    print(f"  OK: {result['file']} ({result['size_bytes']:,} bytes){vmark}",
-                          file=sys.stderr)
-                else:
-                    failed.append(part_key)
-                    print(f"  {result['status'].upper()}: {result.get('error', '')}",
-                          file=sys.stderr)
-
-                index["schematic"] = str(mpn_list or input_path)
-                index["last_sync"] = datetime.now(timezone.utc).isoformat()
-                save_index(index_path, index)
+            with run.lock:
+                run.counter += 1
+                n = run.counter
+            print(f"[{n}/{run.total}] {part['_key']}", file=sys.stderr)
+            outcome = _fetch(part)
+            with run.lock:
+                _record(run, part, outcome)
 
         with ThreadPoolExecutor(max_workers=parallel) as executor:
             for _ in executor.map(_process_part, to_download):
                 pass
     else:
         for i, part in enumerate(to_download):
-            part_key = part["_key"]
-            print(f"[{i+1}/{len(to_download)}] {part_key}", file=sys.stderr)
+            print(f"[{i+1}/{run.total}] {part['_key']}", file=sys.stderr)
+            _record(run, part, _fetch(part))
 
-            take_transport_failure()
-            result = provider.sync_one_part(part, out_dir, index, delay, ctx)
-
-            # Handle token expiry — refresh once and retry
-            if result.get("status") == "not_found" and "No DigiKey results" in result.get("error", ""):
-                pass
-
-            stored, result = _outage_entry(result, index.get("parts", {}).get(part_key, {}), out_dir)
-            index.setdefault("parts", {})[part_key] = stored
-            if stored is not result:
-                kept_errors[part_key] = result["error"]
-
-            if result["status"] == "ok":
-                downloaded.append(part_key)
-                vconf = result.get("verification", "")
-                vmark = ""
-                if vconf == "wrong":
-                    vmark = " ⚠ WRONG DATASHEET?"
-                    warnings.append(part_key)
-                elif vconf == "unverified":
-                    vmark = " (unverified)"
-                print(f"  OK: {result['file']} ({result['size_bytes']:,} bytes){vmark}",
-                      file=sys.stderr)
-            else:
-                failed.append(part_key)
-                print(f"  {result['status'].upper()}: {result.get('error', '')}",
-                      file=sys.stderr)
-
-            index["schematic"] = str(mpn_list or input_path)
-            index["last_sync"] = datetime.now(timezone.utc).isoformat()
-            save_index(index_path, index)
+    downloaded, failed = run.downloaded, run.failed
+    kept_errors, warnings = run.kept_errors, run.warnings
 
     # Summary
     summary = {

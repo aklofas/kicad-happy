@@ -26,6 +26,29 @@ class Driver(unittest.TestCase):
                                          {"mpn": "", "element14": "94AK", "references": ["U3"], "value": "", "type": "ic"}]}), encoding="utf-8")
         return str(p)
 
+    def test_two_workers_store_the_same_manifest_as_the_serial_run(self):
+        from distributor_core.sync import sync_datasheets
+
+        def one(part, out_dir, index, delay, ctx):
+            if part["mpn"] == "NE555P":
+                return {"status": "ok", "file": "NE555P.pdf", "size_bytes": 3, "verification": "unverified"}
+            return {"status": "not_found", "error": "none", "manufacturer": "", "description": "",
+                    "value": part["value"], "references": part["references"], "last_attempt": "t"}
+        manifests = {}
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            mpns = d / "mpns.txt"
+            mpns.write_text("LM358DR\nNE555P\nTL072\nLM317\n", encoding="utf-8")
+            for par in (1, 2):
+                with redirect_stderr(io.StringIO()), redirect_stdout(io.StringIO()):
+                    r = sync_datasheets(fake_provider(sync_one_part=one), mpn_list=str(mpns),
+                                        output_dir=str(d / f"out{par}"), parallel=par)
+                m = json.loads((d / f"out{par}" / "manifest.json").read_text(encoding="utf-8"))
+                m.pop("last_sync")
+                manifests[par] = (m, r["downloaded"], r["failed"])
+            self.assertEqual(manifests[1], manifests[2])
+            self.assertEqual(manifests[1][1:], (1, 3))
+
     def test_preflight_error_wins_before_output_dir_is_created(self):
         from distributor_core.sync import sync_datasheets
         with tempfile.TemporaryDirectory() as d:

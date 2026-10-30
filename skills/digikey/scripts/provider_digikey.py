@@ -1,4 +1,4 @@
-"""DigiKey adapter: auth, search, response accessors, and the provider's sync_one_part strategy chain — verbatim from fetch_datasheet_digikey.py / sync_datasheets_digikey.py; the driver is distributor_core.sync. Adapter constants are the thirteen measured per-provider differences of the old drivers."""
+"""DigiKey adapter: auth, search, response accessors, and the provider's sync_one_part strategy chain; the driver is distributor_core.sync. The adapter constants are the per-provider differences the driver reads."""
 
 import json
 import os
