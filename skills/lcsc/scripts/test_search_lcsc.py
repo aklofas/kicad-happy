@@ -299,7 +299,74 @@ class TestMainCli(unittest.TestCase):
         self.assertEqual(code, 0)
         parsed = json.loads(output)
         prices = [c["price_usd"] for c in parsed["components"]]
-        self.assertEqual(prices, sorted(prices))
+        self.assertEqual(prices, [0.0034, 0.05])
+
+    @patch("search_lcsc.search_jlcsearch")
+    def test_cli_sort_price_reorders(self, mock_search):
+        mock_search.return_value = list(reversed(self.mock_raw_results))
+        code, output = self._run(["100R", "--sort", "price", "--json"])
+        parsed = json.loads(output)
+        self.assertEqual([c["price_usd"] for c in parsed["components"]], [0.0034, 0.05])
+
+    @patch("search_lcsc.search_jlcsearch")
+    def test_cli_sort_stock_reorders(self, mock_search):
+        mock_search.return_value = list(self.mock_raw_results)
+        code, output = self._run(["100R", "--sort", "stock", "--json"])
+        parsed = json.loads(output)
+        self.assertEqual([c["stock"] for c in parsed["components"]], [2500000, 0])
+        mock_search.return_value = list(reversed(self.mock_raw_results))
+        code, output = self._run(["100R", "--sort", "stock", "--json"])
+        parsed = json.loads(output)
+        self.assertEqual([c["stock"] for c in parsed["components"]], [2500000, 0])
+
+    @patch("search_lcsc.search_lcsc_direct")
+    @patch("search_lcsc.search_jlcsearch")
+    def test_cli_zero_jlcpcb_stock_survives_enrichment(self, mock_search, mock_direct):
+        mock_search.return_value = [dict(SEARCH_HIT, stock=0)]
+        mock_direct.return_value = dict(json.loads(json.dumps(WMSC_DIRECT)), stock=1234)
+        code, output = self._run(["C318884", "--json"])
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(output)["components"][0]["stock"], 0)
+        code, output = self._run(["C318884", "--json", "--in-stock"])
+        self.assertEqual(code, 1)
+
+    @patch("search_lcsc.search_lcsc_direct")
+    @patch("search_lcsc.search_jlcsearch")
+    def test_cli_row_without_stock_figure_shows_warehouse_stock(self, mock_search, mock_direct):
+        row = dict(SEARCH_HIT)
+        del row["stock"]
+        mock_search.return_value = [row]
+        mock_direct.return_value = dict(json.loads(json.dumps(WMSC_DIRECT)), stock=1234)
+        code, output = self._run(["C318884", "--json"])
+        self.assertEqual(json.loads(output)["components"][0]["stock"], 1234)
+
+    @patch("search_lcsc.search_lcsc_direct")
+    @patch("search_lcsc.search_jlcsearch")
+    def test_cli_double_network_failure_exits_2(self, mock_search, mock_direct):
+        mock_search.side_effect = OSError("down")
+
+        def fail(code):
+            from distributor_core.download import note_transport_failure
+            note_transport_failure(ConnectionResetError("reset"))
+            return None
+        mock_direct.side_effect = fail
+        code, _ = self._run(["C318884", "--json"])
+        self.assertEqual(code, 2)
+
+    @patch("search_lcsc.search_lcsc_direct", return_value=None)
+    @patch("search_lcsc.search_jlcsearch", side_effect=OSError("down"))
+    def test_cli_jlcsearch_down_direct_not_found_exits_1(self, mock_search, mock_direct):
+        code, _ = self._run(["C318884", "--json"])
+        self.assertEqual(code, 1)
+
+    @patch("search_lcsc.search_lcsc_direct")
+    @patch("search_lcsc.search_jlcsearch")
+    def test_cli_direct_only_row_keeps_warehouse_stock(self, mock_search, mock_direct):
+        mock_search.return_value = []
+        mock_direct.return_value = json.loads(json.dumps(WMSC_DIRECT))
+        code, output = self._run(["C318884", "--json", "--in-stock"])
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(output)["components"][0]["stock"], 597040)
 
     @patch("search_lcsc.search_jlcsearch")
     def test_cli_no_results_exit_code(self, mock_search):
