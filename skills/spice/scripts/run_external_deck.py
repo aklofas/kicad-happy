@@ -3,14 +3,17 @@
 
 import argparse
 import json
+import os
 from pathlib import Path
 import sys
+import tempfile
 import time
 
 from spice_simulator import PspiceBackend, detect_simulator
 
 
 SIMULATORS = ("pspice", "ngspice", "ltspice", "xyce")
+DEFAULT_TIMEOUT_S = 600
 
 
 def select_backend(simulator: str):
@@ -22,7 +25,34 @@ def select_backend(simulator: str):
 
 def native_output_for(deck: Path, simulator: str) -> Path | None:
     if simulator == "pspice":
-        return deck.with_suffix(".out")
+        return PspiceBackend.native_output_path(deck)
+    return None
+
+
+def _same_path(first: Path, second: Path) -> bool:
+    return os.path.normcase(str(first.resolve())) == os.path.normcase(
+        str(second.resolve())
+    )
+
+
+def _output_conflict(
+    output: Path, deck: Path, native_output: Path | None
+) -> str | None:
+    """Explain why --output cannot be written, or return None if it can."""
+    protected = [("the deck", deck)]
+    if native_output is not None:
+        protected.append(("the PSpice native output", native_output))
+        protected.append((
+            "the PSpice sidecar file",
+            native_output.with_suffix(".json"),
+        ))
+    for label, path in protected:
+        if _same_path(output, path):
+            return f"--output would overwrite {label}: {output}"
+    if output.is_dir():
+        return f"--output is a directory: {output}"
+    if not output.resolve().parent.is_dir():
+        return f"--output directory does not exist: {output.parent}"
     return None
 
 
@@ -42,8 +72,8 @@ def _build_parser():
     parser.add_argument(
         "--timeout",
         type=int,
-        default=5,
-        help="Timeout in seconds (default: 5)",
+        default=DEFAULT_TIMEOUT_S,
+        help=f"Timeout in seconds (default: {DEFAULT_TIMEOUT_S})",
     )
     parser.add_argument(
         "--output",
@@ -68,9 +98,20 @@ def _result(simulator, success, deck, native_output, elapsed_s, note):
 
 def _write_json(payload, output_path):
     if output_path:
-        with Path(output_path).open("w", encoding="utf-8") as stream:
-            json.dump(payload, stream, indent=2)
-            stream.write("\n")
+        target = Path(output_path)
+        descriptor, temp_name = tempfile.mkstemp(
+            dir=target.resolve().parent,
+            prefix=f".{target.name}.",
+            suffix=".tmp",
+        )
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+                json.dump(payload, stream, indent=2)
+                stream.write("\n")
+            os.replace(temp_name, target)
+        except BaseException:
+            Path(temp_name).unlink(missing_ok=True)
+            raise
         return
     json.dump(payload, sys.stdout, indent=2)
     sys.stdout.write("\n")
@@ -86,7 +127,18 @@ def main(argv: list[str] | None = None) -> int:
     if args.timeout <= 0:
         parser.error("--timeout must be greater than zero")
 
+    if args.simulator == "pspice" and deck.suffix.lower() == ".out":
+        parser.error(
+            f"deck must not use the .out suffix, which PSpice uses for its "
+            f"native output: {deck}"
+        )
+
     native_output = native_output_for(deck, args.simulator)
+    if args.output is not None:
+        conflict = _output_conflict(args.output, deck, native_output)
+        if conflict:
+            parser.error(conflict)
+
     backend = select_backend(args.simulator)
     if backend is None:
         if args.simulator == "pspice":
