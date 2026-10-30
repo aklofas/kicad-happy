@@ -2171,6 +2171,22 @@ def analyze_assembly_complexity(components: list[dict]) -> dict:
     return result
 
 
+# USB Type-C Rp values by pull-up rail; Rd is 5.1k. Each nominal takes the band the
+# 56k default has always had (50k-62k).
+_TYPE_C_RP_BY_RAIL = {5.0: (56000, 22000, 10000), 3.3: (36000, 12000, 4700)}
+_RP_BAND = (50000 / 56000, 62000 / 56000)
+
+
+def _is_type_c_rp(ohms: float, rail_v: float | None) -> bool:
+    if rail_v is not None and 4.5 <= rail_v <= 5.5:
+        nominals = _TYPE_C_RP_BY_RAIL[5.0]
+    elif rail_v is not None and 3.0 <= rail_v <= 3.6:
+        nominals = _TYPE_C_RP_BY_RAIL[3.3]
+    else:
+        nominals = _TYPE_C_RP_BY_RAIL[5.0] + _TYPE_C_RP_BY_RAIL[3.3]
+    return any(n * _RP_BAND[0] <= ohms <= n * _RP_BAND[1] for n in nominals)
+
+
 _TYPE_C_NAME = re.compile(r"(?<![A-Z0-9])(?:USB[_-]?C|TYPE[-_]?C)(?![A-Z0-9])")
 _CC_PIN_NAMES = frozenset(("CC", "CC1", "CC2"))
 
@@ -2275,8 +2291,11 @@ def analyze_usb_compliance(ctx: AnalysisContext,
 
             cc1_net = None
             cc2_net = None
-            cc1_resistor = None  # {ref, ohms, to_ground, to_power}
+            cc1_resistor = None  # {ref, ohms, to_ground, to_power, rail_v}
             cc2_resistor = None
+            cc_unread: dict[str, list[dict]] = {"CC1": [], "CC2": []}
+            conn_vbus = next((n for pn, n in conn_pin_nets.items()
+                              if pn in ("VBUS", "V+", "VCC", "VUSB")), None)
             pd_controller = None
 
             for pname, net_name in conn_pin_nets.items():
@@ -2308,21 +2327,37 @@ def analyze_usb_compliance(ctx: AnalysisContext,
                     if not rc or rc["type"] != "resistor":
                         continue
                     r_val = parse_value(rc.get("value", ""))
+                    if r_val is None:
+                        cc_unread["CC1" if is_cc1 else "CC2"].append(
+                            {"ref": rc["reference"], "value": rc.get("value", "")})
+                        continue
                     if not r_val:
                         continue
                     rn1, _ = pin_net.get((rc["reference"], "1"), (None, None))
                     rn2, _ = pin_net.get((rc["reference"], "2"), (None, None))
                     other = rn2 if rn1 == net_name else rn1
+                    # The connector's own VBUS pin net is a 5 V pull-up rail even unnamed.
+                    to_vbus = other is not None and other == conn_vbus
                     r_info = {
                         "ref": rc["reference"],
                         "ohms": r_val,
                         "to_ground": is_ground(other),
-                        "to_power": ctx.is_power_net(other) if not is_ground(other) else False,
+                        "to_power": ((to_vbus or ctx.is_power_net(other))
+                                     if not is_ground(other) else False),
+                        "rail_v": 5.0 if to_vbus else ctx.rail_voltage(other),
                     }
                     if is_cc1:
                         cc1_resistor = r_info
                     else:
                         cc2_resistor = r_info
+
+            # A resistor whose value cannot be read is reported, not failed.
+            cc1_unread = cc_unread["CC1"] if cc1_resistor is None and not pd_controller else []
+            cc2_unread = cc_unread["CC2"] if cc2_resistor is None and not pd_controller else []
+            for r_info in (cc1_resistor, cc2_resistor):
+                if r_info:
+                    rail_v = r_info.pop("rail_v")
+                    r_info["_rp"] = r_info["to_power"] and _is_type_c_rp(r_info["ohms"], rail_v)
 
             # Determine role and status
             issues: list[str] = []
@@ -2334,10 +2369,8 @@ def analyze_usb_compliance(ctx: AnalysisContext,
                             and cc1_resistor["to_ground"])
                 cc2_sink = (cc2_resistor and 4800 <= cc2_resistor["ohms"] <= 5600
                             and cc2_resistor["to_ground"])
-                cc1_source = (cc1_resistor and 50000 <= cc1_resistor["ohms"] <= 62000
-                              and cc1_resistor["to_power"])
-                cc2_source = (cc2_resistor and 50000 <= cc2_resistor["ohms"] <= 62000
-                              and cc2_resistor["to_power"])
+                cc1_source = cc1_resistor and cc1_resistor["_rp"]
+                cc2_source = cc2_resistor and cc2_resistor["_rp"]
 
                 if cc1_source or cc2_source:
                     role = "source"
@@ -2348,17 +2381,17 @@ def analyze_usb_compliance(ctx: AnalysisContext,
 
                 # Validate
                 if role == "sink":
-                    if not cc1_sink:
+                    if not cc1_sink and not cc1_unread:
                         issues.append("missing_cc1_resistor")
-                    if not cc2_sink:
+                    if not cc2_sink and not cc2_unread:
                         issues.append("missing_cc2_resistor")
                     if cc1_sink and cc2_sink:
                         if abs(cc1_resistor["ohms"] - cc2_resistor["ohms"]) > 200:
                             issues.append("asymmetric_cc")
                 elif role == "source":
-                    if not cc1_source:
+                    if not cc1_source and not cc1_unread:
                         issues.append("missing_cc1_resistor")
-                    if not cc2_source:
+                    if not cc2_source and not cc2_unread:
                         issues.append("missing_cc2_resistor")
                     if cc1_source and cc2_source:
                         if abs(cc1_resistor["ohms"] - cc2_resistor["ohms"]) > 5000:
@@ -2366,20 +2399,27 @@ def analyze_usb_compliance(ctx: AnalysisContext,
                 elif role == "unknown":
                     # Check for partial/wrong values
                     if cc1_resistor and not cc2_resistor:
-                        issues.append("missing_cc2_resistor")
-                        issues.append("asymmetric_cc")
+                        if not cc2_unread:
+                            issues.append("missing_cc2_resistor")
+                            issues.append("asymmetric_cc")
                     elif cc2_resistor and not cc1_resistor:
-                        issues.append("missing_cc1_resistor")
-                        issues.append("asymmetric_cc")
+                        if not cc1_unread:
+                            issues.append("missing_cc1_resistor")
+                            issues.append("asymmetric_cc")
                     elif not cc1_resistor and not cc2_resistor:
-                        issues.append("missing_cc1_resistor")
-                        issues.append("missing_cc2_resistor")
+                        if not cc1_unread:
+                            issues.append("missing_cc1_resistor")
+                        if not cc2_unread:
+                            issues.append("missing_cc2_resistor")
                     if cc1_resistor and not (4800 <= cc1_resistor["ohms"] <= 5600 or
-                                             50000 <= cc1_resistor["ohms"] <= 62000):
+                                             cc1_resistor["_rp"]):
                         issues.append("wrong_cc_value")
                     if cc2_resistor and not (4800 <= cc2_resistor["ohms"] <= 5600 or
-                                             50000 <= cc2_resistor["ohms"] <= 62000):
+                                             cc2_resistor["_rp"]):
                         issues.append("wrong_cc_value")
+            for r_info in (cc1_resistor, cc2_resistor):
+                if r_info:
+                    del r_info["_rp"]
 
             cc_status = "pass" if not issues else "fail"
             cc_detail: dict = {
@@ -2392,6 +2432,13 @@ def analyze_usb_compliance(ctx: AnalysisContext,
                 "status": cc_status,
                 "issues": issues,
             }
+            unread = [
+                {"pin": pin, "ref": r["ref"], "value": r["value"],
+                 "note": (f"{ref} {pin}: value {r['value']!r} of {r['ref']} not read; "
+                          f"{pin} check skipped")}
+                for pin, rs in (("CC1", cc1_unread), ("CC2", cc2_unread)) for r in rs]
+            if unread:
+                cc_detail["unread_resistors"] = unread
             conn_checks["usb_c_cc_status"] = cc_detail
 
             # Legacy check keys for summary compatibility
@@ -2407,8 +2454,10 @@ def analyze_usb_compliance(ctx: AnalysisContext,
                           and cc1_resistor["to_ground"])
                 cc2_ok = (cc2_resistor and 4800 <= cc2_resistor["ohms"] <= 5600
                           and cc2_resistor["to_ground"])
-                conn_checks["checks"]["cc1_pulldown_5k1"] = "pass" if cc1_ok else "fail"
-                conn_checks["checks"]["cc2_pulldown_5k1"] = "pass" if cc2_ok else "fail"
+                conn_checks["checks"]["cc1_pulldown_5k1"] = (
+                    "pass" if cc1_ok else "info" if cc1_unread else "fail")
+                conn_checks["checks"]["cc2_pulldown_5k1"] = (
+                    "pass" if cc2_ok else "info" if cc2_unread else "fail")
 
         # --- D+/D- series resistors ---
         dp_net = None
