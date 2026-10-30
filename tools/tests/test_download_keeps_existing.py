@@ -94,8 +94,8 @@ LABELS = {"found": "Found {n} ({k})", "skipped_key": "skipped_no_identifier", "t
 
 def _provider(sync_one_part):
     return SimpleNamespace(
-        NAME="fake", DEFAULT_DELAY=0.0, ID_KEYS=("lcsc",), KEY_PRIORITY=("lcsc",),
-        SKIPPED_COUNTS_IDS=("lcsc",), RENAME_PRESENT=False, FAILED_DETAIL_WITH_URL=False,
+        NAME="fake", DEFAULT_DELAY=0.0, ID_KEYS=("lcsc",), KEY_PRIORITY=("lcsc",), SEARCH_KEY="lcsc",
+        RENAME_PRESENT=False, FAILED_DETAIL_WITH_URL=False,
         NORMALIZE_REDIRECTS=False, LABELS=LABELS, preflight=lambda **kw: {},
         authenticate=lambda: {"ctx": None}, report_tail=lambda *a: None, sync_one_part=sync_one_part)
 

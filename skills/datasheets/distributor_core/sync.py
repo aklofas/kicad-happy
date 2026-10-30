@@ -1,7 +1,7 @@
 """One datasheet-sync driver over the provider adapters.
 
 ``sync_datasheets(provider, ...)`` takes a provider module (``provider_<p>.py``) that supplies
-the identifier sets (``ID_KEYS``, ``KEY_PRIORITY``, ``SEARCH_KEY``, ``SKIPPED_COUNTS_IDS``), the console
+the identifier sets (``ID_KEYS``, ``KEY_PRIORITY``, ``SEARCH_KEY``), the console
 ``LABELS``, ``DEFAULT_DELAY``, ``RENAME_PRESENT``, ``FAILED_DETAIL_WITH_URL`` and the hooks
 ``preflight``, ``authenticate``, ``sync_one_part`` and ``report_tail``. The driver reads the
 parts (analyzer BOM or MPN list), decides which need a download, fetches them serially or on a
@@ -24,7 +24,6 @@ from pathlib import Path
 from distributor_core.download import take_transport_failure
 from distributor_core.inputs import (
     _SKIP_TYPES,
-    is_real_mpn,
     get_analyzer_output,
     extract_parts,
     load_mpn_list,
@@ -159,15 +158,12 @@ def sync_datasheets(
         # Extract parts with real MPNs
         # A provider searches with an MPN or its own part number; another distributor's number
         # is no query for it.
-        parts = [p for p in extract_parts(analyzer_output, id_keys=provider.ID_KEYS)
+        parts = [p for p in extract_parts(analyzer_output, id_keys=provider.ID_KEYS,
+                                          search_key=provider.SEARCH_KEY)
                  if p["mpn"] or p.get(provider.SEARCH_KEY)]
-        all_bom = analyzer_output.get("bom", [])
-        skipped_no_id = sum(
-            1 for e in all_bom
-            if not e.get("dnp") and e.get("type", "") not in _SKIP_TYPES
-            and not is_real_mpn(e.get("mpn", ""))
-            and not any(e.get(k, "").strip() for k in provider.SKIPPED_COUNTS_IDS)
-        )
+        eligible = sum(1 for e in analyzer_output.get("bom", [])
+                       if not e.get("dnp") and e.get("type", "") not in _SKIP_TYPES)
+        skipped_no_id = eligible - len(parts)
 
         print(provider.LABELS["found"].format(n=len(parts), k=skipped_no_id), file=sys.stderr)
 

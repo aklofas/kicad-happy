@@ -22,17 +22,16 @@ DEFAULT_DELAY = 1.0
 ID_KEYS = ("mouser", "digikey", "lcsc", "element14")
 KEY_PRIORITY = ("mouser",)
 SEARCH_KEY = "mouser"  # the one distributor-specific number this provider can search with
-SKIPPED_COUNTS_IDS = (SEARCH_KEY,)
 RENAME_PRESENT = True
 FAILED_DETAIL_WITH_URL = True
 # Documentary today: the normalize_url/download_pdf wrappers hard-code the flag; a later version may read it.
 NORMALIZE_REDIRECTS = True
 LABELS = {
-    "found": "Found {n} unique parts with MPNs ({k} skipped without MPN)",
+    "found": "Found {n} unique parts with MPNs ({k} skipped without an MPN or Mouser part number)",
     "skipped_key": "skipped_no_mpn",
     "total_key": "total_parts_with_mpn",
-    "dry_skipped": "Skipped (no MPN): {k}",
-    "summary_skipped": "  Skipped (no MPN): {k}",
+    "dry_skipped": "Skipped (no MPN or Mouser part number): {k}",
+    "summary_skipped": "  Skipped (no MPN or Mouser part number): {k}",
 }
 
 

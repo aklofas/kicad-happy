@@ -10,7 +10,7 @@ LABELS = {"found": "Found {n} unique parts with part numbers ({k} skipped withou
 
 
 def fake_provider(**over):
-    base = dict(NAME="fake", DEFAULT_DELAY=0.0, ID_KEYS=("digikey",), KEY_PRIORITY=("digikey",), SKIPPED_COUNTS_IDS=("digikey",), SEARCH_KEY="digikey",
+    base = dict(NAME="fake", DEFAULT_DELAY=0.0, ID_KEYS=("digikey",), KEY_PRIORITY=("digikey",), SEARCH_KEY="digikey",
                 RENAME_PRESENT=False, FAILED_DETAIL_WITH_URL=False, NORMALIZE_REDIRECTS=False, LABELS=LABELS,
                 preflight=lambda **kw: {}, authenticate=lambda: {"ctx": "C"}, report_tail=lambda *a: None,
                 sync_one_part=lambda part, out_dir, index, delay, ctx: {"status": "not_found", "error": f"ctx={ctx}", "manufacturer": "", "description": "", "value": part["value"], "references": part["references"], "last_attempt": "t"})
@@ -94,7 +94,7 @@ class Driver(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             err = io.StringIO()
             with redirect_stderr(err), redirect_stdout(io.StringIO()):
-                r = sync_datasheets(fake_provider(SKIPPED_COUNTS_IDS=("element14",), SEARCH_KEY="element14", ID_KEYS=("digikey", "element14")),
+                r = sync_datasheets(fake_provider(SEARCH_KEY="element14", ID_KEYS=("digikey", "element14")),
                                     input_path=self._bom(d), output_dir=str(Path(d) / "out"), dry_run=True, as_json=False)
             self.assertEqual(r["skipped_no_identifier"], 1)   # the DigiKey-only part cannot be searched here
             self.assertIn("Found 2 unique parts with part numbers (1 skipped without any identifier)", err.getvalue())
@@ -121,7 +121,7 @@ class Driver(unittest.TestCase):
         ids = ("digikey", "mouser", "lcsc", "element14")
         entries = [{"mpn": "", "lcsc": "C14663", "references": ["U1"], "value": "", "type": "ic"}]
         for key in ids:
-            seen, out, m = self._searched(entries, ID_KEYS=ids, KEY_PRIORITY=(key,), SKIPPED_COUNTS_IDS=(key,), SEARCH_KEY=key)
+            seen, out, m = self._searched(entries, ID_KEYS=ids, KEY_PRIORITY=(key,), SEARCH_KEY=key)
             if key == "lcsc":
                 self.assertEqual(seen, ["C14663"])
             else:
@@ -133,9 +133,18 @@ class Driver(unittest.TestCase):
         ids = ("digikey", "mouser", "lcsc", "element14")
         entries = [{"mpn": "LM358DR", "lcsc": "C14663", "references": ["U1"], "value": "", "type": "ic"}]
         for key in ids:
-            seen, out, _ = self._searched(entries, ID_KEYS=ids, KEY_PRIORITY=(key,), SKIPPED_COUNTS_IDS=(key,), SEARCH_KEY=key)
+            seen, out, _ = self._searched(entries, ID_KEYS=ids, KEY_PRIORITY=(key,), SEARCH_KEY=key)
             self.assertEqual(seen, ["LM358DR"], key)
             self.assertIn("(0 skipped without any identifier)", out, key)
+
+    def test_value_derived_mpn_is_searched_by_providers_without_the_parts_number(self):
+        ids = ("digikey", "mouser", "lcsc", "element14")
+        entries = [{"mpn": "", "value": "AMS1117-3.3", "lib_id": "Regulator_Linear:AMS1117-3.3", "lcsc": "C6186",
+                    "references": ["U1"], "type": "ic"}]
+        for key in ids:
+            seen, out, _ = self._searched(entries, ID_KEYS=ids, KEY_PRIORITY=(key,), SEARCH_KEY=key)
+            self.assertEqual(seen, ["C6186" if key == "lcsc" else "AMS1117-3.3"], key)
+            self.assertIn("(0 skipped", out, key)
 
 
 if __name__ == "__main__":

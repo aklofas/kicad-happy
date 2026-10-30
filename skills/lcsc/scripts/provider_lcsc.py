@@ -26,17 +26,16 @@ DEFAULT_DELAY = 0.5
 ID_KEYS = ("lcsc", "digikey", "mouser")
 KEY_PRIORITY = ("lcsc", "digikey", "mouser")
 SEARCH_KEY = "lcsc"  # the one distributor-specific number this provider can search with
-SKIPPED_COUNTS_IDS = (SEARCH_KEY,)
 RENAME_PRESENT = False
 FAILED_DETAIL_WITH_URL = False
 # Documentary today: the normalize_url/download_pdf wrappers hard-code the flag; a later version may read it.
 NORMALIZE_REDIRECTS = False
 LABELS = {
-    "found": "Found {n} unique parts with identifiers ({k} skipped without any identifier)",
+    "found": "Found {n} unique parts with identifiers ({k} skipped without an MPN or LCSC part number)",
     "skipped_key": "skipped_no_identifier",
     "total_key": "total_identified_parts",
-    "dry_skipped": "Skipped (no identifier): {k}",
-    "summary_skipped": "  Skipped (no identifier): {k}",
+    "dry_skipped": "Skipped (no MPN or LCSC part number): {k}",
+    "summary_skipped": "  Skipped (no MPN or LCSC part number): {k}",
 }
 
 

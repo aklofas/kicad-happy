@@ -23,13 +23,12 @@ class ProviderAdapters(unittest.TestCase):
                 prov = importlib.import_module(f"provider_{p}")
             finally:
                 sys.path.pop(0)
-            for attr in ("NAME", "DEFAULT_DELAY", "ID_KEYS", "KEY_PRIORITY", "SKIPPED_COUNTS_IDS", "SEARCH_KEY", "RENAME_PRESENT",
+            for attr in ("NAME", "DEFAULT_DELAY", "ID_KEYS", "KEY_PRIORITY", "SEARCH_KEY", "RENAME_PRESENT",
                          "FAILED_DETAIL_WITH_URL", "NORMALIZE_REDIRECTS", "LABELS", "preflight", "authenticate",
                          "sync_one_part", "report_tail"):
                 self.assertTrue(hasattr(prov, attr), f"{p}.{attr}")
             self.assertEqual(prov.NAME, p)
             self.assertEqual(prov.SEARCH_KEY, p)
-            self.assertEqual(prov.SKIPPED_COUNTS_IDS, (p,))
             self.assertEqual(set(prov.LABELS), {"found", "skipped_key", "total_key", "dry_skipped", "summary_skipped"})
 
     def test_lcsc_enrich_looks_up_search_direct_in_provider_module(self):

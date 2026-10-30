@@ -96,12 +96,16 @@ def get_analyzer_output(input_path: Path) -> dict | None:
 # MPN extraction from BOM
 # ---------------------------------------------------------------------------
 
-def extract_parts(analyzer_output: dict, id_keys=("digikey", "mouser", "lcsc")) -> list[dict]:
+def extract_parts(analyzer_output: dict, id_keys=("digikey", "mouser", "lcsc"), search_key=None) -> list[dict]:
     """Extract unique parts with real MPNs or distributor PNs from analyzer BOM output.
 
     A part is included if it has at least one of: a real MPN, a DigiKey PN,
     a Mouser PN, or an LCSC PN. Users set up their KiCad projects differently —
     some only have MPNs, some only have distributor PNs, some have both.
+
+    ``search_key`` names the distributor doing the searching: the Value fallback applies when
+    the part has no real MPN and no number for that distributor (any ``id_keys`` number when
+    None), since another distributor's number is no query for it.
     """
     bom = analyzer_output.get("bom", [])
     parts = []
@@ -123,7 +127,8 @@ def extract_parts(analyzer_output: dict, id_keys=("digikey", "mouser", "lcsc")) 
         # passive). Common pattern — many KiCad library symbols put the
         # MPN string in the Value field and leave the MPN property empty.
         mpn_from_value = ""
-        if not has_mpn and not has_distributor_pn:
+        searchable_pn = bool(ids.get(search_key)) if search_key else has_distributor_pn
+        if not has_mpn and not searchable_pn:
             value = entry.get("value", "").strip()
             lib_id = entry.get("lib_id", "")
             if is_real_mpn(value) and not lib_id.startswith("Device:"):
