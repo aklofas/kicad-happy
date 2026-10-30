@@ -80,6 +80,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Fixed
 
+- A switching-loop area that cannot be estimated (parts in a line) is reported as not estimated instead of 0 mm² (KH-new-loop-degenerate).
 - USB connectors are treated as Type-C only by a Type-C name or CC pins, and CC checks run only on connectors that have CC pins. A CC resistor whose value cannot be read (`5.1kR`, a part number) is reported as info instead of a missing pull-down, every Type-C Rp value within the spec's tolerance (56k ±20 %, 22k/10k ±5 % to 5 V or the connector's VBUS; 36k ±20 %, 12k/4.7k ±5 % to 3.3 V) counts as a source pull-up, a 5.1k Rd tied to a rail does not, a DNP resistor counts as absent, and a plug's single CC pin is checked as one side (KH-new-typec-detect).
 - `analyze_pcb.py --gp001-debug` writes `gp001_debug.json` beside `--output` when given (then the analysis dir, then the board's directory), through an atomic write that refuses a symlinked target, instead of dropping it next to the board (KH-new-gp001-debug-path).
 - The PCB analyzer reports an empty return-path result when it checked and found no gaps, so EMC no longer asks for `--full` that was already given; GP-001 now says when `--full` ran but the board has no ground or power plane fill to check against (KH-new-returnpath-empty).

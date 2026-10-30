@@ -5,6 +5,7 @@ Verbatim moves from analyze_pcb.py."""
 import math
 import re
 
+from kicad_core.hotloop import triangle_loop_area
 from kicad_core.netnames import is_ground_name
 from pcb.geometry import (_outline_shape_points, _refined_overlap_mm2, courtyards_collide,
                           outline_edge_distance, outline_loops, overlap_area_mm2,
@@ -709,7 +710,8 @@ def _compute_switching_loop_areas(footprints: list, schematic_data: dict) -> lis
 
     Uses regulator refs from schematic + footprint positions from PCB.
     Returns list of {regulator_ref, regulator_value, inductor_ref, cap_ref,
-    area_mm2, vertices_mm}.
+    area_mm2, vertices_mm}; when the centres lie in a line area_mm2 is None
+    and the record carries estimate "degenerate".
     """
     regulators = [f for f in schematic_data.get('findings', [])
                   if f.get('detector') == 'detect_power_regulators']
@@ -746,24 +748,20 @@ def _compute_switching_loop_areas(footprints: list, schematic_data: dict) -> lis
         if ic_pos == (0, 0) or ind_pos == (0, 0) or cap_pos == (0, 0):
             continue
 
-        # Shoelace formula for triangle area
         vertices = [cap_pos, ic_pos, ind_pos]
-        area = 0.0
-        n = len(vertices)
-        for i in range(n):
-            j = (i + 1) % n
-            area += vertices[i][0] * vertices[j][1]
-            area -= vertices[j][0] * vertices[i][1]
-        area_mm2 = abs(area) / 2.0
+        area_mm2 = triangle_loop_area(vertices)
 
-        results.append({
+        loop = {
             "regulator_ref": ref,
             "regulator_value": reg.get('value', ''),
             "inductor_ref": inductor_ref,
             "cap_ref": cap_ref,
-            "area_mm2": round(area_mm2, 1),
+            "area_mm2": round(area_mm2, 1) if area_mm2 is not None else None,
             "vertices_mm": [list(v) for v in vertices],
-        })
+        }
+        if area_mm2 is None:
+            loop["estimate"] = "degenerate"
+        results.append(loop)
 
     return results
 

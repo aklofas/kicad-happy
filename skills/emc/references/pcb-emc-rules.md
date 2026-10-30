@@ -90,6 +90,7 @@ Quantitative design rules used by the EMC analyzer. Each rule has a threshold, r
 ### SW-003: Large input capacitor hot loop
 - **Severity:** HIGH (>100 mm²), MEDIUM (25–100 mm²)
 - **Threshold:** Triangle area (input cap → IC → inductor) >25 mm²
+- **Proxy:** the triangle runs through the footprint centres, not the hot loop's pads, vias and ground return; when the centres lie in a line the area is not estimated and SW-003 reports an info finding instead of 0 mm².
 - **Rationale:** Hot loops radiate switching noise proportional to loop area × current × frequency. The input capacitor loop is the dominant emission source in most switching regulators.
 - **Source:** Paul, *Introduction to EMC*, Ch. 10; Ridley, *Power Supply Design Vol. 2*.
 - **Fix:** Place input cap, IC, and inductor in a tight triangle. Minimize trace length between them.

@@ -25,7 +25,7 @@ from emc_formulas import (
     cm_radiation_dbuv_m, get_emission_limit, board_cavity_resonances,
     estimate_esl, estimate_esr,
     interplane_capacitance_pf_per_cm2, propagation_delay_ps_per_mm,
-    pdn_target_impedance, pdn_impedance_sweep, find_anti_resonances, polygon_area,
+    pdn_target_impedance, pdn_impedance_sweep, find_anti_resonances,
     cap_value_for_srf, round_to_e12,
     diff_pair_skew_ps, diff_pair_cm_voltage, point_to_segment_distance,
     DIFF_PAIR_PROTOCOLS, MARKET_STANDARDS,
@@ -40,6 +40,7 @@ from kicad_core.parts import (
 from kicad_core.netnames import is_ground_name, is_power_net_name, net_leaf
 from kicad_core.netquery import build_net_id_map
 from kicad_core.diagnostics import record
+from kicad_core.hotloop import triangle_loop_area
 from kicad_core.project import existing_source_dir
 from kicad_core.render import normalize_severity
 from kicad_core.sexp import unescape_string
@@ -1883,18 +1884,40 @@ def check_input_cap_loop_area(pcb: Optional[Dict],
 
     regulators = get_findings(schematic, Det.POWER_REGULATORS)
 
+    def _not_estimated(ref, val, inductor_ref, cap_ref):
+        return _make_finding(
+            'switching_emc', 'INFO', 'SW-003',
+            title=f'Hot loop for {ref} not estimated',
+            description=(
+                f'{ref} ({val}): the centres of {cap_ref}, {ref} and '
+                f'{inductor_ref} lie in a line, so the centre-triangle proxy '
+                f'gives no loop area. The hot loop itself runs through the '
+                f'pads, vias and ground return and was not estimated.'
+            ),
+            components=[ref, inductor_ref, cap_ref],
+            recommendation=(
+                f'Check the hot loop by hand: input cap {cap_ref} adjacent to '
+                f'the {ref} VIN and GND pins, with a short ground return.'
+            ),
+            confidence='heuristic',
+            schema_era="v3.0",
+        )
+
     # Prefer pre-computed loop areas from PCB analyzer (enrichment 2.4)
     precomputed = pcb.get('switching_loop_areas', []) if pcb else []
     if precomputed:
         for loop in precomputed:
-            area_mm2 = loop.get('area_mm2', 0)
-            if area_mm2 < 25:
-                continue  # Acceptable
-
             ref = loop.get('regulator_ref', '')
             val = loop.get('regulator_value', '')
             inductor_ref = loop.get('inductor_ref', '')
             cap_ref = loop.get('cap_ref', '')
+
+            area_mm2 = loop.get('area_mm2', 0)
+            if area_mm2 is None:
+                findings.append(_not_estimated(ref, val, inductor_ref, cap_ref))
+                continue
+            if area_mm2 < 25:
+                continue  # Acceptable
 
             severity = 'HIGH' if area_mm2 > 100 else 'MEDIUM'
 
@@ -1980,8 +2003,10 @@ def check_input_cap_loop_area(pcb: Optional[Dict],
             continue
 
         # Compute triangle area (input cap, IC, inductor)
-        from emc_formulas import polygon_area
-        area_mm2 = polygon_area([cap_pos, ic_pos, ind_pos])
+        area_mm2 = triangle_loop_area([cap_pos, ic_pos, ind_pos])
+        if area_mm2 is None:
+            findings.append(_not_estimated(ref, val, inductor_ref, cap_ref))
+            continue
 
         if area_mm2 < 25:
             continue  # Acceptable
