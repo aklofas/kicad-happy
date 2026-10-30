@@ -105,6 +105,15 @@ class SiblingIsNoAnswerTest(ProviderIdentityBase):
         self.bodies["element14"] = e14("LM358DT")
         self.assertIsNone(lifecycle_audit.query_lifecycle_element14("LM358DR"))
 
+    def test_ordering_variant_is_another_part_number(self):
+        # TI obsoletes a G4 green variant on its own; LM358DR can stay active.
+        self.bodies["element14"] = e14("LM358DRG4")
+        self.assertIsNone(lifecycle_audit.query_lifecycle_element14("LM358DR"))
+        out, f = self.audit("LM358DR", ["element14"])
+        self.assertEqual((f["status"], f["rule_id"]), ("unknown", "LC-004"))
+        self.bodies["digikey"] = dk("LM2596S-ADJ/NOPB")
+        self.assertIsNone(lifecycle_audit.query_lifecycle_digikey("LM2596S-ADJ"))
+
     def test_lcsc_sibling(self):
         self.bodies["jlcsearch"] = lcsc("LM358DT")
         self.assertIsNone(lifecycle_audit.query_lifecycle_lcsc("LM358DR"))
@@ -139,12 +148,8 @@ class RequestedPartIsReadTest(ProviderIdentityBase):
 
     def test_case_and_whitespace_ignored(self):
         self.bodies["digikey"] = dk("LM358DR")
-        self.assertEqual(lifecycle_audit.query_lifecycle_digikey("lm358dr ")["status"], "Active")
-
-    def test_ordering_suffix_is_the_same_part(self):
-        self.bodies["element14"] = e14("LM358DRG4")
-        self.assertEqual(lifecycle_audit.query_lifecycle_element14("LM358DR")["status"],
-                         "Obsolete")
+        for req in ("lm358dr ", "lm358dr", "LM358 DR"):
+            self.assertEqual(lifecycle_audit.query_lifecycle_digikey(req)["status"], "Active", req)
 
     def test_mouser_searches_exact(self):
         self.bodies["mouser"] = mo("LM358DR")

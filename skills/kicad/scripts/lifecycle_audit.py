@@ -217,13 +217,14 @@ _SKIP_TYPES = {
 
 
 def _is_requested(mpn: str, hit) -> bool:
-    """True when a provider result's MPN is the requested part. A family member or
-    sibling is not: its lifecycle status says nothing about this part."""
+    """True when a provider result's MPN is the requested part number. A family member,
+    sibling or ordering variant is not: its lifecycle status says nothing about this one."""
     ds_pkg = str(Path(__file__).resolve().parents[2] / "datasheets")
     if ds_pkg not in sys.path:
         sys.path.insert(0, ds_pkg)
     from distributor_core.verify import same_part
-    return isinstance(hit, str) and same_part(mpn, hit, allow_family=False)
+    return isinstance(hit, str) and same_part(
+        mpn, hit, allow_family=False, ordering_suffixes=False)
 
 
 def _is_real_mpn(mpn: str) -> bool:

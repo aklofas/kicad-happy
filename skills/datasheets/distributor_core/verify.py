@@ -32,16 +32,20 @@ def _part_key(mpn: str) -> str:
     return _MPN_PUNCT_RE.sub("", _strip_ordering_suffixes(mpn))
 
 
-def same_part(requested: str, hit: str, *, allow_family: bool = False) -> bool:
+def same_part(requested: str, hit: str, *, allow_family: bool = False,
+              ordering_suffixes: bool = True) -> bool:
     """True when a search hit's MPN names the requested part.
 
     Case, whitespace and ``-_./,#+()`` are ignored, and so are the ordering suffixes in
-    ``ORDERING_SUFFIXES``. With ``allow_family`` a hit that extends the requested string
+    ``ORDERING_SUFFIXES`` unless ``ordering_suffixes`` is false (lifecycle status belongs to
+    one orderable part number: a ``G4`` variant can be obsolete while the base is active).
+    With ``allow_family`` a hit that extends the requested string
     also counts (``LM358`` -> ``LM358DR``); use it only when the request is a generic name,
     such as an MPN read from a symbol's Value field. Distributor part numbers are compared
     exactly by the caller, never here.
     """
-    a, b = _part_key(requested or ""), _part_key(hit or "")
+    key = _part_key if ordering_suffixes else (lambda m: _MPN_PUNCT_RE.sub("", m.upper()))
+    a, b = key(requested or ""), key(hit or "")
     if not a or not b:
         return False
     if a == b:

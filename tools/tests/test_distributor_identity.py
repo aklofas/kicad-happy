@@ -64,6 +64,15 @@ class SamePart(unittest.TestCase):
                 self.assertTrue(same_part(a, b))
                 self.assertTrue(same_part(b, a))
 
+    def test_exact_mode_keeps_ordering_variants_apart(self):
+        from distributor_core.verify import same_part
+        for a, b in (("LM2596S-ADJ", "LM2596S-ADJ/NOPB"), ("LM358DR", "LM358DRG4")):
+            self.assertTrue(same_part(a, b))
+            self.assertFalse(same_part(a, b, ordering_suffixes=False))
+            self.assertFalse(same_part(b, a, ordering_suffixes=False))
+        for a, b in (("lm358dr", "LM358DR"), ("LM358 DR", "LM358DR"), ("LM2596S-ADJ", "lm2596s adj")):
+            self.assertTrue(same_part(a, b, ordering_suffixes=False))
+
     def test_family_members_stay_distinct(self):
         from distributor_core.verify import same_part
         for a, b in (("2N7002", "2N7002V"), ("BSS138", "BSS138DWQ-7")):
