@@ -536,7 +536,7 @@ def _expand_designators(field: str) -> list[str]:
     for tok in field.split():
         m = _RANGE_RE.match(tok)
         lo, hi = (m.group(2), m.group(3)) if m else ("", "")
-        padded = lo.startswith("0") or hi.startswith("0")
+        padded = any(len(n) > 1 and n.startswith("0") for n in (lo, hi))
         # R01-R03 keeps its width; ends with different widths and a leading zero are not a range
         if m and 0 < int(hi) - int(lo) < _RANGE_MAX and (not padded or len(lo) == len(hi)):
             out.extend(f"{m.group(1)}{n:0{len(lo) if padded else 0}d}" for n in range(int(lo), int(hi) + 1))

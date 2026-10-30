@@ -130,6 +130,8 @@ class Helpers(unittest.TestCase):
         self.assertEqual(tb._expand_designators("R01-R03"), ["R01", "R02", "R03"])
         self.assertEqual(tb._expand_designators("R008-R010"), ["R008", "R009", "R010"])
         self.assertEqual(tb._expand_designators("R8-R10"), ["R8", "R9", "R10"])
+        self.assertEqual(tb._expand_designators("R0-R3"), ["R0", "R1", "R2", "R3"])
+        self.assertEqual(tb._expand_designators("R0-R10")[:2], ["R0", "R1"])
 
     def test_not_ranges(self):
         for tok in ("R1-R03", "R01-R3", "R4-R1", "J1-A", "MKB-1", "R1-C4", "R3-R3"):
