@@ -51,6 +51,9 @@ class PromptShapes(unittest.TestCase):
         text = (DS / "prompts" / "pinout.md").read_text(encoding="utf-8")
         listed = set(re.findall(r"`([a-z_]+)`", re.search(r"- `type`: exactly one of (.*?)\(", text).group(1)))
         self.assertTrue(listed <= pin_types, sorted(listed - pin_types))
+        rules = text.split("Choose the closest match", 1)[1].split("\n", 1)[0]
+        for t in ("open_collector", "open_emitter", "tri_state", "not_connected", "power_in", "power_out", "passive"):
+            self.assertIn("`%s`" % t, rules, t)
         reg = (DS / "prompts" / "regulator.md").read_text(encoding="utf-8")
         allowed = set(_schema("regulator")["properties"]["stability_conditions"]["properties"]
                       ["cap_types_allowed"]["items"]["enum"])
