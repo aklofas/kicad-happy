@@ -1,0 +1,121 @@
+"""Re-exporting the tracking CSV binds hand-kept columns to the part, keeps manual `--` rows and
+distributor columns filled on any row, and never lets a different part inherit Validated or
+stock. Expected values are the hand-derived contents of the CSV the user edited."""
+import csv, sys, tempfile, unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "skills" / "bom" / "scripts"))
+
+import bom_manager
+
+COLS = ["Reference", "Qty", "Value", "Footprint", "MPN", "Manufacturer", "Datasheet", "DNP",
+        "Chosen_Distributor", "Validated", "Notes", "DigiKey", "DK_Stock", "Mouser", "MO_Stock"]
+
+
+def line(refs, mpn, value="1k", dnp=False):
+    return {"type": "resistor", "references": refs, "quantity": len(refs), "value": value,
+            "footprint": "Resistor_SMD:R_0402_1005Metric", "mpn": mpn, "manufacturer": "",
+            "datasheet": "~", "dnp": dnp, "bom_comments": []}
+
+
+def report(*lines):
+    return {"bom": list(lines), "convention": {"field_mapping": {}}, "stats": {}}
+
+
+def write(path, rows):
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=COLS)
+        w.writeheader()
+        for r in rows:
+            w.writerow({c: r.get(c, "") for c in COLS})
+
+
+def read(path):
+    with open(path, newline="", encoding="utf-8-sig") as f:
+        return list(csv.DictReader(f))
+
+
+class TrackingCsvMergeTest(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.csv = Path(self._tmp.name) / "bom.csv"
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_dnp_twin_keeps_its_own_notes_and_validated(self):
+        write(self.csv, [
+            {"Reference": "R18", "Qty": "1", "Value": "1k", "Footprint": "0402", "MPN": "RC0402",
+             "DNP": "yes", "Notes": "spare pad", "Validated": ""},
+            {"Reference": "R19", "Qty": "1", "Value": "1k", "Footprint": "0402", "MPN": "RC0402",
+             "Notes": "pull-up", "Validated": "yes"},
+        ])
+        bom_manager.export_csv(report(line(["R18"], "RC0402", dnp=True), line(["R19"], "RC0402")),
+                               self.csv)
+        rows = {r["Reference"]: r for r in read(self.csv)}
+        self.assertEqual((rows["R18"]["Notes"], rows["R18"]["Validated"]), ("spare pad", ""))
+        self.assertEqual((rows["R19"]["Notes"], rows["R19"]["Validated"]), ("pull-up", "yes"))
+
+    def test_manual_rows_survive_after_the_schematic_rows(self):
+        write(self.csv, [
+            {"Reference": "R1", "Qty": "1", "Value": "1k", "MPN": "A"},
+            {"Reference": "--", "Qty": "1", "Value": "cable", "MPN": "CABLE-1", "Notes": "buy",
+             "DigiKey": "CAB-ND"},
+            {"Reference": "--", "Qty": "2", "Value": "screws", "MPN": "", "Notes": "M3"},
+        ])
+        bom_manager.export_csv(report(line(["R1"], "A"), line(["R2"], "B")), self.csv)
+        rows = read(self.csv)
+        self.assertEqual([r["Reference"] for r in rows], ["R1", "R2", "--", "--"])
+        self.assertEqual((rows[2]["MPN"], rows[2]["Notes"], rows[2]["DigiKey"]),
+                         ("CABLE-1", "buy", "CAB-ND"))
+        self.assertEqual((rows[3]["Value"], rows[3]["Qty"], rows[3]["Notes"]), ("screws", "2", "M3"))
+
+    def test_changed_part_keeps_only_notes_and_distributor_choice(self):
+        write(self.csv, [{"Reference": "R1", "Qty": "1", "Value": "1k", "Footprint": "0402",
+                          "MPN": "OLD-X", "Chosen_Distributor": "Mouser", "Validated": "yes",
+                          "Notes": "tight", "DigiKey": "OLD-ND", "DK_Stock": "500"}])
+        bom_manager.export_csv(report(line(["R1"], "X")), self.csv)
+        row = read(self.csv)[0]
+        self.assertEqual(row["MPN"], "X")
+        self.assertEqual(row["Validated"], "")
+        self.assertEqual(row["DigiKey"], "")
+        self.assertEqual(row["DK_Stock"], "")
+        self.assertEqual((row["Notes"], row["Chosen_Distributor"]), ("tight", "Mouser"))
+
+    def test_distributor_columns_filled_on_a_later_row_are_kept(self):
+        write(self.csv, [
+            {"Reference": "R1", "Qty": "1", "MPN": "A"},
+            {"Reference": "R2", "Qty": "1", "MPN": "B", "Mouser": "595-B", "MO_Stock": "7"},
+        ])
+        bom_manager.export_csv(report(line(["R1"], "A"), line(["R2"], "B")), self.csv)
+        rows = read(self.csv)
+        self.assertEqual((rows[1]["Mouser"], rows[1]["MO_Stock"]), ("595-B", "7"))
+
+    def test_mpnless_line_matches_by_value_and_footprint_not_by_another_part(self):
+        write(self.csv, [{"Reference": "R1", "Qty": "1", "Value": "10k", "Footprint": "0402",
+                          "Validated": "yes", "Notes": "n"}])
+        bom_manager.export_csv(report(line(["R1"], "", value="1k")), self.csv)
+        row = read(self.csv)[0]
+        self.assertEqual((row["Validated"], row["Notes"]), ("", "n"))
+
+    def test_csv_keeps_crlf_and_a_failed_write_keeps_the_old_file(self):
+        write(self.csv, [{"Reference": "R1", "Qty": "1", "MPN": "A", "Notes": "keep"}])
+        bom_manager.export_csv(report(line(["R1"], "A")), self.csv)
+        self.assertIn(b"\r\n", self.csv.read_bytes())
+        before = self.csv.read_bytes()
+        orig = bom_manager.atomic_write_text
+
+        def boom(path, text, newline=None):
+            raise OSError("disk full")
+        bom_manager.atomic_write_text = boom
+        try:
+            with self.assertRaises(OSError):
+                bom_manager.export_csv(report(line(["R1"], "A")), self.csv)
+        finally:
+            bom_manager.atomic_write_text = orig
+        self.assertEqual(self.csv.read_bytes(), before)
+
+
+if __name__ == "__main__":
+    unittest.main()

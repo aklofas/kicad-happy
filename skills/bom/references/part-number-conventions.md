@@ -331,7 +331,7 @@ Comprehensive list of every field name variant observed across 56 open-source Ki
 | `(dnp yes)` | KiCad 7+ S-expression flag |
 | `DONOTPLACE` | Boolean "TRUE" |
 | `DNM` | Do Not Mount |
-| `POPULATE` | "0" / "no" / "false" = DNP, "1" / "yes" / "true" / empty = populate |
+| `POPULATE` | "0" / "no" / "false" / "DNP" = DNP, "1" / "yes" / "true" / empty = populate |
 | `Do Not Populate` | Verbose variant |
 
 ---

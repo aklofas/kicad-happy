@@ -264,7 +264,7 @@ Some project-specific items aren't on the schematic but need ordering alongside 
 - **Mounting hardware** — standoffs, screws, nuts specific to the enclosure
 - **Thermal management** — heat sinks, thermal pads for specific components
 
-Track these as rows in the BOM CSV with `Reference` = `--` and a Note, or in a separate `bom/non-bom-items.csv`. Mention them separately in cost estimates.
+Track these as rows in the BOM CSV with `Reference` = `--` (re-export keeps them), or in a separate `bom/non-bom-items.csv`. Mention them separately in cost estimates.
 
 ### Presenting BOM Comments
 

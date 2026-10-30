@@ -93,13 +93,15 @@ def escape_kicad_string(s: str) -> str:
              .replace('\n', '\\n').replace('\r', '\\r'))
 
 
-def atomic_write_text(path: Path, text: str) -> None:
-    """Write UTF-8 text to path (symlinks resolved) via a temp file and os.replace."""
+def atomic_write_text(path: Path, text: str, newline: str | None = None) -> None:
+    """Write UTF-8 text to path (symlinks resolved) via a temp file and os.replace.
+
+    *newline* is passed to the file object ("" keeps the text's line endings as given)."""
     target = Path(path).resolve()
     fd, tmp = tempfile.mkstemp(dir=str(target.parent), prefix=target.name + ".",
                                suffix=".tmp")
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
+        with os.fdopen(fd, "w", encoding="utf-8", newline=newline) as f:
             f.write(text)
         if target.exists():
             shutil.copymode(target, tmp)

@@ -31,6 +31,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import re
 import sys
@@ -44,7 +45,7 @@ from kicad_core.fields import (merge_unit_fields, MPN_FIELD_ALIASES, MPN_FIELD_A
                                normalize_field_name)
 from kicad_core.instances import tilde_is_empty, variant_overrides
 from kicad_core.sexp import get_value, parse
-from kicad_sexp import (find_matching_paren, direct_child, direct_value, find_sub_sheet_entries,
+from kicad_sexp import (atomic_write_text, find_matching_paren, direct_child, direct_value, find_sub_sheet_entries,
                         iter_placed_symbol_blocks, resolved_instance, sheet_variant, symbol_instances_of)
 
 
@@ -969,25 +970,41 @@ def _short_footprint(fp: str) -> str:
     return fp
 
 
-def load_existing_csv(csv_path: Path) -> dict[str, dict]:
-    """Load an existing BOM CSV and index by MPN (or Reference as fallback).
-
-    Returns {key: row_dict} where key is MPN if available, else Reference.
-    """
+def load_existing_rows(csv_path: Path) -> list[dict]:
+    """Every row of an existing BOM CSV, in file order."""
     if not csv_path.exists():
-        return {}
-
-    rows = {}
+        return []
     with open(csv_path, newline="", encoding="utf-8-sig") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            # Use MPN as key if available, else first reference
-            key = row.get("MPN", "").strip()
-            if not key:
-                key = row.get("Reference", "").strip().split(",")[0]
-            if key:
-                rows[key] = dict(row)
-    return rows
+        return [dict(row) for row in csv.DictReader(f)]
+
+
+def _refs_of(row: dict) -> set:
+    return {r.strip() for r in (row.get("Reference") or "").split(",") if r.strip()}
+
+
+def _is_manual_row(row: dict) -> bool:
+    return (row.get("Reference") or "").strip().startswith("--")
+
+
+def _match_existing(rows: list[dict], mpn: str, value: str, fp_short: str, dnp: str,
+                    refs: set) -> tuple[dict | None, bool]:
+    """(existing row, same part) for one new BOM line. Rows with the line's MPN (or, without an
+    MPN, its value and footprint) are the same part; a row found only by a shared reference holds
+    a different part now."""
+    def field(r, k):
+        return (r.get(k) or "").strip()
+    if mpn:
+        same = [r for r in rows if field(r, "MPN") == mpn and not _is_manual_row(r)]
+    else:
+        same = [r for r in rows if not field(r, "MPN") and not _is_manual_row(r)
+                and field(r, "Value") == value and field(r, "Footprint") == fp_short]
+    if same:
+        same.sort(key=lambda r: (-len(_refs_of(r) & refs), field(r, "DNP") != dnp))
+        return same[0], True
+    for r in rows:
+        if not _is_manual_row(r) and refs & _refs_of(r):
+            return r, False
+    return None, False
 
 
 def export_csv(report: dict, output_path: Path, extra_distributors: list[str] | None = None) -> dict:
@@ -1010,16 +1027,15 @@ def export_csv(report: dict, output_path: Path, extra_distributors: list[str] | 
     csv_columns = _build_csv_columns(active_distributors)
 
     # Load existing CSV data to preserve user edits
-    existing = load_existing_csv(output_path)
+    existing = load_existing_rows(output_path)
 
     # If an existing CSV has extra distributor columns (user added one manually),
     # include those too so we don't drop data
     if existing:
-        sample = next(iter(existing.values()), {})
         for dist in _DIST_ORDER:
             if dist not in active_distributors:
                 pn_col, stock_col = _DIST_CSV_MAP[dist]
-                if sample.get(pn_col) or sample.get(stock_col):
+                if any(r.get(pn_col) or r.get(stock_col) for r in existing):
                     active_distributors.append(dist)
         csv_columns = _build_csv_columns(active_distributors)
 
@@ -1059,14 +1075,15 @@ def export_csv(report: dict, output_path: Path, extra_distributors: list[str] | 
             row[pn_col] = entry.get(dist, "")
 
         # Merge with existing data — preserve user-managed columns
-        existing_row = existing.get(mpn) if mpn else None
-        if not existing_row:
-            # Try matching by first reference
-            first_ref = entry["references"][0] if entry["references"] else ""
-            for erow in existing.values():
-                if first_ref and first_ref in erow.get("Reference", "").split(","):
-                    existing_row = erow
-                    break
+        existing_row, same_part = _match_existing(
+            existing, mpn, entry["value"], fp_short, row["DNP"], set(entry["references"]))
+        if existing_row and not same_part:
+            # A different part now holds these references: only the notes and the
+            # distributor choice carry over
+            for col in ("Notes", "Chosen_Distributor"):
+                if existing_row.get(col):
+                    row[col] = existing_row[col]
+            existing_row = None
 
         if existing_row:
             for col in user_columns:
@@ -1084,12 +1101,17 @@ def export_csv(report: dict, output_path: Path, extra_distributors: list[str] | 
 
         rows.append(row)
 
-    # Write CSV
+    # Manual rows ("--") are hand-kept lines the schematic does not know about
+    for erow in existing:
+        if _is_manual_row(erow):
+            rows.append({col: erow.get(col) or "" for col in csv_columns})
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(output_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=csv_columns, extrasaction="ignore")
-        writer.writeheader()
-        writer.writerows(rows)
+    buf = io.StringIO(newline="")
+    writer = csv.DictWriter(buf, fieldnames=csv_columns, extrasaction="ignore")
+    writer.writeheader()
+    writer.writerows(rows)
+    atomic_write_text(output_path, buf.getvalue(), newline="")
 
     active_rows = [r for r in rows if r.get("DNP") != "yes"]
     return {
@@ -1097,7 +1119,7 @@ def export_csv(report: dict, output_path: Path, extra_distributors: list[str] | 
         "total_lines": len(rows),
         "active_lines": len(active_rows),
         "active_distributors": active_distributors,
-        "merged_from_existing": sum(1 for _ in existing) if existing else 0,
+        "merged_from_existing": len(existing),
     }
 
 
