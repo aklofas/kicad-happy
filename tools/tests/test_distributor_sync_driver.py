@@ -210,6 +210,16 @@ class RepeatedRows(unittest.TestCase):
         self.assertEqual(r["already_present"], 1)
         self.assertEqual(m["parts"]["LM358DR"]["references"], ["U1", "U3", "U4"])
 
+    def test_different_distributor_numbers_are_noted(self):
+        rows = [_row("LM358DR", ["U1"], digikey="296-1-ND"), _row("LM358DR", ["U2"], digikey="296-2-ND"),
+                _row("LM358DR", ["U3"]), _row("LM358DR", ["U4"], digikey="296-1-ND"),
+                _row("TL072", ["U5"], digikey="296-9-ND"), _row("TL072", ["U6"], digikey="296-9-ND")]
+        seen, _, _, err = self._run(rows)
+        self.assertEqual([(p["_key"], p["digikey"]) for p in seen], [("LM358DR", "296-1-ND"), ("TL072", "296-9-ND")])
+        notes = [line for line in err.splitlines() if line.startswith("Note:")]
+        self.assertEqual(notes, ["Note: LM358DR is on several BOM rows with different digikey numbers; "
+                                 "using 296-1-ND, not 296-2-ND"])
+
     def test_distinct_part_numbers_never_coalesce(self):
         rows = [_row("2N7002", ["Q1"]), _row("2N7002V", ["Q2"]), _row("LM358DR", ["U1"]),
                 _row("LM358DRG4", ["U2"]), _row("lm358dr", ["U3"])]
@@ -276,6 +286,26 @@ class MachineOutput(unittest.TestCase):
         self.assertEqual(r, {"error": "Failed to analyze schematic"})
         self.assertIn("gone.json", se.getvalue())
         self.assertTrue(se.getvalue().endswith("Error: Failed to analyze schematic\n"))
+
+    def test_unreadable_inputs_are_errors_under_json(self):
+        from distributor_core.sync import sync_datasheets
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            (d / "list.json").write_text("[]", encoding="utf-8")
+            cases = (({"mpn_list": str(d / "gone.txt")},
+                      f"cannot read {(d / 'gone.txt').resolve()}: [Errno 2] No such file or directory: "
+                      f"'{(d / 'gone.txt').resolve()}'"),
+                     ({"input_path": str(d / "list.json")}, "Failed to analyze schematic"))
+            for kw, message in cases:
+                with self.subTest(**kw):
+                    so, se = io.StringIO(), io.StringIO()
+                    with redirect_stdout(so), redirect_stderr(se):
+                        r = sync_datasheets(fake_provider(), output_dir=str(d / "o"), as_json=True, **kw)
+                    self.assertEqual(r, {"error": message})
+                    self.assertEqual(json.loads(so.getvalue()), {"error": message})
+                    self.assertTrue(se.getvalue().endswith(f"Error: {message}\n"))
+                    self.assertFalse((d / "o").exists())
+            self.assertIn("list.json is not analyzer output", se.getvalue())
 
     def test_download_message_is_not_on_stdout(self):
         from distributor_core import download

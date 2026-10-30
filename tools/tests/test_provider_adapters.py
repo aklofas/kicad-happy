@@ -102,11 +102,30 @@ class NullPayload(unittest.TestCase):
                          extra_patches=(("get_oauth_token", lambda: ("T", "C")),))
         self.assertEqual(got["LM358DR"], ("no_datasheet", "DigiKey listing has no datasheet URL", ""))
 
+    def test_digikey_null_manufacturer_name_keeps_the_schematic_manufacturer(self):
+        import io, tempfile
+        from contextlib import redirect_stderr
+        from unittest import mock
+        prov = _load("digikey", "provider")
+        hit = {"ManufacturerProductNumber": "LM358DR", "Manufacturer": {"Name": None},
+               "Description": {"ProductDescription": None}, "DatasheetUrl": ""}
+        part = {"mpn": "LM358DR", "digikey": "", "manufacturer": "Texas Instruments", "description": "Op amp",
+                "value": "LM358DR", "datasheet": "", "references": ["U1"]}
+        with tempfile.TemporaryDirectory() as d, redirect_stderr(io.StringIO()), \
+                mock.patch.object(prov, "search_digikey_with_token", lambda *a, **k: hit), \
+                mock.patch.object(prov, "try_alternative_sources", lambda *a, **k: False):
+            r = prov.sync_one_part(part, Path(d), {}, 0, ("T", "C"))
+        self.assertEqual((r["status"], r["manufacturer"], r["description"]),
+                         ("no_datasheet", "Texas Instruments", "Op amp"))
+
     def test_lcsc_unparseable_extra(self):
-        hit = {"mfr": "LM358DR", "lcsc": "7950", "datasheet": "", "extra": "{not json"}
-        got = self._sync("lcsc", hit, "search_lcsc",
-                         extra_patches=(("search_lcsc_direct", lambda *a, **k: None),))
-        self.assertEqual(got["LM358DR"], ("failed", "No datasheet URL or all download methods failed", ""))
+        for extra in ("{not json", "null", "[]", "3"):
+            with self.subTest(extra=extra):
+                hit = {"mfr": "LM358DR", "lcsc": "7950", "datasheet": "", "extra": extra}
+                got = self._sync("lcsc", hit, "search_lcsc",
+                                 extra_patches=(("search_lcsc_direct", lambda *a, **k: None),))
+                self.assertEqual(got["LM358DR"],
+                                 ("failed", "No datasheet URL or all download methods failed", ""))
 
 
 if __name__ == "__main__":

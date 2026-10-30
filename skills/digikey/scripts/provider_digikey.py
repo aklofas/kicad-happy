@@ -325,7 +325,7 @@ def sync_one_part(
 
     ds_url = product.get("DatasheetUrl", "")
     dk_mpn = product.get("ManufacturerProductNumber", mpn)
-    dk_mfg = (product.get("Manufacturer") or {}).get("Name", part["manufacturer"])
+    dk_mfg = (product.get("Manufacturer") or {}).get("Name") or part["manufacturer"]
     dk_desc = (product.get("Description") or {}).get("ProductDescription", "")
 
     # If DigiKey returned the real MPN, use it (better than a DK PN for filenames)

@@ -91,8 +91,10 @@ def _part_key(part: dict, key_priority) -> str:
 def _coalesce(parts: list[dict], key_priority) -> list[dict]:
     """One part per manifest key, in BOM order, so a part on several BOM rows is fetched once.
     References are unioned in BOM order; every other field takes the first non-empty value. The
-    MPN counts as read from the Value only when no row has it as a property (strict identity)."""
+    MPN counts as read from the Value only when no row has it as a property (strict identity).
+    A distributor number that differs between the rows is noted on stderr: only the first is used."""
     merged: dict[str, dict] = {}
+    dropped: dict[tuple[str, str], list[str]] = {}
     for part in parts:
         key = _part_key(part, key_priority)
         first = merged.get(key)
@@ -100,12 +102,21 @@ def _coalesce(parts: list[dict], key_priority) -> list[dict]:
             merged[key] = {**part, "_key": key, "references": list(part["references"])}
             continue
         first["references"] += [r for r in part["references"] if r not in first["references"]]
+        for name in key_priority:
+            value = part.get(name, "")
+            if value and first.get(name) and value != first[name]:
+                seen = dropped.setdefault((key, name), [])
+                if value not in seen:
+                    seen.append(value)
         for name, value in part.items():
             if name not in ("references", "mpn", "mpn_source") and value and not first.get(name):
                 first[name] = value
         if part["mpn"] and (not first["mpn"] or part.get("mpn_source") != "value"):
             first["mpn"] = part["mpn"]
             first["mpn_source"] = part.get("mpn_source", "")
+    for (key, name), values in dropped.items():
+        print(f"Note: {key} is on several BOM rows with different {name} numbers; using "
+              f"{merged[key][name]}, not {', '.join(values)}", file=sys.stderr)
     return list(merged.values())
 
 
@@ -206,17 +217,17 @@ def sync_datasheets(
     # only an explicit --output may point elsewhere.
     if not output_dir and out_dir.is_symlink():
         return _error(f"{out_dir} is a symlink; pass --output to write datasheets there", as_json)
-    out_dir.mkdir(parents=True, exist_ok=True)
 
-    index_path = out_dir / MANIFEST_FILENAME
-    index = load_index(index_path)
-
-    # Source parts: either analyzer BOM or plain MPN list
+    # Source parts: either analyzer BOM or plain MPN list. Read before the output directory is
+    # created, so an input error leaves nothing behind.
     if mpn_list:
         mpn_list_path = Path(mpn_list).resolve()
         print(f"Loading MPNs from {mpn_list_path.name}...", file=sys.stderr)
-        parts = _coalesce(load_mpn_list(mpn_list_path, id_keys=provider.ID_KEYS),
-                          provider.KEY_PRIORITY)
+        try:
+            mpns = load_mpn_list(mpn_list_path, id_keys=provider.ID_KEYS)
+        except (OSError, ValueError) as e:
+            return _error(f"cannot read {mpn_list_path}: {e}", as_json)
+        parts = _coalesce(mpns, provider.KEY_PRIORITY)
         print(f"Loaded {len(parts)} unique MPNs", file=sys.stderr)
         skipped_no_id = 0
     else:
@@ -238,6 +249,10 @@ def sync_datasheets(
         parts = _coalesce(parts, provider.KEY_PRIORITY)
 
         print(provider.LABELS["found"].format(n=len(parts), k=skipped_no_id), file=sys.stderr)
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    index_path = out_dir / MANIFEST_FILENAME
+    index = load_index(index_path)
 
     # Determine what needs processing
     to_download = []

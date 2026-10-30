@@ -53,10 +53,14 @@ def get_analyzer_output(input_path: Path) -> dict | None:
     if input_path.suffix == ".json":
         try:
             with open(input_path, "r", encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
         except (OSError, ValueError) as e:
             print(f"Error: cannot read {input_path}: {e}", file=sys.stderr)
             return None
+        if not isinstance(data, dict):
+            print(f"Error: {input_path} is not analyzer output (a JSON object)", file=sys.stderr)
+            return None
+        return data
 
     if input_path.suffix in (".kicad_sch", ".sch"):
         # Try importing the analyzer directly
