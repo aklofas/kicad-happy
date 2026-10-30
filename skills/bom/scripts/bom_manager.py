@@ -108,6 +108,46 @@ def _pick_mpn_from_props(props: dict) -> str:
     return (_first_nonblank_stripped(props, MPN_FIELD_ALIASES_PRIMARY)
             or _first_nonblank_stripped(props, MPN_FIELD_ALIASES_GENERIC | frozenset({"mp", "mfn"})))
 
+
+# KiCad "Supplier N" slots: a name field (`Supplier 1` = "DigiKey") and a part number field whose
+# spelling varies between projects; the slot number ties the two together.
+_SUPPLIER_NAME_MAP = {
+    "digikey": "digikey", "digi-key": "digikey",
+    "mouser": "mouser",
+    "lcsc": "lcsc", "jlcpcb": "lcsc",
+    "newark": "element14", "farnell": "element14", "element14": "element14",
+    "arrow": "arrow",
+}
+_SLOT_NAME_RE = re.compile(r'^Supplier[\s_]*(\d+)$', re.IGNORECASE)
+_PN_WORD = r'(?:#|number|num|no\.?|p/n|pn)'
+_SLOT_PN_RE = re.compile(
+    rf'^Supplier[\s_]*(?:(\d+)[\s_]*(?:part[\s_]*)?{_PN_WORD}|part[\s_]*{_PN_WORD}[\s_]*(\d+))$',
+    re.IGNORECASE)
+
+
+def _slot_pn_number(name: str):
+    """Slot number of a `Supplier N` part number field name, or None."""
+    m = _SLOT_PN_RE.match(name.strip())
+    return int(m.group(1) or m.group(2)) if m else None
+
+
+def _symbol_slots(props: dict) -> dict[str, str]:
+    """Distributor -> part number from this symbol's own `Supplier N` fields (lowest slot wins)."""
+    names = {}
+    for name, value in props.items():
+        m = _SLOT_NAME_RE.match(name.strip())
+        if m and str(value).strip():
+            names[int(m.group(1))] = _SUPPLIER_NAME_MAP.get(str(value).strip().lower())
+    out: dict[str, str] = {}
+    pns = sorted((_slot_pn_number(n), n) for n in props if _slot_pn_number(n) is not None)
+    for slot, name in pns:
+        dist = names.get(slot)
+        pn = str(props[name]).strip()
+        if dist in ("digikey", "mouser", "lcsc", "element14") and pn and pn != "~":
+            out.setdefault(dist, pn)
+    return out
+
+
 # Canonical field names to use when creating new properties
 CANONICAL_NAMES = {
     "mpn": "MPN",
@@ -256,13 +296,6 @@ def detect_convention(
 
     # Also detect "Supplier N" / "Supplier N Part #" pattern (KiCad field names)
     # Maps the value inside the Supplier field to canonical distributor names
-    _SUPPLIER_NAME_MAP = {
-        "digikey": "digikey", "digi-key": "digikey",
-        "mouser": "mouser",
-        "lcsc": "lcsc", "jlcpcb": "lcsc",
-        "newark": "element14", "farnell": "element14", "element14": "element14",
-        "arrow": "arrow",
-    }
     # Track KiCad "Supplier N" slot mappings: slot_number -> (name_field, pn_field, canonical)
     supplier_slots: dict[int, dict] = {}  # "supplier" here refers to KiCad field names
 
@@ -276,7 +309,7 @@ def detect_convention(
                 populated_counts[canonical] = populated_counts.get(canonical, 0) + 1
 
             # Detect KiCad "Supplier N" field pattern
-            sup_match = re.match(r'^Supplier\s+(\d+)$', name, re.IGNORECASE)
+            sup_match = _SLOT_NAME_RE.match(name.strip())
             if sup_match and value.strip():
                 slot = int(sup_match.group(1))
                 dist_name = value.strip().lower()
@@ -288,11 +321,9 @@ def detect_convention(
                     }
 
             # Detect KiCad "Supplier N Part #" or "Supplier N Part Number" field
-            sup_pn_match = re.match(
-                r'^Supplier\s+(\d+)\s+Part\s*(?:#|Number|No\.?)$', name, re.IGNORECASE
-            )
-            if sup_pn_match:
-                slot = int(sup_pn_match.group(1))
+            pn_slot = _slot_pn_number(name)
+            if pn_slot is not None:
+                slot = pn_slot
                 if slot in supplier_slots:
                     supplier_slots[slot]["pn_field"] = name
                     # Count this as a populated distributor field
@@ -385,6 +416,8 @@ def generate_bom(symbols: list[dict], convention: dict,
                                   for u in units):
             props = merge_unit_fields((u.get("unit", 1), u["raw_properties"]) for u in units)
 
+        slots = _symbol_slots(props)
+
         # Extract canonical field values using the project's actual field names
         def get_canonical(canonical_name: str) -> str:
             if canonical_name == "mpn":
@@ -404,6 +437,8 @@ def generate_bom(symbols: list[dict], convention: dict,
                 if primary:
                     return primary
             actual_name = field_map.get(canonical_name)
+            if actual_name and _slot_pn_number(actual_name) is not None:
+                actual_name = None  # slot fields are read per symbol below
             if actual_name:
                 val = props.get(actual_name, "").strip()
                 if val:
@@ -416,7 +451,7 @@ def generate_bom(symbols: list[dict], convention: dict,
             for actual, val in props.items():
                 if _canonical_for(actual) == canonical_name and val.strip():
                     return val.strip()
-            return ""
+            return slots.get(canonical_name, "")
 
         mpn = get_canonical("mpn")
         manufacturer = get_canonical("manufacturer")
