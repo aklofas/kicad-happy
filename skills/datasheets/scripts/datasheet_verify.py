@@ -650,12 +650,20 @@ def verify_decoupling(components: list, nets: dict, extraction_dir: str,
 
         from kicad_core.netnames import is_ground_name
 
+        # Ground is a ground-named net or a net on one of the IC's own
+        # ground pins (a PGND2 the name rules miss).
+        ic_ground = {n for pn, n in pin_nets.items()
+                     if ((ext_pins.get(pn) or {}).get("type") or "").lower() == "ground"}
+
+        def is_ground(net_name):
+            return net_name in ic_ground or is_ground_name(net_name)
+
         # Supply nets per role; a recommendation is checked only on the
         # pins of its role, and a symbol without such a pin is skipped.
         role_nets = {"input": set(), "output": set()}
         for pin_num, net_name in pin_nets.items():
             ep = ext_pins.get(pin_num)
-            if not ep or (ep.get("type") or "").lower() != "power" or is_ground_name(net_name):
+            if not ep or (ep.get("type") or "").lower() != "power" or is_ground(net_name):
                 continue
             for role in _power_pin_roles(ep):
                 role_nets[role].add(net_name)
@@ -679,7 +687,7 @@ def verify_decoupling(components: list, nets: dict, extraction_dir: str,
                         continue
                     cap_nets = c.get("pin_nets")
                     if isinstance(cap_nets, dict) and cap_nets and not any(
-                            n != net_name and is_ground_name(n) for n in cap_nets.values()):
+                            n != net_name and is_ground(n) for n in cap_nets.values()):
                         continue
                     seen.add(c_ref)
                     caps.append({

@@ -37,18 +37,20 @@ class CapRecommendation(unittest.TestCase):
                 self.assertAlmostEqual(r["min_farads"], farads, delta=farads * 1e-6)
 
 
-def _ldo(tmp, pins, recs, caps):
-    """LDO U1: VIN on +5V, GND, VOUT on +3V3; caps are (ref, farads, net_a, net_b)."""
+def _ldo(tmp, pins, recs, caps, ground="GND"):
+    """LDO U1: VIN on +5V, GND pin on `ground`, VOUT on +3V3; caps are
+    (ref, farads, net_a, net_b), with "GND" standing for `ground`."""
     ext = {"extraction_metadata": {"extraction_score": 9.0}, "pins": pins,
            "application_circuit": recs}
     with open(os.path.join(tmp, "LDO1.json"), "w", encoding="utf-8") as fh:
         json.dump(ext, fh)
     u1 = {"reference": "U1", "type": "ic", "mpn": "LDO1",
-          "pin_nets": {"1": "+5V", "2": "GND", "3": "+3V3"}}
+          "pin_nets": {"1": "+5V", "2": ground, "3": "+3V3"}}
     comps, lookup, pv = [u1], {"U1": u1}, {}
     nets = {n: {"pins": [{"component": "U1", "pin_number": p}]}
             for p, n in u1["pin_nets"].items()}
     for ref, farads, a, b in caps:
+        a, b = (ground if n == "GND" else n for n in (a, b))
         c = {"reference": ref, "type": "capacitor", "value": "10uF",
              "pin_nets": {"1": a, "2": b}}
         comps.append(c)
@@ -93,6 +95,14 @@ class DecouplingRoles(unittest.TestCase):
     def test_output_cap_on_vout_does_not_satisfy_vin(self):
         self.check([("C2", 10e-6, "+3V3", "GND")],
                    [("input_cap_recommended", "error", 0, [])])
+
+    def test_cap_to_the_ics_own_ground_pin_net_counts(self):
+        # PGND2 is not a ground name, but it is the net on U1's GND pin.
+        for pins in (DIRECTED, PASSIVE):
+            with self.subTest(pins=pins[0]["direction"]), tempfile.TemporaryDirectory() as tmp:
+                got = _ldo(tmp, pins, RECS, [("C1", 10e-6, "+5V", "GND"), ("C2", 10e-6, "+3V3", "GND")],
+                           ground="PGND2")
+                self.assertEqual(got, [])
 
     def test_passive_supply_pin_gets_a_decoupling_check(self):
         pins = [{"number": "1", "name": "VDD", "type": "power", "direction": "passive"},
