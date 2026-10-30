@@ -10,7 +10,7 @@
   "properties": {
     "pdf_sha256": {
       "type": "string",
-      "description": "SHA-256 of the PDF the scout read ('sha256:<hex>'), added by the dispatcher when it writes the scout. plan_extraction.py --use-cached-scout refuses a scout whose value differs from the PDF's."
+      "description": "SHA-256 of the PDF the scout read ('sha256:<hex>'), added by the dispatcher when it writes the scout. plan_extraction.py --use-cached-scout refuses a scout whose value differs from the PDF's and warns when it is absent."
     },
     "mpn": {
       "type": "string",

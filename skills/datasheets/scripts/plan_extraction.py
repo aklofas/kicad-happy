@@ -201,10 +201,14 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     scout = _load_scout(args.cache_dir, args.mpn)
-    if scout.get("pdf_sha256") != pdf_sha:
+    scout_sha = scout.get("pdf_sha256")
+    if scout_sha is None:
+        print(f"warning: cached scout for {args.mpn} has no PDF SHA; re-scout if the PDF changed",
+              file=sys.stderr)
+    elif scout_sha != pdf_sha:
         print(
             f"error: the cached scout for {args.mpn} was not made from this PDF "
-            f"(scout pdf_sha256 {scout.get('pdf_sha256')!r}, PDF {pdf_sha}); "
+            f"(scout pdf_sha256 {scout_sha!r}, PDF {pdf_sha}); "
             "re-run the scout on this PDF and write its pdf_sha256 into the scout file.",
             file=sys.stderr,
         )

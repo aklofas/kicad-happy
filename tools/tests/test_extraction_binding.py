@@ -150,7 +150,7 @@ class ReplanNeedsAScoutFromThisPdf(unittest.TestCase):
             self.assertEqual((cache / "X1.plan.json").read_text(encoding="utf-8"), before)
             self.assertTrue((cache / "X1.base.result.json").exists())
 
-    def test_scout_without_a_sha_is_refused(self):
+    def test_scout_without_a_sha_is_used_with_a_warning(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
             pdf = root / "x.pdf"; pdf.write_bytes(b"%PDF-1.4")
@@ -158,8 +158,10 @@ class ReplanNeedsAScoutFromThisPdf(unittest.TestCase):
             (cache / "X1.scout.json").write_text(json.dumps({
                 "categories": [], "extraction_pages": {"base": [1], "pinout": [1]},
                 "quality_verdict": {"verdict": "ok"}}), encoding="utf-8")
-            self.assertEqual(self._run(cache, pdf)[0], 2)
-            self.assertFalse((cache / "X1.plan.json").exists())
+            rc, err = self._run(cache, pdf)
+            self.assertEqual(rc, 0)
+            self.assertIn("no PDF SHA", err)
+            self.assertTrue((cache / "X1.plan.json").exists())
 
     def test_scout_from_this_pdf_plans_as_before(self):
         with tempfile.TemporaryDirectory() as d:

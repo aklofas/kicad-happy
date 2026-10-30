@@ -23,7 +23,7 @@ If `<mpn>.scout.json` does not exist, run the scout first:
    - `subagent_type: general-purpose`
    - `description: "Datasheet scout for <mpn>"`
    - `prompt`: the substituted prompt
-4. Capture the agent's JSON output. Validate against `skills/datasheets/schemas/scout.schema.json`. If valid, write the unwrapped JSON to `<cache_dir>/<mpn>.scout.json` with an added `"pdf_sha256": "sha256:<hex of the PDF>"` field (`plan_extraction.py --use-cached-scout` refuses a scout without the PDF's SHA) AND a wrapped version to `<cache_dir>/<mpn>.scout.result.json` (status complete, schema_version 1.0, extracted_at now, model_tier B, model_id claude-{current model}, data = the JSON).
+4. Capture the agent's JSON output. Validate against `skills/datasheets/schemas/scout.schema.json`. If valid, write the unwrapped JSON to `<cache_dir>/<mpn>.scout.json` with an added `"pdf_sha256": "sha256:<hex of the PDF>"` field (`plan_extraction.py --use-cached-scout` refuses a scout whose SHA differs from the PDF's and warns about one without a SHA) AND a wrapped version to `<cache_dir>/<mpn>.scout.result.json` (status complete, schema_version 1.0, extracted_at now, model_tier B, model_id claude-{current model}, data = the JSON).
 5. Then re-invoke `plan_extraction.py <mpn> <pdf_path> --use-cached-scout --cache-dir <cache_dir>` to generate the plan.
 
 ### Step 2 — Dispatch per-task subagents in parallel
