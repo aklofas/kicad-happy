@@ -171,20 +171,20 @@ Returns the full extraction dict, or `None` if not cached.
 from datasheet_extract_cache import get_cached_extraction, resolve_extract_dir
 
 extract_dir = resolve_extract_dir(analysis_json=analysis)
-extraction = get_cached_extraction(extract_dir, mpn)
+extraction = get_cached_extraction(extract_dir, mpn) if extract_dir else None
 if extraction is None:
     # no cached data — skip checks that need it
     pass
 ```
 
-### `resolve_extract_dir(analysis_json=None, project_dir=None, override_dir=None) -> Path`
+### `resolve_extract_dir(analysis_json=None, project_dir=None, override_dir=None) -> Path | None`
 
 Resolves the `datasheets/extracted/` directory for a project:
 
 1. If `override_dir` is set, use it directly.
 2. If `project_dir` is set, use `<project_dir>/datasheets/extracted/`.
-3. If `analysis_json` is provided, use the `"file"` field to find the project root.
-4. Fallback: system temp directory.
+3. If `analysis_json` is provided, use the directory of its `"file"` field, else of its first `inputs.source_files` entry.
+4. Otherwise return `None`: there is no cache, and the helpers return `None`. There is no shared temp-directory fallback.
 
 ```python
 extract_dir = resolve_extract_dir(project_dir="/path/to/project")

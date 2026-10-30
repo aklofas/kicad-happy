@@ -59,6 +59,12 @@ if _TYPES_PARENT not in sys.path:
 from datasheet_types.cache_reader import read_json_object  # noqa: E402
 from distributor_core.manifest import manifest_file_path, write_json_atomic  # noqa: E402
 
+_KICAD_SCRIPTS = str(Path(__file__).resolve().parents[2] / "kicad" / "scripts")
+if _KICAD_SCRIPTS not in sys.path:
+    sys.path.append(_KICAD_SCRIPTS)
+
+from kicad_core.project import project_dir_from_analysis  # noqa: E402
+
 # Bump this when the extraction schema changes to trigger re-extraction
 # v2 (2026-04-15): added peripherals.usb, electrical.en_v_ih_max/en_v_il_min,
 # electrical.iss_time_us, features.has_pg, features.has_soft_start,
@@ -83,16 +89,18 @@ MAX_RETRIES = 3
 def resolve_extract_dir(analysis_json=None, project_dir=None, override_dir=None):
     """Determine the datasheets/extracted/ directory for this project.
 
-    Derives the project directory from either an explicit path, the analyzer
-    JSON's "file" field, or falls back to a temp directory.
+    Derives the project directory from either an explicit path or the
+    analyzer JSON (its "file", else its first ``inputs.source_files`` entry).
 
     Args:
-        analysis_json: Parsed analyzer JSON dict (uses "file" key)
+        analysis_json: Parsed analyzer JSON dict
         project_dir: Explicit project directory path
         override_dir: If set, use this directory directly
 
     Returns:
-        Path to datasheets/extracted/ directory (may not exist yet)
+        Path to datasheets/extracted/ directory (may not exist yet), or None
+        when no project is named. There is no shared fallback directory: a
+        temp-dir cache could hold extractions planted by another user.
     """
     if override_dir:
         return Path(override_dir)
@@ -100,14 +108,10 @@ def resolve_extract_dir(analysis_json=None, project_dir=None, override_dir=None)
     if project_dir:
         return Path(project_dir) / "datasheets" / "extracted"
 
-    if analysis_json:
-        source_file = analysis_json.get("file", "")
-        if source_file:
-            return Path(source_file).parent / "datasheets" / "extracted"
-
-    # Fallback: temp directory
-    import tempfile
-    return Path(tempfile.gettempdir()) / "kicad-happy" / "datasheets" / "extracted"
+    found = project_dir_from_analysis(analysis_json)
+    if found is not None:
+        return found / "datasheets" / "extracted"
+    return None
 
 
 def resolve_datasheets_dir(extract_dir):

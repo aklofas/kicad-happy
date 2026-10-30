@@ -65,13 +65,15 @@ def _load(mpn, extract_dir=None, analysis_json=None, project_dir=None):
     """Resolve extract dir and load the cached extraction for mpn.
 
     Returns the extraction dict on any cache hit (quality is described by
-    `_quality_v13`, never gated here — v2.0 spec §3.A.1). Returns None only
-    on cache miss.
+    `_quality_v13`, never gated here — v2.0 spec §3.A.1). Returns None on a
+    cache miss or when no project names a cache.
     """
     if extract_dir is None:
         extract_dir = resolve_extract_dir(
             analysis_json=analysis_json, project_dir=project_dir
         )
+        if extract_dir is None:
+            return None
     ext = get_cached_extraction(extract_dir, mpn)
     if ext:
         return ext
@@ -244,6 +246,8 @@ def _try_v14_facts(mpn, *, extract_dir=None, analysis_json=None, project_dir=Non
         extract_dir = resolve_extract_dir(
             analysis_json=analysis_json, project_dir=project_dir
         )
+        if extract_dir is None:
+            return None
     return lookup(mpn, cache_dir=Path(extract_dir))
 
 
