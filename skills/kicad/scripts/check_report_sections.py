@@ -106,9 +106,16 @@ def _load_envelopes(run_dir: str) -> dict:
         path = os.path.join(run_dir, f"{stem}.json")
         if os.path.isfile(path):
             try:
-                envs[stem] = json.loads(open(path, encoding="utf-8").read())
-            except (json.JSONDecodeError, OSError):
-                pass
+                with open(path, encoding="utf-8") as f:
+                    env = json.load(f)
+                if not isinstance(env, dict):
+                    raise ValueError(f"top level is {type(env).__name__}, not an object")
+            except (ValueError, OSError) as exc:
+                # The analyzer ran, so its sections stay required.
+                record(None, f"check_report_sections: {path}", exc,
+                       f"{stem} sections still required; its data was not read")
+                env = {}
+            envs[stem] = env
     return envs
 
 

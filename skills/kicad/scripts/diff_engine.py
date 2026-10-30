@@ -1047,9 +1047,11 @@ def classify_severity(analyzer_type, diff_result):
         fp = diff_result["footprints"]
         if fp.get("added") or fp.get("removed") or fp.get("modified"):
             return "major"
+    if "routing_complete" in diff_result or "unrouted" in diff_result:
+        return "major"
 
-    # Minor: only statistics changes
-    if "statistics" in diff_result:
+    # Minor: anything else that moved (counts, scores, BOM, ERC fixes, ...)
+    if has_changes(diff_result):
         return "minor"
 
     return "none"
@@ -1102,13 +1104,13 @@ def classify_regressions(analyzer_type, diff_result):
                     "severity": "breaking",
                     "detail": f"New EMC finding: {f.get('rule_id', '?')} ({raw_sev})",
                 })
-        # Risk score increase
+        # The risk score runs 0 (worst) to 100 (lowest risk): a fall is the regression.
         risk = diff_result.get("risk_score", {})
-        if isinstance(risk, dict) and risk.get("delta", 0) > 0:
+        if isinstance(risk, dict) and risk.get("delta", 0) < 0:
             regressions.append({
                 "category": "emc_risk",
                 "severity": "major",
-                "detail": f"EMC risk score increased: {risk.get('base', '?')} \u2192 {risk.get('head', '?')}",
+                "detail": f"EMC risk score fell (100 = lowest risk): {risk.get('base', '?')} \u2192 {risk.get('head', '?')}",
             })
 
     elif analyzer_type == "spice":
@@ -1148,61 +1150,70 @@ def classify_regressions(analyzer_type, diff_result):
 # Summary builder
 # ---------------------------------------------------------------------------
 
+# Sections keyed by the analyzer-output path of a scalar ({path: {base, head,
+# delta}}), and single-scalar sections with the path they read.
+_METRIC_SECTIONS = ("statistics", "unrouted", "by_severity", "summary")
+_METRIC_SCALARS = {"routing_complete": "connectivity.routing_complete",
+                   "risk_score": "summary.emc_risk_score"}
+
+
+def has_changes(diff_result):
+    """True when any diff section records a change.
+
+    An assessments block holding only `unchanged_count` is not a change.
+    """
+    for key, value in diff_result.items():
+        if key == "assessments":
+            if value.get("added") or value.get("removed"):
+                return True
+        elif value:
+            return True
+    return False
+
+
 def build_summary(analyzer_type, diff_result):
-    """Build a top-level summary of all changes."""
-    added = 0
-    removed = 0
-    modified = 0
+    """Build a top-level summary of all changes.
 
-    if analyzer_type == "schematic":
-        comp = diff_result.get("components", {})
-        added += len(comp.get("added", []))
-        removed += len(comp.get("removed", []))
-        modified += len(comp.get("modified", []))
-        for det_type, det_diff in diff_result.get("signal_analysis", {}).items():
-            added += len(det_diff.get("added", []))
-            removed += len(det_diff.get("removed", []))
-            modified += len(det_diff.get("modified", []))
+    `total_changes` counts listed items (components, detections, footprints,
+    findings, simulation results, assessments, BOM lines, connectivity issues,
+    ERC warnings, per-net scores, Monte Carlo concerns). Scalar paths
+    (statistics, routing, unrouted, risk score, severity counts, SPICE summary
+    counts) are listed by path in `metric_changes`, so one added part is not
+    counted again through every rollup it moves.
+    """
+    added = removed = modified = 0
 
-    elif analyzer_type == "pcb":
-        fp = diff_result.get("footprints", {})
-        added += len(fp.get("added", []))
-        removed += len(fp.get("removed", []))
-        modified += len(fp.get("modified", []))
-        findings = diff_result.get("findings", {})
-        added += len(findings.get("new", []))
-        removed += len(findings.get("resolved", []))
-        modified += len(findings.get("changed_severity", []))
+    def _count(section, add_key, remove_key, modify_key=None):
+        nonlocal added, removed, modified
+        added += len(section.get(add_key) or [])
+        removed += len(section.get(remove_key) or [])
+        if modify_key:
+            modified += len(section.get(modify_key) or [])
 
-    elif analyzer_type == "emc":
-        findings = diff_result.get("findings", {})
-        added += len(findings.get("new", []))
-        removed += len(findings.get("resolved", []))
-        modified += len(findings.get("changed_severity", []))
+    for key in ("components", "footprints"):
+        _count(diff_result.get(key, {}), "added", "removed", "modified")
+    for det_diff in diff_result.get("signal_analysis", {}).values():
+        _count(det_diff, "added", "removed", "modified")
+    _count(diff_result.get("findings", {}), "new", "resolved", "changed_severity")
+    _count(diff_result.get("bom", {}), "added", "removed", "quantity_changes")
+    for conn in diff_result.get("connectivity", {}).values():
+        _count(conn, "new", "resolved")
+    _count(diff_result.get("erc", {}), "new_warnings", "resolved_warnings")
+    _count(diff_result.get("monte_carlo", {}), "new", "resolved")
+    _count(diff_result.get("assessments", {}), "added", "removed")
+    added += len(diff_result.get("new_results", []))
+    removed += len(diff_result.get("removed_results", []))
+    modified += len(diff_result.get("status_changes", []))
+    modified += len(diff_result.get("per_net_scores", []))
 
-    elif analyzer_type == "spice":
-        added += len(diff_result.get("new_results", []))
-        removed += len(diff_result.get("removed_results", []))
-        modified += len(diff_result.get("status_changes", []))
-
-    elif analyzer_type == "thermal":
-        findings = diff_result.get("findings", {})
-        added += len(findings.get("new", []))
-        removed += len(findings.get("resolved", []))
-        modified += len(findings.get("changed_severity", []))
-
-    # Assessments (all analyzer types carry assessments[])
-    assessments = diff_result.get("assessments", {})
-    added += len(assessments.get("added", []))
-    removed += len(assessments.get("removed", []))
-
-    total = added + removed + modified
-    severity = classify_severity(analyzer_type, diff_result)
+    metric_changes = [path for k in _METRIC_SECTIONS for path in (diff_result.get(k) or {})]
+    metric_changes += [path for k, path in _METRIC_SCALARS.items() if k in diff_result]
 
     return {
-        "total_changes": total,
+        "total_changes": added + removed + modified,
         "added": added,
         "removed": removed,
         "modified": modified,
-        "severity": severity,
+        "metric_changes": sorted(metric_changes),
+        "severity": classify_severity(analyzer_type, diff_result),
     }

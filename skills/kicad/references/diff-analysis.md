@@ -108,7 +108,7 @@ Diff function: `diff_emc(base, head, threshold)`
 
 | Section | Identity Key | Compared Fields | Source Path |
 |---------|-------------|-----------------|-------------|
-| Risk score | n/a (scalar) | `emc_risk_score` | `summary.emc_risk_score` |
+| Risk score | n/a (scalar) | `emc_risk_score` (0 = worst, 100 = lowest risk; a fall is a regression) | `summary.emc_risk_score` |
 | Severity distribution | n/a (scalar paths) | `error`, `warning`, `info` (`critical`, `high`, `medium`, `low`, `info` in pre-v1.4 output) | `summary.by_severity.*` (`summary.*`) |
 | Findings | finding identity (as schematic); `rule_id::sorted(nets)::sorted(components)` for findings without a `finding_id` | `severity` (new/resolved/changed) | `findings[]` |
 | Per-net scores | `net` | `score` (filtered by threshold) | `per_net_scores[]` |
@@ -152,16 +152,21 @@ Evaluation order (first match wins):
 | `findings` key present in diff (EMC) |
 | `status_changes` key present in diff (SPICE) |
 | `footprints` with any added, removed, or modified entries (PCB) |
+| `routing_complete` or `unrouted` present (PCB) |
 
 ### Minor
 
 | Condition |
 |-----------|
-| Only `statistics` key present in diff |
+| Any other non-empty section: `statistics`, EMC `risk_score`, `by_severity` or `per_net_scores`, `bom`, `connectivity`, resolved-only `erc`, SPICE `summary`, `new_results`, `removed_results` or `monte_carlo`, assessments added or removed |
 
 ### None
 
-No changes detected, or diff result is empty.
+No section changed (an `assessments` block holding only `unchanged_count` is not a change).
+
+### Regressions
+
+`classify_regressions(analyzer_type, diff_result)` lists changes that made the design worse: new ERC warnings, new connectivity issues and removed protection devices (schematic), new error-severity findings and a fall in the EMC risk score (EMC; the score is 0 = worst, 100 = lowest risk), pass-to-fail transitions (SPICE), and an increase in unrouted nets (PCB).
 
 ---
 
@@ -242,6 +247,7 @@ Returns `None` if nothing is found (item is excluded from matching).
     "added": 2,
     "removed": 1,
     "modified": 2,
+    "metric_changes": ["statistics.total_components"],
     "severity": "major"
   },
   "diff": { ... }
@@ -251,14 +257,20 @@ Returns `None` if nothing is found (item is excluded from matching).
 
 ### Summary Counts
 
-`summary.total_changes` = `added + removed + modified`. What counts as added/removed/modified depends on analyzer type:
+`summary.total_changes` = `added + removed + modified`, each counting listed items:
 
 | Analyzer | Added | Removed | Modified |
 |----------|-------|---------|----------|
-| Schematic | New components + new detections | Removed components + removed detections | Changed components + changed detections |
+| Schematic | New components, detections, BOM lines, connectivity issues, ERC warnings | Removed components, detections, BOM lines; resolved connectivity issues and ERC warnings | Changed components and detections; BOM quantity changes |
 | PCB | New footprints + new findings | Removed footprints + resolved findings | Changed footprints + severity-changed findings |
-| EMC, thermal | New findings | Resolved findings | Severity-changed findings |
-| SPICE | New simulation results | Removed simulation results | Status-changed results |
+| EMC, thermal | New findings | Resolved findings | Severity-changed findings; changed per-net scores (EMC) |
+| SPICE | New simulation results + new Monte Carlo concerns | Removed simulation results + resolved Monte Carlo concerns | Status-changed results |
+
+Assessments added or removed count on every analyzer type.
+
+`summary.metric_changes` lists, sorted, the analyzer-output paths of the scalars that moved: `statistics.*`, `connectivity.routing_complete`, `connectivity.unrouted_count`, `summary.emc_risk_score`, `summary.by_severity.*` and the SPICE `summary.*` counts. They are not in `total_changes`, so one added part is not counted again through every rollup it moves.
+
+`has_changes` is true when any diff section changed, including a metric-only change (`total_changes` 0).
 
 ### Diff Section (by analyzer type)
 
@@ -297,7 +309,7 @@ The `delta_pct` field is only present for numeric comparisons where the base val
 
 ### Text Output
 
-The `--text` flag renders a summary header followed by per-section detail. Items are capped at `MAX_TEXT_ITEMS` (20) with a "... and N more changes" footer. Per-section caps: 5 items for components/footprints/findings, 3 items for signal analysis detections per type.
+The `--text` flag renders a summary header followed by per-section detail. Items are capped at `MAX_TEXT_ITEMS` (20) with a "... and N more changes" footer counting the listed items not printed. Per-section caps: 5 items for components/footprints/findings, 3 items for signal analysis detections per type. Routing, unrouted and statistics changes print as `base → head` lines; the findings block is labelled by source (`EMC Findings:`, `PCB Findings:`, `Thermal Findings:`). `--output` files are written as UTF-8.
 
 Format:
 
@@ -323,11 +335,11 @@ Signal Analysis:
 
 **Protocol:**
 
-1. Import `diff_analysis` (adding the scripts directory to `sys.path` if needed).
+1. Import `diff_engine` (adding the scripts directory to `sys.path` if needed).
 2. For each output type present in both the current run and the new outputs, load both JSONs.
 3. Read `analyzer_type` from the base JSON and dispatch to the matching diff function (`diff_schematic`, `diff_pcb`, `diff_emc`, `diff_spice`).
 4. Call `classify_severity()` on the diff result.
-5. If any severity meets or exceeds the configured threshold (default: `major`), return `True` (create new run).
+5. If any severity meets or exceeds the configured threshold (default: `major`), return `True` (create new run). At the default a finding- or routing-only change starts a new run; a statistics- or score-only change (`minor`) overwrites the current one.
 6. If no current run exists, return `True` (first run).
 7. If all diffs are below threshold, return `False` (overwrite current run).
 
