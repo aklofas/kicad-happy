@@ -57,6 +57,7 @@ if _TYPES_PARENT not in sys.path:
     sys.path.insert(0, _TYPES_PARENT)
 
 from datasheet_types.cache_reader import read_json_object  # noqa: E402
+from distributor_core.manifest import manifest_file_path, write_json_atomic  # noqa: E402
 
 # Bump this when the extraction schema changes to trigger re-extraction
 # v2 (2026-04-15): added peripherals.usb, electrical.en_v_ih_max/en_v_il_min,
@@ -216,20 +217,14 @@ def _load_index(extract_dir):
         return {"version": EXTRACTION_VERSION, "last_updated": "", "extractions": {}}
 
 
-def _write_json_atomic(path, data):
-    """Write JSON to `path` through a uniquely named temp file in its folder."""
+def _manifest_unreadable(path):
+    """True when a manifest exists but cannot be loaded; it must not be overwritten."""
     path = Path(path)
-    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=path.name + ".", suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
-        os.replace(tmp, path)
-    except BaseException:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        raise
+    return (path.exists() or path.is_symlink()) and read_json_object(path) is None
+
+
+def _warn_manifest_kept(path):
+    print(f"Warning: {path} exists but cannot be read; leaving it unchanged", file=sys.stderr)
 
 
 def _save_index(extract_dir, index):
@@ -247,7 +242,7 @@ def _save_index(extract_dir, index):
     index["version"] = EXTRACTION_VERSION
 
     new_path = extract_dir / MANIFEST_FILENAME
-    _write_json_atomic(new_path, index)
+    write_json_atomic(new_path, index)
 
     old_path = extract_dir / LEGACY_MANIFEST_FILENAME
     if old_path.exists() and old_path != new_path:
@@ -287,11 +282,8 @@ def get_cached_extraction(extract_dir, mpn):
     if not entry:
         return None
 
-    fname = entry.get("file", "") if isinstance(entry, dict) else ""
-    # Leaf names only: a manifest must not point outside its folder.
-    if not isinstance(fname, str) or not fname or os.path.basename(fname) != fname or fname == "..":
-        return None
-    return read_json_object(Path(extract_dir) / fname)
+    json_file = manifest_file_path(Path(extract_dir), entry.get("file") if isinstance(entry, dict) else None)
+    return read_json_object(json_file) if json_file else None
 
 
 def cache_extraction(extract_dir, mpn, extraction, source_pdf=None):
@@ -326,10 +318,13 @@ def cache_extraction(extract_dir, mpn, extraction, source_pdf=None):
     meta.setdefault("retry_count", 0)
 
     # Write extraction file
-    with open(json_path, "w", encoding="utf-8") as f:
-        json.dump(extraction, f, indent=2)
+    write_json_atomic(json_path, extraction)
 
     # Update index
+    manifest = _manifest_path_for(extract_dir)
+    if _manifest_unreadable(manifest):
+        _warn_manifest_kept(manifest)
+        return
     index = _load_index(extract_dir)
     index.setdefault("extractions", {})[key] = {
         "file": filename,
@@ -488,6 +483,7 @@ def update_datasheets_index(datasheets_dir, mpn, extraction):
 
     index = read_json_object(index_path)
     if index is None:
+        _warn_manifest_kept(index_path)
         return
 
     parts = index.get("parts", {})
@@ -509,7 +505,7 @@ def update_datasheets_index(datasheets_dir, mpn, extraction):
         "date": meta.get("extraction_date", ""),
     }
 
-    _write_json_atomic(index_path, index)
+    write_json_atomic(index_path, index)
 
 
 # ---------------------------------------------------------------------------

@@ -33,6 +33,7 @@ _TYPES_PARENT = str(Path(__file__).resolve().parent.parent)
 if _TYPES_PARENT not in sys.path:
     sys.path.insert(0, _TYPES_PARENT)
 
+from datasheet_types.cache_reader import read_json_object  # noqa: E402
 from datasheet_types.extraction import DatasheetFacts  # noqa: E402
 
 
@@ -67,7 +68,6 @@ def _load(mpn, extract_dir=None, analysis_json=None, project_dir=None):
     `_quality_v13`, never gated here — v2.0 spec §3.A.1). Returns None only
     on cache miss.
     """
-    import json as _json
     if extract_dir is None:
         extract_dir = resolve_extract_dir(
             analysis_json=analysis_json, project_dir=project_dir
@@ -78,13 +78,7 @@ def _load(mpn, extract_dir=None, analysis_json=None, project_dir=None):
     # Direct-file fallback: allows test fixtures (and simple single-file drops)
     # that write {mpn}.json directly without a manifest index.
     direct = Path(extract_dir) / f"{mpn}.json"
-    if direct.exists():
-        try:
-            with direct.open(encoding="utf-8") as f:
-                return _json.load(f)
-        except (OSError, ValueError):
-            pass
-    return None
+    return read_json_object(direct)
 
 
 def _quality_v13(ext):

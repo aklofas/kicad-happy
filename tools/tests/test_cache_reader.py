@@ -1,11 +1,10 @@
 # tools/tests/test_cache_reader.py
-import json, os, shutil, subprocess, sys, tempfile, unittest
+import contextlib, io, json, os, shutil, subprocess, sys, tempfile, unittest
 from pathlib import Path
 from tools.tests._fixtures import fixture, fixture_path
 DS = Path(__file__).resolve().parents[2] / "skills" / "datasheets"
 sys.path.insert(0, str(DS))
 FX = fixture_path()
-BUCK = Path.home() / "Projects/kicad-happy-testharness/repos/ikajdan/stm32-buck-converter/hardware/buck_converter.kicad_sch"
 
 
 class CacheReader(unittest.TestCase):
@@ -106,18 +105,80 @@ class CacheReader(unittest.TestCase):
             dec.cache_extraction(ex, "P2", {"extraction_metadata": {}})
             self.assertEqual((ex / "manifest.tmp").read_text(encoding="utf-8"), "keep")
 
-    @unittest.skipUnless(BUCK.is_file(), "corpus project not available")
-    def test_null_cache_does_not_stop_the_schematic_analyzer(self):
+    def test_unreadable_cache_does_not_stop_the_schematic_analyzer(self):
         root = Path(__file__).resolve().parents[2]
+        sch = Path(__file__).parent / "fixtures" / "datasheet_cache" / "opamp.kicad_sch"
+        for payload in (b"null", b"[1]", b'"x"', b"7", b"\xff\xfe{", b'{"a": "\xe9"}'):
+            with self.subTest(payload=payload), tempfile.TemporaryDirectory() as d:
+                ex = Path(d) / "datasheets" / "extracted"; ex.mkdir(parents=True)
+                (ex / "LM358.json").write_bytes(payload)
+                shutil.copy(sch, Path(d) / sch.name)
+                r = subprocess.run([sys.executable, "-I", str(root / "skills/kicad/scripts/analyze_schematic.py"),
+                                    str(Path(d) / sch.name), "--output", str(Path(d) / "o.json")],
+                                   capture_output=True, text=True, cwd=d)
+                self.assertEqual(r.returncode, 0, r.stderr[-400:])
+
+    def test_feature_helpers_treat_non_object_direct_file_as_a_miss(self):
+        sys.path.insert(0, str(DS / "scripts"))
+        import datasheet_features as df
+        for payload in (b"[1]", b'"x"', b"7", b"null"):
+            with tempfile.TemporaryDirectory() as d:
+                (Path(d) / "P1.json").write_bytes(payload)
+                self.assertIsNone(df.get_regulator_features("P1", extract_dir=d), payload)
+                self.assertIsNone(df.get_mcu_features("P1", extract_dir=d), payload)
+                self.assertIsNone(df.get_pin_function("P1", "1", extract_dir=d), payload)
+
+    def test_manifest_and_extraction_files_keep_or_get_umask_modes(self):
+        sys.path.insert(0, str(DS / "scripts"))
+        import datasheet_extract_cache as dec
+        from distributor_core import manifest as dm
+        old_default = dm.DEFAULT_FILE_MODE
+        dm.DEFAULT_FILE_MODE = 0o644
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                ex = Path(d) / "extracted"
+                dec.cache_extraction(ex, "P1", {"extraction_metadata": {}})
+                self.assertEqual((ex / "manifest.json").stat().st_mode & 0o777, 0o644)
+                os.chmod(ex / "manifest.json", 0o640)
+                dec.cache_extraction(ex, "P2", {"extraction_metadata": {}})
+                self.assertEqual((ex / "manifest.json").stat().st_mode & 0o777, 0o640)
+                dm.save_index(Path(d) / "manifest.json", {"parts": {}})
+                self.assertEqual((Path(d) / "manifest.json").stat().st_mode & 0o777, 0o644)
+                os.chmod(Path(d) / "manifest.json", 0o600)
+                dm.save_index(Path(d) / "manifest.json", {"parts": {}})
+                self.assertEqual((Path(d) / "manifest.json").stat().st_mode & 0o777, 0o600)
+        finally:
+            dm.DEFAULT_FILE_MODE = old_default
+
+    def test_unreadable_manifest_is_never_overwritten(self):
+        sys.path.insert(0, str(DS / "scripts"))
+        import datasheet_extract_cache as dec
+        for payload in (b'{"extractions": {"A": "\xe9"}}', b"{broken", b"[1]"):
+            with self.subTest(payload=payload), tempfile.TemporaryDirectory() as d:
+                ex = Path(d) / "extracted"; ex.mkdir()
+                (ex / "manifest.json").write_bytes(payload)
+                with contextlib.redirect_stderr(io.StringIO()) as err:
+                    dec.cache_extraction(ex, "P1", {"extraction_metadata": {}})
+                self.assertEqual((ex / "manifest.json").read_bytes(), payload)
+                self.assertIn("manifest.json", err.getvalue())
+                self.assertEqual(len([p for p in ex.iterdir() if p.suffix == ".json" and p.name != "manifest.json"]), 1)
         with tempfile.TemporaryDirectory() as d:
-            ex = Path(d) / "datasheets" / "extracted"; ex.mkdir(parents=True)
-            for mpn in ("LM358", "IRF9540N"):
-                (ex / (mpn + ".json")).write_bytes(b"null")
-            shutil.copy(BUCK, Path(d) / BUCK.name)
-            r = subprocess.run([sys.executable, "-I", str(root / "skills/kicad/scripts/analyze_schematic.py"),
-                                str(Path(d) / BUCK.name), "--output", str(Path(d) / "o.json")],
-                               capture_output=True, text=True, cwd=d)
-            self.assertEqual(r.returncode, 0, r.stderr[-400:])
+            (Path(d) / "manifest.json").write_bytes(b'{"parts": {"P1": {}}, "x": "\xe9"}')
+            before = (Path(d) / "manifest.json").read_bytes()
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                dec.update_datasheets_index(d, "P1", {"extraction_metadata": {}})
+            self.assertEqual((Path(d) / "manifest.json").read_bytes(), before)
+            self.assertIn("manifest.json", err.getvalue())
+
+    def test_manifest_file_with_backslash_is_a_miss(self):
+        sys.path.insert(0, str(DS / "scripts"))
+        import datasheet_extract_cache as dec
+        with tempfile.TemporaryDirectory() as d:
+            ex = Path(d) / "extracted"; ex.mkdir()
+            (ex / "sub\\x.json").write_text('{"ok": 1}', encoding="utf-8")
+            (ex / "manifest.json").write_text(json.dumps(
+                {"extractions": {dec._sanitize_mpn("P1"): {"file": "sub\\x.json"}}}), encoding="utf-8")
+            self.assertIsNone(dec.get_cached_extraction(ex, "P1"))
 
 
 if __name__ == "__main__":

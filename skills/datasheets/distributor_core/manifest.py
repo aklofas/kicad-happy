@@ -94,22 +94,33 @@ def load_index(path: Path) -> dict:
     return {"schematic": "", "last_sync": "", "parts": {}}
 
 
+def write_json_atomic(path: Path, data) -> None:
+    """Write JSON to ``path`` through a uniquely named temp file beside it. An existing
+    file keeps its mode; a new one gets the umask mode."""
+    path = Path(path)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=path.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+        try:
+            mode = os.stat(path).st_mode & 0o7777
+        except OSError:
+            mode = DEFAULT_FILE_MODE
+        os.chmod(tmp, mode)
+        os.replace(tmp, path)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        raise
+
+
 def save_index(path: Path, index: dict):
     """Write manifest atomically. Always writes manifest.json; removes any
     legacy index.json sibling after a successful write."""
     parent = path.parent
     parent.mkdir(parents=True, exist_ok=True)
     new_path = parent / MANIFEST_FILENAME
-    fd, tmp = tempfile.mkstemp(dir=str(parent), prefix="manifest.", suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(index, f, indent=2)
-        os.chmod(tmp, DEFAULT_FILE_MODE)
-        os.replace(tmp, new_path)
-    except BaseException:
-        if os.path.exists(tmp):
-            os.remove(tmp)
-        raise
+    write_json_atomic(new_path, index)
     old_path = parent / LEGACY_MANIFEST_FILENAME
     if old_path.exists() and old_path != new_path:
         try:

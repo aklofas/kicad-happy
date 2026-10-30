@@ -12,12 +12,17 @@ import json
 import os
 import re
 import sys
+from pathlib import Path
 
 # Allow imports from same directory
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from datasheet_types.cache_reader import MAX_CACHE_BYTES, read_json_object  # noqa: E402
+from distributor_core.manifest import manifest_file_path  # noqa: E402
 
 
-MAX_EXTRACTION_BYTES = 10 * 1024 * 1024
+MAX_EXTRACTION_BYTES = MAX_CACHE_BYTES
 
 
 def _load_extraction(extract_dir: str, mpn: str) -> dict:
@@ -65,13 +70,9 @@ def _load_extraction(extract_dir: str, mpn: str) -> dict:
                 if (k.upper() != sanitized.upper()
                         and str(v.get("mpn") or "").strip().upper() != mpn.strip().upper()):
                     continue
-                fname = v.get("file", "")
-                # Leaf names only: a manifest must not point outside its folder.
-                if not isinstance(fname, str) or not fname or os.path.basename(fname) != fname or fname == "..":
-                    continue
-                fpath = os.path.join(extract_dir, fname)
-                if os.path.isfile(fpath):
-                    return _read_extraction_file(fpath)
+                fpath = manifest_file_path(Path(extract_dir), v.get("file"))
+                if fpath is not None and fpath.is_file():
+                    return _read_extraction_file(str(fpath))
         except (ValueError, OSError, AttributeError):
             pass
 
@@ -81,14 +82,7 @@ def _load_extraction(extract_dir: str, mpn: str) -> dict:
 def _read_extraction_file(path: str) -> dict:
     """Read one extraction file; {} when unreadable, undecodable, symlinked,
     oversized or not an object."""
-    try:
-        if os.path.islink(path) or os.path.getsize(path) > MAX_EXTRACTION_BYTES:
-            return {}
-        with open(path, encoding="utf-8") as f:
-            extraction = json.load(f)
-    except (ValueError, OSError):
-        return {}
-    return extraction if isinstance(extraction, dict) else {}
+    return read_json_object(path) or {}
 
 
 def _is_v2_format(extraction: dict) -> bool:

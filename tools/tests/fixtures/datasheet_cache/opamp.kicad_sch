@@ -1,0 +1,15 @@
+(kicad_sch (version 20231120) (generator "eeschema") (uuid "22222222-2222-2222-2222-222222222222") (paper "A4")
+  (lib_symbols
+    (symbol "Amplifier_Operational:LM358" (in_bom yes) (on_board yes)
+      (property "Reference" "U" (at 0 0 0) (effects (font (size 1.27 1.27))))
+      (property "Value" "LM358" (at 0 0 0) (effects (font (size 1.27 1.27))))
+      (symbol "LM358_1_1"
+        (pin power_in line (at 0 7.62 270) (length 2.54) (name "V+" (effects (font (size 1.27 1.27)))) (number "8" (effects (font (size 1.27 1.27)))))
+        (pin power_in line (at 0 -7.62 90) (length 2.54) (name "V-" (effects (font (size 1.27 1.27)))) (number "4" (effects (font (size 1.27 1.27))))))))
+  (symbol (lib_id "Amplifier_Operational:LM358") (at 100 100 0) (unit 1) (in_bom yes) (on_board yes) (uuid "33333333-3333-3333-3333-333333333333")
+    (property "Reference" "U1" (at 100 100 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "LM358" (at 100 100 0) (effects (font (size 1.27 1.27))))
+    (pin "8" (uuid "44444444-4444-4444-4444-444444444444"))
+    (pin "4" (uuid "55555555-5555-5555-5555-555555555555")))
+  (label "+3.3V" (at 100 92.38 0) (effects (font (size 1.27 1.27))))
+  (label "GND" (at 100 107.62 0) (effects (font (size 1.27 1.27)))))
