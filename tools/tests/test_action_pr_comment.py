@@ -29,13 +29,13 @@ class ActionPrComment(unittest.TestCase):
     def test_schematic_and_pcb_diffs_both_reach_the_comment(self):
         sch = diff_doc({"components": {"added": [{"reference": "R9", "value": "10k", "footprint": "R_0402"}]}},
                        1, added=1)
-        pcb = diff_doc({"findings": {"new": [{"rule_id": "DFM-001", "severity": "warning",
+        pcb = dict(analyzer_type="pcb", **diff_doc({"findings": {"new": [{"rule_id": "DFM-001", "severity": "warning",
                                               "summary": "Drill too small", "components": ["J1"]}]}},
-                       1, added=1)
+                       1, added=1))
         md = comment(sch, pcb)
         self.assertIn("> 2 changes: +2 added, -0 removed, ~0 modified (major)", md)
         self.assertIn("| + R9 | New: 10k R_0402 |", md)
-        self.assertIn("| NEW warning | DFM-001: Drill too small |", md)
+        self.assertIn("| NEW PCB warning | DFM-001: Drill too small |", md)
 
     def test_added_and_removed_detections_get_rows(self):
         va = {"rule_id": "VD-001", "severity": "error", "components": ["C11"], "summary": "Divider out of range"}
@@ -79,11 +79,20 @@ class ActionPrComment(unittest.TestCase):
         one = diff_doc({"components": {"modified": [comp]}}, 1, modified=1)
         self.assertNotIn("more*", comment(one))
 
+    def test_markup_and_mentions_are_inert_in_a_cell(self):
+        f = {"rule_id": "X-1", "severity": "info", "components": [], "summary": "<!-- hide --> @octocat"}
+        md = comment(diff_doc({"signal_analysis": {"t": {"added": [f], "removed": [], "modified": []}}}, 1, added=1))
+        self.assertIn("| + T | X-1 info: &lt;!-- hide --&gt; @\u200boctocat |", md)
+        self.assertNotIn("<!-- hide", md)
+        self.assertTrue(md.rstrip().endswith("<!-- kicad-happy-review -->"))
+
     def test_entrypoint_passes_every_diff_and_no_dead_entries(self):
         sh = (ROOT / "action" / "entrypoint.sh").read_text(encoding="utf-8")
         self.assertIn("for dtype in schematic pcb; do", sh)
         self.assertNotIn("schematic pcb emc spice", sh)
         self.assertIn('ARGS+=(--diff "$_diff")', sh)
+        self.assertNotIn("head/emc.json", sh)
+        self.assertNotIn("head/spice.json", sh)
 
 
 if __name__ == "__main__":

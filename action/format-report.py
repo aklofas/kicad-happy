@@ -401,11 +401,13 @@ def _render_trust_evidence(sch, pcb, emc, thermal):
 
 _SEVERITY_ORDER = ("none", "minor", "major", "breaking")
 _ROW_LIMIT = 10
+_SOURCE_LABELS = {"schematic": "Schematic", "pcb": "PCB", "emc": "EMC", "thermal": "Thermal", "spice": "SPICE"}
 
 
 def _cell(text):
-    """One markdown table cell: pipes escaped, line breaks flattened."""
-    return str(text).replace("|", "\\|").replace("\r", " ").replace("\n", " ")
+    """One markdown table cell: pipes escaped, line breaks flattened, no raw HTML, no live @mentions."""
+    return (str(text).replace("|", "\\|").replace("\r", " ").replace("\n", " ")
+            .replace("<", "&lt;").replace(">", "&gt;").replace("@", "@\u200b"))
 
 
 def _detection_text(item):
@@ -422,7 +424,7 @@ def _detection_text(item):
     return "; ".join(parts)
 
 
-def _diff_rows(diff_detail):
+def _diff_rows(diff_detail, source=""):
     """[(first_row_of_item, row)] for one diff; an item with several rows is counted once."""
     rows = []
 
@@ -454,12 +456,13 @@ def _diff_rows(diff_detail):
                     first=i == 0)
     # Rich finding changes (EMC, thermal, PCB)
     fd = diff_detail.get("findings", {})
+    src = f" {source}" if source else ""
     for f in fd.get("new", [])[:3]:
-        add((f"NEW {f.get('severity', '?')}", f"{f.get('rule_id', '?')}: {summary_or_title(f)}"))
+        add((f"NEW{src} {f.get('severity', '?')}", f"{f.get('rule_id', '?')}: {summary_or_title(f)}"))
     for f in fd.get("resolved", [])[:3]:
-        add(("RESOLVED", f"{f.get('rule_id', '?')}: {summary_or_title(f)}"))
+        add((f"RESOLVED{src}", f"{f.get('rule_id', '?')}: {summary_or_title(f)}"))
     for f in fd.get("changed_severity", [])[:3]:
-        add(("~ SEVERITY", f"{f.get('rule_id', '?')}: {f.get('base_severity', '?')} → "
+        add((f"~ SEVERITY{src}", f"{f.get('rule_id', '?')}: {f.get('base_severity', '?')} → "
                            f"{f.get('head_severity', '?')} {summary_or_title(f)}"))
     # SPICE status changes
     for sc in diff_detail.get("status_changes", [])[:3]:
@@ -475,7 +478,7 @@ def _render_changes(diffs):
     for d, s in zip(diffs, sums):
         total += s.get("total_changes", 0)
         metrics += s.get("metric_changes", [])
-        rows += _diff_rows(d.get("diff", {}))
+        rows += _diff_rows(d.get("diff", {}), _SOURCE_LABELS.get(d.get("analyzer_type"), ""))
     sev = max((s.get("severity", "none") for s in sums),
               key=lambda v: _SEVERITY_ORDER.index(v) if v in _SEVERITY_ORDER else -1)
     L = ["### Changes from Base", ""]

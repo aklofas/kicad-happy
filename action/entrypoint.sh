@@ -293,8 +293,6 @@ if [ "${INPUT_DIFF_BASE:-false}" = "true" ] && [ -n "${GITHUB_BASE_REF:-}" ]; th
     mkdir -p "$OUTDIR/head"
     [ -n "$SCH_JSON" ] && [ -f "$SCH_JSON" ] && cp "$SCH_JSON" "$OUTDIR/head/schematic.json"
     [ -n "$PCB_JSON" ] && [ -f "$PCB_JSON" ] && cp "$PCB_JSON" "$OUTDIR/head/pcb.json"
-    [ -n "$EMC_JSON" ] && [ -f "$EMC_JSON" ] && cp "$EMC_JSON" "$OUTDIR/head/emc.json"
-    [ -n "$SPICE_JSON" ] && [ -f "$SPICE_JSON" ] && cp "$SPICE_JSON" "$OUTDIR/head/spice.json"
 
     # Fetch the base branch; its KiCad files are extracted below, the working tree is untouched
     mkdir -p "$OUTDIR/base"
