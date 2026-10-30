@@ -269,13 +269,15 @@ def get_cached_extraction(extract_dir, mpn):
     Returns:
         Parsed extraction dict, or None if not cached
     """
-    index = _load_index(extract_dir)
+    extractions = _load_index(extract_dir).get("extractions")
+    if not isinstance(extractions, dict):
+        return None
     key = _sanitize_mpn(mpn)
 
-    entry = index.get("extractions", {}).get(key)
+    entry = extractions.get(key)
     if not entry:
         # Try case-insensitive match
-        for k, v in index.get("extractions", {}).items():
+        for k, v in extractions.items():
             if k.upper() == key.upper():
                 entry = v
                 break

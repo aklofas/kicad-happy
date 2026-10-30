@@ -176,18 +176,23 @@ def _parse_temp_range(text: str) -> tuple[float, float] | None:
     return None
 
 
-def _lead_weeks(lead_time) -> int:
-    """Whole weeks for a distributor lead time ("14 Weeks", "90 Days", 12.5), rounded up."""
+def _lead_weeks(lead_time) -> int | None:
+    """Whole weeks for a distributor lead time ("14 Weeks", "1,000 Days", 12.5),
+    rounded up; None when it is not a usable non-negative number."""
     if isinstance(lead_time, bool):
-        return 0
-    if isinstance(lead_time, (int, float)):
-        return math.ceil(lead_time) if math.isfinite(lead_time) else 0
+        return None
     if isinstance(lead_time, str):
-        m = re.search(r'(\d+(?:\.\d+)?)', lead_time)
-        if m:
-            n = float(m.group(1))
-            return math.ceil(n / 7 if 'day' in lead_time.lower() else n)
-    return 0
+        m = re.search(r'(-?\d[\d,]*(?:\.\d+)?)', lead_time)
+        if not m:
+            return None
+        n = float(m.group(1).replace(',', ''))
+        if 'day' in lead_time.lower():
+            n /= 7
+    elif isinstance(lead_time, (int, float)):
+        n = lead_time
+    else:
+        return None
+    return math.ceil(n) if math.isfinite(n) and n >= 0 else None
 
 
 # ---------------------------------------------------------------------------
@@ -443,57 +448,73 @@ def query_lifecycle_element14(mpn: str) -> dict | None:
 # Datasheet extraction cache (local, no network)
 # ---------------------------------------------------------------------------
 
-# Ambient operating-range keys, most specific first; junction (TJ*) and storage
-# ranges are never read as the part's operating rating.
+# Ambient operating-range keys, most specific first. Absolute-maximum tables
+# hold stress ratings ("ambient under bias"), so only the operating-named keys
+# are read there.
 _TA_KEYS = ("TA", "T_A", "T_AMB", "T_OPERATING", "TOPR", "T_OPR")
+_ABS_MAX_KEYS = ("T_OPERATING", "TOPR", "T_OPR")
+_NOT_AMBIENT_RE = re.compile(r"\b(?:junction|storage|case)\b")
+_UNUSABLE = object()
 
 
 def _is_number(v) -> bool:
     return isinstance(v, (int, float)) and not isinstance(v, bool)
 
 
+def _celsius_range(values, need_condition):
+    """The first acceptable °C SpecValue as a sorted (min, max); _UNUSABLE when
+    that entry lacks a bound; None when no entry qualifies."""
+    for v in values if isinstance(values, list) else []:
+        if not isinstance(v, dict):
+            continue
+        unit = unicodedata.normalize("NFKC", str(v.get("unit") or "")).replace(" ", "")
+        if unit not in ("°C", "C", "degC"):
+            continue
+        cond = str(v.get("condition") or "").lower()
+        if _NOT_AMBIENT_RE.search(cond):
+            continue
+        if need_condition and not ("ambient" in cond or "operating" in cond):
+            continue
+        lo, hi = v.get("min"), v.get("max")
+        if _is_number(lo) and _is_number(hi):
+            return tuple(sorted((float(lo), float(hi))))
+        return _UNUSABLE
+    return None
+
+
 def _v2_operating_temperature(ext: dict) -> tuple[float, float] | None:
     """Ambient operating range in degrees C from a v2 extraction's SpecValues.
 
-    TA-style keys in base.recommended_operating, then the same keys in
-    base.absolute_max, then any recommended_operating entry whose condition
-    names an ambient or operating temperature and not the junction or storage.
+    TA-style keys in base.recommended_operating, then any other
+    recommended_operating entry whose condition names an ambient or operating
+    temperature, then the operating-named keys in base.absolute_max. Junction,
+    storage and case ranges never count, and the first rating found decides:
+    one with a single bound gives None rather than a wider range read later.
     """
     base = ext.get("base")
     if not isinstance(base, dict):
         return None
-    sections = [base.get(k) for k in ("recommended_operating", "absolute_max")]
-    sections = [sec if isinstance(sec, dict) else {} for sec in sections]
+    rec, absmax = (base.get(k) for k in ("recommended_operating", "absolute_max"))
+    rec = rec if isinstance(rec, dict) else {}
+    absmax = absmax if isinstance(absmax, dict) else {}
 
-    def celsius_range(values, need_condition):
-        for v in values if isinstance(values, list) else []:
-            if not isinstance(v, dict):
-                continue
-            unit = unicodedata.normalize("NFKC", str(v.get("unit") or "")).replace(" ", "")
-            if unit not in ("°C", "C", "degC"):
-                continue
-            if need_condition:
-                cond = str(v.get("condition") or "").lower()
-                if "junction" in cond or "storage" in cond \
-                        or not ("ambient" in cond or "operating" in cond):
-                    continue
-            lo, hi = v.get("min"), v.get("max")
-            if _is_number(lo) and _is_number(hi):
-                return tuple(sorted((float(lo), float(hi))))
-        return None
-
-    for sec in sections:
+    def keyed(sec, keys):
         by_key = {str(k).upper(): k for k in sorted(sec, key=str)}
-        for key in _TA_KEYS:
+        for key in keys:
             if key in by_key:
-                got = celsius_range(sec[by_key[key]], False)
-                if got:
-                    return got
-    for key in sorted(sections[0], key=str):
-        if not str(key).upper().startswith("TJ"):
-            got = celsius_range(sections[0][key], True)
-            if got:
-                return got
+                got = _celsius_range(sec[by_key[key]], False)
+                if got is not None:
+                    yield got
+
+    def by_condition():
+        for key in sorted(rec, key=str):
+            if str(key).upper() not in _TA_KEYS and not str(key).upper().startswith("TJ"):
+                got = _celsius_range(rec[key], True)
+                if got is not None:
+                    yield got
+
+    for got in (*keyed(rec, _TA_KEYS), *by_condition(), *keyed(absmax, _ABS_MAX_KEYS)):
+        return None if got is _UNUSABLE else got
     return None
 
 
@@ -537,6 +558,9 @@ def read_extraction_temperature(mpn: str, project_dir: str) -> dict | None:
             idx = read_json_object(extract_dir / idx_name)
             if idx is not None:
                 entries = idx.get("extractions")
+                if entries is not None and not isinstance(entries, dict):
+                    print(f"Warning: {extract_dir / idx_name}: 'extractions' is not an object; "
+                          f"manifest ignored", file=sys.stderr)
                 for k, v in (entries.items() if isinstance(entries, dict) else ()):
                     if str(k).upper() == legacy.upper() and isinstance(v, dict) \
                             and isinstance(v.get("file"), str):
@@ -951,7 +975,7 @@ def audit_bom(analysis_json: dict, project_dir: str | None = None,
         for src_name, src_data in finding.get('sources', {}).items():
             lt = src_data.get('lead_time')
             if lt:
-                weeks = _lead_weeks(lt)
+                weeks = _lead_weeks(lt) or 0
                 if weeks > max_lead_weeks:
                     max_lead_weeks = weeks
                     lead_source = src_name

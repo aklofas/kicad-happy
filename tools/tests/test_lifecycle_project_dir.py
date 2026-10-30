@@ -110,6 +110,45 @@ class ExtractionTemperatureTest(unittest.TestCase):
         got, _ = self.read("P2")
         self.assertEqual((got["temp_min_c"], got["temp_max_c"]), (-20.0, 70.0))
 
+    def put(self, name, ext):
+        (self.ext / f"{name}.json").write_text(json.dumps(ext), encoding="utf-8")
+        got, err = self.read(name)
+        return (got["temp_min_c"], got["temp_max_c"]) if got else None
+
+    def test_operating_rating_beats_absolute_max_ta(self):
+        # A: a stress "ambient under bias" range must not hide the -40..85 operating rating
+        self.assertEqual(self.put("A", v2(
+            {"T_range": [spec(-40, 85, condition="Operating ambient temperature")]},
+            {"TA": [spec(-55, 125, condition="Ambient temperature under bias")]})), (-40.0, 85.0))
+
+    def test_one_bound_rating_does_not_fall_through(self):
+        # E: recommended T_A with only a max is unusable; the wider absolute-max range is not read
+        self.assertIsNone(self.put("E", v2(
+            {"T_A": [spec(None, 85)]}, {"TOPR": [spec(-40, 125)]})))
+
+    def test_absolute_max_ta_alone_is_not_read(self):
+        self.assertIsNone(self.put("B", v2(None, {"TA": [spec(-55, 125)]})))
+        self.assertIsNone(self.put("B2", v2(None, {"T_A": [spec(-55, 125)], "T_AMB": [spec(-55, 125)]})))
+
+    def test_junction_storage_case_conditions_rejected_under_any_key(self):
+        cases = {
+            "G": v2({"T_OPERATING": [spec(-40, 150, condition="Operating junction temperature")]}),
+            "I": v2(None, {"T_operating": [spec(-55, 150, condition="Operating and storage temperature")]}),
+            "F": v2({"TA": [spec(-40, 150, condition="Junction temperature")]}),
+            "C": v2({"TC": [spec(-40, 125, condition="Operating case temperature")]}),
+        }
+        for name, ext in cases.items():
+            self.assertIsNone(self.put(name, ext), name)
+
+    def test_list_extractions_in_manifest(self):
+        (self.ext / "manifest.json").write_text('{"extractions": []}', encoding="utf-8")
+        (self.ext / "LM358DR.json").write_text(json.dumps(
+            {"recommended_operating_conditions": {"temp_min_c": -40, "temp_max_c": 125}}),
+            encoding="utf-8")
+        got, err = self.read("LM358DR")
+        self.assertEqual((got["temp_min_c"], got["temp_max_c"]), (-40, 125))
+        self.assertNotIn("Traceback", err)
+
     def test_fahrenheit_is_not_celsius(self):
         (self.ext / "P1.json").write_text(json.dumps(v2({"TA": [spec(-40, 185, unit="°F")]})),
                                           encoding="utf-8")
@@ -204,6 +243,24 @@ class CliProjectDirTest(unittest.TestCase):
         self.assertEqual([f["evidence_source"] for f in lt], ["api_lookup"])
 
 
+class ListManifestCliTest(unittest.TestCase):
+    def test_cli_with_list_extractions_manifest(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        ext = tmp / "datasheets" / "extracted"
+        ext.mkdir(parents=True)
+        (ext / "manifest.json").write_text('{"extractions": []}', encoding="utf-8")
+        sch = tmp / "schematic.json"
+        sch.write_text(json.dumps({"inputs": {"source_files": [str(tmp / "b.kicad_sch")]},
+                                   "bom": [{"references": ["U1"], "mpn": "LM358DR"}]}),
+                       encoding="utf-8")
+        out, err = tmp / "o.json", io.StringIO()
+        with patched_queries(digikey={"status": "Active"}), contextlib.redirect_stderr(err):
+            lifecycle_audit.main([str(sch), "--only", "digikey", "--delay", "0", "--output", str(out)])
+        self.assertEqual(json.loads(out.read_text(encoding="utf-8"))["components_checked"], 1)
+        self.assertNotIn("Traceback", err.getvalue())
+
+
 class PipelineLifecycleTest(unittest.TestCase):
     def finalize(self, project_dir):
         from schematic.pipeline import finalize_for_cli
@@ -274,6 +331,12 @@ class LeadWeeksCarryTest(unittest.TestCase):
         self.assertEqual(lifecycle_audit._lead_weeks("50 Days"), 8)
         self.assertEqual(lifecycle_audit._lead_weeks("12.5 weeks"), 13)
         self.assertEqual(self.weeks("100 Days"), 15)
+
+    def test_thousands_separator_and_negative(self):
+        self.assertEqual(lifecycle_audit._lead_weeks("1,000 Days"), 143)
+        self.assertIsNone(lifecycle_audit._lead_weeks("-5 Weeks"))
+        self.assertIsNone(lifecycle_audit._lead_weeks(-3))
+        self.assertIsNone(self.weeks("-20 Weeks"))
 
 
 if __name__ == "__main__":
