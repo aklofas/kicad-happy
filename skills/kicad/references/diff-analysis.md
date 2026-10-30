@@ -84,12 +84,12 @@ Compared sections:
 |---------|-------------|-----------------|-------------|
 | Statistics | n/a (scalar paths) | `total_components`, `total_nets`, `unique_parts`, `total_wires`, `total_no_connects` | `statistics.*` |
 | Components | `reference` | `value`, `footprint`, `mpn` | `components[]` |
-| Signal analysis | Per-type via SIGNAL_REGISTRY | Per-type via SIGNAL_REGISTRY | `findings[]` grouped by detector via `group_findings_by_detection_type()` |
+| Signal analysis | Per-type via SIGNAL_REGISTRY, else finding identity (below) | Per-type via SIGNAL_REGISTRY, plus `severity`; `summary` for types with no value fields | `findings[]` grouped by detector via `group_findings_by_detection_type()` |
 | BOM | `(value, footprint)` tuple | `quantity` | `bom[]` |
-| Connectivity | JSON-serialized item | new/resolved (set diff) | `connectivity_issues.{single_pin_nets,floating_nets,multi_driver_nets}` |
-| ERC warnings | `(type, net, message)` tuple | new/resolved (set diff) | `design_analysis.erc_warnings[]` |
+| Connectivity | JSON-serialized item, unnamed-net numbers ignored | new/resolved (set diff) | `connectivity_issues.{single_pin_nets,floating_nets,multi_driver_nets}` |
+| ERC warnings | `(type, net, message)` tuple; on an unnamed net, its pins instead of its number | new/resolved (set diff) | `design_analysis.erc_warnings[]` |
 
-Signal analysis is reconstructed from `findings[]` via `group_findings_by_detection_type()`, then iterates all detector types present in either base or head. For each detection type, identity and value fields come from `SIGNAL_REGISTRY` (derived from `detection_schema.SCHEMAS`). Unknown detection types fall back to `["reference"]` identity with no value fields. The diff output still uses `signal_analysis` as a key for backward compatibility with diff consumers.
+Signal analysis is reconstructed from `findings[]` via `group_findings_by_detection_type()`, then iterates all detector types present in either base or head. For each detection type, identity and value fields come from `SIGNAL_REGISTRY` (derived from `detection_schema.SCHEMAS`). Unknown detection types fall back to `["reference"]` identity with no value fields. A detection keeps that registry key (its `detection_id` first) only when no other finding of its type shares it in either run; every other finding is matched by its identity (`diff_engine.finding_key`): its `finding_id`, unless the id is positional — a `#N` collision suffix, or a locator naming an `__unnamed_N` net — in which case a content key of `rule_id`, sorted nets (unnamed-net numbers dropped), sorted components and `summary`. Findings that still share a key are numbered after sorting by content, so list order never pairs two different findings, and a renumbered unnamed net never reads as a change. Severities compare by meaning (legacy `WARN` = `warning`). The diff output still uses `signal_analysis` as a key for backward compatibility with diff consumers.
 
 ### PCB
 
@@ -99,7 +99,8 @@ Diff function: `diff_pcb(base, head, threshold)`
 |---------|-------------|-----------------|-------------|
 | Statistics | n/a (scalar paths) | `footprint_count`, `track_segments`, `via_count`, `zone_count`, `net_count`, `copper_layers_used`, `board_width_mm`, `board_height_mm`, `total_track_length_mm` | `statistics.*` |
 | Routing completeness | n/a (scalar) | `routing_complete`, `unrouted_count` | `connectivity.*` |
-| Footprints | `reference` | `value`, `lib_id`, `layer` | `footprints[]` |
+| Footprints | `reference` | `value`, `footprint` (the `Lib:Name` FPID; `library` or `lib_id` in older JSON), `layer` | `footprints[]` |
+| Findings | finding identity (as schematic) | `severity` (new/resolved/changed) | `findings[]` |
 
 ### EMC
 
@@ -108,8 +109,8 @@ Diff function: `diff_emc(base, head, threshold)`
 | Section | Identity Key | Compared Fields | Source Path |
 |---------|-------------|-----------------|-------------|
 | Risk score | n/a (scalar) | `emc_risk_score` | `summary.emc_risk_score` |
-| Severity distribution | n/a (scalar paths) | `critical`, `high`, `medium`, `low`, `info` | `summary.*` |
-| Findings | `rule_id::sorted(nets)::sorted(components)` | `severity` (new/resolved/changed) | `findings[]` |
+| Severity distribution | n/a (scalar paths) | `error`, `warning`, `info` (`critical`, `high`, `medium`, `low`, `info` in pre-v1.4 output) | `summary.by_severity.*` (`summary.*`) |
+| Findings | finding identity (as schematic); `rule_id::sorted(nets)::sorted(components)` for findings without a `finding_id` | `severity` (new/resolved/changed) | `findings[]` |
 | Per-net scores | `net` | `score` (filtered by threshold) | `per_net_scores[]` |
 
 Per-net score changes are sorted by absolute delta (largest first).
@@ -255,8 +256,8 @@ Returns `None` if nothing is found (item is excluded from matching).
 | Analyzer | Added | Removed | Modified |
 |----------|-------|---------|----------|
 | Schematic | New components + new detections | Removed components + removed detections | Changed components + changed detections |
-| PCB | New footprints | Removed footprints | Changed footprints |
-| EMC | New findings | Resolved findings | Severity-changed findings |
+| PCB | New footprints + new findings | Removed footprints + resolved findings | Changed footprints + severity-changed findings |
+| EMC, thermal | New findings | Resolved findings | Severity-changed findings |
 | SPICE | New simulation results | Removed simulation results | Status-changed results |
 
 ### Diff Section (by analyzer type)
@@ -265,7 +266,7 @@ The `diff` object contains only sections with actual changes. Empty sections are
 
 **Schematic diff keys:** `statistics`, `components`, `signal_analysis`, `bom`, `connectivity`, `erc`
 
-**PCB diff keys:** `statistics`, `routing_complete`, `unrouted`, `footprints`
+**PCB diff keys:** `statistics`, `routing_complete`, `unrouted`, `footprints`, `findings`
 
 **EMC diff keys:** `risk_score`, `by_severity`, `findings`, `per_net_scores`
 
