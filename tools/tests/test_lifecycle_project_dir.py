@@ -251,10 +251,32 @@ class CliProjectDirTest(unittest.TestCase):
         self.assertEqual([(f["component_range"], f["evidence_source"]) for f in lt],
                          [({"min_c": 0.0, "max_c": 70.0}, "api_lookup")])
 
-    def test_analysis_naming_no_source_uses_the_input_dir(self):
+    def test_analysis_naming_no_source_reads_no_extraction(self):
         rc, r = self.run_cli({}, {"recommended_operating_conditions": {"temp_min_c": -40, "temp_max_c": 125}})
         lt = [f for f in r["findings"] if f["rule_id"] == "LT-001"]
         self.assertEqual([f["evidence_source"] for f in lt], ["api_lookup"])
+
+    def test_cache_beside_a_json_naming_no_source_is_not_read(self):
+        # A JSON in a shared folder (e.g. /tmp) next to a planted datasheets/extracted.
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        ext = tmp / "datasheets" / "extracted"
+        ext.mkdir(parents=True)
+        (ext / "LM358DR.json").write_text(json.dumps(
+            {"recommended_operating_conditions": {"temp_min_c": -40, "temp_max_c": 125}}), encoding="utf-8")
+        (tmp / "schematic.json").write_text(json.dumps(
+            {"bom": [{"references": ["U1"], "mpn": "LM358DR", "type": "ic"}]}), encoding="utf-8")
+        out = tmp / "out.json"
+        with patched_queries(digikey={"status": "Active", "temp_min_c": 0.0, "temp_max_c": 70.0}), \
+                mock.patch.object(lifecycle_audit, "read_extraction_temperature",
+                                  side_effect=AssertionError("extraction read")), \
+                contextlib.redirect_stderr(io.StringIO()):
+            lifecycle_audit.main([str(tmp / "schematic.json"), "--temp-range", "automotive",
+                                  "--only", "digikey", "--delay", "0", "--output", str(out)])
+        r = json.loads(out.read_text(encoding="utf-8"))
+        lt = [f for f in r["findings"] if f["rule_id"] == "LT-001"]
+        self.assertEqual([(f["component_range"], f["evidence_source"]) for f in lt],
+                         [({"min_c": 0.0, "max_c": 70.0}, "api_lookup")])
 
 
 class ListManifestCliTest(unittest.TestCase):

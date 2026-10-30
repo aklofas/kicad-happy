@@ -33,6 +33,8 @@ from kicad_core.cli import (add_config_arg, add_only_deterministic_arg, add_outp
                             add_stage_audience_args, add_text_arg, envelope_type_error,
                             utf8_text_stdout)
 from lookup_detectors import detect_tj_exceeds_max
+from kicad_core.project import project_dir_from_analysis
+from datasheet_types.cache_reader import read_json_object
 
 ANALYZER_SOURCE = "thermal"
 
@@ -164,14 +166,8 @@ def _get_datasheet_thermal(mpn: str, extract_dir: str) -> dict:
         return {}
 
     safe = _sanitize_mpn(mpn)
-    path = os.path.join(extract_dir, f"{safe}.json")
-    if not os.path.isfile(path):
-        return {}
-
-    try:
-        with open(path) as f:
-            data = json.load(f)
-    except (json.JSONDecodeError, OSError):
+    data = read_json_object(os.path.join(extract_dir, f"{safe}.json"))
+    if data is None:
         return {}
 
     # Trust gate: reject low-quality extractions (matches
@@ -983,14 +979,11 @@ def main(argv: list[str] | None = None) -> int:
     # Resolve datasheets directory
     extract_dir = args.datasheets
     if not extract_dir:
-        # Prefer directory of actual input file over path stored inside JSON
-        input_path = args.schematic if hasattr(args, 'schematic') and args.schematic else None
-        search_base = os.path.dirname(os.path.abspath(input_path)) if input_path else None
-        if not search_base:
-            sch_file = schematic.get("file", "")
-            search_base = os.path.dirname(sch_file) if sch_file else None
-        if search_base:
-            candidate = os.path.join(search_base, "datasheets", "extracted")
+        # Only the project the schematic analysis names: the JSON's own folder
+        # may be a shared directory such as /tmp.
+        project_dir = project_dir_from_analysis(schematic)
+        if project_dir is not None:
+            candidate = os.path.join(project_dir, "datasheets", "extracted")
             if os.path.isdir(candidate):
                 extract_dir = candidate
 

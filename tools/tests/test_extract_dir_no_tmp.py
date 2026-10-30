@@ -60,6 +60,7 @@ class ExtractDirTest(unittest.TestCase):
         for a in (None, {}, {"inputs": {"source_files": []}}, {"file": ""}):
             self.assertIsNone(dec.resolve_extract_dir(analysis_json=a), a)
         self.assertIsNone(dec.resolve_extract_dir())
+        self.assertIsNone(dec.get_cached_extraction(None, MPN))
         with mock.patch.object(df, "get_cached_extraction", side_effect=AssertionError("cache read")), \
              mock.patch.object(cache_reader, "lookup", side_effect=AssertionError("cache read")), \
              mock.patch.object(df, "read_json_object", side_effect=AssertionError("cache read")):

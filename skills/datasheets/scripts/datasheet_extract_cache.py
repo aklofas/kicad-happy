@@ -48,7 +48,6 @@ import json
 import os
 import re
 import sys
-import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -271,8 +270,10 @@ def get_cached_extraction(extract_dir, mpn):
         mpn: Manufacturer part number
 
     Returns:
-        Parsed extraction dict, or None if not cached
+        Parsed extraction dict, or None if not cached (or extract_dir is None)
     """
+    if extract_dir is None:
+        return None
     extractions = _load_index(extract_dir).get("extractions")
     if not isinstance(extractions, dict):
         return None

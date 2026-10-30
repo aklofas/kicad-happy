@@ -1227,8 +1227,10 @@ def main(argv: list[str] | None = None) -> int:
     except OSError as e:
         parser.error(f"input {input_path}: cannot read ({e}); {expected}")
 
-    # Resolve project directory from analyzer JSON
-    project_dir = str(project_dir_from_analysis(analysis) or input_path.parent)
+    # Extraction temperatures come only from the project the analysis names;
+    # the JSON's own folder may be a shared directory such as /tmp.
+    found = project_dir_from_analysis(analysis)
+    project_dir = str(found) if found is not None else None
 
     # Parse temperature range
     temp_range = None
