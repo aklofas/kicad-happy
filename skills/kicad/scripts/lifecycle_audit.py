@@ -794,15 +794,18 @@ def audit_bom(analysis_json: dict, project_dir: str | None = None,
         # actually ATTEMPTED, not just the ones that responded — an errored
         # or timed-out source didn't confirm anything, it isn't absent from
         # the count. A response with status=None doesn't count as an active
-        # confirmation either. LCSC carries no lifecycle status field at
+        # confirmation either: a source counts as responding only when it
+        # states a status (a label, even one we cannot map, or a flag).
+        # LCSC carries no lifecycle status field at
         # all, so it's excluded from the lifecycle source counts entirely
         # (it's a stock/price source, not a lifecycle source) — its
         # presence is still called out in the description when relevant.
         if status == 'active':
             attempted = [s for s in data.get('attempted', []) if s != 'lcsc']
             all_responded = finding.get('sources', {})
-            responded = [s for s in all_responded if s != 'lcsc']
             per_source = data.get('per_source_status', {})
+            responded = [s for s in all_responded
+                         if s != 'lcsc' and s in per_source]
             active_confirmed = sorted(s for s in responded if per_source.get(s) == 'active')
 
             total_attempted = len(attempted)
