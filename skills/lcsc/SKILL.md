@@ -175,7 +175,7 @@ in the current working directory when `--output` is omitted.
 
 The script:
 - **Runs the kicad schematic analyzer** to extract components, MPNs, and LCSC codes
-- **Accepts any identifier** — MPN, LCSC code, or other distributor PNs from KiCad symbol properties
+- **Searches by LCSC code or MPN** (an MPN from the Value field matches its family); a part with only another distributor's PN is skipped
 - **Prefers LCSC code** for search (exact match) — falls back to MPN keyword search
 - **Falls back to wmsc.lcsc.com API** when jlcsearch has no results, or a hit has no datasheet URL, for an LCSC code (Cxxxxx)
 - **Downloads from LCSC CDN** — direct PDF URLs, no bot protection

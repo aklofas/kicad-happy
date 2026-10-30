@@ -221,7 +221,7 @@ network calls are made.
 
 The script:
 - **Runs the kicad schematic analyzer** to extract components, MPNs, and distributor PNs
-- **Accepts any identifier** — MPN, Newark/Farnell PN, or other distributor PNs from KiCad symbol properties
+- **Searches by Newark/Farnell PN or MPN** (an MPN from the Value field matches its family); a part with only another distributor's PN is skipped
 - **Prefers MPN search** (`manuPartNum:`) for exact match — falls back to keyword search
 - **Downloads from farnell.com CDN** — direct PDF URLs, no bot protection
 - **Writes `manifest.json` manifest** — same format as DigiKey/Mouser/LCSC skills
