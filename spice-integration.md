@@ -31,6 +31,26 @@ The circuit netlists are standard SPICE (Berkeley SPICE3 syntax) — portable ac
 
 The key insight: the schematic analyzer already detects 21+ subcircuit types (RC filters, voltage dividers, opamp circuits, etc.) with full component values and net topology. The SPICE skill turns these static detections into dynamic simulations — instead of "I found an RC filter with calculated fc=15.9kHz," it says "I simulated this RC filter and confirmed fc=15.9kHz."
 
+## External Decks and PSpice
+
+`run_external_deck.py` runs a complete user-supplied deck separately from the generated-testbench workflow. Select PSpice explicitly:
+
+```bash
+python3 skills/spice/scripts/run_external_deck.py example.cir --simulator pspice --timeout 120
+```
+
+The runner resolves the deck to an absolute path but invokes PSpice (`pspice.exe -r -e <deck> -o <stem>.out`) from the deck's parent directory using the deck filename. Relative `.include` and `.lib` paths therefore retain their simulator-native meaning. The executable comes from `PSPICE_PATH` (an existing file) or, failing that, `pspice`/`pspice.exe` on `PATH`. On Windows it must be a native executable: `.bat` and `.cmd` candidates are rejected rather than run through `cmd.exe`.
+
+PSpice writes `<deck-stem>.out` beside the deck and may overwrite an existing file with that name; it also writes a `<deck-stem>.json` sidecar there. The runner never deletes the native output. Because of that, it exits with a usage error (code 2, before launching anything) when `--output` resolves to the deck, the `.out` file, or — for PSpice — the `.json` sidecar (compared case-insensitively on Windows), when `--output` is a directory or its directory does not exist, or when a PSpice deck itself has a `.out` suffix. The result JSON is written atomically.
+
+`--timeout` defaults to 600 seconds, since real PSpice runs can take minutes. The simulator's stdout and stderr are discarded (the native `.out` is the record) so that child processes cannot hold pipes open; on timeout the runner kills the simulator's entire process tree (`taskkill /F /T` on Windows, a process-group kill elsewhere) and returns within the timeout plus a short grace period.
+
+Resolve any pending PSpice dialogs or interrupted simulation-queue entries before starting a batch run. PSpice can display an interactive queue prompt after an interrupted run; the runner does not dismiss dialogs or change application preferences, so a blocked run returns a timeout failure.
+
+PSpice success requires a zero process exit code, a native output file that was written or changed by this run (a leftover `.out` from an earlier run is not success), and a line that is exactly `JOB CONCLUDED`. A `JOB ABORTED` line, or any line starting `ERROR --` or `ERROR(ORPSIM-`, fails the run; the failure note quotes the first such error line. UTF-16 and UTF-8 byte-order marks in the `.out` are honored. Warnings (`WARNING(...)`) and a zero-error summary do not fail the run. The JSON result records execution success only; it does not validate circuit behavior or establish regulatory compliance.
+
+This first version does not add PSpice to `simulate_subcircuits.py`, `SPICE_SIMULATOR`, or auto-detection. It does not render or parse PSpice measurements, copy vendor libraries, inspect encryption, parse waveform binaries, or repair convergence problems.
+
 ## What Gets Simulated
 
 18 subcircuit types across analog, power, and RF domains:
@@ -169,6 +189,7 @@ Several schematic and PCB analyzer features were added to feed deeper simulation
 | `NGSPICE_PATH` | No | Explicit path to ngspice binary (skips PATH lookup) |
 | `LTSPICE_PATH` | No | Explicit path to LTspice binary |
 | `XYCE_PATH` | No | Explicit path to Xyce binary |
+| `PSPICE_PATH` | No | Explicit path to the PSpice executable for `run_external_deck.py`; not used by auto-detection |
 
 Most users don't need to set any of these — the skill auto-detects whichever simulator is installed. The `*_PATH` variables are for non-standard install locations.
 

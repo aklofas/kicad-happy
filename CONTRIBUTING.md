@@ -12,7 +12,7 @@ skills/
 │   └── references/  # Deep methodology guides (18 files)
 ├── datasheets/      # Structured extraction pipeline — per-MPN cache, quality scoring, consumer API
 ├── emc/             # EMC pre-compliance (44 rules, 18 categories)
-├── spice/           # SPICE simulation (ngspice/LTspice/Xyce)
+├── spice/           # SPICE simulation (ngspice/LTspice/Xyce; explicit-only PSpice external-deck runner)
 ├── bom/             # BOM management
 ├── digikey/         # DigiKey API integration
 ├── mouser/          # Mouser API integration
