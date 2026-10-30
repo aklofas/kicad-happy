@@ -12,11 +12,12 @@ import edit_properties, kicad_sexp, sync_datasheet_urls
 from kicad_core import sexp
 
 
-def sheet_text(ref, datasheet):
+def sheet_text(ref, datasheet, mpn):
     return ('(kicad_sch (version 20231120) (generator "eeschema")\n'
             '\t(symbol (lib_id "Device:R") (at 10 10 0)\n'
             f'\t\t(property "Reference" "{ref}" (at 0 0 0))\n'
             f'\t\t(property "Datasheet" "{datasheet}" (at 0 0 0))\n'
+            f'\t\t(property "MPN" "{mpn}" (at 0 0 0))\n'
             '\t)\n)\n')
 
 
@@ -37,7 +38,7 @@ class EscapeTest(unittest.TestCase):
 class EscapedNameUpdateTest(unittest.TestCase):
     def test_update_twice_keeps_one_property(self):
         name = 'A"B\\C'
-        text = sheet_text("R1", "")
+        text = sheet_text("R1", "", "A")
         for value in ("one", "two"):
             text, _ = edit_properties.apply_updates(text, {"R1": {name: value}})
         props = [p for p in sexp.find_all(sexp.find_first(sexp.parse(text), "symbol"), "property")
@@ -60,12 +61,12 @@ class SyncRootsTest(unittest.TestCase):
             "B": {"status": "ok", "datasheet_url": "https://e.com/b.pdf", "references": ["R2"]}}}),
             encoding="utf-8")
         self.other = self.outside / "other.kicad_sch"
-        self.other.write_text(sheet_text("R2", ""), encoding="utf-8")
+        self.other.write_text(sheet_text("R2", "", "B"), encoding="utf-8")
         self.other_bytes = self.other.read_bytes()
 
     def root_with_sheet(self, sheetfile):
         root = self.proj / "root.kicad_sch"
-        root.write_text(sheet_text("R1", "") .rstrip().rstrip(")") +
+        root.write_text(sheet_text("R1", "", "A") .rstrip().rstrip(")") +
                         f'\t(sheet (at 0 0) (property "Sheetfile" "{sheetfile}" (at 0 0 0)))\n)\n',
                         encoding="utf-8")
         return root
@@ -95,7 +96,7 @@ class SyncRootsTest(unittest.TestCase):
 
     def test_inside_sheet_still_written(self):
         sub = self.proj / "sub.kicad_sch"
-        sub.write_text(sheet_text("R2", ""), encoding="utf-8")
+        sub.write_text(sheet_text("R2", "", "B"), encoding="utf-8")
         self.run_sync(self.root_with_sheet("sub.kicad_sch"))
         self.assertIn("https://e.com/b.pdf", sub.read_text(encoding="utf-8"))
 

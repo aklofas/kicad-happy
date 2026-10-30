@@ -64,6 +64,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Fixed
 
+- Datasheet URL write-back (`sync_datasheet_urls`) matches each symbol by its own part number (its MPN, then a distributor or supplier-slot part number it carries, then its Value only when it has neither), so a replaced part no longer inherits its predecessor's URL; only manifest entries with status `ok` are used (KH-625).
 - `bom_manager` files a `Supplier N` part number under the distributor that symbol names in its own `Supplier N` field (a project mixing distributors in one slot had every slot number filed under the first symbol's distributor), and recognises the `Supplier Part Number N`, `Supplier Part Num N`, `Supplier_N P/N` and `supplier N pn` spellings (KH-624).
 - The JLCPCB translator (`translate_bom_pnp`) leaves out rows marked in a DNP or population column (`DNP`, `Populate`, `Fitted`), expands KiCad's `R1-R4` reference ranges in the BOM and in the `pnp --bom` designator set, and no longer reads a part number that contains `DNP` (such as `OPT4003DNPRQ1`) as DNP. Ranged parts used to be dropped from the CPL as orphans and DNP parts assembled. (KH-604)
 - `bom_manager` reads `POPULATE` as a population flag: `1`, `yes`, `true` or an empty value means fitted (it used to count as DNP), `0`, `no`, `false` or `DNP` means not fitted. `(dnp yes)` and the `DNP` fields still mark a part not fitted. (KH-603)
