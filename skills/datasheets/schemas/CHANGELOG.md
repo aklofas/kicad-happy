@@ -178,3 +178,11 @@ Initial version. Top-level per-MPN file envelope: `{schema_version, source, extr
 ## manifest — 1.0 (2026-04-19, v1.4)
 
 Initial version. `datasheets/manifest.json` shape covering both legacy `extractions` index (v1.3 compat) and new `pdfs` SHA-dedup section (Tier 1).
+
+## regulator — 0.4 (2026-10-29)
+
+Additive: `stability_conditions.cap_types_allowed` accepts the generic token `ceramic` for datasheets that require ceramic output capacitors without naming a dielectric. A consumer treats `ceramic` as "class unknown", not as any specific dielectric family. Existing extractions stay valid.
+
+## base, pinout, extraction — 1.0 (2026-10-29)
+
+These three schemas now declare `x-schema-version: "1.0"` (the value the merger already stamps into `schema_version.base`), so the run-level `capability_mode` record lists them with the other schemas. No shape change.
