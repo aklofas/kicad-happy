@@ -87,6 +87,9 @@ _STATUS_NORMALIZE = {
     "discontinued": "discontinued",
     "last time buy": "last_time_buy",
     "not for new designs": "nrnd",
+    "not recommended for new designs": "nrnd",
+    "discontinued at digikey": "discontinued",
+    "discontinued at digi-key": "discontinued",
     "obsolete": "obsolete",
     # Mouser
     "new product": "active",
@@ -107,6 +110,25 @@ def _normalize_status(raw: str | None) -> str:
     if not raw:
         return "unknown"
     return _STATUS_NORMALIZE.get(raw.lower().strip(), "unknown")
+
+
+# Worst first; "unknown" states nothing and never wins.
+_STATUS_RANK = ("obsolete", "discontinued", "last_time_buy", "nrnd", "active", "unknown")
+
+
+def _worse_status(a: str, b: str) -> str:
+    return a if _STATUS_RANK.index(a) <= _STATUS_RANK.index(b) else b
+
+
+def _source_status(data: dict) -> str | None:
+    """One distributor's status: the worse of its label and its discontinuation
+    flag, or None when it states neither."""
+    status = None
+    if data.get("status"):
+        status = _normalize_status(data["status"])
+    if data.get("discontinued") is True:
+        status = _worse_status(status or "unknown", "discontinued")
+    return status
 
 
 # ---------------------------------------------------------------------------
@@ -480,13 +502,10 @@ def audit_component(mpn: str, sources: list[str], project_dir: str | None = None
             data = fn(mpn)
             if data:
                 result["sources"][source_name] = data
-                # Update best status
-                raw_status = data.get("status")
-                if raw_status:
-                    normalized = _normalize_status(raw_status)
+                normalized = _source_status(data)
+                if normalized:
                     per_source_status[source_name] = normalized
-                    if normalized != "unknown":
-                        best_status = normalized
+                    best_status = _worse_status(best_status, normalized)
                 # Update temperature if not already from extraction
                 if not temp_data and data.get("temp_min_c") is not None:
                     temp_data = {
@@ -720,7 +739,7 @@ def audit_bom(analysis_json: dict, project_dir: str | None = None,
             if consensus_split and severity == 'error':
                 severity = 'warning'
                 active_srcs = sorted(s for s, st in per_source.items() if st == 'active')
-                eol_srcs = sorted(s for s, st in per_source.items() if st != 'active')
+                eol_srcs = sorted(s for s, st in per_source.items() if st in _EOL_STATUSES)
                 split_note = (f" Distributor disagreement: {', '.join(active_srcs)} "
                               f"list it as active while {', '.join(eol_srcs)} "
                               f"flag EOL. Part is orderable today.")
