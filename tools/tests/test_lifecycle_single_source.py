@@ -34,22 +34,24 @@ class SingleSourceTest(unittest.TestCase):
         out = bom_audit(digikey={"status": "Active"}, mouser={"status": None})
         self.assertEqual(lc005(out), [])
 
-    def test_stated_non_active_second_source_is_single_source(self):
+    def test_label_the_part_does_not_map_is_not_single_source(self):
         out = bom_audit(digikey={"status": "Active"},
                         mouser={"status": "Restricted Availability"})
-        f = lc005(out)
-        self.assertEqual(len(f), 1)
-        self.assertEqual(f[0]["source_name"], "digikey")
-        self.assertEqual(f[0]["responded"], 2)
+        self.assertEqual(lc005(out), [])
 
-    def test_unrecognised_label_still_states_a_status(self):
-        out = bom_audit(digikey={"status": "Active"}, mouser={"status": "Whatever"})
-        self.assertEqual(len(lc005(out)), 1)
+    def test_unmappable_label_is_not_a_response(self):
+        for label in ("Preliminary", "Not Applicable"):
+            out = bom_audit(digikey={"status": "Active"}, mouser={"status": label})
+            self.assertEqual(lc005(out), [], label)
 
-    def test_discontinued_flag_without_label_states_a_status(self):
+    def test_flag_only_source_states_a_status(self):
         out = bom_audit(digikey={"status": "Active"},
                         mouser={"status": None, "discontinued": True})
-        self.assertEqual(lc005(out), [])  # part is discontinued, not LC-ACT/active
+        self.assertEqual(lc005(out), [])
+        lc001 = [f for f in out["findings"] if f.get("rule_id") == "LC-001"]
+        self.assertEqual(len(lc001), 1)
+        self.assertEqual(lc001[0]["per_source_status"],
+                         {"digikey": "active", "mouser": "discontinued"})
 
     def test_end_of_life_elsewhere_is_not_single_source(self):
         out = bom_audit(digikey={"status": "Active"}, mouser={"status": "End of Life"})
