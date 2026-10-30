@@ -3,7 +3,9 @@
 
 Reads analyzer JSON output and creates GitHub Issues via the ``gh`` CLI.
 Dry-run by default — previews issues to stdout. Use ``--create`` to push.
-Label-based dedup prevents duplicates.
+Each issue body starts with a hidden ``finding_id`` marker and an open issue
+carrying that marker is never exported again; issues without a marker are
+matched once by exact title.
 
 Usage:
     export_issues.py schematic.json --repo owner/repo
@@ -19,6 +21,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -49,6 +52,39 @@ def _norm_severity(s: str) -> str:
     if s in ("warning", "medium", "warn"):
         return "warning"
     return "info"
+
+
+_MARKER_RE = re.compile(r"^<!-- kicad-happy:finding_id=(.*) -->$")
+
+
+def _escape_html_comment(text: str) -> str:
+    """Make text safe to place in a body without opening or closing a comment."""
+    return text.replace("<!--", "&lt;!--").replace("-->", "--&gt;")
+
+
+def finding_marker(finding: dict) -> str:
+    """Return the hidden marker line for a finding, or '' when it has no id.
+
+    The id is the one the analyzer emitted. A positional id (``X#1``) follows
+    list order, so a re-run that reorders its collision group can map the
+    suffix to another finding.
+    """
+    fid = finding.get("finding_id")
+    if not isinstance(fid, str) or not fid.strip():
+        return ""
+    fid = _escape_html_comment(" ".join(fid.split()))
+    return f"<!-- kicad-happy:finding_id={fid} -->"
+
+
+def marker_id(body: "str | None") -> "str | None":
+    """The finding id in an issue body's first line, else None.
+
+    Only the first line counts: the exporter writes the marker there and
+    escapes comment delimiters in everything it interpolates.
+    """
+    first = (body or "").lstrip("\ufeff").split("\n", 1)[0].strip()
+    m = _MARKER_RE.match(first)
+    return m.group(1) if m else None
 
 
 def load_findings(path: str) -> list[dict]:
@@ -136,14 +172,20 @@ def format_issue_body(finding: dict) -> str:
       - ## Recommendation  (omitted if empty)
       - Footer attribution line
     """
-    rule_id = finding.get("rule_id", "")
+    esc = _escape_html_comment
+    rule_id = esc(str(finding.get("rule_id", "")))
     severity = _norm_severity(finding.get("severity", "info"))
-    confidence = finding.get("confidence", "")
-    evidence = finding.get("evidence_source", "")
-    category = finding.get("category", "")
-    detector = finding.get("detector", "")
+    confidence = esc(str(finding.get("confidence", "")))
+    evidence = esc(str(finding.get("evidence_source", "")))
+    category = esc(str(finding.get("category", "")))
+    detector = esc(str(finding.get("detector", "")))
 
     lines: list[str] = []
+
+    marker = finding_marker(finding)
+    if marker:
+        lines.append(marker)
+        lines.append("")
 
     # --- Metadata table ---
     lines.append("| Field | Value |")
@@ -161,7 +203,7 @@ def format_issue_body(finding: dict) -> str:
     lines.append("")
 
     # --- Summary ---
-    summary = (finding.get("summary") or "").strip()
+    summary = esc((finding.get("summary") or "").strip())
     if summary:
         lines.append("## Summary")
         lines.append("")
@@ -169,7 +211,7 @@ def format_issue_body(finding: dict) -> str:
         lines.append("")
 
     # --- Description ---
-    description = (finding.get("description") or "").strip()
+    description = esc((finding.get("description") or "").strip())
     if description:
         lines.append("## Description")
         lines.append("")
@@ -183,9 +225,9 @@ def format_issue_body(finding: dict) -> str:
         lines.append("")
         for comp in components:
             if isinstance(comp, dict):
-                ref = comp.get("ref") or comp.get("reference") or comp.get("name") or ""
-                val = comp.get("value") or ""
-                fp = comp.get("footprint") or ""
+                ref = esc(str(comp.get("ref") or comp.get("reference") or comp.get("name") or ""))
+                val = esc(str(comp.get("value") or ""))
+                fp = esc(str(comp.get("footprint") or ""))
                 parts = [f"`{ref}`" if ref else ""]
                 if val:
                     parts.append(val)
@@ -193,7 +235,7 @@ def format_issue_body(finding: dict) -> str:
                     parts.append(f"({fp})")
                 lines.append(f"- {' '.join(p for p in parts if p)}")
             elif isinstance(comp, str):
-                lines.append(f"- `{comp}`")
+                lines.append(f"- `{esc(comp)}`")
         lines.append("")
 
     # --- Nets ---
@@ -203,14 +245,14 @@ def format_issue_body(finding: dict) -> str:
         lines.append("")
         for net in nets:
             if isinstance(net, str):
-                lines.append(f"- `{net}`")
+                lines.append(f"- `{esc(net)}`")
             elif isinstance(net, dict):
                 name = net.get("name") or net.get("net") or str(net)
-                lines.append(f"- `{name}`")
+                lines.append(f"- `{esc(str(name))}`")
         lines.append("")
 
     # --- Recommendation ---
-    recommendation = (finding.get("recommendation") or "").strip()
+    recommendation = esc((finding.get("recommendation") or "").strip())
     if recommendation:
         lines.append("## Recommendation")
         lines.append("")
@@ -271,31 +313,68 @@ def check_gh_available() -> bool:
         return False
 
 
-def find_existing_issues(repo: str, rule_id: str) -> list[dict]:
-    """Return open issues that carry the dedup label ``kicad-happy:{rule_id}``.
+def list_open_issues(repo: str) -> "list[dict] | None":
+    """Return the open issues carrying the ``kicad-happy`` label.
 
-    Uses ``gh issue list --json number,title`` for machine-readable output.
-    Returns an empty list on any error.
+    Each item has ``number``, ``title`` and ``body``. Returns None when the
+    listing fails, so the caller does not export into an unknown state.
     """
-    label = f"kicad-happy:{rule_id}"
     try:
         result = subprocess.run(
             [
                 "gh", "issue", "list",
                 "--repo", repo,
-                "--label", label,
+                "--label", "kicad-happy",
                 "--state", "open",
-                "--json", "number,title",
+                "--limit", "1000",
+                "--json", "number,title,body",
             ],
             capture_output=True,
             text=True,
-            timeout=30,
+            encoding="utf-8",
+            timeout=60,
         )
         if result.returncode != 0:
-            return []
-        return json.loads(result.stdout) if result.stdout.strip() else []
+            return None
+        data = json.loads(result.stdout) if result.stdout.strip() else []
+        return data if isinstance(data, list) else None
     except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError):
-        return []
+        return None
+
+
+class IssueIndex:
+    """Open issues indexed by finding marker, with unmarked ones kept by title."""
+
+    def __init__(self, issues: "list[dict]", used: "set | None" = None):
+        self.used: set = set(used or ())
+        self.by_marker: dict[str, int] = {}
+        self.legacy: dict[str, list[int]] = {}
+        for issue in issues:
+            if not isinstance(issue, dict):
+                continue
+            num = issue.get("number")
+            fid = marker_id(issue.get("body"))
+            if fid is not None:
+                self.by_marker.setdefault(fid, num)
+            else:
+                self.legacy.setdefault(issue.get("title") or "", []).append(num)
+
+    def claim(self, finding: dict, title: str) -> "int | None":
+        """Return the open issue for this finding and mark it as used.
+
+        A marker match is permanent. An unmarked issue is matched by exact
+        title and serves one finding only.
+        """
+        marker = finding_marker(finding)
+        if marker:
+            fid = marker_id(marker)
+            if fid in self.by_marker:
+                return self.by_marker[fid]
+        for num in self.legacy.get(title, []):
+            if num not in self.used:
+                self.used.add(num)
+                return num
+        return None
 
 
 def create_issue(
@@ -313,22 +392,23 @@ def create_issue(
     """
     cmd = [
         "gh", "issue", "create",
-        "--repo", repo,
-        "--title", title,
-        "--body", body,
+        f"--repo={repo}",
+        f"--title={title}",
+        f"--body={body}",
     ]
     for label in labels:
-        cmd += ["--label", label]
+        cmd.append(f"--label={label}")
     if assignee:
-        cmd += ["--assignee", assignee]
+        cmd.append(f"--assignee={assignee}")
     if milestone:
-        cmd += ["--milestone", milestone]
+        cmd.append(f"--milestone={milestone}")
 
     try:
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=60,
         )
         if result.returncode == 0:
@@ -501,11 +581,14 @@ def main(argv: "list[str] | None" = None) -> int:  # noqa: C901 (intentionally l
     # --create mode
     # -----------------------------------------------------------------------
 
-    # Batch dedup: query once per unique rule_id, not once per finding
-    unique_rule_ids = {f.get("rule_id", "") for f in findings}
-    existing_by_rule = {
-        rid: find_existing_issues(args.repo, rid) for rid in unique_rule_ids if rid
-    }
+    issues = list_open_issues(args.repo)
+    if issues is None:
+        print(
+            f"error: cannot list open issues in {args.repo!r}; nothing exported.",
+            file=sys.stderr,
+        )
+        return 1
+    index = IssueIndex(issues)
 
     created = 0
     skipped = 0
@@ -514,16 +597,14 @@ def main(argv: "list[str] | None" = None) -> int:  # noqa: C901 (intentionally l
     for finding in findings:
         rule_id = finding.get("rule_id", "")
 
-        # Dedup check (uses pre-fetched results)
-        existing = existing_by_rule.get(rule_id, [])
-        if existing:
-            nums = ", ".join(f"#{e['number']}" for e in existing)
+        title = format_issue_title(finding)
+        existing = index.claim(finding, title)
+        if existing is not None:
             summary = (finding.get("summary") or "")[:60]
-            print(f"SKIP  [{rule_id}] {summary}  (already open: {nums})")
+            print(f"SKIP  [{rule_id}] {summary}  (already open: #{existing})")
             skipped += 1
             continue
 
-        title = format_issue_title(finding)
         body = format_issue_body(finding)
         labels = issue_labels(finding, args.labels)
         url = create_issue(
@@ -532,6 +613,9 @@ def main(argv: "list[str] | None" = None) -> int:  # noqa: C901 (intentionally l
         if url:
             print(f"CREATED  {url}")
             created += 1
+            refreshed = list_open_issues(args.repo)
+            if refreshed is not None:
+                index = IssueIndex(refreshed, index.used)
         else:
             print(f"ERROR  [{rule_id}] {title[:60]}", file=sys.stderr)
             errors += 1
