@@ -193,7 +193,7 @@ def is_dnp(symbol_block: str, props: dict[str, str]) -> bool:
         val = props.get(field, "").strip().upper()
         # POPULATE is a population flag, so "1" / "yes" / "true" mean fitted
         if field == "POPULATE":
-            if val in ("0", "NO", "FALSE"):
+            if val in ("0", "NO", "FALSE", "DNP"):
                 return True
             continue
         if val in ("YES", "TRUE", "1", "DNP"):

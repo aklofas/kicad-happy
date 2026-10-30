@@ -80,7 +80,8 @@ class PopulateField(unittest.TestCase):
     def test_is_dnp_vocabulary(self):
         no = "(symbol (dnp no))"
         for val, expect in (("1", False), ("0", True), ("", False), ("yes", False),
-                            ("true", False), ("no", True), ("false", True), (" 0 ", True)):
+                            ("true", False), ("no", True), ("false", True), (" 0 ", True),
+                            ("DNP", True), ("dnp", True)):
             self.assertEqual(bom_manager.is_dnp(no, {"POPULATE": val}), expect, val)
 
     def test_dnp_attribute_and_dnp_field_still_win(self):
