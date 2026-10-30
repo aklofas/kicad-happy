@@ -2171,24 +2171,30 @@ def analyze_assembly_complexity(components: list[dict]) -> dict:
     return result
 
 
-# USB Type-C Rp values by pull-up rail; Rd is 5.1k. Each nominal takes the band the
-# 56k default has always had (50k-62k).
-_TYPE_C_RP_BY_RAIL = {5.0: (56000, 22000, 10000), 3.3: (36000, 12000, 4700)}
-_RP_BAND = (50000 / 56000, 62000 / 56000)
+# USB Type-C Rp (nominal, tolerance) by pull-up rail, per the Type-C spec; Rd is 5.1k.
+_TYPE_C_RP_BY_RAIL = {
+    5.0: ((56000, 0.20), (22000, 0.05), (10000, 0.05)),
+    3.3: ((36000, 0.20), (12000, 0.05), (4700, 0.05)),
+}
+_RD_BAND = (4800, 5600)
 
 
 def _is_type_c_rp(ohms: float, rail_v: float | None) -> bool:
-    if rail_v is not None and 4.5 <= rail_v <= 5.5:
-        nominals = _TYPE_C_RP_BY_RAIL[5.0]
-    elif rail_v is not None and 3.0 <= rail_v <= 3.6:
-        nominals = _TYPE_C_RP_BY_RAIL[3.3]
+    """Rp to a rail of *rail_v* volts; an unknown rail accepts either table."""
+    if _RD_BAND[0] <= ohms <= _RD_BAND[1]:
+        return False
+    if rail_v is None:
+        table = _TYPE_C_RP_BY_RAIL[5.0] + _TYPE_C_RP_BY_RAIL[3.3]
+    elif 4.5 <= rail_v <= 5.5:
+        table = _TYPE_C_RP_BY_RAIL[5.0]
+    elif 3.0 <= rail_v <= 3.6:
+        table = _TYPE_C_RP_BY_RAIL[3.3]
     else:
-        nominals = _TYPE_C_RP_BY_RAIL[5.0] + _TYPE_C_RP_BY_RAIL[3.3]
-    return any(n * _RP_BAND[0] <= ohms <= n * _RP_BAND[1] for n in nominals)
+        return False
+    return any(n * (1 - tol) <= ohms <= n * (1 + tol) for n, tol in table)
 
 
 _TYPE_C_NAME = re.compile(r"(?<![A-Z0-9])(?:USB[_-]?C|TYPE[-_]?C)(?![A-Z0-9])")
-_CC_PIN_NAMES = frozenset(("CC", "CC1", "CC2"))
 
 
 def _connector_pin_names(ctx: AnalysisContext, ref: str) -> set[str]:
@@ -2204,11 +2210,23 @@ def _connector_pin_names(ctx: AnalysisContext, ref: str) -> set[str]:
     return names
 
 
-def _has_cc_pin(pin_names: set[str]) -> bool:
-    # Pin names often prefix the contact (A5/CC1) or subscript the index (CC_{1}).
-    return any(tok in _CC_PIN_NAMES
-               for name in pin_names
-               for tok in re.split(r"[^A-Z0-9]+", name.upper()))
+def _cc_side(pin_name: str) -> str | None:
+    """"CC1", "CC2", "CC" (a plug's single CC) or None for a pin name.
+
+    Names often prefix the contact (A5/CC1) or subscript the index (CC_{1}).
+    """
+    toks = [t for t in re.split(r"[^A-Z0-9]+", pin_name.upper()) if t]
+    for i, tok in enumerate(toks):
+        if tok in ("CC1", "CC2"):
+            return tok
+        if tok == "CC":
+            nxt = toks[i + 1] if i + 1 < len(toks) else ""
+            return "CC" + nxt if nxt in ("1", "2") else "CC"
+    return None
+
+
+def _cc_sides(pin_names: set[str]) -> set[str]:
+    return {side for side in map(_cc_side, pin_names) if side}
 
 
 def analyze_usb_compliance(ctx: AnalysisContext,
@@ -2240,12 +2258,14 @@ def analyze_usb_compliance(ctx: AnalysisContext,
         lib = comp.get("lib_id", "").upper()
         combined = val + " " + fp + " " + lib
         if "USB" in combined:
-            has_cc = _has_cc_pin(_connector_pin_names(ctx, ref))
+            cc_sides = _cc_sides(_connector_pin_names(ctx, ref))
             usb_connectors.append({
                 "ref": ref,
                 "value": comp.get("value", ""),
-                "is_type_c": has_cc or bool(_TYPE_C_NAME.search(combined)),
-                "has_cc_pins": has_cc,
+                "is_type_c": bool(cc_sides) or bool(_TYPE_C_NAME.search(combined)),
+                "has_cc_pins": bool(cc_sides),
+                # A plug carries one CC pin; the check then covers that one side.
+                "single_cc": not (cc_sides & {"CC1", "CC2"}) and bool(cc_sides),
             })
 
     if not usb_connectors:
@@ -2280,7 +2300,7 @@ def analyze_usb_compliance(ctx: AnalysisContext,
             conn_checks["checks"]["cc_pins"] = "info"
             conn_checks["usb_c_cc_status"] = {
                 "status": "skipped",
-                "note": "CC pins not on this symbol; CC checks skipped",
+                "note": "no pin named CC/CC1/CC2 on this symbol; CC checks skipped",
             }
         elif conn["is_type_c"]:
             _PD_CONTROLLER_KEYWORDS = (
@@ -2298,10 +2318,12 @@ def analyze_usb_compliance(ctx: AnalysisContext,
                               if pn in ("VBUS", "V+", "VCC", "VUSB")), None)
             pd_controller = None
 
+            single_cc = conn["single_cc"]
             for pname, net_name in conn_pin_nets.items():
-                if "CC1" not in pname and "CC2" not in pname:
+                side = _cc_side(pname)
+                if side is None or (side == "CC") != single_cc:
                     continue
-                is_cc1 = "CC1" in pname
+                is_cc1 = side != "CC2"
                 if is_cc1:
                     cc1_net = net_name
                 else:
@@ -2325,6 +2347,8 @@ def analyze_usb_compliance(ctx: AnalysisContext,
                 for p in nets[net_name]["pins"]:
                     rc = comp_lookup.get(p["component"])
                     if not rc or rc["type"] != "resistor":
+                        continue
+                    if rc.get("dnp") or rc.get("value", "").strip().upper() in ("DNI", "DNP"):
                         continue
                     r_val = parse_value(rc.get("value", ""))
                     if r_val is None:
@@ -2421,28 +2445,40 @@ def analyze_usb_compliance(ctx: AnalysisContext,
                 if r_info:
                     del r_info["_rp"]
 
+            if single_cc:
+                issues = [{"missing_cc1_resistor": "missing_cc_resistor"}.get(i, i)
+                          for i in issues if i not in ("missing_cc2_resistor", "asymmetric_cc")]
             cc_status = "pass" if not issues else "fail"
-            cc_detail: dict = {
+            cc_detail: dict = ({"cc_net": cc1_net, "cc_resistor": cc1_resistor} if single_cc else {
                 "cc1_net": cc1_net,
                 "cc2_net": cc2_net,
                 "cc1_resistor": cc1_resistor,
                 "cc2_resistor": cc2_resistor,
+            })
+            cc_detail.update({
                 "role": role,
                 "pd_controller": pd_controller,
                 "status": cc_status,
                 "issues": issues,
-            }
+            })
             unread = [
                 {"pin": pin, "ref": r["ref"], "value": r["value"],
                  "note": (f"{ref} {pin}: value {r['value']!r} of {r['ref']} not read; "
                           f"{pin} check skipped")}
-                for pin, rs in (("CC1", cc1_unread), ("CC2", cc2_unread)) for r in rs]
+                for pin, rs in (("CC" if single_cc else "CC1", cc1_unread), ("CC2", cc2_unread))
+                for r in rs]
             if unread:
                 cc_detail["unread_resistors"] = unread
             conn_checks["usb_c_cc_status"] = cc_detail
 
             # Legacy check keys for summary compatibility
-            if pd_controller:
+            if single_cc:
+                cc_ok = (cc1_resistor and 4800 <= cc1_resistor["ohms"] <= 5600
+                         and cc1_resistor["to_ground"])
+                conn_checks["checks"]["cc_pulldown_5k1"] = (
+                    "pass" if pd_controller or cc_ok else "info"
+                    if role == "source" or cc1_unread else "fail")
+            elif pd_controller:
                 conn_checks["checks"]["cc1_pulldown_5k1"] = "pass"
                 conn_checks["checks"]["cc2_pulldown_5k1"] = "pass"
             elif role == "source":
@@ -2598,6 +2634,14 @@ def analyze_usb_compliance(ctx: AnalysisContext,
                 f"USB-C sink {ref}: CC1 has no 5.1k pull-down to GND and no "
                 f"PD controller was found. A source will not present VBUS.",
                 f"Add a 5.1k pull-down on CC1 (or a PD controller) at {ref}.",
+                [],
+            ),
+            "cc_pulldown_5k1": (
+                "UC-003",
+                f"CC missing 5.1k pull-down at {ref}",
+                f"USB-C sink {ref}: the plug's CC pin has no 5.1k pull-down to GND and "
+                f"no PD controller was found. A source will not present VBUS.",
+                f"Add a 5.1k pull-down on CC (or a PD controller) at {ref}.",
                 [],
             ),
             "cc2_pulldown_5k1": (

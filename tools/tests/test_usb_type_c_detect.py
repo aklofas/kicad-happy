@@ -15,9 +15,10 @@ def _conn(ref, value, lib_id, footprint="", pins=()):
             "footprint": footprint, "pins": [{"number": n, "name": nm} for n, nm in pins]}
 
 
-def _res(ref, value):
+def _res(ref, value, dnp=False):
     return {"reference": ref, "type": "resistor", "value": value, "lib_id": "Device:R",
-            "footprint": "", "pins": [{"number": "1", "name": "~"}, {"number": "2", "name": "~"}]}
+            "footprint": "", "dnp": dnp,
+            "pins": [{"number": "1", "name": "~"}, {"number": "2", "name": "~"}]}
 
 
 def _run(components, nets, rails=None):
@@ -25,7 +26,7 @@ def _run(components, nets, rails=None):
                                     for r, p, pn in pins],
                 "point_count": 0, "no_connect": False, "labels": []}
             for n, pins in nets.items()}
-    ctx = build_analysis_context(components, full, {}, known_power_rails={"VBUS", "+3V3"},
+    ctx = build_analysis_context(components, full, {}, known_power_rails={"VBUS", "+3V3", "+1V1"},
                                  power_rails_config={"voltage_overrides": rails} if rails else None)
     return analyze_usb_compliance(ctx, {})
 
@@ -80,7 +81,7 @@ class TypeCDetection(unittest.TestCase):
         self.assertEqual(conn["checks"]["cc_pins"], "info")
         self.assertEqual(conn["usb_c_cc_status"]["status"], "skipped")
         self.assertEqual(conn["usb_c_cc_status"]["note"],
-                         "CC pins not on this symbol; CC checks skipped")
+                         "no pin named CC/CC1/CC2 on this symbol; CC checks skipped")
         # False-output pin: no CC failure reported for this connector.
         self.assertEqual(_uc003(r), [])
 
@@ -116,19 +117,53 @@ class TypeCDetection(unittest.TestCase):
 
     def test_cc_pin_name_variants(self):
         # Pin names carry the receptacle contact before the function (A5/CC1, B5/CC2) or a
-        # subscript (CC_{1}); a plug has one CC pin. VCC is not a CC pin.
-        for cc1, cc2 in (("A5/CC1", "B5/CC2"), ("CC_{1}", "CC_{2}"), ("CC", None)):
+        # subscript (CC_{1}); each side with 5.1k to GND passes. VCC is not a CC pin.
+        for cc1, cc2 in (("A5/CC1", "B5/CC2"), ("CC_{1}", "CC_{2}"), ("CC1", "CC2")):
             with self.subTest(cc1=cc1):
-                pins = [*USB2_PINS, ("A5", cc1)] + ([("B5", cc2)] if cc2 else [])
-                j = _conn("J6", "USB_conn", "MyLib:USB_PORT", pins=pins)
-                r = _run([j], _usb2_nets("J6"))
-                self.assertTrue(r["connectors"][0]["is_type_c"])
+                r = _cc_variant("J6", (("A5", cc1), ("B5", cc2)),
+                                {"A5": ("R1", "5.1k", "GND"), "B5": ("R2", "5.1k", "GND")})
+                conn = r["connectors"][0]
+                self.assertTrue(conn["is_type_c"])
+                self.assertEqual((conn["checks"]["cc1_pulldown_5k1"],
+                                  conn["checks"]["cc2_pulldown_5k1"]), ("pass", "pass"))
+                self.assertEqual(conn["usb_c_cc_status"]["issues"], [])
+                self.assertEqual(_uc003(r), [])
         j = _conn("J7", "USB_conn", "MyLib:USB_PORT", pins=(*USB2_PINS, ("5", "VCC")))
         r = _run([j], _usb2_nets("J7"))
         self.assertFalse(r["connectors"][0]["is_type_c"])
 
+    def test_plug_single_cc_is_one_side(self):
+        # KiCad USB_C_Plug_USB2.0 has one CC pin (A5): one side, never two missing sides.
+        r = _cc_variant("P1", (("A5", "CC"),), {"A5": ("R1", "5.1k", "GND")},
+                        lib="Connector:USB_C_Plug_USB2.0")
+        conn = r["connectors"][0]
+        self.assertEqual(conn["checks"]["cc_pulldown_5k1"], "pass")
+        self.assertNotIn("cc1_pulldown_5k1", conn["checks"])
+        self.assertNotIn("cc2_pulldown_5k1", conn["checks"])
+        self.assertEqual(conn["usb_c_cc_status"]["cc_net"], "NET_A5")
+        self.assertEqual(conn["usb_c_cc_status"]["issues"], [])
+        self.assertEqual(_uc003(r), [])
+        r = _cc_variant("P1", (("A5", "CC"),), {}, lib="Connector:USB_C_Plug_USB2.0")
+        self.assertEqual([f["summary"] for f in _uc003(r)], ["CC missing 5.1k pull-down at P1"])
+        self.assertEqual(r["connectors"][0]["usb_c_cc_status"]["issues"], ["missing_cc_resistor"])
 
-def _type_c_with(cc1, cc2, rails=None):
+
+def _cc_variant(ref, cc_pins, wiring, lib="MyLib:USB_PORT", rails=None):
+    """Connector with *cc_pins* (number, name); *wiring* maps a pin number to
+    (resistor ref, value, far net). Each CC pin sits on net NET_<number>."""
+    j = _conn(ref, "USB_conn", lib, pins=(*USB2_PINS, *cc_pins))
+    comps, nets = [j], _usb2_nets(ref)
+    for num, name in cc_pins:
+        nets["NET_" + num] = [(ref, num, name)]
+        if num in wiring:
+            rref, value, far = wiring[num]
+            comps.append(_res(rref, value))
+            nets["NET_" + num].append((rref, "1", "~"))
+            nets.setdefault(far, []).append((rref, "2", "~"))
+    return _run(comps, nets, rails)
+
+
+def _type_c_with(cc1, cc2, rails=None, dnp=()):
     """USB4105 with CC1/CC2 each wired through one resistor: (ref, value, far_net) or None."""
     j = _conn("J1", "USB4105-GF-A", "Connector:USB_C_Receptacle_USB2.0",
               pins=(*USB2_PINS, ("A5", "CC1"), ("B5", "CC2")))
@@ -138,9 +173,9 @@ def _type_c_with(cc1, cc2, rails=None):
         nets[pin] = [("J1", num, pin)]
         if spec:
             ref, value, far = spec
-            comps.append(_res(ref, value))
+            comps.append(_res(ref, value, dnp=ref in dnp))
             nets[pin].append((ref, "1", "~"))
-            nets[far].append((ref, "2", "~"))
+            nets.setdefault(far, []).append((ref, "2", "~"))
     return _run(comps, nets, rails)
 
 
@@ -212,6 +247,30 @@ class CcResistorValues(unittest.TestCase):
         self.assertEqual(c["usb_c_cc_status"]["role"], "source")
         self.assertEqual(c["usb_c_cc_status"]["issues"], [])
         self.assertEqual(_uc003(r), [])
+
+    def test_rd_on_a_power_rail_is_not_rp(self):
+        # 5.1 kOhm is Rd; wired to 3.3 V or 1.1 V it is no Rp (4.7k +-5 % ends at 4935).
+        rails = {"VBUS": 5.0, "+3V3": 3.3, "+1V1": 1.1}
+        for far in ("+3V3", "+1V1"):
+            with self.subTest(far=far):
+                r = _type_c_with(("R1", "5.1k", far), ("R2", "5.1k", far), rails)
+                self.assertNotEqual(self._conn(r)["usb_c_cc_status"]["role"], "source")
+                self.assertEqual(len(_uc003(r)), 2)
+
+    def test_known_rail_outside_5v_and_3v3_is_not_rp(self):
+        # 10k to a known 1.1 V rail advertises nothing; the union is for unknown rails only.
+        r = _type_c_with(("R1", "10k", "+1V1"), ("R2", "10k", "+1V1"), {"+1V1": 1.1})
+        self.assertNotEqual(self._conn(r)["usb_c_cc_status"]["role"], "source")
+
+    def test_dnp_resistor_counts_as_missing(self):
+        for spec, dnp in ((("R2", "5.1k", "GND"), ("R2",)), (("R2", "DNI", "GND"), ())):
+            with self.subTest(value=spec[1]):
+                r = _type_c_with(("R1", "5.1k", "GND"), spec, dnp=dnp)
+                c = self._conn(r)
+                self.assertNotIn("unread_resistors", c["usb_c_cc_status"])
+                self.assertEqual(c["checks"]["cc2_pulldown_5k1"], "fail")
+                self.assertEqual([f["summary"] for f in _uc003(r)],
+                                 ["CC2 missing 5.1k pull-down at J1"])
 
     def test_10k_pull_down_is_wrong_value(self):
         # 10 kOhm is an Rp only as a pull-up; to GND it is not Rd (5.1 kOhm).
