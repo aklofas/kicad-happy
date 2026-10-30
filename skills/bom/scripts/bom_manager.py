@@ -39,7 +39,7 @@ from collections import Counter
 from pathlib import Path
 
 import _core_path  # noqa: F401
-from bom_fields import (FIELD_ALIASES, _ALIAS_LOOKUP, _SLOT_NAME_RE, _SLOT_PN_RE, _SUPPLIER_NAME_MAP,
+from bom_fields import (FIELD_ALIASES, POPULATE_UNFITTED, _ALIAS_LOOKUP, _SLOT_NAME_RE, _SLOT_PN_RE, _SUPPLIER_NAME_MAP,
                         _canonical_for, _first_nonblank_stripped, _pick_mpn_from_props, _slot_pn_number,
                         _symbol_slots)
 from kicad_core.diagnostics import record
@@ -138,7 +138,7 @@ def is_dnp(symbol_block: str, props: dict[str, str]) -> bool:
         val = props.get(field, "").strip().upper()
         # POPULATE is a population flag, so "1" / "yes" / "true" mean fitted
         if field == "POPULATE":
-            if val in ("0", "NO", "FALSE", "DNP"):
+            if val.lower() in POPULATE_UNFITTED:
                 return True
             continue
         if val in ("YES", "TRUE", "1", "DNP"):

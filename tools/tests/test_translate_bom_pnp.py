@@ -61,7 +61,9 @@ class BomTranslation(Case):
         for header, cell, fitted in (("Populate", "0", False), ("Populate", "1", True),
                                      ("Fitted", "Not Fitted", False), ("Fitted", "Fitted", True),
                                      ("Populate", "DNF", False), ("Populate", "Do not populate", False),
-                                     ("Populate", "Do not fit", False), ("Populate", "DNP", False)):
+                                     ("Populate", "Do not fit", False), ("Populate", "DNP", False),
+                                     ("POPULATE", "N", False), ("POPULATE", "DNF", False),
+                                     ("POPULATE", "1", True), ("POPULATE", "OPT4003DNPRQ1", True)):
             with self.subTest(header=header, cell=cell):
                 src = self.write("bom.csv", f"Designator,Value,Footprint,{header}\nR1,10k,R_0603,{cell}\n")
                 out = self.d / "jlc.csv"

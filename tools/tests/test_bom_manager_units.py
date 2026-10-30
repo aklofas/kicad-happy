@@ -84,6 +84,13 @@ class PopulateField(unittest.TestCase):
                             ("DNP", True), ("dnp", True)):
             self.assertEqual(bom_manager.is_dnp(no, {"POPULATE": val}), expect, val)
 
+    def test_is_dnp_shares_the_translator_population_vocabulary(self):
+        no = "(symbol (dnp no))"
+        for val, expect in (("N", True), ("n", True), ("DNF", True), ("Do not fit", True),
+                            ("Not Fitted", True), ("unfitted", True), ("Do Not Populate", True),
+                            ("1", False), ("OPT4003DNPRQ1", False), ("NDNP", False)):
+            self.assertEqual(bom_manager.is_dnp(no, {"POPULATE": val}), expect, val)
+
     def test_dnp_attribute_and_dnp_field_still_win(self):
         self.assertTrue(bom_manager.is_dnp("(symbol (dnp yes))", {"POPULATE": "1"}))
         self.assertTrue(bom_manager.is_dnp("(symbol (dnp no))", {"DNP": "1"}))

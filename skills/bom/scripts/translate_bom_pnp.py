@@ -22,6 +22,11 @@ import re
 import sys
 from pathlib import Path
 
+_HERE = str(Path(__file__).resolve().parent)
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+from bom_fields import POPULATE_UNFITTED  # noqa: E402
+
 
 # --- Header field synonyms (loose-match dictionaries) -----------------------
 
@@ -52,8 +57,6 @@ _DNP_MARKER_RE = re.compile(
 DNP_COL_FIELDS = ("dnp", "${dnp}", "do not populate", "do not place", "dnm", "dni")
 POP_COL_FIELDS = ("populate", "fitted")
 _DNP_COL_CLEAR = ("", "0", "no", "false", "n", "-", "n/a", "na", "none")
-_POP_COL_UNFITTED = ("0", "no", "false", "n", "dnp", "dnf", "do not fit",
-                     "do not populate", "not fitted", "unfitted")
 
 # KiCad writes a run of three or more references as R1-R4 (same prefix at both ends).
 _RANGE_RE = re.compile(r"^(.*\D)(\d+)-\1(\d+)$")
@@ -142,7 +145,7 @@ def _row_is_dnp(raw: list[str], val: str, col_dnp: int | None, col_pop: int | No
             return True
     if col_pop is not None and col_pop < len(raw):
         cell = (raw[col_pop] or "").strip()
-        if cell.lower() in _POP_COL_UNFITTED or _is_dnp(cell):
+        if cell.lower() in POPULATE_UNFITTED or _is_dnp(cell):
             return True
     return False
 

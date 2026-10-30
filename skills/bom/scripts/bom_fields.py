@@ -11,6 +11,12 @@ from kicad_core.fields import (MPN_FIELD_ALIASES, MPN_FIELD_ALIASES_PRIMARY,
                                normalize_field_name)
 
 
+# Values of a population column (POPULATE, Populate, Fitted) that mean the part
+# is not fitted, compared lower-case against the whole stripped cell.
+POPULATE_UNFITTED = frozenset({"0", "no", "false", "n", "dnp", "dnf", "do not fit",
+                               "do not populate", "not fitted", "unfitted"})
+
+
 # ---------------------------------------------------------------------------
 # Field name aliases — maps every known variant to a canonical name
 # ---------------------------------------------------------------------------
