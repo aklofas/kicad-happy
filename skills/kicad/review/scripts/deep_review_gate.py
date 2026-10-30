@@ -186,15 +186,17 @@ def find_pdf(datasheets_dir, mpn):
 _DASH_RE = re.compile("[\u2212\u2013\u2010\u2011]")
 _PLUSMINUS_RE = re.compile("\\+/?[-\u2014]")     # +/- and +- with any dash
 # One token per comparison operator or per run of letters/digits. A run
-# keeps a decimal point or comma between digits ("5.5", "1,000") and a
-# leading minus that starts a number outside a word ("-40", "(−40"; not
-# "SOT-23" or "3.3-5.5"), and a ± written against its number ("±15",
-# "+/-15"), so "15" is neither "-15" nor "±15". Unit letters such as µ
-# and ω are letters.
+# keeps a decimal point or comma between digits ("5.5", "1,000") or before
+# the first digit (".5", but not a dot leader "....37"); a leading minus that starts a number outside a
+# word ("-40", "(−40"; not "SOT-23" or "3.3-5.5"); and a ± written against
+# its number ("±15", "+/-15"). So "15" is neither "-15" nor "±15", and "5"
+# is not ".5". Unit letters such as µ and ω are letters.
 _TOKEN_RE = re.compile(
-    r"<=|>=|±(?![0-9])|<|>|="
-    r"|(?:(?<![0-9a-z.])-(?=[0-9])|±(?=[0-9]))?"
+    r"<=|>=|±(?!\.?[0-9])|<|>|="
+    r"|(?:(?<![0-9a-z.])-(?=\.?[0-9])|±(?=\.?[0-9]))?"
+    r"(?:(?<![0-9a-z.])\.(?=[0-9]))?"
     r"(?:[^\W_]|(?<=[0-9])[.,](?=[0-9]))+")
+_LEADING_POINT_RE = re.compile(r"(?<![^\s±-])\.(?=[0-9])")
 
 
 def _norm_text(s):
@@ -203,7 +205,8 @@ def _norm_text(s):
     s = unicodedata.normalize("NFKC", s).lower()
     s = _DASH_RE.sub("-", s)
     s = _PLUSMINUS_RE.sub("±", s).replace("≤", "<=").replace("≥", ">=")
-    return " ".join(_TOKEN_RE.findall(s))
+    # ".5" is written "0.5" so both spellings compare equal
+    return _LEADING_POINT_RE.sub("0.", " ".join(_TOKEN_RE.findall(s)))
 
 
 def _squash(s):
@@ -212,7 +215,8 @@ def _squash(s):
     return re.sub(r"(?<=[0-9]) (?=[-±0-9])|(?<=±) ", "|", _norm_text(s)).replace(" ", "")
 
 
-_ELISION_RE = re.compile(r"\.\.\.|…")
+# a whole run of dots is one marker, so a dot leader leaves no stray point
+_ELISION_RE = re.compile(r"\.{3,}|…")
 
 
 def _quote_segments(quote):
