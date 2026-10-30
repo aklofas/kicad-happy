@@ -50,6 +50,25 @@ SCHEMA_PATH = (Path(__file__).resolve().parents[1] / "schemas"
 ANCHOR_KEYS = ("components", "nets", "pins")
 
 
+def resolve_run_dir(analysis_dir, run_id=None):
+    """The run folder analysis/manifest.json names ('current' unless
+    `run_id` is given), confined to a folder directly inside
+    `analysis_dir`; `analysis_dir` itself for a flat layout or an
+    unreadable manifest."""
+    analysis_dir = Path(analysis_dir)
+    manifest = analysis_dir / "manifest.json"
+    if manifest.is_file():
+        try:
+            m = json.loads(manifest.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            m = None
+        if isinstance(m, dict) and isinstance(m.get("runs"), dict):
+            run = get_run(str(analysis_dir), run_id or m.get("current"), m)
+            if run and Path(run[0]).is_dir():
+                return Path(run[0])
+    return analysis_dir
+
+
 def load_anchor_sets(analysis_dir, run_id=None):
     """Component refs + net identities from the analyzer JSON.
 
@@ -61,14 +80,7 @@ def load_anchor_sets(analysis_dir, run_id=None):
     accepted as citations.
     Returns (components: set[str], nets: set[str]).
     """
-    analysis_dir = Path(analysis_dir)
-    run_dir = analysis_dir
-    manifest = analysis_dir / "manifest.json"
-    if manifest.is_file():
-        m = json.loads(manifest.read_text(encoding="utf-8"))
-        run = get_run(str(analysis_dir), run_id or m.get("current"), m)
-        if run and Path(run[0]).is_dir():
-            run_dir = Path(run[0])
+    run_dir = resolve_run_dir(analysis_dir, run_id)
     comps, nets = set(), set()
     sch = run_dir / "schematic.json"
     if sch.is_file():
