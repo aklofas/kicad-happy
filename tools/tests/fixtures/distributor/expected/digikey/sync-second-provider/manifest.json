@@ -1,0 +1,44 @@
+{
+  "schematic": "<WORK>/mpns.txt",
+  "last_sync": "2026-10-16T00:00:00+00:00",
+  "parts": {
+    "LM358DR": {
+      "file": "LM358DR_Dual_Operational_Amplifier.pdf",
+      "manufacturer": "Texas Instruments",
+      "description": "Dual Operational Amplifier",
+      "value": "",
+      "datasheet_url": "https://www.digikey.com/fixture/lm358.pdf",
+      "downloaded_date": "2026-10-16T00:00:00+00:00",
+      "source": "digikey",
+      "status": "ok",
+      "references": [],
+      "size_bytes": 79,
+      "verification": "verified"
+    },
+    "TPS61023DRLR": {
+      "manufacturer": "",
+      "description": "",
+      "value": "TPS61023DRLR",
+      "references": [],
+      "status": "not_found",
+      "error": "No results",
+      "last_attempt": "2026-01-01T00:00:00+00:00",
+      "failed_providers": [
+        "mouser",
+        "digikey"
+      ]
+    },
+    "MISSING9999": {
+      "manufacturer": "",
+      "description": "",
+      "value": "MISSING9999",
+      "references": [],
+      "status": "not_found",
+      "error": "No results",
+      "last_attempt": "2026-01-01T00:00:00+00:00",
+      "failed_providers": [
+        "digikey"
+      ]
+    }
+  }
+}

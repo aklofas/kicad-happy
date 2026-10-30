@@ -177,6 +177,7 @@ RUNS: dict[str, dict] = {
     "sync-lcsc-direct (lcsc)": {"kind": "sync", "seed": None, "input": "bom-lcsc-direct"},
     "sync-force-all": {"kind": "sync", "seed": "seed-force-all", "input": "bom-force-all",
                        "kwargs": {"force_all": True}},
+    "sync-second-provider": {"kind": "sync", "seed": "seed-attributed", "input": "mpns", "out": "ds"},
     "fetch-search-ok": {"kind": "fetch", "argv": ["--search", "LM358DR", "--json", "--output", "{work}/out.pdf"]},
     "fetch-search-nourl": {"kind": "fetch", "argv": ["--search", "NODATA1234", "--json"]},
     "fetch-search-miss": {"kind": "fetch", "argv": ["--search", "MISSING9999", "--json"]},
@@ -299,20 +300,28 @@ def _list_files(workdir: Path) -> list[str]:
                   for p in workdir.rglob("*") if p.is_file())
 
 
-def _prepare(spec: dict, workdir: Path) -> None:
+def _prepare(spec: dict, workdir: Path, provider: str) -> None:
     if spec.get("input") in ("bom", "mpns"):
         for name in ("bom.schematic.json", "mpns.txt"):
             shutil.copyfile(SCENARIO / name, workdir / name)
     elif spec.get("input") in SCENARIO_BOMS:
         shutil.copyfile(SCENARIO / SCENARIO_BOMS[spec["input"]], workdir / SCENARIO_BOMS[spec["input"]])
     if spec.get("seed"):
-        shutil.copytree(SCENARIO / spec["seed"], workdir / spec.get("out", "datasheets"))
+        out = workdir / spec.get("out", "datasheets")
+        shutil.copytree(SCENARIO / spec["seed"], out)
+        # A seed names distributors as "<self>" (the provider under test) and "<other>" (the next one)
+        other = PROVIDERS[(PROVIDERS.index(provider) + 1) % len(PROVIDERS)]
+        for m in out.glob("*.json"):
+            raw = m.read_bytes()
+            named = raw.replace(b"<self>", provider.encode()).replace(b"<other>", other.encode())
+            if named != raw:
+                m.write_bytes(named)
 
 
 def run_sync(provider: str, run: str, workdir: Path, product: Path = REPO_ROOT, fixtures: str | None = None) -> RunResult:
     spec = RUNS[run]
     workdir = Path(workdir)
-    _prepare(spec, workdir)
+    _prepare(spec, workdir, provider)
     res = RunResult()
     with _provider_env(provider, Path(product), workdir) as (sync_mod, _fetch):
         if spec.get("pre_run"):

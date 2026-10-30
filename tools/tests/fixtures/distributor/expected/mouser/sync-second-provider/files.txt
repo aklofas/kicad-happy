@@ -1,0 +1,4 @@
+bom.schematic.json:6393
+ds/LM358DR_Dual_Operational_Amplifier.pdf:79
+ds/manifest.json:1182
+mpns.txt:84

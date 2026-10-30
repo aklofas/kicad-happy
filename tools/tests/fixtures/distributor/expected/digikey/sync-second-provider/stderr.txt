@@ -1,0 +1,20 @@
+Loading MPNs from mpns.txt...
+  Skipping '1234': doesn't look like a real MPN
+Loaded 3 unique MPNs
+[1/1] LM358DR
+  Searching DigiKey for 'LM358DR'...
+  Downloading from https://www.digikey.com/fixture/lm358.pdf...
+  OK: LM358DR_Dual_Operational_Amplifier.pdf (79 bytes)
+
+Datasheet sync complete:
+  Downloaded: 1
+    LM358DR
+  Already present: 0
+  Failed: 0
+  Skipped (previous failures, use --force): 2
+  Skipped (no MPN or DigiKey part number): 0
+  Output: <WORK>/ds/
+
+  Next: extract structured specs for IC-aware analyzer checks
+        (VM-001, PS-001, PR-004, DP-002). The `datasheets` skill
+        reads PDFs and writes <WORK>/ds/extracted/<MPN>.json.

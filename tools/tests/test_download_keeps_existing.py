@@ -182,6 +182,108 @@ class SyncOutageTest(unittest.TestCase):
                           self.stderr.getvalue())
 
 
+def _named(name, sync_one_part):
+    p = _provider(sync_one_part)
+    p.NAME = name
+    return p
+
+
+class PerProviderFailureTest(unittest.TestCase):
+    """A failure is skipped only by the distributor that recorded it; the others still try."""
+    _bom, _sync = SyncOutageTest._bom, SyncOutageTest._sync
+
+    def _seed(self, d, entry):
+        out = Path(d) / "out"
+        out.mkdir()
+        (out / "manifest.json").write_text(json.dumps({"parts": {"LM358DR": entry}}), encoding="utf-8")
+
+    def _counting(self, name, outcome):
+        calls = []
+
+        def one(p, *a):
+            calls.append(p["_key"])
+            return outcome(p)
+        return _named(name, one), calls
+
+    def test_other_providers_not_found_is_tried(self):
+        with tempfile.TemporaryDirectory() as d:
+            _, m = self._sync(d, _named("digikey", lambda p, *a: _not_found(p)))
+            self.assertEqual(m["parts"]["LM358DR"]["failed_providers"], ["digikey"])
+            dry, _ = self._sync(d, _named("lcsc", lambda p, *a: _not_found(p)), dry_run=True, as_json=True)
+            self.assertEqual(dry["would_download"], ["LM358DR"])
+            self.assertEqual(dry["skipped_previous_failures"], [])
+            lcsc, calls = self._counting("lcsc", _not_found)
+            _, m = self._sync(d, lcsc)
+            self.assertEqual(calls, ["LM358DR"])
+            self.assertEqual(m["parts"]["LM358DR"]["failed_providers"], ["digikey", "lcsc"])
+
+    def test_own_failure_is_skipped(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._seed(d, {"status": "not_found", "error": "No results", "references": ["U1"],
+                           "failed_providers": ["digikey"]})
+            prov, calls = self._counting("digikey", _not_found)
+            r, _ = self._sync(d, prov)
+            self.assertEqual(calls, [])
+            self.assertEqual(r["failed"], 1)
+
+    def test_legacy_failure_is_tried_once_by_each_provider(self):
+        legacy = {"status": "failed", "error": "All download methods failed", "references": ["U1"]}
+        with tempfile.TemporaryDirectory() as d:
+            self._seed(d, legacy)
+            for name, expect in (("digikey", ["digikey"]), ("lcsc", ["digikey", "lcsc"])):
+                prov, calls = self._counting(name, _failed)
+                _, m = self._sync(d, prov)
+                self.assertEqual(calls, ["LM358DR"], name)
+                self.assertEqual(m["parts"]["LM358DR"]["failed_providers"], expect, name)
+            for name in ("digikey", "lcsc"):
+                dry, _ = self._sync(d, _named(name, _failed), dry_run=True, as_json=True)
+                self.assertEqual(dry["skipped_previous_failures"], ["LM358DR"], name)
+
+    def test_success_by_another_provider_drops_the_list(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._seed(d, {"status": "not_found", "error": "No results", "references": ["U1"],
+                           "failed_providers": ["digikey"]})
+
+            def ok(p, *a):
+                (Path(d) / "out" / "LM358DR.pdf").write_bytes(GOOD)
+                return {"file": "LM358DR.pdf", "status": "ok", "references": p["references"],
+                        "size_bytes": len(GOOD)}
+            _, m = self._sync(d, _named("lcsc", ok))
+            self.assertEqual(m["parts"]["LM358DR"]["status"], "ok")
+            self.assertNotIn("failed_providers", m["parts"]["LM358DR"])
+
+    def test_ok_entry_is_never_retried(self):
+        with tempfile.TemporaryDirectory() as d:
+            out = Path(d) / "out"
+            out.mkdir()
+            (out / "LM358DR.pdf").write_bytes(GOOD)
+            ok = {"file": "LM358DR.pdf", "status": "ok", "references": ["U1"], "size_bytes": len(GOOD)}
+            (out / "manifest.json").write_text(json.dumps({"parts": {"LM358DR": ok}}), encoding="utf-8")
+            for name in ("digikey", "lcsc"):
+                prov, calls = self._counting(name, _not_found)
+                _, m = self._sync(d, prov)
+                self.assertEqual(calls, [], name)
+                self.assertEqual(m["parts"]["LM358DR"]["status"], "ok", name)
+                self.assertNotIn("failed_providers", m["parts"]["LM358DR"], name)
+
+    def test_outage_records_no_provider(self):
+        outage = TimeoutError("timed out")
+        with tempfile.TemporaryDirectory() as d:
+            _, m = self._sync(d, _named("digikey", lambda p, *a: _not_found(p, outage)))
+            self.assertEqual(m["parts"]["LM358DR"]["status"], "error")
+            self.assertNotIn("failed_providers", m["parts"]["LM358DR"])
+
+    def test_malformed_list_is_read_as_legacy(self):
+        for bad in ("digikey", [{"x": 1}, 3], None):
+            with self.subTest(bad=bad), tempfile.TemporaryDirectory() as d:
+                self._seed(d, {"status": "not_found", "error": "No results", "references": ["U1"],
+                               "failed_providers": bad})
+                prov, calls = self._counting("digikey", _not_found)
+                _, m = self._sync(d, prov)
+                self.assertEqual(calls, ["LM358DR"])
+                self.assertEqual(m["parts"]["LM358DR"]["failed_providers"], ["digikey"])
+
+
 class LcscProviderOutageTest(unittest.TestCase):
     def test_refused_search_is_not_not_found(self):
         import provider_lcsc

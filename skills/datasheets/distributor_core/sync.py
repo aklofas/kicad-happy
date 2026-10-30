@@ -9,7 +9,8 @@ thread pool, records each outcome in ``manifest.json`` and prints the summary.
 
 A ``not_found`` or ``failed`` whose search or download failed in transport
 (``distributor_core.download`` records it) is stored as ``error`` so the next run retries it, and
-an outage or failed download keeps an ``ok`` entry whose file is still on disk.
+an outage or failed download keeps an ``ok`` entry whose file is still on disk. A failure names
+the distributors that gave it (``failed_providers``); only those skip it on the next run.
 
 Imports ``distributor_core.inputs``/``manifest``/``download`` and the stdlib only; never a provider.
 """
@@ -57,10 +58,34 @@ def _outage_entry(result: dict, previous: dict, out_dir: Path) -> tuple[dict, di
     return result, result
 
 
+# A distributor's answer without a datasheet; only the distributors that gave it skip the part
+# on the next run.
+_FAILED_STATUSES = ("failed", "not_found", "no_datasheet")
+
+
+def _failed_providers(entry: dict) -> set[str] | None:
+    """The distributors an entry's failure is recorded for, or None when the entry does not say
+    (written before failures were recorded per distributor): every distributor retries it once."""
+    names = entry.get("failed_providers")
+    if not isinstance(names, list):
+        return None
+    return {n for n in names if isinstance(n, str)}
+
+
+def _attributed(stored: dict, previous: dict, name: str) -> dict:
+    """``stored`` with ``failed_providers`` when it is a failure: this distributor plus those
+    that had already failed the part."""
+    if stored.get("status") not in _FAILED_STATUSES:
+        return stored
+    prior = _failed_providers(previous) if previous.get("status") in _FAILED_STATUSES else None
+    return {**stored, "failed_providers": sorted((prior or set()) | {name})}
+
+
 class _Run:
     """State shared by the fetch workers: the manifest, its path and the outcome tallies."""
 
-    def __init__(self, *, out_dir, index, index_path, source, total):
+    def __init__(self, *, provider_name, out_dir, index, index_path, source, total):
+        self.provider_name = provider_name
         self.out_dir = out_dir
         self.index = index
         self.index_path = index_path
@@ -79,7 +104,10 @@ def _record(run, part, outcome) -> None:
     index. Callers hold ``run.lock`` when several workers run. It must run on the thread that
     fetched the part: the transport failure it reads is recorded per thread."""
     part_key = part["_key"]
-    stored, result = _outage_entry(outcome, run.index.get("parts", {}).get(part_key, {}), run.out_dir)
+    previous = run.index.get("parts", {}).get(part_key, {})
+    stored, result = _outage_entry(outcome, previous, run.out_dir)
+    if stored is result:
+        stored = result = _attributed(result, previous, run.provider_name)
     run.index.setdefault("parts", {})[part_key] = stored
     if stored is not result:
         run.kept_errors[part_key] = result["error"]
@@ -207,9 +235,11 @@ def sync_datasheets(
                     continue
             # File missing — re-download
 
-        if status in ("failed", "not_found", "no_datasheet") and not (force or force_all):
-            skipped_failed.append(part_key)
-            continue
+        if status in _FAILED_STATUSES and not (force or force_all):
+            failed_for = _failed_providers(existing)
+            if failed_for is not None and provider.NAME in failed_for:
+                skipped_failed.append(part_key)
+                continue
 
         to_download.append(part)
 
@@ -251,7 +281,7 @@ def sync_datasheets(
         ctx = auth["ctx"]
 
     # Process each part
-    run = _Run(out_dir=out_dir, index=index, index_path=index_path,
+    run = _Run(provider_name=provider.NAME, out_dir=out_dir, index=index, index_path=index_path,
                source=str(mpn_list or input_path), total=len(to_download))
 
     def _fetch(part):

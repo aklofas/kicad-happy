@@ -42,6 +42,15 @@ class Oracle(unittest.TestCase):
         self.assertNotIn("sync-lcsc-direct (lcsc)", do.runs_for("mouser"))
         self.assertEqual(do.run_dir_name("sync-lcsc-direct (lcsc)"), "sync-lcsc-direct")
 
+    def test_seed_names_the_provider_under_test_and_another(self):
+        import distributor_offline as do
+        for provider, other in (("digikey", "mouser"), ("element14", "digikey")):
+            with self.subTest(provider=provider), tempfile.TemporaryDirectory() as d:
+                do._prepare(do.RUNS["sync-second-provider"], Path(d), provider)
+                parts = json.loads((Path(d) / "ds" / "manifest.json").read_text(encoding="utf-8"))["parts"]
+                self.assertEqual(parts["LM358DR"]["failed_providers"], [other])
+                self.assertEqual(parts["MISSING9999"]["failed_providers"], [provider])
+
     def test_every_provider_and_run_matches_expected(self):
         import distributor_offline as do
         for provider in ("digikey", "mouser", "lcsc", "element14"):
