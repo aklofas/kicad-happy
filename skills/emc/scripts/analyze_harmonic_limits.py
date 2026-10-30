@@ -174,6 +174,81 @@ def validate_limit_profile(data: object) -> dict:
     }
 
 
+def screen_harmonics(
+    spectrum: dict,
+    profile: dict,
+    detector: str,
+    design_margin_db: float = 0.0,
+) -> dict:
+    """Return a harmonic-limit-screen/1 result from validated inputs."""
+    if detector not in DETECTORS:
+        raise ValidationError(
+            f"detector must be one of {', '.join(DETECTORS)}"
+        )
+    design_margin = _number(design_margin_db, "design_margin_db")
+    if design_margin < 0:
+        raise ValidationError(
+            "design_margin_db must be greater than or equal to zero"
+        )
+
+    results = []
+    for band in profile["bands"]:
+        in_band = [
+            point
+            for point in spectrum["points"]
+            if band["start_hz"]
+            <= point["frequency_hz"]
+            <= band["stop_hz"]
+        ]
+        worst = max(
+            in_band,
+            key=lambda point: (
+                point["level_dbuv"],
+                -point["frequency_hz"],
+            ),
+            default=None,
+        )
+        limit = band["limits_dbuv"].get(detector)
+
+        if worst is None or limit is None:
+            margin = None
+            status = "not_assessed"
+        else:
+            margin = limit - worst["level_dbuv"]
+            if margin < 0:
+                status = "above_limit_screen"
+            elif margin < design_margin:
+                status = "near_limit"
+            else:
+                status = "below_limit_screen"
+
+        results.append(
+            {
+                "name": band["name"],
+                "worst_frequency_hz": (
+                    worst["frequency_hz"] if worst else None
+                ),
+                "level_dbuv": worst["level_dbuv"] if worst else None,
+                "limit_dbuv": limit,
+                "margin_db": margin,
+                "status": status,
+            }
+        )
+
+    return {
+        "schema_version": RESULT_SCHEMA,
+        "result_class": "screening_only",
+        "detector": detector,
+        "design_margin_db": design_margin,
+        "profile": {
+            "profile_id": profile["profile_id"],
+            "source": profile["source"],
+        },
+        "bands": results,
+        "claim_boundary": CLAIM_BOUNDARY,
+    }
+
+
 def _build_parser():
     parser = argparse.ArgumentParser(
         description=(

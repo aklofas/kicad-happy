@@ -221,5 +221,257 @@ class TestLimitProfileValidation(unittest.TestCase):
                     self._validate(data)
 
 
+class TestScreenHarmonics(unittest.TestCase):
+    """Check deterministic per-band comparison and screening semantics."""
+
+    def _screen(
+        self,
+        spectrum=VALID_SPECTRUM,
+        profile=VALID_PROFILE,
+        detector="peak",
+        margin=0.0,
+    ):
+        screen = getattr(harmonic, "screen_harmonics", None)
+        self.assertIsNotNone(screen, "screen_harmonics is required")
+        return screen(
+            harmonic.validate_spectrum(copy.deepcopy(spectrum)),
+            harmonic.validate_limit_profile(copy.deepcopy(profile)),
+            detector,
+            margin,
+        )
+
+    def test_boundaries_are_inclusive_and_highest_level_wins(self):
+        spectrum = copy.deepcopy(VALID_SPECTRUM)
+        spectrum["points"] = [
+            {"frequency_hz": 100, "level_dbuv": 20},
+            {"frequency_hz": 150, "level_dbuv": 35},
+            {"frequency_hz": 200, "level_dbuv": 30},
+        ]
+        profile = copy.deepcopy(VALID_PROFILE)
+        profile["bands"] = [
+            {
+                "name": "inclusive",
+                "start_hz": 100,
+                "stop_hz": 200,
+                "limits_dbuv": {"peak": 40},
+            }
+        ]
+
+        band = self._screen(spectrum, profile)["bands"][0]
+        self.assertEqual(band["worst_frequency_hz"], 150.0)
+        self.assertEqual(band["level_dbuv"], 35.0)
+        self.assertEqual(band["margin_db"], 5.0)
+
+    def test_equal_levels_choose_lowest_frequency_deterministically(self):
+        spectrum = copy.deepcopy(VALID_SPECTRUM)
+        spectrum["points"] = [
+            {"frequency_hz": 200, "level_dbuv": 35},
+            {"frequency_hz": 100, "level_dbuv": 35},
+        ]
+        profile = copy.deepcopy(VALID_PROFILE)
+        profile["bands"][0].update(start_hz=100, stop_hz=200)
+
+        band = self._screen(spectrum, profile)["bands"][0]
+        self.assertEqual(band["worst_frequency_hz"], 100.0)
+
+    def test_overlapping_bands_evaluate_same_point_independently(self):
+        spectrum = copy.deepcopy(VALID_SPECTRUM)
+        spectrum["points"] = [
+            {"frequency_hz": 150, "level_dbuv": 35}
+        ]
+        profile = copy.deepcopy(VALID_PROFILE)
+        profile["bands"] = [
+            {
+                "name": "first",
+                "start_hz": 100,
+                "stop_hz": 200,
+                "limits_dbuv": {"peak": 40},
+            },
+            {
+                "name": "second",
+                "start_hz": 150,
+                "stop_hz": 250,
+                "limits_dbuv": {"peak": 30},
+            },
+        ]
+
+        bands = self._screen(spectrum, profile)["bands"]
+        self.assertEqual(
+            [band["worst_frequency_hz"] for band in bands],
+            [150.0, 150.0],
+        )
+        self.assertEqual(
+            [band["status"] for band in bands],
+            ["below_limit_screen", "above_limit_screen"],
+        )
+
+    def test_positive_zero_and_negative_margins_are_classified(self):
+        spectrum = copy.deepcopy(VALID_SPECTRUM)
+        spectrum["points"] = [
+            {"frequency_hz": 100, "level_dbuv": 40}
+        ]
+        profile = copy.deepcopy(VALID_PROFILE)
+        profile["bands"] = [
+            {
+                "name": "positive",
+                "start_hz": 100,
+                "stop_hz": 100,
+                "limits_dbuv": {"peak": 41},
+            },
+            {
+                "name": "zero",
+                "start_hz": 100,
+                "stop_hz": 100,
+                "limits_dbuv": {"peak": 40},
+            },
+            {
+                "name": "negative",
+                "start_hz": 100,
+                "stop_hz": 100,
+                "limits_dbuv": {"peak": 39},
+            },
+        ]
+
+        bands = self._screen(spectrum, profile)["bands"]
+        self.assertEqual(
+            [band["margin_db"] for band in bands], [1.0, 0.0, -1.0]
+        )
+        self.assertEqual(
+            [band["status"] for band in bands],
+            [
+                "below_limit_screen",
+                "below_limit_screen",
+                "above_limit_screen",
+            ],
+        )
+
+    def test_design_margin_creates_near_limit_only_for_nonnegative_margin(self):
+        spectrum = copy.deepcopy(VALID_SPECTRUM)
+        spectrum["points"] = [
+            {"frequency_hz": 100, "level_dbuv": 40}
+        ]
+        profile = copy.deepcopy(VALID_PROFILE)
+        profile["bands"] = [
+            {
+                "name": "near",
+                "start_hz": 100,
+                "stop_hz": 100,
+                "limits_dbuv": {"peak": 42},
+            },
+            {
+                "name": "above",
+                "start_hz": 100,
+                "stop_hz": 100,
+                "limits_dbuv": {"peak": 39},
+            },
+        ]
+
+        bands = self._screen(spectrum, profile, margin=3.0)["bands"]
+        self.assertEqual(
+            [band["status"] for band in bands],
+            ["near_limit", "above_limit_screen"],
+        )
+
+    def test_each_supported_detector_uses_its_own_limit(self):
+        results = {
+            detector: self._screen(detector=detector)["bands"][0][
+                "limit_dbuv"
+            ]
+            for detector in ("peak", "quasi_peak", "average")
+        }
+        self.assertEqual(
+            results,
+            {"peak": 54.0, "quasi_peak": 41.0, "average": 34.0},
+        )
+
+    def test_empty_spectrum_marks_every_band_not_assessed(self):
+        spectrum = copy.deepcopy(VALID_SPECTRUM)
+        spectrum["points"] = []
+        result = self._screen(spectrum=spectrum)
+        self.assertTrue(result["bands"])
+        self.assertTrue(
+            all(
+                band["status"] == "not_assessed"
+                for band in result["bands"]
+            )
+        )
+
+    def test_missing_detector_and_empty_band_are_not_assessed(self):
+        spectrum = copy.deepcopy(VALID_SPECTRUM)
+        spectrum["points"] = [
+            {"frequency_hz": 100, "level_dbuv": 40}
+        ]
+        profile = copy.deepcopy(VALID_PROFILE)
+        profile["bands"] = [
+            {
+                "name": "missing-detector",
+                "start_hz": 100,
+                "stop_hz": 100,
+                "limits_dbuv": {"average": 30},
+            },
+            {
+                "name": "empty",
+                "start_hz": 200,
+                "stop_hz": 300,
+                "limits_dbuv": {"peak": 50},
+            },
+        ]
+
+        missing, empty = self._screen(spectrum, profile)["bands"]
+        self.assertEqual(
+            missing,
+            {
+                "name": "missing-detector",
+                "worst_frequency_hz": 100.0,
+                "level_dbuv": 40.0,
+                "limit_dbuv": None,
+                "margin_db": None,
+                "status": "not_assessed",
+            },
+        )
+        self.assertEqual(
+            empty,
+            {
+                "name": "empty",
+                "worst_frequency_hz": None,
+                "level_dbuv": None,
+                "limit_dbuv": 50.0,
+                "margin_db": None,
+                "status": "not_assessed",
+            },
+        )
+
+    def test_output_carries_screening_boundary_and_never_uses_pass_fail(self):
+        result = self._screen()
+        self.assertEqual(
+            result["schema_version"], "harmonic-limit-screen/1"
+        )
+        self.assertEqual(result["result_class"], "screening_only")
+        self.assertEqual(
+            result["claim_boundary"],
+            "This comparison is not a compliance determination.",
+        )
+        statuses = {band["status"] for band in result["bands"]}
+        self.assertFalse(statuses & {"pass", "fail"})
+
+    def test_invalid_detector_and_design_margin_are_rejected(self):
+        spectrum = harmonic.validate_spectrum(
+            copy.deepcopy(VALID_SPECTRUM)
+        )
+        profile = harmonic.validate_limit_profile(
+            copy.deepcopy(VALID_PROFILE)
+        )
+        screen = getattr(harmonic, "screen_harmonics", None)
+        self.assertIsNotNone(screen, "screen_harmonics is required")
+        with self.assertRaisesRegex(harmonic.ValidationError, "detector"):
+            screen(spectrum, profile, "rms")
+        for value in (-1, math.nan, math.inf):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(
+                    harmonic.ValidationError, "design_margin_db"
+                ):
+                    screen(spectrum, profile, "peak", value)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
