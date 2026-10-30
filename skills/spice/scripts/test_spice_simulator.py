@@ -729,6 +729,41 @@ class TestPspiceRun(unittest.TestCase):
         self.assertIn("Could not launch PSpice", diagnostic)
         self.assertIn("launch blocked", diagnostic)
 
+    def test_native_output_stat_errors_produce_cli_failure_json(self):
+        (self.stub_dir / "stub.json").write_text(
+            json.dumps({"out_hex": b"JOB CONCLUDED\n".hex()}),
+            encoding="utf-8",
+        )
+        for stage in ("before", "after"):
+            with self.subTest(stage=stage):
+                error = PermissionError(13, "Access denied", str(self.output))
+                signatures = [error] if stage == "before" else [None, error]
+                stdout = io.StringIO()
+                stderr = io.StringIO()
+                with (
+                    patch(
+                        "spice_simulator._file_signature",
+                        side_effect=signatures,
+                    ),
+                    patch(
+                        "run_external_deck.select_backend",
+                        return_value=self.backend,
+                    ),
+                    redirect_stdout(stdout),
+                    redirect_stderr(stderr),
+                ):
+                    code = run_external_deck.main([
+                        str(self.deck), "--simulator", "pspice",
+                    ])
+
+                self.assertEqual(code, 1)
+                result = json.loads(stdout.getvalue())
+                self.assertFalse(result["success"])
+                self.assertIn(str(self.output.resolve()), result["note"])
+                self.assertIn("Access denied", result["note"])
+                self.assertIn(result["note"], stderr.getvalue())
+                self.assertNotIn("Traceback", stderr.getvalue())
+
     def test_unreadable_native_output_returns_actionable_failure(self):
         with patch.object(
             spice_simulator.Path,

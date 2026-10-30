@@ -555,7 +555,14 @@ class PspiceBackend(SimulatorBackend):
 
         deck = Path(cir_file).resolve()
         native_output = self.native_output_path(deck)
-        before = _file_signature(native_output)
+        try:
+            before = _file_signature(native_output)
+        except OSError as exc:
+            return (
+                False,
+                "",
+                f"Could not inspect PSpice native output {native_output}: {exc}",
+            )
         command = self._command(binary, deck.name, native_output.name)
 
         try:
@@ -572,7 +579,14 @@ class PspiceBackend(SimulatorBackend):
                 f"PSpice exited with exit code {returncode}",
             )
 
-        after = _file_signature(native_output)
+        try:
+            after = _file_signature(native_output)
+        except OSError as exc:
+            return (
+                False,
+                "",
+                f"Could not inspect PSpice native output {native_output}: {exc}",
+            )
         if after is None:
             return (
                 False,
