@@ -520,6 +520,7 @@ def _parse_cap_recommendation(text: str) -> dict:
     Examples:
         "10uF ceramic, X5R or X7R" -> {min_farads: 10e-6, count: 1, dielectric: ["X5R","X7R"]}
         "22uF ceramic x2" -> {min_farads: 22e-6, count: 2}
+        "2 x 10uF" -> {min_farads: 10e-6, count: 2}
         "100nF" -> {min_farads: 100e-9, count: 1}
     """
     from kicad_core.values import parse_value
@@ -531,8 +532,11 @@ def _parse_cap_recommendation(text: str) -> dict:
 
     text_lower = text.lower()
 
-    # Extract count: "x2", "x3", "x 2"
-    count_match = re.search(r'[x\u00d7]\s*(\d+)', text_lower)
+    # Count: a number multiplying a capacitance ("2 x 10uF"), else a
+    # standalone "x2"/"x 2". The digit of X5R/X7R is a temperature code and
+    # "max 10mm" / "10x10mm" are not quantities.
+    count_match = (re.search(r'(?<![\w.])(\d+)\s*[x\u00d7]\s*\d+\.?\d*\s*(?:uf|\u00b5f|nf|pf)', text_lower)
+                   or re.search(r'(?<![a-z0-9])[x\u00d7]\s*(\d+)(?![a-z0-9.])', text_lower))
     if count_match:
         result["count"] = int(count_match.group(1))
 
@@ -557,6 +561,34 @@ def _parse_cap_recommendation(text: str) -> dict:
             result["min_farads"] = parsed
 
     return result
+
+
+_RECOMMENDATION_ROLES = {
+    "input_cap_recommended": ("input",),
+    "output_cap_recommended": ("output",),
+    "decoupling_cap": ("input", "output"),
+}
+
+
+def _power_pin_roles(pin: dict) -> tuple:
+    """Supply roles of an extracted power pin. The extraction schema lets
+    power pins carry direction "passive"; their role then comes from the
+    pin's function (VIN/VOUT), else its name (an OUT pin is an output, any
+    other power pin a supply input)."""
+    direction = (pin.get("direction") or "").lower()
+    if direction == "bidirectional":
+        return ("input", "output")
+    if direction in ("input", "output"):
+        return (direction,)
+    if direction != "passive":
+        return ()
+    function = (pin.get("function") or "").upper()
+    if function in ("VIN", "VOUT"):
+        return ("input",) if function == "VIN" else ("output",)
+    name = (pin.get("name") or "").upper()
+    if "OUT" in name or name == "VO":
+        return ("output",)
+    return ("input",)
 
 
 def verify_decoupling(components: list, nets: dict, extraction_dir: str,
@@ -614,44 +646,49 @@ def verify_decoupling(components: list, nets: dict, extraction_dir: str,
         if not recommendations:
             continue
 
-        # Find power pins and their connected caps
-        power_pin_nets = set()
+        from kicad_core.netnames import is_ground_name
+
+        # Supply nets per role; a recommendation is checked only on the
+        # pins of its role, and a symbol without such a pin is skipped.
+        role_nets = {"input": set(), "output": set()}
         for pin_num, net_name in pin_nets.items():
             ep = ext_pins.get(pin_num)
-            if ep:
-                pt = (ep.get("type") or "").lower()
-                direction = (ep.get("direction") or "").lower()
-                if pt in ("power",) and direction in ("input", "output", "bidirectional"):
-                    power_pin_nets.add(net_name)
+            if not ep or (ep.get("type") or "").lower() != "power" or is_ground_name(net_name):
+                continue
+            for role in _power_pin_roles(ep):
+                role_nets[role].add(net_name)
 
-        # A unit (or part) with none of the extraction's power pins has
-        # nothing to decouple here; its supply pins sit on another unit.
-        if not power_pin_nets:
-            continue
-
-        # Count caps on power nets
-        caps_on_power = []
-        for net_name in sorted(power_pin_nets):
-            net_info = nets.get(net_name, {})
-            for p in net_info.get("pins", []) if isinstance(net_info, dict) else []:
-                c_ref = p.get("component", "")
-                c = comp_lookup.get(c_ref, {})
-                if c.get("type") == "capacitor" and c_ref != ref:
-                    cap_val = parsed_values.get(c_ref, 0)
-                    caps_on_power.append({
-                        "ref": c_ref,
-                        "value": c.get("value", ""),
-                        "farads": cap_val,
-                        "net": net_name,
-                    })
-
-        # Check each recommendation
         for key, text, req in recommendations:
             if req["min_farads"] is None:
                 continue
+            nets_for_key = sorted(set().union(*(role_nets[r] for r in _RECOMMENDATION_ROLES[key])))
+            if not nets_for_key:
+                continue
+
+            # A bypass cap returns to ground; a cap listed without its
+            # terminal nets is taken as given.
+            caps, seen = [], set()
+            for net_name in nets_for_key:
+                net_info = nets.get(net_name, {})
+                for p in net_info.get("pins", []) if isinstance(net_info, dict) else []:
+                    c_ref = p.get("component", "")
+                    c = comp_lookup.get(c_ref, {})
+                    if c.get("type") != "capacitor" or c_ref == ref or c_ref in seen:
+                        continue
+                    cap_nets = c.get("pin_nets")
+                    if isinstance(cap_nets, dict) and cap_nets and not any(
+                            n != net_name and is_ground_name(n) for n in cap_nets.values()):
+                        continue
+                    seen.add(c_ref)
+                    caps.append({
+                        "ref": c_ref,
+                        "value": c.get("value", ""),
+                        "farads": parsed_values.get(c_ref, 0),
+                        "net": net_name,
+                    })
 
             # Find matching caps (value >= recommended)
-            matching = [c for c in caps_on_power if c["farads"] >= req["min_farads"] * 0.8]
+            matching = [c for c in caps if c["farads"] >= req["min_farads"] * 0.8]
             total_matching = len(matching)
 
             if total_matching < req["count"]:
@@ -666,7 +703,7 @@ def verify_decoupling(components: list, nets: dict, extraction_dir: str,
                     "required_count": req["count"],
                     "required_min_farads": req["min_farads"],
                     "actual_count": total_matching,
-                    "actual_caps": [{"ref": c["ref"], "value": c["value"]} for c in caps_on_power],
+                    "actual_caps": [{"ref": c["ref"], "value": c["value"]} for c in caps],
                     "detail": (f"{ref} ({mpn}): datasheet recommends \"{text}\" "
                                f"but found {total_matching}/{req['count']} matching caps "
                                f"on power pins"),
