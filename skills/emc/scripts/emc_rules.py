@@ -436,15 +436,28 @@ def check_return_path_coverage(pcb: Dict, severity_threshold: str = 'all') -> Li
     findings = []
     rpc = pcb.get('return_path_continuity') if pcb else None
     if rpc is None:
-        findings.append(_make_finding(
-            'ground_plane', 'INFO', 'GP-001',
-            title='Return path analysis data not available',
-            description=(
+        # --full puts the track segments in the report; without them the pass was never asked for.
+        if pcb and 'segments' in (pcb.get('tracks') or {}):
+            title = 'Return path not checked: no ground or power plane fill'
+            description = (
+                'The PCB analysis ran with --full but found no ground or power plane '
+                'fill to check traces against, so return path continuity was not evaluated.'
+            )
+            recommendation = ('Fill the ground or power zones (Edit > Fill All Zones) and '
+                              're-run the PCB analysis.')
+        else:
+            title = 'Return path analysis data not available'
+            description = (
                 'PCB analysis did not include return path continuity data. '
                 'Run the PCB analyzer with --full flag to enable GP-001 '
                 'reference plane coverage checking.'
-            ),
-            recommendation='Re-run PCB analysis with: python3 analyze_pcb.py <file> --full',
+            )
+            recommendation = 'Re-run PCB analysis with: python3 analyze_pcb.py <file> --full'
+        findings.append(_make_finding(
+            'ground_plane', 'INFO', 'GP-001',
+            title=title,
+            description=description,
+            recommendation=recommendation,
             schema_era="v3.0",
         ))
         return findings

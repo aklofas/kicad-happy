@@ -340,7 +340,7 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
         result["thermal_pad_vias"] = thermal_pad_vias
     if copper_presence:
         result["copper_presence"] = copper_presence
-    if return_path:
+    if return_path is not None:  # [] = checked, no gaps; absent = not run
         result["return_path_continuity"] = return_path
     if gp001_samples is not None:
         result["_gp001_debug_samples"] = gp001_samples
