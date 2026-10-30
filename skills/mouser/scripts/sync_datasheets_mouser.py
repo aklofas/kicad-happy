@@ -58,7 +58,8 @@ def sync_datasheets(**kwargs) -> dict:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Sync datasheets for a KiCad project via Mouser API",
+        description=("Sync datasheets for a KiCad project via Mouser API. Parts with neither an MPN nor a part "
+                     "number from this distributor are skipped."),
     )
     input_group = parser.add_mutually_exclusive_group(required=True)
     input_group.add_argument(
@@ -69,7 +70,7 @@ def main():
     input_group.add_argument(
         "--mpn-list",
         metavar="FILE",
-        help=("Path to a text file with one MPN per line (KH-312 batch mode). "
+        help=("Path to a text file with one MPN per line (batch mode, no project). "
               "Skips blank lines and '#' comments. Output defaults to "
               "./datasheets/ in cwd when --output is not given."),
     )
@@ -80,11 +81,13 @@ def main():
     )
     parser.add_argument(
         "--force", action="store_true",
-        help="Retry previously failed downloads",
+        help=("Retry parts a previous run failed at Mouser "
+              "(parts that failed only at other distributors are retried anyway)"),
     )
     parser.add_argument(
         "--force-all", action="store_true",
-        help="Re-download everything, including already-present files",
+        help=("Re-download everything, including already-present files; "
+              "a present file and its entry are kept when the refresh fails"),
     )
     parser.add_argument(
         "--delay", type=float, default=1.0,
@@ -100,7 +103,7 @@ def main():
     )
     parser.add_argument(
         "--json", action="store_true",
-        help="Output summary as JSON",
+        help="Print the summary as one JSON document on stdout (progress goes to stderr)",
     )
     add_download_args(parser)
     args = parser.parse_args()
