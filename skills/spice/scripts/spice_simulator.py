@@ -433,6 +433,126 @@ class XyceBackend(SimulatorBackend):
 
 
 # ---------------------------------------------------------------------------
+# PSpice external-deck backend
+# ---------------------------------------------------------------------------
+
+class PspiceBackend(SimulatorBackend):
+    """PSpice backend reserved for complete, user-supplied decks."""
+    name = "pspice"
+
+    _COMPLETE_RE = re.compile(r"(?im)^\s*JOB CONCLUDED\b")
+    _ABORT_RE = re.compile(r"(?im)^\s*JOB ABORTED\b")
+    _FATAL_RE = re.compile(r"(?im)^\s*ERROR\s+--")
+
+    def find(self):
+        env_path = os.environ.get("PSPICE_PATH")
+        if env_path and os.path.isfile(env_path):
+            return env_path
+        for name in ("pspice", "pspice.exe"):
+            found = shutil.which(name)
+            if found:
+                return found
+        return None
+
+    def run(self, cir_file, timeout=5):
+        binary = self.find()
+        if not binary:
+            return (
+                False,
+                "",
+                "PSpice executable not found; set PSPICE_PATH or add "
+                "pspice to PATH",
+            )
+
+        deck = Path(cir_file).resolve()
+        native_output = deck.with_suffix(".out")
+        command = [
+            binary,
+            "-r",
+            "-e",
+            deck.name,
+            "-o",
+            native_output.name,
+        ]
+
+        try:
+            result = subprocess.run(
+                command,
+                cwd=str(deck.parent),
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired:
+            return False, "", f"Simulation timed out after {timeout}s"
+        except OSError as exc:
+            return False, "", f"Could not launch PSpice: {exc}"
+
+        if result.returncode != 0:
+            diagnostic = f"PSpice exited with exit code {result.returncode}"
+            if result.stderr:
+                diagnostic = f"{diagnostic}: {result.stderr.strip()}"
+            return False, result.stdout, diagnostic
+        if not native_output.is_file():
+            return (
+                False,
+                result.stdout,
+                f"PSpice native output missing: {native_output}",
+            )
+        if native_output.stat().st_size == 0:
+            return (
+                False,
+                result.stdout,
+                f"PSpice native output is empty: {native_output}",
+            )
+
+        try:
+            native_text = native_output.read_text(
+                encoding="utf-8",
+                errors="replace",
+            )
+        except OSError as exc:
+            return (
+                False,
+                result.stdout,
+                f"Could not read PSpice native output {native_output}: {exc}",
+            )
+
+        if self._ABORT_RE.search(native_text):
+            return (
+                False,
+                result.stdout,
+                "PSpice native abort marker found: JOB ABORTED",
+            )
+        if self._FATAL_RE.search(native_text):
+            return (
+                False,
+                result.stdout,
+                "PSpice native fatal error line found: ERROR --",
+            )
+        if not self._COMPLETE_RE.search(native_text):
+            return (
+                False,
+                result.stdout,
+                "PSpice completion marker missing: JOB CONCLUDED",
+            )
+        return True, result.stdout, result.stderr
+
+    def format_measurement_block(self, analyses, measurements, output_file,
+                                 extra_vars=None):
+        raise NotImplementedError(
+            "PSpice generated-testbench measurements are not supported; "
+            "use run_external_deck.py with a complete external deck"
+        )
+
+    def parse_results(self, output_file, stdout, stderr):
+        raise NotImplementedError(
+            "PSpice generated-testbench result parsing is not supported; "
+            "use run_external_deck.py with a complete external deck"
+        )
+
+
+# ---------------------------------------------------------------------------
 # Backend registry and auto-detection
 # ---------------------------------------------------------------------------
 
