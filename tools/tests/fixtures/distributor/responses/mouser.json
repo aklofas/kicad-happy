@@ -3,6 +3,7 @@
   "downloads": {
     "https://example.com/nope.pdf": false,
     "https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATMEGA328P-AU-DataSheet.pdf": "ATMEGA328P-AU datasheet",
+    "https://www.mouser.com/datasheet/2/fixture/2n7002v.pdf": "2N7002V fixture datasheet text for the offline oracle (page 1).",
     "https://www.mouser.com/datasheet/2/fixture/atmega.pdf": false,
     "https://www.mouser.com/datasheet/2/fixture/failall.pdf": false,
     "https://www.mouser.com/datasheet/2/fixture/gone2.pdf": "GONE2 fixture datasheet text for the offline oracle (page 1).",
@@ -15,6 +16,13 @@
     "https://www.mouser.com/ProductDetail/Acme/NODATA1234": ""
   },
   "search": {
+    "2N7002": {
+      "DataSheetUrl": "https://www.mouser.com/datasheet/2/fixture/2n7002v.pdf",
+      "Description": "Dual N-Channel MOSFET",
+      "Manufacturer": "onsemi",
+      "ManufacturerPartNumber": "2N7002V",
+      "ProductDetailUrl": ""
+    },
     "595-TPS7A05": {
       "DataSheetUrl": "https://www.mouser.com/datasheet/2/fixture/tps7a05.pdf",
       "Description": "LDO Voltage Regulators 200mA",
@@ -43,7 +51,21 @@
       "ManufacturerPartNumber": "GONE2",
       "ProductDetailUrl": ""
     },
+    "LM358": {
+      "DataSheetUrl": "https://www.mouser.com/datasheet/2/fixture/lm358.pdf",
+      "Description": "Dual Operational Amplifier",
+      "Manufacturer": "Texas Instruments",
+      "ManufacturerPartNumber": "LM358DR",
+      "ProductDetailUrl": ""
+    },
     "LM358DR": {
+      "DataSheetUrl": "https://www.mouser.com/datasheet/2/fixture/lm358.pdf",
+      "Description": "Dual Operational Amplifier",
+      "Manufacturer": "Texas Instruments",
+      "ManufacturerPartNumber": "LM358DR",
+      "ProductDetailUrl": ""
+    },
+    "LM358DRG4": {
       "DataSheetUrl": "https://www.mouser.com/datasheet/2/fixture/lm358.pdf",
       "Description": "Dual Operational Amplifier",
       "Manufacturer": "Texas Instruments",
@@ -62,6 +84,13 @@
       "Description": "N-Channel MOSFET 20V",
       "Manufacturer": "Vishay",
       "ManufacturerPartNumber": "SI2302",
+      "ProductDetailUrl": ""
+    },
+    "TPS61023": {
+      "DataSheetUrl": "https://www.ti.com/lit/ds/symlink/tps61023.pdf",
+      "Description": "Boost Converter 5.5V",
+      "Manufacturer": "Texas Instruments",
+      "ManufacturerPartNumber": "TPS61023DRLR",
       "ProductDetailUrl": ""
     },
     "TPS61023DRLR": {

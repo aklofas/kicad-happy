@@ -3,6 +3,7 @@
   "downloads": {
     "https://example.com/nope.pdf": false,
     "https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATMEGA328P-AU-DataSheet.pdf": "ATMEGA328P-AU datasheet",
+    "https://www.digikey.com/fixture/2n7002v.pdf": "2N7002V fixture datasheet text for the offline oracle (page 1).",
     "https://www.digikey.com/fixture/atmega.pdf": false,
     "https://www.digikey.com/fixture/failall.pdf": false,
     "https://www.digikey.com/fixture/gone2.pdf": "GONE2 fixture datasheet text for the offline oracle (page 1).",
@@ -22,6 +23,16 @@
         "Name": "Acme Semi"
       },
       "ManufacturerProductNumber": "REALMPN123"
+    },
+    "2N7002": {
+      "DatasheetUrl": "https://www.digikey.com/fixture/2n7002v.pdf",
+      "Description": {
+        "ProductDescription": "Dual N-Channel MOSFET"
+      },
+      "Manufacturer": {
+        "Name": "onsemi"
+      },
+      "ManufacturerProductNumber": "2N7002V"
     },
     "ATMEGA328P-AU": {
       "DatasheetUrl": "https://www.digikey.com/fixture/atmega.pdf",
@@ -53,7 +64,27 @@
       },
       "ManufacturerProductNumber": "GONE2"
     },
+    "LM358": {
+      "DatasheetUrl": "https://www.digikey.com/fixture/lm358.pdf",
+      "Description": {
+        "ProductDescription": "Dual Operational Amplifier"
+      },
+      "Manufacturer": {
+        "Name": "Texas Instruments"
+      },
+      "ManufacturerProductNumber": "LM358DR"
+    },
     "LM358DR": {
+      "DatasheetUrl": "https://www.digikey.com/fixture/lm358.pdf",
+      "Description": {
+        "ProductDescription": "Dual Operational Amplifier"
+      },
+      "Manufacturer": {
+        "Name": "Texas Instruments"
+      },
+      "ManufacturerProductNumber": "LM358DR"
+    },
+    "LM358DRG4": {
       "DatasheetUrl": "https://www.digikey.com/fixture/lm358.pdf",
       "Description": {
         "ProductDescription": "Dual Operational Amplifier"
@@ -82,6 +113,16 @@
         "Name": "Vishay"
       },
       "ManufacturerProductNumber": "SI2302"
+    },
+    "TPS61023": {
+      "DatasheetUrl": "https://www.ti.com/lit/ds/symlink/tps61023.pdf",
+      "Description": {
+        "ProductDescription": "Boost Converter 5.5V"
+      },
+      "Manufacturer": {
+        "Name": "Texas Instruments"
+      },
+      "ManufacturerProductNumber": "TPS61023DRLR"
     },
     "TPS61023DRLR": {
       "DatasheetUrl": "https://www.ti.com/lit/ds/symlink/tps61023.pdf",

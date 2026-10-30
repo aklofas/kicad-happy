@@ -1,0 +1,3 @@
+bom-identity.schematic.json:1844
+datasheets/LM358DR_Dual_Operational_Amplifier.pdf:79
+datasheets/manifest.json:2172

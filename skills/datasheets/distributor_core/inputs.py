@@ -126,13 +126,13 @@ def extract_parts(analyzer_output: dict, id_keys=("digikey", "mouser", "lcsc"), 
         # looks MPN-shaped (and the symbol isn't a generic Device:R/C/L
         # passive). Common pattern — many KiCad library symbols put the
         # MPN string in the Value field and leave the MPN property empty.
-        mpn_from_value = ""
+        from_value = False
         searchable_pn = bool(ids.get(search_key)) if search_key else has_distributor_pn
         if not has_mpn and not searchable_pn:
             value = entry.get("value", "").strip()
             lib_id = entry.get("lib_id", "")
             if is_real_mpn(value) and not lib_id.startswith("Device:"):
-                mpn_from_value = value
+                from_value = True
                 mpn = value
                 has_mpn = True
         if not has_mpn and not has_distributor_pn:
@@ -146,10 +146,17 @@ def extract_parts(analyzer_output: dict, id_keys=("digikey", "mouser", "lcsc"), 
             "datasheet": entry.get("datasheet", ""),
             "references": entry.get("references", []),
             "type": entry.get("type", ""),
+            "mpn_source": "value" if from_value else "",
             **{k: ids[k] for k in id_keys},
         })
 
     return parts
+
+
+def mpn_from_value(part: dict) -> bool:
+    """True when the part's MPN was read from the symbol's Value field (a name that may cover a
+    whole family, such as ``LM358``) rather than from an MPN property or an MPN list."""
+    return part.get("mpn_source") == "value"
 
 
 def load_mpn_list(path: Path, id_keys=("digikey", "mouser", "lcsc")) -> list[dict]:

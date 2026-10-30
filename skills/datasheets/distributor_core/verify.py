@@ -1,8 +1,71 @@
 """PDF text extraction and datasheet verification: pdftotext then raw-byte scan;
-MPN / manufacturer / keyword matching → confidence."""
+MPN / manufacturer / keyword matching → confidence. ``same_part`` decides whether a
+distributor search hit is the requested part."""
 
 import re
 import subprocess
+
+# Maker ordering and packaging codes that name the same die and datasheet (tape and reel,
+# lead-free finish). Short codes such as RL/CT are left out: they end passive value codes
+# (RC0402FR-0710RL vs RC0402FR-07100KL), where stripping them equates different values.
+ORDERING_SUFFIXES = ("#TRPBF", "#PBF", "#TR", "/NOPB", "T&R", "TR", "REEL", "REEL7",
+                     "PBF", "G4", "E3", "GE3", "LF")
+# The leftmost match at the end wins, so the longest listed suffix is stripped (GE3, not E3).
+_ORDERING_SUFFIX_RE = re.compile(
+    "-?(?:" + "|".join(re.escape(s) for s in ORDERING_SUFFIXES) + ")$")
+_MPN_PUNCT_RE = re.compile(r"[\s\-_./,#+()]")
+
+
+def _strip_ordering_suffixes(mpn: str) -> str:
+    """Upper-cased MPN without its trailing ordering suffixes (up to three)."""
+    s = mpn.strip().upper()
+    for _ in range(3):
+        t = _ORDERING_SUFFIX_RE.sub("", s, count=1)
+        if t == s:
+            break
+        s = t
+    return s
+
+
+def _part_key(mpn: str) -> str:
+    """Upper-cased MPN without trailing ordering suffixes or punctuation."""
+    return _MPN_PUNCT_RE.sub("", _strip_ordering_suffixes(mpn))
+
+
+def same_part(requested: str, hit: str, *, allow_family: bool = False) -> bool:
+    """True when a search hit's MPN names the requested part.
+
+    Case, whitespace and ``-_./,#+()`` are ignored, and so are the ordering suffixes in
+    ``ORDERING_SUFFIXES``. With ``allow_family`` a hit that extends the requested string
+    also counts (``LM358`` -> ``LM358DR``); use it only when the request is a generic name,
+    such as an MPN read from a symbol's Value field. Distributor part numbers are compared
+    exactly by the caller, never here.
+    """
+    a, b = _part_key(requested or ""), _part_key(hit or "")
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    return allow_family and len(a) >= 4 and b.startswith(a)
+
+
+def other_part(requested: str, hit_mpn: str, hit_pns=(), *, by_pn: bool = False,
+               allow_family: bool = False) -> str:
+    """The hit's identifier when a search hit is not the requested part, else ``""``.
+
+    With ``by_pn`` the request is the distributor's own part number: the hit is another part
+    when it carries part numbers and none equals the request (case aside). A hit that carries
+    none is taken as the distributor's answer. Otherwise the request is an MPN, compared with
+    ``same_part``.
+    """
+    if by_pn:
+        pns = [p for p in hit_pns if p]
+        if not pns or requested.strip().upper() in {p.strip().upper() for p in pns}:
+            return ""
+        return pns[0]
+    if same_part(requested, hit_mpn, allow_family=allow_family):
+        return ""
+    return hit_mpn or "(no MPN)"
 
 
 def _extract_pdf_text(pdf_path: str, max_pages: int = 3) -> str:
@@ -79,6 +142,12 @@ def verify_datasheet(
         )
         if base_mpn and len(base_mpn) >= 4 and base_mpn != mpn_upper:
             mpn_found = base_mpn in text_upper
+
+    if not mpn_found:
+        # A datasheet names the orderable part without its packaging code (LM358DRG4 -> LM358DR).
+        ordered = _strip_ordering_suffixes(mpn)
+        if len(ordered) >= 4 and ordered != mpn_upper:
+            mpn_found = ordered in text_upper
 
     # Check manufacturer name
     mfg_found = False

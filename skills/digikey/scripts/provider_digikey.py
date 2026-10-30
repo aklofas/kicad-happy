@@ -12,7 +12,8 @@ from pathlib import Path
 import _core_path  # noqa: F401
 from kicad_core import token_cache
 from distributor_core.download import download_pdf, note_transport_failure, try_alternative_sources
-from distributor_core.verify import verify_datasheet
+from distributor_core.inputs import mpn_from_value
+from distributor_core.verify import other_part, same_part, verify_datasheet
 from distributor_core.manifest import friendly_filename
 
 NAME = "digikey"
@@ -204,11 +205,21 @@ def search_digikey_with_token(mpn: str, token: str, client_id: str) -> dict | No
     if not products:
         return None
 
-    # Prefer exact MPN match
+    # Prefer the requested part itself over a family member that merely starts with it
+    for p in products:
+        if same_part(mpn, p.get("ManufacturerProductNumber", "")):
+            return p
     for p in products:
         if p.get("ManufacturerProductNumber", "").upper().startswith(mpn.upper()):
             return p
     return products[0]
+
+
+def _digikey_pns(product: dict) -> list[str]:
+    """Every DigiKey product number a search hit carries (its packaging variations included)."""
+    variations = product.get("ProductVariations") or []
+    return [product.get("DigiKeyProductNumber") or ""] + [
+        v.get("DigiKeyProductNumber") or "" for v in variations if isinstance(v, dict)]
 
 
 def sync_one_part(
@@ -268,11 +279,24 @@ def sync_one_part(
     print(f"  Searching DigiKey for '{search_term}'...", file=sys.stderr)
     product = search_digikey_with_token(search_term, token, client_id)
 
+    def _other(hit, by_pn):
+        if hit is None:
+            return ""
+        return other_part(digikey_pn if by_pn else mpn, hit.get("ManufacturerProductNumber", ""),
+                          _digikey_pns(hit), by_pn=by_pn, allow_family=mpn_from_value(part))
+
+    closest = _other(product, bool(digikey_pn))
+    if closest:
+        product = None
+
     # If DK PN search failed but we also have an MPN, try that
     if product is None and digikey_pn and mpn:
         time.sleep(delay)
         print(f"  DK PN not found, trying MPN '{mpn}'...", file=sys.stderr)
         product = search_digikey_with_token(mpn, token, client_id)
+        mismatch = _other(product, False)
+        if mismatch:
+            closest, product = mismatch, None
 
     if product is None:
         return {
@@ -281,7 +305,8 @@ def sync_one_part(
             "value": part["value"],
             "references": part["references"],
             "status": "not_found",
-            "error": f"No DigiKey results for '{search_term}'" + (f" or '{mpn}'" if digikey_pn and mpn else ""),
+            "error": f"No DigiKey results for '{search_term}'" + (f" or '{mpn}'" if digikey_pn and mpn else "")
+                     + (f"; closest result '{closest}' is a different part" if closest else ""),
             "last_attempt": now,
         }
 
@@ -316,7 +341,7 @@ def sync_one_part(
     print(f"  Downloading from {ds_url[:80]}...", file=sys.stderr)
     if download_pdf(ds_url, str(output_path)):
         size = os.path.getsize(str(output_path))
-        vr = verify_datasheet(str(output_path), dk_mpn or display_pn, effective_desc, dk_mfg)
+        vr = verify_datasheet(str(output_path), mpn or dk_mpn or display_pn, effective_desc, dk_mfg)
         if vr["confidence"] == "wrong":
             print(f"  WARNING: PDF may be wrong datasheet — {vr['details']}",
                   file=sys.stderr)
@@ -341,7 +366,7 @@ def sync_one_part(
     print(f"  Primary failed, trying alternatives...", file=sys.stderr)
     if try_alternative_sources(dk_mpn, str(output_path)):
         size = os.path.getsize(str(output_path))
-        vr = verify_datasheet(str(output_path), dk_mpn or display_pn, effective_desc, dk_mfg)
+        vr = verify_datasheet(str(output_path), mpn or dk_mpn or display_pn, effective_desc, dk_mfg)
         if vr["confidence"] == "wrong":
             print(f"  WARNING: PDF may be wrong datasheet — {vr['details']}",
                   file=sys.stderr)

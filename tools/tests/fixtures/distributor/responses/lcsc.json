@@ -22,6 +22,7 @@
   },
   "downloads": {
     "https://example.com/nope.pdf": false,
+    "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/fixture/2n7002v.pdf": "2N7002V fixture datasheet text for the offline oracle (page 1).",
     "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/fixture/atmega.pdf": false,
     "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/fixture/failall.pdf": false,
     "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/fixture/gone2.pdf": "GONE2 fixture datasheet text for the offline oracle (page 1).",
@@ -33,6 +34,25 @@
   },
   "scrape": {},
   "search": {
+    "2N7002": {
+      "datasheet": "",
+      "description": "Dual N-Channel MOSFET",
+      "extra": {
+        "datasheet": {
+          "pdf": "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/fixture/2n7002v.pdf"
+        },
+        "description": "Dual N-Channel MOSFET",
+        "manufacturer": {
+          "name": "onsemi"
+        },
+        "mpn": "2N7002V",
+        "number": "C1007"
+      },
+      "lcsc": "1007",
+      "mfr": "2N7002V",
+      "price": 0.1,
+      "stock": 100
+    },
     "ATMEGA328P-AU": {
       "datasheet": "",
       "description": "8-bit AVR Microcontroller",
@@ -53,6 +73,21 @@
       "stock": 100
     },
     "C14663": {
+      "description": "LDO 3.3V 1A",
+      "extra": {
+        "description": "1A Low Dropout Regulator 3.3V",
+        "manufacturer": {
+          "name": "Advanced Monolithic Systems"
+        },
+        "mpn": "AMS1117-3.3",
+        "number": "C14663"
+      },
+      "lcsc": "14663",
+      "mfr": "AMS1117-3.3",
+      "price": 0.05,
+      "stock": 5000
+    },
+    "C9999999": {
       "description": "LDO 3.3V 1A",
       "extra": {
         "description": "1A Low Dropout Regulator 3.3V",
@@ -105,7 +140,45 @@
       "price": 0.1,
       "stock": 100
     },
+    "LM358": {
+      "datasheet": "",
+      "description": "Dual Operational Amplifier",
+      "extra": {
+        "datasheet": {
+          "pdf": "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/fixture/lm358.pdf"
+        },
+        "description": "Dual Operational Amplifier",
+        "manufacturer": {
+          "name": "Texas Instruments"
+        },
+        "mpn": "LM358DR",
+        "number": "C1001"
+      },
+      "lcsc": "1001",
+      "mfr": "LM358DR",
+      "price": 0.1,
+      "stock": 100
+    },
     "LM358DR": {
+      "datasheet": "",
+      "description": "Dual Operational Amplifier",
+      "extra": {
+        "datasheet": {
+          "pdf": "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/fixture/lm358.pdf"
+        },
+        "description": "Dual Operational Amplifier",
+        "manufacturer": {
+          "name": "Texas Instruments"
+        },
+        "mpn": "LM358DR",
+        "number": "C1001"
+      },
+      "lcsc": "1001",
+      "mfr": "LM358DR",
+      "price": 0.1,
+      "stock": 100
+    },
+    "LM358DRG4": {
       "datasheet": "",
       "description": "Dual Operational Amplifier",
       "extra": {
@@ -156,6 +229,25 @@
       },
       "lcsc": "1005",
       "mfr": "SI2302",
+      "price": 0.1,
+      "stock": 100
+    },
+    "TPS61023": {
+      "datasheet": "",
+      "description": "Boost Converter 5.5V",
+      "extra": {
+        "datasheet": {
+          "pdf": "https://www.ti.com/lit/ds/symlink/tps61023.pdf"
+        },
+        "description": "Boost Converter 5.5V",
+        "manufacturer": {
+          "name": "Texas Instruments"
+        },
+        "mpn": "TPS61023DRLR",
+        "number": "C1000"
+      },
+      "lcsc": "1000",
+      "mfr": "TPS61023DRLR",
       "price": 0.1,
       "stock": 100
     },

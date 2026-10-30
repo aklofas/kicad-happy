@@ -1,0 +1,90 @@
+{
+  "analyzer_type": "schematic",
+  "bom": [
+    {
+      "references": [
+        "U1"
+      ],
+      "value": "LM358",
+      "mpn": "LM358DRG4",
+      "manufacturer": "Texas Instruments",
+      "description": "Op amp",
+      "datasheet": "",
+      "type": "ic",
+      "dnp": false,
+      "lib_id": "Amplifier_Operational:LM358",
+      "digikey": "",
+      "mouser": "",
+      "lcsc": "",
+      "element14": ""
+    },
+    {
+      "references": [
+        "U2"
+      ],
+      "value": "TPS61023",
+      "mpn": "TPS61023",
+      "manufacturer": "Texas Instruments",
+      "description": "Boost Converter",
+      "datasheet": "",
+      "type": "ic",
+      "dnp": false,
+      "lib_id": "Regulator_Switching:TPS61023",
+      "digikey": "",
+      "mouser": "",
+      "lcsc": "",
+      "element14": ""
+    },
+    {
+      "references": [
+        "U3"
+      ],
+      "value": "LM358",
+      "mpn": "",
+      "manufacturer": "",
+      "description": "",
+      "datasheet": "",
+      "type": "ic",
+      "dnp": false,
+      "lib_id": "Amplifier_Operational:LM358",
+      "digikey": "",
+      "mouser": "",
+      "lcsc": "",
+      "element14": ""
+    },
+    {
+      "references": [
+        "Q1"
+      ],
+      "value": "2N7002",
+      "mpn": "2N7002",
+      "manufacturer": "onsemi",
+      "description": "N-Channel MOSFET",
+      "datasheet": "",
+      "type": "transistor",
+      "dnp": false,
+      "lib_id": "Transistor_FET:2N7002",
+      "digikey": "",
+      "mouser": "",
+      "lcsc": "",
+      "element14": ""
+    },
+    {
+      "references": [
+        "U4"
+      ],
+      "value": "AMS",
+      "mpn": "",
+      "manufacturer": "",
+      "description": "",
+      "datasheet": "",
+      "type": "ic",
+      "dnp": false,
+      "lib_id": "Acme:AMS",
+      "digikey": "",
+      "mouser": "",
+      "lcsc": "C9999999",
+      "element14": ""
+    }
+  ]
+}

@@ -153,6 +153,9 @@ UNSTUBBED_ROLES = {"alternatives"}
 FETCH_ENV = {"element14": {"ELEMENT14_API_KEY": "KEY"}}
 SYNC_KWARGS = {"element14": {"api_key": "KEY"}}
 
+# Scenario BOMs a sync run can read ("input"); "mpns" reads mpns.txt, "fx-sch" the harness schematic.
+SCENARIO_BOMS = {"bom": "bom.schematic.json", "bom-identity": "bom-identity.schematic.json"}
+
 # run name -> spec. kind: sync | fetch. A key ending in " (digikey)" runs for DigiKey only and
 # stores its artefacts under the name without that suffix.
 RUNS: dict[str, dict] = {
@@ -162,6 +165,7 @@ RUNS: dict[str, dict] = {
     "sync-mpn-list": {"kind": "sync", "seed": None, "input": "mpns", "out": "ds"},
     "sync-legacy-index": {"kind": "sync", "seed": "seed-legacy", "input": "bom"},
     "sync-sch-dry (digikey)": {"kind": "sync", "seed": None, "input": "fx-sch", "kwargs": {"dry_run": True, "as_json": True}},
+    "sync-identity": {"kind": "sync", "seed": None, "input": "bom-identity"},
     "fetch-search-ok": {"kind": "fetch", "argv": ["--search", "LM358DR", "--json", "--output", "{work}/out.pdf"]},
     "fetch-search-nourl": {"kind": "fetch", "argv": ["--search", "NODATA1234", "--json"]},
     "fetch-search-miss": {"kind": "fetch", "argv": ["--search", "MISSING9999", "--json"]},
@@ -266,7 +270,7 @@ def _sync_call(sync_mod, provider: str, spec: dict, workdir: Path, fixtures: str
     elif spec["input"] == "fx-sch":
         kwargs["input_path"] = str(_fx_sch(fixtures))
     else:
-        kwargs["input_path"] = str(workdir / "bom.schematic.json")
+        kwargs["input_path"] = str(workdir / SCENARIO_BOMS[spec["input"]])
     return sync_mod.sync_datasheets(output_dir=str(out_dir), **kwargs)
 
 
@@ -279,6 +283,8 @@ def _prepare(spec: dict, workdir: Path) -> None:
     if spec.get("input") in ("bom", "mpns"):
         for name in ("bom.schematic.json", "mpns.txt"):
             shutil.copyfile(SCENARIO / name, workdir / name)
+    elif spec.get("input") in SCENARIO_BOMS:
+        shutil.copyfile(SCENARIO / SCENARIO_BOMS[spec["input"]], workdir / SCENARIO_BOMS[spec["input"]])
     if spec.get("seed"):
         shutil.copytree(SCENARIO / spec["seed"], workdir / spec.get("out", "datasheets"))
 

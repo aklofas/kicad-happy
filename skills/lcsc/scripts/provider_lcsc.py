@@ -18,7 +18,8 @@ from distributor_core.download import (
     note_transport_failure,
     try_alternative_sources,
 )
-from distributor_core.verify import verify_datasheet
+from distributor_core.inputs import mpn_from_value
+from distributor_core.verify import other_part, verify_datasheet
 from distributor_core.manifest import friendly_filename
 
 NAME = "lcsc"
@@ -309,12 +310,25 @@ def sync_one_part(
     component = search_lcsc(search_term)
     component = enrich_with_wmsc(component)
 
+    def _other(hit, by_pn):
+        if hit is None:
+            return ""
+        return other_part(lcsc_pn if by_pn else mpn, _get_mpn(hit), [_get_lcsc_code(hit)],
+                          by_pn=by_pn, allow_family=mpn_from_value(part))
+
+    closest = _other(component, bool(lcsc_pn))
+    if closest:
+        component = None
+
     # If LCSC code search failed but we have an MPN, try that
     if component is None and lcsc_pn and mpn:
         time.sleep(delay)
         print(f"  LCSC code not found, trying MPN '{mpn}'...", file=sys.stderr)
         component = search_lcsc(mpn)
         component = enrich_with_wmsc(component)
+        mismatch = _other(component, False)
+        if mismatch:
+            closest, component = mismatch, None
 
     if component is not None:
         ds_url = _get_datasheet_url(component)
@@ -333,7 +347,7 @@ def sync_one_part(
             print(f"  Downloading from LCSC CDN...", file=sys.stderr)
             if download_pdf(ds_url, str(output_path)):
                 size = os.path.getsize(str(output_path))
-                vr = verify_datasheet(str(output_path), effective_pn, lcsc_desc, lcsc_mfg)
+                vr = verify_datasheet(str(output_path), mpn or effective_pn, lcsc_desc, lcsc_mfg)
                 if vr["confidence"] == "wrong":
                     print(f"  WARNING: PDF may be wrong datasheet — {vr['details']}",
                           file=sys.stderr)
@@ -385,7 +399,8 @@ def sync_one_part(
             "value": part["value"],
             "references": part["references"],
             "status": "not_found",
-            "error": f"No LCSC results for '{search_term}'" + (f" or '{mpn}'" if lcsc_pn and mpn else ""),
+            "error": f"No LCSC results for '{search_term}'" + (f" or '{mpn}'" if lcsc_pn and mpn else "")
+                     + (f"; closest result '{closest}' is a different part" if closest else ""),
             "last_attempt": now,
         }
 

@@ -14,7 +14,8 @@ from pathlib import Path
 import _core_path  # noqa: F401
 from distributor_core.download import (_USER_AGENT, _requests, download_pdf, note_transport_failure,
                                        try_alternative_sources)
-from distributor_core.verify import verify_datasheet
+from distributor_core.inputs import mpn_from_value
+from distributor_core.verify import other_part, verify_datasheet
 from distributor_core.manifest import friendly_filename
 
 NAME = "mouser"
@@ -219,11 +220,25 @@ def sync_one_part(
     print(f"  Searching Mouser for '{search_query}'...", file=sys.stderr)
     mouser_part = search_mouser(search_query, mouser_api_key)
 
+    def _other(hit, by_pn):
+        if not hit:
+            return ""
+        return other_part(mouser_pn if by_pn else mpn, hit.get("ManufacturerPartNumber", ""),
+                          [hit.get("MouserPartNumber") or ""], by_pn=by_pn,
+                          allow_family=mpn_from_value(part))
+
+    closest = _other(mouser_part, not mpn)
+    if closest:
+        mouser_part = None
+
     # If MPN search failed but we have a Mouser PN, try that
     if not mouser_part and mpn and mouser_pn:
         time.sleep(delay)
         print(f"  MPN not found, trying Mouser PN '{mouser_pn}'...", file=sys.stderr)
         mouser_part = search_mouser(mouser_pn, mouser_api_key)
+        mismatch = _other(mouser_part, True)
+        if mismatch:
+            closest, mouser_part = mismatch, None
 
     mouser_ds_url = ""
     if mouser_part:
@@ -323,7 +338,8 @@ def sync_one_part(
             "value": part["value"],
             "references": part["references"],
             "status": "not_found",
-            "error": f"No Mouser results for '{display_pn}'",
+            "error": f"No Mouser results for '{display_pn}'"
+                     + (f"; closest result '{closest}' is a different part" if closest else ""),
             "last_attempt": now,
         }
 

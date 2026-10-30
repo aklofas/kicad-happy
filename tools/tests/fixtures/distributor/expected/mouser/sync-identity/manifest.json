@@ -1,0 +1,58 @@
+{
+  "schematic": "<WORK>/bom-identity.schematic.json",
+  "last_sync": "2026-10-16T00:00:00+00:00",
+  "parts": {
+    "LM358DRG4": {
+      "file": "LM358DRG4_Dual_Operational_Amplifier.pdf",
+      "manufacturer": "Texas Instruments",
+      "description": "Dual Operational Amplifier",
+      "value": "LM358",
+      "datasheet_url": "https://www.mouser.com/datasheet/2/fixture/lm358.pdf",
+      "downloaded_date": "2026-10-16T00:00:00+00:00",
+      "source": "mouser",
+      "status": "ok",
+      "references": [
+        "U1"
+      ],
+      "size_bytes": 79,
+      "verification": "verified"
+    },
+    "TPS61023": {
+      "manufacturer": "Texas Instruments",
+      "description": "Boost Converter",
+      "value": "TPS61023",
+      "references": [
+        "U2"
+      ],
+      "status": "not_found",
+      "error": "No Mouser results for 'TPS61023'; closest result 'TPS61023DRLR' is a different part",
+      "last_attempt": "2026-10-16T00:00:00+00:00"
+    },
+    "LM358": {
+      "file": "LM358_Dual_Operational_Amplifier.pdf",
+      "manufacturer": "Texas Instruments",
+      "description": "Dual Operational Amplifier",
+      "value": "LM358",
+      "datasheet_url": "https://www.mouser.com/datasheet/2/fixture/lm358.pdf",
+      "downloaded_date": "2026-10-16T00:00:00+00:00",
+      "source": "mouser",
+      "status": "ok",
+      "references": [
+        "U3"
+      ],
+      "size_bytes": 79,
+      "verification": "verified"
+    },
+    "2N7002": {
+      "manufacturer": "onsemi",
+      "description": "N-Channel MOSFET",
+      "value": "2N7002",
+      "references": [
+        "Q1"
+      ],
+      "status": "not_found",
+      "error": "No Mouser results for '2N7002'; closest result '2N7002V' is a different part",
+      "last_attempt": "2026-10-16T00:00:00+00:00"
+    }
+  }
+}

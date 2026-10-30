@@ -3,6 +3,7 @@
   "downloads": {
     "https://example.com/nope.pdf": false,
     "https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATMEGA328P-AU-DataSheet.pdf": "ATMEGA328P-AU datasheet",
+    "https://www.farnell.com/datasheets/fixture/2n7002v.pdf": "2N7002V fixture datasheet text for the offline oracle (page 1).",
     "https://www.farnell.com/datasheets/fixture/atmega.pdf": false,
     "https://www.farnell.com/datasheets/fixture/bme280.pdf": "BME280 fixture datasheet text for the offline oracle (page 1).",
     "https://www.farnell.com/datasheets/fixture/failall.pdf": false,
@@ -13,6 +14,17 @@
   },
   "scrape": {},
   "search": {
+    "2N7002": {
+      "brandName": "onsemi",
+      "datasheets": [
+        {
+          "url": "https://www.farnell.com/datasheets/fixture/2n7002v.pdf"
+        }
+      ],
+      "displayName": "Dual N-Channel MOSFET",
+      "sku": "17AB1007",
+      "translatedManufacturerPartNumber": "2N7002V"
+    },
     "94AK6874": {
       "brandName": "Bosch",
       "datasheets": [
@@ -57,7 +69,29 @@
       "sku": "16AB1006",
       "translatedManufacturerPartNumber": "GONE2"
     },
+    "LM358": {
+      "brandName": "Texas Instruments",
+      "datasheets": [
+        {
+          "url": "https://www.farnell.com/datasheets/fixture/lm358.pdf"
+        }
+      ],
+      "displayName": "Dual Operational Amplifier",
+      "sku": "11AB1001",
+      "translatedManufacturerPartNumber": "LM358DR"
+    },
     "LM358DR": {
+      "brandName": "Texas Instruments",
+      "datasheets": [
+        {
+          "url": "https://www.farnell.com/datasheets/fixture/lm358.pdf"
+        }
+      ],
+      "displayName": "Dual Operational Amplifier",
+      "sku": "11AB1001",
+      "translatedManufacturerPartNumber": "LM358DR"
+    },
+    "LM358DRG4": {
       "brandName": "Texas Instruments",
       "datasheets": [
         {
@@ -85,6 +119,17 @@
       "displayName": "N-Channel MOSFET 20V",
       "sku": "15AB1005",
       "translatedManufacturerPartNumber": "SI2302"
+    },
+    "TPS61023": {
+      "brandName": "Texas Instruments",
+      "datasheets": [
+        {
+          "url": "https://www.ti.com/lit/ds/symlink/tps61023.pdf"
+        }
+      ],
+      "displayName": "Boost Converter 5.5V",
+      "sku": "10AB1000",
+      "translatedManufacturerPartNumber": "TPS61023DRLR"
     },
     "TPS61023DRLR": {
       "brandName": "Texas Instruments",

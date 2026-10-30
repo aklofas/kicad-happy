@@ -17,7 +17,8 @@ from distributor_core.download import (
     note_transport_failure,
     try_alternative_sources,
 )
-from distributor_core.verify import verify_datasheet
+from distributor_core.inputs import mpn_from_value
+from distributor_core.verify import other_part, verify_datasheet
 from distributor_core.manifest import friendly_filename
 
 _DEFAULT_STORE = "www.newark.com"
@@ -226,11 +227,24 @@ def sync_one_part(
     print(f"  Searching element14 for '{search_term}'...", file=sys.stderr)
     product = search_element14(search_term, api_key, store)
 
+    def _other(hit, by_pn):
+        if hit is None:
+            return ""
+        return other_part(element14_pn if by_pn else mpn, _get_mpn(hit), [_get_sku(hit)],
+                          by_pn=by_pn, allow_family=mpn_from_value(part))
+
+    closest = _other(product, not mpn)
+    if closest:
+        product = None
+
     # If MPN search failed but we have an element14 PN, try that
     if product is None and mpn and element14_pn:
         time.sleep(delay)
         print(f"  MPN not found, trying SKU '{element14_pn}'...", file=sys.stderr)
         product = search_element14(element14_pn, api_key, store)
+        mismatch = _other(product, True)
+        if mismatch:
+            closest, product = mismatch, None
 
     if product is not None:
         ds_url = _get_datasheet_url(product)
@@ -249,7 +263,7 @@ def sync_one_part(
             print(f"  Downloading from element14...", file=sys.stderr)
             if download_pdf(ds_url, str(output_path)):
                 size = os.path.getsize(str(output_path))
-                vr = verify_datasheet(str(output_path), effective_pn, e14_desc, e14_mfg)
+                vr = verify_datasheet(str(output_path), mpn or effective_pn, e14_desc, e14_mfg)
                 if vr["confidence"] == "wrong":
                     print(f"  WARNING: PDF may be wrong datasheet — {vr['details']}",
                           file=sys.stderr)
@@ -302,7 +316,8 @@ def sync_one_part(
             "references": part["references"],
             "status": "not_found",
             "error": f"No element14 results for '{search_term}'"
-                     + (f" or '{element14_pn}'" if mpn and element14_pn else ""),
+                     + (f" or '{element14_pn}'" if mpn and element14_pn else "")
+                     + (f"; closest result '{closest}' is a different part" if closest else ""),
             "last_attempt": now,
         }
 
