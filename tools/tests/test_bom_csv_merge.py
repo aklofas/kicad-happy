@@ -1,7 +1,7 @@
 """Re-exporting the tracking CSV binds hand-kept columns to the part, keeps manual `--` rows and
 distributor columns filled on any row, and never lets a different part inherit Validated or
 stock. Expected values are the hand-derived contents of the CSV the user edited."""
-import csv, sys, tempfile, unittest
+import csv, os, stat, sys, tempfile, unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -99,22 +99,60 @@ class TrackingCsvMergeTest(unittest.TestCase):
         row = read(self.csv)[0]
         self.assertEqual((row["Validated"], row["Notes"]), ("", "n"))
 
-    def test_csv_keeps_crlf_and_a_failed_write_keeps_the_old_file(self):
+    def test_csv_keeps_crlf(self):
         write(self.csv, [{"Reference": "R1", "Qty": "1", "MPN": "A", "Notes": "keep"}])
         bom_manager.export_csv(report(line(["R1"], "A")), self.csv)
         self.assertIn(b"\r\n", self.csv.read_bytes())
-        before = self.csv.read_bytes()
-        orig = bom_manager.atomic_write_text
 
-        def boom(path, text, newline=None):
+    def test_failed_write_keeps_the_old_file_and_leaves_no_temp(self):
+        write(self.csv, [{"Reference": "R1", "Qty": "1", "MPN": "A", "Notes": "keep"}])
+        before = self.csv.read_bytes()
+        real = os.replace
+
+        def boom(src, dst):
             raise OSError("disk full")
-        bom_manager.atomic_write_text = boom
+        os.replace = boom
         try:
             with self.assertRaises(OSError):
                 bom_manager.export_csv(report(line(["R1"], "A")), self.csv)
         finally:
-            bom_manager.atomic_write_text = orig
+            os.replace = real
         self.assertEqual(self.csv.read_bytes(), before)
+        self.assertEqual(os.listdir(self.csv.parent), ["bom.csv"])
+
+    def test_new_csv_takes_the_umask_mode_and_an_existing_one_keeps_its_mode(self):
+        old = os.umask(0o022)
+        try:
+            bom_manager.export_csv(report(line(["R1"], "A")), self.csv)
+        finally:
+            os.umask(old)
+        self.assertEqual(stat.S_IMODE(self.csv.stat().st_mode), 0o644)
+        os.chmod(self.csv, 0o640)
+        bom_manager.export_csv(report(line(["R1"], "A")), self.csv)
+        self.assertEqual(stat.S_IMODE(self.csv.stat().st_mode), 0o640)
+
+    def test_user_added_columns_and_awkward_manual_rows_round_trip(self):
+        with open(self.csv, "w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=COLS + ["Link"])
+            w.writeheader()
+            w.writerow({"Reference": "R1", "Qty": "1", "MPN": "A", "Link": "http://a"})
+            w.writerow({"Reference": "--", "Qty": "1", "Value": 'cable, 1m "x"',
+                        "Notes": "multi\nline", "Link": "http://x"})
+        bom_manager.export_csv(report(line(["R1"], "A")), self.csv)
+        rows = read(self.csv)
+        self.assertEqual(rows[0]["Link"], "http://a")
+        self.assertEqual((rows[1]["Value"], rows[1]["Notes"], rows[1]["Link"]),
+                         ('cable, 1m "x"', "multi\nline", "http://x"))
+
+    def test_dnp_twin_match_ignores_dnp_spelling(self):
+        write(self.csv, [
+            {"Reference": "R1", "Qty": "1", "Value": "1k", "Footprint": "0402", "MPN": "M",
+             "Notes": "fitted"},
+            {"Reference": "R1", "Qty": "1", "Value": "1k", "Footprint": "0402", "MPN": "M",
+             "DNP": "DNP", "Notes": "unfitted"},
+        ])
+        bom_manager.export_csv(report(line(["R1"], "M", dnp=True)), self.csv)
+        self.assertEqual(read(self.csv)[0]["Notes"], "unfitted")
 
 
 if __name__ == "__main__":

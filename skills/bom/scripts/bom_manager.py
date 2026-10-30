@@ -982,6 +982,10 @@ def _refs_of(row: dict) -> set:
     return {r.strip() for r in (row.get("Reference") or "").split(",") if r.strip()}
 
 
+def _is_dnp_text(text: str) -> bool:
+    return text.strip().lower() in ("yes", "true", "1", "dnp")
+
+
 def _is_manual_row(row: dict) -> bool:
     return (row.get("Reference") or "").strip().startswith("--")
 
@@ -999,7 +1003,7 @@ def _match_existing(rows: list[dict], mpn: str, value: str, fp_short: str, dnp: 
         same = [r for r in rows if not field(r, "MPN") and not _is_manual_row(r)
                 and field(r, "Value") == value and field(r, "Footprint") == fp_short]
     if same:
-        same.sort(key=lambda r: (-len(_refs_of(r) & refs), field(r, "DNP") != dnp))
+        same.sort(key=lambda r: (-len(_refs_of(r) & refs), _is_dnp_text(field(r, "DNP")) != _is_dnp_text(dnp)))
         return same[0], True
     for r in rows:
         if not _is_manual_row(r) and refs & _refs_of(r):
@@ -1038,6 +1042,14 @@ def export_csv(report: dict, output_path: Path, extra_distributors: list[str] | 
                 if any(r.get(pn_col) or r.get(stock_col) for r in existing):
                     active_distributors.append(dist)
         csv_columns = _build_csv_columns(active_distributors)
+
+    # Columns the user added to the CSV travel with their rows
+    extra_columns = []
+    for erow in existing:
+        for col in erow:
+            if col and col not in csv_columns and col not in extra_columns:
+                extra_columns.append(col)
+    csv_columns = csv_columns + extra_columns
 
     # User-managed columns (preserved from existing CSV)
     user_columns = {"Chosen_Distributor", "Validated", "Notes"}
@@ -1086,6 +1098,9 @@ def export_csv(report: dict, output_path: Path, extra_distributors: list[str] | 
             existing_row = None
 
         if existing_row:
+            for col in extra_columns:
+                if existing_row.get(col):
+                    row[col] = existing_row[col]
             for col in user_columns:
                 if col in existing_row and existing_row[col]:
                     row[col] = existing_row[col]

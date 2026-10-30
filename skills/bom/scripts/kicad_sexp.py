@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import os
 import re
+import secrets
 import shutil
-import tempfile
 from pathlib import Path
 from typing import NamedTuple
 
@@ -98,8 +98,15 @@ def atomic_write_text(path: Path, text: str, newline: str | None = None) -> None
 
     *newline* is passed to the file object ("" keeps the text's line endings as given)."""
     target = Path(path).resolve()
-    fd, tmp = tempfile.mkstemp(dir=str(target.parent), prefix=target.name + ".",
-                               suffix=".tmp")
+    # Created with 0o666 so the kernel applies the umask (mkstemp would force 0o600)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    while True:
+        tmp = str(target.parent / f"{target.name}.{secrets.token_hex(6)}.tmp")
+        try:
+            fd = os.open(tmp, flags, 0o666)
+            break
+        except FileExistsError:
+            continue
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline=newline) as f:
             f.write(text)
