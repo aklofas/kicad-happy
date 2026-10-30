@@ -795,8 +795,10 @@ def audit_bom(analysis_json: dict, project_dir: str | None = None,
         # or timed-out source didn't confirm anything, it isn't absent from
         # the count. A response with status=None doesn't count as an active
         # confirmation either: a source counts as responding only when it
-        # states a real status (a mappable label or a flag); "unknown" states
-        # nothing. LCSC carries no lifecycle status field at
+        # states something: a non-empty label, mapped or not, or a true flag.
+        # An unmapped label (e.g. "Restricted Availability") is an answer that
+        # did not confirm active, which is the case LC-005 exists for.
+        # LCSC carries no lifecycle status field at
         # all, so it's excluded from the lifecycle source counts entirely
         # (it's a stock/price source, not a lifecycle source) — its
         # presence is still called out in the description when relevant.
@@ -804,9 +806,9 @@ def audit_bom(analysis_json: dict, project_dir: str | None = None,
             attempted = [s for s in data.get('attempted', []) if s != 'lcsc']
             all_responded = finding.get('sources', {})
             per_source = data.get('per_source_status', {})
-            responded = [s for s in all_responded
+            responded = [s for s, d in all_responded.items()
                          if s != 'lcsc'
-                         and per_source.get(s) not in (None, 'unknown')]
+                         and (d.get('status') or d.get('discontinued') is True)]
             active_confirmed = sorted(s for s in responded if per_source.get(s) == 'active')
 
             total_attempted = len(attempted)

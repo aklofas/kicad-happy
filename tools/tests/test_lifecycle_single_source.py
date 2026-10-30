@@ -34,15 +34,13 @@ class SingleSourceTest(unittest.TestCase):
         out = bom_audit(digikey={"status": "Active"}, mouser={"status": None})
         self.assertEqual(lc005(out), [])
 
-    def test_label_the_part_does_not_map_is_not_single_source(self):
-        out = bom_audit(digikey={"status": "Active"},
-                        mouser={"status": "Restricted Availability"})
-        self.assertEqual(lc005(out), [])
-
-    def test_unmappable_label_is_not_a_response(self):
-        for label in ("Preliminary", "Not Applicable"):
+    def test_stated_but_unmapped_label_is_a_response(self):
+        for label in ("Restricted Availability", "Preliminary"):
             out = bom_audit(digikey={"status": "Active"}, mouser={"status": label})
-            self.assertEqual(lc005(out), [], label)
+            f = lc005(out)
+            self.assertEqual(len(f), 1, label)
+            self.assertEqual(f[0]["source_name"], "digikey")
+            self.assertEqual(f[0]["responded"], 2)
 
     def test_flag_only_source_states_a_status(self):
         out = bom_audit(digikey={"status": "Active"},
