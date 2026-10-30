@@ -31,6 +31,20 @@ The circuit netlists are standard SPICE (Berkeley SPICE3 syntax) — portable ac
 
 The key insight: the schematic analyzer already detects 21+ subcircuit types (RC filters, voltage dividers, opamp circuits, etc.) with full component values and net topology. The SPICE skill turns these static detections into dynamic simulations — instead of "I found an RC filter with calculated fc=15.9kHz," it says "I simulated this RC filter and confirmed fc=15.9kHz."
 
+## External Decks and PSpice
+
+`run_external_deck.py` runs a complete user-supplied deck separately from the generated-testbench workflow. Select PSpice explicitly:
+
+```bash
+python3 skills/spice/scripts/run_external_deck.py example.cir --simulator pspice --timeout 120
+```
+
+The runner resolves the deck to an absolute path but invokes PSpice from the deck's parent directory using the deck filename. Relative `.include` and `.lib` paths therefore retain their simulator-native meaning. PSpice writes `<deck-stem>.out` beside the deck and may overwrite an existing file with that name.
+
+PSpice success requires a zero process exit code, a non-empty native output file, a `JOB CONCLUDED` marker, and no `JOB ABORTED` or `ERROR --` line. Warnings and a zero-error summary do not fail the run. The JSON result records execution success only; it does not validate circuit behavior or establish regulatory compliance.
+
+This first version does not add PSpice to `simulate_subcircuits.py`, `SPICE_SIMULATOR`, or auto-detection. It does not render or parse PSpice measurements, copy vendor libraries, inspect encryption, parse waveform binaries, or repair convergence problems.
+
 ## What Gets Simulated
 
 18 subcircuit types across analog, power, and RF domains:
@@ -169,6 +183,7 @@ Several schematic and PCB analyzer features were added to feed deeper simulation
 | `NGSPICE_PATH` | No | Explicit path to ngspice binary (skips PATH lookup) |
 | `LTSPICE_PATH` | No | Explicit path to LTspice binary |
 | `XYCE_PATH` | No | Explicit path to Xyce binary |
+| `PSPICE_PATH` | No | Explicit path to the PSpice executable for `run_external_deck.py`; not used by auto-detection |
 
 Most users don't need to set any of these — the skill auto-detects whichever simulator is installed. The `*_PATH` variables are for non-standard install locations.
 
