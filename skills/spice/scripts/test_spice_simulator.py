@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 """Unit tests for SPICE simulator selection and external-deck execution."""
 
+import io
+import json
 import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
+from types import SimpleNamespace
 from unittest.mock import call, patch
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -14,6 +18,241 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 import spice_simulator
+import run_external_deck
+
+
+class TestExternalDeckCliSurface(unittest.TestCase):
+    """Exercise the standalone script as a user invokes it."""
+
+    def test_help_lists_only_explicit_external_deck_choices(self):
+        script = SCRIPT_DIR / "run_external_deck.py"
+        result = subprocess.run(
+            [sys.executable, str(script), "--help"],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("{pspice,ngspice,ltspice,xyce}", result.stdout)
+        self.assertIn("--timeout", result.stdout)
+        self.assertIn("--output", result.stdout)
+        self.assertNotIn("{auto,", result.stdout)
+
+    def test_backend_selector_is_available(self):
+        self.assertTrue(
+            hasattr(run_external_deck, "select_backend"),
+            "external-deck CLI should expose select_backend",
+        )
+
+    def test_missing_deck_is_rejected_before_simulator_discovery(self):
+        script = SCRIPT_DIR / "run_external_deck.py"
+        missing = SCRIPT_DIR / "missing-external-deck.cir"
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(script),
+                str(missing),
+                "--simulator",
+                "pspice",
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("deck is not a file", result.stderr)
+
+    def test_nonpositive_timeout_is_rejected(self):
+        script = SCRIPT_DIR / "run_external_deck.py"
+        with tempfile.TemporaryDirectory() as tmp:
+            deck = Path(tmp) / "synthetic.cir"
+            deck.write_text("* synthetic\n.end\n", encoding="utf-8")
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    str(deck),
+                    "--simulator",
+                    "pspice",
+                    "--timeout",
+                    "0",
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("--timeout must be greater than zero", result.stderr)
+
+
+class TestExternalDeckSelection(unittest.TestCase):
+    """Keep PSpice selection outside the generated-backend registry."""
+
+    def test_pspice_is_constructed_only_for_explicit_request(self):
+        with (
+            patch("run_external_deck.PspiceBackend") as pspice_class,
+            patch("run_external_deck.detect_simulator") as detect,
+        ):
+            pspice_class.return_value.find.return_value = "pspice.exe"
+            selected = run_external_deck.select_backend("pspice")
+
+        self.assertIs(selected, pspice_class.return_value)
+        detect.assert_not_called()
+
+    def test_existing_backend_requests_use_existing_detector(self):
+        expected = object()
+        with (
+            patch("run_external_deck.PspiceBackend") as pspice_class,
+            patch(
+                "run_external_deck.detect_simulator",
+                return_value=expected,
+            ) as detect,
+        ):
+            selected = run_external_deck.select_backend("ngspice")
+
+        self.assertIs(selected, expected)
+        detect.assert_called_once_with("ngspice")
+        pspice_class.assert_not_called()
+
+
+class TestExternalDeckCli(unittest.TestCase):
+    """Verify the standalone JSON and process-exit contract."""
+
+    def setUp(self):
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tempdir.cleanup)
+        self.deck = Path(self.tempdir.name) / "example deck.cir"
+        self.deck.write_text("* synthetic deck\n.end\n", encoding="utf-8")
+
+    @staticmethod
+    def _backend(name, result):
+        calls = []
+
+        def run(deck, timeout):
+            calls.append((deck, timeout))
+            return result
+
+        return SimpleNamespace(name=name, run=run, calls=calls)
+
+    def _run(self, arguments, backend):
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        ticks = iter([10.0, 11.2344])
+        fake_time = SimpleNamespace(perf_counter=lambda: next(ticks))
+        with (
+            patch(
+                "run_external_deck.select_backend",
+                return_value=backend,
+            ),
+            patch.object(
+                run_external_deck,
+                "time",
+                fake_time,
+                create=True,
+            ),
+            redirect_stdout(stdout),
+            redirect_stderr(stderr),
+        ):
+            code = run_external_deck.main(arguments)
+        return code, stdout.getvalue(), stderr.getvalue()
+
+    def _json_stdout(self, stdout):
+        self.assertNotEqual(stdout, "", "CLI should emit result JSON")
+        return json.loads(stdout)
+
+    def test_success_emits_stable_json_and_zero_exit(self):
+        backend = self._backend("pspice", (True, "", ""))
+        code, stdout, stderr = self._run(
+            [
+                str(self.deck),
+                "--simulator",
+                "pspice",
+                "--timeout",
+                "120",
+            ],
+            backend,
+        )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(
+            self._json_stdout(stdout),
+            {
+                "simulator": "pspice",
+                "success": True,
+                "deck": str(self.deck.resolve()),
+                "native_output": str(
+                    self.deck.resolve().with_suffix(".out")
+                ),
+                "elapsed_s": 1.234,
+                "note": "PSpice reported JOB CONCLUDED",
+            },
+        )
+        self.assertEqual(
+            backend.calls,
+            [(str(self.deck.resolve()), 120)],
+        )
+
+    def test_existing_backend_reports_no_invented_native_output(self):
+        backend = self._backend("ngspice", (True, "", ""))
+        code, stdout, _ = self._run(
+            [str(self.deck), "--simulator", "ngspice"],
+            backend,
+        )
+
+        self.assertEqual(code, 0)
+        self.assertIsNone(self._json_stdout(stdout)["native_output"])
+
+    def test_backend_failure_emits_json_stderr_and_nonzero_exit(self):
+        backend = self._backend(
+            "pspice",
+            (
+                False,
+                "",
+                "PSpice completion marker missing: JOB CONCLUDED",
+            ),
+        )
+        code, stdout, stderr = self._run(
+            [str(self.deck), "--simulator", "pspice"],
+            backend,
+        )
+
+        self.assertEqual(code, 1)
+        self.assertFalse(self._json_stdout(stdout)["success"])
+        self.assertIn("completion marker missing", stderr.lower())
+
+    def test_missing_simulator_returns_actionable_failure(self):
+        code, stdout, stderr = self._run(
+            [str(self.deck), "--simulator", "pspice"],
+            None,
+        )
+
+        self.assertEqual(code, 1)
+        self.assertFalse(self._json_stdout(stdout)["success"])
+        self.assertIn("set PSPICE_PATH", stderr)
+
+    def test_output_option_writes_json_file_instead_of_stdout(self):
+        result_path = Path(self.tempdir.name) / "result.json"
+        backend = self._backend("pspice", (True, "", ""))
+        code, stdout, stderr = self._run(
+            [
+                str(self.deck),
+                "--simulator",
+                "pspice",
+                "--output",
+                str(result_path),
+            ],
+            backend,
+        )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stdout, "")
+        self.assertEqual(stderr, "")
+        self.assertTrue(result_path.is_file())
+        self.assertTrue(
+            json.loads(result_path.read_text(encoding="utf-8"))["success"]
+        )
+        self.assertTrue(result_path.read_text(encoding="utf-8").endswith("\n"))
 
 
 class TestPspiceBackendSurface(unittest.TestCase):
