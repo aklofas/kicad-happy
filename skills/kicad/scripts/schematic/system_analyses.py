@@ -2171,6 +2171,30 @@ def analyze_assembly_complexity(components: list[dict]) -> dict:
     return result
 
 
+_TYPE_C_NAME = re.compile(r"(?<![A-Z0-9])(?:USB[_-]?C|TYPE[-_]?C)(?![A-Z0-9])")
+_CC_PIN_NAMES = frozenset(("CC", "CC1", "CC2"))
+
+
+def _connector_pin_names(ctx: AnalysisContext, ref: str) -> set[str]:
+    """Pin names on the symbol (every unit) plus those seen on nets."""
+    names = set()
+    for comp in ctx.components:
+        if comp.get("reference") == ref:
+            names.update(p.get("name") or "" for p in comp.get("pins") or [])
+    for net_name, _ in ctx.ref_pins.get(ref, {}).values():
+        for p in ctx.nets.get(net_name, {}).get("pins", []):
+            if p.get("component") == ref:
+                names.add(p.get("pin_name") or "")
+    return names
+
+
+def _has_cc_pin(pin_names: set[str]) -> bool:
+    # Pin names often prefix the contact (A5/CC1) or subscript the index (CC_{1}).
+    return any(tok in _CC_PIN_NAMES
+               for name in pin_names
+               for tok in re.split(r"[^A-Z0-9]+", name.upper()))
+
+
 def analyze_usb_compliance(ctx: AnalysisContext,
                            signal_analysis: dict) -> dict:
     """USB spec compliance checks.
@@ -2200,11 +2224,12 @@ def analyze_usb_compliance(ctx: AnalysisContext,
         lib = comp.get("lib_id", "").upper()
         combined = val + " " + fp + " " + lib
         if "USB" in combined:
-            is_type_c = any(k in combined for k in ("USB_C", "USBC", "TYPE-C", "TYPE_C", "TYPEC"))
+            has_cc = _has_cc_pin(_connector_pin_names(ctx, ref))
             usb_connectors.append({
                 "ref": ref,
                 "value": comp.get("value", ""),
-                "is_type_c": is_type_c,
+                "is_type_c": has_cc or bool(_TYPE_C_NAME.search(combined)),
+                "has_cc_pins": has_cc,
             })
 
     if not usb_connectors:
@@ -2235,7 +2260,13 @@ def analyze_usb_compliance(ctx: AnalysisContext,
                             break
 
         # --- CC1/CC2 pull-down check (Type-C only) ---
-        if conn["is_type_c"]:
+        if conn["is_type_c"] and not conn["has_cc_pins"]:
+            conn_checks["checks"]["cc_pins"] = "info"
+            conn_checks["usb_c_cc_status"] = {
+                "status": "skipped",
+                "note": "CC pins not on this symbol; CC checks skipped",
+            }
+        elif conn["is_type_c"]:
             _PD_CONTROLLER_KEYWORDS = (
                 "fusb302", "stusb4500", "cypd3177", "husb238",
                 "tps65987", "tps65988", "ccg3", "ccg6",
