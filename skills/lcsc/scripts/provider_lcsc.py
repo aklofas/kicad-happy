@@ -163,15 +163,17 @@ def search_lcsc_direct(lcsc_code: str) -> dict | None:
     elif isinstance(pdf_list, list) and pdf_list:
         pdf_url = pdf_list[0] if isinstance(pdf_list[0], str) else ""
 
+    # The code is the one LCSC answers with, so the identity guard can compare it with the request
+    code = str(result.get("productCode") or "").strip().upper()
     component = {
         "mfr": result.get("productModel") or result.get("modelName") or "",
         "description": result.get("productDescEn") or result.get("description") or "",
         "datasheet": pdf_url,
         "stock": result.get("stockNumber") or result.get("stockCount") or 0,
         "price": result.get("productPriceList"),
-        "lcsc": lcsc_code.lstrip("Cc"),
+        "lcsc": code.lstrip("C"),
         "extra": {
-            "number": lcsc_code.upper(),
+            "number": code,
             "mpn": result.get("productModel") or result.get("modelName") or "",
             "description": result.get("productDescEn") or result.get("description") or "",
             "manufacturer": {
@@ -332,6 +334,7 @@ def sync_one_part(
 
     # jlcsearch does not list every LCSC code; LCSC's own product page does
     if component is None and lcsc_pn:
+        time.sleep(delay)
         direct = search_lcsc_direct(lcsc_pn)
         mismatch = _other(direct, True)
         if mismatch:

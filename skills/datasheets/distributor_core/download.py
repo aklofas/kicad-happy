@@ -6,6 +6,7 @@ Every URL, and every redirect, must be http or https on a public address (see
 ``DOWNLOAD_TIMEOUT_S`` seconds."""
 
 import argparse
+import errno
 import http.client
 import ipaddress
 import math
@@ -90,17 +91,26 @@ def take_transport_failure() -> str | None:
     return failure
 
 
+_NETWORK_ERRNOS = {errno.ENETUNREACH, errno.EHOSTUNREACH, errno.ECONNREFUSED, errno.ECONNRESET,
+                   errno.ETIMEDOUT}
+
+
 def _local_failure(exc: BaseException) -> bool:
     """True for an OSError of this machine (a file the download could not write, a full disk),
     which ``is_transport_error`` would count as the network's."""
     network = (ConnectionError, TimeoutError, socket.gaierror, ssl.SSLError, urllib.error.URLError)
     if _requests is not None:
         network += (_requests.exceptions.RequestException,)
-    return isinstance(exc, OSError) and _http_status(exc) is None and not isinstance(exc, network)
+    return (isinstance(exc, OSError) and _http_status(exc) is None and not isinstance(exc, network)
+            and exc.errno not in _NETWORK_ERRNOS)
 
 
 class DownloadRefused(urllib.error.URLError):
     """A URL or a redirect the download policy does not allow."""
+
+
+class DownloadRedirectLimit(DownloadRefused):
+    """More than ``_MAX_REDIRECTS`` redirects: an answer from the server, not an outage."""
 
 
 class DownloadLimitExceeded(OSError):
@@ -395,6 +405,9 @@ def download_pdf(url: str, output_path: str, *, resolve_redirects: bool = True) 
     if _sync_playwright is not None:
         methods.append(("playwright", _download_playwright))
 
+    # A refusal or an exceeded limit ends the call as permanent: it drops a transport failure an
+    # earlier method of this call recorded, and keeps one recorded before the call.
+    prior_failure = getattr(_transport, "failure", None)
     _call.deadline = time.monotonic() + DOWNLOAD_TIMEOUT_S
     _call.allow_private = allow_private
     try:
@@ -402,9 +415,11 @@ def download_pdf(url: str, output_path: str, *, resolve_redirects: bool = True) 
             try:
                 fetched = fn(url, part_path)
             except DownloadRefused as exc:
+                _transport.failure = prior_failure
                 print(f"Warning: download refused: {url}: {exc.reason}", file=sys.stderr)
                 return False
             except DownloadLimitExceeded as exc:
+                _transport.failure = prior_failure
                 print(f"Warning: download stopped: {url}: {exc}", file=sys.stderr)
                 return False
             except Exception as exc:
@@ -420,7 +435,10 @@ def download_pdf(url: str, output_path: str, *, resolve_redirects: bool = True) 
                         os.chmod(part_path, DEFAULT_FILE_MODE)
                         os.replace(part_path, output_path)
                         size = os.path.getsize(output_path)
-                        print(f"Downloaded {size:,} bytes via {name}: {output_path}")
+                        try:
+                            print(f"Downloaded {size:,} bytes via {name}: {output_path}")
+                        except (OSError, UnicodeError):
+                            pass
                         return True
                     # Not a PDF (probably HTML error page or JS redirect)
                 except OSError:
@@ -469,7 +487,7 @@ def _download_requests(url: str, output_path: str) -> bool:
                 return total > 0
             finally:
                 resp.close()
-    raise urllib.error.URLError(f"more than {_MAX_REDIRECTS} redirects")
+    raise DownloadRedirectLimit(f"more than {_MAX_REDIRECTS} redirects")
 
 
 class _CheckedRedirectHandler(urllib.request.HTTPRedirectHandler):

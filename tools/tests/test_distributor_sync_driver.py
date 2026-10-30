@@ -71,7 +71,8 @@ class Driver(unittest.TestCase):
                 runs[par] = (m["parts"]["NE555P"]["status"], m["parts"]["NE555P"]["error"],
                              m["parts"]["TL072"]["error"])
             self.assertEqual(runs[1], runs[2])
-            self.assertEqual(runs[1][:2], ("error", "network failure, retried next run: TimeoutError: search timed out"))
+            self.assertEqual(runs[1][:2], ("error", "network failure, retried next run: TimeoutError: search timed out;"
+                                                    " distributor said: none"))
             self.assertEqual(runs[1][2], "none")
 
     def test_preflight_error_wins_before_output_dir_is_created(self):

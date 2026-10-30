@@ -18,19 +18,15 @@
       "verification": "verified"
     },
     "PRESENT2": {
-      "file": "PRESENT2.pdf",
       "manufacturer": "Mfg",
-      "description": "Old Desc",
+      "description": "Refreshed desc",
       "value": "PRESENT2",
-      "datasheet_url": "https://example.com/present2.pdf",
-      "downloaded_date": "2026-01-01T00:00:00+00:00",
-      "source": "digikey",
-      "status": "ok",
       "references": [
         "U17"
       ],
-      "size_bytes": 10,
-      "verification": "verified"
+      "status": "not_found",
+      "error": "No Mouser results for 'PRESENT2'",
+      "last_attempt": "2026-10-16T00:00:00+00:00"
     },
     "OUTAGE3": {
       "manufacturer": "Acme",
@@ -40,7 +36,7 @@
         "U18"
       ],
       "status": "error",
-      "error": "network failure, retried next run: ConnectionResetError: fixture transport failure",
+      "error": "network failure, retried next run: ConnectionResetError: fixture transport failure; distributor said: No Mouser results for 'OUTAGE3'",
       "last_attempt": "2026-10-16T00:00:00+00:00"
     }
   }

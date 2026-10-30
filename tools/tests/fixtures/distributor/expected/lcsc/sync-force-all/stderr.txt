@@ -4,7 +4,7 @@ Found 3 unique parts with identifiers (0 skipped without an MPN or LCSC part num
   Trying schematic URL...
   Searching LCSC for 'PRESENT1'...
   Trying alternative sources...
-  ERROR: network failure, retried next run: ConnectionResetError: fixture transport failure
+  ERROR: network failure, retried next run: ConnectionResetError: fixture transport failure; distributor said: No LCSC results for 'PRESENT1'
 [2/3] PRESENT2
   Trying schematic URL...
   Searching LCSC for 'PRESENT2'...
@@ -14,14 +14,14 @@ Found 3 unique parts with identifiers (0 skipped without an MPN or LCSC part num
   Trying schematic URL...
   Searching LCSC for 'OUTAGE3'...
   Trying alternative sources...
-  ERROR: network failure, retried next run: ConnectionResetError: fixture transport failure
+  ERROR: network failure, retried next run: ConnectionResetError: fixture transport failure; distributor said: No LCSC results for 'OUTAGE3'
 
 Datasheet sync complete:
   Downloaded: 0
   Already present: 0
   Failed: 3
-    PRESENT1 — network failure, retried next run: ConnectionResetError: fixture transport failure
+    PRESENT1 — network failure, retried next run: ConnectionResetError: fixture transport failure; distributor said: No LCSC results for 'PRESENT1'
     PRESENT2 — No LCSC results for 'PRESENT2'
-    OUTAGE3 — network failure, retried next run: ConnectionResetError: fixture transport failure
+    OUTAGE3 — network failure, retried next run: ConnectionResetError: fixture transport failure; distributor said: No LCSC results for 'OUTAGE3'
   Skipped (no MPN or LCSC part number): 0
   Output: <WORK>/datasheets/

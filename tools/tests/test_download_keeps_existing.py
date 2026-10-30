@@ -200,9 +200,6 @@ class LcscProviderOutageTest(unittest.TestCase):
         self.assertEqual(m["parts"]["C85364"]["status"], "error")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 def _load_provider(name):
     import importlib
@@ -219,6 +216,10 @@ class _Resp(io.BytesIO):
 
     def __exit__(self, *a):
         return False
+
+
+# Stands in for the requests module when its download method is replaced
+_FAKE_REQUESTS = SimpleNamespace(exceptions=SimpleNamespace(RequestException=type("RequestException", (OSError,), {})))
 
 
 class DownloadTransportNoteTest(unittest.TestCase):
@@ -253,6 +254,69 @@ class DownloadTransportNoteTest(unittest.TestCase):
     def test_http_404_is_not_a_transport_failure(self):
         self.assertIsNone(self._noted(_raiser(urllib.error.HTTPError("u", 404, "Not Found", {}, None))))
 
+    def test_bare_oserror_with_a_network_errno_is_a_transport_failure(self):
+        import errno
+        noted = self._noted(_raiser(OSError(errno.EHOSTUNREACH, "No route to host")))
+        self.assertTrue(noted.startswith("network failure, retried next run: OSError"), noted)
+
+    def _two_methods(self, second, before=None):
+        """requests drops the connection, then urllib ends with ``second``."""
+        from distributor_core import download
+        download.take_transport_failure()
+        if before is not None:
+            download.note_transport_failure(before)
+        with tempfile.TemporaryDirectory() as d, \
+                mock.patch.object(download, "_requests", _FAKE_REQUESTS), \
+                mock.patch.object(download, "_sync_playwright", None), \
+                mock.patch.object(download, "_download_requests",
+                                  _raiser(ConnectionResetError(104, "Connection reset by peer"))), \
+                mock.patch.object(download, "_download_urllib", _raiser(second)), \
+                redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            ok = download.download_pdf("https://example.invalid/x.pdf", os.path.join(d, "x.pdf"))
+        self.assertFalse(ok)
+        return download.take_transport_failure()
+
+    def test_refusal_after_a_dropped_connection_is_permanent(self):
+        from distributor_core import download
+        self.assertIsNone(self._two_methods(download.DownloadRefused("redirect to a private address")))
+
+    def test_limit_after_a_dropped_connection_is_permanent(self):
+        from distributor_core import download
+        self.assertIsNone(self._two_methods(download.DownloadLimitExceeded("larger than 50 MB")))
+
+    def test_refusal_keeps_a_failure_recorded_before_the_download(self):
+        from distributor_core import download
+        noted = self._two_methods(download.DownloadRefused("private"), before=TimeoutError("search timed out"))
+        self.assertEqual(noted, "network failure, retried next run: TimeoutError: search timed out")
+
+    def test_redirect_limit_is_not_a_transport_failure(self):
+        from distributor_core import download
+        resp = SimpleNamespace(status_code=302, headers={"Location": "/again"}, close=lambda: None)
+        fake = SimpleNamespace(get=lambda *a, **k: resp, exceptions=_FAKE_REQUESTS.exceptions)
+        download.take_transport_failure()
+        with tempfile.TemporaryDirectory() as d, \
+                mock.patch.object(download, "_requests", fake), \
+                mock.patch.object(download, "_sync_playwright", None), \
+                mock.patch.object(download, "_download_urllib", _writer(GOOD)), \
+                redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            ok = download.download_pdf("https://example.invalid/x.pdf", os.path.join(d, "x.pdf"))
+        self.assertFalse(ok)  # the redirect limit ends the call, as a refused redirect does
+        self.assertIsNone(download.take_transport_failure())
+
+    def test_unprintable_path_does_not_fail_a_download(self):
+        from distributor_core import download
+
+        class Ascii(io.StringIO):
+            def write(self, text):
+                text.encode("ascii")
+                return super().write(text)
+        with tempfile.TemporaryDirectory() as d, \
+                mock.patch.object(download, "_requests", None), \
+                mock.patch.object(download, "_sync_playwright", None), \
+                mock.patch.object(download, "_download_urllib", _writer(GOOD)), \
+                redirect_stdout(Ascii()):
+            self.assertTrue(download.download_pdf("https://example.invalid/x.pdf", os.path.join(d, "µ.pdf")))
+
 
 def _failed(part, outage=None):
     from distributor_core.download import note_transport_failure
@@ -280,21 +344,38 @@ class SyncDownloadFailureTest(unittest.TestCase):
             _, m = self._sync(d, _provider(lambda p, *a: _failed(p)))
             self.assertEqual(m["parts"]["LM358DR"]["status"], "failed")
 
+    OK = {"file": "LM358DR.pdf", "status": "ok", "datasheet_url": "https://x/old.pdf",
+          "references": ["U1"], "size_bytes": len(GOOD)}
+
+    def _force_all(self, d, outcome):
+        out = Path(d) / "out"
+        out.mkdir()
+        (out / "LM358DR.pdf").write_bytes(GOOD)
+        (out / "manifest.json").write_text(json.dumps({"parts": {"LM358DR": self.OK}}), encoding="utf-8")
+        r, m = self._sync(d, _provider(outcome), force_all=True)
+        self.assertEqual((out / "LM358DR.pdf").read_bytes(), GOOD)
+        self.assertEqual(r["failed"], 1)
+        return m["parts"]["LM358DR"]
+
     def test_force_all_failed_refresh_keeps_a_present_ok_entry(self):
-        for outcome in (_failed, _not_found):
-            with self.subTest(outcome=outcome.__name__), tempfile.TemporaryDirectory() as d:
-                out = Path(d) / "out"
-                out.mkdir()
-                (out / "LM358DR.pdf").write_bytes(GOOD)
-                ok = {"file": "LM358DR.pdf", "status": "ok", "datasheet_url": "https://x/old.pdf",
-                      "references": ["U1"], "size_bytes": len(GOOD)}
-                (out / "manifest.json").write_text(json.dumps({"parts": {"LM358DR": ok}}), encoding="utf-8")
-                r, m = self._sync(d, _provider(lambda p, *a: outcome(p)), force_all=True)
-                self.assertEqual(m["parts"]["LM358DR"], ok)
-                self.assertEqual((out / "LM358DR.pdf").read_bytes(), GOOD)
-                self.assertEqual(r["failed"], 1)
-                self.assertIn("LM358DR — " + outcome(
-                    {"value": "", "references": []})["error"], self.stderr.getvalue())
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(self._force_all(d, lambda p, *a: _failed(p)), self.OK)
+            self.assertIn("LM358DR — All download methods failed", self.stderr.getvalue())
+
+    def test_force_all_real_answer_replaces_the_ok_entry(self):
+        def no_datasheet(p, *a):
+            return {**_not_found(p), "status": "no_datasheet", "error": "listing has no datasheet URL"}
+        for outcome, status in ((lambda p, *a: _not_found(p), "not_found"), (no_datasheet, "no_datasheet")):
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as d:
+                self.assertEqual(self._force_all(d, outcome)["status"], status)
+
+    def test_outage_keeps_the_distributors_own_message(self):
+        outage = ConnectionResetError(104, "Connection reset by peer")
+        with tempfile.TemporaryDirectory() as d:
+            _, m = self._sync(d, _provider(lambda p, *a: _failed(p, outage)))
+        self.assertEqual(m["parts"]["LM358DR"]["error"],
+                         "network failure, retried next run: ConnectionResetError: [Errno 104] "
+                         "Connection reset by peer; distributor said: All download methods failed")
 
     def test_missing_file_is_not_kept(self):
         with tempfile.TemporaryDirectory() as d:
@@ -306,14 +387,14 @@ class SyncDownloadFailureTest(unittest.TestCase):
             self.assertEqual(m["parts"]["LM358DR"]["status"], "failed")
 
 
-WMSC_DETAIL = {"result": {"productModel": "CL05A106MQ5NUNC", "productDescEn": "10uF 6.3V X5R 0402",
+WMSC_DETAIL = {"result": {"productCode": "C15525", "productModel": "CL05A106MQ5NUNC", "productDescEn": "10uF 6.3V X5R 0402",
                           "brandNameEn": "Samsung", "pdfUrl": "https://example.com/C15525.pdf"}}
 
 
 class LcscDirectLookupTest(unittest.TestCase):
     """A code jlcsearch does not list is looked up on LCSC's own product page."""
 
-    def _sync(self, wmsc):
+    def _sync(self, wmsc, mpn=""):
         prov = _load_provider("lcsc")
         from distributor_core.sync import sync_datasheets
         calls = []
@@ -335,7 +416,7 @@ class LcscDirectLookupTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as d:
             bom = Path(d) / "bom.json"
-            bom.write_text(json.dumps({"bom": [{"mpn": "", "lcsc": "C15525", "references": ["C11", "C12"],
+            bom.write_text(json.dumps({"bom": [{"mpn": mpn, "lcsc": "C15525", "references": ["C11", "C12"],
                                                 "value": "10uF", "type": "capacitor"}]}), encoding="utf-8")
             with mock.patch.object(prov.urllib.request, "urlopen", urlopen), \
                     mock.patch.object(prov, "download_pdf", download), \
@@ -344,7 +425,7 @@ class LcscDirectLookupTest(unittest.TestCase):
                     redirect_stderr(io.StringIO()), redirect_stdout(io.StringIO()):
                 sync_datasheets(prov, input_path=str(bom), output_dir=str(Path(d) / "out"), delay=0)
             m = json.loads((Path(d) / "out" / "manifest.json").read_text(encoding="utf-8"))
-        return m["parts"]["C15525"], calls
+        return m["parts"][mpn or "C15525"], calls
 
     def test_code_jlcsearch_lacks_is_found_by_direct_lookup(self):
         entry, calls = self._sync(lambda: _Resp(json.dumps(WMSC_DETAIL).encode()))
@@ -361,6 +442,20 @@ class LcscDirectLookupTest(unittest.TestCase):
         entry, _ = self._sync(refuse)
         self.assertEqual(entry["status"], "error")
         self.assertIn("network failure", entry["error"])
+
+    def test_direct_lookup_answering_another_code_is_not_found(self):
+        other = {"result": {**WMSC_DETAIL["result"], "productCode": "C15849"}}
+        entry, _ = self._sync(lambda: _Resp(json.dumps(other).encode()))
+        self.assertEqual(entry["status"], "not_found")
+        self.assertIn("(closest: 'C15849', a different part)", entry["error"])
+
+    def test_direct_lookup_without_a_code_is_checked_by_mpn(self):
+        no_code = {"result": {k: v for k, v in WMSC_DETAIL["result"].items() if k != "productCode"}}
+        entry, _ = self._sync(lambda: _Resp(json.dumps(no_code).encode()), mpn="GRM155R60J106ME15D")
+        self.assertEqual(entry["status"], "not_found")
+        self.assertIn("(closest: 'CL05A106MQ5NUNC', a different part)", entry["error"])
+        entry, _ = self._sync(lambda: _Resp(json.dumps(no_code).encode()), mpn="CL05A106MQ5NUNC")
+        self.assertEqual(entry["status"], "ok")
 
     def test_direct_lookup_with_no_product_stays_not_found(self):
         entry, _ = self._sync(lambda: _Resp(json.dumps({"result": None}).encode()))
@@ -442,3 +537,7 @@ class Element14SearchLadderTest(unittest.TestCase):
         self.assertEqual(r["status"], "ok")
         self.assertEqual(r["datasheet_url"], "https://example.com/bme280.pdf")
         self.assertEqual(terms, ["manuPartNum:94AK6874", "id:94AK6874"])
+
+
+if __name__ == "__main__":
+    unittest.main()

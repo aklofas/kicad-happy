@@ -9,7 +9,7 @@ thread pool, records each outcome in ``manifest.json`` and prints the summary.
 
 A ``not_found`` or ``failed`` whose search or download failed in transport
 (``distributor_core.download`` records it) is stored as ``error`` so the next run retries it, and
-a failed refresh keeps an ``ok`` entry whose file is still on disk.
+an outage or failed download keeps an ``ok`` entry whose file is still on disk.
 
 Imports ``distributor_core.inputs``/``manifest``/``download`` and the stdlib only; never a provider.
 """
@@ -40,12 +40,16 @@ from distributor_core.manifest import (
 def _outage_entry(result: dict, previous: dict, out_dir: Path) -> tuple[dict, dict]:
     """(entry to store, result to report) for one part. A ``not_found`` or ``failed`` caused by
     a network failure, a rate limit or refused access is not an answer: report it as ``error``
-    (not a skipped previous failure, so the next run retries). Any result other than ``ok``
-    keeps a previous ``ok`` entry whose file is still on disk."""
+    (not a skipped previous failure, so the next run retries), with the distributor's own message
+    after it. An ``error`` or ``failed`` result keeps a previous ``ok`` entry whose file is still
+    on disk; any other result replaces it."""
     outage = take_transport_failure()
     if outage is not None and result.get("status") in ("not_found", "failed"):
-        result = {**result, "status": "error", "error": outage}
-    if result.get("status") == "ok":
+        said = result.get("error")
+        result = {**result, "status": "error",
+                  "error": f"{outage}; distributor said: {said}" if said else outage}
+    # A real answer (not_found, a different part, no datasheet) replaces the entry
+    if result.get("status") not in ("error", "failed"):
         return result, result
     prev_file = manifest_file_path(out_dir, previous.get("file", ""))
     if previous.get("status") == "ok" and prev_file is not None and prev_file.is_file():
