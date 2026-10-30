@@ -123,7 +123,7 @@ Three operation types are counted:
 
 ### 2.8 Coordinate Range
 
-Every `X...Y...` coordinate in the file updates a running min/max bounding box. This is used later for layer alignment checking and board dimension estimation. Coordinates are divided by the format's decimal precision to get real-world values.
+Every coordinate in the file (modal X/Y, with or without a leading `G01`/`G02`/`G03`) updates a running min/max bounding box, in millimetres: coordinates are divided by the format's decimal precision and inch files (`%MOIN*%`) are multiplied by 25.4. An arc under `G75` adds the axis extremes it sweeps, and an arc whose start equals its end is a full circle. The box is used later for layer alignment checking and board dimension estimation.
 
 ### 2.9 Aperture Analysis Summary
 
@@ -262,14 +262,14 @@ A board is `"complete": true` only when all required layers are present and a PT
 
 ### 6.3 Layer Alignment
 
-`check_alignment()` checks that copper and edge layers have consistent coordinate ranges.
+`check_alignment()` checks that every copper layer lies inside the board outline.
 
 **Method:**
-1. Compute width and height from the coordinate bounding box of each identified layer
-2. Compare copper layers (F.Cu, B.Cu, inner copper) and Edge.Cuts
-3. Flag as misaligned if width or height varies by more than **2.0 mm** across these layers
+1. Record the width and height (mm) of the coordinate bounding box of each identified layer and drill file in `layer_extents`
+2. Take the Edge.Cuts bounding box (the union when there are several outline files); with no Edge.Cuts there is nothing to check
+3. Flag each copper layer (F.Cu, B.Cu, inner copper) whose box extends past the outline box by more than **max(2 mm, 5 % of that side)**: `"<layer> extends <d>mm outside the board outline"` (GR-002)
 
-The 2mm threshold is generous — any real misalignment would produce offsets much larger than normal coordinate range variation. Drill file extents are recorded but not included in the alignment check (drill coordinate ranges are often slightly different due to pad-center vs edge-of-trace differences).
+Layers of one export are registered by construction and need not have the same size: copper rarely reaches the board edge. Copper outside the board profile is what a fab rejects (KiCad DRC `copper_edge_clearance`). A pure shift smaller than the tolerance is not reported. Drill file extents are recorded but not compared: drill files from other tools often use another origin or unit.
 
 ### 6.4 Board Dimensions
 

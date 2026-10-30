@@ -9,7 +9,7 @@ Parses Gerber RS-274X files and Excellon drill files to extract:
 - Board dimensions (from Edge.Cuts extents or .gbrjob)
 - Drill hole sizes, counts, and classification (via / component / mounting)
 - Layer completeness verification (against .gbrjob expected list or defaults)
-- Layer alignment (coordinate range consistency)
+- Layer alignment (copper inside the board outline)
 - Inner copper layer detection (4+ layer boards)
 - .gbrjob metadata (stackup, design rules, board specs)
 - SMD vs THT pad analysis, minimum feature size
@@ -20,6 +20,7 @@ Usage:
 
 import errno
 import json
+import math
 import os
 import re
 import sys
@@ -167,6 +168,74 @@ def _gerber_unescape(s: str) -> str:
     return "".join(out)
 
 
+_GERBER_WORD_COORDS = re.compile(
+    r"(?:X([+-]?\d+))?(?:Y([+-]?\d+))?(?:I([+-]?\d+))?(?:J([+-]?\d+))?(?:D0*(\d+))?")
+
+
+def _extend_extents(s: str, st: dict, x_div: float, y_div: float, scale: float, cr: dict) -> None:
+    """Grow the coordinate box (mm) by the operations in one Gerber line.
+
+    Coordinates are modal; an arc (``G02``/``G03`` under ``G75``) adds the axis
+    extremes it sweeps, and start == end is a full circle (Gerber spec 4.7).
+    ``G74`` arcs span at most a quadrant, so their end points bound them.
+    """
+    if s.startswith("%"):
+        return
+    for word in s.split("*"):
+        word = word.strip()
+        if not word or re.match(r"G0*4(?!\d)", word):
+            continue
+        g = re.match(r"G0*(\d+)", word)
+        while g:
+            code = int(g.group(1))
+            if code in (1, 2, 3):
+                st["mode"] = code
+            elif code == 74:
+                st["multi"] = False
+            elif code == 75:
+                st["multi"] = True
+            word = word[g.end():]
+            g = re.match(r"G0*(\d+)", word)
+        m = _GERBER_WORD_COORDS.fullmatch(word)
+        if not m or not word:
+            continue
+        if m.group(5):
+            d = int(m.group(5))
+            if d in (1, 2, 3):
+                st["op"] = d
+        if m.group(1) is None and m.group(2) is None:
+            continue
+        px, py = st["x"], st["y"]
+        x = int(m.group(1)) / x_div * scale if m.group(1) is not None else px
+        y = int(m.group(2)) / y_div * scale if m.group(2) is not None else py
+        st["x"], st["y"] = x, y
+        if x is None or y is None:
+            continue
+        pts = [(x, y)]
+        if (st["op"] == 1 and st["mode"] in (2, 3) and st["multi"] and px is not None
+                and py is not None and (m.group(3) is not None or m.group(4) is not None)):
+            cx = px + (int(m.group(3)) / x_div * scale if m.group(3) is not None else 0.0)
+            cy = py + (int(m.group(4)) / y_div * scale if m.group(4) is not None else 0.0)
+            r = math.hypot(px - cx, py - cy)
+            a0 = math.atan2(py - cy, px - cx)
+            ccw = st["mode"] == 3
+            if (x, y) == (px, py):
+                sweep = 2 * math.pi
+            else:
+                a1 = math.atan2(y - cy, x - cx)
+                sweep = (a1 - a0) % (2 * math.pi) if ccw else (a0 - a1) % (2 * math.pi)
+            for k, (qx, qy) in enumerate(((cx + r, cy), (cx, cy + r), (cx - r, cy), (cx, cy - r))):
+                ang = k * math.pi / 2
+                dist = (ang - a0) % (2 * math.pi) if ccw else (a0 - ang) % (2 * math.pi)
+                if dist <= sweep:
+                    pts.append((qx, qy))
+        for qx, qy in pts:
+            if qx < cr["x_min"]: cr["x_min"] = qx
+            if qx > cr["x_max"]: cr["x_max"] = qx
+            if qy < cr["y_min"]: cr["y_min"] = qy
+            if qy > cr["y_max"]: cr["y_max"] = qy
+
+
 def parse_gerber(path: str) -> dict:
     """Parse a single Gerber RS-274X file with full X2 object attribute extraction.
 
@@ -230,6 +299,8 @@ def parse_gerber(path: str) -> dict:
 
     x_div = 10 ** result["format"]["x_decimal"] if result["format"] else 1e6
     y_div = 10 ** result["format"]["y_decimal"] if result["format"] else 1e6
+    mm_scale = 25.4 if result["units"] == "inch" else 1.0
+    extent_state = {"x": None, "y": None, "mode": 1, "multi": True, "op": None}
 
     # Aperture function tracking (TA precedes AD, TD clears)
     pending_aper_function = None
@@ -391,16 +462,7 @@ def parse_gerber(path: str) -> dict:
             if current_net:
                 net_draw_counts[current_net] = net_draw_counts.get(current_net, 0) + 1
 
-        # -- Coordinate extraction --
-        cm = re.match(r"X(-?\d+)Y(-?\d+)", s)
-        if cm:
-            x = int(cm.group(1)) / x_div
-            y = int(cm.group(2)) / y_div
-            cr = result["coordinate_range"]
-            if x < cr["x_min"]: cr["x_min"] = x
-            if x > cr["x_max"]: cr["x_max"] = x
-            if y < cr["y_min"]: cr["y_min"] = y
-            if y > cr["y_max"]: cr["y_max"] = y
+        _extend_extents(s, extent_state, x_div, y_div, mm_scale, result["coordinate_range"])
 
     # Fix infinite values if no coordinates found
     for key in result["coordinate_range"]:
@@ -1029,8 +1091,15 @@ def check_completeness(gerbers: list[dict], drills: list[dict],
 
 
 def check_alignment(gerbers: list[dict], drills: list[dict]) -> dict:
-    """Check that all layers have consistent coordinate ranges."""
+    """Check that every copper layer lies inside the board outline.
+
+    Layers of one export are registered by construction and need not reach the
+    board edge; copper outside the Edge.Cuts extent (mm) by more than
+    max(2 mm, 5 % of that side) is reported. Drill extents are recorded but not
+    compared: drill files from other tools often use another origin or unit.
+    """
     ranges = {}
+    boxes = {}
     for g in gerbers:
         lt = g.get("layer_type", "unknown")
         if lt != "unknown":
@@ -1039,6 +1108,14 @@ def check_alignment(gerbers: list[dict], drills: list[dict]) -> dict:
                 "width": round(cr["x_max"] - cr["x_min"], 3),
                 "height": round(cr["y_max"] - cr["y_min"], 3),
             }
+            if ((lt == "Edge.Cuts" or lt in ("F.Cu", "B.Cu") or (lt.startswith("In") and lt.endswith(".Cu")))
+                    and (cr["x_max"] > cr["x_min"] or cr["y_max"] > cr["y_min"])):
+                box = (cr["x_min"], cr["y_min"], cr["x_max"], cr["y_max"])
+                if lt == "Edge.Cuts" and lt in boxes:
+                    # Several outline files (e.g. .gbr and .gko) all bound the board.
+                    e = boxes[lt]
+                    box = (min(e[0], box[0]), min(e[1], box[1]), max(e[2], box[2]), max(e[3], box[3]))
+                boxes[lt] = box
     for d in drills:
         if "coordinate_range" not in d:  # unreadable file
             continue
@@ -1048,27 +1125,22 @@ def check_alignment(gerbers: list[dict], drills: list[dict]) -> dict:
             "height": round(cr["y_max"] - cr["y_min"], 3),
         }
 
-    alignment_layers = {k: v for k, v in ranges.items()
-                        if k in ("F.Cu", "B.Cu", "Edge.Cuts") or
-                        (k.startswith("In") and k.endswith(".Cu"))}
-    widths = [r["width"] for r in alignment_layers.values() if r["width"] > 0]
-    heights = [r["height"] for r in alignment_layers.values() if r["height"] > 0]
-
-    # Use relative threshold: 5% of Edge.Cuts dimension, minimum 2.0mm
-    edge = alignment_layers.get("Edge.Cuts")
-    threshold_w = max(2.0, edge["width"] * 0.05) if edge and edge["width"] > 0 else 2.0
-    threshold_h = max(2.0, edge["height"] * 0.05) if edge and edge["height"] > 0 else 2.0
-
-    aligned = True
     issues = []
-    if widths and max(widths) - min(widths) > threshold_w:
-        aligned = False
-        issues.append(f"Width varies by {max(widths) - min(widths):.1f}mm across copper/edge layers")
-    if heights and max(heights) - min(heights) > threshold_h:
-        aligned = False
-        issues.append(f"Height varies by {max(heights) - min(heights):.1f}mm across copper/edge layers")
+    edge = boxes.get("Edge.Cuts")
+    if edge:
+        tol_x = max(2.0, (edge[2] - edge[0]) * 0.05)
+        tol_y = max(2.0, (edge[3] - edge[1]) * 0.05)
+        for lt in sorted(boxes):
+            if lt == "Edge.Cuts":
+                continue
+            b = boxes[lt]
+            dx = max(edge[0] - b[0], b[2] - edge[2], 0.0)
+            dy = max(edge[1] - b[1], b[3] - edge[3], 0.0)
+            out = max(dx if dx > tol_x else 0.0, dy if dy > tol_y else 0.0)
+            if out > 0:
+                issues.append(f"{lt} extends {out:.1f}mm outside the board outline")
 
-    return {"aligned": aligned, "issues": issues, "layer_extents": ranges}
+    return {"aligned": not issues, "issues": issues, "layer_extents": ranges}
 
 
 def compute_board_dimensions(gerbers: list[dict], job_info: dict | None) -> dict:
@@ -1085,10 +1157,6 @@ def compute_board_dimensions(gerbers: list[dict], job_info: dict | None) -> dict
             cr = g["coordinate_range"]
             w = cr["x_max"] - cr["x_min"]
             h = cr["y_max"] - cr["y_min"]
-            # Convert inches to mm if gerber uses MOIN units
-            if g.get("units") == "inch":
-                w *= 25.4
-                h *= 25.4
             if w > 0 and h > 0:
                 return {"width_mm": round(w, 2), "height_mm": round(h, 2),
                         "area_mm2": round(w * h, 1), "source": "edge_cuts_extents"}
@@ -1458,7 +1526,7 @@ def _gerber_drill(g: dict) -> dict:
         "units": g.get("units"),
         "tools": tools,
         "hole_count": holes,
-        "coordinate_range": {k: v * scale for k, v in g["coordinate_range"].items()},
+        "coordinate_range": dict(g["coordinate_range"]),
         "x2_attributes": g["x2_attributes"],
     }
     if ff.startswith("NonPlated"):
@@ -1478,7 +1546,8 @@ def _is_excellon_file(path: Path) -> bool:
     try:
         with open(path, "r", encoding="utf-8", errors="replace") as f:
             head = f.read(1024)
-        return "M48" in head or re.search(r"T\d+C\d", head) is not None
+        return re.search(r"(?m)^\ufeff?[ \t]*M48(?!\d)", head) is not None \
+            or re.search(r"T\d+C\d", head) is not None
     except (OSError, UnicodeDecodeError):
         return False
 
@@ -1842,7 +1911,7 @@ def _build_gerber_findings(completeness, alignment, drill_classification,
             'components': [],
             'nets': [],
             'pins': [],
-            'recommendation': 'Re-export gerbers to ensure consistent layer alignment.',
+            'recommendation': 'Check the copper past the board edge: re-export every layer from the same board and origin, or move the copper inside the outline.',
             'report_context': {'section': 'Gerber Alignment', 'impact': 'Layer misregistration', 'standard_ref': ''},
         })
 
