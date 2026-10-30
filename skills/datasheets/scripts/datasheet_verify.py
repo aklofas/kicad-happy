@@ -8,7 +8,6 @@ Requires datasheets/extracted/ cache populated by the LLM extraction
 pipeline (via sync_datasheets_digikey + Claude extraction).
 """
 
-import json
 import os
 import re
 import sys
@@ -61,8 +60,7 @@ def _load_extraction(extract_dir: str, mpn: str) -> dict:
         idx_path = os.path.join(extract_dir, "index.json")
     if os.path.isfile(idx_path):
         try:
-            with open(idx_path, encoding="utf-8") as f:
-                idx = json.load(f)
+            idx = read_json_object(idx_path) or {}
             entries = idx.get("extractions", {})
             for k, v in entries.items():
                 if not isinstance(v, dict):
@@ -245,15 +243,11 @@ def _quality_finding(mpn, extraction):
 
 
 def _resolve_extract_dir(project_dir: str) -> str:
-    """Find the datasheets/extracted/ directory for a project."""
-    candidates = [
-        os.path.join(project_dir, "datasheets", "extracted"),
-        os.path.join(os.path.dirname(project_dir), "datasheets", "extracted"),
-    ]
-    for c in candidates:
-        if os.path.isdir(c):
-            return c
-    return ""
+    """The project's own datasheets/extracted/ directory, or "" when absent.
+    The parent folder is not searched: for a project in a shared temp dir it
+    could hold extractions planted by another user."""
+    c = os.path.join(project_dir, "datasheets", "extracted")
+    return c if os.path.isdir(c) else ""
 
 
 def _estimate_net_voltage(net_name: str, rail_voltages: dict) -> float:

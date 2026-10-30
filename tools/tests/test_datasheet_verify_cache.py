@@ -74,6 +74,69 @@ class LoadExtraction(unittest.TestCase):
             self.assertEqual(dv._load_extraction(d, "Z"), {})
 
 
+def ic_analysis(mpn="LM358"):
+    return {"components": [{"reference": "U1", "type": "ic", "value": mpn, "mpn": mpn, "pin_nets": {}}],
+            "nets": {}, "rail_voltages": {}}
+
+
+class ExtractDirResolution(unittest.TestCase):
+    def test_shared_sticky_parent_cache_is_not_read(self):
+        with tempfile.TemporaryDirectory() as t:
+            os.chmod(t, 0o1777)
+            proj = Path(t) / "proj"; proj.mkdir()
+            cache.cache_extraction(str(Path(t) / "datasheets" / "extracted"), "LM358", lm358(9.0))
+            out = dv.run_datasheet_verification(ic_analysis(), project_dir=str(proj))
+            self.assertEqual(out["summary"].get("ics_with_extractions", 0), 0)
+            self.assertEqual(out["findings"], [])
+            self.assertEqual(dv._resolve_extract_dir(str(proj)), "")
+
+    def test_project_own_cache_is_found(self):
+        with tempfile.TemporaryDirectory() as t:
+            proj = Path(t) / "proj"
+            cache.cache_extraction(str(proj / "datasheets" / "extracted"), "LM358", lm358(9.0))
+            out = dv.run_datasheet_verification(ic_analysis(), project_dir=str(proj))
+            self.assertEqual(out["summary"]["ics_with_extractions"], 1)
+
+    def test_symlinked_manifest_is_not_read(self):
+        with tempfile.TemporaryDirectory() as t:
+            d = Path(t) / "extracted"; d.mkdir()
+            (d / "M1_abc123.json").write_text('{"mpn": "M1", "pins": []}', encoding="utf-8")
+            real = Path(t) / "real_manifest.json"
+            real.write_text(json.dumps({"extractions": {"M1_abc123": {"mpn": "M1", "file": "M1_abc123.json"}}}),
+                            encoding="utf-8")
+            try:
+                os.symlink(real, d / "manifest.json")
+            except (OSError, NotImplementedError):
+                self.skipTest("symlinks unavailable")
+            self.assertEqual(dv._load_extraction(str(d), "M1"), {})
+
+    def test_oversized_manifest_is_not_read(self):
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, "M1_abc123.json").write_text('{"mpn": "M1", "pins": []}', encoding="utf-8")
+            Path(d, "manifest.json").write_text(json.dumps(
+                {"extractions": {"M1_abc123": {"mpn": "M1", "file": "M1_abc123.json"}},
+                 "pad": "x" * (dv.MAX_EXTRACTION_BYTES + 1)}), encoding="utf-8")
+            self.assertEqual(dv._load_extraction(d, "M1"), {})
+
+
+@unittest.skipUnless(BUCK.is_dir(), "local-only: needs the corpus (set KH_CORPUS)")
+class SharedParentBoard(unittest.TestCase):
+    def test_schematic_in_shared_dir_gets_no_verification(self):
+        with tempfile.TemporaryDirectory() as t:
+            os.chmod(t, 0o1777)
+            proj = Path(t) / "hw"
+            shutil.copytree(BUCK, proj)
+            shutil.rmtree(proj / "datasheets", ignore_errors=True)
+            cache.cache_extraction(str(Path(t) / "datasheets" / "extracted"), "LM358", lm358(9.0))
+            env = {k: v for k, v in os.environ.items() if not k.startswith(("DIGIKEY_", "MOUSER_", "ELEMENT14_"))}
+            env["PYTHONDONTWRITEBYTECODE"] = "1"
+            out = Path(t) / "out.json"
+            subprocess.run([sys.executable, str(ROOT / "skills/kicad/scripts/analyze_schematic.py"),
+                            str(proj / "buck_converter.kicad_sch"), "--output", str(out)],
+                           env=env, capture_output=True, timeout=300, check=True, cwd=t)
+            self.assertNotIn("datasheet_verification", json.loads(out.read_text(encoding="utf-8")))
+
+
 class Quality(unittest.TestCase):
     def test_extraction_metadata_score_is_read(self):
         f = dv._quality_finding("LM358", lm358(4.0))
