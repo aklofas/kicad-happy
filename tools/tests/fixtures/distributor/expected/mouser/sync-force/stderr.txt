@@ -1,5 +1,5 @@
 Analyzing bom.schematic.json...
-Found 11 unique parts with MPNs (6 skipped without MPN)
+Found 11 unique parts with MPNs (5 skipped without an MPN or Mouser part number)
 [1/4] NODATA1234
   Searching Mouser for 'NODATA1234'...
   Scraping product page for datasheet link...
@@ -27,5 +27,5 @@ Datasheet sync complete:
     MISSING9999 — No Mouser results for 'MISSING9999'
     FAILALL77 — https://www.mouser.com/datasheet/2/fixture/failall.pdf
     PREVFAIL3 — No Mouser results for 'PREVFAIL3'
-  Skipped (no MPN): 6
+  Skipped (no MPN or Mouser part number): 5
   Output: <WORK>/datasheets/

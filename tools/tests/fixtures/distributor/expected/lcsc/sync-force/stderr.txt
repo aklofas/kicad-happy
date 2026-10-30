@@ -1,5 +1,5 @@
 Analyzing bom.schematic.json...
-Found 11 unique parts with identifiers (6 skipped without any identifier)
+Found 11 unique parts with identifiers (5 skipped without an MPN or LCSC part number)
 [1/4] NODATA1234
   Searching LCSC for 'NODATA1234'...
   Trying alternative sources...
@@ -26,5 +26,5 @@ Datasheet sync complete:
     MISSING9999 — No LCSC results for 'MISSING9999'
     FAILALL77 — No datasheet URL or all download methods failed
     PREVFAIL3 — No LCSC results for 'PREVFAIL3'
-  Skipped (no identifier): 6
+  Skipped (no MPN or LCSC part number): 5
   Output: <WORK>/datasheets/

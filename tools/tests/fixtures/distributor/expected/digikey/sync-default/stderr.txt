@@ -1,5 +1,5 @@
 Analyzing bom.schematic.json...
-Found 11 unique parts with part numbers (6 skipped without any identifier)
+Found 11 unique parts with part numbers (5 skipped without an MPN or DigiKey part number)
   Renamed: PRESENT1.pdf -> PRESENT1_Old_Desc.pdf
 [1/9] TPS61023DRLR
   Trying schematic URL...
@@ -51,7 +51,7 @@ Datasheet sync complete:
     MISSING9999 — No DigiKey results for 'MISSING9999'
     FAILALL77 — https://www.digikey.com/fixture/failall.pdf
   Skipped (previous failures, use --force): 1
-  Skipped (no identifier): 6
+  Skipped (no MPN or DigiKey part number): 5
   Output: <WORK>/datasheets/
 
   Tip: Try LCSC or element14 sync to fill gaps — they share the same datasheets/ directory and skip already-downloaded parts.

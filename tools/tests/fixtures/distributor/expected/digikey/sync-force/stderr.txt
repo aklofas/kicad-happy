@@ -1,5 +1,5 @@
 Analyzing bom.schematic.json...
-Found 11 unique parts with part numbers (6 skipped without any identifier)
+Found 11 unique parts with part numbers (5 skipped without an MPN or DigiKey part number)
   Renamed: REALMPN123_Buck_regulator_1A.pdf -> 296-1234-ND_Buck_regulator_1A.pdf
 [1/4] NODATA1234
   Searching DigiKey for 'NODATA1234'...
@@ -24,7 +24,7 @@ Datasheet sync complete:
     MISSING9999 — No DigiKey results for 'MISSING9999'
     FAILALL77 — https://www.digikey.com/fixture/failall.pdf
     PREVFAIL3 — No DigiKey results for 'PREVFAIL3'
-  Skipped (no identifier): 6
+  Skipped (no MPN or DigiKey part number): 5
   Output: <WORK>/datasheets/
 
   Tip: Try LCSC or element14 sync to fill gaps — they share the same datasheets/ directory and skip already-downloaded parts.

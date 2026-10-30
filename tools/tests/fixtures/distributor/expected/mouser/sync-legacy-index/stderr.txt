@@ -1,5 +1,5 @@
 Analyzing bom.schematic.json...
-Found 11 unique parts with MPNs (6 skipped without MPN)
+Found 11 unique parts with MPNs (5 skipped without an MPN or Mouser part number)
 [1/10] TPS61023DRLR
   Trying schematic URL...
   OK: TPS61023DRLR_Boost_Converter.pdf (84 bytes)
@@ -58,5 +58,5 @@ Datasheet sync complete:
     FAILALL77 — https://www.mouser.com/datasheet/2/fixture/failall.pdf
     PRESENT1 — No Mouser results for 'PRESENT1'
   Skipped (previous failures, use --force): 1
-  Skipped (no MPN): 6
+  Skipped (no MPN or Mouser part number): 5
   Output: <WORK>/datasheets/

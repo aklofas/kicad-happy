@@ -1,2 +1,2 @@
 Analyzing bom.schematic.json...
-Found 11 unique parts with identifiers (6 skipped without any identifier)
+Found 11 unique parts with identifiers (5 skipped without an MPN or element14 part number)

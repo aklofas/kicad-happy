@@ -1,2 +1,2 @@
 Analyzing simple.kicad_sch...
-Found 2 unique parts with part numbers (2 skipped without any identifier)
+Found 2 unique parts with part numbers (1 skipped without an MPN or DigiKey part number)

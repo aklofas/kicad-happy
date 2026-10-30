@@ -1,5 +1,5 @@
 Analyzing bom.schematic.json...
-Found 11 unique parts with identifiers (6 skipped without any identifier)
+Found 11 unique parts with identifiers (5 skipped without an MPN or LCSC part number)
 [1/10] TPS61023DRLR
   Trying schematic URL...
   OK: TPS61023DRLR_Boost_Converter.pdf (84 bytes)
@@ -57,5 +57,5 @@ Datasheet sync complete:
     FAILALL77 — No datasheet URL or all download methods failed
     PRESENT1 — No LCSC results for 'PRESENT1'
   Skipped (previous failures, use --force): 1
-  Skipped (no identifier): 6
+  Skipped (no MPN or LCSC part number): 5
   Output: <WORK>/datasheets/

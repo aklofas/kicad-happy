@@ -5,5 +5,5 @@
   ],
   "already_present": [],
   "skipped_previous_failures": [],
-  "skipped_no_identifier": 2
+  "skipped_no_identifier": 1
 }

@@ -1,2 +1,2 @@
 Analyzing bom.schematic.json...
-Found 11 unique parts with part numbers (6 skipped without any identifier)
+Found 11 unique parts with part numbers (5 skipped without an MPN or DigiKey part number)

@@ -20,7 +20,7 @@ Datasheet sync complete:
   Already present: 0
   Failed: 1
     MISSING9999 — No DigiKey results for 'MISSING9999'
-  Skipped (no identifier): 0
+  Skipped (no MPN or DigiKey part number): 0
   Output: <WORK>/ds/
 
   Tip: Try LCSC or element14 sync to fill gaps — they share the same datasheets/ directory and skip already-downloaded parts.
