@@ -253,8 +253,10 @@ class ExportDedupTest(unittest.TestCase):
                              keyed_marker("schematic:opamp_circuits-bbb", content))
             self.assertIn("#1", r.stdout)
 
-    def test_edited_finding_in_a_stale_group_keeps_its_issue(self):
-        # A (u1) and B (u1#1) were filed; B is gone but its issue is open; A's text changed
+    def test_edited_finding_in_a_stale_group_is_filed_again(self):
+        """A (u1) and B (u1#1) were filed; B is gone but its issue is open; A's text
+        changed. A's new content matches no key, and its bare id is positional because of
+        B's stale issue, so A gets a second issue: a duplicate is safer than a silent skip."""
         issues = [{"number": 1, "title": "t",
                    "body": keyed_marker("schematic:RG-001:u1", "RG-001::N1::U1::A 3.3V")},
                   {"number": 2, "title": "t",
@@ -263,9 +265,43 @@ class ExportDedupTest(unittest.TestCase):
              "finding_id": "schematic:RG-001:u1"}
         r, creates = self.run_export([a], issues)
         self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(len(creates), 1)
+
+    def test_new_finding_does_not_take_a_stale_issue_sharing_its_unnamed_id(self):
+        # P on __unnamed_5 was filed and fixed; a new Q on a net now numbered __unnamed_5
+        issues = [{"number": 1, "title": "t",
+                   "body": keyed_marker("schematic:NR-001:__unnamed_5",
+                                        "NR-001::__unnamed::::Net __unnamed floats")}]
+        q = {"rule_id": "NR-001", "nets": ["__unnamed_5"],
+             "summary": "Net __unnamed_5 has no driver",
+             "finding_id": "schematic:NR-001:__unnamed_5"}
+        r, creates = self.run_export([q], issues)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(len(creates), 1)
+        self.assertNotIn("#1", r.stdout)
+
+    def test_new_finding_does_not_take_a_stale_issue_sharing_its_suffixed_id(self):
+        # {u1: A, u1#1: B} were filed; B is fixed, its issue open; a new C is now u1#1
+        a = {"rule_id": "RG-001", "nets": ["N1"], "components": ["U1"], "summary": "A",
+             "finding_id": "schematic:RG-001:u1"}
+        c = dict(a, nets=["N3"], summary="C", finding_id="schematic:RG-001:u1#1")
+        issues = [{"number": 1, "title": "t",
+                   "body": keyed_marker("schematic:RG-001:u1", "RG-001::N1::U1::A")},
+                  {"number": 2, "title": "t",
+                   "body": keyed_marker("schematic:RG-001:u1#1", "RG-001::N2::U1::B")}]
+        r, creates = self.run_export([a, c], issues)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(len(creates), 1)
+        self.assertEqual(self.kv(creates[0], "title"), "[RG-001] C (U1)")
+
+    def test_keyless_marker_serves_an_unstable_finding_with_its_exact_id(self):
+        issues = [{"number": 6, "title": "t", "body": marker("NR-001:__unnamed_3")}]
+        f = {"rule_id": "NR-001", "nets": ["__unnamed_3"], "summary": "Net __unnamed_3 floats",
+             "finding_id": "NR-001:__unnamed_3"}
+        r, creates = self.run_export([f], issues)
+        self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(creates, [])
-        self.assertIn("#1", r.stdout)
-        self.assertNotIn("#2", r.stdout)
+        self.assertIn("#6", r.stdout)
 
     def nt_pair(self):
         return [{"rule_id": "NT-001", "finding_id": f"NT-001:__unnamed_{n}",

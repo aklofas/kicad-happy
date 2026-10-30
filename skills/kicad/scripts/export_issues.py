@@ -448,18 +448,21 @@ class IssueIndex:
            with that key in canonical content order, one each;
         3. a stable finding still without an issue takes one with its key,
            unless that issue carries the id of a finding present in this run;
-        4. an unstable finding still without an issue takes one carrying its
-           exact id (a marker without a key, or content edited).
+        4. an unstable finding still without an issue takes one whose marker
+           carries its exact id and no key (written before markers had keys).
         """
         stems = positional_stems(findings) | {
             _fid_stem(fid) for _, fid, _ in self.marked if _fid_stem(fid) != fid}
         marked_id = {num: fid for num, fid, _ in self.marked}
         by_id: dict[str, list] = {}
         by_key: dict[str, list] = {}
+        keyless: dict[str, list] = {}
         for num, fid, key in self.marked:
             by_id.setdefault(fid, []).append(num)
             if key:
                 by_key.setdefault(key, []).append(num)
+            else:
+                keyless.setdefault(fid, []).append(num)
 
         stable, unstable, present = [], [], set()
         for f in findings:
@@ -484,7 +487,7 @@ class IssueIndex:
                     n for n in by_key.get(key, []) if marked_id[n] not in present)
         for f, fid, _ in unstable:
             if claims[_sig(f)] is None:
-                claims[_sig(f)] = self._take(by_id.get(fid, []))
+                claims[_sig(f)] = self._take(keyless.get(fid, []))
         return {sig: num for sig, num in claims.items() if num is not None}
 
     def claim_title(self, titles: "list[str]") -> "object | None":
