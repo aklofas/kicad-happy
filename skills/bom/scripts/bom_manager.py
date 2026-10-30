@@ -184,17 +184,19 @@ def is_in_bom(symbol_block: str) -> bool:
 
 def is_dnp(symbol_block: str, props: dict[str, str]) -> bool:
     """Check if a symbol is marked DNP."""
-    # KiCad 9 built-in DNP flag
+    # KiCad 7+ built-in DNP flag
     match = re.search(r'\(dnp\s+(yes|no)\)', symbol_block)
     if match and match.group(1) == "yes":
         return True
     # Custom DNP fields
     for field in DNP_FIELDS:
         val = props.get(field, "").strip().upper()
+        # POPULATE is a population flag, so "1" / "yes" / "true" mean fitted
+        if field == "POPULATE":
+            if val in ("0", "NO", "FALSE"):
+                return True
+            continue
         if val in ("YES", "TRUE", "1", "DNP"):
-            return True
-        # POPULATE field: "0" means DNP
-        if field == "POPULATE" and val == "0":
             return True
     return False
 

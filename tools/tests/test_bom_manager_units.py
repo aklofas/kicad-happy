@@ -19,11 +19,13 @@ LIB = '''(lib_symbols
   (symbol "Device:R" (symbol "R_0_1") (symbol "R_1_1")))'''
 
 
-def sym(lib, ref, unit, value, footprint="", uuid="", dnp=False):
+def sym(lib, ref, unit, value, footprint="", uuid="", dnp=False, populate=None):
+    extra = f'  (property "POPULATE" "{populate}" (at 0 0 0))\n' if populate is not None else ""
     return (f'(symbol (lib_id "{lib}") (at 10 10 0) (unit {unit}) (in_bom yes) (on_board yes)'
             f' (dnp {"yes" if dnp else "no"}) (uuid "{uuid}")\n'
             f'  (property "Reference" "{ref}" (at 0 0 0))\n'
             f'  (property "Value" "{value}" (at 0 0 0))\n'
+            + extra +
             f'  (property "Footprint" "{footprint}" (at 0 0 0)))\n')
 
 
@@ -70,6 +72,56 @@ class UnitsAndDnp(unittest.TestCase):
         self.assertFalse(self.line(bom, "R1")["dnp"])
         self.assertTrue(self.line(bom, "R2")["dnp"])
         self.assertEqual(self.line(bom, "R2")["references"], ["R2"])
+
+
+class PopulateField(unittest.TestCase):
+    """POPULATE is a population flag: 0/no/false = not fitted, 1/yes/true/empty = fitted."""
+
+    def test_is_dnp_vocabulary(self):
+        no = "(symbol (dnp no))"
+        for val, expect in (("1", False), ("0", True), ("", False), ("yes", False),
+                            ("true", False), ("no", True), ("false", True), (" 0 ", True)):
+            self.assertEqual(bom_manager.is_dnp(no, {"POPULATE": val}), expect, val)
+
+    def test_dnp_attribute_and_dnp_field_still_win(self):
+        self.assertTrue(bom_manager.is_dnp("(symbol (dnp yes))", {"POPULATE": "1"}))
+        self.assertTrue(bom_manager.is_dnp("(symbol (dnp no))", {"DNP": "1"}))
+        self.assertTrue(bom_manager.is_dnp("(symbol (dnp no))", {"POPULATE": "1", "DNP": "yes"}))
+
+    def test_populate_one_is_never_dnp(self):
+        self.assertFalse(bom_manager.is_dnp("", {"POPULATE": "1"}))
+
+    def test_two_identical_parts_split_by_populate(self):
+        body = (sym("Device:R", "R1", 1, "10k", "R:R_0603", "a", populate="1")
+                + sym("Device:R", "R2", 1, "10k", "R:R_0603", "b", populate="0"))
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "t.kicad_sch"
+            p.write_text('(kicad_sch (version 20250114) (generator "eeschema") (uuid "r")\n'
+                         + LIB + "\n" + body + ")\n", encoding="utf-8")
+            bom = bom_manager.analyze(p)["bom"]
+        self.assertEqual(len(bom), 2)
+        fitted = next(e for e in bom if "R1" in e["references"])
+        unfitted = next(e for e in bom if "R2" in e["references"])
+        self.assertFalse(fitted["dnp"])
+        self.assertTrue(unfitted["dnp"])
+
+    def test_order_file_holds_only_the_fitted_part(self):
+        body = (sym("Device:R", "R1", 1, "10k", "R:R_0603", "a", populate="1")
+                + sym("Device:R", "R2", 1, "10k", "R:R_0603", "b", populate="0"))
+        with tempfile.TemporaryDirectory() as tmp:
+            sch = Path(tmp) / "t.kicad_sch"
+            sch.write_text('(kicad_sch (version 20250114) (generator "eeschema") (uuid "r")\n'
+                           + LIB + "\n" + body + ")\n", encoding="utf-8")
+            csv_path = Path(tmp) / "bom.csv"
+            bom_manager.export_csv(bom_manager.analyze(sch), csv_path)
+            import csv
+            with open(csv_path, newline="", encoding="utf-8-sig") as f:
+                rows = {r["Reference"]: r for r in csv.DictReader(f)}
+            self.assertEqual(rows["R1"]["DNP"], "")
+            self.assertEqual(rows["R2"]["DNP"].lower(), "yes")
+            out = Path(tmp) / "orders"
+            summary = bom_manager.generate_order_files(csv_path, out, distributor_filter="lcsc")
+            self.assertEqual(summary.get("skipped_dnp"), ["R2"], summary)
 
 
 if __name__ == "__main__":
