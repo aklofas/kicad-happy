@@ -56,6 +56,12 @@ _OUTPUT_SOURCE_EXT = {
 # The only names the cache ever records in a run's 'outputs' map.
 _CANONICAL_NAMES = frozenset(CANONICAL_OUTPUTS.values())
 
+# Outputs built from other outputs of the run. One stays in a run only while every
+# output it was built from (inputs.upstream_artifacts) is unchanged; one without that
+# record counts as built from the run's schematic and pcb outputs.
+_DERIVED_OUTPUTS = ('thermal.json', 'emc.json', 'cross_analysis.json', 'spice.json')
+_UPSTREAM_OUTPUTS = ('schematic.json', 'pcb.json')
+
 GITIGNORE_CONTENT = """\
 # Analysis output -- regenerable from source files
 *
@@ -356,6 +362,68 @@ def ensure_gitignore(analysis_dir: str) -> None:
         f.write(GITIGNORE_CONTENT)
 
 
+def _sha256_hex(path: str) -> Optional[str]:
+    if _is_symlink_or_irregular(path):
+        return None
+    h = hash_source_file(path)
+    return h[len('sha256:'):] if h else None
+
+
+def _built_from(run_dir: str, filename: str) -> Dict[str, Optional[str]]:
+    """Upstream output name -> sha256 hex the derived *filename* in *run_dir* was built from
+    (None when not recorded: the run's own file of that name is assumed)."""
+    path = os.path.join(run_dir, filename)
+    data = None
+    if not _is_symlink_or_irregular(path):
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except (OSError, ValueError):
+            data = None
+    inputs = data.get('inputs') if isinstance(data, dict) else None
+    upstream = inputs.get('upstream_artifacts') if isinstance(inputs, dict) else None
+    if isinstance(upstream, dict) and upstream:
+        built = {}
+        for stage, art in upstream.items():
+            name = CANONICAL_OUTPUTS.get(stage)
+            if name in _UPSTREAM_OUTPUTS:
+                sha = art.get('sha256') if isinstance(art, dict) else None
+                built[name] = sha if isinstance(sha, str) else None
+        return built
+    return {name: None for name in _UPSTREAM_OUTPUTS
+            if os.path.lexists(os.path.join(run_dir, name))}
+
+
+def _derived_stale(run_dir: str, filename: str,
+                   replaced: Dict[str, Optional[str]]) -> Optional[str]:
+    """Name of the input that makes derived *filename* in *run_dir* stale, or None.
+
+    *replaced* maps each upstream output that changes in the next state of the run to the
+    file that will hold it (None = it leaves the run); upstreams not listed stay as they are.
+    """
+    for name, recorded in sorted(_built_from(run_dir, filename).items()):
+        if name not in replaced:
+            continue
+        new_path = replaced[name]
+        if new_path is None:
+            return name
+        expected = recorded or _sha256_hex(os.path.join(run_dir, name))
+        if expected is None or _sha256_hex(new_path) != expected:
+            return name
+    return None
+
+
+def _incoming_outputs(outputs_dir: str) -> Dict[str, str]:
+    """Canonical output name -> path for each new output file in *outputs_dir*."""
+    return {name: os.path.join(outputs_dir, name) for name in sorted(os.listdir(outputs_dir))
+            if name in _CANONICAL_NAMES and os.path.isfile(os.path.join(outputs_dir, name))}
+
+
+def _note_dropped(filename: str, upstream: str) -> None:
+    print(f"Note: {filename} dropped from the run: built from an older {upstream}; "
+          f"re-run its analyzer", file=sys.stderr)
+
+
 def create_run(analysis_dir: str,
                outputs_dir: str,
                source_hashes: Dict[str, str],
@@ -365,7 +433,9 @@ def create_run(analysis_dir: str,
 
     Copies all files from outputs_dir into the new run folder.
     Copies forward any outputs from the previous current run that
-    are not present in outputs_dir (partial run support).
+    are not present in outputs_dir (partial run support), except one
+    whose sources changed or a derived output built from an upstream
+    output this run replaces.
     Updates the manifest: adds the run entry, sets current pointer.
 
     Args:
@@ -393,6 +463,7 @@ def create_run(analysis_dir: str,
     # unrelated outputs. (KH-281 follow-up: original guard was too blunt.)
     prev_run_id = manifest.get('current')
     prev_outputs = {}
+    dropped = set()
     problem = _run_id_problem(analysis_dir, prev_run_id) if prev_run_id else None
     if problem:
         record(None, "analysis_cache.create_run",
@@ -412,7 +483,12 @@ def create_run(analysis_dir: str,
                        "manifest output ignored")
         prev_hashes = prev_run_info.get('source_hashes', {}) or {}
         cur_hashes = source_hashes or {}
-        for analysis_type, filename in list(prev_outputs.items()):
+        incoming = _incoming_outputs(outputs_dir)
+        # Upstream outputs this run replaces or drops; filled before the derived outputs
+        # (ordered last) are checked against it.
+        replaced = {name: path for name, path in incoming.items() if name in _UPSTREAM_OUTPUTS}
+        ordered = sorted(prev_outputs.items(), key=lambda item: item[1] in _DERIVED_OUTPUTS)
+        for analysis_type, filename in ordered:
             exts = _OUTPUT_SOURCE_EXT.get(filename, ())
             stale = False
             if exts:
@@ -423,14 +499,19 @@ def create_run(analysis_dir: str,
                     if new_hash is not None and new_hash != old_hash:
                         stale = True
                         break
-            if stale:
-                continue
+            if not stale and filename in _DERIVED_OUTPUTS and filename not in incoming:
+                upstream = _derived_stale(prev_run_dir, filename, replaced)
+                if upstream:
+                    _note_dropped(filename, upstream)
+                    stale = True
             prev_file = os.path.join(prev_run_dir, filename)
             new_file = os.path.join(run_dir, filename)
-            if os.path.lexists(prev_file) and not os.path.isfile(new_file):
-                if _copy_regular(prev_file, new_file, "create_run"):
+            if not stale and os.path.lexists(prev_file):
+                if os.path.isfile(new_file) or _copy_regular(prev_file, new_file, "create_run"):
                     continue
-                prev_outputs.pop(analysis_type, None)
+            dropped.add(analysis_type)
+            if filename in _UPSTREAM_OUTPUTS and filename not in incoming:
+                replaced[filename] = None
 
     # Copy new outputs (overwrites any copied-forward files)
     new_outputs = {}
@@ -445,14 +526,22 @@ def create_run(analysis_dir: str,
                     new_outputs[atype] = filename
                     break
 
-    # Merge output maps: previous + new (new wins)
-    merged_outputs = dict(prev_outputs)
+    # Merge output maps: previous outputs still in the run + new (new wins)
+    merged_outputs = {atype: new_outputs.get(atype, filename)
+                      for atype, filename in prev_outputs.items()
+                      if atype in new_outputs or atype not in dropped}
     merged_outputs.update(new_outputs)
+
+    # Every source behind the run's outputs keeps its hash; this run's hashes win.
+    run_hashes = {}
+    if prev_run_id and prev_run_id in manifest.get('runs', {}):
+        run_hashes.update(manifest['runs'][prev_run_id].get('source_hashes', {}) or {})
+    run_hashes.update(source_hashes or {})
 
     # Update manifest
     manifest['current'] = run_id
     manifest.setdefault('runs', {})[run_id] = {
-        'source_hashes': source_hashes,
+        'source_hashes': run_hashes,
         'outputs': merged_outputs,
         'scripts': scripts,
         'generated': datetime.now().astimezone().isoformat(timespec='seconds'),
@@ -505,6 +594,18 @@ def overwrite_current(analysis_dir: str,
     current_dir = os.path.join(analysis_dir, current_id)
     os.makedirs(current_dir, exist_ok=True)
 
+    # Derived outputs built from an upstream output this write replaces leave the run.
+    incoming = _incoming_outputs(outputs_dir)
+    replaced = {name: path for name, path in incoming.items() if name in _UPSTREAM_OUTPUTS}
+    stale = {}
+    if replaced:
+        for filename in _DERIVED_OUTPUTS:
+            if filename in incoming or not os.path.lexists(os.path.join(current_dir, filename)):
+                continue
+            upstream = _derived_stale(current_dir, filename, replaced)
+            if upstream:
+                stale[filename] = upstream
+
     # Overwrite files
     refused = False
     for filename in os.listdir(outputs_dir):
@@ -515,6 +616,18 @@ def overwrite_current(analysis_dir: str,
 
     # Update manifest entry
     run_entry = manifest['runs'][current_id]
+    if not refused:
+        for filename, upstream in sorted(stale.items()):
+            try:
+                os.unlink(os.path.join(current_dir, filename))
+            except OSError as exc:
+                record(None, "analysis_cache.overwrite_current", exc, "stale output kept")
+                continue
+            _note_dropped(filename, upstream)
+            outputs_map = run_entry.get('outputs')
+            if isinstance(outputs_map, dict):
+                for atype in [t for t, fn in outputs_map.items() if fn == filename]:
+                    del outputs_map[atype]
     if source_hashes is not None and not refused:
         # Merge, don't replace — running pcb after schematic should keep
         # the schematic's hash alongside the pcb's, so staleness detection
