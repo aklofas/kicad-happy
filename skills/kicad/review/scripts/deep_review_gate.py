@@ -27,10 +27,12 @@ shape error. Stdlib-only; pdftotext (poppler) optional.
 """
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import unicodedata
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -63,14 +65,14 @@ def load_anchor_sets(analysis_dir, run_id=None):
     run_dir = analysis_dir
     manifest = analysis_dir / "manifest.json"
     if manifest.is_file():
-        m = json.loads(manifest.read_text())
+        m = json.loads(manifest.read_text(encoding="utf-8"))
         run = get_run(str(analysis_dir), run_id or m.get("current"), m)
         if run and Path(run[0]).is_dir():
             run_dir = Path(run[0])
     comps, nets = set(), set()
     sch = run_dir / "schematic.json"
     if sch.is_file():
-        data = json.loads(sch.read_text())
+        data = json.loads(sch.read_text(encoding="utf-8"))
         for c in data.get("components") or []:
             if isinstance(c, dict) and c.get("reference"):
                 comps.add(str(c["reference"]).upper())
@@ -80,7 +82,7 @@ def load_anchor_sets(analysis_dir, run_id=None):
                 nets.add(str(info["display_name"]).upper())
     pcb = run_dir / "pcb.json"
     if pcb.is_file():
-        data = json.loads(pcb.read_text())
+        data = json.loads(pcb.read_text(encoding="utf-8"))
         for fp in data.get("footprints") or []:
             if isinstance(fp, dict) and fp.get("reference"):
                 comps.add(str(fp["reference"]).upper())
@@ -91,6 +93,29 @@ def load_anchor_sets(analysis_dir, run_id=None):
         if isinstance(name_map, dict):
             nets.update(str(k).upper() for k in name_map if k)
     return comps, nets
+
+
+def write_text_atomic(path, text):
+    """Write UTF-8 text through a temp file beside `path`; an existing file
+    keeps its mode."""
+    path = Path(path)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        if path.exists():
+            os.chmod(tmp, path.stat().st_mode & 0o7777)
+        else:
+            umask = os.umask(0)
+            os.umask(umask)
+            os.chmod(tmp, 0o666 & ~umask)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def check_anchors(ev, comps, nets):
@@ -123,15 +148,29 @@ def find_pdf(datasheets_dir, mpn):
     return None
 
 
+_DASH_RE = re.compile("[\u2212\u2013\u2010\u2011]")
+# One token per comparison operator or per run of letters/digits. A run
+# keeps a decimal point or comma between digits ("5.5", "1,000") and a
+# leading minus that starts a number outside a word ("-40", "(−40"; not
+# "SOT-23" or "3.3-5.5"). Unit letters such as µ and ω are letters.
+_TOKEN_RE = re.compile(
+    r"<=|>=|±|<|>|="
+    r"|(?:(?<![0-9a-z.])-(?=[0-9]))?"
+    r"(?:[^\W_]|(?<=[0-9])[.,](?=[0-9]))+")
+
+
 def _norm_text(s):
-    # NFKC folds ligatures/fullwidth forms; symbols and punctuation
-    # (degree signs, dashes, curly quotes) collapse to word breaks.
+    # NFKC folds ligatures/fullwidth forms and µ into μ; other symbols and
+    # punctuation (degree signs, dashes, curly quotes) are word breaks.
     s = unicodedata.normalize("NFKC", s).lower()
-    return " ".join(re.sub(r"[^a-z0-9]+", " ", s).split())
+    s = s.replace("+/-", "±").replace("+-", "±").replace("≤", "<=").replace("≥", ">=")
+    s = _DASH_RE.sub("-", s)
+    return " ".join(_TOKEN_RE.findall(s))
 
 
 def _squash(s):
-    return _norm_text(s).replace(" ", "")
+    # Two numbers side by side stay apart: "0.9 1.0" is not "0.91.0".
+    return re.sub(r"(?<=[0-9]) (?=[-0-9])", "|", _norm_text(s)).replace(" ", "")
 
 
 _ELISION_RE = re.compile(r"\.\.\.|…")
@@ -147,18 +186,41 @@ def _quote_segments(quote):
 def _segments_match(segments, norm_fn, text):
     """True if every segment appears in `text` (normalized via
     `norm_fn`), in order -- each search starts where the previous
-    segment's match ended (KH-385)."""
+    segment's match ended (KH-385). Normalized segments match whole
+    tokens; squashed ones may not start or end inside a number."""
     t = norm_fn(text)
+    if norm_fn is _norm_text:
+        t = f" {t} "
     pos = 0
     for seg in segments:
         q = norm_fn(seg)
         if not q:
             continue
-        idx = t.find(q, pos)
+        if norm_fn is _norm_text:
+            q = f" {q} "
+            idx = t.find(q, pos)
+        else:
+            idx = _find_outside_numbers(t, q, pos)
         if idx == -1:
             return False
         pos = idx + len(q)
+        if norm_fn is _norm_text:
+            pos -= 1    # the closing space opens the next token
     return True
+
+
+def _find_outside_numbers(t, q, pos):
+    idx = t.find(q, pos)
+    while idx != -1:
+        before = t[idx - 1] if idx else ""
+        after = t[idx + len(q):idx + len(q) + 1]
+        inside = ((q[0].isdigit() and before and (before.isdigit() or before in ".-"))
+                  or (q[0] == "." and before.isdigit())
+                  or (q[-1].isdigit() and after and (after.isdigit() or after == ".")))
+        if not inside:
+            return idx
+        idx = t.find(q, idx + 1)
+    return -1
 
 
 def _quote_in_text(quote, text):
@@ -167,10 +229,12 @@ def _quote_in_text(quote, text):
     ("..."/"…", KH-385) -- each segment between elision markers
     must appear in the text in order. The squashed fallback absorbs
     boundary shifts ("5.5V" vs "5.5 V", "over-\\nvoltage" vs
-    "overvoltage")."""
+    "overvoltage"). Numbers, signs, decimal points, comparison
+    operators and unit letters must match; a quote with no letter or
+    digit matches nothing."""
     segments = _quote_segments(quote) or [quote]
-    if not any(_norm_text(s) for s in segments):
-        return True
+    if not any(re.search(r"\w", _norm_text(s)) for s in segments):
+        return False
     return (_segments_match(segments, _norm_text, text)
             or _segments_match(segments, _squash, text))
 
@@ -211,29 +275,42 @@ def _nearest_match(quote, text, window=80, stride=40):
 def check_datasheet(cites, datasheets_dir):
     """Returns (failures, partial). Missing tool/PDF -> partial, not failure."""
     fails, partial = [], False
-    if shutil.which("pdftotext") is None:
-        return fails, bool(cites)
+    have_tool = shutil.which("pdftotext") is not None
     for cite in cites or []:
-        pdf = find_pdf(datasheets_dir, cite.get("mpn", ""))
+        quote = cite.get("quote", "")
+        page = cite.get("page")
+        if not re.search(r"\w", _norm_text(quote)):
+            fails.append(f'quote "{quote[:80]}" has no letter or digit to check')
+            continue
+        if page is not None and page < 1:
+            fails.append(f"page {page} is not a page number (1 or more)")
+            continue
+        pdf = find_pdf(datasheets_dir, cite.get("mpn", "")) if have_tool else None
         if pdf is None:
             partial = True
             continue
         cmd = ["pdftotext"]
-        page = cite.get("page")
-        if isinstance(page, int) and page > 0:
+        if page is not None:
             cmd += ["-f", str(page), "-l", str(page)]
         cmd += [str(pdf), "-"]
         try:
-            text = subprocess.run(cmd, capture_output=True, text=True,
-                                  check=True).stdout
-        except (subprocess.CalledProcessError, OSError):
+            proc = subprocess.run(cmd, capture_output=True, encoding="utf-8",
+                                  errors="replace")
+        except OSError:
             partial = True
             continue
-        if not _quote_in_text(cite.get("quote", ""), text):
+        # pdftotext exits 99 with "Wrong page range given" past the last page
+        if page is not None and proc.returncode == 99 and "page" in proc.stderr.lower():
+            fails.append(f"page {page} is past the end of {pdf.name}")
+            continue
+        if proc.returncode != 0:
+            partial = True
+            continue
+        text = proc.stdout
+        if not _quote_in_text(quote, text):
             where = f"page {page} of" if page else "anywhere in"
-            reason = (f'quote not found {where} {pdf.name}: '
-                      f'"{cite.get("quote", "")[:80]}"')
-            nearest = _nearest_match(cite.get("quote", ""), text)
+            reason = f'quote not found {where} {pdf.name}: "{quote[:80]}"'
+            nearest = _nearest_match(quote, text)
             if nearest:
                 reason += f'; nearest match: "...{nearest}..."'
             fails.append(reason)
@@ -257,6 +334,8 @@ def gate_finding(finding, item_schema, comps, nets, datasheets_dir, project_dir)
     f = {k: v for k, v in finding.items() if k not in _GATE_FIELDS}
     fails = [e.message for e in iter_errors(f, item_schema)]
     ev = f.get("evidence") or {}
+    if not isinstance(ev, dict):
+        ev = {}     # the schema error above already names it
     has_anchor = any(ev.get(k) for k in ANCHOR_KEYS)
     has_source = bool(ev.get("datasheet")) or bool(ev.get("computation"))
     if not has_anchor:
@@ -300,9 +379,9 @@ def main():
 
     path = Path(args.deep_review_json)
     try:
-        doc = json.loads(path.read_text())
-        schema = json.loads(SCHEMA_PATH.read_text())
-    except (OSError, json.JSONDecodeError) as e:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
         print(f"deep_review_gate: cannot load inputs: {e}", file=sys.stderr)
         return 2
     top_required = ("schema_version", "produced_for_run_id", "produced_at",
@@ -311,6 +390,11 @@ def main():
         print("deep_review_gate: top-level shape invalid "
               f"(required keys: {', '.join(top_required)})", file=sys.stderr)
         return 2
+    for key in ("findings", "quarantined"):
+        if doc[key] is not None and not isinstance(doc[key], list):
+            print(f"deep_review_gate: top-level shape invalid ({key} must be an array)",
+                  file=sys.stderr)
+            return 2
 
     comps, nets = load_anchor_sets(args.analysis_dir, args.run)
     item_schema = schema["properties"]["findings"]["items"]
@@ -335,7 +419,7 @@ def main():
                                     str(f.get("summary", ""))))
     doc["findings"] = kept
     doc["quarantined"] = quarantined
-    path.write_text(json.dumps(doc, indent=2) + "\n")
+    write_text_atomic(path, json.dumps(doc, indent=2) + "\n")
 
     n_partial = sum(1 for f in kept if f.get("evidence_checked") == "partial")
     print(f"deep_review gate: {len(kept)} verified "
