@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -40,6 +41,22 @@ PNP_ROT_FIELDS = ("rotation", "rot", "angle")
 # --- Markers that indicate a row should be skipped --------------------------
 
 DNP_MARKERS = ("no stuff", "dnp", "do not populate", "dni", "noload", "no load")
+# A marker counts only as a whole token: part numbers such as OPT4003DNPRQ1 contain one.
+_DNP_MARKER_RE = re.compile(
+    r"(?<![a-z0-9])(?:" + "|".join(re.escape(m) for m in DNP_MARKERS) + r")(?![a-z0-9])"
+)
+
+# Columns that mark a row unfitted, matched on the whole header cell. KiCad's BOM
+# export writes "DNP" with the text DNP or nothing; a population column says
+# whether the part is fitted.
+DNP_COL_FIELDS = ("dnp", "${dnp}", "do not populate", "do not place", "dnm", "dni")
+POP_COL_FIELDS = ("populate", "fitted")
+_DNP_COL_CLEAR = ("", "0", "no", "false", "n")
+_POP_COL_UNFITTED = ("0", "no", "false", "n", "dnp", "not fitted", "unfitted")
+
+# KiCad writes a run of three or more references as R1-R4 (same prefix at both ends).
+_RANGE_RE = re.compile(r"^(.*\D)(\d+)-\1(\d+)$")
+_RANGE_MAX = 10000
 PCB_MARKERS = ("pcb,", "bare pcb", "pcb-")
 
 # Header-row detection: scan first N rows, pick the one with the most matches.
@@ -97,11 +114,35 @@ def _is_dnp(value: str) -> bool:
     True
     >>> _is_dnp("100nF")
     False
+    >>> _is_dnp("OPT4003DNPRQ1")
+    False
     """
     if not value:
         return False
-    v = value.strip().lower()
-    return any(m in v for m in DNP_MARKERS)
+    return _DNP_MARKER_RE.search(value.strip().lower()) is not None
+
+
+def _exact_col(header: list[str], candidates: tuple[str, ...]) -> int | None:
+    """Index of the first header cell equal to a candidate (not a substring match:
+    "Do Not Populate" must not read as a population column)."""
+    for i, cell in enumerate(header):
+        if (cell or "").strip().lower() in candidates:
+            return i
+    return None
+
+
+def _row_is_dnp(raw: list[str], val: str, col_dnp: int | None, col_pop: int | None) -> bool:
+    """DNP from the value text, a DNP column that is set, or a population column
+    that says unfitted."""
+    if _is_dnp(val):
+        return True
+    if col_dnp is not None and col_dnp < len(raw):
+        if (raw[col_dnp] or "").strip().lower() not in _DNP_COL_CLEAR:
+            return True
+    if col_pop is not None and col_pop < len(raw):
+        if (raw[col_pop] or "").strip().lower() in _POP_COL_UNFITTED:
+            return True
+    return False
 
 
 def _is_pcb_marker(value: str) -> bool:
@@ -358,6 +399,8 @@ def translate_bom(input_path: str, output_path: str) -> dict:
     col_mpn = _find_col(header, BOM_MPN_FIELDS)
     col_mfg = _find_col(header, BOM_MFG_FIELDS)
     col_qty = _find_col(header, BOM_QTY_FIELDS)
+    col_dnp = _exact_col(header, DNP_COL_FIELDS)
+    col_pop = _exact_col(header, POP_COL_FIELDS)
 
     if col_des is None or col_val is None:
         raise ValueError(
@@ -410,11 +453,13 @@ def translate_bom(input_path: str, output_path: str) -> dict:
             stats["skipped_pcb_marker"] += 1
             current = None
             continue
-        if _is_dnp(val):
+        if _row_is_dnp(raw, val, col_dnp, col_pop):
             stats["skipped_dnp"] += 1
             current = None
             continue
 
+        if any(_RANGE_RE.match(tok) for tok in re.split(r"[\s,;]+", des)):
+            des = ",".join(_expand_designators(des))
         current = {
             "designator": des,
             "value": val,
@@ -463,10 +508,15 @@ def translate_bom(input_path: str, output_path: str) -> dict:
 
 
 def _expand_designators(field: str) -> list[str]:
-    """Split a comma/whitespace-separated designator list into individual refs.
+    """Split a comma/whitespace-separated designator list into individual refs,
+    expanding KiCad's ``R1-R4`` ranges (same prefix, ascending).
 
     >>> _expand_designators("C1, C2, C5")
     ['C1', 'C2', 'C5']
+    >>> _expand_designators("R1-R3,R7")
+    ['R1', 'R2', 'R3', 'R7']
+    >>> _expand_designators("R4-R1")
+    ['R4-R1']
     >>> _expand_designators("R1")
     ['R1']
     >>> _expand_designators("C1; C2")
@@ -478,7 +528,14 @@ def _expand_designators(field: str) -> list[str]:
         return []
     for sep in (",", ";"):
         field = field.replace(sep, " ")
-    return [tok.strip() for tok in field.split() if tok.strip()]
+    out: list[str] = []
+    for tok in field.split():
+        m = _RANGE_RE.match(tok)
+        if m and 0 < int(m.group(3)) - int(m.group(2)) < _RANGE_MAX:
+            out.extend(f"{m.group(1)}{n}" for n in range(int(m.group(2)), int(m.group(3)) + 1))
+        else:
+            out.append(tok)
+    return out
 
 
 def _read_bom_designators(bom_path: str) -> set[str]:
@@ -499,9 +556,15 @@ def _read_bom_designators(bom_path: str) -> set[str]:
             f"BOM at {bom_path} has no Designator column (header row {header_idx}: {header})"
         )
 
+    col_val = _find_col(header, BOM_VAL_FIELDS)
+    col_dnp = _exact_col(header, DNP_COL_FIELDS)
+    col_pop = _exact_col(header, POP_COL_FIELDS)
     refs: set[str] = set()
     for raw in rows[header_idx + 1 :]:
         if col_des >= len(raw):
+            continue
+        val = (raw[col_val] or "").strip() if col_val is not None and col_val < len(raw) else ""
+        if _row_is_dnp(raw, val, col_dnp, col_pop):
             continue
         refs.update(_expand_designators(raw[col_des]))
     return refs
@@ -664,13 +727,15 @@ def _self_test() -> int:
                 f"{stats['continuation_rows_merged']}"
             )
 
-        out_text = out_path.read_text()
-        if "alt MPN: GRM155R71C104KA88" not in out_text:
-            failures.append("BOM output missing alt-MPN notes column")
-        if "DO NOT POPULATE" in out_text:
-            failures.append("BOM output unexpectedly contains DNP row")
-        if "Bare PCB" in out_text:
-            failures.append("BOM output unexpectedly contains PCB-marker row")
+        with open(out_path, newline="", encoding="utf-8") as f:
+            out_rows = list(csv.DictReader(f))
+        if [r["Designator"] for r in out_rows] != ["C1", "R1", "U1"]:
+            failures.append(
+                f"BOM designators: expected ['C1', 'R1', 'U1'], got "
+                f"{[r['Designator'] for r in out_rows]}"
+            )
+        elif out_rows[0]["Notes"] != "alt MPN: GRM155R71C104KA88":
+            failures.append(f"BOM C1 notes: got {out_rows[0]['Notes']!r}")
 
     # --- PNP translation: mil-unit CPL with TopLayer/BottomLayer + bare numeric ---
     pnp_csv = (
@@ -699,17 +764,15 @@ def _self_test() -> int:
                 f"PNP default_unit: expected 'mil', got {stats['default_unit']!r}"
             )
 
-        out_text = out_path.read_text()
+        with open(out_path, newline="", encoding="utf-8") as f:
+            cpl_rows = {r["Designator"]: r for r in csv.DictReader(f)}
         # 100 mil = 2.54 mm, 200 mil = 5.08 mm
-        if "2.5400mm" not in out_text or "5.0800mm" not in out_text:
-            failures.append(
-                "PNP output missing expected mil→mm conversion (2.5400mm/5.0800mm)"
-            )
-        # Layer normalization
-        if ",T," not in out_text:
-            failures.append("PNP output missing normalized 'T' layer")
-        if ",B," not in out_text:
-            failures.append("PNP output missing normalized 'B' layer")
+        r1 = cpl_rows.get("R1", {})
+        if (r1.get("Mid X"), r1.get("Mid Y")) != ("2.5400mm", "5.0800mm"):
+            failures.append(f"PNP R1 position: got {(r1.get('Mid X'), r1.get('Mid Y'))}")
+        layers = {k: v.get("Layer") for k, v in cpl_rows.items()}
+        if layers != {"R1": "T", "C1": "B", "U1": "T"}:
+            failures.append(f"PNP layers: got {layers}")
 
     # --- PNP with --bom filter: drops CPL rows whose designators aren't in BOM ---
     bom_for_filter = (
@@ -755,9 +818,10 @@ def _self_test() -> int:
                 f"PNP-filter bom_designators: expected 2, got {stats['bom_designators']}"
             )
 
-        out_text = out_path.read_text()
-        if "U1," in out_text or "TP1," in out_text:
-            failures.append("PNP-filter output unexpectedly contains orphan designators")
+        with open(out_path, newline="", encoding="utf-8") as f:
+            kept = sorted(r["Designator"] for r in csv.DictReader(f))
+        if kept != ["C1", "R1"]:
+            failures.append(f"PNP-filter kept designators: expected ['C1', 'R1'], got {kept}")
 
     if failures:
         print("self-test: FAIL")

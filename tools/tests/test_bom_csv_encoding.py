@@ -1,7 +1,7 @@
 """BOM CSVs saved by Excel (UTF-8 with a byte-order mark, CRLF) keep their hand edits and
 designators; translate_bom_pnp reads a cp1252 BOM and refuses xlsx with a usage error; an
 updated property keeps its backslashes."""
-import csv, os, re, shutil, subprocess, sys, tempfile, unittest
+import csv, json, os, shutil, subprocess, sys, tempfile, unittest
 from pathlib import Path
 from tools.tests._fixtures import fixture_path, have
 
@@ -58,7 +58,9 @@ class BomManagerExcelCsvTest(unittest.TestCase):
         r = _run("bom_manager.py", "order", str(self.csv), "-o", str(self.tmp / "ord"), "--json")
         self.assertNotIn("Traceback", r.stderr)
         self.assertNotIn(", , ", r.stdout + r.stderr)
-        self.assertRegex(r.stdout + r.stderr, r"\bR1\b")
+        reported = json.loads(r.stdout)
+        # every row has Chosen_Distributor LCSC and no LCSC part number: one error per designator
+        self.assertEqual(sorted(e.split(":")[0] for e in reported["errors"]), sorted(self.refs))
 
 
 class TranslateBomPnpTest(unittest.TestCase):

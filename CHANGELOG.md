@@ -63,6 +63,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Fixed
 
+- The JLCPCB translator (`translate_bom_pnp`) leaves out rows marked in a DNP or population column (`DNP`, `Populate`, `Fitted`), expands KiCad's `R1-R4` reference ranges in the BOM and in the `pnp --bom` designator set, and no longer reads a part number that contains `DNP` (such as `OPT4003DNPRQ1`) as DNP. Ranged parts used to be dropped from the CPL as orphans and DNP parts assembled. (KH-604)
 - `bom_manager` reads `POPULATE` as a population flag: `1`, `yes`, `true` or an empty value means fitted (it used to count as DNP), `0`, `no`, `false` or `DNP` means not fitted. `(dnp yes)` and the `DNP` fields still mark a part not fitted. (KH-603)
 - Symbol and sheet mandatory fields (Reference, Value, Footprint, Datasheet, Description, sheet name, sheet file) lose leading and trailing spaces, the sheet-file property is read in any case, and a KiCad 6 value on a repeated sheet reaches every instance, as KiCad 10 reads them. A `" ~"` Datasheet reads as `~`; user fields keep their spaces. (KH-708, KH-705)
 - `bom_manager` takes a multi-unit part's Value, Footprint, Datasheet, Description and other fields from its lowest unit that sets them, as KiCad's netlist does, instead of from whichever unit comes first in the file; a DNP part no longer joins a fitted part's BOM line and gets a line of its own. (kf/A13-F4)
