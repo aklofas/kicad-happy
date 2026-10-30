@@ -220,7 +220,7 @@ par = wi._extract_parasitics({"tracks": tracks}, det, "rc_filters")
 
 fake = types.ModuleType("simulate_subcircuits")
 fake.simulate_subcircuits = lambda mini, **kw: {"simulation_results": [{"status": "pass",
-    "simulated": {k: v * mini["signal_analysis"]["rc_filters"][0]["scale"]
+    "simulated": {k: v * mini["findings"][0]["scale"]
                   for k, v in {"m_e": 1.0, "m_b": 2.0, "m_d": 3.0, "m_a": 4.0, "m_c": 5.0}.items()}}]}
 sim = types.ModuleType("spice_simulator")
 sim.detect_simulator = lambda name: "stub"

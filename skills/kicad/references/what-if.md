@@ -54,7 +54,8 @@ python3 what_if.py <input> [changes...] [options]
 
 | Flag | Description |
 |------|-------------|
-| `--spice` | Re-run SPICE simulations on affected subcircuits (requires ngspice/LTspice/Xyce) |
+| `--spice` | Re-run SPICE simulations on each affected subcircuit, original and patched (requires ngspice/LTspice/Xyce; not with a sweep) |
+| `--offline` | With `--spice`: part models from the project cache and the built-in table only, no distributor or datasheet lookup |
 | `--output FILE`, `-o FILE` | Write patched analysis JSON to file (for downstream EMC, thermal, or diff analysis) |
 | `--text` | Human-readable text output instead of JSON |
 | `--emc` | Show EMC impact preview (runs `analyze_emc.py` on original and patched JSON) |
@@ -68,6 +69,7 @@ python3 what_if.py <input> [changes...] [options]
 |------|---------|
 | 0 | Success |
 | 1 | Invalid input, parse error, or missing data |
+| 2 | Usage error (argparse, or `--spice` with a sweep) |
 
 ---
 
@@ -256,12 +258,17 @@ The `--emc` flag runs the full EMC analyzer (`analyze_emc.py`) on both the origi
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `before_risk` | string | Overall risk level before change |
-| `after_risk` | string | Overall risk level after change |
-| `resolved` | array | Findings that disappeared after the change |
-| `improved` | array | Findings whose risk level decreased |
-| `new_findings` | array | Findings that appeared after the change |
+| `before_risk` | number | `summary.emc_risk_score` before the change (0 = worst, 100 = lowest risk) |
+| `after_risk` | number | `summary.emc_risk_score` after the change |
+| `resolved` | array | Findings that disappeared after the change (`rule`, `detail`) |
+| `improved` | array | Findings whose severity went down (`rule`, `before`, `after`) |
+| `worsened` | array | Findings whose severity went up (`rule`, `before`, `after`) |
+| `new_findings` | array | Findings that appeared after the change (`rule`, `detail`) |
 | `unchanged` | integer | Count of findings with no change |
+
+Findings are matched as `diff_analysis.py` matches them: by `finding_id`, or by content when
+the id is positional, so two findings of one rule are told apart. The patched JSON carries the
+new values in `components[].value`/`parsed_value` as well as in the patched detections.
 
 Text mode renders this as a summary with per-finding detail.
 
@@ -359,19 +366,18 @@ The comparison engine also checks for any additional fields present in the detec
       "after": {"ratio": 0.6808},
       "parasitics": {},
       "tolerance": [],
-      "spice_delta": {}
+      "spice_delta": {"vout_V": {"before": 1.65, "after": 2.2466, "delta_pct": 36.2}}
     }
   ],
   "summary": {
     "components_changed": 1,
     "subcircuits_affected": 1,
-    "spice_verified": false
-  },
-  "emc_delta": null
+    "spice_verified": true
+  }
 }
 ```
 
-The `parasitics`, `tolerance`, `spice_delta`, and `emc_delta` fields are only present when the corresponding options are active.
+The `parasitics` and `tolerance` fields are present only when the corresponding options are active; `spice_delta` only when `--spice` simulated a difference for that subcircuit; `emc_delta` only when `--emc` ran both EMC analyses.
 
 ### Sweep Mode
 
@@ -478,7 +484,7 @@ Which flags and modes work together:
 | Combination | Supported | Notes |
 |-------------|-----------|-------|
 | Single change + `--text` | Yes | Primary use case |
-| Single change + `--spice` | Yes | Runs SPICE on original and patched |
+| Single change + `--spice` | Yes | Runs SPICE on the original and the patched detection |
 | Single change + `--emc` | Yes | Full EMC diff |
 | Single change + `--pcb` | Yes | Adds parasitic annotations |
 | Single change + `--output` | Yes | Exports patched JSON |
@@ -486,7 +492,7 @@ Which flags and modes work together:
 | Sweep + `--text` | Yes | Markdown table output |
 | Sweep + tolerance | Yes | Tolerance corners at each sweep point |
 | Sweep + fixed changes | Yes | Other components held at specified values |
-| Sweep + `--spice` | No | Sweep mode does not run SPICE |
+| Sweep + `--spice` | No | Usage error (exit 2) |
 | Sweep + `--emc` | No | Sweep mode exits before EMC |
 | Sweep + `--output` | No | Sweep mode exits before export |
 | `--fix` + `--target` | Yes | Primary fix use case |

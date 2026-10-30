@@ -30,7 +30,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "..", "spice", "scripts"))
 
 from kicad_core.values import parse_value
-from kicad_core.render import fmt_g4, fmt_signed
+from kicad_core.render import fmt_g4, fmt_signed, severity_bucket
 from kicad_core.cli import add_only_deterministic_arg, add_output_arg, add_text_arg, utf8_text_stdout
 from finding_schema import group_findings_by_detection_type, is_old_schema
 
@@ -378,7 +378,7 @@ def _get_det_label(det: dict, det_type: str) -> str:
 # ---------------------------------------------------------------------------
 
 def _run_spice_comparison(affected: list, patched_dets: list,
-                          analysis_json: dict) -> dict:
+                          analysis_json: dict, offline: bool = False) -> dict:
     """Run SPICE on original and patched detections, return simulated deltas.
 
     Returns {(det_type, idx): {metric: {before, after, delta_pct}}}
@@ -397,16 +397,21 @@ def _run_spice_comparison(affected: list, patched_dets: list,
               file=sys.stderr)
         return {}
 
+    model_options = None
+    if offline:
+        from spice_model_cache import ModelOptions
+        model_options = ModelOptions(offline=True)
+
     results = {}
 
     for (det_type, idx, original_det, _matched), patched_det in zip(affected, patched_dets):
-        # Build minimal analysis JSON for each detection
+        # One detection per run, so the first result is that detection's
         def _run_one(det):
             mini_json = copy.deepcopy(analysis_json)
-            mini_json["signal_analysis"] = {det_type: [det]}
+            mini_json["findings"] = [det]
             report = simulate_subcircuits(
                 mini_json, timeout=5, types=[det_type],
-                simulator_backend=backend)
+                simulator_backend=backend, model_options=model_options)
             sim_results = report.get("simulation_results", [])
             if sim_results and sim_results[0].get("status") != "skip":
                 return sim_results[0].get("simulated", {})
@@ -442,8 +447,7 @@ def _run_spice_comparison(affected: list, patched_dets: list,
 # Sweep execution
 # ---------------------------------------------------------------------------
 
-def _run_sweep(analysis: dict, sweep: SweepSpec, fixed_changes: dict,
-               spice: bool = False) -> dict:
+def _run_sweep(analysis: dict, sweep: SweepSpec, fixed_changes: dict) -> dict:
     """Run the what-if pipeline for each sweep value, collect tabular results."""
     signal = group_findings_by_detection_type(analysis)
     part_values = _part_values(analysis)
@@ -483,7 +487,7 @@ def _run_sweep(analysis: dict, sweep: SweepSpec, fixed_changes: dict,
 # Tolerance corner-case engine
 # ---------------------------------------------------------------------------
 
-def _run_tolerance(analysis: dict, changes: dict, spice: bool = False) -> list:
+def _run_tolerance(analysis: dict, changes: dict) -> list:
     """Compute worst-case tolerance bounds for each derived field.
 
     Evaluates all 2^N corner combinations (each component at +tol and -tol).
@@ -574,29 +578,53 @@ def _patch_full_json(analysis_json: dict, affected: list,
     """Create a patched copy of the full analysis JSON."""
     patched = copy.deepcopy(analysis_json)
 
-    # Replace affected detections in flat findings[]
-    # Build a lookup from detection_id to findings list index for O(1) patching.
+    # The affected detections are the input's own finding objects, so each one is replaced
+    # at its own position: several findings can share a detection_id or a finding_id stem.
     findings = patched.get("findings", [])
-    id_to_fi = {f.get("detection_id"): fi for fi, f in enumerate(findings)
-                if f.get("detection_id")}
+    position = {id(f): fi for fi, f in enumerate(analysis_json.get("findings", []))}
     for (_det_type, _idx, orig_det, _matched), new_det in zip(affected, patched_dets):
-        did = orig_det.get("detection_id")
-        if did and did in id_to_fi:
-            # Preserve detector metadata from original finding
-            new_det.setdefault("detector", orig_det.get("detector", ""))
-            new_det.setdefault("detection_id", did)
-            findings[id_to_fi[did]] = new_det
+        fi = position.get(id(orig_det))
+        if fi is not None:
+            findings[fi] = new_det
 
-    # Update components[] parsed_value
     for comp in patched.get("components", []):
         ref = comp.get("reference", "")
         if ref in changes:
             new_val, new_str = changes[ref]
             comp["value"] = new_str
-            if "parsed_value" in comp and isinstance(comp["parsed_value"], dict):
+            if isinstance(comp.get("parsed_value"), dict):
                 comp["parsed_value"]["value"] = new_val
+            elif isinstance(comp.get("parsed_value"), (int, float)):
+                comp["parsed_value"] = new_val
 
     return patched
+
+
+def _change_info(analysis: dict, changes: dict) -> dict:
+    """{ref: before/after values and strings} for the changed components."""
+    info = {}
+    for ref, (new_val, new_str) in changes.items():
+        old_val = None
+        old_str = ""
+        for comp in analysis.get("components", []):
+            if comp.get("reference") == ref:
+                old_str = comp.get("value", "")
+                pv = comp.get("parsed_value")
+                if isinstance(pv, dict):
+                    old_val = pv.get("value")
+                elif isinstance(pv, (int, float)):
+                    old_val = pv
+                break
+        info[ref] = {
+            "before": old_val,
+            "after": new_val,
+            "before_str": old_str,
+            "after_str": new_str,
+            "unit": "ohms" if ref.startswith("R") else
+                    "farads" if ref.startswith("C") else
+                    "henries" if ref.startswith("L") else "unknown",
+        }
+    return info
 
 
 # ---------------------------------------------------------------------------
@@ -819,14 +847,18 @@ def format_text(result: dict) -> str:
     emc = result.get("emc_delta")
     if emc:
         lines.append("EMC impact preview:")
-        lines.append(f"  Overall risk: {emc['before_risk']} \u2192 {emc['after_risk']}")
+        lines.append(f"  Overall risk score (100 = lowest risk): "
+                     f"{emc['before_risk']} \u2192 {emc['after_risk']}")
         for r in emc.get("resolved", []):
             lines.append(f"  {r['rule']}: RESOLVED \u2014 {r['detail']}")
         for r in emc.get("improved", []):
             lines.append(f"  {r['rule']}: IMPROVED \u2014 {r['before']} \u2192 {r['after']}")
+        for r in emc.get("worsened", []):
+            lines.append(f"  {r['rule']}: WORSENED \u2014 {r['before']} \u2192 {r['after']}")
         for r in emc.get("new_findings", []):
             lines.append(f"  {r['rule']}: NEW \u2014 {r['detail']}")
-        if not emc.get("resolved") and not emc.get("improved") and not emc.get("new_findings"):
+        if not (emc.get("resolved") or emc.get("improved") or emc.get("worsened")
+                or emc.get("new_findings")):
             lines.append("  No EMC findings changed.")
         lines.append("")
 
@@ -1339,31 +1371,31 @@ def _run_emc_preview(analysis: dict, patched_json: dict,
     if not before or not after:
         return None
 
-    before_risk = before.get("overall_risk", "UNKNOWN")
-    after_risk = after.get("overall_risk", "UNKNOWN")
-    before_findings = {f.get("rule_id", ""): f for f in before.get("findings", [])}
-    after_findings = {f.get("rule_id", ""): f for f in after.get("findings", [])}
+    import diff_engine
 
-    resolved = []
-    improved = []
-    new_findings = []
-    for rule_id, bf in before_findings.items():
-        af = after_findings.get(rule_id)
-        if af is None:
-            resolved.append({"rule": rule_id, "detail": bf.get("summary", "")})
-        elif af.get("risk_level") != bf.get("risk_level"):
-            improved.append({"rule": rule_id,
-                           "before": bf.get("risk_level"),
-                           "after": af.get("risk_level")})
-    for rule_id, af in after_findings.items():
-        if rule_id not in before_findings:
-            new_findings.append({"rule": rule_id, "detail": af.get("summary", "")})
+    found = diff_engine.diff_emc(before, after, 1.0).get("findings", {})
+    rank = {"info": 0, "warning": 1, "error": 2}
 
+    def _severity_row(c):
+        return {"rule": c["rule_id"], "before": c["base_severity"], "after": c["head_severity"]}
+
+    changed = found.get("changed_severity", [])
+    worse = [c for c in changed if rank.get(severity_bucket(c["head_severity"]), 0)
+             > rank.get(severity_bucket(c["base_severity"]), 0)]
+    better = [c for c in changed if c not in worse]
+    n_before = sum(1 for f in before.get("findings", []) if isinstance(f, dict))
+    summary_before = before.get("summary") or {}
+    summary_after = after.get("summary") or {}
     return {
-        "before_risk": before_risk, "after_risk": after_risk,
-        "resolved": resolved, "improved": improved,
-        "new_findings": new_findings,
-        "unchanged": len(before_findings) - len(resolved) - len(improved),
+        "before_risk": summary_before.get("emc_risk_score"),
+        "after_risk": summary_after.get("emc_risk_score"),
+        "resolved": [{"rule": f["rule_id"], "detail": f.get("title", "")}
+                     for f in found.get("resolved", [])],
+        "improved": [_severity_row(c) for c in better],
+        "worsened": [_severity_row(c) for c in worse],
+        "new_findings": [{"rule": f["rule_id"], "detail": f.get("title", "")}
+                         for f in found.get("new", [])],
+        "unchanged": n_before - len(found.get("resolved", [])) - len(changed),
     }
 
 
@@ -1379,7 +1411,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("changes", nargs="*", default=[],
                         help="REF=VALUE pairs (e.g., R5=4.7k C3=22n)")
     parser.add_argument("--spice", action="store_true",
-                        help="Re-run SPICE simulations on affected subcircuits")
+                        help="Re-run SPICE simulations on affected subcircuits at the new "
+                             "values (not with a sweep)")
+    parser.add_argument("--offline", action="store_true",
+                        help="With --spice: part models from the cache and the built-in "
+                             "table only")
     add_output_arg(parser, help="Write patched analysis JSON to file")
     add_text_arg(parser, help="Human-readable text output")
     parser.add_argument("--emc", action="store_true",
@@ -1543,7 +1579,9 @@ def main(argv: list[str] | None = None) -> int:
 
     # --- Sweep branch ---
     if sweep is not None:
-        sweep_result = _run_sweep(analysis, sweep, changes, spice=args.spice)
+        if args.spice:
+            parser.error("--spice cannot be combined with a sweep; simulate one value at a time")
+        sweep_result = _run_sweep(analysis, sweep, changes)
         if args.text:
             print(_format_sweep_table(sweep_result))
         else:
@@ -1561,8 +1599,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"No subcircuits reference {', '.join(changes_legacy.keys())}",
               file=sys.stderr)
         result = {
-            "changes": {ref: {"before": None, "after": val, "after_str": vstr}
-                        for ref, (val, vstr) in changes_legacy.items()},
+            "changes": _change_info(analysis, changes_legacy),
             "affected_subcircuits": [],
             "summary": {"components_changed": len(changes_legacy),
                         "subcircuits_affected": 0, "spice_verified": False},
@@ -1612,7 +1649,7 @@ def main(argv: list[str] | None = None) -> int:
     # Tolerance analysis
     has_tolerance = any(c.tolerance is not None for c in changes.values())
     if has_tolerance:
-        tol_results = _run_tolerance(analysis, changes, spice=args.spice)
+        tol_results = _run_tolerance(analysis, changes)
         for tr in tol_results:
             for sc in subcircuit_results:
                 if sc["type"] == tr["type"] and sc["label"] == tr["label"]:
@@ -1621,37 +1658,15 @@ def main(argv: list[str] | None = None) -> int:
     # Optional SPICE
     spice_results = {}
     if args.spice:
-        spice_results = _run_spice_comparison(affected, patched_dets, analysis)
+        spice_results = _run_spice_comparison(affected, patched_dets, analysis,
+                                              offline=args.offline)
         for i, (det_type, idx, _det, _matched) in enumerate(affected):
             key = (det_type, idx)
             if key in spice_results:
                 subcircuit_results[i]["spice_delta"] = spice_results[key]
 
-    # Build change info with before values
-    change_info = {}
-    for ref, (new_val, new_str) in changes_legacy.items():
-        # Find the original value
-        old_val = None
-        old_str = ""
-        for comp in analysis.get("components", []):
-            if comp.get("reference") == ref:
-                old_str = comp.get("value", "")
-                pv = comp.get("parsed_value", {})
-                if isinstance(pv, dict):
-                    old_val = pv.get("value")
-                break
-        change_info[ref] = {
-            "before": old_val,
-            "after": new_val,
-            "before_str": old_str,
-            "after_str": new_str,
-            "unit": "ohms" if ref.startswith("R") else
-                    "farads" if ref.startswith("C") else
-                    "henries" if ref.startswith("L") else "unknown",
-        }
-
     result = {
-        "changes": change_info,
+        "changes": _change_info(analysis, changes_legacy),
         "affected_subcircuits": subcircuit_results,
         "summary": {
             "components_changed": len(changes_legacy),
