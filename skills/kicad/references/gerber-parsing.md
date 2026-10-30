@@ -614,7 +614,7 @@ Quickly determine the KiCad version from gerber files:
 
 | Indicator | KiCad 5 | KiCad 6+ |
 |-----------|---------|----------|
-| X2 attribute format | `G04 #@! TF.*` (X2 off, default) | `%TF.*%` |
+| X2 attribute format | `G04 #@! TF.*` (X2 off) | `%TF.*%` |
 | Aperture attributes | `G04 #@! TA.*` (5.1) or native | `%TA.AperFunction,...*%` |
 | Object attributes | `G04 #@! TO.*` (5.1) or native | `%TO.P,...*%`, `%TO.N,...*%`, `%TO.C,...*%` |
 | Silkscreen suffix | `_SilkS` | `_Silkscreen` |

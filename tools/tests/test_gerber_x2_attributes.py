@@ -60,6 +60,18 @@ class PadComponentTest(unittest.TestCase):
         x2 = _parse(body)["x2_objects"]
         self.assertEqual(x2["component_refs"], ["R1"])
         self.assertEqual(x2["component_pads"], {"R1": 1})
+        self.assertEqual(x2["pin_mappings"],
+                         [{"ref": "R1", "pin": "1", "pin_name": "", "net": ""}])
+
+    def test_through_hole_pads_keep_the_silk_side(self):
+        # KiCad writes %TO.P on both outer coppers for a through-hole pad;
+        # the back silkscreen's %TO.C places the part on the back.
+        with tempfile.TemporaryDirectory() as d:
+            _gbr(d, "b-F_Cu.gtl", "Copper,L1,Top", PADS)
+            _gbr(d, "b-B_Cu.gbl", "Copper,L2,Bot", PADS)
+            _gbr(d, "b-B_Silkscreen.gbo", "Legend,Bot", "%TO.C,R1*%\nX0Y0D03*\n%TD*%\n")
+            ca = ag.analyze_gerbers(d)["component_analysis"]
+        self.assertEqual((ca["front_side"], ca["back_side"]), (0, 1))
 
     def test_pad_nets_credited(self):
         x2 = _parse(PADS)["x2_objects"]

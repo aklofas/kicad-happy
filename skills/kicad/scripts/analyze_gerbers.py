@@ -246,6 +246,7 @@ def parse_gerber(path: str) -> dict:
     pin_mappings = []           # [{ref, pin, pin_name, net}]
     pending_pin = None          # (ref, pin, pin_name) until the next flash/draw
     pad_ref = None              # ref of the current %TO.P pad; KiCad writes no %TO.C for pads
+    to_c_refs = set()           # refs named by %TO.C
 
     # Aperture dimension tracking for trace width / min feature analysis
     aperture_dims = {}          # D-code -> parsed dimension info
@@ -310,6 +311,7 @@ def parse_gerber(path: str) -> dict:
         m = re.match(r"%TO\.C,([^*]*)\*%", s)
         if m:
             current_component = _gerber_unescape(m.group(1))
+            to_c_refs.add(current_component)
             if current_component not in component_pads:
                 component_pads[current_component] = 0
                 component_nets[current_component] = set()
@@ -332,7 +334,9 @@ def parse_gerber(path: str) -> dict:
             # at the object it is attached to.
             pending_pin = (_gerber_unescape(m.group(1)), _gerber_unescape(m.group(2)),
                            _gerber_unescape(m.group(3) or ""))
-            if pending_pin[0]:
+            if not pending_pin[0]:
+                pending_pin = None
+            else:
                 pad_ref = pending_pin[0]
                 if pad_ref not in component_pads:
                     component_pads[pad_ref] = 0
@@ -419,6 +423,7 @@ def parse_gerber(path: str) -> dict:
 
         result["x2_objects"] = {
             "component_refs": sorted(component_pads.keys()),
+            "pad_refs": sorted(set(component_pads) - to_c_refs),
             "component_pads": {r: c for r, c in sorted(component_pads.items()) if c > 0},
             "component_nets": {r: sorted(ns) for r, ns in sorted(component_nets.items()) if ns},
             "net_names": sorted(net_names),
@@ -435,7 +440,7 @@ def parse_gerber(path: str) -> dict:
     for ap_id, func in aperture_functions.items():
         base_func = func.split(",")[0]  # "SMDPad,CuDef" → "SMDPad"
         func_counts[base_func] = func_counts.get(base_func, 0) + 1
-        # KH-173: instance counts, not unique defs
+        # instance counts, not unique definitions
         func_flash_counts[base_func] = (func_flash_counts.get(base_func, 0)
                                         + aperture_flash_counts.get(ap_id, 0))
     for ap_id, info in aperture_dims.items():
@@ -1065,6 +1070,7 @@ def build_component_analysis(gerbers: list[dict], drills: list[dict]) -> dict | 
     component_pads = {}
     component_nets = {}
     seen_pins = set()  # dedup (ref, pin) across layers
+    copper_refs = {"F.Cu": (set(), set()), "B.Cu": (set(), set())}  # (pad refs, all refs)
 
     for g in gerbers:
         x2o = g.get("x2_objects")
@@ -1072,14 +1078,18 @@ def build_component_analysis(gerbers: list[dict], drills: list[dict]) -> dict | 
             continue
 
         layer_type = g.get("layer_type", "")
-        refs = set(x2o.get("component_refs", []))
-        all_refs |= refs
+        all_refs |= set(x2o.get("component_refs", []))
+        # Copper %TO.P refs set a side below, only for parts on one copper side.
+        refs = set(x2o.get("component_refs", [])) - set(x2o.get("pad_refs", []))
 
         # Determine component side from mask/silk/paste/copper layers
         if layer_type in ("F.Cu", "F.Mask", "F.SilkS", "F.Paste"):
             front_refs |= refs
         elif layer_type in ("B.Cu", "B.Mask", "B.SilkS", "B.Paste"):
             back_refs |= refs
+        if layer_type in copper_refs:
+            copper_refs[layer_type][0].update(x2o.get("pad_refs", []))
+            copper_refs[layer_type][1].update(x2o.get("component_refs", []))
 
         all_nets |= set(x2o.get("net_names", []))
 
@@ -1102,6 +1112,11 @@ def build_component_analysis(gerbers: list[dict], drills: list[dict]) -> dict | 
 
     if not all_refs:
         return None
+
+    # KiCad writes %TO.P on both outer coppers for a through-hole pad, so a
+    # copper pad names a side only when the part has copper on that side alone.
+    front_refs |= copper_refs["F.Cu"][0] - copper_refs["B.Cu"][1]
+    back_refs |= copper_refs["B.Cu"][0] - copper_refs["F.Cu"][1]
 
     # Classify nets
     power_prefixes = ("+", "-")
