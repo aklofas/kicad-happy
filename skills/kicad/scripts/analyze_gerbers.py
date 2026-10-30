@@ -18,6 +18,7 @@ Usage:
     python analyze_gerbers.py <gerber_directory> [--output file.json] [--compact] [--full]
 """
 
+import errno
 import json
 import os
 import re
@@ -32,6 +33,7 @@ from envelopes.gerber import GerberEnvelope  # noqa: E402
 from schema_codec import emit_schema  # noqa: E402
 from inputs_builder import build_inputs, build_compat  # noqa: E402
 from capability_mode import get_capability_mode_ref  # noqa: E402
+from kicad_core.diagnostics import record as record_diagnostic  # noqa: E402
 from kicad_core.cli import (add_compact_arg, add_only_deterministic_arg, add_output_arg,  # noqa: E402
                             add_schema_arg, add_stage_audience_args, add_text_arg, utf8_text_stdout)
 
@@ -234,6 +236,8 @@ def parse_gerber(path: str) -> dict:
     aperture_functions = {}     # D-code -> function string
     current_aperture = None             # currently selected D-code
     aperture_flash_counts = {}          # D-code -> flash instance count
+    aperture_draw_counts = {}           # D-code -> draw instance count
+    in_region = False                   # G36..G37 contours use no aperture
 
     # X2 object attribute state
     current_component = None
@@ -353,6 +357,9 @@ def parse_gerber(path: str) -> dict:
         # -- Region start --
         if s == "G36*":
             result["region_count"] += 1
+            in_region = True
+        elif s == "G37*":
+            in_region = False
 
         # -- Aperture selection (Dnn* where nn >= 10) --
         ap_sel = re.match(r"^(D[1-9]\d+)\*$", s)
@@ -379,6 +386,8 @@ def parse_gerber(path: str) -> dict:
                 net_flash_counts[current_net] = net_flash_counts.get(current_net, 0) + 1
         elif "D01" in s:
             result["draw_count"] += 1
+            if current_aperture and not in_region:
+                aperture_draw_counts[current_aperture] = aperture_draw_counts.get(current_aperture, 0) + 1
             if current_net:
                 net_draw_counts[current_net] = net_draw_counts.get(current_net, 0) + 1
 
@@ -397,6 +406,10 @@ def parse_gerber(path: str) -> dict:
     for key in result["coordinate_range"]:
         if result["coordinate_range"][key] in (float("inf"), float("-inf")):
             result["coordinate_range"][key] = 0
+
+    # Internal: a Gerber drill file's holes per tool; analyze_gerbers pops them.
+    result["_aperture_flashes"] = aperture_flash_counts
+    result["_aperture_draws"] = aperture_draw_counts
 
     # Identify layer type
     name = Path(path).name
@@ -511,6 +524,19 @@ def _parse_aperture_dimension(ap_type: str, ap_params: str, units: str | None) -
 # Drill parser
 # ---------------------------------------------------------------------------
 
+def _add_hole(result: dict, tool: str | None, x: float, y: float) -> None:
+    if tool is None:
+        return
+    result["hole_count"] += 1
+    if tool in result["tools"]:
+        result["tools"][tool]["hole_count"] += 1
+    cr = result["coordinate_range"]
+    if x < cr["x_min"]: cr["x_min"] = x
+    if x > cr["x_max"]: cr["x_max"] = x
+    if y < cr["y_min"]: cr["y_min"] = y
+    if y > cr["y_max"]: cr["y_max"] = y
+
+
 def parse_drill(path: str) -> dict:
     """Parse an Excellon drill file."""
     with open(path, "r", encoding="utf-8", errors="replace") as f:
@@ -531,6 +557,7 @@ def parse_drill(path: str) -> dict:
     pending_aper_function = None
     fmt_decimals = None       # from ; FORMAT={3:3/...} comment
     coord_divisor = None      # set on first coordinate line
+    route_start = None        # G00 position of a routed slot, drilled at M15
 
     for line in lines:
         line = line.strip()
@@ -581,6 +608,20 @@ def parse_drill(path: str) -> dict:
             current_tool = tool_sel.group(1)
             continue
 
+        # Route mode: G00 moves, M15 plunges, G01/G02/G03 cut, M16 retracts.
+        # A routed slot is one hole of its tool, at its plunge point.
+        if line.startswith("M15"):
+            if route_start is not None:
+                _add_hole(result, current_tool, *route_start)
+            route_start = None
+            continue
+        if line.startswith(("M16", "G05", "G01", "G02", "G03")):
+            route_start = None
+            continue
+        routed = line.startswith("G00")
+        if routed:
+            line = line[3:]
+
         # Drill hit
         coord_match = re.match(r"X(-?\d+\.?\d*)Y(-?\d+\.?\d*)", line)
         if coord_match and current_tool:
@@ -608,15 +649,10 @@ def parse_drill(path: str) -> dict:
                 x *= 25.4
                 y *= 25.4
 
-            result["hole_count"] += 1
-            if current_tool in result["tools"]:
-                result["tools"][current_tool]["hole_count"] += 1
-
-            cr = result["coordinate_range"]
-            if x < cr["x_min"]: cr["x_min"] = x
-            if x > cr["x_max"]: cr["x_max"] = x
-            if y < cr["y_min"]: cr["y_min"] = y
-            if y > cr["y_max"]: cr["y_max"] = y
+            if routed:
+                route_start = (x, y)
+            else:
+                _add_hole(result, current_tool, x, y)
 
     # Fix infinite values
     for key in result["coordinate_range"]:
@@ -1004,6 +1040,8 @@ def check_alignment(gerbers: list[dict], drills: list[dict]) -> dict:
                 "height": round(cr["y_max"] - cr["y_min"], 3),
             }
     for d in drills:
+        if "coordinate_range" not in d:  # unreadable file
+            continue
         cr = d["coordinate_range"]
         ranges[f"drill_{d.get('type', 'unknown')}"] = {
             "width": round(cr["x_max"] - cr["x_min"], 3),
@@ -1390,6 +1428,51 @@ def scan_zip_archives(gerber_dir: Path, loose_gerber_files: list[Path],
 # Main analysis
 # ---------------------------------------------------------------------------
 
+_GERBER_DRILL_FUNCTION = re.compile(r"(?:Non)?Plated,|MixedPlating,")
+
+
+def _gerber_drill(g: dict) -> dict:
+    """Drill record, shaped as ``parse_drill``'s, from a parsed Gerber drill file.
+
+    KiCad's Gerber drill writer flashes a round hole and draws a slot as one
+    segment; either is one hole of its aperture.
+    """
+    scale = 25.4 if g.get("units") == "inch" else 1.0
+    ff = g["x2_attributes"].get("FileFunction", "")
+    tools = {}
+    holes = 0
+    for ap_id, ap in g.get("apertures", {}).items():
+        n = g["_aperture_flashes"].get(ap_id, 0) + g["_aperture_draws"].get(ap_id, 0)
+        try:
+            dia = float((ap.get("params") or "").split("X")[0]) * scale
+        except ValueError:
+            continue
+        tool = {"diameter_mm": round(dia, 4), "hole_count": n}
+        if ap.get("function"):
+            tool["aper_function"] = ap["function"]
+        tools[ap_id] = tool
+        holes += n
+    record = {
+        "file": g["file"],
+        "filename": g["filename"],
+        "units": g.get("units"),
+        "tools": tools,
+        "hole_count": holes,
+        "coordinate_range": {k: v * scale for k, v in g["coordinate_range"].items()},
+        "x2_attributes": g["x2_attributes"],
+    }
+    if ff.startswith("NonPlated"):
+        record["type"] = "NPTH"
+    elif ff.startswith("MixedPlating"):
+        record["type"] = "mixed"
+    else:
+        record["type"] = "PTH"
+    m = re.match(r"(?:(?:Non)?Plated|MixedPlating),(\d+),(\d+)", ff)
+    if m:
+        record["layer_span"] = [int(m.group(1)), int(m.group(2))]
+    return record
+
+
 def _is_excellon_file(path: Path) -> bool:
     """Check if a file is likely an Excellon drill file by header inspection."""
     try:
@@ -1400,8 +1483,12 @@ def _is_excellon_file(path: Path) -> bool:
         return False
 
 
-def analyze_gerbers(directory: str, full: bool = False) -> dict:
-    """Main analysis function for a gerber directory."""
+def analyze_gerbers(directory: str, full: bool = False, diagnostics: list | None = None) -> dict:
+    """Main analysis function for a gerber directory.
+
+    A ``*.drl`` path that is not a regular file is skipped and recorded in
+    ``diagnostics`` (a list sink, see ``kicad_core.diagnostics.record``).
+    """
     gerber_dir = Path(directory)
 
     # Find all gerber and drill files
@@ -1419,12 +1506,28 @@ def analyze_gerbers(directory: str, full: bool = False) -> dict:
         else:
             gerber_files.extend(sorted(gerber_dir.glob(ext)))
 
-    # Eagle outputs drill files with .TXT extension — validate header before including
+    named_drills = []
+    for df in drill_files:
+        if df.is_file():
+            named_drills.append(df)
+        else:
+            if df.is_dir():
+                err = IsADirectoryError(errno.EISDIR, os.strerror(errno.EISDIR), str(df))
+            elif not df.exists():  # dangling symlink
+                err = FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), str(df))
+            else:
+                err = OSError(errno.EINVAL, "not a regular file", str(df))
+            record_diagnostic(diagnostics, "analyze_gerbers.analyze_gerbers", err,
+                              "not read as a drill file")
+    drill_files = named_drills
+
+    # Eagle writes .TXT drills, other CAM tools .xln/.nc: header-validated.
     drill_set = set(drill_files)
-    for txt_ext in ("*.TXT", "*.txt"):
-        for txt_path in gerber_dir.glob(txt_ext):
-            if txt_path not in drill_set and _is_excellon_file(txt_path):
-                drill_files.append(txt_path)
+    candidates = [*gerber_dir.glob("*.TXT"), *gerber_dir.glob("*.txt"),
+                  *(p for p in sorted(gerber_dir.glob("*.*")) if p.suffix.lower() in (".xln", ".nc"))]
+    for txt_path in candidates:
+        if txt_path not in drill_set and txt_path.is_file() and _is_excellon_file(txt_path):
+            drill_files.append(txt_path)
 
     gerber_files = sorted(set(gerber_files))
     gerber_files = [f for f in gerber_files
@@ -1443,7 +1546,20 @@ def analyze_gerbers(directory: str, full: bool = False) -> dict:
             gerbers.append({"file": str(gf), "filename": gf.name, "error": str(e),
                             "layer_type": "unknown"})
 
-    drills = []
+    # Gerber drill files are drills, and their hole attributes stay out of
+    # the layer analyses.
+    gerber_drills = []
+    layers = []
+    for g in gerbers:
+        if ("error" not in g and _GERBER_DRILL_FUNCTION.match(
+                g.get("x2_attributes", {}).get("FileFunction", ""))):
+            gerber_drills.append(_gerber_drill(g))
+        else:
+            layers.append(g)
+        g.pop("_aperture_flashes", None)
+        g.pop("_aperture_draws", None)
+    gerbers = layers
+    drills = list(gerber_drills)
     for df in drill_files:
         try:
             drills.append(parse_drill(str(df)))
@@ -1560,7 +1676,7 @@ def analyze_gerbers(directory: str, full: bool = False) -> dict:
     if job_info and job_info.get("generator"):
         generator = job_info["generator"]
     else:
-        for g in gerbers:
+        for g in gerbers + gerber_drills:
             gen = g.get("x2_attributes", {}).get("GenerationSoftware", "")
             if gen:
                 generator = gen
@@ -1858,11 +1974,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     compat = build_compat()
 
-    result = analyze_gerbers(args.directory, full=args.full)
+    diagnostics: list = []
+    result = analyze_gerbers(args.directory, full=args.full, diagnostics=diagnostics)
     # Inject provenance.
     result["inputs"] = inputs
     result["compat"] = compat
-    result["diagnostics"] = []
+    result["diagnostics"] = diagnostics
 
     from output_filters import apply_output_filters
     apply_output_filters(result, args.stage, args.audience)

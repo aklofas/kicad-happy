@@ -418,13 +418,16 @@ T2C1.000
 G85X120000Y90000X125000Y90000       ; Route (slot) from (120,90) to (125,90)
 ```
 
-Or with M15/M16:
+Or in route mode (KiCad's default oval format in the GUI drill dialog):
 ```
-M15                                  ; Router mode on
-G01X120000Y90000                     ; Start of slot
-X125000Y90000                        ; End of slot
-M16                                  ; Router mode off
+G00X120.0Y90.0                       ; Move to the start of the slot
+M15                                  ; Plunge (router down)
+G01X125.0Y90.0                       ; Cut to the end of the slot
+M16                                  ; Retract
+G05                                  ; Back to drill mode
 ```
+
+Either form is one hole of its tool, as in KiCad's drill report. KiCad's Gerber-format drill files (`-PTH-drl.gbr`, `-NPTH-drl.gbr`, `%TF.FileFunction,Plated|NonPlated,…`) flash round holes and draw a slot as one segment; they are drill files, not layers.
 
 ---
 
