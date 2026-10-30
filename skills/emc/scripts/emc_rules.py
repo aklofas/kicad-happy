@@ -15,7 +15,6 @@ Zero external dependencies beyond Python 3.8+ stdlib.
 """
 
 import math
-import os
 import re
 from typing import List, Dict, Optional
 
@@ -41,6 +40,7 @@ from kicad_core.parts import (
 from kicad_core.netnames import is_ground_name, is_power_net_name, net_leaf
 from kicad_core.netquery import build_net_id_map
 from kicad_core.diagnostics import record
+from kicad_core.project import existing_source_dir
 from kicad_core.render import normalize_severity
 from kicad_core.sexp import unescape_string
 from finding_schema import Det, get_findings
@@ -57,7 +57,8 @@ def _schematic_project_dir(schematic):
     analyzer's provenance block (the JSON carries no top-level `file` key)."""
     for p in ((schematic or {}).get('inputs') or {}).get('source_files') or []:
         if isinstance(p, str) and p.lower().endswith(('.kicad_sch', '.sch')):
-            return os.path.dirname(os.path.abspath(p))
+            found = existing_source_dir(p)
+            return str(found) if found is not None else None
     return None
 
 

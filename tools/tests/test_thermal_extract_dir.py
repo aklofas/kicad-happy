@@ -34,14 +34,14 @@ class ThermalExtractDirTest(unittest.TestCase):
         ext.mkdir(parents=True)
         (ext / f"{MPN}.json").write_text(json.dumps(EXTRACTION), encoding="utf-8")
 
-    def run_thermal(self, json_dir, sch):
+    def run_thermal(self, json_dir, sch, cwd=None):
         json_dir.mkdir(parents=True, exist_ok=True)
         (json_dir / "schematic.json").write_text(json.dumps(sch), encoding="utf-8")
         (json_dir / "pcb.json").write_text(json.dumps(PCB), encoding="utf-8")
         out = self.tmp / f"thermal-{json_dir.name}.json"
         r = subprocess.run([sys.executable, str(THERMAL), "-s", str(json_dir / "schematic.json"),
                             "-p", str(json_dir / "pcb.json"), "-o", str(out)],
-                           capture_output=True, text=True, cwd=self.tmp)
+                           capture_output=True, text=True, cwd=cwd or self.tmp)
         self.assertEqual(r.returncode, 0, r.stderr[-600:])
         d = json.loads(out.read_text(encoding="utf-8"))
         (a,) = d["assessments"]
@@ -64,6 +64,18 @@ class ThermalExtractDirTest(unittest.TestCase):
             a, _ = self.run_thermal(json_dir, sch)
             self.assertEqual((a["tj_max_c"], a["tj_max_source"]), (60.0, "datasheet"), json_dir)
             self.assertEqual(a["margin_c"], -25.0)
+
+    def test_relative_source_path(self):
+        # `analyze_schematic.py board.kicad_sch` records the path as typed.
+        shared = self.tmp / "shared"
+        self.plant(shared)
+        a, _ = self.run_thermal(self.tmp / "out1", schematic(["board.kicad_sch"]), cwd=shared)
+        self.assertEqual((a["tj_max_c"], a["tj_max_source"]), (125.0, "default_125"))
+        proj = self.tmp / "proj"
+        self.plant(proj)
+        (proj / "board.kicad_sch").write_text("(kicad_sch)", encoding="utf-8")
+        a, _ = self.run_thermal(self.tmp / "out2", schematic(["board.kicad_sch"]), cwd=proj)
+        self.assertEqual((a["tj_max_c"], a["tj_max_source"]), (60.0, "datasheet"))
 
 
 if __name__ == "__main__":

@@ -62,7 +62,7 @@ _KICAD_SCRIPTS = str(Path(__file__).resolve().parents[2] / "kicad" / "scripts")
 if _KICAD_SCRIPTS not in sys.path:
     sys.path.append(_KICAD_SCRIPTS)
 
-from kicad_core.project import project_dir_from_analysis  # noqa: E402
+from kicad_core.project import extraction_project_dir  # noqa: E402
 
 # Bump this when the extraction schema changes to trigger re-extraction
 # v2 (2026-04-15): added peripherals.usb, electrical.en_v_ih_max/en_v_il_min,
@@ -89,7 +89,8 @@ def resolve_extract_dir(analysis_json=None, project_dir=None, override_dir=None)
     """Determine the datasheets/extracted/ directory for this project.
 
     Derives the project directory from either an explicit path or the
-    analyzer JSON (its "file", else its first ``inputs.source_files`` entry).
+    analyzer JSON (its "file", else its first ``inputs.source_files`` entry;
+    a relative entry only when that file exists from the cwd).
 
     Args:
         analysis_json: Parsed analyzer JSON dict
@@ -107,7 +108,7 @@ def resolve_extract_dir(analysis_json=None, project_dir=None, override_dir=None)
     if project_dir:
         return Path(project_dir) / "datasheets" / "extracted"
 
-    found = project_dir_from_analysis(analysis_json)
+    found = extraction_project_dir(analysis_json)
     if found is not None:
         return found / "datasheets" / "extracted"
     return None

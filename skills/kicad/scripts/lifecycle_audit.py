@@ -39,7 +39,7 @@ from datetime import datetime
 from pathlib import Path
 
 from kicad_core import token_cache
-from kicad_core.project import project_dir_from_analysis
+from kicad_core.project import extraction_project_dir
 from kicad_core.cli import add_only_deterministic_arg, add_output_arg
 
 
@@ -1229,7 +1229,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # Extraction temperatures come only from the project the analysis names;
     # the JSON's own folder may be a shared directory such as /tmp.
-    found = project_dir_from_analysis(analysis)
+    found = extraction_project_dir(analysis)
     project_dir = str(found) if found is not None else None
 
     # Parse temperature range

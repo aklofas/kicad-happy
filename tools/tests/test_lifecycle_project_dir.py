@@ -2,7 +2,7 @@
 operating temperature range from the project's datasheet extractions (v2
 SpecValue shape and the older flat shape); a malformed extraction is skipped
 with one warning instead of a traceback."""
-import contextlib, io, json, shutil, sys, tempfile, unittest
+import contextlib, io, json, os, shutil, sys, tempfile, unittest
 from pathlib import Path
 from unittest import mock
 
@@ -277,6 +277,42 @@ class CliProjectDirTest(unittest.TestCase):
         lt = [f for f in r["findings"] if f["rule_id"] == "LT-001"]
         self.assertEqual([(f["component_range"], f["evidence_source"]) for f in lt],
                          [({"min_c": 0.0, "max_c": 70.0}, "api_lookup")])
+
+    def run_relative(self, cwd, plant_schematic):
+        # `analyze_schematic.py board.kicad_sch` records the path as typed.
+        ext = cwd / "datasheets" / "extracted"
+        ext.mkdir(parents=True)
+        (ext / "LM358DR.json").write_text(json.dumps(
+            {"recommended_operating_conditions": {"temp_min_c": -40, "temp_max_c": 125}}), encoding="utf-8")
+        if plant_schematic:
+            (cwd / "board.kicad_sch").write_text("(kicad_sch)", encoding="utf-8")
+        out_dir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, out_dir)
+        (out_dir / "schematic.json").write_text(json.dumps(
+            {"inputs": {"source_files": ["board.kicad_sch"]},
+             "bom": [{"references": ["U1"], "mpn": "LM358DR", "type": "ic"}]}), encoding="utf-8")
+        old = os.getcwd()
+        os.chdir(cwd)
+        try:
+            with patched_queries(digikey={"status": "Active", "temp_min_c": 0.0, "temp_max_c": 70.0}), \
+                    contextlib.redirect_stderr(io.StringIO()):
+                lifecycle_audit.main([str(out_dir / "schematic.json"), "--temp-range", "automotive",
+                                      "--only", "digikey", "--delay", "0",
+                                      "--output", str(out_dir / "out.json")])
+        finally:
+            os.chdir(old)
+        r = json.loads((out_dir / "out.json").read_text(encoding="utf-8"))
+        return [f["evidence_source"] for f in r["findings"] if f["rule_id"] == "LT-001"]
+
+    def test_relative_source_from_a_shared_cwd_reads_no_extraction(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        self.assertEqual(self.run_relative(tmp, plant_schematic=False), ["api_lookup"])
+
+    def test_relative_source_from_the_project_cwd_reads_its_extraction(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        self.assertEqual(self.run_relative(tmp, plant_schematic=True), [])
 
 
 class ListManifestCliTest(unittest.TestCase):

@@ -7,9 +7,7 @@ from pathlib import Path
 from kicad_core.sexp import parse as _sexp_parse, parse_file as _sexp_parse_file, find_all, find_first, get_value
 
 
-def project_dir_from_analysis(analysis_json):
-    """Return the directory of the first source file the analysis JSON names
-    ("file", else inputs.source_files[0]), or None when it names none."""
+def _recorded_source_file(analysis_json):
     if not isinstance(analysis_json, dict):
         return None
     source_file = analysis_json.get("file")
@@ -17,9 +15,32 @@ def project_dir_from_analysis(analysis_json):
         inputs = analysis_json.get("inputs")
         sources = inputs.get("source_files") if isinstance(inputs, dict) else None
         source_file = sources[0] if isinstance(sources, list) and sources else None
-    if isinstance(source_file, str) and source_file:
+    return source_file if isinstance(source_file, str) and source_file else None
+
+
+def project_dir_from_analysis(analysis_json):
+    """Return the directory of the first source file the analysis JSON names
+    ("file", else inputs.source_files[0]), or None when it names none."""
+    source_file = _recorded_source_file(analysis_json)
+    return Path(source_file).parent if source_file else None
+
+
+def existing_source_dir(source_file):
+    """Absolute directory of a recorded source path, or None. A relative path
+    counts only when that file exists from the cwd: otherwise the cwd (maybe a
+    shared folder) would stand in for the project."""
+    if not (isinstance(source_file, str) and source_file):
+        return None
+    if os.path.isabs(source_file):
         return Path(source_file).parent
-    return None
+    absolute = os.path.abspath(source_file)
+    return Path(absolute).parent if os.path.isfile(absolute) else None
+
+
+def extraction_project_dir(analysis_json):
+    """Project directory for datasheet-extraction reads: like
+    project_dir_from_analysis, but a relative source path must exist."""
+    return existing_source_dir(_recorded_source_file(analysis_json))
 
 
 # ======================================================================

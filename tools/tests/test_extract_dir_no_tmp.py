@@ -81,5 +81,45 @@ class ExtractDirTest(unittest.TestCase):
         self.assertEqual(emc_rules._usb_pair_protocol(pair, "HS"), "USB-HS")
 
 
+class RelativeSourceTest(unittest.TestCase):
+    """`analyze_schematic.py board.kicad_sch` records a relative source path."""
+
+    setUp = ExtractDirTest.setUp
+
+    def chdir(self, d):
+        old = os.getcwd()
+        os.chdir(d)
+        self.addCleanup(os.chdir, old)
+
+    def test_relative_source_from_a_shared_cwd_is_no_project(self):
+        shared = self.tmp / "shared-cwd"
+        (shared / "datasheets" / "extracted").mkdir(parents=True)
+        (shared / "datasheets" / "extracted" / f"{MPN}.json").write_text(
+            json.dumps(mcu_extraction("SS")), encoding="utf-8")
+        self.chdir(shared)
+        a = {"inputs": {"source_files": ["board.kicad_sch"]}}
+        self.assertIsNone(dec.resolve_extract_dir(analysis_json=a))
+        self.assertIsNone(df.get_mcu_features(MPN, analysis_json=a))
+        pair = {"shared_ics": ["U1"], "positive": "USB_DP", "negative": "USB_DN"}
+        self.assertIsNone(emc_rules._resolve_usb_speed(pair, schematic_json(["board.kicad_sch"])))
+        # The SPICE model cache keeps reading the recorded path as given.
+        from kicad_core.project import project_dir_from_analysis
+        self.assertEqual(project_dir_from_analysis(a), Path("."))
+
+    def test_relative_source_from_the_project_cwd_reads_its_cache(self):
+        self.chdir(self.proj)
+        a = {"inputs": {"source_files": ["board.kicad_sch"]}}
+        here = Path(os.getcwd())
+        self.assertEqual(dec.resolve_extract_dir(analysis_json=a), here / "datasheets" / "extracted")
+        self.assertEqual(df.get_mcu_features(MPN, analysis_json=a)["usb_speed"], "HS")
+        pair = {"shared_ics": ["U1"], "positive": "USB_DP", "negative": "USB_DN"}
+        self.assertEqual(emc_rules._resolve_usb_speed(pair, schematic_json(["board.kicad_sch"])), "HS")
+
+    def test_absolute_source_needs_no_file(self):
+        a = {"inputs": {"source_files": [str(self.tmp / "gone" / "board.kicad_sch")]}}
+        self.assertEqual(dec.resolve_extract_dir(analysis_json=a),
+                         self.tmp / "gone" / "datasheets" / "extracted")
+
+
 if __name__ == "__main__":
     unittest.main()
