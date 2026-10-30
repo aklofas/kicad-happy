@@ -146,33 +146,6 @@ def _distinct(findings: "list[dict]") -> "list[dict]":
     return unique
 
 
-def claim_plan(findings: "list[dict]", open_stems: "set | None" = None) -> dict:
-    """Map the finding's JSON text -> (unstable, rank) for a run's findings.
-
-    An unstable finding is identified by its content key only. Findings that
-    share a key take ranks 0, 1, ... in canonical content order, so which
-    open issue each one claims never depends on input order. A stem that an
-    open issue's marker carries with a ``#N`` suffix is positional too: that
-    group has shrunk since the issue was filed.
-    """
-    stems = positional_stems(findings) | set(open_stems or ())
-    groups: dict[str, list] = {}
-    plan: dict = {}
-    for f in findings:
-        fid = f.get("finding_id")
-        if not (isinstance(fid, str) and fid.strip()):
-            continue
-        if finding_key(f, positional=_fid_stem(fid) in stems) != fid:
-            groups.setdefault(finding_key(f, positional=True), []).append(f)
-        else:
-            plan[_sig(f)] = (False, 0)
-    for members in groups.values():
-        members.sort(key=lambda f: (_canonical(f), f.get("finding_id")))
-        for rank, f in enumerate(members):
-            plan[_sig(f)] = (True, rank)
-    return plan
-
-
 def load_findings(path: str) -> list[dict]:
     """Load an analyzer JSON file and return findings that have a rule_id."""
     if not os.path.isfile(path):
@@ -437,79 +410,96 @@ def list_open_issues(repo: str) -> "list[dict]":
 
 
 class IssueIndex:
-    """Open issues indexed by finding marker, with unmarked ones kept by title."""
+    """Open issues: marked ones as (number, finding id, content key or None),
+    unmarked ones by title."""
 
     def __init__(self, issues: "list[dict]"):
-        self.used: set = set()
-        self.suffixed_stems: set = set()
-        self.by_id: dict[str, object] = {}
-        self.by_key: dict[str, list] = {}
-        self.keyless: dict[str, object] = {}
+        self.marked: list = []
         self.legacy: dict[str, list] = {}
+        self.used: set = set()
         for issue in issues:
             if not isinstance(issue, dict):
                 continue
             num = issue.get("number")
             m = marker_id(issue.get("body"))
             if m is not None:
-                self.add_marker(num, m)
+                self.marked.append((num, m[0], m[1]))
             else:
                 self.legacy.setdefault(issue.get("title") or "", []).append(num)
 
-    def add_marker(self, num, parsed: "tuple[str, str | None]") -> None:
-        fid, key = parsed
-        if _fid_stem(fid) != fid:
-            self.suffixed_stems.add(_fid_stem(fid))
-        self.by_id.setdefault(fid, num)
-        if key:
-            self.by_key.setdefault(key, []).append(num)
-        else:
-            self.keyless.setdefault(fid, num)
-
-    def add_created(self, num, finding: dict, title: str, unstable: bool = False) -> None:
-        """Record an issue made this run. An unstable finding is already
-        accounted for by its rank, so it is not added to the key counts."""
-        parsed = parse_marker(finding_marker(finding))
-        if unstable and parsed:
-            return
-        if parsed:
-            # By id only: a later finding with the same content is a different one.
-            self.add_marker(num, (parsed[0], None))
-        else:
-            self.legacy.setdefault(title, []).append(num)
-
-    def claim(self, finding: dict, titles: "list[str]",
-              unstable: bool = False, rank: int = 0) -> "object | None":
-        """Return the open issue for this finding and mark it as used.
-
-        A stable id matches by id. An unstable finding (positional id or
-        unnamed-net locator) matches by content key as a multiset: the open
-        issues carrying a key serve the first ``n`` findings of that key in
-        ``rank`` order. A marker without a key matches by id only. An unmarked
-        issue is matched by exact title and serves one finding only.
-        """
-        parsed = parse_marker(finding_marker(finding))
-        if parsed:
-            fid, key = parsed
-            if not unstable:
-                if fid in self.by_id:
-                    return self.by_id[fid]
-                for num in self.by_key.get(key, []):
-                    if num not in self.used:
-                        self.used.add(num)
-                        return num
-            else:
-                nums = self.by_key.get(key, [])
-                if rank < len(nums):
-                    return nums[rank]
-                if fid in self.keyless:
-                    return self.keyless[fid]
-        for title in titles:
-            for num in self.legacy.get(title, []):
-                if num not in self.used:
-                    self.used.add(num)
-                    return num
+    def _take(self, nums) -> "object | None":
+        for num in nums:
+            if num not in self.used:
+                self.used.add(num)
+                return num
         return None
+
+    def assign(self, findings: "list[dict]") -> dict:
+        """Map each finding's JSON text to the open issue it already has.
+
+        ``findings`` is every distinct finding of the run. A finding is stable
+        when its id is not positional in this run (see ``positional_stems``;
+        a stem an open marker carries with ``#N`` counts too, since that group
+        has shrunk) and names no unnamed net. Claims run in a fixed order so
+        input order never decides them:
+
+        1. a stable finding takes the issue carrying its id;
+        2. unstable findings sharing a content key take the remaining issues
+           with that key in canonical content order, one each;
+        3. a stable finding still without an issue takes one with its key,
+           unless that issue carries the id of a finding present in this run;
+        4. an unstable finding still without an issue takes one carrying its
+           exact id (a marker without a key, or content edited).
+        """
+        stems = positional_stems(findings) | {
+            _fid_stem(fid) for _, fid, _ in self.marked if _fid_stem(fid) != fid}
+        marked_id = {num: fid for num, fid, _ in self.marked}
+        by_id: dict[str, list] = {}
+        by_key: dict[str, list] = {}
+        for num, fid, key in self.marked:
+            by_id.setdefault(fid, []).append(num)
+            if key:
+                by_key.setdefault(key, []).append(num)
+
+        stable, unstable, present = [], [], set()
+        for f in findings:
+            parsed = parse_marker(finding_marker(f))
+            if parsed is None:
+                continue
+            present.add(parsed[0])
+            raw = f["finding_id"]
+            is_stable = finding_key(f, positional=_fid_stem(raw) in stems) == raw
+            (stable if is_stable else unstable).append((f, *parsed))
+        for group in (stable, unstable):
+            group.sort(key=lambda item: (_canonical(item[0]), item[1]))
+
+        claims: dict = {}
+        for f, fid, _ in stable:
+            claims[_sig(f)] = self._take(by_id.get(fid, []))
+        for f, _, key in unstable:
+            claims[_sig(f)] = self._take(by_key.get(key, []))
+        for f, fid, key in stable:
+            if claims[_sig(f)] is None:
+                claims[_sig(f)] = self._take(
+                    n for n in by_key.get(key, []) if marked_id[n] not in present)
+        for f, fid, _ in unstable:
+            if claims[_sig(f)] is None:
+                claims[_sig(f)] = self._take(by_id.get(fid, []))
+        return {sig: num for sig, num in claims.items() if num is not None}
+
+    def claim_title(self, titles: "list[str]") -> "object | None":
+        """An unmarked open issue with one of these titles; each serves one finding."""
+        for title in titles:
+            num = self._take(self.legacy.get(title, []))
+            if num is not None:
+                return num
+        return None
+
+    def add_created(self, num, finding: dict, title: str) -> None:
+        """Record an issue made this run for a finding without an id, so a
+        later one with the same title is not filed twice."""
+        if not finding_marker(finding):
+            self.legacy.setdefault(title, []).append(num)
 
 
 def create_issue(
@@ -722,7 +712,7 @@ def main(argv: "list[str] | None" = None) -> int:  # noqa: C901 (intentionally l
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
-    plan = claim_plan(_distinct(all_findings), index.suffixed_stems)
+    claims = index.assign(_distinct(all_findings))
     findings = _distinct(findings)
 
     created = 0
@@ -733,9 +723,9 @@ def main(argv: "list[str] | None" = None) -> int:  # noqa: C901 (intentionally l
         rule_id = finding.get("rule_id", "")
 
         title = format_issue_title(finding)
-        unstable, rank = plan.get(_sig(finding), (False, 0))
-        existing = index.claim(
-            finding, [title, format_issue_title(finding, inert=False)], unstable, rank)
+        existing = claims.get(_sig(finding))
+        if existing is None:
+            existing = index.claim_title([title, format_issue_title(finding, inert=False)])
         if existing is not None:
             summary = (finding.get("summary") or "")[:60]
             print(f"SKIP  [{rule_id}] {summary}  (already open: #{existing})")
@@ -751,7 +741,7 @@ def main(argv: "list[str] | None" = None) -> int:  # noqa: C901 (intentionally l
             print(f"CREATED  {url}")
             created += 1
             tail = url.rstrip("/").rsplit("/", 1)[-1]
-            index.add_created(int(tail) if tail.isdigit() else tail, finding, title, unstable)
+            index.add_created(int(tail) if tail.isdigit() else tail, finding, title)
         else:
             print(f"ERROR  [{rule_id}] {title[:60]}", file=sys.stderr)
             errors += 1

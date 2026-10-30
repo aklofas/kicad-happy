@@ -236,6 +236,37 @@ class ExportDedupTest(unittest.TestCase):
         r, creates = self.shrunk([other])
         self.assertEqual(len(creates), 1)
 
+    def test_stable_finding_never_takes_a_present_findings_issue(self):
+        # two detection-hash ids with the same content key; T is filed, S is new
+        t = {"rule_id": "OA-DET", "components": ["U1"],
+             "summary": "Op-amp U1 comparator_or_open_loop",
+             "finding_id": "schematic:opamp_circuits-aaa"}
+        s = dict(t, finding_id="schematic:opamp_circuits-bbb")
+        content = "OA-DET::::U1::Op-amp U1 comparator_or_open_loop"
+        issues = [{"number": 1, "title": "t",
+                   "body": keyed_marker("schematic:opamp_circuits-aaa", content)}]
+        for order in ([t, s], [s, t]):
+            r, creates = self.run_export(order, issues)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(len(creates), 1)
+            self.assertEqual(self.kv(creates[0], "body").split("\n")[0],
+                             keyed_marker("schematic:opamp_circuits-bbb", content))
+            self.assertIn("#1", r.stdout)
+
+    def test_edited_finding_in_a_stale_group_keeps_its_issue(self):
+        # A (u1) and B (u1#1) were filed; B is gone but its issue is open; A's text changed
+        issues = [{"number": 1, "title": "t",
+                   "body": keyed_marker("schematic:RG-001:u1", "RG-001::N1::U1::A 3.3V")},
+                  {"number": 2, "title": "t",
+                   "body": keyed_marker("schematic:RG-001:u1#1", "RG-001::N2::U1::B")}]
+        a = {"rule_id": "RG-001", "nets": ["N1"], "components": ["U1"], "summary": "A 3.4V",
+             "finding_id": "schematic:RG-001:u1"}
+        r, creates = self.run_export([a], issues)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(creates, [])
+        self.assertIn("#1", r.stdout)
+        self.assertNotIn("#2", r.stdout)
+
     def nt_pair(self):
         return [{"rule_id": "NT-001", "finding_id": f"NT-001:__unnamed_{n}",
                  "nets": [f"__unnamed_{n}"], "components": ["BV10"],
