@@ -16,7 +16,7 @@ from kicad_core.fields import (MPN_FIELD_ALIASES, MPN_FIELD_ALIASES_PRIMARY,
 # ---------------------------------------------------------------------------
 
 FIELD_ALIASES: dict[str, list[str]] = {
-    # KH-414: shared with analyze_schematic / analyze_pcb (kicad_core.fields), plus
+    # Shared with analyze_schematic / analyze_pcb (kicad_core.fields), plus
     # the bom-local ambiguous extras the analyzers deliberately exclude.
     "mpn": sorted(MPN_FIELD_ALIASES | {"mp", "mfn"}),
     "manufacturer": [
@@ -40,8 +40,8 @@ FIELD_ALIASES: dict[str, list[str]] = {
     ],
 }
 
-# Build reverse lookup: NORMALIZED field name -> canonical name (KH-414:
-# case- and whitespace-insensitive, so "Manufacturer  P/N" == "manufacturer p/n").
+# Build reverse lookup: NORMALIZED field name -> canonical name (case- and
+# whitespace-insensitive, so "Manufacturer  P/N" == "manufacturer p/n").
 _ALIAS_LOOKUP: dict[str, str] = {}
 for canonical, aliases in FIELD_ALIASES.items():
     for alias in aliases:
@@ -55,7 +55,7 @@ def _canonical_for(name: str):
 
 def _first_nonblank_stripped(props: dict, aliases: frozenset) -> str:
     """First value whose normalized key is in *aliases* and whose .strip() is
-    non-empty, returned STRIPPED (final wave fix)."""
+    non-empty, returned stripped."""
     for key, value in props.items():
         v = str(value).strip()
         if v and normalize_field_name(key) in aliases:
@@ -64,9 +64,9 @@ def _first_nonblank_stripped(props: dict, aliases: frozenset) -> str:
 
 
 def _pick_mpn_from_props(props: dict) -> str:
-    """Alias-scan fallback for the mpn canonical (KH-418 tiers; bom-local
-    `mp`/`mfn` count as generic). Whitespace-only values are skipped
-    (final wave fix)."""
+    """Alias-scan fallback for the mpn canonical (manufacturer-specific aliases
+    before generic ones; bom-local `mp`/`mfn` count as generic). Whitespace-only
+    values are skipped."""
     return (_first_nonblank_stripped(props, MPN_FIELD_ALIASES_PRIMARY)
             or _first_nonblank_stripped(props, MPN_FIELD_ALIASES_GENERIC | frozenset({"mp", "mfn"})))
 
