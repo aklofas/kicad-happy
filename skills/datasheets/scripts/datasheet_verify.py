@@ -17,12 +17,15 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 
+MAX_EXTRACTION_BYTES = 10 * 1024 * 1024
+
+
 def _load_extraction(extract_dir: str, mpn: str) -> dict:
     """Load extraction JSON for an MPN. Always returns dict; never None.
 
     Returns {} only for: missing dir, missing MPN, file not found, JSON
-    parse error, undecodable or non-object file, or OSError. Quality is NOT a gate here (v2.0 spec
-    §3.A.2) — callers emit an `extraction_quality_low` info finding via
+    parse error, undecodable, non-object, symlinked or oversized file, or
+    OSError. Quality is NOT a gate here (v2.0 spec §3.A.2) — callers emit an `extraction_quality_low` info finding via
     `_quality_finding` instead.
 
     Two cache shapes supported:
@@ -76,8 +79,11 @@ def _load_extraction(extract_dir: str, mpn: str) -> dict:
 
 
 def _read_extraction_file(path: str) -> dict:
-    """Read one extraction file; {} when unreadable, undecodable or not an object."""
+    """Read one extraction file; {} when unreadable, undecodable, symlinked,
+    oversized or not an object."""
     try:
+        if os.path.islink(path) or os.path.getsize(path) > MAX_EXTRACTION_BYTES:
+            return {}
         with open(path, encoding="utf-8") as f:
             extraction = json.load(f)
     except (ValueError, OSError):
@@ -208,7 +214,7 @@ def _passes_trust_gate(extraction: dict) -> bool:
     """Return True if extraction quality is acceptable (or unknown).
 
     v1.4: extraction.quality_score 0-100, threshold 60.
-    v1.3: meta.extraction_score 0-10, threshold 6.0.
+    v1.3: extraction_metadata (else meta).extraction_score 0-10, threshold 6.0.
     No quality metadata at all: pass (don't gate; let downstream decide).
     """
     quality_v14 = (extraction.get("extraction") or {}).get("quality_score")
@@ -618,6 +624,11 @@ def verify_decoupling(components: list, nets: dict, extraction_dir: str,
                 if pt in ("power",) and direction in ("input", "output", "bidirectional"):
                     power_pin_nets.add(net_name)
 
+        # A unit (or part) with none of the extraction's power pins has
+        # nothing to decouple here; its supply pins sit on another unit.
+        if not power_pin_nets:
+            continue
+
         # Count caps on power nets
         caps_on_power = []
         for net_name in sorted(power_pin_nets):
@@ -665,22 +676,32 @@ def verify_decoupling(components: list, nets: dict, extraction_dir: str,
 
 
 def _merge_ic_units(components):
-    """One entry per IC reference: the analysis lists each unit of a multi-unit
-    part separately, with only that unit's pins."""
-    out, by_ref = [], {}
+    """One entry per physical IC: the analysis lists each unit of a
+    multi-unit part separately, with only that unit's pins. Units merge when
+    reference, lib_id and value agree; a repeated unit number starts a second
+    part, and an unannotated `U?` reference never merges."""
+    out, groups = [], {}
     for c in components:
         ref = c.get("reference", "")
-        if c.get("type") != "ic" or not ref:
+        if c.get("type") != "ic" or not ref or ref.endswith("?"):
             out.append(c)
             continue
-        if ref not in by_ref:
+        key = (ref, c.get("lib_id", ""), c.get("value", ""))
+        unit = c.get("unit") or 1
+        group = groups.get(key)
+        if group is None or unit in group["units"]:
             merged = dict(c)
             merged["pin_nets"] = dict(c.get("pin_nets") or {})
-            by_ref[ref] = merged
+            group = {"entry": merged, "units": {unit}}
+            groups[key] = group
             out.append(merged)
-        else:
-            for pin, net in (c.get("pin_nets") or {}).items():
-                by_ref[ref]["pin_nets"].setdefault(pin, net)
+            continue
+        group["units"].add(unit)
+        entry = group["entry"]
+        for pin, net in (c.get("pin_nets") or {}).items():
+            entry["pin_nets"].setdefault(pin, net)
+        if not entry.get("mpn") and c.get("mpn"):
+            entry["mpn"] = c["mpn"]
     return out
 
 

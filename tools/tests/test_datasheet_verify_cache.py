@@ -9,7 +9,8 @@ sys.path.insert(0, str(ROOT / "skills" / "kicad" / "scripts"))
 import datasheet_extract_cache as cache  # noqa: E402
 import datasheet_verify as dv  # noqa: E402
 
-BUCK = Path("/home/aklofas/Projects/kicad-happy-testharness/repos/ikajdan/stm32-buck-converter/hardware")
+CORPUS = Path(os.environ.get("KH_CORPUS", "/home/aklofas/Projects/kicad-happy-testharness/repos"))
+BUCK = CORPUS / "ikajdan" / "stm32-buck-converter" / "hardware"
 
 LM358 = {
     "mpn": "LM358", "category": "opamp",
@@ -85,21 +86,21 @@ class Quality(unittest.TestCase):
         self.assertEqual(f["quality_score"], 3.0)
 
 
-def three_unit_analysis(d):
+def three_unit_analysis(d, ref="U9"):
     """U9 is a 3-unit IC: units 1-2 carry signal pins, unit 3 the power pins."""
-    def unit(pn):
-        return {"reference": "U9", "type": "ic", "value": "LM358", "mpn": "LM358",
-                "parsed_value": None, "pin_nets": pn}
-    comps = [unit({"1": "SIG1"}), unit({"2": "SIG2"}), unit({"8": "+3.3V", "4": "GND"})]
-    for ref in ("C1", "C2", "C3"):
-        comps.append({"reference": ref, "type": "capacitor", "value": "100nF",
+    def unit(n, pn):
+        return {"reference": ref, "type": "ic", "value": "LM358", "lib_id": "Amplifier:LM358",
+                "unit": n, "mpn": "LM358", "parsed_value": None, "pin_nets": pn}
+    comps = [unit(1, {"1": "SIG1"}), unit(2, {"2": "SIG2"}), unit(3, {"8": "+3.3V", "4": "GND"})]
+    for cref in ("C1", "C2", "C3"):
+        comps.append({"reference": cref, "type": "capacitor", "value": "100nF",
                       "parsed_value": 1e-7, "pin_nets": {"1": "+3.3V", "2": "GND"}})
-    nets = {"+3.3V": {"pins": [{"component": "U9", "pin_number": "8"}] +
+    nets = {"+3.3V": {"pins": [{"component": ref, "pin_number": "8"}] +
                       [{"component": r, "pin_number": "1"} for r in ("C1", "C2", "C3")]},
-            "GND": {"pins": [{"component": "U9", "pin_number": "4"}] +
+            "GND": {"pins": [{"component": ref, "pin_number": "4"}] +
                     [{"component": r, "pin_number": "2"} for r in ("C1", "C2", "C3")]},
-            "SIG1": {"pins": [{"component": "U9", "pin_number": "1"}]},
-            "SIG2": {"pins": [{"component": "U9", "pin_number": "2"}]}}
+            "SIG1": {"pins": [{"component": ref, "pin_number": "1"}]},
+            "SIG2": {"pins": [{"component": ref, "pin_number": "2"}]}}
     return {"components": comps, "nets": nets, "rail_voltages": {"+3.3V": 3.3}, "file": ""}
 
 
@@ -125,7 +126,80 @@ class MultiUnit(unittest.TestCase):
         self.assertEqual(f[0]["severity"], "warning")
 
 
-@unittest.skipUnless(BUCK.is_dir(), "corpus project not available")
+    def test_unannotated_reference_raises_no_error_from_logic_units(self):
+        with tempfile.TemporaryDirectory() as t:
+            cache.cache_extraction(str(Path(t) / "datasheets" / "extracted"), "LM358", lm358(9.0))
+            res = dv.run_datasheet_verification(three_unit_analysis(t, ref="U?"), project_dir=t)
+        self.assertEqual([f for f in res["findings"] if f["type"] == "decoupling_insufficient"], [])
+
+    def test_two_physical_parts_sharing_a_reference_are_both_checked(self):
+        # Probe A: two LM358 (each unit 1 + unit 3 style pair collapsed to one entry each),
+        # same reference; the one on +12V has no caps.
+        def part(net):
+            return {"reference": "U1", "type": "ic", "value": "LM358", "lib_id": "Amplifier:LM358",
+                    "unit": 1, "mpn": "LM358", "parsed_value": None, "pin_nets": {"8": net, "4": "GND"}}
+        comps = [part("+3.3V"), part("+12V")]
+        for r in ("C1", "C2", "C3"):
+            comps.append({"reference": r, "type": "capacitor", "value": "100nF", "parsed_value": 1e-7,
+                          "pin_nets": {"1": "+3.3V", "2": "GND"}})
+        nets = {"+3.3V": {"pins": [{"component": r, "pin_number": "1"} for r in ("C1", "C2", "C3")]
+                          + [{"component": "U1", "pin_number": "8"}]},
+                "+12V": {"pins": [{"component": "U1", "pin_number": "8"}]},
+                "GND": {"pins": []}}
+        with tempfile.TemporaryDirectory() as t:
+            cache.cache_extraction(str(Path(t) / "datasheets" / "extracted"), "LM358", lm358(9.0))
+            res = dv.run_datasheet_verification(
+                {"components": comps, "nets": nets, "rail_voltages": {}, "file": ""}, project_dir=t)
+        f = [x for x in res["findings"] if x["type"] == "decoupling_insufficient"]
+        self.assertEqual([(x["actual_count"], x["severity"]) for x in f], [(0, "error")])
+
+    def test_different_parts_under_one_reference_are_not_merged(self):
+        # Probe B: LM358 unit 1, a 74HC14 with the same reference, LM358 unit 3.
+        def e(lib, val, unit, pn):
+            return {"reference": "U1", "type": "ic", "value": val, "lib_id": lib, "unit": unit,
+                    "mpn": val, "parsed_value": None, "pin_nets": pn}
+        comps = [e("Amplifier:LM358", "LM358", 1, {"1": "SIG"}),
+                 e("74xx:74HC14", "74HC14", 1, {"14": "+5V", "7": "GND"}),
+                 e("Amplifier:LM358", "LM358", 3, {"8": "+3.3V", "4": "GND"})]
+        for r in ("C1", "C2", "C3"):
+            comps.append({"reference": r, "type": "capacitor", "value": "100nF", "parsed_value": 1e-7,
+                          "pin_nets": {"1": "+3.3V", "2": "GND"}})
+        nets = {"+3.3V": {"pins": [{"component": r, "pin_number": "1"} for r in ("C1", "C2", "C3")]
+                          + [{"component": "U1", "pin_number": "8"}]}, "GND": {"pins": []}}
+        with tempfile.TemporaryDirectory() as t:
+            cache.cache_extraction(str(Path(t) / "datasheets" / "extracted"), "LM358", lm358(9.0))
+            res = dv.run_datasheet_verification(
+                {"components": comps, "nets": nets, "rail_voltages": {}, "file": ""}, project_dir=t)
+        self.assertEqual([f for f in res["findings"] if f["type"] == "decoupling_insufficient"], [])
+        self.assertEqual(res["summary"]["ics_checked"], 3 - 1)  # LM358 group + 74HC14
+
+    def test_first_nonempty_mpn_of_a_group_is_used(self):
+        comps = three_unit_analysis(".")["components"]
+        comps[0]["mpn"] = ""
+        comps[2]["mpn"] = "LM358"
+        merged = [c for c in dv._merge_ic_units(comps) if c["reference"] == "U9"]
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0]["mpn"], "LM358")
+
+
+class CacheFileLimits(unittest.TestCase):
+    def test_symlinked_cache_file_is_not_read(self):
+        with tempfile.TemporaryDirectory() as t:
+            d = Path(t) / "extracted"; d.mkdir()
+            (Path(t) / "real.json").write_text('{"mpn": "S1", "pins": []}', encoding="utf-8")
+            try:
+                os.symlink(Path(t) / "real.json", d / "S1.json")
+            except (OSError, NotImplementedError):
+                self.skipTest("symlinks unavailable")
+            self.assertEqual(dv._load_extraction(str(d), "S1"), {})
+
+    def test_oversized_cache_file_is_not_read(self):
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, "BIG.json").write_text('{"pad": "' + "x" * (dv.MAX_EXTRACTION_BYTES + 1) + '"}', encoding="utf-8")
+            self.assertEqual(dv._load_extraction(d, "BIG"), {})
+
+
+@unittest.skipUnless(BUCK.is_dir(), "local-only: needs the corpus (set KH_CORPUS)")
 class BuckBoard(unittest.TestCase):
     def test_hand_derived_result(self):
         # LM358 V+ (pin 8) sits on +3.3V; the 100 nF caps across +3.3V-GND are C5 and C8,

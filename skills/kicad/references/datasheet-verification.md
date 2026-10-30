@@ -55,7 +55,7 @@ Extraction JSON files are stored in `datasheets/extracted/`, named from the MPN 
 
 ```
 datasheets/extracted/
-  TPS61023DRLR.json
+  TPS61023DRLR_a1b2c3.json   # cache manager name; the planner writes TPS61023DRLR.json
   STM32F405RGT6.json
   USBLC6_2SC6.json
   manifest.json       # optional (legacy name: index.json)
