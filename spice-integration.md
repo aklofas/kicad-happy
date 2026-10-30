@@ -45,6 +45,8 @@ PSpice writes `<deck-stem>.out` beside the deck and may overwrite an existing fi
 
 `--timeout` defaults to 600 seconds, since real PSpice runs can take minutes. The simulator's stdout and stderr are discarded (the native `.out` is the record) so that child processes cannot hold pipes open; on timeout the runner kills the simulator's entire process tree (`taskkill /F /T` on Windows, a process-group kill elsewhere) and returns within the timeout plus a short grace period.
 
+Resolve any pending PSpice dialogs or interrupted simulation-queue entries before starting a batch run. PSpice can display an interactive queue prompt after an interrupted run; the runner does not dismiss dialogs or change application preferences, so a blocked run returns a timeout failure.
+
 PSpice success requires a zero process exit code, a native output file that was written or changed by this run (a leftover `.out` from an earlier run is not success), and a line that is exactly `JOB CONCLUDED`. A `JOB ABORTED` line, or any line starting `ERROR --` or `ERROR(ORPSIM-`, fails the run; the failure note quotes the first such error line. UTF-16 and UTF-8 byte-order marks in the `.out` are honored. Warnings (`WARNING(...)`) and a zero-error summary do not fail the run. The JSON result records execution success only; it does not validate circuit behavior or establish regulatory compliance.
 
 This first version does not add PSpice to `simulate_subcircuits.py`, `SPICE_SIMULATOR`, or auto-detection. It does not render or parse PSpice measurements, copy vendor libraries, inspect encryption, parse waveform binaries, or repair convergence problems.

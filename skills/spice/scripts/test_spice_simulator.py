@@ -18,8 +18,8 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-import spice_simulator
-import run_external_deck
+import spice_simulator  # noqa: E402
+import run_external_deck  # noqa: E402
 
 
 class TestExternalDeckCliSurface(unittest.TestCase):
@@ -350,17 +350,21 @@ class TestExternalDeckCli(unittest.TestCase):
             "run_external_deck.os.replace",
             side_effect=OSError("replace blocked"),
         ):
-            with self.assertRaises(OSError):
-                self._run(
-                    [
-                        str(self.deck),
-                        "--simulator",
-                        "pspice",
-                        "--output",
-                        str(result_path),
-                    ],
-                    backend,
-                )
+            code, stdout, stderr = self._run(
+                [
+                    str(self.deck),
+                    "--simulator",
+                    "pspice",
+                    "--output",
+                    str(result_path),
+                ],
+                backend,
+            )
+
+        self.assertEqual(code, 1)
+        self.assertEqual(stdout, "")
+        self.assertIn(f"could not write {result_path}", stderr)
+        self.assertIn("replace blocked", stderr)
 
         self.assertEqual(
             result_path.read_text(encoding="utf-8"),
@@ -370,6 +374,30 @@ class TestExternalDeckCli(unittest.TestCase):
             sorted(p.name for p in result_path.parent.iterdir()),
             ["example deck.cir", "result.json"],
         )
+
+    def test_result_creation_failure_is_a_clean_error(self):
+        result_path = Path(self.tempdir.name) / "result.json"
+        for backend in (None, self._backend("pspice", (True, "", ""))):
+            with self.subTest(simulator_available=backend is not None):
+                with patch(
+                    "run_external_deck.tempfile.mkstemp",
+                    side_effect=PermissionError("access denied"),
+                ):
+                    code, stdout, stderr = self._run(
+                        [
+                            str(self.deck),
+                            "--simulator",
+                            "pspice",
+                            "--output",
+                            str(result_path),
+                        ],
+                        backend,
+                    )
+                self.assertEqual(code, 1)
+                self.assertEqual(stdout, "")
+                self.assertIn(f"could not write {result_path}", stderr)
+                self.assertIn("access denied", stderr)
+                self.assertFalse(result_path.exists())
 
 
 class TestPspiceDiscovery(unittest.TestCase):

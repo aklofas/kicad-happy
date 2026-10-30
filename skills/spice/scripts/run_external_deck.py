@@ -97,24 +97,33 @@ def _result(simulator, success, deck, native_output, elapsed_s, note):
 
 
 def _write_json(payload, output_path):
-    if output_path:
-        target = Path(output_path)
-        descriptor, temp_name = tempfile.mkstemp(
-            dir=target.resolve().parent,
-            prefix=f".{target.name}.",
-            suffix=".tmp",
+    """Write the result, returning False with a diagnostic on I/O failure."""
+    try:
+        if output_path:
+            target = Path(output_path)
+            descriptor, temp_name = tempfile.mkstemp(
+                dir=target.resolve().parent,
+                prefix=f".{target.name}.",
+                suffix=".tmp",
+            )
+            try:
+                with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+                    json.dump(payload, stream, indent=2)
+                    stream.write("\n")
+                os.replace(temp_name, target)
+            except BaseException:
+                Path(temp_name).unlink(missing_ok=True)
+                raise
+        else:
+            json.dump(payload, sys.stdout, indent=2)
+            sys.stdout.write("\n")
+    except OSError as exc:
+        print(
+            f"Error: could not write {output_path or 'stdout'}: {exc}",
+            file=sys.stderr,
         )
-        try:
-            with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
-                json.dump(payload, stream, indent=2)
-                stream.write("\n")
-            os.replace(temp_name, target)
-        except BaseException:
-            Path(temp_name).unlink(missing_ok=True)
-            raise
-        return
-    json.dump(payload, sys.stdout, indent=2)
-    sys.stdout.write("\n")
+        return False
+    return True
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -156,7 +165,8 @@ def main(argv: list[str] | None = None) -> int:
             0.0,
             diagnostic,
         )
-        _write_json(payload, args.output)
+        if not _write_json(payload, args.output):
+            return 1
         print(diagnostic, file=sys.stderr)
         return 1
 
@@ -184,7 +194,8 @@ def main(argv: list[str] | None = None) -> int:
         elapsed_s,
         note,
     )
-    _write_json(payload, args.output)
+    if not _write_json(payload, args.output):
+        return 1
     if not success:
         print(note, file=sys.stderr)
     return 0 if success else 1

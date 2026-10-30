@@ -15,8 +15,6 @@ run_external_deck.py --simulator pspice.
 """
 
 import codecs
-import json
-import math
 import os
 import re
 import shutil
