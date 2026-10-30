@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -47,6 +48,23 @@ _UNSAFE_CHAR = re.compile(r"[^A-Za-z0-9_.\-]")
 # string in the JSON/dataclass shape.
 STALE_PDF_MISSING = "pdf_missing"
 STALE_PDF_HASH_MISMATCH = "pdf_hash_mismatch"
+
+
+# A cache file larger than this is treated as unreadable.
+MAX_CACHE_BYTES = 10 * 1024 * 1024
+
+
+def read_json_object(path) -> Optional[dict]:
+    """Read one cache JSON file; None when it is missing, a symlink, oversized,
+    undecodable (not UTF-8), malformed, or not a JSON object."""
+    try:
+        if os.path.islink(path) or os.path.getsize(path) > MAX_CACHE_BYTES:
+            return None
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except (ValueError, OSError):
+        return None
+    return data if isinstance(data, dict) else None
 
 
 def sanitize_mpn(mpn: str) -> str:
@@ -162,7 +180,8 @@ def lookup(mpn: str, *, cache_dir: Path) -> Optional[DatasheetFacts]:
     Returns None when:
         - cache_dir does not exist
         - cache file for this MPN does not exist
-        - cache file contains malformed JSON
+        - cache file is malformed, not UTF-8, not a JSON object, a symlink
+          or oversized
         - cache file is JSON but does not satisfy DatasheetFacts shape
           (required fields missing)
 
@@ -185,9 +204,8 @@ def lookup(mpn: str, *, cache_dir: Path) -> Optional[DatasheetFacts]:
     if not cache_file.is_file():
         return None
 
-    try:
-        data = json.loads(cache_file.read_bytes())
-    except (json.JSONDecodeError, OSError):
+    data = read_json_object(cache_file)
+    if data is None:
         return None
 
     try:

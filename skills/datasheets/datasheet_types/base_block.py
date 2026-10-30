@@ -28,11 +28,14 @@ from .pinout import Pinout
 @dataclass
 class BodyMm:
     """Physical body dimensions in millimeters."""
-    length: float = field(metadata={
+    length: Optional[float] = field(default=None, metadata={
+        "omit_if_none": True,
         "description": "Body length in mm along the longest axis."})
-    width: float = field(metadata={
+    width: Optional[float] = field(default=None, metadata={
+        "omit_if_none": True,
         "description": "Body width in mm along the perpendicular-to-length axis."})
-    height: float = field(metadata={
+    height: Optional[float] = field(default=None, metadata={
+        "omit_if_none": True,
         "description": "Body height in mm (package thickness / standoff direction)."})
 
 

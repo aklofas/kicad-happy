@@ -101,7 +101,7 @@ hi_conf = trusted(facts.base.absolute_max.get("VDD", []), min_confidence="high")
 
 **Defensive patterns** (mirrors `kicad/SKILL.md` § "Probing Analyzer JSON"):
 
-- `lookup()` returns `None` on cache miss, stale PDF (PDF newer than extraction), or quality score below the configured floor. Always guard with `if facts is None: return`.
+- `lookup()` returns `None` on a cache miss or an unreadable cache (malformed, non-UTF-8, symlinked, oversized, not an object); a stale PDF or a low quality score is described on the facts (`facts.stale`, `facts.quality`), never a `None`. Always guard with `if facts is None: return`.
 - Category extensions are optional on `DatasheetFacts`. `facts.regulator` is `None` when the part isn't in the `regulator` category — check before dereferencing.
 - SpecValue lists can be `None` (field not extracted), `[]` (extracted but empty), or `list[SpecValue]`. `has_data()` collapses the first two to `False`; pair with `best()` / `trusted()` for confidence gating.
 - `SpecValue.min` / `.max` / `.typ` are each `Optional[float]`. A SpecValue carrying only `typ` (no range) makes `>` / `<` comparisons against `.min` / `.max` raise `TypeError` — guard with explicit `is not None` chains on every numeric access.

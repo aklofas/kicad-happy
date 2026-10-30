@@ -45,9 +45,18 @@ extraction couldn't verify', distinct from explicit False.
 
 import hashlib
 import json
+import os
 import re
+import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
+
+_TYPES_PARENT = str(Path(__file__).resolve().parent.parent)
+if _TYPES_PARENT not in sys.path:
+    sys.path.insert(0, _TYPES_PARENT)
+
+from datasheet_types.cache_reader import read_json_object  # noqa: E402
 
 # Bump this when the extraction schema changes to trigger re-extraction
 # v2 (2026-04-15): added peripherals.usb, electrical.en_v_ih_max/en_v_il_min,
@@ -198,12 +207,29 @@ def _load_index(extract_dir):
         if cached and cached[0] == mtime:
             return cached[1]
 
-        with open(index_path, encoding="utf-8") as f:
-            index = json.load(f)
+        index = read_json_object(index_path)
+        if index is None:
+            raise ValueError("unreadable manifest")
         _index_cache[cache_key] = (mtime, index)
         return index
-    except (json.JSONDecodeError, OSError):
+    except (ValueError, OSError):
         return {"version": EXTRACTION_VERSION, "last_updated": "", "extractions": {}}
+
+
+def _write_json_atomic(path, data):
+    """Write JSON to `path` through a uniquely named temp file in its folder."""
+    path = Path(path)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=path.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def _save_index(extract_dir, index):
@@ -221,10 +247,7 @@ def _save_index(extract_dir, index):
     index["version"] = EXTRACTION_VERSION
 
     new_path = extract_dir / MANIFEST_FILENAME
-    tmp = new_path.with_suffix(".tmp")
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(index, f, indent=2)
-    tmp.replace(new_path)
+    _write_json_atomic(new_path, index)
 
     old_path = extract_dir / LEGACY_MANIFEST_FILENAME
     if old_path.exists() and old_path != new_path:
@@ -264,15 +287,11 @@ def get_cached_extraction(extract_dir, mpn):
     if not entry:
         return None
 
-    json_file = Path(extract_dir) / entry.get("file", "")
-    if not json_file.exists():
+    fname = entry.get("file", "") if isinstance(entry, dict) else ""
+    # Leaf names only: a manifest must not point outside its folder.
+    if not isinstance(fname, str) or not fname or os.path.basename(fname) != fname or fname == "..":
         return None
-
-    try:
-        with open(json_file, encoding="utf-8") as f:
-            return json.load(f)
-    except (json.JSONDecodeError, OSError):
-        return None
+    return read_json_object(Path(extract_dir) / fname)
 
 
 def cache_extraction(extract_dir, mpn, extraction, source_pdf=None):
@@ -467,10 +486,8 @@ def update_datasheets_index(datasheets_dir, mpn, extraction):
     else:
         return
 
-    try:
-        with open(index_path, encoding="utf-8") as f:
-            index = json.load(f)
-    except (json.JSONDecodeError, OSError):
+    index = read_json_object(index_path)
+    if index is None:
         return
 
     parts = index.get("parts", {})
@@ -492,11 +509,7 @@ def update_datasheets_index(datasheets_dir, mpn, extraction):
         "date": meta.get("extraction_date", ""),
     }
 
-    # Write back atomically
-    tmp = index_path.with_suffix(".tmp")
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(index, f, indent=2)
-    tmp.replace(index_path)
+    _write_json_atomic(index_path, index)
 
 
 # ---------------------------------------------------------------------------
