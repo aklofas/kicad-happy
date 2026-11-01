@@ -1,0 +1,41 @@
+Analyzing bom-wrong.schematic.json...
+Found 4 unique parts with part numbers (0 skipped without an MPN or DigiKey part number)
+[1/4] WRONGSCH1
+  Trying schematic URL...
+  WARNING: PDF may be wrong datasheet — No MPN, manufacturer, or description keywords found in PDF (0/4 keywords)
+  OK: WRONGSCH1_Precision_Voltage_Reference_Module.pdf (142 bytes) ⚠ WRONG DATASHEET?
+[2/4] WRONGVEN2
+  Searching DigiKey for 'WRONGVEN2'...
+  Downloading from https://www.digikey.com/fixture/wrongven2.pdf...
+  WARNING: PDF may be wrong datasheet — No MPN, manufacturer, or description keywords found in PDF (0/5 keywords)
+  OK: WRONGVEN2_Linear_Hall_Effect_Sensor_Chip.pdf (142 bytes) ⚠ WRONG DATASHEET?
+[3/4] ATTINY85-20PU
+  Searching DigiKey for 'ATTINY85-20PU'...
+  Downloading from https://www.digikey.com/fixture/attiny85.pdf...
+  Primary failed, trying alternatives...
+  WARNING: PDF may be wrong datasheet — No MPN, manufacturer, or description keywords found in PDF (0/5 keywords)
+  OK: ATTINY85-20PU_Eight_Bit_Microcontroller_Flash_Memory.pdf (142 bytes) ⚠ WRONG DATASHEET?
+[4/4] WRONGSCRAPE4
+  Searching DigiKey for 'WRONGSCRAPE4'...
+  NOT_FOUND: No DigiKey results for 'WRONGSCRAPE4'
+
+Datasheet sync complete:
+  Downloaded: 3
+    WRONGSCH1
+    WRONGVEN2
+    ATTINY85-20PU
+  Verification warnings: 3
+    WRONGSCH1: No MPN, manufacturer, or description keywords found in PDF (0/4 keywords)
+    WRONGVEN2: No MPN, manufacturer, or description keywords found in PDF (0/5 keywords)
+    ATTINY85-20PU: No MPN, manufacturer, or description keywords found in PDF (0/5 keywords)
+  Already present: 0
+  Failed: 1
+    WRONGSCRAPE4 — No DigiKey results for 'WRONGSCRAPE4'
+  Skipped (no MPN or DigiKey part number): 0
+  Output: <WORK>/datasheets/
+
+  Tip: Try LCSC or element14 sync to fill gaps — they share the same datasheets/ directory and skip already-downloaded parts.
+
+  Next: extract structured specs for IC-aware analyzer checks
+        (VM-001, PS-001, PR-004, DP-002). The `datasheets` skill
+        reads PDFs and writes <WORK>/datasheets/extracted/<MPN>.json.

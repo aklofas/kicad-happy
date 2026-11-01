@@ -1,0 +1,15 @@
+Analyzing bom-scrape.schematic.json...
+Found 1 unique parts with MPNs (0 skipped without an MPN or Mouser part number)
+[1/1] SCRAPEOK5
+  Searching Mouser for 'SCRAPEOK5'...
+  Scraping product page for datasheet link...
+  Found datasheet link on product page
+  OK: SCRAPEOK5_Surface_Mount_Ferrite_Bead_Filter.pdf (81 bytes)
+
+Datasheet sync complete:
+  Downloaded: 1
+    SCRAPEOK5
+  Already present: 0
+  Failed: 0
+  Skipped (no MPN or Mouser part number): 0
+  Output: <WORK>/datasheets/

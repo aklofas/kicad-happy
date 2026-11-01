@@ -53,9 +53,12 @@
     "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/fixture/gone2.pdf": "GONE2 fixture datasheet text for the offline oracle (page 1).",
     "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/fixture/lm358.pdf": "LM358DR fixture datasheet text for the offline oracle (page 1).",
     "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/fixture/si2302.pdf": "SI2302 fixture datasheet text for the offline oracle (page 1).",
+    "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/fixture/wrongven2.pdf": "Gardening notes: hedges need watering twice weekly. Compost, mulch and soil preparation guide for beginners and experts alike.",
     "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/C14663.pdf": "AMS1117-3.3 fixture datasheet text for the offline oracle (page 1).",
     "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/C15525.pdf": "CL05A106MQ5NUNC fixture datasheet text for the offline oracle (page 1).",
+    "https://wrong.example.com/schematic-a.pdf": "Gardening notes: hedges need watering twice weekly. Compost, mulch and soil preparation guide for beginners and experts alike.",
     "https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATMEGA328P-AU-DataSheet.pdf": "ATMEGA328P-AU datasheet",
+    "https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATTINY85-20PU-DataSheet.pdf": "Gardening notes: hedges need watering twice weekly. Compost, mulch and soil preparation guide for beginners and experts alike.",
     "https://www.ti.com/lit/ds/symlink/tps61023.pdf": "TPS61023DRLR fixture datasheet text for the offline oracle (page 1)."
   },
   "scrape": {},
@@ -312,6 +315,25 @@
       },
       "lcsc": "1007",
       "mfr": "2N7002V",
+      "price": 0.1,
+      "stock": 100
+    },
+    "WRONGVEN2": {
+      "datasheet": "",
+      "description": "Linear Hall Effect Sensor Chip",
+      "extra": {
+        "datasheet": {
+          "pdf": "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/fixture/wrongven2.pdf"
+        },
+        "description": "Linear Hall Effect Sensor Chip",
+        "manufacturer": {
+          "name": "Zorbco"
+        },
+        "mpn": "WRONGVEN2",
+        "number": "C2002"
+      },
+      "lcsc": "2002",
+      "mfr": "WRONGVEN2",
       "price": 0.1,
       "stock": 100
     }

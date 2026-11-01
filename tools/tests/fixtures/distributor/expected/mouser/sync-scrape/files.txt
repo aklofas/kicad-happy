@@ -1,0 +1,3 @@
+bom-scrape.schematic.json:432
+datasheets/SCRAPEOK5_Surface_Mount_Ferrite_Bead_Filter.pdf:81
+datasheets/manifest.json:638

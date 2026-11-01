@@ -1,0 +1,68 @@
+{
+  "schematic": "<WORK>/bom-wrong.schematic.json",
+  "last_sync": "2026-10-16T00:00:00+00:00",
+  "parts": {
+    "WRONGSCH1": {
+      "file": "WRONGSCH1_Precision_Voltage_Reference_Module.pdf",
+      "manufacturer": "Zorbco",
+      "description": "Precision Voltage Reference Module",
+      "value": "WRONGSCH1",
+      "datasheet_url": "https://wrong.example.com/schematic-a.pdf",
+      "downloaded_date": "2026-10-16T00:00:00+00:00",
+      "source": "schematic",
+      "status": "ok",
+      "references": [
+        "U1"
+      ],
+      "size_bytes": 142,
+      "verification": "wrong",
+      "verification_details": "No MPN, manufacturer, or description keywords found in PDF (0/4 keywords)"
+    },
+    "WRONGVEN2": {
+      "file": "WRONGVEN2_Linear_Hall_Effect_Sensor_Chip.pdf",
+      "manufacturer": "Zorbco",
+      "description": "Linear Hall Effect Sensor Chip",
+      "value": "WRONGVEN2",
+      "datasheet_url": "https://www.digikey.com/fixture/wrongven2.pdf",
+      "downloaded_date": "2026-10-16T00:00:00+00:00",
+      "source": "digikey",
+      "status": "ok",
+      "references": [
+        "U2"
+      ],
+      "size_bytes": 142,
+      "verification": "wrong",
+      "verification_details": "No MPN, manufacturer, or description keywords found in PDF (0/5 keywords)"
+    },
+    "ATTINY85-20PU": {
+      "file": "ATTINY85-20PU_Eight_Bit_Microcontroller_Flash_Memory.pdf",
+      "manufacturer": "Zorbco",
+      "description": "Eight Bit Microcontroller Flash Memory",
+      "value": "ATTINY85-20PU",
+      "datasheet_url": "https://www.digikey.com/fixture/attiny85.pdf",
+      "downloaded_date": "2026-10-16T00:00:00+00:00",
+      "source": "alternative",
+      "status": "ok",
+      "references": [
+        "U3"
+      ],
+      "size_bytes": 142,
+      "verification": "wrong",
+      "verification_details": "No MPN, manufacturer, or description keywords found in PDF (0/5 keywords)"
+    },
+    "WRONGSCRAPE4": {
+      "manufacturer": "Zorbco",
+      "description": "Ceramic Piezo Buzzer Transducer",
+      "value": "WRONGSCRAPE4",
+      "references": [
+        "U4"
+      ],
+      "status": "not_found",
+      "error": "No DigiKey results for 'WRONGSCRAPE4'",
+      "last_attempt": "2026-10-16T00:00:00+00:00",
+      "failed_providers": [
+        "digikey"
+      ]
+    }
+  }
+}

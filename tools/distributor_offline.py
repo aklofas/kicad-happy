@@ -163,7 +163,8 @@ SYNC_KWARGS = {"element14": {"api_key": "KEY"}}
 SCENARIO_MPNS = {"mpns": "mpns.txt", "mpns-present": "mpns-present.txt"}
 SCENARIO_BOMS = {"bom": "bom.schematic.json", "bom-identity": "bom-identity.schematic.json",
                  "bom-lcsc-direct": "bom-lcsc-direct.schematic.json",
-                 "bom-force-all": "bom-force-all.schematic.json"}
+                 "bom-force-all": "bom-force-all.schematic.json",
+                 "bom-wrong": "bom-wrong.schematic.json", "bom-scrape": "bom-scrape.schematic.json"}
 
 # run name -> spec. kind: sync | fetch. A key ending in " (<provider>)" runs for that provider
 # only and stores its artefacts under the name without that suffix. "linked_out": the project's
@@ -183,6 +184,8 @@ RUNS: dict[str, dict] = {
     "sync-nowork-json": {"kind": "sync", "seed": "seed", "input": "mpns-present", "kwargs": {"as_json": True}},
     "sync-error-json": {"kind": "sync", "seed": None, "input": "bom", "linked_out": True,
                         "kwargs": {"as_json": True}},
+    "sync-wrong": {"kind": "sync", "seed": None, "input": "bom-wrong"},
+    "sync-scrape (mouser)": {"kind": "sync", "seed": None, "input": "bom-scrape"},
     "fetch-search-ok": {"kind": "fetch", "argv": ["--search", "LM358DR", "--json", "--output", "{work}/out.pdf"]},
     "fetch-search-nourl": {"kind": "fetch", "argv": ["--search", "NODATA1234", "--json"]},
     "fetch-search-miss": {"kind": "fetch", "argv": ["--search", "MISSING9999", "--json"]},

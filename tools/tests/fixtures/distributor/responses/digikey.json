@@ -8,7 +8,9 @@
     "https://example.com/present1-refresh.pdf": {
       "transport": "ConnectionResetError"
     },
+    "https://wrong.example.com/schematic-a.pdf": "Gardening notes: hedges need watering twice weekly. Compost, mulch and soil preparation guide for beginners and experts alike.",
     "https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATMEGA328P-AU-DataSheet.pdf": "ATMEGA328P-AU datasheet",
+    "https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATTINY85-20PU-DataSheet.pdf": "Gardening notes: hedges need watering twice weekly. Compost, mulch and soil preparation guide for beginners and experts alike.",
     "https://www.digikey.com/fixture/2n7002v.pdf": "2N7002V fixture datasheet text for the offline oracle (page 1).",
     "https://www.digikey.com/fixture/atmega.pdf": false,
     "https://www.digikey.com/fixture/failall.pdf": false,
@@ -16,6 +18,7 @@
     "https://www.digikey.com/fixture/lm358.pdf": "LM358DR fixture datasheet text for the offline oracle (page 1).",
     "https://www.digikey.com/fixture/realmpn123.pdf": "REALMPN123 fixture datasheet text for the offline oracle (page 1).",
     "https://www.digikey.com/fixture/si2302.pdf": "SI2302 fixture datasheet text for the offline oracle (page 1).",
+    "https://www.digikey.com/fixture/wrongven2.pdf": "Gardening notes: hedges need watering twice weekly. Compost, mulch and soil preparation guide for beginners and experts alike.",
     "https://www.ti.com/lit/ds/symlink/tps61023.pdf": "TPS61023DRLR fixture datasheet text for the offline oracle (page 1)."
   },
   "scrape": {},
@@ -149,6 +152,26 @@
         "Name": "onsemi"
       },
       "ManufacturerProductNumber": "2N7002V"
+    },
+    "ATTINY85-20PU": {
+      "DatasheetUrl": "https://www.digikey.com/fixture/attiny85.pdf",
+      "Description": {
+        "ProductDescription": "Eight Bit Microcontroller Flash Memory"
+      },
+      "Manufacturer": {
+        "Name": "Zorbco"
+      },
+      "ManufacturerProductNumber": "ATTINY85-20PU"
+    },
+    "WRONGVEN2": {
+      "DatasheetUrl": "https://www.digikey.com/fixture/wrongven2.pdf",
+      "Description": {
+        "ProductDescription": "Linear Hall Effect Sensor Chip"
+      },
+      "Manufacturer": {
+        "Name": "Zorbco"
+      },
+      "ManufacturerProductNumber": "WRONGVEN2"
     }
   }
 }

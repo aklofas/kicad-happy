@@ -8,18 +8,25 @@
     "https://example.com/present1-refresh.pdf": {
       "transport": "ConnectionResetError"
     },
+    "https://wrong.example.com/schematic-a.pdf": "Gardening notes: hedges need watering twice weekly. Compost, mulch and soil preparation guide for beginners and experts alike.",
     "https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATMEGA328P-AU-DataSheet.pdf": "ATMEGA328P-AU datasheet",
+    "https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATTINY85-20PU-DataSheet.pdf": "Gardening notes: hedges need watering twice weekly. Compost, mulch and soil preparation guide for beginners and experts alike.",
     "https://www.mouser.com/datasheet/2/fixture/2n7002v.pdf": "2N7002V fixture datasheet text for the offline oracle (page 1).",
     "https://www.mouser.com/datasheet/2/fixture/atmega.pdf": false,
     "https://www.mouser.com/datasheet/2/fixture/failall.pdf": false,
     "https://www.mouser.com/datasheet/2/fixture/gone2.pdf": "GONE2 fixture datasheet text for the offline oracle (page 1).",
     "https://www.mouser.com/datasheet/2/fixture/lm358.pdf": "LM358DR fixture datasheet text for the offline oracle (page 1).",
+    "https://www.mouser.com/datasheet/2/fixture/scrapeok5.pdf": "SCRAPEOK5 fixture datasheet text for the offline oracle (page 1).",
     "https://www.mouser.com/datasheet/2/fixture/si2302.pdf": "SI2302 fixture datasheet text for the offline oracle (page 1).",
     "https://www.mouser.com/datasheet/2/fixture/tps7a05.pdf": "595-TPS7A05 TPS7A0518PDBVR fixture datasheet text for the offline oracle (page 1).",
+    "https://www.mouser.com/datasheet/2/fixture/wrongscrape4.pdf": "Gardening notes: hedges need watering twice weekly. Compost, mulch and soil preparation guide for beginners and experts alike.",
+    "https://www.mouser.com/datasheet/2/fixture/wrongven2.pdf": "Gardening notes: hedges need watering twice weekly. Compost, mulch and soil preparation guide for beginners and experts alike.",
     "https://www.ti.com/lit/ds/symlink/tps61023.pdf": "TPS61023DRLR fixture datasheet text for the offline oracle (page 1)."
   },
   "scrape": {
-    "https://www.mouser.com/ProductDetail/Acme/NODATA1234": ""
+    "https://www.mouser.com/ProductDetail/Acme/NODATA1234": "",
+    "https://www.mouser.com/ProductDetail/Zorbco/SCRAPEOK5": "https://www.mouser.com/datasheet/2/fixture/scrapeok5.pdf",
+    "https://www.mouser.com/ProductDetail/Zorbco/WRONGSCRAPE4": "https://www.mouser.com/datasheet/2/fixture/wrongscrape4.pdf"
   },
   "search": {
     "2N7002": {
@@ -111,6 +118,27 @@
       "Description": "Dual N-Channel MOSFET",
       "Manufacturer": "onsemi",
       "ManufacturerPartNumber": "2N7002V",
+      "ProductDetailUrl": ""
+    },
+    "SCRAPEOK5": {
+      "DataSheetUrl": "",
+      "Description": "Surface Mount Ferrite Bead Filter",
+      "Manufacturer": "Zorbco",
+      "ManufacturerPartNumber": "SCRAPEOK5",
+      "ProductDetailUrl": "https://www.mouser.com/ProductDetail/Zorbco/SCRAPEOK5"
+    },
+    "WRONGSCRAPE4": {
+      "DataSheetUrl": "",
+      "Description": "Ceramic Piezo Buzzer Transducer",
+      "Manufacturer": "Zorbco",
+      "ManufacturerPartNumber": "WRONGSCRAPE4",
+      "ProductDetailUrl": "https://www.mouser.com/ProductDetail/Zorbco/WRONGSCRAPE4"
+    },
+    "WRONGVEN2": {
+      "DataSheetUrl": "https://www.mouser.com/datasheet/2/fixture/wrongven2.pdf",
+      "Description": "Linear Hall Effect Sensor Chip",
+      "Manufacturer": "Zorbco",
+      "ManufacturerPartNumber": "WRONGVEN2",
       "ProductDetailUrl": ""
     }
   }

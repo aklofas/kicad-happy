@@ -8,7 +8,9 @@
     "https://example.com/present1-refresh.pdf": {
       "transport": "ConnectionResetError"
     },
+    "https://wrong.example.com/schematic-a.pdf": "Gardening notes: hedges need watering twice weekly. Compost, mulch and soil preparation guide for beginners and experts alike.",
     "https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATMEGA328P-AU-DataSheet.pdf": "ATMEGA328P-AU datasheet",
+    "https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATTINY85-20PU-DataSheet.pdf": "Gardening notes: hedges need watering twice weekly. Compost, mulch and soil preparation guide for beginners and experts alike.",
     "https://www.farnell.com/datasheets/fixture/2n7002v.pdf": "2N7002V fixture datasheet text for the offline oracle (page 1).",
     "https://www.farnell.com/datasheets/fixture/atmega.pdf": false,
     "https://www.farnell.com/datasheets/fixture/bme280.pdf": "BME280 fixture datasheet text for the offline oracle (page 1).",
@@ -16,6 +18,7 @@
     "https://www.farnell.com/datasheets/fixture/gone2.pdf": "GONE2 fixture datasheet text for the offline oracle (page 1).",
     "https://www.farnell.com/datasheets/fixture/lm358.pdf": "LM358DR fixture datasheet text for the offline oracle (page 1).",
     "https://www.farnell.com/datasheets/fixture/si2302.pdf": "SI2302 fixture datasheet text for the offline oracle (page 1).",
+    "https://www.farnell.com/datasheets/fixture/wrongven2.pdf": "Gardening notes: hedges need watering twice weekly. Compost, mulch and soil preparation guide for beginners and experts alike.",
     "https://www.ti.com/lit/ds/symlink/tps61023.pdf": "TPS61023DRLR fixture datasheet text for the offline oracle (page 1)."
   },
   "scrape": {},
@@ -158,6 +161,17 @@
       "displayName": "Dual N-Channel MOSFET",
       "sku": "17AB1007",
       "translatedManufacturerPartNumber": "2N7002V"
+    },
+    "WRONGVEN2": {
+      "brandName": "Zorbco",
+      "datasheets": [
+        {
+          "url": "https://www.farnell.com/datasheets/fixture/wrongven2.pdf"
+        }
+      ],
+      "displayName": "Linear Hall Effect Sensor Chip",
+      "sku": "17ZB2002",
+      "translatedManufacturerPartNumber": "WRONGVEN2"
     }
   }
 }

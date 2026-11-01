@@ -1,0 +1,34 @@
+Analyzing bom-wrong.schematic.json...
+Found 4 unique parts with identifiers (0 skipped without an MPN or element14 part number)
+[1/4] WRONGSCH1
+  Trying schematic URL...
+  WARNING: PDF may be wrong datasheet — No MPN, manufacturer, or description keywords found in PDF (0/4 keywords)
+  OK: WRONGSCH1_Precision_Voltage_Reference_Module.pdf (142 bytes) ⚠ WRONG DATASHEET?
+[2/4] WRONGVEN2
+  Searching element14 for 'WRONGVEN2'...
+  Downloading from element14...
+  WARNING: PDF may be wrong datasheet — No MPN, manufacturer, or description keywords found in PDF (0/5 keywords)
+  OK: WRONGVEN2_Linear_Hall_Effect_Sensor_Chip.pdf (142 bytes) ⚠ WRONG DATASHEET?
+[3/4] ATTINY85-20PU
+  Searching element14 for 'ATTINY85-20PU'...
+  Trying alternative sources...
+  OK: ATTINY85-20PU_Eight_Bit_Microcontroller_Flash_Memory.pdf (142 bytes) ⚠ WRONG DATASHEET?
+[4/4] WRONGSCRAPE4
+  Searching element14 for 'WRONGSCRAPE4'...
+  Trying alternative sources...
+  NOT_FOUND: No element14 results for 'WRONGSCRAPE4'
+
+Datasheet sync complete:
+  Downloaded: 3
+    WRONGSCH1
+    WRONGVEN2
+    ATTINY85-20PU
+  Verification warnings: 3
+    WRONGSCH1: No MPN, manufacturer, or description keywords found in PDF (0/4 keywords)
+    WRONGVEN2: No MPN, manufacturer, or description keywords found in PDF (0/5 keywords)
+    ATTINY85-20PU: No MPN, manufacturer, or description keywords found in PDF (0/5 keywords)
+  Already present: 0
+  Failed: 1
+    WRONGSCRAPE4 — No element14 results for 'WRONGSCRAPE4'
+  Skipped (no MPN or element14 part number): 0
+  Output: <WORK>/datasheets/

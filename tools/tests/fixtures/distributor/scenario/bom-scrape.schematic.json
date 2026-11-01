@@ -1,0 +1,22 @@
+{
+  "analyzer_type": "schematic",
+  "bom": [
+    {
+      "references": [
+        "U1"
+      ],
+      "value": "SCRAPEOK5",
+      "mpn": "SCRAPEOK5",
+      "manufacturer": "Zorbco",
+      "description": "Surface Mount Ferrite Bead Filter",
+      "datasheet": "",
+      "type": "ic",
+      "dnp": false,
+      "lib_id": "Fixture:SCRAPEOK5",
+      "digikey": "",
+      "mouser": "",
+      "lcsc": "",
+      "element14": ""
+    }
+  ]
+}

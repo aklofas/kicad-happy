@@ -1,0 +1,73 @@
+{
+  "analyzer_type": "schematic",
+  "bom": [
+    {
+      "references": [
+        "U1"
+      ],
+      "value": "WRONGSCH1",
+      "mpn": "WRONGSCH1",
+      "manufacturer": "Zorbco",
+      "description": "Precision Voltage Reference Module",
+      "datasheet": "https://wrong.example.com/schematic-a.pdf",
+      "type": "ic",
+      "dnp": false,
+      "lib_id": "Fixture:WRONGSCH1",
+      "digikey": "",
+      "mouser": "",
+      "lcsc": "",
+      "element14": ""
+    },
+    {
+      "references": [
+        "U2"
+      ],
+      "value": "WRONGVEN2",
+      "mpn": "WRONGVEN2",
+      "manufacturer": "Zorbco",
+      "description": "Linear Hall Effect Sensor Chip",
+      "datasheet": "",
+      "type": "ic",
+      "dnp": false,
+      "lib_id": "Fixture:WRONGVEN2",
+      "digikey": "",
+      "mouser": "",
+      "lcsc": "",
+      "element14": ""
+    },
+    {
+      "references": [
+        "U3"
+      ],
+      "value": "ATTINY85-20PU",
+      "mpn": "ATTINY85-20PU",
+      "manufacturer": "Zorbco",
+      "description": "Eight Bit Microcontroller Flash Memory",
+      "datasheet": "",
+      "type": "ic",
+      "dnp": false,
+      "lib_id": "Fixture:ATTINY85-20PU",
+      "digikey": "",
+      "mouser": "",
+      "lcsc": "",
+      "element14": ""
+    },
+    {
+      "references": [
+        "U4"
+      ],
+      "value": "WRONGSCRAPE4",
+      "mpn": "WRONGSCRAPE4",
+      "manufacturer": "Zorbco",
+      "description": "Ceramic Piezo Buzzer Transducer",
+      "datasheet": "",
+      "type": "ic",
+      "dnp": false,
+      "lib_id": "Fixture:WRONGSCRAPE4",
+      "digikey": "",
+      "mouser": "",
+      "lcsc": "",
+      "element14": ""
+    }
+  ]
+}

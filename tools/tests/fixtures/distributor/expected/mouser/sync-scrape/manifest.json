@@ -1,0 +1,21 @@
+{
+  "schematic": "<WORK>/bom-scrape.schematic.json",
+  "last_sync": "2026-10-16T00:00:00+00:00",
+  "parts": {
+    "SCRAPEOK5": {
+      "file": "SCRAPEOK5_Surface_Mount_Ferrite_Bead_Filter.pdf",
+      "manufacturer": "Zorbco",
+      "description": "Surface Mount Ferrite Bead Filter",
+      "value": "SCRAPEOK5",
+      "datasheet_url": "https://www.mouser.com/datasheet/2/fixture/scrapeok5.pdf",
+      "downloaded_date": "2026-10-16T00:00:00+00:00",
+      "source": "mouser_scrape",
+      "status": "ok",
+      "references": [
+        "U1"
+      ],
+      "size_bytes": 81,
+      "verification": "verified"
+    }
+  }
+}

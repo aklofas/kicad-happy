@@ -1,0 +1,6 @@
+bom-wrong.schematic.json:1641
+datasheets/ATTINY85-20PU_Eight_Bit_Microcontroller_Flash_Memory.pdf:142
+datasheets/WRONGSCH1_Precision_Voltage_Reference_Module.pdf:142
+datasheets/WRONGSCRAPE4_Ceramic_Piezo_Buzzer_Transducer.pdf:142
+datasheets/WRONGVEN2_Linear_Hall_Effect_Sensor_Chip.pdf:142
+datasheets/manifest.json:2505
