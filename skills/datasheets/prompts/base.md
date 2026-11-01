@@ -19,13 +19,13 @@ Produce a single JSON object matching this schema: `{{SCHEMA_PATH}}`.
 - `esd`: object keyed by ESD model (`HBM`, `CDM`, `MM`). Each value is a list of SpecValue (`typ` voltage in V).
 - `moisture_sensitivity`: object `{msl, peak_reflow_c, evidence}` — `msl` is the JEDEC level as an integer 1–6, `peak_reflow_c` a number in °C. Null when the datasheet gives no MSL.
 - `compliance`: array of objects `{mark, rating, evidence}` (e.g. `{"mark": "AEC-Q100", "rating": "Grade 1"}`); `rating` and `evidence` may be null. Empty array when none.
-- `pin_relationships`: empty array unless the datasheet calls out specific pin-pair relationships in prose (e.g. "EN must be ≥ 1.4V referenced to VIN"). For 3a, leave empty.
+- `pin_relationships`: emit `[]`. Cross-pin conditions stated in prose (e.g. "EN must be ≥ 1.4 V referenced to VIN") belong to the pinout task, which records them in the pin's `notes`.
 
 ## Hard rules
 
 1. **Canonical SI units everywhere.** Voltage in `V`, current in `A`, resistance in `Ω`, capacitance in `F` (NOT µF — store 470 µF as `4.7e-4` with unit `F`), inductance in `H`, frequency in `Hz`, temperature in `°C`, time in `s`, charge in `C`, power in `W`. Thermal resistance in `°C/W`.
 2. **Every numeric SpecValue requires an `evidence` block** with `page` (PDF page where the value was read), `section` (textual section name from the PDF), `confidence` (`high` for table values, `medium` for prose, `low` for ambiguous/inferred), and `method` (one of `table`, `prose`, `curve`, `calculated`, `derived`). Use `curve` for values read off a graph, `calculated` for values resolved from a symbolic expression, `derived` for values inferred from other facts.
-3. **OMIT fields you cannot locate** rather than guessing. Required: `family` (string), `package` (with `code`), `absolute_max`, `recommended_operating` (objects, `{}` when the datasheet lists none) and `pinout` (`[]` here). Everything else may be omitted or null. An empty value is much better than a hallucinated one.
+3. **OMIT fields you cannot locate** rather than guessing. Required: `family` (string), `package` (with `code`), `absolute_max`, `recommended_operating` (objects, `{}` when the datasheet lists none) and `pinout` (`[]` here). Everything else may be omitted; `compliance` and `pin_relationships` are arrays (`[]` when empty, never null), and the other optional fields may be null. An empty value is much better than a hallucinated one.
 4. **For family PDFs**, extract values applicable to `{{MPN}}`. If a value is family-wide (e.g., absolute max VIN), state it. If it is variant-specific, state the variant value. Use `notes` field to call out variant-specific spec.
 5. **No pinout data here** (`"pinout": []`). The pinout subagent runs separately.
 
