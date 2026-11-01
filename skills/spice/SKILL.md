@@ -82,7 +82,7 @@ python3 <skill-path>/scripts/simulate_subcircuits.py --analysis-dir analysis/ --
 
 ### Step 2b (optional): PCB parasitic-aware simulation
 
-When both schematic and PCB exist, run parasitic-annotated simulation for more accurate results on analog circuits:
+When both schematic and PCB exist, low-pass RC filters can be simulated with the PCB trace resistance and via inductance of their output net:
 
 ```bash
 # Analyze PCB with full trace segment detail

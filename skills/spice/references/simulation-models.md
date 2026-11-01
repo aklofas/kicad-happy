@@ -365,7 +365,7 @@ When a behavioral model shows a large gain deviation (>2 dB) from expected, the 
 
 ## PCB Parasitic Extraction
 
-Phase 3 adds the ability to inject PCB layout parasitics into SPICE testbenches for pre-layout vs post-layout comparison.
+`--parasitics` inserts PCB layout parasitics into low-pass RC-filter testbenches; see Injection Thresholds.
 
 ### Extraction Pipeline
 

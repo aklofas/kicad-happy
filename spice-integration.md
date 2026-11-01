@@ -189,11 +189,7 @@ Without any API credentials, the skill still works — it falls through to the b
 
 ## Testing
 
-The SPICE skill is validated against the same 5,829-repo test corpus as the analyzers:
+See [VALIDATION.md](VALIDATION.md) for the validation corpus, analyzer run counts and reproduction procedure.
 
-- **30,768 results** in the last corpus run recorded here, which predates the `info` status: 28,544 pass, 1,297 warn, 5 fail, 922 skip (92.8% pass)
-- Results are `pass`, `warn`, `fail`, `info` (measured, no criterion) and `skip`; `pass` means measured and within tolerance, so a run's pass rate is not comparable across versions that add `info`. See [VALIDATION.md](VALIDATION.md) for the current harness results
-- **0 script errors** — the skill never crashes on any project in the corpus
-- **57.7% behavioral model coverage** for opamp circuits (626/1,085 used per-part models)
-
-The warns are primarily opamp gain-bandwidth limitations exposed by behavioral models — these are informational (the model correctly shows the part can't achieve the desired bandwidth), not simulation errors.
+- Results are `pass`, `warn`, `fail`, `info` (measured, no criterion) and `skip`. A run completing without error does not mean every simulated subcircuit passed.
+- Warns on op-amp circuits are mostly gain-bandwidth limits that the behavioral models expose: the part cannot reach the requested bandwidth. They are informational, not simulation errors.
