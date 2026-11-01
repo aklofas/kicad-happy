@@ -44,7 +44,7 @@ Each skill has a `SKILL.md` with YAML frontmatter (name, description, triggers) 
 | `kicad/scripts/signal_detectors.py` | ~4,770 | Core signal path detectors (regulators, filters, opamps, dividers, crystals, protection); the regulator detector = screen/build phases per IC + three passes (feedback dividers, capacitors, dissipation) |
 | `kicad/scripts/domain_detectors.py` | ~6,150 | Domain-specific detectors (Ethernet, USB-C, BMS, motor drive, sensors, audio, LEDs, etc.) |
 | `kicad/scripts/validation_detectors.py` | ~1,430 | Validation detectors (pull-ups, voltage mismatch, protocol buses, power sequencing, feedback stability) |
-| `kicad/scripts/lookup_detectors.py` | ~690 | v1.4 datasheet-backed detectors (AM-001, OV-001, FT-001, PM-001, EX-001 via Phase 2 lookup API) |
+| `kicad/scripts/lookup_detectors.py` | ~690 | v1.4 datasheet-backed detectors (AM-001, EX-001, FT-001, OV-001, PM-001, TJ-001 via the typed lookup API) |
 | `kicad/scripts/analyze_pcb.py` | ~160 | PCB CLI (the analyzer lives in `kicad/scripts/pcb/`) |
 | `kicad/scripts/pcb/pipeline.py` | ~620 | `read_board` → `run_facts` → `run_checks` (`run_analyses` composes them) → `presentation.assemble_result`; `resolve_power_rails`, `finalize_for_cli` |
 | `kicad/scripts/pcb/presentation.py` | ~460 | `assemble_result`, `group_components`, `compute_statistics`: result dict in the historical key order |
@@ -333,7 +333,7 @@ The harness treats a run as successful only when the analyzer exits with one of 
 | schematic, pcb, gerber, cross_analysis, spice, datasheets | 0 |
 | emc, thermal | 0, 1 (1 = input error) |
 
-Exit codes are frozen for the v3 arc. A new CLI must document its exit codes here and in the harness before it is gated.
+Exit codes are frozen for the 3.x line. A new CLI must document its exit codes here and in the harness before it is gated.
 
 ## Code style
 

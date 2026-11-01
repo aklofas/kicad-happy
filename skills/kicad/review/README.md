@@ -6,8 +6,8 @@ This is an internal sub-component of the kicad skill. It is NOT a standalone ski
 
 This directory hosts the v2.0 Deep Review infrastructure:
 
-- **(a)** The Deep Review evidence gate + `deep_review.schema.json` (spec §3.C/§3.D): per-IC LLM datasheet comparison with durable, evidence-linked findings in `analysis/deep_review.json`.
-- **(b)** The optional `design_context` subagent input (spec §3.B): reads schematic + BOM + design intent, emits `design_context.json`. Used as an optional input to the Deep Review pass.
+- **(a)** The Deep Review evidence gate + `deep_review.schema.json`: per-IC LLM datasheet comparison with durable, evidence-linked findings in `analysis/deep_review.json`.
+- **(b)** The optional `design_context` subagent input: reads schematic + BOM + design intent, emits `design_context.json`. Used as an optional input to the Deep Review pass.
 - **(c)** The annotation merge machinery (optional detector-finding triage): `merge_annotations.py` validates `review_annotations.json`, applies `llm_review` overlays to raw analyzer findings, and verifies HI-3 strip round-trip. Authority caps removed in v2.0 — a `suppressed` annotation now always applies its overlay. Quarantined findings remain visible in the merge report.
 - **(d)** `_mini_jsonschema.py`: stdlib-only JSON Schema Draft 2020-12 validator (keyword subset used by Layer 2 schemas). No third-party `jsonschema` dep at runtime.
 
@@ -35,7 +35,7 @@ This directory hosts the v2.0 Deep Review infrastructure:
 - **Stable finding identity:** `finding_id` is stable across runs; this invariant extends to Deep Review findings (`deep_review:<12-hex>` form).
 - **No hidden suppression:** quarantined/suppressed annotations are visible in the merge report; nothing is silently discarded.
 
-## Retired in v2.0 (spec §5)
+## Retired in v2.0
 
 The following v1.4 Layer 2 cage constraints are removed. Trust now comes from the Deep Review evidence gate, not permission rules:
 

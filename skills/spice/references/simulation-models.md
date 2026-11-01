@@ -226,7 +226,7 @@ The LDO subcircuit models a linear regulator's DC behavior:
 * PMOS pass element with dropout ~0.2V
 ```
 
-This model is **not currently used in Phase 1 testbenches** — regulator simulation requires control loop modeling for stability analysis, which is Phase 2. The model is included in the codebase for future use.
+This model is **not currently used in any testbench** — regulator simulation requires control loop modeling for stability analysis. The model is included in the codebase for future use.
 
 ---
 

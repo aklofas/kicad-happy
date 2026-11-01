@@ -51,7 +51,7 @@ For opamps with recognized part numbers, the skill uses a behavioral model with 
 
 **Example: LM358 at gain=-100**
 
-| Parameter | Ideal Model (Phase 1) | Behavioral Model (Phase 2) | Reality |
+| Parameter | Ideal Model | Behavioral Model | Reality |
 |-----------|----------------------|---------------------------|---------|
 | DC gain | 40.0 dB (correct) | 40.0 dB (correct) | 40.0 dB |
 | Bandwidth | 98.8 kHz (wrong!) | ~10 kHz (correct) | ~10 kHz |

@@ -56,7 +56,7 @@ All scripts are zero-dependency (Python 3.10+ stdlib only). No `pip install` nee
 - `skills/kicad/scripts/signal_detectors.py` — Core signal path detectors (~4,800 LOC)
 - `skills/kicad/scripts/domain_detectors.py` — Domain-specific detectors (~6,100 LOC)
 - `skills/kicad/scripts/validation_detectors.py` — Validation detectors (pull-ups, voltage levels, protocol buses, feedback stability) (~1,400 LOC)
-- `skills/kicad/scripts/lookup_detectors.py` — v1.4 datasheet-backed detectors (AM-001, OV-001, FT-001, PM-001, EX-001) via Phase 2 lookup API (~700 LOC)
+- `skills/kicad/scripts/lookup_detectors.py` — v1.4 datasheet-backed detectors (AM-001, EX-001, FT-001, OV-001, PM-001, TJ-001) via the typed lookup API (~700 LOC)
 - `skills/kicad/scripts/analyzer_envelope.py` — Typed envelope dataclasses (Finding, Assessment, TrustSummary, InputsBlock, CompatBlock) — single source of truth for analyzer output shape
 - `skills/kicad/scripts/finding_schema.py` — Rich finding factory, `Det` constants, consumer helpers, trust_summary aggregation
 - `skills/kicad/scripts/cross_analysis.py` — Schematic + PCB cross-domain checks (~1,200 LOC)

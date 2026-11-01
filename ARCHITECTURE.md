@@ -1,10 +1,10 @@
-# Architecture notes (v3 arc, living document)
+# Architecture notes
 
 This file records the decisions a contributor needs that the code does not state on its own: which contracts are frozen, which way imports may point, which module owns what, and which code is kept only for a named consumer. The per-package ownership tables for `kicad_core/`, `schematic/`, `pcb/` and `distributor_core/` follow the top-level module map. The facade register lists every facade kept for a named consumer; it is empty.
 
 ## Contracts: frozen and open
 
-Frozen for the whole arc:
+Frozen for the 3.x line:
 
 - input formats (`.kicad_sch`, `.sch`, `.kicad_pcb`, Gerber/Excellon, `.kicad-happy.json`, `.kicad_dru`);
 - readability of artifacts written by earlier versions: saved analysis JSON (by `diff_analysis`, `what_if`, `summarize_findings`, the Action renderer), datasheet manifests, extraction caches, `analysis/manifest.json`;
@@ -36,21 +36,21 @@ Two pin-name tables follow the same rule: `validation_detectors._PS_PG_PIN_NAMES
 
 Every emit site carries literal string keywords `detector=`, `rule_id=` and `schema_era=`. An emit site is a `make_finding`/`_make_finding` call, or a caller of a dict-returning `_make_*` factory. A `_make_*` wrapper whose own inner `make_finding` call carries all three literals is itself the emit site, and its callers are not scanned. `_make_*` helpers that are not finding factories are ignored. `schema_era` is `v1.4` for the datasheet-authority detectors and `v3.0` for every site whose emitted dict changed in the v3 line. `tools/tag_baseline.json` records the 56 detector/rule literal shapes that predate the checks, and may only shrink. Moving an emit site to another file uses `tags --update-baseline --moved-from FILE`, which never lets the count of untagged shapes grow. Emitted detector strings and rule IDs are public API and never change.
 
-## Round 8 output changes
+## v3.0.0 output changes
 
-Round 8 changed output under five budget classes; the user-facing list is the `CHANGELOG.md` v3.0.0 "Changed" section.
+The 3.0.0 release changed output under five budget classes; the user-facing list is the `CHANGELOG.md` v3.0.0 "Changed" section.
 
-- B1: a `diagnostics` list at the root of every analyzer envelope and the SPICE report (`[]` when nothing degraded); the six `--schema` outputs gain the property.
-- B2: EMC `findings[*]` take `make_finding`'s key order and lose `title` (its text is `summary`); `finding_id` is unchanged; the same removal in `audience_summary.*.top_issues`.
-- B3: `schema_era: "v3.0"` is added on findings of the 40 detectors listed in the `CHANGELOG.md` v3.0.0 "Changed" section, RS-001 and PP-001 among them; `tools/tag_baseline.json` shrank from 89 to 56 untagged shapes.
-- B4: one severity vocabulary (`info`/`warning`/`error`) in `datasheet_verification` (findings and `summary.by_severity`), `cross_verify.py` output and `summarize_findings` (`high` becomes `error`); legacy names are accepted on input only.
-- B5: RS-001 is removed on nets whose only `power_in` pins are bootstrap-named (KH-454); PP-001 is added on boards with duplicate component refs (KH-455).
+- A `diagnostics` list at the root of every analyzer envelope and the SPICE report (`[]` when nothing degraded); the six `--schema` outputs gain the property.
+- EMC `findings[*]` take `make_finding`'s key order and lose `title` (its text is `summary`); `finding_id` is unchanged; the same removal in `audience_summary.*.top_issues`.
+- `schema_era: "v3.0"` is added on findings of the 40 detectors listed in the `CHANGELOG.md` v3.0.0 "Changed" section, RS-001 and PP-001 among them; `tools/tag_baseline.json` shrank from 89 to 56 untagged shapes.
+- One severity vocabulary (`info`/`warning`/`error`) in `datasheet_verification` (findings and `summary.by_severity`), `cross_verify.py` output and `summarize_findings` (`high` becomes `error`); legacy names are accepted on input only.
+- RS-001 is removed on nets whose only `power_in` pins are bootstrap-named; PP-001 is added on boards with duplicate component refs.
 
-Behaviour changes outside the budget leave output identical at defaults: the config knobs (`retention`, `diff_threshold`, `output_dir`), EMC and SPICE runs through `output_io.write_primary_run`, and KH-463 (SPICE workdir).
+Behaviour changes outside the budget leave output identical at defaults: the config knobs (`retention`, `diff_threshold`, `output_dir`), EMC and SPICE runs through `output_io.write_primary_run`, and SPICE working-directory handling.
 
 ## Facade register
 
-No facades remain as of 3.0.0: the facade modules, re-exports and aliases kept during the v3 arc were removed, and `CHANGELOG.md` lists each removed import path with its new owner. Code added only so a named consumer keeps working needs a row here naming the consumer and the condition that removes it.
+No facades remain as of 3.0.0: the facade modules, re-exports and aliases kept during the 3.0 refactor were removed, and `CHANGELOG.md` lists each removed import path with its new owner. Code added only so a named consumer keeps working needs a row here naming the consumer and the condition that removes it.
 
 The `_core_path` helpers (`skills/{emc,spice,bom,digikey,mouser,lcsc,element14}/scripts/_core_path.py`) are permanent and are not facades. `_core_path` anchors on `Path(__file__).resolve()`, so a symlinked skill directory resolves to its real parent before walking up to `skills/`; the previous ad hoc inserts used `os.path.abspath` (no symlink following). Byte-identical copies live in emc, spice, bom and the four distributor skills (digikey, mouser, lcsc, element14) by design; the distributor skills use it to reach `skills/datasheets/distributor_core/`, which sits in the core.
 
@@ -127,7 +127,7 @@ The twelve analyzer and consumer CLIs (`analyze_schematic`, `analyze_pcb`, `anal
 | `sync_datasheet_urls.py` | writes datasheet URLs from `datasheets/manifest.json` back into symbol properties | `edit_properties`, `kicad_sexp` |
 | `translate_bom_pnp.py` | BOM/CPL translation into JLCPCB upload format | stdlib |
 
-## `skills/kicad/scripts/kicad_core/` ownership (round 2)
+## `skills/kicad/scripts/kicad_core/` ownership
 
 | Module | Owns | Imports |
 |---|---|---|
@@ -147,7 +147,7 @@ The twelve analyzer and consumer CLIs (`analyze_schematic`, `analyze_pcb`, `anal
 
 `kicad_core` imports stdlib and itself only (CI-enforced).
 
-## `skills/kicad/scripts/schematic/` ownership (round 4)
+## `skills/kicad/scripts/schematic/` ownership
 
 | Module | Owns | Imports |
 |---|---|---|
@@ -163,9 +163,9 @@ The twelve analyzer and consumer CLIs (`analyze_schematic`, `analyze_pcb`, `anal
 | `pipeline.py` | the named phases (topologies → reconcile → domain detectors → signal assembly; project: read → context → analyses → assemble; `finalize_for_cli`) | everything above, the detector modules, `kicad_types`, `finding_schema`, `lifecycle_audit` (lazy; a `no-cli-import` baseline entry), `datasheet_verify`, `output_filters`, `project_config` |
 | `presentation.py` | result-dict assembly in the historical key order; legacy result | `kicad_core`, `bom_stats`, `connectivity`, `finding_schema`, `detection_schema` |
 
-Mutation contract (D4): `reconcile_detections` rewrites phase-1 records in place; `assemble_signal_results` enriches capacitor entries in place; `assemble_result` adds `category`/`parsed_value`/`pin_nets` to components and pops `_unit_pins`; `finalize_for_cli` mutates the result (findings filtering, summary recompute). Nothing else mutates caller-owned lists.
+Mutation contract: `reconcile_detections` rewrites phase-1 records in place; `assemble_signal_results` enriches capacitor entries in place; `assemble_result` adds `category`/`parsed_value`/`pin_nets` to components and pops `_unit_pins`; `finalize_for_cli` mutates the result (findings filtering, summary recompute). Nothing else mutates caller-owned lists.
 
-## `skills/kicad/scripts/pcb/` ownership (round 5)
+## `skills/kicad/scripts/pcb/` ownership
 
 | Module | Owns | Imports |
 |---|---|---|
@@ -183,7 +183,7 @@ Mutation contract (D4): `reconcile_detections` rewrites phase-1 records in place
 
 Mutation contract: `read_board` backfills `net`/`net_number` on the extracted records (KiCad 10) through the per-call `PcbReaderState`. `run_facts` and `run_checks` pass the board's containers by reference and mutate neither the board nor the facts; `tools/tests/test_pcb_phase_purity.py` proves it on the fixture boards and proves that `run_analyses` equals `run_facts` followed by `run_checks`. `assemble_result` pops `unrouted` out of `connectivity` and the finding sections out of the result, and in `--full` it calls `build_connectivity_graph`, which stays there because the harness patches it as `pcb.presentation.build_connectivity_graph`. `finalize_for_cli` mutates the result (debug strip, filters, finding_id). Nothing else mutates caller-owned lists.
 
-## `skills/datasheets/distributor_core/` and the provider adapters (round 6)
+## `skills/datasheets/distributor_core/` and the provider adapters
 
 | Module | Owns | Imports |
 |---|---|---|

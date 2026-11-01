@@ -112,7 +112,7 @@ To find all units of a component: search for placed symbols where the `lib_id` b
 
 ## Hierarchical buses
 
-Bus connectivity (GH #25) is resolved by a dedicated per-sheet bus graph,
+Bus connectivity is resolved by a dedicated per-sheet bus graph,
 separate from the point-to-point tracing above.
 
 - **Expansion.** Vectors (`D[0..7]` -> D0..D7) and groups (`{TX RX}` -> TX,
@@ -142,7 +142,7 @@ separate from the point-to-point tracing above.
   same-name local labels on its own sheet.
 - **Naming.** A resolved member net is named from the parent (lowest sheet) label.
 - **Qualified keys.** Bare-name collisions across sheet scopes use the
-  `/<sheet>/<name>` key (KH-359), same as any other net.
+  `/<sheet>/<name>` key, same as any other net.
 - **Unresolved.** `bus_topology.unresolved` (`[{reason, name}]`) lists
   every bus construct the resolver could not confidently resolve — those
   connections are not asserted. `reason` is one of a fixed snake_case
