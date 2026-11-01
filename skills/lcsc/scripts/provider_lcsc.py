@@ -1,7 +1,6 @@
 """LCSC adapter: auth, search, response accessors, and the provider's sync_one_part strategy chain; the driver is distributor_core.sync. The adapter constants are the per-provider differences the driver reads."""
 
 import json
-import os
 import re
 import sys
 import time
