@@ -198,6 +198,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 ### Documentation
 
 - Commands and workflows in the docs run as written: the sync CLIs take no `--recursive`, the opencode global config block no longer appends a second JSON object, the Action outputs table lists the five outputs `action.yml` declares and what `findings-count` and `has-critical` count, the Deep Review gate and diff commands use `<skill-path>`, `--output` / `--analysis-dir` precedence is documented per analyzer, the extraction steps start with the cached scout (with its `pdf_sha256`), the dead annotations-merge step is removed, and the DigiKey auth note describes the client-credentials flow. (KH-636, KH-329)
+- The schematic guide's Zener check uses P = VZ × IZ and gives the series resistor's own dissipation, the anti-alias check uses f_max for alias rejection and f_min for passband loss, and battery current through a switching regulator is V_load × I_load / (V_battery × η). (KH-637)
 
 ---
 

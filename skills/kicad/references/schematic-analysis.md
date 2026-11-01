@@ -336,7 +336,7 @@ For each component type, here is what to extract from the datasheet and what to 
 - Reverse voltage rating exceeds maximum reverse voltage with margin
 - For TVS: clamping voltage at peak pulse current is within protected IC's absolute max
 - For Schottky (power supply): reverse leakage at temperature is acceptable
-- For Zener: power dissipation = (VIN - VZ) * IZ is within rated power
+- For Zener: power dissipation VZ * IZ is within the derated power rating, with IZ at maximum input and minimum load (shunt regulator: IZ = (VIN_max - VZ) / R_series - I_load_min); the series resistor dissipates (VIN - VZ) * (IZ + I_load)
 - For flyback diodes: reverse voltage rating > supply voltage, forward current rating > load current
 
 ### Connectors
@@ -814,7 +814,7 @@ Example: 10k (5%) + 100nF (10%) low-pass filter:
 - f_max = 1/(2π × 9.5k × 90n) = 186 Hz (+17%)
 - f_min = 1/(2π × 10.5k × 110n) = 138 Hz (-13%)
 
-For anti-alias filters before ADCs, ensure f_min is still above the Nyquist frequency. For EMI filters, ensure f_max still attenuates the target frequency.
+For anti-alias filters before ADCs, check both ends: f_min must still pass the signal band, and f_max must still give the required attenuation where aliasing starts (half the sample rate, or the sample rate minus the highest signal frequency when only part of the band is used). A first-order RC gives 20 dB only about ten times above its cutoff. For EMI filters, ensure f_max still attenuates the target frequency.
 
 ### Crystal Load Capacitor Tolerance Effects
 
@@ -1017,7 +1017,7 @@ For battery-powered designs, estimate operational lifetime to validate the desig
    - MCU at operating frequency (e.g., ESP32-S3 at 240MHz: ~40-80mA)
    - Radio (WiFi TX: 180-380mA peak for ESP32; BLE TX: 20-30mA)
    - Sensors, ADCs, displays, LEDs
-   - Regulator efficiency losses: `I_battery = I_load / η_regulator`
+   - Regulator efficiency losses: convert each rail's load to battery current — switching regulator `I_battery = V_load × I_load / (V_battery × η_regulator)`, LDO `I_battery ≈ I_load + I_q` — then sum the battery-side currents
 
 2. **Enumerate sleep mode current**: Use the sleep current audit from the analyzer output, plus datasheet sleep/shutdown currents for each IC. Don't forget:
    - Voltage divider quiescent current (always-on resistive paths)
