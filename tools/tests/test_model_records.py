@@ -10,6 +10,16 @@ FX = fixture_path()
 sys.path.insert(0, str(SCRIPTS))
 
 
+# (fixture, component count): the modern reader, the legacy .sch reader, and a
+# multi-sheet project whose pages share reference designators. The fixture set
+# has no placed multi-unit symbol.
+CASES = [
+    ("simple-project/simple.kicad_sch", 3),
+    ("kh418/legacy_blank_primary.sch", 2),
+    ("synthetic_top_level_sheets/page1.kicad_sch", 9),
+]
+
+
 def _annotations(td):
     out = {}
     for klass in reversed(td.__mro__):
@@ -26,12 +36,13 @@ class RecordShapes(unittest.TestCase):
         from kicad_core import model
         cls.model = model
         cls.results = []
-        for f in sorted(p for p in set(FX.rglob("*.kicad_sch")) | set(FX.rglob("*.sch")) if p.is_file()):
-            try:
-                cls.results.append(analyze_schematic(str(f), no_hierarchy=True))
-            except Exception:
-                continue
-        assert len(cls.results) >= 10, "fixture set too small to trust"
+        for rel, n_components in CASES:
+            path = FX / rel
+            if not path.is_file():
+                raise AssertionError(f"fixture missing under KH_FIXTURES: {path}")
+            result = analyze_schematic(str(path), no_hierarchy=True)
+            assert len(result["components"]) == n_components, rel
+            cls.results.append(result)
         cls.sheet = parse_single_sheet(str(FX / "simple-project" / "simple.kicad_sch"))
 
     def test_component_keys(self):
