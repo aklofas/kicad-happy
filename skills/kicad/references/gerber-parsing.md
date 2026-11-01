@@ -324,7 +324,7 @@ Drill files define hole positions and sizes. KiCad exports Excellon format.
 ```excellon
 M48                                  ; Header start
 ; DRILL file {project.kicad_pcb} date 2025-01-15
-; FORMAT={-:-:metric}
+; FORMAT={3:3/ absolute / metric / suppress leading zeros}
 ; #@! TF.GenerationSoftware,KiCad,Pcbnew,9.0.0
 ; #@! TF.CreationDate,2025-01-15
 ; #@! TF.FileFunction,Plated,1,2,PTH    ; Plated through holes, layer 1 to 2
@@ -354,22 +354,27 @@ M30                                  ; End of file
 
 ### Coordinate Format
 
-Two distinct formats depending on KiCad version:
+The units line, the zeros option and the `; FORMAT={integer:decimal/...}` comment declare how to read a coordinate. KiCad writes the same hole, (105.08 mm, 100.0 mm) on the board, as:
 
-**KiCad 6+ (metric, integer coordinates):**
-- Header: `METRIC,TZ` or `METRIC,LZ`
-- Format hint: `; FORMAT={-:-:metric}`
-- Coordinates in microns (divide by 1000 for mm)
-- Example: `X150000Y100000` = (150.0mm, 100.0mm)
+| Export option | Units line | Format comment | Hole as written |
+|---------------|------------|----------------|-----------------|
+| decimal, mm (kicad-cli default) | `METRIC` | `{-:-/ absolute / metric / decimal}` | `X105.08Y-100.0` |
+| decimal, inch | `INCH` | `{-:-/ absolute / inch / decimal}` | `X4.137Y-3.937` |
+| suppress leading zeros, mm | `METRIC,TZ` | `{3:3/ absolute / metric / suppress leading zeros}` | `X105080Y-100000` |
+| suppress leading zeros, inch | `INCH,TZ` | `{2:4/ absolute / inch / suppress leading zeros}` | `X41370Y-39370` |
+| suppress trailing zeros, mm | `METRIC,LZ` | `{3:3/ absolute / metric / suppress trailing zeros}` | `X10508Y-1` |
+| suppress trailing zeros, inch | `INCH,LZ` | `{2:4/ absolute / inch / suppress trailing zeros}` | `X04137Y-03937` |
+| keep zeros, mm | `METRIC` | `{3:3/ absolute / metric / keep zeros}` | `X105080Y-100000` |
+| keep zeros, inch | `INCH` | `{2:4/ absolute / inch / keep zeros}` | `X041370Y-039370` |
 
-**KiCad 5 (imperial, decimal coordinates):**
-- Header: `INCH` (no TZ/LZ suffix)
-- Format hint: `; FORMAT={-:-/ absolute / inch / decimal}`
-- Coordinates are decimal inches — parse as float, multiply by 25.4 for mm
-- Example: `X1.3875Y-2.77` = (1.3875in, -2.77in) = (35.2425mm, -70.358mm)
-- Tool sizes also in inches: `T1C0.0157` = 0.0157in = 0.399mm
+The minimal-header export option omits the format comment; KiCad's precision is then 3:3 for mm and 2:4 for inch.
 
-**Important:** KiCad 5 drill coordinates may have negative Y values (KiCad 5 used inverted Y-axis). KiCad 6+ always uses positive coordinates.
+- A decimal point means the value is already in the file's units (mm or inch). Multiply inch by 25.4.
+- Without a decimal point, divide by 10^d, where `{i:d}` comes from the format comment. `TZ` (leading zeros suppressed) and keep-zeros files divide as written.
+- `LZ` (trailing zeros suppressed) digits are left-aligned: pad on the right to i+d digits first, then divide. `10508` becomes `105080`, which is 105.080 mm; `-1` becomes `-100000`, which is -100.0 mm.
+- Tool sizes (`T1C...`) are in the units of the units line.
+- Y is negative for positive board Y: KiCad negates it unless the file was exported with mirror-Y.
+- The analyzer's drill reader misreads integer coordinates in `LZ` files (hole positions come out wrongly scaled); hand-decode those files. Hole counts and tool sizes are unaffected.
 
 ### Tool Definitions
 
@@ -621,7 +626,6 @@ Quickly determine the KiCad version from gerber files:
 | Aperture attributes | `G04 #@! TA.*` (5.1) or native | `%TA.AperFunction,...*%` |
 | Object attributes | `G04 #@! TO.*` (5.1) or native | `%TO.P,...*%`, `%TO.N,...*%`, `%TO.C,...*%` |
 | Silkscreen suffix | `_SilkS` | `_Silkscreen` |
-| Drill units | `INCH` (decimal) | `METRIC` (integer microns) |
 | Job file | `.gbrjob` from 5.1 | `.gbrjob` present |
 | Mask/paste pad openings | Regions (G36/G37) | Flashes (D03) |
 | Software string | `Pcbnew,5.x.x` | `Pcbnew,6.x.x` / `7.x.x` / `8.x.x` / `9.x.x` |
@@ -692,36 +696,56 @@ for line in gerber_lines:
 Excellon drill files have a header section (tool definitions) and a body (drill hits):
 
 ```python
-tools = {}       # T-code → diameter
-current_tool = None
-drill_hits = []  # (x, y, tool, diameter)
-units_mm = True  # False for INCH
+import re
 
-for line in drill_lines:
-    # Tool definition: T1C0.300 or T01C0.300000
-    m = re.match(r'T(\d+)C([\d.]+)', line)
-    if m:
-        tools[int(m.group(1))] = float(m.group(2))
-        continue
+def parse_drill_hits(lines):
+    units_mm = True       # METRIC unless the header says INCH
+    zeros = None          # 'LZ' (trailing zeros omitted), 'TZ' (leading omitted) or None
+    int_digits, dec_digits = None, None
+    tools, hits, current_tool = {}, [], None  # hits: (x, y, tool, diameter), all mm
+    for line in lines:
+        s = line.strip()
+        m = re.match(r';\s*FORMAT=\{(\d+):(\d+)/', s)
+        if m:
+            int_digits, dec_digits = int(m.group(1)), int(m.group(2))
+            continue
+        m = re.match(r'(METRIC|INCH)(?:,(LZ|TZ))?', s)
+        if m:
+            units_mm = m.group(1) == 'METRIC'
+            zeros = m.group(2)
+            continue
+        # Tool definition: T1C0.300 or T01C0.300000
+        m = re.match(r'T(\d+)C([\d.]+)', s)
+        if m:
+            tools[int(m.group(1))] = float(m.group(2)) * (1.0 if units_mm else 25.4)
+            continue
+        # Tool select: T1 or T01
+        m = re.match(r'T(\d+)$', s)
+        if m:
+            current_tool = int(m.group(1))
+            continue
+        # Drill hit: X105080Y-100000, X10508Y-1 (LZ) or X105.08Y-100.0 (decimal)
+        m = re.match(r'X(-?[\d.]+)Y(-?[\d.]+)', s)
+        if m and current_tool is not None:
+            if int_digits is None:  # no FORMAT comment: KiCad's precision
+                int_digits, dec_digits = (3, 3) if units_mm else (2, 4)
+            scale = 1.0 if units_mm else 25.4
+            x, y = (_coord(v, zeros, int_digits, dec_digits) * scale
+                    for v in m.groups())
+            hits.append((x, y, current_tool, tools.get(current_tool, 0)))
+    return hits
 
-    # Tool select: T1 or T01
-    m = re.match(r'T(\d+)$', line)
-    if m:
-        current_tool = int(m.group(1))
-        continue
-
-    # Drill hit: X156100Y148800 (METRIC) or X5.4075Y3.0591 (INCH)
-    m = re.match(r'X(-?[\d.]+)Y(-?[\d.]+)', line)
-    if m:
-        x, y = float(m.group(1)), float(m.group(2))
-        if not units_mm:
-            x, y = x * 25.4, y * 25.4  # Convert inches to mm
-        elif x > 1000:
-            x, y = x / 1000, y / 1000  # METRIC integer microns
-        drill_hits.append((x, y, current_tool, tools.get(current_tool, 0)))
+def _coord(text, zeros, int_digits, dec_digits):
+    if '.' in text:
+        return float(text)
+    sign = -1 if text.startswith('-') else 1
+    digits = text.lstrip('+-')
+    if zeros == 'LZ':  # trailing zeros omitted: digits are left-aligned
+        digits = digits.ljust(int_digits + dec_digits, '0')
+    return sign * int(digits) / 10 ** dec_digits
 ```
 
-**METRIC vs INCH:** KiCad 5 uses `INCH` with decimal coordinates (e.g., `X5.4075`). KiCad 6+ uses `METRIC` with integer micron coordinates (e.g., `X156100` = 156.100 mm). Check for `METRIC` or `INCH` in the header. If coordinates have decimal points, they're inches; if integer-only, divide by 1000 for mm.
+**Units and precision:** take units from the `METRIC`/`INCH` line and precision from `; FORMAT={i:d/...}` (3:3 mm, 2:4 inch when absent). Explicit decimals need only the unit conversion. Integer coordinates are divided by 10^d, after right-padding to i+d digits when the header says `LZ`. A decimal point does not mean inches, and a coordinate's sign or size does not tell you its precision.
 
 ### Script Output
 

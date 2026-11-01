@@ -202,6 +202,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The net-tracing guide's pin rotation matches KiCad: a pin at (px, py) lands at (X − py, Y − px) at 90° and (X + py, Y + px) at 270°, its worked examples name the right pins, and it states how `(mirror x)` and `(mirror y)` change the result. (KH-637)
 - The manual PCB fallback reads zone fills and the board outline correctly: the zone snippet selects by net name and layer (including KiCad 10's `(net "GND")` and KiCad 5 fills without a layer), and the outline section points at the shared reader with the rules for a hand-written one. (KH-637)
 - The IPC-2221 trace-current tables in the PCB layout guide and the standards guide use 1 oz = 35 µm, give widths for 5, 10 and 20 A, point at the `CC-DET` finding's real field names, and state where TW-001's uncited width table is wider and that it stops at 9.0 mm. (KH-637)
+- The drill guides decode Excellon by its declared format: units, `,LZ`/`,TZ` zero suppression and the `; FORMAT={i:d/...}` precision come from the header (trailing-zero-suppressed coordinates are padded on the right before dividing), with one hole shown in every KiCad drill format. The false claims that KiCad 6+ writes integer microns, that a decimal point means inches and that Y is always positive are gone, and the analyzer's own `LZ` misread is stated plainly. (KH-637)
 
 ---
 

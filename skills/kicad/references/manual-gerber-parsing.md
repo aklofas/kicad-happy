@@ -331,19 +331,28 @@ back_only = back_components - front_components  # True back-side SMD
 
 ## Excellon Drill Parsing
 
-Drill files have a header (tool definitions) and body (drill hits). The coordinate format differs significantly between KiCad versions.
+Drill files have a header (tool definitions) and body (drill hits). How to read a coordinate is declared in the header, not by the KiCad version.
 
-### Step 1: Detect Units
+### Step 1: Read Units, Zero Suppression and Precision
 
 ```python
-units_mm = True  # default assumption
+units_mm = True              # METRIC unless the header says INCH
+zeros = None                 # 'TZ', 'LZ', or None (decimal or keep zeros)
+int_digits = dec_digits = None
 
 for line in lines:
     s = line.strip()
-    if 'METRIC' in s:
-        units_mm = True
-    elif 'INCH' in s:
-        units_mm = False
+    m = re.match(r'(METRIC|INCH)(?:,(LZ|TZ))?', s)
+    if m:
+        units_mm = m.group(1) == 'METRIC'
+        zeros = m.group(2)
+    m = re.match(r';\s*FORMAT=\{(\d+):(\d+)/', s)
+    if m:
+        int_digits, dec_digits = int(m.group(1)), int(m.group(2))
+    if s == '%':
+        break                # end of header
+if int_digits is None:       # minimal header: KiCad's precision
+    int_digits, dec_digits = (3, 3) if units_mm else (2, 4)
 ```
 
 ### Step 2: Parse Tool Definitions
@@ -381,6 +390,17 @@ for line in lines:
 ### Step 3: Parse Drill Hits
 
 ```python
+def to_mm(text):
+    if '.' in text:
+        value = float(text)
+    else:
+        sign = -1 if text.startswith('-') else 1
+        digits = text.lstrip('+-')
+        if zeros == 'LZ':    # trailing zeros omitted: digits are left-aligned
+            digits = digits.ljust(int_digits + dec_digits, '0')
+        value = sign * int(digits) / 10 ** dec_digits
+    return value if units_mm else value * 25.4
+
 current_tool = None
 
 for line in lines:
@@ -395,26 +415,12 @@ for line in lines:
     # Drill hit coordinate
     m = re.match(r'X(-?[\d.]+)Y(-?[\d.]+)', s)
     if m and current_tool:
-        x, y = float(m.group(1)), float(m.group(2))
-        if not units_mm:
-            x, y = x * 25.4, y * 25.4
-        elif x > 1000:  # METRIC integer microns (no decimal point)
-            x, y = x / 1000, y / 1000
-        tools[current_tool]['hits'].append((x, y))
+        tools[current_tool]['hits'].append((to_mm(m.group(1)), to_mm(m.group(2))))
 ```
 
-### KiCad 5 vs 6+ Coordinate Differences
+### Units and Precision Come from the Header
 
-| Aspect | KiCad 5 | KiCad 6+ |
-|--------|---------|----------|
-| Units header | `INCH` | `METRIC` or `METRIC,TZ` |
-| Format hint | `; FORMAT={-:-/ absolute / inch / decimal}` | `; FORMAT={-:-/ absolute / metric / decimal}` |
-| Coordinate format | Decimal inches: `X1.3875Y-2.77` | Integer microns: `X150000Y100000` |
-| Decimal point | Present | Absent |
-| Negative Y values | Common (inverted Y-axis) | Rare |
-| Tool size | Inches: `T1C0.0157` (=0.399mm) | mm: `T1C0.300` |
-
-**Reliable detection:** If coordinates contain a decimal point (`.`), they're decimal inches/mm. If they're large integers without decimals, divide by 1000 for mm.
+Every KiCad version can write mm or inch in any zeros format, so neither the KiCad version nor the size of the numbers tells you how to read a coordinate. Read the units line (`METRIC`/`INCH`, with `,TZ` or `,LZ`) and the `; FORMAT={integer:decimal/...}` comment as in Step 1. A decimal point means the value is already in the file's units. Y is usually negative: KiCad negates Y unless the file was exported with mirror-Y. `gerber-parsing.md` "Coordinate Format" shows one hole in every format.
 
 ### Drill Classification
 
@@ -614,7 +620,7 @@ When both gerber and PCB analysis outputs are available:
 
 - **KiCad 5 mask/paste uses regions**: D03 flash count may be 0 on mask/paste layers — count G36/G37 region pairs instead
 - **Large B.Mask file size**: Normal when back has ground plane — mask must define tenting pattern over entire zone fill
-- **Negative Y in KiCad 5 drills**: KiCad 5 used inverted Y-axis for drill coordinates
+- **Negative Y in drills**: KiCad writes drill Y negated (board Y 100 mm is `Y-100`) unless the file was exported with mirror-Y
 - **Non-KiCad gerbers**: May lack X2 attributes entirely; rely on filename patterns for layer identification
 - **Merged drill files**: Some workflows produce a single drill file with both PTH and NPTH — check `TF.FileFunction` for `MixedPlating`
 - **Protel extensions**: Some fabs require `.GTL`/`.GBL` extensions instead of KiCad's `-F_Cu.gbr` naming
