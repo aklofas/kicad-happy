@@ -18,7 +18,7 @@ Two files in `<cache_dir>`:
 If `<mpn>.scout.json` does not exist, run the scout first:
 
 1. Read `skills/datasheets/prompts/scout.md`.
-2. Substitute placeholders: `{{MPN}}` = `<plan.mpn>`, `{{PDF_PATH}}` = `<plan.pdf_path>`, `{{SCHEMA_PATH}}` = `skills/datasheets/schemas/scout.schema.json`.
+2. Substitute placeholders from the requested part (no plan exists yet): `{{MPN}}` = the target MPN, `{{PDF_PATH}}` = the source PDF path, `{{SCHEMA_PATH}}` = `skills/datasheets/schemas/scout.schema.json`.
 3. Invoke `Agent` with:
    - `subagent_type: general-purpose`
    - `description: "Datasheet scout for <mpn>"`
@@ -168,15 +168,6 @@ When you see a task with `task_type: "review"`:
 
 Same dispatch primitive (Claude Code `Task` tool); same output-validation contract (validate against `result_schema` after subagent returns); same retry semantics (one retry on hard fail with error context).
 
-### Merge after design_context task completes
+### After the design_context task completes
 
-Once the design_context task has written its result file, invoke:
-
-```bash
-python3 skills/kicad/review/scripts/merge_annotations.py \
-    --raw-dir analysis/ \
-    --review analysis/review_annotations.json \
-    --merged-dir analysis/merged/
-```
-
-This applies overlays to a copy of each raw analyzer JSON. The raw files remain unmodified.
+The task writes `analysis/design_context.json`, which the Deep Review pass reads when present. Nothing else needs to run: no current task produces `review_annotations.json`, so there is nothing to merge.

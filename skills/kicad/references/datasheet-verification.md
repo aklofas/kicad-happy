@@ -38,10 +38,10 @@ The verification pipeline has four stages. All must complete before verification
 Use `sync_datasheets_digikey.py` (or `fetch_datasheet_digikey.py` for individual parts) to download PDF datasheets for all ICs in the design. The script uses `analyze_schematic.py` to extract MPNs automatically.
 
 ```bash
-python3 <skill-path>/scripts/sync_datasheets_digikey.py <project_dir>
+python3 <digikey-skill-path>/scripts/sync_datasheets_digikey.py <project>.kicad_sch
 ```
 
-PDFs are saved to `datasheets/` in the project directory.
+`<digikey-skill-path>` is the installed digikey skill directory. Pass the root schematic; PDFs are saved to `datasheets/` beside it.
 
 ### Stage 2: LLM extraction
 

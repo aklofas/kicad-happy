@@ -9,6 +9,9 @@ helper-script conventions, evidence quality, and fan-out for big
 BOMs. Checks are DERIVED from each part's datasheet — the lists
 below are starting points, not ceilings.
 
+`<skill-path>` is the installed kicad skill directory. Run the
+commands below from the hardware project directory.
+
 ## Comparison heuristics by part class
 
 **Regulators (LDO / buck / boost / SMPS controllers)**
@@ -92,7 +95,7 @@ Write disposable, design-specific scripts under `analysis/helpers/`:
 ## Recording and evidence quality
 
 Record findings in `analysis/deep_review.json` per
-`skills/kicad/review/schemas/deep_review.schema.json`:
+`<skill-path>/review/schemas/deep_review.schema.json`:
 - `category` is free-form but reuse a small stable vocabulary within
   a project (e.g. `power_input`, `power_sequencing`, `bus_levels`,
   `thermal`, `protection`, `required_externals`) — the diff and the
@@ -110,14 +113,14 @@ Record findings in `analysis/deep_review.json` per
 
 Gate, then deal with the fallout:
 
-    python3 skills/kicad/review/scripts/deep_review_gate.py \
+    python3 <skill-path>/review/scripts/deep_review_gate.py \
         analysis/deep_review.json --analysis-dir analysis/
 
 `--project-dir` (for resolving `evidence.computation.script` paths)
 defaults to `--analysis-dir`'s parent — pass it explicitly only when
 the gate runs from outside the normal `<project>/analysis/` layout:
 
-    python3 skills/kicad/review/scripts/deep_review_gate.py \
+    python3 <skill-path>/review/scripts/deep_review_gate.py \
         /path/to/project/analysis/deep_review.json \
         --analysis-dir /path/to/project/analysis/ \
         --project-dir /path/to/project/
@@ -131,7 +134,7 @@ quarantined renders in the report as an unverified claim.
 
 1. `cp analysis/deep_review.json analysis/deep_review.prev.json`
 2. Run the pass fresh; gate it.
-3. `python3 skills/kicad/scripts/diff_analysis.py analysis/deep_review.prev.json analysis/deep_review.json --text`
+3. `python3 <skill-path>/scripts/diff_analysis.py analysis/deep_review.prev.json analysis/deep_review.json --text`
 4. Report fixed / still-open / new. Treat `reworded_candidates` as
    advisory — confirm by reading, then report as still-open.
 

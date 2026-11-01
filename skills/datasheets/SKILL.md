@@ -71,7 +71,7 @@ This skill owns:
 
 ## Extraction workflow
 
-Run `python3 skills/datasheets/scripts/plan_extraction.py <mpn> <pdf_path>` to generate the orchestration plan for one part, then `merge_results.py` to validate and merge per-task outputs. `merge_results.py` and `validate_extraction_result.py` need the `jsonschema` package (`pip install jsonschema`); everything else here is stdlib-only. Full scout→plan→dispatch→merge procedure: [`references/extraction-pipeline.md`](references/extraction-pipeline.md).
+Run the scout first: dispatch `prompts/scout.md` for the MPN and PDF and save its schema-valid, unwrapped output, with the PDF's `"pdf_sha256": "sha256:<hex>"` added, as `<cache_dir>/<mpn>.scout.json` (`references/dispatch-claude-code.md` Step 1). Then run `python3 skills/datasheets/scripts/plan_extraction.py <mpn> <pdf_path> --use-cached-scout --cache-dir <cache_dir>` to write the plan, dispatch its tasks, and run `merge_results.py <mpn> --cache-dir <cache_dir>` to validate and merge their results. Without a cached scout, `plan_extraction.py` exits 2. `merge_results.py` and `validate_extraction_result.py` need the `jsonschema` package (`pip install jsonschema`); everything else here is stdlib-only. Full scout→plan→dispatch→merge procedure: [`references/extraction-pipeline.md`](references/extraction-pipeline.md).
 
 ## Consuming extractions (v1.4 typed API)
 

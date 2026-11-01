@@ -389,16 +389,16 @@ cd kicad-happy
 opencode
 ```
 
-When opencode starts, it walks up from cwd looking for `.opencode/opencode.json` (and root-level `opencode.json`), finds the shipped manifest, and loads all 12 skills from `./skills/`. Verify with `/skills list` in the session.
+When opencode starts, it walks up from cwd looking for `.opencode/opencode.json` (and root-level `opencode.json`), finds the shipped manifest, and loads all 11 skills from `./skills/`. Verify with `/skills list` in the session.
 
 ### Install (global, available from any project)
 
-To use kicad-happy from any working directory, add an absolute path to your global opencode config:
+To use kicad-happy from any working directory, add the absolute path of its `skills/` directory to `skills.paths` in your global opencode config, `~/.config/opencode/opencode.json`. If that file already exists, edit it by hand: add the path to the existing `skills.paths` list and keep your other settings. If it does not exist, create it:
 
 ```bash
-# macOS / Linux
+# macOS / Linux — writes the file only when it does not exist yet
 mkdir -p ~/.config/opencode
-cat >> ~/.config/opencode/opencode.json <<'EOF'
+[ -e ~/.config/opencode/opencode.json ] || cat > ~/.config/opencode/opencode.json <<'EOF'
 {
   "skills": { "paths": ["/absolute/path/to/kicad-happy/skills"] }
 }
@@ -629,10 +629,8 @@ The `aklofas/kicad-happy@v3` step exposes these outputs for downstream steps:
 | `report-path` | Path to the markdown report file |
 | `schematic-json` | Path to schematic analysis JSON |
 | `pcb-json` | Path to PCB analysis JSON (if PCB exists) |
-| `emc-json` | Path to EMC analysis JSON (if both schematic and PCB exist) |
-| `status` | `pass`, `warn`, or `fail` |
-| `findings-count` | Total number of findings |
-| `critical-count` | Number of critical/error findings |
+| `findings-count` | Number of critical and warning rows in the report's Findings table (EMC and thermal each add one row per severity, however many findings it holds) |
+| `has-critical` | `true` or `false` (a string): whether the report has a critical row. Voltage/power derating violations and EMC or thermal `error` findings set it; schematic and PCB rule findings and SPICE results do not |
 
 ---
 
@@ -689,7 +687,8 @@ python3 /path/to/kicad-happy/skills/kicad/scripts/analyze_schematic.py board.kic
 ### API credential issues
 
 - DigiKey OAuth requires a registered app at [developer.digikey.com](https://developer.digikey.com/).
-  The first auth flow opens a browser for consent. Subsequent calls use a refresh token.
+  The scripts use the OAuth client-credentials flow with `DIGIKEY_CLIENT_ID` and `DIGIKEY_CLIENT_SECRET`:
+  no browser consent and no refresh token. Each token lasts about 10 minutes and is requested again when needed.
 - Mouser and element14 keys are simple API keys — set the env var and go.
 - LCSC needs no credentials (uses the jlcsearch community API).
 - If no API keys are set, distributor skills fall back to web search guidance.

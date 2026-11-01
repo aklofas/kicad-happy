@@ -7,9 +7,9 @@ Full extraction-pipeline procedure. The SKILL.md main flow points here; scripts 
 ## Extraction workflow
 
 **v1.4 pipeline (current, used for all new extractions):**
-1. `plan_extraction.py` builds an orchestration plan JSON.
-2. Scout subagent inspects the PDF (TOC, headings) and emits per-MPN scout audit file.
-3. Category extractor prompts (base, pinout, regulator, …) run per Phase 2 dispatcher recipe.
+1. A scout subagent reads the PDF (TOC, headings) for the requested MPN; its schema-valid, unwrapped output, with the PDF's `pdf_sha256` added, is saved as `<cache_dir>/<mpn>.scout.json`.
+2. `plan_extraction.py <mpn> <pdf_path> --use-cached-scout --cache-dir <cache_dir>` builds the orchestration plan JSON. A scout `skip` verdict writes an empty plan and exits 1; stop extraction for that part.
+3. Category extractor prompts (base, pinout, regulator, …) run per `dispatch-claude-code.md` and `dispatcher-contract.md`.
 4. `merge_results.py` validates per-task result files against schemas and merges into `<project>/datasheets/extracted/<MPN>.json`.
 5. Three-dimension quality score lives at `facts.extraction.quality_score`.
 6. Consumers query via `lookup(mpn, cache_dir)` or via the v1.3 compat helpers in `datasheet_features.py`.

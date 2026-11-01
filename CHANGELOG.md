@@ -197,6 +197,8 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Documentation
 
+- Commands and workflows in the docs run as written: the sync CLIs take no `--recursive`, the opencode global config block no longer appends a second JSON object, the Action outputs table lists the five outputs `action.yml` declares and what `findings-count` and `has-critical` count, the Deep Review gate and diff commands use `<skill-path>`, `--output` / `--analysis-dir` precedence is documented per analyzer, the extraction steps start with the cached scout (with its `pdf_sha256`), the dead annotations-merge step is removed, and the DigiKey auth note describes the client-credentials flow. (KH-636, KH-329)
+
 ---
 
 ## v3.0.0 — unreleased

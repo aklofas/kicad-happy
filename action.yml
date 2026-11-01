@@ -55,10 +55,10 @@ outputs:
     description: 'Path to markdown report file'
     value: ${{ steps.analyze.outputs.report-path }}
   findings-count:
-    description: 'Total findings (warnings + critical)'
+    description: 'Number of critical and warning rows in the report Findings table (EMC and thermal each add one row per severity)'
     value: ${{ steps.analyze.outputs.findings-count }}
   has-critical:
-    description: 'Whether any critical findings exist (true/false)'
+    description: 'Whether the report has a critical row (true/false): derating violations and EMC or thermal errors set it; schematic and PCB rule findings and SPICE results do not'
     value: ${{ steps.analyze.outputs.has-critical }}
 
 runs:

@@ -300,10 +300,10 @@ All analyzers produce a uniform output envelope:
 
 The `findings` list is the single authoritative source for all findings. Use `finding_schema.get_findings()` or `finding_schema.group_findings()` to filter by detector, rule prefix, or category. Detector names are available as constants in `finding_schema.Det`. Severities are `error`, `warning`, or `info`; confidence is `deterministic`, `heuristic`, or `datasheet-backed`.
 
-All analyzers support `--text` for human-readable output, `--analysis-dir` for
-integrated run-folder output (preferred), and `--output` for writing to a
-specific file verbatim (one-off). When both are passed, the explicit
-`--output` path wins — pick one form per invocation.
+All analyzers support `--text` (human-readable report), `--analysis-dir`
+(run-folder output, preferred) and `--output` (one JSON file). Pass only one
+JSON destination: given both, schematic and PCB write only the run folder,
+EMC writes both, and gerber, thermal and cross-analysis write only `--output`.
 
 ### Stage and Audience Filtering
 
@@ -689,7 +689,7 @@ For each IC in the design:
    under `analysis/helpers/` that reads the analyzer JSON and prints
    the numbers. Cite script + result as evidence.
 4. Record findings in `analysis/deep_review.json` (shape:
-   `skills/kicad/review/schemas/deep_review.schema.json`). Every
+   `<skill-path>/review/schemas/deep_review.schema.json`). Every
    finding needs an evidence block: at least one design anchor
    (component/net/pin) and at least one source (datasheet quote
    and/or computation).
@@ -699,7 +699,7 @@ Then check interacting pairs: shared rails (sequencing, combined load), bus part
 Validate before reporting:
 
 ```bash
-python3 skills/kicad/review/scripts/deep_review_gate.py \
+python3 <skill-path>/review/scripts/deep_review_gate.py \
     analysis/deep_review.json --analysis-dir analysis/
 ```
 
@@ -714,7 +714,7 @@ report fixed / still-open / new in the Previous Review Delta section:
 ```bash
 cp analysis/deep_review.json analysis/deep_review.prev.json
 # ... run the pass, then the gate ...
-python3 skills/kicad/scripts/diff_analysis.py \
+python3 <skill-path>/scripts/diff_analysis.py \
     analysis/deep_review.prev.json analysis/deep_review.json --text
 ```
 
