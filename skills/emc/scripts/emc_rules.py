@@ -326,7 +326,7 @@ def _resolve_usb_speed(pair: dict, schematic: dict):
             mcu_mpn = comp.get('mpn') or comp.get('value', '')
             mcu_feat = _get_mcu_features(mcu_mpn, project_dir=_schematic_project_dir(schematic)) if mcu_mpn else None
             if mcu_feat and not mcu_feat.get('quality', {}).get('trusted', True):
-                mcu_feat = None   # deterministic detectors keep the v1.4 trust gate
+                mcu_feat = None   # ignore untrusted extractions
             if mcu_feat:
                 return mcu_feat.get('usb_speed')
     return None

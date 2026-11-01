@@ -216,8 +216,7 @@ class EMCEnvelope:
     sub-structures for test_plan (FrequencyBand / InterfaceRisk /
     ProbePoint), regulatory_coverage (CoverageMatrixEntry), per_net_scores
     (PerNetScore), category_summary (CategorySummaryEntry), and
-    board_info. audience_summary and stage_filter remain loose dicts for
-    untyped.
+    board_info. audience_summary and stage_filter remain loose dicts (not typed per rule_id or audience slice).
     """
 
     # --- Discriminators ---
