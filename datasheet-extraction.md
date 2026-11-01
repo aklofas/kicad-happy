@@ -6,7 +6,7 @@ The **datasheets** skill is the structured-spec layer that sits between the dist
 
 > **Two APIs coexist as of v1.4.**
 > - **v1.4 typed API** (`from datasheet_types import DatasheetFacts, lookup, best, trusted`) — recommended for all new code. Schema-driven extractions, page-anchored evidence, per-value confidence labels, trust gating.
-> - **v1.3 dict API** (`from datasheet_features import get_regulator_features`) — legacy compat layer, still supported. Dual-reads v1.4 caches and translates them back to the v1.3 dict shape so existing detector code keeps working. Sunset planned for v1.6 once the mcu schema lands in v1.5.
+> - **v1.3 dict API** (`from datasheet_features import get_regulator_features`) — legacy compat layer, still supported. Dual-reads v1.4 caches and translates them back to the v1.3 dict shape so existing detector code keeps working. It serves legacy caches; new code should use the typed API.
 
 Each extraction is cached per-project, not globally — two projects with the same MPN can hold different extractions if they pin different datasheet revisions. There is no shared cross-project library.
 
@@ -21,10 +21,9 @@ v1.4 typed pipeline (current):
              → plan_extraction.py + scout subagent
              → category extractor prompts (base, pinout, regulator, diode,
                                             transistor, opamp, mcu, crystal)
-             → merge_results.py validates + merges
+             → merge_results.py validates, merges and scores (0–100)
              → <project>/datasheets/extracted/<MPN>.json (typed schema v1.0+)
-             → datasheet_verify_v14_extraction cross-checks invariants
-             → quality scorer (3-dim rubric: pinout / base / category)
+             → optional: datasheet_verify.py --self-consistency checks invariants
 
 v1.3 legacy pipeline (read-only in v1.4):
   Existing v1.3 caches keep working via the compat wrapper. New
@@ -38,7 +37,7 @@ Analyzer skills consume (v1.4 typed):
 
 Analyzer skills consume (v1.3 compat):
     → get_regulator_features(mpn)  → dict | None  (dual-reads v1.4, falls back to v1.3 cache)
-    → get_mcu_features(mpn)        → dict | None  (v1.3 cache only — v1.4 MVP has no mcu schema)
+    → get_mcu_features(mpn)        → dict | None  (legacy caches only — a v1.4 mcu extraction is not translated)
     → get_pin_function(mpn, pin)   → str | None
 ```
 
@@ -48,7 +47,7 @@ Run the extraction pipeline **before** your first design review on a project, an
 
 - `datasheets/extracted/` is missing or empty
 - A new IC appears in the design without a cached extraction
-- The cache manager reports a stale entry (PDF hash changed, extraction version outdated, age > 90 days)
+- The cache manager reports a stale entry (PDF hash changed, extraction version outdated, or, for legacy caches, age > 90 days)
 - An analyzer reports `confidence: heuristic` on a claim you expected to be `datasheet-backed` — the extraction may be missing or below the quality threshold
 
 For small designs (< 8 ICs), extract all ICs. For large designs, prioritize ICs that appear in power regulators, opamp circuits, MCU pin analysis, and high-speed interfaces — these are where datasheet-backed confidence has the highest value.
@@ -101,25 +100,25 @@ else:
         pg_pin_num = facts.regulator.power_good_pin
 ```
 
-**Categories shipped in v1.4 (six):** `regulator`, `diode`, `transistor`, `opamp`, `mcu` (catalog tier), `crystal`. Each category extension is optional on `DatasheetFacts` — absent when the part doesn't fit the category. `mcu` Tier 2 (per-instance pin-mux detail) is deferred to v1.5.
+**JSON categories shipped in v1.4 (six):** `regulator`, `diode`, `transistor`, `opamp`, `mcu` (catalog tier), `crystal`. The Python `DatasheetFacts` type exposes only `regulator` as a category attribute; its `base` block is available for every category, and the other category payloads are not kept as typed attributes. The legacy `get_mcu_features()` reads MCU peripheral data from legacy caches only.
 
 **Trust gates take an explicit `min_confidence`** (`"low" | "medium" | "high"`, keyword-only, required). Each detector declares the trust level it needs. `best()` and `trusted()` preserve extractor-intended ordering — no library-side re-ranking.
 
 **Staleness detection:** `lookup()` hashes the source PDF and compares to `source.sha256`. Three outcomes surface on `DatasheetFacts._cache_context`: fresh, `pdf_hash_mismatch`, `pdf_missing`. Read via `facts.stale` and `facts._cache_context.stale_reason`.
 
-**Quality scoring (v1.4):** three dimensions — pinout completeness, base completeness, category-extension completeness. Reserved v1.5 dimensions left empty. Score lives at `facts.extraction.quality_score` (0–100, not the v1.3 0.0–10.0 scale).
+**Quality scoring (v1.4):** three dimensions — pinout completeness, base completeness, category-extension completeness. A reserved 30 % is awarded in full until further dimensions exist. Score lives at `facts.extraction.quality_score` (0–100, not the v1.3 0.0–10.0 scale).
 
 For the canonical schemas, see `skills/datasheets/schemas/{base,pinout,spec_value,regulator,extraction,manifest}.schema.json`. For the cache directory convention, see `skills/datasheets/references/cache-layout.md`.
 
 ## v1.3 compat layer (legacy)
 
-> **Status:** still supported in v1.4 — sunset planned for v1.6.
+> **Status:** supported for legacy caches.
 >
-> Existing v1.3 caches keep working. The four public helpers (`get_regulator_features`, `get_mcu_features`, `get_pin_function`, `is_extraction_available`) preserve their v1.3 signatures and dict shapes byte-for-byte. Internally, they dual-read: v1.4 typed cache first, then fall back to v1.3 cache if no v1.4 extraction exists. When both caches exist for the same MPN (mid-migration state), v1.4 wins.
+> Existing v1.3 caches keep working. The four public helpers (`get_regulator_features`, `get_mcu_features`, `get_pin_function`, `is_extraction_available`) preserve their v1.3 signatures and dict shapes, plus a `quality` key. Internally, they dual-read: v1.4 typed cache first, then fall back to v1.3 cache if no v1.4 extraction exists. When both caches exist for the same MPN (mid-migration state), v1.4 wins.
 >
-> **Why it's still here:** v1.4 MVP has no `mcu` category extension, so `get_mcu_features` on a v1.4 cache always returns None and falls through to v1.3 — the v1.3 cache is the only path to MCU peripheral data until v1.5. Some fields (`has_soft_start`, `iss_time_us`, `en_v_ih_max`, `en_v_il_min`) also have no v1.4 schema equivalent yet.
+> **Why it's still here:** the v1.4 `mcu` category has a schema and a prompt, but nothing translates it for `get_mcu_features`: on a v1.4 cache it falls through to the v1.3 cache, which is the only source of MCU peripheral data for these helpers. Some fields (`has_soft_start`, `iss_time_us`, `en_v_ih_max`, `en_v_il_min`) also have no v1.4 schema equivalent yet.
 >
-> **Why it's going away:** ~150 LOC of compat wrappers + dual-cache-read precedence is real complexity. Once v1.5 closes the mcu gap, the compat layer will be deprecated for one version and removed in v1.6. **All new detector code should use the v1.4 typed API above** — anything written against the v1.3 dict API today will need to be rewritten when the layer sunsets.
+> **For new code:** use the v1.4 typed API above. The dict helpers and the dual-cache-read precedence exist for legacy caches, and the typed API does not yet cover every field they return.
 
 The rest of this section describes the v1.3 cache format and dict API as they exist today. Everything below this point is accurate for existing v1.3 caches but should not be the starting point for new code.
 
@@ -132,32 +131,30 @@ A per-MPN JSON file in the legacy v1.3 format looks like this (simplified):
   "mpn": "TPS61023DRLR",
   "manufacturer": "Texas Instruments",
   "description": "1A, 5V, 1.2MHz boost converter with 0.5V input",
-  "extraction_version": 2,
+  "topology": "boost",
   "pins": [
-    {"number": "1", "name": "SW", "function": "Switch node", "type": "power", "direction": "output"},
-    {"number": "2", "name": "GND", "function": "Ground", "type": "ground", "direction": "input"},
-    {"number": "3", "name": "FB", "function": "Feedback", "type": "analog", "direction": "input",
+    {"number": "1", "name": "SW", "function": "SW", "type": "power", "direction": "output"},
+    {"number": "2", "name": "GND", "function": "GND", "type": "ground", "direction": "input"},
+    {"number": "3", "name": "FB", "function": "FB", "type": "analog", "direction": "input",
      "voltage_operating_max": 6.0, "voltage_abs_max": 7.0},
-    {"number": "4", "name": "EN", "function": "Enable", "type": "digital", "direction": "input",
-     "required_external": null}
+    {"number": "4", "name": "EN", "function": "EN", "type": "digital", "direction": "input",
+     "threshold_high_v": 1.2, "threshold_low_v": 0.4, "required_external": null}
   ],
   "voltage_ratings": {
     "vin_min": 0.5, "vin_max": 5.5, "vin_abs_max": 6.0,
     "vout_max": 5.5
   },
   "features": {
-    "topology": "boost",
-    "switching_freq_hz": 1200000,
-    "en_threshold_v": 0.4,
-    "soft_start": true,
-    "pg_present": false,
-    "internal_compensation": false
+    "has_pg": false,
+    "has_soft_start": true,
+    "iss_time_us": null
   },
-  "application_circuits": {
+  "application_circuit": {
     "input_cap_recommended": "10uF ceramic, X5R or X7R",
     "output_cap_recommended": "22uF ceramic",
     "inductor_recommended": "2.2uH, 1.5A sat current"
   },
+  "extraction_metadata": {"extraction_version": 2, "extraction_score": 8.4},
   "thermal": {
     "rtheta_ja_cw": 175.0,
     "tj_max_c": 150
@@ -182,14 +179,14 @@ Fields the datasheet doesn't specify are `null`. Downstream analyzers gate on "k
       MP1484EN-LF-Z.json
 ```
 
-The cache manager (`datasheet_extract_cache.py`) owns the manifest and enforces staleness. An extraction is considered stale if:
+For legacy v1.3 caches, the cache manager (`datasheet_extract_cache.py`) owns the manifest and `is_extraction_stale()` reports an extraction stale if:
 
 - The source PDF's hash has changed
 - The extraction's `EXTRACTION_VERSION` is older than the current skill version
 - The extraction is older than `DEFAULT_MAX_AGE_DAYS` (90 days)
 - The quality score is below `MIN_SCORE` (6.0)
 
-Stale entries are transparently re-extracted on the next sync pass.
+Nothing re-extracts a stale entry automatically. v1.4 caches are stale only when the PDF changed or is missing (`facts.stale`); see `skills/datasheets/references/cache-layout.md`.
 
 ## Page Selection
 
@@ -203,7 +200,7 @@ Default page budget: 10 pages, or 15 for multi-protocol parts (microcontrollers,
 
 ## What Gets Extracted
 
-Per-MPN JSON files follow a canonical schema (`EXTRACTION_VERSION` versioned). Major blocks:
+Legacy v1.3 per-MPN files (`EXTRACTION_VERSION` 2) have these blocks; v1.4 files follow the JSON schemas named above:
 
 | Block | Content |
 |-------|---------|
@@ -213,7 +210,7 @@ Per-MPN JSON files follow a canonical schema (`EXTRACTION_VERSION` versioned). M
 | `electrical_characteristics` | Per-parameter table (quiescent current, VIH/VIL, GBW, slew rate, etc.) |
 | `peripherals` | (MCUs) GPIO count, USB/UART/SPI/I2C counts, ADC bits, protocol speeds |
 | `features` | Regulator topology, EN pin behavior, power-good output, thermal pad presence |
-| `application_circuits` | Typical external components + values (LDO output cap, MCU decoupling) |
+| `application_circuit` | Typical external components + values (LDO output cap, MCU decoupling) |
 | `spice_specs` | SPICE model coefficients where the datasheet provides them |
 | `thermal` | Junction-to-ambient / junction-to-case resistance, max junction temp |
 
@@ -234,11 +231,10 @@ Every extraction gets a score from 0.0 to 10.0 via a weighted five-dimension rub
 Total = Σ(dimension_score × weight), rounded to one decimal place.
 
 **Thresholds:**
-- `MIN_SCORE = 6.0` — below this, analyzers ignore the extraction as insufficient
+- `MIN_SCORE = 6.0` — below this a legacy extraction is returned with `quality.trusted: false`; each consumer decides what to do with it
 - `MAX_RETRIES = 3` — an extraction below MIN_SCORE gets retried up to 3 times, keeping the highest-scoring result
-- Extractions above 6.0 but below 8.0 are used with reduced confidence weighting
 
-The scorer is conservative — it's easier to refuse an extraction than to mislead an analyzer downstream. A 5.8/10 extraction does not get used; the analyzer falls back to heuristics and reports a confidence drop.
+A 5.8/10 legacy extraction is marked untrusted (`quality.reasons` names the low score). Each consumer decides whether to fall back to a heuristic or to report the low-quality facts.
 
 ## Consumer API
 
@@ -246,31 +242,30 @@ Analyzer skills don't read `extracted/*.json` directly. They go through helpers 
 
 ```python
 from datasheet_features import (
-    get_regulator_features,    # → {topology, en_threshold_v, pg_present, vout_range, ...}
-    get_mcu_features,          # → {cores, flash_kb, usb, ethernet, adc_bits, ...}
+    get_regulator_features,    # → {topology, has_pg, en_v_ih_max, en_v_il_min, en_pin, ..., quality}
+    get_mcu_features,          # → {usb_speed, has_native_usb_phy, usb_series_r_required, quality}
     get_pin_function,          # → "EN" / "VIN" / "SW" / ...
-    get_thermal_params,        # → {rja_cw, rjc_cw, tj_max_c}
+    is_extraction_available,   # → bool
 )
 
-feat = get_regulator_features("TPS61023DRLR")
-if feat:
-    # Known IC — use verified per-part facts
-    threshold = feat.get("en_threshold_v")
+feat = get_regulator_features("TPS61023DRLR", project_dir=".")
+if feat and feat["quality"]["trusted"]:
+    # Trusted extraction — use the per-part facts (any field may be None)
+    threshold = feat.get("en_v_ih_max")
 else:
-    # Miss, stale, or low-score — fall back to heuristic
+    # Cache miss, wrong category, stale, or low score — use a fallback
     threshold = None
 ```
 
-Every helper returns `None` for cache miss, stale cache, or low quality score. The analyzer is responsible for a heuristic fallback — trust is explicit, not implicit.
+`get_regulator_features()` and `get_mcu_features()` return the facts they find with `quality = {score, scale, trusted, reasons}`, including untrusted ones (stale PDF, old extraction version, low score); check `quality["trusted"]` before treating them as verified. They return `None` on a cache miss, for a part of another kind, or when no project is named (pass `project_dir=` or `extract_dir=`). `get_pin_function()` and `is_extraction_available()` gate only legacy caches, so neither truthiness nor `is_extraction_available()` is a general quality gate.
 
 ## Trust Gates
 
-The extraction pipeline bakes trust into every downstream call:
+Each consumer decides how much to trust an extraction:
 
-- **Cache miss** — no extraction exists for the MPN. Helpers return None. Analyzer drops to heuristic with `confidence: "heuristic"`.
-- **Stale extraction** — source PDF changed or cache is too old. Same as miss.
-- **Low score (< 6.0)** — extraction exists but failed the rubric. Same as miss.
-- **Sufficient score (≥ 6.0)** — helpers return the feature dict. Analyzer can emit findings with `confidence: "datasheet-backed"` and `evidence_source: "datasheet_extraction"`.
+- **Cache miss, unsupported category, or no project named** — the helper returns None; use a fallback.
+- **Stale or low-score extraction** — the helpers return the facts with `quality["trusted"] == False` and `reasons`. A consumer that needs trusted facts falls back or reports the limitation.
+- **Trusted extraction** — use the available fields, still handling None values. Datasheet-derived findings use `evidence_source: "datasheet"` and `confidence: "datasheet-backed"`.
 
 This is why findings from the schematic analyzer carry a confidence label: you can tell at a glance whether a claim is grounded in the datasheet, inferred heuristically, or cross-checked against both. When a finding says `confidence: datasheet-backed`, it means a scored extraction produced the underlying fact — not a keyword match on the part number.
 
@@ -282,7 +277,7 @@ This is why findings from the schematic analyzer carry a confidence label: you c
 - Extracted voltage ranges vs the power rails feeding the part — flags overvoltage
 - Extracted peripherals vs the protocol usage inferred by the analyzer — flags impossible claims (USB 3.0 on a USB 2.0-only MCU)
 
-The verifier runs as part of the normal schematic analyzer pass; findings it raises carry rule-id `XV-DS-*` (cross-verify, datasheet). See the EMC and schematic analyzer output for examples.
+The verifier runs as part of the normal schematic analyzer pass. Its findings carry a `type` (e.g. `pin_voltage_abs_max_exceeded`) and no rule id yet.
 
 ## What It Can't Do
 
@@ -297,7 +292,7 @@ The verifier runs as part of the normal schematic analyzer pass; findings it rai
 |----------|--------------|
 | `kicad` | Pin functions, regulator topology, MCU peripheral capability, voltage ratings |
 | `emc` | SRF data for caps, saturation current for inductors, thermal pad presence |
-| `spice` | Behavioral model parameters (GBW, slew rate, input offset) for opamps |
+| `spice` | Legacy `spice_specs` fields (op-amp GBW, slew rate, offset) only; v1.4 typed facts are not read |
 | `thermal` | Junction-to-ambient resistance, max junction temp |
 
 Trust flows outward: the datasheets skill doesn't consume from other skills, only produces for them. This keeps the extraction layer simple and auditable — one skill owns the PDF-to-JSON contract, all other skills read it.
