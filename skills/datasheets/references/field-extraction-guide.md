@@ -2,7 +2,7 @@
 
 How to find each schema field in a typical datasheet PDF. Covers section naming conventions by vendor, what language to look for, and common mistakes.
 
-The extraction workflow starts with `datasheet_page_selector.py` identifying the relevant pages (pin table, absolute maximum ratings, operating conditions, electrical characteristics, application circuit). This guide describes what to look for once you have those pages.
+The extraction workflow starts with `datasheet_page_selector.py` identifying the relevant pages (pin table, absolute maximum ratings, operating conditions, electrical characteristics, application circuit). This guide describes what to look for once you have those pages. It is written for the legacy v1.3 schema (`extraction-schema.md`); for v1.4 extractions the schemas under `../schemas/` and the prompts under `../prompts/` define the fields.
 
 Use `null` for any field the datasheet does not specify. Do not guess or interpolate.
 
@@ -198,8 +198,8 @@ Found in the "Electrical Characteristics" table. This table is usually organized
 Which value to record:
 
 - Use **Typ** for `vref_v`, `switching_frequency_khz` (nominal specs)
-- Use **Max** for threshold voltages, quiescent current limits, propagation delay
-- Use **Min** for `dropout_mv` (worst case is what matters for design margin)
+- Use **Max** for V_IH-type thresholds, quiescent current limits and propagation delay, and **Min** for V_IL-type thresholds (the worst case depends on the parameter)
+- Use **Max** for `dropout_mv` here (the largest V_IN − V_OUT the part needs at the rated load is the worst case for input headroom); `spice_specs.dropout_mv` follows the SPICE rule below
 - Use **Typ** for SPICE model parameters (behavioral accuracy)
 
 Key field lookup:

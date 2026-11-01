@@ -1,8 +1,8 @@
 # Extraction Schema Reference
 
-Canonical schema for structured datasheet extraction JSON files stored in `datasheets/extracted/`. The extraction itself is performed by the LLM reading selected PDF pages; this document defines what fields the LLM must produce and how the cache manager and verifier interpret them.
+Schema for the legacy v1.3 datasheet extraction JSON files stored in `datasheets/extracted/`. The extraction itself is performed by the LLM reading selected PDF pages; this document defines the fields a legacy extraction carries and how the cache manager and verifier interpret them.
 
-Current `EXTRACTION_VERSION`: **2** (in `datasheet_extract_cache.py`). Bump this constant when the schema changes to trigger re-extraction of all cached files.
+This guide defines the **legacy v1.3 cache format** (`EXTRACTION_VERSION = 2`). New v1.4 extractions use `../schemas/extraction.schema.json`, the base and category schemas, and `../prompts/`; they do not use the legacy envelope below. A legacy cache with an older `extraction_version` is reported stale by `is_extraction_stale()` and returned by the helpers with `quality.trusted: false`; nothing re-extracts it automatically.
 
 ---
 
@@ -377,7 +377,7 @@ Index keys are MPN strings sanitized by `_sanitize_mpn()`: non-alphanumeric char
 
 ## Schema Versioning
 
-`EXTRACTION_VERSION` is an integer in `datasheet_extract_cache.py`. When the schema changes in a backward-incompatible way, bump this constant. Helper functions in `datasheet_features.py` check the stored `extraction_version` against the current constant; any extraction with an older version is treated as unavailable.
+`EXTRACTION_VERSION` is an integer in `datasheet_extract_cache.py`. When the schema changes in a backward-incompatible way, bump this constant. Helper functions in `datasheet_features.py` check the stored `extraction_version` against the current constant. A legacy extraction with an older version is returned by `get_regulator_features()` and `get_mcu_features()` with `quality.trusted: false` and `stale_version` in `quality.reasons`; `get_pin_function()` returns None and `is_extraction_available()` returns False for it.
 
 ### Version History
 
