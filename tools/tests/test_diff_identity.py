@@ -55,7 +55,7 @@ def _total(analyzer, diff):
 
 class SchematicFindingIdentity(unittest.TestCase):
     def test_rail_rename_reports_new_and_worsened_derating(self):
-        # AmpStation +12V -> +24V (survey oracle): VD-001 C11 added (error), C14 warning -> error.
+        # AmpStation +12V -> +24V: VD-001 C11 added (error), C14 warning -> error.
         base = _doc([_vd("C14", "100nF", "+12V", 12.0, "ceramic", "warning")])
         head = _doc([_vd("C11", "470µF", "+24V", 24.0, "electrolytic", "error"),
                      _vd("C14", "100nF", "+24V", 24.0, "ceramic", "error")])
@@ -228,7 +228,7 @@ class PcbDiff(unittest.TestCase):
         return {"reference": ref, "value": "1k", "footprint": footprint, "library": footprint, "layer": "F.Cu"}
 
     def test_new_pcb_finding_is_reported(self):
-        # micro-nico V1 -> V1.0.1 (survey oracle): one new PCB finding, PM-002 on JP1.
+        # micro-nico V1 -> V1.0.1: one new PCB finding, PM-002 on JP1.
         pm = _f("analyze_placement", "PM-002", ["JP1"], [], "JP1 courtyard overhangs board edge by 0.3mm",
                 "error", category="placement", confidence="deterministic")
         diff = diff_engine.diff_pcb(_doc([], "pcb"), _doc([pm], "pcb"), 1.0)
@@ -255,7 +255,7 @@ class EmcThermalDiff(unittest.TestCase):
         return _f("check_decoupling", "DC-001", ["U3"] + caps, [], summary, sev, category="decoupling")
 
     def test_emc_finding_keeps_its_identity_when_its_caps_change(self):
-        # stm32 REV1.0 -> 1.1 (survey oracle): DC-001 U3 error -> warning, its caps changed.
+        # stm32 REV1.0 -> 1.1: DC-001 U3 error -> warning, its caps changed.
         base = _doc([self._dc001(["C19", "C14"], "error", "Decoupling cap too far from U3")], "emc")
         head = _doc([self._dc001(["C13", "C18"], "warning", "Decoupling cap moderately far from U3")], "emc")
         fd = diff_engine.diff_emc(base, head, 1.0)["findings"]

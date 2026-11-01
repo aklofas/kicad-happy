@@ -104,7 +104,7 @@ class RoutingAndStatistics(unittest.TestCase):
 
 
 class EmcScore(unittest.TestCase):
-    # stm32 REV1.0 -> 1.1 (survey oracle): DC-001 U4 resolved, DC-001 U3 error -> warning,
+    # stm32 REV1.0 -> 1.1: DC-001 U4 resolved, DC-001 U3 error -> warning,
     # risk score 74.5 -> 86.5 (0 = worst, 100 = lowest risk).
     BASE = [_dc001(["C19", "C14"], "error", "Decoupling cap too far from U3"),
             _f("check_decoupling", "DC-001", ["U4", "C20"], [], "Decoupling cap far from U4", "warning",

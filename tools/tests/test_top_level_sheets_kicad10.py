@@ -75,7 +75,7 @@ SECOND_DECLARED = u(103)
 
 
 def f5_multi(label="global_label", root_extra="", second_extra=""):
-    """The survey's f5_multi project: two declared sheets, each one R wired to SIG; the
+    """A project with two declared sheets, each one R wired to SIG; the
     second sheet's symbol is keyed by the sheet's declared uuid (R? in the file, R2 there)."""
     root = (resistor(u(10), "R1", 50, [(f"/{ROOT_FILE_UUID}", "R1")])
             + labelled(label, "SIG", 50, u(11), u(12)) + root_extra)

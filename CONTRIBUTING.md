@@ -331,7 +331,7 @@ The harness treats a run as successful only when the analyzer exits with one of 
 | analyzer | accepted exits |
 |---|---:|
 | schematic, pcb, gerber, cross_analysis, spice, datasheets | 0 |
-| emc, thermal | 0, 1 (1 = input error) |
+| emc, thermal | 0 |
 
 Exit codes are frozen for the 3.x line. A new CLI must document its exit codes here and in the harness before it is gated.
 

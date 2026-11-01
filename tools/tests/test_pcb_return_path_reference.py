@@ -6,7 +6,7 @@ is decoupled to ground (Ott, EMC Engineering ch. 16; Bogatin ch. 8). So a sample
 only by a ground or power zone fill; a fill of another signal net, a track or a pad is not a
 reference plane. The reference layer is the nearest other copper layer (by dielectric
 thickness) that carries ground or power zone copper; a layer without such copper is never the
-reference. A via's own antipad in the plane stays covered (KH-392).
+reference. A via's own antipad in the plane stays covered.
 
 Each case routes one F.Cu track of net SIG from x=2 to x=18 at y=10: 16 mm sampled every
 2 mm = 9 points. Coverage = covered points / 9 (the analyzer reports nets below 95 %)."""

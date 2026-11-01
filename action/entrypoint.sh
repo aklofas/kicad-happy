@@ -15,7 +15,7 @@ SCHEMATIC="${INPUT_SCHEMATIC:-}"
 PCB="${INPUT_PCB:-}"
 
 # Deterministic project detection: exactly one project auto-selects,
-# otherwise fail loudly listing candidates (KH-369). See detect_project.sh.
+# otherwise fail loudly listing candidates. See detect_project.sh.
 . "$ACTION_PATH/action/detect_project.sh"
 # kh_extract_base / kh_base_path for the diff-base re-run.
 . "$ACTION_PATH/action/diff_base.sh"
@@ -233,10 +233,10 @@ if [ -n "$SCH_JSON" ] || [ -n "$PCB_JSON" ]; then
         SUMMARY=$(python3 -c "import json; d=json.load(open('$EMC_JSON')); s=d.get('summary',{}); bs=s.get('by_severity',{}); print(f\"score {s.get('emc_risk_score',0)}/100, {bs.get('error',s.get('critical',0))} error, {bs.get('warning',s.get('high',0))} warning, {bs.get('info',s.get('medium',0))} info\")" 2>/dev/null || echo "?")
         echo "EMC: $SUMMARY"
     else
-        # EMC exits nonzero when blocking findings detected. Distinguish that
-        # (valid JSON, surface to report) from a true crash (no/malformed JSON,
-        # clear and warn). Audit B2 — without this, the Action silently drops
-        # exactly the runs that found release-blocking issues.
+        # analyze_emc.py exits nonzero on an input error, with no JSON written.
+        # Distinguish a nonzero exit that still left a valid JSON report (surface
+        # it) from a true crash (no/malformed JSON: clear and warn), so a run
+        # that produced findings is never silently dropped.
         if [ -f "$EMC_JSON" ] && python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$EMC_JSON" >/dev/null 2>&1; then
             SUMMARY=$(python3 -c "import json; d=json.load(open('$EMC_JSON')); s=d.get('summary',{}); bs=s.get('by_severity',{}); print(f\"score {s.get('emc_risk_score',0)}/100, {bs.get('error',s.get('critical',0))} error, {bs.get('warning',s.get('high',0))} warning, {bs.get('info',s.get('medium',0))} info\")" 2>/dev/null || echo "?")
             echo "::notice::EMC analyzer reported blocking findings (exit nonzero, JSON valid)"

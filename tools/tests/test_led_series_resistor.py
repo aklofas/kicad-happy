@@ -247,7 +247,7 @@ class DriveMethod(unittest.TestCase):
         self.assertEqual((e["drive_method"], e.get("issue")), ("resistor_unparsed", "has_resistor_unparsed_value"))
 
     def test_ic_on_ground_without_a_power_symbol_is_not_the_driver(self):
-        # STAT (U1) -> LED -> 1k -> GND, U2 on GND; no power symbols anywhere.
+        # U1 STAT -> LED -> 1k -> GND, U2 on GND; no power symbols anywhere.
         ctx = _ctx([_led("D1"), _r("R1", "1k"), {"reference": "U1", "type": "ic", "value": "CHG"},
                     {"reference": "U2", "type": "ic", "value": "MCU"}],
                    {"STAT": [_p("D1", "2"), _p("U1", "5", "open_collector")],

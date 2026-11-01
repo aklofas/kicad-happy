@@ -5,7 +5,7 @@
 # shares the caller's SCHEMATIC/PCB variables and shell options
 # (set -euo pipefail).
 #
-# Detection ladder (KH-369 — must stay deterministic, never silently
+# Detection ladder (must stay deterministic, never silently
 # pick an arbitrary project/child-sheet in a multi-project repo):
 #   1. Explicit INPUT_SCHEMATIC (already in SCHEMATIC) wins as-is.
 #   2. Exactly one .kicad_pro anywhere -> its sibling <stem>.kicad_sch.

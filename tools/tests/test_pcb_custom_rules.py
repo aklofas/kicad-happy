@@ -117,7 +117,7 @@ class CustomRuleTest(unittest.TestCase):
         self.assertEqual(violations(compliance(hole, in3, LOW_MINIMA)), [])
 
     def test_unconditional_custom_minimum_replaces_the_board_minimum(self):
-        # KH-427; kicad-cli: no drill_out_of_range for the 0.25 mm hole
+        # kicad-cli: no drill_out_of_range for the 0.25 mm hole
         dru = "(rule h (constraint hole_size (min 0.2mm)))\n"
         result = compliance(via(0.6, 0.25), dru,
                             pro({"min_through_hole_diameter": 0.3, "min_via_diameter": 0.5}))

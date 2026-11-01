@@ -31,7 +31,6 @@ jobs:
     # Validates SKILL.md frontmatter against platform constraints.
     # Catches description-length regressions at PR time so we don't ship
     # a release where a skill is rejected on load by Codex (1024-char cap).
-    # See KH-327 (post-rc.1 incident) for the motivating case.
     runs-on: ubuntu-latest
 
     steps:
@@ -145,7 +144,7 @@ jobs:
           KICAD_HAPPY_DIR: ${{ github.workspace }}
 
   refactor-check:
-    # v3 arc: static layering/tag ratchets, isolated-install smoke, tool unit tests.
+    # Static layering/tag ratchets, isolated-install smoke, tool unit tests.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

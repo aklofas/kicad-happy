@@ -47,9 +47,8 @@ def _summary_counts(summary_block):
     Legacy (cached v1.3.1): summary.critical, summary.high, summary.total_checks.
 
     Returns (0, 0, 0) for empty/missing summary. Reading both shapes is the
-    fix for the EMC+thermal stale-key bug that shipped in 8daa28d (T5b's
-    synthetic smoke test masked the read-side mismatch; see memory
-    feedback_smoke_test_real_fixtures).
+    stale-key bug that dropped EMC and thermal counts when only one of the
+    two summary shapes was read.
     """
     if not summary_block:
         return (0, 0, 0)
@@ -63,12 +62,10 @@ def _summary_counts(summary_block):
 def _emc_one_liner(emc_summary, *, include_suppressed: bool) -> str:
     """Return the EMC score/checks/severity one-liner used by both report
     paths. Compact PR comment includes the suppressed count inline; full
-    step summary historically omitted it. Caller picks via kwarg.
+    step summary omits it. Caller picks via kwarg.
 
-    Extracted in rc.2 carry-over #22 — the EMC stale-key fix at commit
-    `693b664` had to be applied at one site and missed the other (caught
-    in a follow-up cycle). Routing both paths through this helper makes
-    that bug class structurally impossible.
+    Routing both paths through this helper keeps a fix to the one-liner from
+    landing at only one site.
     """
     score = emc_summary.get("emc_risk_score", 0)
     err, warn, total = _summary_counts(emc_summary)
@@ -90,9 +87,8 @@ def _render_thermal_block(thermal, *, heading_level: int) -> list[str]:
     appends nothing in that case. Suppressed count is always included inline
     when present.
 
-    Extracted in rc.2 carry-over #22 — the B3 thermal-compact fix had to
-    be applied at one site; routing both paths through this helper closes
-    the duplicate-edit bug class.
+    Routing both paths through this helper keeps a fix to the thermal block
+    from landing at only one site.
     """
     if not thermal:
         return []
@@ -603,9 +599,9 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
         findings = [f for f in findings if f[0] in ("critical", "warning")]
 
     # NOTE: critical_count + warning_count computed AFTER all findings appends
-    # (EMC + thermal sections append below). Computing them here used to
+    # (EMC + thermal sections append below). Computing them here would
     # silently exclude EMC critical/high findings from the Action's
-    # has-critical / findings-count public outputs (audit F1.2).
+    # has-critical / findings-count public outputs.
 
     # === Collect verified items ===
     for reg in sig.get(Det.POWER_REGULATORS, []):
@@ -655,9 +651,8 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
         # Mirror the EMC append above so thermal error/warning findings flow
         # into has-critical / findings-count. Without this, a thermal-only
         # error fixture rendered through the Action returns has_critical=False
-        # because the rich-Markdown thermal section at :778+ runs AFTER counts
-        # are computed below. Audit F1.2 second-site (sibling to EMC fix at
-        # commit 693b664 + the format_full_report() fix this branch).
+        # because the rich-Markdown thermal section (_render_thermal_block)
+        # runs AFTER counts are computed below.
         thermal_summary = thermal.get("summary", {})
         th_score_pre = thermal_summary.get("thermal_score", 0)
         th_err_pre, th_warn_pre, _th_total_pre = _summary_counts(thermal_summary)
@@ -667,7 +662,7 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
             findings.append(("warning", f"Thermal: {th_warn_pre} warning-severity finding(s)", "thermal"))
 
     # Count findings AFTER all append paths so EMC/thermal/voltage-derating/
-    # protocol entries flow into has-critical / findings-count (audit F1.2).
+    # protocol entries flow into has-critical / findings-count.
     critical_count = sum(1 for s, _, _ in findings if s == "critical")
     warning_count = sum(1 for s, _, _ in findings if s == "warning")
 
@@ -1209,9 +1204,8 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
         emc_s = emc.get("summary", {})
         a("## EMC Pre-Compliance")
         a("")
-        # Shared one-liner — keeps compact + full report paths in lockstep
-        # (rc.2 carry-over #22). Full report omits the suppressed inline
-        # count historically — preserved here for output-byte compatibility.
+        # Shared one-liner — keeps compact + full report paths in lockstep.
+        # The full report omits the suppressed count inline.
         a(_emc_one_liner(emc_s, include_suppressed=False))
         a("")
         emc_findings = emc.get("findings", [])
@@ -1430,8 +1424,7 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
             a("")
 
     # === Thermal Analysis ===
-    # Shared helper — keeps compact + full report paths in lockstep
-    # (rc.2 carry-over #22).
+    # Shared helper — keeps compact + full report paths in lockstep.
     L.extend(_render_thermal_block(thermal, heading_level=2))
 
     a("---")
