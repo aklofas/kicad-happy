@@ -126,30 +126,23 @@ Extracts from `Edge.Cuts` layer: `gr_line`, `gr_arc`, `gr_circle`, `gr_rect` ele
 
 ## 3. Connectivity Analysis
 
-Two levels of connectivity checking are performed:
+Two levels of connectivity checking are performed.
 
-### 3.1 Basic Routing Completeness
+### 3.1 Without `--full`
 
-For each net with ≥2 pads, checks whether ANY routing exists (tracks, vias, zones, or copper graphics with that net). Fast but coarse — doesn't detect partially routed nets.
+A net with at least 2 pads counts as routed when it has any track, arc, via, zone or net-bearing copper graphic. `routing_complete` then means only that, and one `diagnostics` record says completeness is not proven.
 
-### 3.2 Full Union-Find Connectivity
+### 3.2 With `--full`
 
-Uses union-find (same algorithm concept as the schematic net builder) on `(x, y, layer)` coordinates snapped to a 1µm grid:
+`routing_complete`, `unrouted_count` and RT-001 ("Incompletely routed net N (k copper islands hold its m pads)") come from the copper connectivity graph (`pcb/connectivity.py`), a union-find over copper objects:
 
-1. **Register pad locations** — each pad gets a point on each of its copper layers
-2. **Union track segments** — each segment's start and end points are unioned on their layer
-3. **Union vias** — a via unions its position across all layers it spans
-4. **Account for zones** — for each net with a zone, union all pads on that net + layer (approximation: assumes zone covers all pads)
-5. **Copper graphics** — a board graphic on a copper layer with a net (KiCad 8+) joins like a track of its stroke width; a filled one also joins the same-net pads, vias and track ends inside it; a graphic with a vertex inside a same-net zone fill joins that fill
+1. **Pads, vias and track ends** join through the same-net tracks they touch (the real pad shape, not just the pad centre), and through arcs.
+2. **Vias** join the copper of every layer they span.
+3. **Zones** join the pads, vias and track ends that lie in their fills (from the `ZoneFills` index), not every pad on the net.
+4. **Copper graphics** — a board graphic on a copper layer with a net (KiCad 8+) joins like a track of its stroke width; a filled one also joins the same-net pads, vias and track ends inside it; a graphic with a vertex inside a same-net zone fill joins that fill.
+5. **Same-number pads** of one footprint join only through copper or the footprint's jumper settings.
 
-Then count connected components per net:
-- **1 component** → fully routed
-- **>1 components** → partially routed (some pads connected, others isolated)
-- **No routing at all** → unrouted
-
-This catches cases where a net is partially routed (e.g., 5 of 8 pads connected, 3 floating).
-
-**Zone approximation**: Zones are assumed to connect all pads on the same net + layer. This is accurate for ground/power planes but may overcount for partial zone fills. A more precise check would use the `ZoneFills` spatial index to verify each pad is within the fill, but thermal relief clearances complicate point-in-fill tests.
+A net whose pads sit on more than one copper island is unrouted. A zone that has no saved fill joins nothing.
 
 ---
 
@@ -436,7 +429,7 @@ Legacy KiCad 5 net class definitions (stored in PCB file): default and named cla
     "vias": { "count", "size_distribution", "via_analysis": { "type_breakdown", "annular_ring",
               "via_in_pad", "fanout_patterns", "current_capacity" } },
     "zones": [...],
-    "connectivity": { "fully_routed", "partially_routed", "routing_complete" },
+    "connectivity": { "routing_complete", "unrouted_count", "routed_nets", "unrouted" },
     "net_lengths": [{ "net", "total_length_mm", "layers", "via_count" }],
     "power_net_routing": [...],
     "decoupling_placement": [...],

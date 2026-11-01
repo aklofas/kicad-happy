@@ -94,7 +94,7 @@ All modern KiCad files use Lisp-like S-expressions: `(keyword value1 (child_keyw
 
 For detailed step-by-step net tracing with coordinate math and rotation transforms, read `net-tracing.md`.
 
-**Power rails**: Look for symbols with `lib_id` starting with `power:` (e.g., `power:+3V3`, `power:GND`). These create global nets named after their value.
+**Power rails**: power symbols (library symbols marked `(power)`, usually from the `power:` library, e.g. `power:+3V3`) name their net. From format 20230221 (KiCad 8) the net is the symbol's Value; in older files and KiCad 5 it is the name of the symbol's hidden power-input pin, as KiCad renames them on load. A `(power local)` symbol (KiCad 10) names a net on its own sheet only; the others are global.
 
 ### Hierarchical Sheets
 ```
@@ -124,7 +124,7 @@ Each sheet has its own `.kicad_sch` file. Pins on the sheet symbol connect to `h
   ...
   (footprint ...)           ; Placed footprints with pads
   (segment ...)             ; Copper track segments
-  (arc ...)                 ; Curved tracks (KiCad 7+)
+  (arc ...)                 ; Curved tracks (KiCad 6+)
   (via ...)                 ; Vias
   (zone ...)                ; Copper zones/pours
   (gr_line ...)             ; Graphical lines (board outline on Edge.Cuts)
@@ -140,8 +140,8 @@ Each sheet has its own `.kicad_sch` file. Pins on the sheet symbol connect to `h
 ```
 (layers
   (0 "F.Cu" signal)         ; Front copper
-  (2 "B.Cu" signal)         ; Back copper (number varies by version)
-  (1 "In1.Cu" signal)       ; Inner copper layers (if present)
+  (2 "B.Cu" signal)         ; Back copper (KiCad 9-10 numbering; KiCad 5-8 uses 31)
+  (4 "In1.Cu" signal)       ; Inner copper layers (KiCad 9-10; KiCad 5-8 uses 1)
   (5 "F.SilkS" user)        ; Front silkscreen
   (7 "B.SilkS" user)        ; Back silkscreen
   (25 "Edge.Cuts" user)     ; Board outline
@@ -150,7 +150,7 @@ Each sheet has its own `.kicad_sch` file. Pins on the sheet symbol connect to `h
   ...
 )
 ```
-**Note**: Layer numbers differ between versions. In KiCad 5: F.Cu=0, B.Cu=31, inner=1-30. In KiCad 6+: B.Cu number depends on layer count (e.g., B.Cu=2 for 2-layer, B.Cu=4 for 4-layer).
+**Note**: Layer numbers differ between versions. In KiCad 5-8: F.Cu=0, In1.Cu..In30.Cu=1-30, B.Cu=31. In KiCad 9-10: F.Cu=0, B.Cu=2, In*n*.Cu=2*n*+2 (In1.Cu=4, In2.Cu=6). The numbers are fixed per version and do not depend on the layer count.
 
 ### Footprint on PCB
 ```

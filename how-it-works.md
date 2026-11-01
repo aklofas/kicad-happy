@@ -108,7 +108,7 @@ Being honest about limitations is more useful than pretending they don't exist.
 
 **Things the analyzer might get wrong:**
 
-- **Regulator Vout estimates.** The Vref lookup table covers ~60 part families, each verified against the manufacturer's datasheet. If your regulator isn't in it, the analyzer falls back to a heuristic sweep that's right most of the time but not always. The `vref_source` field in the output tells you which method was used — `"lookup"` means datasheet-verified, `"heuristic"` means check it yourself.
+- **Regulator Vout estimates.** The Vref lookup table covers ~60 part families, each verified against the manufacturer's datasheet. If your regulator isn't in it, the analyzer falls back to the common reference (0.6, 0.8, 1.0, 1.22 or 1.25 V) that makes the divider agree with the rail's name, which is often right but not always. The `vref_source` field in the output tells you which method was used — `"datasheet"` or `"lookup"` means datasheet-verified, `"heuristic"` means check it yourself.
 
 - **Legacy KiCad 5 designs.** The legacy `.sch` format stores pin positions in separate `.lib` files. The analyzer parses cache libraries (`-cache.lib`) and project `.lib` files automatically, with built-in fallbacks for common standard library symbols (R, C, L, D, LED, transistors). Pin coverage is typically 92–100% depending on which `.lib` files are available in the repo. Components whose `.lib` files are missing (e.g., standard KiCad system libraries not committed to the project) will lack pin data and won't participate in signal analysis.
 

@@ -128,10 +128,13 @@ separate from the point-to-point tracing above.
   power symbol with the member's name (`D3`) joins it. A local label of that
   name on another sheet does not.
 - **Sheet pins.** A parent bus reaching a child sheet's pin maps onto the
-  child's hierarchical-label bus positionally, per instance — never by
-  matching bare bus names across instances. The parent order comes from the
-  bus's local or global label (two different names of one width are
-  ambiguous), else its hierarchical label.
+  child's hierarchical-label bus per instance, never by matching bare bus
+  names across instances. Two vector buses pair by position up to the
+  narrower one, two group buses by member name, a vector and a group by
+  position only at equal width. The parent side is the label KiCad picks to
+  drive the bus wire: a global label, then a local, then a hierarchical
+  label; among those, one whose members include all the others', else the
+  first by name.
 - **Hier/local join.** A genuine (non-sheet-pin) hierarchical label joins
   same-name local labels on its own sheet into one net; a sheet-pin label
   does not — its bare name belongs to the child and repeats per instance.
@@ -143,8 +146,7 @@ separate from the point-to-point tracing above.
 - **Unresolved.** `bus_topology.unresolved` (`[{reason, name}]`) lists
   every bus construct the resolver could not confidently resolve — those
   connections are not asserted. `reason` is one of a fixed snake_case
-  vocabulary (`name` carries the associated label/alias/sheet-pin name, or
-  for `ambiguous_bus_width` the ambiguous width as a string; identical
+  vocabulary (`name` carries the associated label/alias/sheet-pin name; identical
   `{reason, name}` pairs are deduplicated within the bus-graph resolution
   notes; port-matching notes may repeat for genuinely distinct occurrences):
   - `entry_both_ends_on_bus` — a bus-entry tap lands on a bus wire at
@@ -156,16 +158,17 @@ separate from the point-to-point tracing above.
   - `entry_tap_name_not_in_bus` — a bus-entry tap's net carries a label,
     but its name doesn't match any member of the tapped bus (distinct
     from `unlabeled_entry_tap`: the tap has a label, just not a member one).
-  - `ambiguous_bus_width` — a cluster carries two different same-width
-    bus-label expansions, so there's no single canonical member ordering.
+  - `bus_member_mismatch` — a matched sheet-pin/hier-label pair of group
+    buses shares no member name.
   - `duplicate_hier_port` — two hierarchical-label ports share the same
     (namespace, name) key on one sheet (malformed sheet).
   - `no_hier_counterpart_for_pin` — a sheet-pin bus port has no matching
     hierarchical-label port on the child sheet.
   - `no_pin_counterpart_for_hier` — a hierarchical-label bus port has no
     matching sheet-pin port on the parent sheet.
-  - `bus_width_mismatch` — a matched sheet-pin/hier-label port pair
-    expand to different member counts.
+  - `bus_width_mismatch` — a matched sheet-pin/hier-label pair of a vector
+    and a group bus expand to different member counts (two vectors pair up
+    to the narrower width instead).
 
 ## Complete Example
 

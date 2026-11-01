@@ -296,33 +296,7 @@ flag, other
 
 ### Supported Formats
 
-| Input | Output | Rule |
-|-------|--------|------|
-| `10k` | 10000.0 | SI suffix: k = ×10³ |
-| `4K7` | 4700.0 | Embedded multiplier (K as decimal point): 4.7 × 10³ |
-| `0R1` | 0.1 | R as decimal point: 0.1 Ω |
-| `100n` | 1e-7 | SI suffix: n = ×10⁻⁹ |
-| `4.7u` | 4.7e-6 | SI suffix: u/µ = ×10⁻⁶ |
-| `2.2pF` | 2.2e-12 | SI suffix: p = ×10⁻¹² (unit stripped) |
-| `100` | 100.0 | Plain number |
-| `1M` | 1e6 | SI suffix: M = ×10⁶ |
-| `22G` | 2.2e10 | SI suffix: G = ×10⁹ |
-
-### Pre-Processing
-
-Before parsing, the function:
-- Strips leading/trailing whitespace
-- Removes unit suffixes: `Ω`, `ohm`, `F`, `H`, `Hz` (case-insensitive)
-- Removes tolerance specs: `1%`, `5%`
-- Removes package descriptors: `/R0402`, `/0603`
-- Removes voltage ratings embedded after separators
-
-### SI Prefix Map
-
-```
-p = 1e-12    n = 1e-9     u/µ = 1e-6    m = 1e-3
-k/K = 1e3    M = 1e6      G = 1e9
-```
+The accepted formats, unit handling and capacitor rules are in the Value Parser table in `README.md` (this directory). That table is checked against `parse_value()`.
 
 ### Unparseable Values
 

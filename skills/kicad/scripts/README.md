@@ -61,7 +61,7 @@ extract_silkscreen()        -- Board-level text on SilkS/Fab layers
     |
     v
  ANALYSIS (derived facts)
-analyze_connectivity()      -- Unrouted nets (zone-aware)
+analyze_connectivity()      -- Unrouted nets (any copper; proven from the copper graph with `--full`)
 analyze_net_lengths()       -- Per-net trace length (segments + arcs)
 analyze_power_nets()        -- Power net routing summary
 analyze_decoupling_placement() -- Cap-to-IC distance
@@ -89,7 +89,7 @@ JSON output (~50-300KB depending on board complexity)
 - **Free vias identified**: Vias with `(free yes)` are flagged — typically stitching or thermal vias not anchored to tracks.
 - **Pin function/type carried from schematic**: Pad-level `pinfunction` and `pintype` enable power-pin vs signal-pin differentiation without needing the schematic.
 - **KiCad 5 compatibility**: Handles `(module ...)`, `(fp_text reference ...)`, `(net_class ...)`, and `(dimension ...)` in addition to KiCad 6+ equivalents.
-- **Unrouted detection**: Zone-aware — nets routed only through copper pours are not flagged as unrouted.
+- **Unrouted detection**: without `--full` a net with any copper (track, via, zone, copper graphic) counts as routed; with `--full` a net is routed only when all its pads sit on one copper island.
 - **Facts over judgement**: Analysis functions provide raw facts (track widths, via counts, distances) rather than pass/fail verdicts, enabling flexible higher-level analysis.
 
 ### Usage
@@ -120,8 +120,8 @@ scan_zip_archives()     -- Zip contents inventory + timestamp comparison vs loos
     |
     v
 identify_layer_type()   -- Map filename/X2 attributes to KiCad layer names (F.Cu, B.Mask, etc.)
-check_completeness()    -- Verify required layers present (F.Cu, B.Cu, F.Mask, B.Mask, Edge.Cuts)
-check_alignment()       -- Compare coordinate extents across copper/edge layers
+check_completeness()    -- Verify required layers present (F.Cu, B.Cu, F.Mask, B.Mask, Edge.Cuts), plus the inner copper layers the stackup implies
+check_alignment()       -- Copper layers that extend past the board outline (GR-002)
     |
     v
 JSON output
@@ -137,7 +137,7 @@ Uses two strategies, in order:
 
 ### Alignment Check
 
-Compares bounding box extents across copper and edge layers. Only checks F.Cu, B.Cu, and Edge.Cuts — paste, silk, mask, and drill layers naturally have smaller extents. A >2mm difference flags an alignment issue.
+Checks that every copper layer (F.Cu, B.Cu, inner copper) lies inside the Edge.Cuts extent: a layer that extends past it by more than max(2 mm, 5 % of that side) is reported (GR-002). Layers need not have the same size; drill extents are recorded, not compared. See `methodology_gerbers.md` §6.3.
 
 ### Drill File Parsing
 
@@ -281,6 +281,10 @@ A label's net name is its shown text with `/` escaped as `{slash}` (KiCad's net-
 | `"300µ"` | 0.0003 | Unicode micro (µ or Greek μ) |
 | `"0.3mOhm"` | 0.0003 | Ohm suffix stripped (also Ω / Ω signs) |
 | `"1Meg"` | 1e6 | SPICE mega |
+| `"100"` (capacitor) | 1e-10 | A plain number on a capacitor keeps the legacy reading: >= 1 is pF, < 1 is µF (`"0.1"` gives 1e-7) |
+| `"1F"`, `"1 F"`, `"10e-12"` (capacitor) | 1.0, 1.0, 1e-11 | An uppercase `F` or a bare exponent is SI farads; a lowercase `f` keeps the legacy reading (`"1f"` gives 1e-12) |
+| `"10 μF"` | 1e-5 | Space before the unit is allowed |
+| `"1fF"`, `"1fH"` | 1e-15 | `f` is femto when a unit follows |
 | `"4,7k"` | 4700.0 | Decimal comma, separators inferred as KiCad does |
 | `"1,000"` | None | Ambiguous separator; `ambiguous_separator()` is True |
 | `"0.1uF, 50V"` | 1e-7 | Leading value of a comma-separated list |
@@ -361,6 +365,6 @@ The harness is the authoritative validation layer. For the legacy `batchtest` di
 ## Known Remaining Limitations
 
 - **Legacy pin mapping**: `.sch` pins of symbols resolved from the built-in fallback table use heuristic snapping to a free wire end (up to 12mm radius); pins from parsed `.lib` files are exact
-- **Vout estimation**: Feedback divider Vout uses hardcoded Vref guesses (0.6, 0.8, 1.0, 1.22, 1.25V) without a component database
+- **Vout estimation**: a regulator missing from the Vref table and from the datasheet extractions gets the common reference (0.6, 0.8, 1.0, 1.22, 1.25 V) that agrees with its output rail's name (`vref_source: heuristic`)
 - **Regulator output_rail**: Switching regulators sometimes show null output_rail when the power net is on the inductor output side
 - **Eagle files**: Not parseable — output 0 components
