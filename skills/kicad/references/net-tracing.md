@@ -31,15 +31,16 @@ Apply the symbol's placement transform: `(at X Y ANGLE)`.
 - Pin at relative (px, py) -> absolute **(X + px, Y - py)**
 - The Y subtraction is mandatory — symbol pin coordinates use math convention (up = positive Y), while schematic coordinates use screen convention (down = positive Y).
 
-**With rotation:** Apply rotation matrix to pin offset BEFORE the Y inversion, then add to symbol position.
-- 90 deg CW: (px, py) -> (py, -px) -> absolute (X + py, Y - (-px)) = (X + py, Y + px)
+**With rotation:** KiCad's angle is counter-clockwise as drawn. Rotate the pin offset counter-clockwise BEFORE the Y inversion, then add to symbol position.
+- 90 deg: (px, py) -> (-py, px) -> absolute (X + (-py), Y - px) = (X - py, Y - px)
 - 180 deg: (px, py) -> (-px, -py) -> absolute (X + (-px), Y - (-py)) = (X - px, Y + py)
-- 270 deg CW: (px, py) -> (-py, px) -> absolute (X + (-py), Y - px) = (X - py, Y - px)
+- 270 deg: (px, py) -> (py, -px) -> absolute (X + py, Y - (-px)) = (X + py, Y + px)
+- Mirroring is applied after the rotation: `(mirror x)` flips the sign of the Y term of the result, `(mirror y)` the sign of the X term (90 deg with `(mirror x)`: (X - py, Y + px)).
 
 Example: Symbol at (161.29, 176.53), pin at relative (-5.08, 0), no rotation:
 - Absolute: (161.29 + (-5.08), 176.53 - 0) = (156.21, 176.53)
 
-Example: Resistor at (152.4, 176.53) rotated 90 deg, pin 1 at relative (0, 3.81):
+Example: Resistor at (152.4, 176.53) rotated 90 deg, pin 2 at relative (0, -3.81):
 - Rotated offset: (3.81, 0) -> absolute: (152.4 + 3.81, 176.53 - 0) = (156.21, 176.53)
 - Same point as the gate pin above -> directly connected!
 
@@ -170,8 +171,8 @@ separate from the point-to-point tracing above.
 
 To verify Q4 (P-FET) gate connects to R13 -> GND:
 1. Q4 at (161.29, 176.53), BSS84 Gate pin at (-5.08, 0) -> absolute **(156.21, 176.53)**
-2. R13 at (152.4, 176.53) rotated 90 deg, Pin 1 at (0, 3.81) -> rotated (3.81, 0) -> absolute **(156.21, 176.53)** — same point, direct connection
-3. R13 Pin 2 at (0, -3.81) -> rotated (-3.81, 0) -> absolute **(148.59, 176.53)**
-4. Wire from (147.32, 176.53) to (148.59, 176.53) connects to R13 Pin 2
+2. R13 at (152.4, 176.53) rotated 90 deg, Pin 2 at (0, -3.81) -> rotated (3.81, 0) -> absolute **(156.21, 176.53)** — same point, direct connection
+3. R13 Pin 1 at (0, 3.81) -> rotated (-3.81, 0) -> absolute **(148.59, 176.53)**
+4. Wire from (147.32, 176.53) to (148.59, 176.53) connects to R13 Pin 1
 5. Junction at (147.32, 176.53), wire to (147.32, 177.8)
 6. `power:GND` symbol at (147.32, 177.8) -> **GND net**
