@@ -321,13 +321,13 @@ Requires ngspice, LTspice, or Xyce (auto-detected). Without one, simulation is s
 The **emc** skill predicts the most common causes of EMC test failures — ground plane voids, insufficient decoupling, unfiltered I/O cables, switching regulator harmonics, differential pair skew, and more. It operates on the schematic and PCB analyzer output using geometric rule checks and analytical emission formulas (Ott, Paul, Bogatin). When ngspice is available, PDN impedance and EMI filter checks are SPICE-verified for higher accuracy — otherwise analytical models are used as fallback.
 
 ```
-EMC risk score: 73/100
-  CRITICAL: 1 — SPI_CLK crosses ground plane void on In1.Cu
-  HIGH:     2 — USB diff pair 5.2mm skew (exceeds 25ps limit),
+EMC risk score: 62.5/100
+  error:    3 — SPI_CLK crosses ground plane void on In1.Cu,
+                USB diff pair 5.2mm skew (exceeds 25ps limit),
                 no ground via near TVS U5
-  MEDIUM:   3 — decoupling cap 7mm from U3, clock on outer layer,
+  warning:  3 — decoupling cap 7mm from U3, clock on outer layer,
                 via stitching gap near J2
-  INFO:     4 — cavity resonance at 715 MHz, switching harmonics
+  info:     4 — cavity resonance at 715 MHz, switching harmonics
                 in 30-88 MHz band
 
 Pre-compliance test plan:
@@ -392,7 +392,7 @@ Fabrication Release Gate — 8 check categories
   Schematic ↔ PCB match    ✓ PASS  296 components matched, 0 orphans
   Gerber verification      ✓ PASS  All layers present, drill file valid
   Thermal analysis         ⚠ WARN  U3 junction temp 92°C (margin: 18°C)
-  EMC pre-compliance       ⚠ WARN  Score 73/100 — 2 HIGH findings
+  EMC pre-compliance       ⚠ WARN  Score 73/100 — 2 error findings
 
   Result: CONDITIONAL PASS (3 warnings to review before ordering)
 ```

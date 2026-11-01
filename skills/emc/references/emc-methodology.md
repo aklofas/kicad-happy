@@ -60,7 +60,7 @@ Analyzes `setup.stackup` for adjacent signal layers, signal-to-reference plane s
 Informational calculations: board cavity resonance frequencies and switching regulator harmonic envelopes. These are order-of-magnitude estimates (±10-20 dB), not pass/fail predictions.
 
 ### Category 9: Differential Pair EMC (rules DP-xxx)
-Checks intra-pair skew against protocol-specific limits (USB HS 25ps, PCIe 5ps, Ethernet 50ps), estimates CM radiation from skew, detects reference plane changes under diff pairs, and flags outer-layer routing when inner layers are available. Uses `net_lengths` layer distribution and schematic differential pair detection.
+Checks intra-pair skew against protocol-specific limits (USB HS 25ps when the part is known to be high-speed, otherwise the full-speed budget; PCIe 5ps; Ethernet 50ps), estimates CM radiation from skew, detects reference plane changes under diff pairs, and flags outer-layer routing when inner layers are available. Uses `net_lengths` layer distribution and schematic differential pair detection.
 
 ### Category 10: Board Edge Analysis (rules BE-xxx)
 Detects signal traces near the board edge (slot antenna effect), checks ground pour ring coverage around the perimeter, and verifies via stitching density near external connectors. Uses board outline, zone data, and connector positions.
@@ -72,7 +72,7 @@ Analyzes power delivery network impedance from regulator to IC. PD-001/PD-002 ch
 Checks that signal layer transitions (vias) have nearby ground stitching vias for return current continuity. Uses `layer_transitions` data from `--full` mode. Higher severity for differential pairs and high-speed nets.
 
 ### Category 13: Crosstalk (rules XT-xxx)
-Identifies parallel trace pairs violating the 3H spacing rule (spacing ≥ 3× dielectric height). Uses `trace_proximity` data from `--proximity` mode. Classifies severity based on aggressor/victim roles (clock near analog = HIGH).
+Identifies parallel trace pairs violating the 3H spacing rule (spacing ≥ 3× dielectric height). Uses `trace_proximity` data from `--proximity` mode. Classifies severity based on aggressor/victim roles (clock or switching net near analog = error).
 
 ### Category 14: EMI Filter Verification (rules EF-xxx)
 Validates that input LC filters on switching regulators have cutoff frequencies sufficiently below the switching frequency (ratio ≥5). Uses SPICE insertion loss analysis when available for improved accuracy.
@@ -89,10 +89,13 @@ Calculates connector aperture slot resonance frequencies and flags coincidences 
 ## Risk Scoring
 
 ```
-score = 100 - (CRITICAL × 15) - (HIGH × 8) - (MEDIUM × 3) - (LOW × 1)
+penalty = sum(severity_weight × confidence_weight, worst 3 findings per rule)
+score = max(0, min(100, 100 - penalty))
+severity_weight: error 12, warning 3, info 0
+confidence_weight: deterministic and datasheet-backed 1.0, heuristic 0.5
 ```
 
-Clamped to [0, 100]. Interpretation:
+0 is the worst score and 100 the best; scores can be fractional. The score is computed after `--severity` filtering, so a filtered run scores only the findings it keeps. Interpretation:
 
 | Score | Assessment |
 |-------|-----------|
@@ -103,11 +106,11 @@ Clamped to [0, 100]. Interpretation:
 
 ## Severity Assignment
 
-- **CRITICAL:** Near-certain EMC failure. Signal crossing ground plane gap, no ground plane on multi-layer board.
-- **HIGH:** Very likely to cause issues. Missing decoupling, unfiltered external connector, adjacent signal layers, large switching loop.
-- **MEDIUM:** May cause issues depending on specifics. Decoupling distance, clock on outer layer, via stitching gaps.
-- **LOW:** Minor risk, good practice. Internal header filtering, signal layer spacing, interplane capacitance.
-- **INFO:** Informational. Cavity resonance frequencies, harmonic spectrum data.
+- **error:** Likely to cause an EMC failure. Signal crossing a ground plane gap, no ground plane on a multi-layer board, missing decoupling, unfiltered external connector, adjacent signal layers on a board with more than two copper layers, large switching loop.
+- **warning:** May cause issues depending on specifics. Decoupling distance, clock on outer layer, via stitching gaps.
+- **info:** Informational or minor risk. Internal header filtering, signal layer spacing, interplane capacitance, cavity resonance frequencies, harmonic spectrum data, and the SU-001 note on two-layer boards.
+
+The analyzer output uses only these three names. `--severity` still takes the older five-level names as its threshold: `critical` and `high` keep error findings, `medium` keeps error and warning, `low` and `all` keep everything.
 
 ## Limitations
 
@@ -121,7 +124,7 @@ Clamped to [0, 100]. Interpretation:
 
 5. **Switching frequency estimation.** Based on part number lookup table. Unknown regulators are skipped. User can extend the lookup in `emc_rules._estimate_switching_freq()`.
 
-6. **2-layer board limitations.** The adjacent signal layer check (SU-001) will always fire on 2-layer boards. This is technically correct (2-layer boards inherently have worse EMC than multi-layer) but may generate noise for simple designs where EMC compliance isn't a goal.
+6. **2-layer board limitations.** The adjacent signal layer check (SU-001) always fires on 2-layer boards, at info severity with a next-revision recommendation. This is technically correct (2-layer boards inherently have worse EMC than multi-layer) but may generate noise for simple designs where EMC compliance isn't a goal.
 
 ## SPICE-Enhanced Mode
 

@@ -140,7 +140,7 @@ Read the JSON report and incorporate findings into the design review. Each findi
     }
   ],
   "per_net_scores": [
-    {"net": "SPI_CLK", "score": 67, "finding_count": 3, "rules": ["GP-001", "CK-001", "BE-001"]}
+    {"net": "SPI_CLK", "score": 73, "finding_count": 3, "rules": ["GP-001", "CK-001", "BE-001"]}
   ],
   "test_plan": {
     "frequency_bands": [{"band": "30-88 MHz", "risk_level": "high", "source_count": 12}],
@@ -169,7 +169,7 @@ Read the JSON report and incorporate findings into the design review. Each findi
 
 Each rule ID contributes at most 3 findings to the score (worst severity first). This prevents per-net rules like GP-001 from saturating the score on 2-layer boards. All findings are still reported — only the score is capped.
 
-`penalty = sum(worst 3 per rule × severity weight)`, `score = max(0, 100 - penalty)`. Scores below 50 indicate significant EMC risk.
+`penalty = sum(severity weight × confidence weight, worst 3 per rule)`, `score = max(0, min(100, 100 - penalty))`; weights error 12, warning 3, info 0; heuristic findings count half. 0 is worst and 100 best, and the score can be fractional. It is computed after `--severity` filtering and suppressions. Scores below 50 indicate significant EMC risk.
 
 ## Interpreting Results
 
@@ -179,7 +179,7 @@ Each rule ID contributes at most 3 findings to the score (worst severity first).
 
 **I/O filtering** — Highly relevant for cable-connected products. For board-to-board connections inside an enclosure, the risk is lower.
 
-**Diff pair findings** — Protocol-specific skew limits are well-defined. USB HS (25ps), PCIe (5ps), Ethernet (50ps). Findings exceeding these limits are real issues.
+**Diff pair findings** — Protocol-specific skew limits are well-defined. USB HS (25ps, when the part is known to be high-speed; other USB pairs get the full-speed budget), PCIe (5ps), Ethernet (50ps). Findings exceeding these limits are real issues.
 
 **PDN findings** — Anti-resonance peaks are real and cause voltage droop. SPICE-verified findings are more accurate than analytical. If a peak is flagged, add a capacitor with SRF near the peak frequency.
 

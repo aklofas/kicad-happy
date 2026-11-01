@@ -140,11 +140,11 @@ The `--market` flag selects all applicable standards for a target market:
 Each rule ID contributes at most 3 findings to the score (taking the worst severity first). This prevents per-net rules like GP-001 — which fires once per net with poor ground plane coverage — from saturating the score to 0 on 2-layer boards with many nets. All findings are still reported in the output; only the summary score is capped.
 
 ```
-penalty = sum(worst 3 findings per rule × severity weight)
-score = max(0, 100 - penalty)
+penalty = sum(severity weight × confidence weight, worst 3 findings per rule)
+score = max(0, min(100, 100 - penalty))
 ```
 
-Severity weights: CRITICAL=15, HIGH=8, MEDIUM=3, LOW=1, INFO=0.
+Severity weights: error = 12, warning = 3, info = 0. Confidence weights: deterministic and datasheet-backed 1.0, heuristic 0.5, so a heuristic error costs 6 points. 0 is the worst score and 100 the best; scores can be fractional. The score covers the findings that pass `--severity` and are not suppressed.
 
 | Score | Assessment |
 |-------|-----------|
@@ -155,14 +155,14 @@ Severity weights: CRITICAL=15, HIGH=8, MEDIUM=3, LOW=1, INFO=0.
 
 ## Per-Net Scoring
 
-In addition to the board-level risk score, the analyzer computes a per-net EMC score. Each net that appears in any finding gets its own score using the same formula. This lets you identify the highest-risk signals at a glance:
+In addition to the board-level risk score, the analyzer computes a per-net EMC score. Each net that appears in a finding gets a score from the same severity and confidence weights, counting every finding on the net (no three-per-rule cap) and weighting SPICE-verified findings ×1.5. This lets you identify the highest-risk signals at a glance:
 
 ```
 Highest-risk nets:
-  SPI_CLK: 67/100 (3 findings: GP-001, CK-001, BE-001)
-  USB_DP:  84/100 (2 findings: DP-001, DP-004)
-  USB_DM:  84/100 (2 findings: DP-001, DP-004)
-  SW_NODE: 92/100 (1 finding: SW-002)
+  SPI_CLK: 73/100 (3 findings: GP-001, CK-001, BE-001)
+  USB_DP:  85/100 (2 findings: DP-001, DP-004)
+  USB_DM:  85/100 (2 findings: DP-001, DP-004)
+  SW_NODE: 94/100 (1 finding: SW-002)
 ```
 
 Output as `per_net_scores` in the JSON, sorted worst-first.
