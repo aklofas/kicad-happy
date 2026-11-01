@@ -9,7 +9,7 @@ This document tells an orchestrator running inside Claude Code how to dispatch t
 Two files in `<cache_dir>`:
 
 - `<mpn>.plan.json` — the plan written by `plan_extraction.py`
-- `<mpn>.scout.json` — the unwrapped scout output (used to inject metadata if a prompt template needs it; in 3a, only `plan.tasks[].pages` is needed)
+- `<mpn>.scout.json` — the unwrapped scout output (used to inject metadata if a prompt template needs it; the shipped prompts need only `plan.tasks[].pages`)
 
 ## Workflow
 
@@ -108,7 +108,7 @@ Exit code 0 always (this is the second-and-final merge). Tasks that succeeded me
 
 ## Concurrency note
 
-Claude Code's `Agent` tool supports parallel tool-call dispatch within a single message. Issuing all three extraction tasks (base, pinout, regulator) in one message gives ~3× speedup over serial. If context bloat becomes an issue (long conversations after multiple PDFs), fall back to two messages: `[base, pinout]` then `[regulator]`.
+Claude Code's `Agent` tool supports parallel tool-call dispatch within a single message. Issuing every extraction task in the plan (base, pinout and one per category, e.g. regulator) in one message gives a speedup roughly equal to the task count. If context bloat becomes an issue (long conversations after multiple PDFs), fall back to two messages: `[base, pinout]` then the category tasks.
 
 ## Cost ledger (optional)
 

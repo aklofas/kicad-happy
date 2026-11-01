@@ -10,7 +10,7 @@ description: Extract structured specifications from electronic component datashe
 | Skill | Relationship |
 |-------|--------------|
 | `digikey` / `mouser` / `lcsc` / `element14` | **Producers** — download the PDFs under `<project>/datasheets/` that this skill extracts from |
-| `kicad` | **Primary consumer** — VM-001/PU-001/FS-001/PP-001/LR-001/XT-001 + the datasheet-backed lookup detectors (AM-001/OV-001/TJ-001/FT-001/EX-001) query extractions via `lookup(mpn)` for verified-IC knowledge |
+| `kicad` | **Primary consumer** — VM-001/PU-001/FS-001/PP-001/LR-001/XT-001 + the datasheet-backed lookup detectors (AM-001/OV-001/TJ-001/FT-001/EX-001/PM-001) query extractions via `lookup(mpn)` for verified-IC knowledge |
 | `emc` | **Consumer** — switching-frequency, package-Rθ_JA, and operating-voltage data sharpen EMC heuristics |
 | `spice` | **Consumer (limited)** — the model resolver reads legacy `spice_specs` fields only; v1.4 typed facts are not used |
 | `thermal` | **Consumer** — package Rθ_JA + junction temperature limits drive Tj estimates (TS-001..TJ-001) |

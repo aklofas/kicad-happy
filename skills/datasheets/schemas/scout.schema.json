@@ -40,7 +40,7 @@
         "type": "string",
         "enum": ["regulator", "mcu", "opamp", "transistor", "diode", "crystal", "supervisor"]
       },
-      "description": "List of category extensions applicable to this MPN. Only `regulator` is supported today; other values are reserved."
+      "description": "List of category extensions applicable to this MPN. `regulator`, `mcu`, `opamp`, `transistor`, `diode` and `crystal` each have an extraction task; `supervisor` is reserved and is skipped by `plan_extraction.py`."
     },
     "extraction_pages": {
       "type": "object",
