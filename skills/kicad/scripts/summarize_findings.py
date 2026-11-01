@@ -24,7 +24,7 @@ import sys
 from collections import defaultdict
 
 from kicad_core.cli import add_only_deterministic_arg
-from analysis_cache import get_run
+from analysis_cache import get_run, merged_overlay_path
 from finding_schema import VALID_CONFIDENCES, VALID_EVIDENCE_SOURCES
 
 _SEV_RANK = {"error": 0, "high": 0, "critical": 0,
@@ -62,16 +62,23 @@ def _resolve_analyzer_json(run_dir: str, name: str, only_deterministic: bool) ->
     When only_deterministic is False, check for a merged/ sibling directory
     and prefer it if present. Falls back to the raw run_dir path.
     """
+    raw = os.path.join(run_dir, name)
     if not only_deterministic:
-        merged_candidate = os.path.join(
-            os.path.dirname(run_dir), "merged", os.path.basename(run_dir), name)
+        merged_candidate = merged_overlay_path(raw)
         if os.path.isfile(merged_candidate):
             return merged_candidate
-    return os.path.join(run_dir, name)
+    return raw
 
 
-def _collect_findings(run_dir: str, only_deterministic: bool = True) -> list[dict]:
-    out: list[dict] = []
+def _collect(run_dir: str, only_deterministic: bool = True) -> tuple[list[dict], dict[str, int]]:
+    """Walk analyzer JSONs once; return (findings, {rule_id: assessment count}).
+
+    Assessments have no severity: they are informational context emitted by
+    detectors (e.g. thermal TH-DET).
+    """
+    from collections import Counter
+    findings: list[dict] = []
+    counter: Counter = Counter()
     for name in sorted(os.listdir(run_dir)):
         if not name.endswith(".json"):
             continue
@@ -84,32 +91,12 @@ def _collect_findings(run_dir: str, only_deterministic: bool = True) -> list[dic
         for finding in data.get("findings", []) or []:
             if isinstance(finding, dict):
                 finding.setdefault("_source_file", name)
-                out.append(finding)
-    return out
-
-
-def _collect_assessments(run_dir: str, only_deterministic: bool = True) -> dict[str, int]:
-    """Walk analyzer JSONs, group assessments by rule_id.
-
-    Returns: dict {rule_id: count}. Assessments have no severity — they
-    are informational context emitted by detectors (e.g. thermal TH-DET).
-    """
-    from collections import Counter
-    counter: Counter = Counter()
-    for name in sorted(os.listdir(run_dir)):
-        if not name.endswith(".json"):
-            continue
-        full = _resolve_analyzer_json(run_dir, name, only_deterministic)
-        try:
-            with open(full, "r", encoding="utf-8") as f:
-                data = json.load(f)
-        except (OSError, json.JSONDecodeError):
-            continue
+                findings.append(finding)
         for a in data.get("assessments", []) or []:
             if isinstance(a, dict):
                 rid = a.get("rule_id") or "(unknown)"
                 counter[rid] += 1
-    return dict(counter)
+    return findings, dict(counter)
 
 
 def _print_assessments_table(by_rule: dict[str, int]) -> None:
@@ -326,7 +313,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     run_dir, run_id, manifest_version = _resolve_run_dir(args.analysis_dir, args.run)
-    findings = _collect_findings(run_dir, only_deterministic=args.only_deterministic)
+    findings, assessments_by_rule = _collect(run_dir, only_deterministic=args.only_deterministic)
 
     deep_review_counts = None
     if not args.no_deep_review:
@@ -353,7 +340,6 @@ def main(argv: list[str] | None = None) -> int:
     findings = _filter_severity(findings, args.severity)
     findings = _filter_confidence(findings, args.confidence)
     findings = _filter_evidence_source(findings, args.evidence_source)
-    assessments_by_rule = _collect_assessments(run_dir, only_deterministic=args.only_deterministic)
     assessment_total = sum(assessments_by_rule.values())
     if args.by_confidence:
         conf_rows = _aggregate_by_confidence(findings)

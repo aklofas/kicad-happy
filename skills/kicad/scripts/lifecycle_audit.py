@@ -38,6 +38,7 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
+from analysis_cache import merged_overlay_path
 from kicad_core import token_cache
 from kicad_core.project import extraction_project_dir
 from kicad_core.cli import add_only_deterministic_arg, add_output_arg
@@ -1212,7 +1213,7 @@ def main(argv: list[str] | None = None) -> int:
     # Load analyzer JSON (honor --only-deterministic: skip merged/ overlay)
     input_path = Path(args.input)
     if not args.only_deterministic:
-        candidate = input_path.parent.parent / "merged" / input_path.parent.name / input_path.name
+        candidate = Path(merged_overlay_path(str(input_path)))
         if candidate.exists():
             input_path = candidate
     expected = "expected the JSON file written by analyze_schematic.py"

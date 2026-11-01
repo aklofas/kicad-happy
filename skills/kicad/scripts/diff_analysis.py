@@ -21,6 +21,7 @@ import json
 import os
 import sys
 
+from analysis_cache import merged_overlay_path
 from finding_schema import group_findings_by_detection_type
 from kicad_core.render import fmt_g4, fmt_signed, summary_or_title
 from kicad_core.cli import add_only_deterministic_arg, add_output_arg, add_text_arg, utf8_text_stdout
@@ -458,7 +459,7 @@ def main(argv: list[str] | None = None) -> int:
         from pathlib import Path
         p = Path(path)
         if not args.only_deterministic:
-            candidate = p.parent.parent / "merged" / p.parent.name / p.name
+            candidate = Path(merged_overlay_path(str(p)))
             if candidate.exists():
                 p = candidate
         try:

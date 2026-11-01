@@ -109,6 +109,13 @@ def get_run(analysis_dir: str, run_id: Any,
     return os.path.join(analysis_dir, run_id), runs[run_id]
 
 
+def merged_overlay_path(path: str) -> str:
+    """analysis/merged/<run>/<file>: the reviewed copy of analysis/<run>/<file> that the
+    consumers read unless --only-deterministic is given."""
+    run_dir, name = os.path.split(path)
+    return os.path.join(os.path.dirname(run_dir), "merged", os.path.basename(run_dir), name)
+
+
 def _empty_manifest() -> Dict[str, Any]:
     """Return a fresh empty manifest (avoids mutable default sharing)."""
     return {
