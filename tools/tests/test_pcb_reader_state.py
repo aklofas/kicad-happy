@@ -52,10 +52,15 @@ class ReaderState(unittest.TestCase):
         self.assertEqual(json.dumps(r1, sort_keys=True, default=str), json.dumps(r3, sort_keys=True, default=str))
 
     def test_read_board_uses_the_reader_module_attribute(self):
-        import inspect, pcb.pipeline as pl
-        src = inspect.getsource(pl.read_board)
-        self.assertIn("reader.extract_footprints(", src)
-        self.assertIn("reader._build_net_mapping(", src)
+        import pcb.pipeline as pl, pcb.reader as reader
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as d:
+            a = Path(d) / "a.kicad_pcb"; a.write_text(BOARD_A, encoding="utf-8")
+            with mock.patch.object(reader, "extract_footprints", wraps=reader.extract_footprints) as fp, \
+                 mock.patch.object(reader, "_build_net_mapping", wraps=reader._build_net_mapping) as nm:
+                pl.read_board(str(a))
+        fp.assert_called_once()
+        nm.assert_called_once()
 
 
 if __name__ == "__main__":

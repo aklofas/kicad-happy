@@ -32,14 +32,18 @@ class ProviderAdapters(unittest.TestCase):
             self.assertEqual(set(prov.LABELS), {"found", "skipped_key", "total_key", "dry_skipped", "summary_skipped"})
 
     def test_lcsc_enrich_looks_up_search_direct_in_provider_module(self):
-        import importlib, inspect
+        import importlib
+        from unittest import mock
         sys.path.insert(0, str(SKILLS / "lcsc" / "scripts"))
         try:
             prov = importlib.import_module("provider_lcsc")
         finally:
             sys.path.pop(0)
-        self.assertIn("search_lcsc_direct(", inspect.getsource(prov.enrich_with_wmsc))
-        self.assertIs(prov.enrich_with_wmsc.__globals__["search_lcsc_direct"], prov.search_lcsc_direct)
+        direct = {"datasheet": "https://example.com/x.pdf"}
+        with mock.patch.object(prov, "search_lcsc_direct", return_value=direct) as seam:
+            merged = prov.enrich_with_wmsc({"lcsc": 12345})
+        seam.assert_called_once_with("C12345")
+        self.assertEqual(merged["datasheet"], direct["datasheet"])
 
     def test_normalize_url_redirect_flag_per_provider(self):
         import importlib

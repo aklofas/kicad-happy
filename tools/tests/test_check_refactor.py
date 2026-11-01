@@ -1,4 +1,5 @@
 import contextlib, importlib.util, inspect, io, json, re, subprocess, sys, tempfile, unittest
+from unittest import mock
 from pathlib import Path
 from tools.tests._fixtures import fixture_path, have
 
@@ -490,25 +491,49 @@ class InstallSmoke(unittest.TestCase):
 
 
 class QuickJson(unittest.TestCase):
+    SUBCHECKS = ("cmd_imports", "cmd_tags", "cmd_install_smoke", "cmd_determinism", "cmd_aba", "cmd_sync_offline")
+
+    def _quick(self, argv, returns=None):
+        """Run `quick` with every sub-check mocked; returns (rc, stdout, {name: Mock})."""
+        returns = returns or {}
+        out = io.StringIO()
+        with contextlib.ExitStack() as stack:
+            mocks = {n: stack.enter_context(mock.patch.object(cr, n, return_value=returns.get(n, 0)))
+                     for n in self.SUBCHECKS}
+            stack.enter_context(mock.patch.object(cr, "discover_fixtures", return_value=[]))
+            stack.enter_context(mock.patch.object(cr, "_check_inputs", return_value=None))
+            stack.enter_context(contextlib.redirect_stdout(out))
+            rc = cr.main(["quick", *argv])
+        return rc, out.getvalue(), mocks
+
     def test_json_parseable_and_text_summary(self):
-        buf = io.StringIO()
-        with contextlib.redirect_stdout(buf):
-            cr.main(["quick", "--json"])
-        data = json.loads(buf.getvalue())
-        self.assertIn(data["status"], ("ok", "fail"))
+        rc, text, mocks = self._quick(["--json"])
+        data = json.loads(text)
+        self.assertEqual(rc, 0)
+        self.assertEqual(data["status"], "ok")
         self.assertEqual([c["name"] for c in data["checks"]], ["imports", "tags", "install-smoke"])
         for c in data["checks"]:
             self.assertIn(c["status"], ("ok", "fail"))
             self.assertIsInstance(c["elapsed_s"], float)
             self.assertIsInstance(c["detail"], str)
         self.assertIsNone(data["fixtures_digest"])
-        buf = io.StringIO()
-        with contextlib.redirect_stdout(buf):
-            cr.main(["quick"])
-        self.assertTrue(buf.getvalue().rstrip("\n").splitlines()[-1].startswith("quick: "))
+        mocks["cmd_install_smoke"].assert_called_once()
+        _, text, _ = self._quick([])
+        self.assertTrue(text.rstrip("\n").splitlines()[-1].startswith("quick: OK"))
 
     def test_quick_includes_sync_offline(self):
-        self.assertIn("sync-offline", inspect.getsource(cr.cmd_quick))
+        with tempfile.TemporaryDirectory() as td:
+            rc, text, mocks = self._quick(["--fixtures", td, "--json"])
+            self.assertEqual(rc, 0)
+            mocks["cmd_sync_offline"].assert_called_once()
+            self.assertIn("sync-offline", [c["name"] for c in json.loads(text)["checks"]])
+            rc, text, _ = self._quick(["--fixtures", td, "--json"], {"cmd_sync_offline": 1})
+            self.assertEqual(rc, 1)
+            checks = {c["name"]: c["status"] for c in json.loads(text)["checks"]}
+            self.assertEqual(checks["sync-offline"], "fail")
+        rc, text, mocks = self._quick(["--json"])
+        mocks["cmd_sync_offline"].assert_not_called()
+        self.assertNotIn("sync-offline", [c["name"] for c in json.loads(text)["checks"]])
 
 
 FX_REAL = fixture_path()
