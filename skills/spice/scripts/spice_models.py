@@ -103,7 +103,7 @@ def get_generic_models():
 
 
 # ---------------------------------------------------------------------------
-# Helpers for mapping analyzer component types to SPICE elements
+# Netlist text and element helpers
 # ---------------------------------------------------------------------------
 
 
