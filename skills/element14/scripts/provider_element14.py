@@ -18,7 +18,7 @@ from distributor_core.download import (
     try_alternative_sources,
 )
 from distributor_core.inputs import mpn_from_value
-from distributor_core.verify import other_part, pick_requested, verify_datasheet
+from distributor_core.verify import downloaded_entry, other_part, pick_requested
 from distributor_core.manifest import friendly_filename
 
 _DEFAULT_STORE = "www.newark.com"
@@ -196,27 +196,9 @@ def sync_one_part(
     if schematic_url and schematic_url != "~" and "://" in schematic_url:
         print(f"  Trying schematic URL...", file=sys.stderr)
         if download_pdf(schematic_url, str(output_path)):
-            size = os.path.getsize(str(output_path))
-            vr = verify_datasheet(str(output_path), display_pn, desc, mfg)
-            if vr["confidence"] == "wrong":
-                print(f"  WARNING: PDF may be wrong datasheet — {vr['details']}",
-                      file=sys.stderr)
-            result = {
-                "file": filename,
-                "manufacturer": mfg,
-                "description": desc,
-                "value": part["value"],
-                "datasheet_url": schematic_url,
-                "downloaded_date": now,
-                "source": "schematic",
-                "status": "ok",
-                "references": part["references"],
-                "size_bytes": size,
-                "verification": vr["confidence"],
-            }
-            if vr["confidence"] == "wrong":
-                result["verification_details"] = vr["details"]
-            return result
+            return downloaded_entry(part, output_path, filename, verify_pn=display_pn,
+                                    manufacturer=mfg, description=desc, url=schematic_url,
+                                    source="schematic", now=now)
 
     # Strategy 2: Search element14 API
     # Prefer MPN search (most reliable), fall back to element14 SKU
@@ -263,51 +245,18 @@ def sync_one_part(
         if ds_url:
             print(f"  Downloading from element14...", file=sys.stderr)
             if download_pdf(ds_url, str(output_path)):
-                size = os.path.getsize(str(output_path))
-                vr = verify_datasheet(str(output_path), mpn or effective_pn, e14_desc, e14_mfg)
-                if vr["confidence"] == "wrong":
-                    print(f"  WARNING: PDF may be wrong datasheet — {vr['details']}",
-                          file=sys.stderr)
-                result = {
-                    "file": filename,
-                    "manufacturer": e14_mfg,
-                    "description": e14_desc,
-                    "value": part["value"],
-                    "datasheet_url": ds_url,
-                    "downloaded_date": now,
-                    "source": "element14",
-                    "element14": e14_sku,
-                    "status": "ok",
-                    "references": part["references"],
-                    "size_bytes": size,
-                    "verification": vr["confidence"],
-                }
-                if vr["confidence"] == "wrong":
-                    result["verification_details"] = vr["details"]
-                return result
+                return downloaded_entry(part, output_path, filename, verify_pn=mpn or effective_pn,
+                                        manufacturer=e14_mfg, description=e14_desc, url=ds_url,
+                                        source="element14", now=now,
+                                        vendor_id=("element14", e14_sku))
 
     # Strategy 3: Try alternative manufacturer sources
     if mpn:
         print(f"  Trying alternative sources...", file=sys.stderr)
         if try_alternative_sources(mpn, str(output_path)):
-            size = os.path.getsize(str(output_path))
-            vr = verify_datasheet(str(output_path), mpn, desc, mfg)
-            result = {
-                "file": filename,
-                "manufacturer": mfg,
-                "description": desc,
-                "value": part["value"],
-                "datasheet_url": "",
-                "downloaded_date": now,
-                "source": "alternative",
-                "status": "ok",
-                "references": part["references"],
-                "size_bytes": size,
-                "verification": vr["confidence"],
-            }
-            if vr["confidence"] == "wrong":
-                result["verification_details"] = vr["details"]
-            return result
+            return downloaded_entry(part, output_path, filename, verify_pn=mpn, manufacturer=mfg,
+                                    description=desc, url="", source="alternative", now=now,
+                                    warn=False)
 
     if product is None:
         return {

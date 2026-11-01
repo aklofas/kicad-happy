@@ -561,7 +561,7 @@ class LcscDirectLookupTest(unittest.TestCase):
             with mock.patch.object(prov.urllib.request, "urlopen", urlopen), \
                     mock.patch.object(prov, "download_pdf", download), \
                     mock.patch.object(prov, "try_alternative_sources", lambda *a, **k: False), \
-                    mock.patch.object(prov, "verify_datasheet", lambda *a, **k: {"confidence": "verified"}), \
+                    mock.patch.object(sys.modules["distributor_core.verify"], "verify_datasheet", lambda *a, **k: {"confidence": "verified"}), \
                     redirect_stderr(io.StringIO()), redirect_stdout(io.StringIO()):
                 sync_datasheets(prov, input_path=str(bom), output_dir=str(Path(d) / "out"), delay=0)
             m = json.loads((Path(d) / "out" / "manifest.json").read_text(encoding="utf-8"))
@@ -670,7 +670,7 @@ class Element14SearchLadderTest(unittest.TestCase):
                 mock.patch.object(prov, "_search_element14_raw", raw), \
                 mock.patch.object(prov, "download_pdf", download), \
                 mock.patch.object(prov, "try_alternative_sources", lambda *a, **k: False), \
-                mock.patch.object(prov, "verify_datasheet", lambda *a, **k: {"confidence": "verified"}), \
+                mock.patch.object(sys.modules["distributor_core.verify"], "verify_datasheet", lambda *a, **k: {"confidence": "verified"}), \
                 mock.patch.object(prov.time, "sleep", lambda *a: None), \
                 redirect_stderr(io.StringIO()):
             r = prov.sync_one_part(part, Path(d), 0.0, ("KEY", "www.newark.com"))

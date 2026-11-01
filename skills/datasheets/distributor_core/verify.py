@@ -2,8 +2,10 @@
 MPN / manufacturer / keyword matching → confidence. ``same_part`` decides whether a
 distributor search hit is the requested part."""
 
+import os
 import re
 import subprocess
+import sys
 
 # Maker ordering and packaging codes that name the same die and datasheet (tape and reel,
 # lead-free finish). Short codes such as RL/CT are left out: they end passive value codes
@@ -236,3 +238,32 @@ def verify_datasheet(
         "keyword_total": keyword_total,
         "details": details,
     }
+
+
+def downloaded_entry(part: dict, path, filename: str, *, verify_pn: str, manufacturer: str,
+                     description: str, url: str, source: str, now: str,
+                     vendor_id: tuple[str, str] | None = None, warn: bool = True) -> dict:
+    """The manifest entry for a datasheet just downloaded to *path*: size, identity verdict,
+    and the vendor's id (key, value) after "source" when given. With *warn*, a "wrong" verdict
+    is reported on stderr before the entry is built."""
+    size = os.path.getsize(str(path))
+    vr = verify_datasheet(str(path), verify_pn, description, manufacturer)
+    if warn and vr["confidence"] == "wrong":
+        print(f"  WARNING: PDF may be wrong datasheet — {vr['details']}", file=sys.stderr)
+    entry = {
+        "file": filename,
+        "manufacturer": manufacturer,
+        "description": description,
+        "value": part["value"],
+        "datasheet_url": url,
+        "downloaded_date": now,
+        "source": source,
+        **({vendor_id[0]: vendor_id[1]} if vendor_id else {}),
+        "status": "ok",
+        "references": part["references"],
+        "size_bytes": size,
+        "verification": vr["confidence"],
+    }
+    if vr["confidence"] == "wrong":
+        entry["verification_details"] = vr["details"]
+    return entry

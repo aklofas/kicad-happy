@@ -13,7 +13,7 @@ import _core_path  # noqa: F401
 from kicad_core import token_cache
 from distributor_core.download import download_pdf, note_transport_failure, try_alternative_sources
 from distributor_core.inputs import mpn_from_value
-from distributor_core.verify import other_part, pick_requested, verify_datasheet
+from distributor_core.verify import downloaded_entry, other_part, pick_requested
 from distributor_core.manifest import friendly_filename
 
 NAME = "digikey"
@@ -257,27 +257,9 @@ def sync_one_part(
     if schematic_url and schematic_url != "~" and "://" in schematic_url:
         print(f"  Trying schematic URL...", file=sys.stderr)
         if download_pdf(schematic_url, str(output_path)):
-            size = os.path.getsize(str(output_path))
-            vr = verify_datasheet(str(output_path), display_pn, desc, mfg)
-            if vr["confidence"] == "wrong":
-                print(f"  WARNING: PDF may be wrong datasheet — {vr['details']}",
-                      file=sys.stderr)
-            result = {
-                "file": filename,
-                "manufacturer": mfg,
-                "description": desc,
-                "value": part["value"],
-                "datasheet_url": schematic_url,
-                "downloaded_date": now,
-                "source": "schematic",
-                "status": "ok",
-                "references": part["references"],
-                "size_bytes": size,
-                "verification": vr["confidence"],
-            }
-            if vr["confidence"] == "wrong":
-                result["verification_details"] = vr["details"]
-            return result
+            return downloaded_entry(part, output_path, filename, verify_pn=display_pn,
+                                    manufacturer=mfg, description=desc, url=schematic_url,
+                                    source="schematic", now=now)
 
     # Strategy 2: Search DigiKey API
     # Prefer DigiKey PN (exact match, no ambiguity) over MPN keyword search
@@ -350,52 +332,16 @@ def sync_one_part(
     effective_desc = dk_desc or part.get("description", "")
     print(f"  Downloading from {ds_url[:80]}...", file=sys.stderr)
     if download_pdf(ds_url, str(output_path)):
-        size = os.path.getsize(str(output_path))
-        vr = verify_datasheet(str(output_path), mpn or dk_mpn or display_pn, effective_desc, dk_mfg)
-        if vr["confidence"] == "wrong":
-            print(f"  WARNING: PDF may be wrong datasheet — {vr['details']}",
-                  file=sys.stderr)
-        result = {
-            "file": filename,
-            "manufacturer": dk_mfg,
-            "description": effective_desc,
-            "value": part["value"],
-            "datasheet_url": ds_url,
-            "downloaded_date": now,
-            "source": "digikey",
-            "status": "ok",
-            "references": part["references"],
-            "size_bytes": size,
-            "verification": vr["confidence"],
-        }
-        if vr["confidence"] == "wrong":
-            result["verification_details"] = vr["details"]
-        return result
+        return downloaded_entry(part, output_path, filename, verify_pn=mpn or dk_mpn or display_pn,
+                                manufacturer=dk_mfg, description=effective_desc, url=ds_url,
+                                source="digikey", now=now)
 
     # Strategy 4: Try alternative sources
     print(f"  Primary failed, trying alternatives...", file=sys.stderr)
     if try_alternative_sources(dk_mpn, str(output_path)):
-        size = os.path.getsize(str(output_path))
-        vr = verify_datasheet(str(output_path), mpn or dk_mpn or display_pn, effective_desc, dk_mfg)
-        if vr["confidence"] == "wrong":
-            print(f"  WARNING: PDF may be wrong datasheet — {vr['details']}",
-                  file=sys.stderr)
-        result = {
-            "file": filename,
-            "manufacturer": dk_mfg,
-            "description": effective_desc,
-            "value": part["value"],
-            "datasheet_url": ds_url,
-            "downloaded_date": now,
-            "source": "alternative",
-            "status": "ok",
-            "references": part["references"],
-            "size_bytes": size,
-            "verification": vr["confidence"],
-        }
-        if vr["confidence"] == "wrong":
-            result["verification_details"] = vr["details"]
-        return result
+        return downloaded_entry(part, output_path, filename, verify_pn=mpn or dk_mpn or display_pn,
+                                manufacturer=dk_mfg, description=effective_desc, url=ds_url,
+                                source="alternative", now=now)
 
     return {
         "manufacturer": dk_mfg,
