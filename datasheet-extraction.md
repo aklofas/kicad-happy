@@ -140,9 +140,11 @@ A per-MPN JSON file in the legacy v1.3 format looks like this (simplified):
     {"number": "4", "name": "EN", "function": "EN", "type": "digital", "direction": "input",
      "threshold_high_v": 1.2, "threshold_low_v": 0.4, "required_external": null}
   ],
-  "voltage_ratings": {
-    "vin_min": 0.5, "vin_max": 5.5, "vin_abs_max": 6.0,
-    "vout_max": 5.5
+  "absolute_maximum_ratings": {
+    "vin_max_v": 6.0, "vout_max_v": 7.0, "junction_temp_max_c": 150
+  },
+  "recommended_operating_conditions": {
+    "vin_min_v": 0.5, "vin_max_v": 5.5, "vout_max_v": 5.5
   },
   "features": {
     "has_pg": false,
@@ -154,11 +156,7 @@ A per-MPN JSON file in the legacy v1.3 format looks like this (simplified):
     "output_cap_recommended": "22uF ceramic",
     "inductor_recommended": "2.2uH, 1.5A sat current"
   },
-  "extraction_metadata": {"extraction_version": 2, "extraction_score": 8.4},
-  "thermal": {
-    "rtheta_ja_cw": 175.0,
-    "tj_max_c": 150
-  }
+  "extraction_metadata": {"extraction_version": 2, "extraction_score": 6.8}
 }
 ```
 
@@ -204,15 +202,16 @@ Legacy v1.3 per-MPN files (`EXTRACTION_VERSION` 2) have these blocks; v1.4 files
 
 | Block | Content |
 |-------|---------|
-| `identity` | manufacturer, MPN, family, description |
-| `pins` | Pin number → {name, function, type, voltage_range, is_power, is_ground} |
-| `voltage_ratings` | Absolute max, recommended operating, typical supply |
+| `mpn`, `manufacturer`, `category`, `package`, `description` | Top-level identity fields |
+| `pins` | Array of pin entries: number, name, function, type, direction, voltage limits, logic thresholds, `required_external` |
+| `absolute_maximum_ratings` | Absolute limits (`*_max_v`, `junction_temp_max_c`) |
+| `recommended_operating_conditions` | Operating ranges (`vin_min_v`, `vin_max_v`, temperature range) |
 | `electrical_characteristics` | Per-parameter table (quiescent current, VIH/VIL, GBW, slew rate, etc.) |
 | `peripherals` | (MCUs) GPIO count, USB/UART/SPI/I2C counts, ADC bits, protocol speeds |
 | `features` | Regulator topology, EN pin behavior, power-good output, thermal pad presence |
 | `application_circuit` | Typical external components + values (LDO output cap, MCU decoupling) |
 | `spice_specs` | SPICE model coefficients where the datasheet provides them |
-| `thermal` | Junction-to-ambient / junction-to-case resistance, max junction temp |
+| `extraction_metadata` | Extraction version and score |
 
 Null is valid — if the datasheet doesn't specify a field, the extraction records `null`. Analyzers gate on "known vs unknown," not "present vs missing."
 
