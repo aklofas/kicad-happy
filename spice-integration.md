@@ -33,13 +33,13 @@ The key insight: the schematic analyzer already detects 21+ subcircuit types (RC
 
 ## What Gets Simulated
 
-18 subcircuit types across analog, power, and RF domains:
+17 subcircuit types across analog, power, and RF domains:
 
 | Category | Types | Model Accuracy |
 |----------|-------|---------------|
 | **Passive filters** | RC filters, LC filters | Exact — ideal passives are mathematically perfect |
 | **Voltage references** | Voltage dividers, feedback networks, regulator feedback | Exact — unloaded ratio validation |
-| **Opamp circuits** | Inverting, non-inverting, buffer, integrator, compensator, transimpedance | Per-part behavioral (~100 common parts) or ideal fallback |
+| **Opamp circuits** | Inverting, non-inverting, buffer, integrator, compensator, transimpedance | Per-part behavioral (49 op-amps in the built-in table, more through distributor APIs) or ideal fallback |
 | **Discrete** | Transistor switches (MOSFET + BJT), protection devices (TVS/ESD) | Approximate — generic device models |
 | **Sensors** | Current sense shunts, crystal oscillators | Exact for shunts, approximate for crystals |
 | **Power** | Decoupling analysis, inrush estimation, regulator feedback verification | Mixed — passives exact, active approximate |
@@ -61,12 +61,12 @@ The ideal model hides the bandwidth limitation. The behavioral model correctly s
 
 ### Coverage
 
-The built-in lookup table covers ~100 common parts:
+The built-in lookup table covers 103 parts:
 - **49 opamps** — LM358, TL072, MCP6002, OPA2340, NE5532, AD8605, OP27, and more
 - **35 LDOs** — AMS1117, LM7805/L7805, AP2112, MCP1700, TPS7A02, LP5907, and more
 - **9 comparators** — LM393, LM339, LM311, TLV1805, and more
 - **10 voltage references** — TL431, LM4040, REF5050, and more
-- **30+ crystal drivers** — STM32, ESP32, nRF52, ATmega, RP2040 oscillator specs
+- **24 crystal-driver entries** (22 MCU families, two 32 kHz LSE variants) — STM32, ESP32, nRF52, ATmega, RP2040 oscillator specs
 
 Parts not in the table fall back to generic ideal models with a note in the report. The lookup table can be extended by adding entries to `spice_part_library.py`.
 
@@ -74,12 +74,12 @@ Parts not in the table fall back to generic ideal models with a note in the repo
 
 1. **Project cache** — `<project>/spice/models/` (previously resolved, instant)
 2. **Distributor API parametric data** — queries LCSC (no auth), DigiKey, element14, Mouser for real specs. Returns GBW, slew rate, etc. from structured parametric databases.
-3. **Structured datasheet extraction** — reads pre-extracted specs from `<project>/datasheets/extracted/<MPN>.json`. Cached JSON with SPICE-relevant parameters extracted by Claude from PDF datasheets, scored for quality.
+3. **Legacy structured extraction** — a `spice_specs` record from `<project>/datasheets/extracted/` (score ≥ 6 of 10). It does not read v1.4 extractions, and in practice it finds nothing from the `datasheets` skill's cache. It and the PDF tier run only when the analysis names its project.
 4. **Datasheet PDF regex extraction** — reads downloaded PDFs from `<project>/datasheets/`, extracts electrical specs via text pattern matching. Requires `pdftotext`. Last-resort fallback.
-5. **Built-in lookup table** — `spice_part_library.py` (~100 common parts with datasheet-verified specs). Offline safety net.
+5. **Built-in lookup table** — `spice_part_library.py` (103 parts with datasheet-verified specs). Offline safety net.
 6. **Ideal model fallback** — generic model with fixed parameters (10 MHz GBW for opamps)
 
-Real data (APIs, structured extractions, datasheets) takes priority over the lookup table. The table is the offline fallback when no network or downloaded datasheets are available. Any distributor skill that has synced datasheets contributes — DigiKey, LCSC, element14, or Mouser. Structured extractions are produced by the `kicad` skill's datasheet extraction workflow (see `kicad/references/datasheet-extraction.md`).
+Real data (APIs, structured extractions, datasheets) takes priority over the lookup table. The table is the offline fallback when no network or downloaded datasheets are available. Any distributor skill that has synced datasheets contributes — DigiKey, LCSC, element14, or Mouser. Structured extractions come from the `datasheets` skill (see [Datasheet Extraction Guide](datasheet-extraction.md)); the SPICE resolver reads only legacy `spice_specs` records from them.
 
 Models are cached project-locally next to the schematic files, same pattern as the `datasheets/` directory. Once a model is resolved and cached, subsequent runs use the cache (tier 1) without any network calls.
 
@@ -146,7 +146,7 @@ Several schematic and PCB analyzer features were added to feed deeper simulation
 - **Opamp circuits with behavioral models** are accurate for gain and bandwidth. Not accurate for: slew rate limiting (not yet modeled in transient), noise, CMRR, or output current.
 - **Opamp circuits with ideal fallback** are accurate for DC gain only. Bandwidth is approximate (10 MHz GBW assumption).
 - **Transistor circuits** confirm switching behavior but use generic threshold voltages. Real Vth depends on the specific part.
-- **Crystal circuits** validate load capacitor arithmetic. Startup margin requires the driving IC's transconductance (available for ~30 MCU families in the lookup table).
+- **Crystal circuits** validate load capacitor arithmetic. Startup margin requires the driving IC's transconductance (available for 24 crystal-driver entries in the lookup table).
 
 ### Architectural limitations
 - **Subcircuits are simulated in isolation** — no loading from downstream stages, no interaction between subcircuits.
@@ -185,14 +185,14 @@ Most users don't need to set any of these — the skill auto-detects whichever s
 
 **LCSC requires no credentials** — the jlcsearch community API is free and is tried first in the cascade.
 
-Without any API credentials, the skill still works — it falls through to the built-in lookup table (100+ parts) and then to ideal models. API credentials expand behavioral model coverage to any part the distributors carry.
+Without any API credentials, the skill still works — it falls through to the built-in lookup table (103 parts) and then to ideal models. API credentials expand behavioral model coverage to any part the distributors carry.
 
 ## Testing
 
 The SPICE skill is validated against the same 5,829-repo test corpus as the analyzers:
 
-- **30,646 simulations** across the full corpus
-- **93.1% pass rate** (28,544 pass, 1,297 warn, 5 fail, 922 skip)
+- **30,768 results** in the last corpus run recorded here, which predates the `info` status: 28,544 pass, 1,297 warn, 5 fail, 922 skip (92.8% pass)
+- Results are `pass`, `warn`, `fail`, `info` (measured, no criterion) and `skip`; `pass` means measured and within tolerance, so a run's pass rate is not comparable across versions that add `info`. See [VALIDATION.md](VALIDATION.md) for the current harness results
 - **0 script errors** — the skill never crashes on any project in the corpus
 - **57.7% behavioral model coverage** for opamp circuits (626/1,085 used per-part models)
 

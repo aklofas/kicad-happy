@@ -281,7 +281,7 @@ The agent runs the analysis scripts, then autonomously digs deeper — tracing n
 
 The **spice** skill goes beyond static analysis. It automatically generates SPICE testbenches for detected subcircuits — RC/LC filters, voltage dividers, opamp stages, feedback networks, transistor switches, crystal oscillators — runs them, and reports whether simulated behavior matches calculated values.
 
-For recognized opamps (~100 parts), it uses **per-part behavioral models** with the real GBW, slew rate, and output swing from distributor APIs or a built-in lookup table. When both schematic and PCB exist, it injects **PCB trace parasitics** into the simulation.
+For op-amps it can resolve (49 in the built-in table, more through distributor APIs), it uses **per-part behavioral models** with the real GBW, slew rate, and output swing from distributor APIs or a built-in lookup table. When both schematic and PCB exist, it inserts **PCB trace parasitics** into low-pass RC-filter simulations.
 
 ```
 Simulation: 14 pass, 1 warn, 0 fail

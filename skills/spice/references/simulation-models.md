@@ -25,14 +25,14 @@ When the skill encounters an active component (opamp, LDO, comparator), it resol
 
 1. **Project cache** — `<project>/spice/models/manifest.json` (legacy name: `index.json`) stores previously resolved models (instant, no network)
 2. **Distributor API parametric data** — queries LCSC (no auth), DigiKey, element14, Mouser for real electrical specs like GBW, slew rate, offset voltage. Structured JSON, no PDF parsing.
-3. **Structured datasheet extraction** — reads pre-extracted specs from `<project>/datasheets/extracted/<MPN>.json`. Cached JSON produced by the `datasheets` skill, scored 0-10 for completeness. See `skills/datasheets/references/extraction-schema.md` and `skills/datasheets/references/quality-scoring.md`.
+3. **Legacy structured extraction** — a `spice_specs` record from `<project>/datasheets/extracted/` (score ≥ 6 of the 0-10 completeness score). It does not read v1.4 extractions, and in practice it finds nothing from the `datasheets` skill's cache. This tier and the PDF tier run only when the analysis names its project. See `skills/datasheets/references/extraction-schema.md` and `skills/datasheets/references/quality-scoring.md`.
 4. **Datasheet PDF regex extraction** — reads downloaded PDFs from `<project>/datasheets/`, extracts specs via text pattern matching. Requires `pdftotext`. Last-resort fallback.
-5. **Built-in lookup table** — `spice_part_library.py` has ~100 common parts with datasheet-verified specs. Offline safety net.
+5. **Built-in lookup table** — `spice_part_library.py` has 103 op-amps, LDOs, comparators and references with datasheet-verified specs. Offline safety net.
 6. **Ideal model fallback** — generic model with fixed parameters (e.g., 10 MHz GBW for opamps)
 
 Real data from APIs and datasheets takes priority over the lookup table. The table serves as an offline fallback when no network or downloaded PDFs are available. Passive components (R, C, L) always use the simulator's exact built-in primitives (standard SPICE R/C/L elements) — no model resolution needed. All three supported simulators (ngspice, LTspice, Xyce) handle these identically.
 
-The lookup table also includes crystal driver specs for ~30 MCU families (STM32, ESP32, nRF52, ATmega, RP2040) with oscillator transconductance values for startup margin analysis.
+The lookup table also includes crystal driver specs for 24 entries (22 MCU families plus two 32 kHz LSE variants: STM32, ESP32, nRF52, ATmega, RP2040) with oscillator transconductance values for startup margin analysis.
 
 ---
 
