@@ -18,7 +18,7 @@ Install: `/plugin marketplace add aklofas/kicad-happy` (Claude Code), `agy plugi
 ## Core Skills
 
 - [Schematic Analysis](https://github.com/aklofas/kicad-happy/blob/main/skills/kicad/SKILL.md): Parse .kicad_sch files, detect 40+ subcircuit types, compute voltages/frequencies/currents, validate component values against datasheets
-- [EMC Pre-Compliance](https://github.com/aklofas/kicad-happy/blob/main/skills/emc/SKILL.md): 42 rule checks across 17 categories — ground planes, decoupling, switching harmonics, PDN impedance, diff pairs, board edge radiation
+- [EMC Pre-Compliance](https://github.com/aklofas/kicad-happy/blob/main/skills/emc/SKILL.md): 44 rule checks across 18 categories — ground planes, decoupling, switching harmonics, PDN impedance, diff pairs, board edge radiation
 - [SPICE Simulation](https://github.com/aklofas/kicad-happy/blob/main/skills/spice/SKILL.md): Auto-generated testbenches for 17 subcircuit types, Monte Carlo tolerance analysis, multi-simulator support
 - [BOM Management](https://github.com/aklofas/kicad-happy/blob/main/skills/bom/SKILL.md): Multi-supplier pricing, order file export, lifecycle auditing
 

@@ -98,7 +98,7 @@ Read the JSON report and incorporate findings into the design review. Each findi
 | **Decoupling** | DC-001 to DC-003 | Cap too far from IC, IC with no decoupling cap, cap too far from via |
 | **I/O filtering** | IO-001, IO-002 | Connector without filtering, insufficient ground pins |
 | **Switching EMC** | SW-001 to SW-003 | Harmonic overlap, switching node copper area, input cap loop area |
-| **Clock routing** | CK-001 to CK-003 | Clock on outer layer, long trace, clock near connector |
+| **Clock routing** | CK-001 to CK-004 | Clock on outer layer, long trace, clock near connector, no ground pour near a crystal |
 | **Via stitching** | VS-001 | Ground via spacing exceeds λ/20 at highest frequency |
 | **Stackup** | SU-001 to SU-003 | Adjacent signal layers, signal far from reference plane, thin interplane capacitance |
 | **Diff pair** | DP-001 to DP-004 | Intra-pair skew vs protocol limits, CM radiation, reference plane change, outer layer routing |
@@ -111,6 +111,7 @@ Read the JSON report and incorporate findings into the design review. Each findi
 | **Thermal-EMC** | TH-001, TH-002 | MLCC DC bias derating (SRF shift), ferrite near heat source |
 | **Shielding** | SH-001 | Connector aperture slot resonance near emission source |
 | **Emission estimates** | EE-001, EE-002 | Board cavity resonance, switching harmonic envelope |
+| **Inductor leakage** | ML-001 | Unshielded or unknown-shielding switching inductor within 15 mm of an ADC, op-amp, crystal or RF part |
 
 **Advisory outputs** (not findings):
 - **Pre-compliance test plan** — frequency band prioritization, interface risk ranking, near-field probe points

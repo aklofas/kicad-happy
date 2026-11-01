@@ -13,7 +13,7 @@ This repo is a suite of AI-powered electronics design skills for KiCad 5-10.
 Each skill lives under `skills/<name>/SKILL.md` — read the SKILL.md for full usage. Key skills:
 
 - **kicad** — Schematic/PCB/Gerber analysis. Run `python3 skills/kicad/scripts/analyze_schematic.py <file>.kicad_sch` for structured analysis.
-- **emc** — EMC pre-compliance (42 rules). Consumes schematic + PCB analyzer JSON.
+- **emc** — EMC pre-compliance (44 rules). Consumes schematic + PCB analyzer JSON.
 - **spice** — SPICE simulation with auto-generated testbenches.
 - **bom** — BOM management with multi-supplier pricing.
 - **digikey/mouser/lcsc/element14** — Component sourcing APIs.

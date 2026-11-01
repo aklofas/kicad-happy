@@ -29,7 +29,7 @@ No external tools required — all checks work with analytical formulas alone. W
 | **Decoupling** | DC-001 to DC-003 | Cap too far from IC, IC with no decoupling cap, cap too far from via (connection inductance) | PCB |
 | **I/O filtering** | IO-001, IO-002 | Connector without filtering, insufficient ground pins for signal count | PCB + schematic |
 | **Switching EMC** | SW-001 to SW-003 | Harmonic overlap with test bands, switching node copper area, input cap loop area | Schematic + PCB |
-| **Clock routing** | CK-001 to CK-004 | Clock on outer layer, long clock trace, clock routed near connector, stub length | PCB + schematic |
+| **Clock routing** | CK-001 to CK-004 | Clock on outer layer, long clock trace, clock routed near connector, no ground pour near crystal | PCB + schematic |
 | **Via stitching** | VS-001 | Ground via spacing exceeds 2x lambda/20 at highest frequency | PCB + schematic |
 | **Stackup** | SU-001 to SU-003 | Adjacent signal layers, signal far from reference plane, thin interplane cap | PCB |
 | **Differential pair** | DP-001 to DP-004 | Intra-pair skew vs protocol limits, CM radiation from skew, reference plane change, outer layer routing | PCB + schematic |
@@ -42,7 +42,7 @@ No external tools required — all checks work with analytical formulas alone. W
 | **Thermal-EMC** | TH-001, TH-002 | MLCC DC bias derating (SRF shift), ferrite near heat source | PCB + schematic |
 | **Shielding** | SH-001 | Connector aperture slot resonance coinciding with emission source | PCB + schematic |
 | **Emission estimates** | EE-001, EE-002 | Board cavity resonance frequencies, switching harmonic envelope | PCB / schematic |
-| **Magnetic leakage** | ML-001 | Unshielded switching inductors within 15mm of sensitive analog circuits (ADCs, opamps, crystals, RF) | PCB + schematic |
+| **Magnetic leakage** | ML-001 | Unshielded or unknown-shielding switching inductors within 15mm of sensitive analog circuits (ADCs, opamps, crystals, RF) | PCB + schematic |
 
 ## The Physics
 

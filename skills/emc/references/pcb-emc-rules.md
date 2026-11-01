@@ -114,6 +114,12 @@ Quantitative design rules used by the EMC analyzer. Each rule has a threshold, r
 - **Rationale:** Clock harmonics can couple to attached cables via proximity, increasing radiated emissions. Clock traces near connector apertures create efficient radiators.
 - **Fix:** Route clock traces away from connectors. Use ground guard traces if routing is constrained.
 
+### CK-004: No ground pour near crystal
+- **Severity:** warning (heuristic confidence)
+- **Threshold:** No ground zone whose filled (or outline) bounding box, extended by 5mm, contains the crystal's footprint position. Crystals come from the schematic's `crystal_circuits`.
+- **Rationale:** A local ground pour under and around a crystal reduces parasitic coupling to the oscillator and its loop.
+- **Fix:** Add a ground pour on the layer below the crystal, extending at least 3mm beyond the footprint on all sides.
+
 ## Via Stitching
 
 ### VS-001: Insufficient via stitching
@@ -360,6 +366,15 @@ Source: Goldfarb, E. & Pucha, R. "Modeling Via Grounds in Microstrip." IEEE Micr
 - **Rationale:** A connector aperture acts as a resonant slot antenna. When slot resonance overlaps with on-board emission sources, the connector becomes an efficient radiator.
 - **Source:** Ott, *EMC Engineering*, Ch. 6 — aperture theory and slot antenna radiation.
 - **Fix:** Use shielded connector variants. Add absorber material inside enclosure near aperture.
+
+## Inductor Magnetic Leakage
+
+### ML-001: Switching inductor near sensitive circuit
+- **Severity:** error (closer than 8mm and known unshielded), warning (otherwise; heuristic confidence)
+- **Threshold:** An inductor of a switching regulator (switching, buck, boost, buck-boost or SEPIC) that is unshielded, or of unknown shielding (treated as unshielded), within 15mm of an ADC, op-amp, crystal (or the IC it drives) or RF-chain part that has a PCB position. Inductors classified as shielded are skipped.
+- **Rationale:** Leakage flux from an unshielded switching inductor couples into high-impedance analog nodes and injects switching noise. The finding reports a magnetic-dipole H-field estimate at the measured distance (1 A peak current and a 5mm package assumed); it is context, not a threshold.
+- **Source:** Ott, *EMC Engineering*, Ch. 11 — near-field coupling from switching inductor leakage flux.
+- **Fix:** Use a shielded inductor or increase separation beyond 15mm. Orient the inductor axis perpendicular to sensitive traces.
 
 ## References
 

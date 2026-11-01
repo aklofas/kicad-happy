@@ -48,7 +48,7 @@ Cross-references connector positions (from `footprints`) against filter/protecti
 Uses schematic `power_regulators` data to identify switching converters, estimates switching frequency from part number lookup, then calculates harmonic overlap with FCC/CISPR test bands using the trapezoidal spectrum model.
 
 ### Category 5: Clock Routing Quality (rules CK-xxx)
-Uses `net_lengths` layer distribution to check if clocks are on outer vs inner layers. Schematic `crystal_circuits` and `buses` data identify which nets are clock signals.
+Uses `net_lengths` layer distribution to check if clocks are on outer vs inner layers. Schematic `crystal_circuits` and `buses` data identify which nets are clock signals. CK-004 checks for a ground pour within 5mm of each crystal.
 
 ### Category 6: Via Stitching (rules VS-xxx)
 Estimates average via spacing from total via count and board area. Compares against λ/20 requirement at the highest detected frequency.
@@ -85,6 +85,9 @@ Detects MLCC capacitors with significant DC bias derating (which shifts SRF, aff
 
 ### Category 17: Shielding Advisories (rules SH-xxx)
 Calculates connector aperture slot resonance frequencies and flags coincidences with on-board emission sources (crystal and switching harmonics).
+
+### Category 18: Inductor Magnetic Leakage (rules ML-xxx)
+Flags switching-regulator inductors (buck, boost, buck-boost, SEPIC and other switching topologies) that are unshielded, or whose shielding is unknown and therefore assumed unshielded, within 15mm of an ADC, op-amp, crystal (and the IC it drives) or RF-chain part. The report includes an estimated H-field at that distance (1 A peak current and a 5mm package assumed); the estimate is informational and does not gate the finding.
 
 ## Risk Scoring
 
