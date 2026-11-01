@@ -1,8 +1,8 @@
 # Datasheet Extraction Dispatcher Contract
 
-> **Status:** Phase 3a (v1.4). The contract is stable and applies to every dispatcher implementation: `dispatch-claude-code.md` (v1.4), `dispatch-codex.md`, `dispatch-gemini.md`, `extract.py` SDK runner, canned harness dispatcher (all v1.5+).
+> **Status:** stable. The contract applies to every dispatcher implementation. The only one shipped is `dispatch-claude-code.md`; an SDK runner or another agent platform would implement the same contract.
 
-A **dispatcher** is the swappable layer between `plan_extraction.py` and `merge_results.py` in the Phase 3a extraction pipeline. Its job: read `<mpn>.plan.json`, run each per-task subagent under its native LLM-dispatch primitive, write per-task wrapped result files. Python (plan_extraction + merge_results) is platform-agnostic; plan_extraction is stdlib-only, merge_results needs the `jsonschema` package (`pip install jsonschema`); the dispatcher is the only agent-specific component.
+A **dispatcher** is the swappable layer between `plan_extraction.py` and `merge_results.py` in the extraction pipeline. Its job: read `<mpn>.plan.json`, run each per-task subagent under its native LLM-dispatch primitive, write per-task wrapped result files. Python (plan_extraction + merge_results) is platform-agnostic; plan_extraction is stdlib-only, merge_results needs the `jsonschema` package (`pip install jsonschema`); the dispatcher is the only agent-specific component.
 
 ## Inputs
 
@@ -48,7 +48,7 @@ Per task: `<cache_dir>/<mpn>.<task_id>.result.json` — the **wrapped result fil
 |---|---|
 | **MUST** | For each task in `plan.tasks` where `status: "pending"`: instantiate the subagent with `task.prompt_template` (placeholders substituted) and the task's PDF page list, capture subagent output, write the wrapped result file to `<cache_dir>/<mpn>.<task_id>.result.json`. |
 | **MUST** | Set `status: "complete"` if subagent output passes JSON-schema validation against `task.schema`; set `status: "failed"` with an `error` field if validation fails or the subagent reports an explicit error. |
-| **MUST** | Respect `task.depends_on` — never dispatch a task whose dependencies haven't all reached `status: "complete"`. (Phase 3a tasks all have `depends_on: []`, so this is a future-proofing constraint.) |
+| **MUST** | Respect `task.depends_on` — never dispatch a task whose dependencies haven't all reached `status: "complete"`. (the shipped extraction tasks all have `depends_on: []`, so this is a future-proofing constraint.) |
 | **MUST** | Be idempotent — if a result file already exists with `status: "complete"` and its `pdf_sha256` equals `plan.pdf_sha256`, skip that task (resume-safe). A schema major-version bump does not invalidate old results; pass `--force` to re-run them. |
 | **MUST** | Substitute prompt placeholders: `{{MPN}}` ← `plan.mpn`, `{{PDF_PATH}}` ← `plan.pdf_path`, `{{PAGES}}` ← `task.pages` (formatted as a human-readable list, e.g. "5, 6, 13–15"), `{{SCHEMA_PATH}}` ← `task.schema`. |
 | **MAY** | Dispatch parallel-eligible tasks (empty or fully-satisfied `depends_on`) concurrently. Single-threaded dispatch is also valid. |
@@ -79,7 +79,7 @@ The dispatcher classifies subagent output as one of:
 
 The dispatcher does NOT inspect the data semantically beyond schema validation. Quality checking is `datasheet_score.py`'s and `validate_sanity_vector.py`'s job.
 
-## Cost ledger (optional, recommended for v1.4)
+## Cost ledger (optional, recommended)
 
 If the dispatcher writes a cost ledger, the format is JSONL:
 
@@ -89,7 +89,7 @@ If the dispatcher writes a cost ledger, the format is JSONL:
 
 Location: `<cache_dir>/_cost_ledger.jsonl`. Append-only; never rewritten.
 
-The Phase 3a Claude Code recipe makes this optional (the cost data isn't auditable from inside the `Agent` tool); v1.5 SDK dispatchers populate it directly from API responses.
+The Claude Code recipe makes this optional (the cost data isn't auditable from inside the `Agent` tool); a dispatcher that calls an API directly can populate it from the API responses.
 
 ## Relationship to plan_extraction.py and merge_results.py
 

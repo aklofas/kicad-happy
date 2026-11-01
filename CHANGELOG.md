@@ -222,6 +222,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The script docstrings, `diff-analysis.md` and the Cursor rules state the Python 3.10 floor the code needs (they said 3.8+), so `export_issues.py --help` prints 3.10+ (KH-642).
 - The contributor and architecture docs, the review README and design-context prompt, the net-tracing, scripts and SPICE model guides state facts without tracker ids, spec section numbers, commit hashes, refactor-round labels or plugin-version milestones, ARCHITECTURE.md calls its contracts frozen for the 3.x line, and the lookup-detector rows list all six rules (adds TJ-001).
 - The Gerber, Deep Review and what-if docs match the code: GR-002 reports copper outside the board outline (not layer-extent alignment); the gate accepts a net by any of its three identities and finds the run folder portably; a missing datasheet is a line in the review text, not a `deep_review.json` finding; a tolerance suffix on a sweep component has no effect; the reference table's line counts are current (KH-484).
+- The datasheet and distributor docs, extraction schemas and prompts no longer carry phase labels, issue ids or future-release promises; they say what the code does today, and the install guide's pre-release examples use placeholders.
 
 ---
 

@@ -40,7 +40,7 @@
         "type": "string",
         "enum": ["regulator", "mcu", "opamp", "transistor", "diode", "crystal", "supervisor"]
       },
-      "description": "List of category extensions applicable to this MPN. Phase 3a supports regulator only; other values reserved for 3b."
+      "description": "List of category extensions applicable to this MPN. Only `regulator` is supported today; other values are reserved."
     },
     "extraction_pages": {
       "type": "object",

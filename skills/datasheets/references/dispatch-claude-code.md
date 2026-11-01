@@ -1,6 +1,6 @@
 # Claude Code Dispatcher Recipe
 
-> **Reference dispatcher for v1.4 Phase 3a.** Satisfies `dispatcher-contract.md` using Claude Code's `Agent` tool.
+> **Reference dispatcher for the extraction pipeline.** Satisfies `dispatcher-contract.md` using Claude Code's `Agent` tool.
 
 This document tells an orchestrator running inside Claude Code how to dispatch the per-task subagents for an extraction plan. It assumes the orchestrator has read `dispatcher-contract.md` and the relevant prompt templates.
 
@@ -108,7 +108,7 @@ Exit code 0 always (this is the second-and-final merge). Tasks that succeeded me
 
 ## Concurrency note
 
-Claude Code's `Agent` tool supports parallel tool-call dispatch within a single message. Issuing all three Phase 3a tasks (base, pinout, regulator) in one message gives ~3× speedup over serial. If context bloat becomes an issue (long conversations after multiple PDFs), fall back to two messages: `[base, pinout]` then `[regulator]`.
+Claude Code's `Agent` tool supports parallel tool-call dispatch within a single message. Issuing all three extraction tasks (base, pinout, regulator) in one message gives ~3× speedup over serial. If context bloat becomes an issue (long conversations after multiple PDFs), fall back to two messages: `[base, pinout]` then `[regulator]`.
 
 ## Cost ledger (optional)
 
@@ -118,7 +118,7 @@ If you want to record cost data for analysis, append one JSONL entry per `Agent`
 {"run_id": "20260425T100000Z-a1b2c3", "mpn": "LM2596-ADJ", "task_id": "scout", "tier": "B", "model_id": "claude-sonnet-4-6", "tokens_in": null, "tokens_out": null, "cost_usd": null, "success": true, "extracted_at": "2026-04-25T10:00:30Z"}
 ```
 
-Tokens and cost are unavailable from inside Claude Code's `Agent` tool — leave them null in v1.4. v1.5 SDK dispatcher populates them.
+Tokens and cost are unavailable from inside Claude Code's `Agent` tool — leave them null. A dispatcher that calls an API directly can populate them.
 
 ## Failure modes to watch for
 
@@ -131,7 +131,7 @@ Tokens and cost are unavailable from inside Claude Code's `Agent` tool — leave
 ## Example conversation flow (LM2596-ADJ)
 
 ```
-USER: Run Phase 3a extraction for LM2596-ADJ from /path/to/LM2596.pdf
+USER: Run extraction for LM2596-ADJ from /path/to/LM2596.pdf
 
 ORCHESTRATOR:
   - Run plan_extraction (which would dispatch scout — but cached-scout flow:
@@ -149,11 +149,11 @@ ORCHESTRATOR:
 
 ---
 
-## Phase 4 addendum: dispatching review tasks
+## Dispatching review tasks
 
 The `design_context` task (v2.0) reuses this same dispatcher contract per spec §4.5. Key differences:
 
-- Tasks have `task_type: "review"` (vs `"extraction"` for Phase 3 datasheet tasks).
+- Tasks have `task_type: "review"` (vs `"extraction"` for datasheet tasks).
 - The design_context task lives at `skills/kicad/review/prompts/design_context.md`. The reviewer task is retired in v2.0 (superseded by the Deep Review pass — see `skills/kicad/references/deep-review.md`).
 - Result schemas live under `skills/kicad/review/schemas/{design_context,review_annotations}.schema.json`.
 - Result paths are `analysis/<artifact>.json` (NOT `<mpn>.<task>.result.json` — review outputs are run-level, not MPN-level).

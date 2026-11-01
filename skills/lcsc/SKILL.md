@@ -167,7 +167,7 @@ python3 <skill-path>/scripts/sync_datasheets_lcsc.py <file.kicad_sch> --parallel
 python3 <skill-path>/scripts/sync_datasheets_lcsc.py --mpn-list mpns.txt --output ./datasheets
 ```
 
-**MPN-list batch mode** (KH-312) — when you have a list of MPNs but no
+**MPN-list batch mode** — when you have a list of MPNs but no
 KiCad project to point at. One MPN per line; blank lines and `#`
 comments (full-line and inline) are skipped; generic values are filtered
 via `is_real_mpn()` and de-duplicated. Output defaults to `./datasheets/`

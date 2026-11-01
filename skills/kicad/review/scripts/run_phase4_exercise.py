@@ -155,7 +155,7 @@ def step_3_build_review_plan(fixture_dir: Path):
           "--output", str(plan_path)])
     print(f"  plan written: {plan_path}")
     print("[step 3] OK — dispatch design_context per "
-          "skills/datasheets/references/dispatch-claude-code.md Phase 4 addendum")
+          "skills/datasheets/references/dispatch-claude-code.md, Dispatching review tasks")
     print("  Expected output from the dispatch (v2.0: reviewer task retired, spec §5):")
     print(f"    {analysis_dir / 'design_context.json'}")
 

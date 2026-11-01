@@ -47,7 +47,7 @@
         "page_count": {"type": ["integer", "null"], "minimum": 1},
         "family_ref": {
           "type": ["string", "null"],
-          "description": "Path to a family file in datasheets/extracted/_families/ when this MPN is a variant. Reserved for v1.5 Tier 2 dedup; always null in v1.4."
+          "description": "Path to a family file in datasheets/extracted/_families/ when this MPN is a variant. Reserved for Tier 2 family dedup; always null today."
         }
       }
     },

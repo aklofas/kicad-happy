@@ -244,7 +244,7 @@ python3 <skill-path>/scripts/sync_datasheets_digikey.py <file.kicad_sch> --paral
 python3 <skill-path>/scripts/sync_datasheets_digikey.py --mpn-list mpns.txt --output ./datasheets
 ```
 
-**MPN-list batch mode** (KH-312) — when you have a list of MPNs but no KiCad
+**MPN-list batch mode** — when you have a list of MPNs but no KiCad
 project to point at (harness datasheet seeding, bulk seeding a new part
 library). The file format is one MPN per line. Blank lines and `#`
 comments (full-line and inline) are skipped. Non-MPN strings (generic

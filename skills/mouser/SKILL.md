@@ -206,7 +206,7 @@ python3 <skill-path>/scripts/sync_datasheets_mouser.py <file.kicad_sch> --parall
 python3 <skill-path>/scripts/sync_datasheets_mouser.py --mpn-list mpns.txt --output ./datasheets
 ```
 
-**MPN-list batch mode** (KH-312) — when you have a list of MPNs but no
+**MPN-list batch mode** — when you have a list of MPNs but no
 KiCad project to point at (harness datasheet seeding, bulk part-library
 seeding). One MPN per line; blank lines and `#` comments (full-line and
 inline) are skipped; generic values (`100nF`, `DNP`) are filtered via

@@ -79,11 +79,11 @@ append `#<ref>` to the marketplace ref:
 
 ```
 # Pin to a release candidate
-/plugin marketplace add aklofas/kicad-happy#v1.4.0-rc.1
+/plugin marketplace add aklofas/kicad-happy#<rc-tag>
 /plugin install kicad-happy@kicad-happy
 
 # Track a development branch (will follow further commits)
-/plugin marketplace add aklofas/kicad-happy#v1.4-dev
+/plugin marketplace add aklofas/kicad-happy#<branch>
 /plugin install kicad-happy@kicad-happy
 
 # Pin to a previous stable release
@@ -92,8 +92,8 @@ append `#<ref>` to the marketplace ref:
 ```
 
 Stable users on the un-suffixed marketplace (`aklofas/kicad-happy`) are
-unaffected by RC tags — release candidates live on the `v1.4-dev` branch
-and don't reach `main` until v1.4.0 final. Claude Code marketplaces have
+unaffected by RC tags — release candidates live on a development branch
+and don't reach `main` until the final release. Claude Code marketplaces have
 no SemVer-prerelease-skip logic, so the `#<ref>` suffix is the only opt-in
 mechanism for prereleases.
 
