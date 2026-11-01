@@ -78,10 +78,8 @@ class PhasePurity(unittest.TestCase):
                     board = read_board(str(path))
                     facts = run_facts(board, include_trace_segments=full, **KW)
                     checks = run_checks(board, facts, include_trace_segments=full)
-                    composed = {**_fields(facts), **_fields(checks)}
-                    self.assertEqual(set(_fields(a)), set(composed))
-                    for name, val in composed.items():
-                        self.assertEqual(_fields(a)[name], val, name)
+                    self.assertEqual(_fields(a.facts), _fields(facts))
+                    self.assertEqual(_fields(a.checks), _fields(checks))
 
     def test_assemble_result_leaves_board_and_analyses_unchanged(self):
         from pcb.pipeline import read_board, run_analyses, assemble_result
@@ -95,13 +93,15 @@ class PhasePurity(unittest.TestCase):
                     analyses = run_analyses(board, include_trace_segments=full, **KW)
                     snap = _freeze(board)
                     # the one documented write: assemble_result pops connectivity["unrouted"]
-                    expected = {f.name: getattr(analyses, f.name) for f in dataclasses.fields(analyses)}
+                    expected = {f.name: getattr(part, f.name)
+                                for part in (analyses.facts, analyses.checks)
+                                for f in dataclasses.fields(part)}
                     expected["connectivity"] = {k: v for k, v in expected["connectivity"].items() if k != "unrouted"}
                     expected = {k: _dump(v) for k, v in expected.items()}
                     assemble_result(board, analyses, proximity=False, include_trace_segments=full,
                                     schematic_data=None, resolved_power_rails=None, power_rails_source="heuristic")
                     self.assertEqual(_freeze(board), snap)
-                    self.assertEqual(_fields(analyses), expected)
+                    self.assertEqual({**_fields(analyses.facts), **_fields(analyses.checks)}, expected)
 
 
 if __name__ == "__main__":

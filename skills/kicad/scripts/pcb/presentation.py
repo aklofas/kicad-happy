@@ -156,6 +156,7 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
     and only their result writes happen here. *board* is a pcb.pipeline.BoardData and
     *analyses* a pcb.pipeline.PcbAnalyses.
     """
+    facts, checks = analyses.facts, analyses.checks
     diagnostics: list = list(board.diagnostics)
     layers = board.layers
     setup = board.setup
@@ -166,34 +167,34 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
     zones = board.zones
     zone_fills = board.zone_fills
     outline = board.outline
-    connectivity = analyses.connectivity
-    stats = analyses.stats
-    version = analyses.version
-    generator_version = analyses.generator_version
-    format_newer_note = analyses.format_newer_note
-    component_groups = analyses.component_groups
-    net_lengths = analyses.net_lengths
-    power_routing = analyses.power_routing
-    pad_distances = analyses.pad_distances
-    decoupling = analyses.decoupling
-    ground_domains = analyses.ground_domains
-    current_capacity = analyses.current_capacity
-    via_analysis = analyses.via_analysis
-    thermal = analyses.thermal
-    layer_transitions = analyses.layer_transitions
-    placement = analyses.placement
-    silkscreen = analyses.silkscreen
-    metadata = analyses.metadata
-    dimensions = analyses.dimensions
-    groups = analyses.groups
-    net_classes = analyses.net_classes
-    project_settings = analyses.project_settings
-    dfm = analyses.dfm
-    tombstoning = analyses.tombstoning
-    thermal_pad_vias = analyses.thermal_pad_vias
-    copper_presence = analyses.copper_presence
-    return_path = analyses.return_path
-    gp001_samples = analyses.gp001_samples
+    connectivity = facts.connectivity
+    stats = facts.stats
+    version = facts.version
+    generator_version = facts.generator_version
+    format_newer_note = facts.format_newer_note
+    component_groups = facts.component_groups
+    net_lengths = facts.net_lengths
+    power_routing = facts.power_routing
+    pad_distances = facts.pad_distances
+    decoupling = checks.decoupling
+    ground_domains = facts.ground_domains
+    current_capacity = facts.current_capacity
+    via_analysis = checks.via_analysis
+    thermal = checks.thermal
+    layer_transitions = facts.layer_transitions
+    placement = checks.placement
+    silkscreen = facts.silkscreen
+    metadata = facts.metadata
+    dimensions = facts.dimensions
+    groups = facts.groups
+    net_classes = facts.net_classes
+    project_settings = facts.project_settings
+    dfm = checks.dfm
+    tombstoning = checks.tombstoning
+    thermal_pad_vias = checks.thermal_pad_vias
+    copper_presence = checks.copper_presence
+    return_path = facts.return_path
+    gp001_samples = facts.gp001_samples
     _resolved_power_rails = resolved_power_rails
     pin_signals = board_pin_signals(board.footprints, _resolved_power_rails)
     _power_rails_source = power_rails_source
@@ -248,7 +249,7 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
             **({"via_analysis": via_analysis} if via_analysis else {}),
         },
         "zones": zones,
-        "keepout_zones": analyses.keepout_zones,
+        "keepout_zones": facts.keepout_zones,
         "connectivity": connectivity,
         "net_lengths": net_lengths,
     }
@@ -325,7 +326,7 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
     # has minima, so the schema-required key always carries a result.
     design_compliance = analyze_design_rule_compliance(
         tracks, vias, project_settings or {}, footprints=footprints,
-        minima=analyses.board_minima, board_layers=[l["name"] for l in layers or []],
+        minima=facts.board_minima, board_layers=[l["name"] for l in layers or []],
         ignored_checks=ignored_checks)
     result["design_rule_compliance"] = design_compliance or {}
 
@@ -344,32 +345,32 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
         result["_gp001_debug_samples"] = gp001_samples
 
     # New assembly/DFM checks
-    fiducial_check = analyses.fiducial_check
+    fiducial_check = checks.fiducial_check
     if fiducial_check.get("findings"):
         result["fiducial_check"] = fiducial_check
 
-    test_point_cov = analyses.test_point_coverage
+    test_point_cov = checks.test_point_coverage
     result["test_point_coverage"] = test_point_cov
 
-    orientation = analyses.orientation
+    orientation = checks.orientation
     if orientation:
         result["orientation_consistency"] = orientation
 
-    silkscreen_overlaps = analyses.silkscreen_overlaps
+    silkscreen_overlaps = checks.silkscreen_overlaps
     if silkscreen_overlaps:
         result["silkscreen_pad_overlaps"] = silkscreen_overlaps
 
-    keepout_violations = analyses.keepout_violations
+    keepout_violations = checks.keepout_violations
     if keepout_violations:
         result["keepout_violations"] = keepout_violations
 
     conn_graph = None
     if include_trace_segments:
-        via_in_pad = analyses.via_in_pad
+        via_in_pad = checks.via_in_pad
         if via_in_pad:
             result["via_in_pad_issues"] = via_in_pad
 
-        edge_via = analyses.edge_via
+        edge_via = checks.edge_via
         if edge_via:
             result["board_edge_via_clearance"] = edge_via
 

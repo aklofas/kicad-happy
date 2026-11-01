@@ -16,7 +16,7 @@ import json
 import os
 import re
 import sys
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -267,45 +267,9 @@ class PcbChecks:
 @dataclass
 class PcbAnalyses:
     """Phases 2–3 output: every intermediate analyze_pcb() computed between the board and
-    the result dict (PcbFacts + PcbChecks)."""
-    connectivity: Any
-    stats: Any
-    version: Any
-    generator_version: Any
-    format_newer_note: Any
-    component_groups: Any
-    net_lengths: Any
-    power_routing: Any
-    pad_distances: Any
-    decoupling: Any
-    ground_domains: Any
-    current_capacity: Any
-    via_analysis: Any
-    thermal: Any
-    layer_transitions: Any
-    placement: Any
-    silkscreen: Any
-    metadata: Any
-    dimensions: Any
-    groups: Any
-    net_classes: Any
-    project_settings: Any
-    board_minima: Any
-    dfm: Any
-    tombstoning: Any
-    thermal_pad_vias: Any
-    ref_layer_map: Any
-    copper_presence: Any
-    return_path: Any
-    gp001_samples: Any
-    keepout_zones: Any
-    fiducial_check: Any
-    test_point_coverage: Any
-    orientation: Any
-    silkscreen_overlaps: Any
-    keepout_violations: Any
-    via_in_pad: Any
-    edge_via: Any
+    the result dict."""
+    facts: PcbFacts
+    checks: PcbChecks
 
 
 def run_facts(board: BoardData, *, include_trace_segments: bool, return_path_radius_mm: float,
@@ -575,8 +539,7 @@ def run_analyses(board: BoardData, *, include_trace_segments: bool, return_path_
                       gp001_debug=gp001_debug,
                       resolved_power_rails=resolved_power_rails)
     checks = run_checks(board, facts, include_trace_segments=include_trace_segments)
-    return PcbAnalyses(**{f.name: getattr(part, f.name)
-                          for part in (facts, checks) for f in fields(part)})
+    return PcbAnalyses(facts=facts, checks=checks)
 
 
 def analyze_pcb(path: str, *, proximity: bool = False,

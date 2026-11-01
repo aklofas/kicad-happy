@@ -728,74 +728,8 @@ def assemble_signal_results(ctx: AnalysisContext, topo: dict, domain: dict) -> d
     """Phase 4: crystal/RC exclusion, the signal_analysis dict (historical key order),
     net classifications, certifications, observations, capacitor enrichment + derating.
     """
-    rail_voltages = topo["rail_voltages"]
-    voltage_dividers = topo["voltage_dividers"]
-    feedback_networks = topo["feedback_networks"]
-    lc_filters = topo["lc_filters"]
     crystal_circuits = topo["crystal_circuits"]
-    opamp_circuits = topo["opamp_circuits"]
     rc_filters = topo["rc_filters"]
-    decoupling_analysis = topo["decoupling_analysis"]
-    current_sense = topo["current_sense"]
-    power_regulators = topo["power_regulators"]
-    protection_devices = topo["protection_devices"]
-    bridge_circuits = topo["bridge_circuits"]
-    transistor_circuits = topo["transistor_circuits"]
-    buzzer_speaker_circuits = domain["buzzer_speaker_circuits"]
-    key_matrices = domain["key_matrices"]
-    isolation_barriers = domain["isolation_barriers"]
-    ethernet_interfaces = domain["ethernet_interfaces"]
-    hdmi_dvi_interfaces = domain["hdmi_dvi_interfaces"]
-    lvds_interfaces = domain["lvds_interfaces"]
-    memory_interfaces = domain["memory_interfaces"]
-    rf_chains = domain["rf_chains"]
-    rf_matching = domain["rf_matching"]
-    bms_systems = domain["bms_systems"]
-    battery_chargers = domain["battery_chargers"]
-    motor_drivers = domain["motor_drivers"]
-    addressable_led_chains = domain["addressable_led_chains"]
-    debug_interfaces = domain["debug_interfaces"]
-    power_path = domain["power_path"]
-    esd_coverage_audit = domain["esd_coverage_audit"]
-    adc_circuits = domain["adc_circuits"]
-    reset_supervisors = domain["reset_supervisors"]
-    clock_distribution = domain["clock_distribution"]
-    display_interfaces = domain["display_interfaces"]
-    sensor_interfaces = domain["sensor_interfaces"]
-    level_shifters = domain["level_shifters"]
-    audio_circuits = domain["audio_circuits"]
-    led_driver_ics = domain["led_driver_ics"]
-    rtc_circuits = domain["rtc_circuits"]
-    led_audit = domain["led_audit"]
-    thermocouple_rtd = domain["thermocouple_rtd"]
-    power_sequencing_validation = domain["power_sequencing_validation"]
-    connector_ground_audit = domain["connector_ground_audit"]
-    pullup_findings = domain["pullup_findings"]
-    voltage_level_findings = domain["voltage_level_findings"]
-    i2c_findings = domain["i2c_findings"]
-    spi_findings = domain["spi_findings"]
-    can_findings = domain["can_findings"]
-    usb_findings = domain["usb_findings"]
-    power_seq_dep_findings = domain["power_seq_dep_findings"]
-    led_resistor_findings = domain["led_resistor_findings"]
-    feedback_stability_findings = domain["feedback_stability_findings"]
-    crystal_load_findings = domain["crystal_load_findings"]
-    am_001_findings = domain["am_001_findings"]
-    ov_001_findings = domain["ov_001_findings"]
-    ft_001_findings = domain["ft_001_findings"]
-    pm_001_findings = domain["pm_001_findings"]
-    ex_001_findings = domain["ex_001_findings"]
-    wireless_modules = domain["wireless_modules"]
-    transformer_feedback = domain["transformer_feedback"]
-    i2c_address_conflicts = domain["i2c_address_conflicts"]
-    energy_harvesting = domain["energy_harvesting"]
-    pwm_led_dimming = domain["pwm_led_dimming"]
-    headphone_jacks = domain["headphone_jacks"]
-    solder_jumpers = domain["solder_jumpers"]
-    shorted_two_pin_components = domain["shorted_two_pin_components"]
-    rail_source_audit = domain["rail_source_audit"]
-    label_aliases = domain["label_aliases"]
-    power_pin_dc_paths = domain["power_pin_dc_paths"]
 
     # Remove R/C components that appear in crystal circuits from RC filter
     # results — prevents misclassifying crystal feedback resistors + load caps
@@ -815,78 +749,78 @@ def assemble_signal_results(ctx: AnalysisContext, topo: dict, domain: dict) -> d
             ]
 
     results = {
-        "rail_voltages": rail_voltages,
-        "voltage_dividers": voltage_dividers,
+        "rail_voltages": topo["rail_voltages"],
+        "voltage_dividers": topo["voltage_dividers"],
         "rc_filters": rc_filters,
-        "lc_filters": lc_filters,
-        "feedback_networks": feedback_networks,
+        "lc_filters": topo["lc_filters"],
+        "feedback_networks": topo["feedback_networks"],
         "crystal_circuits": crystal_circuits,
         "snubbers": [],
-        "decoupling_analysis": decoupling_analysis,
-        "current_sense": current_sense,
-        "power_regulators": power_regulators,
-        "protection_devices": protection_devices,
-        "opamp_circuits": opamp_circuits,
-        "bridge_circuits": bridge_circuits,
-        "transistor_circuits": transistor_circuits,
-        "buzzer_speaker_circuits": buzzer_speaker_circuits,
-        "key_matrices": key_matrices,
-        "isolation_barriers": isolation_barriers,
-        "ethernet_interfaces": ethernet_interfaces,
-        "hdmi_dvi_interfaces": hdmi_dvi_interfaces,
-        "lvds_interfaces": lvds_interfaces,
-        "memory_interfaces": memory_interfaces,
-        "rf_chains": rf_chains,
-        "rf_matching": rf_matching,
-        "bms_systems": bms_systems,
-        "battery_chargers": battery_chargers,
-        "motor_drivers": motor_drivers,
-        "addressable_led_chains": addressable_led_chains,
-        "debug_interfaces": debug_interfaces,
-        "power_path": power_path,
-        "esd_coverage_audit": esd_coverage_audit,
-        "adc_circuits": adc_circuits,
-        "reset_supervisors": reset_supervisors,
-        "clock_distribution": clock_distribution,
-        "display_interfaces": display_interfaces,
-        "sensor_interfaces": sensor_interfaces,
-        "level_shifters": level_shifters,
-        "audio_circuits": audio_circuits,
-        "led_driver_ics": led_driver_ics,
-        "rtc_circuits": rtc_circuits,
-        "led_audit": led_audit,
-        "thermocouple_rtd": thermocouple_rtd,
-        "power_sequencing_validation": power_sequencing_validation,
-        "connector_ground_audit": connector_ground_audit,
-        "wireless_modules": wireless_modules,
-        "transformer_feedback": transformer_feedback,
-        "i2c_address_conflicts": i2c_address_conflicts,
-        "energy_harvesting": energy_harvesting,
-        "pwm_led_dimming": pwm_led_dimming,
-        "headphone_jacks": headphone_jacks,
-        "solder_jumpers": solder_jumpers,
-        "shorted_two_pin_components": shorted_two_pin_components,
-        "rail_source_audit": rail_source_audit,
-        "label_aliases": label_aliases,
-        "power_pin_dc_paths": power_pin_dc_paths,
+        "decoupling_analysis": topo["decoupling_analysis"],
+        "current_sense": topo["current_sense"],
+        "power_regulators": topo["power_regulators"],
+        "protection_devices": topo["protection_devices"],
+        "opamp_circuits": topo["opamp_circuits"],
+        "bridge_circuits": topo["bridge_circuits"],
+        "transistor_circuits": topo["transistor_circuits"],
+        "buzzer_speaker_circuits": domain["buzzer_speaker_circuits"],
+        "key_matrices": domain["key_matrices"],
+        "isolation_barriers": domain["isolation_barriers"],
+        "ethernet_interfaces": domain["ethernet_interfaces"],
+        "hdmi_dvi_interfaces": domain["hdmi_dvi_interfaces"],
+        "lvds_interfaces": domain["lvds_interfaces"],
+        "memory_interfaces": domain["memory_interfaces"],
+        "rf_chains": domain["rf_chains"],
+        "rf_matching": domain["rf_matching"],
+        "bms_systems": domain["bms_systems"],
+        "battery_chargers": domain["battery_chargers"],
+        "motor_drivers": domain["motor_drivers"],
+        "addressable_led_chains": domain["addressable_led_chains"],
+        "debug_interfaces": domain["debug_interfaces"],
+        "power_path": domain["power_path"],
+        "esd_coverage_audit": domain["esd_coverage_audit"],
+        "adc_circuits": domain["adc_circuits"],
+        "reset_supervisors": domain["reset_supervisors"],
+        "clock_distribution": domain["clock_distribution"],
+        "display_interfaces": domain["display_interfaces"],
+        "sensor_interfaces": domain["sensor_interfaces"],
+        "level_shifters": domain["level_shifters"],
+        "audio_circuits": domain["audio_circuits"],
+        "led_driver_ics": domain["led_driver_ics"],
+        "rtc_circuits": domain["rtc_circuits"],
+        "led_audit": domain["led_audit"],
+        "thermocouple_rtd": domain["thermocouple_rtd"],
+        "power_sequencing_validation": domain["power_sequencing_validation"],
+        "connector_ground_audit": domain["connector_ground_audit"],
+        "wireless_modules": domain["wireless_modules"],
+        "transformer_feedback": domain["transformer_feedback"],
+        "i2c_address_conflicts": domain["i2c_address_conflicts"],
+        "energy_harvesting": domain["energy_harvesting"],
+        "pwm_led_dimming": domain["pwm_led_dimming"],
+        "headphone_jacks": domain["headphone_jacks"],
+        "solder_jumpers": domain["solder_jumpers"],
+        "shorted_two_pin_components": domain["shorted_two_pin_components"],
+        "rail_source_audit": domain["rail_source_audit"],
+        "label_aliases": domain["label_aliases"],
+        "power_pin_dc_paths": domain["power_pin_dc_paths"],
         "validation_findings": (
-            pullup_findings +
-            voltage_level_findings +
-            i2c_findings +
-            spi_findings +
-            can_findings +
-            usb_findings +
-            power_seq_dep_findings +
-            led_resistor_findings +
-            feedback_stability_findings +
-            crystal_load_findings
+            domain["pullup_findings"] +
+            domain["voltage_level_findings"] +
+            domain["i2c_findings"] +
+            domain["spi_findings"] +
+            domain["can_findings"] +
+            domain["usb_findings"] +
+            domain["power_seq_dep_findings"] +
+            domain["led_resistor_findings"] +
+            domain["feedback_stability_findings"] +
+            domain["crystal_load_findings"]
         ),
         "lookup_findings": (
-            am_001_findings +
-            ov_001_findings +
-            ft_001_findings +
-            pm_001_findings +
-            ex_001_findings
+            domain["am_001_findings"] +
+            domain["ov_001_findings"] +
+            domain["ft_001_findings"] +
+            domain["pm_001_findings"] +
+            domain["ex_001_findings"]
         ),
     }
 
