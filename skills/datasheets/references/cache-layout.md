@@ -57,7 +57,7 @@ The distributor download manifest, written by the sync scripts: `{schematic, las
 ### Orchestration audit files
 
 `<MPN>.plan.json` (written by `plan_extraction.py`) and `<MPN>.scout.json`
-(the scout subagent's output, saved by the dispatcher) sit alongside the
+(the scout subagent's output, saved by the dispatcher per `dispatch-claude-code.md`) sit alongside the
 main `<MPN>.json`. They persist the scout output and the per-task
 orchestration plan for audit and replay.
 
@@ -165,5 +165,6 @@ examples.
 - `skills/datasheets/scripts/datasheet_features.py` — the dict helpers,
   which read v1.4 caches first and fall back to v1.3 caches.
 - `skills/datasheets/scripts/plan_extraction.py` and `merge_results.py` —
-  the extraction pipeline; they write new entries and the
-  `<MPN>.plan.json` / `<MPN>.scout.json` audit files.
+  the extraction pipeline; they write new entries and `<MPN>.plan.json`.
+  The scout's output, `<MPN>.scout.json`, is saved by the dispatcher (the
+  agent following `dispatch-claude-code.md`).
