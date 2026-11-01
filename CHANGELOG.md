@@ -201,6 +201,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The schematic guide's Zener check uses P = VZ × IZ and gives the series resistor's own dissipation, the anti-alias check uses f_max for alias rejection and f_min for passband loss, and battery current through a switching regulator is V_load × I_load / (V_battery × η). (KH-637)
 - The net-tracing guide's pin rotation matches KiCad: a pin at (px, py) lands at (X − py, Y − px) at 90° and (X + py, Y + px) at 270°, its worked examples name the right pins, and it states how `(mirror x)` and `(mirror y)` change the result. (KH-637)
 - The manual PCB fallback reads zone fills and the board outline correctly: the zone snippet selects by net name and layer (including KiCad 10's `(net "GND")`), and the outline section points at the shared reader with the rules for a hand-written one. (KH-637)
+- The IPC-2221 trace-current tables in the PCB layout guide and the standards guide use 1 oz = 35 µm, give widths for 5, 10 and 20 A, point at the `CC-DET` finding's real field names, and note that TW-001's width table is more conservative and uncited. (KH-637)
 
 ---
 

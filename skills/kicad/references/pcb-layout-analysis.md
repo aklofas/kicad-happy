@@ -151,17 +151,17 @@ For motor controllers, power supplies, and other high-current designs, check the
 
 #### Trace Width vs Current Capacity
 
-The analyzer provides `current_capacity` data with min/max track widths per net. Cross-reference against net function:
+The analyzer reports each power and ground net's narrowest and widest track in a `CC-DET` finding (`min_track_width_mm`, `max_track_width_mm`); `power_net_routing` lists the same widths. Cross-reference against net function:
 
-| Net Function | Minimum Width (1oz Cu, 10°C rise) | Notes |
+| Net Function | Minimum Width (IPC-2221 external, 1oz = 35 µm, 10°C rise) | Notes |
 |---|---|---|
 | Signal (< 100mA) | 0.15-0.2mm | Default netclass is fine |
 | Low power (100mA-1A) | 0.3-0.5mm | LED drives, logic power |
-| Medium power (1-5A) | 0.5-1.0mm | Motor phases (small motors) |
-| High power (5-20A) | 1.0-3.0mm or copper pour | Motor phases, battery, VM |
+| Medium power (1-5A) | 0.3-2.8mm (1.0mm carries about 2.4A) | Motor phases (small motors) |
+| High power (5-20A) | 2.8mm at 5A, 7.2mm at 10A, 18.7mm at 20A; usually a copper pour | Motor phases, battery, VM |
 | Very high power (>20A) | Copper pour + via stitching | Power MOSFETs, motor outputs |
 
-Internal layers carry ~50% of external layer current. These are rough estimates — use an IPC-2221 calculator for precise values.
+Widths are from the IPC-2221 formula in standards-compliance.md for an isolated trace in still air. Internal layers carry ~50% of external layer current. The TW-001 check in `cross_analysis.py` (`_IPC2152_1OZ_10C`, lines 107-110) uses its own table, more conservative than these (3.5mm at 5A) and without a cited source, so its recommended widths are larger.
 
 #### Voltage Derating
 
