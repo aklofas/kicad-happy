@@ -308,7 +308,8 @@ def extract_zone_polygons(pcb_file, zone_net, zone_layer):
         if str(name) != str(zone_net):
             continue
         for fill in find_all(zone, 'filled_polygon'):
-            if get_value(fill, 'layer') != zone_layer:
+            # KiCad 5 fills carry no (layer): they belong to the zone's own layer
+            if (get_value(fill, 'layer') or get_value(zone, 'layer')) != zone_layer:
                 continue
             for pts in find_all(fill, 'pts'):
                 polygons.append([
