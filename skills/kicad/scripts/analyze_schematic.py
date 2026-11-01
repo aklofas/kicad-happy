@@ -79,9 +79,9 @@ def main(argv: list[str] | None = None) -> int:
     analysis_cfg = _acfg if isinstance(_acfg, dict) else {}
 
     # Resolve canonical analysis_dir ONCE — used for both AnalysisContext
-    # (Phase 4d-active) and capability_mode_ref (Phase 4 §3.3). This must
+    # (its datasheet cache dir) and capability_mode_ref. This must
     # be the same path so `--analysis-dir X` writes outputs AND capability
-    # mode to the same X, not to ./analysis (audit Highest-Risk #4).
+    # mode to the same X, not to ./analysis.
     if args.analysis_dir:
         _analysis_dir_for_ctx = Path(args.analysis_dir)
     elif args.output:
@@ -90,11 +90,11 @@ def main(argv: list[str] | None = None) -> int:
         _analysis_dir_for_ctx = Path(analysis_cfg.get("output_dir") or "analysis")
 
     # Resolve capability_mode_ref BEFORE build_inputs so inputs.run_id ==
-    # capability_mode_ref.run_id (Phase 4 spec §3.3, audit Highest-Risk #5).
+    # capability_mode_ref.run_id.
     # First-writer-wins side effect: creates capability_mode.json if absent.
     _capability_mode_ref = get_capability_mode_ref(_analysis_dir_for_ctx)
 
-    # Build inputs provenance block (Track 1.3).
+    # Build inputs provenance block.
     _sch_path = Path(args.schematic)
     _cfg_path = Path(resolved_cfg.hash_input) if resolved_cfg.hash_input else None
     inputs = build_inputs(
@@ -126,7 +126,7 @@ def main(argv: list[str] | None = None) -> int:
         print(format_text(result.get('findings', []), args.audience or 'designer', args.stage))
         return 0
 
-    # Wire capability_mode_ref (Phase 4 spec §3.3). Already resolved early
+    # Wire capability_mode_ref. Already resolved early
     # so inputs.run_id and capability_mode_ref.run_id match.
     result["capability_mode_ref"] = _capability_mode_ref
 

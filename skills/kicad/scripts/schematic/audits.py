@@ -1,4 +1,4 @@
-"""Schematic audits (annotation, labels, PWR_FLAG, footprint filters, sourcing, datasheet coverage, generic transistor symbols, grounds, bus topology, wire geometry, pin coverage, instance and hierarchical-label consistency): verbatim move from analyze_schematic.py; no behaviour change."""
+"""Schematic audits (annotation, labels, PWR_FLAG, footprint filters, sourcing, datasheet coverage, generic transistor symbols, grounds, bus topology, wire geometry, pin coverage, instance and hierarchical-label consistency)."""
 from __future__ import annotations
 
 import json
@@ -133,7 +133,7 @@ def audit_pwr_flags(components: list[dict], nets: dict, known_power_rails: set) 
         if net_name not in nets:
             continue
         net_info = nets[net_name]
-        # KH-354: PWR_FLAG pins never appear in pins[] (build_net_map
+        # PWR_FLAG pins never appear in pins[] (build_net_map
         # registers them as source points) — credit the net-level flag.
         if net_info.get("has_pwr_flag"):
             continue
@@ -234,8 +234,7 @@ def _bom_real_components(components: list[dict]) -> list[dict]:
     Excludes power symbols/flags, test points, mounting holes, fiducials,
     graphics, DNP parts, and anything not marked in_bom. Shared by
     audit_datasheet_coverage (DS-001/002/003) and audit_sourcing_gate
-    (SS-001/002/003) — both need the same "real BOM part" definition
-    (KH-390).
+    (SS-001/002/003) — both need the same "real BOM part" definition.
     """
     return [c for c in components
             if c.get("type") not in NON_COMPONENT_TYPES
@@ -280,7 +279,7 @@ def audit_datasheet_coverage(components: list[dict],
     # datasheet_extract_cache; its presence implies datasheets exist.
     import os as _os
     pd = project_dir or "."
-    # rc.2 4.2: widened search — walk up 1–2 parent dirs and match the case-
+    # Widened search — walk up 1–2 parent dirs and match the case-
     # insensitive [Dd]atasheets?/ pattern (singular or plural). Eliminates
     # DS-001 FPs on repos where the datasheets directory lives one level up
     # (multi-project monorepos, board variant subfolders, etc.).
@@ -316,7 +315,7 @@ def audit_datasheet_coverage(components: list[dict],
         # is partial so the reviewer knows which lines are ungrounded.
         # DS-003 counts by unique BOM line (value + footprint), the same
         # basis SS-002 uses — a line has coverage if ANY instance carries
-        # an MPN (KH-390: the two denominators used to disagree).
+        # an MPN (so the two denominators agree).
         line_groups: dict[tuple, dict] = {}
         for c in real:
             key = (c.get("value", ""), c.get("footprint", ""))
@@ -888,7 +887,7 @@ def analyze_bus_topology(bus_elements: dict, labels: list[dict], nets: dict) -> 
     result = {
         "bus_wire_count": len(bus_elements.get("bus_wires", [])),
         "bus_entry_count": len(bus_elements.get("bus_entries", [])),
-        # GH #25 honesty invariant (spec §4): bus constructs the resolver
+        # GH #25 honesty invariant: bus constructs the resolver
         # could not confidently resolve are surfaced, never silently dropped.
         "unresolved": sorted(
             ({"reason": u.get("reason", ""), "name": u.get("name")}
@@ -901,7 +900,7 @@ def analyze_bus_topology(bus_elements: dict, labels: list[dict], nets: dict) -> 
     if aliases:
         alias_info = []
         all_label_names = set(l["name"] for l in labels)
-        # KH-359: net keys may be sheet-qualified (/<sheet>/<name>) with the
+        # net keys may be sheet-qualified (/<sheet>/<name>) with the
         # bare name on display_name. Bus alias members are always bare
         # label names, so match against keys ∪ display_names.
         display_index = set(nets)

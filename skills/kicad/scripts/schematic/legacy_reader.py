@@ -292,7 +292,7 @@ def _parse_legacy_lib(path: str) -> dict:
     MIL_TO_MM = _MIL_MM
     symbols = {}
     current_name = None
-    current_aliases = []  # KH-142: track ALIAS names
+    current_aliases = []  # track ALIAS names
     current_pins = []
     current_unit_pins = {}
     current_alt_pins = []
@@ -326,7 +326,7 @@ def _parse_legacy_lib(path: str) -> dict:
                 in_draw = False
 
         elif line.startswith("ALIAS ") and current_name is not None:
-            # KH-142: Parse ALIAS directives — alternate names for this symbol
+            # Parse ALIAS directives — alternate names for this symbol
             current_aliases.extend(line.split()[1:])
 
         elif line.startswith("F3 ") and current_name is not None:
@@ -395,7 +395,7 @@ def _parse_legacy_lib(path: str) -> dict:
                 sym_def["alt_unit_pins"] = current_alt_unit_pins if has_multi_unit else None
                 sym_def["alt_pins"] = current_alt_pins
             symbols[current_name] = sym_def
-            # KH-142: Register same definition under each alias name
+            # Register same definition under each alias name
             for alias in current_aliases:
                 symbols[alias.lstrip("~")] = sym_def
             current_name = None
@@ -600,7 +600,7 @@ def _resolve_legacy_libs(sch_path: str, all_sch_lines: dict,
         resolution_info["builtin_fallback_count"] = len(_STANDARD_LIB_PINS)
         return symbols, resolution_info
 
-    # Strategy 2.5: Parse sym-lib-table for legacy library paths (KH-141)
+    # Strategy 2.5: Parse sym-lib-table for legacy library paths
     # KiCad 5 file version 4 uses sym-lib-table instead of LIBS: header directives
     slt_entries = _read_sym_lib_table(base_dir, missing)
     if slt_entries:

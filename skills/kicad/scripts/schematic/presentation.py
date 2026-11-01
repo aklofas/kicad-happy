@@ -1,6 +1,5 @@
 """Schematic result assembly: turns the parsed sheets, net map, BOM and
-analyses into the analyzer output dict. Bodies are verbatim from analyze_schematic.py;
-only the signatures and the input unpacking are new.
+analyses into the analyzer output dict.
 """
 
 from kicad_core.classify import NON_COMPONENT_TYPES
@@ -148,7 +147,7 @@ def assemble_result(ctx, parsed, nets, bom, analyses, *, path, sheets_parsed,
         project_settings['symbol_libs'] = lib_tables['symbol_libs']
 
     # Enrich components with pin-to-net mapping for downstream consumers
-    # KH-211: Include __unnamed_* nets so that connections through unlabelled
+    # Include __unnamed_* nets so that connections through unlabelled
     # wires (common in hierarchical sub-sheets) appear in pin_nets.
     _pin_nets: dict[str, dict[str, str]] = {}
     for _net_name, _net_info in nets.items():
@@ -174,10 +173,10 @@ def assemble_result(ctx, parsed, nets, bom, analyses, *, path, sheets_parsed,
         _ps.pop("_drives", None)
 
     # Flatten signal_analysis: all list values become findings, dict values promote to top level
-    # KH-388: detect_voltage_dividers' feedback-network path deliberately
+    # detect_voltage_dividers' feedback-network path deliberately
     # appends the SAME finding dict to both the `voltage_dividers` and
-    # `feedback_networks` signal_analysis lists — see the 8c36212 cascade
-    # warning in signal_detectors.py:324-346; that double-emission must
+    # `feedback_networks` signal_analysis lists — see the comment at that
+    # double emission in detect_voltage_dividers; it must
     # stay, it feeds detect_rc_filters' exclusion set. Dedup here instead
     # so the shared object doesn't also duplicate in the flattened
     # findings[] output. id()-based dedup is safe for ANY detector (a
@@ -222,7 +221,7 @@ def assemble_result(ctx, parsed, nets, bom, analyses, *, path, sheets_parsed,
     if dnp_rate_findings:
         findings.extend(dnp_rate_findings)
 
-    # NT-001 — single-pin nets weighted by pin type (Task 3)
+    # NT-001 — single-pin nets weighted by pin type
     nt_findings = connectivity_issues.get("single_pin_net_findings", [])
     if nt_findings:
         findings.extend(nt_findings)
@@ -231,7 +230,7 @@ def assemble_result(ctx, parsed, nets, bom, analyses, *, path, sheets_parsed,
     if voltage_derating:
         findings.extend(voltage_derating)
 
-    # UC-001..004 — USB compliance check failures (KH-338)
+    # UC-001..004 — USB compliance check failures
     if usb_compliance:
         findings.extend(usb_compliance.pop("findings", []))
 
@@ -252,8 +251,8 @@ def assemble_result(ctx, parsed, nets, bom, analyses, *, path, sheets_parsed,
         sev_counts[normalize_severity(_f.get("severity") if isinstance(_f, dict) else None)] += 1
 
     show_decoded_names(findings)
-    # Deterministic order so repeated runs produce byte-identical output
-    # (KH-316).  Sort key: (rule_id, detector, first_component, first_net, summary).
+    # Deterministic order so repeated runs produce byte-identical output.
+    # Sort key: (rule_id, detector, first_component, first_net, summary).
     sort_findings(findings)
 
     result = {
@@ -416,7 +415,7 @@ def assemble_legacy_result(*, nets, all_components, signal_analysis, real_compon
     (detection_id, detector) as the pre-v3 code did.
     """
     # Enrich components with pin-to-net mapping (legacy path)
-    # KH-211: Include __unnamed_* nets so that connections through unlabelled
+    # Include __unnamed_* nets so that connections through unlabelled
     # wires (common in hierarchical sub-sheets) appear in pin_nets.
     _pin_nets_l: dict[str, dict[str, str]] = {}
     for _net_name, _net_info in nets.items():
@@ -468,7 +467,7 @@ def assemble_legacy_result(*, nets, all_components, signal_analysis, real_compon
     for f in findings:
         sev_counts[normalize_severity(f.get("severity") if isinstance(f, dict) else None)] += 1
 
-    # Legacy analysis quality summary (KH-271)
+    # Legacy analysis quality summary
     _pin_source_counts = {"parsed_lib": 0, "suffix_match": 0, "snapped_to_wire": 0, "unresolved": 0,
                           "builtin_fallback": 0}
     for c in real_components:
@@ -480,7 +479,7 @@ def assemble_legacy_result(*, nets, all_components, signal_analysis, real_compon
         else:
             _pin_source_counts[src] = 1
 
-    # Deterministic order for byte-identical repeated runs (KH-316).
+    # Deterministic order for byte-identical repeated runs.
     sort_findings(findings)
 
     result = {
@@ -490,7 +489,7 @@ def assemble_legacy_result(*, nets, all_components, signal_analysis, real_compon
         "trust_summary": compute_trust_summary(findings),
         "kicad_version": "5 (legacy)",
         "file_version": "4",
-        "title_block": {},  # legacy .sch has no (title_block ...) node (TH-043)
+        "title_block": {},  # legacy .sch has no (title_block ...) node
         "sheets_parsed": len(sheets_parsed),
         "sheet_files": sheets_parsed,
         "statistics": stats,

@@ -1,6 +1,6 @@
 """Schematic reader: .kicad_sch symbols, pins, wires, labels, sheets → SheetData.
 
-Verbatim moves from analyze_schematic.py; no behaviour change. Reads only — the
+Reads only — the
 net map is built by schematic.connectivity, the hierarchy walk by schematic.hierarchy.
 """
 from __future__ import annotations
@@ -246,7 +246,7 @@ def compute_pin_positions(component: dict, lib_symbols: dict) -> list[Pin]:
     """Compute absolute pin positions for a placed component."""
     lib_id = component.get("lib_id", "")
     lib_name = component.get("lib_name", "")
-    # KH-083: Try lib_name first (KiCad 7+ local name), then lib_id
+    # Try lib_name first (KiCad 7+ local name), then lib_id
     sym_def = (lib_symbols.get(lib_name) if lib_name else None) or lib_symbols.get(lib_id)
     if not sym_def:
         return []
@@ -789,7 +789,7 @@ def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
         lib_id = get_value(sym, "lib_id")
         if not lib_id:
             continue
-        # KH-083: KiCad 7+ uses (lib_name X) when the local symbol name
+        # KiCad 7+ uses (lib_name X) when the local symbol name
         # differs from the library's lib_id (e.g., after Eagle import)
         lib_name = get_value(sym, "lib_name") or ""
 
@@ -815,9 +815,9 @@ def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
         value = get_property(sym, "Value")
         if tilde_empty and value == "~":
             value = ""
-        # KH-088: Eagle-imported schematics often have NO instance Value property.
+        # Eagle-imported schematics often have NO instance Value property.
         # Fall back to the lib_symbol's Value property only when the property is
-        # missing entirely (None), not when it exists but is empty string (KH-230).
+        # missing entirely (None), not when it exists but is empty string.
         if value is None:
             sym_def_val = (lib_symbols.get(lib_name) if lib_name else None) or lib_symbols.get(lib_id, {})
             value = sym_def_val.get("value", "") or ""
@@ -979,7 +979,7 @@ def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
         }
 
         # Determine component type from reference prefix, lib_id, and lib_symbol flags
-        # KH-083: lib_name is tried first for the lib_symbol lookup (sym_def above)
+        # lib_name is tried first for the lib_symbol lookup (sym_def above)
         is_power_sym = sym_def.get("is_power", False)
         # A stacked pin ("[1-5]") counts once per contact, as in KiCad's netlist.
         lib_pins = sym_def.get("pins")
@@ -1009,7 +1009,7 @@ def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
                                       sym_def.get("_dup_pin_jumpers", False))
         # Compute absolute pin positions
         comp["pins"] = compute_pin_positions(comp, lib_symbols)
-        # KH-216: Store unit-valid pin numbers for pin_nets filtering
+        # Store unit-valid pin numbers for pin_nets filtering
         comp["_unit_pins"] = {p["number"] for p in comp["pins"]}
 
         components.append(comp)
@@ -1040,7 +1040,7 @@ def extract_labels(root: list) -> list[dict]:
     for label_type in ["label", "global_label", "hierarchical_label", "directive_label"]:
         for lbl in find_all(root, label_type):
             name = lbl[1] if len(lbl) > 1 else ""
-            # KH-078: Malformed s-expressions can yield a list instead of string
+            # Malformed s-expressions can yield a list instead of string
             if isinstance(name, list):
                 name = str(name[0]) if name else ""
             else:
@@ -1332,7 +1332,7 @@ def parse_single_sheet(path: str, instance_uuid: str = "",
         # Extract sheet pin stubs as hierarchical labels so parent-sheet wires
         # connecting to the sheet symbol get unioned with the child sheet's nets.
         # Tag with _sheet_uuid so the traversal loop can namespace them per
-        # instance (KH-026: multi-instance hierarchical net isolation).
+        # instance (multi-instance hierarchical net isolation).
         sheet_uuid_for_pins = get_value(sheet, "uuid") or ""
         for pin in find_all(sheet, "pin"):
             if len(pin) < 2:
@@ -1357,14 +1357,14 @@ def parse_single_sheet(path: str, instance_uuid: str = "",
 def detect_sub_sheet(root_tree: list, file_path: str = None) -> bool:
     """Detect whether a parsed schematic is a sub-sheet (not the root).
 
-    Uses a multi-tier heuristic (KH-228, refined KH-304/306):
+    Uses a multi-tier heuristic:
       1. symbol_instances present → ROOT (KiCad 7+ roots always have this)
       2. sheet blocks present AND not referenced by sibling → ROOT
-         (KH-304: intermediate nodes also have sheet blocks; check
+         (intermediate nodes also have sheet blocks; check
          whether a sibling file references us as a child.)
       3. .kicad_pro stem matches file stem, or the project declares the file
          as a top-level sheet → ROOT
-         (KH-306: when multiple .kicad_pro exist, only match if ANY
+         (when multiple .kicad_pro exist, only match if ANY
          stem matches; don't blindly pick the first.)
       4. hierarchical_label presence → SUB-SHEET (original heuristic)
       5. Default: not a sub-sheet (standalone single-sheet design)
@@ -1375,7 +1375,7 @@ def detect_sub_sheet(root_tree: list, file_path: str = None) -> bool:
         return False
 
     # Tier 2: Files with (sheet ...) blocks reference other sheets → root
-    # KH-304: intermediate sub-sheets also have sheet blocks (they have
+    # intermediate sub-sheets also have sheet blocks (they have
     # children). Check if any sibling file references US as a child —
     # if so, we're an intermediate node, not the root.
     has_sheet_blocks = len(find_all(root_tree, "sheet")) > 0
@@ -1387,7 +1387,7 @@ def detect_sub_sheet(root_tree: list, file_path: str = None) -> bool:
         return False  # Has children, not referenced → root
 
     # Tier 3: .kicad_pro stem matching (reliable across all KiCad versions)
-    # KH-306: when multiple .kicad_pro exist, check ALL of them.
+    # when multiple .kicad_pro exist, check ALL of them.
     if file_path:
         parent_dir = os.path.dirname(os.path.abspath(file_path))
         file_stem = os.path.splitext(os.path.basename(file_path))[0]

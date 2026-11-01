@@ -1,12 +1,12 @@
-"""Phase 4 4c: 6 new detectors consuming v1.4 datasheet facts via lookup().
+"""Six detectors consuming datasheet facts via lookup().
 
 Each detector probes facts.base.<field> or facts.regulator.<field> via the
 typed Consumer API (datasheet_types) and emits findings with
 confidence='datasheet-backed' + evidence_source='datasheet' when data is
 present. Soft-skip when the cache is missing or below trust gate — no
-analyzer ever blocks on lookup() per Phase 4 spec §5.1.
+analyzer ever blocks on lookup().
 
-API surface (Phase 4b alignment, 2026-05-03):
+API surface:
     facts = get_facts(mpn, cache_dir=cache_dir, diagnostics=diagnostics)  # may be None
     if facts is None: return []                        # silent skip
     specs = facts.base.absolute_max.get(key)           # list[SpecValue]
@@ -15,7 +15,7 @@ API surface (Phase 4b alignment, 2026-05-03):
         if sv is not None and sv.max is not None:
             ...
 
-Synonym resolution (Phase 4c addendum §A2): base.absolute_max,
+Synonym resolution: base.absolute_max,
 base.recommended_operating, and base.thermal use additionalProperties:
 SpecValue[] — extractors emit mixed key spellings (VDD/VCC/VDDA, TJ/TJ_max).
 _resolve_key() walks a synonym tuple and returns the first match.
@@ -81,7 +81,7 @@ def _connected_net(ctx, ref: str, pin_numbers) -> Optional[str]:
 
 
 def _component_mpn(component: dict) -> Optional[str]:
-    """Resolve an IC's MPN with the same fallback chain as Phase 4b."""
+    """Resolve an IC's MPN: the mpn field, else the value."""
     return component.get("mpn") or component.get("value") or None
 
 
@@ -191,7 +191,7 @@ def detect_vcc_outside_recommended(ctx, rail_voltages: dict) -> list[dict]:
     rail voltage is within base.recommended_operating[domain] range
     (with synonym resolution).
 
-    Severity: warning (base severity; tuning matrix retired in v2.0, spec §5).
+    Severity: warning (a single base severity; no tuning matrix).
     """
     findings: list[dict] = []
     cache_dir = getattr(ctx, "cache_dir", None)

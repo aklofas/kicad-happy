@@ -1,4 +1,4 @@
-"""IC pinout and subcircuit analyses: verbatim move from analyze_schematic.py; no behaviour change."""
+"""IC pinout and subcircuit analyses."""
 from __future__ import annotations
 
 from kicad_types import (
@@ -259,7 +259,7 @@ def analyze_ic_pinouts(ctx: AnalysisContext,
 
     # Analyze ICs and other complex components (connectors, crystals, oscillators, etc.).
     # target_types is parameterised so the same code path can build a parallel
-    # transistor_pin_analysis[] (F4) — verifying gate/source/drain wiring on
+    # transistor_pin_analysis[] — verifying gate/source/drain wiring on
     # half-bridges is one of the highest-value review tasks and previously
     # required reconstructing the pin map from nets[].pins[] by hand.
     if target_types is None:

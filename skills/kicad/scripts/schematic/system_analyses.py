@@ -1,4 +1,4 @@
-"""System-level analyses (PDN impedance, sleep current, voltage derating, protocol compliance, power budget and sequencing, BOM optimization, test coverage, assembly complexity, USB compliance, inrush): verbatim move from analyze_schematic.py; no behaviour change."""
+"""System-level analyses (PDN impedance, sleep current, voltage derating, protocol compliance, power budget and sequencing, BOM optimization, test coverage, assembly complexity, USB compliance, inrush)."""
 from __future__ import annotations
 
 import json
@@ -94,7 +94,7 @@ def analyze_pdn_impedance(ctx: AnalysisContext, signal_analysis: dict | None = N
             comp = comp_lookup.get(p["component"])
             if not comp or comp["type"] != "capacitor":
                 continue
-            # KH-196: Use pre-computed parsed_values (has component_type context)
+            # Use pre-computed parsed_values (has component_type context)
             cap_val = ctx.parsed_values.get(comp["reference"])
             if not cap_val or cap_val <= 0:
                 continue
@@ -237,7 +237,7 @@ def analyze_pdn_impedance(ctx: AnalysisContext, signal_analysis: dict | None = N
     return result
 
 
-# KH-374: below this, a resistor bridging a rail to ground/a signal net is a
+# below this, a resistor bridging a rail to ground/a signal net is a
 # current-shunt/sense element, not a pull or bleeder -- a 5 mOhm shunt on
 # VBAT computed a nonsensical 740 A "worst-case" pull-up current pre-floor.
 SLEEP_PULL_MIN_OHM = 100.0
@@ -262,7 +262,7 @@ def analyze_sleep_current(ctx: AnalysisContext,
     rail_currents: dict[str, list[dict]] = {}
     _get_two_pin_nets = ctx.get_two_pin_nets
 
-    # KH-374: rail voltage resolution that also knows about battery rails
+    # rail voltage resolution that also knows about battery rails
     # (VBAT/+BATT) and regulator estimated_vout, not just names
     # _estimate_rail_voltage() can parse a number out of.
     _battery_rail_re = re.compile(r'^\+?(BATT?|VBATT?|BATTERY|BAT\+)$', re.IGNORECASE)
@@ -317,7 +317,7 @@ def analyze_sleep_current(ctx: AnalysisContext,
 
         if pwr_net and gnd_net:
             if r_val < SLEEP_PULL_MIN_OHM:
-                # KH-374: a sub-100 Ohm resistor bridging a rail straight
+                # a sub-100 Ohm resistor bridging a rail straight
                 # to ground is a shunt/sense element, not a bleeder --
                 # don't guess a current for it.
                 continue
@@ -356,7 +356,7 @@ def analyze_sleep_current(ctx: AnalysisContext,
         if not v_rail or v_rail <= 0:
             continue
 
-        # KH-342: classify the signal side before assuming worst-case V/R.
+        # classify the signal side before assuming worst-case V/R.
         # A second resistor to ground makes this a divider (DC = V/(R1+R2));
         # a shunt cap with no other DC sink makes it an RC filter (DC ~ 0).
         divider_r2_ref = None
@@ -413,7 +413,7 @@ def analyze_sleep_current(ctx: AnalysisContext,
                 "note": "series-R + shunt-C, no DC load — steady-state ~ 0",
             })
         elif r_val < SLEEP_PULL_MIN_OHM:
-            # KH-374: a sub-100 Ohm resistor here is a shunt/sense
+            # a sub-100 Ohm resistor here is a shunt/sense
             # element, not a pull -- don't guess a current for it.
             pass
         else:
@@ -475,7 +475,7 @@ def analyze_sleep_current(ctx: AnalysisContext,
                                     "note": "assuming ~2V forward drop, always-on if no switch",
                                 })
 
-    # KH-239: Drop pull_up entries that are actually LED current-limit
+    # Drop pull_up entries that are actually LED current-limit
     # resistors. The LED loop above already emitted led_indicator entries
     # with series_resistor pointing at these refs, and the LED arithmetic
     # (V_rail - V_f)/R is the correct one. The pull_up branch's V_rail/R
@@ -563,7 +563,7 @@ def analyze_sleep_current(ctx: AnalysisContext,
     if not rail_currents:
         return {}
 
-    # Build set of disableable rails. KH-374: when power_sequencing (real EN
+    # Build set of disableable rails. When power_sequencing (real EN
     # connectivity from analyze_power_sequencing) is available, a rail is
     # only disableable if its regulator's EN pin is actually driven by
     # something (en_source == "controlled") — not merely because the part
@@ -608,7 +608,7 @@ def analyze_sleep_current(ctx: AnalysisContext,
                 e["likely_state"] = "GPIO off during sleep"
                 e["realistic_uA"] = 0.0
             elif etype == "regulator_iq":
-                # KH-374: with real EN connectivity available, only a
+                # with real EN connectivity available, only a
                 # regulator whose EN is actually driven (en_source ==
                 # "controlled") counts as disableable — having an
                 # EN-named pin isn't enough on its own.
@@ -1412,7 +1412,7 @@ def analyze_power_budget(ctx: AnalysisContext,
 
     # Map regulators to output rails (built first: candidate_rails below
     # needs it so a regulator's output rail counts even when its name
-    # doesn't look power-y and carries no #PWR symbol -- KH-375).
+    # doesn't look power-y and carries no #PWR symbol).
     reg_by_rail: dict[str, dict] = {}
     for reg in signal_analysis.get("power_regulators", []):
         out_rail = reg.get("output_rail")
@@ -1430,7 +1430,7 @@ def analyze_power_budget(ctx: AnalysisContext,
         ref = comp["reference"]
         for pnum, (net_name, _) in ref_pins.get(ref, {}).items():
             if net_name and net_name in candidate_rails:
-                # Look up THE ITERATED PIN specifically -- KH-375: this used
+                # Look up THE ITERATED PIN specifically: this used
                 # to check the first pin `nets[net_name]["pins"]` listed for
                 # this component and `break`, which could be a non-power pin
                 # that happened to sort first (e.g. ~{SRCLR} before VCC).
@@ -1486,7 +1486,7 @@ def analyze_power_budget(ctx: AnalysisContext,
             if n:
                 net_to_resistors.setdefault(n, []).append(rref)
 
-    # Non-IC loads (KH-375): LEDs draw real current; 5 mA nominal each.
+    # Non-IC loads: LEDs draw real current; 5 mA nominal each.
     rail_other: dict[str, list[dict]] = {}
     for comp in components:
         if comp["type"] != "led":
@@ -1559,7 +1559,7 @@ def analyze_power_budget(ctx: AnalysisContext,
                 rail_info["regulator"]["output_voltage"] = v_out
 
             # LDO thermal dissipation: uses the rail's total load (ICs +
-            # other loads like LEDs) -- KH-375/KH-386 need the same number.
+            # other loads like LEDs) -- the rail load and the thermal estimate need the same number.
             if reg.get("topology") == "LDO" and v_in_rail and v_out:
                 v_in = abs(ctx.rail_voltage_or(v_in_rail, _estimate_rail_voltage) or 0)
                 if v_in and v_in > v_out:
@@ -2531,7 +2531,7 @@ def analyze_usb_compliance(ctx: AnalysisContext,
                 vbus_net = net_name
                 break
 
-        # Shared ESD-part keyword list: vbus_esd_protection credit (KH-338)
+        # Shared ESD-part keyword list: vbus_esd_protection credit
         # + the usb_esd_ic check below.
         esd_keywords = ("usblc", "prtr5v", "ip4", "sp0", "tpd", "esd", "pesd",
                         "rclamp", "nup", "lesd")
@@ -2552,7 +2552,7 @@ def analyze_usb_compliance(ctx: AnalysisContext,
                            for k in ("tvs", "esd", "smaj", "smbj", "p6ke")):
                         has_esd = True
                 elif pc["type"] == "ic":
-                    # KH-338: ESD arrays (USBLC6 etc.) protect VBUS through
+                    # ESD arrays (USBLC6 etc.) protect VBUS through
                     # their own VBUS pin — credit them even when the net is
                     # unnamed (resolution is by connector pin, not net name).
                     _combined = (pc.get("value", "") + " "
@@ -2609,7 +2609,7 @@ def analyze_usb_compliance(ctx: AnalysisContext,
 
         conn_checks["checks"]["usb_esd_ic"] = "pass" if esd_ic_found else "info"
 
-        # KH-338: promote failed checks to rich findings so they reach
+        # promote failed checks to rich findings so they reach
         # findings[] / summaries instead of living only in this aux section.
         _uc_specs = {
             "vbus_decoupling": (
@@ -2756,7 +2756,7 @@ def analyze_inrush_current(ctx: AnalysisContext,
             comp = comp_lookup.get(p["component"])
             if not comp or comp["type"] != "capacitor":
                 continue
-            # KH-196: Use pre-computed parsed_values (has component_type context)
+            # Use pre-computed parsed_values (has component_type context)
             cap_val = ctx.parsed_values.get(comp["reference"])
             if not cap_val or cap_val <= 0:
                 continue

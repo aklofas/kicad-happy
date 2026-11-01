@@ -1,6 +1,5 @@
 """Schematic connectivity: bus resolution and the net map.
 
-Verbatim moves from bus_resolver.py and analyze_schematic.py; no behaviour change.
 Bus logic replicates KiCad's bus semantics: ordered vector expansion,
 group/labeled-group buses (dot-joined members), nested groups, bus_alias
 resolution inside groups, and the _{...}/^{...}/~{...} text-markup exclusion.
@@ -465,7 +464,7 @@ def match_ports(pin_ports, hier_ports, unresolved):
     [((pin_sheet, pin_cluster, parent_member),
       (hier_sheet, hier_cluster, child_member)), ...].
 
-    "parent_ordered" is not computed here — the caller (Task 10) computes
+    "parent_ordered" is not computed here — the caller (build_net_map) computes
     it via cluster_ordered(cluster, len(members)) on the parent graph and
     stashes it on the port dict before calling this function.
     """
@@ -686,7 +685,7 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
             wk1, wk2, wx1, wy1, wx2, wy2, _ws = wire_segments[idx]
             if dist_iu is not None and segment_hit_iu(k[1:], wk1[1:], wk2[1:], dist_iu):
                 union(k, wk1)
-                # KH-360: no early return — a junction/label at a crossing
+                # no early return — a junction/label at a crossing
                 # must join every wire under it, matching KiCad's
                 # connection_graph (all coincident lines are inserted).
             elif _point_on_segment(px, py, wx1, wy1, wx2, wy2):
@@ -755,7 +754,7 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
         if idx in bus_label_idx:
             continue
         sheet = lbl.get("_sheet", 0)
-        # KH-078: Defensive coercion — malformed labels can have list names
+        # Defensive coercion — malformed labels can have list names
         lbl_name = lbl["name"]
         if isinstance(lbl_name, list):
             lbl_name = str(lbl_name[0]) if lbl_name else ""
@@ -1165,7 +1164,7 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
                 "labels": net_labels,
             })
 
-    # KH-359: one entry per union-find group. On bare-name collisions the
+    # one entry per union-find group. On bare-name collisions the
     # global-scope group keeps the bare key; local groups get KiCad-style
     # /<sheet>/<name> keys (sheet file stem, #N for repeated instance stems).
     n_sheets = 1 + max((e["sheet"] for e in staged), default=0)

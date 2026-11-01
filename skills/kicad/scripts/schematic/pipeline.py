@@ -1,5 +1,5 @@
 """Schematic analysis pipeline: the phases analyze_schematic.py ran implicitly,
-as named functions with their real prerequisites passed explicitly (spec §4.3, D4).
+as named functions with their real prerequisites passed explicitly.
 
 Phase 1 detect_topologies      — in-order detectors (dependency order; series dividers merged, integrated LDOs appended;
                                   opamps before RC filters; exclusion sets passed as arguments)
@@ -10,11 +10,10 @@ Phase 3 run_domain_detectors   — domain, validation and lookup detectors; RS/P
                                   one BridgeFacts
 Phase 4 assemble_signal_results — crystal/RC exclusion (after ADC detection consumed rc_filters),
                                   the signal_analysis dict in its historical key order,
-                                  certifications/observations, capacitor enrichment + derating
-                                  (both walk the dict recursively and MUTATE entries that carry
-                                  'farads' and 'ref')
+                                  certifications/observations, capacitor enrichment (walks the
+                                  dict recursively) + derating (regulator output, decoupling and
+                                  LC-filter capacitors); both MUTATE the entries they touch
 Project level: analyze_schematic → run_analyses → presentation.assemble_result.
-Every body is verbatim from analyze_schematic.py; only the seams are new.
 """
 
 import os
@@ -391,16 +390,16 @@ def detect_topologies(ctx: AnalysisContext) -> dict:
     # Run detectors in dependency order
     vd_result = detect_voltage_dividers(ctx)
     voltage_dividers = vd_result["voltage_dividers"]
-    # KH-105/KH-115: Merge series resistors in divider chains
+    # Merge series resistors in divider chains
     voltage_dividers = _merge_series_dividers(voltage_dividers, ctx)
     feedback_networks = [fn for fn in vd_result["feedback_networks"] if not fn.get("_closed_chain")]
 
     lc_filters = detect_lc_filters(ctx)
     crystal_circuits = detect_crystal_circuits(ctx)
-    # KH-145: Detect opamps BEFORE RC filters so feedback components can be excluded
+    # Detect opamps BEFORE RC filters so feedback components can be excluded
     opamp_circuits = detect_opamp_circuits(ctx)
-    # KH-107: Pass crystal_circuits to exclude crystal R/C from RC filter detection
-    # KH-145: Pass opamp_circuits to exclude feedback R+C from RC filter detection
+    # Pass crystal_circuits to exclude crystal R/C from RC filter detection
+    # Pass opamp_circuits to exclude feedback R+C from RC filter detection
     rc_filters = detect_rc_filters(ctx, voltage_dividers, crystal_circuits, opamp_circuits)
     decoupling_analysis = detect_decoupling(ctx)
     current_sense = detect_current_sense(ctx)
@@ -508,9 +507,9 @@ def run_domain_detectors(ctx: AnalysisContext, topo: dict) -> dict:
     feedback_stability_findings = validate_feedback_stability(ctx, power_regulators)
     crystal_load_findings = validate_crystal_load_caps(ctx, crystal_circuits)
 
-    # Lookup detectors (Phase 4c) — consume v1.4 datasheet facts via lookup().
-    # Soft-skip when get_facts() returns None (no MPN cache). Synonym-resolved
-    # rail keys per addendum §A2; per-pin Pin.absolute_max overrides rail-level.
+    # Lookup detectors — consume datasheet facts via lookup().
+    # Soft-skip when get_facts() returns None (no MPN cache). Rail keys are
+    # synonym-resolved; per-pin Pin.absolute_max overrides rail-level.
     am_001_findings = detect_absolute_max_violations(ctx, ctx.rail_by_net)
     ov_001_findings = detect_vcc_outside_recommended(ctx, ctx.rail_by_net)
     ft_001_findings = detect_5v_on_non_tolerant_pin(ctx, ctx.rail_by_net)
@@ -1086,7 +1085,7 @@ def analyze_legacy_schematic(path: str, analysis_dir: str | Path | None = None,
             comp["pins"] = compute_pin_positions(comp, {lib_id: sym_def})
             comp["_unit_count"] = sym_def.get("unit_count", 1)
             comp["_pin_source"] = "builtin" if sym_def.get("_builtin") else _pin_src
-            # KH-216: Store unit-valid pin numbers for pin_nets filtering
+            # Store unit-valid pin numbers for pin_nets filtering
             comp["_unit_pins"] = {p["number"] for p in comp["pins"]}
             # Snap pin positions to mil grid — eliminates floating-point drift
             # from trig-based rotation so pins align with wire endpoints.
@@ -1096,7 +1095,7 @@ def analyze_legacy_schematic(path: str, analysis_dir: str | Path | None = None,
 
     _record_library_gaps(all_components, missing_libs, root_path, parse_diagnostics)
 
-    # KH-016 fix: built-in fallback pin offsets differ between KiCad library
+    # built-in fallback pin offsets differ between KiCad library
     # versions, so a built-in pin that misses every wire end moves to the
     # nearest free one on its sheet.  Pins from parsed libraries never move.
     _snap_pins_to_wires(all_components, all_wires, all_labels + all_no_connects)
@@ -1233,7 +1232,7 @@ def run_analyses(ctx: AnalysisContext, parsed: dict, path: str, nets: dict, bom:
 
     # Detailed IC pinout analysis for datasheet cross-referencing
     ic_analysis = analyze_ic_pinouts(ctx)
-    # Parallel transistor pinout analysis (F4) — same code path, different
+    # Parallel transistor pinout analysis — same code path, different
     # filter. ic_pin_analysis stays IC/connector/crystal/oscillator-only for
     # consumer compatibility; transistors go in their own array.
     transistor_analysis = analyze_ic_pinouts(ctx, target_types={"transistor"})
@@ -1275,7 +1274,7 @@ def run_analyses(ctx: AnalysisContext, parsed: dict, path: str, nets: dict, bom:
 
     # ---- Tier 3: High-level design analyses ----
     pdn_analysis = analyze_pdn_impedance(ctx, signal_analysis)
-    # KH-374: power_sequencing must run before sleep_current so the sleep
+    # power_sequencing must run before sleep_current so the sleep
     # audit can consult real EN connectivity (en_source) instead of just
     # EN-pin-name presence.
     power_sequencing = analyze_power_sequencing(ctx, signal_analysis)
@@ -1489,9 +1488,8 @@ def finalize_for_cli(result: dict, config: dict, *, schematic_path: str, lifecyc
 
     Project config summary, design intent + CERT-001 gating, power_rails config, lifecycle
     audit / LC-007, datasheet verification, stage/audience filters, summary + trust_summary
-    recompute, finding_id assignment. Body verbatim from analyze_schematic.py::main; the only
-    seams are args.* -> parameters and one extra '..' on the datasheets path (this file is one
-    directory deeper).
+    recompute, finding_id assignment. The CLI's args.* arrive as parameters, and the
+    datasheets path takes one extra '..' (this file is one directory below the scripts dir).
     """
     # Attach project config summary to output for downstream consumers
     project = config.get("project", {})
@@ -1549,7 +1547,7 @@ def finalize_for_cli(result: dict, config: dict, *, schematic_path: str, lifecyc
         record(diagnostics, "schematic.pipeline.finalize_for_cli", exc,
                "power_rails config not applied")
 
-    # rc.2 4.3 — LC-007 lifecycle-skipped INFO finding. Emit explicitly so
+    # LC-007 lifecycle-skipped INFO finding. Emit explicitly so
     # reviewers see "lifecycle audit not run" in the findings list rather
     # than silently missing it. Fires in three cases:
     #   1. --lifecycle flag was not passed (most common — high frequency)
@@ -1635,7 +1633,7 @@ def finalize_for_cli(result: dict, config: dict, *, schematic_path: str, lifecyc
     except ImportError:
         pass
     except (OSError, ValueError, TypeError, KeyError, AttributeError) as e:
-        # AttributeError added for rc.3 — defense against future None-leaks
+        # AttributeError is caught as defense against future None-leaks
         # in datasheet_verify.py (see _load_extraction normalization).
         result["datasheet_verification"] = {
             "findings": [],

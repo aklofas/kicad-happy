@@ -65,9 +65,8 @@ def _find_pullups_on_net(
 
 # Library / footprint substrings that identify a bridged-by-default solder
 # jumper. SolderJumper_2_Bridged (Jumper library) is the canonical KiCad
-# symbol; the footprint name carries _Bridged_ too. rc.2 4.1 expansion
-# (SparkFun review — JP1/JP14/JP22 FP class on I2C buses behind bridged
-# jumpers).
+# symbol; the footprint name carries _Bridged_ too. Without this, I2C buses
+# behind bridged jumpers draw false pull-up findings.
 _BRIDGED_JUMPER_LIB_SUBSTRINGS = (
     'solderjumper_2_bridged',
     'solderjumper-2_p1.3mm_bridged',  # standard footprint suffix
@@ -112,7 +111,7 @@ def _find_pullups_on_net_with_bridged(
 ) -> list[dict]:
     """Like `_find_pullups_on_net` but also walks one hop through
     SolderJumper_2_Bridged to find pullups attached on the bridged side
-    of the jumper. rc.2 4.1 expansion (SparkFun review).
+    of the jumper.
     """
     pullups = list(_find_pullups_on_net(ctx, net_name, resistor_nets, net_to_resistors))
     for neighbor in _bridged_jumper_neighbor_nets(ctx, net_name):
@@ -219,7 +218,6 @@ _PULLUP_MAX_OHMS = 100000    # 100k — above this is weak
 # Regulators with internal EN pull-up — EN can be left floating (the part
 # enables itself by default) without a discrete external pull-up. Per-part
 # prefixes from TI/MPS/Microchip; pattern-match against IC value/MPN upper-cased.
-# rc.2 4.1 expansion (SparkFun + Manas review).
 _INTERNAL_EN_PULLUP_REGULATOR_PREFIXES = (
     'TPS54302', 'TPS5430',     # TI sync buck (D-CAP2) — internal EN pull-up
     'TPS6213',                 # TI buck with internal soft-start + EN pull-up
@@ -322,9 +320,9 @@ def validate_pullups(ctx: AnalysisContext) -> list[dict]:
 
             if needs_pullup:
                 # Datasheet path: if facts has recommended_pullup_range, use it.
-                # Heuristic path: fall back to _PULLUP_MIN/MAX_OHMS (always fires
-                # in v1.4 — no extracted MPN carries recommended_pullup_range yet;
-                # 4d-active populates ctx.cache_dir to activate datasheet path).
+                # Heuristic path: fall back to _PULLUP_MIN/MAX_OHMS. No extraction
+                # schema field is named recommended_pullup_range today, so the
+                # datasheet path only runs once a facts block provides one.
                 ds_range = None
                 if facts is not None:
                     _specs = getattr(
@@ -351,7 +349,7 @@ def validate_pullups(ctx: AnalysisContext) -> list[dict]:
                         continue  # Net is actively driven, pull-up not strictly required
 
                     # Skip regulators whose EN pin has an internal pull-up
-                    # (rc.2 4.1 expansion — TI/MPS/Microchip parts list).
+                    # (TI/MPS/Microchip parts list).
                     if _has_internal_en_pullup(ic, pin_name):
                         continue
 
@@ -503,7 +501,7 @@ def _ic_rail_voltage(ctx: AnalysisContext, ref: str) -> tuple[float | None, bool
     mpn = comp.get('mpn') or comp.get('value', '')
     feat = get_regulator_features(mpn, project_dir=ctx.project_dir) if mpn else None
     if feat and not feat.get('quality', {}).get('trusted', True):
-        feat = None   # deterministic detectors keep the v1.4 trust gate (v2.0 §3.A.1)
+        feat = None   # deterministic detectors ignore untrusted extractions
     if feat and feat.get('vin_pin'):
         vin_pin = str(feat['vin_pin'])
         for pnum, (net, _) in pins.items():
@@ -552,7 +550,7 @@ def _en_endpoint_compatible(ctx: AnalysisContext, p: dict, net_name: str, v_min:
     p_mpn = comp.get('mpn') or comp.get('value', '')
     ds_feat = get_regulator_features(p_mpn, project_dir=ctx.project_dir) if p_mpn else None
     if ds_feat and not ds_feat.get('quality', {}).get('trusted', True):
-        ds_feat = None   # deterministic detectors keep the v1.4 trust gate (v2.0 §3.A.1)
+        ds_feat = None   # deterministic detectors ignore untrusted extractions
     if ds_feat and ds_feat.get('en_pin'):
         for pnum, (net, _) in ctx.ref_pins.get(p['ref'], {}).items():
             if net == net_name and str(pnum) == str(ds_feat['en_pin']):
@@ -969,7 +967,7 @@ def validate_usb_bus(ctx: AnalysisContext) -> list[dict]:
                     mcu_mpn = c.get('mpn') or c.get('value', '')
                     mcu_feat = get_mcu_features(mcu_mpn, project_dir=ctx.project_dir) if mcu_mpn else None
                     if mcu_feat and not mcu_feat.get('quality', {}).get('trusted', True):
-                        mcu_feat = None   # deterministic detectors keep the v1.4 trust gate (v2.0 §3.A.1)
+                        mcu_feat = None   # deterministic detectors ignore untrusted extractions
                     if mcu_feat and mcu_feat.get('has_native_usb_phy') is True and mcu_feat.get('usb_series_r_required') is False:
                         mcu_on_net = p['component']
                         break
@@ -1098,7 +1096,7 @@ def validate_power_sequencing(
         mpn = comp.get('mpn') or comp.get('value', '')
         ds_feat = get_regulator_features(mpn, project_dir=ctx.project_dir) if mpn else None
         if ds_feat and not ds_feat.get('quality', {}).get('trusted', True):
-            ds_feat = None   # deterministic detectors keep the v1.4 trust gate (v2.0 §3.A.1)
+            ds_feat = None   # deterministic detectors ignore untrusted extractions
         if ds_feat and ds_feat.get('has_pg') is False:
             continue
         pg_net = _get_pin_net(ctx, ref, _PS_PG_PIN_NAMES)
@@ -1162,9 +1160,9 @@ def validate_led_resistors(ctx: AnalysisContext) -> list[dict]:
         facts = get_facts(mpn, cache_dir=cache_dir, diagnostics=getattr(ctx, "diagnostics", None)) if mpn else None
 
         # Probe diode.vf and diode.if_max from datasheet facts.
-        # DatasheetFacts.diode does not exist in v1.4 (DiodeBlock is v1.5 expansion),
-        # so _vf_specs and _if_specs will always be None today — heuristic always fires.
-        # The wiring activates automatically once DiodeBlock lands in v1.5 / 4d-active.
+        # DatasheetFacts has no diode block, so _vf_specs and _if_specs are
+        # always None today and the heuristic always fires. The datasheet
+        # path activates once a diode block exists.
         _vf_specs = getattr(getattr(facts, 'diode', None), 'vf', None)
         _if_specs = getattr(getattr(facts, 'diode', None), 'if_max', None)
 
@@ -1392,8 +1390,7 @@ _REQUIRES_COMPENSATION_KEYWORDS = (
 
 # Internally-compensated regulators — no external compensation needed.
 # Checked BEFORE _REQUIRES_COMPENSATION_KEYWORDS so wins over broad matches
-# like 'tps54' (which catches TPS54302's D-CAP2 part by accident). rc.2 4.1
-# expansion (Manas review).
+# like 'tps54' (which catches TPS54302's D-CAP2 part by accident).
 _INTERNALLY_COMPENSATED_KEYWORDS = (
     'tps54302',                # TI D-CAP2 (already a more-specific 'tps54' match)
     'tps62',                   # TI TPS62xxx DCS-Control family
@@ -1433,9 +1430,9 @@ def validate_feedback_stability(
 
         parallel_impedance = (r_top * r_bottom) / (r_top + r_bottom) if (r_top + r_bottom) > 0 else 0
 
-        # 4b lookup wiring: probe regulator facts (currently informational only;
-        # validation logic stays heuristic). Future v1.5/4d-active will validate
-        # cout_min and esr_range against schematic when datasheet provides them.
+        # Lookup wiring: probe regulator facts (informational only; validation
+        # logic stays heuristic). cout_min and esr_range are not yet compared
+        # against the schematic.
         mpn = reg.get('mpn') or ''
         if not mpn:
             comp_entry = ctx.comp_lookup.get(ref)

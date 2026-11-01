@@ -1,4 +1,4 @@
-"""Connectivity, power-domain, cross-domain, bus-protocol and differential-pair analyses: verbatim move from analyze_schematic.py; no behaviour change."""
+"""Connectivity, power-domain, cross-domain, bus-protocol and differential-pair analyses."""
 from __future__ import annotations
 
 import re
@@ -198,7 +198,7 @@ _NET_CLASS_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("debug", ("SWD", "SWCLK", "SWDIO", "SWO", "JTAG", "TCK", "TMS", "TDI", "TDO")),
     ("config", ("BOOT", "TEST")),
 )
-# KH-097: video sync signals are not chip selects
+# video sync signals are not chip selects
 _SYNC_KEYWORDS = ("CSYNC", "HSYNC", "VSYNC", "SYNC")
 # A token starting with a supply stem (VCCINT, VDDIO, AVDD_ADC) names a rail, never a keyword
 _SUPPLY_STEMS = ("VCC", "VDD", "AVCC", "AVDD", "DVCC", "DVDD", "PVDD", "IOVDD")
@@ -344,7 +344,7 @@ def _map_power_domains(ctx: AnalysisContext) -> dict:
                         "CSP", "CSN", "CS+", "CS-", "ISENSE", "IMON", "IOUT",
                         "SEN", "VS+", "VS-"}
     power_domains = {}
-    # KH-224: Accumulate rails/io_rails across all units of multi-unit ICs
+    # Accumulate rails/io_rails across all units of multi-unit ICs
     _ref_rails: dict[str, set] = {}      # ref -> set of power rail nets
     _ref_io_rails: dict[str, set] = {}   # ref -> set of IO rail nets
     _ref_value: dict[str, str] = {}      # ref -> value (from first unit seen)
@@ -599,7 +599,7 @@ def _detect_i2c_buses(ctx: AnalysisContext) -> list[dict]:
         if "SDA" in nu or "SCL" in nu or "I2C" in nu:
             # Skip SPI signals (MISO contains no I2C keywords, but SCLK/SCK match SCL)
             # Skip I2S signals (I2S0_RX_SDA etc. contain SDA as substring)
-            # KH-086: Also exclude MOSI/MISO nets (SPI data lines on dual-function ICs)
+            # Also exclude MOSI/MISO nets (SPI data lines on dual-function ICs)
             if "SCLK" in nu or nu.endswith("SCK") or "SPI" in nu or "MOSI" in nu or "MISO" in nu:
                 continue
             if "I2S" in nu:
@@ -685,7 +685,7 @@ def _detect_i2c_buses(ctx: AnalysisContext) -> list[dict]:
     for net_name, net_info in nets.items():
         if net_name in i2c_seen_nets:
             continue  # Already found by net name
-        # KH-086: Exclude SPI nets -- sensors with dual-function SDA/SCL pin names
+        # Exclude SPI nets -- sensors with dual-function SDA/SCL pin names
         nn_upper = net_name.upper()
         if "SPI" in nn_upper or "MOSI" in nn_upper or "MISO" in nn_upper:
             continue
@@ -1345,10 +1345,10 @@ def _detect_differential_pairs(ctx: AnalysisContext) -> list:
     ]
 
     # Net-name-based detection: find matching suffix pairs. Key by
-    # (sheet_prefix, display_name.upper()) so a KH-359 sheet-qualified net
+    # (sheet_prefix, display_name.upper()) so a sheet-qualified net
     # (e.g. /s1/USB_P, display_name "USB_P") still pairs by name, but two
     # same-named nets on *different* sheets never cross-pair. Plain
-    # assignment (not setdefault) preserves the pre-KH-359 comprehension's
+    # assignment (not setdefault) preserves the earlier comprehension's
     # last-wins semantics on a case-insensitive collision: unqualified
     # boards must resolve a collision identically to the old
     # `{n.upper(): n for n in nets}` one-liner.
@@ -1610,7 +1610,7 @@ def _estimate_rail_voltage(net_name: str) -> float | None:
     # Hardcoded fallbacks for common names without voltage numbers
     if "VBUS" in nu:
         return 5.0
-    # KH-343: only non-data USB nets (VBUS-ish) default to 5V
+    # only non-data USB nets (VBUS-ish) default to 5V
     if "USB" in nu and not is_usb_data_net_name(nu):
         return 5.0
     return None
