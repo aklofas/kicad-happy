@@ -45,11 +45,42 @@ class NoFacades(unittest.TestCase):
                        (pl, "parse_legacy_schematic"), (project_config, "_strip_jsonc"), (finding_schema, "normalize_severity"),
                        (finding_schema, "_SEVERITY_NORMALIZE"), (output_filters, "_severity_bucket")):
             self.assertFalse(hasattr(mod, n), f"{mod.__name__}.{n}")
-        self.assertIn('"detect_led_drivers"', inspect.getsource(signal_detectors.enrich_transistor_led_drivers))
+
+    def test_transistor_led_driver_enrichment_stamps_the_led_driver_detector(self):
+        from types import SimpleNamespace
+        import signal_detectors
+        comps = {
+            "R1": {"reference": "R1", "type": "resistor", "value": "330"},
+            "D1": {"reference": "D1", "type": "led", "value": "red"},
+        }
+        on_net = {"DRAIN": [comps["R1"]], "LEDK": [comps["D1"]]}
+        two_pin = {"R1": ("DRAIN", "LEDK"), "D1": ("LEDK", "VCC")}
+        nq = SimpleNamespace(components_on_net=lambda net, exclude_refs=(): [
+            c for c in on_net.get(net, []) if c["reference"] not in exclude_refs])
+        ctx = SimpleNamespace(nq=nq, parsed_values={"R1": 330.0},
+                              get_two_pin_nets=lambda ref: two_pin[ref], comp_lookup=comps,
+                              is_power_net=lambda net: net == "VCC")
+        tc = {"type": "mosfet", "reference": "Q1", "drain_net": "DRAIN"}
+        signal_detectors.enrich_transistor_led_drivers(ctx, [tc])
+        self.assertEqual(tc["detector"], "detect_led_drivers")
+        self.assertEqual(tc["rule_id"], "LD-DET")
+        self.assertEqual(tc["led_driver"]["led_ref"], "D1")
 
     def test_get_net_components_uses_the_query_layer_only(self):
-        import inspect, signal_detectors
-        self.assertNotIn("ctx.nets[net_name]", inspect.getsource(signal_detectors._get_net_components))
+        from types import SimpleNamespace
+        from unittest import mock
+        import signal_detectors
+
+        class _NoNets(dict):
+            def __getitem__(self, key):
+                raise AssertionError("read ctx.nets directly")
+            get = items = values = __getitem__
+
+        nq = mock.Mock()
+        nq.components_on_net.return_value = ["sentinel"]
+        ctx = SimpleNamespace(nq=nq, nets=_NoNets())
+        self.assertEqual(signal_detectors._get_net_components(ctx, "N1", "R1"), ["sentinel"])
+        nq.components_on_net.assert_called_once_with("N1", exclude_refs={"R1"})
 
 
 if __name__ == "__main__":

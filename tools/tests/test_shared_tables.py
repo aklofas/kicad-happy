@@ -1,10 +1,31 @@
 # tools/tests/test_shared_tables.py
 """Pins the shared tables and the named ground / IC-role policies."""
-import sys, unittest
+import ast, sys, unittest
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "skills" / "kicad" / "scripts"))
 sys.path.insert(0, str(ROOT / "skills" / "emc" / "scripts"))
+
+
+def _module_level_assignments(name):
+    """Product modules that bind *name* at module level (one table, one owner)."""
+    hits = []
+    for path in sorted((ROOT / "skills").rglob("*.py")):
+        for node in ast.parse(path.read_text(encoding="utf-8")).body:
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target] if isinstance(node, ast.AnnAssign) else []
+            if any(isinstance(t, ast.Name) and t.id == name for t in targets):
+                hits.append(path.relative_to(ROOT).as_posix())
+    return hits
+
+
+def _dict_literals_keyed(keys):
+    """Product modules holding a dict literal with exactly these constant keys."""
+    hits = []
+    for path in sorted((ROOT / "skills").rglob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Dict) and {k.value for k in node.keys if isinstance(k, ast.Constant)} == keys:
+                hits.append(path.relative_to(ROOT).as_posix())
+    return hits
 
 
 class SharedTables(unittest.TestCase):
@@ -47,14 +68,13 @@ class SharedTables(unittest.TestCase):
         self.assertEqual(list(MLCC_ESR), pkgs)
         self.assertEqual(MLCC_ESL["0402"], 0.5e-9)
         self.assertEqual(MLCC_ESR["2220"], 0.015)
-        src = (ROOT / "skills" / "kicad" / "scripts" / "schematic" / "system_analyses.py").read_text(encoding="utf-8")
-        self.assertIn("esl_by_pkg = MLCC_ESL", src)
-        self.assertIn("esr_base_by_pkg = MLCC_ESR", src)
+        from schematic import system_analyses
+        self.assertIs(system_analyses.MLCC_ESL, MLCC_ESL)
+        self.assertIs(system_analyses.MLCC_ESR, MLCC_ESR)
+        self.assertEqual(_dict_literals_keyed(set(MLCC_ESL)), ["skills/kicad/scripts/kicad_core/parts.py"] * 2)
 
     def test_audio_codec_keywords_single_definition(self):
-        import domain_detectors
-        src = Path(domain_detectors.__file__).read_text(encoding="utf-8")
-        self.assertEqual(src.count("\n_AUDIO_CODEC_KEYWORDS = ("), 1)
+        self.assertEqual(len(_module_level_assignments("_AUDIO_CODEC_KEYWORDS")), 1)
 
 
 if __name__ == "__main__":
