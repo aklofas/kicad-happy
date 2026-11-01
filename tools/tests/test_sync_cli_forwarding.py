@@ -63,13 +63,15 @@ class SyncCliForwarding(unittest.TestCase):
                 dl = sys.modules["distributor_core.download"]
                 self.assertEqual((dl.MAX_DOWNLOAD_BYTES, dl.DOWNLOAD_TIMEOUT_S), (7 * 1024 * 1024, 9.0))
 
-    def test_force_and_force_all_are_independent(self):
+    def test_boolean_flags_are_independent(self):
+        # the full-flag run sets all four to True, so a swap between them shows only here
+        flags = {"--force": "force", "--force-all": "force_all", "--dry-run": "dry_run", "--json": "as_json"}
         for p in PROVIDERS:
             mod = _load(p)
-            for flag, key, other in (("--force", "force", "force_all"), ("--force-all", "force_all", "force")):
+            for flag, key in flags.items():
                 with self.subTest(provider=p, flag=flag):
                     seen, _ = self._run(mod, ["a.kicad_sch", flag], {})
-                    self.assertEqual((seen[key], seen[other]), (True, False))
+                    self.assertEqual({k for k in flags.values() if seen[k]}, {key})
 
     def test_input_and_mpn_list_are_exclusive(self):
         for p in PROVIDERS:
