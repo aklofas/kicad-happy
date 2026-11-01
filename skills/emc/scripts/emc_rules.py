@@ -362,31 +362,6 @@ def _usb_pair_protocol(pair: dict, usb_speed) -> str:
 # Finding construction helper
 # ---------------------------------------------------------------------------
 
-_EMC_SEVERITY_MAP = {
-    'CRITICAL': 'error',
-    'HIGH': 'error',
-    'MEDIUM': 'warning',
-    'LOW': 'info',
-    'INFO': 'info',
-    # Already-normalized pass-through
-    'error': 'error',
-    'warning': 'warning',
-    'info': 'info',
-}
-
-
-def _normalize_severity(sev):
-    """Map legacy EMC uppercase severities to the standard envelope vocabulary.
-
-    Rich-format consumers expect {error, warning, info}. EMC rules were
-    authored against the pre-v1.3 CRITICAL/HIGH/MEDIUM/LOW/INFO scheme —
-    translate here rather than touch every call site.
-    """
-    if not isinstance(sev, str):
-        return 'info'
-    return _EMC_SEVERITY_MAP.get(sev, _EMC_SEVERITY_MAP.get(sev.upper(), 'info'))
-
-
 def _make_finding(category, severity, rule_id, title, description,
                   recommendation='', components=None, nets=None,
                   confidence='deterministic',
@@ -408,7 +383,7 @@ def _make_finding(category, severity, rule_id, title, description,
         'components': components if components is not None else [],
         'nets': nets if nets is not None else [],
         'pins': [],
-        'severity': _normalize_severity(severity),
+        'severity': normalize_severity(severity),
         'confidence': confidence,
         'evidence_source': evidence_source or ('heuristic_rule' if confidence == 'heuristic' else 'topology'),
         'recommendation': recommendation,

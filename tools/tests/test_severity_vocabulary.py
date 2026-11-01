@@ -83,7 +83,7 @@ class SummarizeSeverityTests(unittest.TestCase):
 class NoUppercaseSeverityLiteralTests(unittest.TestCase):
     DICT_LITERAL = re.compile(r"""["']severity["']\s*:\s*["'][A-Z]+["']""")
     ASSIGNMENT = re.compile(r"""\bseverity\s*=\s*["'][A-Z]+["']""")
-    # emc_rules keeps uppercase internal severities and maps them via _EMC_SEVERITY_MAP on output.
+    # emc_rules keeps uppercase internal severities and normalizes them with kicad_core.render.normalize_severity on output.
     ASSIGNMENT_ALLOWED = {"emc_rules.py"}
 
     def test_no_uppercase_severity_literal_under_skills(self):

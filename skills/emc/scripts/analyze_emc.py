@@ -41,7 +41,7 @@ ANALYZER_SOURCE = "emc"
 # Shared severity weights — used by both risk score and per-net scoring.
 # Keyed on the v1.3 envelope vocabulary (error/warning/info); legacy
 # EMC rule severities are normalized before reaching this map via
-# _make_finding's _normalize_severity().
+# _make_finding's normalize_severity().
 SEVERITY_WEIGHTS = {'error': 12, 'warning': 3, 'info': 0}
 
 # Confidence discount — heuristic findings carry less weight because the
