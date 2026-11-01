@@ -27,6 +27,34 @@ def _nets_for_output(nets):
     return nets
 
 
+def _annotate_pin_nets(all_components, nets):
+    """Set each component's pin_nets from the net map and drop its parse-time scratch keys.
+
+    Includes __unnamed_* nets so that connections through unlabelled wires
+    (common in hierarchical sub-sheets) appear in pin_nets.
+    """
+    _pin_nets: dict[str, dict[str, str]] = {}
+    for _net_name, _net_info in nets.items():
+        if isinstance(_net_info, dict):
+            for _p in _net_info.get('pins', []):
+                _comp_ref = _p.get('component', '')
+                _pin_num = _p.get('pin_number', '')
+                if _comp_ref and _pin_num:
+                    _pin_nets.setdefault(_comp_ref, {})[_pin_num] = _net_name
+    for _comp in all_components:
+        _all_pn = _pin_nets.get(_comp.get('reference', ''), {})
+        _valid = _comp.get("_unit_pins")
+        if _valid is not None and (len(_all_pn) > len(_valid) or not _valid):
+            _comp['pin_nets'] = {k: v for k, v in _all_pn.items() if k in _valid}
+        else:
+            _comp['pin_nets'] = _all_pn
+        _comp.pop("_unit_pins", None)
+        _comp.pop("_body_style", None)
+        _comp.pop("_pin_alternates", None)
+        _comp.pop("_unit_count", None)
+        _comp.pop("_jumper_groups", None)
+
+
 def assemble_result(ctx, parsed, nets, bom, analyses, *, path, sheets_parsed,
                     hierarchy_warning, format_newer_note, generator_version,
                     file_version) -> dict:
@@ -146,29 +174,7 @@ def assemble_result(ctx, parsed, nets, bom, analyses, *, path, sheets_parsed,
     if lib_tables.get('symbol_libs'):
         project_settings['symbol_libs'] = lib_tables['symbol_libs']
 
-    # Enrich components with pin-to-net mapping for downstream consumers
-    # Include __unnamed_* nets so that connections through unlabelled
-    # wires (common in hierarchical sub-sheets) appear in pin_nets.
-    _pin_nets: dict[str, dict[str, str]] = {}
-    for _net_name, _net_info in nets.items():
-        if isinstance(_net_info, dict):
-            for _p in _net_info.get('pins', []):
-                _comp_ref = _p.get('component', '')
-                _pin_num = _p.get('pin_number', '')
-                if _comp_ref and _pin_num:
-                    _pin_nets.setdefault(_comp_ref, {})[_pin_num] = _net_name
-    for _comp in all_components:
-        _all_pn = _pin_nets.get(_comp.get('reference', ''), {})
-        _valid = _comp.get("_unit_pins")
-        if _valid is not None and (len(_all_pn) > len(_valid) or not _valid):
-            _comp['pin_nets'] = {k: v for k, v in _all_pn.items() if k in _valid}
-        else:
-            _comp['pin_nets'] = _all_pn
-        _comp.pop("_unit_pins", None)
-        _comp.pop("_body_style", None)
-        _comp.pop("_pin_alternates", None)
-        _comp.pop("_unit_count", None)
-        _comp.pop("_jumper_groups", None)
+    _annotate_pin_nets(all_components, nets)
     for _ps in power_symbols:
         _ps.pop("_drives", None)
 
@@ -414,29 +420,8 @@ def assemble_legacy_result(*, nets, all_components, signal_analysis, real_compon
     MUTATES components (pin_nets, _unit_pins) and signal detections
     (detection_id, detector) as the pre-v3 code did.
     """
-    # Enrich components with pin-to-net mapping (legacy path)
-    # Include __unnamed_* nets so that connections through unlabelled
-    # wires (common in hierarchical sub-sheets) appear in pin_nets.
-    _pin_nets_l: dict[str, dict[str, str]] = {}
-    for _net_name, _net_info in nets.items():
-        if isinstance(_net_info, dict):
-            for _p in _net_info.get('pins', []):
-                _comp_ref = _p.get('component', '')
-                _pin_num = _p.get('pin_number', '')
-                if _comp_ref and _pin_num:
-                    _pin_nets_l.setdefault(_comp_ref, {})[_pin_num] = _net_name
+    _annotate_pin_nets(all_components, nets)
     for _comp in all_components:
-        _all_pn = _pin_nets_l.get(_comp.get('reference', ''), {})
-        _valid = _comp.get("_unit_pins")
-        if _valid is not None and (len(_all_pn) > len(_valid) or not _valid):
-            _comp['pin_nets'] = {k: v for k, v in _all_pn.items() if k in _valid}
-        else:
-            _comp['pin_nets'] = _all_pn
-        _comp.pop("_unit_pins", None)
-        _comp.pop("_body_style", None)
-        _comp.pop("_pin_alternates", None)
-        _comp.pop("_unit_count", None)
-        _comp.pop("_jumper_groups", None)
         _comp.pop("_global_power_part", None)
     for _ps in power_symbols:
         _ps.pop("_drives", None)
