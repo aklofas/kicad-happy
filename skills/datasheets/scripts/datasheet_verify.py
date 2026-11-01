@@ -83,12 +83,12 @@ def _read_extraction_file(path: str) -> dict:
     return read_json_object(path) or {}
 
 
-def _is_v2_format(extraction: dict) -> bool:
-    """Return True if extraction is v2-format (has top-level 'base' key)."""
+def _is_sectioned_format(extraction: dict) -> bool:
+    """Return True if extraction is sectioned (has a top-level 'base' key)."""
     return isinstance(extraction.get("base"), dict)
 
 
-def _v2_domain_voltage_max(base: dict, domain: str) -> float | None:
+def _domain_absolute_voltage_max(base: dict, domain: str) -> float | None:
     """Resolve a per-domain abs-max voltage from base.absolute_max.
 
     Tries key patterns: "<domain>_max", "<domain>".  Returns the SpecValue
@@ -106,7 +106,7 @@ def _v2_domain_voltage_max(base: dict, domain: str) -> float | None:
     return None
 
 
-def _v2_domain_voltage_op_max(base: dict, domain: str) -> float | None:
+def _domain_operating_voltage_max(base: dict, domain: str) -> float | None:
     """Resolve a per-domain operating-max voltage from base.recommended_operating."""
     rec_op = base.get("recommended_operating") or {}
     sv_list = rec_op.get(domain)
@@ -119,11 +119,12 @@ def _v2_domain_voltage_op_max(base: dict, domain: str) -> float | None:
     return None
 
 
-def _v1_view(extraction: dict) -> dict:
-    """Return a v1-shaped view of an extraction dict for use by the verifiers.
+def _legacy_verifier_view(extraction: dict) -> dict:
+    """Return a flat legacy view of an extraction dict for use by the verifiers.
 
-    v1-shaped (has 'pins'): returned unchanged — v1 behavior byte-identical.
-    v2-shaped (has 'base'): synthesize the v1 keys the verifiers READ:
+    Flat legacy (has 'pins'): returned unchanged.
+    Sectioned (base/pinout, has 'base'): synthesize the flat legacy keys the
+    verifiers READ:
       - 'pins': list of dicts with 'number', 'name', 'type', 'voltage_abs_max',
         'voltage_operating_max'.  One entry per number of each base.pinout[]
         record, with voltage limits resolved per-domain from
@@ -144,8 +145,8 @@ def _v1_view(extraction: dict) -> dict:
     # v1: already has pins list at top level
     if "pins" in extraction:
         return extraction
-    # v2: synthesise v1-shaped pins from base.pinout
-    if not _is_v2_format(extraction):
+    # sectioned: synthesise flat legacy pins from base.pinout
+    if not _is_sectioned_format(extraction):
         return extraction
     base = extraction["base"]
     pinout = base.get("pinout") or []
@@ -167,9 +168,9 @@ def _v1_view(extraction: dict) -> dict:
             v_op_max = None
         if domain and pin.get("is_5v_tolerant") is not True:
             if v_abs_max is None:
-                v_abs_max = _v2_domain_voltage_max(base, domain)
+                v_abs_max = _domain_absolute_voltage_max(base, domain)
             if v_op_max is None:
-                v_op_max = _v2_domain_voltage_op_max(base, domain)
+                v_op_max = _domain_operating_voltage_max(base, domain)
         for pin_number in numbers:
             v1_pins.append({
                 "number": pin_number,
@@ -303,7 +304,7 @@ def verify_pin_voltages(components: list, nets: dict, extraction_dir: str,
                 findings.append(qf)
         if not extraction:
             continue
-        view = _v1_view(extraction)
+        view = _legacy_verifier_view(extraction)
         if not view or not view.get("pins"):
             # Loud only for v2-adapted views; v1 caches without
             # pins keep the pre-adapter silent-skip behavior byte-identical.
@@ -412,7 +413,7 @@ def verify_required_externals(components: list, nets: dict, extraction_dir: str,
                 findings.append(qf)
         if not extraction:
             continue
-        view = _v1_view(extraction)
+        view = _legacy_verifier_view(extraction)
         if not view or not view.get("pins"):
             # Loud only for v2-adapted views; v1 caches without
             # pins keep the pre-adapter silent-skip behavior byte-identical.
@@ -637,7 +638,7 @@ def verify_decoupling(components: list, nets: dict, extraction_dir: str,
                 findings.append(qf)
         if not extraction:
             continue
-        view = _v1_view(extraction)
+        view = _legacy_verifier_view(extraction)
         if not view or not view.get("application_circuit"):
             # Loud only for v2-adapted views; v1 caches that never
             # populated the optional application_circuit field keep the
