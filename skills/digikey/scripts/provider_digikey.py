@@ -23,8 +23,6 @@ KEY_PRIORITY = ("digikey", "mouser", "lcsc")
 SEARCH_KEY = "digikey"  # the one distributor-specific number this provider can search with
 RENAME_PRESENT = True
 FAILED_DETAIL_WITH_URL = True
-# Documentary today: the normalize_url/download_pdf wrappers hard-code the flag; a later version may read it.
-NORMALIZE_REDIRECTS = True
 LABELS = {
     "found": "Found {n} unique parts with part numbers ({k} skipped without an MPN or DigiKey part number)",
     "skipped_key": "skipped_no_identifier",
@@ -235,7 +233,6 @@ def _digikey_pns(product: dict) -> list[str]:
 def sync_one_part(
     part: dict,
     output_dir: Path,
-    index: dict,
     delay: float,
     ctx,
 ) -> dict:

@@ -12,9 +12,9 @@ LABELS = {"found": "Found {n} unique parts with part numbers ({k} skipped withou
 
 def fake_provider(**over):
     base = dict(NAME="fake", DEFAULT_DELAY=0.0, ID_KEYS=("digikey",), KEY_PRIORITY=("digikey",), SEARCH_KEY="digikey",
-                RENAME_PRESENT=False, FAILED_DETAIL_WITH_URL=False, NORMALIZE_REDIRECTS=False, LABELS=LABELS,
+                RENAME_PRESENT=False, FAILED_DETAIL_WITH_URL=False, LABELS=LABELS,
                 preflight=lambda **kw: {}, authenticate=lambda: {"ctx": "C"}, report_tail=lambda *a: None,
-                sync_one_part=lambda part, out_dir, index, delay, ctx: {"status": "not_found", "error": f"ctx={ctx}", "manufacturer": "", "description": "", "value": part["value"], "references": part["references"], "last_attempt": "t"})
+                sync_one_part=lambda part, out_dir, delay, ctx: {"status": "not_found", "error": f"ctx={ctx}", "manufacturer": "", "description": "", "value": part["value"], "references": part["references"], "last_attempt": "t"})
     base.update(over)
     return SimpleNamespace(**base)
 
@@ -30,7 +30,7 @@ class Driver(unittest.TestCase):
     def test_two_workers_store_the_same_manifest_as_the_serial_run(self):
         from distributor_core.sync import sync_datasheets
 
-        def one(part, out_dir, index, delay, ctx):
+        def one(part, out_dir, delay, ctx):
             if part["mpn"] == "NE555P":
                 return {"status": "ok", "file": "NE555P.pdf", "size_bytes": 3, "verification": "unverified"}
             return {"status": "not_found", "error": "none", "manufacturer": "", "description": "",
@@ -54,7 +54,7 @@ class Driver(unittest.TestCase):
         from distributor_core.sync import sync_datasheets
         from distributor_core import download
 
-        def one(part, out_dir, index, delay, ctx):
+        def one(part, out_dir, delay, ctx):
             if part["mpn"] == "NE555P":
                 download.note_transport_failure(TimeoutError("search timed out"))
             return {"status": "not_found", "error": "none", "manufacturer": "", "description": "",
@@ -105,7 +105,7 @@ class Driver(unittest.TestCase):
         from distributor_core.sync import sync_datasheets
         seen = []
 
-        def one(part, out_dir, index, delay, ctx):
+        def one(part, out_dir, delay, ctx):
             seen.append(part["_key"])
             return {"status": "not_found", "error": "x", "manufacturer": "", "description": "",
                     "value": part["value"], "references": part["references"], "last_attempt": "t"}
@@ -161,7 +161,7 @@ class RepeatedRows(unittest.TestCase):
         from distributor_core.sync import sync_datasheets
         seen = []
 
-        def one(part, out_dir, index, delay, ctx):
+        def one(part, out_dir, delay, ctx):
             seen.append(dict(part))
             return {"status": "not_found", "error": "x", "manufacturer": part["manufacturer"],
                     "description": part["description"], "value": part["value"],

@@ -24,7 +24,7 @@ class ProviderAdapters(unittest.TestCase):
             finally:
                 sys.path.pop(0)
             for attr in ("NAME", "DEFAULT_DELAY", "ID_KEYS", "KEY_PRIORITY", "SEARCH_KEY", "RENAME_PRESENT",
-                         "FAILED_DETAIL_WITH_URL", "NORMALIZE_REDIRECTS", "LABELS", "preflight", "authenticate",
+                         "FAILED_DETAIL_WITH_URL", "LABELS", "preflight", "authenticate",
                          "sync_one_part", "report_tail"):
                 self.assertTrue(hasattr(prov, attr), f"{p}.{attr}")
             self.assertEqual(prov.NAME, p)
@@ -118,7 +118,7 @@ class NullPayload(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d, redirect_stderr(io.StringIO()), \
                 mock.patch.object(prov, "search_digikey_with_token", lambda *a, **k: hit), \
                 mock.patch.object(prov, "try_alternative_sources", lambda *a, **k: False):
-            r = prov.sync_one_part(part, Path(d), {}, 0, ("T", "C"))
+            r = prov.sync_one_part(part, Path(d), 0, ("T", "C"))
         self.assertEqual((r["status"], r["manufacturer"], r["description"]),
                          ("no_datasheet", "Texas Instruments", "Op amp"))
 

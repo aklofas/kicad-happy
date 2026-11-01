@@ -178,7 +178,7 @@ class FsTrust(unittest.TestCase):
     def test_parallel_worker_exception_propagates(self):
         from distributor_core.sync import sync_datasheets
 
-        def boom(part, out_dir, index, delay, ctx):
+        def boom(part, out_dir, delay, ctx):
             raise RuntimeError("boom")
         with tempfile.TemporaryDirectory() as d:
             d = Path(d)

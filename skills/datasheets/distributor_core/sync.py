@@ -341,7 +341,7 @@ def sync_datasheets(
 
     def _fetch(part):
         take_transport_failure()
-        return provider.sync_one_part(part, out_dir, index, delay, ctx)
+        return provider.sync_one_part(part, out_dir, delay, ctx)
 
     if parallel > 1:
         def _process_part(part):

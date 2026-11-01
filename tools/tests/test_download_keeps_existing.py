@@ -96,7 +96,7 @@ def _provider(sync_one_part):
     return SimpleNamespace(
         NAME="fake", DEFAULT_DELAY=0.0, ID_KEYS=("lcsc",), KEY_PRIORITY=("lcsc",), SEARCH_KEY="lcsc",
         RENAME_PRESENT=False, FAILED_DETAIL_WITH_URL=False,
-        NORMALIZE_REDIRECTS=False, LABELS=LABELS, preflight=lambda **kw: {},
+        LABELS=LABELS, preflight=lambda **kw: {},
         authenticate=lambda: {"ctx": None}, report_tail=lambda *a: None, sync_one_part=sync_one_part)
 
 
@@ -673,7 +673,7 @@ class Element14SearchLadderTest(unittest.TestCase):
                 mock.patch.object(prov, "verify_datasheet", lambda *a, **k: {"confidence": "verified"}), \
                 mock.patch.object(prov.time, "sleep", lambda *a: None), \
                 redirect_stderr(io.StringIO()):
-            r = prov.sync_one_part(part, Path(d), {}, 0.0, ("KEY", "www.newark.com"))
+            r = prov.sync_one_part(part, Path(d), 0.0, ("KEY", "www.newark.com"))
         self.assertEqual(r["status"], "ok")
         self.assertEqual(r["datasheet_url"], "https://example.com/bme280.pdf")
         self.assertEqual(terms, ["manuPartNum:94AK6874", "id:94AK6874"])

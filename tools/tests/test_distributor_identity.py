@@ -234,7 +234,7 @@ def _sync_one(p, part, hits, body=None):
         else:
             stack = contextlib.nullcontext()
         with stack, contextlib.redirect_stderr(io.StringIO()):
-            result = prov.sync_one_part({**base, **part}, Path(d), {}, 0.0, CTX[p])
+            result = prov.sync_one_part({**base, **part}, Path(d), 0.0, CTX[p])
         files = sorted(f.name for f in Path(d).iterdir())
     return result, files
 

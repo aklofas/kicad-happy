@@ -29,8 +29,6 @@ KEY_PRIORITY = ("lcsc", "digikey", "mouser")
 SEARCH_KEY = "lcsc"  # the one distributor-specific number this provider can search with
 RENAME_PRESENT = False
 FAILED_DETAIL_WITH_URL = False
-# Documentary today: the normalize_url/download_pdf wrappers hard-code the flag; a later version may read it.
-NORMALIZE_REDIRECTS = False
 LABELS = {
     "found": "Found {n} unique parts with identifiers ({k} skipped without an MPN or LCSC part number)",
     "skipped_key": "skipped_no_identifier",
@@ -269,7 +267,6 @@ def _get_description(component: dict) -> str:
 def sync_one_part(
     part: dict,
     output_dir: Path,
-    index: dict,
     delay: float,
     ctx,
 ) -> dict:
