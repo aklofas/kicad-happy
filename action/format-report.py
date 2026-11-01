@@ -149,7 +149,7 @@ def _ref(comp):
 
 
 def _source_name(sch):
-    """File name of the analysed schematic: inputs.source_files, else the legacy "file" field."""
+    """File name of the analysed schematic: inputs.source_files, else the top-level "file" field (older saved outputs carry only that)."""
     src_files = (sch.get("inputs") or {}).get("source_files") or []
     return Path(src_files[0]).name if src_files else Path(sch.get("file", "unknown")).name
 
@@ -168,7 +168,7 @@ def _protocol_issues(pc):
 
 
 def _device_names(devices, limit=None):
-    """Reference of each protocol device, first `limit` of them. Devices are dicts or plain strings."""
+    """Reference of each protocol device, first `limit` of them. Devices are dicts or plain strings (older saved outputs list plain strings)."""
     return [d.get('reference', d.get('ref', str(d))) if isinstance(d, dict) else str(d)
             for d in devices[:limit]]
 
