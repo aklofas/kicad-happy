@@ -592,8 +592,8 @@ def validate_voltage_levels(ctx: AnalysisContext, level_shifters: list[dict] | N
             ic_voltages[ic['reference']] = v
             if ctx.rail_overrides and _ic_rail_voltage(ctx, ic['reference'])[1]:
                 config_voltage_ics.add(ic['reference'])
-            # 4b lookup probe (informational; future v1.5 will use
-            # facts.base.recommended_operating.VDD to validate the rail estimate).
+            # Lookup probe (informational; the rail estimate is not yet checked
+            # against facts.base.recommended_operating.VDD).
             mpn = ic.get('mpn') or ic.get('value') or ''
             facts = get_facts(mpn, cache_dir=cache_dir, diagnostics=getattr(ctx, "diagnostics", None)) if mpn else None
             # facts probe is informational — confidence stays heuristic regardless.
