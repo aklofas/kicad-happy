@@ -77,7 +77,9 @@ One row per module outside the packages. "Imports" lists only in-repo modules, a
 | `gen_output_schema_md.py` | regenerates `references/output-schema.md` from the envelope dataclasses (dev tool) | `envelopes`, `emc_envelope` (by path) |
 | `analysis_cache.py` | `analysis/` folder convention: manifest, runs, SHA-256 staleness, retention | `diff_engine` (lazy) |
 | `output_io.py` | `write_primary_run` / `write_derived_output`, the analysis-cache write paths of the kicad CLIs | `analysis_cache` |
-| `project_config.py` | `.kicad-happy.json` loading, suppression matching, design intent, power-rail config | `kicad_core` |
+| `project_config.py` | `.kicad-happy.json` loading, suppression matching, power-rail config | `kicad_core` |
+| `design_intent.py` | `resolve_design_intent`: explicit config merged with IPC class, product class and market detected from the design | stdlib |
+| `risk_summary.py` | finding risk scores and `compute_top_risks` (respin, bring-up, manufacturing buckets) | `kicad_core` |
 | `output_filters.py` | stage/audience filtering, audience summary, text report | `kicad_core` |
 | `finding_schema.py` | `make_finding`, `Det`, trust summary, `sort_findings`, `assign_finding_ids`, consumer helpers | `kicad_core` |
 | `detection_schema.py` | detection-type schemas: derived fields, inverse solvers, primary metrics | stdlib |

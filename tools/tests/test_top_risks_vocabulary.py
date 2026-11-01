@@ -8,7 +8,7 @@ ROOT = Path(os.environ.get("KH_PRODUCT_ROOT", Path(__file__).resolve().parents[2
 KS = ROOT / "skills" / "kicad" / "scripts"
 sys.path.insert(0, str(KS))
 
-from project_config import compute_top_risks  # noqa: E402
+from risk_summary import compute_top_risks  # noqa: E402
 import summarize_findings as sf  # noqa: E402
 
 FX = fixture_path()

@@ -174,7 +174,7 @@ def _extract_rail_names(rails):
 def _render_top_risks(emc, thermal):
     """Render top-risk summary from EMC and thermal findings."""
     try:
-        from project_config import compute_top_risks
+        from risk_summary import compute_top_risks
     except ImportError:
         return []
 

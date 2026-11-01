@@ -1431,7 +1431,7 @@ def finalize_for_cli(result: dict, config: dict, *, schematic_path: str, lifecyc
 
     # Resolve design intent for downstream consumers
     try:
-        from project_config import resolve_design_intent
+        from design_intent import resolve_design_intent
         sch_data_for_intent = {
             'components': result.get('components', []),
             'title_block': result.get('title_block', {}),

@@ -622,7 +622,7 @@ def finalize_for_cli(result: dict, config: dict, *, pcb_path: str, analysis_dir_
 
     # Resolve and attach design intent
     try:
-        from project_config import resolve_design_intent
+        from design_intent import resolve_design_intent
         pcb_data_for_intent = {}
         if 'silkscreen' in result:
             pcb_data_for_intent['text_items'] = result['silkscreen'].get(

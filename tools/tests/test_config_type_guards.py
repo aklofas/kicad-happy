@@ -10,7 +10,8 @@ SCRIPTS = ROOT / "skills" / "kicad" / "scripts"
 FX = fixture_path("simple-project")
 sys.path.insert(0, str(SCRIPTS))
 
-from project_config import _load_and_validate, matches_suppression, resolve_design_intent  # noqa: E402
+from project_config import _load_and_validate, matches_suppression  # noqa: E402
+from design_intent import resolve_design_intent  # noqa: E402
 
 
 def _load(cfg):
