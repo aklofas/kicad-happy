@@ -1,4 +1,4 @@
-"""Passive-component electrical models: capacitor package/ESR/ESL, dielectric, DC-bias derating, inductor shielding (kicad_core). Moved verbatim from kicad_utils.py."""
+"""Passive-component electrical models: capacitor package/ESR/ESL, dielectric, DC-bias derating, inductor shielding (kicad_core)."""
 import re
 
 
@@ -58,7 +58,7 @@ def extract_cap_package(footprint):
     Examples:
         'Capacitor_SMD:C_0402_1005Metric' → '0402'
         'Capacitor_SMD:C_0805_2012Metric' → '0805'
-        'Capacitor_SMD:CP_EIA-3216-18_Kemet-A' → '3216'
+        'Capacitor_SMD:CP_EIA-3216-18_Kemet-A' → '1206'
         'Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P2.50mm' → None (THT, no standard package)
         '' → None
 

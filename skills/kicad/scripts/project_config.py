@@ -181,7 +181,7 @@ def load_config_from_path(path: str) -> Dict[str, Any]:
 
 
 def resolve_config(explicit_path: Optional[str], search_dir: str) -> ResolvedConfig:
-    """The one place that decides which config applies and which file is hashed (S6).
+    """The one place that decides which config applies and which file is hashed.
 
     Explicit (``--config PATH``): that file only, no cascade -- ``load_config_from_path``.
     Discovered: the cascade ``load_config`` performs from *search_dir*.
@@ -825,7 +825,7 @@ def matches_suppression(finding: Dict[str, Any],
         finding_nets = finding.get('nets', [])
         if not finding_nets:
             return False
-        # KH-359: finding nets may carry sheet-qualified keys
+        # finding nets may carry sheet-qualified keys
         # (/<sheet>/<name>); fall back to matching the bare tail so
         # existing suppression patterns written against bare names
         # still apply.

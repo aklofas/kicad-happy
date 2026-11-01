@@ -338,7 +338,7 @@ A net is considered a power net if **either** method matches.
 
 ## 8. AnalysisContext
 
-`AnalysisContext` (in `kicad_types.py`) is a dataclass that holds shared state built once and passed to all analysis functions:
+`AnalysisContext` (in `kicad_types.py`) is a dataclass that holds shared state built once and passed to all analysis functions. Production code builds it with `build_analysis_context(components, nets, lib_symbols, ...)`, which constructs `pin_net` and every index, so detectors never complete it themselves:
 
 ```python
 @dataclass
@@ -347,13 +347,17 @@ class AnalysisContext:
     nets: dict[str, dict]           # Net connectivity map
     lib_symbols: dict               # Library symbol definitions
     pin_net: dict                   # (ref, pin_num) → (net_name, pin_name) map
-    comp_lookup: dict[str, dict]    # {reference: component} — built in __post_init__
-    parsed_values: dict[str, float] # {reference: numeric_value} — built in __post_init__
-    known_power_rails: set[str]     # Power rail names — built in __post_init__
+    comp_lookup: dict[str, dict]    # {reference: component}, built by build_analysis_context
+    parsed_values: dict[str, float] # {reference: numeric_value}, built by build_analysis_context
+    known_power_rails: set[str]     # Power rail names, built by build_analysis_context
+    ref_pins: dict[str, dict]       # {reference: {pin_num: pin_net entry}}
+    no_connects: list[dict]         # No-connect markers
+    nq: NetlistQueries              # Net-query layer installed by build_analysis_context
+    rail_by_net / rail_overrides / rail_ignore  # Rail voltages and the project's power-rail config
     generator_version: str          # KiCad generator version string
 ```
 
-The three auto-built fields (`comp_lookup`, `parsed_values`, `known_power_rails`) replace what was previously ~10 duplicate rebuild operations scattered across analysis functions.
+The indexes (`comp_lookup`, `parsed_values`, `known_power_rails`, `ref_pins`) replace what was previously ~10 duplicate rebuild operations scattered across analysis functions.
 
 ---
 

@@ -1,4 +1,4 @@
-"""Value parsing, E-series and coordinate units (kicad_core). Moved verbatim from kicad_utils.py."""
+"""Value parsing, E-series and coordinate units (kicad_core)."""
 import math
 import re
 
@@ -152,8 +152,8 @@ def _parse_value(value_str: str, component_type: str | None) -> float | None:
             return float(femto.group(1)) * 1e-15
         except ValueError:
             return None
-    # KH-112: Ferrite bead impedance notation (600R/200mA, 120R@100MHz)
-    # is not a parseable component value — return None to avoid nonsensical results
+    # Ferrite impedance notation ("120R@100MHz") is not a component value: None.
+    # ("600R/200mA" does not reach here; the "/" split above leaves "600R".)
     if re.search(r'\d+[Rr]\s*[/@]\s*\d', s):
         return None
 
@@ -204,8 +204,8 @@ def _parse_value(value_str: str, component_type: str | None) -> float | None:
     try:
         result = float(s)
         if component_type == "capacitor" and not explicit_si:
-            # KH-153: Bare integers >= 1 are picofarads in legacy schematics.
-            # KH-212: Bare decimals < 1 (0.1, 0.47, 0.22) are microfarads —
+            # Bare integers >= 1 are picofarads in legacy schematics.
+            # Bare decimals < 1 (0.1, 0.47, 0.22) are microfarads —
             # no real-world cap is 0.1 Farads in SMD packages.
             if result >= 1.0:
                 result *= 1e-12

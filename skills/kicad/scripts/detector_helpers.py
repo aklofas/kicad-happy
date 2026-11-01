@@ -62,7 +62,8 @@ def get_components_by_type(
 def get_unique_ics(ctx) -> list:
     """Return deduplicated list of IC components.
 
-    Components with duplicate references are collapsed (keeps first seen).
+    Components with duplicate references are collapsed: the list keeps the
+    position of a reference's first occurrence and the record of its last.
     """
     return list({c["reference"]: c for c in ctx.components if c["type"] == "ic"}.values())
 

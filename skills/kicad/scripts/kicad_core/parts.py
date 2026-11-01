@@ -1,4 +1,4 @@
-"""Known-part knowledge tables: regulator Vref and switching frequencies (kicad_core). Moved verbatim from kicad_utils.py; sources and verification dates are in the table comments. Typical MLCC ESL/ESR by package moved verbatim from emc_formulas.py."""
+"""Known-part knowledge tables: regulator Vref and switching frequencies (kicad_core). Sources and verification dates are in the table comments. Also holds typical MLCC ESL/ESR by package."""
 import re
 
 
@@ -7,7 +7,7 @@ import re
 # guessing from a list.  Lookup uses longest-prefix-match so that specific
 # entries (e.g. LMR51420=0.6V) beat broader ones (e.g. LMR514=0.8V).
 # When a part isn't found here the analyzer falls back to the heuristic sweep.
-# Sources: DigiKey parametric data + manufacturer datasheets (verified 2026-04-12) (KH-236 collision audit)
+# Sources: DigiKey parametric data + manufacturer datasheets (verified 2026-04-12)
 _REGULATOR_VREF: dict[str, float] = {
     # TI switching regulators — verified against TI datasheets + DigiKey 2026-04-12
     "TPS6100": 0.5,                                               # TPS61000/01 FB = 0.5V
@@ -15,7 +15,7 @@ _REGULATOR_VREF: dict[str, float] = {
     "TPS5430": 1.221,  "TPS5450": 1.221,  "TPS5410": 1.221,     # TPS5430/50/10 Vref = 1.221V
     "TPS54160": 0.8,   "TPS54260": 0.8,   "TPS54360": 0.8,      # TPS541x0/542x0/543x0 FB = 0.8V
     "TPS54040": 0.8,   "TPS54060": 0.8,                          # TPS54040/60 Vref = 0.8V
-    "TPS54302": 0.596, "TPS54308": 0.596,                        # TPS54302/08 FB = 0.596V (KH-237 verified)
+    "TPS54302": 0.596, "TPS54308": 0.596,                        # TPS54302/08 FB = 0.596V (verified)
     # TPS56 family — split per DigiKey verification (was single 'TPS56': 0.6)
     "TPS56339": 0.8,   "TPS56637": 0.6,                          # TPS56339 = 0.8V, TPS56637 = 0.6V
     "TPS560200": 0.8,                                             # TPS560200 VSENSE = 0.8V
@@ -112,12 +112,12 @@ _REGULATOR_VREF: dict[str, float] = {
     "LM317": 1.25,     "LM337": 1.25,
     "AMS1117": 1.25,   "AMS1085": 1.25,
     "LM1117": 1.25,
-    # REMOVED (KH-236): LM78, LM79 — fixed-output only, suffix parser handles them
-    # REMOVED (KH-236): AP73 broad prefix — split into AP7335/AP7362/AP7363/AP7365/AP7366
-    # REMOVED (KH-236): AP736 broad prefix — split into AP7365/AP7366
-    # REMOVED (KH-236): MP2 broad prefix — split into per-MPN entries
-    # REMOVED (KH-236): TPS7A broad prefix — split into per-sub-family entries
-    # REMOVED (KH-236): TPS56 broad prefix — split into per-sub-family entries
+    # REMOVED: LM78, LM79 — fixed-output only, suffix parser handles them
+    # REMOVED: AP73 broad prefix — split into AP7335/AP7362/AP7363/AP7365/AP7366
+    # REMOVED: AP736 broad prefix — split into AP7365/AP7366
+    # REMOVED: MP2 broad prefix — split into per-MPN entries
+    # REMOVED: TPS7A broad prefix — split into per-sub-family entries
+    # REMOVED: TPS56 broad prefix — split into per-sub-family entries
 }
 
 # Keywords for classifying MOSFET/BJT load type from net names.
@@ -248,7 +248,7 @@ def regulator_vref_key(value: str, lib_id: str, mpn: str = "") -> tuple[str, str
 
 # ---------------------------------------------------------------------------
 # Switching frequency lookup table — single source of truth for both
-# signal_detectors.py and emc_rules.py.  See KH-237 for collision audit.
+# signal_detectors.py and emc_rules.py.
 # Sources: DigiKey parametric data + manufacturer datasheets (verified 2026-04-12).
 # ~100 entries: 8 broad collision prefixes replaced with per-sub-family entries.
 # ---------------------------------------------------------------------------
@@ -375,7 +375,7 @@ def lookup_switching_freq(part_value: str) -> float | None:
     """Look up switching frequency from known regulator part numbers.
 
     Uses longest-prefix-first matching via startswith to avoid substring
-    false positives (KH-237). Returns frequency in Hz or None if unknown.
+    false positives. Returns frequency in Hz or None if unknown.
     """
     if not part_value:
         return None
@@ -415,7 +415,7 @@ def match_known_switching(value: str, lib_id: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# ESR/ESL lookup by package size (typical MLCC values) — moved verbatim from emc_formulas.py
+# ESR/ESL lookup by package size (typical MLCC values)
 # ---------------------------------------------------------------------------
 
 # Typical ESL values for MLCC by package (Henries)

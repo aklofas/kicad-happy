@@ -441,8 +441,8 @@ def apply_output_filters(
 ) -> None:
     """Apply stage/audience filtering to a result dict.  Mutates in place.
 
-    Accesses result["findings"] directly (harmonized format from Batch 9).
-    Safe to call when findings list is empty or missing.
+    Reads the top-level ``findings`` list; safe to call when it is empty
+    or missing.
     """
     findings = result.get('findings', [])
     if not findings:

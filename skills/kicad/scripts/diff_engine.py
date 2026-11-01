@@ -24,7 +24,7 @@ from kicad_core.render import normalize_severity, severity_bucket, summary_or_ti
 
 
 # SIGNAL_REGISTRY is derived from the unified detection schema.
-# Kept as a module-level name for backward compat (validate_signal_registry, _diff_items).
+# Kept as a module-level name; validate_signal_registry reads it.
 SIGNAL_REGISTRY = {dt: (s.identity_fields, s.value_fields) for dt, s in _SCHEMAS.items()}
 
 
@@ -968,7 +968,7 @@ def diff_thermal(base, head, threshold):
 # ---------------------------------------------------------------------------
 
 def diff_deep_review(base, head, threshold=None):
-    """Diff two deep_review.json files (v2.0 spec §3.C).
+    """Diff two deep_review.json files.
 
     Exact finding_id match is primary. Fuzzy pass is advisory only:
     LLM rewording changes the summary hash, so a persisting issue can

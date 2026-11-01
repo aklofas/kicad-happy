@@ -78,7 +78,7 @@ def build_ref_pins(nets: dict) -> dict[str, list[tuple[str, str, str]]]:
 
 @dataclass(frozen=True)
 class BridgeFact:
-    """What is known about one DC-bridge-capable component (U3).
+    """What is known about one DC-bridge-capable component.
 
     ref:           component reference
     nets:          endpoint nets in net-map order (jumper detections: the detection's ``nets``)

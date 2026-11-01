@@ -1,7 +1,7 @@
 """Typed records over the reader dict shapes (kicad_core.model).
 
 TypedDicts describe what the readers already emit, so serialisation does not
-change (spec §4.1). Open boundaries stay plain dicts (D3): finding ``extra``
+change. Open boundaries stay plain dicts: finding ``extra``
 fields, manufacturer payloads, datasheet category extensions.
 """
 from __future__ import annotations
@@ -47,7 +47,7 @@ class _NetRequired(TypedDict):
 
 class Net(_NetRequired, total=False):
     """A net record (``nets[key]``). ``display_name`` appears on ``/<sheet>/<name>`` collision
-    keys (KH-359) and on ``__unnamed_N`` nets with exactly one named IC pin."""
+    keys and on ``__unnamed_N`` nets with exactly one named IC pin."""
     display_name: str
 
 
@@ -128,7 +128,7 @@ class SheetData:
 
 @dataclass(frozen=True)
 class ResolvedConfig:
-    """The one resolved project configuration (S6). Built by ``project_config.resolve_config``.
+    """The one resolved project configuration. Built by ``project_config.resolve_config``.
 
     effective:  the merged mapping consumers read (today's ``config``)
     mode:       "explicit" (``--config PATH``) or "discovered" (cascade from the project dir)
@@ -143,7 +143,7 @@ class ResolvedConfig:
 
 @dataclass
 class PcbReaderState:
-    """Per-run PCB reader state (B1): the KiCad-10 net-name → synthetic-ID map.
+    """Per-run PCB reader state: the KiCad-10 net-name → synthetic-ID map.
 
     Built by ``_build_net_mapping`` after extraction (sorted names, IDs from 1); consulted only by
     the backfill in ``read_board``. One instance per ``analyze_pcb()`` call — nothing module-level.

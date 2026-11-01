@@ -1,4 +1,4 @@
-"""Cross-analysis output envelope (v1.4 SOT).
+"""Cross-analysis output envelope.
 
 The runtime of ``cross_analysis.py`` emits a minimal top-level shape —
 the analyzer is a second-pass consumer of schematic and PCB JSON, so
@@ -55,7 +55,7 @@ class CrossAnalysisSummary:
 
 @dataclass
 class CheckRun:
-    """One entry in checks_run[] — whether a cross-analysis check executed (KH-381).
+    """One entry in checks_run[] — whether a cross-analysis check executed.
 
     One entry per check function, in call order (the fixed sequence
     run_all_checks() invokes them in — not dict-iteration order).
@@ -120,7 +120,7 @@ class CrossAnalysisEnvelope:
     trust_summary: TrustSummary = field(metadata={
         "description": "Trust posture rollup (confidence + evidence source)."})
 
-    # --- Phase 4 capability pointer ---
+    # --- Capability pointer ---
     capability_mode_ref: Optional[dict] = field(default=None, metadata={
         "description": "Pointer to canonical analysis/capability_mode.json run-level "
                        "record. Shape: {source, run_id}."})

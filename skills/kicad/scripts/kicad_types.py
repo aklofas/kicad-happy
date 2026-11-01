@@ -212,7 +212,7 @@ def build_analysis_context(components: list[dict], nets: dict[str, dict], lib_sy
                            cache_dir: Path | None = None, project_dir: str | None = None,
                            known_power_rails: set[str] | None = None,
                            power_rails_config: dict | None = None) -> AnalysisContext:
-    """The single construction point for production contexts (spec §4.2).
+    """The single construction point for production contexts.
 
     Builds ``pin_net`` and every index, installs the ``NetlistQueries`` layer and
     returns a context no detector has to complete. ``known_power_rails`` overrides

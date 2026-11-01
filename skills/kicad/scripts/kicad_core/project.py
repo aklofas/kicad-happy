@@ -90,7 +90,7 @@ def _strip_jsonc(text: str) -> str:
         i += 1
     stripped = ''.join(out)
     # Second pass: drop a comma that is followed only by whitespace and then
-    # `}` or `]`, but never inside a string literal (KH-400).
+    # `}` or `]`, but never inside a string literal.
     res = []
     in_str = False
     i, n = 0, len(stripped)
@@ -141,7 +141,7 @@ def find_project_settings_file(file_path: str, ext: str, exact: bool = False) ->
     """Find the ``ext`` file (e.g. ``.kicad_pro``, ``.kicad_dru``) matching
     ``file_path``'s project, in ``file_path``'s directory.
 
-    Shared discovery logic for `load_kicad_pro` / `load_kicad_dru` (KH-362).
+    Shared discovery logic for `load_kicad_pro` / `load_kicad_dru`.
     Scans the directory for files ending in ``ext`` and prefers the one
     whose stem matches ``file_path``'s stem (KiCad names project/rules
     files after the board/schematic they belong to). Falls back to the
@@ -195,14 +195,14 @@ def find_project_settings_file(file_path: str, ext: str, exact: bool = False) ->
 def load_kicad_pro(file_path: str, *, exact: bool = False) -> dict | None:
     """Load .kicad_pro from the same directory as a .kicad_sch or .kicad_pcb file.
 
-    Discovery is stem-matched via `find_project_settings_file` (KH-362) —
+    Discovery is stem-matched via `find_project_settings_file` —
     in a multi-project directory, the ``.kicad_pro`` sharing this file's
     stem is preferred over whatever the OS lists first.
     With ``exact`` (a board: KiCad opens the project named like the board)
     only the ``.kicad_pro`` with the same stem is read.
     Returns the parsed JSON dict, or None if not found, not valid JSON, or a
     KiCad 5 ``.pro`` file (which uses a different, non-JSON format).
-    Tolerates JS-style comments / trailing commas (KH-368-style JSONC).
+    Tolerates JS-style comments / trailing commas (JSONC).
     """
     pro_path = find_project_settings_file(file_path, '.kicad_pro', exact)
     if not pro_path:
@@ -282,7 +282,7 @@ def is_referenced_as_child(file_path: str) -> bool:
 
     Scans sibling .kicad_sch files in the same directory for Sheetfile
     properties containing this file's basename.  Used by detect_sub_sheet()
-    to distinguish intermediate hierarchy nodes from the root (KH-304).
+    to distinguish intermediate hierarchy nodes from the root.
 
     Reads the full file because sheet blocks can appear after large
     lib_symbols sections (e.g. 680KB root with sheets at byte 681K).
@@ -352,13 +352,13 @@ def discover_root_schematic(target_path: str) -> str | None:
     Returns the root schematic path, or None if the target appears to be
     the root or no root can be found.
 
-    Strategy (KH-305, KH-306 hardened):
+    Strategy:
     1. Same directory: look for .kicad_pro, take its declared top-level
        sheets (else <project>.kicad_sch) as root candidates.
-       When multiple .kicad_pro exist (KH-306), verify each candidate's
+       When multiple .kicad_pro exist, verify each candidate's
        sheet tree references the target.
     2. Same directory: scan sibling .kicad_sch files for references.
-    3. Parent directories (KH-305): walk up to 5 levels looking for
+    3. Parent directories: walk up to 5 levels looking for
        .kicad_pro whose root .kicad_sch references the target via a
        relative path (handles sheets/ subdirectory layouts).
     4. Return None if nothing found.
@@ -373,7 +373,7 @@ def discover_root_schematic(target_path: str) -> str | None:
         entries = []
 
     # Tier 1: .kicad_pro stem match (same directory)
-    # KH-306: when multiple .kicad_pro exist, verify sheet-tree membership
+    # when multiple .kicad_pro exist, verify sheet-tree membership
     pro_files = [f for f in entries if f.endswith('.kicad_pro')]
 
     if len(pro_files) == 1:
@@ -400,7 +400,7 @@ def discover_root_schematic(target_path: str) -> str | None:
         except OSError:
             continue
 
-    # Tier 3 (KH-305): walk up parent directories looking for .kicad_pro
+    # Tier 3: walk up parent directories looking for .kicad_pro
     # Handles sub-directory layouts (e.g., sheets/video.kicad_sch)
     search_dir = parent_dir
     for _ in range(5):
@@ -548,7 +548,7 @@ def extract_pro_net_classes(pro: dict) -> list[dict]:
             class_nets.setdefault(nc_name, []).append(pattern)
 
     # Add direct assignments.
-    # KH-235: nc_value can be a list when a net belongs to multiple
+    # nc_value can be a list when a net belongs to multiple
     # classes (newer .kicad_pro format). Harness corpus audit confirmed
     # 139 files with list-valued netclass_assignments, 0 files with
     # list-valued netclass_patterns — so only the assignments loop

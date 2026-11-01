@@ -65,7 +65,7 @@ def _id_segment(s):
 
 
 def _derive_finding_id(*, source, rule_id, detection_id, components, nets, pins, summary):
-    """Derive a stable, well-formed finding_id per Phase 4 spec §3.2.
+    """Derive a stable, well-formed finding_id.
 
     Priority:
         1. {source}:{detection_id}        (detector provided one)
@@ -138,7 +138,7 @@ def assign_finding_ids(findings, source):
 
 
 def derive_deep_review_id(finding):
-    """finding_id for a Deep Review finding (v2.0 spec §3.C).
+    """finding_id for a Deep Review finding.
 
     deep_review:<12-hex> — stable hash over (category, normalized anchors,
     normalized summary). Anchors come from the evidence block so the id is
@@ -262,7 +262,7 @@ def make_provenance(evidence: str, confidence: str = 'heuristic',
     """Create a provenance dict for a detector output.
 
     Attaches to detection dicts to record how a detection was made.
-    Part of the KH-263 detector provenance contract.
+    Part of the detector provenance contract.
 
     Args:
         evidence: Detection method string. Convention: {detector_short}_{method}.
@@ -677,7 +677,7 @@ def is_old_schema(data):
 
 
 def strip_llm_overlays(data):
-    """Recursively remove all keys starting with 'llm_'. Phase 4 spec §3.4 / HI-3.
+    """Recursively remove all keys starting with 'llm_' (HI-3).
 
     This is the canonical copy; skills/kicad/review/scripts/merge_annotations.py
     imports it from here.

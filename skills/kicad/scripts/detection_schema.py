@@ -443,7 +443,7 @@ SCHEMAS = {
         value_fields=[],
         primary_metric="z_min_ohms",
     ),
-    # --- Detections added for KH-233 (identity-only, no derived fields) ---
+    # --- Identity-only detections (no derived fields) ---
     "rail_voltages": DetectionSchema(
         identity_fields=[],
         value_fields=[],
@@ -609,7 +609,7 @@ SCHEMAS = {
         identity_fields=["via_x", "via_y"],
         value_fields=["edge_clearance_mm"],
     ),
-    # Batch 8: Remaining analyzer rich format
+    # Remaining analyzer rich-format detections
     "thermal_assessments": DetectionSchema(
         identity_fields=["ref"],
         value_fields=["tj_estimated_c", "margin_c"],
@@ -698,7 +698,7 @@ def compute_detection_id(det, det_type):
 
     Deterministic: same detection -> same ID across runs.  List-valued
     identity fields are sorted before hashing so upstream set/dict
-    iteration order doesn't affect the ID (KH-316).  An identity field holding its
+    iteration order doesn't affect the ID.  An identity field holding its
     schema's ``default_omitted`` value is left out of the hash.
 
     Format: det_type:xxxxxxxxxxxx (12-char SHA-256 prefix).

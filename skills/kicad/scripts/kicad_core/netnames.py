@@ -61,11 +61,11 @@ def parse_voltage_from_net_name(net_name: str) -> float | None:
     return None
 
 
-# KH-343: USB data lines (D+/D-) must not inherit the 5V VBUS fallback —
+# USB data lines (D+/D-) must not inherit the 5V VBUS fallback —
 # they're signal nets, not rails.
 USB_DATA_NET_MARKERS = ("USB_D", "USBDP", "USBDM", "USBDN", "DPLUS", "DMINUS")
 
-# is_power_net_name() vocabulary for descriptive rail names (PR #44).
+# is_power_net_name() vocabulary for descriptive rail names.
 # Control / monitor prefixes: <prefix>_<voltage> is a signal about a rail
 # (PWM_5V, EN_5V, SENSE_12V), not the rail itself.
 _SIGNAL_PREFIXES = frozenset({
@@ -129,8 +129,8 @@ def is_power_net_name(net_name: str | None, power_rails: set[str] | None = None)
         net_name = net_name.rsplit("/", 1)[-1]
     nu = net_name.upper()
     # Zero-volt ground spellings (0V, 0VA, 0VANA, 0VCC, 0V_A, +0V, ...) are
-    # never rails, no matter what pattern rule below would otherwise match
-    # (KH-407). Excludes 0V<digit> (0V9, 0V85, 0V95, 0V5) — those are
+    # never rails, no matter what pattern rule below would otherwise match.
+    # Excludes 0V<digit> (0V9, 0V85, 0V95, 0V5) — those are
     # sub-1V rails under the nnVn convention, not ground.
     if re.match(r'^\+?0+(\.0+)?V(?!\d)', nu):
         return False
@@ -258,7 +258,7 @@ def is_ground_name(net_name: str | None, power_rails: set[str] | None = None) ->
         return True
     # Any zero-volt spelling (0VA, 0Vo, 0VANA, 0VCC, 0V_A, +0V, ...) is
     # ground, not just the literal "0V" — but 0V<digit> (0V9, 0V85, 0V95,
-    # 0V5) is a sub-1V rail under the nnVn convention, not ground (KH-407).
+    # 0V5) is a sub-1V rail under the nnVn convention, not ground.
     if re.match(r'^\+?0+V(?!\d)([A-Z_][A-Z0-9_]*)?$', nu):
         return True
     # Battery-negative rails used as circuit ground in single-supply designs.

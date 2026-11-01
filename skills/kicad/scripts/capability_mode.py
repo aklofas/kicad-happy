@@ -1,4 +1,4 @@
-"""Canonical run-level capability_mode.json writer (Phase 4 spec §3.3).
+"""Canonical run-level capability_mode.json writer.
 
 First-writer-wins pattern: the first analyzer in a run creates
 analysis/capability_mode.json; subsequent analyzers in the same run
@@ -25,7 +25,7 @@ CAPABILITY_MODE_FILENAME = "capability_mode.json"
 
 def _read_capability_mode(path: Path) -> Optional[dict]:
     """Read an existing capability_mode.json, tolerating a transient
-    partial read from a racing writer.
+    partial or unreadable file.
 
     Returns the parsed record, or None if the file can't be read as
     valid JSON after a few short retries. Caller then falls through to
@@ -38,12 +38,12 @@ def _read_capability_mode(path: Path) -> Optional[dict]:
     is distinct from valid-but-foreign JSON (e.g. an analyzer envelope
     written to this path by external tooling, not through this module)
     — that case parses fine here and is no longer treated as a wedge;
-    see _is_valid_record / KH-415, which rejects it downstream and the
+    see _is_valid_record, which rejects it downstream and the
     caller bypasses it with a fresh in-memory record instead of raising
     or giving up.
-    The 5-retry x 5ms sleep window is sized for the only failure mode
-    this module actually races against: the brief gap between
-    tempfile.mkstemp/fdopen and os.link in our own writer.
+    The 5-retry x 5ms sleep window tolerates a file another process is
+    still writing or has left partial. This module's own writer never
+    exposes one: it closes the complete record before os.link publishes it.
     """
     for _ in range(5):
         try:
@@ -57,7 +57,7 @@ def _is_valid_record(rec) -> bool:
     """A capability_mode record is a dict with a non-empty string run_id.
 
     Anything else at the sidecar path (an analyzer envelope, a list, a bare
-    string) must not be adopted as the run record — KH-415: indexing
+    string) must not be adopted as the run record: indexing
     record["run_id"] on such a file crashed every analyzer at startup.
     """
     return isinstance(rec, dict) and isinstance(rec.get("run_id"), str) and bool(rec["run_id"])
@@ -73,8 +73,8 @@ def _warn_malformed(path: Path, rec) -> None:
 def _detect_datasheet_status(cache_dir: Optional[Path] = None) -> str:
     """Return one of 'verified' | 'partial' | 'heuristic_fallback' | 'unavailable'.
 
-    For 4a we ship a minimal implementation; 4d-skeleton refines based on
-    schema_version inspection of present extractions.
+    A minimal check: it looks only at whether extractions are present, not at
+    their schema_version.
     """
     if cache_dir is None:
         cache_dir = Path("datasheets/extracted")
@@ -83,12 +83,12 @@ def _detect_datasheet_status(cache_dir: Optional[Path] = None) -> str:
     extractions = list(cache_dir.glob("*.json"))
     if not extractions:
         return "heuristic_fallback"
-    # Heuristic: at-least-one extraction = "partial" until 4d-skeleton refines
+    # Heuristic: at least one extraction counts as "partial"
     return "partial"
 
 
 def _compute_coverage_pct(cache_dir: Optional[Path] = None) -> int:
-    """Return integer coverage percentage. Stub: 0 in 4a; refined in 4d-skeleton."""
+    """Return integer coverage percentage. Stub: always 0."""
     return 0
 
 
@@ -109,7 +109,6 @@ def _read_schema_versions() -> dict:
             continue
         title = schema_path.stem.replace(".schema", "")
         # Schemas store version in top-level "x-schema-version" key
-        # (refined in 4d-skeleton if additional sources need merging)
         sv = data.get("x-schema-version")
         if sv:
             versions[title] = sv
@@ -150,7 +149,7 @@ def get_or_create_capability_mode(
         if existing is not None:
             if _is_valid_record(existing):
                 return existing
-            # Parses, but is not ours (KH-415) — never crash the analysis
+            # Parses, but is not ours — never crash the analysis
             # over a sidecar; do not overwrite someone else's file either.
             _warn_malformed(path, existing)
             return _fresh_record(datasheet_extraction, cache_dir,
@@ -214,7 +213,7 @@ def get_or_create_capability_mode(
 def get_or_create_run_id(analysis_dir, **kwargs) -> str:
     """Return canonical run_id for analysis_dir, creating capability_mode.json if absent.
 
-    Phase 4 spec §3.1 wiring helper: analyzers call this at the start of main()
+    Wiring helper: analyzers call this at the start of main()
     to align inputs.run_id with the canonical capability_mode.json:run_id.
     """
     record = get_or_create_capability_mode(analysis_dir, **kwargs)

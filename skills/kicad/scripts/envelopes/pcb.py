@@ -1,4 +1,4 @@
-"""PCB analyzer output envelope (v1.4 SOT).
+"""PCB analyzer output envelope.
 
 The runtime emits ~35 top-level keys on the simple fixture: tight core
 (analyzer_type, schema_version, summary, trust_summary, file, statistics)
@@ -12,7 +12,7 @@ Tightens:
     - summary, trust_summary, statistics, setup, board_outline, tracks,
       vias are typed dataclasses mirroring the runtime shape.
     - Nested footprint/layer/zone/net-length/etc. lists are typed as
-      ``list[dict]`` for v1.4 — shapes tighten per rule_id in v1.5.
+      ``list[dict]`` for v1.4.
 
 Mode gating:
     - ``--full`` adds ``connectivity_graph`` + ``pad_to_pad_distances``
@@ -123,7 +123,7 @@ class BoardOutline:
     """Board outline geometry."""
     edge_count: int = field(metadata={
         "description": "Number of Edge.Cuts segments/arcs."})
-    # TODO(v1.5): tighten edge items to typed EdgeSegment with discriminator.
+    # Edge items are free-form dicts (no typed EdgeSegment).
     edges: list[dict] = field(metadata={
         "description": "Edge.Cuts segments. Each item has `type` and "
                        "geometric params (start/end for lines, center/radius "
@@ -159,7 +159,7 @@ class Tracks:
         "description": "Histogram: width_mm_str -> segment count."})
     layer_distribution: dict[str, int] = field(metadata={
         "description": "Histogram: layer_name -> segment count."})
-    # TODO(v1.5): tighten segments/arcs to typed records.
+    # Segments and arcs are free-form dicts.
     segments: Optional[list[dict]] = field(default=None, metadata={
         "description": "Detailed segment array (--full only): "
                        "[{x1, y1, x2, y2, width, layer, net}]."})
@@ -174,8 +174,8 @@ class Vias:
     count: int = field(metadata={"description": "Total via count."})
     size_distribution: dict[str, int] = field(metadata={
         "description": "Histogram: '<diameter>/<drill>' -> via count."})
-    # TODO(v1.5): tighten via_analysis sub-structure (type_breakdown,
-    # annular_ring, current_capacity) once stable.
+    # The via_analysis sub-structure (type_breakdown, annular_ring,
+    # current_capacity) is not typed.
     via_analysis: dict = field(metadata={
         "description": "Nested analysis: type_breakdown, annular_ring, "
                        "current_capacity, degenerate_drills."})
@@ -205,7 +205,7 @@ class PCBEnvelope:
     summary, trust_summary, statistics, setup, tracks, vias,
     connectivity, board_outline). Loose ``dict`` / ``list[dict]`` typing
     on detector-specific blocks (footprints, layers, zones, findings
-    extras) for v1.4 — each tightens per rule_id in v1.5.
+    extras) for v1.4.
     """
 
     # --- Discriminators ---
@@ -262,8 +262,8 @@ class PCBEnvelope:
         "description": "Net name -> integer net ID. Reverse of nets."})
 
     # --- Layer / footprint / zone / etc. lists ---
-    # TODO(v1.5): tighten items to typed Layer, Footprint, Zone, NetClass,
-    # NetLength, PowerNetRouting records.
+    # Items are free-form dicts: Layer, Footprint, Zone, NetClass, NetLength
+    # and PowerNetRouting records are not typed.
     layers: list[dict] = field(metadata={
         "description": "Layer stackup entries: "
                        "[{number, name, type, alias}]."})
@@ -307,7 +307,7 @@ class PCBEnvelope:
                        "source, net_classes, design_rules."})
 
     # --- Defaulted-fields tail (must come after all non-default fields per
-    # dataclass rules). TH-043: schema-required keys that the emitter
+    # dataclass rules). Schema-required keys that the emitter
     # sometimes drops, now defaulted to empty so they're always present. ---
     design_rule_compliance: dict = field(default_factory=dict, metadata={
         "description": "Design rule compliance: compliant, rules_checked, "
@@ -343,7 +343,7 @@ class PCBEnvelope:
                        "front_density_per_cm2, optional back_density_per_cm2; "
                        "empty dict when density not computed."})
 
-    # --- Phase 4 capability pointer ---
+    # --- Capability pointer ---
     capability_mode_ref: Optional[dict] = field(default=None, metadata={
         "description": "Pointer to canonical analysis/capability_mode.json run-level "
                        "record. Shape: {source, run_id}."})

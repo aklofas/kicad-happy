@@ -19,11 +19,10 @@ breakdown — severity lives on the per-analyzer Summary, trust posture
 lives on TrustSummary.
 
 Serialization convention: dataclass field names use snake_case Python
-identifiers; the emitted JSON uses the same names verbatim. No alias
-layer. When a key in the emitted JSON contains a hyphen (like
-'datasheet-backed' in trust_summary.by_confidence), we rename to
-snake_case ('datasheet_backed') as part of the v1.4 schema break.
-Consumers must update. This is documented in the v1.4 release notes.
+identifiers, and the emitted JSON uses the same names unless a field
+declares a ``json_name`` (the schematic envelope does, for its two
+underscore-prefixed keys). Hyphenated values are spelled with an
+underscore as keys ('datasheet-backed' is ``by_confidence.datasheet_backed``).
 """
 from __future__ import annotations
 
@@ -111,7 +110,7 @@ class Finding:
 
     This is the rich-finding envelope locked in v1.3. Detector-
     specific fields live in `extra` as a free-form dict (JSON object with
-    no schema constraint for v1.4; tightened per-rule_id in v1.5).
+    no schema constraint).
     """
     detector: str = field(metadata={
         "description": "Detector name (e.g. 'voltage_divider', 'ld_1117')."})
@@ -131,7 +130,7 @@ class Finding:
         "description": "Component references involved (e.g. ['R1', 'U3'])."})
     nets: Optional[list[str]] = field(default=None, metadata={
         "description": "Net names involved."})
-    # TODO(v1.5): tighten to list[PinRef] once detectors emit consistent shape.
+    # Left untyped: detectors do not yet emit a consistent shape.
     pins: Optional[list] = field(default=None, metadata={
         "description": "Pins involved. Items may be dicts "
                        "({component, pin_number, pin_name}) or shorthand "
@@ -192,7 +191,7 @@ class Assessment:
         "description": "Component references the assessment applies to."})
     nets: Optional[list[str]] = field(default=None, metadata={
         "description": "Net names the assessment applies to."})
-    # TODO(v1.5): tighten to list[PinRef] once detectors emit consistent shape.
+    # Left untyped: detectors do not yet emit a consistent shape.
     pins: Optional[list] = field(default=None, metadata={
         "description": "Pins involved. Items may be dicts or shorthand strings ('R1.2'). "
                        "Pin shape tightens to typed PinRef in v1.5."})
@@ -275,9 +274,8 @@ class CompatBlock:
     Surfaces which consumer version is required to safely read this
     envelope, plus structured deprecation state. For v1.4 all envelopes
     emit ``minimum_consumer_version="1.4.0"`` with empty deprecation and
-    experimental lists — the v1.4 clean break removed prior residue. As
-    fields are scheduled for removal in v1.5+ or introduced as
-    experimental, they accumulate here.
+    experimental lists. As fields are scheduled for removal or introduced
+    as experimental, they accumulate here.
 
     Dotted-path strings identify envelope keys (e.g.
     ``"trust_summary.by_confidence.datasheet-backed"``).

@@ -1,4 +1,4 @@
-"""Schematic analyzer output envelope (v1.4 SOT).
+"""Schematic analyzer output envelope.
 
 The runtime emits a sprawling result dict — ~40 top-level keys spanning
 hard-typed core (summary, trust_summary, findings, components, nets,
@@ -9,7 +9,7 @@ emits on the simple fixture, while leaving the free-form analysis bags
 as plain ``dict`` schemas.  Consumers get the discriminator fields
 (analyzer_type, schema_version) as ``const`` strings and a guaranteed
 shape for the universal blocks; detector-specific contents inside the
-bags will tighten per rule_id in v1.5.
+bags are free-form.
 
 Additional properties are permitted by JSON Schema default so optional
 sections that only appear on richer projects (sheets, project_settings,
@@ -157,7 +157,7 @@ class BomEntry:
 
 @dataclass
 class PinCoverageWarning:
-    """One entry in pin_coverage_warnings (KH-323)."""
+    """One entry in pin_coverage_warnings."""
     component: str = field(metadata={
         "description": "Component reference with pin coverage gap."})
     lib_id: str = field(metadata={
@@ -202,7 +202,7 @@ class SchematicEnvelope:
     Tight typing on universal fields (analyzer_type, schema_version,
     summary, trust_summary, findings, statistics, bom, nets).  Loose
     ``dict`` typing on detector-specific analysis bags so each bag's
-    per-rule_id shape can tighten independently in v1.5.
+    per-rule_id shape can vary independently.
 
     Optional fields at the bottom are only emitted on richer projects
     (hierarchy, protocol_compliance, sleep_current_audit, etc.); the
@@ -282,7 +282,7 @@ class SchematicEnvelope:
                        "gate/source/drain wiring without reconstructing pin "
                        "maps from nets[].pins[] by hand."})
 
-    # --- Analysis bags (free-form dicts; shapes tighten per rule_id in v1.5) ---
+    # --- Analysis bags (free-form dicts; shape varies per rule_id) ---
     design_analysis: dict = field(metadata={
         "description": "Design-level analyses: net_classification, "
                        "power_domains, cross_domain_signals, bus_analysis "
@@ -346,7 +346,7 @@ class SchematicEnvelope:
     footprint_filter_warnings: list = field(default_factory=list, metadata={
         "description": "Footprint filter warnings from lib_symbols."})
 
-    # --- Phase 4 capability pointer ---
+    # --- Capability pointer ---
     capability_mode_ref: Optional[dict] = field(default=None, metadata={
         "description": "Pointer to canonical analysis/capability_mode.json run-level "
                        "record. Shape: {source, run_id}."})
@@ -408,9 +408,8 @@ class SchematicEnvelope:
         "description": "Protocol compliance checks (I2C/SPI/UART/etc.)."})
 
     # --- Warnings / notices ---
-    # TODO(v1.5): tighten these bare `list` fields to list[TypedItem] once
-    # runtime shapes are finalized. Holding at `list` for v1.4 since items
-    # are heterogeneous dicts with inconsistent keys across detector paths.
+    # These stay bare `list` fields: items are heterogeneous dicts with
+    # inconsistent keys across detector paths.
     text_annotations: Optional[list] = field(default=None, metadata={
         "description": "Text annotations extracted from the schematic."})
     alternate_pin_summary: Optional[dict] = field(default=None, metadata={

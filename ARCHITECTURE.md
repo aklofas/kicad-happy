@@ -81,7 +81,7 @@ One row per module outside the packages. "Imports" lists only in-repo modules, a
 | `output_filters.py` | stage/audience filtering, audience summary, text report | `kicad_core` |
 | `finding_schema.py` | `make_finding`, `Det`, trust summary, `sort_findings`, `assign_finding_ids`, consumer helpers | `kicad_core` |
 | `detection_schema.py` | detection-type schemas: derived fields, inverse solvers, primary metrics | stdlib |
-| `analyzer_envelope.py` | shared envelope dataclasses (Finding, Assessment, TrustSummary, InputsBlock, CompatBlock, ...) | stdlib |
+| `analyzer_envelope.py` | shared envelope dataclasses (Finding, Assessment, TrustSummary, InputsBlock, CompatBlock, ...) | `kicad_core.diagnostics` |
 | `schema_codec.py` | dataclass to JSON Schema Draft 2020-12, `emit_schema` | stdlib |
 | `envelopes/` | per-analyzer envelope dataclasses (schematic, pcb, gerber, thermal, cross_analysis) | `analyzer_envelope` |
 | `inputs_builder.py` | the `inputs` and `compat` envelope blocks | `run_id` |

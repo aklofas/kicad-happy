@@ -469,7 +469,7 @@ def create_run(analysis_dir: str,
     # (by extension) appear in cur_hashes with a different hash than in
     # prev_hashes. Source files that only appear on one side (e.g.
     # re-running pcb leaves the schematic hash untouched) do not poison
-    # unrelated outputs. (KH-281 follow-up: original guard was too blunt.)
+    # unrelated outputs.
     prev_run_id = manifest.get('current')
     prev_outputs = {}
     dropped = set()

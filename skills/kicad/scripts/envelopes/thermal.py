@@ -1,4 +1,4 @@
-"""Thermal analyzer output envelope (v1.4 SOT)."""
+"""Thermal analyzer output envelope."""
 from __future__ import annotations
 
 import os
@@ -139,7 +139,7 @@ class ThermalEnvelope:
                        "non-empty; see summary.components_skipped for the "
                        "count."})
 
-    # --- Phase 4 capability pointer ---
+    # --- Capability pointer ---
     capability_mode_ref: Optional[dict] = field(default=None, metadata={
         "description": "Pointer to canonical analysis/capability_mode.json run-level "
                        "record. Shape: {source, run_id}."})

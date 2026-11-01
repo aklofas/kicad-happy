@@ -1,7 +1,7 @@
 """Property-field aliases and field selection (kicad_core).
 
 Single source for the MPN / distributor part-number alias sets and the
-file-order-stable field pickers (KH-414, KH-418). The names live here, in
+file-order-stable field pickers. The names live here, in
 kicad_core; callers import them from kicad_core.fields.
 """
 
@@ -10,7 +10,7 @@ from collections.abc import Iterable, Mapping
 from kicad_core.sexp import is_keyword
 
 # ---------------------------------------------------------------------------
-# Part-number field aliases (KH-414, GitHub #46)
+# Part-number field aliases
 #
 # KiCad lets users name fields however they like. Three alias lists used to
 # live in analyze_schematic, analyze_pcb and bom_manager and drifted apart;
@@ -33,7 +33,7 @@ def normalize_field_name(name: str) -> str:
     return " ".join(str(name).split()).lower()
 
 
-# KH-418: two tiers. A manufacturer-specific name always outranks a generic
+# Two tiers. A manufacturer-specific name always outranks a generic
 # part-number name (El-Luhb: `Part#` = LCSC code listed before `MPN`). File
 # order breaks ties only WITHIN a tier.
 MPN_FIELD_ALIASES_PRIMARY: frozenset = frozenset({
@@ -74,7 +74,7 @@ def get_property_ci(node: list, aliases: frozenset):
 
     Walks ``(property ["private"] "Name" "Value" ...)`` children (the KiCad 9+
     ``private`` keyword shifts the indices by one, as in
-    sexp_parser.get_property) and returns the first non-empty value whose
+    kicad_core.sexp.get_property) and returns the first non-empty value whose
     normalized name is in *aliases*, else None.
     """
     for child in node:
@@ -98,9 +98,9 @@ def _pick_nonblank(props: dict, aliases: frozenset) -> str:
 
 def pick_mpn(props: dict) -> str:
     """Manufacturer part number: manufacturer-specific aliases first, generic
-    part-number aliases second (KH-418). Whitespace-only values do not win a
-    tier; if no alias has a non-blank value, fall back to the pre-KH-418 pick
-    so blank-only symbols behave exactly as before (final wave fix)."""
+    part-number aliases second. Whitespace-only values do not win a
+    tier; if no alias has a non-blank value, fall back to the plain
+    pick_field over all aliases so blank-only symbols behave exactly as before."""
     return (_pick_nonblank(props, MPN_FIELD_ALIASES_PRIMARY)
             or _pick_nonblank(props, MPN_FIELD_ALIASES_GENERIC)
             or pick_field(props, MPN_FIELD_ALIASES))
@@ -108,7 +108,7 @@ def pick_mpn(props: dict) -> str:
 
 def _get_property_ci_nonblank(node: list, aliases: frozenset):
     """Case/whitespace-insensitive property lookup requiring a non-blank
-    value (same walk as get_property_ci; final wave fix)."""
+    value (same walk as get_property_ci)."""
     for child in node:
         if isinstance(child, list) and len(child) >= 3 and child[0] == "property":
             off = 1 if is_keyword(child[1], "private") else 0
@@ -120,7 +120,7 @@ def _get_property_ci_nonblank(node: list, aliases: frozenset):
 
 
 def get_mpn_property(node: list):
-    """S-expression counterpart of pick_mpn (KH-418)."""
+    """S-expression counterpart of pick_mpn."""
     return (_get_property_ci_nonblank(node, MPN_FIELD_ALIASES_PRIMARY)
             or _get_property_ci_nonblank(node, MPN_FIELD_ALIASES_GENERIC)
             or get_property_ci(node, MPN_FIELD_ALIASES))
