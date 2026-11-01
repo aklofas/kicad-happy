@@ -85,16 +85,18 @@ Models are cached project-locally next to the schematic files, same pattern as t
 
 ## PCB Parasitic Extraction
 
-When both schematic and PCB analysis are available, the skill can inject real PCB parasitics into the SPICE testbenches.
+When both schematic and PCB analysis are available, the skill can insert PCB trace resistance and via inductance into low-pass RC-filter testbenches.
 
 ### What Gets Extracted
 
 | Parasitic | Formula | Example |
 |-----------|---------|---------|
 | **Trace resistance** | R = rho * L / (W * T) | 25mm @ 0.25mm wide, 1oz Cu = 48 mOhm |
-| **Via resistance** | R = rho * H / (pi * annular_area) | 0.3mm drill through 1.6mm board = 5 mOhm |
+| **Via resistance** | R = rho * H / (pi * annular_area) | 0.3mm drill through 1.6mm board ≈ 1.2 mOhm (25 µm plating) |
 | **Via inductance** | L = (mu0 * H / 2pi) * ln(2H/D) | 0.3mm drill = 0.7 nH |
-| **Coupling capacitance** | C = eps0 * eps_r * L * T / S | 10mm parallel run @ 0.5mm spacing = 0.3 fF |
+| **Coupling capacitance** | C = eps0 * eps_r * L * T / S | 10mm parallel run @ 0.5mm spacing ≈ 28 fF (eps_r 4.5, 1oz) |
+
+Via resistance and coupling capacitance are reported by `extract_parasitics.py` but not inserted into testbenches.
 
 ### Trace Impedance
 
@@ -109,12 +111,12 @@ This uses the board's stackup data (epsilon_r, dielectric thickness, copper weig
 
 ### What Parasitics Catch
 
-| Scenario | Without parasitics | With parasitics |
-|----------|-------------------|-----------------|
-| Long trace to RC filter | fc = 159 Hz | fc = 153 Hz (-3.8%) |
-| Via in regulator feedback | Vout = 3.300V | Same (no DC shift, but adds HF zero) |
-| Clock near ADC input | Clean ADC | 0.5pF coupling = crosstalk |
-| Narrow USB traces on 2-layer | 90 Ohm assumed | 109 Ohm measured (too high) |
+| Scenario | What the simulation does |
+|----------|--------------------------|
+| Long trace to a low-pass RC filter | Adds the trace R and via L of the output net; for kΩ-range filters the cutoff moves by well under 0.1% |
+| Feedback networks, LC filters, op-amp stages | Unchanged: these testbenches ignore the parasitics file |
+| Crosstalk / coupling | Not simulated; `extract_parasitics.py` reports coupling C only |
+| Trace impedance | Not a SPICE result; see the PCB analyzer's per-segment impedance |
 
 ## Analyzer Enhancements for SPICE
 

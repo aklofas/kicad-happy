@@ -398,10 +398,11 @@ Typical 0.3mm drill through 1.6mm board: ~0.7 nH
 
 ### Injection Thresholds
 
-Parasitics are only injected when significant relative to the circuit:
-- Trace R injected if >0.1% of the smallest resistor in the subcircuit
-- Via L injected if the circuit operates above ~10 MHz
-- Coupling C injected if >1% of any capacitor in the subcircuit
+Only the low-pass RC-filter testbench reads the parasitics file. It looks up the filter's output net by name (the net must carry the same name in the schematic and PCB analyses) and inserts, between R and C:
+- Trace R, if the net's total is at least 1 mΩ
+- Via L, if the net's total is at least 0.01 nH
+
+The thresholds are absolute, not relative to the circuit or its frequency. Coupling capacitance and via resistance are extracted but not inserted. All other testbenches ignore the file.
 
 ---
 

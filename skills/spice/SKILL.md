@@ -95,9 +95,9 @@ python3 <skill-path>/scripts/extract_parasitics.py pcb.json --output parasitics.
 python3 <skill-path>/scripts/simulate_subcircuits.py analysis.json --parasitics parasitics.json --output sim_report.json
 ```
 
-With `--parasitics`, testbenches include trace resistance and via inductance between components. The report shows the parasitic impact — e.g., "48mΩ trace resistance shifts RC filter fc down 0.3%."
+With `--parasitics`, low-pass RC-filter testbenches insert the PCB trace resistance and via inductance of the filter's output net (matched by its exact net name) between R and C. Other testbenches ignore the parasitics file, and extracted coupling capacitance and via resistance are not inserted. The report shows the simulated result with those elements in place; it does not compare against the ideal run.
 
-**When to use parasitic simulation:** Consider it when the design has high-impedance feedback networks (>100kΩ), LC filters or RF matching networks, long analog signal traces, or high-frequency circuits where trace inductance matters. For typical digital designs with low-impedance power regulation, the ideal simulation is sufficient.
+**When to use parasitic simulation:** to see whether layout series R/L moves a low-pass RC filter. It does not model LC filters, op-amp feedback networks, RF matching or crosstalk; for typical designs the ideal simulation is sufficient.
 
 ### Step 2c (optional): Monte Carlo tolerance analysis
 
