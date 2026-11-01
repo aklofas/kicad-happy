@@ -1,13 +1,13 @@
-"""PCB analysis pipeline: the phases analyze_pcb.py ran implicitly, as named functions
-with their real prerequisites passed explicitly.
+"""PCB analysis pipeline: the analysis phases as named functions with their
+prerequisites passed explicitly.
 
 Phase 1 read_board        — parse + extract (pcb.reader) + the KiCad-10 synthetic net map applied
-                            through a per-call PcbReaderState (B1; nothing module-level)
+                            through a per-call PcbReaderState (nothing module-level)
 Phase 2 run_facts         — the board facts (connectivity … return path, incl. the
                             .kicad_pro/.kicad_dru/lib-table loads, keepout zones)
-Phase 3 run_checks        — every check over the board + facts, incl. the seven late checks
-                            that used to run inside the dict build; run_analyses composes 2 + 3
-Phase 4 assemble_result   — pcb.presentation: the result dict in its historical key order
+Phase 3 run_checks        — every check over the board + facts, incl. the seven checks that
+                            need the facts; run_analyses composes 2 + 3
+Phase 4 assemble_result   — pcb.presentation: the result dict in the stable output key order
 Phase 5 finalize_for_cli  — command-specific annotation (GP-001 debug file, project summary, design
                             intent, stage/audience filters, finding_id)
 """
@@ -402,7 +402,7 @@ def run_facts(board: BoardData, *, include_trace_segments: bool, return_path_rad
         pro_rules = extract_pro_design_rules(pro)
         pro_text_vars = extract_pro_text_variables(pro)
         # Name the file that was actually loaded above, not an
-        # independent (and previously unsorted, first-glob-wins) rescan.
+        # independent rescan.
         project_settings = {
             'source': os.path.basename(
                 find_project_settings_file(str(path), '.kicad_pro', exact=True) or ''),
@@ -479,7 +479,7 @@ def run_facts(board: BoardData, *, include_trace_segments: bool, return_path_rad
 
 def run_checks(board: BoardData, facts: PcbFacts, *, include_trace_segments: bool) -> PcbChecks:
     """Phase 3: the checks in today's relative order — the eight run_analyses checks, then the
-    seven late checks that used to run inside assemble_result. Reads the board and *facts*;
+    seven checks that need the facts (their result writes happen in assemble_result). Reads the board and *facts*;
     mutates neither (tools/tests/test_pcb_phase_purity.py)."""
     setup = board.setup
     net_names = board.net_names

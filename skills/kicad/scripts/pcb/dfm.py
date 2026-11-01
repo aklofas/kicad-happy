@@ -109,9 +109,8 @@ def effective_board_minima(root: list, pro: dict | None) -> dict[str, tuple[floa
     return out
 
 
-# Drills below this are file artefacts (e.g. `(drill 0.00001)` pads
-# in HamedMasafi/MeloCar remote_3.kicad_pcb), not holes a fab will drill.
-# They are excluded from every minimum and listed in
+# Drills below this are file artefacts (e.g. a `(drill 0.00001)` pad), not
+# holes a fab will drill. They are excluded from every minimum and listed in
 # via_analysis.degenerate_drills so nothing is silently dropped.
 MIN_REAL_DRILL_MM = 0.05
 

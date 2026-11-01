@@ -313,8 +313,8 @@ def analyze_vias(vias: dict, footprints: list[dict],
     all_vias = vias.get("vias", [])
     if not all_vias:
         # A via-less board can still have footprint pad drills
-        # (including degenerate ones, e.g. HamedMasafi/MeloCar remote_3's
-        # `(drill 0.00001)` pads) worth surfacing — don't drop them just
+        # (including degenerate ones, e.g. a
+        # `(drill 0.00001)` pad) worth surfacing — don't drop them just
         # because there are no vias to analyze.
         novia_result: dict = {}
         pad_drills = _pad_drills(footprints)
@@ -946,12 +946,12 @@ def _nearest_zone_copper_distance(fp: dict, fp_layer: str, gnd_zones: list,
     copper.
 
     Prefers the filled polygon edge (actual copper shape, holes
-    included) over the zone bbox — the bbox was always 0.0 mm for any GND
-    pour enclosing the footprint, mislabelled 'deterministic'. Falls back
+    included) over the zone bbox, which would measure 0.0 mm for any footprint
+    inside a GND pour. Falls back
     to a filled_bbox / outline_bbox approximation when polygon
     data is unavailable. Returns (distance, basis) where basis is
-    'filled_polygon', 'filled_bbox', or 'outline_bbox' (None if no
-    candidate zone).
+    'filled_polygon', 'filled_bbox', or 'outline_bbox'; (inf, None) when
+    no candidate zone covers the footprint's layer.
     """
     if zone_fills is not None and getattr(zone_fills, "has_data", False):
         gnd_idxs = {i for i, z in enumerate(zones)
@@ -1201,10 +1201,10 @@ def analyze_copper_presence(footprints: list[dict], zones: list[dict],
             continue
         lib = fp.get("library", "").lower()
         val = (fp.get("value") or "").lower()
-        # A bare "TP" ref prefix is not evidence of a touch pad --
-        # 466/488 of the corpus's CP-003 "touch pad" refs were actually
-        # TestPoint:* library parts. Require positive evidence instead
-        # (a touch/capacitive-sensing library or value, or a TOUCH/TCH ref);
+        # A bare "TP" ref prefix is not evidence of a touch pad (it also
+        # matches TestPoint:* library parts). Require positive evidence
+        # instead (a touch/capacitive-sensing library or value, or a
+        # TOUCH/TCH ref);
         # a testpoint library is never touch even if it also matches those.
         if "testpoint" in lib or "test_point" in lib:
             is_touch = False

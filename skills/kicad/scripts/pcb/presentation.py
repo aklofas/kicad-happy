@@ -149,11 +149,11 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
                     include_trace_segments: bool, schematic_data: dict | None,
                     resolved_power_rails: set[str] | None,
                     power_rails_source: str) -> dict:
-    """Phase 4: build the PCB analyzer result dict (historical key order).
+    """Phase 4: build the PCB analyzer result dict (stable output key order).
 
     Mutates nothing caller-owned except `connectivity` (pops `unrouted`) and the
-    sections it pops back out of `result`; the late checks ran in pcb.pipeline.run_checks
-    and only their result writes stay here. *board* is a pcb.pipeline.BoardData and
+    sections it pops back out of `result`; the late checks run in pcb.pipeline.run_checks
+    and only their result writes happen here. *board* is a pcb.pipeline.BoardData and
     *analyses* a pcb.pipeline.PcbAnalyses.
     """
     diagnostics: list = list(board.diagnostics)
