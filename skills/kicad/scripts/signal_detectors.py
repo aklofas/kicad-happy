@@ -317,9 +317,9 @@ def detect_voltage_dividers(ctx: AnalysisContext) -> dict:
                     # `detect_power_regulators` and `postfilter_vd_and_dedup`
                     # also consume `voltage_dividers` as a shared input).
                     #
-                    # Deduplicating this double emission once caused 1742 VD-DET
-                    # disappearances AND 502 cascade false-positive RC-DET
-                    # findings corpus-wide.
+                    # A feedback divider must stay in `voltage_dividers`: the
+                    # exclusion set `detect_rc_filters` builds from that list is
+                    # what keeps its resistors out of RC pairings.
                     #
                     # If you're reading this thinking "the double-emission looks
                     # like a bug, let me clean it up": don't. The Layer 1 gate
@@ -1014,7 +1014,6 @@ def detect_crystal_circuits(ctx: AnalysisContext) -> list[dict]:
         # Probe datasheet first (highest authority): facts.crystal.load_capacitance.
         # DatasheetFacts has no `crystal` category, so _cl_specs is always None
         # and the value-string parse and default below decide the target.
-        # This lookup starts to apply once the facts carry a crystal block.
         _cache_dir = getattr(ctx, 'cache_dir', None)
         _xtal_mpn = xtal.get('mpn') or xtal.get('value') or ''
         _xtal_facts = get_facts(_xtal_mpn, cache_dir=_cache_dir, diagnostics=getattr(ctx, "diagnostics", None)) if _xtal_mpn else None
@@ -4757,7 +4756,7 @@ def audit_power_pin_dc_paths(ctx: AnalysisContext,
       - fuses / polyfuses                               (bridge)
       - solder jumpers with default_state='bridged'    (bridge)
     and REJECT crossing capacitors. If no named power rail is reachable
-    within 2 hops, emit PP-001 at severity=error.
+    within 2 hops, emit PP-001 at severity=error (info on module-internal LDO rails).
     """
     findings: list[dict] = []
     nets = ctx.nets or {}
