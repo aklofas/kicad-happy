@@ -1481,7 +1481,7 @@ def analyze_schematic(path: str, project_root: str | None = None,
 
 
 def finalize_for_cli(result: dict, config: dict, *, schematic_path: str, lifecycle: bool,
-                     stage: str | None, audience: str | None,
+                     stage: str | None,
                      diagnostics: list | None = None) -> None:
     """Phase 5: command-specific annotation; mutates *result*.
 
@@ -1640,7 +1640,7 @@ def finalize_for_cli(result: dict, config: dict, *, schematic_path: str, lifecyc
         }
 
     from output_filters import apply_output_filters
-    apply_output_filters(result, stage, audience)
+    apply_output_filters(result, stage)
 
     # Recompute summary + trust_summary from the final findings list — post-
     # filters (CERT-001 hobby gating, power_rails config, lifecycle audit,

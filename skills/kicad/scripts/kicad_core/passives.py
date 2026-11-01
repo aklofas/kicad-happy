@@ -40,18 +40,6 @@ _CAP_ESR_TABLE = [
     ("2220", 1e-3,  0.005),
 ]
 
-# Typical ESL by package (nH) — dominated by package geometry, not capacitance
-_CAP_ESL = {
-    "0402": 0.3,
-    "0603": 0.5,
-    "0805": 0.7,
-    "1206": 1.0,
-    "1210": 1.0,
-    "1812": 1.2,
-    "2220": 1.5,
-}
-
-
 def extract_cap_package(footprint):
     """Extract capacitor package size from KiCad footprint string.
 
@@ -113,27 +101,6 @@ def estimate_cap_esr(farads, package):
         return 0.1
     else:
         return 0.05
-
-
-def estimate_cap_esl(package):
-    """Estimate parasitic inductance (ESL) for an MLCC.
-
-    ESL is primarily driven by package geometry (current path length
-    through the component), not by capacitance value.
-
-    Args:
-        package: Package designator (e.g., '0402', '0805')
-
-    Returns:
-        Estimated ESL in henries, or None if package not recognized
-    """
-    # EQ-066: ESL estimate from package size (empirical table)
-    if not package:
-        return None
-    esl_nh = _CAP_ESL.get(package.upper())
-    if esl_nh is None:
-        return None
-    return esl_nh * 1e-9  # Convert nH to H
 
 
 # ---------------------------------------------------------------------------

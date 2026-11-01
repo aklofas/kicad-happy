@@ -15,24 +15,6 @@ def build_pin_to_net_map(nets: dict[str, Net]) -> dict[tuple[str, str], PinNetEn
     return pin_net
 
 
-def get_two_pin_nets(pin_net: dict, ref: str) -> tuple[str | None, str | None]:
-    """Get the two nets a 2-pin component connects to.
-
-    Takes pin_net map explicitly instead of closing over it.
-    Falls back to enumerating all pins when "1"/"2" aren't found.
-    """
-    n1, _ = pin_net.get((ref, "1"), (None, None))
-    n2, _ = pin_net.get((ref, "2"), (None, None))
-    if n1 is not None and n2 is not None:
-        return n1, n2
-    # Fallback for non-"1"/"2" pin numbering (Eagle imports, diodes A/K, etc.)
-    ref_entries = {k[1]: v for k, v in pin_net.items() if k[0] == ref}
-    if len(ref_entries) == 2:
-        nets = [net for net, _ in ref_entries.values()]
-        return nets[0], nets[1]
-    return n1, n2
-
-
 def build_net_id_map(pcb):
     """Return {net_id (int): net_name (str)} from PCB JSON.
 

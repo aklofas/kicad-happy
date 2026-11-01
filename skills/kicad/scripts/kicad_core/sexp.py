@@ -327,13 +327,6 @@ def get_at(node: list) -> tuple[float, float, float] | None:
     return None
 
 
-def get_xy(node: list) -> tuple[float, float] | None:
-    """Get (x, y) from an (xy x y) node."""
-    if isinstance(node, list) and len(node) >= 3 and node[0] == "xy":
-        return (float(node[1]), float(node[2]))
-    return None
-
-
 def has_flag(node: list, flag: str) -> bool:
     """Check if a node contains a flag like 'hide' or 'yes'.
 

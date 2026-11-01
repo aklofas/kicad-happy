@@ -17,10 +17,6 @@ VALID_EVIDENCE_SOURCES = (
     'datasheet', 'topology', 'heuristic_rule', 'symbol_footprint',
     'bom', 'geometry', 'api_lookup',
 )
-VALID_FIX_TYPES = (
-    'resistor_value_change', 'capacitor_value_change',
-    'add_component', 'remove_component', 'swap_connection', 'add_protection',
-)
 
 
 def _normalize_locator(s):

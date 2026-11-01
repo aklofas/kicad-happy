@@ -26,7 +26,6 @@ Parses KiCad's Lisp-like S-expression format into nested Python lists. Used by b
 | `get_value(node, keyword)` | Get value from `(keyword value)` pair |
 | `get_property(node, prop_name)` | Get value from `(property "name" "value")` |
 | `get_at(node)` | Get `(x, y, angle)` from `(at ...)` node |
-| `get_xy(node)` | Get `(x, y)` from `(xy ...)` node |
 
 **Design note**: The parser is intentionally simple — no schema validation, no type coercion beyond strings. All values come back as strings; callers convert to `float`/`int` as needed. This makes it robust against KiCad version differences.
 

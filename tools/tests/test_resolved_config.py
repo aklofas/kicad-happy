@@ -10,7 +10,6 @@ class ResolveConfig(unittest.TestCase):
             cfg = Path(d) / ".kicad-happy.json"
             cfg.write_text(json.dumps({"version": 1, "project": {"name": "x"}}), encoding="utf-8")
             r = pc.resolve_config(None, d)
-            self.assertEqual(r.mode, "discovered")
             self.assertEqual(r.effective, pc.load_config(d))
             self.assertEqual(r.hash_input, str(cfg))
             self.assertIn(str(cfg), r.paths)
@@ -25,7 +24,7 @@ class ResolveConfig(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             f = Path(d) / "c.json"; f.write_text('{"version": 1, "project": {"name": "y"}}', encoding="utf-8")
             r = pc.resolve_config(str(f), d)
-            self.assertEqual((r.mode, r.paths, r.hash_input), ("explicit", (str(f),), str(f)))
+            self.assertEqual((r.paths, r.hash_input), ((str(f),), str(f)))
             self.assertEqual(r.effective, pc.load_config_from_path(str(f)))
             missing = pc.resolve_config(str(Path(d) / "nope.json"), d)
             self.assertEqual((missing.paths, missing.hash_input), ((), None))

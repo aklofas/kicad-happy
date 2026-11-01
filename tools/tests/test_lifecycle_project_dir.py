@@ -341,7 +341,7 @@ class PipelineLifecycleTest(unittest.TestCase):
                 mock.patch.object(lifecycle_audit.time, "sleep", lambda s: None), \
                 contextlib.redirect_stderr(io.StringIO()):
             finalize_for_cli(result, {}, schematic_path=str(Path(project_dir) / "board.kicad_sch"),
-                             lifecycle=True, stage=None, audience=None)
+                             lifecycle=True, stage=None)
         return result
 
     def test_null_extraction_does_not_crash(self):

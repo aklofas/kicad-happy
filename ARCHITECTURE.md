@@ -140,7 +140,7 @@ The twelve analyzer and consumer CLIs (`analyze_schematic`, `analyze_pcb`, `anal
 | `project.py` | `.kicad_pro`/`.kicad_dru`/lib-table readers, root-schematic discovery | stdlib (+ kicad_core.sexp); also hosts `load_jsonc` / `_strip_jsonc` |
 | `sexp.py` | S-expression parser (parse/find/get helpers) | stdlib |
 | `model.py` | typed records: Component/Pin/NetPin/NetLabel/Net TypedDicts, PinNetEntry, SheetData, ResolvedConfig, PcbReaderState | stdlib |
-| `netquery.py` | net helpers (`get_two_pin_nets`, `build_net_id_map`), `build_pin_to_net_map`, `build_ref_pins`, `BridgeFact`/`BridgeFacts`/`build_bridge_facts` | `model`, `values` |
+| `netquery.py` | net helper (`build_net_id_map`), `build_pin_to_net_map`, `build_ref_pins`, `BridgeFact`/`BridgeFacts`/`build_bridge_facts` | `model`, `values` |
 | `render.py` | severity normaliser and text fragments: `normalize_severity` + `SEVERITY_ALIASES`; `severity_bucket` (the text-report bucket, kept as a named adapter: it differs on `WARN` and accepts `ERROR`); `plural`, `finding_line`, `wrap_lines`, `fmt_signed`, `fmt_g4` | stdlib |
 | `diagnostics.py` | `Diagnostic` and `record(sink, source, exc, effect)`: a guarded failure that degraded a run is printed to stderr and appended to the envelope's `diagnostics` list | stdlib |
 | `cli.py` | shared argparse declarations: `STAGES`, `AUDIENCES`, `add_stage_audience_args`, `add_only_deterministic_arg`, `add_schema_arg`, `add_output_arg`, `add_compact_arg`, `add_text_arg`, `add_config_arg` | stdlib |

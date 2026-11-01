@@ -582,7 +582,7 @@ def main(argv: list[str] | None = None) -> int:
                               if str(f.get('severity', 'info')).lower() != 'info']
 
     from output_filters import apply_output_filters
-    apply_output_filters(result, args.stage, args.audience)
+    apply_output_filters(result, args.stage)
 
     # Rebuild summary + trust_summary post-filter so the envelope matches
     # the final findings[] emitted to consumers. --compact and

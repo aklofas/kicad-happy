@@ -131,12 +131,10 @@ class ResolvedConfig:
     """The one resolved project configuration. Built by ``project_config.resolve_config``.
 
     effective:  the merged mapping consumers read (today's ``config``)
-    mode:       "explicit" (``--config PATH``) or "discovered" (cascade from the project dir)
     paths:      files that contributed, in merge order (lowest precedence first); () when none
     hash_input: the single file ``inputs.config_hash`` is computed from, or None
     """
     effective: dict
-    mode: str
     paths: tuple[str, ...]
     hash_input: str | None
 

@@ -437,7 +437,6 @@ def format_text(
 def apply_output_filters(
     result: Dict[str, Any],
     stage: Optional[str] = None,
-    audience: Optional[str] = None,
 ) -> None:
     """Apply stage/audience filtering to a result dict.  Mutates in place.
 

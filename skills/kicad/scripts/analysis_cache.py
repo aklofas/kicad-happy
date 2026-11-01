@@ -239,26 +239,6 @@ def hash_source_file(filepath: str) -> Optional[str]:
     return f'sha256:{h.hexdigest()}'
 
 
-def hash_source_files(project_dir: str,
-                      source_files: List[str]) -> Dict[str, str]:
-    """Hash multiple source files relative to project_dir.
-
-    Args:
-        project_dir: Root directory of the KiCad project.
-        source_files: List of paths relative to project_dir.
-
-    Returns:
-        Dict of {relative_path: "sha256:<hex>"} for files that exist.
-    """
-    hashes = {}
-    for relpath in source_files:
-        abspath = os.path.join(project_dir, relpath)
-        h = hash_source_file(abspath)
-        if h is not None:
-            hashes[relpath] = h
-    return hashes
-
-
 def sources_changed(old_hashes: Dict[str, str],
                     project_dir: str) -> bool:
     """Check if any source file has changed since the hashes were recorded.

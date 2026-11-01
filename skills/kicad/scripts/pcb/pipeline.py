@@ -620,7 +620,7 @@ def analyze_pcb(path: str, *, proximity: bool = False,
 
 def finalize_for_cli(result: dict, config: dict, *, pcb_path: str, analysis_dir_arg: str | None,
                      return_path_radius_mm: float, stage: str | None,
-                     audience: str | None, output_arg: str | None = None) -> None:
+                     output_arg: str | None = None) -> None:
     """Phase 5: command-specific annotation; mutates *result*."""
     # GP-001 debug: write per-sample diagnostics to disk and strip from output
     gp001_debug_data = result.pop("_gp001_debug_samples", None)
@@ -685,7 +685,7 @@ def finalize_for_cli(result: dict, config: dict, *, pcb_path: str, analysis_dir_
         pass
 
     from output_filters import apply_output_filters
-    apply_output_filters(result, stage, audience)
+    apply_output_filters(result, stage)
 
     # Guarantee every finding carries a stable finding_id (Layer 2 merge keys
     # on it). Runs after all filtering; before any output branch.

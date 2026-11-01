@@ -44,9 +44,6 @@ from kicad_core.netnames import configured_rail_voltage, rail_matches
 CONFIG_FILENAME = '.kicad-happy.json'
 
 # Recognized values for validated fields
-VALID_MARKETS = {'us', 'eu', 'automotive', 'medical', 'military'}
-VALID_DERATING_PROFILES = {'hobby', 'commercial', 'conservative', 'automotive'}
-VALID_BOARD_CLASSES = {'class_1', 'class_2', 'class_3'}
 VALID_SUPPLIERS = {'digikey', 'mouser', 'lcsc', 'element14'}
 VALID_BOM_GROUP_BY = {'value', 'mpn', 'value+footprint'}
 VALID_DIFF_THRESHOLDS = {'all', 'minor', 'major', 'breaking'}
@@ -190,10 +187,10 @@ def resolve_config(explicit_path: Optional[str], search_dir: str) -> ResolvedCon
     """
     if explicit_path:
         exists = os.path.isfile(explicit_path)
-        return ResolvedConfig(load_config_from_path(explicit_path), "explicit",
+        return ResolvedConfig(load_config_from_path(explicit_path),
                               (explicit_path,) if exists else (), explicit_path if exists else None)
     default = os.path.join(search_dir, CONFIG_FILENAME)
-    return ResolvedConfig(load_config(search_dir), "discovered",
+    return ResolvedConfig(load_config(search_dir),
                           tuple(_discover_config_paths(search_dir)),
                           default if os.path.isfile(default) else None)
 
@@ -401,7 +398,6 @@ VALID_PRODUCT_CLASSES = {'prototype', 'production'}
 VALID_TARGET_MARKETS = {'hobby', 'consumer', 'industrial', 'medical',
                         'automotive', 'aerospace'}
 VALID_IPC_CLASSES = {1, 2, 3}
-VALID_PASSIVE_SIZES = {'0201', '0402', '0603', '0805', '1206'}
 
 
 def _detect_ipc_class_from_text(text: str) -> Optional[int]:
@@ -872,33 +868,6 @@ def apply_suppressions(findings: List[Dict[str, Any]],
         f['suppression_reason'] = reason
 
     return findings
-
-
-def count_by_severity(findings: List[Dict[str, Any]],
-                      ) -> Dict[str, Dict[str, int]]:
-    """Count findings by severity, split into active and suppressed.
-
-    Returns::
-
-        {
-            "active": {"CRITICAL": 2, "HIGH": 3, ...},
-            "suppressed": {"CRITICAL": 0, "HIGH": 1, ...},
-            "total": {"CRITICAL": 2, "HIGH": 4, ...},
-        }
-    """
-    active: Dict[str, int] = {}
-    suppressed: Dict[str, int] = {}
-    total: Dict[str, int] = {}
-
-    for f in findings:
-        sev = f.get('severity', 'INFO')
-        total[sev] = total.get(sev, 0) + 1
-        if f.get('suppressed'):
-            suppressed[sev] = suppressed.get(sev, 0) + 1
-        else:
-            active[sev] = active.get(sev, 0) + 1
-
-    return {'active': active, 'suppressed': suppressed, 'total': total}
 
 
 # ---------------------------------------------------------------------------

@@ -119,7 +119,7 @@ def main(argv: list[str] | None = None) -> int:
     result.pop("file", None)
 
     finalize_for_cli(result, config, schematic_path=args.schematic, lifecycle=args.lifecycle,
-                     stage=args.stage, audience=args.audience, diagnostics=diagnostics)
+                     stage=args.stage, diagnostics=diagnostics)
 
     if args.text:
         from output_filters import format_text

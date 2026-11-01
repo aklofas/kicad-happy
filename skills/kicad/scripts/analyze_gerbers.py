@@ -2054,7 +2054,7 @@ def main(argv: list[str] | None = None) -> int:
     result["diagnostics"] = diagnostics
 
     from output_filters import apply_output_filters
-    apply_output_filters(result, args.stage, args.audience)
+    apply_output_filters(result, args.stage)
 
     # Guarantee every finding carries a stable finding_id (Layer 2 merge keys
     # on it). Runs after filtering; before any output branch.
