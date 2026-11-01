@@ -148,6 +148,31 @@ def _ref(comp):
     return comp.get("ref", "") if isinstance(comp, dict) else str(comp or "")
 
 
+def _source_name(sch):
+    """File name of the analysed schematic: inputs.source_files, else the legacy "file" field."""
+    src_files = (sch.get("inputs") or {}).get("source_files") or []
+    return Path(src_files[0]).name if src_files else Path(sch.get("file", "unknown")).name
+
+
+def _protocol_issues(pc):
+    """(protocol, issue) pairs of a protocol_compliance block, repeats dropped, first-seen order."""
+    seen = set()
+    pairs = []
+    for finding in pc.get("findings", []):
+        for issue_text in finding.get("issues", []) or []:
+            key = f"{finding['protocol']}:{issue_text}"
+            if key not in seen:
+                seen.add(key)
+                pairs.append((finding["protocol"], issue_text))
+    return pairs
+
+
+def _device_names(devices, limit=None):
+    """Reference of each protocol device, first `limit` of them. Devices are dicts or plain strings."""
+    return [d.get('reference', d.get('ref', str(d))) if isinstance(d, dict) else str(d)
+            for d in devices[:limit]]
+
+
 def _single_pin_net_text(entry):
     """'<net> (<ref> pin <n>)' for a connectivity_issues.single_pin_nets entry."""
     if not isinstance(entry, dict):
@@ -528,10 +553,7 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
 
     if sch:
         stats = sch.get("statistics", {})
-        # v1.4 removed the top-level "file" field; read from inputs.source_files
-        # instead. Falls back to the legacy "file" for cached v1.3.1 envelopes.
-        _src_files = (sch.get("inputs") or {}).get("source_files") or []
-        filename = Path(_src_files[0]).name if _src_files else Path(sch.get("file", "unknown")).name
+        filename = _source_name(sch)
         rails = stats.get("power_rails", [])
         rail_str = f", {len(rails)} power rails" if rails else ""
         L.append(f"**{filename}** — {stats.get('total_components', 0)} components, "
@@ -579,13 +601,8 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
         findings.append((issue.get("severity", "warning"), detail, "Derating"))
 
     # Protocol compliance issues (deduplicated)
-    seen_pc = set()
-    for finding in pc.get("findings", []):
-        for issue_text in finding.get("issues", []) or []:
-            key = f"{finding['protocol']}:{issue_text}"
-            if key not in seen_pc:
-                seen_pc.add(key)
-                findings.append(("warning", issue_text, finding["protocol"].upper()))
+    for protocol, issue_text in _protocol_issues(pc):
+        findings.append(("warning", issue_text, protocol.upper()))
 
     # Connectivity issues
     conn = sch.get("connectivity_issues", {}) if sch else {}
@@ -724,8 +741,7 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
             issues = finding.get("issues", []) or []
             checks = finding.get("checks", {})
             devices = finding.get("devices", [])
-            dev_names = [d.get('reference', d.get('ref', str(d))) if isinstance(d, dict) else str(d)
-                         for d in devices[:4]]
+            dev_names = _device_names(devices, 4)
             dev_str = f" ({', '.join(dev_names)})" if dev_names else ""
 
             if proto == "I2C" and checks:
@@ -989,10 +1005,7 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
     a("# Design Review — Full Report")
     a("")
     if sch:
-        # v1.4 removed the top-level "file" field; read from inputs.source_files
-        # instead. Falls back to the legacy "file" for cached v1.3.1 envelopes.
-        _src_files = (sch.get("inputs") or {}).get("source_files") or []
-        filename = Path(_src_files[0]).name if _src_files else Path(sch.get("file", "unknown")).name
+        filename = _source_name(sch)
         rails = stats.get("power_rails", [])
         a(f"**{filename}** — {stats.get('total_components', 0)} components "
           f"({stats.get('unique_parts', 0)} unique), {stats.get('total_nets', 0)} nets, "
@@ -1015,13 +1028,8 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
                  f"{ref} ({issue.get('value','')}) — abs max {_safe_float(issue.get('abs_max_vin'),'.1f')}V"
         all_issues.append((issue.get("severity", "warning"), detail, "Voltage Derating"))
 
-    seen_pc = set()
-    for finding in pc.get("findings", []):
-        for issue_text in finding.get("issues", []) or []:
-            key = f"{finding['protocol']}:{issue_text}"
-            if key not in seen_pc:
-                seen_pc.add(key)
-                all_issues.append(("warning", issue_text, "Protocol Compliance"))
+    for _protocol, issue_text in _protocol_issues(pc):
+        all_issues.append(("warning", issue_text, "Protocol Compliance"))
 
     a("## Critical Findings")
     a("")
@@ -1334,11 +1342,7 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
                 issues = finding.get("issues", []) or []
                 checks = finding.get("checks", {})
                 devices = finding.get("devices", [])
-                # v1.4 devices may be list[dict {ref, value, lib_id}] (from
-                # _enrich_device_ref). v1.3.1 cached envelopes may have
-                # list[str]. Mirror the compact report's defensive logic.
-                dev_names = [d.get('reference', d.get('ref', str(d))) if isinstance(d, dict) else str(d)
-                             for d in devices]
+                dev_names = _device_names(devices)
                 dev_str = f" ({', '.join(dev_names)})" if dev_names else ""
                 a(f"**{proto}**{dev_str}")
                 for check_name, check_data in checks.items():
