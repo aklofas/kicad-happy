@@ -201,7 +201,7 @@ Add `--full` to include individual track/via coordinates, per-segment trace impe
 
 **Zone fills must be current.** The copper presence analysis uses KiCad's filled polygon data, which is computed when the user runs Edit → Fill All Zones (shortcut `B`) and stored in the `.kicad_pcb` file. If the board was modified after the last fill, the filled polygon data may be stale and the copper presence results will be inaccurate. When reviewing copper presence data, note whether the `fill_ratio` seems reasonable — a zone with 0 filled area or `is_filled: false` likely hasn't been filled.
 
-**Zone outline ≠ actual copper.** The zone `outline_bbox` is the user-drawn boundary; `filled_bbox` is where copper actually exists after clearances, keepouts, and priority cuts. The `copper_presence` section shows which components have zone copper on the opposite layer — use this for capacitive touch pad isolation, antenna keep-out, and thermal analysis instead of inferring copper presence from zone outlines.
+**Zone outline ≠ actual copper.** The zone `outline_bbox` is the user-drawn boundary; `filled_bbox` is where copper actually exists after clearances, keepouts, and priority cuts. The `analyze_copper_presence` findings (CP-001..CP-003) and `copper_presence_summary` show which components have zone copper on the opposite layer — use these for capacitive touch pad isolation, antenna keep-out, and thermal analysis instead of inferring copper presence from zone outlines.
 
 **Copper-sensitive components need deeper checks.** For capacitive touch pads and antennas, confirming "no opposite-layer copper" is necessary but not sufficient. The copper absence could be accidental — one zone refill after a routing change could add copper and kill touch sensitivity or detune the antenna. Check for explicit **keepout zones** (rule areas) that enforce the copper-free area as a DRC rule. Also measure same-layer GND clearance around touch pads and compare against the controller's app note minimum. For touch pads, compare trace lengths across all pads — significant asymmetry shifts baseline readings per channel. Report physical details (pad size, position, clearance, trace width/length) for all copper-sensitive components. See `references/pcb-layout-analysis.md` → Copper-Sensitive Components for the full checklist.
 
@@ -370,11 +370,11 @@ All fields are optional. Missing fields use defaults.
 **Schematic analyzer top-level keys:**
 ```
 analyzer_type, schema_version, summary, findings, trust_summary,
-file, kicad_version, file_version, title_block, statistics,
+inputs, compat, assessments, diagnostics, kicad_version, file_version, title_block, statistics,
 bom, components, nets, subcircuits, ic_pin_analysis, transistor_pin_analysis,
-design_analysis, connectivity_issues, hierarchy_context, hierarchy_warning, net_classifications, rail_voltages
+design_analysis, connectivity_issues, rail_voltages
 ```
-Optional (present when non-empty): `pdn_impedance`, `sleep_current_audit`, `power_budget`, `power_sequencing`, `bom_optimization`, `test_coverage`, `assembly_complexity`, `usb_compliance`, `inrush_analysis`, `sheets` (multi-sheet only), `missing_info`, `bom_lock`, `project_settings`
+Optional (present when non-empty): `hierarchy_warning` (sub-sheet run without its root), `net_classifications`, `pdn_impedance`, `sleep_current_audit`, `power_budget`, `power_sequencing`, `bom_optimization`, `test_coverage`, `assembly_complexity`, `usb_compliance`, `inrush_analysis`, `sheets` (multi-sheet only), `missing_info`, `bom_lock`, `project_settings`
 
 Key nested structures:
 - `statistics`: `{total_components, unique_parts, dnp_parts, total_nets, total_wires, total_no_connects, component_types, power_rails, missing_mpn, ...}`
@@ -387,16 +387,16 @@ Key nested structures:
 **PCB analyzer top-level keys:**
 ```
 analyzer_type, schema_version, summary, findings, trust_summary,
-file, kicad_version, file_version, statistics, layers, setup,
+inputs, compat, assessments, diagnostics, kicad_version, file_version, statistics, layers, setup,
 nets, net_name_to_id, board_outline, component_groups, footprints,
 tracks, vias, zones, keepout_zones, connectivity, net_lengths
 ```
-Optional: `power_net_routing`, `decoupling_placement`, `ground_domains`, `layer_transitions`, `silkscreen`, `board_metadata`, `dimensions`, `groups`, `net_classes`, `dfm_summary`, `placement_density`, `copper_presence_summary`, `board_thickness_mm`, `trace_proximity` (with `--proximity`). Sections previously at top level (`thermal_analysis`, `thermal_pad_vias`, `tombstoning_risk`, `placement_analysis`, `current_capacity`, `copper_presence`, `dfm`) are now in `findings[]`. With `--full`, the output also includes a `connectivity_graph` section (see "Connectivity Graph" above).
+Optional: `power_net_routing`, `decoupling_placement`, `ground_domains`, `layer_transitions`, `silkscreen`, `board_metadata`, `dimensions`, `groups`, `net_classes`, `dfm_summary`, `placement_density`, `copper_presence_summary`, `board_thickness_mm`, `thermal_pad_scan`, `trace_proximity` (with `--proximity`). Sections previously at top level (`thermal_analysis`, `thermal_pad_vias`, `tombstoning_risk`, `placement_analysis`, `current_capacity`, `copper_presence`, `dfm`) are now in `findings[]`. With `--full`, the output also includes a `connectivity_graph` section (see "Connectivity Graph" above).
 
 Key nested structures:
 - `net_lengths` is a **list** (not dict): `[{net, net_number, total_length_mm, segment_count, via_count, layers{}}, ...]` sorted by length descending
 - `power_net_routing` is a **list**: `[{net, track_count, total_length_mm, min_width_mm, max_width_mm, widths_used[]}, ...]`
-- `footprints[]`: `{reference, value, footprint, layer, pads[], sch_path, sch_sheetname, sch_sheetfile, connected_nets[], ...}`
+- `footprints[]`: `{reference, value, footprint, layer, pad_nets{}, sch_path, sheetname, sheetfile, connected_nets[], ...}`
 - `statistics`: `{footprint_count, copper_layers_used, smd_count, tht_count, zone_count, via_count, routing_complete, ...}`
 
 **Gerber analyzer top-level keys:**
@@ -506,7 +506,7 @@ When both files exist, cross-reference them. This catches the most expensive bug
 5. **DNP consistency**: DNP components in schematic should not have routing on PCB.
 6. **Value/MPN consistency**: Values and MPNs match between schematic and PCB properties.
 
-The PCB analyzer's `sch_path`, `sch_sheetname`, and `sch_sheetfile` fields in each footprint enable automated cross-referencing.
+The PCB analyzer's `sch_path`, `sheetname`, and `sheetfile` fields in each footprint enable automated cross-referencing.
 
 ### Diff-Aware Design Comparison
 

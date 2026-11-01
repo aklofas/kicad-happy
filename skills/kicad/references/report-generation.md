@@ -75,16 +75,16 @@ If a finding was reviewed and judged benign, keep it in a "False Positives / Rev
 
 ## Contents
 
-| Section | Line | Purpose |
-|---------|------|---------|
-| Report Structure | ~18 | Full report template (copy and fill in) |
-| Analyzer Output Field Reference | ~364 | Maps every JSON output field to its report section — use as checklist |
-| Severity Definitions | ~468 | CRITICAL / WARNING / SUGGESTION criteria |
-| Writing Principles | ~476 | How to write actionable findings |
-| Handling Different Design Domains | ~512 | Domain-specific focus areas (IoT, motor, RF, analog, industrial) |
-| Cross-Referencing with Raw Schematic | ~529 | Mandatory verification steps |
-| Known Analyzer Limitations | ~540 | What the tool can and can't catch |
-| Report Length Guidelines | ~563 | Target report sizes by complexity |
+| Section | Purpose |
+|---------|---------|
+| Report Structure | Full report template (copy and fill in) |
+| Analyzer Output Field Reference | Maps every JSON output field to its report section — use as checklist |
+| Severity Definitions | CRITICAL / WARNING / SUGGESTION criteria |
+| Writing Principles | How to write actionable findings |
+| Handling Different Design Domains | Domain-specific focus areas (IoT, motor, RF, analog, industrial) |
+| Cross-Referencing with Raw Schematic | Mandatory verification steps |
+| Known Analyzer Limitations | What the tool can and can't catch |
+| Report Length Guidelines | Target report sizes by complexity |
 
 ## Report Structure
 
@@ -276,7 +276,7 @@ was skipped or degraded (no datasheets), state the per-IC gaps here.
 [Via annular ring analysis, fab capability vs IPC minimums]
 
 ### Via Protection (IPC-4761)
-[Only for via-in-pad designs: protection type, BGA/QFN thermal pad vias. The `thermal_pad_vias` output uses an `effective_via_count` that weights each via by `(drill/0.3mm)²` — see pcb-layout-analysis.md "Thermal via effective count methodology" for the full formula and thresholds. Designs using 0.2mm vias by intent (module footprints) may show "insufficient" adequacy despite adequate thermal performance — always cross-reference the datasheet before flagging.]
+[Only for via-in-pad designs: protection type, BGA/QFN thermal pad vias. TV-001 findings (detector `analyze_thermal_pad_vias`) carry an `effective_via_count` that weights each via by `(drill/0.3mm)²` — see pcb-layout-analysis.md "Thermal via effective count methodology" for the full formula and thresholds. Designs using 0.2mm vias by intent (module footprints) may show "insufficient" adequacy despite adequate thermal performance — always cross-reference the datasheet before flagging.]
 
 ## Design Analysis
 
@@ -338,10 +338,10 @@ When `analyze_thermal.py` was run, include its junction temperature estimates (T
 For every IC with an exposed/thermal pad, explicitly report the via count and adequacy in this format: "[Ref] pad [N] ([net]) connected through [count] thermal vias (recommended range: [min]–[max] per datasheet) — [adequate/insufficient]." Example: "U1 pad 41 (GND thermal pad) connected through 12 thermal vias (recommended range: 9–16) — adequate." The thermal via count is one of the most common QFN/DFN layout errors and is always worth calling out with a specific number, even when adequate — it confirms the designer got it right.
 
 ### Copper Presence
-[Zone copper at component pad locations — from `copper_presence` section. Focus on `no_opposite_layer_copper` list: which components lack zone copper on the opposite layer? Verify this is intentional for capacitive touch pads and antennas (need isolation) vs unexpected for other components (might indicate a zone gap). Also note `same_layer_foreign_zones` — pads sitting on zones they're not connected to, which is normal for tightly-packed power island zones but worth flagging if unexpected.]
+[Zone copper at component pad locations — from the `analyze_copper_presence` findings and `copper_presence_summary`. Focus on CP-002 (no zone copper on the opposite layer; resistors, capacitors, inductors and ferrites are not reported): which components lack it? Verify this is intentional for capacitive touch pads and antennas (need isolation) vs unexpected for other components (might indicate a zone gap). Also note CP-001 — pads sitting on zones they're not connected to, which is normal for tightly-packed power island zones but worth flagging if unexpected.]
 
 ### Capacitive Touch Pads
-[Include when TP-prefixed components or pad-only footprints appear in `copper_presence.no_opposite_layer_copper`, or when touch controller ICs are detected]
+[Include when TP-prefixed components or pad-only footprints appear in CP-002 findings, or when touch controller ICs are detected]
 
 | Pad | Diameter/Size | Position | Opposite-Layer Copper | Keepout Zone? | GND Pour Clearance | Trace Width | Trace Length to Controller |
 |-----|--------------|----------|----------------------|---------------|-------------------|-------------|--------------------------|
@@ -351,7 +351,7 @@ Copper absence vs keepout enforcement: Confirming "no copper" under a touch pad 
 
 Trace length asymmetry: Compute the trace length from each touch pad to the controller IC and compare across all pads. Significant asymmetry (>1.5×) means different parasitic capacitance per channel, which shifts baseline readings and may reduce dynamic range even with firmware calibration. Report the ratio: "TOUCH_2 (41.6mm) is 1.75× longer than TOUCH_1 (23.7mm)."
 
-GND pour clearance: Use the `touch_pad_gnd_clearance` section in `copper_presence` for measured clearance values (`gnd_clearance_mm` per touch pad). Compare against the touch controller's recommended minimum (typically 1.0mm for Espressif, check the specific controller's app note). If the clearance is exactly at the minimum, note this: "GND clearance is 1.0mm — exactly the Espressif minimum. Consider increasing to 1.5mm if sensitivity is marginal." If `touch_pad_gnd_clearance` is not present, measure manually from the PCB layout.
+GND pour clearance: Use the CP-003 findings for measured clearance values (`gnd_clearance_mm` per touch pad). Compare against the touch controller's recommended minimum (typically 1.0mm for Espressif, check the specific controller's app note). If the clearance is exactly at the minimum, note this: "GND clearance is 1.0mm — exactly the Espressif minimum. Consider increasing to 1.5mm if sensitivity is marginal." If no CP-003 finding names the pad, measure manually from the PCB layout.
 
 ### Antenna Layout
 [Include when ANT-prefixed footprints, antenna lib_id patterns, or RF antenna footprints are detected, OR when wireless modules (ESP32, nRF, etc.) with integrated/PCB antennas are present]
@@ -378,7 +378,7 @@ ESD protection ICs (entries with `category: "esd_bypass"` in the decoupling outp
 [Routing completeness, unrouted net count and list]
 
 ## Schematic ↔ PCB Cross-Reference
-[Include when both schematic and PCB were analyzed — this catches the most dangerous bugs. Use `statistics.total_nets` from both analyzers for net count comparison — do not mix net counts from different sections or manual counting methods, as the schematic may include internal unnamed nets that the PCB doesn't.]
+[Include when both schematic and PCB were analyzed — this catches the most dangerous bugs. Use `statistics.total_nets` (schematic) and `statistics.net_count` (PCB) for net count comparison — do not mix net counts from different sections or manual counting methods, as the schematic may include internal unnamed nets that the PCB doesn't.]
 ### Component Count Match — [Schematic (excl. power symbols) vs PCB footprint count]
 ### Pin-Net Verification — [ALL components: schematic pin mapping vs PCB pad mapping. Table: Ref | Pins | All Match | Mismatches. Do not sample — verify every component including connectors, transistors, diodes.]
 This verification must happen at the PCB pad level, not just the schematic pin level. The schematic tells you pin 1 connects to net X; the PCB tells you pad 1 connects to net X. If the library footprint has pad numbering that doesn't match the symbol's pin numbering, the schematic and PCB will be internally consistent but the board will be wrong. For each IC, transistor, and connector, verify both directions: schematic pin N → net X, AND PCB pad N → net X, AND the physical pad position matches the datasheet's pin diagram for that specific package. Example format: "Q1: 1=G(MAP_RED), 2=S(GND), 3=D(+5V)." This catches the most dangerous class of bug — a library footprint with wrong pad numbering passes all consistency checks but produces a non-functional board.
@@ -476,7 +476,7 @@ Quick reference for what each analyzer produces, to ensure no analysis dimension
 | `bom` | Component Summary, BOM Optimization | deduplicated parts with quantities |
 | `components` | IC Spot-Check, throughout | full component details with pin_uuids, parsed_value |
 | `nets` | Net Tracing, throughout | per-net pin lists with pin_type |
-| `subcircuits` | Power Tree | auto-detected power/signal subcircuits |
+| `subcircuits` | Power Tree | IC neighbourhoods (one per IC); power/signal detections are in `findings[]` |
 | `ic_pin_analysis` | MCU pin audit | per-IC pin utilization summary |
 | `findings[] (detector: power_regulators)` | Power Regulators | topology, vref_source, vout_estimate, vout_net_mismatch, inverting |
 | `findings[] (detector: feedback_networks)` | Feedback Networks | R_top, R_bottom, vref, vout, vref_source |
@@ -552,7 +552,7 @@ Quick reference for what each analyzer produces, to ensure no analysis dimension
 | `setup` | Board Overview | thickness, mask clearance |
 | `board_outline` | Board Overview | bounding box, edge geometry |
 | `board_metadata` | Board Overview | title block, paper |
-| `footprints` | Footprint Placement | per-footprint pads, nets, schematic cross-ref (sch_path, sch_sheetname) |
+| `footprints` | Footprint Placement | per-footprint pad_nets, connected_nets, schematic cross-ref (sch_path, sheetname, sheetfile) |
 | `component_groups` | Footprint Placement | grouped by reference prefix |
 | `tracks` | Trace Routing | width/layer distribution |
 | `vias` | Via Analysis | size distribution, via_analysis (types, annular ring, via-in-pad, tenting) |
@@ -572,8 +572,8 @@ Quick reference for what each analyzer produces, to ensure no analysis dimension
 | `dfm_summary` | DFM Assessment | tier, metrics, violation_count |
 | `findings[] (category: dfm)` | DFM Assessment | individual violations |
 | `findings[] (detector: analyze_tombstoning_risk)` | Manufacturing | at-risk 0201/0402 components, thermal asymmetry reasons |
-| `findings[] (detector: analyze_copper_presence)` | Copper Presence | no_opposite_layer_copper, same_layer_foreign_zones, touch_pad_gnd_clearance |
-| `copper_presence_summary` | Copper Presence | opposite_layer_summary |
+| `findings[] (detector: analyze_copper_presence)` | Copper Presence | CP-001 foreign-zone pads, CP-002 no opposite-layer copper, CP-003 touch-pad GND clearance |
+| `copper_presence_summary` | Copper Presence | components that have opposite-layer zone copper, grouped by net: opposite_layer_nets, component_count, components |
 
 ### Gerber Analyzer (`analyze_gerbers.py`)
 
