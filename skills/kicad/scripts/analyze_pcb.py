@@ -79,24 +79,27 @@ def _shoelace_area(pts_node: list) -> float:
 
 
 def _point_in_polygon(px: float, py: float,
-                      polygon: list[tuple[float, float]]) -> bool:
+                      polygon: list[tuple[float, float]],
+                      edges=None) -> bool:
     """Ray-casting point-in-polygon test.
 
     Returns True if point (px, py) is inside the polygon defined by
     a list of (x, y) vertices.
+
+    edges: optional iterable of vertex indices i, each naming the edge
+    (i - 1, i). Only those edges are tested; the result is unchanged as long
+    as it holds every edge whose y-span contains py (ZoneFills strip index).
     """
     n = len(polygon)
     if n < 3:
         return False
     inside = False
-    j = n - 1
-    for i in range(n):
+    for i in (range(n) if edges is None else edges):
         xi, yi = polygon[i]
-        xj, yj = polygon[j]
+        xj, yj = polygon[i - 1]
         if ((yi > py) != (yj > py)) and \
                 (px < (xj - xi) * (py - yi) / (yj - yi) + xi):
             inside = not inside
-        j = i
     return inside
 
 
@@ -125,7 +128,8 @@ class ZoneFills:
 
     `min_edge_distance` additionally maintains a lazily built per-fill
     segment grid (KH-420) so nearest-edge queries don't need to walk every
-    vertex of every fill.
+    vertex of every fill. Point queries use a lazily built per-fill strip
+    index (`_strip_index`) so the ray cast only tests edges near the point's y.
     """
 
     def __init__(self) -> None:
@@ -135,6 +139,7 @@ class ZoneFills:
         ] = []
         self._next_fill_id = 0
         self._grids: dict[int, tuple] = {}
+        self._strips: dict[int, tuple] = {}
 
     def add(self, zone_idx: int, layer: str,
             coords: list[tuple[float, float]]) -> None:
@@ -173,6 +178,43 @@ class ZoneFills:
         self._grids[fill_id] = g
         return g
 
+    def _strip_index(self, fill_id: int):
+        """Lazily built horizontal strips: strip -> indices i of the edges
+        (i - 1, i) whose y-span overlaps that strip. (y0, height, count, strips).
+
+        The ray cast in `_point_in_polygon` only toggles on an edge with
+        min(yi, yj) <= py < max(yi, yj); the strip number is non-decreasing
+        in y, so every such edge is listed in py's strip and testing that
+        strip alone gives the same result as walking every edge."""
+        s = self._strips.get(fill_id)
+        if s is not None:
+            return s
+        _fid, _zidx, _layer, coords, bbox = self._fills[fill_id]
+        n = len(coords)
+        k = max(1, min(4096, n // 8))
+        y0 = bbox[1]
+        h = (bbox[3] - y0) / k or 1.0
+        strips: list[list[int]] = [[] for _ in range(k)]
+        for i in range(n):
+            ya, yb = coords[i][1], coords[i - 1][1]
+            s0 = min(k - 1, int((min(ya, yb) - y0) / h))
+            s1 = min(k - 1, int((max(ya, yb) - y0) / h))
+            for b in range(s0, s1 + 1):
+                strips[b].append(i)
+        s = (y0, h, k, strips)
+        self._strips[fill_id] = s
+        return s
+
+    def _contains(self, fill_id: int, x: float, y: float,
+                  coords: list[tuple[float, float]]) -> bool:
+        """Point-in-fill test through the strip index (same result as
+        `_point_in_polygon(x, y, coords)`)."""
+        if len(coords) < 3:
+            return False
+        y0, h, k, strips = self._strip_index(fill_id)
+        b = min(k - 1, max(0, int((y - y0) / h)))
+        return _point_in_polygon(x, y, coords, strips[b])
+
     @property
     def has_data(self) -> bool:
         """True if any filled polygon data was loaded."""
@@ -189,7 +231,7 @@ class ZoneFills:
             # Fast bounding box rejection
             if x < bbox[0] or x > bbox[2] or y < bbox[1] or y > bbox[3]:
                 continue
-            if _point_in_polygon(x, y, coords):
+            if self._contains(_fill_id, x, y, coords):
                 results.append(zones[zone_idx])
                 seen.add(zone_idx)
         return results
@@ -205,7 +247,7 @@ class ZoneFills:
                 continue
             if x < bbox[0] or x > bbox[2] or y < bbox[1] or y > bbox[3]:
                 continue
-            if not _point_in_polygon(x, y, coords):
+            if not self._contains(fill_id, x, y, coords):
                 continue
             if net_name is not None and zones[zone_idx].get("net_name", "") != net_name:
                 continue
@@ -219,7 +261,7 @@ class ZoneFills:
                 continue
             if x < bbox[0] or x > bbox[2] or y < bbox[1] or y > bbox[3]:
                 continue
-            if _point_in_polygon(x, y, coords):
+            if self._contains(_fill_id, x, y, coords):
                 return True
         return False
 
