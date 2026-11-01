@@ -65,8 +65,8 @@ class Source:
     page_count: Optional[int] = field(default=None, metadata={
         "description": "PDF page count."})
     family_ref: Optional[str] = field(default=None, metadata={
-        "description": "Path to a _families/ file when this MPN is a variant. Reserved for "
-                       "v1.5 Tier 2 dedup; always None in v1.4."})
+        "description": "Path to a _families/ file when this MPN is a variant. Reserved; "
+                       "always None (merge_results.py writes None and nothing reads it)."})
 
 
 @dataclass
