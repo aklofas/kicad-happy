@@ -133,8 +133,8 @@ separate from the point-to-point tracing above.
   narrower one, two group buses by member name, a vector and a group by
   position only at equal width. The parent side is the label KiCad picks to
   drive the bus wire: a global label, then a local, then a hierarchical
-  label; among those, one whose members include all the others', else the
-  first by name.
+  label; among those, a label whose members include another's outranks it, else
+  the first by name.
 - **Hier/local join.** A genuine (non-sheet-pin) hierarchical label joins
   same-name local labels on its own sheet into one net; a sheet-pin label
   does not — its bare name belongs to the child and repeats per instance.

@@ -296,7 +296,7 @@ flag, other
 
 ### Supported Formats
 
-The accepted formats, unit handling and capacitor rules are in the Value Parser table in `README.md` (this directory). That table is checked against `parse_value()`.
+The accepted formats, unit handling and capacitor rules are in the Value Parser table in `README.md` (this directory).
 
 ### Unparseable Values
 

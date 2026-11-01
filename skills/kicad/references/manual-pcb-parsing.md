@@ -367,7 +367,7 @@ KiCad 5 PCB files use `(module ...)` instead of `(footprint ...)`, and `(fp_text
 | `(property "Reference" "U1" ...)` | `(fp_text reference "U1" ...)` |
 | `(property "Value" "STM32" ...)` | `(fp_text value "STM32" ...)` |
 | `(uuid "...")` | `(tstamp HEXID)` |
-| Layer numbers: F.Cu=0, B.Cu=2 | Layer numbers: F.Cu=0, B.Cu=31 |
+| Layer numbers: F.Cu=0, B.Cu=2 (KiCad 9-10; KiCad 6-8 use B.Cu=31) | Layer numbers: F.Cu=0, B.Cu=31 |
 
 ### Net Classes (KiCad 5 only)
 
