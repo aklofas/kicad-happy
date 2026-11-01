@@ -448,7 +448,7 @@ def main(argv: list[str] | None = None) -> int:
         except (TypeError, ValueError):
             pass
 
-    # Build inputs provenance block (Track 1.3).
+    # Build inputs provenance block.
     from pathlib import Path as _Path
     _upstream_artifacts = {}
     _source_files = []
@@ -464,7 +464,7 @@ def main(argv: list[str] | None = None) -> int:
     if _cfg_path and not _cfg_path.is_file():
         _cfg_path = None
 
-    # Resolve canonical analysis_dir ONCE (audit Highest-Risk #4).
+    # Resolve the canonical analysis_dir once.
     if args.analysis_dir:
         _analysis_dir = _Path(args.analysis_dir)
     elif args.output:
@@ -472,7 +472,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         _analysis_dir = _Path(analysis_cfg.get('output_dir') or 'analysis')
 
-    # Resolve capability_mode_ref BEFORE build_inputs (audit Highest-Risk #5).
+    # Resolve capability_mode_ref before build_inputs.
     _capability_mode_ref = get_capability_mode_ref(_analysis_dir)
 
     inputs = build_inputs(
@@ -587,8 +587,8 @@ def main(argv: list[str] | None = None) -> int:
     # Rebuild summary + trust_summary post-filter so the envelope matches
     # the final findings[] emitted to consumers. --compact and
     # apply_output_filters can both mutate findings after the initial
-    # summary was built (KH-311 for trust_summary; same idea here for
-    # total_findings + by_severity).
+    # summary was built, so trust_summary, total_findings and by_severity
+    # are recomputed from the final list.
     _final = result.get('findings', []) if isinstance(result.get('findings'), list) else []
     _final_counts = {'error': 0, 'warning': 0, 'info': 0}
     for _f in _final:
@@ -603,7 +603,7 @@ def main(argv: list[str] | None = None) -> int:
         result['summary']['by_severity'] = _final_counts
     result['trust_summary'] = compute_trust_summary(_final)
 
-    # Wire capability_mode_ref (Phase 4 spec §3.3).
+    # Wire capability_mode_ref.
     from pathlib import Path as _Path
     # capability_mode_ref already resolved early — reuse to keep run_id stable.
     result['capability_mode_ref'] = _capability_mode_ref

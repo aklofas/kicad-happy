@@ -1,12 +1,12 @@
 """
-Testbench generation templates for Phase 1 SPICE simulation.
+Testbench generation templates for SPICE simulation.
 
 Each function takes a detector output dict (from signal_detectors.py) and
 returns a complete ngspice .cir file as a string. Testbenches use .control
 blocks for measurement, writing ASCII results to an output file — no binary
 .raw parsing needed.
 
-Supported detector types (Phase 1):
+Supported detector types:
   - RC filters (AC analysis → cutoff frequency, rolloff)
   - LC filters (AC analysis → resonant frequency, Q factor)
   - Voltage dividers (DC operating point → output voltage)
@@ -124,7 +124,7 @@ def _get_parasitic_lines(parasitics_data, net_name, node_before, node_after):
     length = net_data.get("total_length_mm", 0)
     vias = net_data.get("via_count", 0)
 
-    # Only inject if parasitic is significant relative to node_after
+    # Inject only above fixed floors: 1 mOhm of trace or 0.01 nH of via inductance
     if r_total < 0.001 and via_l < 0.01:
         return "", ""
 
@@ -490,7 +490,7 @@ def generate_opamp_circuit(det, output_file, context=None, parasitics=None,
     else:
         stim_net = in_net
 
-    # --- Model resolution (Phase 2) ---
+    # --- Model resolution ---
     # Try to get a per-part behavioral model; fall back to ideal
     model_str = get_ideal_opamp()
     model_name = "IDEAL_OPAMP"

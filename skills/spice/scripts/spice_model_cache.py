@@ -15,13 +15,14 @@ Directory structure:
           LM358.sub       # .subckt OPAMP_LM358 ...
           AMS1117_3_3.sub # .subckt LDO_AMS1117_3_3 ...
 
-The model resolution cascade:
-    1. Project cache (spice/models/) — instant, previously resolved
-    2. Lookup table (spice_part_library.py) — instant, offline
-    3. API parametric data (spice_spec_fetcher.py) — ~1s, needs creds
-    4. Structured datasheet extraction (datasheets/extracted/) — cached JSON
-    5. Heuristic PDF regex extraction — pdftotext + regex patterns
-    6. Ideal/generic model fallback — instant, always available
+The model resolution cascade (get_model_for_part):
+    1. Project cache (spice/models/) — previously resolved
+    2. Distributor API parametric data (spice_spec_fetcher.py)
+    3. Structured datasheet extraction (datasheets/extracted/)
+    4. Heuristic PDF regex extraction — pdftotext + regex patterns
+    5. Built-in lookup table (spice_part_library.py) — offline
+    6. Ideal/generic model fallback — always available
+Offline mode skips tiers 2-4.
 """
 
 import json
@@ -311,7 +312,8 @@ def get_model_for_part(mpn, component_type=None, context=None, options=None, *, 
            (skipped when options.offline)
         3. Structured datasheet extraction — from datasheets/extracted/ cache
         4. Heuristic PDF regex extraction — from datasheets/ PDFs
-        5. Built-in lookup table — ~100 common parts with verified specs
+        5. Built-in lookup table — common op-amps, LDOs, comparators and
+           references with verified specs
         6. Ideal/generic model fallback
 
     Real data (APIs, datasheets) takes priority over the lookup table.

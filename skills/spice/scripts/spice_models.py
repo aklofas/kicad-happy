@@ -1,5 +1,5 @@
 """
-Built-in SPICE behavioral models for Phase 1 simulation.
+Built-in SPICE behavioral models.
 
 Provides subcircuit definitions that can be embedded directly in generated
 .cir testbench files. These are ideal/generic models — no manufacturer
@@ -51,7 +51,7 @@ def get_ideal_opamp():
 # ---------------------------------------------------------------------------
 # Ideal LDO regulator — controlled source clamped to Vin - dropout.
 # Models the DC behavior: Vout = Vref * (1 + Rtop/Rbot) with dropout limit.
-# Does NOT model transient response, PSRR, or noise (Phase 2).
+# Does NOT model transient response, PSRR, or noise.
 #
 # This is used only when the analyzer detects a regulator AND we know Vref.
 # The testbench places the feedback divider externally (from analyzer data),

@@ -120,9 +120,9 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
         "detect_decoupling": "decoupling_analysis",
         "detect_integrated_ldos": "power_regulators",
     }
-    # KH-388 belt: analysis JSON may still carry duplicate finding objects
-    # (e.g. output from a pre-fix analyzer, or cached analysis/ output) —
-    # don't collect the same subcircuit for simulation twice. id()-based
+    # Analysis JSON may carry duplicate finding objects (e.g. cached
+    # analysis/ output from an older analyzer) — don't collect the
+    # same subcircuit for simulation twice. id()-based
     # dedup is safe for any detector (a dict appearing twice in the same
     # analysis output is always an aliasing quirk, never intentional). The
     # (detector, components) key belt is scoped to detect_voltage_dividers
@@ -680,7 +680,7 @@ def main(argv: list[str] | None = None) -> int:
     # Output
     output_json = json.dumps(report, indent=2)
     if args.text:
-        # KH-345: --text parity with the other analyzers. Early-exit
+        # --text matches the other analyzers. Early-exit
         # reports (no simulatable data) omit total_elapsed_s — tolerate it.
         s = report.get("summary", {})
         _elapsed = report.get("total_elapsed_s")

@@ -77,7 +77,7 @@ def _is_power_or_ground(name: str) -> bool:
                    '+3v', '+5v', '+12v', '+1v', '+2v', '+24v', '+48v',
                    '3v3', '5v0', '1v8', '1v2', '0v9', '2v5',
                    'vbat', 'vin', 'vbus', 'vsys', 'vmot', 'vmotor',
-                   'vpwr', 'vm',  # F6: motor supply rails (vm/vmot/vmotor)
+                   'vpwr', 'vm',  # motor supply rails (vm/vmot/vmotor)
                    'avcc', 'avdd', 'dvcc', 'dvdd', 'agnd', 'dgnd',
                    'pgnd', 'earth', 'pwr', 'power'):
         if low == prefix or low.startswith(prefix + '_') or low.startswith(prefix + '/'):
@@ -113,7 +113,7 @@ def is_emc_ground_name(name: str) -> bool:
 
 
 def _touch_nets(pcb: Dict) -> set:
-    """Nets belonging to capacitive-touch pads (from CP-003 findings — KH-378).
+    """Nets belonging to capacitive-touch pads (from CP-003 findings).
 
     The top-level PCB analyzer output always strips the per-pad `pads` list
     from footprint entries (analyze_pcb.py's compact footprint_summary pass)
@@ -121,7 +121,7 @@ def _touch_nets(pcb: Dict) -> set:
     names) — that's the fallback source for older pcb JSON where CP-003
     carries `nets: []`.
 
-    KH-373: a CP-003 finding's component can be a real TestPoint:* library
+    A CP-003 finding's component can be a real TestPoint:* library
     part (bare "TP" refs are not touch-pad evidence) — never let one of
     those demote GP-001 on its net, whether the net came from the finding's
     own `nets` field or the `connected_nets` fallback.
@@ -326,7 +326,7 @@ def _resolve_usb_speed(pair: dict, schematic: dict):
             mcu_mpn = comp.get('mpn') or comp.get('value', '')
             mcu_feat = _get_mcu_features(mcu_mpn, project_dir=_schematic_project_dir(schematic)) if mcu_mpn else None
             if mcu_feat and not mcu_feat.get('quality', {}).get('trusted', True):
-                mcu_feat = None   # deterministic detectors keep the v1.4 trust gate (v2.0 §3.A.1)
+                mcu_feat = None   # deterministic detectors keep the v1.4 trust gate
             if mcu_feat:
                 return mcu_feat.get('usb_speed')
     return None
@@ -763,7 +763,7 @@ def check_decoupling_via_distance(pcb: Dict) -> List[Dict]:
     if not via_list:
         return findings
 
-    # KH-341: on 2-layer boards the "via to plane" model doesn't apply —
+    # On 2-layer boards the "via to plane" model doesn't apply —
     # decoupling current returns through pours/traces, not plane vias.
     layers = pcb.get('layers', [])
     copper_layer_count = len([l for l in layers
@@ -779,9 +779,9 @@ def check_decoupling_via_distance(pcb: Dict) -> List[Dict]:
 
     def _cap_in_same_net_pour(fp: Dict) -> bool:
         """True if the cap sits inside a same-layer zone of one of its own
-        nets — the pour IS the connection, no via needed (KH-341).
+        nets — the pour IS the connection, no via needed.
 
-        KH-356: analyzer output strips pad geometry from footprints, so
+        Analyzer output strips pad geometry from footprints, so
         this works from what survives: footprint center + connected_nets
         (pad_nets fallback). Center containment is a good proxy for a
         chip cap's pad positions.
@@ -934,7 +934,7 @@ def check_connector_filtering(pcb: Dict, schematic: Optional[Dict] = None) -> Li
                     is_external = True
                     break
 
-            # F6: power-only-connector gate. If every net at this connector
+            # Power-only-connector gate. If every net at this connector
             # is a power/ground rail (no signal lines), the IO-001 fix isn't
             # a board-level ferrite bead — a saturating ferrite on a tens-of-
             # amps DC input would burn. The right answer for power cabling is
@@ -1524,7 +1524,7 @@ def check_stackup(pcb: Dict) -> List[Dict]:
         t2 = layer_type_map.get(l2['name'], 'signal')
 
         # Two adjacent signal layers with no ground/power between them.
-        # F9: severity scales by copper-layer count — on a 2-layer board
+        # Severity scales by copper-layer count — on a 2-layer board
         # the designer can't insert a reference plane in this revision
         # (the issue is a stackup choice, not a fixable defect), so demote
         # to info with a "consider 4-layer next revision" recommendation.
@@ -3281,7 +3281,7 @@ def check_thermal_emc(pcb: Optional[Dict],
         # Find ferrite beads
         for fp in footprints:
             ref = fp.get('reference', '')
-            # KH-326: coerce malformed upstream value (rare parser edge case
+            # Coerce malformed upstream value (rare parser edge case
             # where fp_text value has no text body) to empty string.
             _raw_val = fp.get('value', '')
             val = _raw_val.lower() if isinstance(_raw_val, str) else ''
@@ -3433,7 +3433,7 @@ def check_shielding_advisory(pcb: Dict,
 # PDN Impedance Analysis
 # ---------------------------------------------------------------------------
 
-# KH-377: anti-resonance peaks above this frequency aren't actionable via
+# Anti-resonance peaks above this frequency aren't actionable via
 # board-level decoupling caps (self-resonant frequencies of typical MLCCs
 # top out well below this) and shouldn't drive a HIGH PD-001 finding.
 PDN_RELEVANT_FMAX_HZ = 2e8
@@ -3446,8 +3446,7 @@ _CAP_UNIT_SCALES = (
 def _fmt_cap(farads: float) -> str:
     """Format a capacitance in clean engineering notation (3 sig figs).
 
-    KH-377: descriptions previously printed raw floats, e.g.
-    ``str(0.0001 * 1e6) + "uF"`` -> ``"100.00000000000001uF"``.
+    Avoids raw-float artifacts such as ``"100.00000000000001uF"``.
     """
     if not farads or farads <= 0:
         return "0F"
@@ -3591,8 +3590,7 @@ def check_pdn_impedance(pcb: Optional[Dict],
             continue
 
         # Estimate transient current: config override > power-budget-derived
-        # > 0.5A default. KH-377: the old fallback defaulted i_out itself to
-        # 0.5A then doubled it, silently landing on 1.0A with zero real data.
+        # > 0.5A default (the default is used as-is, not doubled).
         pdiss = reg.get('power_dissipation', {})
         i_out = pdiss.get('estimated_iout_A')
         if pdn_transient_a:
@@ -3629,7 +3627,7 @@ def check_pdn_impedance(pcb: Optional[Dict],
         # Find anti-resonances
         peaks = find_anti_resonances(sweep, z_target=z_target)
         exceeding = [p for p in peaks if p.get('exceeds_target')]
-        # KH-377: peaks above PDN_RELEVANT_FMAX_HZ aren't actionable via
+        # Peaks above PDN_RELEVANT_FMAX_HZ aren't actionable via
         # board-level decoupling -- don't let them drive severity.
         in_band = [p for p in exceeding if p['freq_mhz'] * 1e6 <= PDN_RELEVANT_FMAX_HZ]
         out_band = [p for p in exceeding if p['freq_mhz'] * 1e6 > PDN_RELEVANT_FMAX_HZ]
@@ -4028,7 +4026,7 @@ def check_layer_transition_stitching(pcb: Dict,
             dp_nets.add(pair.get('negative', ''))
 
     flagged_nets = set()
-    touch = _touch_nets(pcb)  # KH-410: touch-net transitions cross an intentional void
+    touch = _touch_nets(pcb)  # Touch-net transitions cross an intentional void
 
     for lt in layer_trans:
         net_name = lt.get('net', '')
@@ -4526,9 +4524,9 @@ def check_inductor_leakage(pcb: Dict, schematic: Dict) -> List[Dict]:
 
     for ind in sw_inductors:
         for sens in sensitive:
-            # EQ-106: Proximity gate — emit ML-001 when d_mm < 15mm AND
-            #   H_field_A_per_m (from EQ-105, assuming I_peak = 1A, package
-            #   = 5mm) exceeds threshold.
+            # EQ-106: Proximity gate — emit ML-001 when d_mm <= 15mm.
+            #   The H_field_A_per_m estimate (from EQ-105, assuming I_peak = 1A,
+            #   package = 5mm) is reported in the finding, not gated on.
             #   d = √((x_ind - x_sens)² + (y_ind - y_sens)²).
             # Source: Threshold from Ott, "EMC Engineering" Ch. 11
             #   rule-of-thumb for unshielded switching inductor coupling to
