@@ -121,7 +121,7 @@ output by hand:
 | What you want | Correct path and field | Common mistake |
 |---------------|-----------------------|----------------|
 | Pins on a net | `nets[<name>].pins[].component / .pin_number / .pin_name / .pin_type` | `ref`, `pin`, `type`, `number` |
-| Unnamed-net pretty display | `nets[<name>].display_name` — when set, a `Ref.PinName` hint for an `__unnamed_N` net whose only named IC pin tells the story (e.g. `__unnamed_36 → U1.VBOOT`). Absent means the analyzer couldn't disambiguate. | Ignoring `display_name` and pasting raw `__unnamed_36` into the report |
+| Net display name | `nets[<name>].display_name` — the name to show when the key is not: the decoded name of an escaped key (`A{slash}B` → `A/B`), the bare name of a sheet-qualified key, or a `Ref.PinName` hint for an `__unnamed_N` net (e.g. `__unnamed_36 → U1.VBOOT`). Absent when the key is already the shown name. | Pasting a raw key (`A{slash}B`, `__unnamed_36`) into the report |
 | IC pin map | `ic_pin_analysis[]` is a **list** of IC entries; each has `.reference` and `.pins[]` with `.pin_number / .pin_name / .pin_type / .net / .connected_to[]`. Scope: `type` in `{ic, connector, crystal, oscillator}` only. | Treating it as `{ref: {...}}` or `pins[].number` |
 | Transistor pin map | `transistor_pin_analysis[]` — **separate** list for `type=transistor` (MOSFETs, BJTs, FETs), same per-entry shape as `ic_pin_analysis[]`. Use this for half-bridge / gate-driver pin verification. | Looking inside `ic_pin_analysis[]` for `Q1` — transistors are not there |
 | Detected circuits | Every pattern-matched circuit (power regulators, RC filters, crystal oscillators, bridges, …) lives in `findings[]` — filter with `finding_schema.get_findings(data, Det.POWER_REGULATORS)` etc. **Do not read from `subcircuits[]`**: that's an IC-neighborhood grouping (`{center_ic, ic_value, neighbor_components, …}`), not a categorized detection index | Looking for `subcircuits.power_regulators`, `subcircuits.rc_filters`, or any `subcircuits[type]` key — these never existed in v1.3 output |
@@ -147,7 +147,7 @@ Outputs structured JSON (~60-220KB depending on board complexity) with:
 - **Components & BOM**: inventory with reference, value, footprint, lib_id, type classification, MPN, datasheet; deduplicated BOM with quantities
 - **Nets**: full connectivity map with pin-to-net mapping, wire counts, no-connects
 - **Detected subcircuits** (pattern-matched circuits — all emitted as `findings[]` entries with matching `Det.*` detectors; use `get_findings(data, Det.POWER_REGULATORS)` etc. to fetch):
-  - Power regulators — LDO/switching/inverting topology, Vout estimation via datasheet-verified Vref lookup (~60 families) with heuristic fallback and fixed-output suffix parsing, `vref_source` (`lookup`/`heuristic`/`fixed_suffix`) and `vout_net_mismatch` fields
+  - Power regulators — LDO/switching/inverting topology, Vout estimation via datasheet-verified Vref lookup (~60 families) with heuristic fallback and fixed-output suffix parsing, `vref_source` (`datasheet`/`lookup`/`heuristic`/`fixed_suffix`) and `vout_net_mismatch` fields
   - Voltage dividers, RC/LC filters (cutoff frequency), feedback networks, crystal circuits (load cap analysis, IC pin-based detection)
   - Op-amp circuits (configuration, gain, integrator/compensator), transistor circuits (net-name-aware load classification: motor/heater/fan/solenoid/valve/pump/relay/speaker/buzzer/lamp; FET level shifter topology)
   - Bridge circuits (H-bridge, 3-phase, cross-sheet detection), protection devices (ESD/TVS), current sense, decoupling analysis
@@ -178,7 +178,7 @@ For detailed parsing instructions, data recovery workflows, and a priority matri
    - This principle extends beyond transistors — any component where multiple pin orderings exist for the same package (voltage regulators with different pin assignments, connectors with vendor-specific pinouts) needs MPN-level verification.
    - **When verification isn't possible, assess plausibility.** Not all unverified choices carry equal risk. Some align with strong conventions (the most common SOT-23 NPN pinout is BCE; 2N2222 in SOT-23 is almost always BCE); others go against convention or are genuinely ambiguous (SOT-23 MOSFETs have no dominant standard). When an MPN is missing and you can't verify, use domain knowledge — typical pinouts for that device type and package, manufacturer conventions, what the majority of parts in that category do — to assess whether the assumed pinout is likely correct, unusual, or a coin flip. Report the confidence level: "matches the most common convention" is different from "could go either way." This same reasoning applies to passive values (is 4.7kΩ a typical pull-up value for this bus?), circuit topologies (is this a standard application circuit?), and component selection (is this part commonly used for this purpose?).
 4. **Net trace** — trace power rails and critical signal nets end-to-end through wires/labels. Verify the analyzer's pin list is complete for each net.
-5. **Regulator Vout** — check the `vref_source` field. `"lookup"` means datasheet-verified (~60 families); `"heuristic"` means it's a guess that needs manual verification. The `vout_net_mismatch` field flags estimated Vout differing >15% from the output rail name voltage.
+5. **Regulator Vout** — check the `vref_source` field. `"datasheet"` means the Vref came from a trusted datasheet extraction and `"lookup"` from the datasheet-verified part table (~60 families); `"heuristic"` means a common reference chosen to fit the rail name, a guess that needs manual verification. The `vout_net_mismatch` field flags estimated Vout differing >15% from the output rail name voltage.
 6. **Hierarchical connectivity** — on multi-sheet designs, verify sub-sheet connections are reflected in the net data.
 
 See `references/schematic-analysis.md` Step 2 for the full verification checklist. If the script fails or returns unexpected results, see `references/manual-schematic-parsing.md` for the complete fallback methodology.
@@ -190,7 +190,7 @@ python3 <skill-path>/scripts/analyze_pcb.py <file.kicad_pcb> --analysis-dir anal
 python3 <skill-path>/scripts/analyze_pcb.py <file.kicad_pcb> --output pcb.json --schematic analysis/<run_id>/schematic.json  # one-off; cross-ref + power-rail auto-detect
 ```
 Outputs structured JSON (~50-300KB depending on board complexity) with:
-- **Core**: footprint inventory (pads, courtyards, net assignments, extended attrs, schematic cross-reference), track/via statistics, zone summaries, board outline/dimensions, routing completeness
+- **Core**: footprint inventory (pads, courtyards, net assignments, extended attrs, schematic cross-reference), track/via statistics, zone summaries, board outline/dimensions, routing completeness (proven from copper connectivity only with `--full`; without it, every multi-pad net has some copper)
 - **Zones & copper presence**: zone outline vs filled polygon bounding boxes, fill ratio, cross-layer copper presence at every pad (which components have zone copper on the opposite layer and which don't), same-layer foreign zone detection
 - **Via analysis**: type breakdown (through/blind/micro), annular ring checks, via-in-pad detection, BGA/QFN fanout patterns, current capacity, stitching via identification, tenting
 - **Signal integrity**: per-net trace length, layer transition tracking (ground return paths), trace proximity/crosstalk (with `--proximity`)
@@ -215,7 +215,7 @@ All PCB analysis sections now produce findings with the rich format (detector, r
 - **TE-001**: Test point coverage across signal nets
 - **OR-001**: Passive component orientation consistency
 - **SK-001**: Silkscreen text overlapping exposed pads
-- **VP-001**: Via-in-pad without tenting (--full mode)
+- **VP-001**: Via in an SMD pad — warning when the pad's mask opening exposes it or it is untented, info when tented (--full mode)
 - **BV-001**: Via clearance from board edges (--full mode)
 - **KO-001**: Keepout zone violations
 - **CP-001**: Same-layer foreign zone under a component. Severity is `warning` when the foreign zone is a non-ground net or the component has no GND pad; severity is `info` when the foreign zone is GND and the component has a GND pad (the common case of a bypass cap sitting over the ground pour — expected layout, not a clearance issue).
