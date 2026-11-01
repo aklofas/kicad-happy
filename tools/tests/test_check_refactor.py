@@ -1,4 +1,4 @@
-import contextlib, importlib.util, inspect, io, json, re, subprocess, sys, tempfile, unittest
+import contextlib, importlib.util, io, json, re, subprocess, sys, tempfile, unittest
 from unittest import mock
 from pathlib import Path
 from tools.tests._fixtures import fixture_path, have
