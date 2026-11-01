@@ -124,13 +124,13 @@ Default tolerances when the suffix is omitted but tolerance mode is active:
 
 ### Combined Formats
 
-Sweep and tolerance can be combined on a single component:
+A tolerance suffix on the sweep component is accepted but has no effect: the sweep prints the nominal value at each step, with no corners.
 
 ```
-R5=1k,2.2k,4.7k+-5%
+R5=1k,2.2k,4.7k+-5%    # same output as R5=1k,2.2k,4.7k
 ```
 
-This sweeps through the listed values and also computes tolerance corners at each step.
+For corners at a given value, run that value as a single change (`R5=2.2k+-5%`).
 
 Multiple non-sweep changes can be specified alongside a single sweep:
 
@@ -500,7 +500,7 @@ Which flags and modes work together:
 | Single change + `--output` | Yes | Exports patched JSON |
 | Single change + tolerance | Yes | Corner analysis on toleranced components |
 | Sweep + `--text` | Yes | Markdown table output |
-| Sweep + tolerance | Yes | Tolerance corners at each sweep point |
+| Sweep + tolerance | No | The suffix is ignored; run each value as a single change for corners |
 | Sweep + fixed changes | Yes | Other components held at specified values |
 | Sweep + `--spice` | No | Usage error (exit 2) |
 | Sweep + `--emc` | No | Sweep mode exits before EMC |

@@ -108,6 +108,12 @@ Record findings in `analysis/deep_review.json` per
 - Page numbers are PDF page indexes (what pdftotext counts), not the
   printed page footer.
 - Computations cite the helper script path and paste its result line.
+- A cited net passes the gate if it exists anywhere in the run's analyzer
+  JSON under any of its identities: schematic name, `display_name`, or
+  PCB net name (case-insensitive).
+- The gate finds the run folder from `analysis/manifest.json` and the
+  run id inside `--analysis-dir` (`--run` picks another), so a moved or
+  copied analysis folder still gates; no absolute path is stored.
 - Severity and confidence are yours to assign — the trust story is
   the evidence, not a cap.
 
@@ -159,7 +165,7 @@ threshold: >20 review-worthy ICs, or context pressure mid-pass):
 |---|---|
 | No datasheets at all | Topology-only pass; per-IC "not verified against datasheet" gap lines in the report |
 | Cache miss, PDF on disk | Read the PDF directly |
-| No PDF, no API | Record info finding "X unverified — no datasheet available" |
+| No PDF, no API | Write "X unverified — no datasheet available" in the review text; it is not a `deep_review.json` finding |
 | Extraction exists, low quality | It comes back with `quality.trusted: false` — decide: trust, or re-read the PDF |
 | Gate failure | Finding sits in `quarantined[]` with a reason; report as unverified claim |
 | Prior deep_review.json missing/old schema | Fresh review; say why in the delta section |

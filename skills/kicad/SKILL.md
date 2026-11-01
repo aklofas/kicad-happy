@@ -255,9 +255,9 @@ python3 <skill-path>/scripts/analyze_gerbers.py <gerber_directory/> --analysis-d
 # One-off
 python3 <skill-path>/scripts/analyze_gerbers.py <gerber_directory/> --output gerber.json
 ```
-Outputs: layer identification (X2 attributes), component/net/pin mapping (KiCad 6+ TO attributes), aperture function classification, trace width distribution, board dimensions, drill classification (via/component/mounting), layer completeness, alignment verification, pad type summary (SMD/THT ratio). Add `--full` for complete pin-to-net connectivity dump. ~10KB JSON.
+Outputs: layer identification (X2 attributes), component/net/pin mapping (KiCad 6+ TO attributes), aperture function classification, trace width distribution, board dimensions, drill classification (via/component/mounting), layer completeness, copper-outside-outline check, pad type summary (SMD/THT ratio). Add `--full` for complete pin-to-net connectivity dump. ~10KB JSON.
 
-The gerber analyzer produces a `findings` list with rich format findings: GR-001 missing layers, GR-002 alignment issues, GR-003 drill problems, GR-004 paste aperture mismatches, GR-005 open board outlines.
+The gerber analyzer produces a `findings` list with rich format findings: GR-001 missing layers, GR-002 copper outside the board outline, GR-003 drill problems, GR-004 paste aperture mismatches, GR-005 open board outlines.
 
 If the script fails or returns unexpected results, see `references/manual-gerber-parsing.md` for the complete fallback methodology for parsing raw Gerber/Excellon files directly.
 
@@ -678,8 +678,8 @@ For each IC in the design:
 
 1. Pull its datasheet facts — extraction cache first
    (`datasheets/extracted/<MPN>.json`), PDF fallback (read it
-   directly). If neither exists, record an info finding
-   "<REF> unverified — no datasheet available" and move on.
+   directly). If neither exists, say "<REF> unverified — no datasheet
+   available" in the review text, not in deep_review.json, and move on.
 2. Compare against actual usage in the analyzer JSON: supply voltages
    vs ratings, pin functions vs connections, required externals
    (inductors, caps, resistors) vs what the schematic has, thermal
@@ -726,26 +726,26 @@ Detailed methodology and format documentation lives in reference files. Read the
 
 | Reference | Lines | When to Read |
 |-----------|-------|-------------|
-| `deep-review.md` | 162 | Deep Review pass: per-part-class comparison heuristics, pair checks, helper-script conventions, fan-out |
+| `deep-review.md` | 171 | Deep Review pass: per-part-class comparison heuristics, pair checks, helper-script conventions, fan-out |
 | `schematic-analysis.md` | 1167 | Deep schematic review: datasheet validation, design patterns, error taxonomy, tolerance stacking, GPIO audit, motor control, battery life, supply chain |
 | `pcb-layout-analysis.md` | 447 | Advanced PCB: impedance calculations, differential pairs, return paths, copper balance, edge clearance, copper-sensitive components (capacitive touch, antennas), custom analysis scripts |
-| `output-schema.md` | 337 | Full analyzer JSON schema with field names, types, and common extraction patterns |
-| `file-formats.md` | 379 | Manual file inspection: S-expression structure, field-by-field docs for all KiCad file types, version detection |
-| `gerber-parsing.md` | 729 | Gerber/Excellon format details, X2 attributes, analysis techniques |
+| `output-schema.md` | 339 | Full analyzer JSON schema with field names, types, and common extraction patterns |
+| `file-formats.md` | 380 | Manual file inspection: S-expression structure, field-by-field docs for all KiCad file types, version detection |
+| `gerber-parsing.md` | 756 | Gerber/Excellon format details, X2 attributes, analysis techniques |
 | `pdf-schematic-extraction.md` | 315 | PDF schematic analysis: extraction workflow, notation conventions, KiCad translation |
 | `supplementary-data-sources.md` | 288 | Legacy KiCad 5 data recovery: netlist parsing, cache library, PCB cross-reference |
-| `net-tracing.md` | 169 | Manual net tracing: coordinate math, Y-axis inversion, rotation transforms |
+| `net-tracing.md` | 181 | Manual net tracing: coordinate math, Y-axis inversion, rotation transforms |
 | `manual-schematic-parsing.md` | 289 | Fallback when schematic script fails |
-| `manual-pcb-parsing.md` | 467 | Fallback when PCB script fails |
-| `manual-gerber-parsing.md` | 621 | Fallback when Gerber script fails |
-| `report-generation.md` | 696 | Report template (critical findings at top), analyzer output field reference (schematic/PCB/gerber), severity definitions, writing principles, domain-specific focus areas, known analyzer limitations |
+| `manual-pcb-parsing.md` | 433 | Fallback when PCB script fails |
+| `manual-gerber-parsing.md` | 627 | Fallback when Gerber script fails |
+| `report-generation.md` | 698 | Report template (critical findings at top), analyzer output field reference (schematic/PCB/gerber), severity definitions, writing principles, domain-specific focus areas, known analyzer limitations |
 | `standards-compliance.md` | 638 | IPC/IEC standards tables: conductor spacing (IPC-2221A Table 6-1), current capacity (IPC-2221A/IPC-2152), annular rings, hole sizes, impedance, via protection (IPC-4761), creepage/clearance (ECMA-287/IEC 60664-1). Consider for all boards; auto-trigger for professional/industrial designs, high voltage, mains input, or safety isolation. |
 | `oshwa-certification.md` | 89 | OSHWA open-source hardware certification readiness: editable KiCad sources, public documentation, licensing, version registration, certification-mark use. Read when the user asks about OSHWA certification or an open-source hardware release — a documentation/licensing audit with explicit approval gates, not an electrical check |
 | `design-intent.md` | 123 | Design intent resolution, target market / certification / power constraints that gate findings by context |
-| `diff-analysis.md` | 351 | How `diff_analysis.py` compares two analyzer runs and emits severity-ranked change reports |
-| `what-if.md` | 500 | How `what_if.py` patches component values, recalculates derived fields, and suggests fixes for feedback dividers / crystal load caps / cap derating |
-| `config-reference.md` | 356 | `.kicad-happy.json` schema — project config for analysis cache, suppressions, design intent, risk scoring |
-| `datasheet-verification.md` | 322 | Automated cross-check of schematic connections against structured datasheet extractions (pin voltage, required externals, decoupling adequacy) |
+| `diff-analysis.md` | 364 | How `diff_analysis.py` compares two analyzer runs and emits severity-ranked change reports |
+| `what-if.md` | 516 | How `what_if.py` patches component values, recalculates derived fields, and suggests fixes for feedback dividers / crystal load caps / cap derating |
+| `config-reference.md` | 405 | `.kicad-happy.json` schema — project config for analysis cache, suppressions, design intent, risk scoring |
+| `datasheet-verification.md` | 319 | Automated cross-check of schematic connections against structured datasheet extractions (pin voltage, required externals, decoupling adequacy) |
 
 For script internals, data structures, signal analysis patterns, and batch test suite documentation, see `scripts/README.md`.
 
