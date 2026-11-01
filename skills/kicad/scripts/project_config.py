@@ -10,8 +10,8 @@ Merge rules:
   - "suppressions": concatenated across all layers (additive)
   - Other lists: closer layer wins entirely
 
-Provides suppression matching with fnmatch globs and risk-scoring
-utilities shared across all analyzers.
+Provides suppression matching with fnmatch globs, power-rail overrides
+and supplier preferences shared across all analyzers.
 
 Zero external dependencies — stdlib only.
 """
