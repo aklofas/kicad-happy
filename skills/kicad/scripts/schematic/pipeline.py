@@ -186,8 +186,7 @@ from schematic.presentation import assemble_legacy_result, assemble_result
 from finding_schema import assign_finding_ids
 
 
-def _resolve_lookup_paths(sch_path: str | Path,
-                           analysis_dir: str | Path | None) -> Path | None:
+def _resolve_lookup_paths(sch_path: str | Path) -> Path | None:
     """Resolve the datasheets/extracted/ cache dir adjacent to the schematic.
 
     Returns None when the directory doesn't exist — `lookup()` already handles
@@ -1133,7 +1132,7 @@ def analyze_legacy_schematic(path: str, analysis_dir: str | Path | None = None,
 
     # Subcircuit detection (IC + 1-hop neighbors)
     # Build shared analysis context for legacy path
-    _cache_dir = _resolve_lookup_paths(path, analysis_dir)
+    _cache_dir = _resolve_lookup_paths(path)
     ctx = build_analysis_context(
         all_components, nets, lib_symbols,
         no_connects=all_no_connects, source=ANALYZER_SOURCE,
@@ -1216,7 +1215,7 @@ class SchematicAnalyses:
     protocol_compliance: Any
 
 
-def run_analyses(ctx: AnalysisContext, parsed: dict, path: str, nets: dict, bom: list) -> SchematicAnalyses:
+def run_analyses(ctx: AnalysisContext, parsed: dict, path: str, nets: dict) -> SchematicAnalyses:
     """Project-level analyses, in their historical call order."""
     all_components = parsed["components"]
     all_wires = parsed["wires"]
@@ -1461,14 +1460,14 @@ def analyze_schematic(path: str, project_root: str | None = None,
     bom = generate_bom(all_components)
 
     # Build shared analysis context (pin_net and every index are built once, here)
-    _cache_dir = _resolve_lookup_paths(path, analysis_dir)
+    _cache_dir = _resolve_lookup_paths(path)
     ctx = build_analysis_context(
         all_components, nets, all_lib_symbols,
         no_connects=all_no_connects, generator_version=generator_version,
         source=ANALYZER_SOURCE, cache_dir=_cache_dir, project_dir=str(Path(path).parent),
         power_rails_config=power_rails_config)
 
-    analyses = run_analyses(ctx, parsed, path, nets, bom)
+    analyses = run_analyses(ctx, parsed, path, nets)
     result = assemble_result(ctx, parsed, nets, bom, analyses, path=path,
                              sheets_parsed=sheets_parsed,
                              hierarchy_warning=hierarchy_warning,
