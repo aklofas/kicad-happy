@@ -106,36 +106,6 @@ def get_generic_models():
 # Helpers for mapping analyzer component types to SPICE elements
 # ---------------------------------------------------------------------------
 
-# Maps analyzer component classification keywords to SPICE element prefixes
-ELEMENT_PREFIX = {
-    "resistor": "R",
-    "capacitor": "C",
-    "inductor": "L",
-    "diode": "D",
-    "led": "D",
-    "zener": "D",
-    "npn": "Q",
-    "pnp": "Q",
-    "nmos": "M",
-    "pmos": "M",
-    "mosfet_n": "M",
-    "mosfet_p": "M",
-}
-
-# Maps component types to default model names from GENERIC_MODELS
-DEFAULT_MODEL = {
-    "diode": "D_GENERIC",
-    "led": "D_GENERIC",
-    "zener": "D_ZENER5V1",
-    "schottky": "D_SCHOTTKY",
-    "npn": "NPN_GENERIC",
-    "pnp": "PNP_GENERIC",
-    "nmos": "NMOS_GENERIC",
-    "pmos": "PMOS_GENERIC",
-    "mosfet_n": "NMOS_GENERIC",
-    "mosfet_p": "PMOS_GENERIC",
-}
-
 
 def spice_text(s):
     """Text for a netlist comment line: control characters become spaces."""
