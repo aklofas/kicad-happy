@@ -141,7 +141,7 @@ Read the JSON report and incorporate findings into the design review. Each findi
     }
   ],
   "per_net_scores": [
-    {"net": "SPI_CLK", "score": 73, "finding_count": 3, "rules": ["GP-001", "CK-001", "BE-001"]}
+    {"net": "SPI_CLK", "score": 79, "finding_count": 3, "rules": ["GP-001", "CK-001", "BE-001"]}
   ],
   "test_plan": {
     "frequency_bands": [{"band": "30-88 MHz", "risk_level": "high", "source_count": 12}],

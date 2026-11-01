@@ -72,7 +72,7 @@ Analyzes power delivery network impedance from regulator to IC. PD-001/PD-002 ch
 Checks that signal layer transitions (vias) have nearby ground stitching vias for return current continuity. Uses `layer_transitions` data from `--full` mode. Higher severity for differential pairs and high-speed nets.
 
 ### Category 13: Crosstalk (rules XT-xxx)
-Identifies parallel trace pairs violating the 3H spacing rule (spacing ≥ 3× dielectric height). Uses `trace_proximity` data from `--proximity` mode. Classifies severity based on aggressor/victim roles (clock or switching net near analog = error).
+Identifies parallel trace pairs violating the 3H spacing rule (spacing ≥ 3× dielectric height). Uses `trace_proximity` data from `--proximity` mode. Classifies severity based on aggressor/victim roles (clock or high-speed net near an analog, ADC or sense net = error).
 
 ### Category 14: EMI Filter Verification (rules EF-xxx)
 Validates that input LC filters on switching regulators have cutoff frequencies sufficiently below the switching frequency (ratio ≥5). Uses SPICE insertion loss analysis when available for improved accuracy.

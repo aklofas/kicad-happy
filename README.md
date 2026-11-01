@@ -321,7 +321,7 @@ Requires ngspice, LTspice, or Xyce (auto-detected). Without one, simulation is s
 The **emc** skill predicts the most common causes of EMC test failures — ground plane voids, insufficient decoupling, unfiltered I/O cables, switching regulator harmonics, differential pair skew, and more. It operates on the schematic and PCB analyzer output using geometric rule checks and analytical emission formulas (Ott, Paul, Bogatin). When ngspice is available, PDN impedance and EMI filter checks are SPICE-verified for higher accuracy — otherwise analytical models are used as fallback.
 
 ```
-EMC risk score: 62.5/100
+EMC risk score: 68.5/100
   error:    3 — SPI_CLK crosses ground plane void on In1.Cu,
                 USB diff pair 5.2mm skew (exceeds 25ps limit),
                 no ground via near TVS U5

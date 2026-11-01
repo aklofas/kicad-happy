@@ -308,7 +308,7 @@ Source: Goldfarb, E. & Pucha, R. "Modeling Via Grounds in Microstrip." IEEE Micr
 ## Crosstalk
 
 ### XT-001: Trace spacing violation (3H rule)
-- **Severity:** error (aggressor-victim pair: clock/switching near analog/ADC), warning (at least one aggressor), info (general)
+- **Severity:** error (aggressor-victim pair: clock or high-speed net near an analog, ADC or sense net), warning (at least one aggressor), info (general)
 - **Threshold:** Parallel trace coupling length ≥5mm with spacing < 3 × dielectric height on outer layers
 - **Rationale:** 3× dielectric height spacing gives <3% near-end crosstalk. Closer spacing creates coupling that adds to emissions and can cause false signal transitions.
 - **Source:** Bogatin, *Signal and Power Integrity*, Ch. 13; Johnson, *High-Speed Digital Design*, Ch. 5.

@@ -159,7 +159,7 @@ In addition to the board-level risk score, the analyzer computes a per-net EMC s
 
 ```
 Highest-risk nets:
-  SPI_CLK: 73/100 (3 findings: GP-001, CK-001, BE-001)
+  SPI_CLK: 79/100 (3 findings: GP-001, CK-001, BE-001)
   USB_DP:  85/100 (2 findings: DP-001, DP-004)
   USB_DM:  85/100 (2 findings: DP-001, DP-004)
   SW_NODE: 94/100 (1 finding: SW-002)
