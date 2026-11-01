@@ -9,7 +9,7 @@ skills/
 ├── kicad/           # Core analysis skill (schematic, PCB, Gerber, thermal, diff, what-if)
 │   ├── SKILL.md     # Skill definition with triggers and usage docs
 │   ├── scripts/     # Python analysis scripts (zero-dep, Python 3.10+)
-│   └── references/  # Deep methodology guides (18 files)
+│   └── references/  # Deep methodology guides (20 files)
 ├── datasheets/      # Structured extraction pipeline — per-MPN cache, quality scoring, consumer API
 ├── emc/             # EMC pre-compliance (44 rules, 18 categories)
 ├── spice/           # SPICE simulation (ngspice/LTspice/Xyce)
@@ -232,7 +232,7 @@ python3 skills/emc/scripts/analyze_emc.py --schematic sch.json --pcb pcb.json
 python3 skills/kicad/scripts/analyze_thermal.py --schematic sch.json --pcb pcb.json
 ```
 
-All scripts exit 0 on success. The schematic and PCB analyzers produce JSON to stdout (or to a file with `--output`). EMC and thermal produce a structured risk report.
+The analyzers exit 0 on success, including when they report findings; usage errors exit 2, and EMC and thermal can also exit 1 on an input error. `fab_release_gate.py` exits 1 when its verdict is FAIL. The schematic and PCB analyzers produce JSON to stdout (or to a file with `--output`). EMC and thermal produce a structured risk report.
 
 ## Test harness
 
@@ -331,7 +331,7 @@ The harness treats a run as successful only when the analyzer exits with one of 
 | analyzer | accepted exits |
 |---|---:|
 | schematic, pcb, gerber, cross_analysis, spice, datasheets | 0 |
-| emc, thermal | 0, 1 (1 = findings present) |
+| emc, thermal | 0, 1 (1 = input error) |
 
 Exit codes are frozen for the v3 arc. A new CLI must document its exit codes here and in the harness before it is gated.
 

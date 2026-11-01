@@ -40,7 +40,7 @@ inputs:
     description: 'element14/Newark/Farnell API key — downloads missing datasheets if provided'
     required: false
   diff-base:
-    description: 'Compare against base branch and show only changes (PR events only)'
+    description: 'Add schematic and PCB changes from the base branch to the PR comment (PR events only)'
     required: false
     default: 'false'
 

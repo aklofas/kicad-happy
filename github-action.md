@@ -40,7 +40,7 @@ The PR comment updates on re-pushes. A [full report](skills/kicad/references/rep
 
 ## Diff-based PR reviews
 
-Enable `diff-base: true` to show only what changed between the PR and the base branch — component additions/removals, signal parameter shifts, new/resolved EMC findings, and SPICE status transitions. The PR comment includes a "Changes from Base" section.
+Enable `diff-base: true` to add a "Changes from Base" section to the PR comment. The Action re-runs the schematic and PCB analyzers on the base branch and compares each with the PR: component additions, removals and value changes, signal parameter shifts, and new or resolved schematic and PCB findings. EMC and SPICE are not re-run on the base, so their changes are not compared. The rest of the comment still reports every current finding.
 
 ```yaml
       - uses: aklofas/kicad-happy@v3

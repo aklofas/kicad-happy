@@ -56,7 +56,7 @@ Comment,Designator,Footprint,LCSC Part #
 ESP32-S3-WROOM-1,U1,ESP32-S3-WROOM-1,C2913202
 ```
 
-Same format for JLCPCB assembly orders — see the `jlcpcb` skill.
+JLCPCB assembly uses the same columns — see the `jlcpcb` skill. The file has no quantity column, so `--boards` and `--spares` do not appear in it; enter purchase quantities on the LCSC order separately.
 
 ### Newark / Farnell / element14
 

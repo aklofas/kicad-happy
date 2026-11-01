@@ -255,7 +255,7 @@ Z₀ = (60 / √εᵣ) × ln(4b / (0.67π(0.8w + t)))
 
 Where `b` = distance between the two reference planes.
 
-**Usage in design review:** For USB (90Ω differential), DDR, LVDS, and other controlled-impedance signals, verify the trace width against the board stackup using these formulas. The PCB analyzer doesn't calculate impedance directly — use the track widths from the analyzer and the stackup from the `.kicad_pro` or fab stackup notes.
+**Usage in design review:** For USB (90Ω differential), DDR, LVDS, and other controlled-impedance signals, verify the trace width against the board stackup using these formulas. With `--full`, the PCB analyzer adds a first-order microstrip estimate (`impedance_ohm` on `net_lengths[].trace_segments[]`) from the board or inferred stackup; check it with a field solver or the fab's calculator before relying on it.
 
 ---
 

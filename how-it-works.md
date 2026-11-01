@@ -144,7 +144,7 @@ If you're a senior EE who already does thorough design reviews, this saves you t
 
 ### "I don't want AI touching my design files"
 
-It doesn't. The analysis scripts *read* your KiCad files — they never modify them. The BOM management scripts (`edit_properties.py`, `sync_datasheet_urls.py`) write symbol properties back (distributor part numbers, MPNs, datasheet URLs) when you run them; both take `--dry-run` to preview the change and `--backup` to keep a `.bak` copy. The agent itself has no ability to modify your KiCad files directly.
+It doesn't. The analysis scripts read your KiCad files without modifying them. The BOM management scripts (`edit_properties.py`, `sync_datasheet_urls.py`) write symbol properties back (distributor part numbers, MPNs, datasheet URLs) when you run them; both take `--dry-run` to preview the change and `--backup` to keep a `.bak` copy. The coding agent's ability to edit files depends on the permissions you grant it in your host application.
 
 Your design files, your git repo, your control.
 

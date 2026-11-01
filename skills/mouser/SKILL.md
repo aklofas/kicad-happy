@@ -213,10 +213,10 @@ inline) are skipped; generic values (`100nF`, `DNP`) are filtered via
 `is_real_mpn()` and de-duplicated. Output defaults to `./datasheets/` in
 the current working directory when `--output` is omitted.
 
-**Rate limiting** — the script paces API calls with a 1.0s delay between
-requests by default (Mouser's Search API allows 30 calls/min on the free
-tier; 1.0s stays comfortably under). Override with `--delay <seconds>` if
-you have a higher-tier key or want to slow things down further.
+**Rate limiting** — the script waits `--delay` seconds (default 1.0) before
+each API call. One serial worker therefore makes up to about 60 calls a minute,
+and `--parallel N` multiplies that. Check your key's allowance and set
+`--delay` / `--parallel` to stay under it.
 
 ### Single Datasheet Download
 

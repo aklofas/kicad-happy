@@ -341,7 +341,7 @@ Example message to the user:
 >
 > You can open it in your browser and save it locally, then I can read and analyze it.
 
-The `--json` output always includes the `datasheet_url` field even on failure, so you can extract the URL programmatically.
+With `--search --json`, the output includes `datasheet_url` whenever the part was found, including a failed download (exit 1); a part that is not found (exit 2) gives only `success` and `error`. Direct-URL mode reports `url` instead.
 
 ### Manual Download Workflow
 

@@ -361,7 +361,7 @@ The `analysis` section in `.kicad-happy.json` controls the shared analysis outpu
 | `retention` | `0` | Max unpinned runs to keep. `0` = keep all (default) |
 | `auto_diff` | `true` | Auto-include delta section in design reviews |
 | `track_in_git` | `false` | When false, JSONs gitignored but manifest tracked |
-| `diff_threshold` | `"major"` | Severity that triggers new timestamped folder: `minor`, `major`, `breaking` |
+| `diff_threshold` | `"major"` | Severity that triggers new timestamped folder: `all` (= `minor`), `minor`, `major`, `breaking` |
 
 All fields are optional. Missing fields use defaults.
 

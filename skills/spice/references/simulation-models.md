@@ -144,7 +144,7 @@ The ideal model's 10 MHz GBW is a rough middle ground. Here's how it compares to
 
 ## Generic Semiconductor Models
 
-These model cards use ngspice built-in equations with typical (not manufacturer-specific) parameters. They're included for future expansion but are not currently used in Phase 1 testbenches (passive and opamp circuits don't need them).
+These model cards use ngspice built-in equations with generic (not manufacturer-specific) parameters. The op-amp, MOSFET, BJT, protection-device and bridge testbenches include them; qualify those results accordingly.
 
 ### Diode Models
 

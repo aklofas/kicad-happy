@@ -1,6 +1,6 @@
 # .kicad-happy.json Config Reference
 
-Configuration file for kicad-happy. Placed in the project directory (or any parent directory). All analyzers, the EMC skill, and the BOM skill read this file automatically.
+Configuration file for kicad-happy. Placed in the project directory (or any parent directory). The schematic, PCB, thermal and EMC analyzers and the BOM skill read this file automatically; the Gerber and cross-analysis tools do not.
 
 ## File Format
 
@@ -32,6 +32,8 @@ The loader walks upward from the project directory, collecting every `.kicad-hap
 - All other lists: closer layer wins entirely (replaces the farther layer's list).
 
 **Error handling:** Parse errors print a warning to stderr and skip that layer. The loader never crashes. Invalid field values are warned and skipped individually.
+
+**Explicit config:** These rules apply only when no `--config` is given. `analyze_schematic.py`, `analyze_pcb.py`, `analyze_thermal.py` and `analyze_emc.py` accept `--config PATH`: that file replaces discovery, so parent-directory files and `~/.kicad-happy.json` do not contribute. A missing explicit file is not an error; the run uses the built-in defaults and prints no warning.
 
 ## Schema
 
@@ -145,7 +147,7 @@ Controls analysis script behavior and output.
 | `retention` | integer | `0` | 0 = keep every run (default); N keeps the N newest unpinned runs |
 | `auto_diff` | boolean | `true` | Automatically diff against the previous run |
 | `track_in_git` | boolean | `false` | Include analysis output in git tracking |
-| `diff_threshold` | string | `"major"` | Change level at which a new timestamped run folder is created instead of overwriting the current one: `"major"` (default), `"minor"`, or `"all"` (any detected change) |
+| `diff_threshold` | string | `"major"` | Change level at which a new timestamped run folder is created instead of overwriting the current one: `"all"` or `"minor"` (any detected change), `"major"` (default), or `"breaking"` |
 | `power_rails` | object | `{}` | Power rail filtering and annotation (see below) |
 
 #### `analysis.power_rails` (object) — v1.2

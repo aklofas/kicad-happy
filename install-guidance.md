@@ -547,9 +547,9 @@ What this does:
 
 ### Diff-based PR reviews
 
-Enable `diff-base: true` to show only what changed between the PR and the base
-branch — component additions/removals, signal parameter shifts, new/resolved
-findings:
+Enable `diff-base: true` to add the schematic and PCB changes from the base
+branch (component additions/removals, signal parameter shifts, new/resolved
+findings) to the PR comment:
 
 ```yaml
       - uses: aklofas/kicad-happy@v3
