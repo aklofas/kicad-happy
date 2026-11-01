@@ -1,5 +1,7 @@
 # GNSS Disciplined Oscillator — Design Review
 
+> **Archived example.** This review was written against an earlier analyzer release. Analyzer output now uses the severities `error`, `warning` and `info`, and the EMC risk score runs from 0 (worst) to 100 (best). Lines that describe analyzer output are relabelled to match; the report's own CRITICAL / WARNING / SUGGESTION labels are unchanged, and the counts and findings are as they were reported.
+
 **Project:** Open-source GNSS disciplined oscillator board
 **Date:** 2026-04-09
 **KiCad Version:** 8.x (S-expression format v20231120)
@@ -335,7 +337,7 @@ GND is primarily routed via zones rather than discrete tracks, which is correct.
 
 ## 7. EMC Pre-Compliance Analysis
 
-**EMC Risk Score: 0/100** (15 HIGH, 21 MEDIUM, 67 LOW, 1 INFO)
+**EMC Risk Score: 0/100** (15 error, 21 warning, 68 info)
 
 The low score is inflated by test points and jumpers being treated as unfiltered connectors. Adjusting for this, the realistic risk is moderate.
 
@@ -343,21 +345,21 @@ The low score is inflated by test points and jumpers being treated as unfiltered
 
 | Rule | Severity | Finding | Recommendation |
 |------|----------|---------|----------------|
-| DC-001 | HIGH | U4 (KSZ8041NL) nearest cap 8.3mm away | Move decoupling closer |
-| DC-002 | HIGH | U1, U2, U6, U7 no caps within 10mm | Verify — modules have internal decoupling |
-| IO-001 | HIGH | J4, J2 (USB-C) no ferrite/CM filtering | Add CM chokes on USB lines for FCC |
-| IO-001 | HIGH | J5 (MagJack) no filtering detected | MagJack has internal CMC — false positive |
-| CK-001 | MEDIUM | ETH_CLK (50MHz) 64% on outer layers | Route on inner layer if possible |
-| CK-001 | MEDIUM | SD_CLK 100% outer layer, 134mm long | Consider inner layer routing |
-| GP-005 | MEDIUM | 2 ground domains (GND + GND-ISO) | Expected for PoE isolation — OK |
+| DC-001 | error | U4 (KSZ8041NL) nearest cap 8.3mm away | Move decoupling closer |
+| DC-002 | error | U1, U2, U6, U7 no caps within 10mm | Verify — modules have internal decoupling |
+| IO-001 | error | J4, J2 (USB-C) no ferrite/CM filtering | Add CM chokes on USB lines for FCC |
+| IO-001 | error | J5 (MagJack) no filtering detected | MagJack has internal CMC — false positive |
+| CK-001 | warning | ETH_CLK (50MHz) 64% on outer layers | Route on inner layer if possible |
+| CK-001 | warning | SD_CLK 100% outer layer, 134mm long | Consider inner layer routing |
+| GP-005 | warning | 2 ground domains (GND + GND-ISO) | Expected for PoE isolation — OK |
 
 ### 7.2 False Positives / Acceptable
 
-- **IO-001 on test points (67 LOW findings):** Test points are not cable-connected connectors. These are false positives.
-- **IO-002 on USB-C (MEDIUM):** The analyzer counts schematic ground pins but USB-C has shield pins providing ground return. Acceptable.
+- **IO-001 on test points (67 info findings):** Test points are not cable-connected connectors. These are false positives.
+- **IO-002 on USB-C (warning):** The analyzer counts schematic ground pins but USB-C has shield pins providing ground return. Acceptable.
 - **J5 MagJack filtering:** Integrated magnetics provide the required CM filtering. False positive.
 
-### 7.3 Board Cavity Resonance (INFO)
+### 7.3 Board Cavity Resonance (info)
 
 Board cavity resonances at 543 MHz (1,0), 812 MHz (0,1), 977 MHz (1,1). These are within the FCC Part 15 Class B test range. Ensure adequate via stitching and continuous ground plane to suppress cavity modes.
 
@@ -410,7 +412,7 @@ All protection devices (D1, D15, D17) and decoupling networks verified. Inrush c
 | U5 (AP7361C-3.3V) | 1.10W | UDFN-8 | 40°C/W | 69°C | 125°C | 56°C | **None** |
 | U11 (AP7361C-3.3V) | 0.27W | UDFN-8 | 40°C/W | 36°C | 125°C | 89°C | **None** |
 
-**Finding TS-004 (MEDIUM):** U5 dissipates 1.10W with no thermal vias. Heat removal relies entirely on surface copper. The 40°C/W θ_JA estimate is optimistic without vias — actual θ_JA may be 60-80°C/W, pushing T_j to 91-113°C.
+**Finding TS-004 (warning):** U5 dissipates 1.10W with no thermal vias. Heat removal relies entirely on surface copper. The 40°C/W θ_JA estimate is optimistic without vias — actual θ_JA may be 60-80°C/W, pushing T_j to 91-113°C.
 
 ---
 

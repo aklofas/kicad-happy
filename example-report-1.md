@@ -1,5 +1,7 @@
 # Design Review Report
 
+> **Archived example.** This review was written against an earlier analyzer release. Analyzer output now uses the severities `error`, `warning` and `info`, and the EMC risk score runs from 0 (worst) to 100 (best). Lines that describe analyzer output are relabelled to match; the report's own CRITICAL / WARNING / SUGGESTION labels are unchanged, and the counts and findings are as they were reported.
+
 **Project:** Open-source robot controller board (KiCad 8.0, 5 hierarchical sheets, 6-layer PCB)
 **Date:** 2024-12-12 (schematic rev v20)
 **Analyzers:** analyze_schematic.py (modern format, full signal analysis), analyze_pcb.py, analyze_emc.py (FCC Class B target), SPICE simulation (ngspice)
@@ -292,23 +294,23 @@ All 6 warnings are model fidelity limitations, not design issues. The BCM857BS-7
 ## EMC Pre-Compliance Summary
 
 **Target:** FCC Class B (unintentional radiator)
-**Total findings:** 77 (0 critical, 11 high, 14 medium, 48 low, 4 info)
-**EMC risk score:** 0 (low baseline risk -- dominated by IO filtering count)
+**Total findings:** 77 (11 error, 14 warning, 52 info)
+**EMC risk score:** 0/100 (archived score; 0 is worst, 100 best)
 
 ### Findings by Category
 
-| Category | HIGH | MEDIUM | LOW | INFO | Total |
-|----------|------|--------|-----|------|-------|
-| Stackup | 5 | -- | -- | -- | 5 |
-| Diff pair | 3 | 4 | -- | -- | 7 |
-| Decoupling | 1 | 1 | -- | -- | 2 |
-| I/O filtering | 2 | 1 | 48 | -- | 51 |
-| Clock routing | -- | 5 | -- | -- | 5 |
-| Switching EMC | -- | 2 | -- | 2 | 4 |
-| Ground plane | -- | 1 | -- | -- | 1 |
-| Emission estimate | -- | -- | -- | 2 | 2 |
+| Category | error | warning | info | Total |
+|----------|-------|---------|------|-------|
+| Stackup | 5 | -- | -- | 5 |
+| Diff pair | 3 | 4 | -- | 7 |
+| Decoupling | 1 | 1 | -- | 2 |
+| I/O filtering | 2 | 1 | 48 | 51 |
+| Clock routing | -- | 5 | -- | 5 |
+| Switching EMC | -- | 2 | 2 | 4 |
+| Ground plane | -- | 1 | -- | 1 |
+| Emission estimate | -- | -- | 2 | 2 |
 
-### Key HIGH Findings
+### Key error findings
 
 1. **SU-001 (x5): All signal layer pairs are adjacent** -- The 6-layer stackup has all copper layers typed as "signal" with no dedicated ground or power plane. Layers F.Cu/In1.Cu/In2.Cu/In3.Cu/In4.Cu/B.Cu are all adjacent signal layers. This eliminates controlled-impedance return paths and maximizes crosstalk. Recommendation: reassign inner layers (e.g., In1.Cu=GND, In4.Cu=Power) for proper reference planes.
 
@@ -320,7 +322,7 @@ All 6 warnings are model fidelity limitations, not design issues. The BCM857BS-7
 
 5. **DP-003 (x2): USB D+/D- change layers** -- Both USB data lines transition between F.Cu and B.Cu with vias, creating differential-to-common mode conversion points.
 
-### Key MEDIUM Findings
+### Key warning findings
 
 - **DC-001:** Nearest decoupling to U1 (RP2350B) is C12 at 6.2mm -- should be <3mm
 - **CK-001 (x5):** Clock nets QSPI_CLK, SWDCLK, XIN, XOUT, RADIO_CLK routed 100% on outer layers (microstrip) instead of inner stripline
