@@ -120,44 +120,8 @@ def _empty_manifest() -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Directory initialization
+# Directory resolution
 # ---------------------------------------------------------------------------
-
-def ensure_analysis_dir(project_dir: str,
-                        project_file: str = '',
-                        config: Optional[Dict[str, Any]] = None) -> str:
-    """Create analysis/ directory with manifest and .gitignore if needed.
-
-    Args:
-        project_dir: Root directory of the KiCad project.
-        project_file: Name of the .kicad_pro file (for manifest).
-        config: Merged project config dict. If None, uses defaults.
-
-    Returns:
-        Absolute path to the analysis directory.
-    """
-    if config is None:
-        config = {}
-    analysis_cfg = config.get('analysis', {})
-    output_dir = analysis_cfg.get('output_dir', 'analysis')
-    track_in_git = analysis_cfg.get('track_in_git', False)
-
-    analysis_dir = os.path.join(os.path.abspath(project_dir), output_dir)
-    os.makedirs(analysis_dir, exist_ok=True)
-
-    # Create manifest if it doesn't exist
-    manifest_path = os.path.join(analysis_dir, MANIFEST_FILENAME)
-    if not os.path.isfile(manifest_path):
-        manifest = _empty_manifest()
-        manifest['project'] = project_file
-        save_manifest(analysis_dir, manifest)
-
-    # Create .gitignore if needed
-    if not track_in_git:
-        ensure_gitignore(analysis_dir)
-
-    return analysis_dir
-
 
 def resolve_analysis_dir(path: str) -> str:
     """Return a canonical analysis-dir path.
@@ -239,31 +203,16 @@ def hash_source_file(filepath: str) -> Optional[str]:
     return f'sha256:{h.hexdigest()}'
 
 
-def sources_changed(old_hashes: Dict[str, str],
-                    project_dir: str) -> bool:
-    """Check if any source file has changed since the hashes were recorded.
-
-    Args:
-        old_hashes: Dict of {relative_path: "sha256:<hex>"} from manifest.
-        project_dir: Root directory of the KiCad project.
-
-    Returns:
-        True if any file's current hash differs from old_hashes.
-    """
-    for relpath, old_hash in old_hashes.items():
-        abspath = os.path.join(project_dir, relpath)
-        current_hash = hash_source_file(abspath)
-        if current_hash != old_hash:
-            return True
-    return False
-
-
 # ---------------------------------------------------------------------------
-# Run ID generation
+# Run folder naming
 # ---------------------------------------------------------------------------
 
-def generate_run_id(analysis_dir: Optional[str] = None) -> str:
-    """Generate a timestamped run ID in YYYY-MM-DD_HHMM format.
+def generate_run_folder_name(analysis_dir: Optional[str] = None) -> str:
+    """Generate a run folder name in YYYY-MM-DD_HHMM format.
+
+    This names the folder under analysis/ and keys the manifest. It is not
+    the provenance ``run_id`` stamped into analyzer output, which
+    ``run_id.generate_run_id`` produces.
 
     If analysis_dir is provided and a folder with that name already exists,
     appends a suffix: 2026-04-08_1919-2, 2026-04-08_1919-3, etc.
@@ -439,7 +388,7 @@ def create_run(analysis_dir: str,
     """
     manifest = load_manifest(analysis_dir)
     if run_id is None:
-        run_id = generate_run_id(analysis_dir)
+        run_id = generate_run_folder_name(analysis_dir)
 
     run_dir = os.path.join(analysis_dir, run_id)
     os.makedirs(run_dir, exist_ok=True)
@@ -716,14 +665,6 @@ def pin_run(analysis_dir: str, run_id: str) -> None:
     manifest = load_manifest(analysis_dir)
     if run_id in manifest.get('runs', {}):
         manifest['runs'][run_id]['pinned'] = True
-        save_manifest(analysis_dir, manifest)
-
-
-def unpin_run(analysis_dir: str, run_id: str) -> None:
-    """Mark a run as unpinned."""
-    manifest = load_manifest(analysis_dir)
-    if run_id in manifest.get('runs', {}):
-        manifest['runs'][run_id]['pinned'] = False
         save_manifest(analysis_dir, manifest)
 
 
