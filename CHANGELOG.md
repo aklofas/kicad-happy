@@ -200,6 +200,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Commands and workflows in the docs run as written: the sync CLIs take no `--recursive`, the opencode global config block no longer appends a second JSON object, the Action outputs table lists the five outputs `action.yml` declares and what `findings-count` and `has-critical` count, the Deep Review gate and diff commands use `<skill-path>`, `--output` / `--analysis-dir` precedence is documented per analyzer, the extraction steps start with the cached scout (with its `pdf_sha256`), the dead annotations-merge step is removed, and the DigiKey auth note describes the client-credentials flow. (KH-636, KH-329)
 - The schematic guide's Zener check uses P = VZ × IZ and gives the series resistor's own dissipation, the anti-alias check uses f_max for alias rejection and f_min for passband loss, and battery current through a switching regulator is V_load × I_load / (V_battery × η). (KH-637)
 - The net-tracing guide's pin rotation matches KiCad: a pin at (px, py) lands at (X − py, Y − px) at 90° and (X + py, Y + px) at 270°, its worked examples name the right pins, and it states how `(mirror x)` and `(mirror y)` change the result. (KH-637)
+- The manual PCB fallback reads zone fills and the board outline correctly: the zone snippet selects by net name and layer (including KiCad 10's `(net "GND")`), and the outline section points at the shared reader with the rules for a hand-written one. (KH-637)
 
 ---
 
