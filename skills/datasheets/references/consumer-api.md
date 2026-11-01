@@ -12,7 +12,7 @@ This module provides typed accessors that abstract cache lookup, null safety, an
 
 Returns a dict of regulator-relevant fields from the extraction, or `None` if no extraction is available.
 
-`get_regulator_features` and `get_mcu_features` return `None` only when no extraction is cached for the MPN (`_load`), or when the part is not of the requested kind: topology outside `boost` / `buck` / `ldo` for the regulator helper, topology other than `mcu` for the MCU helper. They also return `None` when no project is named, and `get_mcu_features` returns `None` for a v1.4 extraction (only legacy caches carry its fields). Quality is **described, not gated** for these two helpers: the returned dict always carries `quality`, a dict `{score, scale, trusted, reasons}` built by `_quality_v13` (v1.3 caches, scale `0-10`) or `_quality_v14` (v1.4 caches, scale `0-100`), and callers decide. Legacy v1.3 caches (score below `MIN_SCORE`, old `EXTRACTION_VERSION`) are still returned, with `quality.trusted` false and `quality.reasons` such as `low_score (...)` or `stale_version (...)`. `get_pin_function` and `is_extraction_available` gate on `quality.trusted` for legacy caches only (see Quality Gate below).
+`get_regulator_features` and `get_mcu_features` return `None` only when no extraction is cached for the MPN (`_load`), or when the part is not of the requested kind: topology outside `boost` / `buck` / `ldo` for the regulator helper, topology other than `mcu` for the MCU helper. They also return `None` when no project is named, and `get_mcu_features` returns `None` when only a v1.4 extraction is cached (it falls through to the legacy cache, the only one that carries its fields). Quality is **described, not gated** for these two helpers: the returned dict always carries `quality`, a dict `{score, scale, trusted, reasons}` built by `_quality_v13` (v1.3 caches, scale `0-10`) or `_quality_v14` (v1.4 caches, scale `0-100`), and callers decide. Legacy v1.3 caches (score below `MIN_SCORE`, old `EXTRACTION_VERSION`) are still returned, with `quality.trusted` false and `quality.reasons` such as `low_score (...)` or `stale_version (...)`. `get_pin_function` and `is_extraction_available` gate on `quality.trusted` for legacy caches only (see Quality Gate below).
 
 ```python
 from datasheet_features import get_regulator_features
@@ -58,6 +58,8 @@ Returns MCU-relevant fields, or `None` if no extraction is available.
 Returns `None` when:
 - No extraction is cached for the MPN
 - Extraction topology is not `'mcu'`
+- No project is named (no `project_dir`, `extract_dir` or `analysis_json`)
+- Only a v1.4 extraction is cached
 
 ```python
 from datasheet_features import get_mcu_features
@@ -145,7 +147,7 @@ if feat is None:
     })
     return findings
 
-# Now safe to use feat['has_soft_start'], etc.
+# feat may still be untrusted: check feat['quality']['trusted'] before relying on its fields
 if feat['has_soft_start'] is None:
     # Field not in extraction; skip this particular sub-check
     pass

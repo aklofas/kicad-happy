@@ -169,7 +169,7 @@ To fix rotation issues:
 
 For boards exported from Altium (or other tools) whose BOM/CPL formats
 don't match JLCPCB's expected columns, the `bom` skill ships
-`translate_bom_pnp.py` to convert them. Two subcommands:
+`translate_bom_pnp.py` to convert them. `<bom-skill-path>` is the installed bom skill directory. Two subcommands:
 
 ```bash
 # BOM: KiCad/Altium CSV → JLCPCB BOM CSV (Comment, Designator, Footprint,
