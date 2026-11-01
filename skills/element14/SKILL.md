@@ -194,7 +194,7 @@ python3 <skill-path>/scripts/sync_datasheets_element14.py <file.kicad_sch>
 # Preview what would be downloaded
 python3 <skill-path>/scripts/sync_datasheets_element14.py <file.kicad_sch> --dry-run
 
-# Retry previously failed downloads
+# Retry parts a previous run failed at element14
 python3 <skill-path>/scripts/sync_datasheets_element14.py <file.kicad_sch> --force
 
 # Use a specific store (default: www.newark.com)

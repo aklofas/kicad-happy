@@ -214,6 +214,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - SPICE parasitics are described as the one template that reads them: only the low-pass RC-filter testbench inserts the output net's trace resistance and via inductance, via resistance and coupling capacitance are extracted but not inserted, the example values are recomputed (1.2 mΩ, 28 fF), and the report is no longer said to compare against an ideal run (KH-640)
 - The SPICE docs match the code on model sources and counts: the legacy structured-extraction tier is described as reading only `spice_specs` records (it finds nothing from the datasheets cache), the v1.4 typed lookup is no longer listed in the cascade, the part counts are 49 op-amps, 103 table parts, 24 crystal-driver entries and 17 subcircuit types, the `info` status is documented, and the SPICE testing section carries no status counts (KH-640)
 - The kicad skill's `display_name` row covers escaped and sheet-qualified keys as well as unnamed-net hints, the Vref source list includes `datasheet`, routing completeness is described as proven only with `--full`, and VP-001 says every via in an SMD pad is reported, with its severity (KH-675, KH-364).
+- The BOM and distributor skills describe the current caching and retries: the DigiKey token cache location, the manifest staging file name, `bom_manager.py` reading KiCad 5 projects, and `--force` retrying only the failures recorded for that distributor while the others still try the part (KH-497, KH-501, KH-615).
 
 ---
 

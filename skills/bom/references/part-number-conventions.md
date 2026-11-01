@@ -391,7 +391,7 @@ Properties are on the symbol instances in each sheet, not on the sheet reference
 
 ### KiCad 5 vs KiCad 6+ Format
 
-KiCad 5 used `.sch` files (different text format). KiCad 6+ uses `.kicad_sch` (S-expression format). The `bom_manager.py` and `edit_properties.py` scripts only support KiCad 6+ format. If a project has `.sch` files, it needs to be opened and saved in KiCad 6+ first (KiCad auto-converts on open). The KiCad analyzer (`kicad` skill) can read both formats for analysis purposes.
+KiCad 5 used `.sch` files (different text format). KiCad 6+ uses `.kicad_sch` (S-expression format). `bom_manager.py analyze` and `export` read KiCad 5 `.sch` projects (read only, through the schematic analyzer's legacy reader). `edit_properties.py` and `sync_datasheet_urls.py` write symbol properties and need `.kicad_sch`: open and save a KiCad 5 project in KiCad 6+ first (KiCad converts on open). The KiCad analyzer (`kicad` skill) reads both formats.
 
 ---
 
