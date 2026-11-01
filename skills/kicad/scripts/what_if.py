@@ -52,10 +52,6 @@ class SweepSpec:
     tolerance: float  # None = no tolerance
 
 
-# Value key -> unit name for display
-_VALUE_UNITS = {"ohms": "ohms", "farads": "F", "henries": "H"}
-
-
 # ---------------------------------------------------------------------------
 # Parse change specifications
 # ---------------------------------------------------------------------------
@@ -272,7 +268,7 @@ def _find_affected(signal_analysis: dict, changes: dict) -> list:
 # ---------------------------------------------------------------------------
 
 def _apply_changes(det: dict, changes: dict, matched_refs: dict,
-                   det_type: str = None, part_values: dict = None) -> dict:
+                   det_type: str, part_values: dict = None) -> dict:
     """Deep-copy detection, apply value changes, recalculate derived fields.
 
     A change to one member of a parallel group or a series chain recomputes the
@@ -309,11 +305,7 @@ def _apply_changes(det: dict, changes: dict, matched_refs: dict,
             if "value" in obj:
                 obj["value"] = new_str
 
-    if det_type:
-        recalc_derived(patched, det_type)
-    else:
-        from spice_tolerance import _recalc_derived
-        _recalc_derived(patched)
+    recalc_derived(patched, det_type)
     return patched
 
 
@@ -527,11 +519,6 @@ def _run_tolerance(analysis: dict, changes: dict) -> list:
 
         # Identify toleranced refs in this detection
         tol_refs = [(ref, tol_info[ref]) for ref in matched if ref in tol_info]
-        if not tol_refs:
-            results.append({"type": det_type, "label": label,
-                           "delta": nominal_deltas, "tolerance": []})
-            continue
-
         # Generate 2^N corners (cap at 6 components = 64 corners)
         n = min(len(tol_refs), 6)
         corners = []
@@ -670,7 +657,7 @@ def _find_pcb_analysis(schematic_json_path: str) -> str:
     return None
 
 
-def _extract_parasitics(pcb_analysis: dict, det: dict, det_type: str) -> dict:
+def _extract_parasitics(pcb_analysis: dict, det: dict) -> dict:
     """Extract trace parasitics for components in a detection."""
     parasitics = {}
     tracks = pcb_analysis.get("tracks", {})
@@ -1668,7 +1655,7 @@ def main(argv: list[str] | None = None) -> int:
     # PCB parasitics
     if pcb_analysis:
         for (det_type, idx, det, matched), sc in zip(affected, subcircuit_results):
-            paras = _extract_parasitics(pcb_analysis, det, det_type)
+            paras = _extract_parasitics(pcb_analysis, det)
             if paras:
                 sc["parasitics"] = paras
 

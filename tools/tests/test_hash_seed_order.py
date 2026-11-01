@@ -216,7 +216,7 @@ det = {k: {"ref": "R1", "ohms": 1000.0, "net": n}
        for k, n in (("a", "N3"), ("b", "N1"), ("c", "N4"), ("d", "N2"), ("e", "N5"))}
 tracks = {n: [{"length_mm": 10.0 + i * 3.3, "width_mm": 0.15 + i * 0.07}]
           for i, n in enumerate(("N1", "N2", "N3", "N4"))}
-par = wi._extract_parasitics({"tracks": tracks}, det, "rc_filters")
+par = wi._extract_parasitics({"tracks": tracks}, det)
 
 fake = types.ModuleType("simulate_subcircuits")
 fake.simulate_subcircuits = lambda mini, **kw: {"simulation_results": [{"status": "pass",

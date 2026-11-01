@@ -650,7 +650,6 @@ def _generate_findings(assessments: list) -> list:
 def _check_thermal_proximity(assessments: list, pcb: dict) -> list:
     """Check for temperature-sensitive components near hot spots."""
     findings = []
-    fp_map = _get_footprint_map(pcb)
 
     # Find hot components (Tj > 70°C) with known positions
     hot_comps = [a for a in assessments

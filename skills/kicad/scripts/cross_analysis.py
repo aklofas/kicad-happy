@@ -1108,7 +1108,7 @@ _DIFF_PAIR_SUFFIXES = [
 ]
 
 
-def _find_diff_pairs(net_names, schematic):
+def _find_diff_pairs(schematic):
     """Return pairs of net names that are explicitly marked differential.
 
     There is no suffix-only fallback that pairs any nets matching
@@ -1161,8 +1161,7 @@ def check_diff_pair_quality(schematic, pcb, recorder=None):
         _record(recorder, 'DP-005', False, 'no PCB track segments present', 0, findings)
         return findings
     net_id_map = _build_net_id_map(pcb)
-    all_net_names = list(set(net_id_map.values()))
-    pairs = _find_diff_pairs(all_net_names, schematic)
+    pairs = _find_diff_pairs(schematic)
     if not pairs:
         _record(recorder, 'DP-005', False, 'no differential pairs classified in schematic net_classifications', 0, findings)
         return findings

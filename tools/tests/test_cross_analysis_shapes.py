@@ -140,9 +140,9 @@ class Shapes(unittest.TestCase):
     def test_dp005_dp_dm_pairs(self):
         def cls(*names):
             return {"net_classifications": {n: {"differential": True} for n in names}}
-        self.assertEqual(ca._find_diff_pairs([], cls("USB_DP", "USB_DM")), [("USB_DP", "USB_DM")])
-        self.assertEqual(ca._find_diff_pairs([], cls("USB_DP", "USB_DN")), [("USB_DP", "USB_DN")])
-        self.assertEqual(ca._find_diff_pairs([], {"net_classifications": {"INP": {}, "INN": {}}}), [])
+        self.assertEqual(ca._find_diff_pairs(cls("USB_DP", "USB_DM")), [("USB_DP", "USB_DM")])
+        self.assertEqual(ca._find_diff_pairs(cls("USB_DP", "USB_DN")), [("USB_DP", "USB_DN")])
+        self.assertEqual(ca._find_diff_pairs({"net_classifications": {"INP": {}, "INN": {}}}), [])
 
     def test_non_full_pcb_no_crash(self):
         t = Path(self.tmp.name)
