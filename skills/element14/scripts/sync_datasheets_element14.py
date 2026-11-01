@@ -32,7 +32,6 @@ Dependencies:
     - playwright (pip install playwright && playwright install chromium) — optional
 """
 
-import argparse
 import sys
 from pathlib import Path
 
@@ -42,7 +41,7 @@ import _core_path  # noqa: F401
 import provider_element14
 from provider_element14 import _DEFAULT_STORE
 from distributor_core import sync as core_sync
-from distributor_core.download import add_download_args, apply_download_args
+from distributor_core.cli import sync_main
 
 
 # ---------------------------------------------------------------------------
@@ -56,78 +55,19 @@ def sync_datasheets(**kwargs) -> dict:
 
 
 def main():
-    parser = argparse.ArgumentParser(
+    sync_main(
+        sync_datasheets,
         description=("Sync datasheets for a KiCad project via element14 (Newark/Farnell). Parts with neither an MPN nor a part "
                      "number from this distributor are skipped."),
+        vendor="element14",
+        delay=0.5,
+        delay_help="Seconds between API calls (default: 0.5)",
+        add_extra=lambda parser: parser.add_argument(
+            "--store", default=_DEFAULT_STORE,
+            help=f"element14 store ID (default: {_DEFAULT_STORE})",
+        ),
+        extra_kwargs=("store",),
     )
-    input_group = parser.add_mutually_exclusive_group(required=True)
-    input_group.add_argument(
-        "input",
-        nargs="?",
-        help="Path to .kicad_sch file or pre-computed analyzer JSON",
-    )
-    input_group.add_argument(
-        "--mpn-list",
-        metavar="FILE",
-        help=("Path to a text file with one MPN per line (batch mode, no project). "
-              "Skips blank lines and '#' comments. Output defaults to "
-              "./datasheets/ in cwd when --output is not given."),
-    )
-    parser.add_argument(
-        "--output", "-o",
-        help=("Output directory (default: datasheets/ next to input, "
-              "or ./datasheets/ in cwd when --mpn-list is used)"),
-    )
-    parser.add_argument(
-        "--store", default=_DEFAULT_STORE,
-        help=f"element14 store ID (default: {_DEFAULT_STORE})",
-    )
-    parser.add_argument(
-        "--force", action="store_true",
-        help=("Retry parts a previous run failed at element14 "
-              "(parts that failed only at other distributors are retried anyway)"),
-    )
-    parser.add_argument(
-        "--force-all", action="store_true",
-        help=("Re-download everything, including already-present files; "
-              "a present file and its entry are kept when the refresh fails"),
-    )
-    parser.add_argument(
-        "--delay", type=float, default=0.5,
-        help="Seconds between API calls (default: 0.5)",
-    )
-    parser.add_argument(
-        "--parallel", type=int, default=1,
-        help="Number of parallel download workers (default: 1)",
-    )
-    parser.add_argument(
-        "--dry-run", action="store_true",
-        help="Show what would be downloaded without doing it",
-    )
-    parser.add_argument(
-        "--json", action="store_true",
-        help="Print the summary as one JSON document on stdout (progress goes to stderr)",
-    )
-    add_download_args(parser)
-    args = parser.parse_args()
-    apply_download_args(args)
-
-    result = sync_datasheets(
-        input_path=args.input,
-        output_dir=args.output,
-        force=args.force,
-        force_all=args.force_all,
-        delay=args.delay,
-        parallel=args.parallel,
-        dry_run=args.dry_run,
-        as_json=args.json,
-        store=args.store,
-        mpn_list=args.mpn_list,
-    )
-
-    if "error" in result:
-        sys.exit(1)
-    sys.exit(0)
 
 
 if __name__ == "__main__":
