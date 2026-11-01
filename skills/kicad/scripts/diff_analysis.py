@@ -13,7 +13,7 @@ Usage:
     python3 diff_analysis.py base.json head.json --threshold 2.0
 
 Supports: schematic, PCB, EMC, and SPICE analyzer outputs (auto-detected).
-Zero dependencies — Python 3.8+ stdlib only.
+Zero dependencies — Python 3.10+ stdlib only.
 """
 
 import argparse

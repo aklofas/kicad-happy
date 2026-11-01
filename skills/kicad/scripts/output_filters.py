@@ -8,7 +8,7 @@ Provides:
     format_text()       — render human-readable text output
     apply_output_filters()   — one-call integration helper
 
-Python 3.8+ stdlib only.
+Python 3.10+ stdlib only.
 """
 
 from __future__ import annotations

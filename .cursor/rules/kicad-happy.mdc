@@ -26,7 +26,7 @@ Each skill lives under `skills/<name>/SKILL.md` — read the SKILL.md for full u
 3. Run EMC analysis: `python3 skills/emc/scripts/analyze_emc.py --schematic sch.json --pcb pcb.json`
 4. Run thermal analysis: `python3 skills/kicad/scripts/analyze_thermal.py --schematic sch.json --pcb pcb.json`
 
-All scripts are zero-dependency Python 3.8+ (stdlib only).
+All scripts are zero-dependency Python 3.10+ (stdlib only).
 
 ## Code structure
 

@@ -11,7 +11,7 @@ Usage:
     python3 fab_release_gate.py --schematic sch.json --pcb pcb.json --text
     python3 fab_release_gate.py --schematic sch.json --pcb pcb.json --strict
 
-Zero external dependencies — Python 3.8+ stdlib only.
+Zero external dependencies — Python 3.10+ stdlib only.
 """
 
 import argparse

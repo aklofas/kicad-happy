@@ -11,7 +11,7 @@ Usage:
     python3 cross_verify.py --schematic sch.json --pcb pcb.json --thermal thermal.json
     python3 cross_verify.py --schematic sch.json --pcb pcb.json --output report.json
 
-Zero external dependencies — Python 3.8+ stdlib only.
+Zero external dependencies — Python 3.10+ stdlib only.
 """
 
 from __future__ import annotations

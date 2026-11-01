@@ -11,7 +11,7 @@ Each check function returns a list of finding dicts with:
   - layer: str (optional)
   - recommendation: str
 
-Zero external dependencies beyond Python 3.8+ stdlib.
+Zero external dependencies beyond Python 3.10+ stdlib.
 """
 
 import math

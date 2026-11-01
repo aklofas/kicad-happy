@@ -12,7 +12,7 @@ Usage:
     summarize_findings.py <analysis-dir> --run 2026-04-14_1939
 
 Works cross-platform: no symlinks, paths are resolved via the manifest
-and os.path.join. Python 3.8+ stdlib only.
+and os.path.join. Python 3.10+ stdlib only.
 """
 
 from __future__ import annotations

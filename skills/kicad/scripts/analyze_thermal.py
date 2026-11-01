@@ -13,7 +13,7 @@ Usage:
     python3 analyze_thermal.py -s analysis.json -p pcb.json --ambient 40
 
 Requires both schematic and PCB JSON (schematic for power data, PCB for copper
-and thermal via data). Zero dependencies — Python 3.8+ stdlib only.
+and thermal via data). Zero dependencies — Python 3.10+ stdlib only.
 """
 
 import argparse

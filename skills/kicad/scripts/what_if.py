@@ -13,7 +13,7 @@ Usage:
     python3 what_if.py analysis.json R5=4.7k --output patched.json
     python3 what_if.py analysis.json R5=4.7k --text
 
-Zero dependencies — Python 3.8+ stdlib only.
+Zero dependencies — Python 3.10+ stdlib only.
 """
 
 import argparse

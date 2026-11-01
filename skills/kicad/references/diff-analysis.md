@@ -1,6 +1,6 @@
 # Diff Analysis Reference
 
-Compare two KiCad analysis JSON files (base vs head) and report changes. Supports schematic, PCB, EMC, and SPICE analyzer outputs with auto-detection. Zero dependencies — Python 3.8+ stdlib only.
+Compare two KiCad analysis JSON files (base vs head) and report changes. Supports schematic, PCB, EMC, and SPICE analyzer outputs with auto-detection. Zero dependencies — Python 3.10+ stdlib only.
 
 ## Table of Contents
 

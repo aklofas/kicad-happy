@@ -11,7 +11,7 @@ Usage:
     python3 analyze_emc.py --schematic schematic.json --pcb pcb.json --severity high
     python3 analyze_emc.py --schematic schematic.json --pcb pcb.json --standard cispr-class-b
 
-Zero external dependencies beyond Python 3.8+ stdlib.
+Zero external dependencies beyond Python 3.10+ stdlib.
 """
 
 import argparse

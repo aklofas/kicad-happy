@@ -13,7 +13,7 @@ Usage:
     export_issues.py schematic.json --repo owner/repo --rule-id RG-001,CP-001
     export_issues.py schematic.json --repo owner/repo --create
 
-Python 3.8+ stdlib only. Requires ``gh`` CLI (https://cli.github.com/).
+Python 3.10+ stdlib only. Requires ``gh`` CLI (https://cli.github.com/).
 """
 
 from __future__ import annotations
