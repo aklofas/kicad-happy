@@ -317,18 +317,12 @@ def detect_voltage_dividers(ctx: AnalysisContext) -> dict:
                     # `detect_power_regulators` and `postfilter_vd_and_dedup`
                     # also consume `voltage_dividers` as a shared input).
                     #
-                    # A feedback divider must stay in `voltage_dividers`: the
-                    # exclusion set `detect_rc_filters` builds from that list is
-                    # what keeps its resistors out of RC pairings.
-                    #
-                    # If you're reading this thinking "the double-emission looks
-                    # like a bug, let me clean it up": don't. The Layer 1 gate
-                    # (regression/run_v14_gate.py in the harness) treats loss of
-                    # v1.3.1-emitted findings as "disappeared" under
-                    # `--only-deterministic`, so any dedup of this list must
-                    # either preserve the double-emission OR be compensated
-                    # upstream in NEW_V14_RULES at the gate side. Coordinate
-                    # with the harness before changing this.
+                    # Do not dedup the double emission: the exclusion set
+                    # `detect_rc_filters` builds from `voltage_dividers` is what
+                    # keeps feedback resistors out of RC pairings, and dropping
+                    # these entries changes emitted findings that the harness
+                    # corpus gate tracks. Coordinate with the harness before
+                    # changing it.
                     arm_refs = group_members(ctx, r_top_ref) + group_members(ctx, r_bot_ref)
                     # The arms and any DNP part beside them are not mid-point connections
                     groups = parallel_groups(ctx, "resistor")
