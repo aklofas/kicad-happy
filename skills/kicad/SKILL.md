@@ -533,7 +533,7 @@ Auto-detects analyzer type (schematic, PCB, EMC, SPICE). Reports:
 - **Connectivity/ERC**: new/resolved single-pin nets, floating nets, multi-driver nets, ERC warnings
 - **EMC findings**: new/resolved findings with severity, risk score delta, per-net score changes
 - **SPICE results**: status transitions (pass->fail regressions, fail->pass fixes), Monte Carlo concern changes
-- **Severity classification**: `none` (no changes), `minor` (statistics only), `major` (component/signal/finding changes), `breaking` (SPICE regressions, new CRITICAL EMC findings, new ERC warnings)
+- **Severity classification**: `none` (no changes), `minor` (statistics only), `major` (component/signal/finding changes), `breaking` (SPICE regressions, new EMC `error` findings, new ERC warnings)
 
 Also used programmatically by `analysis_cache.should_create_new_run()` to decide whether new outputs warrant a new timestamped run folder.
 
@@ -559,13 +559,13 @@ Models each power component (LDO, switching regulator, shunt resistor) as a poin
 
 | Rule | Condition | Severity |
 |------|-----------|----------|
-| TS-001 | Tj exceeds absolute maximum | CRITICAL |
-| TS-002 | Tj within 15°C of absolute maximum | HIGH |
-| TS-003 | Tj > 85°C (may affect nearby passives) | MEDIUM |
-| TS-004 | P > 0.5W with no thermal vias | MEDIUM |
-| TS-005 | Significant power, within safe limits | INFO |
-| TP-001 | MLCC within 10mm of hot component | LOW |
-| TP-002 | Electrolytic cap within 10mm of hot component | MEDIUM |
+| TS-001 | Tj exceeds absolute maximum | error |
+| TS-002 | Tj within 15°C of absolute maximum | error |
+| TS-003 | Tj > 85°C (may affect nearby passives) | warning |
+| TS-004 | P > 0.5W with no thermal vias | warning |
+| TS-005 | Significant power, within safe limits | info |
+| TP-001 | MLCC within 10mm of hot component | info |
+| TP-002 | Electrolytic cap within 10mm of hot component | warning |
 
 Thermal findings and assessments include the rich format envelope (detector, rule_id, summary, evidence_source, report_context). Rule IDs: TS-001..005 (safety), TP-001..002 (proximity), TH-DET (assessments).
 

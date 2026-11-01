@@ -140,7 +140,7 @@ Evaluation order (first match wins):
 | Analyzer | Condition |
 |----------|-----------|
 | SPICE | Any `status_changes` entry where `base_status == "pass"` and `head_status == "fail"` |
-| EMC | Any new finding with `severity == "CRITICAL"` |
+| EMC | Any new finding whose normalized severity is `error` (legacy `CRITICAL` or `HIGH`) |
 | Schematic | Any new ERC warning (`erc.new_warnings` non-empty) |
 
 ### Major

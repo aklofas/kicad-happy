@@ -751,6 +751,6 @@ def _coord(text, zeros, int_digits, dec_digits):
 
 Format analysis results as structured data for clear reporting:
 - Print summary statistics first (counts, min/max/avg)
-- Group findings by severity (critical → warning → info)
+- Group findings by severity (error → warning → info)
 - Include specific coordinates and net names so findings can be located in KiCad
 - When cross-referencing gerber vs PCB, print both values side-by-side for easy comparison

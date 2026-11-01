@@ -596,6 +596,8 @@ Use these consistently across all reports:
 - **WARNING**: The board may work but has a reliability, performance, or compliance concern. Examples: floating digital inputs, missing flyback diode on inductive load, cross-domain signal without level shifter, inadequate decoupling, regulator thermal margin tight.
 - **SUGGESTION**: Best-practice improvement or documentation gap that doesn't affect functionality. Examples: missing MPNs, no test points on power rails, DNP components not marked, footprint filter mismatch with custom library.
 
+These are report labels, chosen after you verify each finding. Analyzer JSON uses `error`, `warning` and `info`: an analyzer `error` is a candidate CRITICAL, a `warning` a candidate WARNING, an `info` a candidate SUGGESTION or a plain observation. Raise or lower a finding when verification supports it.
+
 ## Writing Principles
 
 ### Be specific and actionable
