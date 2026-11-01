@@ -151,7 +151,8 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
                     power_rails_source: str) -> dict:
     """Phase 4: build the PCB analyzer result dict (stable output key order).
 
-    Mutates nothing caller-owned except `connectivity` (pops `unrouted`) and the
+    Mutates nothing caller-owned except two late writes to the facts (it pops `unrouted`
+    out of `connectivity` and `_ignored_drc_checks` out of `project_settings`) and the
     sections it pops back out of `result`; the late checks run in pcb.pipeline.run_checks
     and only their result writes happen here. *board* is a pcb.pipeline.BoardData and
     *analyses* a pcb.pipeline.PcbAnalyses.
