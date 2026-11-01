@@ -350,7 +350,7 @@ class AnalysisContext:
     comp_lookup: dict[str, dict]    # {reference: component}, built by build_analysis_context
     parsed_values: dict[str, float] # {reference: numeric_value}, built by build_analysis_context
     known_power_rails: set[str]     # Power rail names, built by build_analysis_context
-    ref_pins: dict[str, dict]       # {reference: {pin_num: pin_net entry}}
+    ref_pins: dict[str, dict]       # {reference: {pin_num: (net_name, net_record)}}
     no_connects: list[dict]         # No-connect markers
     nq: NetlistQueries              # Net-query layer installed by build_analysis_context
     rail_by_net / rail_overrides / rail_ignore  # Rail voltages and the project's power-rail config
@@ -363,7 +363,7 @@ The indexes (`comp_lookup`, `parsed_values`, `known_power_rails`, `ref_pins`) re
 
 ## 9. Signal Path Detection
 
-The `analyze_signal_paths()` function orchestrates 21 detector functions that identify common analog and mixed-signal circuit patterns from the connectivity graph. Each detector is a pure function that takes `AnalysisContext` (and optionally prior detector results) and returns structured detection results.
+The `analyze_signal_paths()` function (in `schematic/pipeline.py`) runs the 12 topology detectors of `detect_topologies`, then `reconcile_detections`, then the domain detectors and audits of `run_domain_detectors`; together they identify common analog and mixed-signal circuit patterns from the connectivity graph. Each detector is a pure function that takes `AnalysisContext` (and optionally prior detector results) and returns structured detection results.
 
 ### Execution Order and Dependencies
 

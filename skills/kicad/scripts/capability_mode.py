@@ -155,8 +155,8 @@ def get_or_create_capability_mode(
             return _fresh_record(datasheet_extraction, cache_dir,
                                  llm_review_status, schema_versions)
         # exists() is True but the file isn't valid JSON yet — most likely
-        # a racing writer is mid-create (our own writer's mkstemp/fdopen
-        # window before os.link). Fall through and try to write our own.
+        # another process or external tool left a partial file (our own
+        # writer never exposes one at this path). Fall through and try to write our own.
         # If we win the os.link race, the file is now our valid record.
         # If we lose (FileExistsError), we re-read the winner's record —
         # which will succeed if the racing writer completed, or return
