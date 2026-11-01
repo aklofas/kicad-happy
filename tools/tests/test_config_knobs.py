@@ -1,13 +1,11 @@
-"""analysis.retention / diff_threshold / output_dir are honoured; EMC/SPICE cache bytes unchanged."""
-import json, os, re, shutil, subprocess, sys, tempfile, unittest
+"""analysis.retention / diff_threshold / output_dir are honoured; EMC/SPICE cache manifest shape."""
+import json, re, shutil, subprocess, sys, tempfile, unittest
 from pathlib import Path
 from tools.tests._fixtures import fixture_path, have
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "skills" / "kicad" / "scripts"
 FX = fixture_path("simple-project")
-# Frozen pre-change export (git archive 0490c49) for the manifest-bytes comparison.
-OLD = Path(os.environ.get("KH_OLD_TREE", "/tmp/kh-r8"))
 sys.path.insert(0, str(SCRIPTS))
 
 
@@ -128,59 +126,63 @@ class KnobValidation(unittest.TestCase):
             self.assertIn(f"analysis.{knob}", err.getvalue())
 
 
-def _normalise(manifest_text):
-    """Replace run ids by ordinals and blank timestamps; everything else stays byte-for-byte."""
-    m = json.loads(manifest_text)
-    ids = {rid: f"RUN{i}" for i, rid in enumerate(sorted(m["runs"], key=lambda r: m["runs"][r]["generated"]))}
-    for meta in m["runs"].values():
-        meta["generated"] = "T"
-    text = manifest_text
-    for rid in sorted(ids, key=len, reverse=True):
-        text = text.replace(f'"{rid}"', f'"{ids[rid]}"')
-    return re.sub(r'"generated": "[^"]*"', '"generated": "T"', text)
+@unittest.skipUnless(have(FX / "simple.kicad_sch"), "frozen fixtures not present")
+class ManifestShape(unittest.TestCase):
+    """emc, emc, spice, corrupt spice, spice against one analysis dir: what each step leaves in manifest.json."""
 
+    @staticmethod
+    def _shape(adir):
+        # Run ids by order of creation, hashes and timestamps dropped.
+        m = json.loads((Path(adir) / "manifest.json").read_text(encoding="utf-8"))
+        ids = {rid: f"RUN{i}" for i, rid in enumerate(sorted(m["runs"], key=lambda r: m["runs"][r]["generated"]))}
+        return {"current": ids[m["current"]],
+                "runs": {ids[rid]: {"outputs": sorted(meta["outputs"]), "scripts": meta["scripts"],
+                                    "pinned": meta["pinned"], "hashed": sorted(meta["source_hashes"])}
+                         for rid, meta in m["runs"].items()}}
 
-@unittest.skipUnless(have(FX / "simple.kicad_sch") and (OLD / "skills/emc/scripts/analyze_emc.py").is_file(),
-                     "frozen fixtures or the pre-change export not present")
-class ManifestBytes(unittest.TestCase):
-    def test_emc_and_spice_manifest_bytes_unchanged(self):
+    def test_emc_and_spice_manifest_steps(self):
         with tempfile.TemporaryDirectory() as d:
             proj = Path(d) / "proj"
             shutil.copytree(FX, proj)
-            # Inputs produced once, so both trees hash identical bytes. sch.json sits beside the
-            # .kicad_pro, which a manifest-project lookup would pick up.
+            # sch.json sits beside the .kicad_pro, which a manifest-project lookup would pick up.
             for script, src, out in (("analyze_schematic.py", "simple.kicad_sch", "sch.json"),
                                      ("analyze_pcb.py", "simple.kicad_pcb", "pcb.json")):
                 r = run(ROOT, f"skills/kicad/scripts/{script}", str(proj / src), "--output", str(proj / out),
                         cwd=proj)
                 self.assertEqual(r.returncode, 0, r.stderr)
-            manifests = {}
-            for label, tree in (("old", OLD), ("new", ROOT)):
-                adir = Path(d) / f"adir-{label}"
-                steps = [
-                    ("emc", ("skills/emc/scripts/analyze_emc.py", "--schematic", str(proj / "sch.json"),
-                             "--pcb", str(proj / "pcb.json"), "--analysis-dir", str(adir))),
-                    ("emc", ("skills/emc/scripts/analyze_emc.py", "--schematic", str(proj / "sch.json"),
-                             "--pcb", str(proj / "pcb.json"), "--analysis-dir", str(adir))),
-                    ("spice", ("skills/spice/scripts/simulate_subcircuits.py", "--schematic", str(proj / "sch.json"),
-                               "--analysis-dir", str(adir), "--offline")),
-                ]
-                texts = []
-                for _name, (rel, *args) in steps:
-                    r = run(tree, rel, *args, cwd=d)
-                    self.assertEqual(r.returncode, 0, f"{label} {rel}: {r.stderr}")
-                    texts.append(_normalise((adir / "manifest.json").read_text(encoding="utf-8")))
-                # An unreadable stored spice.json counts as changed, forcing the SPICE create-run path.
-                cur = json.loads((adir / "manifest.json").read_text(encoding="utf-8"))["current"]
-                (adir / cur / "spice.json").write_text("not json", encoding="utf-8")
-                r = run(tree, "skills/spice/scripts/simulate_subcircuits.py", "--schematic", str(proj / "sch.json"),
-                        "--analysis-dir", str(adir), "--offline", cwd=d)
-                self.assertEqual(r.returncode, 0, f"{label} spice: {r.stderr}")
-                texts.append(_normalise((adir / "manifest.json").read_text(encoding="utf-8")))
-                gitignore = (adir / ".gitignore").read_bytes()
-                manifests[label] = (texts, gitignore, len(run_dirs(adir)))
-            self.assertEqual(manifests["old"], manifests["new"])
-            self.assertEqual(manifests["new"][2], 2, "the SPICE create-run path was not exercised")
+            adir = Path(d) / "adir"
+            emc = ("skills/emc/scripts/analyze_emc.py", "--schematic", str(proj / "sch.json"),
+                   "--pcb", str(proj / "pcb.json"), "--analysis-dir", str(adir))
+            spice = ("skills/spice/scripts/simulate_subcircuits.py", "--schematic", str(proj / "sch.json"),
+                     "--analysis-dir", str(adir), "--offline")
+            shapes = []
+            for step, cmd in enumerate((emc, emc, spice, None, spice)):
+                if cmd is None:
+                    # An unreadable stored spice.json counts as changed, forcing the SPICE create-run path.
+                    cur = json.loads((adir / "manifest.json").read_text(encoding="utf-8"))["current"]
+                    (adir / cur / "spice.json").write_text("not json", encoding="utf-8")
+                    continue
+                r = run(ROOT, *cmd, cwd=d)
+                self.assertEqual(r.returncode, 0, f"step {step} {cmd[0]}: {r.stderr}")
+                shapes.append(self._shape(adir))
+            both = ["emc", "spice"]
+            one = {"RUN0": {"outputs": ["emc"], "scripts": {"emc": "analyze_emc.py"}, "pinned": False,
+                            "hashed": ["pcb.json", "sch.json"]}}
+            self.assertEqual(shapes[0], {"current": "RUN0", "runs": one})
+            self.assertEqual(shapes[1], shapes[0], "an unchanged EMC rerun updates the current run in place")
+            self.assertEqual(shapes[2]["current"], "RUN0")
+            self.assertEqual(list(shapes[2]["runs"]), ["RUN0"])
+            self.assertEqual(shapes[2]["runs"]["RUN0"]["outputs"], both)
+            self.assertEqual(shapes[2]["runs"]["RUN0"]["scripts"], {"emc": "analyze_emc.py"})
+            last = shapes[3]
+            self.assertEqual(last["current"], "RUN1")
+            self.assertEqual(sorted(last["runs"]), ["RUN0", "RUN1"])
+            self.assertEqual(last["runs"]["RUN0"], shapes[2]["runs"]["RUN0"])
+            self.assertEqual(last["runs"]["RUN1"]["outputs"], both)
+            self.assertEqual(last["runs"]["RUN1"]["scripts"], {"spice": "simulate_subcircuits.py"})
+            self.assertEqual(len(run_dirs(adir)), 2, "the SPICE create-run path was not exercised")
+            self.assertEqual((adir / ".gitignore").read_bytes(),
+                             b"# Analysis output -- regenerable from source files\n*\n!.gitignore\n!manifest.json\n")
 
 
 if __name__ == "__main__":
