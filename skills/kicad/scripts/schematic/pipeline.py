@@ -1463,7 +1463,7 @@ def analyze_schematic(path: str, project_root: str | None = None,
     _cache_dir = _resolve_lookup_paths(path)
     ctx = build_analysis_context(
         all_components, nets, all_lib_symbols,
-        no_connects=all_no_connects, generator_version=generator_version,
+        no_connects=all_no_connects,
         source=ANALYZER_SOURCE, cache_dir=_cache_dir, project_dir=str(Path(path).parent),
         power_rails_config=power_rails_config)
 

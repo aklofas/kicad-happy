@@ -93,7 +93,6 @@ class AnalysisContext:
         ref_pins: Per-component pin map.  ``{ref: {pin_number: (net_name, net_record)}}``.
             Derived from *pin_net* for quick per-component pin enumeration.
         no_connects: List of no-connect markers from the schematic.
-        generator_version: KiCad version string (e.g., ``"9.0.1"``).
         nq: ``NetlistQueries`` object for multi-hop net tracing.  Detectors
             require a context built by ``build_analysis_context``, which always
             installs ``nq``.
@@ -131,7 +130,6 @@ class AnalysisContext:
     known_power_rails: set[str] = field(default_factory=set)
     ref_pins: dict[str, dict[str, PinNetEntry]] = field(default_factory=dict)
     no_connects: list[dict] = field(default_factory=list)
-    generator_version: str = "unknown"
     source: str = "unknown"
     nq: 'NetlistQueries | None' = field(default=None, repr=False)
     cache_dir: Path | None = field(default=None, repr=False)
@@ -208,7 +206,7 @@ def pin_guarded_signal_nets(nets: dict[str, dict], comp_lookup: dict[str, dict],
 
 def build_analysis_context(components: list[dict], nets: dict[str, dict], lib_symbols: dict, *,
                            no_connects: list[dict] | None = None,
-                           generator_version: str = "unknown", source: str = "unknown",
+                           source: str = "unknown",
                            cache_dir: Path | None = None, project_dir: str | None = None,
                            known_power_rails: set[str] | None = None,
                            power_rails_config: dict | None = None) -> AnalysisContext:
@@ -230,7 +228,7 @@ def build_analysis_context(components: list[dict], nets: dict[str, dict], lib_sy
         comp_lookup=comp_lookup, parsed_values=parsed_values, known_power_rails=rails,
         ref_pins=index_ref_pins(pin_net),
         no_connects=no_connects if no_connects is not None else [],
-        generator_version=generator_version, source=source,
+        source=source,
         cache_dir=cache_dir, project_dir=project_dir, diagnostics=diagnostics,
         pin_guarded_signals=pin_guarded_signal_nets(nets, comp_lookup, rails),
     )

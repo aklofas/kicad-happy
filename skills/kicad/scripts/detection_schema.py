@@ -675,18 +675,6 @@ def get_inverse_solver(det_type: str, field_name: str):
     return None
 
 
-def get_identity_and_value_fields(det_type: str) -> tuple:
-    """Return (identity_fields, value_fields) for a detection type.
-
-    Returns (["reference"], []) for unknown types (backward compat with
-    diff_analysis.py fallback).
-    """
-    schema = SCHEMAS.get(det_type)
-    if not schema:
-        return (["reference"], [])
-    return (schema.identity_fields, schema.value_fields)
-
-
 def get_primary_metric(det_type: str) -> str:
     """Return the primary metric name for Monte Carlo, or None."""
     schema = SCHEMAS.get(det_type)

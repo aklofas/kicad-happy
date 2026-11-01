@@ -354,7 +354,6 @@ class AnalysisContext:
     no_connects: list[dict]         # No-connect markers
     nq: NetlistQueries              # Net-query layer installed by build_analysis_context
     rail_by_net / rail_overrides / rail_ignore  # Rail voltages and the project's power-rail config
-    generator_version: str          # KiCad generator version string
 ```
 
 The indexes (`comp_lookup`, `parsed_values`, `known_power_rails`, `ref_pins`) replace what was previously ~10 duplicate rebuild operations scattered across analysis functions.

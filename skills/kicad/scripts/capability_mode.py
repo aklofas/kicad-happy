@@ -210,16 +210,6 @@ def get_or_create_capability_mode(
     return record
 
 
-def get_or_create_run_id(analysis_dir, **kwargs) -> str:
-    """Return canonical run_id for analysis_dir, creating capability_mode.json if absent.
-
-    Wiring helper: analyzers call this at the start of main()
-    to align inputs.run_id with the canonical capability_mode.json:run_id.
-    """
-    record = get_or_create_capability_mode(analysis_dir, **kwargs)
-    return record["run_id"]
-
-
 def get_capability_mode_ref(analysis_dir, **kwargs) -> dict:
     """Return a {source, run_id} pointer for embedding in analyzer envelopes.
 

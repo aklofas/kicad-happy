@@ -20,8 +20,7 @@ class Builder(unittest.TestCase):
                              sheet_names=["simple"], bus_elements=parsed["bus_elements"])
         cls.parsed, cls.nets = parsed, nets
         cls.built = build_analysis_context(parsed["components"], nets, parsed["lib_symbols"],
-                                           no_connects=parsed["no_connects"],
-                                           generator_version=parsed["generator_version"], source="sch")
+                                           no_connects=parsed["no_connects"], source="sch")
 
     def test_builder_installs_every_index(self):
         b = self.built
