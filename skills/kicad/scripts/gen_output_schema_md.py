@@ -236,7 +236,7 @@ def main():
         intro="One entry of the Tier 1 `diagnostics` list, shared by every envelope.",
     ))
     out_path = REPO_ROOT / "skills" / "kicad" / "references" / "output-schema.md"
-    out_path.write_text("\n".join(parts))
+    out_path.write_text("\n".join(parts), encoding="utf-8")
     print(f"Wrote {out_path}")
 
 

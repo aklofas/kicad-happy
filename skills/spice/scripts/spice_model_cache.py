@@ -122,7 +122,7 @@ def get_cached_model(cache_dir, mpn):
         if cached and cached[0] == mtime:
             index = cached[1]
         else:
-            with open(index_path) as f:
+            with open(index_path, encoding="utf-8") as f:
                 index = json.load(f)
             _index_cache[cache_key] = (mtime, index)
     except (json.JSONDecodeError, OSError):
@@ -218,7 +218,7 @@ def cache_model(cache_dir, mpn, subckt, specs, source, component_type):
     index = {}
     if read_path.exists():
         try:
-            with open(read_path) as f:
+            with open(read_path, encoding="utf-8") as f:
                 index = json.load(f)
         except (json.JSONDecodeError, OSError):
             index = {}

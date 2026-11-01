@@ -845,9 +845,9 @@ def should_create_new_run(analysis_dir: str,
             continue
 
         try:
-            with open(current_path) as f:
+            with open(current_path, encoding="utf-8") as f:
                 base_data = json.load(f)
-            with open(new_path) as f:
+            with open(new_path, encoding="utf-8") as f:
                 head_data = json.load(f)
         except (json.JSONDecodeError, OSError):
             return True  # Can't compare -- treat as changed

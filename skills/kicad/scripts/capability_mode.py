@@ -47,7 +47,7 @@ def _read_capability_mode(path: Path) -> Optional[dict]:
     """
     for _ in range(5):
         try:
-            return json.loads(path.read_text())
+            return json.loads(path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, FileNotFoundError, OSError):
             time.sleep(0.005)
     return None
@@ -186,7 +186,7 @@ def get_or_create_capability_mode(
     #      reads the winner's record, so every analyzer in the run shares
     #      one run_id (HI-7).
     try:
-        with os.fdopen(fd, "w") as f:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(json.dumps(record, indent=2, sort_keys=True) + "\n")
         try:
             os.link(tmp_path, path)

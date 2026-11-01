@@ -81,6 +81,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Fixed
 
+- The analysis cache, the capability sidecar, the datasheet and SPICE model manifests and the generated `output-schema.md` are read and written as UTF-8 on any locale; a hand-edited non-ASCII manifest no longer crashes a run under a non-UTF-8 default encoding (KH-new-utf8-arch-registers).
 - A switching-loop area that cannot be estimated (parts in a line) is reported as not estimated instead of 0 mm² (KH-790).
 - USB connectors are treated as Type-C only by a Type-C name or CC pins, and CC checks run only on connectors that have CC pins. A CC resistor whose value cannot be read (`5.1kR`, a part number) is reported as info instead of a missing pull-down, every Type-C Rp value within the spec's tolerance counts as a source pull-up (56k/36k ±20 %, 22k/12k/10k ±5 %: 56k/22k/10k to 5 V or the connector's VBUS, 36k/12k/4.7k to 3.3 V; 4.7k reads as Rp from 4465 Ω to just under 4800 Ω), a resistor in the 4.8k–5.6k Rd band is never Rp, so a 5.1k Rd tied to a rail is not a pull-up, a DNP resistor counts as absent, and a plug's single CC pin is checked as one side (KH-789).
 - `analyze_pcb.py --gp001-debug` writes `gp001_debug.json` into `--analysis-dir` when given, as every other output file, else beside `--output`, else in the board's directory, through an atomic write that refuses a symlinked target, instead of dropping it next to the board (KH-788).

@@ -1,5 +1,5 @@
 """--text output survives a stdout that is not UTF-8 (a Windows cp1252 redirect)."""
-import json, os, subprocess, sys, tempfile, unittest
+import json, os, shutil, subprocess, sys, tempfile, unittest
 from pathlib import Path
 from tools.tests._fixtures import fixture_path, have
 
@@ -73,6 +73,52 @@ class WhatIfSuggestFixesTest(unittest.TestCase):
             r = _run([str(SCRIPTS / "what_if.py"), src, "--suggest-fixes", "--text"], tmp)
         self.assertEqual(r.returncode, 0, r.stderr.decode("utf-8", "replace")[-1500:])
         self.assertIn("k\u03a9", r.stdout.decode("utf-8"))
+
+
+def _c_locale_run(args, cwd):
+    env = dict(os.environ, LC_ALL="C", PYTHONUTF8="0", PYTHONHASHSEED="0", PYTHONDONTWRITEBYTECODE="1")
+    env.pop("PYTHONIOENCODING", None)
+    return subprocess.run([sys.executable, *args], capture_output=True, cwd=cwd, env=env, timeout=300)
+
+
+class CLocaleFilesTest(unittest.TestCase):
+    def test_reads_non_ascii_manifests_under_c_locale(self):
+        code = (
+            "import json, sys\n"
+            "from pathlib import Path\n"
+            "sys.path.insert(0, %r); sys.path.insert(0, %r); sys.path.insert(0, %r)\n"
+            "import spice_model_cache as smc\n"
+            "from distributor_core.manifest import load_index\n"
+            "import capability_mode\n"
+            "tmp = Path(sys.argv[1])\n"
+            "models = tmp / 'models'; models.mkdir()\n"
+            "(models / 'x.sub').write_text('.subckt PART 1 2\\\\n.ends\\\\n', encoding='utf-8')\n"
+            "with open(smc._cache_manifest_path(models), 'w', encoding='utf-8') as f:\n"
+            "    json.dump({'PART': {'file': 'x.sub', 'source': 'vendor \\u03a9', 'specs': {}}}, f, ensure_ascii=False)\n"
+            "idx = tmp / 'manifest.json'\n"
+            "idx.write_text(json.dumps({'parts': {'\\u00b5C': {}}}, ensure_ascii=False), encoding='utf-8')\n"
+            "assert '\\u00b5C' in load_index(idx)['parts'], 'datasheet manifest'\n"
+            "assert smc.get_cached_model(models, 'PART')[0] is not None, 'model manifest'\n"
+            "side = tmp / 'side.json'\n"
+            "side.write_text(json.dumps({'run_id': '\\u03a9'}, ensure_ascii=False), encoding='utf-8')\n"
+            "assert capability_mode._read_capability_mode(side)['run_id'] == '\\u03a9', 'sidecar'\n"
+            "print('ok')\n"
+        ) % (str(SCRIPTS), str(ROOT / "skills" / "datasheets"), str(ROOT / "skills" / "spice" / "scripts"))
+        with tempfile.TemporaryDirectory() as tmp:
+            r = _c_locale_run(["-c", code, tmp], tmp)
+        self.assertEqual(r.returncode, 0, r.stderr.decode("utf-8", "replace")[-1500:])
+        self.assertEqual(r.stdout.decode().strip(), "ok")
+
+    def test_schema_md_generator_under_c_locale(self):
+        # The generator writes into REPO_ROOT/skills/kicad/references, so run a copy of the tree.
+        with tempfile.TemporaryDirectory() as tmp:
+            for skill in ("kicad", "emc"):
+                shutil.copytree(ROOT / "skills" / skill, Path(tmp) / "skills" / skill,
+                                ignore=shutil.ignore_patterns("__pycache__"))
+            r = _c_locale_run([str(Path(tmp) / "skills" / "kicad" / "scripts" / "gen_output_schema_md.py")], tmp)
+            self.assertEqual(r.returncode, 0, r.stderr.decode("utf-8", "replace")[-1500:])
+            written = (Path(tmp) / "skills" / "kicad" / "references" / "output-schema.md").read_bytes()
+        self.assertEqual(written, (ROOT / "skills" / "kicad" / "references" / "output-schema.md").read_bytes())
 
 
 if __name__ == "__main__":
