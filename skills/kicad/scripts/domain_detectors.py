@@ -20,7 +20,7 @@ from kicad_core.values import format_frequency, parse_value
 from kicad_core.netnames import parse_voltage_from_net_name
 from signal_detectors import _get_net_components
 from detector_helpers import (is_led_rail, led_forward_voltage, led_string, match_family,
-                              match_ic_keywords, get_unique_ics)
+                              match_ic_keywords, get_unique_ics, get_pin_net)
 from finding_schema import make_finding, make_provenance
 
 
@@ -5690,25 +5690,6 @@ def suggest_certifications(ctx: AnalysisContext, signal_analysis: dict) -> list[
     return suggestions
 
 
-def _get_pin_net_domain(ctx: AnalysisContext, ref: str, pin_names: tuple) -> str | None:
-    """Find net connected to a pin matching names (domain_detectors version)."""
-    pins = ctx.ref_pins.get(ref, {})
-    for pnum, (net, _) in pins.items():
-        comp = ctx.comp_lookup.get(ref)
-        if not comp:
-            continue
-        for p in comp.get('pins', []):
-            if p.get('number') == pnum and p.get('name', '').upper() in pin_names:
-                return net
-    for pnum, (net, _) in pins.items():
-        if not net or net not in ctx.nets:
-            continue
-        for np in ctx.nets[net]['pins']:
-            if np['component'] == ref and np.get('pin_name', '').upper() in pin_names:
-                return net
-    return None
-
-
 # ---------------------------------------------------------------------------
 # WL-001: Wireless module validation
 # ---------------------------------------------------------------------------
@@ -5765,7 +5746,7 @@ def detect_wireless_modules(ctx: AnalysisContext) -> list[dict]:
         if not wl_type:
             continue
 
-        ant_net = _get_pin_net_domain(ctx, ref, _ANTENNA_PIN_NAMES)
+        ant_net = get_pin_net(ctx, ref, _ANTENNA_PIN_NAMES)
         entry = {
             'detector': 'detect_wireless_modules', 'rule_id': 'WL-001',
             'category': 'wireless', 'reference': ref, 'value': val,
@@ -5781,7 +5762,7 @@ def detect_wireless_modules(ctx: AnalysisContext) -> list[dict]:
         if wl_type == 'cellular':
             sim_nets = {}
             for sn in _SIM_PIN_NAMES:
-                net = _get_pin_net_domain(ctx, ref, (sn,))
+                net = get_pin_net(ctx, ref, (sn,))
                 if net:
                     sim_nets[sn] = net
             entry['sim_pins'] = sim_nets
@@ -5842,7 +5823,7 @@ def detect_transformer_feedback(ctx: AnalysisContext) -> list[dict]:
             'components': [ref], 'nets': [], 'pins': [], 'recommendation': '',
             'report_context': {'section': 'Isolated Power', 'impact': '', 'standard_ref': ''},
         }
-        fb_net = _get_pin_net_domain(ctx, ref, ('FB', 'COMP', 'VFB', 'OPTO'))
+        fb_net = get_pin_net(ctx, ref, ('FB', 'COMP', 'VFB', 'OPTO'))
         if fb_net:
             for opto in optocouplers:
                 opto_ref = opto['reference']
@@ -5917,7 +5898,7 @@ _I2C_STRAP_CODES = {'gnd': 0, 'vcc': 1, 'sda': 2, 'scl': 3}
 
 
 def _resolve_addr_pin(ctx: AnalysisContext, ref: str, pin_name: str, sda_net: str, scl_net: str) -> str:
-    net = _get_pin_net_domain(ctx, ref, (pin_name,))
+    net = get_pin_net(ctx, ref, (pin_name,))
     if not net:
         return 'unknown'
     if ctx.is_ground(net):
@@ -5954,8 +5935,8 @@ def detect_i2c_address_conflicts(ctx: AnalysisContext) -> list[dict]:
         device_type = match_family(ic, _I2C_ADDR_FAMILIES)
         if not device_type:
             continue
-        sda_net = _get_pin_net_domain(ctx, ref, ('SDA', 'I2C_SDA'))
-        scl_net = _get_pin_net_domain(ctx, ref, ('SCL', 'I2C_SCL'))
+        sda_net = get_pin_net(ctx, ref, ('SDA', 'I2C_SDA'))
+        scl_net = get_pin_net(ctx, ref, ('SCL', 'I2C_SCL'))
         if not sda_net or not scl_net:
             continue
         buses.setdefault((sda_net, scl_net), []).append({
@@ -6143,7 +6124,7 @@ def detect_headphone_jack(ctx: AnalysisContext) -> list[dict]:
 
     for jack in hp_jacks:
         ref = jack['reference']
-        det_net = _get_pin_net_domain(ctx, ref, _HP_DET_PIN_NAMES)
+        det_net = get_pin_net(ctx, ref, _HP_DET_PIN_NAMES)
         entry = {
             'detector': 'detect_headphone_jack', 'rule_id': 'AH-001',
             'category': 'audio', 'reference': ref, 'value': jack.get('value', ''),

@@ -39,6 +39,26 @@ def index_two_pin_components(
     return comp_nets, net_to_comps
 
 
+def get_pin_net(ctx: AnalysisContext, ref: str, pin_names: tuple[str, ...]) -> str | None:
+    """Find the net connected to a pin matching any of the given names."""
+    pins = ctx.ref_pins.get(ref, {})
+    for pnum, (net, _) in pins.items():
+        comp = ctx.comp_lookup.get(ref)
+        if not comp:
+            continue
+        for p in comp.get('pins', []):
+            if p.get('number') == pnum and p.get('name', '').upper() in pin_names:
+                return net
+    # Fallback: check net pin_name via ctx.nets
+    for pnum, (net, _) in pins.items():
+        if not net or net not in ctx.nets:
+            continue
+        for np in ctx.nets[net]['pins']:
+            if np['component'] == ref and np.get('pin_name', '').upper() in pin_names:
+                return net
+    return None
+
+
 def get_components_by_type(
     ctx: AnalysisContext,
     comp_type: str | tuple[str, ...],
