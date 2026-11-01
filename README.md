@@ -392,7 +392,7 @@ Fabrication Release Gate — 8 check categories
   Schematic ↔ PCB match    ✓ PASS  296 components matched, 0 orphans
   Gerber verification      ✓ PASS  All layers present, drill file valid
   Thermal analysis         ⚠ WARN  U3 junction temp 92°C (margin: 18°C)
-  EMC pre-compliance       ⚠ WARN  Score 73/100 — 2 error findings
+  EMC pre-compliance       ⚠ WARN  Score 68.5/100 — 3 error findings
 
   Result: CONDITIONAL PASS (3 warnings to review before ordering)
 ```
