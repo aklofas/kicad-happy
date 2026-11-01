@@ -116,9 +116,10 @@ class NetEntry:
     labels: list[NetLabel] = field(default_factory=list, metadata={
         "description": "Label records attached to this net."})
     display_name: str | None = field(default=None, metadata={"description":
-        "Bare display name when the map key is disambiguated: sheet-qualified "
-        "local nets (/<sheet>/<name>, KH-359) and annotated __unnamed_ nets. "
-        "Absent when the key is already the display name."})
+        "Name KiCad shows when it differs from the map key: the decoded "
+        "form of an escaped key (A{slash}B -> A/B), the bare name of a "
+        "sheet-qualified local net (/<sheet>/<name>), or a Ref.PinName hint for "
+        "an __unnamed_ net. Absent when the key is already the shown name."})
 
 
 @dataclass
@@ -213,7 +214,7 @@ class SchematicEnvelope:
         "description": "Always 'schematic'.",
         "const": "schematic"})
     schema_version: str = field(metadata={
-        "description": "Semver. Value: '1.4.0' at Track 1.1 landing.",
+        "description": "Semver. Value: '1.4.0'.",
         "const": "1.4.0"})
 
     # --- Provenance ---
@@ -260,22 +261,26 @@ class SchematicEnvelope:
                        "display name, sheet-qualified as /<sheet>/<name> "
                        "when distinct nets share a bare name."})
     subcircuits: list[dict] = field(metadata={
-        "description": "Hierarchical sub-sheets: "
-                       "[{reference, path, sheet_name, sheet_file, instances}]."})
+        "description": "IC neighbourhoods, one entry per IC: "
+                       "[{center_ic, ic_value, ic_mpn, ic_lib_id, "
+                       "neighbor_components: [{ref, value, type}], description}]; "
+                       "neighbours share a non-power, non-ground net with the "
+                       "IC. Not hierarchical sheets; detected circuits are in "
+                       "findings[]."})
     ic_pin_analysis: list[dict] = field(metadata={
         "description": "Per-IC pin mappings. Each entry carries reference, "
                        "value, type, lib_id, mpn, description, datasheet, "
                        "function, total_pins, unconnected_pins, pins[], "
                        "power_pins[], signal_pins[], decoupling_caps_by_rail. "
                        "Covers type in {ic, connector, crystal, oscillator}; "
-                       "transistors live in transistor_pin_analysis[] (F4)."})
+                       "transistors live in transistor_pin_analysis[]."})
     transistor_pin_analysis: list[dict] = field(metadata={
         "description": "Per-transistor pin mappings. Same shape as "
                        "ic_pin_analysis entries but filtered to "
                        "type=transistor (MOSFETs, BJTs, FETs). Lets bridge / "
                        "half-bridge / gate-driver reviewers verify "
                        "gate/source/drain wiring without reconstructing pin "
-                       "maps from nets[].pins[] by hand. F4."})
+                       "maps from nets[].pins[] by hand."})
 
     # --- Analysis bags (free-form dicts; shapes tighten per rule_id in v1.5) ---
     design_analysis: dict = field(metadata={
@@ -344,7 +349,7 @@ class SchematicEnvelope:
     # --- Phase 4 capability pointer ---
     capability_mode_ref: Optional[dict] = field(default=None, metadata={
         "description": "Pointer to canonical analysis/capability_mode.json run-level "
-                       "record. Shape: {source, run_id}. See Phase 4 spec §3.3."})
+                       "record. Shape: {source, run_id}."})
 
     # --- Stage/audience derived blocks ---
     audience_summary: Optional[dict] = field(default=None, metadata={
@@ -411,7 +416,7 @@ class SchematicEnvelope:
     alternate_pin_summary: Optional[dict] = field(default=None, metadata={
         "description": "Alternate-pin usage summary."})
     pin_coverage_warnings: Optional[list[PinCoverageWarning]] = field(default=None, metadata={
-        "description": "KH-323: warnings about pin coverage gaps. Emitted "
+        "description": "Warnings about pin coverage gaps. Emitted "
                        "when a placed symbol has fewer pins connected than "
                        "the library definition expects. Present only when "
                        "such warnings fire."})
@@ -431,10 +436,7 @@ class SchematicEnvelope:
         "description": "Legacy .sch quality rollup: is_legacy_schematic, "
                        "library_resolution, pin_source_coverage."})
     hierarchy_context: Optional[dict] = field(default=None, metadata={
-        "description": "Hierarchy context (sub-sheet analysis): "
-                       "root_schematic, target_sheet, sheets_in_project, "
-                       "cross_sheet_nets, project_power_rails, "
-                       "reference_corrections_applied."})
+        "description": "Not emitted: no analyzer path produces it."})
     hierarchy_warning: Optional[str] = field(default=None, metadata={
         "description": "Emitted when sub-sheet was detected without root."})
     redirected_from: Optional[str] = field(default=None, metadata={

@@ -152,8 +152,7 @@ class Finding:
         "description": "Stable per-finding ID for cross-run tracking."})
     finding_id: Optional[str] = field(default=None, metadata={
         "description": "Stable cross-run identifier derived in make_finding(). "
-                       "Format: {source}:{detection_id} or {source}:{rule_id}:{locator}. "
-                       "See Phase 4 spec §3.2."})
+                       "Format: {source}:{detection_id} or {source}:{rule_id}:{locator}."})
     stages: Optional[list[str]] = field(default=None, metadata={
         "description": "Review stages this finding applies to: "
                        "'schematic', 'layout', 'pre_fab', 'bring_up'."})
@@ -208,8 +207,8 @@ class Assessment:
         "description": "Stable per-assessment ID for cross-run tracking."})
     finding_id: Optional[str] = field(default=None, metadata={
         "description": "Stable cross-run identifier. When populated, format is "
-                       "{source}:{detection_id} or {source}:{rule_id}:{locator} per Phase 4 spec §3.2. "
-                       "Populated by make_finding() for findings; thermal assessments carry None until Task 4."})
+                       "{source}:{detection_id} or {source}:{rule_id}:{locator}. "
+                       "Populated by make_finding() for findings; thermal assessments carry none."})
     extra: Optional[dict] = field(default=None, metadata={
         "description": "Assessment-specific measurement fields (e.g. tj_estimated_c, "
                        "margin_c, pdiss_w for thermal). Free-form for v1.4; tightens "

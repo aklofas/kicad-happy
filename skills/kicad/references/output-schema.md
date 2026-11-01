@@ -19,6 +19,8 @@ python3 skills/emc/scripts/analyze_emc.py --schema
 python3 skills/kicad/scripts/cross_analysis.py --schema
 ```
 
+Schema versions (`schema_version`, "v1.4" below) are separate from the plugin version.
+
 v1.4 schema-break notes:
 - Output of `--schema` is real JSON Schema Draft 2020-12 (prior: descriptive-string dict).
 - `schema_version` bumped 1.3.0 → 1.4.0 on every analyzer.
@@ -94,7 +96,7 @@ Output of `python3 skills/kicad/scripts/analyze_schematic.py <file>.kicad_sch`.
 | Key | Type | Required | Description |
 |-----|------|----------|-------------|
 | `analyzer_type` | `string` | yes | Always 'schematic'. |
-| `schema_version` | `string` | yes | Semver. Value: '1.4.0' at Track 1.1 landing. |
+| `schema_version` | `string` | yes | Semver. Value: '1.4.0'. |
 | `inputs` | `InputsBlock` | yes | Source files, hashes, run_id, config_hash, upstream artifacts for this run. |
 | `compat` | `CompatBlock` | yes | Schema compatibility metadata: minimum consumer version + deprecated/experimental field lists. |
 | `diagnostics` | `list[Diagnostic]` | no | Guarded failures that degraded this run (section omitted, fallback model used). Empty when nothing degraded. |
@@ -109,9 +111,9 @@ Output of `python3 skills/kicad/scripts/analyze_schematic.py <file>.kicad_sch`.
 | `bom` | `list[BomEntry]` | yes | Deduplicated BOM rows. |
 | `components` | `list[dict]` | yes | Every non-power component as a dict. Shape is effectively open: reference/value/lib_id/footprint/datasheet/description/mpn/manufacturer/distributor SKUs/geometry/uuid/type/parsed_value plus internal bookkeeping (_sheet, pin_nets, pin_uuids). Tightens to a typed Component in v1.5. |
 | `nets` | `dict[str, NetEntry]` | yes | Net connectivity map keyed by unique net key — the display name, sheet-qualified as /<sheet>/<name> when distinct nets share a bare name. |
-| `subcircuits` | `list[dict]` | yes | Hierarchical sub-sheets: [{reference, path, sheet_name, sheet_file, instances}]. |
-| `ic_pin_analysis` | `list[dict]` | yes | Per-IC pin mappings. Each entry carries reference, value, type, lib_id, mpn, description, datasheet, function, total_pins, unconnected_pins, pins[], power_pins[], signal_pins[], decoupling_caps_by_rail. Covers type in {ic, connector, crystal, oscillator}; transistors live in transistor_pin_analysis[] (F4). |
-| `transistor_pin_analysis` | `list[dict]` | yes | Per-transistor pin mappings. Same shape as ic_pin_analysis entries but filtered to type=transistor (MOSFETs, BJTs, FETs). Lets bridge / half-bridge / gate-driver reviewers verify gate/source/drain wiring without reconstructing pin maps from nets[].pins[] by hand. F4. |
+| `subcircuits` | `list[dict]` | yes | IC neighbourhoods, one entry per IC: [{center_ic, ic_value, ic_mpn, ic_lib_id, neighbor_components: [{ref, value, type}], description}]; neighbours share a non-power, non-ground net with the IC. Not hierarchical sheets; detected circuits are in findings[]. |
+| `ic_pin_analysis` | `list[dict]` | yes | Per-IC pin mappings. Each entry carries reference, value, type, lib_id, mpn, description, datasheet, function, total_pins, unconnected_pins, pins[], power_pins[], signal_pins[], decoupling_caps_by_rail. Covers type in {ic, connector, crystal, oscillator}; transistors live in transistor_pin_analysis[]. |
+| `transistor_pin_analysis` | `list[dict]` | yes | Per-transistor pin mappings. Same shape as ic_pin_analysis entries but filtered to type=transistor (MOSFETs, BJTs, FETs). Lets bridge / half-bridge / gate-driver reviewers verify gate/source/drain wiring without reconstructing pin maps from nets[].pins[] by hand. |
 | `design_analysis` | `dict` | yes | Design-level analyses: net_classification, power_domains, cross_domain_signals, bus_analysis (i2c/spi/uart/can), differential_pairs, erc_warnings, passive_warnings. |
 | `connectivity_issues` | `dict` | yes | Connectivity issue lists: single_pin_nets, single_pin_net_findings, multi_driver_nets, unconnected_pins, power_net_summary. |
 | `annotation_issues` | `dict` | yes | Annotation issue bag: duplicate_references, unannotated, missing_value, zero_indexed_refs. |
@@ -130,7 +132,7 @@ Output of `python3 skills/kicad/scripts/analyze_schematic.py <file>.kicad_sch`.
 | `pwr_flag_warnings` | `list[dict]` | no | PWR_FLAG warnings: [{net, message, pin_types}]. |
 | `label_shape_warnings` | `list` | no | Label-shape mismatch warnings. |
 | `footprint_filter_warnings` | `list` | no | Footprint filter warnings from lib_symbols. |
-| `capability_mode_ref` | `dict \| null` | no | Pointer to canonical analysis/capability_mode.json run-level record. Shape: {source, run_id}. See Phase 4 spec §3.3. |
+| `capability_mode_ref` | `dict \| null` | no | Pointer to canonical analysis/capability_mode.json run-level record. Shape: {source, run_id}. |
 | `audience_summary` | `dict \| null` | no | Designer/reviewer/manager summary views; only present when output filters ran. |
 | `design_intent` | `dict \| null` | no | Resolved design intent: approved_manufacturers, ipc_class, target_market, operating_temp_range, preferred_passive_size, product_class, test_coverage_target, expected_lifetime_years, detection_signals, source, confidence. |
 | `project_config` | `dict \| null` | no | Copy of the resolved project block from .kicad-happy.json (when present). |
@@ -150,14 +152,14 @@ Output of `python3 skills/kicad/scripts/analyze_schematic.py <file>.kicad_sch`.
 | `protocol_compliance` | `dict \| null` | no | Protocol compliance checks (I2C/SPI/UART/etc.). |
 | `text_annotations` | `list \| null` | no | Text annotations extracted from the schematic. |
 | `alternate_pin_summary` | `dict \| null` | no | Alternate-pin usage summary. |
-| `pin_coverage_warnings` | `list[PinCoverageWarning] \| null` | no | KH-323: warnings about pin coverage gaps. Emitted when a placed symbol has fewer pins connected than the library definition expects. Present only when such warnings fire. |
+| `pin_coverage_warnings` | `list[PinCoverageWarning] \| null` | no | Warnings about pin coverage gaps. Emitted when a placed symbol has fewer pins connected than the library definition expects. Present only when such warnings fire. |
 | `instance_consistency_warnings` | `list \| null` | no | Multi-instance symbol consistency warnings. |
 | `generic_symbol_warnings` | `list \| null` | no | Warnings about generic symbol usage without MPN. |
 | `sheets` | `list \| null` | no | Hierarchical sheet list (multi-sheet only). |
 | `sheets_parsed` | `int \| null` | no | Count of parsed sheets (legacy .sch). |
 | `sheet_files` | `list[string] \| null` | no | Parsed sheet file paths (legacy .sch). |
 | `legacy_analysis_quality` | `dict \| null` | no | Legacy .sch quality rollup: is_legacy_schematic, library_resolution, pin_source_coverage. |
-| `hierarchy_context` | `dict \| null` | no | Hierarchy context (sub-sheet analysis): root_schematic, target_sheet, sheets_in_project, cross_sheet_nets, project_power_rails, reference_corrections_applied. |
+| `hierarchy_context` | `dict \| null` | no | Not emitted: no analyzer path produces it. |
 | `hierarchy_warning` | `string \| null` | no | Emitted when sub-sheet was detected without root. |
 | `_redirected_from` | `string \| null` | no | Original filename when a sub-sheet was redirected to the project root. Emitted in JSON as '_redirected_from'. |
 | `_stale_file_warning` | `string \| null` | no | Emitted when input file is not in the project sheet tree. Emitted in JSON as '_stale_file_warning'. |
@@ -170,7 +172,7 @@ Output of `python3 skills/kicad/scripts/analyze_pcb.py <file>.kicad_pcb`.
 | Key | Type | Required | Description |
 |-----|------|----------|-------------|
 | `analyzer_type` | `string` | yes | Always 'pcb'. |
-| `schema_version` | `string` | yes | Semver. Value: '1.4.0' at Track 1.1 landing. |
+| `schema_version` | `string` | yes | Semver. Value: '1.4.0'. |
 | `inputs` | `InputsBlock` | yes | Source files, hashes, run_id, config_hash, upstream artifacts for this run. |
 | `compat` | `CompatBlock` | yes | Schema compatibility metadata: minimum consumer version + deprecated/experimental field lists. |
 | `diagnostics` | `list[Diagnostic]` | no | Guarded failures that degraded this run (section omitted, fallback model used). Empty when nothing degraded. |
@@ -198,29 +200,29 @@ Output of `python3 skills/kicad/scripts/analyze_pcb.py <file>.kicad_pcb`.
 | `silkscreen` | `dict` | yes | Silkscreen rollup: board_text_count, refs_visible_on_silk, refs_hidden_on_silk, documentation_warnings[], fab_notes_completeness, silkscreen_completeness. |
 | `dfm_summary` | `dict` | yes | DFM rollup: dfm_tier, metrics, violation_count. |
 | `project_settings` | `dict` | yes | Selected settings extracted from .kicad_pro: source, net_classes, design_rules. |
-| `design_rule_compliance` | `dict` | no | Design rule compliance: compliant, rules_checked, rules_source; empty dict when project_settings missing or compliance not computed. TH-043. |
-| `board_thickness_mm` | `float \| null` | no | Stackup thickness (mm); duplicated from setup for downstream consumers. Null when the source file has no (general (thickness ...)) entry. TH-043. |
-| `board_metadata` | `dict` | no | Board metadata bag (paper size, title block fragments, etc.); empty dict when no metadata extracted. TH-043. |
-| `power_net_routing` | `list[dict]` | no | Power net routing rollup: [{net, track_count, total_length_mm, min_width_mm, max_width_mm, widths_used}]; empty list when no power routing detected. TH-043-residual. |
-| `power_net_resolution` | `dict` | no | Power/ground net classification actually used: {power: [net names], ground: [net names], source: 'cli'\|'schematic'\|'heuristic'}. source reflects how power rail overrides were resolved — explicit --power-rails, rails auto-read from --schematic, or name heuristics alone (KH-393). |
-| `ground_domains` | `dict` | no | Ground topology: domain_count, domains[], multi_domain_components. Always emitted; domain_count=0 is meaningful (no ground domain found). TH-043-residual. |
-| `placement_density` | `dict` | no | Placement density: board_area_cm2, front_density_per_cm2, optional back_density_per_cm2; empty dict when density not computed. TH-043-residual. |
-| `capability_mode_ref` | `dict \| null` | no | Pointer to canonical analysis/capability_mode.json run-level record. Shape: {source, run_id}. See Phase 4 spec §3.3. |
+| `design_rule_compliance` | `dict` | no | Design rule compliance: compliant, rules_checked, rules_source; empty dict when project_settings missing or compliance not computed. |
+| `board_thickness_mm` | `float \| null` | no | Stackup thickness (mm); duplicated from setup for downstream consumers. Null when the source file has no (general (thickness ...)) entry. |
+| `board_metadata` | `dict` | no | Board metadata bag (paper size, title block fragments, etc.); empty dict when no metadata extracted. |
+| `power_net_routing` | `list[dict]` | no | Power net routing rollup: [{net, track_count, total_length_mm, min_width_mm, max_width_mm, widths_used}]; empty list when no power routing detected. |
+| `power_net_resolution` | `dict` | no | Power/ground net classification actually used: {power: [net names], ground: [net names], source: 'cli'\|'schematic'\|'heuristic'}. source reflects how power rail overrides were resolved — explicit --power-rails, rails auto-read from --schematic, or name heuristics alone. |
+| `ground_domains` | `dict` | no | Ground topology: domain_count, domains[], multi_domain_components. Always emitted; domain_count=0 is meaningful (no ground domain found). |
+| `placement_density` | `dict` | no | Placement density: board_area_cm2, front_density_per_cm2, optional back_density_per_cm2; empty dict when density not computed. |
+| `capability_mode_ref` | `dict \| null` | no | Pointer to canonical analysis/capability_mode.json run-level record. Shape: {source, run_id}. |
 | `audience_summary` | `dict \| null` | no | Designer/reviewer/manager summary views; only present when output filters ran. |
 | `design_intent` | `dict \| null` | no | Resolved design intent: product_class, ipc_class, target_market, operating_temp_range, preferred_passive_size, test_coverage_target, approved_manufacturers, expected_lifetime_years, detection_signals, confidence, source. |
 | `project_config` | `dict \| null` | no | Copy of the resolved project block from .kicad-happy.json (when present). |
 | `connectivity_graph` | `dict \| null` | no | Per-net connectivity graph (island map). Emitted only in --full mode. |
 | `connectivity_graph_error` | `string \| null` | no | Present when --full connectivity graph construction failed; downstream cross-analysis checks that need it were skipped. |
 | `pad_to_pad_distances` | `dict \| null` | no | Pad-to-pad routing distances keyed by 'R1.2-D1.1' style endpoints. Emitted only in --full mode. |
-| `thermal_analysis` | `dict \| null` | no | Thermal management analysis (when triggered). |
-| `thermal_pad_vias` | `dict \| null` | no | Thermal pad via audit (when triggered). |
+| `thermal_analysis` | `dict \| null` | no | Not in CLI output: its zone-stitching entries move to findings[] and its pad scan to thermal_pad_scan. |
+| `thermal_pad_vias` | `dict \| null` | no | Not in CLI output: its entries move to findings[] (detector analyze_thermal_pad_vias). |
 | `trace_proximity` | `dict \| null` | no | Trace proximity / crosstalk analysis (--proximity). |
-| `copper_presence` | `dict \| null` | no | Copper presence sampling rollup (when triggered). |
-| `tombstoning_risk` | `dict \| null` | no | Tombstoning risk analysis (when triggered). |
+| `copper_presence` | `dict \| null` | no | Not in CLI output: its entries move to findings[] (detector analyze_copper_presence) and its opposite-layer summary to copper_presence_summary. |
+| `tombstoning_risk` | `dict \| null` | no | Not in CLI output: its entries move to findings[] (detector analyze_tombstoning_risk). |
 | `decoupling_placement` | `dict \| null` | no | Decoupling capacitor placement audit (when triggered). |
-| `current_capacity` | `dict \| null` | no | Current capacity analysis (when triggered). |
-| `placement_analysis` | `dict \| null` | no | Placement analysis details (when triggered). |
-| `dfm` | `dict \| null` | no | Extended DFM analysis (when triggered). |
+| `current_capacity` | `dict \| null` | no | Not in CLI output: its entries move to findings[] (detector analyze_current_capacity). |
+| `placement_analysis` | `dict \| null` | no | Not in CLI output: courtyard overlaps and edge-clearance entries move to findings[], density to placement_density. |
+| `dfm` | `dict \| null` | no | Not in CLI output: violations move to findings[] (detector analyze_dfm), the rest to dfm_summary. |
 
 ## GerberEnvelope
 
@@ -229,7 +231,7 @@ Output of `python3 skills/kicad/scripts/analyze_gerbers.py <gerber_dir>/`.
 | Key | Type | Required | Description |
 |-----|------|----------|-------------|
 | `analyzer_type` | `string` | yes | Always 'gerber'. |
-| `schema_version` | `string` | yes | Semver. Value: '1.4.0' at Track 1.1 landing. |
+| `schema_version` | `string` | yes | Semver. Value: '1.4.0'. |
 | `inputs` | `InputsBlock` | yes | Source files, hashes, run_id, config_hash, upstream artifacts for this run. |
 | `compat` | `CompatBlock` | yes | Schema compatibility metadata: minimum consumer version + deprecated/experimental field lists. |
 | `diagnostics` | `list[Diagnostic]` | no | Guarded failures that degraded this run (section omitted, fallback model used). Empty when nothing degraded. |
@@ -255,7 +257,7 @@ Output of `python3 skills/kicad/scripts/analyze_gerbers.py <gerber_dir>/`.
 | `job_file` | `dict \| null` | no | Parsed .gbrjob contents: project_name, vendor, generator, layer_count, board_width_mm, board_height_mm, board_thickness_mm, creation_date, finish, stackup, design_rules, expected_files. Omitted when no .gbrjob present. |
 | `zip_archives` | `list[dict] \| null` | no | Zip archive sweep; each entry: {filename, size_bytes, modified, total_files, gerber_files, drill_files, other_files, newest_member_date, staleness_warning}. Omitted when no .zip files in the directory. |
 | `connectivity` | `list[dict] \| null` | no | Flat pin-to-net list from X2 attributes (--full only). Each item: {ref, pin, pin_name, net}. |
-| `capability_mode_ref` | `dict \| null` | no | Pointer to canonical analysis/capability_mode.json run-level record. Shape: {source, run_id}. See Phase 4 spec §3.3. |
+| `capability_mode_ref` | `dict \| null` | no | Pointer to canonical analysis/capability_mode.json run-level record. Shape: {source, run_id}. |
 | `audience_summary` | `dict \| null` | no | Designer/reviewer/manager summary views; only present when output filters ran. |
 
 ## ThermalEnvelope
@@ -265,7 +267,7 @@ Output of `python3 skills/kicad/scripts/analyze_thermal.py --schematic ... --pcb
 | Key | Type | Required | Description |
 |-----|------|----------|-------------|
 | `analyzer_type` | `string` | yes | Always 'thermal'. |
-| `schema_version` | `string` | yes | Schema semver. Value: '1.4.0' at Track 1.1 landing. |
+| `schema_version` | `string` | yes | Schema semver. Value: '1.4.0'. |
 | `inputs` | `InputsBlock` | yes | Source JSON inputs, sha256s, run_id, plus upstream artifact metadata (schematic, pcb). |
 | `compat` | `CompatBlock` | yes | Schema compatibility metadata: minimum consumer version + deprecated/experimental field lists. |
 | `diagnostics` | `list[Diagnostic]` | no | Guarded failures that degraded this run (section omitted, fallback model used). Empty when nothing degraded. |
@@ -275,8 +277,8 @@ Output of `python3 skills/kicad/scripts/analyze_thermal.py --schematic ... --pcb
 | `trust_summary` | `TrustSummary` | yes | Trust posture rollup. |
 | `elapsed_s` | `float` | yes | Wall-clock analysis time in seconds. |
 | `missing_info` | `ThermalMissingInfo \| null` | no | Emitted when any component used default thermal params. |
-| `skipped_components` | `list[ThermalSkipped] \| null` | no | Power components (regulators) that could not be assessed for power dissipation. Present only when non-empty; see summary.components_skipped for the count. KH-386. |
-| `capability_mode_ref` | `dict \| null` | no | Pointer to canonical analysis/capability_mode.json run-level record. Shape: {source, run_id}. See Phase 4 spec §3.3. |
+| `skipped_components` | `list[ThermalSkipped] \| null` | no | Power components (regulators) that could not be assessed for power dissipation. Present only when non-empty; see summary.components_skipped for the count. |
+| `capability_mode_ref` | `dict \| null` | no | Pointer to canonical analysis/capability_mode.json run-level record. Shape: {source, run_id}. |
 
 ## EMCEnvelope
 
@@ -285,7 +287,7 @@ Output of `python3 skills/emc/scripts/analyze_emc.py --schematic ... --pcb ...`.
 | Key | Type | Required | Description |
 |-----|------|----------|-------------|
 | `analyzer_type` | `string` | yes | Always 'emc'. |
-| `schema_version` | `string` | yes | Semver. Value: '1.4.0' at Track 1.1 landing. |
+| `schema_version` | `string` | yes | Semver. Value: '1.4.0'. |
 | `inputs` | `InputsBlock` | yes | Source JSON inputs, sha256s, run_id, plus upstream artifact metadata (schematic, pcb). |
 | `compat` | `CompatBlock` | yes | Schema compatibility metadata: minimum consumer version + deprecated/experimental field lists. |
 | `diagnostics` | `list[Diagnostic]` | no | Guarded failures that degraded this run (section omitted, fallback model used). Empty when nothing degraded. |
@@ -300,7 +302,7 @@ Output of `python3 skills/emc/scripts/analyze_emc.py --schematic ... --pcb ...`.
 | `regulatory_coverage` | `RegulatoryCoverage` | yes | Coverage matrix vs. applicable standards for the target market. |
 | `category_summary` | `dict[str, CategorySummaryEntry]` | yes | Category label -> {count, max_severity, severities, suppressed_count}. |
 | `board_info` | `BoardInfo` | yes | Board-level rollup (dimensions, layer count, crystal + switching frequencies, ...). |
-| `capability_mode_ref` | `dict \| null` | no | Pointer to canonical analysis/capability_mode.json run-level record. Shape: {source, run_id}. See Phase 4 spec §3.3. |
+| `capability_mode_ref` | `dict \| null` | no | Pointer to canonical analysis/capability_mode.json run-level record. Shape: {source, run_id}. |
 | `audience_summary` | `dict \| null` | no | Designer/reviewer/manager summary views. Present whenever findings[] is non-empty (the analyzer always builds this when findings exist). |
 | `stage_filter` | `dict \| null` | no | Stage-filtered findings rollup. Present only when --stage is passed. |
 
@@ -311,7 +313,7 @@ Output of `python3 skills/kicad/scripts/cross_analysis.py --schematic ... --pcb 
 | Key | Type | Required | Description |
 |-----|------|----------|-------------|
 | `analyzer_type` | `string` | yes | Always 'cross_analysis'. |
-| `schema_version` | `string` | yes | Semver. Value: '1.4.0' at Track 1.1 landing. |
+| `schema_version` | `string` | yes | Semver. Value: '1.4.0'. |
 | `inputs` | `InputsBlock` | yes | Source JSON inputs, sha256s, run_id, plus upstream artifact metadata (schematic, pcb). |
 | `compat` | `CompatBlock` | yes | Schema compatibility metadata: minimum consumer version + deprecated/experimental field lists. |
 | `diagnostics` | `list[Diagnostic]` | no | Guarded failures that degraded this run (section omitted, fallback model used). Empty when nothing degraded. |
@@ -319,9 +321,9 @@ Output of `python3 skills/kicad/scripts/cross_analysis.py --schematic ... --pcb 
 | `summary` | `CrossAnalysisSummary` | yes | Roll-up summary (total + by_severity). |
 | `findings` | `list[Finding]` | yes | All cross-domain findings. |
 | `assessments` | `list[Assessment]` | yes | Informational assessments (empty for cross-analysis at v1.4). |
-| `checks_run` | `list[CheckRun]` | yes | Manifest of which cross-analysis checks executed this run, in call order (KH-381). Distinguishes 'ran and found nothing' from 'skipped for lack of required input' — see CheckRun. |
+| `checks_run` | `list[CheckRun]` | yes | Manifest of which cross-analysis checks executed this run, in call order. Distinguishes 'ran and found nothing' from 'skipped for lack of required input' — see CheckRun. |
 | `trust_summary` | `TrustSummary` | yes | Trust posture rollup (confidence + evidence source). |
-| `capability_mode_ref` | `dict \| null` | no | Pointer to canonical analysis/capability_mode.json run-level record. Shape: {source, run_id}. See Phase 4 spec §3.3. |
+| `capability_mode_ref` | `dict \| null` | no | Pointer to canonical analysis/capability_mode.json run-level record. Shape: {source, run_id}. |
 | `audience_summary` | `dict \| null` | no | Designer/reviewer/manager summary views. Added by apply_output_filters whenever findings[] is non-empty. |
 | `stage_filter` | `dict \| null` | no | Stage-filtered findings rollup. Present only when --stage is passed. |
 

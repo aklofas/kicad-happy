@@ -104,7 +104,7 @@ class PCBSetup:
     # Optional fields (must come after non-defaulted fields per dataclass rules):
     board_thickness_mm: Optional[float] = field(default=None, metadata={
         "description": "Stackup thickness in mm; null when the source file "
-                       "has no (general (thickness ...)) entry. TH-043."})
+                       "has no (general (thickness ...)) entry."})
 
 
 @dataclass
@@ -178,7 +178,7 @@ class Vias:
     # annular_ring, current_capacity) once stable.
     via_analysis: dict = field(metadata={
         "description": "Nested analysis: type_breakdown, annular_ring, "
-                       "current_capacity, degenerate_drills (KH-412)."})
+                       "current_capacity, degenerate_drills."})
     vias: Optional[list[dict]] = field(default=None, metadata={
         "description": "Detailed per-via array (--full only): "
                        "[{x, y, layers, size, drill, net, type}]."})
@@ -213,7 +213,7 @@ class PCBEnvelope:
         "description": "Always 'pcb'.",
         "const": "pcb"})
     schema_version: str = field(metadata={
-        "description": "Semver. Value: '1.4.0' at Track 1.1 landing.",
+        "description": "Semver. Value: '1.4.0'.",
         "const": "1.4.0"})
 
     # --- Provenance ---
@@ -312,41 +312,41 @@ class PCBEnvelope:
     design_rule_compliance: dict = field(default_factory=dict, metadata={
         "description": "Design rule compliance: compliant, rules_checked, "
                        "rules_source; empty dict when project_settings "
-                       "missing or compliance not computed. TH-043."})
+                       "missing or compliance not computed."})
     board_thickness_mm: Optional[float] = field(default=None, metadata={
         "description": "Stackup thickness (mm); duplicated from setup for "
                        "downstream consumers. Null when the source file "
-                       "has no (general (thickness ...)) entry. TH-043."})
+                       "has no (general (thickness ...)) entry."})
     board_metadata: dict = field(default_factory=dict, metadata={
         "description": "Board metadata bag (paper size, title block "
                        "fragments, etc.); empty dict when no metadata "
-                       "extracted. TH-043."})
+                       "extracted."})
     power_net_routing: list[dict] = field(default_factory=list, metadata={
         "description": "Power net routing rollup: [{net, track_count, "
                        "total_length_mm, min_width_mm, max_width_mm, "
                        "widths_used}]; empty list when no power routing "
-                       "detected. TH-043-residual."})
+                       "detected."})
     power_net_resolution: dict = field(default_factory=dict, metadata={
         "description": "Power/ground net classification actually used: "
                        "{power: [net names], ground: [net names], "
                        "source: 'cli'|'schematic'|'heuristic'}. source "
                        "reflects how power rail overrides were resolved — "
                        "explicit --power-rails, rails auto-read from "
-                       "--schematic, or name heuristics alone (KH-393)."})
+                       "--schematic, or name heuristics alone."})
     ground_domains: dict = field(default_factory=dict, metadata={
         "description": "Ground topology: domain_count, domains[], "
                        "multi_domain_components. Always emitted; "
                        "domain_count=0 is meaningful (no ground domain "
-                       "found). TH-043-residual."})
+                       "found)."})
     placement_density: dict = field(default_factory=dict, metadata={
         "description": "Placement density: board_area_cm2, "
                        "front_density_per_cm2, optional back_density_per_cm2; "
-                       "empty dict when density not computed. TH-043-residual."})
+                       "empty dict when density not computed."})
 
     # --- Phase 4 capability pointer ---
     capability_mode_ref: Optional[dict] = field(default=None, metadata={
         "description": "Pointer to canonical analysis/capability_mode.json run-level "
-                       "record. Shape: {source, run_id}. See Phase 4 spec §3.3."})
+                       "record. Shape: {source, run_id}."})
 
     # --- Stage/audience derived blocks ---
     audience_summary: Optional[dict] = field(default=None, metadata={
@@ -378,21 +378,32 @@ class PCBEnvelope:
 
     # --- Optional analysis bags (gated on content) ---
     thermal_analysis: Optional[dict] = field(default=None, metadata={
-        "description": "Thermal management analysis (when triggered)."})
+        "description": "Not in CLI output: its zone-stitching "
+                       "entries move to findings[] and its pad scan to "
+                       "thermal_pad_scan."})
     thermal_pad_vias: Optional[dict] = field(default=None, metadata={
-        "description": "Thermal pad via audit (when triggered)."})
+        "description": "Not in CLI output: its entries move to "
+                       "findings[] (detector analyze_thermal_pad_vias)."})
     trace_proximity: Optional[dict] = field(default=None, metadata={
         "description": "Trace proximity / crosstalk analysis (--proximity)."})
     copper_presence: Optional[dict] = field(default=None, metadata={
-        "description": "Copper presence sampling rollup (when triggered)."})
+        "description": "Not in CLI output: its entries move to "
+                       "findings[] (detector analyze_copper_presence) and its "
+                       "opposite-layer summary to copper_presence_summary."})
     tombstoning_risk: Optional[dict] = field(default=None, metadata={
-        "description": "Tombstoning risk analysis (when triggered)."})
+        "description": "Not in CLI output: its entries move to "
+                       "findings[] (detector analyze_tombstoning_risk)."})
     decoupling_placement: Optional[dict] = field(default=None, metadata={
         "description": "Decoupling capacitor placement audit "
                        "(when triggered)."})
     current_capacity: Optional[dict] = field(default=None, metadata={
-        "description": "Current capacity analysis (when triggered)."})
+        "description": "Not in CLI output: its entries move to "
+                       "findings[] (detector analyze_current_capacity)."})
     placement_analysis: Optional[dict] = field(default=None, metadata={
-        "description": "Placement analysis details (when triggered)."})
+        "description": "Not in CLI output: courtyard overlaps and "
+                       "edge-clearance entries move to findings[], density to "
+                       "placement_density."})
     dfm: Optional[dict] = field(default=None, metadata={
-        "description": "Extended DFM analysis (when triggered)."})
+        "description": "Not in CLI output: violations move to "
+                       "findings[] (detector analyze_dfm), the rest to "
+                       "dfm_summary."})

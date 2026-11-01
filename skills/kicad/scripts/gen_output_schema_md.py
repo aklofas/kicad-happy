@@ -51,6 +51,8 @@ python3 skills/emc/scripts/analyze_emc.py --schema
 python3 skills/kicad/scripts/cross_analysis.py --schema
 ```
 
+Schema versions (`schema_version`, "v1.4" below) are separate from the plugin version.
+
 v1.4 schema-break notes:
 - Output of `--schema` is real JSON Schema Draft 2020-12 (prior: descriptive-string dict).
 - `schema_version` bumped 1.3.0 → 1.4.0 on every analyzer.

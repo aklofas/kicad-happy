@@ -90,7 +90,7 @@ class CrossAnalysisEnvelope:
         "description": "Always 'cross_analysis'.",
         "const": "cross_analysis"})
     schema_version: str = field(metadata={
-        "description": "Semver. Value: '1.4.0' at Track 1.1 landing.",
+        "description": "Semver. Value: '1.4.0'.",
         "const": "1.4.0"})
 
     # --- Provenance ---
@@ -115,7 +115,7 @@ class CrossAnalysisEnvelope:
         "description": "Informational assessments (empty for cross-analysis at v1.4)."})
     checks_run: list[CheckRun] = field(metadata={
         "description": "Manifest of which cross-analysis checks executed this run, "
-                       "in call order (KH-381). Distinguishes 'ran and found nothing' "
+                       "in call order. Distinguishes 'ran and found nothing' "
                        "from 'skipped for lack of required input' — see CheckRun."})
     trust_summary: TrustSummary = field(metadata={
         "description": "Trust posture rollup (confidence + evidence source)."})
@@ -123,7 +123,7 @@ class CrossAnalysisEnvelope:
     # --- Phase 4 capability pointer ---
     capability_mode_ref: Optional[dict] = field(default=None, metadata={
         "description": "Pointer to canonical analysis/capability_mode.json run-level "
-                       "record. Shape: {source, run_id}. See Phase 4 spec §3.3."})
+                       "record. Shape: {source, run_id}."})
 
     # --- Stage/audience derived blocks ---
     audience_summary: Optional[dict] = field(default=None, metadata={
