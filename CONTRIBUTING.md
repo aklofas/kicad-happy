@@ -232,7 +232,7 @@ python3 skills/emc/scripts/analyze_emc.py --schematic sch.json --pcb pcb.json
 python3 skills/kicad/scripts/analyze_thermal.py --schematic sch.json --pcb pcb.json
 ```
 
-The analyzers exit 0 on success, including when they report findings; usage errors exit 2, and EMC and thermal can also exit 1 on an input error. `fab_release_gate.py` exits 1 when its verdict is FAIL. The schematic and PCB analyzers produce JSON to stdout (or to a file with `--output`). EMC and thermal produce a structured risk report.
+The analyzers exit 0 on success, including when they report findings; usage errors exit 2, and EMC, thermal and cross-analysis can also exit 1 on an input error (cross-analysis on a pre-v1.3 schematic JSON). `fab_release_gate.py` exits 1 when its verdict is FAIL. The schematic and PCB analyzers produce JSON to stdout (or to a file with `--output`). EMC and thermal produce a structured risk report.
 
 ## Test harness
 

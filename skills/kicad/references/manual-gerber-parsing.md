@@ -420,7 +420,7 @@ for line in lines:
 
 ### Units and Precision Come from the Header
 
-Every KiCad version can write mm or inch in any zeros format, so neither the KiCad version nor the size of the numbers tells you how to read a coordinate. Read the units line (`METRIC`/`INCH`, with `,TZ` or `,LZ`) and the `; FORMAT={integer:decimal/...}` comment as in Step 1. A decimal point means the value is already in the file's units. Y is usually negative: KiCad negates Y unless the file was exported with mirror-Y. `gerber-parsing.md` "Coordinate Format" shows one hole in every format.
+Every KiCad version can write mm or inch in any zeros format, so neither the KiCad version nor the size of the numbers tells you how to read a coordinate. Read the units line (`METRIC`/`INCH`, with `,TZ` or `,LZ`) and the `; FORMAT={integer:decimal/...}` comment as in Step 1. A decimal point means the value is already in the file's units. KiCad negates Y (relative to the drill/place origin when that option is used) unless the file was exported with mirror-Y. `gerber-parsing.md` "Coordinate Format" shows one hole in every format.
 
 ### Drill Classification
 
@@ -620,7 +620,7 @@ When both gerber and PCB analysis outputs are available:
 
 - **KiCad 5 mask/paste uses regions**: D03 flash count may be 0 on mask/paste layers — count G36/G37 region pairs instead
 - **Large B.Mask file size**: Normal when back has ground plane — mask must define tenting pattern over entire zone fill
-- **Negative Y in drills**: KiCad writes drill Y negated (board Y 100 mm is `Y-100`) unless the file was exported with mirror-Y
+- **Negative Y in drills**: KiCad writes drill Y negated (board Y 100 mm is `Y-100`, measured from the drill/place origin when that option is used) unless the file was exported with mirror-Y
 - **Non-KiCad gerbers**: May lack X2 attributes entirely; rely on filename patterns for layer identification
 - **Merged drill files**: Some workflows produce a single drill file with both PTH and NPTH — check `TF.FileFunction` for `MixedPlating`
 - **Protel extensions**: Some fabs require `.GTL`/`.GBL` extensions instead of KiCad's `-F_Cu.gbr` naming

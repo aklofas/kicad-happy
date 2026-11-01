@@ -365,6 +365,6 @@ The harness is the authoritative validation layer. For the legacy `batchtest` di
 ## Known Remaining Limitations
 
 - **Legacy pin mapping**: `.sch` pins of symbols resolved from the built-in fallback table use heuristic snapping to a free wire end (up to 12mm radius); pins from parsed `.lib` files are exact
-- **Vout estimation**: a regulator missing from the Vref table and from the datasheet extractions gets the common reference (0.6, 0.8, 1.0, 1.22, 1.25 V) that agrees with its output rail's name (`vref_source: heuristic`)
+- **Vout estimation**: a regulator missing from the Vref table and from the datasheet extractions gets the common reference (0.6, 0.8, 1.0, 1.22, 1.25 V) that puts Vout within 10 % of its output rail's name, else the first giving 0.5–60 V (`vref_source: heuristic`)
 - **Regulator output_rail**: Switching regulators sometimes show null output_rail when the power net is on the inductor output side
 - **Eagle files**: Not parseable — output 0 components

@@ -323,7 +323,7 @@ def extract_zone_polygons(pcb_file, zone_net, zone_layer):
 
 ## Board Outline
 
-When the shared parser is available, use `pcb.reader.extract_board_outline(parse_file(pcb_file))` for Edge.Cuts geometry and bounds (it returns `edges`, `bounding_box`, `width_mm`, `height_mm`). For an independent fallback, accumulate complete expressions with quote-aware parenthesis tracking before interpreting them, and include arc extrema in the bounds; endpoints alone are not enough.
+When the shared parser is available, use `pcb.reader.extract_board_outline(parse_file(pcb_file))` for Edge.Cuts geometry and bounds (it returns `edge_count`, `edges`, `bounding_box`, `width_mm`, `height_mm`). For an independent fallback, accumulate complete expressions with quote-aware parenthesis tracking before interpreting them, and include arc extrema in the bounds; endpoints alone are not enough.
 
 ---
 

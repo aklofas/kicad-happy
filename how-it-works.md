@@ -100,7 +100,7 @@ Being honest about limitations is more useful than pretending they don't exist.
 
 - **Timing and dynamic behavior.** The analysis is primarily static — it sees component values and connectivity, not waveforms. It can compute filter cutoff frequencies and time constants, trace enable chains and power_good sequencing dependencies, and the **spice** skill can simulate detected subcircuits to verify calculated values. But full transient response, oscillation stability, and signal integrity analysis require dedicated SI/PI tools.
 
-- **Layout parasitics.** The PCB analyzer measures trace widths and via counts, and the `--proximity` flag does spatial analysis to flag signal nets running close together (crosstalk risk). When both schematic and PCB data are available, SPICE simulations can inject extracted PCB trace parasitics. But full impedance matching and return path analysis require dedicated SI tools.
+- **Layout parasitics.** The PCB analyzer measures trace widths and via counts, and the `--proximity` flag does spatial analysis to flag signal nets running close together (crosstalk risk). When both schematic and PCB data are available, the low-pass RC-filter testbench can insert the output net's PCB trace resistance and via inductance. But full impedance matching and return path analysis require dedicated SI tools.
 
 - **Full EMC compliance.** The **emc** skill now performs pre-compliance risk analysis (44 rule checks, PDN impedance, switching harmonics, diff pair skew — see the [EMC guide](emc-precompliance.md)), but it's analytical, not a substitute for pre-compliance testing with actual test equipment.
 
@@ -108,7 +108,7 @@ Being honest about limitations is more useful than pretending they don't exist.
 
 **Things the analyzer might get wrong:**
 
-- **Regulator Vout estimates.** The Vref lookup table covers ~60 part families, each verified against the manufacturer's datasheet. If your regulator isn't in it, the analyzer falls back to the common reference (0.6, 0.8, 1.0, 1.22 or 1.25 V) that makes the divider agree with the rail's name, which is often right but not always. The `vref_source` field in the output tells you which method was used — `"datasheet"` or `"lookup"` means datasheet-verified, `"heuristic"` means check it yourself.
+- **Regulator Vout estimates.** The Vref lookup table covers ~60 part families, each verified against the manufacturer's datasheet. If your regulator isn't in it, the analyzer falls back to the common reference (0.6, 0.8, 1.0, 1.22 or 1.25 V) that brings the divider within 10 % of the rail's name (or, when none does, the first giving 0.5–60 V), which is often right but not always. The `vref_source` field in the output tells you which method was used — `"datasheet"` or `"lookup"` means datasheet-verified, `"heuristic"` means check it yourself.
 
 - **Legacy KiCad 5 designs.** The legacy `.sch` format stores pin positions in separate `.lib` files. The analyzer parses cache libraries (`-cache.lib`) and project `.lib` files automatically, with built-in fallbacks for common standard library symbols (R, C, L, D, LED, transistors). Pin coverage is typically 92–100% depending on which `.lib` files are available in the repo. Components whose `.lib` files are missing (e.g., standard KiCad system libraries not committed to the project) will lack pin data and won't participate in signal analysis.
 

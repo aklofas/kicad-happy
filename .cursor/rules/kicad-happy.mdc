@@ -30,13 +30,13 @@ All scripts are zero-dependency Python 3.10+ (stdlib only).
 
 ## Code structure
 
-- `skills/kicad/scripts/analyze_schematic.py` — Main schematic parser and orchestrator
+- `skills/kicad/scripts/analyze_schematic.py` — schematic CLI; parsing and analysis live in `skills/kicad/scripts/schematic/` (see ARCHITECTURE.md)
 - `skills/kicad/scripts/signal_detectors.py` — Core signal path detectors (regulators, filters, opamps)
 - `skills/kicad/scripts/domain_detectors.py` — Domain-specific detectors (USB, Ethernet, BMS, audio, sensors)
-- `skills/kicad/scripts/analyze_pcb.py` — PCB layout analyzer
+- `skills/kicad/scripts/analyze_pcb.py` — PCB CLI; parsing and analysis live in `skills/kicad/scripts/pcb/`
 - `skills/emc/scripts/emc_rules.py` — EMC rule implementations
 - `skills/kicad/scripts/kicad_types.py` — `AnalysisContext` dataclass shared by all detectors
 
 ## Testing
 
-Test harness at `~/Projects/kicad-happy-testharness/` validates against 1,036 real KiCad projects. Run `python3 run/run_schematic.py --jobs 16` and `python3 regression/run_checks.py --type schematic`.
+Test harness at `~/Projects/kicad-happy-testharness/` validates against the corpus described in VALIDATION.md. Run `python3 run/run_schematic.py --jobs 16` and `python3 regression/run_checks.py --type schematic`.

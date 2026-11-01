@@ -338,16 +338,16 @@ T3C1.000                            ; Tool 3: 1.0mm drill
 %                                    ; End of header
 
 T1                                   ; Select tool 1 (0.3mm via drill)
-X150000Y100000                       ; Drill at (150, 100)mm
-X155000Y100000                       ; Drill at (155, 100)mm
-X160000Y105000
+X150000Y-100000                      ; Drill at (150, 100)mm on the board
+X155000Y-100000                      ; Drill at (155, 100)mm on the board
+X160000Y-105000
 
 T2                                   ; Select tool 2 (0.8mm component drill)
-X120000Y90000
-X125000Y90000
+X120000Y-90000
+X125000Y-90000
 
 T3                                   ; Select tool 3 (1.0mm)
-X110000Y110000
+X110000Y-110000
 
 M30                                  ; End of file
 ```
@@ -373,7 +373,7 @@ The minimal-header export option omits the format comment; KiCad's precision is 
 - Without a decimal point, divide by 10^d, where `{i:d}` comes from the format comment. `TZ` (leading zeros suppressed) and keep-zeros files divide as written.
 - `LZ` (trailing zeros suppressed) digits are left-aligned: pad on the right to i+d digits first, then divide. `10508` becomes `105080`, which is 105.080 mm; `-1` becomes `-100000`, which is -100.0 mm.
 - Tool sizes (`T1C...`) are in the units of the units line.
-- Y is negative for positive board Y: KiCad negates it unless the file was exported with mirror-Y.
+- Y is the board Y negated: a hole at board Y 100 mm is written `Y-100`. With the drill/place origin option, Y is measured from that origin, so holes above it are positive. Mirror-Y export does not negate.
 - The analyzer's drill reader misreads integer coordinates in `LZ` files (hole positions come out wrongly scaled); hand-decode those files. Hole counts and tool sizes are unaffected.
 
 ### Tool Definitions
@@ -420,7 +420,7 @@ Oval or non-round holes use routing commands:
 
 ```
 T2C1.000
-G85X120000Y90000X125000Y90000       ; Route (slot) from (120,90) to (125,90)
+G85X120000Y-90000X125000Y-90000     ; Route (slot) from (120,90) to (125,90) on the board
 ```
 
 Or in route mode (KiCad's default oval format in the GUI drill dialog):
@@ -611,7 +611,7 @@ Pre-submission check before sending to manufacturer:
 7. **Empty B_Paste**: Correct if single-side assembly
 8. **Coordinate alignment**: All files use `SameCoordinates: Original`
 9. **Date consistency**: All files generated on the same date
-10. **Drill minimums**: PTH ≥ 0.2mm, NPTH ≥ 0.5mm (JLCPCB). Convert from inches if KiCad 5 INCH format.
+10. **Drill minimums**: PTH ≥ 0.2mm, NPTH ≥ 0.5mm (JLCPCB). Convert from inches when the units line is `INCH`.
 11. **Drill units**: Verify METRIC vs INCH — coordinate parsing differs completely
 12. **Board size**: Note if exceeds 100x100mm (JLCPCB pricing threshold)
 13. **Job file**: `.gbrjob` present with correct stackup and design rules (KiCad 5.1+)

@@ -14,7 +14,7 @@ KiCad schematic
 Optionally, with PCB:
   → analyze_pcb.py --full → pcb.json (trace geometry, stackup)
   → extract_parasitics.py → parasitics.json (trace R, via L, coupling C)
-  → simulate_subcircuits.py --parasitics parasitics.json → parasitic-aware report
+  → simulate_subcircuits.py --parasitics parasitics.json → report (low-pass RC filters include trace R and via L)
 ```
 
 ## Supported Simulators
@@ -92,7 +92,7 @@ When both schematic and PCB analysis are available, the skill can insert PCB tra
 | Parasitic | Formula | Example |
 |-----------|---------|---------|
 | **Trace resistance** | R = rho * L / (W * T) | 25mm @ 0.25mm wide, 1oz Cu = 48 mOhm |
-| **Via resistance** | R = rho * H / (pi * annular_area) | 0.3mm drill through 1.6mm board ≈ 1.2 mOhm (25 µm plating) |
+| **Via resistance** | R = rho * H / (pi * (r_outer² - r_inner²)) | 0.3mm drill through 1.6mm board ≈ 1.2 mOhm (25 µm plating) |
 | **Via inductance** | L = (mu0 * H / 2pi) * ln(2H/D) | 0.3mm drill = 0.7 nH |
 | **Coupling capacitance** | C = eps0 * eps_r * L * T / S | 10mm parallel run @ 0.5mm spacing ≈ 28 fF (eps_r 4.5, 1oz) |
 
