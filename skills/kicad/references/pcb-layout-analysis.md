@@ -161,7 +161,7 @@ The analyzer reports each power and ground net's narrowest and widest track in a
 | High power (5-20A) | 2.8mm at 5A, 7.2mm at 10A, 18.7mm at 20A; usually a copper pour | Motor phases, battery, VM |
 | Very high power (>20A) | Copper pour + via stitching | Power MOSFETs, motor outputs |
 
-Widths are from the IPC-2221 formula in standards-compliance.md for an isolated trace in still air. Internal layers carry ~50% of external layer current. The TW-001 check in `cross_analysis.py` (`_IPC2152_1OZ_10C`, lines 107-110) uses its own table, more conservative than these (3.5mm at 5A) and without a cited source, so its recommended widths are larger.
+Widths are from the IPC-2221 formula in standards-compliance.md for an isolated trace in still air. Internal layers carry ~50% of external layer current. The TW-001 check uses its own width table (`_IPC2152_1OZ_10C` in `cross_analysis.py`) with no cited source. Up to 10A it is wider than these values (3.5mm at 5A, 9.0mm at 10A), but it stops at 9.0mm, so above about 12A its recommended width is narrower than the IPC-2221 width.
 
 #### Voltage Derating
 
