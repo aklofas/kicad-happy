@@ -11,8 +11,9 @@ sys.path.insert(0, str(SCRIPTS))
 
 
 # (fixture, component count): the modern reader, the legacy .sch reader, and a
-# multi-sheet project whose pages share reference designators. The fixture set
-# has no placed multi-unit symbol.
+# multi-root project whose three pages share reference designators (the count
+# spans all three pages, which the .kicad_pro declares as top-level sheets). The
+# fixture set has no placed multi-unit symbol.
 CASES = [
     ("simple-project/simple.kicad_sch", 3),
     ("kh418/legacy_blank_primary.sch", 2),
@@ -36,13 +37,13 @@ class RecordShapes(unittest.TestCase):
         from kicad_core import model
         cls.model = model
         cls.results = []
-        for rel, n_components in CASES:
-            path = FX / rel
-            if not path.is_file():
-                raise AssertionError(f"fixture missing under KH_FIXTURES: {path}")
-            result = analyze_schematic(str(path), no_hierarchy=True)
-            assert len(result["components"]) == n_components, rel
+        counts = {}
+        for f in sorted(p for p in set(FX.rglob("*.kicad_sch")) | set(FX.rglob("*.sch")) if p.is_file()):
+            result = analyze_schematic(str(f), no_hierarchy=True)
+            counts[f.relative_to(FX).as_posix()] = len(result["components"])
             cls.results.append(result)
+        for rel, n_components in CASES:
+            assert counts.get(rel) == n_components, f"{rel}: {counts.get(rel)} components, expected {n_components}"
         cls.sheet = parse_single_sheet(str(FX / "simple-project" / "simple.kicad_sch"))
 
     def test_component_keys(self):
