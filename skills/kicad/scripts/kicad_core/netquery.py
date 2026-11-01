@@ -1,4 +1,4 @@
-"""Pin/net index primitives (kicad_core): the net-id map helper, the pin and reference index builders, and BridgeFact."""
+"""Pin/net index primitives (kicad_core): the net-id map helper, the pin and reference index builders, and the bridge facts (BridgeFact, BridgeFacts, build_bridge_facts)."""
 
 from dataclasses import dataclass
 
