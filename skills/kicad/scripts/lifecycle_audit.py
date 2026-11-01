@@ -834,7 +834,7 @@ def audit_bom(analysis_json: dict, project_dir: str | None = None,
             continue
         mpn_map.setdefault(mpn, []).extend(entry.get("references", []))
 
-    # KH-348: LCSC/jlcsearch exposes no lifecycle/obsolescence data — an
+    # LCSC/jlcsearch exposes no lifecycle/obsolescence data — an
     # LCSC-only audit can only ever return 'unknown'. Flag the capability
     # gap up front and skip the per-part LC-004 noise (rows are kept for
     # any temperature data).
@@ -949,7 +949,7 @@ def audit_bom(analysis_json: dict, project_dir: str | None = None,
 
         lifecycle_findings.append(finding)
 
-        # LC-005: Single-source detection (KH-372). Denominator is sources
+        # LC-005: Single-source detection. Denominator is sources
         # actually ATTEMPTED, not just the ones that responded — an errored
         # or timed-out source didn't confirm anything, it isn't absent from
         # the count. A response with status=None doesn't count as an active

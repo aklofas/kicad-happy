@@ -75,7 +75,7 @@ def load_anchor_sets(analysis_dir, run_id=None):
     Resolves the run dir via analysis/manifest.json ('current' unless
     --run given); falls back to a flat analysis dir (schematic.json /
     pcb.json directly inside it) for ad-hoc layouts.
-    A physical net carries up to three identities (KH-347): schematic
+    A physical net carries up to three identities: schematic
     internal name, annotated display_name, PCB net name. All three are
     accepted as citations.
     Returns (components: set[str], nets: set[str]); raises ValueError
@@ -231,7 +231,7 @@ def _quote_segments(quote):
 def _segments_match(segments, norm_fn, text):
     """True if every segment appears in `text` (normalized via
     `norm_fn`), in order -- each search starts where the previous
-    segment's match ended (KH-385). Normalized segments match whole
+    segment's match ended. Normalized segments match whole
     tokens; squashed ones may not start or end inside a number."""
     t = norm_fn(text)
     if norm_fn is _norm_text:
@@ -270,8 +270,8 @@ def _find_outside_numbers(t, q, pos):
 
 def _quote_in_text(quote, text):
     """Containment tolerant of case, whitespace, punctuation, Unicode
-    variants, PDF line-wrap hyphenation (KH-347), and mid-quote elision
-    ("..."/"…", KH-385) -- each segment between elision markers
+    variants, PDF line-wrap hyphenation, and mid-quote elision
+    ("..."/"…") -- each segment between elision markers
     must appear in the text in order. The squashed fallback absorbs
     boundary shifts ("5.5V" vs "5.5 V", "over-\\nvoltage" vs
     "overvoltage"). Numbers, signs, decimal points, comparison
@@ -286,7 +286,7 @@ def _quote_in_text(quote, text):
 
 def _nearest_match(quote, text, window=80, stride=40):
     """Deterministic nearest-match hint for a quarantined datasheet
-    quote (KH-385): locates the earliest elision segment that fails to
+    quote: locates the earliest elision segment that fails to
     match (by the same in-order rule as `_quote_in_text`), then scores
     `window`-char slices of the normalized text at a fixed `stride`
     against it via difflib.SequenceMatcher.ratio(). First-best wins on
@@ -418,7 +418,7 @@ def main():
     project_dir = args.project_dir
     if project_dir is None:
         # analysis/ conventionally lives directly inside the project
-        # root (KH-384) -- anchor to it, not the invoking cwd, so the
+        # root -- anchor to it, not the invoking cwd, so the
         # gate works when run from elsewhere.
         project_dir = str(Path(args.analysis_dir).resolve().parent)
 

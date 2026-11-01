@@ -187,7 +187,7 @@ def _point_to_segment_distance(px, py, x1, y1, x2, y2):
 
 
 # ---------------------------------------------------------------------------
-# checks_run recorder (KH-381)
+# checks_run recorder
 # ---------------------------------------------------------------------------
 
 class _CheckRecorder:
@@ -588,7 +588,7 @@ def check_cross_validation(schematic: dict, pcb: dict | None, recorder=None) -> 
     for ref, pcb_fp, fields in checked:
         sch_val = fields['value']
         pcb_val = pcb_fp.get('value', '')
-        # KH-326: skip cross-check if either value is malformed (not a string).
+        # Skip cross-check if either value is malformed (not a string).
         # Parser edge case in analyze_pcb.py footprint parsing can yield a list.
         if not isinstance(sch_val, str) or not isinstance(pcb_val, str):
             continue
@@ -697,13 +697,13 @@ _EDGE_DISTANCE_WARN_MM = 2.0
 def _point_to_outline_min_distance(px, py, edges):
     """Minimum distance from a point to the board outline edges.
 
-    Mirrors emc_rules._point_to_edges_min_distance (KH-357/Task 14 fix):
+    Mirrors emc_rules._point_to_edges_min_distance:
     a 'rect' edge is two opposite corners of the outline rectangle, not a
     diagonal line, so it's expanded to its 4 sides. 'circle'/'polygon'/
     'curve' edges are skipped explicitly rather than falling through to a
     generic branch that would read their (nonexistent) 'start'/'end' keys
     via .get() defaults and silently measure against a bogus (0,0)-origin
-    segment — the KH-357-class bug this must not replicate.
+    segment.
     """
     min_dist = float('inf')
     for edge in edges:
@@ -1111,12 +1111,10 @@ _DIFF_PAIR_SUFFIXES = [
 def _find_diff_pairs(net_names, schematic):
     """Return pairs of net names that are explicitly marked differential.
 
-    F7: The previous implementation had a suffix-only fallback loop that
-    paired any nets matching `<base>P`/`<base>N` regardless of whether the
-    schematic analyzer had identified them as a real differential interface.
-    On gate-driver designs (INH/INL, HIN/LIN) and op-amp current-sense
-    circuits (OUTP/OUTN, INP/INN) this fired DP-005 on every conventional
-    naming pair. The fallback is gone — DP-005 now only fires when
+    There is no suffix-only fallback that pairs any nets matching
+    `<base>P`/`<base>N`: on gate-driver designs (INH/INL, HIN/LIN) and
+    op-amp current-sense circuits (OUTP/OUTN, INP/INN) it would fire DP-005
+    on every conventional naming pair. DP-005 only fires when
     ``schematic['net_classifications'][<net>]['differential']`` is True
     for both endpoints. Conservative loss: any genuine diff pair the
     schematic analyzer failed to classify won't get a DP-005 finding.
@@ -1229,7 +1227,7 @@ def check_diff_pair_quality(schematic, pcb, recorder=None):
 def run_all_checks(schematic: dict, pcb: dict | None) -> tuple[list[dict], list[dict]]:
     """Run every cross-domain check in a fixed order.
 
-    Returns (findings, checks_run) — checks_run is the KH-381 manifest
+    Returns (findings, checks_run) — checks_run is the manifest
     recording whether each check executed, in call order (see
     _CheckRecorder).
     """
@@ -1323,7 +1321,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.pcb:
         pcb = _load_analyzer_json('--pcb', args.pcb, 'analyze_pcb.py', 'pcb')
 
-    # Build inputs provenance block (Track 1.3).
+    # Build inputs provenance block.
     from pathlib import Path as _Path
     _upstream_artifacts = {
         "schematic": build_upstream_artifact(_Path(args.schematic), schematic),
@@ -1333,7 +1331,7 @@ def main(argv: list[str] | None = None) -> int:
         _upstream_artifacts["pcb"] = build_upstream_artifact(_Path(args.pcb), pcb)
         _source_files.append(_Path(args.pcb))
 
-    # Resolve canonical analysis_dir ONCE (audit Highest-Risk #4).
+    # Resolve the canonical analysis_dir once.
     if args.analysis_dir:
         _analysis_dir = _Path(args.analysis_dir)
     elif args.output:
@@ -1341,7 +1339,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         _analysis_dir = _Path("analysis")
 
-    # Resolve capability_mode_ref BEFORE build_inputs (audit Highest-Risk #5).
+    # Resolve capability_mode_ref BEFORE build_inputs so inputs.run_id matches it.
     _capability_mode_ref = get_capability_mode_ref(_analysis_dir)
 
     inputs = build_inputs(
@@ -1381,7 +1379,7 @@ def main(argv: list[str] | None = None) -> int:
     # on it). Runs after filtering; before any output branch.
     assign_finding_ids(result.get("findings", []), "cross_analysis")
 
-    # Wire capability_mode_ref (Phase 4 spec §3.3). Resolved early so
+    # Wire capability_mode_ref. Resolved early so
     # inputs.run_id and capability_mode_ref.run_id match.
     result["capability_mode_ref"] = _capability_mode_ref
 

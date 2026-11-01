@@ -1,13 +1,14 @@
-"""Layer 2 annotation merge tool. Phase 4 spec §4.3.
+"""Layer 2 annotation merge tool.
 
-v2.0: authority caps removed (spec §5 — trust comes from the Deep Review
-evidence gate, not permission rules). HI-3 (strip llm_* → byte-identical
-baseline) still holds.
+There are no authority caps (trust comes from the Deep Review evidence
+gate, not permission rules). HI-3 holds: stripping llm_* from a merged
+envelope recovers the raw analyzer JSON.
 
 Validates review_annotations.json against schema, applies the overlay
-(suppressed annotations now always apply), writes
-analysis/merged/<analyzer>.json overlay artifacts, and verifies HI-3
-strip-LLM round-trip byte equivalence.
+(suppressed annotations always apply), writes
+analysis/merged/<analyzer>.json overlay artifacts, and verifies the HI-3
+strip-LLM round-trip (equality of the decoded JSON; the merged file is
+re-serialized, so its bytes can differ from the raw file's).
 
 Failure semantics: orphan annotations are LOGGED in the merge report and
 SKIPPED. The merge itself never fails on these — analyzer outputs always
@@ -15,7 +16,7 @@ advance. Schema validation errors are hard-fail (caller's responsibility).
 
 Schema validation uses the stdlib-only mini-validator at
 `_mini_jsonschema.py` (kept narrow to the keyword subset Layer 2 needs).
-No third-party `jsonschema` dependency. Audit C2 — see CHANGELOG.
+No third-party `jsonschema` dependency.
 """
 from __future__ import annotations
 
@@ -57,7 +58,7 @@ def _validate_review_schema(review: dict) -> None:
     grows beyond the mini-validator's supported keyword set, the validator
     raises a "unsupported schema keyword" ValidationError — switch this
     consumer back to the real jsonschema package at that point rather than
-    silently extending the mini-validator (audit C2).
+    silently extending the mini-validator.
     """
     from _mini_jsonschema import validate
     schema = json.loads(SCHEMA_PATH.read_text())
@@ -68,7 +69,7 @@ def _find_finding(envelopes: dict, finding_id: str):
     """Find a finding by id across all loaded envelopes; return first match or None.
 
     Assumes finding_ids are globally unique across analyzer envelopes per the
-    Phase 4 finding_id convention `<source>:<rule_id>:<locator>` (the source
+    finding_id convention `<source>:<rule_id>:<locator>` (the source
     prefix differs per analyzer). Iteration order is deterministic via
     ANALYZER_FILES.
     """

@@ -340,7 +340,7 @@ def main(argv: list[str] | None = None) -> int:
                     continue
                 row = dict(finding)
                 # deep_review findings group by category where detector
-                # findings group by rule_id (v2.0 spec §3.C)
+                # findings group by rule_id
                 row["rule_id"] = row.get("category") or "(uncategorized)"
                 row["_source_file"] = "deep_review.json"
                 findings.append(row)

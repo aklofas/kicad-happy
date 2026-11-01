@@ -23,7 +23,7 @@ Interactive parameter sweep for KiCad designs. Patches component values in analy
 The what-if pipeline operates in three stages:
 
 1. **Patch** -- Locate all subcircuit detections in `findings[]` (grouped by detector) that reference the changed component(s) and replace their stored values.
-2. **Recalculate** -- Re-derive dependent fields (cutoff frequency, divider ratio, opamp gain, etc.) using the formulas in `_recalc_derived()`.
+2. **Recalculate** -- Re-derive dependent fields (cutoff frequency, divider ratio, opamp gain, etc.) using the formulas in `detection_schema.recalc_derived(det, det_type)`.
 3. **Compare** -- Diff the original and patched detections, report before/after values with percentage deltas.
 
 The tool operates on analyzer JSON produced by `analyze_schematic.py`. It never re-parses the schematic file -- it works entirely on the pre-analyzed data.
@@ -319,7 +319,7 @@ A warning is emitted when a suggested E-series value exceeds the package limit.
 
 ## Recalculable Fields
 
-The recalculation engine (`_recalc_derived` in `spice_tolerance.py`) updates these fields after patching component values:
+The recalculation engine (`detection_schema.recalc_derived(det, det_type)`) updates these fields after patching component values:
 
 | Detection Type | Field | Formula | Equation ID |
 |---------------|-------|---------|-------------|

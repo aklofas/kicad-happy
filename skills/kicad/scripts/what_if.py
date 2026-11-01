@@ -41,7 +41,7 @@ class Change:
     ref: str
     value: float
     value_str: str
-    tolerance: float  # None = no tolerance specified; will be used in Task 3
+    tolerance: float  # None = no tolerance specified
 
 
 @dataclass
@@ -49,7 +49,7 @@ class SweepSpec:
     ref: str
     values: list
     value_strs: list
-    tolerance: float  # None = no tolerance; will be used in Task 3
+    tolerance: float  # None = no tolerance
 
 
 # Value key -> unit name for display

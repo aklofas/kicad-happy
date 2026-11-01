@@ -8,7 +8,7 @@ This directory hosts the v2.0 Deep Review infrastructure:
 
 - **(a)** The Deep Review evidence gate + `deep_review.schema.json`: per-IC LLM datasheet comparison with durable, evidence-linked findings in `analysis/deep_review.json`.
 - **(b)** The optional `design_context` subagent input: reads schematic + BOM + design intent, emits `design_context.json`. Used as an optional input to the Deep Review pass.
-- **(c)** The annotation merge machinery (optional detector-finding triage): `merge_annotations.py` validates `review_annotations.json`, applies `llm_review` overlays to raw analyzer findings, and verifies HI-3 strip round-trip. Authority caps removed in v2.0 — a `suppressed` annotation now always applies its overlay. Quarantined findings remain visible in the merge report.
+- **(c)** The annotation merge machinery (optional detector-finding triage): `merge_annotations.py` validates `review_annotations.json`, applies `llm_review` overlays to raw analyzer findings, and verifies HI-3 strip round-trip. There are no authority caps — a `suppressed` annotation always applies its overlay. Quarantined findings remain visible in the merge report.
 - **(d)** `_mini_jsonschema.py`: stdlib-only JSON Schema Draft 2020-12 validator (keyword subset used by Layer 2 schemas). No third-party `jsonschema` dep at runtime.
 
 ## Structure
@@ -20,7 +20,7 @@ This directory hosts the v2.0 Deep Review infrastructure:
 | `schemas/review_annotations.schema.json` | JSON Schema for review annotations |
 | `schemas/deep_review.schema.json` | JSON Schema for Deep Review evidence-gated findings |
 | `scripts/build_review_plan.py` | Emits 1-task plan JSON for design_context dispatch |
-| `scripts/merge_annotations.py` | Validates + applies overlays to raw analyzer JSONs → `analysis/merged/<analyzer>.json` |
+| `scripts/merge_annotations.py` | Validates + applies overlays to raw analyzer JSONs → `<merged-dir>/<analyzer>.json` (run-based consumers read `analysis/merged/<run>/<analyzer>.json`) |
 | `scripts/validate_review.py` | Standalone CLI for review_annotations.json validation |
 | `scripts/deep_review_gate.py` | Evidence gate: validates deep_review.json, writes durable findings |
 | `scripts/run_phase4_exercise.py` | Orchestrates the end-to-end fixture exercise |
@@ -29,7 +29,7 @@ This directory hosts the v2.0 Deep Review infrastructure:
 ## Surviving invariants (v2.0)
 
 - **HI-1:** Layer 1 findings are immutable — detector-owned fields are never mutated by any overlay machinery.
-- **HI-3:** `strip_llm_overlays(merged)` == raw input, byte-identical. The merge is always reversible.
+- **HI-3:** `strip_llm_overlays(merged)` equals the raw input as decoded JSON (the merged file is re-serialized, so bytes can differ). The raw files are never modified, and the merge is always reversible.
 - **HI-6:** `reviewer_observations[]` lives in `review_annotations.json`, never merged into `findings[]`.
 - **No-LLM run yields identical analyzer output:** stripping `llm_*` fields recovers the deterministic baseline.
 - **Stable finding identity:** `finding_id` is stable across runs; this invariant extends to Deep Review findings (`deep_review:<12-hex>` form).

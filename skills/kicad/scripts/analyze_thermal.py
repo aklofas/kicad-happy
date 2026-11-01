@@ -204,8 +204,9 @@ def _estimate_all_power_dissipation(schematic: dict) -> tuple:
     skipped is a list of {"ref", "value", "reason"} dicts for power
     components (regulators) that could not be assessed, with reason drawn
     from a fixed vocabulary: "no_load_estimate", "no_vout",
-    "below_min_pdiss" (KH-386 — a dropped component previously vanished
-    from the report with no trace), or "no_pdiss_estimate" (KH-411 — LDO with no upstream power_dissipation estimate at all).
+    "below_min_pdiss" (so a dropped component is never absent from the
+    report without a trace), or "no_pdiss_estimate" (LDO with no upstream
+    power_dissipation estimate at all).
     """
     results = []
     skipped = []
@@ -223,7 +224,7 @@ def _estimate_all_power_dissipation(schematic: dict) -> tuple:
         if topology in ("ldo", "linear"):
             p_w = pdiss.get("estimated_pdiss_W") if isinstance(pdiss, dict) else None
             if p_w is None:
-                # KH-411: the upstream regulator detector never produced an
+                # The upstream regulator detector never produced an
                 # estimate (no power_dissipation block, or no estimated_pdiss_W
                 # in it) — distinct from a real sub-threshold estimate.
                 skipped.append({"ref": ref, "value": reg.get("value", ""),
@@ -460,7 +461,6 @@ def _compute_junction_temps(power_comps: list, pcb: dict,
             # rtheta_source is only ever "package_table" (footprint regex matched the
             # generic PACKAGE_THERMAL_RESISTANCE average) or "default" — neither is
             # per-MPN datasheet data, so neither may claim datasheet provenance.
-            # (KH-398: assessment-level twin of KH-387)
             "evidence_source": "heuristic_rule",
             "summary": f"Thermal: {ref} Tj={round(tj, 1)}C (margin {round(margin, 1)}C)",
             "description": f"Component {ref} in {pkg_name} package: Tj={round(tj, 1)}C, margin {round(margin, 1)}C to Tj_max ({tj_max}C).",
@@ -483,9 +483,9 @@ def _compute_junction_temps(power_comps: list, pcb: dict,
 def _thermal_confidence(assessment: dict) -> str:
     """Determine confidence level from assessment data sources."""
     # Both rtheta_ja_source values ("package_table", "default") are generic
-    # package averages, not per-MPN datasheet data — same reasoning PR #37
-    # applied to evidence_source (see :445-447). Neither may claim
-    # datasheet-backed confidence.
+    # package averages, not per-MPN datasheet data — same reasoning as the
+    # evidence_source of the assessment built in _compute_junction_temps.
+    # Neither may claim datasheet-backed confidence.
     if assessment.get("rtheta_ja_source") in ("default", "package_table"):
         return "heuristic"
     if assessment.get("tj_max_source") == "default_125":
@@ -507,7 +507,7 @@ def _generate_findings(assessments: list) -> list:
         pkg = a["package"]
         confidence = _thermal_confidence(a)
         # Both rtheta_ja_source values ("package_table", "default") are generic
-        # package averages, not per-MPN datasheet data. See analyze_thermal:394.
+        # package averages, not per-MPN datasheet data (see _thermal_confidence).
         ev_source = "heuristic_rule"
 
         label = f"{ref} ({val})" if val else ref
@@ -776,7 +776,7 @@ _NO_COMPONENTS_REASON = (
 def _resolve_score(findings: list, assessments: list):
     """Return (score, skipped_reason). Score is None when no components were
     assessable — a 100/100 default in that case would falsely suggest a clean
-    thermal pass when the analyzer had no data to evaluate (F3)."""
+    thermal pass when the analyzer had no data to evaluate."""
     if not assessments:
         return None, _NO_COMPONENTS_REASON
     return compute_thermal_score(
@@ -1008,7 +1008,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.ambient == DEFAULT_AMBIENT_C and project.get("ambient_temperature_c"):
         args.ambient = project["ambient_temperature_c"]
 
-    # Build inputs provenance block (Track 1.3).
+    # Build inputs provenance block.
     from pathlib import Path as _Path
     _sch_path = _Path(args.schematic)
     _pcb_path = _Path(args.pcb)
@@ -1020,8 +1020,8 @@ def main(argv: list[str] | None = None) -> int:
     if _cfg_path and not _cfg_path.is_file():
         _cfg_path = None
 
-    # Resolve canonical analysis_dir ONCE (audit Highest-Risk #4) — include
-    # --analysis-dir branch so capability mode lands with outputs, not in
+    # Resolve the canonical analysis_dir once, including the --analysis-dir
+    # branch, so capability mode lands with the outputs, not in the
     # ./analysis fallback.
     if hasattr(args, "analysis_dir") and args.analysis_dir:
         _analysis_dir = _Path(args.analysis_dir)
@@ -1031,7 +1031,7 @@ def main(argv: list[str] | None = None) -> int:
         _analysis_dir = _Path("analysis")
 
     # Resolve capability_mode_ref BEFORE build_inputs so inputs.run_id ==
-    # capability_mode_ref.run_id (audit Highest-Risk #5).
+    # capability_mode_ref.run_id.
     _capability_mode_ref = get_capability_mode_ref(_analysis_dir)
 
     inputs = build_inputs(
@@ -1055,8 +1055,8 @@ def main(argv: list[str] | None = None) -> int:
     findings = _generate_findings(assessments)
     findings.extend(_check_thermal_proximity(assessments, pcb))
 
-    # TJ-001 (Phase 4c): recompute TJ via v1.4 facts.base.thermal[theta_ja]
-    # and compare to facts.base.absolute_max[TJ_SYNONYMS]. Soft-skip when
+    # TJ-001: recompute TJ via facts.base.thermal[theta_ja] and compare to
+    # facts.base.absolute_max[TJ_SYNONYMS]. Soft-skip when
     # cache miss or below trust gate.
     diagnostics: list = []
     findings.extend(detect_tj_exceeds_max(
@@ -1074,13 +1074,11 @@ def main(argv: list[str] | None = None) -> int:
 
     # Score (only active findings). Returns (None, reason) when no components
     # were assessable, so a missing-data run reports "skipped" rather than a
-    # misleading 100/100 (F3).
+    # misleading 100/100.
     score, skipped_reason = _resolve_score(findings, assessments)
 
-    # Severity counts over the rule findings (thermal_assessments are
-    # merged into findings[] further down and contribute info-level
-    # entries — a final recompute below keeps summary in sync with the
-    # merged list).
+    # Severity counts over the rule findings only; assessments stay in their
+    # own list and are not counted here.
     counts = {"error": 0, "warning": 0, "info": 0}
     suppressed_count = 0
     for f in findings:
@@ -1100,7 +1098,7 @@ def main(argv: list[str] | None = None) -> int:
     # Missing information — components with default thermal parameters.
     # Always include both keys (with [] when nothing missing) so the
     # ThermalMissingInfo schema is satisfied whenever the block is
-    # emitted (TH-043). The outer `if missing_info:` guard below still
+    # emitted. The outer `if missing_info:` guard below still
     # gates whether to emit the block at all.
     default_rtheta = [a["ref"] for a in assessments
                       if a.get("rtheta_ja_source") == "default"]
@@ -1123,8 +1121,8 @@ def main(argv: list[str] | None = None) -> int:
             "components_skipped": len(skipped_components),
             "active": len(findings) - suppressed_count,
             "suppressed": suppressed_count,
-            # Standardized severity rollup (single source — raw
-            # per-severity aliases were removed in v1.3 Batch 20).
+            # Standardized severity rollup (single source; there are no raw
+            # per-severity alias keys).
             "by_severity": dict(counts),
             "thermal_score": score,
             **({"skipped_reason": skipped_reason} if skipped_reason else {}),
@@ -1150,7 +1148,7 @@ def main(argv: list[str] | None = None) -> int:
     from finding_schema import assign_finding_ids
     assign_finding_ids(result.get("findings", []), "thermal")
 
-    # Wire capability_mode_ref (Phase 4 spec §3.3).
+    # Wire capability_mode_ref.
     from pathlib import Path as _Path
     # capability_mode_ref already resolved early — reuse to keep run_id stable.
     result["capability_mode_ref"] = _capability_mode_ref

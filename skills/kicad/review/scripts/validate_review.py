@@ -44,7 +44,7 @@ def main():
             print(msg, file=sys.stderr)
         return 2
 
-    # Stdlib-only mini-validator (audit C2). Matches jsonschema's
+    # Stdlib-only mini-validator. Matches jsonschema's
     # iter_errors() surface for backward-compat with the prior consumer.
     from _mini_jsonschema import iter_errors
 

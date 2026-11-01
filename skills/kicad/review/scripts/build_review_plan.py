@@ -1,8 +1,7 @@
 """Build a review plan JSON for dispatcher consumption.
 
-design_context is an optional Deep Review input (v2.0 spec §3.B); the
-Layer 2 reviewer role is retired (spec §5). Emits a 1-task plan for the
-design_context subagent.
+design_context is an optional Deep Review input; there is no Layer 2
+reviewer task. Emits a 1-task plan for the design_context subagent.
 """
 from __future__ import annotations
 
@@ -25,8 +24,7 @@ def _now_iso():
 def build_plan(analysis_dir):
     """Build a 1-task review plan: design_context only.
 
-    The Layer 2 reviewer task is retired in v2.0 (spec §5).
-    design_context remains as an optional Deep Review input. The
+    design_context is an optional Deep Review input. The
     schematic input is the current run's (analysis/manifest.json), or
     the one directly in `analysis_dir` for a flat layout.
     """

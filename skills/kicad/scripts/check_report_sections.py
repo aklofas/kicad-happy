@@ -138,7 +138,7 @@ def required_sections(envs: dict, analysis_dir: str | None = None) -> list[tuple
         if val:  # present and non-empty
             out.append((label, aliases, f"schematic.{key} present"))
 
-    # Deep Review slot (v2.0 spec §3.E): required when the durable
+    # Deep Review slot: required when the durable
     # findings file exists (flat, sibling of manifest.json).
     if analysis_dir and os.path.isfile(os.path.join(analysis_dir, "deep_review.json")):
         out.append(("Deep Review",
