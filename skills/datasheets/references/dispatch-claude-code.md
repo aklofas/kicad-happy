@@ -151,7 +151,7 @@ ORCHESTRATOR:
 
 ## Dispatching review tasks
 
-The `design_context` task (v2.0) reuses this same dispatcher contract per spec §4.5. Key differences:
+The `design_context` task (v2.0) reuses this same dispatcher contract. Key differences:
 
 - Tasks have `task_type: "review"` (vs `"extraction"` for datasheet tasks).
 - The design_context task lives at `skills/kicad/review/prompts/design_context.md`. The reviewer task is retired in v2.0 (superseded by the Deep Review pass — see `skills/kicad/references/deep-review.md`).

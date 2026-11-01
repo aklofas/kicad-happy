@@ -1,7 +1,6 @@
 """Consumer API entry point — lookup(mpn) -> DatasheetFacts | None.
 
-Track 2.3 of the v1.4 datasheet extraction work. Pure-read: lookup()
-never writes, extracts, or triggers LLM calls (spec §11 Rules 1 & 2).
+Pure-read: lookup() never writes, extracts, or triggers LLM calls.
 On cache miss, malformed JSON, or any error, lookup() returns None.
 
 Consumers import:
@@ -14,7 +13,7 @@ Consumers import:
         ...  # PDF on disk has changed since extraction
     if ds.quality is not None and ds.quality < 60:
         ...  # low-confidence extraction
-    # Typed access via Track 2.2:
+    # Typed access:
     ds.base.pinout.find(name="EN")
     ds.regulator.topology  # if "regulator" in ds.categories
 """
@@ -36,13 +35,12 @@ from .extraction import DatasheetFacts
 # MPN sanitization + cache-path resolution
 # ---------------------------------------------------------------------------
 
-# Allowed characters in the sanitized filename component.
-# Matches [A-Za-z0-9_-]; everything else is replaced with _.
-# Simpler than v1.3's scheme (which appended an MD5 suffix to avoid
-# collisions) — the MPN character set is narrow enough in practice.
+# Allowed characters in the sanitized filename component: letters, digits,
+# '_', '.' and '-'; everything else is replaced with '_'. No hash suffix is
+# appended (datasheet_extract_cache's legacy keys carry one).
 _UNSAFE_CHAR = re.compile(r"[^A-Za-z0-9_.\-]")
 
-# Stale-reason enum values — consumed by Track 2.4 trust gating and by
+# Stale-reason enum values — consumed by trust gating and by
 # consumers that want to display a human-readable reason. Kept as module
 # constants (not a real Enum) so CacheContext.stale_reason stays a plain
 # string in the JSON/dataclass shape.
@@ -74,10 +72,9 @@ def sanitize_mpn(mpn: str) -> str:
     Dots and hyphens are preserved because they appear in valid MPNs
     (crystals like `ABM8G-106-12.000MHZ-T`, hyphenated families like
     `LM2596-ADJ`). This MUST match the planner/merger which write
-    literal MPN-named files via `plan_extraction.py` and `merge_results.py`
-    — earlier divergence (dot-stripping here) caused silent cache misses
-    for dot-containing MPNs (audit C1, LOG entry 63). No hash suffix —
-    rare collisions are acceptable for v1.4.
+    literal MPN-named files via `plan_extraction.py` and `merge_results.py`;
+    stripping dots here would miss the cache for dot-containing MPNs. No
+    hash suffix — rare collisions are acceptable.
 
     Examples:
         sanitize_mpn("LM2596-ADJ")             -> "LM2596-ADJ"
@@ -108,7 +105,7 @@ class CacheContext:
     Not a dataclass field on DatasheetFacts itself — DatasheetFacts.stale
     and DatasheetFacts.cache_path properties read this via getattr on an
     instance attribute. Absent for DatasheetFacts constructed outside
-    lookup() (Track 2.2 round-trip tests); properties default safely.
+    lookup() (e.g. in round-trip tests); properties default safely.
     """
     cache_path: Path
     pdf_path: Optional[Path] = None
@@ -172,7 +169,7 @@ def lookup(mpn: str, *, cache_dir: Path) -> Optional[DatasheetFacts]:
     """Read-only MPN → DatasheetFacts lookup.
 
     Resolves `cache_dir / <sanitize_mpn(mpn)>.json`, parses it into a
-    typed DatasheetFacts via the Track 2.2 codec, verifies PDF staleness
+    typed DatasheetFacts via the codec, verifies PDF staleness
     by comparing sha256 of the on-disk PDF against cached source.sha256,
     attaches a CacheContext carrying (cache_path, pdf_path, is_stale,
     stale_reason), and returns the instance.
@@ -185,9 +182,8 @@ def lookup(mpn: str, *, cache_dir: Path) -> Optional[DatasheetFacts]:
         - cache file is JSON but does not satisfy DatasheetFacts shape
           (required fields missing)
 
-    Per spec §11: pure read — never writes, never extracts, never
-    triggers an LLM call. On cache miss, caller is responsible for
-    triggering `datasheets sync` or equivalent.
+    Pure read: never writes, never extracts, never triggers an LLM call.
+    On a cache miss the caller decides whether to run an extraction.
 
     Args:
         mpn: Manufacturer part number. Sanitized for filename lookup.

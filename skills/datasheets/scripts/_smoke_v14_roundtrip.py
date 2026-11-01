@@ -6,7 +6,7 @@ LM2596-ADJ, plants the canonical v2-format example extraction at
 <tmpdir>/datasheets/extracted/LM2596-ADJ.json, and calls
 run_datasheet_verification().
 
-Expected behavior (v2.0 KH-337 fix):
+Expected behavior:
 - No crash.
 - Returns a dict with findings[] and summary.
 - ics_with_extractions=1 (LM2596-ADJ passes the v1.4 trust gate).
@@ -99,7 +99,7 @@ def main() -> int:
             )
             return 1
 
-        # KH-337: v2 adapter must emit exactly one extraction_not_verifiable
+        # The v2 adapter must emit exactly one extraction_not_verifiable
         # finding (required-external + decoupling unverifiable for v2 format),
         # and must NOT emit any voltage violation (VIN=12V is within limits).
         nv_findings = [f for f in result["findings"]

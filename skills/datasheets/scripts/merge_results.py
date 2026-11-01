@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Phase 3a — Merge per-task result files into <mpn>.json.
+"""Merge per-task result files into <mpn>.json.
 
 Reads <mpn>.plan.json + per-task wrapped result files, validates each `data`
 against the declared schema (using referencing.Registry for local $ref
 resolution), splices into the canonical extraction shape, and writes <mpn>.json.
 
-Failure semantics (Phase 3a):
+Failure semantics:
 - status:"complete" + schema-valid  → splice into top-level field.
 - status:"failed" OR schema-invalid → on first failure, mark task for retry
   (no auto re-dispatch — the dispatcher recipe handles re-run); on second
@@ -262,7 +262,7 @@ def merge(cache: Path, mpn: str, *, retry_failed: bool = False) -> int:
     if schema_versions:
         extraction["schema_version"]["categories"].update(schema_versions)
 
-    # Phase 3a failure/retry policy.
+    # Failure/retry policy.
     if failed_tasks and not retry_failed:
         # First merge with failures: write plan state, exit nonzero.
         # Caller re-dispatches failed tasks, then re-runs with --retry-failed.

@@ -29,7 +29,7 @@ def _load_extraction(extract_dir: str, mpn: str) -> dict:
 
     Returns {} only for: missing dir, missing MPN, file not found, JSON
     parse error, undecodable, non-object, symlinked or oversized file, or
-    OSError. Quality is NOT a gate here (v2.0 spec §3.A.2) — callers emit an `extraction_quality_low` info finding via
+    OSError. Quality is NOT a gate here — callers emit an `extraction_quality_low` info finding via
     `_quality_finding` instead.
 
     Two cache shapes supported:
@@ -185,7 +185,7 @@ def _v1_view(extraction: dict) -> dict:
 
 def _not_verifiable_finding(mpn: str, detail: str) -> dict:
     """Info finding when a trust-gate-passing extraction has no usable data
-    for a verifier.  Spec §6: degradation must be VISIBLE, never silent.
+    for a verifier.  Degradation must be VISIBLE, never silent.
     """
     return {
         "type": "extraction_not_verifiable",
@@ -223,7 +223,7 @@ def _passes_trust_gate(extraction: dict) -> bool:
 def _quality_finding(mpn, extraction):
     """Info finding when extraction quality is below the trust threshold.
 
-    v2.0 spec §3.A.2: quality is visible data, not a gate. Returns None
+    Quality is visible data, not a gate. Returns None
     when the extraction passes the threshold or carries no score.
     """
     if not extraction or _passes_trust_gate(extraction):
@@ -305,7 +305,7 @@ def verify_pin_voltages(components: list, nets: dict, extraction_dir: str,
             continue
         view = _v1_view(extraction)
         if not view or not view.get("pins"):
-            # Loud only for v2-adapted views (spec §6); v1 caches without
+            # Loud only for v2-adapted views; v1 caches without
             # pins keep the pre-adapter silent-skip behavior byte-identical.
             if view.get("_v2_adapted") and _passes_trust_gate(extraction):
                 findings.append(_not_verifiable_finding(
@@ -414,7 +414,7 @@ def verify_required_externals(components: list, nets: dict, extraction_dir: str,
             continue
         view = _v1_view(extraction)
         if not view or not view.get("pins"):
-            # Loud only for v2-adapted views (spec §6); v1 caches without
+            # Loud only for v2-adapted views; v1 caches without
             # pins keep the pre-adapter silent-skip behavior byte-identical.
             if view.get("_v2_adapted") and _passes_trust_gate(extraction):
                 findings.append(_not_verifiable_finding(
@@ -639,7 +639,7 @@ def verify_decoupling(components: list, nets: dict, extraction_dir: str,
             continue
         view = _v1_view(extraction)
         if not view or not view.get("application_circuit"):
-            # Loud only for v2-adapted views (spec §6); v1 caches that never
+            # Loud only for v2-adapted views; v1 caches that never
             # populated the optional application_circuit field keep the
             # pre-adapter silent-skip behavior byte-identical.
             if view.get("_v2_adapted") and _passes_trust_gate(extraction):
@@ -817,7 +817,7 @@ def run_datasheet_verification(analysis: dict, project_dir: str = "") -> dict:
     # Merge per-MPN info findings emitted independently by each verifier:
     # - extraction_not_verifiable: combine details into one finding per MPN.
     # - extraction_quality_low: identical duplicates; keep the first per MPN
-    #   (spec §3.A.2: once per distinct MPN).
+    #   (once per distinct MPN).
     nv_by_mpn: dict = {}
     seen_quality_low: set = set()
     other_findings: list = []
@@ -862,7 +862,7 @@ def run_datasheet_verification(analysis: dict, project_dir: str = "") -> dict:
 
 
 # ---------------------------------------------------------------------------
-# v1.4 extension: verify_v14_extraction (Phase 3a)
+# v1.4 extension: verify_v14_extraction
 # ---------------------------------------------------------------------------
 
 def _spec_max(sv_list):
@@ -874,7 +874,7 @@ def _spec_max(sv_list):
 def _spec_max_voltage(sv_list):
     """First SpecValue max with a voltage (or unspecified) unit.
 
-    KH-346: per-pin absolute_max lists may mix voltage and current entries
+    Per-pin absolute_max lists may mix voltage and current entries
     (pinout.schema.json) — comparing a current rating against net volts
     would fabricate false CRITICALs.
     """
@@ -899,7 +899,7 @@ _PIN_FIELDS_BY_CATEGORY = {
     "diode": (),
     "transistor": (),  # pin_assignment is a nested object — checked separately if needed
     "opamp": ("shutdown_pin",),
-    "mcu": ("reset_pin",),  # boot_pins is a list-of-objects, deferred to v1.5 if validation needed
+    "mcu": ("reset_pin",),  # boot_pins is a list-of-objects, not validated
     "crystal": (),
 }
 

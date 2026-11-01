@@ -3,7 +3,7 @@
 Mirrors base.schema.json. The ratings dicts (absolute_max,
 recommended_operating, esd, thermal) are keyed by parameter name
 (e.g. 'VIN_max') → list[SpecValue], matching the consumer-indexability
-shape from spec §4.
+shape the consumers index by.
 
 Field-ordering note: Python dataclass syntax requires every required
 field (no default) to precede every optional field (with default). The
@@ -107,7 +107,7 @@ class BaseBlock:
 
     absolute_max / recommended_operating / esd / thermal are keyed by
     parameter name (e.g. 'VIN_max') → list[SpecValue] — NOT flat lists.
-    Consumer indexability per spec §4.
+    Consumers index by parameter name.
     """
     family: str = field(metadata={
         "description": "Human-readable functional family (e.g. 'step-down switching regulator')."})

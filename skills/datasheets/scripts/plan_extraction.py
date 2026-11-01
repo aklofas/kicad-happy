@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Phase 3a — Plan an extraction run.
+"""Plan an extraction run.
 
 Computes PDF SHA, dispatches scout (or reads cached scout), generates
 <mpn>.plan.json. Stdlib-only. The dispatcher (separate concern) reads the
@@ -45,7 +45,6 @@ CATEGORY_TASKS = {
                    "skills/datasheets/prompts/mcu.md"),
     "crystal":    ("crystal",    "B", "skills/datasheets/schemas/crystal.schema.json",
                    "skills/datasheets/prompts/crystal.md"),
-    # All 5 Phase 3b categories registered (regulator from 3a + diode + transistor + opamp + mcu + crystal from 3b).
 }
 
 

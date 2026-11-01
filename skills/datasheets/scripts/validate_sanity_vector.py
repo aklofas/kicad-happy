@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Phase 3a — Diff a harness sanity vector against an extraction JSON.
+"""Diff a harness sanity vector against an extraction JSON.
 
 Used by the harness 4-check acceptance gate (check #4). Pure function: no
 LLM, no state, no network. Loads YAML vector, walks per-field expected
@@ -23,8 +23,8 @@ def _resolve_path(extraction: dict, dotted: str):
 
     Lists at the terminal position are unwrapped via `_spec_value_pick`;
     intermediate list indices are NOT supported (e.g., 'regulator.vin_range[0].max').
-    Phase 3a operates on single-condition SpecValue lists; multi-condition
-    indexing is deferred to v1.5.
+    Only single-condition SpecValue lists are supported; multi-condition
+    indexing is not.
     """
     cur = extraction
     for part in dotted.split("."):
@@ -37,7 +37,7 @@ def _resolve_path(extraction: dict, dotted: str):
 def _spec_value_pick(value, key: str):
     """SpecValue lists carry [{min, typ, max, unit, ...}]. Scalars are used as-is.
 
-    For list values, we pick the first element's `key` (Phase 3a is single-condition).
+    For list values, we pick the first element's `key` (single-condition lists only).
     For scalar values (int/float/bool/str), only the `typ` key has meaning — the
     scalar IS the typical value, with no min/max/unit. This lets sanity vectors
     write `expected: {typ: 5}` for plain scalar fields like `package.pin_count`.

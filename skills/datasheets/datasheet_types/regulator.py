@@ -1,10 +1,10 @@
 """Regulator category extension typed access.
 
-Mirrors regulator.schema.json v0.4. Flat topology enum per spec §7.
+Mirrors regulator.schema.json v0.4. Flat topology enum.
 Nested StabilityConditions (feeds SV-001) and Sequencing (feeds ST-001)
 blocks.
 
-Trust-gating helpers (.best(), .trusted()) are Track 2.4 — NOT here.
+Trust-gating helpers (.best(), .trusted()) live in trust_gating.py — NOT here.
 """
 from __future__ import annotations
 

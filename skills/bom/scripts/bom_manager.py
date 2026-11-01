@@ -325,7 +325,7 @@ def generate_bom(symbols: list[dict], convention: dict,
         # Extract canonical field values using the project's actual field names
         def get_canonical(canonical_name: str) -> str:
             if canonical_name == "mpn":
-                # KH-418: the project's declared MPN field is
+                # The project's declared MPN field is
                 # authoritative among manufacturer-specific names when it is
                 # itself primary-tier and populated on this symbol — file
                 # order only breaks ties between OTHER primaries.
@@ -333,9 +333,9 @@ def generate_bom(symbols: list[dict], convention: dict,
                 if (mpn_field and normalize_field_name(mpn_field) in MPN_FIELD_ALIASES_PRIMARY
                         and props.get(mpn_field, "").strip()):
                     return props.get(mpn_field, "").strip()
-                # KH-418: a manufacturer-specific field on THIS symbol always
+                # A manufacturer-specific field on THIS symbol always
                 # outranks the project's convention-majority field when that
-                # majority field is generic (El-Luhb: majority field is
+                # majority field is generic (e.g. the majority field is
                 # `Part#`, but this symbol also carries `MPN`).
                 primary = _first_nonblank_stripped(props, MPN_FIELD_ALIASES_PRIMARY)
                 if primary:
@@ -347,9 +347,9 @@ def generate_bom(symbols: list[dict], convention: dict,
                 val = props.get(actual_name, "").strip()
                 if val:
                     return val
-            # Try all known aliases as fallback (normalized match, KH-414).
+            # Try all known aliases as fallback (normalized match).
             # Also reached when the convention-majority field is empty on
-            # this symbol (final wave fix).
+            # this symbol.
             if canonical_name == "mpn":
                 return _pick_mpn_from_props(props)
             for actual, val in props.items():
