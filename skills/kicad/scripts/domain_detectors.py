@@ -171,13 +171,13 @@ def detect_key_matrices(ctx: AnalysisContext) -> list[dict]:
     # Topology-based detection: find switch-diode pairs and group by shared nets
     # to identify rows/columns regardless of net naming.
     if not key_matrices:
-        # KH-152: Exclude solar cells and similar power-generation components
+        # Exclude solar cells and similar power-generation components
         switches = [c for c in ctx.components if c["type"] == "switch"
                     and "solar" not in c.get("lib_id", "").lower()
                     and "solar_cell" not in c.get("value", "").lower()]
         if len(switches) >= 4:
             # For each switch, find if either net has a diode (switch-diode pair)
-            # KH-197b: Track paired switches to avoid double-counting
+            # Track paired switches to avoid double-counting
             switch_diode_pairs = []
             paired_switches: set[str] = set()
             for sw in switches:
@@ -216,12 +216,12 @@ def detect_key_matrices(ctx: AnalysisContext) -> list[dict]:
                 for pair in switch_diode_pairs:
                     topo_row_nets.add(pair["row_net"])
                     topo_col_nets.add(pair["col_net"])
-                # KH-152: Reject if row/col nets are power rails
+                # Reject if row/col nets are power rails
                 topo_row_nets = {n for n in topo_row_nets
                                  if not ctx.is_power_net(n) and not ctx.is_ground(n)}
                 topo_col_nets = {n for n in topo_col_nets
                                  if not ctx.is_power_net(n) and not ctx.is_ground(n)}
-                # KH-197c: Resolve ambiguous nets that appear in both sets
+                # Resolve ambiguous nets that appear in both sets
                 ambiguous = topo_row_nets & topo_col_nets
                 if ambiguous:
                     row_votes = Counter(p["row_net"] for p in switch_diode_pairs)
@@ -1032,7 +1032,7 @@ def detect_rf_chains(ctx: AnalysisContext) -> list[dict]:
     rf_transceiver_keywords = (
         "max283", "at86rf", "cc1101", "cc2500", "sx127", "sx126",
         "rfm9", "rfm6", "nrf24", "si446",
-        # KH-120: Less common RF transceiver/front-end ICs
+        # Less common RF transceiver/front-end ICs
         "bk4819", "cmx994", "cmx99", "si4463", "si4432", "a7105",
         "nrf52", "nrf53", "esp32",
     )
@@ -1040,7 +1040,7 @@ def detect_rf_chains(ctx: AnalysisContext) -> list[dict]:
         "saw", "baw", "fbar", "highpass", "lowpass", "bandpass",
         "fil-", "sf2", "ta0", "b39",
     )
-    # KH-085: New RF component categories
+    # New RF component categories
     rf_attenuator_keywords = (
         "hmc47", "hmc540", "hmc542", "pe43", "pe44", "dat-", "rfsa",
     )
@@ -1072,7 +1072,7 @@ def detect_rf_chains(ctx: AnalysisContext) -> list[dict]:
         if c["reference"] in rf_roles:
             continue
         role = None
-        # KH-120: Also check "other" type — some RF ICs use non-standard
+        # Also check "other" type — some RF ICs use non-standard
         # reference designators and get classified as "other"
         if c["type"] in ("ic", "other"):
             role = match_family(c, rf_families)
@@ -1164,7 +1164,7 @@ def detect_rf_chains(ctx: AnalysisContext) -> list[dict]:
                  "lib_id": c.get("lib_id", "")}
                 for c in rf_baluns
             ],
-            # KH-085: New RF component categories
+            # New RF component categories
             "attenuators": [
                 {"reference": c["reference"], "value": c["value"],
                  "lib_id": c.get("lib_id", "")}
@@ -1375,7 +1375,7 @@ def detect_rf_matching(ctx: AnalysisContext) -> list[dict]:
                     if not comp:
                         continue
                     if comp["type"] in ("capacitor", "inductor", "ferrite_bead"):
-                        # KH-150: Skip ferrite beads (EMI filtering, not RF matching)
+                        # Skip ferrite beads (EMI filtering, not RF matching)
                         _comp_desc = (comp.get("description", "") + " " +
                                       comp.get("keywords", "") + " " +
                                       comp.get("value", "")).lower()
@@ -1411,7 +1411,7 @@ def detect_rf_matching(ctx: AnalysisContext) -> list[dict]:
         if not matching_components:
             continue
 
-        # KH-150: Require target IC to be RF-related
+        # Require target IC to be RF-related
         if target_ic:
             _target_comp = ctx.comp_lookup.get(target_ic, {})
             _target_check = (_target_comp.get("value", "") + " " +
@@ -1523,7 +1523,7 @@ def detect_bms_systems(ctx: AnalysisContext) -> list[dict]:
     """Detect Battery Management System ICs with cell monitoring."""
     bms_systems: list[dict] = []
 
-    # KH-123: Only include multi-cell BMS/AFE ICs, not single-cell chargers.
+    # Only include multi-cell BMS/AFE ICs, not single-cell chargers.
     # Single-cell chargers (TP4056, MCP73871, etc.) handle charging only,
     # not cell balancing or multi-cell monitoring.
     bms_ic_keywords = (
@@ -2224,7 +2224,7 @@ def detect_addressable_leds(ctx: AnalysisContext) -> list[dict]:
                      "neopixel", "dotstar")
 
     # Find addressable LED components
-    # KH-122: Also search "diode" type — D-prefix addressable LEDs may be
+    # Also search "diode" type — D-prefix addressable LEDs may be
     # misclassified when using custom library symbols
     addr_leds = {}
     for c in ctx.components:
@@ -4083,7 +4083,6 @@ _LEVEL_SHIFTER_KEYWORDS = (
     "txb0", "txs0", "tca9", "lsf0", "sn74lvc", "sn74avc",
     "sn74cb3", "sn74cbt", "nlsx", "nts0", "fxl", "adg320",
     "max395", "gtl2", "pca960", "tca641", "fxma", "txu0",
-    # 4.1 expansion (rc.2): SparkFun + Manas reviews
     "lvc1t45", "lvc2t45", "lvc8t45",  # 74LVC*T45 / SN74LVC*T45 translator family
     "nvt20",                          # NXP NVT200x autobus translator
     "pca9306", "pca9517",             # NXP/TI I2C bus repeaters with level translation
@@ -4127,7 +4126,7 @@ def detect_level_shifters(ctx: AnalysisContext) -> list[dict]:
         if not any(kw in combined for kw in _LEVEL_SHIFTER_KEYWORDS):
             continue
 
-        # KH-227: Exclude pure logic gates (not level shifters)
+        # Exclude pure logic gates (not level shifters)
         _val_lib = (comp.get("value", "") + " " + comp.get("lib_id", "")).lower()
         _logic_gate_patterns = ("1g00", "1g02", "1g04", "1g08", "1g14", "1g32",
                                 "1g86", "2g00", "2g02", "2g04", "2g08", "2g14",
@@ -4789,7 +4788,7 @@ _LED_VF = {
 
 # Per-color Vf floor — the MINIMUM forward voltage below which an LED of
 # this color will not light at all. Used by LA-004 to flag LEDs on rails
-# that are below their color's floor. rc.2 4.1 expansion (Manas review).
+# that are below their color's floor.
 _LED_VF_FLOOR = {
     "red": 1.85, "orange": 2.0, "yellow": 2.0, "amber": 2.0,
     "green": 2.1, "blue": 3.0, "white": 3.0, "uv": 3.2,
@@ -5047,8 +5046,7 @@ def audit_led_circuits(ctx: AnalysisContext,
         results.append(entry)
 
         # LA-004 — rail-Vf floor check: if v_supply is below the LED's
-        # color floor, the LED can't forward-bias at all. rc.2 4.1
-        # expansion (Manas review).
+        # color floor, the LED can't forward-bias at all.
         if supply_net:
             v_supply = ctx.rail_voltage_or(supply_net, parse_voltage_from_net_name)
             color = _detect_led_color(comp)
@@ -5318,7 +5316,7 @@ def build_power_sequencing_graph(ctx: AnalysisContext,
             if pname in pin_nets:
                 return pin_nets[pname]
         # Second pass: normalize raw pin names and match against base names
-        # KH-223: strip ~{ } overbar wrappers and retry
+        # strip ~{ } overbar wrappers and retry
         for raw_pname, net in pin_nets.items():
             norm = raw_pname.replace("~{", "").replace("}", "")
             if norm in names:

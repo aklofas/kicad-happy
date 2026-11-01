@@ -252,7 +252,7 @@ def detect_voltage_dividers(ctx: AnalysisContext) -> dict:
                     if mid_pin_count > 4:
                         continue
 
-                # KH-238: Normalize orientation FIRST so the ordering of
+                # Normalize orientation FIRST so the ordering of
                 # r1/r2 in the outer loop can't drop valid pairs. If
                 # exactly one end is ground, ensure it's bot_net. This
                 # subsumes the previous "is_ground(top) and is_power(bot)"
@@ -268,7 +268,7 @@ def detect_voltage_dividers(ctx: AnalysisContext) -> dict:
                 # One end should be power, other should be ground (or another power)
                 if not (ctx.is_power_net(top_net) and (ctx.is_ground(bot_net) or ctx.is_power_net(bot_net))):
                     # Also catch feedback dividers: output -> mid -> ground.
-                    # After the KH-238 normalization above, an unnamed
+                    # After the normalization above, an unnamed
                     # top_net with ground bot_net reaches this branch
                     # and passes.
                     if not ctx.is_ground(bot_net):
@@ -311,16 +311,15 @@ def detect_voltage_dividers(ctx: AnalysisContext) -> dict:
                     # NOTE: feedback dividers are intentionally appended to BOTH
                     # `feedback_networks` (for regulator FB matching and feedback-
                     # stability checks) AND `voltage_dividers` (so downstream
-                    # consumers — notably `detect_rc_filters` at :498-503 — keep
+                    # consumers — notably `detect_rc_filters` — keep
                     # their exclusion-set correct and don't emit false-positive
                     # RC filters pairing feedback resistors with decoupling caps;
-                    # `detect_power_regulators` at :1863 and `postfilter_vd_and_dedup`
+                    # `detect_power_regulators` and `postfilter_vd_and_dedup`
                     # also consume `voltage_dividers` as a shared input).
                     #
-                    # The 8c36212 polish-pass dedup that removed this double-
-                    # emission caused 1742 VD-DET disappearances AND 502 cascade
-                    # false-positive RC-DET findings corpus-wide. Restored
-                    # 2026-05-15.
+                    # Deduplicating this double emission once caused 1742 VD-DET
+                    # disappearances AND 502 cascade false-positive RC-DET
+                    # findings corpus-wide.
                     #
                     # If you're reading this thinking "the double-emission looks
                     # like a bug, let me clean it up": don't. The Layer 1 gate
@@ -398,7 +397,7 @@ def _chain_link(ctx: AnalysisContext, ref: str, ohms: float) -> dict:
 
 
 def _merge_series_dividers(voltage_dividers: list[dict], ctx: AnalysisContext) -> list[dict]:
-    """Merge series resistors in voltage divider chains (KH-105, KH-115).
+    """Merge series resistors in voltage divider chains.
 
     When a divider's top_net or bottom_net is a pass-through node (connects
     to exactly 2 resistors and no IC/active pins), extend the chain through
@@ -542,7 +541,7 @@ def detect_rc_filters(ctx: AnalysisContext, voltage_dividers: list[dict],
             vd_resistor_refs.add(vd[arm]["ref"])
             vd_resistor_refs.update(vd[arm].get("parallel_refs", ()))
 
-    # KH-145: Exclude opamp feedback resistors, capacitors, and input resistors
+    # Exclude opamp feedback resistors, capacitors, and input resistors
     opamp_exclude_refs = set()
     for oa in (opamp_circuits or []):
         fb_r = oa.get("feedback_resistor")
@@ -556,7 +555,7 @@ def detect_rc_filters(ctx: AnalysisContext, voltage_dividers: list[dict],
             opamp_exclude_refs.add(inp_r.get("ref", ""))
     opamp_exclude_refs.discard("")
 
-    # KH-107: Exclude crystal circuit components (load caps + feedback resistors)
+    # Exclude crystal circuit components (load caps + feedback resistors)
     crystal_refs = set()
     for xtal in (crystal_circuits or []):
         crystal_refs.add(xtal.get("reference", ""))
@@ -574,16 +573,16 @@ def detect_rc_filters(ctx: AnalysisContext, voltage_dividers: list[dict],
     def _in(refs: set[str], ref: str) -> bool:
         return any(m in refs for m in group_members(ctx, ref))
 
-    # KH-121: Track seen R-C pairs to prevent bidirectional duplicates
+    # Track seen R-C pairs to prevent bidirectional duplicates
     seen_rc_pairs: set[frozenset[str]] = set()
 
     for res in resistors:
         if _in(vd_resistor_refs, res["reference"]):
             continue  # Skip voltage divider resistors
         if _in(crystal_refs, res["reference"]):
-            continue  # KH-107: Skip crystal circuit components
+            continue  # Skip crystal circuit components
         if _in(opamp_exclude_refs, res["reference"]):
-            continue  # KH-145: Skip opamp feedback/input resistors
+            continue  # Skip opamp feedback/input resistors
         if res["reference"] not in resistor_nets:
             continue
         r_n1, r_n2 = resistor_nets[res["reference"]]
@@ -598,11 +597,11 @@ def detect_rc_filters(ctx: AnalysisContext, voltage_dividers: list[dict],
 
         for cap_ref in sorted(candidate_caps):
             if _in(crystal_refs, cap_ref):
-                continue  # KH-107: Skip crystal circuit components
+                continue  # Skip crystal circuit components
             if _in(opamp_exclude_refs, cap_ref):
-                continue  # KH-145: Skip opamp feedback capacitors
+                continue  # Skip opamp feedback capacitors
 
-            # KH-121: Skip if this R-C pair was already found from the other direction
+            # Skip if this R-C pair was already found from the other direction
             rc_pair = frozenset((res["reference"], cap_ref))
             if rc_pair in seen_rc_pairs:
                 continue
@@ -640,7 +639,7 @@ def detect_rc_filters(ctx: AnalysisContext, voltage_dividers: list[dict],
             r_other = (r_nets - {shared_net}).pop()
             c_other = (c_nets - {shared_net}).pop()
 
-            # KH-116: Skip if R and C non-shared ends are the same net —
+            # Skip if R and C non-shared ends are the same net —
             # output==ground is logically impossible for a filter
             if r_other == c_other:
                 continue
@@ -686,7 +685,7 @@ def detect_rc_filters(ctx: AnalysisContext, voltage_dividers: list[dict],
                     "time_constant_s": tau,
                     "input_net": in_net,
                     "output_net": out_net,
-                    # KH-116: Use c_other as ground if it IS ground, else use
+                    # Use c_other as ground if it IS ground, else use
                     # r_other only if it IS ground; otherwise report c_other
                     # (the capacitor's far end) to avoid output==ground
                     "ground_net": c_other if ctx.is_ground(c_other) else (
@@ -780,7 +779,7 @@ def detect_lc_filters(ctx: AnalysisContext) -> list[dict]:
             if ctx.is_power_net(shared_net_lc) or ctx.is_ground(shared_net_lc):
                 continue
 
-            # KH-119: Skip high-fanout shared nets — in RF designs, impedance
+            # Skip high-fanout shared nets — in RF designs, impedance
             # matching networks share nets with many L/C components. Real LC
             # filters have 2-4 connections at the junction node.
             shared_pin_count = len(ctx.nets.get(shared_net_lc, {}).get("pins", []))
@@ -848,7 +847,7 @@ def detect_lc_filters(ctx: AnalysisContext) -> list[dict]:
     # Merge parallel caps per inductor-net pair
     lc_filters: list[dict] = []
     for (_ind_ref, _shared_net, _other_net), entries in _lc_groups.items():
-        # KH-198: Deduplicate caps by reference (multi-project schematics
+        # Deduplicate caps by reference (multi-project schematics
         # can have multiple components sharing the same reference designator)
         seen_refs = set()
         deduped = []
@@ -891,7 +890,7 @@ def detect_lc_filters(ctx: AnalysisContext) -> list[dict]:
             merged["provenance"] = make_provenance("lc_topology", "deterministic", [entries[0]["inductor"]["ref"]] + cap_refs)
             lc_filters.append(merged)
 
-    # KH-119: Suppress overcounting — if one inductor pairs with caps on BOTH
+    # Suppress overcounting — if one inductor pairs with caps on BOTH
     # its nets, it's likely an RF impedance matching network, not separate LC
     # filters. Keep at most 1 entry per inductor net (the largest capacitance).
     from collections import defaultdict
@@ -942,7 +941,7 @@ def detect_crystal_circuits(ctx: AnalysisContext) -> list[dict]:
         if len(xtal_pins) < 2:
             continue
 
-        # KH-114: Skip active oscillators (>=4 pins with a VCC/VDD power pin)
+        # Skip active oscillators (>=4 pins with a VCC/VDD power pin)
         # They should be handled by the active oscillator section below
         if len(xtal_pins) >= 4:
             has_power_pin = False
@@ -1013,9 +1012,9 @@ def detect_crystal_circuits(ctx: AnalysisContext) -> list[dict]:
         target_load_source = None
         xtal_value = xtal.get("value", "")
         # Probe datasheet first (highest authority): facts.crystal.load_capacitance.
-        # DatasheetFacts.crystal does not exist in v1.4 (CrystalBlock is v1.5 expansion),
-        # so _cl_specs will always be None today — heuristic always fires in v1.4.
-        # Wiring activates automatically once CrystalBlock lands.
+        # DatasheetFacts has no `crystal` category, so _cl_specs is always None
+        # and the value-string parse and default below decide the target.
+        # This lookup starts to apply once the facts carry a crystal block.
         _cache_dir = getattr(ctx, 'cache_dir', None)
         _xtal_mpn = xtal.get('mpn') or xtal.get('value') or ''
         _xtal_facts = get_facts(_xtal_mpn, cache_dir=_cache_dir, diagnostics=getattr(ctx, "diagnostics", None)) if _xtal_mpn else None
@@ -1119,7 +1118,7 @@ def detect_crystal_circuits(ctx: AnalysisContext) -> list[dict]:
                 out_net = net_name
             elif ctx.is_power_net(net_name) and not ctx.is_ground(net_name):
                 vcc_net = net_name
-        # KH-370: do NOT fall back to the first non-power/non-ground pin as
+        # do NOT fall back to the first non-power/non-ground pin as
         # output_net — on a misclassified bus peripheral that net is a data
         # line (e.g. I2C SCL), not a clock output. Leave out_net unset when
         # no clock-out-named pin is present; CD-DET phase 2 already skips
@@ -1336,7 +1335,7 @@ def detect_current_sense(ctx: AnalysisContext) -> list[dict]:
         "ina240", "ina250", "ina260", "ina300", "ina381",
         "pam2401", "zxct", "acs71", "acs72", "asc",
     })
-    # KH-081/KH-113: IC families that are never current sense amplifiers
+    # IC families that are never current sense amplifiers
     _SENSE_IC_EXCLUDE = frozenset({
         # Ethernet PHY / RJ45 / MagJack
         "w5500", "w5100", "w5200", "ksz", "dp83", "lan87", "lan91",
@@ -1420,7 +1419,7 @@ def detect_current_sense(ctx: AnalysisContext) -> list[dict]:
                     continue
                 # Check if part is a known sense IC
                 val_lower = (ic_comp.get("value", "") + " " + ic_comp.get("lib_id", "")).lower()
-                # KH-081/KH-113: Skip excluded IC families
+                # Skip excluded IC families
                 if any(kw in val_lower for kw in _SENSE_IC_EXCLUDE):
                     continue
                 if any(kw in val_lower for kw in _SENSE_IC_KEYWORDS):
@@ -1530,7 +1529,7 @@ def detect_current_sense(ctx: AnalysisContext) -> list[dict]:
                 ic_comp = ctx.comp_lookup.get(p["component"])
                 if not ic_comp or ic_comp["type"] != "ic":
                     continue
-                # KH-081/KH-113: Skip excluded IC families
+                # Skip excluded IC families
                 _val_lower2 = (ic_comp.get("value", "") + " " + ic_comp.get("lib_id", "")).lower()
                 if any(kw in _val_lower2 for kw in _SENSE_IC_EXCLUDE):
                     continue
@@ -1587,7 +1586,7 @@ def _infer_rail_voltage(net_name):
         return float(m.group(1))
     if "VBUS" in name:
         return 5.0
-    # KH-343: only non-data USB nets (VBUS-ish) default to 5V
+    # only non-data USB nets (VBUS-ish) default to 5V
     if "USB" in name and not is_usb_data_net_name(name):
         return 5.0
     if "VBAT" in name:
@@ -1616,7 +1615,7 @@ def detect_power_regulators(ctx: AnalysisContext, voltage_dividers: list[dict]) 
     """Detect power regulator topology. Takes voltage_dividers for feedback matching."""
     power_regulators: list[dict] = []
 
-    # KH-148: Deduplicate multi-unit ICs
+    # Deduplicate multi-unit ICs
     for ic in get_unique_ics(ctx):
         cand = _screen_regulator_candidate(ctx, ic)
         if cand is None:
@@ -1637,20 +1636,20 @@ def _screen_regulator_candidate(ctx: AnalysisContext, ic: dict) -> _RegulatorCan
     """Reject non-regulators; return the keyword-only PMIC record finished, else the candidate."""
     ref = ic["reference"]
 
-    # KH-089: Skip components with no mapped pins (title blocks, graphics)
-    # KH-124: Allow keyword-matched PMICs through even without pins (legacy format)
+    # Skip components with no mapped pins (title blocks, graphics)
+    # Allow keyword-matched PMICs through even without pins (legacy format)
     _no_pins = not ic.get("pins")
 
-    # KH-089: Skip known non-regulator IC families
+    # Skip known non-regulator IC families
     _lib_val_check = (ic.get("lib_id", "") + " " + ic.get("value", "")).lower()
     _non_reg_exclude = ("eeprom", "flash", "spi_flash", "rtc", "uart",
                         "usb_uart", "buffer", "logic_", "encoder",
                         "w25q", "at24c", "24c0", "pcf85", "ht42b", "ch340",
                         "cp210", "ft232", "74lvc", "74hc",
-                        # KH-100: WiFi/BT modules with filter inductors
+                        # WiFi/BT modules with filter inductors
                         "ap6212", "ap6236", "ap6256", "esp32", "esp8266",
                         "cyw43", "wl18",
-                        # KH-226: Dev board modules (not regulators)
+                        # Dev board modules (not regulators)
                         "nucleo", "arduino", "raspberry", "teensy",
                         "feather", "pico")
     if any(k in _lib_val_check for k in _non_reg_exclude):
@@ -1699,7 +1698,7 @@ def _screen_regulator_candidate(ctx: AnalysisContext, ic: dict) -> _RegulatorCan
             boot_pin = (pname, net)
 
     if not fb_pin and not sw_pin and not vout_pin:
-        # KH-124: For pin-less ICs (legacy format), check keywords before
+        # For pin-less ICs (legacy format), check keywords before
         # giving up — PMICs like AXP803 won't have pin data
         if not _no_pins:
             return None  # Not a regulator
@@ -1750,9 +1749,9 @@ def _screen_regulator_candidate(ctx: AnalysisContext, ic: dict) -> _RegulatorCan
                        "mic29", "mic55", "ap2112", "ap2210", "ap73",
                        "ncv4", "lm26", "lm11", "78xx",
                        "79xx", "lt308", "lt36", "ltc36", "lt86", "ltc34",
-                       # KH-118: Asian manufacturer LDOs
+                       # Asian manufacturer LDOs
                        "tplp", "hx630",
-                       # KH-124: PMICs and boost converters
+                       # PMICs and boost converters
                        "axp", "mt36", "pmic", "dd40", "ip51",
                        )
     has_reg_keyword = (any(k in lib_val_lower for k in reg_lib_keywords) or
@@ -1767,13 +1766,13 @@ def _screen_regulator_candidate(ctx: AnalysisContext, ic: dict) -> _RegulatorCan
 
     # Exclude power multiplexers/load switches/ideal diode controllers
     _power_mux_exclude = ("power_mux", "load_switch", "tps211", "tps212",
-                          "tps229", "tps205",  # KH-219: load switches
+                          "tps229", "tps205",  # load switches
                           "ltc441", "ideal_diode",
-                          # KH-108: Ideal diode OR controllers
+                          # Ideal diode OR controllers
                           "lm6620", "lm6610", "ltc435", "ltc430")
     if any(k in lib_val_lower for k in _power_mux_exclude):
         return None
-    # KH-219: Exclude components with load/power switch descriptions
+    # Exclude components with load/power switch descriptions
     if any(k in desc_lower for k in ("load switch", "power switch", "power distribution switch")):
         return None
 
@@ -1928,7 +1927,7 @@ def _build_regulator_record(ctx: AnalysisContext, cand: _RegulatorCandidate,
             reg_info["sw_net"] = sw_net
             if boot_pin:
                 reg_info["has_bootstrap"] = True
-            # KH-084/KH-087: Trace through inductor to find output rail
+            # Trace through inductor to find output rail
             if inductor_ref and not vout_pin:
                 ind_n1, ind_n2 = ctx.get_two_pin_nets(inductor_ref)
                 out_rail = ind_n2 if ind_n1 == sw_net else ind_n1
@@ -1951,7 +1950,7 @@ def _build_regulator_record(ctx: AnalysisContext, cand: _RegulatorCandidate,
             reg_info["topology"] = "switching"
         else:
             reg_info["topology"] = "LDO"
-        # KH-225: Charge pumps — voltage converters, not LDOs
+        # Charge pumps — voltage converters, not LDOs
         _charge_pump_kw = ("charge_pump", "charge pump", "voltage inverter",
                            "voltage converter", "switched capacitor")
         if any(k in desc_lower for k in _charge_pump_kw) or \
@@ -1992,13 +1991,13 @@ def _build_regulator_record(ctx: AnalysisContext, cand: _RegulatorCandidate,
     if is_inverting:
         reg_info["inverting"] = True
 
-    # KH-104: Sanity check — power rails should never be GND
+    # Sanity check — power rails should never be GND
     if reg_info.get("input_rail") and ctx.is_ground(reg_info["input_rail"]):
         reg_info["input_rail"] = None
     if reg_info.get("output_rail") and ctx.is_ground(reg_info["output_rail"]):
         reg_info["output_rail"] = None
 
-    # KH-087: Trace output rail through inductor (retry after sanitization)
+    # Trace output rail through inductor (retry after sanitization)
     if reg_info.get("topology") == "switching" and not reg_info.get("output_rail") and reg_info.get("inductor"):
         ind_ref = reg_info["inductor"]
         ind_n1, ind_n2 = ctx.get_two_pin_nets(ind_ref)
@@ -2009,7 +2008,7 @@ def _build_regulator_record(ctx: AnalysisContext, cand: _RegulatorCandidate,
         elif out_rail and not ctx.is_ground(out_rail):
             reg_info["output_rail"] = out_rail
 
-    # KH-087: Trace input rail through ferrite bead
+    # Trace input rail through ferrite bead
     if not reg_info.get("input_rail") and vin_pin:
         vin_net = vin_pin[1]
         if vin_net and vin_net in ctx.nets:
@@ -2110,7 +2109,7 @@ def _build_regulator_record(ctx: AnalysisContext, cand: _RegulatorCandidate,
             # read by _cross_reference_feedback_dividers, which removes it
             reg_info["_far_side_is_input"] = True
 
-    # KH-090: Fixed-output LDOs are never inverting
+    # Fixed-output LDOs are never inverting
     if reg_info.get("inverting") and reg_info.get("topology") == "LDO" and not fb_pin:
         del reg_info["inverting"]
 
@@ -2190,7 +2189,7 @@ def _build_regulator_record(ctx: AnalysisContext, cand: _RegulatorCandidate,
 def _cross_reference_feedback_dividers(power_regulators: list[dict], voltage_dividers: list[dict]) -> None:
     """Give each regulator without a feedback divider the divider whose top net is its FB net (FB-at-top),
     and an output rail when it has none, in place."""
-    # KH-084: Cross-reference feedback dividers with regulators.
+    # Cross-reference feedback dividers with regulators.
     # For dividers whose top_net matches a regulator's output_rail, mark as feedback.
     for reg in power_regulators:
         # an LED boost's FB-at-top node is its current sense, not an output rail
@@ -2230,7 +2229,7 @@ def _attach_regulator_capacitors(ctx: AnalysisContext, power_regulators: list[di
                 comp = ctx.comp_lookup.get(cref)
                 if not comp or comp["type"] != "capacitor":
                     continue
-                # KH-377: the cap's other pin must be ground -- a
+                # the cap's other pin must be ground -- a
                 # feedforward cap wired rail->FB (or similar) isn't a
                 # decoupler and shouldn't be modeled as one.
                 other = [n for n in ctx.get_two_pin_nets(cref) if n != output_rail]
@@ -2272,7 +2271,7 @@ def _attach_regulator_capacitors(ctx: AnalysisContext, power_regulators: list[di
                 comp = ctx.comp_lookup.get(cref)
                 if not comp or comp["type"] != "capacitor":
                     continue
-                # KH-377: same shunt-only guard as the output-cap collector.
+                # same shunt-only guard as the output-cap collector.
                 other = [n for n in ctx.get_two_pin_nets(cref) if n != input_rail]
                 if not other or not ctx.is_ground(other[0]):
                     continue
@@ -2427,7 +2426,7 @@ def detect_integrated_ldos(ctx: AnalysisContext, power_regulators: list[dict]) -
     existing_refs = {r["ref"] for r in power_regulators}
     integrated = []
 
-    # KH-127: Non-regulator ICs with VREG decoupling pins
+    # Non-regulator ICs with VREG decoupling pins
     _non_reg_ic_keywords = ("usb_hub", "hub", "cy7c65", "usb2512", "usb2514",
                             "tusb8", "usb3503", "fe1.1", "gl850",
                             "fpga", "cpld", "mcu", "microcontroller",
@@ -2514,7 +2513,7 @@ def detect_protection_devices(ctx: AnalysisContext) -> list[dict]:
                 net_name, _ = ctx.pin_net.get((comp["reference"], pin["number"]), (None, None))
                 if net_name and not ctx.is_power_net(net_name) and not ctx.is_ground(net_name):
                     protected.append(net_name)
-            # KH-126: One entry per component, collect all protected nets
+            # One entry per component, collect all protected nets
             if protected:
                 sorted_nets = sorted(set(protected))
                 protection_devices.append({
@@ -2566,7 +2565,7 @@ def detect_protection_devices(ctx: AnalysisContext) -> list[dict]:
                 protected_net = d_n1
 
         if protected_net:
-            # KH-143: Deduplicate multi-unit TVS arrays (same ref, different units)
+            # Deduplicate multi-unit TVS arrays (same ref, different units)
             if any(p["ref"] == comp["reference"] for p in protection_devices):
                 continue
             protection_devices.append({
@@ -2597,7 +2596,7 @@ def detect_protection_devices(ctx: AnalysisContext) -> list[dict]:
             # Avoid duplicates
             if any(p["ref"] == comp["reference"] for p in protection_devices):
                 continue
-            # KH-117: Try standard 2-pin first, then fall back to scanning
+            # Try standard 2-pin first, then fall back to scanning
             # all pin_net entries (Eagle imports use P$1/P$2/P$3 pin names)
             d_n1, d_n2 = ctx.get_two_pin_nets(comp["reference"])
             if not d_n1 or not d_n2:
@@ -2672,7 +2671,7 @@ def detect_protection_devices(ctx: AnalysisContext) -> list[dict]:
             })
 
     # ---- IC-based ESD Protection ----
-    # KH-082: Expanded keywords + Power_Protection library check
+    # Expanded keywords + Power_Protection library check
     esd_ic_keywords = ("usblc", "tpd", "prtr", "ip42", "sp05", "esda",
                        "pesd", "nup4", "sn65220", "dtc11", "sp72",
                        "tvs18", "tvs1", "ecmf", "cdsot", "smda", "rclamp")
@@ -2691,7 +2690,7 @@ def detect_protection_devices(ctx: AnalysisContext) -> list[dict]:
             net_name, _ = ctx.pin_net.get((comp["reference"], pin["number"]), (None, None))
             if net_name and not ctx.is_power_net(net_name) and not ctx.is_ground(net_name):
                 protected.append(net_name)
-        # KH-126: One entry per component, collect all protected nets
+        # One entry per component, collect all protected nets
         if protected:
             sorted_nets = sorted(set(protected))
             protection_devices.append({
@@ -2765,7 +2764,7 @@ def detect_opamp_circuits(ctx: AnalysisContext) -> list[dict]:
                 any(k in desc for k in ("opamp", "op-amp", "op amp", "operational amplifier", "instrumentation"))):
             continue
 
-        # KH-214: Exclude power/current monitors (INA2xx, INA8xx) that match
+        # Exclude power/current monitors (INA2xx, INA8xx) that match
         # via description keywords like "instrumentation"
         _pm_val = (val + " " + lib_part).lower()
         if any(_pm_val.startswith(k) for k in ("ina2", "ina8", "ina90")):
@@ -2831,7 +2830,7 @@ def detect_opamp_circuits(ctx: AnalysisContext) -> list[dict]:
                     elif not neg_in:
                         neg_in = (pin_name, net, pnum)
 
-        # KH-125: Legacy format fallback — no pin data but keyword match confirmed
+        # Legacy format fallback — no pin data but keyword match confirmed
         if pos_in is None and neg_in is None and out_pin is None:
             opamp_circuits.append({
                 "reference": ref,
@@ -2876,7 +2875,7 @@ def detect_opamp_circuits(ctx: AnalysisContext) -> list[dict]:
             for fb_ref in sorted(fb_resistors):
                 comp = ctx.comp_lookup.get(fb_ref)
                 if comp and comp["type"] == "resistor" and fb_ref in ctx.parsed_values:
-                    # KH-149: Verify direct connection — one pin on out_net, other on neg_net
+                    # Verify direct connection — one pin on out_net, other on neg_net
                     fb_n1, fb_n2 = ctx.get_two_pin_nets(fb_ref)
                     if {fb_n1, fb_n2} == {out_net, neg_net}:
                         if group_value(ctx, fb_ref) is None:
@@ -2892,7 +2891,7 @@ def detect_opamp_circuits(ctx: AnalysisContext) -> list[dict]:
             for fb_cref in sorted(fb_caps):
                 comp = ctx.comp_lookup.get(fb_cref)
                 if comp and comp["type"] == "capacitor" and fb_cref in ctx.parsed_values:
-                    # KH-149: Verify direct connection
+                    # Verify direct connection
                     fb_n1, fb_n2 = ctx.get_two_pin_nets(fb_cref)
                     if {fb_n1, fb_n2} == {out_net, neg_net}:
                         if group_value(ctx, fb_cref) is None:
@@ -2911,7 +2910,7 @@ def detect_opamp_circuits(ctx: AnalysisContext) -> list[dict]:
                     if not o_n1 or not o_n2:
                         continue
                     mid = o_n2 if o_n1 == out_net else o_n1
-                    # KH-149: Also skip if mid == neg_net (degenerate 2-hop = direct path)
+                    # Also skip if mid == neg_net (degenerate 2-hop = direct path)
                     if mid in (out_net, neg_net) or ctx.is_ground(mid) or ctx.is_power_net(mid):
                         continue
                     if mid in ctx.nets:
@@ -2983,7 +2982,7 @@ def detect_opamp_circuits(ctx: AnalysisContext) -> list[dict]:
         elif cf_ref and not rf_ref and ri_ref:
             config = "integrator"
         elif cf_ref and rf_ref:
-            # KH-221: Distinguish TIA from compensator.
+            # Distinguish TIA from compensator.
             # TIA: feedback R >> input R (transimpedance gain = Rf)
             # Compensator: similar-value R+C for loop compensation
             if ri_ref and ri_val and rf_val and ri_val > 0 and rf_val / ri_val > 10:
@@ -3324,7 +3323,7 @@ def detect_transistor_circuits(ctx: AnalysisContext, matched_fets: set, fet_pins
         gate_comps = _get_net_components(ctx, gate_net, ref) if gate_net else []
         gate_ics = [c for c in gate_comps if c["type"] == "ic"]
 
-        # KH-139: When gate is on a power rail, don't enumerate all resistors
+        # When gate is on a power rail, don't enumerate all resistors
         # on that rail — only include resistors connecting to drain/source/ground.
         if gate_net and ctx.is_power_net(gate_net):
             gate_resistors = []
@@ -3378,7 +3377,7 @@ def detect_transistor_circuits(ctx: AnalysisContext, matched_fets: set, fet_pins
                     has_flyback = True
                     flyback_ref = dc["reference"]
                     break
-                # KH-098: Drain-to-supply topology (low-side switch flyback)
+                # Drain-to-supply topology (low-side switch flyback)
                 d_other = d_n2 if d_n1 == drain_net else (d_n1 if d_n2 == drain_net else None)
                 if d_other and ctx.is_power_net(d_other) and not ctx.is_ground(d_other):
                     has_flyback = True
@@ -3456,7 +3455,7 @@ def detect_transistor_circuits(ctx: AnalysisContext, matched_fets: set, fet_pins
                 topology = "level_shifter"
                 load_type = "level_shifter"
 
-        # KH-146: Detect JFET from lib_id/value
+        # Detect JFET from lib_id/value
         _jfet_kw = ("jfet", "n_jfet", "p_jfet", "q_jfet",
                      "j310", "j271", "j270", "j174", "j175", "j176",
                      "mmbfj", "bf545", "bf546", "bf244", "bf256",
@@ -3648,7 +3647,7 @@ def enrich_transistor_led_drivers(ctx: AnalysisContext, transistor_circuits: lis
         for dc in load_comps:
             if dc["type"] != "resistor":
                 continue
-            # KH-147: Reject resistors that are too large for current limiting,
+            # Reject resistors that are too large for current limiting,
             # or whose value field can't be parsed (e.g. "215k_0402_C0123XYZ"
             # from importers that append package/MPN suffixes). Without a
             # parseable value we can't confirm current-limiting role, so skip
@@ -3665,7 +3664,7 @@ def enrich_transistor_led_drivers(ctx: AnalysisContext, transistor_circuits: lis
             other_comps = _get_net_components(ctx, other_net, dc["reference"])
             for oc in other_comps:
                 if oc["type"] == "led":
-                    # KH-147: Verify LED actually has a pin on other_net
+                    # Verify LED actually has a pin on other_net
                     led_n1, led_n2 = ctx.get_two_pin_nets(oc["reference"])
                     if led_n1 != other_net and led_n2 != other_net:
                         continue
@@ -3719,7 +3718,7 @@ def detect_design_observations(ctx: AnalysisContext, results: dict) -> list[dict
     protected_nets = {n for p in results.get("protection_devices", [])
                       for n in (p.get("protected_nets") or [p["protected_net"]])}
 
-    # KH-148: Deduplicate multi-unit ICs (same ref, different units)
+    # Deduplicate multi-unit ICs (same ref, different units)
     unique_ics = get_unique_ics(ctx)
 
     # 1. IC power pin decoupling status
@@ -3831,13 +3830,13 @@ def detect_design_observations(ctx: AnalysisContext, results: dict) -> list[dict
         nn = net_name.upper()
         if "I2S" in nn:
             continue
-        # KH-099: Exclude I2S audio pins (SDAT, LRCK, BCLK, WSEL)
+        # Exclude I2S audio pins (SDAT, LRCK, BCLK, WSEL)
         if any(kw in nn for kw in ("SDAT", "LRCK", "BCLK", "WSEL")):
             continue
-        # KH-086: Exclude SPI nets — sensors with dual-function SDA/SCL pin names
+        # Exclude SPI nets — sensors with dual-function SDA/SCL pin names
         if "SPI" in nn or "MOSI" in nn or "MISO" in nn:
             continue
-        # KH-099: Tighten SDA regex to exclude SDAT (I2S serial data)
+        # Tighten SDA regex to exclude SDAT (I2S serial data)
         is_sda = bool(re.search(r'\bSDA\b(?!T)', nn) or re.search(r'I2C.*SDA|SDA.*I2C', nn))
         is_scl = bool(re.search(r'\bSCL\b', nn) or re.search(r'I2C.*SCL|SCL.*I2C', nn))
         if "SCLK" in nn or "SCK" in nn:
@@ -4228,7 +4227,7 @@ def detect_shorted_two_pin_components(ctx: AnalysisContext) -> list[dict]:
         ))
 
     # Collapse mass hits per net. When the net map has merged two rails
-    # (analyzer connectivity defect -- KH-403/404 class) every decoupling cap
+    # (an analyzer connectivity defect) every decoupling cap
     # on the merged net reads as "shorted": the kicad-cli oracle refuted 205
     # of 243 corpus findings for exactly that reason, essentially all on nets
     # with five or more hits, while genuine shorts come one to four per net.
@@ -4414,12 +4413,12 @@ def audit_rail_sources(ctx: AnalysisContext,
     regulator output mapping is source-less on paper. The solder-jumper
     aware trace: a bridged-by-default jumper joins two nets electrically;
     if the other side has a source, the audited rail is sourced via the
-    jumper (INFO). A rail reached only through an *open* jumper is a HIGH
-    — the board won't power up until the user closes the jumper.
+    jumper (INFO). A rail reached only through an *open* jumper is an
+    error — the board won't power up until the user closes the jumper.
 
     Rule tiers:
       RS-001  rail has no source path at all                    severity=warning
-      RS-002  only source path is through an open jumper        severity=high
+      RS-002  only source path is through an open jumper        severity=error
               (board needs a solder action to function)
       info    sourced directly OR via a bridged jumper         (recorded for audit)
     """
@@ -4506,10 +4505,11 @@ def audit_rail_sources(ctx: AnalysisContext,
         if bridged_sources:
             # Rail has an upstream source via a closed-by-default jumper.
             # That's functional out of the box; record it as info.
-            # rc.2 4.2 split: RS-001 now reserved for "no source at all"
-            # (warning). The "soft" case of sourcing via a bridged jumper
-            # / ferrite gets its own rule_id RS-003 (info) so reviewers
-            # and CI gates can filter the two cases independently.
+            # RS-001 is reserved for "no source at all" (warning). Sourcing
+            # via a bridged jumper gets its own rule_id RS-003 (info) so
+            # reviewers and CI gates can filter the two cases independently.
+            # Only solder jumpers reach this branch; ferrite beads are not
+            # traced here.
             neighbours = ", ".join(f"{n} via {j}" for n, j in bridged_sources)
             findings.append({
                 "detector": "audit_rail_sources",
@@ -4714,7 +4714,7 @@ def detect_label_aliases(ctx: AnalysisContext) -> list[dict]:
 # Module-internal LDO rail names — these nets are fed from an internal LDO
 # inside the IC and only need external decoupling, not an external DC source.
 # Demote PP-001 from error to info for these (KSZ8041, STM32 internal regs,
-# Atmel internal cores, etc.). rc.2 4.1 expansion (SparkFun review).
+# Atmel internal cores, etc.).
 _MODULE_INTERNAL_RAIL_PATTERNS = (
     'VDDPLL',                # PLL-domain internal rail (KSZ8041, STM32, ATmega)
     'VDDA_INT', 'VDDAINT',   # analog-domain internal core (Atmel, NXP)
@@ -4757,7 +4757,7 @@ def audit_power_pin_dc_paths(ctx: AnalysisContext,
       - fuses / polyfuses                               (bridge)
       - solder jumpers with default_state='bridged'    (bridge)
     and REJECT crossing capacitors. If no named power rail is reachable
-    within 2 hops, emit PP-001 at severity=high.
+    within 2 hops, emit PP-001 at severity=error.
     """
     findings: list[dict] = []
     nets = ctx.nets or {}
@@ -4898,7 +4898,6 @@ def audit_power_pin_dc_paths(ctx: AnalysisContext,
             # Module-internal LDO rails (VDDPLL_*, VDDA_INT_*, VDDCORE_*, etc.)
             # are driven by an INTERNAL regulator inside the IC — they don't
             # need an external DC source, only decoupling. Demote to info.
-            # rc.2 4.1 expansion (SparkFun review).
             _is_internal_rail = _is_module_internal_rail(net_name)
             _severity = 'info' if _is_internal_rail else 'error'
             _summary_prefix = (
