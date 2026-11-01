@@ -274,6 +274,16 @@ def get_value(node: list, keyword: str, raw: bool = False) -> str | None:
     return None
 
 
+def _iter_properties(node: list):
+    """Yield ``(name, value)`` for each ``(property ["private"] name value ...)`` child,
+    in file order; the raw tokens, so each reader keeps its own matching policy."""
+    for child in node:
+        if isinstance(child, list) and len(child) >= 3 and child[0] == "property":
+            off = 1 if is_keyword(child[1], "private") else 0
+            if len(child) >= 3 + off:
+                yield child[1 + off], child[2 + off]
+
+
 def get_property(node: list, prop_name: str) -> str | None:
     """Get the value of a named property (exact case match).
 
@@ -282,11 +292,9 @@ def get_property(node: list, prop_name: str) -> str | None:
 
     Example: get_property(symbol, "Reference") -> "C7"
     """
-    for child in node:
-        if isinstance(child, list) and len(child) >= 3 and child[0] == "property":
-            off = 1 if is_keyword(child[1], "private") else 0
-            if len(child) >= 3 + off and child[1 + off] == prop_name:
-                return str(child[2 + off])
+    for name, value in _iter_properties(node):
+        if name == prop_name:
+            return str(value)
     return None
 
 
@@ -303,11 +311,8 @@ def get_properties(node: list) -> dict[str, str]:
         digikey = props.get("digikey") or props.get("digi-key part number") or ""
     """
     result: dict[str, str] = {}
-    for child in node:
-        if isinstance(child, list) and len(child) >= 3 and child[0] == "property":
-            off = 1 if is_keyword(child[1], "private") else 0
-            if len(child) >= 3 + off:
-                result[child[1 + off].lower()] = str(child[2 + off])
+    for name, value in _iter_properties(node):
+        result[name.lower()] = str(value)
     return result
 
 

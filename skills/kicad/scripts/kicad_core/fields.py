@@ -7,7 +7,7 @@ kicad_core; callers import them from kicad_core.fields.
 
 from collections.abc import Iterable, Mapping
 
-from kicad_core.sexp import is_keyword
+from kicad_core.sexp import _iter_properties
 
 # ---------------------------------------------------------------------------
 # Part-number field aliases
@@ -77,13 +77,11 @@ def get_property_ci(node: list, aliases: frozenset):
     kicad_core.sexp.get_property) and returns the first non-empty value whose
     normalized name is in *aliases*, else None.
     """
-    for child in node:
-        if isinstance(child, list) and len(child) >= 3 and child[0] == "property":
-            off = 1 if is_keyword(child[1], "private") else 0
-            if len(child) >= 3 + off and normalize_field_name(child[1 + off]) in aliases:
-                value = str(child[2 + off])
-                if value:
-                    return value
+    for name, value in _iter_properties(node):
+        if normalize_field_name(name) in aliases:
+            value = str(value)
+            if value:
+                return value
     return None
 
 
@@ -109,13 +107,11 @@ def pick_mpn(props: dict) -> str:
 def _get_property_ci_nonblank(node: list, aliases: frozenset):
     """Case/whitespace-insensitive property lookup requiring a non-blank
     value (same walk as get_property_ci)."""
-    for child in node:
-        if isinstance(child, list) and len(child) >= 3 and child[0] == "property":
-            off = 1 if is_keyword(child[1], "private") else 0
-            if len(child) >= 3 + off and normalize_field_name(child[1 + off]) in aliases:
-                value = str(child[2 + off])
-                if value.strip():
-                    return value
+    for name, value in _iter_properties(node):
+        if normalize_field_name(name) in aliases:
+            value = str(value)
+            if value.strip():
+                return value
     return None
 
 
