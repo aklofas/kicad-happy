@@ -1267,23 +1267,9 @@ def main(argv: list[str] | None = None) -> int:
                          and args.analysis_dir)
 
     if analysis_dir_mode:
-        import tempfile
-        from analysis_cache import overwrite_current, CANONICAL_OUTPUTS, get_current_run
-        analysis_dir = args.analysis_dir
-        if not os.path.isabs(analysis_dir):
-            analysis_dir = os.path.abspath(analysis_dir)
-        filename = CANONICAL_OUTPUTS.get("lifecycle", "lifecycle.json")
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            tmp_out = os.path.join(tmp_dir, filename)
-            with open(tmp_out, "w", encoding="utf-8") as f:
-                f.write(output_json)
-            written = overwrite_current(analysis_dir, tmp_dir, source_hashes=None)
-        current = get_current_run(analysis_dir)
-        if current:
-            out_path = os.path.join(current[0], filename)
-        else:
-            out_path = os.path.join(analysis_dir, filename)
-        if written:
+        from output_io import write_derived_output
+        out_path = write_derived_output(args.analysis_dir, output_json, analyzer="lifecycle")
+        if out_path:
             print(f"Audit written to {out_path}", file=sys.stderr)
     elif output_path:
         with open(output_path, "w", encoding="utf-8") as f:
