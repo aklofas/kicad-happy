@@ -1,5 +1,5 @@
 """PCB copper checks: via analysis, thermal vias and thermal-pad vias, copper presence,
-via-in-pad, board-edge via clearance. Verbatim moves from analyze_pcb.py."""
+via-in-pad, board-edge via clearance."""
 
 import math
 import re
@@ -312,7 +312,7 @@ def analyze_vias(vias: dict, footprints: list[dict],
     # EQ-058: area = π(d/2)² (via annular ring)
     all_vias = vias.get("vias", [])
     if not all_vias:
-        # KH-412: a via-less board can still have footprint pad drills
+        # A via-less board can still have footprint pad drills
         # (including degenerate ones, e.g. HamedMasafi/MeloCar remote_3's
         # `(drill 0.00001)` pads) worth surfacing — don't drop them just
         # because there are no vias to analyze.
@@ -331,7 +331,7 @@ def analyze_vias(vias: dict, footprints: list[dict],
         "through": {}, "blind": {}, "buried": {}, "micro": {},
     }
     for v in all_vias:
-        # extract_vias always emits `type` as one of through/blind/buried/micro (KH-318).
+        # extract_vias always emits `type` as one of through/blind/buried/micro.
         vtype = v["type"]
         if vtype not in type_counts:
             vtype = "through"
@@ -492,7 +492,7 @@ def analyze_vias(vias: dict, footprints: list[dict],
     drill_sizes: dict[float, int] = {}
     for v in all_vias:
         d = v.get("drill", 0)
-        # KH-412: degenerate drills (file artefacts) are excluded from
+        # Degenerate drills (file artefacts) are excluded from
         # every minimum/rating, not just the DFM and design-rule checks —
         # they're reported separately via `degenerate_drills` instead.
         if _is_real_drill(d):
@@ -526,14 +526,14 @@ def analyze_vias(vias: dict, footprints: list[dict],
             })
         current_facts["ratings"] = ratings
 
-    # KH-383: footprint-embedded thru_hole/np_thru_hole pad drills (e.g. a
+    # Footprint-embedded thru_hole/np_thru_hole pad drills (e.g. a
     # thermal via pattern baked into a QFN footprint) aren't board vias, but
     # can be smaller than any of them — surface separately as a fact.
     pad_drills = _pad_drills(footprints)
     if pad_drills:
         current_facts["min_pad_drill_mm"] = min(pad_drills)
 
-    # KH-412: sub-0.05mm pad/via drills are file artefacts, not real holes —
+    # Sub-0.05mm pad/via drills are file artefacts, not real holes —
     # list them separately instead of silently dropping them.
     degenerate = _degenerate_drills(footprints, all_vias)
 
@@ -652,13 +652,13 @@ def analyze_thermal_pad_vias(footprints: list[dict], vias: dict,
             # for the rectangular containment check. KiCad writes a pad's
             # (at x y angle) orientation as the ABSOLUTE board orientation
             # -- it already includes the footprint's own rotation, so the
-            # footprint angle must NOT be added again (KH-408; same fix as
-            # CP-003's _pad_sample_points in v2.3.0). This check must undo
+            # footprint angle must NOT be added again (as in
+            # CP-003's _pad_sample_points). This check must undo
             # (not repeat) the local->board placement rotation that pad
             # corners/vias are given elsewhere (board placement uses -angle,
             # e.g. _pad_sample_points), so total_rad is NOT negated here --
             # see _point_in_pad's transposed-matrix form of the same inverse
-            # (VP-001, KH-340) for the equivalent established precedent.
+            # (VP-001) for the equivalent established precedent.
             total_angle = pad.get("angle", 0) or 0
             total_rad = math.radians(total_angle) if total_angle != 0 else 0.0
             cos_a = math.cos(total_rad) if total_angle != 0 else 1.0
@@ -932,7 +932,7 @@ def analyze_thermal_pad_vias(footprints: list[dict], vias: dict,
 
 
 # Generic-passive reference designators (C, R, L, FB + digits, optionally
-# with a hierarchical sheet prefix like "U1/C5"). F10: CP-002 skips these
+# with a hierarchical sheet prefix like "U1/C5"). CP-002 skips these
 # because on a 2-layer board with a GND pour every decoupling cap's VCC
 # pad is "uncovered" — that's expected, not a finding. Components on real
 # touch / antenna pads use TP-prefixed refs or non-passive libraries and
@@ -945,10 +945,10 @@ def _nearest_zone_copper_distance(fp: dict, fp_layer: str, gnd_zones: list,
     """Distance from a footprint's pad outline to the nearest same-layer GND
     copper.
 
-    KH-373: prefers the filled polygon edge (actual copper shape, holes
+    Prefers the filled polygon edge (actual copper shape, holes
     included) over the zone bbox — the bbox was always 0.0 mm for any GND
     pour enclosing the footprint, mislabelled 'deterministic'. Falls back
-    to KH-339's filled_bbox / outline_bbox approximation when polygon
+    to a filled_bbox / outline_bbox approximation when polygon
     data is unavailable. Returns (distance, basis) where basis is
     'filled_polygon', 'filled_bbox', or 'outline_bbox' (None if no
     candidate zone).
@@ -1151,7 +1151,7 @@ def analyze_copper_presence(footprints: list[dict], zones: list[dict],
     }
 
     # The interesting signal: components WITHOUT opposite-layer copper.
-    # F10: emit CP-002 findings only for non-passive references — on a
+    # Emit CP-002 findings only for non-passive references — on a
     # 2-layer board with a GND pour on the opposite side, every decoupling
     # cap's VCC pad would otherwise fire CP-002, drowning the info tier.
     # Actual touch-sensitive / RF components are still surfaced via CP-003.
@@ -1201,7 +1201,7 @@ def analyze_copper_presence(footprints: list[dict], zones: list[dict],
             continue
         lib = fp.get("library", "").lower()
         val = (fp.get("value") or "").lower()
-        # KH-373: a bare "TP" ref prefix is not evidence of a touch pad --
+        # A bare "TP" ref prefix is not evidence of a touch pad --
         # 466/488 of the corpus's CP-003 "touch pad" refs were actually
         # TestPoint:* library parts. Require positive evidence instead
         # (a touch/capacitive-sensing library or value, or a TOUCH/TCH ref);
@@ -1279,7 +1279,7 @@ def analyze_via_in_pad(footprints: list[dict], vias: dict,
             if ((ref, str(pad.get("number", ""))) in thermal_pads
                     or pad.get("_property") == "pad_prop_heatsink"):
                 continue
-            # KH-349: pads "disabled" by clearing all copper layers
+            # Pads "disabled" by clearing all copper layers
             # (e.g. (layers "Dwgs.User")) can't have via-in-pad issues.
             _pad_layers = pad.get("layers") or []
             if _pad_layers and not any(l.endswith(".Cu") for l in _pad_layers):

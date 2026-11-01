@@ -1,5 +1,5 @@
 """PCB geometry primitives: polygon area/containment, zone fills, copper presence,
-pad outlines and sampling. Verbatim moves from analyze_pcb.py; no behaviour change.
+pad outlines and sampling.
 
 ZoneFills / CopperPresence / copper_connected are the spatial index every copper-aware check
 reads; the pad helpers are shared by copper presence, thermal-pad vias and via-in-pad.
@@ -343,7 +343,7 @@ class ZoneFills:
     before the PCB file was saved. Stale fills will produce incorrect results.
 
     `min_edge_distance` additionally maintains a lazily built per-fill
-    segment grid (KH-420) so nearest-edge queries don't need to walk every
+    segment grid so nearest-edge queries don't need to walk every
     vertex of every fill.
     """
 
@@ -398,7 +398,7 @@ class ZoneFills:
 
     def _segment_grid(self, fill_id: int):
         """Lazily built uniform grid: cell -> indices of polygon segments whose
-        bbox overlaps that cell. (cell_size, ncx, ncy, cells). KH-420."""
+        bbox overlaps that cell. (cell_size, ncx, ncy, cells)."""
         g = self._grids.get(fill_id)
         if g is not None:
             return g
@@ -493,7 +493,7 @@ class ZoneFills:
         """Distance from (x, y) to the nearest edge of any filled polygon on
         `layer` (optionally only zones in zone_idxs). inf when none.
 
-        Uses a lazily built per-fill segment grid (KH-420); results are
+        Uses a lazily built per-fill segment grid; results are
         identical to the full walk. The ring search is centered on the
         query point's projection onto the fill's bbox (not the point
         itself) so a point far outside a small/distant fill's bbox still
@@ -799,7 +799,7 @@ def _arc_length_3pt(sx: float, sy: float, mx: float, my: float,
 
 
 def _chain_segments(segs: list, tol: float = 0.02) -> list | None:
-    """Chain undirected 2D segments into closed loops (KH-350).
+    """Chain undirected 2D segments into closed loops.
 
     Returns a list of polygons (each a list of (x, y) vertices, implicit
     closure) or None when any chain fails to close within tolerance —
@@ -963,7 +963,7 @@ def _refined_overlap_mm2(polys_a: list, polys_b: list,
                          ix1: float, iy1: float, ix2: float, iy2: float,
                          samples: int = 24) -> float:
     """Courtyard overlap area inside the box (ix1, iy1)-(ix2, iy2), estimated by grid-sampling
-    membership in both polygon sets (KH-350). A thin overlap can fall between the samples."""
+    membership in both polygon sets. A thin overlap can fall between the samples."""
     w = ix2 - ix1
     h = iy2 - iy1
     if w <= 0 or h <= 0:
@@ -986,7 +986,7 @@ def _pad_on_layer(pad: dict, layer: str, default_layer: str) -> bool:
     wildcards ("*.Cu" = every copper layer; "F&B.Cu" = outer copper), or be
     absent (legacy/minimal footprints -> assume the footprint's own layer).
     Through-hole pads always carry "*.Cu", which is why they were skipped by
-    a literal membership test (KH-413).
+    a literal membership test.
     """
     layers = pad.get("layers")
     if (pad.get("type") == "np_thru_hole" and layer.endswith(".Cu")
@@ -1014,8 +1014,8 @@ def _pad_outline_points(shape: str, hw: float, hh: float) -> list[tuple[float, f
             boundary point in direction θ is the segment end on that side
             plus r·(cos θ, sin θ).
     other:  the box corners + edge midpoints (unchanged behaviour).
-    KH-419 (SacMap TP1: bbox corners of a Ø15 mm pad sat 3.1 mm outside the
-    copper and read an unrelated fill cutout as the clearance).
+    Bbox corners would sit well outside the copper of a large round pad and
+    read an unrelated fill cutout as the clearance.
     """
     if shape == "circle":
         r = max(hw, hh)
@@ -1035,8 +1035,8 @@ def _pad_outline_points(shape: str, hw: float, hh: float) -> list[tuple[float, f
 
 def _pad_sample_points(fp: dict, fp_layer: str) -> list[tuple[float, float]]:
     """Points on the outline of every pad of `fp` on `fp_layer` (8 per pad,
-    rotated by the pad angle; THT pads via their "*.Cu" wildcard, KH-413;
-    circle/oval pads sampled on their true outline, KH-419);
+    rotated by the pad angle; THT pads via their "*.Cu" wildcard;
+    circle/oval pads sampled on their true outline);
     footprint origin when no pad has geometry."""
     pts: list[tuple[float, float]] = []
     for pad in fp.get("pads", []):
@@ -1058,7 +1058,7 @@ def _pad_sample_points(fp: dict, fp_layer: str) -> list[tuple[float, float]]:
 def _point_in_pad(vx: float, vy: float, px: float, py: float,
                   width: float, height: float, shape: str,
                   pad_angle: float) -> bool:
-    """Point-in-pad test for VP-001 (KH-340): circle/oval exact, other
+    """Point-in-pad test for VP-001: circle/oval exact, other
     shapes as a rotated bounding rect. Pad `at` angles in .kicad_pcb are
     absolute (they already include the footprint rotation)."""
     dx = vx - px

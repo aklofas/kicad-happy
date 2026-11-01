@@ -1,7 +1,5 @@
 """PCB result assembly: turns the board read by pcb.pipeline.read_board and the
 intermediates computed by pcb.pipeline.run_analyses into the analyzer output dict.
-Bodies are verbatim from analyze_pcb.py; only the signatures and the input
-unpacking are new.
 """
 
 import math
@@ -257,10 +255,10 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
 
     if pad_distances:
         result["pad_to_pad_distances"] = pad_distances
-    # TH-043-residual: always emit (schema-required); empty list when no power routing.
+    # Always emit (schema-required); empty list when no power routing.
     result["power_net_routing"] = power_routing if power_routing else []
 
-    # KH-393: record which nets classified as power/ground under the
+    # Record which nets classified as power/ground under the
     # resolution actually used, and where that resolution came from.
     result["power_net_resolution"] = {
         "power": sorted({n for n in net_names.values()
@@ -292,7 +290,7 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
         if loop_areas:
             result["switching_loop_areas"] = loop_areas
 
-    # TH-043-residual: always emit (schema-required); domain_count=0 is meaningful info.
+    # Always emit (schema-required); domain_count=0 is meaningful info.
     result["ground_domains"] = ground_domains
     if current_capacity["power_ground_nets"] or current_capacity["narrow_signal_nets"]:
         result["current_capacity"] = current_capacity
@@ -311,7 +309,7 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
 
     # board_metadata + design_rule_compliance are required envelope keys
     # (schema declares them dict not Optional[dict]). Always emit, even
-    # when empty, so schema-vs-emit drift can't surface (TH-043).
+    # when empty, so schema-vs-emit drift can't surface.
     result["board_metadata"] = metadata or {}
     if dimensions:
         result["dimensions"] = dimensions
@@ -408,7 +406,7 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
     # --- Harmonization: collect all findings into top-level list ---
     findings = []
 
-    # Simple list sections (entries have rule_id from Batch 7 migration)
+    # Simple list sections (entries have a rule_id)
     _FINDING_LIST_KEYS = [
         'tombstoning_risk', 'thermal_pad_vias', 'orientation_consistency',
         'silkscreen_pad_overlaps', 'via_in_pad_issues',
@@ -450,7 +448,7 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
     if placement:
         findings.extend(placement.get('courtyard_overlaps', []))
         findings.extend(placement.get('edge_clearance_warnings', []))
-    # TH-043-residual: always emit (schema-required); empty dict when placement/density missing.
+    # Always emit (schema-required); empty dict when placement/density missing.
     result['placement_density'] = (placement or {}).get('density') or {}
 
     thermal_sec = result.pop('thermal_analysis', None)
@@ -503,7 +501,7 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
         })
 
     show_decoded_names(findings)
-    # Deterministic order for byte-identical repeated runs (KH-316).
+    # Deterministic order for byte-identical repeated runs.
     sort_findings(findings)
 
     result['findings'] = findings

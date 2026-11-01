@@ -1,5 +1,5 @@
 """PCB analysis pipeline: the phases analyze_pcb.py ran implicitly, as named functions
-with their real prerequisites passed explicitly (spec §4.3).
+with their real prerequisites passed explicitly.
 
 Phase 1 read_board        — parse + extract (pcb.reader) + the KiCad-10 synthetic net map applied
                             through a per-call PcbReaderState (B1; nothing module-level)
@@ -10,7 +10,6 @@ Phase 3 run_checks        — every check over the board + facts, incl. the seve
 Phase 4 assemble_result   — pcb.presentation: the result dict in its historical key order
 Phase 5 finalize_for_cli  — command-specific annotation (GP-001 debug file, project summary, design
                             intent, stage/audience filters, finding_id)
-Every body is verbatim from analyze_pcb.py; only the seams are new.
 """
 
 import json
@@ -83,7 +82,7 @@ def _power_rails_from_schematic(schematic_data: dict | None) -> set[str]:
     """Extract power rail net names from a schematic analysis JSON.
 
     Reads `statistics.power_rails` — the shape analyze_schematic.py actually
-    emits (list of {name, voltage} dicts) — not a top-level key (KH-393).
+    emits (list of {name, voltage} dicts) — not a top-level key.
     """
     stats = (schematic_data or {}).get("statistics") or {}
     return {r["name"] for r in stats.get("power_rails", [])
@@ -93,7 +92,7 @@ def _power_rails_from_schematic(schematic_data: dict | None) -> set[str]:
 def resolve_power_rails(power_rails: set[str] | None,
                         schematic_data: dict | None) -> tuple[set[str] | None, str]:
     """Return ``(resolved, source)`` with source in ``"cli" | "schematic" | "heuristic"``."""
-    # KH-393: resolve which power-rail override (if any) net classification
+    # Resolve which power-rail override (if any) net classification
     # should use — explicit power_rails > rails auto-read from schematic
     # analysis > name heuristics alone.
     if power_rails:
@@ -402,7 +401,7 @@ def run_facts(board: BoardData, *, include_trace_segments: bool, return_path_rad
             net_classes = extract_net_classes(root)
         pro_rules = extract_pro_design_rules(pro)
         pro_text_vars = extract_pro_text_variables(pro)
-        # KH-362: name the file that was actually loaded above, not an
+        # Name the file that was actually loaded above, not an
         # independent (and previously unsorted, first-glob-wins) rescan.
         project_settings = {
             'source': os.path.basename(
@@ -600,10 +599,9 @@ def analyze_pcb(path: str, *, proximity: bool = False,
         power_rails: Optional explicit set of net names to treat as power
             rails (overrides name heuristics). Takes priority over rails
             auto-read from `schematic_data`; when neither is given, net
-            classification falls back to name-based heuristics alone
-            (KH-393).
+            classification falls back to name-based heuristics alone.
     """
-    # KH-363: one reader state per call — nothing survives into the next analyze_pcb()
+    # One reader state per call — nothing survives into the next analyze_pcb()
     # in the same process (a stale mapping could leak a wrong non-zero net_number).
     state = PcbReaderState()
 

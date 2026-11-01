@@ -77,9 +77,9 @@ def main(argv: list[str] | None = None) -> int:
     _acfg = config.get("analysis")
     analysis_cfg = _acfg if isinstance(_acfg, dict) else {}
 
-    # Build inputs provenance block (Track 1.3).
-    # Resolve canonical analysis_dir ONCE (used for capability_mode_ref).
-    # Includes --analysis-dir, fixing audit Highest-Risk #4 (split with output).
+    # Build inputs provenance block.
+    # Resolve canonical analysis_dir ONCE (used for capability_mode_ref);
+    # --analysis-dir takes precedence over the output file's directory.
     if args.analysis_dir:
         _analysis_dir = Path(args.analysis_dir)
     elif args.output:
@@ -88,7 +88,7 @@ def main(argv: list[str] | None = None) -> int:
         _analysis_dir = Path(analysis_cfg.get("output_dir") or "analysis")
 
     # Resolve capability_mode_ref BEFORE build_inputs so inputs.run_id ==
-    # capability_mode_ref.run_id (audit Highest-Risk #5).
+    # capability_mode_ref.run_id.
     _capability_mode_ref = get_capability_mode_ref(_analysis_dir)
 
     _pcb_path = Path(args.pcb)
@@ -142,7 +142,7 @@ def main(argv: list[str] | None = None) -> int:
         print(format_text(result.get('findings', []), args.audience or 'designer', args.stage))
         return 0
 
-    # Wire capability_mode_ref (Phase 4 spec §3.3).
+    # Wire capability_mode_ref.
     # capability_mode_ref already resolved early — reuse to keep run_id stable.
     result["capability_mode_ref"] = _capability_mode_ref
 

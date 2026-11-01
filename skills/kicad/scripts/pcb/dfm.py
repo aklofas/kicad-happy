@@ -109,7 +109,7 @@ def effective_board_minima(root: list, pro: dict | None) -> dict[str, tuple[floa
     return out
 
 
-# KH-412: drills below this are file artefacts (e.g. `(drill 0.00001)` pads
+# Drills below this are file artefacts (e.g. `(drill 0.00001)` pads
 # in HamedMasafi/MeloCar remote_3.kicad_pcb), not holes a fab will drill.
 # They are excluded from every minimum and listed in
 # via_analysis.degenerate_drills so nothing is silently dropped.
@@ -459,7 +459,7 @@ def _emit_track_spacing_violations(m: dict, limits_std: dict, limits_adv: dict) 
 
 
 def _measure_drills(vias: dict, footprints: list[dict]) -> dict:
-    # --- Drill analysis (via drills + footprint pad drills, KH-383) ---
+    # --- Drill analysis (via drills + footprint pad drills) ---
     all_vias = vias.get("vias", [])
     via_drills = [v["drill"] for v in all_vias if _is_real_drill(v.get("drill", 0))]
     min_drill, drill_source = _min_drill_with_source(via_drills, footprints)
@@ -470,7 +470,7 @@ def _measure_drills(vias: dict, footprints: list[dict]) -> dict:
         # A pad-sourced minimum is reported generically ("Drill") rather than
         # "Via drill" — the smallest drilled hole isn't necessarily a via.
         label = "Via drill" if drill_source == "via" else "Drill"
-        # KH-412: attribute pad-sourced violations to their pad (parameter +
+        # Attribute pad-sourced violations to their pad (parameter +
         # the ref in the message) instead of mislabeling them "via_drill".
         pad_ref = drill_source[4:] if drill_source.startswith("pad ") else ""
         ref_suffix = f" on {pad_ref}" if pad_ref else ""
@@ -1017,7 +1017,7 @@ def analyze_design_rule_compliance(
     (can this be manufactured?), while this checks design intent
     (did I follow my own rules?).
 
-    ``footprints`` (KH-383) lets the min-drill check also see
+    ``footprints`` lets the min-drill check also see
     thru_hole/np_thru_hole pad drills, not just board vias — optional so
     existing callers keep working unchanged.
 
@@ -1103,7 +1103,7 @@ def analyze_design_rule_compliance(
             'message': message,
         }
         if rule_name == 'min_via_drill':
-            # KH-412: attribute a pad-sourced min_via_drill minimum to its pad.
+            # Attribute a pad-sourced min_via_drill minimum to its pad.
             v['drill_source'] = 'pad' if from_pad else 'via'
             if from_pad:
                 v['source_ref'] = src[4:]
@@ -1240,7 +1240,7 @@ def analyze_design_rule_compliance(
                                 f"{required:.3f}mm, actual {actual:.3f}mm"),
                 }
                 if ctype == 'hole_size':
-                    # KH-412: attribute a pad-sourced hole_size bound to its pad.
+                    # Attribute a pad-sourced hole_size bound to its pad.
                     v['drill_source'] = 'pad' if src.startswith('pad ') else 'via'
                     if src.startswith('pad '):
                         v['source_ref'] = src[4:]

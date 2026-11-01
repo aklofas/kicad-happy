@@ -1,6 +1,5 @@
 """PCB placement and assembly checks: decoupling placement, placement/courtyards,
-tombstoning, switching loops, fiducials, test points, orientation, silkscreen overlaps, keepouts.
-Verbatim moves from analyze_pcb.py."""
+tombstoning, switching loops, fiducials, test points, orientation, silkscreen overlaps, keepouts."""
 
 import math
 import re
@@ -68,7 +67,7 @@ def _min_power_pad_distance(ic_fp: dict, cap_fp: dict) -> float:
 
 
 def _nearby_decoupling_caps(ic: dict, caps: list[dict]) -> tuple[list[dict], list[str]]:
-    """Caps within 10 mm that share a non-ground net with the IC (KH-379).
+    """Caps within 10 mm that share a non-ground net with the IC.
     Returns (nearby sorted by distance, refs of <=10 mm caps rejected as
     ground-only)."""
     ic_nets = {p.get("net_name") for p in ic.get("pads", []) if p.get("net_name")}
@@ -166,8 +165,7 @@ def _is_rf_module(fp: dict) -> bool:
 
 
 # Edge-mount footprint categories: by-design at the board edge — PM-002 edge
-# clearance should demote to info (not warning/error) for these. rc.2 4.1
-# expansion (SparkFun review).
+# clearance should demote to info (not warning/error) for these.
 _EDGE_MOUNT_LIBRARY_KEYWORDS = (
     'SMA_Edge',                           # edge-launch SMA antenna connectors
     'USB_C_Receptacle',                   # vertical/board-edge USB-C
@@ -178,7 +176,7 @@ _EDGE_MOUNT_LIBRARY_KEYWORDS = (
     'BarrelJack',                         # DC barrel jack at edge
     'Standoff', 'Mounting',               # mounting features near edge are intentional
     'TerminalBlock',                      # screw terminals at board edge
-    'Phoenix_MSTB',                       # Phoenix MSTB/MSTBA/MSTBVA terminal-block family (F8)
+    'Phoenix_MSTB',                       # Phoenix MSTB/MSTBA/MSTBVA terminal-block family
     'JST_', 'Molex_PicoBlade',            # edge-launched JST/Molex wire-to-board
 )
 
@@ -278,7 +276,7 @@ def _bbox_clearance(fp: dict, bx_min: float, by_min: float,
             cy_box["min_y"] - by_min,
             by_max - cy_box["max_y"],
         )
-    # KH-389: a bbox entirely outside the outline bbox isn't "near the edge" — it's off the board
+    # A bbox entirely outside the outline bbox isn't "near the edge" — it's off the board
     is_off_board = (fp_max_x < bx_min or fp_min_x > bx_max or
                     fp_max_y < by_min or fp_min_y > by_max)
     return min_edge, is_off_board
@@ -316,7 +314,7 @@ def analyze_placement(footprints: list[dict], outline: dict, *,
             oy = min(cy_a["max_y"], cy_b["max_y"]) - max(cy_a["min_y"], cy_b["min_y"])
             if ox >= 0.009 and oy >= 0.009:
                 overlap_mm2 = round(ox * oy, 3)
-                # KH-350: AABB is only a pre-filter — notched courtyards
+                # AABB is only a pre-filter — notched courtyards
                 # (QFP cross shapes) fill their corners in bbox space. With
                 # chained polygons on both parts, test the real shapes; the
                 # area is measured on the unshrunk shapes.
@@ -401,7 +399,7 @@ def analyze_placement(footprints: list[dict], outline: dict, *,
 
             if min_edge < 1.0:  # Flag components within 1mm of edge
                 clearance = round(min_edge, 2)
-                # KH-389: off-board is checked ahead of the RF/edge-mount
+                # Off-board is checked ahead of the RF/edge-mount
                 # exemptions below (those are for by-design partial overhang).
                 # RF module footprints deliberately put the courtyard past the
                 # board edge to expose the antenna to free space (WROOM-1 etc.).
@@ -434,7 +432,7 @@ def analyze_placement(footprints: list[dict], outline: dict, *,
                 _recommendation = (f"Move {fp['reference']} further from board edge "
                                    f"(currently {clearance}mm, recommend >= 1.0mm)")
                 if is_off_board:
-                    # KH-389: fully outside the outline — distinct from an
+                    # Fully outside the outline — distinct from an
                     # overhang, never rendered as a negative distance.
                     _summary = (f"{fp['reference']} placed off-board "
                                 f"({abs(clearance):.1f} mm outside outline)")
@@ -446,7 +444,7 @@ def analyze_placement(footprints: list[dict], outline: dict, *,
                                        f"footprint currently lies completely outside "
                                        f"the outline.")
                 elif clearance < 0:
-                    # KH-344/KH-389: negative clearance means the courtyard
+                    # Negative clearance means the courtyard
                     # overhangs the outline — "move further from edge" is
                     # nonsense there. Applies regardless of the RF/edge-mount
                     # exemption (those only demote severity, not the message).
@@ -1094,7 +1092,7 @@ def analyze_keepout_violations(footprints: list[dict], vias: dict,
         # KiCad rule-area "allowed net" — items on this net are ALLOWED
         # inside the keepout (e.g., an antenna keepout that excludes copper
         # except the antenna's own net). 0 / "" / None means "no exemption,
-        # restrict all items". rc.2 4.1 expansion (SparkFun review).
+        # restrict all items".
         kz_allowed_net_id = kz.get("net") or 0
         kz_allowed_net_name = kz.get("net_name") or ""
 

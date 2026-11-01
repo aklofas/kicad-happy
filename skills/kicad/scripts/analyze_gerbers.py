@@ -932,7 +932,7 @@ def classify_drill_tools(drills: list[dict]) -> dict:
                     if count > 0:
                         via_tools.append({"diameter_mm": dia, "count": count})
                 elif "ComponentDrill" in aper:
-                    # KH-186: KiCad labels all NPTH as ComponentDrill;
+                    # KiCad labels all NPTH as ComponentDrill;
                     # large NPTH holes (>= 2.5mm) are mounting/standoff holes
                     if dia >= 2.5:
                         mounting_count += count
@@ -959,7 +959,7 @@ def classify_drill_tools(drills: list[dict]) -> dict:
                 if count > 0:
                     via_tools.append({"diameter_mm": dia, "count": count})
             elif "ComponentDrill" in aper:
-                # KH-186: large non-plated holes are mounting regardless of X2
+                # Large non-plated holes are mounting regardless of X2
                 if "NonPlated" in aper and dia >= 2.5:
                     mounting_count += count
                     if count > 0:
@@ -1078,7 +1078,7 @@ def check_completeness(gerbers: list[dict], drills: list[dict],
     return {
         "found_layers": sorted(found_layers),
         # expected_layers is schema-required; on the defaults path there's
-        # no .gbrjob to declare expectations, so emit [] honestly (TH-043).
+        # no .gbrjob to declare expectations, so emit [] honestly.
         "expected_layers": [],
         "missing_required": sorted(required - found_layers),
         "missing_recommended": sorted(recommended - found_layers),
@@ -1345,7 +1345,7 @@ def build_pad_summary(gerbers: list[dict], drill_class: dict) -> dict:
 
     for g in gerbers:
         aa = g.get("aperture_analysis", {})
-        # KH-173: prefer by_function_flashes (instance counts) over by_function (unique defs)
+        # Prefer by_function_flashes (instance counts) over by_function (unique defs)
         bf = aa.get("by_function_flashes") or aa.get("by_function", {})
         lt = g.get("layer_type", "")
         if not lt.endswith(".Cu"):
@@ -1377,7 +1377,7 @@ def build_pad_summary(gerbers: list[dict], drill_class: dict) -> dict:
         "smd_source": smd_source,
         # smd_ratio is a schema-required key; emit 0.0 when nothing to
         # ratio (no SMD pads and no plated holes) so the schema-vs-emit
-        # drift can't surface (TH-043).
+        # drift can't surface.
         "smd_ratio": (round(smd / (smd + tht), 2)
                       if smd + tht > 0 else 0.0),
     }
@@ -1661,10 +1661,10 @@ def analyze_gerbers(directory: str, full: bool = False, diagnostics: list | None
                      if g.get("layer_type", "").endswith(".Cu") and "error" not in g]
     layer_count = max(len(copper_layers), stackup_layers)
 
-    # Classify drills first — needed by completeness check (KH-184)
+    # Classify drills first — needed by completeness check
     drill_classification = classify_drill_tools(drills)
 
-    # KH-184: Infer PTH from drill classification when type is unknown
+    # Infer PTH from drill classification when type is unknown
     if drill_classification.get("vias", {}).get("count", 0) > 0:
         for d in drills:
             if d.get("type") == "unknown":
@@ -2009,7 +2009,7 @@ def main(argv: list[str] | None = None) -> int:
     if not args.directory:
         parser.error("the following arguments are required: directory")
 
-    # Build inputs provenance block (Track 1.3). Walk the gerber directory
+    # Build inputs provenance block. Walk the gerber directory
     # and hash every gerber/drill/job file present.
     _gerber_dir = Path(args.directory)
     _gerber_exts = {".gbr", ".gbl", ".gtl", ".gbs", ".gts",
@@ -2029,7 +2029,7 @@ def main(argv: list[str] | None = None) -> int:
                 _gerber_files.append(p)
             elif p.suffix.lower() == ".txt" and _is_excellon_file(p):
                 _gerber_files.append(p)
-    # Resolve canonical analysis_dir ONCE (audit Highest-Risk #4).
+    # Resolve canonical analysis_dir ONCE.
     if args.analysis_dir:
         _analysis_dir = Path(args.analysis_dir)
     elif args.output:
@@ -2037,7 +2037,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         _analysis_dir = Path("analysis")
 
-    # Resolve capability_mode_ref BEFORE build_inputs (audit Highest-Risk #5).
+    # Resolve capability_mode_ref BEFORE build_inputs.
     _capability_mode_ref = get_capability_mode_ref(_analysis_dir)
 
     inputs = build_inputs(
@@ -2061,7 +2061,7 @@ def main(argv: list[str] | None = None) -> int:
     from finding_schema import assign_finding_ids
     assign_finding_ids(result.get("findings", []), "gerber")
 
-    # Wire capability_mode_ref (Phase 4 spec §3.3). Resolved early so
+    # Wire capability_mode_ref. Resolved early so
     # inputs.run_id and capability_mode_ref.run_id match.
     result["capability_mode_ref"] = _capability_mode_ref
 

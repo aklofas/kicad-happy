@@ -1,6 +1,5 @@
 """PCB routing analyses: connectivity, power-net routing, routed distances, return
-path, net lengths/impedance, ground domains, trace proximity, current capacity, layer transitions.
-Verbatim moves from analyze_pcb.py."""
+path, net lengths/impedance, ground domains, trace proximity, current capacity, layer transitions."""
 
 import heapq
 import math
@@ -390,16 +389,15 @@ def analyze_return_path_continuity(tracks, net_names, zones, zone_fills,
             that misses copper on the opposite layer is still credited as
             a hit if it falls inside a via's own antipad — that void is
             expected (KiCad clears copper around a via for isolation), not
-            a reference-plane gap (KH-392). The credit only applies when
+            a reference-plane gap. The credit only applies when
             the via's physical layer span actually reaches the probed
             layer — a blind/buried via doesn't get credit for an antipad
-            on a layer it never touches (KH-397).
+            on a layer it never touches.
         power_rails: Optional set of net names to treat as power/ground
-            regardless of naming heuristics (KH-393).
+            regardless of naming heuristics.
         copper_order: Ordered list of copper layer names (from
-            `_copper_order_from_stackup`) used to test via layer span
-            (KH-397). Missing data falls back to the through-via
-            assumption (never reduces credit).
+            `_copper_order_from_stackup`) used to test via layer span.
+            Missing data falls back to the through-via assumption (never reduces credit).
         stackup: Board stackup (the file's or the inferred one). When given,
             each layer's reference is the nearest layer carrying ground or
             power zone copper (`_build_reference_layer_map`).
@@ -442,7 +440,7 @@ def analyze_return_path_continuity(tracks, net_names, zones, zone_fills,
 
     # Pre-index vias into a coarse grid, once, before the net loop: a via's
     # own antipad on the opposite copper layer is an expected void, not a
-    # reference-plane gap (KH-392). Grid pattern mirrors the proximity grid
+    # reference-plane gap. Grid pattern mirrors the proximity grid
     # in analyze_trace_proximity() to keep the per-sample check O(1) instead
     # of O(via_count).
     ANTIPAD_CLEARANCE = 0.2  # mm — conservative upper bound for default zone clearance
@@ -498,7 +496,7 @@ def analyze_return_path_continuity(tracks, net_names, zones, zone_fills,
                                            zone_idxs=ref_idxs, fills_only=True)
                 antipad_credit = False
                 if not hit and _in_via_antipad(px, py, opp_layer):
-                    hit = True  # expected void — via's own antipad (KH-392)
+                    hit = True  # expected void — via's own antipad
                     antipad_credit = True
                 if not hit:
                     gap_samples += 1
@@ -599,7 +597,7 @@ def _build_reference_layer_map(stackup: list[dict],
 
 
 def _copper_order_from_stackup(stackup: list[dict]) -> list[str]:
-    """Ordered copper layer names from the stackup (KH-397).
+    """Ordered copper layer names from the stackup.
 
     Falls back to simple F.Cu/B.Cu when no usable stackup is available.
     """
@@ -608,7 +606,7 @@ def _copper_order_from_stackup(stackup: list[dict]) -> list[str]:
 
 
 def _via_spans_layer(via_layers: list[str], layer: str, copper_order: list[str]) -> bool:
-    """True when `layer` is within the via's physical span (KH-397). Missing
+    """True when `layer` is within the via's physical span. Missing
     data -> True (through-via assumption)."""
     if not via_layers or len(via_layers) < 2 or not copper_order:
         return True

@@ -364,12 +364,12 @@ def extract_footprints(root: list, diagnostics: list | None = None) -> list[dict
                     if ft[1] == "reference":
                         # Some footprints have no text after the field name —
                         # ft[2] is then an attribute s-expression, not a string.
-                        # Coerce to empty string in that case (KH-326).
+                        # Coerce to empty string in that case.
                         ref = ft[2] if isinstance(ft[2], str) else ""
                     elif ft[1] == "value":
                         value = ft[2] if isinstance(ft[2], str) else ""
 
-        # KH-414: any known MPN alias, case/whitespace-insensitive (was an
+        # Any known MPN alias, case/whitespace-insensitive (was an
         # exact-case lookup of "MPN" / "Mfg Part" only).
         mpn = get_mpn_property(fp) or ""
 
@@ -1755,7 +1755,7 @@ def extract_silkscreen(root: list, footprints: list[dict]) -> dict:
         })
 
     # Check for revision marking
-    # KH-166: check title block rev field first (authoritative source)
+    # Check title block rev field first (authoritative source)
     tb = find_first(root, "title_block")
     tb_rev = get_value(tb, "rev") if tb else None
     has_revision = bool(tb_rev)
@@ -1788,7 +1788,7 @@ def extract_silkscreen(root: list, footprints: list[dict]) -> dict:
         ref = fp.get("reference", "")
         lib = fp.get("library", "").lower()
         val = fp.get("value", "")
-        # KH-102: Defensive coercion — some PCB files have list-typed value fields
+        # Defensive coercion — some PCB files have list-typed value fields
         if isinstance(val, list):
             val = str(val[1]) if len(val) > 1 else ""
         val = val.lower()
