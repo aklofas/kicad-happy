@@ -394,7 +394,7 @@ Detectors run in a specific order because some consume results from earlier dete
 
 ### Shared Helpers
 
-Two helper functions are used by multiple detectors:
+Detectors share one netlist query method and one helper function:
 
 - `ctx.nq.components_on_net(net_name, exclude_refs={ref})` — Returns all components connected to a net, optionally excluding some references. Used to find what else connects to a node.
 - `_classify_load(ctx, net_name, exclude_ref)` — Classifies the load on a net by examining connected component types and net name keywords. Returns labels like `"motor"`, `"relay"`, `"led"`, `"speaker"`, `"resistive"`, `"capacitive"`, etc.
