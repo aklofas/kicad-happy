@@ -58,7 +58,7 @@ outputs:
     description: 'Number of critical and warning rows in the report Findings table (EMC and thermal each add one row per severity)'
     value: ${{ steps.analyze.outputs.findings-count }}
   has-critical:
-    description: 'Whether the report has a critical row (true/false): EMC or thermal errors set it; schematic, PCB and SPICE findings do not'
+    description: 'Whether the report has a critical row (true/false): VD-* derating `error` findings and EMC or thermal `error` findings set it; other schematic and PCB findings and SPICE results do not'
     value: ${{ steps.analyze.outputs.has-critical }}
 
 runs:

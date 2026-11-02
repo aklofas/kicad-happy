@@ -573,32 +573,15 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
 
     # === Collect all findings ===
     sig = _group_findings(sch)
-    vd = sch.get("voltage_derating", {}) if sch else {}
     pc = sch.get("protocol_compliance", {}) if sch else {}
 
-    # Voltage derating issues
-    for issue in vd.get("issues", []):
-        ref = issue.get("ref", "?")
-        ctype = issue.get("component_type", "")
-        rule = issue.get("derating_rule", "")
-        rail = issue.get("rail", "")
-        if ctype == "capacitor":
-            detail = (f"{ref} ({issue.get('value','')}) on {rail}: "
-                      f"{_safe_float(issue.get('rated_voltage'), '.0f')}V rated, "
-                      f"{_safe_float(issue.get('rail_voltage'), '.1f')}V applied — {rule}")
-        elif ctype == "ic":
-            detail = (f"{ref} ({issue.get('value','')}) on {rail}: "
-                      f"abs max {_safe_float(issue.get('abs_max_vin'), '.1f')}V, "
-                      f"applied {_safe_float(issue.get('rail_voltage'), '.1f')}V")
-        elif ctype == "resistor":
-            est = issue.get('estimated_power_w', 0)
-            rat = issue.get('rated_power_w', 0)
-            detail = (f"{ref} ({issue.get('value','')}) {issue.get('package','')}: "
-                      f"{_safe_float(est*1000 if isinstance(est,(int,float)) else est, '.0f')}mW / "
-                      f"{_safe_float(rat*1000 if isinstance(rat,(int,float)) else rat, '.0f')}mW rated")
-        else:
-            detail = f"{ref}: {rule}"
-        findings.append((issue.get("severity", "warning"), detail, "Derating"))
+    # Voltage derating findings: errors are critical rows, warnings are warning rows, info adds none
+    for f in (sch.get("findings", []) if sch else []):
+        if f.get("detector") != "analyze_voltage_derating":
+            continue
+        sev = {"error": "critical", "warning": "warning"}.get(f.get("severity"))
+        if sev:
+            findings.append((sev, f.get("summary", ""), "Derating"))
 
     # Protocol compliance issues (deduplicated)
     for protocol, issue_text in _protocol_issues(pc):
@@ -636,10 +619,6 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
             for ln in ("sda", "scl"):
                 if ln in rt and rt[ln].get("valid_400khz"):
                     verified.append(f"I2C {ln.upper()} rise time {rt[ln]['rise_time_ns']}ns (fast mode OK)")
-
-    caps_ok = vd.get("caps_checked", 0) - len([i for i in vd.get("issues", []) if i.get("component_type") == "capacitor"])
-    if caps_ok > 0:
-        verified.append(f"{caps_ok} cap(s) pass voltage derating")
 
     if pcb:
         pcb_conn = pcb.get("connectivity", {})
@@ -783,30 +762,9 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
         L.append("")
 
     # === Component Health ===
-    if vd or (sch and sch.get("statistics", {}).get("missing_mpn")):
+    if sch and sch.get("statistics", {}).get("missing_mpn"):
         L.append("### Component Health")
         L.append("")
-        if vd:
-            profile = vd.get("derating_profile", derating_profile)
-            caps = vd.get("caps_checked", 0)
-            ics = vd.get("ics_checked", 0)
-            res = vd.get("resistors_checked", 0)
-            issue_count = len(vd.get("issues", []))
-            parts = []
-            if caps: parts.append(f"{caps} caps")
-            if ics: parts.append(f"{ics} ICs")
-            if res: parts.append(f"{res} resistors")
-            status = f"{issue_count} issue(s)" if issue_count else "all pass"
-            L.append(f"- Derating: {', '.join(parts)} checked ({profile}) — {status}")
-
-            od = vd.get("over_designed", [])
-            if od:
-                for item in od[:2]:
-                    L.append(f"- Over-designed: {item.get('ref','')} ({item.get('value','')}) — "
-                             f"{item.get('suggestion','')}" if item.get('suggestion') else
-                             f"- Over-designed: {item.get('ref','')} ({item.get('value','')}) — "
-                             f"margin {_safe_float(item.get('margin_pct'), '.0f')}%")
-
         if sch:
             stats = sch.get("statistics", {})
             missing = stats.get("missing_mpn", [])

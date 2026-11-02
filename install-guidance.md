@@ -630,7 +630,7 @@ The `aklofas/kicad-happy@v3` step exposes these outputs for downstream steps:
 | `schematic-json` | Path to schematic analysis JSON |
 | `pcb-json` | Path to PCB analysis JSON (if PCB exists) |
 | `findings-count` | Number of critical and warning rows in the report's Findings table (EMC and thermal each add one row per severity, however many findings it holds) |
-| `has-critical` | `true` or `false` (a string): whether the report has a critical row. EMC or thermal `error` findings set it; schematic findings (including VD derating), PCB findings and SPICE results do not |
+| `has-critical` | `true` or `false` (a string): whether the report has a critical row. VD-* derating `error` findings and EMC or thermal `error` findings set it; other schematic and PCB findings and SPICE results do not |
 
 ---
 
