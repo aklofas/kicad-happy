@@ -8,10 +8,6 @@ Power rails: +3V3, +5V
 
 | Severity | Issue | Section |
 |----------|-------|---------|
-| CRITICAL | U1 (MCU) — abs max 3.6V | Voltage Derating |
-| WARNING | C1 (10uF) — 50% derating | Voltage Derating |
-| WARNING | R1 (10R) —  | Voltage Derating |
-| WARNING | L1 () — saturation margin | Voltage Derating |
 | WARNING | pull-up too weak | Protocol Compliance |
 | WARNING | bus too long | Protocol Compliance |
 | WARNING | address clash | Protocol Compliance |
@@ -22,18 +18,7 @@ Power rails: +3V3, +5V
 
 **Sourcing:** 12/12 components have MPNs (100%)
 
-## Power Analysis
-
-### Voltage Derating
-
-Profile: **commercial**. Checked: 3 caps, 0 ICs, 0 resistors.
-
-| Ref | Value | Type | Rail | Applied | Rated | Margin | Severity |
-|-----|-------|------|------|---------|-------|--------|----------|
-| C1 | 10uF | capacitor | +5V | 5.0 | 6.3 | —% | warning |
-| U1 | MCU | ic | +3V3 | 3.3 | — | —% | critical |
-| R1 | 10R | resistor |  | — | 0.1 | —% | warning |
-| L1 |  | inductor |  | — | — | —% |  |
+## Signal Analysis Review
 
 ## Design Analysis
 

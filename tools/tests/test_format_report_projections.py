@@ -14,18 +14,16 @@ SCHEMATIC = {
     "file": "legacy/board.kicad_sch",
     "statistics": {"total_components": 12, "unique_parts": 7, "total_nets": 9,
                    "total_no_connects": 1, "power_rails": ["+3V3", "+5V"]},
-    "voltage_derating": {
-        "derating_profile": "commercial", "caps_checked": 3,
-        "issues": [
-            {"ref": "C1", "component_type": "capacitor", "value": "10uF", "rail": "+5V",
-             "rated_voltage": 6.3, "rail_voltage": 5.0, "derating_rule": "50% derating", "severity": "warning"},
-            {"ref": "U1", "component_type": "ic", "value": "MCU", "rail": "+3V3",
-             "abs_max_vin": 3.6, "rail_voltage": 3.3, "severity": "critical"},
-            {"ref": "R1", "component_type": "resistor", "value": "10R", "package": "0402",
-             "estimated_power_w": 0.1, "rated_power_w": 0.063, "severity": "warning"},
-            {"ref": "L1", "component_type": "inductor", "derating_rule": "saturation margin"},
-        ],
-    },
+    "findings": [
+        {"detector": "analyze_voltage_derating", "rule_id": "VD-001", "severity": "warning",
+         "summary": "C1 (10uF) has marginal voltage derating on +5V (5.0V on 6V cap)"},
+        {"detector": "analyze_voltage_derating", "rule_id": "VD-002", "severity": "error",
+         "summary": "U1 exceeds datasheet absolute-max voltage on +3V3 (3.3V > 3.6V)"},
+        {"detector": "analyze_voltage_derating", "rule_id": "VD-003", "severity": "warning",
+         "summary": "R1 (10R) 0402 has marginal power derating (100mW / 63mW rated)"},
+        {"detector": "analyze_voltage_derating", "rule_id": "VD-004", "severity": "info",
+         "summary": "C2 is over-designed"},
+    ],
     "protocol_compliance": {"findings": [
         {"protocol": "i2c", "sda_net": "SDA", "issues": ["pull-up too weak", "bus too long"],
          "devices": [{"ref": "U1"}, {"reference": "U2"}, "U3", {"value": "x"}, "U5", "U6"],

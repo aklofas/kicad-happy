@@ -2,16 +2,15 @@
 
 **board.kicad_sch** — 12 components, 7 unique, 9 nets, 2 power rails
 
-> 1 critical · 8 warnings · 3 verified
+> 1 critical · 7 warnings · 2 verified
 
 ### Findings
 
 | | Issue | Source |
 |---|---|---|
-| 🔴 | U1 (MCU) on +3V3: abs max 3.6V, applied 3.3V | Derating |
-| ⚠️ | C1 (10uF) on +5V: 6V rated, 5.0V applied — 50% derating | Derating |
-| ⚠️ | R1 (10R) 0402: 100mW / 63mW rated | Derating |
-| ⚠️ | L1: saturation margin | Derating |
+| 🔴 | U1 exceeds datasheet absolute-max voltage on +3V3 (3.3V > 3.6V) | Derating |
+| ⚠️ | C1 (10uF) has marginal voltage derating on +5V (5.0V on 6V cap) | Derating |
+| ⚠️ | R1 (10R) 0402 has marginal power derating (100mW / 63mW rated) | Derating |
 | ⚠️ | pull-up too weak | I2C |
 | ⚠️ | bus too long | I2C |
 | ⚠️ | address clash | I2C |
@@ -24,16 +23,10 @@
 - **I2C** (U7): pull-ups missing
 - **SPI**: bus too long
 
-### Component Health
-
-- Derating: 3 caps checked (commercial) — 4 issue(s)
-- MPN coverage: 12/12 (100%)
-
-<details><summary>Verified (3 checks passed)</summary>
+<details><summary>Verified (2 checks passed)</summary>
 
 - I2C pull-ups present
 - I2C SDA rise time 250ns (fast mode OK)
-- 2 cap(s) pass voltage derating
 
 </details>
 
