@@ -137,7 +137,7 @@ def detect_my_circuit(ctx: AnalysisContext, prior_results=None) -> list[dict]:
         if not _is_candidate(comp):
             continue
         # 2. Trace connected nets to find related components
-        neighbors = _get_net_components(ctx, net_name, comp["reference"])
+        neighbors = ctx.nq.components_on_net(net_name, exclude_refs={comp["reference"]})
         # 3. Compute derived values (voltage, frequency, current, etc.)
         # 4. Check against rules/thresholds
         # 5. Emit a rich finding (factory enforces severity / confidence / evidence_source enums)

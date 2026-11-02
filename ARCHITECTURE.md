@@ -93,7 +93,7 @@ One row per module outside the packages. "Imports" lists only in-repo modules, a
 | `netlist_queries.py` | `NetlistQueries` multi-hop net tracing | `kicad_types` (type-checking only) |
 | `detector_helpers.py` | helpers shared by the detector modules | `kicad_types` |
 | `signal_detectors.py` | core signal-path detectors; the regulator detector is `_screen_regulator_candidate` then `_build_regulator_record` per IC, followed by `_cross_reference_feedback_dividers`, `_attach_regulator_capacitors` and `_estimate_regulator_dissipation` | `kicad_core`, `kicad_types`, `detector_helpers`, `finding_schema`, `lookup_helpers` |
-| `domain_detectors.py` | domain-specific detectors (interfaces, power path, sensors, audio, LEDs, ...) | `signal_detectors`, `kicad_core`, `kicad_types`, `detector_helpers`, `finding_schema` |
+| `domain_detectors.py` | domain-specific detectors (interfaces, power path, sensors, audio, LEDs, ...) | `kicad_core`, `kicad_types`, `detector_helpers`, `finding_schema` |
 | `validation_detectors.py` | validation detectors (PU, VM, PR, PS-001, LR, FS) | `kicad_core`, `kicad_types`, `detector_helpers`, `finding_schema`, `lookup_helpers`, `datasheet_features` |
 | `lookup_detectors.py` | datasheet-backed detectors over `lookup()` | `finding_schema`, `lookup_helpers` |
 | `lookup_helpers.py` | detector-side `lookup()` glue | `datasheet_types` |

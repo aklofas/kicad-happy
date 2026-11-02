@@ -66,22 +66,6 @@ class NoFacades(unittest.TestCase):
         self.assertEqual(tc["rule_id"], "LD-DET")
         self.assertEqual(tc["led_driver"]["led_ref"], "D1")
 
-    def test_get_net_components_uses_the_query_layer_only(self):
-        from types import SimpleNamespace
-        from unittest import mock
-        import signal_detectors
-
-        class _NoNets(dict):
-            def __getitem__(self, key):
-                raise AssertionError("read ctx.nets directly")
-            get = items = values = __getitem__
-
-        nq = mock.Mock()
-        nq.components_on_net.return_value = ["sentinel"]
-        ctx = SimpleNamespace(nq=nq, nets=_NoNets())
-        self.assertEqual(signal_detectors._get_net_components(ctx, "N1", "R1"), ["sentinel"])
-        nq.components_on_net.assert_called_once_with("N1", exclude_refs={"R1"})
-
 
 if __name__ == "__main__":
     unittest.main()

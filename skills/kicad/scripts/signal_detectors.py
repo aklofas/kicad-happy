@@ -48,11 +48,6 @@ _BOOTSTRAP_PIN_TOKENS = frozenset({"BST", "BOOT", "BOOTSTRAP", "CBST"})
 _VOUT_PIN_NAMES = frozenset({"VOUT", "VO", "OUT", "OUTPUT"})
 
 
-def _get_net_components(ctx: AnalysisContext, net_name, exclude_ref):
-    """Get components on a net excluding the given component."""
-    return ctx.nq.components_on_net(net_name, exclude_refs={exclude_ref})
-
-
 def _classify_load(ctx: AnalysisContext, net_name, exclude_ref):
     """Classify what's on a net as a load type.
 
@@ -70,7 +65,7 @@ def _classify_load(ctx: AnalysisContext, net_name, exclude_ref):
             if any(kw in nu for kw in keywords):
                 return load_type
 
-    comps = _get_net_components(ctx, net_name, exclude_ref)
+    comps = ctx.nq.components_on_net(net_name, exclude_refs={exclude_ref})
     types = {c["type"] for c in comps}
     if "inductor" in types:
         return "inductive"
@@ -3313,7 +3308,7 @@ def detect_transistor_circuits(ctx: AnalysisContext, matched_fets: set, fet_pins
                              ("p-channel", "p-mosfet", "pmos", "p-mos"))
 
         # Gate drive analysis
-        gate_comps = _get_net_components(ctx, gate_net, ref) if gate_net else []
+        gate_comps = ctx.nq.components_on_net(gate_net, exclude_refs={ref}) if gate_net else []
         gate_ics = [c for c in gate_comps if c["type"] == "ic"]
 
         # When gate is on a power rail, don't enumerate all resistors
@@ -3349,7 +3344,7 @@ def detect_transistor_circuits(ctx: AnalysisContext, matched_fets: set, fet_pins
                 break
 
         # Drain load analysis
-        drain_comps = _get_net_components(ctx, drain_net, ref) if drain_net else []
+        drain_comps = ctx.nq.components_on_net(drain_net, exclude_refs={ref}) if drain_net else []
 
         if is_pchannel and ctx.is_power_net(source_net):
             load_type = _classify_load(ctx, drain_net, ref) if drain_net else "unknown"
@@ -3385,7 +3380,7 @@ def detect_transistor_circuits(ctx: AnalysisContext, matched_fets: set, fet_pins
                 r_n1, r_n2 = ctx.get_two_pin_nets(dc["reference"])
                 other = r_n2 if r_n1 == drain_net else r_n1
                 if other and other != source_net and not ctx.is_power_net(other):
-                    for sc in _get_net_components(ctx, other, dc["reference"]):
+                    for sc in ctx.nq.components_on_net(other, exclude_refs={dc["reference"]}):
                         if sc["type"] == "capacitor":
                             c_n1, c_n2 = ctx.get_two_pin_nets(sc["reference"])
                             c_other = c_n2 if c_n1 == other else c_n1
@@ -3407,7 +3402,7 @@ def detect_transistor_circuits(ctx: AnalysisContext, matched_fets: set, fet_pins
         # Source sense resistor
         source_sense = None
         if source_net and not ctx.is_ground(source_net):
-            source_comps = _get_net_components(ctx, source_net, ref)
+            source_comps = ctx.nq.components_on_net(source_net, exclude_refs={ref})
             for sc in source_comps:
                 if sc["type"] == "resistor":
                     r_n1, r_n2 = ctx.get_two_pin_nets(sc["reference"])
@@ -3426,7 +3421,7 @@ def detect_transistor_circuits(ctx: AnalysisContext, matched_fets: set, fet_pins
         # both source and drain to different power rails
         topology = None
         if not is_pchannel and gate_net and ctx.is_power_net(gate_net):
-            source_comps_ls = _get_net_components(ctx, source_net, ref) if source_net else []
+            source_comps_ls = ctx.nq.components_on_net(source_net, exclude_refs={ref}) if source_net else []
             drain_comps_ls = drain_comps
             src_pullup_rail = None
             drn_pullup_rail = None
@@ -3504,7 +3499,7 @@ def detect_transistor_circuits(ctx: AnalysisContext, matched_fets: set, fet_pins
         emitter_net = pins.get("emitter")
 
         # Base drive analysis
-        base_comps = _get_net_components(ctx, base_net, ref) if base_net else []
+        base_comps = ctx.nq.components_on_net(base_net, exclude_refs={ref}) if base_net else []
         base_resistors = [c for c in base_comps if c["type"] == "resistor"]
         base_ics = [c for c in base_comps if c["type"] == "ic"]
         base_pulldown = None
@@ -3524,7 +3519,7 @@ def detect_transistor_circuits(ctx: AnalysisContext, matched_fets: set, fet_pins
         # Emitter resistor (degeneration)
         emitter_resistor = None
         if emitter_net and not ctx.is_ground(emitter_net):
-            emitter_comps = _get_net_components(ctx, emitter_net, ref)
+            emitter_comps = ctx.nq.components_on_net(emitter_net, exclude_refs={ref})
             for ec in emitter_comps:
                 if ec["type"] == "resistor":
                     r_n1, r_n2 = ctx.get_two_pin_nets(ec["reference"])
@@ -3636,7 +3631,7 @@ def enrich_transistor_led_drivers(ctx: AnalysisContext, transistor_circuits: lis
         if not load_net:
             continue
         # Look at components on the load net for a resistor
-        load_comps = _get_net_components(ctx, load_net, tc["reference"])
+        load_comps = ctx.nq.components_on_net(load_net, exclude_refs={tc["reference"]})
         for dc in load_comps:
             if dc["type"] != "resistor":
                 continue
@@ -3654,7 +3649,7 @@ def enrich_transistor_led_drivers(ctx: AnalysisContext, transistor_circuits: lis
             if not other_net or other_net == load_net:
                 continue
             # Check if an LED is on that net
-            other_comps = _get_net_components(ctx, other_net, dc["reference"])
+            other_comps = ctx.nq.components_on_net(other_net, exclude_refs={dc["reference"]})
             for oc in other_comps:
                 if oc["type"] == "led":
                     # Verify LED actually has a pin on other_net

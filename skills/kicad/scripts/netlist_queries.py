@@ -54,7 +54,7 @@ class NetlistQueries:
                           comp_type: str | None = None) -> list[dict]:
         """All components on a net, optionally filtered by type.
 
-        Returns enriched dicts matching _get_net_components format:
+        Returns enriched dicts:
         {reference, type, value, pin_name, pin_number}.
         One entry per pin (not per component) for components with
         multiple pins on the same net.

@@ -396,7 +396,7 @@ Detectors run in a specific order because some consume results from earlier dete
 
 Two helper functions are used by multiple detectors:
 
-- `_get_net_components(ctx, net_name, exclude_ref)` — Returns all components connected to a net, optionally excluding one reference. Used to find what else connects to a node.
+- `ctx.nq.components_on_net(net_name, exclude_refs={ref})` — Returns all components connected to a net, optionally excluding some references. Used to find what else connects to a node.
 - `_classify_load(ctx, net_name, exclude_ref)` — Classifies the load on a net by examining connected component types and net name keywords. Returns labels like `"motor"`, `"relay"`, `"led"`, `"speaker"`, `"resistive"`, `"capacitive"`, etc.
 
 ### Detector Details

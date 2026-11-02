@@ -18,7 +18,6 @@ from kicad_types import AnalysisContext
 from kicad_core.parts import lookup_regulator_vref
 from kicad_core.values import format_frequency, parse_value
 from kicad_core.netnames import parse_voltage_from_net_name
-from signal_detectors import _get_net_components
 from detector_helpers import (is_led_rail, led_forward_voltage, led_string, match_family,
                               match_ic_keywords, get_unique_ics, get_pin_net)
 from finding_schema import make_finding, make_provenance
@@ -48,7 +47,7 @@ def detect_buzzer_speakers(ctx: AnalysisContext, transistor_circuits: list[dict]
                 break
         if not signal_net:
             continue
-        net_comps = _get_net_components(ctx, signal_net, ref)
+        net_comps = ctx.nq.components_on_net(signal_net, exclude_refs={ref})
         driver_ic_ref = None
         series_resistor = None
         has_transistor_driver = False
@@ -61,7 +60,7 @@ def detect_buzzer_speakers(ctx: AnalysisContext, transistor_circuits: list[dict]
                 r_n1, r_n2 = ctx.get_two_pin_nets(nc["reference"])
                 r_other = r_n2 if r_n1 == signal_net else r_n1
                 if r_other:
-                    for rc in _get_net_components(ctx, r_other, nc["reference"]):
+                    for rc in ctx.nq.components_on_net(r_other, exclude_refs={nc["reference"]}):
                         if rc["type"] == "ic":
                             driver_ic_ref = rc["reference"]
             elif nc["type"] == "transistor":
