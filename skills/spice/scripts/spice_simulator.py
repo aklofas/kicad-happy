@@ -468,8 +468,12 @@ def _decode_native_output(raw):
 
 def _kill_process_tree(pid):
     if _on_windows():
+        system_root = os.environ.get("SystemRoot", r"C:\Windows")
         subprocess.run(
-            ["taskkill", "/F", "/T", "/PID", str(pid)],
+            [
+                os.path.join(system_root, "System32", "taskkill.exe"),
+                "/F", "/T", "/PID", str(pid),
+            ],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             check=False,

@@ -43,7 +43,7 @@ The runner resolves the deck to an absolute path but invokes PSpice (`pspice.exe
 
 PSpice writes `<deck-stem>.out` beside the deck and may overwrite an existing file with that name; it also writes a `<deck-stem>.json` sidecar there. The runner never deletes the native output. Because of that, it exits with a usage error (code 2, before launching anything) when `--output` resolves to the deck, the `.out` file, or — for PSpice — the `.json` sidecar (compared case-insensitively on Windows), when `--output` is a directory or its directory does not exist, or when a PSpice deck itself has a `.out` suffix. The result JSON is written atomically.
 
-`--timeout` defaults to 600 seconds, since real PSpice runs can take minutes. The simulator's stdout and stderr are discarded (the native `.out` is the record) so that child processes cannot hold pipes open; on timeout the runner kills the simulator's entire process tree (`taskkill /F /T` on Windows, a process-group kill elsewhere) and returns within the timeout plus a short grace period.
+`--timeout` defaults to 600 seconds, since real PSpice runs can take minutes. The simulator's stdout and stderr are discarded (the native `.out` is the record) so that child processes cannot hold pipes open; on timeout the runner kills the simulator's entire process tree (`%SystemRoot%\System32\taskkill.exe /F /T` on Windows, a process-group kill elsewhere) and returns within the timeout plus a short grace period.
 
 Resolve any pending PSpice dialogs or interrupted simulation-queue entries before starting a batch run. PSpice can display an interactive queue prompt after an interrupted run; the runner does not dismiss dialogs or change application preferences, so a blocked run returns a timeout failure.
 

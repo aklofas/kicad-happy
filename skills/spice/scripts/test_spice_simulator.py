@@ -776,6 +776,22 @@ class TestPspiceRun(unittest.TestCase):
             "grandchild survived the timeout",
         )
 
+    def test_windows_tree_kill_uses_system_taskkill_path(self):
+        with (
+            patch("spice_simulator._on_windows", return_value=True),
+            patch.dict(os.environ, {"SystemRoot": r"D:\Win"}, clear=False),
+            patch("spice_simulator.subprocess.run") as run,
+        ):
+            spice_simulator._kill_process_tree(1234)
+
+        self.assertEqual(
+            run.call_args.args[0],
+            [
+                os.path.join(r"D:\Win", "System32", "taskkill.exe"),
+                "/F", "/T", "/PID", "1234",
+            ],
+        )
+
     def test_missing_executable_returns_actionable_failure(self):
         with patch.object(self.backend, "find", return_value=None):
             success, stdout, diagnostic = self.backend.run(
