@@ -486,7 +486,7 @@ def _kill_process_tree(pid):
 
 
 def _run_process_tree(command, cwd, timeout):
-    """Run a command and return its exit code, killing its tree on timeout.
+    """Run a command and return its exit code, killing its tree on any error.
 
     Output goes to the null device rather than pipes, so a child process
     that inherits the handles cannot keep the call blocked past the timeout.
@@ -505,7 +505,9 @@ def _run_process_tree(command, cwd, timeout):
     ) as process:
         try:
             return process.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
+        except BaseException:
+            # Covers Ctrl-C too: the child is in its own session/group and
+            # would otherwise outlive the runner.
             _kill_process_tree(process.pid)
             process.kill()
             process.wait()

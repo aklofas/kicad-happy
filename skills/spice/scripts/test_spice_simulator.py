@@ -776,6 +776,32 @@ class TestPspiceRun(unittest.TestCase):
             "grandchild survived the timeout",
         )
 
+    def test_interrupt_kills_the_whole_process_tree(self):
+        heartbeat = self.stub_dir / "heartbeat.txt"
+        original_wait = subprocess.Popen.wait
+
+        def interrupted_wait(process, timeout=None):
+            if timeout is None:
+                return original_wait(process)
+            deadline = time.perf_counter() + 30
+            while not heartbeat.exists() and time.perf_counter() < deadline:
+                time.sleep(0.05)
+            raise KeyboardInterrupt
+
+        with patch.object(subprocess.Popen, "wait", interrupted_wait):
+            with self.assertRaises(KeyboardInterrupt):
+                self._run(sleep=60, heartbeat=str(heartbeat))
+
+        self.assertTrue(heartbeat.exists(), "grandchild never started")
+        time.sleep(0.3)
+        last_beat = heartbeat.stat().st_mtime_ns
+        time.sleep(0.5)
+        self.assertEqual(
+            heartbeat.stat().st_mtime_ns,
+            last_beat,
+            "grandchild survived the interrupt",
+        )
+
     def test_windows_tree_kill_uses_system_taskkill_path(self):
         with (
             patch("spice_simulator._on_windows", return_value=True),
