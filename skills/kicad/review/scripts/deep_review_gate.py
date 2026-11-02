@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Evidence gate for Deep Review findings (v2.0 spec §3.D).
+"""Evidence gate for Deep Review findings.
 
 One command, zero ceremony:
 

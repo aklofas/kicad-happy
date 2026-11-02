@@ -255,7 +255,7 @@ class SchematicEnvelope:
                        "footprint/datasheet/description/mpn/manufacturer/"
                        "distributor SKUs/geometry/uuid/type/parsed_value "
                        "plus internal bookkeeping (_sheet, pin_nets, "
-                       "pin_uuids). Tightens to a typed Component in v1.5."})
+                       "pin_uuids)."})
     nets: dict[str, NetEntry] = field(metadata={
         "description": "Net connectivity map keyed by unique net key — the "
                        "display name, sheet-qualified as /<sheet>/<name> "

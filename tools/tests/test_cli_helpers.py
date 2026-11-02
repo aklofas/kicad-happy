@@ -30,7 +30,7 @@ class CliHelperTests(unittest.TestCase):
         self.assertEqual(acts["stage"].choices, ['schematic', 'layout', 'pre_fab', 'bring_up'])
         self.assertEqual(acts["audience"].help, 'Audience level for summaries and --text output')
         self.assertEqual(acts["output"].option_strings, ["--output", "-o"])
-        self.assertEqual(acts["only_deterministic"].help, 'Accepted for consistency; analyzers never write llm_* fields. Honored by downstream consumers (Phase 4 spec §3.4).')
+        self.assertEqual(acts["only_deterministic"].help, 'Accepted for consistency; analyzers never write llm_* fields. Honored by downstream consumers.')
 
     def test_consumer_only_deterministic_text(self):
         p = argparse.ArgumentParser()

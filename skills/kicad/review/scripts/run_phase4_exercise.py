@@ -155,7 +155,7 @@ def step_3_build_review_plan(fixture_dir: Path):
     print(f"  plan written: {plan_path}")
     print("[step 3] OK — dispatch design_context per "
           "skills/datasheets/references/dispatch-claude-code.md, Dispatching review tasks")
-    print("  Expected output from the dispatch (v2.0: reviewer task retired, spec §5):")
+    print("  Expected output from the dispatch:")
     print(f"    {analysis_dir / 'design_context.json'}")
 
 
@@ -194,7 +194,7 @@ def step_4_merge_and_assert_invariants(fixture_dir: Path):
         raw = json.loads(raw_path.read_text())
         if strip_llm_overlays(merged) != raw:
             raise AssertionError(f"HI-3 violation on {name}.json")
-    print("[step 4] OK — HI-3 round-trip byte-identical, _merge_report inspected")
+    print("[step 4] OK — HI-3 round-trip equals the raw output, _merge_report inspected")
 
 
 def step_5_dual_mode_consumer_contract(fixture_dir: Path):
@@ -252,7 +252,7 @@ STEPS = {
 
 def main():
     p = argparse.ArgumentParser(
-        description="Phase 4 end-to-end exercise runner (4d-active).")
+        description="End-to-end review-layer exercise runner.")
     p.add_argument("--fixture", type=Path, default=DEFAULT_FIXTURE_DIR,
                    help=f"Fixture directory (default: {DEFAULT_FIXTURE_DIR})")
     p.add_argument("--steps", nargs="+", default=list(STEPS.keys()),

@@ -19,7 +19,7 @@ python3 skills/emc/scripts/analyze_emc.py --schema
 python3 skills/kicad/scripts/cross_analysis.py --schema
 ```
 
-Schema versions (`schema_version`; the "v1.4" and "v1.5" labels below) are separate from the plugin version.
+Schema versions (`schema_version`; the "v1.4" labels below) are separate from the plugin version.
 
 v1.4 schema-break notes:
 - Output of `--schema` is real JSON Schema Draft 2020-12 (prior: descriptive-string dict).
@@ -71,8 +71,7 @@ Shape is declared by the per-analyzer envelope in `envelopes/*.py` or
 `thermal_score`, gerber `layers` / `drills` / `completeness`, etc.
 
 Several Tier 2 fields are currently typed as loose `dict` or
-`list[dict]` with `TODO(v1.5)` markers. Consumers that need stable
-shapes from these should wait for the v1.5 per-rule_id tightening pass.
+`list[dict]`; the schema does not constrain their item shapes.
 
 ### Tier 3 — Compatibility residue
 
@@ -109,7 +108,7 @@ Output of `python3 skills/kicad/scripts/analyze_schematic.py <file>.kicad_sch`.
 | `findings` | `list[Finding]` | yes | All findings (flat, rich-finding format). |
 | `assessments` | `list[Assessment]` | yes | Informational assessments (empty for schematic at v1.4; reserved for future measurement-style records). |
 | `bom` | `list[BomEntry]` | yes | Deduplicated BOM rows. |
-| `components` | `list[dict]` | yes | Every non-power component as a dict. Shape is effectively open: reference/value/lib_id/footprint/datasheet/description/mpn/manufacturer/distributor SKUs/geometry/uuid/type/parsed_value plus internal bookkeeping (_sheet, pin_nets, pin_uuids). Tightens to a typed Component in v1.5. |
+| `components` | `list[dict]` | yes | Every non-power component as a dict. Shape is effectively open: reference/value/lib_id/footprint/datasheet/description/mpn/manufacturer/distributor SKUs/geometry/uuid/type/parsed_value plus internal bookkeeping (_sheet, pin_nets, pin_uuids). |
 | `nets` | `dict[str, NetEntry]` | yes | Net connectivity map keyed by unique net key — the display name, sheet-qualified as /<sheet>/<name> when distinct nets share a bare name. |
 | `subcircuits` | `list[dict]` | yes | IC neighbourhoods, one entry per IC: [{center_ic, ic_value, ic_mpn, ic_lib_id, neighbor_components: [{ref, value, type}], description}]; neighbours share a non-power, non-ground net with the IC. Not hierarchical sheets; detected circuits are in findings[]. |
 | `ic_pin_analysis` | `list[dict]` | yes | Per-IC pin mappings. Each entry carries reference, value, type, lib_id, mpn, description, datasheet, function, total_pins, unconnected_pins, pins[], power_pins[], signal_pins[], decoupling_caps_by_rail. Covers type in {ic, connector, crystal, oscillator}; transistors live in transistor_pin_analysis[]. |
@@ -191,7 +190,7 @@ Output of `python3 skills/kicad/scripts/analyze_pcb.py <file>.kicad_pcb`.
 | `nets` | `dict[str, string]` | yes | Net ID (as string) -> net name. |
 | `net_name_to_id` | `dict[str, int]` | yes | Net name -> integer net ID. Reverse of nets. |
 | `layers` | `list[dict]` | yes | Layer stackup entries: [{number, name, type, alias}]. |
-| `footprints` | `list[dict]` | yes | Every placed footprint. Fields include reference, value, library, footprint, layer, x, y, angle, type, mpn, manufacturer, description, pad_count, courtyard, courtyard_poly, pad_nets, connected_nets, sch_path, sheetname, sheetfile. Tightens to typed Footprint in v1.5. |
+| `footprints` | `list[dict]` | yes | Every placed footprint. Fields include reference, value, library, footprint, layer, x, y, angle, type, mpn, manufacturer, description, pad_count, courtyard, courtyard_poly, pad_nets, connected_nets, sch_path, sheetname, sheetfile. |
 | `zones` | `list[dict]` | yes | Copper zones: [{net, net_name, layers, clearance, min_thickness, thermal_gap, thermal_bridge_width, outline_points, outline_area_mm2, is_filled, outline_bbox}]. |
 | `keepout_zones` | `list[dict]` | yes | Keepout zones: [{name, layers, restrictions, bounding_box, area_mm2, nearby_components}]. |
 | `net_classes` | `list[dict]` | yes | Net class definitions: [{name, clearance, track_width, via_diameter, via_drill}]. |
@@ -201,7 +200,7 @@ Output of `python3 skills/kicad/scripts/analyze_pcb.py <file>.kicad_pcb`.
 | `dfm_summary` | `dict` | yes | DFM rollup: dfm_tier, metrics, violation_count. |
 | `project_settings` | `dict` | yes | Selected settings extracted from .kicad_pro: source, net_classes, design_rules. |
 | `design_rule_compliance` | `dict` | no | Design rule compliance: compliant, rules_checked, rules_source; empty dict when project_settings missing or compliance not computed. |
-| `board_thickness_mm` | `float \| null` | no | Stackup thickness (mm); duplicated from setup for downstream consumers. Null when the source file has no (general (thickness ...)) entry. |
+| `board_thickness_mm` | `float \| null` | no | Board thickness (mm) used by the current-capacity check: the setup thickness, or 1.6 when the file gives none. Present only when current-capacity findings exist. |
 | `board_metadata` | `dict` | no | Board metadata bag (paper size, title block fragments, etc.); empty dict when no metadata extracted. |
 | `power_net_routing` | `list[dict]` | no | Power net routing rollup: [{net, track_count, total_length_mm, min_width_mm, max_width_mm, widths_used}]; empty list when no power routing detected. |
 | `power_net_resolution` | `dict` | no | Power/ground net classification actually used: {power: [net names], ground: [net names], source: 'cli'\|'schematic'\|'heuristic'}. source reflects how power rail overrides were resolved — explicit --power-rails, rails auto-read from --schematic, or name heuristics alone. |

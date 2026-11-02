@@ -41,7 +41,7 @@ class ThermalSummary:
         "description": "Composite thermal risk score, 0-100. None when no "
                        "components were assessable (see skipped_reason) — a "
                        "100/100 default in that case would falsely suggest a "
-                       "clean thermal pass (F3)."})
+                       "clean thermal pass."})
     total_board_dissipation_w: float = field(metadata={
         "description": "Sum of estimated dissipation (W) across all analyzed components."})
     components_analyzed: int = field(metadata={
@@ -82,8 +82,10 @@ class ThermalSkipped:
                        "estimated_load_mA on its output rail), 'no_vout' "
                        "(no estimated output voltage), 'below_min_pdiss' "
                        "(a real estimate at or below the reporting threshold), "
-                       "or 'no_pdiss_estimate' (LDO whose upstream "
-                       "power_dissipation was never computed)."})
+                       "'no_pdiss_estimate' (LDO whose upstream "
+                       "power_dissipation was never computed), or "
+                       "'no_operating_current' (current-sense shunt: only "
+                       "the sense range is known, not the load)."})
 
 
 @dataclass

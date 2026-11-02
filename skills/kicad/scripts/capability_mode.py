@@ -66,7 +66,7 @@ def _is_valid_record(rec) -> bool:
 def _warn_malformed(path: Path, rec) -> None:
     kind = type(rec).__name__ if not isinstance(rec, dict) else "dict without a string run_id"
     print(f"Warning: {path} is not a capability_mode record ({kind}); "
-          f"leaving it untouched and using a fresh in-memory run_id (KH-415)",
+          f"leaving it untouched and using a fresh in-memory run_id",
           file=sys.stderr)
 
 

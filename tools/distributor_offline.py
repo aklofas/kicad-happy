@@ -6,8 +6,7 @@ process over one shared BOM scenario, with the clock frozen, sleeps no-oped
 and the network/PDF seams replaced by recorded fixtures
 (``tools/tests/fixtures/distributor/responses/<provider>.json``). Each run
 yields five artefacts (manifest.json, stdout.txt, stderr.txt, summary.json,
-files.txt) that are compared byte-for-byte with the expected set frozen at
-the pre-round tip.
+files.txt) that are compared byte-for-byte with the frozen expected set.
 
 Usage:
   distributor_offline.py --provider P --run R --out DIR      run one, write its artefacts

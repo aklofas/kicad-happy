@@ -134,19 +134,16 @@ class Finding:
     pins: Optional[list] = field(default=None, metadata={
         "description": "Pins involved. Items may be dicts "
                        "({component, pin_number, pin_name}) or shorthand "
-                       "strings ('R1.2'). Pin shape tightens to typed "
-                       "PinRef in v1.5."})
+                       "strings ('R1.2')."})
     recommendation: Optional[str] = field(default=None, metadata={
         "description": "Actionable fix or next step for the designer."})
     description: Optional[str] = field(default=None, metadata={
         "description": "Longer-form description (optional, rendered in reports)."})
     report_context: Optional[dict] = field(default=None, metadata={
         "description": "Free-form context block for report rendering "
-                       "(e.g. measured values, thresholds, schematic snippet references). "
-                       "Tightens to typed shape per rule_id in v1.5."})
+                       "(e.g. measured values, thresholds, schematic snippet references)."})
     provenance: Optional[dict] = field(default=None, metadata={
-        "description": "Evidence provenance (source_file, sha256, extraction_id, ...). "
-                       "Tightens to typed Provenance in v1.5."})
+        "description": "Evidence provenance (source_file, sha256, extraction_id, ...)."})
     detection_id: Optional[str] = field(default=None, metadata={
         "description": "Stable per-finding ID for cross-run tracking."})
     finding_id: Optional[str] = field(default=None, metadata={
@@ -156,8 +153,7 @@ class Finding:
         "description": "Review stages this finding applies to: "
                        "'schematic', 'layout', 'pre_fab', 'bring_up'."})
     extra: Optional[dict] = field(default=None, metadata={
-        "description": "Detector-specific extension fields (unconstrained for v1.4). "
-                       "Tightens to per-rule_id typed schema in v1.5."})
+        "description": "Detector-specific extension fields (unconstrained for v1.4)."})
 
 
 @dataclass
@@ -193,8 +189,7 @@ class Assessment:
         "description": "Net names the assessment applies to."})
     # Left untyped: detectors do not yet emit a consistent shape.
     pins: Optional[list] = field(default=None, metadata={
-        "description": "Pins involved. Items may be dicts or shorthand strings ('R1.2'). "
-                       "Pin shape tightens to typed PinRef in v1.5."})
+        "description": "Pins involved. Items may be dicts or shorthand strings ('R1.2')."})
     description: Optional[str] = field(default=None, metadata={
         "description": "Longer-form description (optional, rendered in reports)."})
     report_context: Optional[dict] = field(default=None, metadata={
@@ -210,8 +205,7 @@ class Assessment:
                        "Populated by make_finding() for findings; thermal assessments carry none."})
     extra: Optional[dict] = field(default=None, metadata={
         "description": "Assessment-specific measurement fields (e.g. tj_estimated_c, "
-                       "margin_c, pdiss_w for thermal). Free-form for v1.4; tightens "
-                       "to per-rule_id typed schema in v1.5."})
+                       "margin_c, pdiss_w for thermal). Free-form for v1.4."})
 
 
 @dataclass

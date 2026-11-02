@@ -177,8 +177,9 @@ class Vias:
     # The via_analysis sub-structure (type_breakdown, annular_ring,
     # current_capacity) is not typed.
     via_analysis: dict = field(metadata={
-        "description": "Nested analysis: type_breakdown, annular_ring, "
-                       "current_capacity, degenerate_drills."})
+        "description": "Nested analysis: type_breakdown, plus annular_ring, "
+                       "via_in_pad, fanout_patterns, current_capacity and "
+                       "degenerate_drills when present."})
     vias: Optional[list[dict]] = field(default=None, metadata={
         "description": "Detailed per-via array (--full only): "
                        "[{x, y, layers, size, drill, net, type}]."})
@@ -272,8 +273,7 @@ class PCBEnvelope:
                        "value, library, footprint, layer, x, y, angle, "
                        "type, mpn, manufacturer, description, pad_count, "
                        "courtyard, courtyard_poly, pad_nets, connected_nets, "
-                       "sch_path, sheetname, sheetfile. Tightens to typed "
-                       "Footprint in v1.5."})
+                       "sch_path, sheetname, sheetfile."})
     zones: list[dict] = field(metadata={
         "description": "Copper zones: [{net, net_name, layers, clearance, "
                        "min_thickness, thermal_gap, thermal_bridge_width, "
@@ -314,9 +314,10 @@ class PCBEnvelope:
                        "rules_source; empty dict when project_settings "
                        "missing or compliance not computed."})
     board_thickness_mm: Optional[float] = field(default=None, metadata={
-        "description": "Stackup thickness (mm); duplicated from setup for "
-                       "downstream consumers. Null when the source file "
-                       "has no (general (thickness ...)) entry."})
+        "description": "Board thickness (mm) used by the current-capacity "
+                       "check: the setup thickness, or 1.6 when the file "
+                       "gives none. Present only when current-capacity "
+                       "findings exist."})
     board_metadata: dict = field(default_factory=dict, metadata={
         "description": "Board metadata bag (paper size, title block "
                        "fragments, etc.); empty dict when no metadata "

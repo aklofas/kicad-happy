@@ -526,8 +526,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--parasitics",
         help="Path to parasitics JSON (from extract_parasitics.py) for "
-             "PCB-aware simulation. When provided, testbenches include trace "
-             "resistance and via inductance.",
+             "PCB-aware simulation. When provided, RC-filter testbenches "
+             "include trace resistance and via inductance.",
     )
     parser.add_argument(
         "--simulator",

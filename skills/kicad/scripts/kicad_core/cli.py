@@ -9,11 +9,11 @@ AUDIENCES = ['designer', 'reviewer', 'manager']
 
 _ONLY_DETERMINISTIC_ANALYZER_HELP = (
     'Accepted for consistency; analyzers never write llm_* fields. '
-    'Honored by downstream consumers (Phase 4 spec §3.4).')
+    'Honored by downstream consumers.')
 _ONLY_DETERMINISTIC_CONSUMER_HELP = (
     "Read raw analysis/<run>/<analyzer>.json instead of "
     "analysis/merged/<run>/<analyzer>.json. "
-    "Strips Layer 2 overlays for CI/offline use (Phase 4 spec §3.4).")
+    "Strips Layer 2 overlays for CI/offline use.")
 
 
 def add_stage_audience_args(parser) -> None:

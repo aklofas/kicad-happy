@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Refactor checker for kicad-happy (v3 arc).
+"""Refactor checker for kicad-happy.
 
 Subcommands:
   compare   strict-field JSON comparison of two snapshot directories
@@ -11,8 +11,8 @@ Subcommands:
   aba       in-process A/B/A: analyse two boards in one interpreter (+ a built-in KiCad-10 pair), A must not change
   sync-offline   distributor sync/fetch scripts over recorded fixtures vs the frozen expected outputs
   text-compare  byte-compare two directories of masked text artefacts (snapshot writes them beside the JSON)
-  quick     imports + tags + install-smoke + determinism + aba (+ compare when --baseline given) + sync-offline
-            (+ text-compare when --text-baseline given)
+  quick     imports + tags + install-smoke; with --fixtures also determinism + aba + sync-offline
+            (+ compare when --baseline given, + text-compare when --text-baseline given)
 
 Stdlib only. Exit 0 = pass, 1 = findings, 2 = usage/setup error.
 """

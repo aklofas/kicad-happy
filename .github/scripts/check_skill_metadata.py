@@ -2,7 +2,7 @@
 """Validate SKILL.md frontmatter against platform constraints.
 
 Runs against every skills/*/SKILL.md and checks:
-  - Required frontmatter fields (name, description) are present.
+  - A description field is present (name is not checked).
   - Description length is within platform caps. The strictest cap shipped
     by any supported platform is Codex's 1024-char hard limit on
     description. Skills over this are rejected on load by Codex.

@@ -168,7 +168,7 @@ def _build_skip_plan(mpn: str, pdf_path: Path, pdf_sha: str, cache_dir: Path) ->
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Plan a Phase 3a extraction run.")
+    ap = argparse.ArgumentParser(description="Plan an extraction run.")
     ap.add_argument("mpn")
     ap.add_argument("pdf_path", type=Path)
     ap.add_argument("--cache-dir", type=Path, default=Path("datasheets/extracted"))
@@ -176,7 +176,7 @@ def main(argv: list[str] | None = None) -> int:
                     help="Regenerate plan even if cache is current.")
     ap.add_argument("--use-cached-scout", action="store_true",
                     help="Read <mpn>.scout.json from cache_dir instead of dispatching scout. "
-                         "Phase 3a stdlib path requires this; live scout dispatch is the dispatcher's job.")
+                         "The stdlib path requires this; live scout dispatch is the dispatcher's job.")
     args = ap.parse_args(argv)
 
     if not args.pdf_path.exists():

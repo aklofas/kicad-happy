@@ -292,14 +292,15 @@ def main(argv: list[str] | None = None) -> int:
                           "warning/medium/warn (→ warning), info. "
                           "Raises if the value is unrecognised."))
     ap.add_argument("--confidence",
-                    help=("Filter to a single confidence level (F16). "
+                    help=("Filter to a single confidence level. "
                           "Accepts: deterministic, heuristic, "
-                          "datasheet_backed. Combines with --severity / "
+                          "datasheet-backed (or datasheet_backed). "
+                          "Combines with --severity / "
                           "--evidence-source via AND."))
     ap.add_argument("--evidence-source",
-                    help=("Filter to a single evidence_source (F16). "
-                          "Accepts: topology, datasheet, heuristic_rule, "
-                          "simulation, user_config, geometry, lookup, bom. "
+                    help=("Filter to a single evidence_source. "
+                          "Accepts: datasheet, topology, heuristic_rule, "
+                          "symbol_footprint, bom, geometry, api_lookup. "
                           "Combines with --severity / --confidence via AND."))
     ap.add_argument("--run",
                     help="Run ID override (defaults to manifest.current).")
