@@ -144,7 +144,7 @@ penalty = sum(severity weight × confidence weight, worst 3 findings per rule)
 score = max(0, min(100, 100 - penalty))
 ```
 
-Severity weights: error = 12, warning = 3, info = 0. Confidence weights: deterministic and datasheet-backed 1.0, heuristic 0.5, so a heuristic error costs 6 points. 0 is the worst score and 100 the best; scores can be fractional. The score covers the findings that pass `--severity` and are not suppressed.
+Severity weights: error = 12, warning = 3, info = 0. Confidence weights: deterministic and datasheet-backed 1.0, heuristic 0.5, so a heuristic error costs 6 points. 0 is the worst score and 100 the best; scores can be fractional. The score covers every unsuppressed finding; `--severity` only filters the list printed or written.
 
 | Score | Assessment |
 |-------|-----------|
