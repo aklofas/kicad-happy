@@ -949,7 +949,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # Load inputs
     try:
-        with open(args.schematic) as f:
+        with open(args.schematic, encoding="utf-8") as f:
             schematic = json.load(f)
     except (json.JSONDecodeError, OSError) as e:
         print(f"Error reading schematic: {e}", file=sys.stderr)
@@ -967,7 +967,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     try:
-        with open(args.pcb) as f:
+        with open(args.pcb, encoding="utf-8") as f:
             pcb = json.load(f)
     except (json.JSONDecodeError, OSError) as e:
         print(f"Error reading PCB: {e}", file=sys.stderr)
@@ -1168,7 +1168,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Thermal analysis complete: {len(findings)} findings "
                   f"(score {score_str}) -> {out_path}", file=sys.stderr)
     elif output_path:
-        with open(output_path, "w") as f:
+        with open(output_path, "w", encoding="utf-8") as f:
             json.dump(result, f, indent=2)
         score_str = "SKIPPED" if score is None else f"{score}/100"
         print(f"Thermal analysis complete: {len(findings)} findings "

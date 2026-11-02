@@ -451,7 +451,7 @@ def fetch_specs_from_datasheet(mpn, project_dir):
         return None
 
     try:
-        with open(index_path) as f:
+        with open(index_path, encoding="utf-8") as f:
             index = json.load(f)
     except (json.JSONDecodeError, OSError):
         return None
@@ -579,7 +579,7 @@ def fetch_specs_from_extraction(mpn, project_dir):
     if not index_path.exists():
         return None
     try:
-        with open(index_path) as f:
+        with open(index_path, encoding="utf-8") as f:
             index = json.load(f)
     except (json.JSONDecodeError, OSError):
         return None
@@ -597,7 +597,7 @@ def fetch_specs_from_extraction(mpn, project_dir):
     if not json_file.exists():
         return None
     try:
-        with open(json_file) as f:
+        with open(json_file, encoding="utf-8") as f:
             extraction = json.load(f)
     except (json.JSONDecodeError, OSError):
         return None

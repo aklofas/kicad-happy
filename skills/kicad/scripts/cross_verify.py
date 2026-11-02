@@ -643,14 +643,14 @@ def main():
                         help="Output JSON path (default: stdout)")
     args = parser.parse_args()
 
-    with open(args.schematic) as f:
+    with open(args.schematic, encoding="utf-8") as f:
         sch = json.load(f)
-    with open(args.pcb) as f:
+    with open(args.pcb, encoding="utf-8") as f:
         pcb = json.load(f)
 
     thermal = None
     if args.thermal:
-        with open(args.thermal) as f:
+        with open(args.thermal, encoding="utf-8") as f:
             thermal = json.load(f)
 
     report = cross_verify(sch, pcb, thermal)
@@ -658,7 +658,7 @@ def main():
     output = json.dumps(report, indent=2)
     if args.output:
         os.makedirs(os.path.dirname(os.path.abspath(args.output)) or ".", exist_ok=True)
-        with open(args.output, "w") as f:
+        with open(args.output, "w", encoding="utf-8") as f:
             f.write(output)
             f.write("\n")
         print(f"Written to {args.output}", file=sys.stderr)

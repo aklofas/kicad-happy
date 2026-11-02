@@ -141,7 +141,7 @@ def main(argv: list[str] | None = None) -> int:
                           diff_threshold=analysis_cfg.get("diff_threshold", "major"),
                           retention=int(analysis_cfg.get("retention", 0) or 0))
     elif args.output:
-        Path(args.output).write_text(output)
+        Path(args.output).write_text(output, encoding="utf-8")
         print(f"Written to {args.output}", file=sys.stderr)
     else:
         print(output)

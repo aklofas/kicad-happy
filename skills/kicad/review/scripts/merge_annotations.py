@@ -46,7 +46,7 @@ def _load_raw_envelopes(raw_dir: Path) -> dict:
     for fname in ANALYZER_FILES:
         path = raw_dir / fname
         if path.exists():
-            envelopes[path.stem] = json.loads(path.read_text())
+            envelopes[path.stem] = json.loads(path.read_text(encoding="utf-8"))
     return envelopes
 
 
@@ -61,7 +61,7 @@ def _validate_review_schema(review: dict) -> None:
     silently extending the mini-validator.
     """
     from _mini_jsonschema import validate
-    schema = json.loads(SCHEMA_PATH.read_text())
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
     validate(review, schema)
 
 
@@ -93,7 +93,7 @@ def merge(raw_dir, review_path, merged_dir) -> dict:
     merged_dir = Path(merged_dir)
 
     envelopes = _load_raw_envelopes(raw_dir)
-    review = json.loads(review_path.read_text())
+    review = json.loads(review_path.read_text(encoding="utf-8"))
     _validate_review_schema(review)  # hard-fail if malformed
 
     invariant_violations = []
@@ -124,12 +124,12 @@ def merge(raw_dir, review_path, merged_dir) -> dict:
     merged_dir.mkdir(parents=True, exist_ok=True)
     for stem, env in envelopes.items():
         (merged_dir / f"{stem}.json").write_text(
-            json.dumps(env, indent=2, sort_keys=True) + "\n")
+            json.dumps(env, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
     # HI-3 round-trip verification (per-analyzer)
     for stem in envelopes:
-        merged_data = json.loads((merged_dir / f"{stem}.json").read_text())
-        original_raw = json.loads((raw_dir / f"{stem}.json").read_text())
+        merged_data = json.loads((merged_dir / f"{stem}.json").read_text(encoding="utf-8"))
+        original_raw = json.loads((raw_dir / f"{stem}.json").read_text(encoding="utf-8"))
         stripped = strip_llm_overlays(merged_data)
         if stripped != original_raw:
             raise RuntimeError(
@@ -149,7 +149,7 @@ def merge(raw_dir, review_path, merged_dir) -> dict:
         "reviewer_observations_count": len(review.get("reviewer_observations", [])),
     }
     (merged_dir / "_merge_report.json").write_text(
-        json.dumps(report, indent=2, sort_keys=True) + "\n")
+        json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return report
 
 

@@ -103,7 +103,7 @@ def main(argv: list[str] | None = None) -> int:
     schematic_data = None
     if args.schematic:
         try:
-            with open(args.schematic) as f:
+            with open(args.schematic, encoding="utf-8") as f:
                 schematic_data = json.load(f)
         except (json.JSONDecodeError, OSError) as e:
             print(f"Warning: cannot load schematic analysis: {e}", file=sys.stderr)
@@ -157,7 +157,7 @@ def main(argv: list[str] | None = None) -> int:
                           retention=int(analysis_cfg.get("retention", 0) or 0))
 
     elif args.output:
-        Path(args.output).write_text(output)
+        Path(args.output).write_text(output, encoding="utf-8")
         print(f"Written to {args.output}", file=sys.stderr)
     else:
         print(output)

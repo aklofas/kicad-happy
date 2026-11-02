@@ -128,14 +128,14 @@ def step_2_assert_capability_mode(fixture_dir: Path):
     cm_path = analysis_dir / "capability_mode.json"
     if not cm_path.exists():
         raise RuntimeError(f"capability_mode.json not written at {cm_path}")
-    cm = json.loads(cm_path.read_text())
+    cm = json.loads(cm_path.read_text(encoding="utf-8"))
     print(f"  canonical run_id: {cm['run_id']}")
     for name in ANALYZER_NAMES:
         path = analysis_dir / f"{name}.json"
         if not path.exists():
             print(f"  {name}.json: skipped (analyzer didn't run)")
             continue
-        env = json.loads(path.read_text())
+        env = json.loads(path.read_text(encoding="utf-8"))
         ref = env.get("capability_mode_ref") or {}
         if ref.get("run_id") != cm["run_id"]:
             raise AssertionError(
@@ -176,7 +176,7 @@ def step_4_merge_and_assert_invariants(fixture_dir: Path):
     report_path = merged_dir / "_merge_report.json"
     if not report_path.exists():
         raise RuntimeError(f"_merge_report.json missing at {report_path}")
-    report = json.loads(report_path.read_text())
+    report = json.loads(report_path.read_text(encoding="utf-8"))
     print(f"  applied_count:        {report.get('applied_count', '?')}")
     print(f"  suppressed_count:     {report.get('suppressed_count', '?')}")
     print(f"  invariant_violations: {len(report.get('invariant_violations', []))}")
@@ -190,8 +190,8 @@ def step_4_merge_and_assert_invariants(fixture_dir: Path):
         raw_path = analysis_dir / f"{name}.json"
         if not merged_path.exists() or not raw_path.exists():
             continue
-        merged = json.loads(merged_path.read_text())
-        raw = json.loads(raw_path.read_text())
+        merged = json.loads(merged_path.read_text(encoding="utf-8"))
+        raw = json.loads(raw_path.read_text(encoding="utf-8"))
         if strip_llm_overlays(merged) != raw:
             raise AssertionError(f"HI-3 violation on {name}.json")
     print("[step 4] OK — HI-3 round-trip equals the raw output, _merge_report inspected")
@@ -217,8 +217,8 @@ def step_5_dual_mode_consumer_contract(fixture_dir: Path):
         merged_path = merged_dir / f"{name}.json"
         if not raw_path.exists() or not merged_path.exists():
             continue
-        raw = json.loads(raw_path.read_text())
-        merged = json.loads(merged_path.read_text())
+        raw = json.loads(raw_path.read_text(encoding="utf-8"))
+        merged = json.loads(merged_path.read_text(encoding="utf-8"))
         # HI-2: every diff between merged and raw lives under llm_* keys.
         # Step 4 enforces that through the HI-3 round-trip; here, record
         # whether the pair differs at all.

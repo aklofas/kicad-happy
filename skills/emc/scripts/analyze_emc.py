@@ -628,7 +628,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # Output
     if args.output:
-        with open(args.output, 'w') as f:
+        with open(args.output, 'w', encoding="utf-8") as f:
             json.dump(result, f, indent=2)
         print(f'EMC analysis complete: {len(findings)} findings '
               f'(score {risk_score}/100) → {args.output}', file=sys.stderr)

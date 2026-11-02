@@ -1294,7 +1294,7 @@ def main(argv: list[str] | None = None) -> int:
             parser.error(f'{flag} {path}: {what}; expected the JSON file '
                          f'{writer} writes (--output)')
         try:
-            with open(path, 'r') as f:
+            with open(path, 'r', encoding="utf-8") as f:
                 data = json.load(f)
         except json.JSONDecodeError as e:
             parser.error(f'{flag} {path}: not JSON ({e}); expected the JSON '
@@ -1388,7 +1388,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.output:
-        with open(args.output, 'w') as f:
+        with open(args.output, 'w', encoding="utf-8") as f:
             json.dump(result, f, indent=2)
         print(f'Cross-analysis: {len(findings)} findings -> {args.output}', file=sys.stderr)
     elif args.analysis_dir:

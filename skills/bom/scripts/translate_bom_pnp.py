@@ -717,7 +717,7 @@ def _self_test() -> int:
     with tempfile.TemporaryDirectory() as tmp:
         in_path = Path(tmp) / "bom_in.csv"
         out_path = Path(tmp) / "bom_out.csv"
-        in_path.write_text(bom_csv)
+        in_path.write_text(bom_csv, encoding="utf-8")
 
         stats = translate_bom(str(in_path), str(out_path))
 
@@ -760,7 +760,7 @@ def _self_test() -> int:
     with tempfile.TemporaryDirectory() as tmp:
         in_path = Path(tmp) / "cpl_in.csv"
         out_path = Path(tmp) / "cpl_out.csv"
-        in_path.write_text(pnp_csv)
+        in_path.write_text(pnp_csv, encoding="utf-8")
         stats = translate_pnp(str(in_path), str(out_path))
 
         if stats["rows_out"] != 3:
@@ -802,8 +802,8 @@ def _self_test() -> int:
         bom_path = Path(tmp) / "bom_for_filter.csv"
         cpl_path = Path(tmp) / "cpl_for_filter.csv"
         out_path = Path(tmp) / "cpl_out_filtered.csv"
-        bom_path.write_text(bom_for_filter)
-        cpl_path.write_text(cpl_for_filter)
+        bom_path.write_text(bom_for_filter, encoding="utf-8")
+        cpl_path.write_text(cpl_for_filter, encoding="utf-8")
 
         stats = translate_pnp(
             str(cpl_path), str(out_path), bom_filter_path=str(bom_path)

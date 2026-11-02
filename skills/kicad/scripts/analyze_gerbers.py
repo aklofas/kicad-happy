@@ -844,7 +844,7 @@ def identify_layer_type(filename: str, x2_attrs: dict, kicad_major: int | None =
 def parse_job_file(path: str) -> dict | None:
     """Parse a .gbrjob file and extract structured metadata."""
     try:
-        with open(path, "r") as f:
+        with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
     except (json.JSONDecodeError, OSError):
         return None
@@ -2076,7 +2076,7 @@ def main(argv: list[str] | None = None) -> int:
         if out_path:
             print(f"Written to {out_path}", file=sys.stderr)
     elif output_path:
-        Path(output_path).write_text(output_json)
+        Path(output_path).write_text(output_json, encoding="utf-8")
         print(f"Written to {output_path}", file=sys.stderr)
     elif args.text:
         from output_filters import format_text
