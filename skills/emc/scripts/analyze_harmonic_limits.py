@@ -2,6 +2,7 @@
 """Compare RMS spectral levels with a user-supplied limit profile."""
 
 import argparse
+import io
 import json
 import math
 import os
@@ -16,6 +17,7 @@ RESULT_SCHEMA = "harmonic-limit-screen/1"
 DETECTORS = ("peak", "quasi_peak", "average")
 LEVEL_UNITS = ("dbuv", "dbuv_per_m", "dbua")
 MARGIN_DECIMALS = 6
+MAX_INPUT_BYTES = 16_000_000
 CLAIM_BOUNDARY = "This comparison is not a compliance determination."
 
 
@@ -376,13 +378,20 @@ def _finite_float(text):
 
 def _load_json(path: Path):
     try:
-        with path.open("r", encoding="utf-8-sig") as stream:
-            return json.load(
-                stream,
-                object_pairs_hook=_reject_duplicate_keys,
-                parse_constant=_reject_constant,
-                parse_float=_finite_float,
+        with path.open("rb") as stream:
+            raw = stream.read(MAX_INPUT_BYTES + 1)
+        if len(raw) > MAX_INPUT_BYTES:
+            raise ValidationError(
+                f"input exceeds the {MAX_INPUT_BYTES} byte size limit"
             )
+        # Decode through a text wrapper so newline handling (and therefore
+        # JSON error line/column numbers) matches a text-mode read.
+        return json.load(
+            io.TextIOWrapper(io.BytesIO(raw), encoding="utf-8-sig"),
+            object_pairs_hook=_reject_duplicate_keys,
+            parse_constant=_reject_constant,
+            parse_float=_finite_float,
+        )
     except ValidationError as exc:
         raise ValidationError(f"{path}: {exc}") from exc
     except UnicodeDecodeError as exc:

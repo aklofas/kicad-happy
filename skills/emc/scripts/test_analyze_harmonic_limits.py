@@ -873,6 +873,33 @@ class TestHarmonicLimitCli(unittest.TestCase):
                 self.spectrum_path.write_bytes(payload)
                 self._assert_clean_failure("UTF-8", self.spectrum_path)
 
+    def test_input_larger_than_size_limit_is_rejected(self):
+        size = max(
+            self.spectrum_path.stat().st_size,
+            self.profile_path.stat().st_size,
+        )
+        with mock.patch.object(harmonic, "MAX_INPUT_BYTES", size):
+            code, _, stderr = self._run()
+        self.assertEqual((code, stderr), (0, ""))
+
+        self.spectrum_path.write_bytes(
+            self.spectrum_path.read_bytes() + b" " * (size + 1)
+        )
+        with mock.patch.object(harmonic, "MAX_INPUT_BYTES", size):
+            self._assert_clean_failure(
+                f"exceeds the {size} byte size limit", self.spectrum_path
+            )
+
+    def test_json_error_positions_use_normalized_newlines(self):
+        for newline in (b"\r\n", b"\r"):
+            with self.subTest(newline=newline):
+                self.spectrum_path.write_bytes(
+                    b"{" + newline + b" invalid" + newline + b"}"
+                )
+                self._assert_clean_failure(
+                    "line 2 column 2 (char 3)", self.spectrum_path
+                )
+
     def test_utf8_byte_order_mark_is_accepted(self):
         self.spectrum_path.write_bytes(
             b"\xef\xbb\xbf" + json.dumps(VALID_SPECTRUM).encode("utf-8")

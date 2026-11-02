@@ -23,7 +23,7 @@ The input must use schema `harmonic-lines/1` and a `level_unit` of `dbuv` (dBµV
 
 Levels must be RMS. A spectrum expressed as sinusoid peak amplitudes must be converted before screening by subtracting 20·log10(√2) ≈ 3.01 dB from every level; the tool cannot detect or correct this. This applies to the EMC skill's own harmonic estimates: `trapezoidal_harmonic_amplitude()` and `harmonic_spectrum()` in `emc_formulas.py` return peak amplitudes (`amplitude_v`, `amplitude_dbuv`), so subtract 3.01 dB from `amplitude_dbuv` to obtain `level`.
 
-An optional `source` must be an object; it is echoed to the output as `spectrum_source` (`null` when absent). Input files must be UTF-8 (a leading byte-order mark is accepted), JSON objects with duplicate keys are rejected rather than resolved last-wins, and non-finite numbers (`NaN`, `Infinity`, `-Infinity`, or a literal such as `1e400` that overflows) are rejected at load time with an error naming the file.
+An optional `source` must be an object; it is echoed to the output as `spectrum_source` (`null` when absent). Input files must be UTF-8 (a leading byte-order mark is accepted) and at most 16 MB (16,000,000 bytes) each, JSON objects with duplicate keys are rejected rather than resolved last-wins, and non-finite numbers (`NaN`, `Infinity`, `-Infinity`, or a literal such as `1e400` that overflows) are rejected at load time with an error naming the file.
 
 ```json
 {
