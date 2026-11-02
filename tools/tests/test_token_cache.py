@@ -11,7 +11,7 @@ for sub in ("kicad/scripts", "digikey/scripts", "spice/scripts"):
         sys.path.insert(0, p)
 
 from kicad_core import token_cache  # noqa: E402
-import lifecycle_audit  # noqa: E402
+import lifecycle_engine  # noqa: E402
 import provider_digikey  # noqa: E402
 import spice_spec_fetcher  # noqa: E402
 
@@ -139,7 +139,7 @@ class CallersTest(_Env):
             self.assertEqual(uo.call_count, 1)
 
     def test_lifecycle_audit(self):
-        self._check(lifecycle_audit._get_digikey_token, lambda r: r[0])
+        self._check(lifecycle_engine._get_digikey_token, lambda r: r[0])
 
     def test_provider_digikey(self):
         self._check(provider_digikey._get_digikey_token, lambda r: r)

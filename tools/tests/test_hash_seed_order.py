@@ -179,7 +179,7 @@ print(json.dumps([list(m), list(m["project"]), list(n), list(n["a"])]))
 
     def test_lifecycle_sources_available_sorted(self):
         code = """
-import lifecycle_audit as la
+import lifecycle_engine as la
 la.audit_component = lambda mpn, sources, project_dir=None, delay=0: {
     "status": "active", "sources": {"mouser": {}, "lcsc": {}, "element14": {}, "digikey": {}}}
 r = la.audit_bom({"bom": [{"mpn": "LM358DR", "references": ["U1"], "type": "ic"}]}, delay=0)

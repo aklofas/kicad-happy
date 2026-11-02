@@ -1495,7 +1495,7 @@ def finalize_for_cli(result: dict, config: dict, *, schematic_path: str, lifecyc
         )
     else:
         try:
-            from lifecycle_audit import audit_bom
+            from lifecycle_engine import audit_bom
             project_dir = str(Path(schematic_path).parent)
             lifecycle = audit_bom(result, project_dir=project_dir)
             if lifecycle and lifecycle.get("components_checked", 0) > 0:

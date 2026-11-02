@@ -14,6 +14,7 @@ for p in (SCRIPTS, SPICE):
         sys.path.insert(0, str(p))
 
 import lifecycle_audit  # noqa: E402
+import lifecycle_engine  # noqa: E402
 from kicad_core import project as kproject  # noqa: E402
 from tools.tests._fixtures import fixture  # noqa: E402
 
@@ -25,7 +26,7 @@ def patched_queries(**replies):
     for n in NAMES:
         r = replies.get(n)
         stack.enter_context(mock.patch.object(
-            lifecycle_audit, f"query_lifecycle_{n}",
+            lifecycle_engine, f"query_lifecycle_{n}",
             lambda mpn, r=r: dict(r) if r is not None else None))
     return stack
 
@@ -64,7 +65,7 @@ class ExtractionTemperatureTest(unittest.TestCase):
     def read(self, mpn):
         err = io.StringIO()
         with contextlib.redirect_stderr(err):
-            got = lifecycle_audit.read_extraction_temperature(mpn, str(self.tmp))
+            got = lifecycle_engine.read_extraction_temperature(mpn, str(self.tmp))
         return got, err.getvalue()
 
     def test_v2_ta_in_recommended_operating(self):
@@ -193,8 +194,8 @@ class ExtractionTemperatureTest(unittest.TestCase):
     def test_no_project_dir_reads_nothing(self):
         with mock.patch.object(Path, "exists", side_effect=AssertionError("cache read")), \
                 mock.patch.object(Path, "is_file", side_effect=AssertionError("cache read")):
-            self.assertIsNone(lifecycle_audit.read_extraction_temperature("LM358DR", None))
-            self.assertIsNone(lifecycle_audit.read_extraction_temperature("LM358DR", ""))
+            self.assertIsNone(lifecycle_engine.read_extraction_temperature("LM358DR", None))
+            self.assertIsNone(lifecycle_engine.read_extraction_temperature("LM358DR", ""))
 
 
 class HarnessExtractionsTest(unittest.TestCase):
@@ -211,7 +212,7 @@ class HarnessExtractionsTest(unittest.TestCase):
             for m in want:
                 shutil.copy(Path(src) / f"{m}.json", ext / f"{m}.json")
             for m, w in want.items():
-                got = lifecycle_audit.read_extraction_temperature(m, d)
+                got = lifecycle_engine.read_extraction_temperature(m, d)
                 self.assertEqual(got and (got["temp_min_c"], got["temp_max_c"]), w, m)
 
 
@@ -268,7 +269,7 @@ class CliProjectDirTest(unittest.TestCase):
             {"bom": [{"references": ["U1"], "mpn": "LM358DR", "type": "ic"}]}), encoding="utf-8")
         out = tmp / "out.json"
         with patched_queries(digikey={"status": "Active", "temp_min_c": 0.0, "temp_max_c": 70.0}), \
-                mock.patch.object(lifecycle_audit, "read_extraction_temperature",
+                mock.patch.object(lifecycle_engine, "read_extraction_temperature",
                                   side_effect=AssertionError("extraction read")), \
                 contextlib.redirect_stderr(io.StringIO()):
             lifecycle_audit.main([str(tmp / "schematic.json"), "--temp-range", "automotive",
@@ -338,7 +339,7 @@ class PipelineLifecycleTest(unittest.TestCase):
         from schematic.pipeline import finalize_for_cli
         result = {"bom": [{"references": ["U1"], "mpn": "LM358DR", "type": "ic"}], "findings": []}
         with patched_queries(digikey={"status": "Active"}), \
-                mock.patch.object(lifecycle_audit.time, "sleep", lambda s: None), \
+                mock.patch.object(lifecycle_engine.time, "sleep", lambda s: None), \
                 contextlib.redirect_stderr(io.StringIO()):
             finalize_for_cli(result, {}, schematic_path=str(Path(project_dir) / "board.kicad_sch"),
                              lifecycle=True, stage=None)
@@ -354,7 +355,7 @@ class PipelineLifecycleTest(unittest.TestCase):
 
     def test_attribute_error_degrades_to_lc007(self):
         with tempfile.TemporaryDirectory() as d, \
-                mock.patch.object(lifecycle_audit, "audit_bom", side_effect=AttributeError("boom")):
+                mock.patch.object(lifecycle_engine, "audit_bom", side_effect=AttributeError("boom")):
             result = self.finalize(d)
         lc7 = [f for f in result["findings"] if f.get("rule_id") == "LC-007"]
         self.assertEqual(len(lc7), 1)
@@ -363,26 +364,26 @@ class PipelineLifecycleTest(unittest.TestCase):
 
 class TempStringCarryTest(unittest.TestCase):
     def test_swapped_range_is_sorted(self):
-        self.assertEqual(lifecycle_audit._parse_temp_range("85 ~ -40"), (-40, 85))
-        self.assertEqual(lifecycle_audit._parse_temp_range("125°C ~ -40°C"), (-40, 125))
+        self.assertEqual(lifecycle_engine._parse_temp_range("85 ~ -40"), (-40, 85))
+        self.assertEqual(lifecycle_engine._parse_temp_range("125°C ~ -40°C"), (-40, 125))
 
     def test_fahrenheit_and_ellipsis_are_not_read(self):
-        self.assertIsNone(lifecycle_audit._parse_temp_range("-40 ~ 185°F"))
-        self.assertIsNone(lifecycle_audit._parse_temp_range("-40 ~ 185 °F"))
-        self.assertIsNone(lifecycle_audit._parse_temp_range("−40…+85"))
+        self.assertIsNone(lifecycle_engine._parse_temp_range("-40 ~ 185°F"))
+        self.assertIsNone(lifecycle_engine._parse_temp_range("-40 ~ 185 °F"))
+        self.assertIsNone(lifecycle_engine._parse_temp_range("−40…+85"))
 
     def test_swapped_range_invents_no_cold_shortfall(self):
         analysis = {"bom": [{"mpn": "ABC12345", "references": ["U1"]}]}
-        rng = lifecycle_audit._parse_temp_range("85 ~ -40")
+        rng = lifecycle_engine._parse_temp_range("85 ~ -40")
         with patched_queries(digikey={"status": "Active",
                                       "temp_min_c": rng[0], "temp_max_c": rng[1]}):
-            out = lifecycle_audit.audit_bom(analysis, delay=0, temp_range=(-40, 85))
+            out = lifecycle_engine.audit_bom(analysis, delay=0, temp_range=(-40, 85))
         self.assertEqual([f for f in out["findings"] if f.get("rule_id") == "LT-001"], [])
 
     def test_wider_rating_than_required_is_quiet(self):
         analysis = {"bom": [{"mpn": "ABC12345", "references": ["U1"]}]}
         with patched_queries(digikey={"status": "Active", "temp_min_c": -55.0, "temp_max_c": 150.0}):
-            out = lifecycle_audit.audit_bom(analysis, delay=0, temp_range=(-40, 85))
+            out = lifecycle_engine.audit_bom(analysis, delay=0, temp_range=(-40, 85))
         self.assertEqual([f for f in out["findings"] if f.get("rule_id") == "LT-001"], [])
 
 
@@ -390,7 +391,7 @@ class LeadWeeksCarryTest(unittest.TestCase):
     def weeks(self, text):
         analysis = {"bom": [{"mpn": "ABC12345", "references": ["U1"]}]}
         with patched_queries(mouser={"status": "Active", "lead_time": text}):
-            out = lifecycle_audit.audit_bom(analysis, delay=0)
+            out = lifecycle_engine.audit_bom(analysis, delay=0)
         f = [x for x in out["findings"] if x.get("rule_id") == "LC-006"]
         return f[0]["lead_weeks"] if f else None
 
@@ -400,14 +401,14 @@ class LeadWeeksCarryTest(unittest.TestCase):
 
     def test_days_to_weeks(self):
         # 50 / 7 = 7.14 -> 8; 100 / 7 = 14.3 -> 15
-        self.assertEqual(lifecycle_audit._lead_weeks("50 Days"), 8)
-        self.assertEqual(lifecycle_audit._lead_weeks("12.5 weeks"), 13)
+        self.assertEqual(lifecycle_engine._lead_weeks("50 Days"), 8)
+        self.assertEqual(lifecycle_engine._lead_weeks("12.5 weeks"), 13)
         self.assertEqual(self.weeks("100 Days"), 15)
 
     def test_thousands_separator_and_negative(self):
-        self.assertEqual(lifecycle_audit._lead_weeks("1,000 Days"), 143)
-        self.assertIsNone(lifecycle_audit._lead_weeks("-5 Weeks"))
-        self.assertIsNone(lifecycle_audit._lead_weeks(-3))
+        self.assertEqual(lifecycle_engine._lead_weeks("1,000 Days"), 143)
+        self.assertIsNone(lifecycle_engine._lead_weeks("-5 Weeks"))
+        self.assertIsNone(lifecycle_engine._lead_weeks(-3))
         self.assertIsNone(self.weeks("-20 Weeks"))
 
 

@@ -10,7 +10,7 @@ SCRIPTS = ROOT / "skills" / "kicad" / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-import lifecycle_audit  # noqa: E402
+import lifecycle_engine  # noqa: E402
 
 NAMES = ("lcsc", "digikey", "element14", "mouser")
 
@@ -19,11 +19,11 @@ def bom_audit(temp_range=None, **replies):
     fns = {n: (lambda mpn, r=replies.get(n): dict(r) if r is not None else None)
            for n in NAMES}
     analysis = {"bom": [{"mpn": "ABC12345", "references": ["U1"]}]}
-    with mock.patch.object(lifecycle_audit, "query_lifecycle_lcsc", fns["lcsc"]), \
-            mock.patch.object(lifecycle_audit, "query_lifecycle_digikey", fns["digikey"]), \
-            mock.patch.object(lifecycle_audit, "query_lifecycle_element14", fns["element14"]), \
-            mock.patch.object(lifecycle_audit, "query_lifecycle_mouser", fns["mouser"]):
-        return lifecycle_audit.audit_bom(analysis, delay=0, temp_range=temp_range)
+    with mock.patch.object(lifecycle_engine, "query_lifecycle_lcsc", fns["lcsc"]), \
+            mock.patch.object(lifecycle_engine, "query_lifecycle_digikey", fns["digikey"]), \
+            mock.patch.object(lifecycle_engine, "query_lifecycle_element14", fns["element14"]), \
+            mock.patch.object(lifecycle_engine, "query_lifecycle_mouser", fns["mouser"]):
+        return lifecycle_engine.audit_bom(analysis, delay=0, temp_range=temp_range)
 
 
 class TempStringTest(unittest.TestCase):
@@ -42,10 +42,10 @@ class TempStringTest(unittest.TestCase):
             "-55°C ~ 150°C (TJ)": (-55, 150),
         }
         for text, want in cases.items():
-            self.assertEqual(lifecycle_audit._parse_temp_range(text), want, text)
+            self.assertEqual(lifecycle_engine._parse_temp_range(text), want, text)
 
     def test_no_range(self):
-        self.assertIsNone(lifecycle_audit._parse_temp_range("RoHS"))
+        self.assertIsNone(lifecycle_engine._parse_temp_range("RoHS"))
 
 
 class ShortfallTest(unittest.TestCase):
@@ -81,7 +81,7 @@ class LeadWeeksTest(unittest.TestCase):
 
 class BlankStatusTest(unittest.TestCase):
     def test_blank_label_states_nothing(self):
-        self.assertIsNone(lifecycle_audit._source_status({"status": "  "}))
+        self.assertIsNone(lifecycle_engine._source_status({"status": "  "}))
         out = bom_audit(digikey={"status": "Active"}, mouser={"status": "  "})
         self.assertEqual([f for f in out["findings"] if f.get("rule_id") == "LC-005"], [])
 

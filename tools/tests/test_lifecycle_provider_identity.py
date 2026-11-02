@@ -13,7 +13,7 @@ SCRIPTS = ROOT / "skills" / "kicad" / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-import lifecycle_audit  # noqa: E402
+import lifecycle_engine  # noqa: E402
 
 
 def _no_net(*a, **k):
@@ -63,9 +63,9 @@ class ProviderIdentityBase(unittest.TestCase):
         for p in (mock.patch.dict(os.environ, env, clear=True),
                   mock.patch.object(socket, "create_connection", _no_net),
                   mock.patch.object(socket.socket, "connect", _no_net),
-                  mock.patch.object(lifecycle_audit, "_get_digikey_token",
+                  mock.patch.object(lifecycle_engine, "_get_digikey_token",
                                     lambda: ("tok", "cid")),
-                  mock.patch.object(lifecycle_audit.urllib.request, "urlopen", self._urlopen)):
+                  mock.patch.object(lifecycle_engine.urllib.request, "urlopen", self._urlopen)):
             p.start()
             self.addCleanup(p.stop)
 
@@ -74,12 +74,12 @@ class ProviderIdentityBase(unittest.TestCase):
         for key in ("digikey", "mouser", "element14", "jlcsearch"):
             if key in req.full_url:
                 if key not in self.bodies:
-                    raise lifecycle_audit.urllib.error.URLError("no canned body")
+                    raise lifecycle_engine.urllib.error.URLError("no canned body")
                 return _Body(json.dumps(self.bodies[key]).encode())
         raise AssertionError("unexpected url " + req.full_url)
 
     def audit(self, mpn, sources):
-        out = lifecycle_audit.audit_bom(
+        out = lifecycle_engine.audit_bom(
             {"bom": [{"references": ["U1"], "mpn": mpn, "type": "ic"}]},
             sources=sources, delay=0)
         main = [f for f in out["findings"]
@@ -90,29 +90,29 @@ class ProviderIdentityBase(unittest.TestCase):
 class SiblingIsNoAnswerTest(ProviderIdentityBase):
     def test_digikey_six_char_prefix_sibling(self):
         self.bodies["digikey"] = dk("TPS54332DR")
-        self.assertIsNone(lifecycle_audit.query_lifecycle_digikey("TPS54331DR"))
+        self.assertIsNone(lifecycle_engine.query_lifecycle_digikey("TPS54331DR"))
         out, f = self.audit("TPS54331DR", ["digikey"])
         self.assertEqual((f["status"], f["rule_id"]), ("unknown", "LC-004"))
         self.assertEqual(out["sources_available"], [])
 
     def test_mouser_non_exact_first_result(self):
         self.bodies["mouser"] = mo("LM358DR2G")
-        self.assertIsNone(lifecycle_audit.query_lifecycle_mouser("LM358DR"))
+        self.assertIsNone(lifecycle_engine.query_lifecycle_mouser("LM358DR"))
         out, f = self.audit("LM358DR", ["mouser"])
         self.assertEqual((f["status"], f["rule_id"]), ("unknown", "LC-004"))
 
     def test_element14_non_exact_first_result(self):
         self.bodies["element14"] = e14("LM358DT")
-        self.assertIsNone(lifecycle_audit.query_lifecycle_element14("LM358DR"))
+        self.assertIsNone(lifecycle_engine.query_lifecycle_element14("LM358DR"))
 
     def test_ordering_variant_is_another_part_number(self):
         # TI obsoletes a G4 green variant on its own; LM358DR can stay active.
         self.bodies["element14"] = e14("LM358DRG4")
-        self.assertIsNone(lifecycle_audit.query_lifecycle_element14("LM358DR"))
+        self.assertIsNone(lifecycle_engine.query_lifecycle_element14("LM358DR"))
         out, f = self.audit("LM358DR", ["element14"])
         self.assertEqual((f["status"], f["rule_id"]), ("unknown", "LC-004"))
         self.bodies["digikey"] = dk("LM2596S-ADJ/NOPB")
-        self.assertIsNone(lifecycle_audit.query_lifecycle_digikey("LM2596S-ADJ"))
+        self.assertIsNone(lifecycle_engine.query_lifecycle_digikey("LM2596S-ADJ"))
 
     def test_ordering_marks_stay_significant(self):
         # Maxim/ADI "+" and LT "#PBF" name the lead-free orderable number; the leaded
@@ -122,18 +122,18 @@ class SiblingIsNoAnswerTest(ProviderIdentityBase):
                                    ("LT1763CS8", "LT1763CS8#PBF"),
                                    ("AP2112K-3.3", "AP2112K-33")):
             self.bodies["digikey"] = dk(variant)
-            self.assertIsNone(lifecycle_audit.query_lifecycle_digikey(requested),
+            self.assertIsNone(lifecycle_engine.query_lifecycle_digikey(requested),
                               (requested, variant))
 
     def test_lcsc_sibling(self):
         self.bodies["jlcsearch"] = lcsc("LM358DT")
-        self.assertIsNone(lifecycle_audit.query_lifecycle_lcsc("LM358DR"))
+        self.assertIsNone(lifecycle_engine.query_lifecycle_lcsc("LM358DR"))
 
     def test_near_miss_pair_stays_distinct_on_every_provider(self):
         self.bodies.update(digikey=dk("2N7002V"), mouser=mo("2N7002V"),
                            element14=e14("2N7002V"), jlcsearch=lcsc("2N7002V"))
-        for q in (lifecycle_audit.query_lifecycle_digikey, lifecycle_audit.query_lifecycle_mouser,
-                  lifecycle_audit.query_lifecycle_element14, lifecycle_audit.query_lifecycle_lcsc):
+        for q in (lifecycle_engine.query_lifecycle_digikey, lifecycle_engine.query_lifecycle_mouser,
+                  lifecycle_engine.query_lifecycle_element14, lifecycle_engine.query_lifecycle_lcsc):
             self.assertIsNone(q("2N7002"), q.__name__)
 
     def test_sibling_never_makes_a_single_source(self):
@@ -150,33 +150,33 @@ class RequestedPartIsReadTest(ProviderIdentityBase):
         self.bodies.update(digikey=dk("TPS54332DR", "TPS54331DR", status="Obsolete"),
                            mouser=mo("LM358DR2G", "LM358DR"),
                            element14=e14("LM358DT", "LM358DR"))
-        self.assertEqual(lifecycle_audit.query_lifecycle_digikey("TPS54331DR")["status"],
+        self.assertEqual(lifecycle_engine.query_lifecycle_digikey("TPS54331DR")["status"],
                          "Obsolete")
-        self.assertEqual(lifecycle_audit.query_lifecycle_mouser("LM358DR")["status"],
+        self.assertEqual(lifecycle_engine.query_lifecycle_mouser("LM358DR")["status"],
                          "End of Life")
-        self.assertEqual(lifecycle_audit.query_lifecycle_element14("LM358DR")["status"],
+        self.assertEqual(lifecycle_engine.query_lifecycle_element14("LM358DR")["status"],
                          "Obsolete")
 
     def test_listing_with_both_variants_uses_the_requested_row(self):
         self.bodies["mouser"] = {"SearchResults": {"Parts": [
             mo("MAX3232ECUE", status="Obsolete")["SearchResults"]["Parts"][0],
             mo("MAX3232ECUE+", status="New Product")["SearchResults"]["Parts"][0]]}}
-        self.assertEqual(lifecycle_audit.query_lifecycle_mouser("MAX3232ECUE+")["status"],
+        self.assertEqual(lifecycle_engine.query_lifecycle_mouser("MAX3232ECUE+")["status"],
                          "New Product")
 
     def test_literal_match_beats_a_normalised_one(self):
         self.bodies["digikey"] = {"Products": dk("LM358-DR", status="Obsolete")["Products"]
                                   + dk("LM358DR", status="Active")["Products"]}
-        self.assertEqual(lifecycle_audit.query_lifecycle_digikey("LM358DR")["status"], "Active")
+        self.assertEqual(lifecycle_engine.query_lifecycle_digikey("LM358DR")["status"], "Active")
 
     def test_case_and_whitespace_ignored(self):
         self.bodies["digikey"] = dk("LM358DR")
         for req in ("lm358dr ", "lm358dr", "LM358 DR"):
-            self.assertEqual(lifecycle_audit.query_lifecycle_digikey(req)["status"], "Active", req)
+            self.assertEqual(lifecycle_engine.query_lifecycle_digikey(req)["status"], "Active", req)
 
     def test_mouser_searches_exact(self):
         self.bodies["mouser"] = mo("LM358DR")
-        lifecycle_audit.query_lifecycle_mouser("LM358DR")
+        lifecycle_engine.query_lifecycle_mouser("LM358DR")
         body = json.loads(self.requests[-1].data)
         self.assertEqual(body["SearchByPartRequest"],
                          {"mouserPartNumber": "LM358DR", "partSearchOptions": "Exact"})
@@ -185,7 +185,7 @@ class RequestedPartIsReadTest(ProviderIdentityBase):
 class LcscCurrentShapeTest(ProviderIdentityBase):
     def test_row_without_extra_is_read(self):
         self.bodies["jlcsearch"] = lcsc("LM358DR")
-        self.assertEqual(lifecycle_audit.query_lifecycle_lcsc("LM358DR"),
+        self.assertEqual(lifecycle_engine.query_lifecycle_lcsc("LM358DR"),
                          {"in_stock": True, "stock_qty": 500})
         out, f = self.audit("LM358DR", ["lcsc"])
         self.assertEqual(out["sources_available"], ["lcsc"])
@@ -200,7 +200,7 @@ class LcscCurrentShapeTest(ProviderIdentityBase):
         self.bodies["jlcsearch"] = {"components": [
             {"stock": 3, "extra": {"mpn": "LM358DR", "attributes": {
                 "Operating Temperature": "-40°C~+85°C"}}}]}
-        r = lifecycle_audit.query_lifecycle_lcsc("LM358DR")
+        r = lifecycle_engine.query_lifecycle_lcsc("LM358DR")
         self.assertEqual((r["stock_qty"], r["temp_min_c"], r["temp_max_c"]), (3, -40.0, 85.0))
 
 

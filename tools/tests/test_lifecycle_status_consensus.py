@@ -9,7 +9,7 @@ SCRIPTS = ROOT / "skills" / "kicad" / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-import lifecycle_audit  # noqa: E402
+import lifecycle_engine  # noqa: E402
 
 NAMES = ("lcsc", "digikey", "element14", "mouser")
 
@@ -17,11 +17,11 @@ NAMES = ("lcsc", "digikey", "element14", "mouser")
 def audit(**replies):
     """audit_component with each named source answering the given dict (others None)."""
     fns = {n: (lambda mpn, r=replies.get(n): dict(r) if r is not None else None) for n in NAMES}
-    with mock.patch.object(lifecycle_audit, "query_lifecycle_lcsc", fns["lcsc"]), \
-            mock.patch.object(lifecycle_audit, "query_lifecycle_digikey", fns["digikey"]), \
-            mock.patch.object(lifecycle_audit, "query_lifecycle_element14", fns["element14"]), \
-            mock.patch.object(lifecycle_audit, "query_lifecycle_mouser", fns["mouser"]):
-        return lifecycle_audit.audit_component("X1", [], delay=0)
+    with mock.patch.object(lifecycle_engine, "query_lifecycle_lcsc", fns["lcsc"]), \
+            mock.patch.object(lifecycle_engine, "query_lifecycle_digikey", fns["digikey"]), \
+            mock.patch.object(lifecycle_engine, "query_lifecycle_element14", fns["element14"]), \
+            mock.patch.object(lifecycle_engine, "query_lifecycle_mouser", fns["mouser"]):
+        return lifecycle_engine.audit_component("X1", [], delay=0)
 
 
 class WorstStatusTest(unittest.TestCase):
@@ -87,11 +87,11 @@ class UnknownSourceTest(unittest.TestCase):
         fns = {n: (lambda mpn, r=replies.get(n): dict(r) if r is not None else None)
                for n in NAMES}
         analysis = {"bom": [{"mpn": "ABC12345", "references": ["U1"]}]}
-        with mock.patch.object(lifecycle_audit, "query_lifecycle_lcsc", fns["lcsc"]), \
-                mock.patch.object(lifecycle_audit, "query_lifecycle_digikey", fns["digikey"]), \
-                mock.patch.object(lifecycle_audit, "query_lifecycle_element14", fns["element14"]), \
-                mock.patch.object(lifecycle_audit, "query_lifecycle_mouser", fns["mouser"]):
-            out = lifecycle_audit.audit_bom(analysis, delay=0)
+        with mock.patch.object(lifecycle_engine, "query_lifecycle_lcsc", fns["lcsc"]), \
+                mock.patch.object(lifecycle_engine, "query_lifecycle_digikey", fns["digikey"]), \
+                mock.patch.object(lifecycle_engine, "query_lifecycle_element14", fns["element14"]), \
+                mock.patch.object(lifecycle_engine, "query_lifecycle_mouser", fns["mouser"]):
+            out = lifecycle_engine.audit_bom(analysis, delay=0)
         finding = next(f for f in out["findings"] if f.get("rule_id") == "LC-001")
         self.assertEqual(finding["severity"], "warning")
         self.assertIn("while digikey flag EOL", finding["description"])

@@ -68,7 +68,8 @@ One row per module outside the packages. "Imports" lists only in-repo modules, a
 | `diff_analysis.py` | diff CLI over `diff_engine` | `diff_engine`, `finding_schema`, `kicad_core`, `analysis_cache` (lazy) |
 | `diff_engine.py` | pure comparison of two analysis outputs | `detection_schema`, `finding_schema` |
 | `what_if.py` | parameter sweep and fix suggestions, CLI | `kicad_core`, `finding_schema`, `detection_schema`; lazy `spice_tolerance`, `simulate_subcircuits`, `spice_simulator` from the spice skill (the `simulate_subcircuits` import is a `no-cli-import` baseline entry) |
-| `lifecycle_audit.py` | distributor lifecycle and temperature audit (LC-001..006, LT-001), CLI | `kicad_core`, `finding_schema` (lazy), `analysis_cache` (lazy) |
+| `lifecycle_audit.py` | lifecycle audit CLI over `lifecycle_engine` | `lifecycle_engine`, `kicad_core`, `analysis_cache`, `output_io` (lazy) |
+| `lifecycle_engine.py` | distributor lifecycle and temperature audit (LC-001..006, LT-001): the four distributor queries, extraction temperature reads, `audit_component`, `audit_bom` | `kicad_core`, `finding_schema` (lazy); lazy `distributor_core`, `datasheet_extract_cache`, `datasheet_types` from the datasheets skill |
 | `summarize_findings.py` | cross-run finding summary, CLI | `kicad_core` |
 | `export_issues.py` | findings to GitHub Issues through `gh`, CLI | stdlib |
 | `fab_release_gate.py` | fab-readiness pass/fail gate over analyzer JSON | `finding_schema` |
@@ -162,7 +163,7 @@ The twelve analyzer and consumer CLIs (`analyze_schematic`, `analyze_pcb`, `anal
 | `audits.py` | annotation / label / PWR_FLAG / footprint / sourcing / DNP / symbol / coverage audits | `kicad_core`, `connectivity` |
 | `system_analyses.py` | PDN, sleep current, derating, protocol compliance, power budget/sequencing, BOM optimisation, test coverage, assembly, USB, inrush | `kicad_core`, `kicad_types`, `net_analysis`, `finding_schema` |
 | `bom_stats.py` | `generate_bom`, `compute_statistics` | `kicad_core` |
-| `pipeline.py` | the named phases (topologies → reconcile → domain detectors → signal assembly; project: read → context → analyses → assemble; `finalize_for_cli`) | everything above, the detector modules, `kicad_types`, `finding_schema`, `lifecycle_audit` (lazy; a `no-cli-import` baseline entry), `datasheet_verify`, `output_filters`, `project_config` |
+| `pipeline.py` | the named phases (topologies → reconcile → domain detectors → signal assembly; project: read → context → analyses → assemble; `finalize_for_cli`) | everything above, the detector modules, `kicad_types`, `finding_schema`, `lifecycle_engine` (lazy), `datasheet_verify`, `output_filters`, `project_config` |
 | `presentation.py` | result-dict assembly in the historical key order; legacy result | `kicad_core`, `bom_stats`, `connectivity`, `finding_schema`, `detection_schema` |
 
 Mutation contract: `reconcile_detections` rewrites phase-1 records in place; `assemble_signal_results` enriches capacitor entries in place; `assemble_result` adds `category`/`parsed_value`/`pin_nets` to components and pops `_unit_pins`; `finalize_for_cli` mutates the result (findings filtering, summary recompute). Nothing else mutates caller-owned lists.
