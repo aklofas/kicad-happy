@@ -5,6 +5,7 @@ import io
 import json
 import os
 from pathlib import Path
+import stat
 import subprocess
 import sys
 import tempfile
@@ -370,6 +371,78 @@ class TestExternalDeckCli(unittest.TestCase):
             result_path.read_text(encoding="utf-8"),
             "previous result\n",
         )
+        self.assertEqual(
+            sorted(p.name for p in result_path.parent.iterdir()),
+            ["example deck.cir", "result.json"],
+        )
+
+    def _write_result(self, result_path):
+        backend = self._backend("pspice", (True, "", ""))
+        code, _, stderr = self._run(
+            [
+                str(self.deck),
+                "--simulator",
+                "pspice",
+                "--output",
+                str(result_path),
+            ],
+            backend,
+        )
+        self.assertEqual(code, 0, stderr)
+
+    def test_result_mode_honors_umask_or_keeps_existing_mode(self):
+        result_path = Path(self.tempdir.name) / "result.json"
+        real_chmod = os.chmod
+        modes = []
+
+        def record_chmod(path, mode):
+            modes.append(mode)
+            real_chmod(path, mode)
+
+        with (
+            patch("run_external_deck.os.umask", return_value=0o027),
+            patch("run_external_deck.os.chmod", side_effect=record_chmod),
+        ):
+            self._write_result(result_path)
+            existing_mode = stat.S_IMODE(result_path.stat().st_mode)
+            self._write_result(result_path)
+
+        self.assertEqual(modes, [0o640, existing_mode])
+
+    @unittest.skipUnless(os.name == "posix", "POSIX file modes")
+    def test_result_file_mode_on_posix(self):
+        result_path = Path(self.tempdir.name) / "result.json"
+        previous = os.umask(0o022)
+        try:
+            self._write_result(result_path)
+            self.assertEqual(stat.S_IMODE(result_path.stat().st_mode), 0o644)
+            result_path.chmod(0o604)
+            self._write_result(result_path)
+        finally:
+            os.umask(previous)
+        self.assertEqual(stat.S_IMODE(result_path.stat().st_mode), 0o604)
+
+    @unittest.skipUnless(os.name == "nt", "Windows read-only replace")
+    def test_failed_replace_of_read_only_result_leaves_no_temp_file(self):
+        result_path = Path(self.tempdir.name) / "result.json"
+        result_path.write_text("previous result\n", encoding="utf-8")
+        result_path.chmod(stat.S_IREAD)
+        self.addCleanup(result_path.chmod, stat.S_IREAD | stat.S_IWRITE)
+        backend = self._backend("pspice", (True, "", ""))
+
+        code, _, stderr = self._run(
+            [
+                str(self.deck),
+                "--simulator",
+                "pspice",
+                "--output",
+                str(result_path),
+            ],
+            backend,
+        )
+
+        self.assertEqual(code, 1)
+        self.assertIn(f"could not write {result_path}", stderr)
         self.assertEqual(
             sorted(p.name for p in result_path.parent.iterdir()),
             ["example deck.cir", "result.json"],

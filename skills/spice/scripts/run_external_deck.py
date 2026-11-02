@@ -2,9 +2,11 @@
 """Run a complete external SPICE deck with an explicitly selected simulator."""
 
 import argparse
+import contextlib
 import json
 import os
 from pathlib import Path
+import stat
 import sys
 import tempfile
 import time
@@ -96,6 +98,16 @@ def _result(simulator, success, deck, native_output, elapsed_s, note):
     }
 
 
+def _result_mode(target):
+    """Keep an existing result file's mode; otherwise honor the umask."""
+    try:
+        return stat.S_IMODE(target.stat().st_mode)
+    except FileNotFoundError:
+        umask = os.umask(0)
+        os.umask(umask)
+        return 0o666 & ~umask
+
+
 def _write_json(payload, output_path):
     """Write the result, returning False with a diagnostic on I/O failure."""
     try:
@@ -110,8 +122,12 @@ def _write_json(payload, output_path):
                 with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
                     json.dump(payload, stream, indent=2)
                     stream.write("\n")
+                os.chmod(temp_name, _result_mode(target))
                 os.replace(temp_name, target)
             except BaseException:
+                # A copied read-only mode would block unlink on Windows.
+                with contextlib.suppress(OSError):
+                    os.chmod(temp_name, stat.S_IREAD | stat.S_IWRITE)
                 Path(temp_name).unlink(missing_ok=True)
                 raise
         else:
