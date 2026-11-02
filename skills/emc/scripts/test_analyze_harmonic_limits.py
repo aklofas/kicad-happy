@@ -60,7 +60,7 @@ VALID_PROFILE = {
 class TestHarmonicLimitCliSurface(unittest.TestCase):
     """Exercise the standalone tool through its user-facing entry point."""
 
-    def test_help_identifies_both_input_schemas_and_detector_choices(self):
+    def test_help_identifies_both_input_schemas_and_limit_columns(self):
         script = SCRIPT_DIR / "analyze_harmonic_limits.py"
         result = subprocess.run(
             [sys.executable, str(script), "--help"],
@@ -71,7 +71,7 @@ class TestHarmonicLimitCliSurface(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("harmonic-lines/1", result.stdout)
         self.assertIn("emc-limit-profile/1", result.stdout)
-        self.assertIn("{peak,quasi_peak,average}", result.stdout)
+        self.assertIn("--limit-column {peak,quasi_peak,average}", result.stdout)
         self.assertIn("--design-margin-db", result.stdout)
         self.assertIn("--output", result.stdout)
 
@@ -292,13 +292,13 @@ class TestScreenHarmonics(unittest.TestCase):
         self,
         spectrum=VALID_SPECTRUM,
         profile=VALID_PROFILE,
-        detector="peak",
+        limit_column="peak",
         margin=0.0,
     ):
         return harmonic.screen_harmonics(
             harmonic.validate_spectrum(copy.deepcopy(spectrum)),
             harmonic.validate_limit_profile(copy.deepcopy(profile)),
-            detector,
+            limit_column,
             margin,
         )
 
@@ -550,7 +550,7 @@ class TestScreenHarmonics(unittest.TestCase):
 
     def test_each_supported_detector_uses_its_own_limit(self):
         results = {
-            detector: self._screen(detector=detector)["bands"][0][
+            detector: self._screen(limit_column=detector)["bands"][0][
                 "limit"
             ]
             for detector in ("peak", "quasi_peak", "average")
@@ -656,6 +656,8 @@ class TestScreenHarmonics(unittest.TestCase):
             result["schema_version"], "harmonic-limit-screen/1"
         )
         self.assertEqual(result["result_class"], "screening_only")
+        self.assertEqual(result["limit_column"], "peak")
+        self.assertNotIn("detector", result)
         self.assertEqual(
             result["claim_boundary"],
             "This comparison is not a compliance determination.",
@@ -663,14 +665,14 @@ class TestScreenHarmonics(unittest.TestCase):
         statuses = {band["status"] for band in result["bands"]}
         self.assertFalse(statuses & {"pass", "fail"})
 
-    def test_invalid_detector_and_design_margin_are_rejected(self):
+    def test_invalid_limit_column_and_design_margin_are_rejected(self):
         spectrum = harmonic.validate_spectrum(
             copy.deepcopy(VALID_SPECTRUM)
         )
         profile = harmonic.validate_limit_profile(
             copy.deepcopy(VALID_PROFILE)
         )
-        with self.assertRaisesRegex(harmonic.ValidationError, "detector"):
+        with self.assertRaisesRegex(harmonic.ValidationError, "limit_column"):
             harmonic.screen_harmonics(spectrum, profile, "rms")
         for value in (-1, math.nan, math.inf):
             with self.subTest(value=value):
@@ -706,7 +708,7 @@ class TestHarmonicLimitCli(unittest.TestCase):
             str(self.spectrum_path),
             "--limits",
             str(self.profile_path),
-            "--detector",
+            "--limit-column",
             "peak",
             *extra,
         ]

@@ -8,7 +8,7 @@
 python3 skills/emc/scripts/analyze_harmonic_limits.py \
   --spectrum harmonic-lines.json \
   --limits limit-profile.json \
-  --detector peak \
+  --limit-column peak \
   --design-margin-db 3 \
   --output harmonic-limit-screen.json
 ```
@@ -85,17 +85,17 @@ For each band, the tool selects the in-band point with the smallest margin (`lim
 | `below_limit_screen` | Margin is at least the requested design margin. |
 | `near_limit` | Margin is nonnegative but smaller than the requested design margin. |
 | `above_limit_screen` | Margin is negative. |
-| `not_assessed` | The band has no points or no limit for the selected detector. |
+| `not_assessed` | The band has no points or no limit in the selected limit column. |
 
-`--detector` only selects which profile limit is compared. It does not emulate or validate the detector used for the measurement, so `margin_db` is not a detector-specific receiver margin.
+`--limit-column` only selects which profile limit (`peak`, `quasi_peak`, or `average`) is compared, and the result records it as `limit_column`. It does not emulate or validate the detector used for the measurement, so `margin_db` is not a detector-specific receiver margin.
 
-An empty band has null worst-point fields; it reports a flat limit but a null `limit` for a sloped one. A missing detector limit has a null limit and margin but retains the highest-level point when one exists. Every result uses `result_class: screening_only` and includes `This comparison is not a compliance determination.` The result also carries `spectrum_source` (the spectrum's `source` object, or `null`) and `profile.source` (the profile's complete `source` object) for provenance.
+An empty band has null worst-point fields; it reports a flat limit but a null `limit` for a sloped one. A missing limit for the selected column has a null limit and margin but retains the highest-level point when one exists. Every result uses `result_class: screening_only` and includes `This comparison is not a compliance determination.` The result also carries `spectrum_source` (the spectrum's `source` object, or `null`) and `profile.source` (the profile's complete `source` object) for provenance.
 
 ```json
 {
   "schema_version": "harmonic-limit-screen/1",
   "result_class": "screening_only",
-  "detector": "peak",
+  "limit_column": "peak",
   "design_margin_db": 3.0,
   "level_unit": "dbuv",
   "spectrum_source": {"kind": "simulation", "description": "synthetic spectral lines"},

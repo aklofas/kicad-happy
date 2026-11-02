@@ -237,13 +237,13 @@ def validate_limit_profile(data: object) -> dict:
 def screen_harmonics(
     spectrum: dict,
     profile: dict,
-    detector: str,
+    limit_column: str,
     design_margin_db: float = 0.0,
 ) -> dict:
     """Return a harmonic-limit-screen/1 result from validated inputs."""
-    if detector not in DETECTORS:
+    if limit_column not in DETECTORS:
         raise ValidationError(
-            f"detector must be one of {', '.join(DETECTORS)}"
+            f"limit_column must be one of {', '.join(DETECTORS)}"
         )
     design_margin = _number(design_margin_db, "design_margin_db")
     if design_margin < 0:
@@ -265,7 +265,7 @@ def screen_harmonics(
             <= point["frequency_hz"]
             <= band["stop_hz"]
         ]
-        limit_spec = band["limits"].get(detector)
+        limit_spec = band["limits"].get(limit_column)
         if isinstance(limit_spec, dict) and in_band:
             # The worst point has the smallest margin; with a sloped limit
             # that need not be the highest level in the band.
@@ -323,7 +323,7 @@ def screen_harmonics(
     return {
         "schema_version": RESULT_SCHEMA,
         "result_class": "screening_only",
-        "detector": detector,
+        "limit_column": limit_column,
         "design_margin_db": design_margin,
         "level_unit": spectrum["level_unit"],
         "spectrum_source": spectrum.get("source"),
@@ -441,9 +441,10 @@ def _build_parser():
         help=f"{PROFILE_SCHEMA} JSON input",
     )
     parser.add_argument(
-        "--detector",
+        "--limit-column",
         choices=DETECTORS,
         required=True,
+        help="Which profile limit to compare (does not emulate a detector)",
     )
     parser.add_argument(
         "--design-margin-db",
@@ -478,7 +479,7 @@ def main(argv: list[str] | None = None) -> int:
         result = screen_harmonics(
             spectrum,
             profile,
-            detector=args.detector,
+            limit_column=args.limit_column,
             design_margin_db=args.design_margin_db,
         )
         _write_json(result, args.output)

@@ -94,7 +94,7 @@ For spectral lines that are already expressed as RMS dBµV, dBµV/m, or dBµA, u
 python3 <skill-path>/scripts/analyze_harmonic_limits.py \
   --spectrum harmonic-lines.json \
   --limits limit-profile.json \
-  --detector peak \
+  --limit-column peak \
   --output harmonic-limit-screen.json
 ```
 
