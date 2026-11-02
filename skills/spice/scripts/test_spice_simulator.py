@@ -265,7 +265,12 @@ class TestExternalDeckCli(unittest.TestCase):
 
     def test_output_may_not_overwrite_deck_native_output_or_sidecar(self):
         native = self.deck.with_suffix(".out")
-        for victim in (self.deck, native, native.with_suffix(".json")):
+        for victim in (
+            self.deck,
+            native,
+            native.with_suffix(".json"),
+            native.with_suffix(".dat"),
+        ):
             with self.subTest(victim=victim.name):
                 message = self._usage_error(
                     [

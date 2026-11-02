@@ -48,6 +48,10 @@ def _output_conflict(
             "the PSpice sidecar file",
             native_output.with_suffix(".json"),
         ))
+        protected.append((
+            "the PSpice waveform data file",
+            native_output.with_suffix(".dat"),
+        ))
     for label, path in protected:
         if _same_path(output, path):
             return f"--output would overwrite {label}: {output}"
