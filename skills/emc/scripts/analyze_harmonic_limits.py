@@ -305,7 +305,7 @@ def screen_harmonics(
             elif margin < design_margin:
                 status = "near_limit"
             else:
-                status = "below_limit_screen"
+                status = "at_or_below_limit_screen"
 
         results.append(
             {

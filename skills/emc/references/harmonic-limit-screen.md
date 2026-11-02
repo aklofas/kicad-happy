@@ -82,7 +82,7 @@ For each band, the tool selects the in-band point with the smallest margin (`lim
 
 | Status | Meaning |
 |---|---|
-| `below_limit_screen` | Margin is at least the requested design margin. |
+| `at_or_below_limit_screen` | Margin is at least the requested design margin. With the default design margin of 0, a level exactly equal to the limit lands here. |
 | `near_limit` | Margin is nonnegative but smaller than the requested design margin. |
 | `above_limit_screen` | Margin is negative. |
 | `not_assessed` | The band has no points or no limit in the selected limit column. |
@@ -110,7 +110,7 @@ An empty band has null worst-point fields; it reports a flat limit but a null `l
       "level": 42.0,
       "limit": 54.0,
       "margin_db": 12.0,
-      "status": "below_limit_screen"
+      "status": "at_or_below_limit_screen"
     }
   ],
   "claim_boundary": "This comparison is not a compliance determination."

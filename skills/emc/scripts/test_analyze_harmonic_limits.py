@@ -364,7 +364,7 @@ class TestScreenHarmonics(unittest.TestCase):
         )
         self.assertEqual(
             [band["status"] for band in bands],
-            ["below_limit_screen", "above_limit_screen"],
+            ["at_or_below_limit_screen", "above_limit_screen"],
         )
 
     def test_positive_zero_and_negative_margins_are_classified(self):
@@ -401,8 +401,8 @@ class TestScreenHarmonics(unittest.TestCase):
         self.assertEqual(
             [band["status"] for band in bands],
             [
-                "below_limit_screen",
-                "below_limit_screen",
+                "at_or_below_limit_screen",
+                "at_or_below_limit_screen",
                 "above_limit_screen",
             ],
         )
@@ -450,9 +450,9 @@ class TestScreenHarmonics(unittest.TestCase):
 
     def test_decimal_design_margin_threshold_is_not_float_noise(self):
         cases = (
-            (30.3, 33.3, 3.0, 3.0, "below_limit_screen"),
+            (30.3, 33.3, 3.0, 3.0, "at_or_below_limit_screen"),
             (30.4, 33.3, 3.0, 2.9, "near_limit"),
-            (40.1, 40.3, 0.2, 0.2, "below_limit_screen"),
+            (40.1, 40.3, 0.2, 0.2, "at_or_below_limit_screen"),
             (40.2, 40.3, 0.2, 0.1, "near_limit"),
         )
         for level, limit, design, expected, status in cases:
