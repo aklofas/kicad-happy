@@ -105,6 +105,49 @@ def validate_spectrum(data: object) -> dict:
     return normalized
 
 
+def _limit(value, path, single_frequency):
+    """Return a flat limit number or a {"start", "stop"} sloped limit."""
+    if not isinstance(value, dict):
+        return _number(value, path)
+    if set(value) != {"start", "stop"}:
+        raise ValidationError(
+            f"{path} must be a number or an object with exactly "
+            "'start' and 'stop'"
+        )
+    sloped = {
+        "start": _number(value["start"], f"{path}.start"),
+        "stop": _number(value["stop"], f"{path}.stop"),
+    }
+    if single_frequency and sloped["start"] != sloped["stop"]:
+        raise ValidationError(
+            f"{path}.start must equal {path}.stop when start_hz equals "
+            "stop_hz"
+        )
+    return sloped
+
+
+def _limit_at(limit, band, frequency):
+    """Return the limit at a frequency, interpolating linearly in log10(f)."""
+    if not isinstance(limit, dict):
+        return limit
+    start_hz, stop_hz = band["start_hz"], band["stop_hz"]
+    if frequency <= start_hz:
+        return limit["start"]
+    if frequency >= stop_hz:
+        return limit["stop"]
+    ratio = stop_hz / start_hz
+    if math.isfinite(ratio):
+        span = math.log(ratio)
+        offset = math.log(frequency / start_hz)
+    else:
+        span = math.log10(stop_hz) - math.log10(start_hz)
+        offset = math.log10(frequency) - math.log10(start_hz)
+    fraction = offset / span if span > 0 else 0.0
+    fraction = min(max(fraction, 0.0), 1.0)
+    value = limit["start"] * (1.0 - fraction) + limit["stop"] * fraction
+    return round(value, MARGIN_DECIMALS) + 0.0
+
+
 def validate_limit_profile(data: object) -> dict:
     """Return a normalized, provenance-preserving limit profile."""
     root = _mapping(data, "profile")
@@ -166,9 +209,10 @@ def validate_limit_profile(data: object) -> dict:
                 f"detector {unsupported[0]!r}"
             )
         limits = {
-            detector: _number(
+            detector: _limit(
                 value,
                 f"profile.bands[{index}].limits.{detector}",
+                start == stop,
             )
             for detector, value in raw_limits.items()
         }
@@ -221,15 +265,30 @@ def screen_harmonics(
             <= point["frequency_hz"]
             <= band["stop_hz"]
         ]
-        worst = max(
-            in_band,
-            key=lambda point: (
-                point["level"],
-                -point["frequency_hz"],
-            ),
-            default=None,
-        )
-        limit = band["limits"].get(detector)
+        limit_spec = band["limits"].get(detector)
+        if isinstance(limit_spec, dict) and in_band:
+            # The worst point has the smallest margin; with a sloped limit
+            # that need not be the highest level in the band.
+            worst, limit = min(
+                (
+                    (point, _limit_at(limit_spec, band, point["frequency_hz"]))
+                    for point in in_band
+                ),
+                key=lambda pair: (
+                    pair[1] - pair[0]["level"],
+                    pair[0]["frequency_hz"],
+                ),
+            )
+        else:
+            worst = max(
+                in_band,
+                key=lambda point: (
+                    point["level"],
+                    -point["frequency_hz"],
+                ),
+                default=None,
+            )
+            limit = None if isinstance(limit_spec, dict) else limit_spec
 
         if worst is None or limit is None:
             margin = None

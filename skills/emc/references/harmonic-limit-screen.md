@@ -40,6 +40,12 @@ The input must use schema `harmonic-lines/1` and a `level_unit` of `dbuv` (dBµV
 
 Profiles use schema `emc-limit-profile/1`. `profile_id`, `limit_unit`, `source.kind`, and `source.citation` are required, and any additional `source` fields (for example a URL or edition) are copied to the output unchanged. A profile needs at least one band. Each uniquely named band has an inclusive positive frequency range and at least one finite limit named `peak`, `quasi_peak`, or `average`, expressed in the profile's `limit_unit` (`dbuv`, `dbuv_per_m`, or `dbua`). `limit_unit` must equal the spectrum's `level_unit`; a mismatch is rejected rather than converted, so for example a dBµV/m radiated limit cannot be compared with conducted dBµV levels.
 
+A limit is either a number (flat across the band) or an object `{"start": <limit at start_hz>, "stop": <limit at stop_hz>}` for a limit that varies linearly with log-frequency across the band, as many conducted-emission limits do between 150 kHz and 500 kHz. The limit at frequency `f` is `start + (stop - start) * log10(f / start_hz) / log10(stop_hz / start_hz)`, rounded to 1e-6 dB; at `start_hz` and `stop_hz` the `start` and `stop` values are used exactly. A band whose `start_hz` equals `stop_hz` must use equal `start` and `stop` values. For example, a fictional quasi-peak limit falling from 66 to 56:
+
+```json
+"limits": {"quasi_peak": {"start": 66.0, "stop": 56.0}}
+```
+
 The repository does not provide regulatory tables. The following values are fictional and must not be used for a product decision:
 
 ```json
@@ -68,7 +74,7 @@ The repository does not provide regulatory tables. The following values are fict
 
 ## Comparison and output
 
-For each band, the tool selects the in-band point with the greatest `level`; equal levels choose the lower frequency deterministically. Band endpoints are inclusive, and overlapping bands are evaluated independently. `margin_db` is `limit - level`, rounded to 1e-6 dB before it is classified or written, so decimal inputs such as a 3 dB design margin classify as written rather than by binary floating-point noise. A margin that is not finite (for example from extreme finite inputs) is rejected with an error naming the band.
+For each band, the tool selects the in-band point with the smallest margin (`limit - level`, using the limit at that point's frequency); for a flat limit this is the point with the greatest `level`. Equal margins choose the lower frequency deterministically. Band endpoints are inclusive, and overlapping bands are evaluated independently. `limit` in the output is the limit at `worst_frequency_hz`. `margin_db` is `limit - level`, rounded to 1e-6 dB before it is classified or written, so decimal inputs such as a 3 dB design margin classify as written rather than by binary floating-point noise. A margin that is not finite (for example from extreme finite inputs) is rejected with an error naming the band.
 
 | Status | Meaning |
 |---|---|
@@ -79,7 +85,7 @@ For each band, the tool selects the in-band point with the greatest `level`; equ
 
 `--detector` only selects which profile limit is compared. It does not emulate or validate the detector used for the measurement, so `margin_db` is not a detector-specific receiver margin.
 
-An empty band has null worst-point fields. A missing detector limit has a null limit and margin but retains the worst point when one exists. Every result uses `result_class: screening_only` and includes `This comparison is not a compliance determination.` The result also carries `spectrum_source` (the spectrum's `source` object, or `null`) and `profile.source` (the profile's complete `source` object) for provenance.
+An empty band has null worst-point fields; it reports a flat limit but a null `limit` for a sloped one. A missing detector limit has a null limit and margin but retains the highest-level point when one exists. Every result uses `result_class: screening_only` and includes `This comparison is not a compliance determination.` The result also carries `spectrum_source` (the spectrum's `source` object, or `null`) and `profile.source` (the profile's complete `source` object) for provenance.
 
 ```json
 {

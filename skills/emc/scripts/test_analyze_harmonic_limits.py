@@ -243,6 +243,36 @@ class TestLimitProfileValidation(unittest.TestCase):
                 ):
                     self._validate(data)
 
+    def test_sloped_limit_shape_is_validated(self):
+        cases = (
+            ({"start": 66}, "exactly 'start' and 'stop'"),
+            ({"start": 66, "stop": 56, "mid": 60}, "exactly"),
+            ({"start": math.nan, "stop": 56}, r"limits\.peak\.start"),
+            ({"start": 66, "stop": True}, r"limits\.peak\.stop"),
+        )
+        for limit, expected in cases:
+            with self.subTest(limit=limit):
+                data = copy.deepcopy(VALID_PROFILE)
+                data["bands"][0]["limits"]["peak"] = limit
+                with self.assertRaisesRegex(
+                    harmonic.ValidationError, expected
+                ):
+                    self._validate(data)
+
+    def test_sloped_limit_on_single_frequency_band_must_be_flat(self):
+        data = copy.deepcopy(VALID_PROFILE)
+        data["bands"][0].update(start_hz=100, stop_hz=100)
+        data["bands"][0]["limits"]["peak"] = {"start": 50, "stop": 40}
+        with self.assertRaisesRegex(
+            harmonic.ValidationError, "must equal"
+        ):
+            self._validate(data)
+        data["bands"][0]["limits"]["peak"] = {"start": 50, "stop": 50}
+        self.assertEqual(
+            self._validate(data)["bands"][0]["limits"]["peak"],
+            {"start": 50.0, "stop": 50.0},
+        )
+
     def test_nonfinite_limit_is_rejected(self):
         for value in (math.nan, math.inf, -math.inf, False):
             with self.subTest(value=value):
@@ -440,6 +470,83 @@ class TestScreenHarmonics(unittest.TestCase):
             harmonic.ValidationError, r"bands\[0\]\.margin_db"
         ):
             self._one_band(-1e308, 1e308)
+
+    def _sloped(self, points):
+        spectrum = copy.deepcopy(VALID_SPECTRUM)
+        spectrum["points"] = points
+        profile = copy.deepcopy(VALID_PROFILE)
+        profile["bands"] = [
+            {
+                "name": "sloped",
+                "start_hz": 150_000,
+                "stop_hz": 500_000,
+                "limits": {"peak": {"start": 66, "stop": 56}},
+            }
+        ]
+        return self._screen(spectrum, profile)["bands"][0]
+
+    def test_sloped_limit_interpolates_linearly_in_log_frequency(self):
+        geometric_mean = math.sqrt(150_000 * 500_000)
+        cases = ((150_000, 66.0), (geometric_mean, 61.0), (500_000, 56.0))
+        for frequency, limit in cases:
+            with self.subTest(frequency=frequency):
+                band = self._sloped(
+                    [{"frequency_hz": frequency, "level": 60}]
+                )
+                self.assertEqual(band["limit"], limit)
+                self.assertEqual(band["margin_db"], round(limit - 60, 6))
+
+    def test_sloped_limit_selects_smallest_margin_not_highest_level(self):
+        band = self._sloped(
+            [
+                {"frequency_hz": 150_000, "level": 60},
+                {"frequency_hz": 500_000, "level": 52},
+            ]
+        )
+        self.assertEqual(band["worst_frequency_hz"], 500_000.0)
+        self.assertEqual(band["level"], 52.0)
+        self.assertEqual(band["limit"], 56.0)
+        self.assertEqual(band["margin_db"], 4.0)
+
+    def test_sloped_limit_keeps_exact_endpoints_on_a_narrow_band(self):
+        stop_hz = 150_000.00000000003
+        spectrum = copy.deepcopy(VALID_SPECTRUM)
+        spectrum["points"] = [{"frequency_hz": stop_hz, "level": 60}]
+        profile = copy.deepcopy(VALID_PROFILE)
+        profile["bands"] = [
+            {
+                "name": "narrow",
+                "start_hz": 150_000,
+                "stop_hz": stop_hz,
+                "limits": {"peak": {"start": 66, "stop": 56}},
+            }
+        ]
+        band = self._screen(spectrum, profile)["bands"][0]
+        self.assertEqual(band["limit"], 56.0)
+        self.assertEqual(band["status"], "above_limit_screen")
+
+    def test_flat_limit_still_selects_highest_level(self):
+        spectrum = copy.deepcopy(VALID_SPECTRUM)
+        spectrum["points"] = [
+            {"frequency_hz": 150_000, "level": 1e-15},
+            {"frequency_hz": 500_000, "level": 2e-15},
+        ]
+        profile = copy.deepcopy(VALID_PROFILE)
+        profile["bands"] = [
+            {
+                "name": "flat",
+                "start_hz": 150_000,
+                "stop_hz": 500_000,
+                "limits": {"peak": 60},
+            }
+        ]
+        band = self._screen(spectrum, profile)["bands"][0]
+        self.assertEqual(band["worst_frequency_hz"], 500_000.0)
+
+    def test_sloped_limit_in_empty_band_reports_null_limit(self):
+        band = self._sloped([{"frequency_hz": 1_000_000, "level": 60}])
+        self.assertIsNone(band["limit"])
+        self.assertEqual(band["status"], "not_assessed")
 
     def test_each_supported_detector_uses_its_own_limit(self):
         results = {
