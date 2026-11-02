@@ -440,11 +440,12 @@ class XyceBackend(SimulatorBackend):
 # PSpice external-deck backend
 # ---------------------------------------------------------------------------
 
-_SCRIPT_SUFFIXES = (".bat", ".cmd")
-
-
 def _on_windows():
     return os.name == "nt"
+
+
+def _is_native_windows_exe(path):
+    return os.path.isabs(path) and path.lower().endswith(".exe")
 
 
 def _file_signature(path):
@@ -522,10 +523,28 @@ class PspiceBackend(SimulatorBackend):
         env_path = os.environ.get("PSPICE_PATH")
         if env_path and os.path.isfile(env_path):
             return os.path.abspath(env_path)
+        if _on_windows():
+            return self._find_windows_exe()
         for name in ("pspice", "pspice.exe"):
             found = shutil.which(name)
             if found:
                 return os.path.abspath(found)
+        return None
+
+    @staticmethod
+    def _find_windows_exe():
+        """Search absolute PATH entries for pspice.exe only.
+
+        Unlike shutil.which, this never searches the current directory and
+        does not try other PATHEXT suffixes.
+        """
+        for entry in os.environ.get("PATH", "").split(os.pathsep):
+            entry = entry.strip('"')
+            if not os.path.isabs(entry):
+                continue
+            candidate = os.path.join(entry, "pspice.exe")
+            if os.path.isfile(candidate):
+                return os.path.abspath(candidate)
         return None
 
     def _command(self, binary, deck_name, output_name):
@@ -545,12 +564,12 @@ class PspiceBackend(SimulatorBackend):
                 "PSpice executable not found; set PSPICE_PATH or add "
                 "pspice to PATH",
             )
-        if _on_windows() and Path(binary).suffix.lower() in _SCRIPT_SUFFIXES:
+        if _on_windows() and not _is_native_windows_exe(binary):
             return (
                 False,
                 "",
-                "PSpice executable must be a native program, not a "
-                f".bat/.cmd script: {binary}",
+                "PSpice executable must be an absolute path to a native "
+                f".exe program: {binary}",
             )
 
         deck = Path(cir_file).resolve()

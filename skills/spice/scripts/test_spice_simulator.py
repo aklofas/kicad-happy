@@ -433,6 +433,7 @@ class TestPspiceDiscovery(unittest.TestCase):
                     "spice_simulator.shutil.which",
                     side_effect=[None, "/tools/pspice.exe"],
                 ) as which,
+                patch("spice_simulator._on_windows", return_value=False),
             ):
                 found = spice_simulator.PspiceBackend().find()
 
@@ -463,6 +464,7 @@ class TestPspiceDiscovery(unittest.TestCase):
                         "spice_simulator.shutil.which",
                         return_value=os.path.join(".", "pspice"),
                     ),
+                    patch("spice_simulator._on_windows", return_value=False),
                 ):
                     from_path = spice_simulator.PspiceBackend().find()
                 expected_dir = os.getcwd()
@@ -472,6 +474,45 @@ class TestPspiceDiscovery(unittest.TestCase):
         which.assert_not_called()
         self.assertEqual(from_env, os.path.join(expected_dir, "pspice.exe"))
         self.assertEqual(from_path, os.path.join(expected_dir, "pspice"))
+
+    @unittest.skipUnless(os.name == "nt", "Windows path semantics")
+    def test_windows_path_search_finds_only_absolute_pspice_exe(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd_dir = Path(tmp, "cwd")
+            script_dir = Path(tmp, "scripts")
+            exe_dir = Path(tmp, "bin")
+            for folder in (cwd_dir, script_dir, exe_dir):
+                folder.mkdir()
+            (cwd_dir / "pspice.exe").touch()
+            (script_dir / "pspice.bat").touch()
+            (exe_dir / "pspice.exe").touch()
+            search_path = os.pathsep.join(
+                [".", "", str(script_dir), f'"{exe_dir}"']
+            )
+            previous = os.getcwd()
+            os.chdir(cwd_dir)
+            try:
+                with (
+                    patch.dict(
+                        os.environ,
+                        {"PSPICE_PATH": "", "PATH": search_path},
+                        clear=False,
+                    ),
+                    patch("spice_simulator.shutil.which") as which,
+                ):
+                    found = spice_simulator.PspiceBackend().find()
+                with patch.dict(
+                    os.environ,
+                    {"PSPICE_PATH": "", "PATH": f".{os.pathsep}{script_dir}"},
+                    clear=False,
+                ):
+                    missing = spice_simulator.PspiceBackend().find()
+            finally:
+                os.chdir(previous)
+
+        which.assert_not_called()
+        self.assertEqual(found, str(exe_dir / "pspice.exe"))
+        self.assertIsNone(missing)
 
 
 STUB_SOURCE = '''\
@@ -807,14 +848,21 @@ class TestPspiceRun(unittest.TestCase):
         self.assertIn("Could not read PSpice native output", diagnostic)
         self.assertIn("read blocked", diagnostic)
 
-    def test_windows_batch_script_executable_is_rejected(self):
-        for name in ("pspice.bat", "PSPICE.CMD"):
-            with self.subTest(name=name):
+    def test_windows_non_exe_or_relative_executable_is_rejected(self):
+        candidates = (
+            "C:/tools/pspice.bat",
+            "C:/tools/PSPICE.CMD",
+            "C:/tools/pspice.bat.",
+            "C:/tools/pspice.com",
+            "pspice.exe",
+        )
+        for binary in candidates:
+            with self.subTest(binary=binary):
                 with (
                     patch.object(
                         self.backend,
                         "find",
-                        return_value=f"C:/tools/{name}",
+                        return_value=binary,
                     ),
                     patch("spice_simulator._on_windows", return_value=True),
                     patch("spice_simulator.subprocess.Popen") as popen,
@@ -825,8 +873,7 @@ class TestPspiceRun(unittest.TestCase):
                     )
 
                 self.assertFalse(success)
-                self.assertIn("native program", diagnostic)
-                self.assertIn(".bat/.cmd", diagnostic)
+                self.assertIn("absolute path to a native .exe", diagnostic)
                 popen.assert_not_called()
 
     def test_unsupported_generated_measurement_methods_are_actionable(self):
