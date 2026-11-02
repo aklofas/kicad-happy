@@ -190,7 +190,7 @@ Mutation contract: `read_board` backfills `net`/`net_number` on the extracted re
 
 | Module | Owns | Imports |
 |---|---|---|
-| `distributor_core/inputs.py` | BOM / MPN-list projection (`extract_parts`, `load_mpn_list` with per-provider `id_keys`), `is_real_mpn`, `get_analyzer_output` (runs the schematic analyzer; keeps the one `no-cli-import` baseline edge) | stdlib |
+| `distributor_core/inputs.py` | BOM / MPN-list projection (`extract_parts`, `load_mpn_list` with per-provider `id_keys`), `is_real_mpn`, `get_analyzer_output` (runs the schematic analyzer) | stdlib; lazy `schematic.pipeline` from the kicad skill, with `analyze_schematic.py` as a subprocess fallback |
 | `distributor_core/manifest.py` | `manifest.json` IO (legacy `index.json` migration), filename primitives (`sanitize_filename`, `friendly_filename`) | stdlib |
 | `distributor_core/download.py` | transport cascade (`requests` → `urllib` → Playwright), redirect normalisation (opt-in via `resolve_redirects`), the Microchip alternative source | stdlib + optional `requests`/`playwright` (guarded; declared in the harness compat policy) |
 | `distributor_core/verify.py` | PDF text extraction and datasheet verification | stdlib (+ optional `pdftotext` binary) |
