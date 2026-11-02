@@ -20,6 +20,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `plan_extraction.py` and `merge_results.py` name their files with the same MPN-to-filename mapping as the extraction readers, so MPNs with `/` (such as `LM317/NOPB`) work and no MPN can write outside the cache. (KH-505)
 - The Action report reads and writes UTF-8 whatever the host locale. (KH-504)
 - Analyzers no longer read datasheet extractions from a shared temporary directory (`$TMPDIR/kicad-happy/datasheets/extracted`) when the analysis names no project; the project is found from the analysis `inputs.source_files` (a relative path, as `analyze_schematic.py board.kicad_sch` records it, only when that schematic exists from the working directory), and with none there is no extraction cache. Thermal and the lifecycle audit no longer read `datasheets/extracted` beside the input JSON either (a JSON written to `/tmp` read `/tmp/datasheets/extracted`); thermal now finds the project's cache from an `analysis/<run>/schematic.json`. The schematic analyzer's datasheet verification reads only the project's own `datasheets/extracted` (it also tried the parent folder, so a schematic in `/tmp/<project>/` read `/tmp/datasheets/extracted`), and reads an extraction `manifest.json` with the same symlink refusal and size cap as the extraction files. (KH-782)
+- Typed datasheet lookups no longer fall back to the parent folder's `datasheets/extracted`. (KH-819)
 
 ### Changed
 

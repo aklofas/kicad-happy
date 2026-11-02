@@ -187,17 +187,14 @@ from finding_schema import assign_finding_ids
 
 
 def _resolve_lookup_paths(sch_path: str | Path) -> Path | None:
-    """Resolve the datasheets/extracted/ cache dir adjacent to the schematic.
+    """Resolve the schematic folder's own datasheets/extracted/ cache dir.
 
-    Returns None when the directory doesn't exist — `lookup()` already handles
-    None gracefully.
+    Never a parent folder's (a planted extraction there would reach
+    deterministic findings). Returns None when the directory doesn't exist —
+    `lookup()` already handles None gracefully.
     """
-    sch_dir = Path(sch_path).resolve().parent
-    candidates = [
-        sch_dir / "datasheets" / "extracted",
-        sch_dir.parent / "datasheets" / "extracted",
-    ]
-    return next((c for c in candidates if c.is_dir()), None)
+    cache = Path(sch_path).resolve().parent / "datasheets" / "extracted"
+    return cache if cache.is_dir() else None
 
 ANALYZER_SOURCE = "sch"
 
