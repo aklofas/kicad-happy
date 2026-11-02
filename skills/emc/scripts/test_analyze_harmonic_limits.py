@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -768,6 +769,42 @@ class TestHarmonicLimitCli(unittest.TestCase):
         self.assertEqual(stdout, "")
         self.assertIn(f"could not write {output}:", stderr)
         self.assertNotIn("Traceback", stderr)
+
+    def test_output_without_a_file_name_is_a_clean_error(self):
+        code, stdout, stderr = self._run(("--output", "."))
+
+        self.assertEqual(code, 2)
+        self.assertEqual(stdout, "")
+        self.assertIn("could not write .: not a file path", stderr)
+
+    def test_output_is_replaced_atomically(self):
+        output = self.root / "screen.json"
+        output.write_text("previous result\n", encoding="utf-8")
+        before = sorted(path.name for path in self.root.iterdir())
+
+        with mock.patch.object(
+            harmonic.os, "replace", side_effect=OSError("simulated")
+        ):
+            code, stdout, stderr = self._run(("--output", str(output)))
+
+        self.assertEqual(code, 2)
+        self.assertIn(f"could not write {output}: simulated", stderr)
+        self.assertEqual(
+            output.read_text(encoding="utf-8"), "previous result\n"
+        )
+        self.assertEqual(
+            sorted(path.name for path in self.root.iterdir()), before
+        )
+
+        code, _, stderr = self._run(("--output", str(output)))
+        self.assertEqual((code, stderr), (0, ""))
+        self.assertEqual(
+            json.loads(output.read_text(encoding="utf-8"))["result_class"],
+            "screening_only",
+        )
+        self.assertEqual(
+            sorted(path.name for path in self.root.iterdir()), before
+        )
 
 
 if __name__ == "__main__":

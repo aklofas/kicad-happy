@@ -17,7 +17,7 @@ The command exits with status 0 when the result is written and 2 on any error (i
 
 ## Spectrum format
 
-The result must be written separately from both inputs. An `--output` path that refers to either input file (including a link to it) is rejected before writing.
+The result must be written separately from both inputs. An `--output` path that refers to either input file (including a link to it) is rejected before writing. The result is written to a temporary file in the output directory and then renamed over `--output`, so a failed write leaves any existing file at that path unchanged.
 
 The input must use schema `harmonic-lines/1` and `level_unit: dbuv_rms`. Frequencies are positive finite hertz values, levels are finite RMS-referenced dBµV values, and duplicate frequencies are rejected. An optional `source` must be an object; it is echoed to the output as `spectrum_source` (`null` when absent). Input files must be UTF-8 (a leading byte-order mark is accepted), JSON objects with duplicate keys are rejected rather than resolved last-wins, and non-finite numbers (`NaN`, `Infinity`, `-Infinity`, or a literal such as `1e400` that overflows) are rejected at load time with an error naming the file.
 

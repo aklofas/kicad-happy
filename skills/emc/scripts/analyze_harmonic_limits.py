@@ -4,7 +4,9 @@
 import argparse
 import json
 import math
+import os
 from pathlib import Path
+import secrets
 import sys
 
 
@@ -324,10 +326,23 @@ def _write_json(payload: dict, output: Path | None):
     if output is None:
         sys.stdout.write(text)
         return
+    # Write beside the target, then rename, so a failure never leaves a
+    # truncated or partially written result at the requested path.
+    if not output.name:
+        raise ValidationError(f"could not write {output}: not a file path")
+    temp = output.with_name(f".{output.name}.{secrets.token_hex(8)}.tmp")
+    created = False
     try:
-        with output.open("w", encoding="utf-8") as stream:
+        descriptor = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
+        created = True
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
             stream.write(text)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temp, output)
     except OSError as exc:
+        if created:
+            temp.unlink(missing_ok=True)
         raise ValidationError(f"could not write {output}: {exc}") from exc
 
 
