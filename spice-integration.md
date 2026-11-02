@@ -49,6 +49,8 @@ Resolve any pending PSpice dialogs or interrupted simulation-queue entries befor
 
 PSpice success requires a zero process exit code, a native output file that was written or changed by this run (a leftover `.out` from an earlier run is not success), and a line that is exactly `JOB CONCLUDED`. A `JOB ABORTED` line, or any line starting `ERROR --` or `ERROR(ORPSIM-`, fails the run; the failure note quotes the first such error line. UTF-16 and UTF-8 byte-order marks in the `.out` are honored, and the file is scanned incrementally in bounded chunks, so large transient logs are not loaded into memory. A single line longer than 1,000,000 characters fails the run rather than being partially classified. Warnings (`WARNING(...)`) and a zero-error summary do not fail the run. The JSON result records execution success only; it does not validate circuit behavior or establish regulatory compliance.
 
+The runner also accepts `--simulator ngspice`, `ltspice`, or `xyce`, which reuse the existing backends' `run()` unchanged and get none of the PSpice handling above: success is the simulator's exit code only (no native-output check), the deck is passed as an absolute path from the runner's current working directory, and on timeout only the direct simulator process is killed — child processes it started may keep running. The result's `native_output` is `null` for these simulators.
+
 This first version does not add PSpice to `simulate_subcircuits.py`, `SPICE_SIMULATOR`, or auto-detection. It does not render or parse PSpice measurements, copy vendor libraries, inspect encryption, parse waveform binaries, or repair convergence problems.
 
 ## What Gets Simulated

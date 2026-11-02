@@ -74,6 +74,11 @@ def _build_parser():
         "--simulator",
         required=True,
         choices=SIMULATORS,
+        help=(
+            "pspice checks its native .out log and kills the whole process "
+            "tree on timeout; ngspice, ltspice and xyce report exit code "
+            "only and kill only the direct process"
+        ),
     )
     parser.add_argument(
         "--timeout",
