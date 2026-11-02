@@ -306,6 +306,11 @@ def load_budget(path: Path) -> dict:
     return budget
 
 
+def _budget_lines(out: dict, limit: int = 50) -> None:
+    for row in out["unclaimed"][:limit]:
+        print(f"   {row[0]} {row[2]} {row[1]}: {row[3]!r} -> {row[4]!r}")
+
+
 def cmd_budget_compare(args) -> int:
     base, cand = Path(args.base), Path(args.cand)
     if not cand.is_dir():
@@ -324,8 +329,7 @@ def cmd_budget_compare(args) -> int:
     out = budget_compare(compare_dirs(base, cand, volatile), budget, base, cand)
     if args.report:
         Path(args.report).write_text(json.dumps(out, indent=1, default=str), encoding="utf-8")
-    for row in out["unclaimed"][:50]:
-        print(f"   {row[0]} {row[2]} {row[1]}: {row[3]!r} -> {row[4]!r}")
+    _budget_lines(out)
     n = len(out["unclaimed"])
     print("budget-compare: " + (f"FAIL ({n} unclaimed)" if n
                                 else f"OK ({sum(out['claimed'].values())} claimed in {len(out['claimed'])} classes)"))
@@ -551,8 +555,8 @@ def _call_name(node: ast.Call) -> str | None:
     return fn.id if isinstance(fn, ast.Name) else fn.attr if isinstance(fn, ast.Attribute) else None
 
 
-def _classify_factories(tree: ast.AST) -> tuple[set[str], set[str]]:
-    """(wrappers, dict_factories) among the file's `_make_*` definitions.
+def _classify_factories(tree: ast.AST) -> set[str]:
+    """The dict factories among the file's `_make_*` definitions.
 
     wrapper: its body calls make_finding/_make_finding, so that inner call is the emit site.
     dict_factory: returns a dict literal with a "detector" key, so its callers are the emit sites.
@@ -571,7 +575,7 @@ def _classify_factories(tree: ast.AST) -> tuple[set[str], set[str]]:
             elif isinstance(sub, ast.Return) and isinstance(sub.value, ast.Dict) and any(
                     isinstance(k, ast.Constant) and k.value == "detector" for k in sub.value.keys):
                 dict_factories.add(node.name)
-    return wrappers, dict_factories - wrappers
+    return dict_factories - wrappers
 
 
 def scan_tags(root: Path, errors: list | None = None) -> list[dict]:
@@ -584,7 +588,7 @@ def scan_tags(root: Path, errors: list | None = None) -> list[dict]:
             if errors is not None:
                 errors.append((rel, str(exc)))
             continue
-        wrappers, dict_factories = _classify_factories(tree)
+        dict_factories = _classify_factories(tree)
 
         def visit(node, scope):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
@@ -1256,8 +1260,7 @@ def cmd_quick(args) -> int:
                     print("compare-vs-baseline: " + ("FAIL" if bad else "OK")
                           + f" ({sum(budget_result['claimed'].values())} claimed, "
                           f"{len(budget_result['unclaimed'])} unclaimed)")
-                    for row in budget_result["unclaimed"][:50]:
-                        print(f"   {row[0]} {row[2]} {row[1]}: {row[3]!r} -> {row[4]!r}")
+                    _budget_lines(budget_result)
                     for f in stats["failures"]:
                         print(f"   snapshot failure: {f}")
                     return 1 if bad else 0
