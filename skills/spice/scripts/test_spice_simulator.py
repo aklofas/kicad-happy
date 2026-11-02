@@ -436,11 +436,42 @@ class TestPspiceDiscovery(unittest.TestCase):
             ):
                 found = spice_simulator.PspiceBackend().find()
 
-        self.assertEqual(found, "/tools/pspice.exe")
+        self.assertEqual(found, os.path.abspath("/tools/pspice.exe"))
         self.assertEqual(
             which.call_args_list,
             [call("pspice"), call("pspice.exe")],
         )
+
+    def test_relative_discoveries_are_made_absolute(self):
+        # The simulator runs with cwd=deck.parent, so a relative path would
+        # resolve next to the deck instead of where it was discovered.
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "pspice.exe").touch()
+            previous = os.getcwd()
+            os.chdir(tmp)
+            try:
+                with (
+                    patch.dict(
+                        os.environ, {"PSPICE_PATH": "pspice.exe"}, clear=False
+                    ),
+                    patch("spice_simulator.shutil.which") as which,
+                ):
+                    from_env = spice_simulator.PspiceBackend().find()
+                with (
+                    patch.dict(os.environ, {"PSPICE_PATH": ""}, clear=False),
+                    patch(
+                        "spice_simulator.shutil.which",
+                        return_value=os.path.join(".", "pspice"),
+                    ),
+                ):
+                    from_path = spice_simulator.PspiceBackend().find()
+                expected_dir = os.getcwd()
+            finally:
+                os.chdir(previous)
+
+        which.assert_not_called()
+        self.assertEqual(from_env, os.path.join(expected_dir, "pspice.exe"))
+        self.assertEqual(from_path, os.path.join(expected_dir, "pspice"))
 
 
 STUB_SOURCE = '''\

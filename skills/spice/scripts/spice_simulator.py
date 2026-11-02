@@ -521,11 +521,11 @@ class PspiceBackend(SimulatorBackend):
     def find(self):
         env_path = os.environ.get("PSPICE_PATH")
         if env_path and os.path.isfile(env_path):
-            return env_path
+            return os.path.abspath(env_path)
         for name in ("pspice", "pspice.exe"):
             found = shutil.which(name)
             if found:
-                return found
+                return os.path.abspath(found)
         return None
 
     def _command(self, binary, deck_name, output_name):
