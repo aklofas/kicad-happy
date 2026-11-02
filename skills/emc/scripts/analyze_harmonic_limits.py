@@ -268,10 +268,26 @@ def _reject_duplicate_keys(pairs):
     return parsed
 
 
+def _reject_constant(name):
+    raise ValidationError(f"non-finite number {name} is not allowed")
+
+
+def _finite_float(text):
+    number = float(text)
+    if not math.isfinite(number):
+        raise ValidationError(f"number {text} is not finite")
+    return number
+
+
 def _load_json(path: Path):
     try:
         with path.open("r", encoding="utf-8-sig") as stream:
-            return json.load(stream, object_pairs_hook=_reject_duplicate_keys)
+            return json.load(
+                stream,
+                object_pairs_hook=_reject_duplicate_keys,
+                parse_constant=_reject_constant,
+                parse_float=_finite_float,
+            )
     except ValidationError as exc:
         raise ValidationError(f"{path}: {exc}") from exc
     except UnicodeDecodeError as exc:

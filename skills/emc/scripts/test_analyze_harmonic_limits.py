@@ -736,14 +736,22 @@ class TestHarmonicLimitCli(unittest.TestCase):
         self.spectrum_path.write_text(json.dumps(data), encoding="utf-8")
         self._assert_clean_failure("frequency_hz")
 
-    def test_nonfinite_values_never_reach_the_output(self):
-        spectrum = copy.deepcopy(VALID_SPECTRUM)
-        spectrum["source"]["nonfinite"] = math.nan
-        self.spectrum_path.write_text(
-            json.dumps(spectrum, allow_nan=True), encoding="utf-8"
+    def test_nonfinite_json_numbers_are_rejected_at_load(self):
+        cases = (
+            ("NaN", "non-finite number NaN"),
+            ("Infinity", "non-finite number Infinity"),
+            ("-Infinity", "non-finite number -Infinity"),
+            ("1e400", "number 1e400 is not finite"),
         )
-        self._assert_clean_failure("JSON")
+        for literal, expected in cases:
+            with self.subTest(literal=literal):
+                self.profile_path.write_text(
+                    '{"source": {"extra": ' + literal + "}}",
+                    encoding="utf-8",
+                )
+                self._assert_clean_failure(expected, self.profile_path)
 
+    def test_nonfinite_values_never_reach_the_output(self):
         spectrum = copy.deepcopy(VALID_SPECTRUM)
         spectrum["points"][1]["level_dbuv"] = -1e308
         profile = copy.deepcopy(VALID_PROFILE)
