@@ -46,7 +46,7 @@ def _summary_counts(summary_block):
           summary.total_findings.
     Legacy (cached v1.3.1): summary.critical, summary.high, summary.total_checks.
 
-    Returns (0, 0, 0) for empty/missing summary. Reading both shapes is the
+    Returns (0, 0, 0) for empty/missing summary. Reading both shapes fixes the
     stale-key bug that dropped EMC and thermal counts when only one of the
     two summary shapes was read.
     """

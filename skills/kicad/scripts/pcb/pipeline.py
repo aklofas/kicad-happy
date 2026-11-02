@@ -5,8 +5,8 @@ Phase 1 read_board        — parse + extract (pcb.reader) + the KiCad-10 synthe
                             through a per-call PcbReaderState (nothing module-level)
 Phase 2 run_facts         — the board facts (connectivity … return path, incl. the
                             .kicad_pro/.kicad_dru/lib-table loads, keepout zones)
-Phase 3 run_checks        — every check over the board + facts, incl. the seven checks that
-                            need the facts; run_analyses composes 2 + 3
+Phase 3 run_checks        — every check over the board + facts;
+                            run_analyses composes 2 + 3
 Phase 4 assemble_result   — pcb.presentation: the result dict in the stable output key order
 Phase 5 finalize_for_cli  — command-specific annotation (GP-001 debug file, project summary, design
                             intent, stage/audience filters, finding_id)
@@ -218,7 +218,7 @@ def read_board(path: str, *, state: PcbReaderState | None = None) -> BoardData:
 
 @dataclass
 class PcbFacts:
-    """Phase-2 output: the measured board facts, in today's order."""
+    """Phase-2 output: the measured board facts, in call order."""
     connectivity: Any
     stats: Any
     version: Any
@@ -246,7 +246,7 @@ class PcbFacts:
 
 @dataclass
 class PcbChecks:
-    """Phase-3 output: the checks over the board and its facts, in today's relative order."""
+    """Phase-3 output: the checks over the board and its facts, in call order."""
     decoupling: Any
     via_analysis: Any
     thermal: Any
@@ -274,7 +274,7 @@ class PcbAnalyses:
 
 def run_facts(board: BoardData, *, include_trace_segments: bool, return_path_radius_mm: float,
               gp001_debug: bool, resolved_power_rails: set[str] | None) -> PcbFacts:
-    """Phase 2: the board facts in today's relative order (incl. the .kicad_pro/.kicad_dru/
+    """Phase 2: the board facts in call order (incl. the .kicad_pro/.kicad_dru/
     lib-table loads). Passes the board's containers by reference; no analysis mutates them
     (tools/tests/test_pcb_phase_purity.py)."""
     path = board.path
@@ -442,8 +442,8 @@ def run_facts(board: BoardData, *, include_trace_segments: bool, return_path_rad
 
 
 def run_checks(board: BoardData, facts: PcbFacts, *, include_trace_segments: bool) -> PcbChecks:
-    """Phase 3: the checks in today's relative order — the eight run_analyses checks, then the
-    seven checks that need the facts (their result writes happen in assemble_result). Reads the board and *facts*;
+    """Phase 3: the checks in call order. assemble_result writes the results of the last
+    seven (fiducials through board-edge vias). Reads the board and *facts*;
     mutates neither (tools/tests/test_pcb_phase_purity.py)."""
     setup = board.setup
     net_names = board.net_names

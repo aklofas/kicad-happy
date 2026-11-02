@@ -356,7 +356,7 @@ class AnalysisContext:
     rail_by_net / rail_overrides / rail_ignore  # Rail voltages and the project's power-rail config
 ```
 
-The indexes (`comp_lookup`, `parsed_values`, `known_power_rails`, `ref_pins`) replace what was previously ~10 duplicate rebuild operations scattered across analysis functions.
+The indexes (`comp_lookup`, `parsed_values`, `known_power_rails`, `ref_pins`) are built once, so detectors don't rebuild them.
 
 ---
 

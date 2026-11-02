@@ -992,8 +992,7 @@ def verify_v14_extraction(extraction: dict) -> list[dict]:
     # 4b. absolute_max placement sniff — flag entries whose evidence.section
     # looks like an operating-point / characterization table. Catches the
     # "Table 2 electrical characteristics stuffed into absolute_max" failure
-    # mode observed on USBLC6-2SC6 (SacMap rev2 first-project review,
-    # 2026-05-19). Uses a denylist for known operating-point markers; a
+    # mode observed on USBLC6-2SC6. Uses a denylist for known operating-point markers; a
     # section that contains stress markers ("absolute"/"stress"/"maximum
     # ratings") is allowed through even if it also contains operating
     # words (combined tables). Default is silent-pass on ambiguous names.

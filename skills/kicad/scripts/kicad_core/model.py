@@ -109,7 +109,7 @@ PinNetEntry = tuple[str, Net]
 
 @dataclass
 class SheetData:
-    """What ``parse_single_sheet`` returns for one ``.kicad_sch`` file (field order = the pre-v3 tuple)."""
+    """What ``parse_single_sheet`` returns for one ``.kicad_sch`` file (fields in the order the parser produces them)."""
     root: list
     components: list[Component]
     wires: list[dict]
@@ -130,7 +130,7 @@ class SheetData:
 class ResolvedConfig:
     """The one resolved project configuration. Built by ``project_config.resolve_config``.
 
-    effective:  the merged mapping consumers read (today's ``config``)
+    effective:  the merged mapping consumers read (the ``config`` consumers read)
     paths:      files that contributed, in merge order (lowest precedence first); () when none
     hash_input: the single file ``inputs.config_hash`` is computed from, or None
     """

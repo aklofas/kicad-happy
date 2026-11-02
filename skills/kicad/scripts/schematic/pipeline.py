@@ -190,8 +190,7 @@ def _resolve_lookup_paths(sch_path: str | Path) -> Path | None:
     """Resolve the datasheets/extracted/ cache dir adjacent to the schematic.
 
     Returns None when the directory doesn't exist — `lookup()` already handles
-    None gracefully. (The design_context severity channel this used to
-    resolve was retired in v2.0; v3 removed the plumbing.)
+    None gracefully.
     """
     sch_dir = Path(sch_path).resolve().parent
     candidates = [

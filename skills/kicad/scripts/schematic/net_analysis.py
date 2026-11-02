@@ -85,7 +85,7 @@ def analyze_connectivity(components: list[dict], nets: dict, no_connects: list[d
         # Retain the legacy summary shape for downstream consumers —
         # keep the pre-existing __unnamed_* guard on the legacy list so
         # format-report / diff_analysis don't surface mid-edit passive
-        # stubs that the old code filtered out. The rich NT-001 finding
+        # stubs. The rich NT-001 finding
         # below still covers those cases for reviewers who want them.
         if not net_name.startswith("__unnamed_"):
             single_pin_nets.append({"net": net_name, "pin": pin})

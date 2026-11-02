@@ -26,7 +26,6 @@ Environment:
 import argparse
 import json
 import sys
-import tempfile
 from pathlib import Path
 
 from analysis_cache import merged_overlay_path

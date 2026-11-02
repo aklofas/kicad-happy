@@ -12,9 +12,8 @@ from kicad_core.sexp import _iter_properties
 # ---------------------------------------------------------------------------
 # Part-number field aliases
 #
-# KiCad lets users name fields however they like. Three alias lists used to
-# live in analyze_schematic, analyze_pcb and bom_manager and drifted apart;
-# this is the single source. Names are stored NORMALIZED (see
+# KiCad lets users name fields however they like. This is the single alias
+# source for the analyzers and bom_manager. Names are stored NORMALIZED (see
 # normalize_field_name) and matched normalized. Deliberately excluded: the
 # two/three-letter bom_manager extras "MP" and "MFN" — too ambiguous for the
 # analyzers (bom_manager keeps them as bom-local extras).
@@ -98,7 +97,7 @@ def pick_mpn(props: dict) -> str:
     """Manufacturer part number: manufacturer-specific aliases first, generic
     part-number aliases second. Whitespace-only values do not win a
     tier; if no alias has a non-blank value, fall back to the plain
-    pick_field over all aliases so blank-only symbols behave exactly as before."""
+    pick_field over all aliases so blank-only symbols still resolve to a value."""
     return (_pick_nonblank(props, MPN_FIELD_ALIASES_PRIMARY)
             or _pick_nonblank(props, MPN_FIELD_ALIASES_GENERIC)
             or pick_field(props, MPN_FIELD_ALIASES))

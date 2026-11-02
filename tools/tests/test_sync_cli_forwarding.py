@@ -1,6 +1,6 @@
 """Each sync_datasheets_<provider>.py main() forwards its flags to sync_datasheets unchanged, sets the
 download limits, and exits 1 only when the summary carries an error."""
-import importlib, os, sys, unittest
+import importlib, sys, unittest
 from pathlib import Path
 from unittest import mock
 

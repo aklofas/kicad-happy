@@ -2,7 +2,7 @@
 
 write_primary_run: the analysis-cache write path for the primary analyzers (schematic, pcb, EMC
 and SPICE CLIs); write_derived_output: the current-run overwrite path for the derived analyzers (gerber,
-thermal and cross-analysis CLIs). Each CLI keeps its own --output / --analysis-dir precedence
+thermal, cross-analysis and lifecycle CLIs). Each CLI keeps its own --output / --analysis-dir precedence
 and calls these only on the --analysis-dir branch. Lives beside analysis_cache (which depends on
 diff_engine), so it is not part of the stdlib-only kicad_core package.
 """
@@ -85,7 +85,7 @@ def write_derived_output(analysis_dir_arg: str, output_text: str, *, analyzer: s
     """Overwrite one derived analyzer's canonical JSON in the CURRENT run; return the path written,
     or None when the copy was refused (overwrite_current has already warned).
 
-    Derived analyzers (gerber, thermal, cross_analysis) carry no source hashes. When nothing is
+    Derived analyzers (gerber, thermal, cross_analysis, lifecycle) carry no source hashes. When nothing is
     tracked yet, analysis_cache.overwrite_current creates a run (it calls create_run) and the
     run-folder path is returned; the trailing analysis-dir-root return is a defensive fallback only.
     """

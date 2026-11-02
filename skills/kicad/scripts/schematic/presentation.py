@@ -60,7 +60,7 @@ def assemble_result(ctx, parsed, nets, bom, analyses, *, path, sheets_parsed,
                     file_version) -> dict:
     """Build the schematic analyzer result dict (historical key order).
 
-    MUTATES its inputs as the pre-v3 code did: components gain category /
+    MUTATES its inputs: components gain category /
     parsed_value / pin_nets (and lose _unit_pins), __unnamed_ nets may gain a
     display_name, the root title block may be filled from .kicad_pro text
     variables, usb_compliance loses its "findings" key, and every signal
@@ -418,7 +418,7 @@ def assemble_legacy_result(*, nets, all_components, signal_analysis, real_compon
     """Build the legacy (.sch) result dict; its key set stays distinct from the modern one.
 
     MUTATES components (pin_nets, _unit_pins) and signal detections
-    (detection_id, detector) as the pre-v3 code did.
+    (detection_id, detector).
     """
     _annotate_pin_nets(all_components, nets)
     for _comp in all_components:
