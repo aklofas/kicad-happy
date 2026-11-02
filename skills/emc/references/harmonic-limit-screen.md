@@ -13,6 +13,8 @@ python3 skills/emc/scripts/analyze_harmonic_limits.py \
   --output harmonic-limit-screen.json
 ```
 
+The command exits with status 0 when the result is written and 2 on any error (invalid arguments, a missing or unreadable input, invalid JSON, a schema violation, or a failure to write `--output`). Errors are reported on stderr and no result is emitted.
+
 ## Spectrum format
 
 The result must be written separately from both inputs. An `--output` path that refers to either input file (including a link to it) is rejected before writing.

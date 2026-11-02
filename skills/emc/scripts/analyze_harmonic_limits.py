@@ -394,7 +394,7 @@ def main(argv: list[str] | None = None) -> int:
         _write_json(result, args.output)
     except (ValidationError, OSError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
-        return 1
+        return 2
     return 0
 
 

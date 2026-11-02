@@ -622,7 +622,7 @@ class TestHarmonicLimitCli(unittest.TestCase):
                 code, stdout, stderr = self._run(("--output", str(source)))
                 after = source.read_bytes()
                 source.write_bytes(original)
-                self.assertEqual(code, 1)
+                self.assertEqual(code, 2)
                 self.assertEqual(stdout, "")
                 self.assertIn("would overwrite input", stderr)
                 self.assertIn(str(source), stderr)
@@ -633,7 +633,7 @@ class TestHarmonicLimitCli(unittest.TestCase):
         alias.hardlink_to(self.spectrum_path)
         original = self.spectrum_path.read_bytes()
         code, stdout, stderr = self._run(("--output", str(alias)))
-        self.assertEqual(code, 1)
+        self.assertEqual(code, 2)
         self.assertEqual(stdout, "")
         self.assertIn("would overwrite input", stderr)
         self.assertEqual(self.spectrum_path.read_bytes(), original)
@@ -642,7 +642,7 @@ class TestHarmonicLimitCli(unittest.TestCase):
         self.spectrum_path.write_text("{invalid", encoding="utf-8")
         code, stdout, stderr = self._run()
 
-        self.assertEqual(code, 1)
+        self.assertEqual(code, 2)
         self.assertEqual(stdout, "")
         self.assertIn(str(self.spectrum_path), stderr)
         self.assertIn("valid JSON", stderr)
@@ -653,7 +653,7 @@ class TestHarmonicLimitCli(unittest.TestCase):
         self.spectrum_path.write_text(json.dumps(data), encoding="utf-8")
         code, stdout, stderr = self._run()
 
-        self.assertEqual(code, 1)
+        self.assertEqual(code, 2)
         self.assertEqual(stdout, "")
         self.assertIn("level_unit", stderr)
 
@@ -661,13 +661,13 @@ class TestHarmonicLimitCli(unittest.TestCase):
         self.spectrum_path.unlink()
         code, stdout, stderr = self._run()
 
-        self.assertEqual(code, 1)
+        self.assertEqual(code, 2)
         self.assertEqual(stdout, "")
         self.assertIn(str(self.spectrum_path), stderr)
 
     def _assert_clean_failure(self, expected, *paths):
         code, stdout, stderr = self._run()
-        self.assertEqual(code, 1, stderr)
+        self.assertEqual(code, 2, stderr)
         self.assertEqual(stdout, "")
         self.assertTrue(stderr.startswith("Error: "), stderr)
         self.assertNotIn("Traceback", stderr)
@@ -764,7 +764,7 @@ class TestHarmonicLimitCli(unittest.TestCase):
         output = self.root / "missing-directory" / "screen.json"
         code, stdout, stderr = self._run(("--output", str(output)))
 
-        self.assertEqual(code, 1)
+        self.assertEqual(code, 2)
         self.assertEqual(stdout, "")
         self.assertIn(f"could not write {output}:", stderr)
         self.assertNotIn("Traceback", stderr)
