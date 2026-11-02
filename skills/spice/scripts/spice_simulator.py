@@ -457,13 +457,46 @@ def _file_signature(path):
     return info.st_mtime_ns, info.st_size
 
 
-def _decode_native_output(raw):
-    """Decode a native log, honoring a UTF-16 or UTF-8 byte-order mark."""
-    if raw.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
-        return raw.decode("utf-16")
-    if raw.startswith(codecs.BOM_UTF8):
-        return raw.decode("utf-8-sig")
-    return raw.decode("utf-8", errors="replace")
+_NATIVE_LINE_LIMIT = 1_000_000
+
+
+class _NativeLineTooLong(Exception):
+    """A native log line exceeds _NATIVE_LINE_LIMIT characters."""
+
+
+def _open_native_output(path):
+    """Open a native log as text, honoring a UTF-16 or UTF-8 byte-order mark."""
+    with path.open("rb") as raw:
+        head = raw.read(3)
+    if head.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
+        return path.open(encoding="utf-16")
+    if head.startswith(codecs.BOM_UTF8):
+        return path.open(encoding="utf-8-sig")
+    return path.open(encoding="utf-8", errors="replace")
+
+
+def _bounded_lines(text):
+    """Yield stripped lines, as str.splitlines would split them, reading the
+    stream in bounded chunks.
+
+    Raises _NativeLineTooLong rather than classify part of an oversized line.
+    """
+    limit = _NATIVE_LINE_LIMIT
+    pending = ""
+    while chunk := text.read(limit):
+        lines = (pending + chunk).splitlines(keepends=True)
+        last = lines[-1]
+        pending = lines.pop() if last.splitlines()[0] == last else ""
+        if len(pending) > limit or any(
+            len(line.splitlines()[0]) > limit for line in lines
+        ):
+            raise _NativeLineTooLong(
+                f"line longer than {limit} characters"
+            )
+        for line in lines:
+            yield line.strip()
+    if pending:
+        yield pending.strip()
 
 
 def _kill_process_tree(pid):
@@ -632,7 +665,8 @@ class PspiceBackend(SimulatorBackend):
             )
 
         try:
-            native_text = _decode_native_output(native_output.read_bytes())
+            with _open_native_output(native_output) as text:
+                note = self._failure_note(_bounded_lines(text))
         except OSError as exc:
             return (
                 False,
@@ -645,23 +679,36 @@ class PspiceBackend(SimulatorBackend):
                 "",
                 f"Could not decode PSpice native output {native_output}: {exc}",
             )
+        except _NativeLineTooLong as exc:
+            return (
+                False,
+                "",
+                f"Could not classify PSpice native output {native_output}: "
+                f"{exc}",
+            )
 
-        note = self._failure_note(native_text)
         if note:
             return False, "", note
         return True, "", ""
 
-    def _failure_note(self, native_text):
-        lines = [line.strip() for line in native_text.splitlines()]
+    def _failure_note(self, lines):
+        # Consume every line, even after a fatal one, so a decode error
+        # anywhere in the log is still reported.
+        fatal = None
+        aborted = concluded = False
         for line in lines:
-            if self._FATAL_RE.match(line):
-                return (
-                    "PSpice native fatal error line found: "
-                    f"{line[:self._NOTE_LINE_LIMIT]}"
-                )
-        if "JOB ABORTED" in lines:
+            if fatal is None and self._FATAL_RE.match(line):
+                fatal = line
+            aborted = aborted or line == "JOB ABORTED"
+            concluded = concluded or line == "JOB CONCLUDED"
+        if fatal is not None:
+            return (
+                "PSpice native fatal error line found: "
+                f"{fatal[:self._NOTE_LINE_LIMIT]}"
+            )
+        if aborted:
             return "PSpice native abort marker found: JOB ABORTED"
-        if "JOB CONCLUDED" not in lines:
+        if not concluded:
             return "PSpice completion marker missing: JOB CONCLUDED"
         return None
 

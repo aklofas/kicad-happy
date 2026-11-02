@@ -732,6 +732,76 @@ class TestPspiceRun(unittest.TestCase):
         self.assertIn("Could not decode", diagnostic)
         self.assertNotIn("marker missing", diagnostic)
 
+    def test_native_output_is_read_in_bounded_chunks(self):
+        limit = 16
+        sizes = []
+
+        class GuardedStream(io.StringIO):
+            def read(self, size=-1):
+                sizes.append(size)
+                if size is None or size < 0:
+                    raise AssertionError("unbounded read of native output")
+                return super().read(size)
+
+            def readline(self, size=-1):
+                raise AssertionError("unexpected readline")
+
+        def guarded_open(path):
+            return GuardedStream(path.read_text(encoding="utf-8"))
+
+        native = (
+            "header line one\n"
+            "*" * limit + "\n"
+            "split at chunk\n"
+            "JOB CONCLUDED"
+        )
+        with (
+            patch.object(spice_simulator, "_NATIVE_LINE_LIMIT", limit),
+            patch.object(
+                spice_simulator, "_open_native_output", guarded_open
+            ),
+        ):
+            self.assertEqual(self._run(native), (True, "", ""))
+
+        self.assertGreater(len(sizes), 2)
+        self.assertTrue(all(0 < size <= limit for size in sizes), sizes)
+
+    def test_lines_split_like_str_splitlines(self):
+        # PSpice listings separate pages with form feeds.
+        success, _, diagnostic = self._run(
+            "page footer\f  ERROR -- after form feed\r\nJOB CONCLUDED\n"
+        )
+        self.assertFalse(success)
+        self.assertIn("ERROR -- after form feed", diagnostic)
+
+    def test_over_limit_line_fails_instead_of_partial_classification(self):
+        limit = 16
+        with patch.object(spice_simulator, "_NATIVE_LINE_LIMIT", limit):
+            at_limit = self._run("x" * limit + "\nJOB CONCLUDED\n")
+            over_limit = self._run(
+                "ERROR" + " " * (limit * 3) + "-- hidden\nJOB CONCLUDED\n"
+            )
+            plus_one_terminated = self._run(
+                "x" * (limit + 1) + "\nJOB CONCLUDED\n"
+            )
+            plus_one_at_eof = self._run(
+                "JOB CONCLUDED\n" + "x" * (limit + 1)
+            )
+
+        self.assertEqual(at_limit, (True, "", ""))
+        for result in (over_limit, plus_one_terminated, plus_one_at_eof):
+            self.assertFalse(result[0])
+            self.assertIn("Could not classify", result[2])
+            self.assertIn(f"longer than {limit} characters", result[2])
+
+    def test_decode_error_after_fatal_line_is_still_reported(self):
+        raw = (
+            "ERROR -- first\n" + "z" * 20000 + "\nJOB CONCLUDED\n"
+        ).encode("utf-16") + b"\x41"
+        success, _, diagnostic = self._run(raw)
+        self.assertFalse(success)
+        self.assertIn("Could not decode", diagnostic)
+
     def test_invalid_utf8_stdout_does_not_break_a_successful_run(self):
         result = self._run("JOB CONCLUDED\n", stdout_hex="ff")
         self.assertEqual(result, (True, "", ""))
@@ -880,8 +950,8 @@ class TestPspiceRun(unittest.TestCase):
 
     def test_unreadable_native_output_returns_actionable_failure(self):
         with patch.object(
-            spice_simulator.Path,
-            "read_bytes",
+            spice_simulator,
+            "_open_native_output",
             side_effect=OSError("read blocked"),
         ):
             success, _, diagnostic = self._run("JOB CONCLUDED\n")
