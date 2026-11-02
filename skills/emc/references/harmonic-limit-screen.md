@@ -19,7 +19,11 @@ The command exits with status 0 when the result is written and 2 on any error (i
 
 The result must be written separately from both inputs. An `--output` path that refers to either input file (including a link to it) is rejected before writing. The result is written to a temporary file in the output directory and then renamed over `--output`, so a failed write leaves any existing file at that path unchanged.
 
-The input must use schema `harmonic-lines/1` and a `level_unit` of `dbuv` (dBµV), `dbuv_per_m` (dBµV/m), or `dbua` (dBµA). Frequencies are positive finite hertz values, each `level` is a finite RMS-referenced value in that unit, and duplicate frequencies are rejected. An optional `source` must be an object; it is echoed to the output as `spectrum_source` (`null` when absent). Input files must be UTF-8 (a leading byte-order mark is accepted), JSON objects with duplicate keys are rejected rather than resolved last-wins, and non-finite numbers (`NaN`, `Infinity`, `-Infinity`, or a literal such as `1e400` that overflows) are rejected at load time with an error naming the file.
+The input must use schema `harmonic-lines/1` and a `level_unit` of `dbuv` (dBµV), `dbuv_per_m` (dBµV/m), or `dbua` (dBµA). Frequencies are positive finite hertz values, each `level` is a finite RMS-referenced value in that unit, and duplicate frequencies are rejected.
+
+Levels must be RMS. A spectrum expressed as sinusoid peak amplitudes must be converted before screening by subtracting 20·log10(√2) ≈ 3.01 dB from every level; the tool cannot detect or correct this. This applies to the EMC skill's own harmonic estimates: `trapezoidal_harmonic_amplitude()` and `harmonic_spectrum()` in `emc_formulas.py` return peak amplitudes (`amplitude_v`, `amplitude_dbuv`), so subtract 3.01 dB from `amplitude_dbuv` to obtain `level`.
+
+An optional `source` must be an object; it is echoed to the output as `spectrum_source` (`null` when absent). Input files must be UTF-8 (a leading byte-order mark is accepted), JSON objects with duplicate keys are rejected rather than resolved last-wins, and non-finite numbers (`NaN`, `Infinity`, `-Infinity`, or a literal such as `1e400` that overflows) are rejected at load time with an error naming the file.
 
 ```json
 {
@@ -116,7 +120,7 @@ An empty band has null worst-point fields; it reports a flat limit but a null `l
 ## Limitations
 
 - Input levels must already be RMS-referenced and in the same unit as the profile limits.
-- No peak-to-RMS conversion is performed.
+- No peak-to-RMS conversion is performed; subtract 3.01 dB from peak-amplitude levels first.
 - No waveform import, FFT, Goertzel analysis, resampling, window correction, receiver-bandwidth integration, detector emulation, uncertainty budget, spread-spectrum estimate, or simulator invocation is included.
 - The result does not alter EMC rules, findings, severities, risk scores, test plans, cache artifacts, or `emc.json`.
 - A screen below a supplied profile is not evidence of regulatory compliance. Use calibrated equipment and the applicable test method for a compliance determination.
