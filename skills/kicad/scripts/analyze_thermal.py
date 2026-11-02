@@ -202,11 +202,12 @@ def _estimate_all_power_dissipation(schematic: dict) -> tuple:
     Returns (results, skipped): results is a list of dicts with ref, value,
     type, pdiss_w, pdiss_source, etc. (only components with P > MIN_PDISS_W);
     skipped is a list of {"ref", "value", "reason"} dicts for power
-    components (regulators) that could not be assessed, with reason drawn
-    from a fixed vocabulary: "no_load_estimate", "no_vout",
-    "below_min_pdiss" (so a dropped component is never absent from the
-    report without a trace), or "no_pdiss_estimate" (LDO with no upstream
-    power_dissipation estimate at all).
+    components (regulators and current-sense shunts) that could not be
+    assessed, with reason drawn from a fixed vocabulary: "no_load_estimate",
+    "no_vout", "below_min_pdiss" (so a dropped component is never absent
+    from the report without a trace), "no_pdiss_estimate" (LDO with no
+    upstream power_dissipation estimate at all), or "no_operating_current"
+    (current-sense shunt: only the sense range is known, not the load).
     """
     results = []
     skipped = []
