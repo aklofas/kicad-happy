@@ -33,7 +33,7 @@ The loader walks upward from the project directory, collecting every `.kicad-hap
 
 **Error handling:** Parse errors print a warning to stderr and skip that layer. The loader never crashes. Invalid field values are warned and skipped individually.
 
-**Explicit config:** These rules apply only when no `--config` is given. `analyze_schematic.py`, `analyze_pcb.py`, `analyze_thermal.py` and `analyze_emc.py` accept `--config PATH`: that file replaces discovery, so parent-directory files and `~/.kicad-happy.json` do not contribute. A missing explicit file is not an error; the run uses the built-in defaults and prints no warning.
+**Explicit config:** These rules apply only when no `--config` is given. `analyze_schematic.py`, `analyze_pcb.py`, `analyze_thermal.py` and `analyze_emc.py` accept `--config PATH`: that file replaces discovery, so parent-directory files and `~/.kicad-happy.json` do not contribute. A missing explicit file is not an error: the run uses the built-in defaults and prints a warning on stderr.
 
 ## Schema
 

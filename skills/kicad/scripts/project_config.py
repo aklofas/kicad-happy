@@ -169,7 +169,10 @@ def load_config_from_path(path: str) -> Dict[str, Any]:
 
     No cascading — loads only the specified file.
     """
-    if not path or not os.path.isfile(path):
+    if not path:
+        return dict(DEFAULT_CONFIG)
+    if not os.path.isfile(path):
+        print(f"Warning: config file not found: {path}; using built-in defaults", file=sys.stderr)
         return dict(DEFAULT_CONFIG)
     cfg = _load_and_validate(path)
     return cfg if cfg is not None else dict(DEFAULT_CONFIG)
