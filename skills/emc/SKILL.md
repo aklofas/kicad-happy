@@ -170,7 +170,7 @@ Read the JSON report and incorporate findings into the design review. Each findi
 
 Each rule ID contributes at most 3 findings to the score (worst severity first). This prevents per-net rules like GP-001 from saturating the score on 2-layer boards. All findings are still reported — only the score is capped.
 
-`penalty = sum(severity weight × confidence weight, worst 3 per rule)`, `score = max(0, min(100, 100 - penalty))`; weights error 12, warning 3, info 0; heuristic findings count half. 0 is worst and 100 best, and the score can be fractional. It is computed after `--severity` filtering and suppressions. Scores below 50 indicate significant EMC risk.
+`penalty = sum(severity weight × confidence weight, worst 3 per rule)`, `score = max(0, min(100, 100 - penalty))`; weights error 12, warning 3, info 0; heuristic findings count half. 0 is worst and 100 best, and the score can be fractional. It covers every unsuppressed finding; `--severity` only filters the emitted list. Scores below 50 indicate significant EMC risk.
 
 ## Interpreting Results
 

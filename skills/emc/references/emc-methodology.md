@@ -98,7 +98,7 @@ severity_weight: error 12, warning 3, info 0
 confidence_weight: deterministic and datasheet-backed 1.0, heuristic 0.5
 ```
 
-0 is the worst score and 100 the best; scores can be fractional. The score is computed after `--severity` filtering, so a filtered run scores only the findings it keeps. Interpretation:
+0 is the worst score and 100 the best; scores can be fractional. The score covers every unsuppressed finding; `--severity` only filters the list printed or written. Interpretation:
 
 | Score | Assessment |
 |-------|-----------|

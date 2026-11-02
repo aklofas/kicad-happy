@@ -24,7 +24,8 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _core_path  # noqa: F401
 
-from emc_rules import run_all_checks, generate_test_plan, analyze_regulatory_coverage
+from emc_rules import (run_all_checks, filter_by_severity, generate_test_plan,
+                       analyze_regulatory_coverage)
 from emc_formulas import STANDARDS, MARKET_STANDARDS
 from finding_schema import compute_trust_summary, show_decoded_names
 from kicad_core.render import summary_or_title
@@ -488,7 +489,7 @@ def main(argv: list[str] | None = None) -> int:
     diagnostics: list = []
     findings = run_all_checks(schematic, pcb,
                               standard=args.standard,
-                              severity_threshold=severity,
+                              severity_threshold='all',
                               spice_backend=spice_backend,
                               pdn_transient_a=pdn_transient_a,
                               diagnostics=diagnostics)
@@ -498,12 +499,24 @@ def main(argv: list[str] | None = None) -> int:
     # Apply suppressions
     apply_suppressions(findings, config.get('suppressions', []))
 
+    # The score, per-net scores, test plan and regulatory coverage cover every
+    # unsuppressed finding; --severity only filters the emitted list.
+    active_findings = [f for f in findings if not f.get('suppressed')]
+
+    risk_score = compute_risk_score(active_findings)
+    test_plan = generate_test_plan(schematic, pcb, active_findings,
+                                   standard=args.standard)
+    per_net = compute_per_net_scores(active_findings)
+    regulatory = analyze_regulatory_coverage(args.standard, args.market,
+                                            active_findings)
+
+    findings = filter_by_severity(findings, severity)
+
     # Build summary over the standard v1.3 severity vocabulary.  EMC
     # findings go through _make_finding which normalizes legacy
     # CRITICAL/HIGH/MEDIUM/LOW/INFO to error/warning/info — we count the
     # normalized buckets directly.
     counts = {'error': 0, 'warning': 0, 'info': 0}
-    active_counts = {'error': 0, 'warning': 0, 'info': 0}
     suppressed_count = 0
     for f in findings:
         sev = str(f.get('severity', 'info')).lower()
@@ -512,20 +525,6 @@ def main(argv: list[str] | None = None) -> int:
         counts[sev] += 1
         if f.get('suppressed'):
             suppressed_count += 1
-        else:
-            active_counts[sev] += 1
-
-    # Use only active (non-suppressed) findings for derived metrics
-    active_findings = [f for f in findings if not f.get('suppressed')]
-
-    risk_score = compute_risk_score(active_findings)
-
-    # Generate test plan, per-net scores, and regulatory coverage
-    test_plan = generate_test_plan(schematic, pcb, active_findings,
-                                   standard=args.standard)
-    per_net = compute_per_net_scores(active_findings)
-    regulatory = analyze_regulatory_coverage(args.standard, args.market,
-                                            active_findings)
 
     # Pre-rollup by category for downstream consumers
     _sev_order = {"error": 3, "warning": 2, "info": 1}

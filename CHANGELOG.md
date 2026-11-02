@@ -87,6 +87,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Fixed
 
+- The EMC risk score, per-net scores, test plan and regulatory coverage no longer depend on `--severity`: they cover every unsuppressed finding, and `--severity` filters only the emitted `findings` list and its counts. (KH-818)
 - A `--config` path that does not exist now prints `Warning: config file not found: <path>; using built-in defaults` on stderr; the run still uses the defaults and exits as before. Discovery with no config file stays silent. (KH-822)
 - The analysis cache, the capability sidecar, the datasheet and SPICE model manifests and the generated `output-schema.md` are read and written as UTF-8 on any locale; a hand-edited non-ASCII manifest no longer crashes a run under a non-UTF-8 default encoding (KH-new-utf8-arch-registers).
 - A switching-loop area that cannot be estimated (parts in a line) is reported as not estimated instead of 0 mm² (KH-790).

@@ -4565,6 +4565,19 @@ def check_inductor_leakage(pcb: Dict, schematic: Dict) -> List[Dict]:
 # Master runner
 # ---------------------------------------------------------------------------
 
+def filter_by_severity(findings: List[Dict], threshold: str) -> List[Dict]:
+    """Keep the findings at or above `threshold`.
+
+    The threshold may be 'all' or a legacy name (critical/high/medium/low).
+    """
+    if threshold.lower() == 'all':
+        return findings
+    severity_order = {'error': 0, 'warning': 1, 'info': 2}
+    limit = severity_order[normalize_severity(threshold)]
+    return [f for f in findings
+            if severity_order[normalize_severity(f.get('severity'))] <= limit]
+
+
 def run_all_checks(schematic: Optional[Dict], pcb: Optional[Dict],
                    standard: str = 'fcc-class-b',
                    severity_threshold: str = 'all',
@@ -4642,11 +4655,4 @@ def run_all_checks(schematic: Optional[Dict], pcb: Optional[Dict],
         all_findings.extend(check_input_cap_loop_area(pcb, schematic, spice_backend))
         all_findings.extend(check_inductor_leakage(pcb, schematic))
 
-    # Filter by severity; the threshold may be a legacy name (critical/high/medium/low).
-    if severity_threshold.lower() != 'all':
-        severity_order = {'error': 0, 'warning': 1, 'info': 2}
-        threshold = severity_order[normalize_severity(severity_threshold)]
-        all_findings = [f for f in all_findings
-                        if severity_order[normalize_severity(f.get('severity'))] <= threshold]
-
-    return all_findings
+    return filter_by_severity(all_findings, severity_threshold)
