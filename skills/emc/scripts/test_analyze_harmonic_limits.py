@@ -603,6 +603,8 @@ class TestScreenHarmonics(unittest.TestCase):
                 "limit": None,
                 "margin_db": None,
                 "status": "not_assessed",
+                "lines_above_limit": None,
+                "lines_near_limit": None,
             },
         )
         self.assertEqual(
@@ -614,8 +616,32 @@ class TestScreenHarmonics(unittest.TestCase):
                 "limit": 50.0,
                 "margin_db": None,
                 "status": "not_assessed",
+                "lines_above_limit": 0,
+                "lines_near_limit": 0,
             },
         )
+
+    def test_lines_above_and_near_limit_are_counted_per_band(self):
+        spectrum = copy.deepcopy(VALID_SPECTRUM)
+        spectrum["points"] = [
+            {"frequency_hz": 150_000, "level": 67},
+            {"frequency_hz": 200_000, "level": 50},
+            {"frequency_hz": 300_000, "level": 58},
+            {"frequency_hz": 500_000, "level": 56},
+        ]
+        profile = copy.deepcopy(VALID_PROFILE)
+        profile["bands"] = [
+            {
+                "name": "sloped",
+                "start_hz": 150_000,
+                "stop_hz": 500_000,
+                "limits": {"peak": {"start": 66, "stop": 56}},
+            }
+        ]
+        band = self._screen(spectrum, profile, margin=3.0)["bands"][0]
+        # Margins: -1 (above), ~13.6, ~2.2 (near), 0 (near).
+        self.assertEqual(band["lines_above_limit"], 1)
+        self.assertEqual(band["lines_near_limit"], 2)
 
     def test_matching_units_are_screened_and_echoed(self):
         for unit in ("dbuv", "dbuv_per_m", "dbua"):

@@ -307,6 +307,22 @@ def screen_harmonics(
             else:
                 status = "at_or_below_limit_screen"
 
+        if limit_spec is None:
+            lines_above = lines_near = None
+        else:
+            line_margins = [
+                round(
+                    _limit_at(limit_spec, band, point["frequency_hz"])
+                    - point["level"],
+                    MARGIN_DECIMALS,
+                )
+                for point in in_band
+            ]
+            lines_above = sum(1 for value in line_margins if value < 0)
+            lines_near = sum(
+                1 for value in line_margins if 0 <= value < design_margin
+            )
+
         results.append(
             {
                 "name": band["name"],
@@ -317,6 +333,8 @@ def screen_harmonics(
                 "limit": limit,
                 "margin_db": margin,
                 "status": status,
+                "lines_above_limit": lines_above,
+                "lines_near_limit": lines_near,
             }
         )
 

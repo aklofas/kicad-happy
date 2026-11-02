@@ -89,6 +89,8 @@ For each band, the tool selects the in-band point with the smallest margin (`lim
 
 `--limit-column` only selects which profile limit (`peak`, `quasi_peak`, or `average`) is compared, and the result records it as `limit_column`. It does not emulate or validate the detector used for the measurement, so `margin_db` is not a detector-specific receiver margin.
 
+Each band also reports `lines_above_limit` (in-band lines with a negative margin) and `lines_near_limit` (in-band lines with a nonnegative margin smaller than the design margin), using the same rounded per-line margins as the status. Both counts are `0` for an empty band and `null` when the band has no limit in the selected column.
+
 An empty band has null worst-point fields; it reports a flat limit but a null `limit` for a sloped one. A missing limit for the selected column has a null limit and margin but retains the highest-level point when one exists. Every result uses `result_class: screening_only` and includes `This comparison is not a compliance determination.` The result also carries `spectrum_source` (the spectrum's `source` object, or `null`) and `profile.source` (the profile's complete `source` object) for provenance.
 
 ```json
@@ -110,7 +112,9 @@ An empty band has null worst-point fields; it reports a flat limit but a null `l
       "level": 42.0,
       "limit": 54.0,
       "margin_db": 12.0,
-      "status": "at_or_below_limit_screen"
+      "status": "at_or_below_limit_screen",
+      "lines_above_limit": 0,
+      "lines_near_limit": 0
     }
   ],
   "claim_boundary": "This comparison is not a compliance determination."
