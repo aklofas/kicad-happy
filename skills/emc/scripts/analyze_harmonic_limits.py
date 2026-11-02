@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare RMS dBµV spectral lines with a user-supplied limit profile."""
+"""Compare RMS spectral levels with a user-supplied limit profile."""
 
 import argparse
 import json
@@ -14,6 +14,7 @@ SPECTRUM_SCHEMA = "harmonic-lines/1"
 PROFILE_SCHEMA = "emc-limit-profile/1"
 RESULT_SCHEMA = "harmonic-limit-screen/1"
 DETECTORS = ("peak", "quasi_peak", "average")
+LEVEL_UNITS = ("dbuv", "dbuv_per_m", "dbua")
 MARGIN_DECIMALS = 6
 CLAIM_BOUNDARY = "This comparison is not a compliance determination."
 
@@ -59,8 +60,11 @@ def validate_spectrum(data: object) -> dict:
         raise ValidationError(
             f"spectrum.schema_version must equal {SPECTRUM_SCHEMA!r}"
         )
-    if root.get("level_unit") != "dbuv_rms":
-        raise ValidationError("spectrum.level_unit must equal 'dbuv_rms'")
+    level_unit = root.get("level_unit")
+    if level_unit not in LEVEL_UNITS:
+        raise ValidationError(
+            f"spectrum.level_unit must be one of {', '.join(LEVEL_UNITS)}"
+        )
 
     normalized_points = []
     seen_frequencies = set()
@@ -73,8 +77,8 @@ def validate_spectrum(data: object) -> dict:
             f"spectrum.points[{index}].frequency_hz",
         )
         level = _number(
-            point.get("level_dbuv"),
-            f"spectrum.points[{index}].level_dbuv",
+            point.get("level"),
+            f"spectrum.points[{index}].level",
         )
         if frequency <= 0:
             raise ValidationError(
@@ -87,13 +91,13 @@ def validate_spectrum(data: object) -> dict:
             )
         seen_frequencies.add(frequency)
         normalized_points.append(
-            {"frequency_hz": frequency, "level_dbuv": level}
+            {"frequency_hz": frequency, "level": level}
         )
 
     normalized_points.sort(key=lambda point: point["frequency_hz"])
     normalized = {
         "schema_version": SPECTRUM_SCHEMA,
-        "level_unit": "dbuv_rms",
+        "level_unit": level_unit,
         "points": normalized_points,
     }
     if "source" in root:
@@ -110,6 +114,11 @@ def validate_limit_profile(data: object) -> dict:
         )
 
     profile_id = _text(root.get("profile_id"), "profile.profile_id")
+    limit_unit = root.get("limit_unit")
+    if limit_unit not in LEVEL_UNITS:
+        raise ValidationError(
+            f"profile.limit_unit must be one of {', '.join(LEVEL_UNITS)}"
+        )
     raw_source = _mapping(root.get("source"), "profile.source")
     _text(raw_source.get("kind"), "profile.source.kind")
     _text(raw_source.get("citation"), "profile.source.citation")
@@ -142,24 +151,24 @@ def validate_limit_profile(data: object) -> dict:
             )
 
         raw_limits = _mapping(
-            band.get("limits_dbuv"),
-            f"profile.bands[{index}].limits_dbuv",
+            band.get("limits"),
+            f"profile.bands[{index}].limits",
         )
         if not raw_limits:
             raise ValidationError(
-                f"profile.bands[{index}].limits_dbuv must contain at "
+                f"profile.bands[{index}].limits must contain at "
                 "least one detector"
             )
         unsupported = sorted(set(raw_limits) - set(DETECTORS))
         if unsupported:
             raise ValidationError(
-                f"profile.bands[{index}].limits_dbuv has unsupported "
+                f"profile.bands[{index}].limits has unsupported "
                 f"detector {unsupported[0]!r}"
             )
         limits = {
             detector: _number(
                 value,
-                f"profile.bands[{index}].limits_dbuv.{detector}",
+                f"profile.bands[{index}].limits.{detector}",
             )
             for detector, value in raw_limits.items()
         }
@@ -168,13 +177,14 @@ def validate_limit_profile(data: object) -> dict:
                 "name": name,
                 "start_hz": start,
                 "stop_hz": stop,
-                "limits_dbuv": limits,
+                "limits": limits,
             }
         )
 
     return {
         "schema_version": PROFILE_SCHEMA,
         "profile_id": profile_id,
+        "limit_unit": limit_unit,
         "source": dict(raw_source),
         "bands": normalized_bands,
     }
@@ -196,6 +206,11 @@ def screen_harmonics(
         raise ValidationError(
             "design_margin_db must be greater than or equal to zero"
         )
+    if profile["limit_unit"] != spectrum["level_unit"]:
+        raise ValidationError(
+            f"profile.limit_unit {profile['limit_unit']!r} does not match "
+            f"spectrum.level_unit {spectrum['level_unit']!r}"
+        )
 
     results = []
     for index, band in enumerate(profile["bands"]):
@@ -209,19 +224,19 @@ def screen_harmonics(
         worst = max(
             in_band,
             key=lambda point: (
-                point["level_dbuv"],
+                point["level"],
                 -point["frequency_hz"],
             ),
             default=None,
         )
-        limit = band["limits_dbuv"].get(detector)
+        limit = band["limits"].get(detector)
 
         if worst is None or limit is None:
             margin = None
             status = "not_assessed"
         else:
             # Adding 0.0 turns a rounded -0.0 into 0.0 for clean output.
-            margin = round(limit - worst["level_dbuv"], MARGIN_DECIMALS) + 0.0
+            margin = round(limit - worst["level"], MARGIN_DECIMALS) + 0.0
             if not math.isfinite(margin):
                 raise ValidationError(
                     f"bands[{index}].margin_db is not a finite number"
@@ -239,8 +254,8 @@ def screen_harmonics(
                 "worst_frequency_hz": (
                     worst["frequency_hz"] if worst else None
                 ),
-                "level_dbuv": worst["level_dbuv"] if worst else None,
-                "limit_dbuv": limit,
+                "level": worst["level"] if worst else None,
+                "limit": limit,
                 "margin_db": margin,
                 "status": status,
             }
@@ -251,6 +266,7 @@ def screen_harmonics(
         "result_class": "screening_only",
         "detector": detector,
         "design_margin_db": design_margin,
+        "level_unit": spectrum["level_unit"],
         "spectrum_source": spectrum.get("source"),
         "profile": {
             "profile_id": profile["profile_id"],
@@ -349,7 +365,7 @@ def _write_json(payload: dict, output: Path | None):
 def _build_parser():
     parser = argparse.ArgumentParser(
         description=(
-            "Screen supplied RMS dBµV spectral lines against a "
+            "Screen supplied RMS spectral levels against a "
             "user-supplied limit profile"
         )
     )

@@ -23,20 +23,21 @@ import analyze_harmonic_limits as harmonic  # noqa: E402
 
 VALID_SPECTRUM = {
     "schema_version": "harmonic-lines/1",
-    "level_unit": "dbuv_rms",
+    "level_unit": "dbuv",
     "source": {
         "kind": "simulation",
         "description": "synthetic spectral lines",
     },
     "points": [
-        {"frequency_hz": 2_000_000, "level_dbuv": 31.5},
-        {"frequency_hz": 1_000_000, "level_dbuv": 42.0},
+        {"frequency_hz": 2_000_000, "level": 31.5},
+        {"frequency_hz": 1_000_000, "level": 42.0},
     ],
 }
 
 VALID_PROFILE = {
     "schema_version": "emc-limit-profile/1",
     "profile_id": "fictional-user-profile",
+    "limit_unit": "dbuv",
     "source": {
         "kind": "user_supplied",
         "citation": "Fictional example — not a regulatory source",
@@ -46,7 +47,7 @@ VALID_PROFILE = {
             "name": "fictional-band",
             "start_hz": 500_000,
             "stop_hz": 1_800_000,
-            "limits_dbuv": {
+            "limits": {
                 "peak": 54.0,
                 "quasi_peak": 41.0,
                 "average": 34.0,
@@ -96,8 +97,8 @@ class TestSpectrumValidation(unittest.TestCase):
     def test_duplicate_numeric_frequencies_are_rejected(self):
         data = copy.deepcopy(VALID_SPECTRUM)
         data["points"] = [
-            {"frequency_hz": 1, "level_dbuv": 2},
-            {"frequency_hz": 1.0, "level_dbuv": 3},
+            {"frequency_hz": 1, "level": 2},
+            {"frequency_hz": 1.0, "level": 3},
         ]
         with self.assertRaisesRegex(
             harmonic.ValidationError,
@@ -135,10 +136,10 @@ class TestSpectrumValidation(unittest.TestCase):
         for value in (math.nan, math.inf, -math.inf, True):
             with self.subTest(value=value):
                 data = copy.deepcopy(VALID_SPECTRUM)
-                data["points"][0]["level_dbuv"] = value
+                data["points"][0]["level"] = value
                 with self.assertRaisesRegex(
                     harmonic.ValidationError,
-                    "level_dbuv",
+                    "level",
                 ):
                     self._validate(data)
 
@@ -189,6 +190,7 @@ class TestLimitProfileValidation(unittest.TestCase):
         mutations = (
             (("schema_version",), "emc-limit-profile/2", "schema_version"),
             (("profile_id",), "", "profile_id"),
+            (("limit_unit",), "dbuv_rms", "limit_unit"),
             (("source", "kind"), "", "source.kind"),
             (("source", "citation"), "", "source.citation"),
         )
@@ -234,7 +236,7 @@ class TestLimitProfileValidation(unittest.TestCase):
         for limits, expected in cases:
             with self.subTest(limits=limits):
                 data = copy.deepcopy(VALID_PROFILE)
-                data["bands"][0]["limits_dbuv"] = limits
+                data["bands"][0]["limits"] = limits
                 with self.assertRaisesRegex(
                     harmonic.ValidationError,
                     expected,
@@ -245,10 +247,10 @@ class TestLimitProfileValidation(unittest.TestCase):
         for value in (math.nan, math.inf, -math.inf, False):
             with self.subTest(value=value):
                 data = copy.deepcopy(VALID_PROFILE)
-                data["bands"][0]["limits_dbuv"]["peak"] = value
+                data["bands"][0]["limits"]["peak"] = value
                 with self.assertRaisesRegex(
                     harmonic.ValidationError,
-                    "limits_dbuv.peak",
+                    "limits.peak",
                 ):
                     self._validate(data)
 
@@ -273,9 +275,9 @@ class TestScreenHarmonics(unittest.TestCase):
     def test_boundaries_are_inclusive_and_highest_level_wins(self):
         spectrum = copy.deepcopy(VALID_SPECTRUM)
         spectrum["points"] = [
-            {"frequency_hz": 100, "level_dbuv": 20},
-            {"frequency_hz": 150, "level_dbuv": 35},
-            {"frequency_hz": 200, "level_dbuv": 30},
+            {"frequency_hz": 100, "level": 20},
+            {"frequency_hz": 150, "level": 35},
+            {"frequency_hz": 200, "level": 30},
         ]
         profile = copy.deepcopy(VALID_PROFILE)
         profile["bands"] = [
@@ -283,20 +285,20 @@ class TestScreenHarmonics(unittest.TestCase):
                 "name": "inclusive",
                 "start_hz": 100,
                 "stop_hz": 200,
-                "limits_dbuv": {"peak": 40},
+                "limits": {"peak": 40},
             }
         ]
 
         band = self._screen(spectrum, profile)["bands"][0]
         self.assertEqual(band["worst_frequency_hz"], 150.0)
-        self.assertEqual(band["level_dbuv"], 35.0)
+        self.assertEqual(band["level"], 35.0)
         self.assertEqual(band["margin_db"], 5.0)
 
     def test_equal_levels_choose_lowest_frequency_deterministically(self):
         spectrum = copy.deepcopy(VALID_SPECTRUM)
         spectrum["points"] = [
-            {"frequency_hz": 200, "level_dbuv": 35},
-            {"frequency_hz": 100, "level_dbuv": 35},
+            {"frequency_hz": 200, "level": 35},
+            {"frequency_hz": 100, "level": 35},
         ]
         profile = copy.deepcopy(VALID_PROFILE)
         profile["bands"][0].update(start_hz=100, stop_hz=200)
@@ -307,7 +309,7 @@ class TestScreenHarmonics(unittest.TestCase):
     def test_overlapping_bands_evaluate_same_point_independently(self):
         spectrum = copy.deepcopy(VALID_SPECTRUM)
         spectrum["points"] = [
-            {"frequency_hz": 150, "level_dbuv": 35}
+            {"frequency_hz": 150, "level": 35}
         ]
         profile = copy.deepcopy(VALID_PROFILE)
         profile["bands"] = [
@@ -315,13 +317,13 @@ class TestScreenHarmonics(unittest.TestCase):
                 "name": "first",
                 "start_hz": 100,
                 "stop_hz": 200,
-                "limits_dbuv": {"peak": 40},
+                "limits": {"peak": 40},
             },
             {
                 "name": "second",
                 "start_hz": 150,
                 "stop_hz": 250,
-                "limits_dbuv": {"peak": 30},
+                "limits": {"peak": 30},
             },
         ]
 
@@ -338,7 +340,7 @@ class TestScreenHarmonics(unittest.TestCase):
     def test_positive_zero_and_negative_margins_are_classified(self):
         spectrum = copy.deepcopy(VALID_SPECTRUM)
         spectrum["points"] = [
-            {"frequency_hz": 100, "level_dbuv": 40}
+            {"frequency_hz": 100, "level": 40}
         ]
         profile = copy.deepcopy(VALID_PROFILE)
         profile["bands"] = [
@@ -346,19 +348,19 @@ class TestScreenHarmonics(unittest.TestCase):
                 "name": "positive",
                 "start_hz": 100,
                 "stop_hz": 100,
-                "limits_dbuv": {"peak": 41},
+                "limits": {"peak": 41},
             },
             {
                 "name": "zero",
                 "start_hz": 100,
                 "stop_hz": 100,
-                "limits_dbuv": {"peak": 40},
+                "limits": {"peak": 40},
             },
             {
                 "name": "negative",
                 "start_hz": 100,
                 "stop_hz": 100,
-                "limits_dbuv": {"peak": 39},
+                "limits": {"peak": 39},
             },
         ]
 
@@ -378,7 +380,7 @@ class TestScreenHarmonics(unittest.TestCase):
     def test_design_margin_creates_near_limit_only_for_nonnegative_margin(self):
         spectrum = copy.deepcopy(VALID_SPECTRUM)
         spectrum["points"] = [
-            {"frequency_hz": 100, "level_dbuv": 40}
+            {"frequency_hz": 100, "level": 40}
         ]
         profile = copy.deepcopy(VALID_PROFILE)
         profile["bands"] = [
@@ -386,13 +388,13 @@ class TestScreenHarmonics(unittest.TestCase):
                 "name": "near",
                 "start_hz": 100,
                 "stop_hz": 100,
-                "limits_dbuv": {"peak": 42},
+                "limits": {"peak": 42},
             },
             {
                 "name": "above",
                 "start_hz": 100,
                 "stop_hz": 100,
-                "limits_dbuv": {"peak": 39},
+                "limits": {"peak": 39},
             },
         ]
 
@@ -404,14 +406,14 @@ class TestScreenHarmonics(unittest.TestCase):
 
     def _one_band(self, level, limit, margin=0.0):
         spectrum = copy.deepcopy(VALID_SPECTRUM)
-        spectrum["points"] = [{"frequency_hz": 100, "level_dbuv": level}]
+        spectrum["points"] = [{"frequency_hz": 100, "level": level}]
         profile = copy.deepcopy(VALID_PROFILE)
         profile["bands"] = [
             {
                 "name": "single",
                 "start_hz": 100,
                 "stop_hz": 100,
-                "limits_dbuv": {"peak": limit},
+                "limits": {"peak": limit},
             }
         ]
         return self._screen(spectrum, profile, margin=margin)["bands"][0]
@@ -442,7 +444,7 @@ class TestScreenHarmonics(unittest.TestCase):
     def test_each_supported_detector_uses_its_own_limit(self):
         results = {
             detector: self._screen(detector=detector)["bands"][0][
-                "limit_dbuv"
+                "limit"
             ]
             for detector in ("peak", "quasi_peak", "average")
         }
@@ -466,7 +468,7 @@ class TestScreenHarmonics(unittest.TestCase):
     def test_missing_detector_and_empty_band_are_not_assessed(self):
         spectrum = copy.deepcopy(VALID_SPECTRUM)
         spectrum["points"] = [
-            {"frequency_hz": 100, "level_dbuv": 40}
+            {"frequency_hz": 100, "level": 40}
         ]
         profile = copy.deepcopy(VALID_PROFILE)
         profile["bands"] = [
@@ -474,13 +476,13 @@ class TestScreenHarmonics(unittest.TestCase):
                 "name": "missing-detector",
                 "start_hz": 100,
                 "stop_hz": 100,
-                "limits_dbuv": {"average": 30},
+                "limits": {"average": 30},
             },
             {
                 "name": "empty",
                 "start_hz": 200,
                 "stop_hz": 300,
-                "limits_dbuv": {"peak": 50},
+                "limits": {"peak": 50},
             },
         ]
 
@@ -490,8 +492,8 @@ class TestScreenHarmonics(unittest.TestCase):
             {
                 "name": "missing-detector",
                 "worst_frequency_hz": 100.0,
-                "level_dbuv": 40.0,
-                "limit_dbuv": None,
+                "level": 40.0,
+                "limit": None,
                 "margin_db": None,
                 "status": "not_assessed",
             },
@@ -501,12 +503,33 @@ class TestScreenHarmonics(unittest.TestCase):
             {
                 "name": "empty",
                 "worst_frequency_hz": None,
-                "level_dbuv": None,
-                "limit_dbuv": 50.0,
+                "level": None,
+                "limit": 50.0,
                 "margin_db": None,
                 "status": "not_assessed",
             },
         )
+
+    def test_matching_units_are_screened_and_echoed(self):
+        for unit in ("dbuv", "dbuv_per_m", "dbua"):
+            with self.subTest(unit=unit):
+                spectrum = copy.deepcopy(VALID_SPECTRUM)
+                spectrum["level_unit"] = unit
+                profile = copy.deepcopy(VALID_PROFILE)
+                profile["limit_unit"] = unit
+                result = self._screen(spectrum, profile)
+                self.assertEqual(result["level_unit"], unit)
+                self.assertEqual(result["bands"][0]["margin_db"], 12.0)
+
+    def test_mismatched_units_are_rejected(self):
+        profile = copy.deepcopy(VALID_PROFILE)
+        profile["limit_unit"] = "dbuv_per_m"
+        with self.assertRaisesRegex(
+            harmonic.ValidationError,
+            "profile.limit_unit 'dbuv_per_m' does not match "
+            "spectrum.level_unit 'dbuv'",
+        ):
+            self._screen(profile=profile)
 
     def test_provenance_of_both_inputs_is_echoed(self):
         result = self._screen()
@@ -679,7 +702,7 @@ class TestHarmonicLimitCli(unittest.TestCase):
     def test_duplicate_json_keys_are_rejected_in_both_inputs(self):
         self.spectrum_path.write_text(
             '{"schema_version": "harmonic-lines/1",'
-            ' "level_unit": "dbuv_peak", "level_unit": "dbuv_rms",'
+            ' "level_unit": "dbuv_peak", "level_unit": "dbuv",'
             ' "points": []}',
             encoding="utf-8",
         )
@@ -754,9 +777,9 @@ class TestHarmonicLimitCli(unittest.TestCase):
 
     def test_nonfinite_values_never_reach_the_output(self):
         spectrum = copy.deepcopy(VALID_SPECTRUM)
-        spectrum["points"][1]["level_dbuv"] = -1e308
+        spectrum["points"][1]["level"] = -1e308
         profile = copy.deepcopy(VALID_PROFILE)
-        profile["bands"][0]["limits_dbuv"]["peak"] = 1e308
+        profile["bands"][0]["limits"]["peak"] = 1e308
         self.spectrum_path.write_text(json.dumps(spectrum), encoding="utf-8")
         self.profile_path.write_text(json.dumps(profile), encoding="utf-8")
         self._assert_clean_failure("margin_db")

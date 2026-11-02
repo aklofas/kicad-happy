@@ -86,7 +86,7 @@ python3 <skill-path>/scripts/analyze_emc.py --analysis-dir analysis/ --text
 
 ### Optional: Screen supplied harmonic lines against supplied limits
 
-For spectral lines that are already expressed as RMS dBµV, use the standalone screen:
+For spectral lines that are already expressed as RMS dBµV, dBµV/m, or dBµA, use the standalone screen:
 
 ```bash
 python3 <skill-path>/scripts/analyze_harmonic_limits.py \
