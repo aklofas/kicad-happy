@@ -609,9 +609,24 @@ class TestPspiceRun(unittest.TestCase):
         record = self._record()
         self.assertEqual(
             record["argv"],
-            ["-r", "-e", self.deck.name, "-o", self.output.name],
+            [
+                "-r", "-e", os.path.join(os.curdir, self.deck.name),
+                "-o", os.path.join(os.curdir, self.output.name),
+            ],
         )
         self.assertTrue(os.path.samefile(record["cwd"], self.deck_dir))
+
+    def test_deck_name_with_leading_dash_is_not_passed_as_an_option(self):
+        self.deck = self.deck_dir / "-r.cir"
+        self.deck.write_text("* dash deck\n.end\n", encoding="utf-8")
+
+        success, _, diagnostic = self._run("JOB CONCLUDED\n")
+
+        self.assertTrue(success, diagnostic)
+        argv = self._record()["argv"]
+        self.assertEqual(argv[2], os.path.join(os.curdir, "-r.cir"))
+        self.assertEqual(argv[4], os.path.join(os.curdir, "-r.out"))
+        self.assertTrue((self.deck_dir / "-r.out").is_file())
 
     def test_exit_zero_with_completion_marker_succeeds(self):
         result = self._run("PSpice batch output\n   JOB CONCLUDED  \r\n")

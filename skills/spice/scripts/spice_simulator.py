@@ -621,7 +621,12 @@ class PspiceBackend(SimulatorBackend):
                 "",
                 f"Could not inspect PSpice native output {native_output}: {exc}",
             )
-        command = self._command(binary, deck.name, native_output.name)
+        # "./name" keeps a deck named "-x.cir" from being read as an option.
+        command = self._command(
+            binary,
+            os.path.join(os.curdir, deck.name),
+            os.path.join(os.curdir, native_output.name),
+        )
 
         try:
             returncode = _run_process_tree(command, str(deck.parent), timeout)
