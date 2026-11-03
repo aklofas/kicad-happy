@@ -56,7 +56,7 @@ python3 what_if.py <input> [changes...] [options]
 |------|-------------|
 | `--spice` | Re-run SPICE simulations on each affected subcircuit, original and patched (requires ngspice/LTspice/Xyce; not with a sweep) |
 | `--offline` | With `--spice`: part models from the project cache and the built-in table only, no distributor or datasheet lookup |
-| `--output FILE`, `-o FILE` | Write patched analysis JSON to file (for downstream EMC, thermal, or diff analysis) |
+| `--output FILE`, `-o FILE` | Write the patched analysis JSON to FILE (single changes only; for downstream EMC, thermal, or diff analysis) |
 | `--text` | Human-readable text output instead of JSON |
 | `--emc` | Show EMC impact preview (runs `analyze_emc.py` on original and patched JSON) |
 | `--pcb FILE` | PCB analysis JSON for parasitic awareness (auto-discovered if omitted) |
@@ -124,10 +124,10 @@ Default tolerances when the suffix is omitted but tolerance mode is active:
 
 ### Combined Formats
 
-A tolerance suffix on the sweep component is accepted but has no effect: the sweep prints the nominal value at each step, with no corners.
+A tolerance suffix, on the sweep component or on any fixed change beside the sweep, is a usage error (exit 2): `tolerance corners are not supported with a sweep; run each value as a single change`.
 
 ```
-R5=1k,2.2k,4.7k+-5%    # same output as R5=1k,2.2k,4.7k
+R5=1k,2.2k,4.7k+-5%    # usage error
 ```
 
 For corners at a given value, run that value as a single change (`R5=2.2k+-5%`).
@@ -498,13 +498,14 @@ Which flags and modes work together:
 | Single change + `--emc` | Yes | Full EMC diff |
 | Single change + `--pcb` | Yes | Adds parasitic annotations |
 | Single change + `--output` | Yes | Exports patched JSON |
+| No affected subcircuit + `--output` | Yes | Writes the unchanged analysis and says so on stderr |
 | Single change + tolerance | Yes | Corner analysis on toleranced components |
 | Sweep + `--text` | Yes | Markdown table output |
-| Sweep + tolerance | No | The suffix is ignored; run each value as a single change for corners |
+| Sweep + tolerance | No | Usage error (exit 2); run each value as a single change for corners |
 | Sweep + fixed changes | Yes | Other components held at specified values |
 | Sweep + `--spice` | No | Usage error (exit 2) |
 | Sweep + `--emc` | No | Sweep mode exits before EMC |
-| Sweep + `--output` | No | Sweep mode exits before export |
+| Sweep + `--output` | No | Usage error (exit 2); `--output` exports one patched design |
 | `--fix` + `--target` | Yes | Primary fix use case |
 | `--fix` (no `--target`) | Partial | Only works for detection types with inferrable targets |
 | `--fix` + `--pcb` | Yes | Adds footprint compatibility warnings for capacitors |

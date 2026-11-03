@@ -1030,7 +1030,7 @@ def _scan_fixable(signal_analysis: dict) -> list:
         if not det_type:
             continue
         ref_reg = reg.get("ref", reg.get("reference", ""))
-        confidence = "deterministic" if reg.get("vref_source") == "lookup" else "heuristic"
+        confidence = (reg.get("_estimated_vout_provenance") or {}).get("confidence", "heuristic")
         issues.append({
             "detection_type": det_type,
             "index": det_idx,
@@ -1430,7 +1430,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--offline", action="store_true",
                         help="With --spice: part models from the cache and the built-in "
                              "table only")
-    add_output_arg(parser, help="Write patched analysis JSON to file")
+    add_output_arg(parser, help="Write the patched analysis JSON to FILE (single changes only)")
     add_text_arg(parser, help="Human-readable text output")
     parser.add_argument("--emc", action="store_true",
                         help="Show EMC impact preview (runs analyze_emc.py)")
@@ -1595,6 +1595,11 @@ def main(argv: list[str] | None = None) -> int:
     if sweep is not None:
         if args.spice:
             parser.error("--spice cannot be combined with a sweep; simulate one value at a time")
+        if sweep.tolerance is not None or any(c.tolerance is not None for c in changes.values()):
+            parser.error("tolerance corners are not supported with a sweep; "
+                         "run each value as a single change")
+        if args.output:
+            parser.error("--output exports one patched design; it cannot be combined with a sweep")
         sweep_result = _run_sweep(analysis, sweep, changes)
         if args.text:
             print(_format_sweep_table(sweep_result))
@@ -1612,6 +1617,14 @@ def main(argv: list[str] | None = None) -> int:
     if not affected:
         print(f"No subcircuits reference {', '.join(changes_legacy.keys())}",
               file=sys.stderr)
+        if args.output:
+            try:
+                atomic_write_text(args.output, json.dumps(analysis, indent=2))
+            except OSError as e:
+                print(f"Error: cannot write {args.output}: {e}", file=sys.stderr)
+                return 1
+            print(f"No subcircuit changed; wrote the unchanged analysis to {args.output}",
+                  file=sys.stderr)
         result = {
             "changes": _change_info(analysis, changes_legacy),
             "affected_subcircuits": [],
