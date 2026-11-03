@@ -70,6 +70,11 @@ class UrlBackfillTest(unittest.TestCase):
         self.assertEqual(got["R5"], "")
         self.assertEqual(got["R7"], "")
 
+    def test_entry_without_a_string_url_gives_no_url(self):
+        got = self.sync([symbol("R8", MPN="G"), symbol("R9", MPN="H")],
+                        {"G": ok(None), "H": ok("https://e.com/h.pdf")})
+        self.assertEqual((got["R8"], got["R9"]), ("", "https://e.com/h.pdf"))
+
     def test_urlfx_fixture_shape(self):
         parts = {"A-OLD": ok("https://e.com/a_old.pdf", ["R1"]), "B": ok("https://e.com/b.pdf"),
                  "C3-ND": ok("https://e.com/c.pdf", ["R3"]), "LM1117-3.3": ok("https://e.com/d.pdf", ["R4"]),
@@ -79,6 +84,21 @@ class UrlBackfillTest(unittest.TestCase):
                          symbol("R5", Value="E", MPN="E")], parts)
         self.assertEqual(got, {"R1": "", "R2": "https://e.com/b.pdf", "R3": "https://e.com/c.pdf",
                                "R4": "https://e.com/d.pdf", "R5": ""})
+
+
+class UnreadableManifestTest(unittest.TestCase):
+    def test_malformed_manifest_is_an_error(self):
+        for text in ("{not json", "[]", '{"parts": []}', '{"parts": {"G": "ok"}}'):
+            with self.subTest(text=text), tempfile.TemporaryDirectory() as td:
+                proj = Path(td); (proj / "datasheets").mkdir()
+                (proj / "datasheets" / "manifest.json").write_text(text, encoding="utf-8")
+                root = proj / "root.kicad_sch"
+                root.write_text('(kicad_sch (version 20231120) (generator "eeschema")\n)\n', encoding="utf-8")
+                se = io.StringIO()
+                with contextlib.redirect_stderr(se):
+                    r = sync_datasheet_urls.sync_datasheet_urls(str(root))
+                self.assertEqual(r, {"error": "unreadable manifest"})
+                self.assertIn("is not a readable manifest; fix or move it aside", se.getvalue())
 
 
 if __name__ == "__main__":

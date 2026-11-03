@@ -132,5 +132,35 @@ class NullPayload(unittest.TestCase):
                                  ("failed", "No datasheet URL or all download methods failed", ""))
 
 
+class LcscReplyShapes(unittest.TestCase):
+    """A jlcsearch or wmsc reply of the wrong JSON shape is no hit, never a traceback."""
+    def _reply(self, body, fn, *args):
+        import io, json
+        from contextlib import redirect_stderr
+        from unittest import mock
+        prov = _load("lcsc", "provider")
+
+        class R(io.BytesIO):
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+        with mock.patch("urllib.request.urlopen", lambda *a, **k: R(json.dumps(body).encode())), \
+                redirect_stderr(io.StringIO()):
+            return getattr(prov, fn)(*args)
+
+    def test_search_shapes(self):
+        for body in ([], {"components": "x"}, {"components": [1, "x"]},
+                     {"components": [{"mfr": None, "lcsc": 1}]}, {"components": [{"mfr": 5, "lcsc": 1}]}):
+            with self.subTest(body=body):
+                self.assertIsNone(self._reply(body, "search_lcsc", "LM35X"))
+
+    def test_direct_shapes(self):
+        for body in ([{"productCode": "C12345"}], {"result": [{"productCode": "C12345"}]}, {"result": 7}):
+            with self.subTest(body=body):
+                self.assertIsNone(self._reply(body, "search_lcsc_direct", "C12345"))
+        hit = self._reply({"result": {"productCode": "C12345", "productModel": 7, "pdfUrl": 3}},
+                          "search_lcsc_direct", "C12345")
+        self.assertEqual((hit["mfr"], hit["datasheet"], hit["lcsc"]), ("", "", "12345"))
+
+
 if __name__ == "__main__":
     unittest.main()

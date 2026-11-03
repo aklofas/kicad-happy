@@ -37,6 +37,7 @@ from urllib.parse import urlparse
 
 sys.path.insert(0, str(Path(__file__).parent))
 from bom_fields import _canonical_for, _pick_mpn_from_props, _symbol_slots
+from distributor_core.manifest import load_index
 from edit_properties import apply_updates
 from kicad_sexp import (atomic_write_text, collect_schematic_files,
                         iter_placed_symbol_blocks)
@@ -139,7 +140,8 @@ def build_key_url_map(index: dict) -> dict[str, dict]:
     for part_key, entry in index.get("parts", {}).items():
         if entry.get("status") != "ok":
             continue
-        url = entry.get("datasheet_url", "").strip()
+        raw = entry.get("datasheet_url")
+        url = raw.strip() if isinstance(raw, str) else ""
         if not url:
             continue
         # Don't propagate URLs that verification flagged as wrong
@@ -193,8 +195,11 @@ def sync_datasheet_urls(
         print("  Run a datasheet sync first to generate the manifest.", file=sys.stderr)
         return {"error": "no manifest"}
 
-    with open(index_path, "r", encoding="utf-8") as f:
-        index = json.load(f)
+    try:
+        index = load_index(index_path)
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return {"error": "unreadable manifest"}
 
     key_url_map = build_key_url_map(index)
     if not key_url_map:

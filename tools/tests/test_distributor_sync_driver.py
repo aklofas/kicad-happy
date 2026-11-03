@@ -27,6 +27,40 @@ class Driver(unittest.TestCase):
                                          {"mpn": "", "element14": "94AK", "references": ["U3"], "value": "", "type": "ic"}]}), encoding="utf-8")
         return str(p)
 
+    def test_a_part_that_raises_is_an_error_and_the_queue_goes_on(self):
+        from distributor_core.sync import sync_datasheets
+
+        def one(part, out_dir, delay, ctx):
+            if part["mpn"] == "LM358DR":
+                raise AttributeError("'list' object has no attribute 'get'")
+            return {"status": "not_found", "error": "none", "manufacturer": "", "description": "",
+                    "value": part["value"], "references": part["references"], "last_attempt": "t"}
+        for par in (1, 2):
+            with self.subTest(parallel=par), tempfile.TemporaryDirectory() as d:
+                d = Path(d); mpns = d / "mpns.txt"
+                mpns.write_text("LM358DR\nNE555P\n", encoding="utf-8")
+                so = io.StringIO()
+                with redirect_stdout(so), redirect_stderr(io.StringIO()):
+                    r = sync_datasheets(fake_provider(sync_one_part=one), mpn_list=str(mpns),
+                                        output_dir=str(d / "o"), parallel=par, as_json=True)
+                m = json.loads((d / "o" / "manifest.json").read_text(encoding="utf-8"))["parts"]
+                self.assertEqual((r["failed"], json.loads(so.getvalue())["failed"]), (2, 2))
+                self.assertEqual((m["LM358DR"]["status"], m["LM358DR"]["error"]),
+                                 ("error", "fake sync failed: AttributeError: 'list' object has no attribute 'get'"))
+                self.assertEqual(m["NE555P"]["status"], "not_found")
+
+    def test_a_list_or_dict_type_does_not_break_the_eligible_count(self):
+        from distributor_core.sync import sync_datasheets
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d); bom = d / "bom.json"
+            bom.write_text(json.dumps({"bom": [
+                {"mpn": "LM358DR", "references": ["U1"], "value": "LM358DR", "type": ["ic"]},
+                {"mpn": "", "references": ["U2"], "value": "", "type": {"a": 1}}]}), encoding="utf-8")
+            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                r = sync_datasheets(fake_provider(), input_path=str(bom), output_dir=str(d / "o"),
+                                    as_json=True)
+            self.assertEqual(r["failed"], 1)
+
     def test_two_workers_store_the_same_manifest_as_the_serial_run(self):
         from distributor_core.sync import sync_datasheets
 

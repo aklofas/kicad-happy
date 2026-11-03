@@ -73,6 +73,10 @@ def _parse_extra(component: dict) -> dict:
     return extra if isinstance(extra, dict) else {}
 
 
+def _text(v) -> str:
+    return v if isinstance(v, str) else ""
+
+
 def search_lcsc(query: str, allow_family: bool = False) -> dict | None:
     """Search jlcsearch API for a part. Returns first match with datasheet URL.
 
@@ -88,7 +92,10 @@ def search_lcsc(query: str, allow_family: bool = False) -> dict | None:
         print(f"[LCSC] Search failed: {e}", file=sys.stderr)
         return None
 
-    components = data.get("components", [])
+    components = data.get("components") if isinstance(data, dict) else None
+    if not isinstance(components, list):
+        return None
+    components = [c for c in components if isinstance(c, dict)]
     if not components:
         return None
 
@@ -103,9 +110,9 @@ def search_lcsc(query: str, allow_family: bool = False) -> dict | None:
     if hit is not None:
         return hit
     for c in components:
-        mpn = c.get("mfr", "")
+        mpn = _get_mpn(c)
         extra = c.get("extra") or {}
-        lcsc_num = extra.get("number", "") if isinstance(extra, dict) else ""
+        lcsc_num = _text(extra.get("number")) if isinstance(extra, dict) else ""
         if not lcsc_num:
             lcsc_num = f"C{c.get('lcsc', '')}"
         if mpn.upper() == query_upper or lcsc_num.upper() == query_upper:
@@ -149,7 +156,7 @@ def search_lcsc_direct(lcsc_code: str) -> dict | None:
 
     # {"result": null} is "no such product", not an empty one
     result = data.get("result") if isinstance(data, dict) and "result" in data else data
-    if not result or isinstance(result, str):
+    if not isinstance(result, dict) or not result:
         return None
 
     # Normalize to jlcsearch-compatible dict format
@@ -161,20 +168,22 @@ def search_lcsc_direct(lcsc_code: str) -> dict | None:
         pdf_url = pdf_list[0] if isinstance(pdf_list[0], str) else ""
 
     # The code is the one LCSC answers with, so the identity guard can compare it with the request
-    code = str(result.get("productCode") or "").strip().upper()
+    code = _text(result.get("productCode")).strip().upper()
+    model = _text(result.get("productModel")) or _text(result.get("modelName"))
+    desc = _text(result.get("productDescEn")) or _text(result.get("description"))
     component = {
-        "mfr": result.get("productModel") or result.get("modelName") or "",
-        "description": result.get("productDescEn") or result.get("description") or "",
+        "mfr": model,
+        "description": desc,
         "datasheet": pdf_url,
         "stock": result.get("stockNumber") or result.get("stockCount") or 0,
         "price": result.get("productPriceList"),
         "lcsc": code.lstrip("C"),
         "extra": {
             "number": code,
-            "mpn": result.get("productModel") or result.get("modelName") or "",
-            "description": result.get("productDescEn") or result.get("description") or "",
+            "mpn": model,
+            "description": desc,
             "manufacturer": {
-                "name": result.get("brandNameEn") or result.get("manufacturer") or "",
+                "name": _text(result.get("brandNameEn")) or _text(result.get("manufacturer")),
             },
             "datasheet": {
                 "pdf": pdf_url,
@@ -225,26 +234,28 @@ def _get_datasheet_url(component: dict) -> str:
     extra = _parse_extra(component)
     ds = extra.get("datasheet") or {}
     if isinstance(ds, dict):
-        pdf_url = ds.get("pdf", "")
+        pdf_url = _text(ds.get("pdf"))
         if pdf_url:
             return pdf_url
     # Fallback to top-level
-    return component.get("datasheet", "")
+    return _text(component.get("datasheet"))
 
 
 def _get_mpn(component: dict) -> str:
     """Extract MPN from component."""
     extra = _parse_extra(component)
-    return extra.get("mpn", "") or component.get("mfr", "")
+    return _text(extra.get("mpn")) or _text(component.get("mfr"))
 
 
 def _get_lcsc_code(component: dict) -> str:
     """Extract LCSC code (Cxxxxx) from component."""
     extra = _parse_extra(component)
-    num = extra.get("number", "")
+    num = _text(extra.get("number"))
     if num:
         return num
     lcsc_id = component.get("lcsc", "")
+    if not isinstance(lcsc_id, (int, str)) or isinstance(lcsc_id, bool):
+        return ""
     return f"C{lcsc_id}" if lcsc_id else ""
 
 
@@ -253,14 +264,14 @@ def _get_manufacturer(component: dict) -> str:
     extra = _parse_extra(component)
     mfg = extra.get("manufacturer") or {}
     if isinstance(mfg, dict):
-        return mfg.get("name", "")
+        return _text(mfg.get("name"))
     return ""
 
 
 def _get_description(component: dict) -> str:
     """Extract description from component."""
     extra = _parse_extra(component)
-    return extra.get("description", "") or component.get("description", "")
+    return _text(extra.get("description")) or _text(component.get("description"))
 
 
 def sync_one_part(

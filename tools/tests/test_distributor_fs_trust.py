@@ -175,7 +175,7 @@ class FsTrust(unittest.TestCase):
             self.assertNotIn("error", r)
             self.assertEqual(os.listdir(outside), ["manifest.json"])
 
-    def test_parallel_worker_exception_propagates(self):
+    def test_worker_exception_is_recorded_as_an_error(self):
         from distributor_core.sync import sync_datasheets
 
         def boom(part, out_dir, delay, ctx):
@@ -186,9 +186,9 @@ class FsTrust(unittest.TestCase):
             mpns.write_text("LM358DR\nNE555P\n", encoding="utf-8")
             for par in (1, 2):
                 with self.subTest(parallel=par), redirect_stderr(io.StringIO()), redirect_stdout(io.StringIO()):
-                    with self.assertRaises(RuntimeError):
-                        sync_datasheets(fake_provider(sync_one_part=boom), mpn_list=str(mpns),
+                    r = sync_datasheets(fake_provider(sync_one_part=boom), mpn_list=str(mpns),
                                         output_dir=str(d / "out"), parallel=par)
+                self.assertEqual(r["failed"], 2)
 
 
 if __name__ == "__main__":

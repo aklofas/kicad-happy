@@ -95,6 +95,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Fixed
 
+- A jlcsearch or LCSC product-detail reply of the wrong JSON shape (a list root, a non-list `components`, a null or numeric `mfr`) is no hit instead of a traceback, a part whose sync raises is recorded as an `error` entry while the queue goes on, a BOM `type` that is not a string no longer breaks the eligible-part count, and the datasheet URL backfill stops with an error on a manifest it cannot read.
 - The datasheet syncs read `manifest.json` without following a link or reading past 10 MB, stop with an error on a manifest they cannot read instead of replacing it, and read null fields in a precomputed BOM as empty.
 - The 120 s datasheet download limit also holds while a server is still sending the status line and headers through `requests`: the download stops at the limit instead of waiting for the headers to finish.
 - A datasheet extraction cache whose blocks have the wrong JSON type (a null required block, a non-object `extraction_metadata`, `features`, `peripherals` or pin, a string version, score or pin threshold) is now a cache miss for the feature helpers, the staleness check, the thermal and SPICE readers and the VD-002 abs-max reader instead of a traceback.

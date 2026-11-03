@@ -28,6 +28,7 @@ from pathlib import Path
 from distributor_core.download import take_transport_failure
 from distributor_core.inputs import (
     _SKIP_TYPES,
+    _str,
     get_analyzer_output,
     extract_parts,
     load_mpn_list,
@@ -283,7 +284,7 @@ def sync_datasheets(
                                           search_key=provider.SEARCH_KEY)
                  if p["mpn"] or p.get(provider.SEARCH_KEY)]
         eligible = sum(1 for e in analyzer_output.get("bom", [])
-                       if not e.get("dnp") and e.get("type", "") not in _SKIP_TYPES)
+                       if not e.get("dnp") and _str(e.get("type")) not in _SKIP_TYPES)
         skipped_no_id = eligible - len(parts)
         parts = _coalesce(parts, provider.KEY_PRIORITY)
 
@@ -383,7 +384,15 @@ def sync_datasheets(
 
     def _fetch(part):
         take_transport_failure()
-        return provider.sync_one_part(part, out_dir, delay, ctx)
+        try:
+            return provider.sync_one_part(part, out_dir, delay, ctx)
+        except Exception as exc:
+            return {"manufacturer": part.get("manufacturer", ""),
+                    "description": part.get("description", ""),
+                    "value": part.get("value", ""), "references": part["references"],
+                    "status": "error",
+                    "error": f"{provider.NAME} sync failed: {type(exc).__name__}: {exc}",
+                    "last_attempt": datetime.now(timezone.utc).isoformat()}
 
     if parallel > 1:
         def _process_part(part):
