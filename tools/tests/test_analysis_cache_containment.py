@@ -397,10 +397,6 @@ class PlantedSymlinkWriterTest(unittest.TestCase):
             self.assertEqual(hashes, {"a.kicad_sch": "old"})
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class ReadBytesTest(unittest.TestCase):
     def test_non_utf8_manifest_is_corrupt_not_a_crash(self):
         with tempfile.TemporaryDirectory() as ad:
@@ -418,6 +414,33 @@ class ReadBytesTest(unittest.TestCase):
             with redirect_stdout(io.StringIO()):
                 self.assertEqual(summarize_findings.main([ad, "--json"]), 0)
 
+    def test_summarize_unreadable_manifest_is_a_clean_error(self):
+        import summarize_findings
+        with tempfile.TemporaryDirectory() as ad:
+            Path(ad, "manifest.json").write_bytes(b"\xff\xfe{")
+            with self.assertRaises(SystemExit) as cm:
+                summarize_findings.main([ad, "--json"])
+            self.assertIn("cannot read", str(cm.exception))
+
+    def test_summarize_skips_a_non_utf8_deep_review(self):
+        import summarize_findings
+        with tempfile.TemporaryDirectory() as ad:
+            os.makedirs(os.path.join(ad, "r1"))
+            _write(os.path.join(ad, "manifest.json"),
+                   {"version": 1, "current": "r1", "runs": {"r1": {"timestamp": "t"}}})
+            Path(ad, "deep_review.json").write_bytes(b"\xff\xfe")
+            err = io.StringIO()
+            with redirect_stdout(io.StringIO()), redirect_stderr(err):
+                self.assertEqual(summarize_findings.main([ad, "--json"]), 0)
+            self.assertIn("Warning: skipping unreadable", err.getvalue())
+
+    def test_non_utf8_capability_mode_file_is_unreadable_not_a_crash(self):
+        import capability_mode
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d, "capability_mode.json")
+            p.write_bytes(b"\xff\xfe{")
+            self.assertIsNone(capability_mode._read_capability_mode(p))
+
     def test_should_create_new_run_treats_non_utf8_output_as_changed(self):
         with tempfile.TemporaryDirectory() as tmp:
             out = _outputs(tmp)
@@ -427,3 +450,7 @@ class ReadBytesTest(unittest.TestCase):
             _write(os.path.join(ad, "manifest.json"),
                    {"version": 1, "current": "r1", "runs": {"r1": {"timestamp": "t"}}})
             self.assertTrue(analysis_cache.should_create_new_run(ad, out))
+
+
+if __name__ == "__main__":
+    unittest.main()

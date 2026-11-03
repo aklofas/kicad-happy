@@ -48,7 +48,7 @@ def _read_capability_mode(path: Path) -> Optional[dict]:
     for _ in range(5):
         try:
             return json.loads(path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, FileNotFoundError, OSError):
+        except (ValueError, FileNotFoundError, OSError):
             time.sleep(0.005)
     return None
 

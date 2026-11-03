@@ -39,10 +39,6 @@ class ManifestParts(unittest.TestCase):
         self.assertTrue(_audit({"components": {"BSS138": {}}})[0]["has_datasheet"])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class NonUtf8Manifest(unittest.TestCase):
     def test_non_utf8_manifest_is_ignored(self):
         with tempfile.TemporaryDirectory() as d:
@@ -51,3 +47,7 @@ class NonUtf8Manifest(unittest.TestCase):
             (ds / "manifest.json").write_bytes(b"\xff\xfe{")
             w = check_generic_transistor_symbols([Q], str(Path(d) / "p.kicad_sch"))
         self.assertFalse(w[0]["has_datasheet"])
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -41,8 +41,11 @@ def _resolve_run_dir(
         raise SystemExit(
             f"error: no manifest.json in {analysis_dir!r} — "
             "run an analyzer with --analysis-dir first")
-    with open(manifest_path, "r", encoding="utf-8") as f:
-        manifest = json.load(f)
+    try:
+        with open(manifest_path, "r", encoding="utf-8") as f:
+            manifest = json.load(f)
+    except (OSError, ValueError) as e:
+        raise SystemExit(f"error: cannot read {manifest_path!r}: {e}")
     run_id = run_override or manifest.get("current")
     run = get_run(analysis_dir, run_id, manifest)
     if run is None:
@@ -320,8 +323,12 @@ def main(argv: list[str] | None = None) -> int:
     if not args.no_deep_review:
         dr_path = os.path.join(args.analysis_dir, "deep_review.json")
         if os.path.isfile(dr_path):
-            with open(dr_path, "r", encoding="utf-8") as f:
-                dr = json.load(f)
+            try:
+                with open(dr_path, "r", encoding="utf-8") as f:
+                    dr = json.load(f)
+            except (OSError, ValueError) as e:
+                print(f"Warning: skipping unreadable {dr_path}: {e}", file=sys.stderr)
+                dr = {}
             included = 0
             for finding in dr.get("findings") or []:
                 if not isinstance(finding, dict):
