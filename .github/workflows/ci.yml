@@ -171,3 +171,46 @@ jobs:
         run: python3 tools/check_refactor.py tags
       - name: isolated-install smoke (core + each optional skill)
         run: python3 tools/check_refactor.py install-smoke
+
+  windows:
+    # Windows is a supported platform: byte-compile, CLI start-up, the in-skill
+    # unit tests and the tools tests, without UTF-8 mode, so locale-dependent
+    # text I/O fails here. ngspice is not installed; its tests skip.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Clone test harness at pinned commit (fixtures + dev deps only)
+        shell: bash
+        run: |
+          git -c core.longpaths=true clone --filter=blob:none --no-checkout https://github.com/aklofas/kicad-happy-testharness.git "$RUNNER_TEMP/harness"
+          cd "$RUNNER_TEMP/harness"
+          git config core.longpaths true
+          git sparse-checkout set tests/fixtures
+          git checkout 61016aa5968
+      - name: Install harness dev deps (jsonschema, referencing)
+        shell: bash
+        run: python -m pip install --disable-pip-version-check -r "$RUNNER_TEMP/harness/requirements-dev.txt"
+      - name: Compile check all scripts
+        run: python -c "import compileall,sys; sys.exit(0 if compileall.compile_dir('skills', quiet=1) and compileall.compile_dir('tools', quiet=1) else 1)"
+      - name: CLI --help smoke
+        shell: bash
+        run: |
+          for s in skills/kicad/scripts/analyze_schematic.py skills/kicad/scripts/analyze_pcb.py \
+                   skills/kicad/scripts/analyze_gerbers.py skills/emc/scripts/analyze_emc.py \
+                   skills/spice/scripts/simulate_subcircuits.py skills/bom/scripts/bom_manager.py \
+                   skills/lcsc/scripts/search_lcsc.py; do
+            echo "$s"; python "$s" --help > /dev/null
+          done
+      - name: In-skill unit tests
+        shell: bash
+        run: |
+          for t in skills/*/scripts/test_*.py; do
+            echo "== $t"; python -m unittest "$t"
+          done
+      - name: tools unit tests (all, against the pinned harness fixtures)
+        shell: bash
+        run: KH_FIXTURES="$RUNNER_TEMP/harness/tests/fixtures" python -m unittest discover -s tools/tests -t .
