@@ -242,6 +242,7 @@ class PcbFacts:
     return_path: Any
     gp001_samples: Any
     keepout_zones: Any
+    reference_changes: Any = None
 
 
 @dataclass
@@ -399,7 +400,9 @@ def run_facts(board: BoardData, *, include_trace_segments: bool, return_path_rad
     # Return path continuity (only with --full, expensive)
     return_path = None
     gp001_samples = [] if gp001_debug else None
+    reference_changes = None
     if include_trace_segments and zone_fills.has_data:
+        reference_changes = []
         return_path = analyze_return_path_continuity(
             tracks, net_names, zones, zone_fills,
             ref_layer_map=ref_layer_map,
@@ -410,7 +413,8 @@ def run_facts(board: BoardData, *, include_trace_segments: bool, return_path_rad
             power_rails=_resolved_power_rails,
             copper_order=_copper_order_from_stackup(_stackup),
             pin_signals=pin_signals,
-            stackup=_stackup)
+            stackup=_stackup,
+            reference_changes=reference_changes)
 
     keepout_zones = _extract_keepout_zones(zones, footprints)
 
@@ -438,6 +442,7 @@ def run_facts(board: BoardData, *, include_trace_segments: bool, return_path_rad
         return_path=return_path,
         gp001_samples=gp001_samples,
         keepout_zones=keepout_zones,
+        reference_changes=reference_changes,
     )
 
 

@@ -513,6 +513,62 @@ def check_return_path_coverage(pcb: Dict, severity_threshold: str = 'all') -> Li
             schema_era="v3.0",
         ))
 
+    findings.extend(_split_crossing_findings(pcb, touch))
+    return findings
+
+
+SPLIT_BRIDGE_CAP_MM = 5.0  # a capacitor joining the two plane nets this close carries the return
+
+
+def _split_crossing_findings(pcb: Dict, touch: set) -> List[Dict]:
+    """GP-001 for a high-speed or clock trace whose reference plane changes net.
+
+    Where the plane under a trace changes from one net to another (a split between,
+    say, +3V3 and +5V), the return current has to cross the split through whatever
+    couples the two nets, so the loop grows (Ott, EMC Engineering ch. 16). A crossing
+    with a capacitor joining the two plane nets within SPLIT_BRIDGE_CAP_MM is
+    bridged and not reported. The high-speed test reads the net's own name, not its
+    sheet path.
+    """
+    caps = []
+    for fp in pcb.get('footprints') or []:
+        nets = set(fp.get('connected_nets') or [])
+        if re.match(r'C\d', fp.get('reference') or '') and len(nets) == 2 \
+                and fp.get('x') is not None and fp.get('y') is not None:
+            caps.append((nets, fp['x'], fp['y']))
+
+    by_net: Dict[str, List[Dict]] = {}
+    for ch in pcb.get('reference_plane_changes') or []:
+        pair = {ch.get('from_net'), ch.get('to_net')}
+        if any(nets == pair and math.hypot(x - ch.get('x', 0), y - ch.get('y', 0))
+               <= SPLIT_BRIDGE_CAP_MM for nets, x, y in caps):
+            continue
+        by_net.setdefault(ch.get('net', ''), []).append(ch)
+
+    findings = []
+    for net_name in sorted(by_net):
+        if net_name in touch or not _is_high_speed_net(net_leaf(net_name)):
+            continue
+        changes = by_net[net_name]
+        pairs = sorted({' / '.join(sorted((c['from_net'], c['to_net']))) for c in changes})
+        findings.append(_make_finding(
+            'ground_plane', 'HIGH', rule_id='GP-001', detector='emc_ground_plane',
+            title='Signal crosses a split between reference planes',
+            description=(
+                f'Net {net_name} changes reference plane net {len(changes)} time(s) '
+                f'({", ".join(pairs)}) on {changes[0].get("reference_layer") or "the reference layer"}. '
+                f'The return current must cross the split through decoupling or stitching capacitors.'
+            ),
+            nets=[net_name],
+            recommendation=(
+                'Route this signal over one continuous plane, or place a stitching '
+                'capacitor between the two plane nets next to the crossing.'
+            ),
+            confidence='heuristic',
+            signal_net=net_name,
+            is_high_speed_or_clock=True,
+            schema_era="v3.0",
+        ))
     return findings
 
 

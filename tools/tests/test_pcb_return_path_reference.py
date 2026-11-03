@@ -9,18 +9,26 @@ thickness) that carries ground or power zone copper; a layer without such copper
 reference. A via's own antipad in the plane stays covered.
 
 Each case routes one F.Cu track of net SIG from x=2 to x=18 at y=10: 16 mm sampled every
-2 mm = 9 points. Coverage = covered points / 9 (the analyzer reports nets below 95 %)."""
+2 mm = 9 points. Coverage = covered points / 9 (the analyzer reports nets below 95 %).
+
+The same samples record the plane net under the track. Where it changes from one plane net to
+another (a split between, say, +3V3 and +5V planes) the return current has to cross the split,
+so the analyzer lists the change in reference_plane_changes and EMC GP-001 reports it for a
+high-speed or clock net."""
 import os, sys, tempfile, unittest
 from pathlib import Path
 SCRIPTS = Path(__file__).resolve().parents[2] / "skills" / "kicad" / "scripts"
+EMC = Path(__file__).resolve().parents[2] / "skills" / "emc" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
+sys.path.insert(0, str(EMC))
 
 from pcb.pipeline import analyze_pcb  # noqa: E402
 from pcb.routing import _build_reference_layer_map  # noqa: E402
+from emc_rules import check_return_path_coverage  # noqa: E402
 
 CU2 = '(0 "F.Cu" signal) (31 "B.Cu" signal)'
 CU4 = '(0 "F.Cu" signal) (1 "In1.Cu" signal) (2 "In2.Cu" signal) (31 "B.Cu" signal)'
-NETS = ["SIG", "GND", "SIG2", "+3V3", "MCU3v3"]
+NETS = ["SIG", "GND", "SIG2", "+3V3", "MCU3v3", "+5V"]
 SIG_TRACK = '(segment (start 2 10) (end 18 10) (width 0.2) (layer "F.Cu") (net 1))\n'
 
 
@@ -40,26 +48,30 @@ def zone(net, layer, x0=0, x1=20, y0=5, y1=15):
 FAR_GND = zone("GND", "B.Cu", 40, 45, 40, 45)
 
 
-def board(body, cu=CU2):
+def board(body, cu=CU2, track=SIG_TRACK):
     nets = '(net 0 "")\n' + "".join(f'(net {i + 1} "{n}")\n' for i, n in enumerate(NETS))
     return ('(kicad_pcb (version 20240108) (generator "pcbnew")\n(general (thickness 1.6))\n'
             f'(layers {cu} (38 "B.Mask" user) (39 "F.Mask" user) (44 "Edge.Cuts" user))\n'
             '(setup (pad_to_mask_clearance 0))\n' + nets
             + '(gr_rect (start 0 0) (end 50 50) (stroke (width 0.05) (type default)) (fill none)'
-            ' (layer "Edge.Cuts"))\n' + SIG_TRACK + body + ')\n')
+            ' (layer "Edge.Cuts"))\n' + track + body + ')\n')
 
 
-def coverage(text):
-    """SIG's reference-plane coverage in percent (100 when the analyzer reports no gap)."""
+def analyze(text):
     with tempfile.TemporaryDirectory() as d:
         p = Path(d) / "b.kicad_pcb"
         p.write_text(text, encoding="utf-8")
         cwd = os.getcwd()
         os.chdir(d)
         try:
-            out = analyze_pcb(str(p), include_trace_segments=True)
+            return analyze_pcb(str(p), include_trace_segments=True)
         finally:
             os.chdir(cwd)
+
+
+def coverage(text):
+    """SIG's reference-plane coverage in percent (100 when the analyzer reports no gap)."""
+    out = analyze(text)
     entries = {e["net"]: e for e in out.get("return_path_continuity") or []}
     return entries["SIG"]["reference_plane_coverage_pct"] if "SIG" in entries else 100.0
 
@@ -136,6 +148,106 @@ class ReferenceLayer(unittest.TestCase):
               {"type": "core", "thickness": 1.5}, {"name": "B.Cu", "type": "copper"}]
         self.assertEqual(_build_reference_layer_map(st, {"B.Cu"}),
                          {"F.Cu": "B.Cu", "B.Cu": "F.Cu"})
+
+
+# +3V3 under x 0..9.5 and +5V under x 10.5..20 on B.Cu: a 1 mm split at x=10.
+SPLIT_3V3_5V = zone("+3V3", "B.Cu", 0, 9.5) + zone("+5V", "B.Cu", 10.5, 20)
+
+
+def renamed(text, name):
+    return text.replace('(net 1 "SIG")', f'(net 1 "{name}")')
+
+
+def cap(ref, x, y, net_a="+3V3", net_b="+5V"):
+    """A two-pad capacitor joining net_a and net_b, centred at (x, y)."""
+    return (f'(footprint "Capacitor_SMD:C_0402" (layer "F.Cu") (at {x} {y})\n'
+            f' (property "Reference" "{ref}" (at 0 -1 0) (layer "F.SilkS"))\n'
+            f' (property "Value" "100n" (at 0 1 0) (layer "F.Fab"))\n'
+            f' (pad "1" smd rect (at -0.5 0) (size 0.5 0.5) (layers "F.Cu") (net {net_no(net_a)} "{net_a}"))\n'
+            f' (pad "2" smd rect (at 0.5 0) (size 0.5 0.5) (layers "F.Cu") (net {net_no(net_b)} "{net_b}")))\n')
+
+
+class ReferencePlaneChanges(unittest.TestCase):
+    def test_split_between_two_plane_nets_is_one_change(self):
+        out = analyze(board(SPLIT_3V3_5V))
+        self.assertEqual(out["reference_plane_changes"],
+                         [{"net": "SIG", "layer": "F.Cu", "reference_layer": "B.Cu",
+                           "from_net": "+3V3", "to_net": "+5V", "x": 10.0, "y": 10.0}])
+
+    def test_split_leaves_return_path_continuity_alone(self):
+        self.assertEqual(analyze(board(SPLIT_3V3_5V))["return_path_continuity"], [])
+
+    def test_same_net_plane_is_no_change(self):
+        same = zone("+3V3", "B.Cu", 0, 9.5) + zone("+3V3", "B.Cu", 10.5, 20)
+        self.assertEqual(analyze(board(same))["reference_plane_changes"], [])
+        self.assertEqual(analyze(board(zone("GND", "B.Cu")))["reference_plane_changes"], [])
+
+    def test_island_under_one_sample_is_no_change(self):
+        # A 0.9 mm +5V island at x 9.55..10.45 under the x=10 sample only.
+        island = (zone("+3V3", "B.Cu", 0, 9.5) + zone("+3V3", "B.Cu", 10.5, 20)
+                  + zone("+5V", "B.Cu", 9.55, 10.45, 9.55, 10.45))
+        self.assertEqual(analyze(board(island))["reference_plane_changes"], [])
+
+    def test_split_at_a_track_corner_is_one_change(self):
+        # The track turns at (10, 10), in the gap: each segment sits over one plane net.
+        corner = ('(segment (start 2 10) (end 10 10) (width 0.2) (layer "F.Cu") (net 1))\n'
+                  '(segment (start 10 10) (end 16 14) (width 0.2) (layer "F.Cu") (net 1))\n')
+        out = analyze(board(SPLIT_3V3_5V, track=corner))
+        self.assertEqual(out["reference_plane_changes"],
+                         [{"net": "SIG", "layer": "F.Cu", "reference_layer": "B.Cu",
+                           "from_net": "+3V3", "to_net": "+5V", "x": 10.0, "y": 10.0}])
+
+    def test_via_antipad_sample_is_not_a_reference(self):
+        # A through via at x=10 in a 1.6 mm slot: the sample there is credited as covered,
+        # but its net is neither plane's. Same net on both sides: no change.
+        via = '(via (at 10 10) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 2))\n'
+        slot = zone("+3V3", "B.Cu", 0, 9.2) + zone("+3V3", "B.Cu", 10.8, 20)
+        self.assertEqual(analyze(board(slot + via))["reference_plane_changes"], [])
+        split = zone("+3V3", "B.Cu", 0, 9.2) + zone("+5V", "B.Cu", 10.8, 20)
+        changes = analyze(board(split + via))["reference_plane_changes"]
+        self.assertEqual([(c["from_net"], c["to_net"], c["x"]) for c in changes],
+                         [("+3V3", "+5V", 10.0)])
+
+
+def split_findings(out):
+    return [f for f in check_return_path_coverage(out)
+            if f["summary"] == "Signal crosses a split between reference planes"]
+
+
+class SplitCrossingFinding(unittest.TestCase):
+    def test_clock_net_over_a_split_is_one_high_finding(self):
+        found = split_findings(analyze(renamed(board(SPLIT_3V3_5V), "CLK")))
+        self.assertEqual(len(found), 1)
+        f = found[0]
+        self.assertEqual((f["rule_id"], f["detector"], f["severity"], f["nets"]),
+                         ("GP-001", "emc_ground_plane", "error", ["CLK"]))  # HIGH
+        self.assertIn("+3V3 / +5V", f["description"])
+
+    def test_plain_signal_over_a_split_is_no_finding(self):
+        self.assertEqual(split_findings(analyze(board(SPLIT_3V3_5V))), [])
+
+    def test_sheet_name_is_not_the_net_name(self):
+        out = analyze(renamed(board(SPLIT_3V3_5V), "/Sheet (Ethernet)/LED"))
+        self.assertEqual(len(out["reference_plane_changes"]), 1)
+        self.assertEqual(split_findings(out), [])
+
+    def test_touch_net_is_no_finding(self):
+        out = analyze(renamed(board(SPLIT_3V3_5V), "CLK"))
+        out.setdefault("findings", []).append(
+            {"rule_id": "CP-003", "nets": ["CLK"], "components": ["TP1"]})
+        self.assertEqual(split_findings(out), [])
+
+    def test_bridging_capacitor_within_5_mm_is_no_finding(self):
+        out = analyze(renamed(board(SPLIT_3V3_5V + cap("C1", 10, 13)), "CLK"))
+        self.assertEqual(split_findings(out), [])
+
+    def test_bridging_capacitor_farther_than_5_mm_still_reports(self):
+        out = analyze(renamed(board(SPLIT_3V3_5V + cap("C1", 10, 30)), "CLK"))
+        self.assertEqual(len(split_findings(out)), 1)
+
+    def test_capacitor_on_other_nets_does_not_bridge(self):
+        out = analyze(renamed(board(SPLIT_3V3_5V + cap("C1", 10, 13, "+3V3", "GND")), "CLK"))
+        self.assertEqual(len(split_findings(out)), 1)
 
 
 if __name__ == "__main__":

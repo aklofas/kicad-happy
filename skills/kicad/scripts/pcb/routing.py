@@ -358,7 +358,7 @@ def analyze_return_path_continuity(tracks, net_names, zones, zone_fills,
                                     footprints=None, radius_mm=0.5,
                                     debug_samples=None, vias=None,
                                     power_rails=None, copper_order=None, pin_signals=frozenset(),
-                                    stackup=None):
+                                    stackup=None, reference_changes=None):
     """Check ground/power plane continuity under signal traces.
 
     For each signal net's trace segments, samples points along the trace
@@ -401,6 +401,14 @@ def analyze_return_path_continuity(tracks, net_names, zones, zone_fills,
         stackup: Board stackup (the file's or the inferred one). When given,
             each layer's reference is the nearest layer carrying ground or
             power zone copper (`_build_reference_layer_map`).
+        reference_changes: If a list is passed, one dict is appended per place
+            where a signal trace's reference plane changes from one plane net
+            to another: {net, layer, reference_layer, from_net, to_net, x, y}.
+            A sample's plane net is the one ground or power fill under its
+            centre; it counts only when the neighbouring sample on the same
+            segment has the same net, so a pad-sized island is not a change.
+            A change between segments is found where two segment ends of the
+            net meet on one layer.
 
     Returns:
         List of gap findings: [{net, layer, gap_start_mm, gap_length_mm, ...}]
@@ -465,10 +473,18 @@ def analyze_return_path_continuity(tracks, net_names, zones, zone_fills,
                         return True
         return False
 
+    def _ref_net_at(px: float, py: float, layer: str):
+        nets = {zones[zi].get("net_name") for _fid, zi in
+                zone_fills.fill_regions_at_point(px, py, layer, zones) if zi in ref_idxs}
+        return next(iter(nets)) if len(nets) == 1 else None
+
+    track_refs = reference_changes is not None
     for net_id, segs in net_segments.items():
         net_name = net_names.get(net_id, f"net_{net_id}")
         total_samples = 0
         gap_samples = 0
+        net_changes = []
+        ends: dict = {}
 
         for seg in segs:
             layer = seg.get("layer", "F.Cu")
@@ -486,6 +502,7 @@ def analyze_return_path_continuity(tracks, net_names, zones, zone_fills,
 
             # Sample along the trace
             n_samples = max(2, int(length / SAMPLE_INTERVAL) + 1)
+            seg_refs = []
             for k in range(n_samples):
                 t = k / max(n_samples - 1, 1)
                 px = x1 + t * dx
@@ -500,6 +517,9 @@ def analyze_return_path_continuity(tracks, net_names, zones, zone_fills,
                     antipad_credit = True
                 if not hit:
                     gap_samples += 1
+                if track_refs:
+                    ref_net = _ref_net_at(px, py, opp_layer) if hit and not antipad_credit else None
+                    seg_refs.append((ref_net, px, py))
                 if debug_samples is not None:
                     sample = {
                         'net': net_name, 'x': round(px, 2),
@@ -509,6 +529,28 @@ def analyze_return_path_continuity(tracks, net_names, zones, zone_fills,
                     if antipad_credit:
                         sample['antipad_credit'] = True
                     debug_samples.append(sample)
+            if track_refs:
+                # A plane net counts only over two consecutive samples.
+                known = [r for k, r in enumerate(seg_refs) if r[0] is not None
+                         and any(0 <= j < len(seg_refs) and seg_refs[j][0] == r[0]
+                                 for j in (k - 1, k + 1))]
+                for a, b in zip(known, known[1:]):
+                    if a[0] != b[0]:
+                        net_changes.append((layer, opp_layer, a[0], b[0],
+                                            (a[1] + b[1]) / 2, (a[2] + b[2]) / 2))
+                if known:
+                    for (ex, ey), r in (((x1, y1), known[0]), ((x2, y2), known[-1])):
+                        ends.setdefault((layer, opp_layer, round(ex, 3), round(ey, 3)), []).append(r[0])
+
+        if track_refs:
+            for (lyr, rl, ex, ey), refs in ends.items():
+                if len(set(refs)) > 1:
+                    a, b = sorted(set(refs))[:2]
+                    net_changes.append((lyr, rl, a, b, ex, ey))
+            for lyr, rl, a, b, cx, cy in net_changes:
+                reference_changes.append({"net": net_name, "layer": lyr, "reference_layer": rl,
+                                          "from_net": a, "to_net": b,
+                                          "x": round(cx, 2), "y": round(cy, 2)})
 
         if total_samples > 0 and gap_samples > 0:
             coverage_pct = round((1 - gap_samples / total_samples) * 100, 1)
