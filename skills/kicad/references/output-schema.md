@@ -213,6 +213,7 @@ Output of `python3 skills/kicad/scripts/analyze_pcb.py <file>.kicad_pcb`.
 | `connectivity_graph` | `dict \| null` | no | Per-net connectivity graph (island map). Emitted only in --full mode. |
 | `connectivity_graph_error` | `string \| null` | no | Present when --full connectivity graph construction failed; downstream cross-analysis checks that need it were skipped. |
 | `pad_to_pad_distances` | `dict \| null` | no | Pad-to-pad routing distances keyed by 'R1.2-D1.1' style endpoints. Emitted only in --full mode. |
+| `reference_plane_changes` | `list[dict] \| null` | no | Places where a signal trace's reference plane changes from one ground or power plane net to another (a split between plane nets); [] when none. Emitted in --full mode on boards with zone fills, with return_path_continuity. A plane net counts only over two consecutive sample points (about 2 mm apart), so a pad-sized island is not a change. Items: net, layer, reference_layer, from_net, to_net, x, y (mm, the midpoint between the two samples or the segment junction). |
 | `thermal_analysis` | `dict \| null` | no | Not in CLI output: its zone-stitching entries move to findings[] and its pad scan to thermal_pad_scan. |
 | `thermal_pad_vias` | `dict \| null` | no | Not in CLI output: its entries move to findings[] (detector analyze_thermal_pad_vias). |
 | `trace_proximity` | `dict \| null` | no | Trace proximity / crosstalk analysis (--proximity). |

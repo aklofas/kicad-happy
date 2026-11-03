@@ -376,6 +376,15 @@ class PCBEnvelope:
     pad_to_pad_distances: Optional[dict] = field(default=None, metadata={
         "description": "Pad-to-pad routing distances keyed by 'R1.2-D1.1' "
                        "style endpoints. Emitted only in --full mode."})
+    reference_plane_changes: Optional[list[dict]] = field(default=None, metadata={
+        "description": "Places where a signal trace's reference plane changes from "
+                       "one ground or power plane net to another (a split between "
+                       "plane nets); [] when none. Emitted in --full mode on boards "
+                       "with zone fills, with return_path_continuity. A plane net "
+                       "counts only over two consecutive sample points (about 2 mm "
+                       "apart), so a pad-sized island is not a change. Items: net, layer, "
+                       "reference_layer, from_net, to_net, x, y (mm, the midpoint "
+                       "between the two samples or the segment junction)."})
 
     # --- Optional analysis bags (gated on content) ---
     thermal_analysis: Optional[dict] = field(default=None, metadata={
