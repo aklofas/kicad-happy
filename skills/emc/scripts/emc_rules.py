@@ -529,16 +529,20 @@ def _split_crossing_findings(pcb: Dict, touch: set) -> List[Dict]:
     couples the two nets, so the loop grows (Ott, EMC Engineering ch. 16). A crossing
     with a capacitor joining the two plane nets within SPLIT_BRIDGE_CAP_MM of either
     sample point bounding it is bridged and not reported. A capacitor is a part the
-    reference designator classifies as one, or one from a capacitor footprint library.
-    The high-speed test reads the net's own name, not its sheet path.
+    reference designator classifies as one, or a part on a capacitor footprint library
+    whose reference names no passive or active part (classified 'other', or
+    'connector', the classifier's fallback for an X reference); a ferrite, inductor or
+    resistor on a capacitor footprint is not one. The high-speed test reads the net's own name, not its
+    sheet path.
     """
     caps = []
     for fp in pcb.get('footprints') or []:
         nets = set(fp.get('connected_nets') or [])
         lib = fp.get('library') or ''
-        is_cap = (lib.lower().startswith('capacitor')
-                  or classify_component(fp.get('reference') or '', lib, fp.get('value') or '',
-                                        footprint=fp.get('footprint') or '') == 'capacitor')
+        kind = classify_component(fp.get('reference') or '', lib, fp.get('value') or '',
+                                  footprint=fp.get('footprint') or '')
+        is_cap = kind == 'capacitor' or (kind in ('other', 'connector')
+                                         and lib.lower().startswith('capacitor'))
         if is_cap and len(nets) == 2 and fp.get('x') is not None and fp.get('y') is not None:
             caps.append((nets, fp['x'], fp['y']))
 

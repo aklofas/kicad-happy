@@ -279,6 +279,14 @@ class SplitCrossingFinding(unittest.TestCase):
                               "CLK"))
         self.assertEqual(split_findings(out), [])
 
+    def test_ferrite_or_inductor_on_a_capacitor_footprint_does_not_bridge(self):
+        # The reference names the part; a ferrite between two rails carries no HF return.
+        for ref, lib in (("FB1", "Capacitor_SMD:C_0603"),
+                         ("L1", "Capacitor_Tantalum_SMD:CP_EIA-3216-18_Kemet-A"),
+                         ("R1", "Capacitor_SMD:C_0402")):
+            out = analyze(renamed(board(SPLIT_3V3_5V + cap(ref, 10, 13, lib=lib)), "CLK"))
+            self.assertEqual(len(split_findings(out)), 1, ref)
+
     def test_resistor_does_not_bridge(self):
         out = analyze(renamed(board(SPLIT_3V3_5V + cap("R1", 10, 13, lib="Resistor_SMD:R_0402")),
                               "CLK"))
