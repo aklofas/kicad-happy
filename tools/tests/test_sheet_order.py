@@ -40,15 +40,42 @@ def child(file_uuid, sheet_uuid, ref, label):
                f' (uuid "{sheet_uuid[:-3]}903"))')
 
 
-def project(reverse):
-    blocks = [sheet(AMPLIFIER, "Amplifier", "amp.kicad_sch", 100, "EN"),
-              sheet(VIDEO, "Video", "video.kicad_sch", 150, "AMP_STB")]
+def project(reverse=False, amp=("Amplifier", "EN"), video=("Video", "AMP_STB")):
+    """Root with two sibling sheets, (name, hierarchical label) each, joined at the root."""
+    blocks = [sheet(AMPLIFIER, amp[0], "amp.kicad_sch", 100, amp[1]),
+              sheet(VIDEO, video[0], "video.kicad_sch", 150, video[1])]
     if reverse:
         blocks.reverse()
     root = "".join(blocks) + '(wire (pts (xy 100 82) (xy 150 82)) (uuid "' + u(230) + '"))'
     return {"p.kicad_sch": sch(ROOT_UUID, root),
-            "amp.kicad_sch": child(u(221), AMPLIFIER, "R1", "EN"),
-            "video.kicad_sch": child(u(211), VIDEO, "R2", "AMP_STB")}
+            "amp.kicad_sch": child(u(221), AMPLIFIER, "R1", amp[1]),
+            "video.kicad_sch": child(u(211), VIDEO, "R2", video[1])}
+
+
+INNER = u(240)
+
+
+def nested_project():
+    """Root sheets "Q" (port R) and "Z" (label Y); Q holds sheet "A" (label X) on the
+    same net.  /Q/A/X is the lowest name but the deepest: KiCad names the net /Q/R."""
+    files = project(amp=("Q", "R"), video=("Z", "Y"))
+    files["amp.kicad_sch"] = sch(
+        u(221), resistor(u(222), "R?", 50, [(f"/{ROOT_UUID}/{AMPLIFIER}", "R1")])
+        + f'(wire (pts (xy 50 46.19) (xy 60 46.19)) (uuid "{u(223)}"))'
+        f' (hierarchical_label "R" (shape input) (at 60 46.19 0) (uuid "{u(224)}"))'
+        + sheet(INNER, "A", "inner.kicad_sch", 60, "X")
+        .replace("(at 60 80)", "(at 60 40)").replace("(at 60 82 180)", "(at 60 46.19 180)"))
+    files["inner.kicad_sch"] = sch(
+        u(241), resistor(u(242), "R?", 50, [(f"/{ROOT_UUID}/{AMPLIFIER}/{INNER}", "R3")])
+        + f'(wire (pts (xy 50 46.19) (xy 60 46.19)) (uuid "{u(243)}"))'
+        f' (hierarchical_label "X" (shape input) (at 60 46.19 0) (uuid "{u(244)}"))')
+    return files
+
+
+def net_name(result, pins):
+    [name] = [n for n, net in result["nets"].items()
+              if sorted(f'{p["component"]}.{p["pin_number"]}' for p in net["pins"]) == pins]
+    return name
 
 
 def analyze(files, tmp=None):
@@ -75,10 +102,26 @@ class SiblingSheetOrderTest(unittest.TestCase):
         for reverse in (False, True):
             with self.subTest(reverse=reverse):
                 result = analyze(project(reverse))
-                [name] = [n for n, net in result["nets"].items()
-                          if sorted(f'{p["component"]}.{p["pin_number"]}' for p in net["pins"])
-                          == ["R1.1", "R2.1"]]
-                self.assertEqual(name, f"/{AMPLIFIER}/EN")
+                self.assertEqual(net_name(result, ["R1.1", "R2.1"]), f"/{AMPLIFIER}/EN")
+
+    def test_kicad_tie_break_cases(self):
+        """Expected names from kicad-cli 10.0.7 on these fixtures."""
+        cases = [
+            # the separators compare plain: /Audio/ sorts before /AudioFilters/
+            ("plain separators", dict(amp=("Audio", "Z1"), video=("AudioFilters", "A1")),
+             f"/{AMPLIFIER}/Z1"),
+            # a sheet name's own '/' is escaped: /B{slash}C/ is one level, before /Z/
+            ("escaped sheet name", dict(amp=("B/C", "EN"), video=("Z", "AMP_STB")),
+             f"/{AMPLIFIER}/EN"),
+        ]
+        for label, kwargs, expected in cases:
+            for reverse in (False, True):
+                with self.subTest(label, reverse=reverse):
+                    result = analyze(project(reverse, **kwargs))
+                    self.assertEqual(net_name(result, ["R1.1", "R2.1"]), expected)
+        with self.subTest("shallower sheet before the lower name"):
+            result = analyze(nested_project())
+            self.assertEqual(net_name(result, ["R1.1", "R2.1", "R3.1"]), f"/{AMPLIFIER}/R")
 
     def test_reversed_sheet_blocks_give_the_same_output(self):
         self.assertEqual(stable(project(False)), stable(project(True)))

@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 from kicad_core.diagnostics import record
-from kicad_core.sexp import find_all, get_at, get_value, parse_file
+from kicad_core.sexp import find_all, get_at, get_value, net_name_escape, parse_file
 from kicad_core.project import (declared_top_level_sheets, empty_input_error,
                                  find_project_settings_file, load_kicad_pro)
 from schematic.reader import (
@@ -324,8 +324,10 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
         if sheet_idx == 0:
             root_title_block = title_block
         sheets_parsed.append(sheet_path)
-        # KiCad's human sheet path: the sheet names below the root ("/", "/Power/")
-        sheet_paths.append("/" + "".join(node["name"] + "/" for node in reversed(text_chain[:-1])))
+        # KiCad's human sheet path ("/", "/Power/"): the sheet names below the root,
+        # each escaped as a net name (B/C is B{slash}C), between plain separators
+        sheet_paths.append("/" + "".join(net_name_escape(node["name"]) + "/"
+                                         for node in reversed(text_chain[:-1])))
 
         chain = ancestors + (sheet_path,)
         for sub_path, sub_uuid in sub_sheets:

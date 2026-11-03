@@ -575,9 +575,10 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
     hier-label bus. On ``bus_elements=None`` or a board with no bus wires the
     pass is inert and the output is byte-identical to the pre-#25 map.
 
-    ``sheet_paths`` gives each sheet index its human sheet path ("/", "/Power/");
-    with it, equal-rank labels on different sheets tie-break as KiCad does (see
-    the driver loop).  Without it the sheet index stands in for the path.
+    ``sheet_paths`` gives each sheet index its human sheet path ("/", "/Power/",
+    sheet names net-name escaped); with it, equal-rank labels on different sheets
+    tie-break as KiCad does (see the driver loop).  Without it the sheet index
+    stands in for the path.
     """
     # Collect all electrical points
     # Each point: (sheet, x, y, source_info)
@@ -1086,7 +1087,8 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
         # full net name, sheet path included ("/Amplifier/EN" before
         # "/Video/AMP_STB"; ResolveDrivers, propagateToNeighbors).
         # tiebreak_sheet is -1 for global-scope sources, else the sheet depth
-        # and tiebreak_name the escaped name behind the sheet path.  Without
+        # and tiebreak_name the escaped name behind the sheet path (sheet names
+        # escaped, separators plain, as KiCad's PathHumanReadable).  Without
         # sheet_paths it is the sheet index (breadth-first, never deeper for a
         # lower index) and the bare escaped name.
         best = None
