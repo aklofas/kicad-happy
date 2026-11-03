@@ -155,11 +155,13 @@ class Finding:
     extra: Optional[dict] = field(default=None, metadata={
         "description": "Detector-specific extension fields (unconstrained for v1.4)."})
     fix_params: Optional[dict] = field(default=None, metadata={
-        "description": "Machine-readable fix, present on findings that carry one: "
-                       "type (e.g. 'add_component', 'resistor_value_change', "
-                       "'add_protection', 'swap_connection'), change, basis, and "
-                       "per type: components, component, current_value, "
-                       "suggested_value, target_range."})
+        "description": "Machine-readable fix, present on findings that carry one. "
+                       "Always has type ('add_component', 'resistor_value_change', "
+                       "'add_protection', 'swap_connection', ...); the other keys "
+                       "depend on the type and may include change, basis, "
+                       "components, component, current_value, suggested_value, "
+                       "target_range, target_metric, target_value, actual_value, "
+                       "formula."})
 
 
 @dataclass

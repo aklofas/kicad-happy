@@ -222,10 +222,10 @@ Output of `python3 skills/kicad/scripts/analyze_pcb.py <file>.kicad_pcb`.
 | `current_capacity` | `dict \| null` | no | Not in CLI output: its entries move to findings[] (detector analyze_current_capacity). |
 | `placement_analysis` | `dict \| null` | no | Not in CLI output: courtyard overlaps and edge-clearance entries move to findings[], density to placement_density. |
 | `dfm` | `dict \| null` | no | Not in CLI output: violations move to findings[] (detector analyze_dfm), the rest to dfm_summary. |
-| `layer_transitions` | `list \| null` | no | Nets that change copper layer, when any do. Items: net, net_number, copper_layers, layer_count, via_count, via_positions. |
-| `dimensions` | `list \| null` | no | Dimension annotations, when the board has any. Items: value_mm, layer, text, endpoints. |
+| `layer_transitions` | `list \| null` | no | Signal nets routed on more than one copper layer, when any are (power and ground nets are not listed). Items: net, net_number, copper_layers, layer_count, via_count, and via_positions (only when the net has vias). |
+| `dimensions` | `list \| null` | no | Dimension annotations, when the board has any. Items carry only the keys the file provides, among: value_mm, layer, type (KiCad 8+), text, endpoints. |
 | `groups` | `list \| null` | no | Board groups, when the board has any. Items: name, member_count. |
-| `thermal_pad_scan` | `list \| null` | no | Thermal-pad via scan, one item per pad. Items: component, pad, pad_size_mm, pad_area_mm2, net, nearby_thermal_vias, standalone_vias, footprint_via_pads, layer, detector, rule_id, category. |
+| `thermal_pad_scan` | `list \| null` | no | Thermal-pad via scan, one finding-shaped record per pad (the standard finding fields: severity, confidence, evidence_source, summary, description, components, nets, pins, recommendation, report_context) plus: component, pad, pad_size_mm, pad_area_mm2, net, nearby_thermal_vias, standalone_vias, footprint_via_pads, layer, detector, rule_id, category. |
 | `copper_presence_summary` | `list \| null` | no | Components grouped by the opposite-layer nets they sit over. Items: opposite_layer_nets (comma-joined names), component_count, components. |
 
 ## GerberEnvelope

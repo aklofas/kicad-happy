@@ -409,17 +409,22 @@ class PCBEnvelope:
                        "findings[] (detector analyze_dfm), the rest to "
                        "dfm_summary."})
     layer_transitions: Optional[list] = field(default=None, metadata={
-        "description": "Nets that change copper layer, when any do. Items: net, "
-                       "net_number, copper_layers, layer_count, via_count, "
-                       "via_positions."})
+        "description": "Signal nets routed on more than one copper layer, when "
+                       "any are (power and ground nets are not listed). Items: "
+                       "net, net_number, copper_layers, layer_count, via_count, "
+                       "and via_positions (only when the net has vias)."})
     dimensions: Optional[list] = field(default=None, metadata={
-        "description": "Dimension annotations, when the board has any. Items: "
-                       "value_mm, layer, text, endpoints."})
+        "description": "Dimension annotations, when the board has any. Items "
+                       "carry only the keys the file provides, among: value_mm, "
+                       "layer, type (KiCad 8+), text, endpoints."})
     groups: Optional[list] = field(default=None, metadata={
         "description": "Board groups, when the board has any. Items: name, "
                        "member_count."})
     thermal_pad_scan: Optional[list] = field(default=None, metadata={
-        "description": "Thermal-pad via scan, one item per pad. Items: component, "
+        "description": "Thermal-pad via scan, one finding-shaped record per pad "
+                       "(the standard finding fields: severity, confidence, "
+                       "evidence_source, summary, description, components, nets, "
+                       "pins, recommendation, report_context) plus: component, "
                        "pad, pad_size_mm, pad_area_mm2, net, nearby_thermal_vias, "
                        "standalone_vias, footprint_via_pads, layer, detector, "
                        "rule_id, category."})
