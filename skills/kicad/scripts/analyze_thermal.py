@@ -34,7 +34,7 @@ from kicad_core.cli import (add_config_arg, add_only_deterministic_arg, add_outp
                             utf8_text_stdout)
 from lookup_detectors import detect_tj_exceeds_max
 from kicad_core.project import extraction_project_dir
-from datasheet_types.cache_reader import read_json_object
+from datasheet_types.cache_reader import read_json_object, safe_extract_dir
 
 ANALYZER_SOURCE = "thermal"
 
@@ -984,7 +984,7 @@ def main(argv: list[str] | None = None) -> int:
         project_dir = extraction_project_dir(schematic)
         if project_dir is not None:
             candidate = os.path.join(project_dir, "datasheets", "extracted")
-            if os.path.isdir(candidate):
+            if os.path.isdir(candidate) and safe_extract_dir(candidate) is not None:
                 extract_dir = candidate
 
     # Load project config

@@ -559,10 +559,12 @@ def read_extraction_temperature(mpn: str, project_dir: str) -> dict | None:
     if ds_scripts not in sys.path:
         sys.path.insert(0, ds_scripts)
     from datasheet_extract_cache import get_cached_extraction
-    from datasheet_types.cache_reader import read_json_object, sanitize_mpn
+    from datasheet_types.cache_reader import read_json_object, safe_extract_dir, sanitize_mpn
     from distributor_core.manifest import manifest_file_path
 
-    extract_dir = Path(project_dir) / "datasheets" / "extracted"
+    extract_dir = safe_extract_dir(Path(project_dir) / "datasheets" / "extracted")
+    if extract_dir is None:
+        return None
     ext, path = get_cached_extraction(extract_dir, mpn), extract_dir
     if ext is None:
         legacy = re.sub(r'[^A-Za-z0-9_]', '_', mpn.strip())

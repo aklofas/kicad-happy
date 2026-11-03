@@ -55,7 +55,7 @@ _TYPES_PARENT = str(Path(__file__).resolve().parent.parent)
 if _TYPES_PARENT not in sys.path:
     sys.path.insert(0, _TYPES_PARENT)
 
-from datasheet_types.cache_reader import read_json_object  # noqa: E402
+from datasheet_types.cache_reader import read_json_object, safe_extract_dir  # noqa: E402
 from distributor_core.manifest import manifest_file_path, write_json_atomic  # noqa: E402
 
 _KICAD_SCRIPTS = str(Path(__file__).resolve().parents[2] / "kicad" / "scripts")
@@ -99,18 +99,19 @@ def resolve_extract_dir(analysis_json=None, project_dir=None, override_dir=None)
 
     Returns:
         Path to datasheets/extracted/ directory (may not exist yet), or None
-        when no project is named. There is no shared fallback directory: a
+        when no project is named or the project's datasheets/ or extracted/
+        is a symlink. There is no shared fallback directory: a
         temp-dir cache could hold extractions planted by another user.
     """
     if override_dir:
         return Path(override_dir)
 
     if project_dir:
-        return Path(project_dir) / "datasheets" / "extracted"
+        return safe_extract_dir(Path(project_dir) / "datasheets" / "extracted")
 
     found = extraction_project_dir(analysis_json)
     if found is not None:
-        return found / "datasheets" / "extracted"
+        return safe_extract_dir(found / "datasheets" / "extracted")
     return None
 
 

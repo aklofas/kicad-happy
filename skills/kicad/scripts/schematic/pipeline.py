@@ -190,11 +190,16 @@ def _resolve_lookup_paths(sch_path: str | Path) -> Path | None:
     """Resolve the schematic folder's own datasheets/extracted/ cache dir.
 
     Never a parent folder's (a planted extraction there would reach
-    deterministic findings). Returns None when the directory doesn't exist —
+    deterministic findings), and not through a symlinked datasheets/ or
+    extracted/. Returns None when the directory doesn't exist —
     `lookup()` already handles None gracefully.
     """
+    try:
+        from datasheet_types.cache_reader import safe_extract_dir
+    except ImportError:         # the lookups are off without datasheet_types
+        return None
     cache = Path(sch_path).resolve().parent / "datasheets" / "extracted"
-    return cache if cache.is_dir() else None
+    return cache if cache.is_dir() and safe_extract_dir(cache) is not None else None
 
 ANALYZER_SOURCE = "sch"
 

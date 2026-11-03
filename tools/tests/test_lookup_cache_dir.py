@@ -1,9 +1,13 @@
-"""Typed datasheet lookups read only the schematic folder's own datasheets/extracted."""
-import sys, tempfile, unittest
+"""Typed datasheet lookups read only the schematic folder's own datasheets/extracted, and
+no project-derived cache directory is read through a symlinked datasheets/ or extracted/."""
+import contextlib, io, json, os, sys, tempfile, unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "skills" / "kicad" / "scripts"))
+sys.path.insert(0, str(ROOT / "skills" / "datasheets" / "scripts"))
+sys.path.insert(0, str(ROOT / "skills" / "spice" / "scripts"))
 
 from schematic.pipeline import _resolve_lookup_paths  # noqa: E402
 
@@ -26,6 +30,90 @@ class LookupCacheDirTest(unittest.TestCase):
             sch.write_text("", encoding="utf-8")
             self.assertEqual(_resolve_lookup_paths(sch),
                              board.resolve() / "datasheets" / "extracted")
+
+
+def _write_cache(ex):
+    """An extraction cache for part XA100 that every project-dir reader accepts."""
+    ex.mkdir(parents=True, exist_ok=True)
+    (ex / "XA100.json").write_text(json.dumps({
+        "meta": {"extraction_score": 8},
+        "spice_specs": {"gbw_hz": 1000000},
+        "recommended_operating_conditions": {"temp_min_c": -40, "temp_max_c": 85},
+        "absolute_maximum_ratings": {"vin_max_v": 5},
+    }), encoding="utf-8")
+    (ex / "manifest.json").write_text(json.dumps(
+        {"extractions": {"XA100": {"file": "XA100.json"}}}), encoding="utf-8")
+
+
+def _derating_vin_max(project_dir):
+    """abs_max_vin of the VD-002 finding analyze_voltage_derating gives an XA100 on a 12 V rail."""
+    from schematic.system_analyses import analyze_voltage_derating
+    ctx = SimpleNamespace(
+        components=[{"type": "ic", "reference": "U1", "value": "XA100", "mpn": "XA100",
+                     "pins": [{"number": "1"}]}],
+        nets={}, pin_net={("U1", "1"): ("+12V", None)},
+        is_power_net=lambda n: n == "+12V", is_ground=lambda n: False,
+        rail_by_net={}, rail_voltage_or=lambda n, f: 12.0,
+        rail_source_fields=lambda *a: {})
+    out = analyze_voltage_derating(ctx, {}, project_dir=str(project_dir))
+    return [f.get("abs_max_vin") for f in out if f.get("rule_id") == "VD-002"]
+
+
+class SymlinkedProjectCacheTest(unittest.TestCase):
+    """Every reader that derives the cache from a project folder reads a regular tree and
+    ignores one whose datasheets/ or datasheets/extracted/ is a symlink."""
+
+    def _projects(self, tmp):
+        real = Path(tmp) / "real"
+        _write_cache(real / "datasheets" / "extracted")
+        linked_ds = Path(tmp) / "linked_ds"
+        linked_ds.mkdir()
+        os.symlink(real / "datasheets", linked_ds / "datasheets")
+        linked_ex = Path(tmp) / "linked_ex"
+        (linked_ex / "datasheets").mkdir(parents=True)
+        os.symlink(real / "datasheets" / "extracted", linked_ex / "datasheets" / "extracted")
+        return real, (linked_ds, linked_ex)
+
+    def _check(self, read, ok, refused):
+        with tempfile.TemporaryDirectory() as tmp:
+            real, linked = self._projects(tmp)
+            self.assertEqual(read(real), ok)
+            for proj in linked:
+                with contextlib.redirect_stderr(io.StringIO()):
+                    self.assertEqual(read(proj), refused, proj.name)
+
+    def test_schematic_lookup_dir(self):
+        def read(proj):
+            sch = proj / "x.kicad_sch"
+            sch.write_text("", encoding="utf-8")
+            return _resolve_lookup_paths(sch) is not None
+        self._check(read, True, False)
+
+    def test_resolve_extract_dir_from_project_dir_and_analysis_json(self):
+        import datasheet_extract_cache as dec
+        self._check(lambda p: dec.resolve_extract_dir(project_dir=str(p)) is not None, True, False)
+
+        def from_json(p):
+            sch = p / "x.kicad_sch"
+            sch.write_text("", encoding="utf-8")
+            return dec.resolve_extract_dir(analysis_json={"file": str(sch)}) is not None
+        self._check(from_json, True, False)
+
+    def test_datasheet_verify_dir(self):
+        import datasheet_verify
+        self._check(lambda p: bool(datasheet_verify._resolve_extract_dir(str(p))), True, False)
+
+    def test_lifecycle_temperature(self):
+        from lifecycle_engine import read_extraction_temperature
+        self._check(lambda p: read_extraction_temperature("XA100", str(p)) is not None, True, False)
+
+    def test_spice_spec_fetcher(self):
+        from spice_spec_fetcher import fetch_specs_from_extraction
+        self._check(lambda p: (fetch_specs_from_extraction("XA100", str(p)) or {}).get("gbw_hz"),
+                    1000000, None)
+
+    def test_voltage_derating_abs_max(self):
+        self._check(_derating_vin_max, [5], [])
 
 
 if __name__ == "__main__":

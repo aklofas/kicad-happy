@@ -572,16 +572,17 @@ def fetch_specs_from_extraction(mpn, project_dir):
     if not project_dir:
         return None
     from pathlib import Path
-    extract_dir = Path(project_dir) / "datasheets" / "extracted"
+    from datasheet_types.cache_reader import read_json_object, safe_extract_dir
+    extract_dir = safe_extract_dir(Path(project_dir) / "datasheets" / "extracted")
+    if extract_dir is None:
+        return None
     index_path = extract_dir / "manifest.json"
     if not index_path.exists():
         index_path = extract_dir / "index.json"
     if not index_path.exists():
         return None
-    try:
-        with open(index_path, encoding="utf-8") as f:
-            index = json.load(f)
-    except (json.JSONDecodeError, OSError):
+    index = read_json_object(index_path)
+    if index is None:
         return None
     import re as _re
     key = _re.sub(r'[^A-Za-z0-9_]', '_', mpn.strip())
@@ -596,10 +597,8 @@ def fetch_specs_from_extraction(mpn, project_dir):
     json_file = extract_dir / entry.get("file", "")
     if not json_file.exists():
         return None
-    try:
-        with open(json_file, encoding="utf-8") as f:
-            extraction = json.load(f)
-    except (json.JSONDecodeError, OSError):
+    extraction = read_json_object(json_file)
+    if extraction is None:
         return None
     # Trust gate: skip low-quality extractions
     meta = extraction.get("meta", {})

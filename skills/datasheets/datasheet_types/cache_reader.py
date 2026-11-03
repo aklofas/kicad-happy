@@ -23,6 +23,8 @@ import hashlib
 import json
 import os
 import re
+import stat
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -53,16 +55,46 @@ MAX_CACHE_BYTES = 10 * 1024 * 1024
 
 
 def read_json_object(path) -> Optional[dict]:
-    """Read one cache JSON file; None when it is missing, a symlink, oversized,
-    undecodable (not UTF-8), malformed, or not a JSON object."""
+    """Read one cache JSON file; None when it is missing, a symlink, not a regular file,
+    oversized, undecodable (not UTF-8), malformed, or not a JSON object.
+
+    The file is opened without following a link and checked as opened, so a link planted
+    after any earlier check is still refused, and a named pipe is never waited on. Where
+    ``os.O_NOFOLLOW`` does not exist (Windows) the opened file is compared with ``lstat`` of
+    the path instead, which leaves a short window but still refuses a link that was there
+    before the open."""
     try:
-        if os.path.islink(path) or os.path.getsize(path) > MAX_CACHE_BYTES:
-            return None
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
+        flags = (os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0)
+                 | getattr(os, "O_NONBLOCK", 0))
+        fd = os.open(path, flags)
+        with os.fdopen(fd, "rb") as f:
+            st = os.fstat(f.fileno())
+            if not stat.S_ISREG(st.st_mode) or st.st_size > MAX_CACHE_BYTES:
+                return None
+            if not hasattr(os, "O_NOFOLLOW") and not os.path.samestat(st, os.lstat(path)):
+                return None
+            data = json.loads(f.read(MAX_CACHE_BYTES + 1).decode("utf-8"))
     except (ValueError, OSError):
         return None
     return data if isinstance(data, dict) else None
+
+
+_WARNED_LINKED_DIRS: set = set()
+
+
+def safe_extract_dir(extract_dir) -> Optional[Path]:
+    """``extract_dir`` when neither it nor the ``datasheets`` folder holding it is a symlink,
+    else None (with one stderr warning per directory). For a cache directory derived from a
+    project folder, so a link in the project cannot send reads to another tree; a directory
+    the user names explicitly needs no check."""
+    p = Path(extract_dir)
+    if p.is_symlink() or p.parent.is_symlink():
+        if str(p) not in _WARNED_LINKED_DIRS:
+            _WARNED_LINKED_DIRS.add(str(p))
+            print(f"Warning: {p} is reached through a symlink; datasheet cache ignored",
+                  file=sys.stderr)
+        return None
+    return p
 
 
 def sanitize_mpn(mpn: str) -> str:

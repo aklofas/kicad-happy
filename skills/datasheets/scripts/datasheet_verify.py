@@ -17,7 +17,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from datasheet_types.cache_reader import MAX_CACHE_BYTES, read_json_object  # noqa: E402
+from datasheet_types.cache_reader import MAX_CACHE_BYTES, read_json_object, safe_extract_dir  # noqa: E402
 from distributor_core.manifest import manifest_file_path  # noqa: E402
 
 
@@ -248,7 +248,7 @@ def _resolve_extract_dir(project_dir: str) -> str:
     The parent folder is not searched: for a project in a shared temp dir it
     could hold extractions planted by another user."""
     c = os.path.join(project_dir, "datasheets", "extracted")
-    return c if os.path.isdir(c) else ""
+    return c if os.path.isdir(c) and safe_extract_dir(c) is not None else ""
 
 
 def _estimate_net_voltage(net_name: str, rail_voltages: dict) -> float:

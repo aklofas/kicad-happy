@@ -1,5 +1,6 @@
 # tools/tests/test_cache_reader.py
 import contextlib, io, json, os, shutil, subprocess, sys, tempfile, unittest
+from unittest import mock
 from pathlib import Path
 from tools.tests._fixtures import fixture, fixture_path
 DS = Path(__file__).resolve().parents[2] / "skills" / "datasheets"
@@ -179,6 +180,105 @@ class CacheReader(unittest.TestCase):
             (ex / "manifest.json").write_text(json.dumps(
                 {"extractions": {dec._sanitize_mpn("P1"): {"file": "sub\\x.json"}}}), encoding="utf-8")
             self.assertIsNone(dec.get_cached_extraction(ex, "P1"))
+
+
+class _NoNofollowOs:
+    """``os`` as on Windows, where ``O_NOFOLLOW`` does not exist."""
+    def __getattr__(self, name):
+        if name == "O_NOFOLLOW":
+            raise AttributeError(name)
+        return getattr(os, name)
+
+
+class CacheReadLinksAndPipes(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.d = Path(self._tmp.name)
+        (self.d / "ok.json").write_text('{"a": 1}', encoding="utf-8")
+        (self.d / "secret.json").write_text('{"secret": 1}', encoding="utf-8")
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_fifo_returns_none_promptly(self):
+        fifo = self.d / "fifo.json"
+        os.mkfifo(fifo)
+        code = ("import sys; sys.path.insert(0, %r); from datasheet_types.cache_reader import read_json_object; "
+                "print(read_json_object(%r))" % (str(DS), str(fifo)))
+        out = subprocess.run([sys.executable, "-I", "-c", code], capture_output=True, text=True,
+                             timeout=20, check=True).stdout
+        self.assertEqual(out.strip(), "None")
+
+    def _swap_before_open(self, cache_reader, target):
+        """Patch the reader so ``target`` becomes a link to secret.json after any check, just
+        before the file is opened."""
+        real_open, real_getsize = os.open, os.path.getsize
+
+        def swap():
+            if not target.is_symlink():
+                target.unlink()
+                os.symlink(self.d / "secret.json", target)
+
+        def fake_open(path, *a, **k):
+            if Path(path) == target:
+                swap()
+            return real_open(path, *a, **k)
+
+        def fake_getsize(path):
+            n = real_getsize(path)
+            if Path(path) == target:
+                swap()
+            return n
+        return (mock.patch.object(cache_reader.os, "open", fake_open),
+                mock.patch.object(cache_reader.os.path, "getsize", fake_getsize))
+
+    def test_link_swapped_in_after_the_check_is_refused(self):
+        from datasheet_types import cache_reader
+        target = self.d / "ok.json"
+        p1, p2 = self._swap_before_open(cache_reader, target)
+        with p1, p2:
+            self.assertIsNone(cache_reader.read_json_object(target))
+        self.assertTrue(target.is_symlink())
+
+    def test_without_o_nofollow_a_regular_file_still_reads(self):
+        from datasheet_types import cache_reader
+        with mock.patch.object(cache_reader, "os", _NoNofollowOs()):
+            self.assertEqual(cache_reader.read_json_object(self.d / "ok.json"), {"a": 1})
+
+    def test_without_o_nofollow_a_link_and_a_swap_are_refused(self):
+        from datasheet_types import cache_reader
+        os.symlink(self.d / "secret.json", self.d / "link.json")
+        with mock.patch.object(cache_reader, "os", _NoNofollowOs()):
+            self.assertIsNone(cache_reader.read_json_object(self.d / "link.json"))
+        target = self.d / "ok.json"
+        p1, p2 = self._swap_before_open(cache_reader, target)
+        with p1, p2, mock.patch.object(cache_reader, "os", _NoNofollowOs()):
+            self.assertIsNone(cache_reader.read_json_object(target))
+
+    def test_safe_extract_dir_refuses_a_symlinked_datasheets_or_extracted(self):
+        from datasheet_types.cache_reader import safe_extract_dir
+        real = self.d / "proj" / "datasheets" / "extracted"
+        real.mkdir(parents=True)
+        self.assertEqual(safe_extract_dir(real), real)
+        (self.d / "a").mkdir()
+        os.symlink(self.d / "proj" / "datasheets", self.d / "a" / "datasheets")
+        (self.d / "b" / "datasheets").mkdir(parents=True)
+        os.symlink(real, self.d / "b" / "datasheets" / "extracted")
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            self.assertIsNone(safe_extract_dir(self.d / "a" / "datasheets" / "extracted"))
+            self.assertIsNone(safe_extract_dir(self.d / "b" / "datasheets" / "extracted"))
+        self.assertIn("symlink", err.getvalue())
+
+    def test_explicit_extract_dir_that_is_a_symlink_is_followed(self):
+        import datasheet_extract_cache as dec
+        from datasheet_types.cache_reader import lookup
+        real = self.d / "shared"
+        real.mkdir()
+        shutil.copy(fixture("datasheets-extracted", "LM2596-ADJ.json"), real / "LM2596-ADJ.json")
+        link = self.d / "mine"
+        os.symlink(real, link)
+        self.assertEqual(dec.resolve_extract_dir(override_dir=str(link)), link)
+        self.assertIsNotNone(lookup("LM2596-ADJ", cache_dir=link))
 
 
 if __name__ == "__main__":

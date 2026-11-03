@@ -1,7 +1,6 @@
 """System-level analyses (PDN impedance, sleep current, voltage derating, protocol compliance, power budget and sequencing, BOM optimization, test coverage, assembly complexity, USB compliance, inrush)."""
 from __future__ import annotations
 
-import json
 import math
 import re
 from kicad_types import (
@@ -768,31 +767,30 @@ def analyze_voltage_derating(ctx: AnalysisContext, signal_analysis: dict,
     def _read_ic_abs_max(mpn: str) -> dict | None:
         if not project_dir or not mpn:
             return None
+        try:
+            from datasheet_types.cache_reader import read_json_object, safe_extract_dir
+        except ImportError:     # no datasheet_types, no extraction cache
+            return None
+        extracted_dir = safe_extract_dir(Path(project_dir) / "datasheets" / "extracted")
+        if extracted_dir is None:
+            return None
         sanitized = re.sub(r'[^A-Za-z0-9_]', '_', mpn.strip())
-        extract_path = Path(project_dir) / "datasheets" / "extracted" / f"{sanitized}.json"
+        extract_path = extracted_dir / f"{sanitized}.json"
         if not extract_path.exists():
             # Prefer manifest.json, fall back to legacy index.json
-            extracted_dir = Path(project_dir) / "datasheets" / "extracted"
             idx_path = extracted_dir / "manifest.json"
             if not idx_path.exists():
                 idx_path = extracted_dir / "index.json"
             if idx_path.exists():
-                try:
-                    with open(idx_path, encoding="utf-8") as f:
-                        idx = json.load(f)
-                    for k, v in idx.get("extractions", {}).items():
-                        if k.upper() == sanitized.upper():
-                            extract_path = extracted_dir / v.get("file", "")
-                            break
-                except (json.JSONDecodeError, OSError):
-                    pass
+                idx = read_json_object(idx_path) or {}
+                for k, v in idx.get("extractions", {}).items():
+                    if k.upper() == sanitized.upper():
+                        extract_path = extracted_dir / v.get("file", "")
+                        break
             if not extract_path.exists():
                 return None
-        try:
-            with open(extract_path, encoding="utf-8") as f:
-                return json.load(f).get("absolute_maximum_ratings")
-        except (json.JSONDecodeError, OSError):
-            return None
+        data = read_json_object(extract_path)
+        return data.get("absolute_maximum_ratings") if data is not None else None
 
     profile = _DERATING_PROFILES.get(derating_profile, _DERATING_PROFILES["commercial"])
     _CAP_DERATING = {"ceramic": profile["ceramic_cap"], "electrolytic": profile["electrolytic_cap"],
