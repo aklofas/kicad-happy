@@ -147,6 +147,22 @@ class _Run:
         self.warnings = []  # parts whose verification says the datasheet is probably wrong
 
 
+def _remove_replaced_file(run, part_key: str, previous: dict, stored: dict) -> None:
+    """Delete the PDF a replaced ``ok`` entry named, unless the new entry names the same file or
+    another entry does: no manifest entry would point at it any more."""
+    old = manifest_file_path(run.out_dir, previous.get("file", ""))
+    if old is None or not old.is_file():
+        return
+    if stored.get("file") == previous.get("file") or any(
+            k != part_key and e.get("file") == previous.get("file")
+            for k, e in run.index.get("parts", {}).items() if isinstance(e, dict)):
+        return
+    try:
+        old.unlink()
+    except OSError as exc:
+        print(f"Warning: cannot remove {old}: {exc}", file=sys.stderr)
+
+
 def _record(run, part, outcome) -> None:
     """Store one part's outcome in the manifest, count it, print its progress line and save the
     index. Callers hold ``run.lock`` when several workers run. It must run on the thread that
@@ -159,6 +175,8 @@ def _record(run, part, outcome) -> None:
     run.index.setdefault("parts", {})[part_key] = stored
     if stored is not result:
         run.kept_errors[part_key] = result["error"]
+    elif previous.get("status") == "ok":
+        _remove_replaced_file(run, part_key, previous, stored)
 
     if result["status"] == "ok":
         run.downloaded.append(part_key)

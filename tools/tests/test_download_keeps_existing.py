@@ -487,19 +487,21 @@ class SyncDownloadFailureTest(unittest.TestCase):
     OK = {"file": "LM358DR.pdf", "status": "ok", "datasheet_url": "https://x/old.pdf",
           "references": ["U1"], "size_bytes": len(GOOD)}
 
-    def _force_all(self, d, outcome):
+    def _force_all(self, d, outcome, *, extra=None):
         out = Path(d) / "out"
         out.mkdir()
         (out / "LM358DR.pdf").write_bytes(GOOD)
-        (out / "manifest.json").write_text(json.dumps({"parts": {"LM358DR": self.OK}}), encoding="utf-8")
+        parts = {"LM358DR": self.OK, **(extra or {})}
+        (out / "manifest.json").write_text(json.dumps({"parts": parts}), encoding="utf-8")
         r, m = self._sync(d, _provider(outcome), force_all=True)
-        self.assertEqual((out / "LM358DR.pdf").read_bytes(), GOOD)
-        self.assertEqual(r["failed"], 1)
-        return m["parts"]["LM358DR"]
+        return out, r, m["parts"]["LM358DR"]
 
     def test_force_all_failed_refresh_keeps_a_present_ok_entry(self):
         with tempfile.TemporaryDirectory() as d:
-            self.assertEqual(self._force_all(d, lambda p, *a: _failed(p)), self.OK)
+            out, r, entry = self._force_all(d, lambda p, *a: _failed(p))
+            self.assertEqual(entry, self.OK)
+            self.assertEqual((out / "LM358DR.pdf").read_bytes(), GOOD)
+            self.assertEqual(r["failed"], 1)
             self.assertIn("LM358DR — All download methods failed", self.stderr.getvalue())
 
     def test_force_all_real_answer_replaces_the_ok_entry(self):
@@ -507,7 +509,57 @@ class SyncDownloadFailureTest(unittest.TestCase):
             return {**_not_found(p), "status": "no_datasheet", "error": "listing has no datasheet URL"}
         for outcome, status in ((lambda p, *a: _not_found(p), "not_found"), (no_datasheet, "no_datasheet")):
             with self.subTest(status=status), tempfile.TemporaryDirectory() as d:
-                self.assertEqual(self._force_all(d, outcome)["status"], status)
+                out, r, entry = self._force_all(d, outcome)
+                self.assertEqual(entry["status"], status)
+                self.assertEqual(r["failed"], 1)
+                self.assertFalse((out / "LM358DR.pdf").exists())
+
+    @staticmethod
+    def _ok_as(d, name):
+        def outcome(p, *a):
+            (Path(d) / "out" / name).write_bytes(GOOD + b"new")
+            return {"manufacturer": "", "description": "", "value": p["value"],
+                    "references": p["references"], "status": "ok", "file": name,
+                    "size_bytes": len(GOOD) + 3, "datasheet_url": "https://x/new.pdf"}
+        return outcome
+
+    def test_force_all_ok_with_another_name_removes_the_old_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            out, r, entry = self._force_all(d, self._ok_as(d, "LM358DR_new.pdf"))
+            self.assertEqual(entry["file"], "LM358DR_new.pdf")
+            self.assertFalse((out / "LM358DR.pdf").exists())
+            self.assertEqual((out / "LM358DR_new.pdf").read_bytes(), GOOD + b"new")
+
+    def test_force_all_ok_with_the_same_name_keeps_the_new_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            out, r, entry = self._force_all(d, self._ok_as(d, "LM358DR.pdf"))
+            self.assertEqual(entry["file"], "LM358DR.pdf")
+            self.assertEqual((out / "LM358DR.pdf").read_bytes(), GOOD + b"new")
+
+    def test_force_all_keeps_a_file_another_entry_names(self):
+        other = {"file": "LM358DR.pdf", "status": "ok", "references": ["U2"]}
+        with tempfile.TemporaryDirectory() as d:
+            out, _, entry = self._force_all(d, lambda p, *a: _not_found(p), extra={"OTHER": other})
+            self.assertEqual(entry["status"], "not_found")
+            self.assertEqual((out / "LM358DR.pdf").read_bytes(), GOOD)
+
+    def test_force_all_never_removes_through_a_link_or_outside_the_folder(self):
+        for name in ("link.pdf", "../outside.pdf", "sub/inner.pdf"):
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as d:
+                out = Path(d) / "out"
+                (out / "sub").mkdir(parents=True)
+                (Path(d) / "outside.pdf").write_bytes(GOOD)
+                (out / "sub" / "inner.pdf").write_bytes(GOOD)
+                if name == "link.pdf":
+                    try:
+                        os.symlink(Path(d) / "outside.pdf", out / "link.pdf")
+                    except (OSError, NotImplementedError):
+                        self.skipTest("symlinks unavailable")
+                (out / "manifest.json").write_text(
+                    json.dumps({"parts": {"LM358DR": {**self.OK, "file": name}}}), encoding="utf-8")
+                self._sync(d, _provider(lambda p, *a: _not_found(p)), force_all=True)
+                self.assertEqual((Path(d) / "outside.pdf").read_bytes(), GOOD)
+                self.assertEqual((out / "sub" / "inner.pdf").read_bytes(), GOOD)
 
     def test_outage_keeps_the_distributors_own_message(self):
         outage = ConnectionResetError(104, "Connection reset by peer")
