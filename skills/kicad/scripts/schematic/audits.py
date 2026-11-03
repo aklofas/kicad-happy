@@ -694,7 +694,7 @@ def check_generic_transistor_symbols(components: list[dict],
         if idx_path.is_file():
             try:
                 ds_index = json.loads(idx_path.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, OSError):
+            except (ValueError, OSError):
                 pass
 
     # Deduplicate by reference (multi-unit symbols)

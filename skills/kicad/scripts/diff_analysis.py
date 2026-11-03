@@ -288,7 +288,7 @@ def _extract_trends(analysis_dir, output_type, n_runs):
         try:
             with open(path, encoding="utf-8") as f:
                 data = json.load(f)
-        except (json.JSONDecodeError, OSError):
+        except (ValueError, OSError):
             continue
 
         sa = group_findings_by_detection_type(data)

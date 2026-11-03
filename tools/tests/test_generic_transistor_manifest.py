@@ -41,3 +41,13 @@ class ManifestParts(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NonUtf8Manifest(unittest.TestCase):
+    def test_non_utf8_manifest_is_ignored(self):
+        with tempfile.TemporaryDirectory() as d:
+            ds = Path(d) / "datasheets"
+            ds.mkdir()
+            (ds / "manifest.json").write_bytes(b"\xff\xfe{")
+            w = check_generic_transistor_symbols([Q], str(Path(d) / "p.kicad_sch"))
+        self.assertFalse(w[0]["has_datasheet"])

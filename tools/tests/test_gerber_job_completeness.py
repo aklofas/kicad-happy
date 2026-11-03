@@ -167,3 +167,11 @@ class BareProtelNumberingTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NonUtf8JobFile(unittest.TestCase):
+    def test_non_utf8_job_file_is_none(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "x.gbrjob")
+            Path(p).write_bytes(b"\xff\xfe{")
+            self.assertIsNone(ag.parse_job_file(p))

@@ -846,7 +846,7 @@ def parse_job_file(path: str) -> dict | None:
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
-    except (json.JSONDecodeError, OSError):
+    except (ValueError, OSError):
         return None
 
     result = {}

@@ -163,7 +163,7 @@ def load_manifest(analysis_dir: str) -> Dict[str, Any]:
     try:
         with open(manifest_path, 'r', encoding='utf-8') as f:
             return json.load(f)
-    except (json.JSONDecodeError, OSError):
+    except (ValueError, OSError):
         # Corrupt manifest -- back up and return empty
         backup = manifest_path + '.bak'
         try:
@@ -775,7 +775,7 @@ def should_create_new_run(analysis_dir: str,
                 base_data = json.load(f)
             with open(new_path, encoding="utf-8") as f:
                 head_data = json.load(f)
-        except (json.JSONDecodeError, OSError):
+        except (ValueError, OSError):
             return True  # Can't compare -- treat as changed
 
         # Detect analyzer type and diff

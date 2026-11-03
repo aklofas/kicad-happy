@@ -1,7 +1,7 @@
 """Manifest run ids are folder names inside the analysis dir: an absolute, dotted or nested id
 is never deleted by pruning and never written into."""
 import io, json, os, subprocess, sys, tempfile, unittest
-from contextlib import redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from tools.tests._fixtures import fixture_path, have
 
@@ -399,3 +399,31 @@ class PlantedSymlinkWriterTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ReadBytesTest(unittest.TestCase):
+    def test_non_utf8_manifest_is_corrupt_not_a_crash(self):
+        with tempfile.TemporaryDirectory() as ad:
+            Path(ad, "manifest.json").write_bytes(b"\xff\xfe{")
+            with redirect_stderr(io.StringIO()):
+                self.assertEqual(analysis_cache.load_manifest(ad)["runs"], {})
+
+    def test_summarize_skips_a_non_utf8_output(self):
+        import summarize_findings
+        with tempfile.TemporaryDirectory() as ad:
+            os.makedirs(os.path.join(ad, "r1"))
+            _write(os.path.join(ad, "manifest.json"),
+                   {"version": 1, "current": "r1", "runs": {"r1": {"timestamp": "t"}}})
+            Path(ad, "r1", "pcb.json").write_bytes(b"\xff\xfe")
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(summarize_findings.main([ad, "--json"]), 0)
+
+    def test_should_create_new_run_treats_non_utf8_output_as_changed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = _outputs(tmp)
+            ad = os.path.join(tmp, "analysis")
+            os.makedirs(os.path.join(ad, "r1"))
+            Path(ad, "r1", "schematic.json").write_bytes(b"\xff\xfe")
+            _write(os.path.join(ad, "manifest.json"),
+                   {"version": 1, "current": "r1", "runs": {"r1": {"timestamp": "t"}}})
+            self.assertTrue(analysis_cache.should_create_new_run(ad, out))

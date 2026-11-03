@@ -86,7 +86,7 @@ def _collect(run_dir: str, only_deterministic: bool = True) -> tuple[list[dict],
         try:
             with open(full, "r", encoding="utf-8") as f:
                 data = json.load(f)
-        except (OSError, json.JSONDecodeError):
+        except (OSError, ValueError):
             continue
         for finding in data.get("findings", []) or []:
             if isinstance(finding, dict):
