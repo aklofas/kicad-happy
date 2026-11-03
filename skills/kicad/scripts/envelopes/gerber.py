@@ -326,10 +326,13 @@ class GerberEnvelope:
     # Entries are free-form dicts.
     zip_archives: Optional[list[dict]] = field(default=None, metadata={
         "description": "Zip archive sweep; each entry: {filename, "
-                       "size_bytes, modified, total_files, gerber_files, "
-                       "drill_files, other_files, newest_member_date, "
-                       "staleness_warning}. Omitted when no .zip files "
-                       "in the directory."})
+                       "size_bytes, modified (when the file stat succeeds), "
+                       "total_files, gerber_files, drill_files, other_files, "
+                       "newest_member_date (when any member date parses), "
+                       "vs_loose_files (loose_files_newer | archive_newer | "
+                       "same_age), age_delta_hours (unless same_age), error "
+                       "(when the archive cannot be read)}. Omitted when no "
+                       ".zip files in the directory."})
 
     # --- --full mode additions ---
     # Entries are free-form dicts.

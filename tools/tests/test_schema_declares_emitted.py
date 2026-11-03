@@ -41,6 +41,12 @@ class SchemaDeclaresEmitted(unittest.TestCase):
             self.assertEqual(_types(props[key]), {"array", "null"}, key)
             self.assertNotIn(key, _schema("skills/kicad/scripts/analyze_pcb.py")["required"])
 
+    def test_gerber_zip_archives_names_emitted_keys(self):
+        d = _schema("skills/kicad/scripts/analyze_gerbers.py")["properties"]["zip_archives"]["description"]
+        for key in ("modified", "newest_member_date", "vs_loose_files", "age_delta_hours", "error"):
+            self.assertIn(key, d)
+        self.assertNotIn("staleness_warning", d)
+
 
 if __name__ == "__main__":
     unittest.main()

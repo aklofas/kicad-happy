@@ -263,7 +263,7 @@ Output of `python3 skills/kicad/scripts/analyze_gerbers.py <gerber_dir>/`.
 | `component_analysis` | `ComponentAnalysis \| null` | no | X2 component attribute rollup; omitted when no X2 component data in the gerber stream. |
 | `net_analysis` | `NetAnalysis \| null` | no | X2 net attribute rollup; omitted when no X2 net data in the gerber stream. |
 | `job_file` | `dict \| null` | no | Parsed .gbrjob contents: project_name, vendor, generator, layer_count, board_width_mm, board_height_mm, board_thickness_mm, creation_date, finish, stackup, design_rules, expected_files. Omitted when no .gbrjob present. |
-| `zip_archives` | `list[dict] \| null` | no | Zip archive sweep; each entry: {filename, size_bytes, modified, total_files, gerber_files, drill_files, other_files, newest_member_date, staleness_warning}. Omitted when no .zip files in the directory. |
+| `zip_archives` | `list[dict] \| null` | no | Zip archive sweep; each entry: {filename, size_bytes, modified (when the file stat succeeds), total_files, gerber_files, drill_files, other_files, newest_member_date (when any member date parses), vs_loose_files (loose_files_newer \| archive_newer \| same_age), age_delta_hours (unless same_age), error (when the archive cannot be read)}. Omitted when no .zip files in the directory. |
 | `connectivity` | `list[dict] \| null` | no | Flat pin-to-net list from X2 attributes (--full only). Each item: {ref, pin, pin_name, net}. |
 | `capability_mode_ref` | `dict \| null` | no | Pointer to canonical analysis/capability_mode.json run-level record. Shape: {source, run_id}. |
 | `audience_summary` | `dict \| null` | no | Designer/reviewer/manager summary views; only present when output filters ran. |
