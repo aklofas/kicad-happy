@@ -463,6 +463,37 @@ def download_pdf(url: str, output_path: str, *, resolve_redirects: bool = True) 
 # Download methods
 # ---------------------------------------------------------------------------
 
+def _get_before_deadline(url: str, deadline: float, **kwargs):
+    """``_requests.get`` on a worker thread, so the deadline also holds while a server sends the
+    status line and headers, before there is a response whose socket can be watched. At the
+    deadline the call is abandoned; a response that still arrives is closed by the worker."""
+    box, lock = {}, threading.Lock()
+
+    def run():
+        try:
+            resp = _requests.get(url, **kwargs)
+        except BaseException as exc:
+            with lock:
+                box["exc"] = exc
+            return
+        with lock:
+            if box.get("abandoned"):
+                resp.close()
+                return
+            box["resp"] = resp
+
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    worker.join(max(0.0, deadline - time.monotonic()))
+    with lock:
+        if not box:
+            box["abandoned"] = True
+            raise DownloadLimitExceeded(f"took longer than {DOWNLOAD_TIMEOUT_S:g} s")
+    if "exc" in box:
+        raise box["exc"]
+    return box["resp"]
+
+
 def _download_requests(url: str, output_path: str) -> bool:
     """Download using the requests library (handles HTTP/2, all manufacturers).
     Redirects are followed here, each one checked against the policy."""
@@ -471,8 +502,9 @@ def _download_requests(url: str, output_path: str) -> bool:
     deadline = _deadline()
     with _Watchdog(deadline) as watchdog:
         for _ in range(_MAX_REDIRECTS + 1):
-            resp = _requests.get(
+            resp = _get_before_deadline(
                 url,
+                deadline,
                 headers={"User-Agent": _USER_AGENT},
                 timeout=_socket_timeout(deadline),
                 allow_redirects=False,

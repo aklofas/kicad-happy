@@ -316,6 +316,18 @@ class _Trickle:
         self.client.close()
 
 
+class _HeaderTrickle(_Trickle):
+    """A real socket whose status line and headers never finish: one header byte every 50 ms for at most 4 s."""
+
+    def __init__(self):
+        self.server, self.client = socket.socketpair()
+        self.client.settimeout(2)
+        self.stop = threading.Event()
+        self.server.sendall(b"HTTP/1.1 200 OK\r\nX-Slow: ")
+        self.thread = threading.Thread(target=self._drip, daemon=True)
+        self.thread.start()
+
+
 class TrickleDeadlineTest(unittest.TestCase):
     URL = "https://example.com/x.pdf"
 
@@ -364,6 +376,47 @@ class TrickleDeadlineTest(unittest.TestCase):
             def iter_content(self, size):
                 return iter(lambda: self.raw.read(size), b"")
         self._run(_requests=_FakeRequests({self.URL: Resp}), _download_urllib=_fail)
+
+    def test_requests_header_trickle_stops_at_the_deadline(self):
+        slow = _HeaderTrickle()
+        self.addCleanup(slow.close)
+
+        class Requests:
+            def get(self, url, **kw):
+                return slow.response(url)  # blocks in HTTPResponse.begin() while headers trickle
+        self._run(_requests=Requests(), _download_urllib=_fail)
+
+    @unittest.skipIf(download._requests is None, "requests is not installed")
+    def test_real_requests_header_trickle_stops_at_the_deadline(self):
+        srv = socket.socket()
+        srv.bind(("127.0.0.1", 0))
+        srv.listen(1)
+        stop = threading.Event()
+
+        def serve():
+            conn, _ = srv.accept()
+            with conn:
+                conn.sendall(b"HTTP/1.1 200 OK\r\nX-Slow: ")
+                end = time.monotonic() + 4
+                while not stop.is_set() and time.monotonic() < end:
+                    try:
+                        conn.sendall(b"0")
+                    except OSError:
+                        return
+                    time.sleep(0.05)
+        t = threading.Thread(target=serve, daemon=True)
+        t.start()
+        self.addCleanup(lambda: (stop.set(), t.join(), srv.close()))
+        url = f"http://127.0.0.1:{srv.getsockname()[1]}/x.pdf"
+        stderr, start = io.StringIO(), time.monotonic()
+        with mock.patch.object(download, "_allow_private_hosts", return_value=True), \
+             mock.patch.dict(os.environ, {"NO_PROXY": "127.0.0.1", "no_proxy": "127.0.0.1"}), \
+             mock.patch.multiple(download, _sync_playwright=None, _download_urllib=_fail), \
+             redirect_stderr(stderr):
+            ok = download.download_pdf(url, os.path.join(self.dir.name, "x.pdf"))
+        self.assertFalse(ok)
+        self.assertLess(time.monotonic() - start, 3.0)
+        self.assertIn("download stopped", stderr.getvalue())
 
 
 class _FakeRoute:
