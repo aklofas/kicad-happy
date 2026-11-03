@@ -173,7 +173,8 @@ def _get_datasheet_thermal(mpn: str, extract_dir: str) -> dict:
     # Trust gate: reject low-quality extractions (matches
     # datasheet_verify.py and spice_spec_fetcher.py threshold)
     meta = data.get("meta", {})
-    if meta.get("extraction_score", 0) < 6.0:
+    score = meta.get("extraction_score", 0) if isinstance(meta, dict) else None
+    if not isinstance(score, (int, float)) or isinstance(score, bool) or score < 6.0:
         return {}
 
     result = {}

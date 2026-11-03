@@ -587,9 +587,12 @@ def fetch_specs_from_extraction(mpn, project_dir):
         return None
     import re as _re
     key = _re.sub(r'[^A-Za-z0-9_]', '_', mpn.strip())
-    entry = index.get("extractions", {}).get(key)
+    exts = index.get("extractions")
+    if not isinstance(exts, dict):
+        return None
+    entry = exts.get(key)
     if not entry:
-        for k, v in index.get("extractions", {}).items():
+        for k, v in exts.items():
             if k.upper() == key.upper():
                 entry = v
                 break
@@ -603,7 +606,8 @@ def fetch_specs_from_extraction(mpn, project_dir):
         return None
     # Trust gate: skip low-quality extractions
     meta = extraction.get("meta", {})
-    if meta.get("extraction_score", 0) < 6.0:
+    score = meta.get("extraction_score", 0) if isinstance(meta, dict) else None
+    if not isinstance(score, (int, float)) or isinstance(score, bool) or score < 6.0:
         return None
     specs = _read_spice_specs(extraction.get("spice_specs"))
     if not specs:

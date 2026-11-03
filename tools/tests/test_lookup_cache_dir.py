@@ -148,5 +148,25 @@ class ManifestFileEscapeTest(unittest.TestCase):
                 self.assertEqual(self._read_both(value, linked), (None, []))
 
 
+class MalformedNestedCacheTest(unittest.TestCase):
+    """A legacy extraction whose blocks have the wrong JSON type is a miss for every project-dir reader."""
+    def test_readers(self):
+        from spice_spec_fetcher import fetch_specs_from_extraction
+        import analyze_thermal
+        cases = ({"meta": "x"}, {"meta": {"extraction_score": "9"}},
+                 {"meta": {"extraction_score": 8}, "absolute_maximum_ratings": [1]},
+                 {"meta": {"extraction_score": 8}, "absolute_maximum_ratings": {"vin_max_v": "5"}})
+        for data in cases:
+            for manifest in ({"extractions": {"XA100": {"file": "XA100.json"}}}, {"extractions": []}):
+                with self.subTest(data=data, manifest=manifest), tempfile.TemporaryDirectory() as tmp:
+                    proj = Path(tmp); ex = proj / "datasheets" / "extracted"; ex.mkdir(parents=True)
+                    (ex / "XA100.json").write_text(json.dumps(data), encoding="utf-8")
+                    (ex / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+                    with contextlib.redirect_stderr(io.StringIO()):
+                        self.assertIsNone(fetch_specs_from_extraction("XA100", str(proj)))
+                        self.assertEqual(_derating_vin_max(proj), [])
+                        self.assertEqual(analyze_thermal._get_datasheet_thermal("XA100", str(ex)), {})
+
+
 if __name__ == "__main__":
     unittest.main()

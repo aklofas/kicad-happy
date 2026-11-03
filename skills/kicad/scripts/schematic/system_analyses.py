@@ -784,7 +784,8 @@ def analyze_voltage_derating(ctx: AnalysisContext, signal_analysis: dict,
                 idx_path = extracted_dir / "index.json"
             if idx_path.exists():
                 idx = read_json_object(idx_path) or {}
-                for k, v in idx.get("extractions", {}).items():
+                exts = idx.get("extractions")
+                for k, v in (exts.items() if isinstance(exts, dict) else ()):
                     if k.upper() == sanitized.upper():
                         extract_path = manifest_file_path(
                             extracted_dir, v.get("file") if isinstance(v, dict) else None)
@@ -792,7 +793,8 @@ def analyze_voltage_derating(ctx: AnalysisContext, signal_analysis: dict,
             if extract_path is None or not extract_path.exists():
                 return None
         data = read_json_object(extract_path)
-        return data.get("absolute_maximum_ratings") if data is not None else None
+        abs_max = data.get("absolute_maximum_ratings") if data is not None else None
+        return abs_max if isinstance(abs_max, dict) else None
 
     profile = _DERATING_PROFILES.get(derating_profile, _DERATING_PROFILES["commercial"])
     _CAP_DERATING = {"ceramic": profile["ceramic_cap"], "electrolytic": profile["electrolytic_cap"],
@@ -882,7 +884,8 @@ def analyze_voltage_derating(ctx: AnalysisContext, signal_analysis: dict,
             if abs_max.get(key) is not None:
                 vin_max = abs_max[key]
                 break
-        if vin_max is None:
+        if (not isinstance(vin_max, (int, float)) or isinstance(vin_max, bool)
+                or not math.isfinite(vin_max)):
             continue
         max_rail_v = 0
         max_rail_name = ""

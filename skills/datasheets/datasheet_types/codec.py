@@ -47,6 +47,11 @@ def from_dict(cls, data):
     for f in fields(cls):
         hint = hints[f.name]
         if f.name in data:
+            if (data[f.name] is None and f.default is MISSING
+                    and f.default_factory is MISSING):
+                raise TypeError(
+                    f"{cls.__name__}: required field {f.name!r} is null"
+                )
             kwargs[f.name] = _from_value(hint, data[f.name])
         elif f.default is MISSING and f.default_factory is MISSING:
             raise KeyError(

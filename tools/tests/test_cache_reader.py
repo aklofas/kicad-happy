@@ -1,5 +1,5 @@
 # tools/tests/test_cache_reader.py
-import contextlib, hashlib, io, json, os, shutil, subprocess, sys, tempfile, unittest
+import contextlib, copy, hashlib, io, json, os, shutil, subprocess, sys, tempfile, unittest
 from unittest import mock
 from pathlib import Path
 from tools.tests._fixtures import fixture, fixture_path
@@ -108,6 +108,47 @@ class CacheReader(unittest.TestCase):
             self.assertTrue(facts.stale)
             self.assertEqual(facts._cache_context.stale_reason, STALE_PDF_MISSING)
             self.assertEqual(facts._cache_context.cache_path, cache / "LM2596-ADJ.json")
+
+    def test_required_block_set_to_null_is_a_miss(self):
+        data = json.loads(fixture("datasheets-extracted", "LM2596-ADJ.json").read_text(encoding="utf-8"))
+        for path in (("source",), ("extraction",), ("base",), ("base", "pinout")):
+            d = copy.deepcopy(data); tgt = d
+            for k in path[:-1]:
+                tgt = tgt[k]
+            tgt[path[-1]] = None
+            self.assertIsNone(self._lookup_bytes(json.dumps(d).encode()), path)
+
+    def test_malformed_nested_legacy_cache_is_a_miss(self):
+        sys.path.insert(0, str(DS / "scripts"))
+        import datasheet_features as df
+        meta = {"extraction_version": 2, "extraction_score": 9}
+        bad = ({"topology": "ldo", "extraction_metadata": {"extraction_version": "2", "extraction_score": 9}},
+               {"topology": "ldo", "extraction_metadata": "x"},
+               {"topology": "ldo", "features": [1], "extraction_metadata": meta},
+               {"topology": "ldo", "pins": ["x"], "extraction_metadata": meta},
+               {"topology": "ldo", "pins": [{"function": "EN", "number": 1, "threshold_high_v": "1.2"}],
+                "extraction_metadata": meta},
+               {"topology": "mcu", "peripherals": [1], "extraction_metadata": meta},
+               {"topology": "mcu", "peripherals": {"usb": "x"}, "extraction_metadata": meta})
+        with tempfile.TemporaryDirectory() as d:
+            for payload in bad:
+                (Path(d) / "P1.json").write_text(json.dumps(payload), encoding="utf-8")
+                self.assertIsNone(df.get_regulator_features("P1", extract_dir=d), payload)
+                self.assertIsNone(df.get_mcu_features("P1", extract_dir=d), payload)
+                self.assertIsNone(df.get_pin_function("P1", "1", extract_dir=d), payload)
+            (Path(d) / "P2.json").write_text(json.dumps(
+                {"topology": "ldo", "extraction_metadata": {"extraction_version": 1, "extraction_score": 9}}),
+                encoding="utf-8")
+            q = df.get_regulator_features("P2", extract_dir=d)["quality"]
+            self.assertEqual((q["trusted"], q["reasons"]), (False, ["stale_version (1 < 2)"]))
+
+    def test_legacy_staleness_with_malformed_metadata_is_stale(self):
+        sys.path.insert(0, str(DS / "scripts"))
+        import datasheet_extract_cache as dec
+        with tempfile.TemporaryDirectory() as d:
+            for i, meta in enumerate(({"extraction_version": "2"}, {"extraction_score": "9"}, {"retry_count": None})):
+                dec.cache_extraction(Path(d), f"P{i}", {"extraction_metadata": dict(meta)})
+                self.assertEqual(dec.is_extraction_stale(Path(d), f"P{i}"), (True, "malformed extraction_metadata"), meta)
 
     def _lookup_bytes(self, payload):
         from datasheet_types.cache_reader import lookup

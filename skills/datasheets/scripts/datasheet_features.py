@@ -75,11 +75,43 @@ def _load(mpn, extract_dir=None, analysis_json=None, project_dir=None):
         if extract_dir is None:
             return None
     ext = get_cached_extraction(extract_dir, mpn)
-    if ext:
-        return ext
-    # Direct-file fallback: allows test fixtures (and simple single-file drops)
-    # that write {mpn}.json directly without a manifest index.
-    return read_json_object(cache_path_for(mpn, extract_dir))
+    if not ext:
+        # Direct-file fallback: allows test fixtures (and simple single-file drops)
+        # that write {mpn}.json directly without a manifest index.
+        ext = read_json_object(cache_path_for(mpn, extract_dir))
+    return ext if ext is not None and _legacy_shape_ok(ext) else None
+
+
+def _is_number(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def _legacy_shape_ok(ext):
+    """True when the nested blocks the helpers read have their expected JSON types."""
+    meta = ext.get('extraction_metadata')
+    if meta is not None:
+        if not isinstance(meta, dict):
+            return False
+        if 'extraction_version' in meta and not _is_number(meta['extraction_version']):
+            return False
+    for key in ('features', 'peripherals'):
+        if ext.get(key) is not None and not isinstance(ext[key], dict):
+            return False
+    periph = ext.get('peripherals')
+    if isinstance(periph, dict) and periph.get('usb') is not None \
+            and not isinstance(periph['usb'], dict):
+        return False
+    pins = ext.get('pins')
+    if pins is not None:
+        if not isinstance(pins, list):
+            return False
+        for pin in pins:
+            if not isinstance(pin, dict):
+                return False
+            for k in ('threshold_high_v', 'threshold_low_v'):
+                if pin.get(k) is not None and not _is_number(pin[k]):
+                    return False
+    return True
 
 
 def _quality_v13(ext):

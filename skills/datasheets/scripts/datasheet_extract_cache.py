@@ -364,6 +364,10 @@ def is_extraction_stale(extract_dir, mpn, datasheets_dir=None):
         return True, "not_cached"
 
     meta = extraction.get("extraction_metadata", {})
+    if not isinstance(meta, dict) or any(
+            k in meta and (not isinstance(meta[k], (int, float)) or isinstance(meta[k], bool))
+            for k in ("extraction_version", "extraction_score", "retry_count")):
+        return True, "malformed extraction_metadata"
 
     # Check version
     version = meta.get("extraction_version", 0)
