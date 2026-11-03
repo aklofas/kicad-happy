@@ -9,22 +9,32 @@ from pathlib import Path
 
 
 def atomic_write_text(path, text: str, newline: str | None = None, *,
-                      follow_symlinks: bool = True) -> None:
+                      follow_symlinks: bool = True, keep_mode: bool = True) -> None:
     """Write UTF-8 text to path via a temp file and os.replace.
 
     A symlink at *path* is resolved and its target rewritten, unless *follow_symlinks* is
     false: then the link itself is replaced by a regular file and its target is never touched.
+    An existing file's mode is kept unless *keep_mode* is false (the new file then gets the
+    umask mode). Under /dev and /proc, and for any non-regular target, nothing is replaced:
+    the text is written into the existing node, as a plain write would.
     *newline* is passed to the file object ("" keeps the text's line endings as given)."""
-    target = Path(path).resolve() if follow_symlinks else Path(os.path.abspath(path))
+    if follow_symlinks:
+        target = Path(path).resolve()
+    else:
+        # only the last component is kept as given; the kernel resolves the directory part
+        target = Path(os.path.join(os.path.dirname(path) or ".", os.path.basename(path)))
     existing = target.exists()
     if not follow_symlinks:
-        if existing and not target.resolve().is_file():
+        device = os.path.abspath(path).startswith(("/dev/", "/proc/"))
+        if device or (existing and not target.resolve().is_file()):
             # /dev/stdout, /dev/null, a FIFO: replacing it would be wrong, so write into it
             with open(target, "w", encoding="utf-8", newline=newline) as f:
                 f.write(text)
             return
         if target.is_symlink():
             existing = False    # the link's mode and target are not the new file's
+    if not keep_mode:
+        existing = False
     # A new target gets 0o666 so the kernel applies the umask; an existing one is rewritten
     # through a private temp until copymode gives it the old mode
     flags = (os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)

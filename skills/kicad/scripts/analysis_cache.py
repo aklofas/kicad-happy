@@ -186,11 +186,8 @@ def save_manifest(analysis_dir: str, manifest: Dict[str, Any]) -> None:
         owner_only = stat.S_ISREG(st.st_mode) and stat.S_IMODE(st.st_mode) == 0o600
     except OSError:
         owner_only = False
-    atomic_write_text(manifest_path, json.dumps(manifest, indent=2) + '\n', follow_symlinks=False)
-    if owner_only:
-        umask = os.umask(0)
-        os.umask(umask)
-        os.chmod(manifest_path, 0o666 & ~umask)
+    atomic_write_text(manifest_path, json.dumps(manifest, indent=2) + '\n',
+                      follow_symlinks=False, keep_mode=not owner_only)
 
 
 # ---------------------------------------------------------------------------

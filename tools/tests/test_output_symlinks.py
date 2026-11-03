@@ -18,6 +18,16 @@ class _Tmp(unittest.TestCase):
         self.addCleanup(os.umask, old)
 
 
+class ByteIdentity(_Tmp):
+    def test_bytes_match_plain_write(self):
+        text = "caf\u00e9\nline2\n"
+        a = self.d / "a"
+        b = self.d / "b"
+        atomic_write_text(a, text, follow_symlinks=False)
+        b.write_text(text, encoding="utf-8")
+        self.assertEqual(a.read_bytes(), b.read_bytes())
+
+
 @unittest.skipIf(os.name == "nt", "symlinks and POSIX modes")
 class AtomicWriteNoFollow(_Tmp):
     def test_link_to_file_replaced_victim_kept(self):
@@ -69,13 +79,24 @@ class AtomicWriteNoFollow(_Tmp):
         self.assertTrue(link.is_symlink())
         self.assertEqual(victim.read_text(encoding="utf-8"), "new")
 
-    def test_bytes_match_plain_write(self):
-        text = "café\nline2\n"
-        a = self.d / "a"
-        b = self.d / "b"
-        atomic_write_text(a, text, follow_symlinks=False)
-        b.write_text(text, encoding="utf-8")
-        self.assertEqual(a.read_bytes(), b.read_bytes())
+    def test_dotdot_resolved_by_the_kernel(self):
+        (self.d / "a" / "b").mkdir(parents=True)
+        os.symlink(self.d / "a" / "b", self.d / "lb")
+        atomic_write_text(str(self.d / "lb") + "/../y", "k", follow_symlinks=False)
+        self.assertEqual((self.d / "a" / "y").read_text(encoding="utf-8"), "k")
+        self.assertFalse((self.d / "y").exists())
+
+    def test_dev_stdout_redirected_to_file(self):
+        out = self.d / "o.txt"
+        code = ("import sys; sys.path.insert(0, %r)\n"
+                "from kicad_core.fileio import atomic_write_text\n"
+                "atomic_write_text('/dev/stdout', 'HELLO\\n', follow_symlinks=False)\n") % str(SCRIPTS)
+        with open(out, "w", encoding="utf-8") as fh:
+            r = subprocess.run([sys.executable, "-c", code], stdout=fh, stderr=subprocess.PIPE,
+                               text=True, env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(out.read_text(encoding="utf-8"), "HELLO\n")
+        self.assertTrue(os.path.islink("/dev/stdout"))
 
 
 @unittest.skipIf(os.name == "nt", "symlinks and POSIX modes")
