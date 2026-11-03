@@ -211,7 +211,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Reports, review files and SPICE artefacts are read and written as UTF-8 on every platform; a non-UTF-8 locale (Windows cp1252) no longer crashes or mis-decodes them (KH-849).
 - The Action's `has-critical` and `findings-count` count voltage-derating findings again (they had been read from a retired key). (KH-814)
 - `--schema` declares `fix_params` on findings and five PCB keys the analyzer already emitted (`layer_transitions`, `dimensions`, `groups`, `thermal_pad_scan`, `copper_presence_summary`). (KH-821, KH-854)
-- `analysis/manifest.json` is written with the usual umask-based mode (an existing manifest keeps its mode) instead of owner-only. (KH-791)
+- `analysis/manifest.json` is written with the usual umask-based mode (an existing manifest keeps its mode) instead of owner-only; an existing owner-only (0600) manifest is rewritten with that mode. (KH-791)
 
 ### Documentation
 

@@ -177,10 +177,20 @@ def load_manifest(analysis_dir: str) -> Dict[str, Any]:
 
 def save_manifest(analysis_dir: str, manifest: Dict[str, Any]) -> None:
     """Write manifest.json atomically. An existing file keeps its mode, a new one gets the
-    umask mode; a symlink at the path is replaced, never written through."""
+    umask mode; a symlink at the path is replaced, never written through. An owner-only
+    (0600) file is what earlier versions wrote, so it is rewritten with the umask mode."""
     os.makedirs(analysis_dir, exist_ok=True)
     manifest_path = os.path.join(analysis_dir, MANIFEST_FILENAME)
+    try:
+        st = os.lstat(manifest_path)
+        owner_only = stat.S_ISREG(st.st_mode) and stat.S_IMODE(st.st_mode) == 0o600
+    except OSError:
+        owner_only = False
     atomic_write_text(manifest_path, json.dumps(manifest, indent=2) + '\n', follow_symlinks=False)
+    if owner_only:
+        umask = os.umask(0)
+        os.umask(umask)
+        os.chmod(manifest_path, 0o666 & ~umask)
 
 
 # ---------------------------------------------------------------------------

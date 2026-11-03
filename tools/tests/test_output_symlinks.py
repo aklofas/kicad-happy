@@ -97,6 +97,22 @@ class ManifestMode(_Tmp):
         save_manifest(str(adir), {"a": 2})
         self.assertEqual((adir / "manifest.json").stat().st_mode & 0o777, 0o664)
 
+    def test_existing_owner_only_manifest_gets_umask_mode(self):
+        from analysis_cache import save_manifest
+        adir = self.d / "analysis"
+        save_manifest(str(adir), {"a": 1})
+        os.chmod(adir / "manifest.json", 0o600)
+        save_manifest(str(adir), {"a": 2})
+        self.assertEqual((adir / "manifest.json").stat().st_mode & 0o777, 0o644)
+
+    def test_existing_0640_manifest_kept(self):
+        from analysis_cache import save_manifest
+        adir = self.d / "analysis"
+        save_manifest(str(adir), {"a": 1})
+        os.chmod(adir / "manifest.json", 0o640)
+        save_manifest(str(adir), {"a": 2})
+        self.assertEqual((adir / "manifest.json").stat().st_mode & 0o777, 0o640)
+
 
 @unittest.skipIf(os.name == "nt", "symlinks and POSIX modes")
 class CliOutputLink(_Tmp):
