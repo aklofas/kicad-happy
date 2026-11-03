@@ -167,11 +167,15 @@ def load_manifest(analysis_dir: str) -> Dict[str, Any]:
         # Corrupt manifest -- back up and return empty
         backup = manifest_path + '.bak'
         try:
-            _copy_regular(manifest_path, backup, "load_manifest")
+            backed_up = _copy_regular(manifest_path, backup, "load_manifest")
         except OSError:
-            pass
-        print(f'Warning: corrupt manifest at {manifest_path}, '
-              f'backed up to .bak', file=sys.stderr)
+            backed_up = False
+        if backed_up:
+            print(f'Warning: corrupt manifest at {manifest_path}, '
+                  f'backed up to .bak', file=sys.stderr)
+        else:
+            print(f'Warning: corrupt manifest at {manifest_path}; '
+                  f'no backup made ({backup} is not a regular file)', file=sys.stderr)
         return _empty_manifest()
 
 
@@ -254,9 +258,9 @@ def _is_symlink_or_irregular(path: str) -> bool:
 def _copy_regular(src: str, dst: str, caller: str = "copy") -> bool:
     """Copy a regular file without reading or writing through a symlink.
 
-    The copy goes to a temp file beside ``dst`` and is renamed over it, so a
-    symlink planted at ``dst`` is replaced-never-followed; one at ``src`` is
-    skipped.
+    A symlink or other non-regular file at ``src`` or ``dst`` is refused
+    (returns False after one diagnostic) and never read or written through.
+    Otherwise the copy goes to a temp file beside ``dst`` and is renamed over it.
     """
     if _is_symlink_or_irregular(src):
         record(None, f"analysis_cache.{caller}",
@@ -360,6 +364,12 @@ def _incoming_outputs(outputs_dir: str) -> Dict[str, str]:
     """Canonical output name -> path for each new output file in *outputs_dir*."""
     return {name: os.path.join(outputs_dir, name) for name in sorted(os.listdir(outputs_dir))
             if name in _CANONICAL_NAMES and os.path.isfile(os.path.join(outputs_dir, name))}
+
+
+def outputs_landed(run_dir: str, outputs_dir: str) -> bool:
+    """True when every canonical output in *outputs_dir* is a regular file in *run_dir*."""
+    return all(not _is_symlink_or_irregular(os.path.join(run_dir, name))
+               for name in _incoming_outputs(outputs_dir))
 
 
 def _note_dropped(filename: str, upstream: str) -> None:
@@ -517,10 +527,10 @@ def overwrite_current(analysis_dir: str,
     current_id = manifest.get('current')
     if not current_id or current_id not in manifest.get('runs', {}):
         # No current run -- fall back to creating a new run
-        create_run(analysis_dir, outputs_dir,
-                   source_hashes=source_hashes or {},
-                   scripts={})
-        return True
+        rid = create_run(analysis_dir, outputs_dir,
+                         source_hashes=source_hashes or {},
+                         scripts={})
+        return outputs_landed(os.path.join(analysis_dir, rid), outputs_dir)
     problem = _run_id_problem(analysis_dir, current_id)
     if problem:
         record(None, "analysis_cache.overwrite_current",
@@ -530,10 +540,10 @@ def overwrite_current(analysis_dir: str,
         manifest['runs'] = {rid: meta for rid, meta in manifest.get('runs', {}).items()
                             if _is_run_id(analysis_dir, rid)}
         save_manifest(analysis_dir, manifest)
-        create_run(analysis_dir, outputs_dir,
-                   source_hashes=source_hashes or {},
-                   scripts={})
-        return True
+        rid = create_run(analysis_dir, outputs_dir,
+                         source_hashes=source_hashes or {},
+                         scripts={})
+        return outputs_landed(os.path.join(analysis_dir, rid), outputs_dir)
 
     current_dir = os.path.join(analysis_dir, current_id)
     os.makedirs(current_dir, exist_ok=True)
@@ -551,7 +561,7 @@ def overwrite_current(analysis_dir: str,
                 stale[filename] = upstream
 
     # Overwrite files
-    refused = False
+    refused = set()
     copied = set()
     for filename in os.listdir(outputs_dir):
         src = os.path.join(outputs_dir, filename)
@@ -559,7 +569,7 @@ def overwrite_current(analysis_dir: str,
             if _copy_regular(src, os.path.join(current_dir, filename), "overwrite_current"):
                 copied.add(filename)
             else:
-                refused = True
+                refused.add(filename)
 
     # Update manifest entry
     run_entry = manifest['runs'][current_id]
@@ -596,8 +606,11 @@ def overwrite_current(analysis_dir: str,
     for filename in os.listdir(current_dir):
         if filename.endswith('.json') and filename in inv_canonical:
             atype = inv_canonical[filename]
-            if atype not in outputs:
+            if atype not in outputs and not _is_symlink_or_irregular(
+                    os.path.join(current_dir, filename)):
                 outputs[atype] = filename
+    for atype in [t for t, fn in outputs.items() if fn in refused]:
+        del outputs[atype]
 
     save_manifest(analysis_dir, manifest)
     return not refused

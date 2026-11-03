@@ -15,7 +15,7 @@ from pathlib import Path
 
 from analysis_cache import (ensure_gitignore, MANIFEST_FILENAME, CANONICAL_OUTPUTS, _empty_manifest,
                             create_run, get_current_run, hash_source_file, overwrite_current, prune_runs,
-                            resolve_analysis_dir, save_manifest, should_create_new_run)
+                            outputs_landed, resolve_analysis_dir, save_manifest, should_create_new_run)
 
 
 def write_primary_run(analysis_dir_arg: str, output_text: str, *, analyzer: str, source_path: str,
@@ -75,7 +75,8 @@ def write_primary_run(analysis_dir_arg: str, output_text: str, *, analyzer: str,
             )
             if retention > 0:
                 prune_runs(analysis_dir, retention)
-            print(f"Analysis cached: {os.path.join(analysis_dir, run_id, os.path.basename(out_file))}", file=sys.stderr)
+            if outputs_landed(os.path.join(analysis_dir, run_id), tmp_dir):
+                print(f"Analysis cached: {os.path.join(analysis_dir, run_id, os.path.basename(out_file))}", file=sys.stderr)
         else:
             if overwrite_current(analysis_dir, tmp_dir, source_hashes=source_hashes):
                 print(f"Analysis cache updated (current run)", file=sys.stderr)

@@ -3,6 +3,7 @@ is never deleted by pruning and never written into."""
 import io, json, os, subprocess, sys, tempfile, unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from unittest import mock
 from tools.tests._fixtures import fixture_path, have
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -288,6 +289,8 @@ class LeafSymlinkTest(unittest.TestCase):
             with open(outside, encoding="utf-8") as f:
                 self.assertEqual(f.read(), "outside-secret")
             self.assertIn("symlink", err.getvalue())
+            self.assertNotIn("schematic",
+                             analysis_cache.load_manifest(ad)["runs"]["r1"]["outputs"])
 
     def test_overwrite_current_does_not_write_through_a_symlink(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -450,6 +453,96 @@ class ReadBytesTest(unittest.TestCase):
             _write(os.path.join(ad, "manifest.json"),
                    {"version": 1, "current": "r1", "runs": {"r1": {"timestamp": "t"}}})
             self.assertTrue(analysis_cache.should_create_new_run(ad, out))
+
+
+@unittest.skipIf(os.name == "nt", "symlinks")
+class RefusedCopyHonestyTest(unittest.TestCase):
+    def _outside(self, tmp):
+        path = os.path.join(tmp, "outside.json")
+        Path(path).write_text("outside-secret", encoding="utf-8")
+        return path
+
+    def _out2(self, tmp):
+        out2 = os.path.join(tmp, "out2")
+        os.makedirs(out2)
+        _write(os.path.join(out2, "thermal.json"), {"analyzer_type": "thermal"})
+        return out2
+
+    def test_refused_output_is_not_listed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ad = os.path.join(tmp, "analysis")
+            analysis_cache.create_run(ad, _outputs(tmp), source_hashes={}, scripts={}, run_id="r1")
+            os.symlink(self._outside(tmp), os.path.join(ad, "r1", "thermal.json"))
+            with redirect_stderr(io.StringIO()):
+                self.assertIs(analysis_cache.overwrite_current(ad, self._out2(tmp)), False)
+            self.assertEqual(analysis_cache.load_manifest(ad)["runs"]["r1"]["outputs"],
+                             {"schematic": "schematic.json"})
+
+    def test_refused_output_already_listed_is_dropped(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ad = os.path.join(tmp, "analysis")
+            out1 = _outputs(tmp)
+            _write(os.path.join(out1, "thermal.json"), {"analyzer_type": "thermal"})
+            analysis_cache.create_run(ad, out1, source_hashes={}, scripts={}, run_id="r1")
+            leaf = os.path.join(ad, "r1", "thermal.json")
+            os.remove(leaf)
+            os.symlink(self._outside(tmp), leaf)
+            with redirect_stderr(io.StringIO()):
+                self.assertIs(analysis_cache.overwrite_current(ad, self._out2(tmp)), False)
+            outputs = analysis_cache.load_manifest(ad)["runs"]["r1"]["outputs"]
+            self.assertNotIn("thermal", outputs)
+            self.assertIn("schematic", outputs)
+
+    def test_refused_new_run_copy_is_not_reported_cached(self):
+        import output_io
+        with tempfile.TemporaryDirectory() as tmp:
+            outside = self._outside(tmp)
+
+            def plant(ad):
+                os.makedirs(os.path.join(ad, "r1"))
+                os.symlink(outside, os.path.join(ad, "r1", "schematic.json"))
+
+            with mock.patch.object(analysis_cache, "generate_run_folder_name", return_value="r1"):
+                ad = os.path.join(tmp, "analysis")
+                plant(ad)
+                with redirect_stderr(io.StringIO()):
+                    self.assertIs(analysis_cache.overwrite_current(ad, _outputs(tmp)), False)
+                ad2 = os.path.join(tmp, "analysis2")
+                plant(ad2)
+                src = os.path.join(tmp, "x.kicad_sch")
+                Path(src).write_text("", encoding="utf-8")
+                err = io.StringIO()
+                with redirect_stderr(err):
+                    output_io.write_primary_run(ad2, "{}", analyzer="schematic", source_path=src,
+                                                script_name="analyze_schematic.py")
+            self.assertNotIn("Analysis cached", err.getvalue())
+            self.assertIn("symlink", err.getvalue())
+            self.assertEqual(Path(outside).read_text(encoding="utf-8"), "outside-secret")
+
+    def test_refused_manifest_backup_says_no_backup(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ad = os.path.join(tmp, "analysis")
+            os.makedirs(ad)
+            Path(ad, "manifest.json").write_text("{not json", encoding="utf-8")
+            victim = self._outside(tmp)
+            os.symlink(victim, os.path.join(ad, "manifest.json.bak"))
+            err = io.StringIO()
+            with redirect_stderr(err):
+                analysis_cache.load_manifest(ad)
+            self.assertIn("no backup", err.getvalue())
+            self.assertNotIn("backed up to", err.getvalue())
+            self.assertEqual(Path(victim).read_text(encoding="utf-8"), "outside-secret")
+
+
+class CorruptManifestBackupTest(unittest.TestCase):
+    def test_corrupt_manifest_backup_keeps_the_bytes(self):
+        with tempfile.TemporaryDirectory() as ad:
+            Path(ad, "manifest.json").write_text("{not json", encoding="utf-8")
+            err = io.StringIO()
+            with redirect_stderr(err):
+                analysis_cache.load_manifest(ad)
+            self.assertIn("backed up to", err.getvalue())
+            self.assertEqual(Path(ad, "manifest.json.bak").read_text(encoding="utf-8"), "{not json")
 
 
 if __name__ == "__main__":

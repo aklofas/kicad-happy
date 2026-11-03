@@ -94,6 +94,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Fixed
 
+- A copy into `analysis/` that is refused because of a symlink is no longer listed in the run manifest, reported as "Analysis cached", or counted as success, and a corrupt manifest whose `.bak` backup is refused says "no backup made" instead of "backed up".
 - A project text variable that refers to itself, such as `A` holding twenty copies of `${A}`, no longer grows a field into hundreds of megabytes: expansion stops once the text would pass 64 KiB, keeps the last complete pass and prints one warning.
 - A manifest, `.gbrjob` job file or run output that is not valid UTF-8 is skipped like malformed JSON instead of stopping the analyzer with a `UnicodeDecodeError`: the `datasheets/manifest.json` beside a schematic, the Gerber job file, the `--analysis-dir` manifest and run outputs, and the run outputs read by `summarize_findings.py` and `diff_analysis.py --trend`.
 - A high-speed or clock trace that crosses a split between two plane nets, such as the gap between `+3V3` and `+5V` planes, is now reported (GP-001). The PCB return-path check records where a trace's reference plane changes from one plane net to another (`reference_plane_changes`, with `--full`); a plane net counts only where it holds over about 2 mm of trace, so a pad-sized island is not a split, and a crossing with a capacitor joining the two plane nets within 5 mm of the plane samples on either side of the change is not reported. (KH-795)
