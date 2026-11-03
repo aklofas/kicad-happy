@@ -238,6 +238,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - PCB `--schema` declares `decoupling_placement` as a list and the `decoupling_proximity`, `switching_loop_areas` and `return_path_continuity` lists the analyzer already emitted.
 - The Gerber `zip_archives` schema text lists the keys the scan writes (`modified`, `vs_loose_files`, `age_delta_hours`, `error`) and no longer names a `staleness_warning` it never emits.
 - `analyze_gerbers.py --analysis-dir` and `analyze_thermal.py --analysis-dir` help names the file written (`gerber.json`, `thermal.json`) and says it goes into the current run.
+- `fetch_datasheet_digikey.py`, `_mouser.py`, `_lcsc.py` and `_element14.py` `--search` refuse a hit that is another part (exit 2, naming the closest result) instead of downloading its datasheet; a family match and the distributor's own part number are accepted, and the PDF is verified against the part asked for.
 
 ### Documentation
 

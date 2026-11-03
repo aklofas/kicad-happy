@@ -297,6 +297,7 @@ python3 <skill-path>/scripts/fetch_datasheet_digikey.py --search "ADP1706" --jso
 
 The script:
 - **OS-agnostic** — uses Python `requests` library (no wget/curl dependency). Falls back to `urllib` if `requests` isn't installed.
+- **Refuses another part** — a `--search` hit that is a different part is not downloaded (exit 2); a family match is accepted
 - **Normalizes redirect URLs** — DigiKey's `DatasheetUrl` for TI parts points to a JS redirect page; the script extracts the direct PDF link. Also fixes protocol-relative `//mm.digikey.com/...` URLs.
 - **Sets proper User-Agent** — many manufacturer sites (Nexperia, Lite-On, STMicro, Molex) block bare `urllib` or `curl` requests but serve PDFs fine with a browser User-Agent
 - **Validates PDF headers** — rejects HTML error pages or Cloudflare challenge pages that masquerade as downloads

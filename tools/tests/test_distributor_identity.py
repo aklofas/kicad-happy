@@ -354,5 +354,58 @@ class DigiKeyPicker(unittest.TestCase):
         self.assertEqual(hit["ManufacturerProductNumber"], "2N7002")
 
 
+LABEL = {"digikey": "DigiKey", "mouser": "Mouser", "lcsc": "LCSC", "element14": "element14"}
+
+
+class FetchCliIdentity(unittest.TestCase):
+    """fetch_datasheet_<p>.py --search downloads only the part it was asked for."""
+
+    def _fetch(self, p, results, query):
+        import json, os
+        prov = _load_provider(p)
+        sys.path.insert(0, str(SKILLS / p / "scripts"))
+        try:
+            mod = importlib.import_module(f"fetch_datasheet_{p}")
+        finally:
+            sys.path.pop(0)
+        calls = []
+
+        def download(url, path, *a, **k):
+            calls.append(url)
+            return False
+        so = io.StringIO()
+        with contextlib.ExitStack() as st:
+            st.enter_context(mock.patch("urllib.request.urlopen", lambda *a, **k: _Resp(_body(p, results))))
+            st.enter_context(mock.patch.object(mod, "download_pdf", download))
+            st.enter_context(mock.patch.object(mod, "try_alternative_sources", lambda *a, **k: False))
+            st.enter_context(mock.patch.dict(os.environ, {"ELEMENT14_API_KEY": "K"}))
+            if p == "digikey":
+                st.enter_context(mock.patch.object(prov, "_get_digikey_token", lambda: "T"))
+            if p == "mouser":
+                st.enter_context(mock.patch.object(mod, "_get_api_key", lambda: "K"))
+                st.enter_context(mock.patch.object(mod, "scrape_product_page", lambda *a, **k: ""))
+            st.enter_context(mock.patch.object(sys, "argv", ["x", "--search", query, "--json"]))
+            st.enter_context(contextlib.redirect_stdout(so))
+            st.enter_context(contextlib.redirect_stderr(io.StringIO()))
+            with self.assertRaises(SystemExit) as ex:
+                mod.main()
+        return ex.exception.code, json.loads(so.getvalue()), calls
+
+    def test_another_part_is_refused_and_not_downloaded(self):
+        for p in PROVIDERS:
+            with self.subTest(provider=p):
+                rc, out, calls = self._fetch(p, [_hit(p, "NE5532DR", CODES[p][0], URL)], "LM358DR")
+                self.assertEqual((rc, calls), (2, []))
+                self.assertEqual(out, {"success": False, "error": f"No matching {LABEL[p]} result for 'LM358DR' "
+                                                                  f"(closest: 'NE5532DR', a different part)"})
+
+    def test_the_part_or_its_distributor_number_is_downloaded(self):
+        for p in PROVIDERS:
+            for hit_mpn, query in (("LM358DRG4", "LM358DR"), ("LM358DR", CODES[p][1])):
+                with self.subTest(provider=p, query=query):
+                    rc, out, calls = self._fetch(p, [_hit(p, hit_mpn, CODES[p][1], URL)], query)
+                    self.assertEqual((rc, calls[:1], out["success"]), (1, [URL], False))
+
+
 if __name__ == "__main__":
     unittest.main()

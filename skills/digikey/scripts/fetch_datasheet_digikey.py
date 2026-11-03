@@ -31,9 +31,9 @@ import sys
 import _core_path  # noqa: F401
 from distributor_core.download import (download_pdf, try_alternative_sources,
                                        add_download_args, apply_download_args)
-from distributor_core.verify import verify_datasheet
+from distributor_core.verify import fetch_mismatch, refuse_fetch_hit, same_part, verify_datasheet
 from distributor_core.manifest import _friendly_filename
-from provider_digikey import search_digikey
+from provider_digikey import _digikey_pns, search_digikey
 
 
 def main():
@@ -55,6 +55,10 @@ def main():
             sys.exit(2)
 
         mpn = product.get("ManufacturerProductNumber", args.search)
+        other = fetch_mismatch(args.search, mpn, _digikey_pns(product))
+        if other:
+            refuse_fetch_hit("DigiKey", args.search, other, args.json)
+        verify_pn = args.search if same_part(args.search, mpn) else mpn
         desc = product.get("Description", {}).get("ProductDescription", "")
         ds_url = product.get("DatasheetUrl", "")
         output_path = args.output or (_friendly_filename(mpn, desc) + ".pdf")
@@ -76,7 +80,7 @@ def main():
             sys.exit(2)
 
         if download_pdf(ds_url, output_path):
-            vr = verify_datasheet(output_path, mpn, desc,
+            vr = verify_datasheet(output_path, verify_pn, desc,
                                   product.get("Manufacturer", {}).get("Name", ""))
             if vr["confidence"] == "wrong":
                 print(f"WARNING: Downloaded PDF may be wrong datasheet for {mpn}",
@@ -95,7 +99,7 @@ def main():
         # Try alternative sources
         print(f"Primary URL failed, trying alternatives for {mpn}...", file=sys.stderr)
         if try_alternative_sources(mpn, output_path):
-            vr = verify_datasheet(output_path, mpn, desc,
+            vr = verify_datasheet(output_path, verify_pn, desc,
                                   product.get("Manufacturer", {}).get("Name", ""))
             if vr["confidence"] == "wrong":
                 print(f"WARNING: Downloaded PDF may be wrong datasheet for {mpn}",

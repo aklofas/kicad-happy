@@ -204,6 +204,7 @@ python3 <skill-path>/scripts/fetch_datasheet_lcsc.py --search "C14663" --json
 
 The script:
 - **OS-agnostic** — uses `requests` → `urllib` → `playwright` fallback chain (no wget/curl)
+- **Refuses another part** — a `--search` hit that is a different part is not downloaded (exit 2); a family match is accepted
 - **Validates PDF headers** — rejects HTML error pages
 - **Falls back to alternative manufacturer sources** when LCSC URL fails
 - **Exit codes**: 0 = success, 1 = download failed, 2 = search/API error

@@ -27,7 +27,7 @@ import re
 import sys
 import _core_path  # noqa: F401
 from distributor_core.download import try_alternative_sources, add_download_args, apply_download_args
-from distributor_core.verify import verify_datasheet
+from distributor_core.verify import fetch_mismatch, refuse_fetch_hit, same_part, verify_datasheet
 from distributor_core.manifest import _friendly_filename
 from provider_lcsc import (
     download_pdf,
@@ -59,12 +59,23 @@ def main():
     apply_download_args(args)
 
     if args.search:
-        component = search_lcsc(args.search)
-        component = enrich_with_wmsc(component)
+        def mismatch(c):
+            return fetch_mismatch(args.search, _get_mpn(c), [_get_lcsc_code(c)])
+
+        component = enrich_with_wmsc(search_lcsc(args.search))
+        # A refused hit still lets a C-number fall back to the direct lookup.
+        refused = mismatch(component) if component else ""
+        if refused:
+            component = None
         if not component and re.match(r"^C\d+$", args.search, re.IGNORECASE):
-            print(f"jlcsearch returned no results for {args.search}, trying wmsc API...",
+            print(f"jlcsearch returned no usable result for {args.search}, trying wmsc API...",
                   file=sys.stderr)
             component = search_lcsc_direct(args.search)
+            refused = mismatch(component) if component else refused
+            if refused and component:
+                component = None
+        if refused and not component:
+            refuse_fetch_hit("LCSC", args.search, refused, args.json)
         if not component:
             if args.json:
                 json.dump({"success": False, "error": "Part not found on LCSC"}, sys.stdout)
@@ -77,6 +88,7 @@ def main():
         desc = _get_description(component)
         mfg = _get_manufacturer(component)
         ds_url = _get_datasheet_url(component)
+        verify_pn = args.search if same_part(args.search, mpn) else (mpn or args.search)
 
         display_pn = mpn or lcsc_code or args.search
         output_path = args.output or (_friendly_filename(display_pn, desc) + ".pdf")
@@ -102,7 +114,7 @@ def main():
 
         print(f"Downloading datasheet for {display_pn} ({lcsc_code})...", file=sys.stderr)
         if download_pdf(ds_url, output_path):
-            vr = verify_datasheet(output_path, mpn or lcsc_code, desc, mfg)
+            vr = verify_datasheet(output_path, verify_pn, desc, mfg)
             if vr["confidence"] == "wrong":
                 print(f"WARNING: Downloaded PDF may be wrong datasheet for {display_pn}",
                       file=sys.stderr)
@@ -118,7 +130,7 @@ def main():
         if mpn:
             print(f"LCSC URL failed, trying alternatives for {mpn}...", file=sys.stderr)
             if try_alternative_sources(mpn, output_path):
-                vr = verify_datasheet(output_path, mpn, desc, mfg)
+                vr = verify_datasheet(output_path, verify_pn, desc, mfg)
                 if args.json:
                     result["success"] = True
                     result["output"] = output_path

@@ -2,6 +2,7 @@
 MPN / manufacturer / keyword matching → confidence. ``same_part`` decides whether a
 distributor search hit is the requested part."""
 
+import json
 import os
 import re
 import subprocess
@@ -100,6 +101,26 @@ def other_part(requested: str, hit_mpn: str, hit_pns=(), *, by_pn: bool = False,
     if same_part(requested, hit_mpn, allow_family=allow_family):
         return ""
     return hit_mpn or "(no MPN)"
+
+
+def fetch_mismatch(query: str, hit_mpn: str, hit_pns=()) -> str:
+    """The hit's identifier when a fetch ``--search`` hit is not the requested part, else ``""``.
+
+    The request is an MPN, a family name or the distributor's own part number.
+    """
+    q = query.strip().upper()
+    if q and q in {(p or "").strip().upper() for p in hit_pns}:
+        return ""
+    return other_part(query, hit_mpn, allow_family=True)
+
+
+def refuse_fetch_hit(label: str, query: str, other: str, as_json: bool):
+    """Report that a fetch ``--search`` hit is another part, then exit 2."""
+    msg = f"No matching {label} result for '{query}' (closest: '{other}', a different part)"
+    print(f"{msg}; search_lcsc.py does a keyword search", file=sys.stderr)
+    if as_json:
+        json.dump({"success": False, "error": msg}, sys.stdout)
+    sys.exit(2)
 
 
 def _extract_pdf_text(pdf_path: str, max_pages: int = 3) -> str:

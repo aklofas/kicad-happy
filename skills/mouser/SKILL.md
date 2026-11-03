@@ -233,6 +233,8 @@ python3 <skill-path>/scripts/fetch_datasheet_mouser.py "https://example.com/data
 python3 <skill-path>/scripts/fetch_datasheet_mouser.py --search "ADP1706" --json
 ```
 
+A `--search` hit that is a different part is refused (exit 2) rather than downloaded; a family match is accepted.
+
 ### Download Strategy
 
 The scripts try multiple sources in order:
