@@ -94,6 +94,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Fixed
 
+- A project text variable that refers to itself, such as `A` holding twenty copies of `${A}`, no longer grows a field into hundreds of megabytes: expansion stops once the text would pass 64 KiB, keeps the last complete pass and prints one warning.
 - A high-speed or clock trace that crosses a split between two plane nets, such as the gap between `+3V3` and `+5V` planes, is now reported (GP-001). The PCB return-path check records where a trace's reference plane changes from one plane net to another (`reference_plane_changes`, with `--full`); a plane net counts only where it holds over about 2 mm of trace, so a pad-sized island is not a split, and a crossing with a capacitor joining the two plane nets within 5 mm of the plane samples on either side of the change is not reported. (KH-795)
 - A frequency exactly on an emission-limit band edge (88, 216 and 960 MHz for FCC; 230 MHz for CISPR 32 and CISPR 25) gets the tighter limit of the two bands, following the band-edge convention of 47 CFR 15.209(b) (the tighter limit applies at a band edge) and the CISPR transition-frequency convention, instead of the looser upper-band one; the 1000 MHz top edge of the CISPR 32 table is inside it instead of returning no limit. (KH-864)
 - OR-001 treats a passive at 179.6° (or 359.6°, or -0.4°) as the same orientation as 0° instead of counting it as a deviator. (KH-863)

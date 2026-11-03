@@ -146,6 +146,18 @@ class ExpandTextVarsTest(unittest.TestCase):
     def resolve(self, token):
         return {"A": "x", "B": "A", "C": "${A}"}.get(token)
 
+    def test_self_reference_stops_at_the_size_bound(self):
+        grow = lambda tok: "${A}" * 20 if tok == "A" else None
+        err = StringIO()
+        with redirect_stderr(err):
+            got = expand_text_vars("${A}", grow)
+        self.assertEqual(got, "${A}" * 8000)        # the last pass within 64 KiB (32,000 chars)
+        self.assertIn("Warning: textvars", err.getvalue())
+
+    def test_long_field_without_growth_still_expands(self):
+        text = "y" * 70000 + "${A}"
+        self.assertEqual(expand_text_vars(text, self.resolve), "y" * 70000 + "x")
+
     def test_rules(self):
         cases = [
             ("${A}", "x"),
