@@ -398,12 +398,6 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
             result["connectivity"] = routing
             result["statistics"] = {**stats, "routing_complete": routing["routing_complete"],
                                     "unrouted_net_count": routing["unrouted_count"]}
-    if (conn_graph is None and "connectivity_graph_error" not in result
-            and connectivity.get("routing_complete")):
-        record(diagnostics, "pcb.presentation.assemble_result",
-               ValueError("pads are not checked for a copper path between them"),
-               "routing_complete means every multi-pad net has copper; "
-               "completeness not proven without --full")
 
     # --- Harmonization: collect all findings into top-level list ---
     findings = []

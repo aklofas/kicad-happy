@@ -1,7 +1,8 @@
 # tools/tests/test_pcb_routing_complete.py
 """routing_complete with --full comes from the copper graph: a net is unrouted when more than
 one copper island holds its pads, and a track end inside a same-net fill joins that fill.
-Without --full it means every multi-pad net has copper, and one diagnostics record says so.
+Without --full it means every multi-pad net has copper; the --schema description says so, and the
+run reports no diagnostic and prints no warning.
 Expected values are kicad-cli 10 DRC unconnected_items on the same boards (n islands holding
 a net's pads = n - 1 items)."""
 import contextlib, io, os, sys, tempfile, unittest
@@ -76,13 +77,19 @@ def _notes(res):
 class TestRoutingFromGraph(unittest.TestCase):
     STUB = _board([_fp("U1", 10), _fp("U2", 14), _fp("U3", 18)], _seg(10, 11))
 
-    def test_stub_default_is_complete_with_note(self):
-        res = _analyze(self.STUB, full=False)
+    def test_stub_default_is_complete_without_note(self):
+        err = io.StringIO()
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "b.kicad_pcb"
+            p.write_text(self.STUB, encoding="utf-8")
+            with contextlib.redirect_stderr(err):
+                res = analyze_pcb(str(p), include_trace_segments=False)
+        self.assertNotIn("Warning", err.getvalue())
+        self.assertEqual(res["diagnostics"], [])
         self.assertTrue(res["connectivity"]["routing_complete"])
         self.assertTrue(res["statistics"]["routing_complete"])
         self.assertEqual(_rt001(res), [])
-        self.assertEqual(len(_notes(res)), 1)
-        self.assertEqual(_notes(res)[0]["source"], "pcb.presentation.assemble_result")
+        self.assertEqual(_notes(res), [])
 
     def test_stub_full_three_islands(self):
         # kicad-cli: 2 unconnected items on net N

@@ -81,7 +81,7 @@ class PCBStatistics:
     net_count: int = field(metadata={
         "description": "Distinct net count."})
     routing_complete: bool = field(metadata={
-        "description": "True when no pads remain unrouted."})
+        "description": "True when no pads remain unrouted. Without --full it means every multi-pad net has copper; pads are not checked for a copper path between them, so completeness is proven only with --full."})
     unrouted_net_count: int = field(metadata={
         "description": "Count of nets with unrouted pads."})
     board_width_mm: Optional[float] = field(default=None, metadata={
@@ -195,7 +195,7 @@ class Connectivity:
     unrouted_count: int = field(metadata={
         "description": "Count of unrouted pads."})
     routing_complete: bool = field(metadata={
-        "description": "True when unrouted_count == 0."})
+        "description": "True when unrouted_count == 0. Without --full it means every multi-pad net has copper; pads are not checked for a copper path between them, so completeness is proven only with --full."})
 
 
 @dataclass
