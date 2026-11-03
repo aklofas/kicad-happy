@@ -80,6 +80,11 @@ python3 <skill-path>/scripts/simulate_subcircuits.py --analysis-dir analysis/ --
 python3 <skill-path>/scripts/simulate_subcircuits.py --analysis-dir analysis/ --compact
 ```
 
+### Optional: Run a user-supplied external deck
+
+To run a complete user-supplied deck (PSpice is explicit-only), use `python3 <skill-path>/scripts/run_external_deck.py <deck> --simulator pspice`; it reports only whether the simulator completed. The deck runs as trusted input (it can include arbitrary files, and ngspice `.control` blocks can run shell commands), so only run a deck the user explicitly names.
+See "External Decks and PSpice" in the repository's `spice-integration.md` for success criteria, file handling, timeouts, and limits.
+
 ### Step 2b (optional): PCB parasitic-aware simulation
 
 When both schematic and PCB exist, low-pass RC filters can be simulated with the PCB trace resistance and via inductance of their output net:
