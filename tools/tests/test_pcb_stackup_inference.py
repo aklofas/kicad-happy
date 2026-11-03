@@ -92,6 +92,20 @@ class InferredStackup(unittest.TestCase):
         self.assertIn("impedance_ohm", segs["In1.Cu"])
 
 
+class GeneralThicknessWithoutSetup(unittest.TestCase):
+    TEXT = ('(kicad_pcb (version 20240108) (generator "pcbnew") (general (thickness 2.0))'
+            ' (layers (0 "F.Cu" signal) (31 "B.Cu" signal) (38 "B.Mask" user) (39 "F.Mask" user)'
+            ' (44 "Edge.Cuts" user)))')
+
+    def test_thickness_read_and_used_for_inference(self):
+        self.assertEqual(extract_setup(parse(self.TEXT))["board_thickness_mm"], 2.0)
+        with BoardFile(self.TEXT) as path:
+            board = pipeline.read_board(path)
+        self.assertEqual(board.setup["board_thickness_mm"], 2.0)
+        d = dielectrics(pipeline._board_stackup(board.layers, board.setup))
+        self.assertAlmostEqual(d[0]["thickness"], 2.0 - 0.07 - 0.02, places=6)
+
+
 class DesignerStackupUntouched(unittest.TestCase):
     STACK = ('(stackup (layer "F.Cu" (type "copper") (thickness 0.035))'
              ' (layer "dielectric 1" (type "core") (thickness 0.2) (epsilon_r 4.2))'

@@ -91,6 +91,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Fixed
 
+- A board file without a `(setup)` section keeps the thickness from its `(general)` section, so `setup.board_thickness_mm` is reported and the inferred stackup uses it. (KH-851)
 - `--force-all` removes the old PDF when a refresh finds the datasheet under a file of another name, instead of leaving an orphan no manifest entry names. A refresh that finds no datasheet (not found, a different part, no datasheet listed, a failed download) keeps the `ok` entry and its PDF, whichever distributor gave the answer. A file another entry names, a link, and anything outside `datasheets/` are left alone. (KH-813)
 - The Deep Review gate no longer verifies a quote `15 V` against a page that reads `± 15 V` (a ± set apart from its number, or at the end of a wrapped line); it also accepts the quote `±15 V` against that spaced page. (KH-807)
 - `merge_results.py` writes the extraction and plan files atomically; an interrupted merge no longer leaves a truncated file in the cache. (KH-797)

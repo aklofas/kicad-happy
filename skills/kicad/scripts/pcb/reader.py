@@ -123,18 +123,18 @@ def _merged_sublayers(items: list) -> dict:
 
 def extract_setup(root: list) -> dict:
     """Extract board setup, stackup, and design rules."""
-    setup_node = find_first(root, "setup")
-    if not setup_node:
-        return {}
-
     result = {}
 
-    # Board thickness
+    # Board thickness (KiCad writes it in (general), with or without a (setup))
     general = find_first(root, "general")
     if general:
         thickness = get_value(general, "thickness")
         if thickness:
             result["board_thickness_mm"] = float(thickness)
+
+    setup_node = find_first(root, "setup")
+    if not setup_node:
+        return result
 
     # Stackup
     stackup = find_first(setup_node, "stackup")
