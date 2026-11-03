@@ -1312,7 +1312,7 @@ def parse_single_sheet(path: str, instance_uuid: str = "",
     sub_sheet_paths = []
     sheet_fields = {}
     base_dir = Path(path).parent
-    for sheet in find_all(root, "sheet"):
+    for sheet in sorted(find_all(root, "sheet"), key=_sheet_order_key):
         overrides = {}
         if variant is not None and instance_path is not None:
             overrides = variant_overrides(instance_variants(sheet, instance_path), variant,
@@ -1352,6 +1352,13 @@ def parse_single_sheet(path: str, instance_uuid: str = "",
     return SheetData(root, components, wires, labels, junctions, no_connects,
                      sub_sheet_paths, lib_symbols, text_annotations, bus_elements, title_block,
                      sheet_fields)
+
+
+def _sheet_order_key(sheet: list) -> tuple:
+    """A stable order for the child sheets of one sheet: by uuid, the order KiCad saves
+    them in, then position, so a hand-reordered file reads the same as the saved one."""
+    at = get_at(sheet) or (0, 0, 0)
+    return ((get_value(sheet, "uuid") or "").lower(), at[0], at[1])
 
 
 def detect_sub_sheet(root_tree: list, file_path: str = None) -> bool:

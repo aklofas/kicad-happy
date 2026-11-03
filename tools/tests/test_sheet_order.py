@@ -5,7 +5,7 @@ KiCad names a net driven by equal-rank labels on several sheets from the shallow
 sheet, then the lower full name: hierarchical labels EN on sheet "Amplifier" and
 AMP_STB on sheet "Video" joined at the root give /Amplifier/EN (kicad-cli 10).
 """
-import os, sys, tempfile, unittest
+import json, os, sys, tempfile, unittest
 from contextlib import redirect_stderr
 from io import StringIO
 from pathlib import Path
@@ -51,14 +51,23 @@ def project(reverse):
             "video.kicad_sch": child(u(211), VIDEO, "R2", "AMP_STB")}
 
 
-def analyze(files):
+def analyze(files, tmp=None):
+    if tmp is None:
+        with tempfile.TemporaryDirectory() as tmp:
+            return analyze(files, tmp)
+    for name, text in files.items():
+        with open(os.path.join(tmp, name), "w", encoding="utf-8") as f:
+            f.write(text)
+    with redirect_stderr(StringIO()):
+        return analyze_schematic(os.path.join(tmp, "p.kicad_sch"))
+
+
+def stable(files):
+    """The output as text, without the temporary directory or a run id."""
     with tempfile.TemporaryDirectory() as tmp:
-        for name, text in files.items():
-            with open(os.path.join(tmp, name), "w", encoding="utf-8") as f:
-                f.write(text)
-        with redirect_stderr(StringIO()):
-            result = analyze_schematic(os.path.join(tmp, "p.kicad_sch"))
-    return result
+        result = analyze(files, tmp)
+        (result.get("inputs") or {}).pop("run_id", None)
+        return json.dumps(result, sort_keys=True, default=str).replace(tmp, "<tmp>")
 
 
 class SiblingSheetOrderTest(unittest.TestCase):
@@ -70,6 +79,9 @@ class SiblingSheetOrderTest(unittest.TestCase):
                           if sorted(f'{p["component"]}.{p["pin_number"]}' for p in net["pins"])
                           == ["R1.1", "R2.1"]]
                 self.assertEqual(name, f"/{AMPLIFIER}/EN")
+
+    def test_reversed_sheet_blocks_give_the_same_output(self):
+        self.assertEqual(stable(project(False)), stable(project(True)))
 
 
 if __name__ == "__main__":
