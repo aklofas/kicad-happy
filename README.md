@@ -469,7 +469,7 @@ Everything above was validated against a [corpus of 5,800+ open-source KiCad pro
 | Nets traced                  | 2,090,189                                     |
 | Regression assertions        | 2,714,062 at 100.0% pass rate                 |
 | Bugfix regression guards     | 175 (100% pass — no fixed bugs have returned) |
-| Closed analyzer issues       | 358                                           |
+| Closed analyzer issues       | 378                                           |
 
 Three-layer regression testing catches drift at every level:
 
