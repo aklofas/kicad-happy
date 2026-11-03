@@ -8,6 +8,9 @@ Power rails: +3V3, +5V
 
 | Severity | Issue | Section |
 |----------|-------|---------|
+| CRITICAL | U1 exceeds datasheet absolute-max voltage on +3V3 (3.3V > 3.6V) | Voltage Derating |
+| WARNING | C1 (10uF) has marginal voltage derating on +5V (5.0V on 6V cap) | Voltage Derating |
+| WARNING | R1 (10R) 0402 has marginal power derating (100mW / 63mW rated) | Voltage Derating |
 | WARNING | pull-up too weak | Protocol Compliance |
 | WARNING | bus too long | Protocol Compliance |
 | WARNING | address clash | Protocol Compliance |
@@ -19,6 +22,17 @@ Power rails: +3V3, +5V
 **Sourcing:** 12/12 components have MPNs (100%)
 
 ## Signal Analysis Review
+
+## Power Analysis
+
+### Voltage Derating
+
+| Rule | Severity | Finding |
+|------|----------|---------|
+| VD-001 | warning | C1 (10uF) has marginal voltage derating on +5V (5.0V on 6V cap) |
+| VD-002 | error | U1 exceeds datasheet absolute-max voltage on +3V3 (3.3V > 3.6V) |
+| VD-003 | warning | R1 (10R) 0402 has marginal power derating (100mW / 63mW rated) |
+| VD-004 | info | C2 is over-designed |
 
 ## Design Analysis
 

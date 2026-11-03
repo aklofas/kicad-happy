@@ -137,6 +137,18 @@ def _group_findings(analysis):
     return group_findings(analysis)
 
 
+def _derating_findings(sch):
+    """(severity, summary) rows for the voltage-derating findings: error -> critical, warning -> warning, info -> none."""
+    rows = []
+    for f in (sch.get("findings", []) if sch else []):
+        if f.get("detector") != "analyze_voltage_derating":
+            continue
+        sev = {"error": "critical", "warning": "warning"}.get(f.get("severity"))
+        if sev:
+            rows.append((sev, f.get("summary", "")))
+    return rows
+
+
 def _safe_float(val, fmt=".1f"):
     """Format a value as float, handling strings gracefully."""
     if isinstance(val, (int, float)):
@@ -575,13 +587,9 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
     sig = _group_findings(sch)
     pc = sch.get("protocol_compliance", {}) if sch else {}
 
-    # Voltage derating findings: errors are critical rows, warnings are warning rows, info adds none
-    for f in (sch.get("findings", []) if sch else []):
-        if f.get("detector") != "analyze_voltage_derating":
-            continue
-        sev = {"error": "critical", "warning": "warning"}.get(f.get("severity"))
-        if sev:
-            findings.append((sev, f.get("summary", ""), "Derating"))
+    # Voltage derating findings
+    for sev, summary in _derating_findings(sch):
+        findings.append((sev, summary, "Derating"))
 
     # Protocol compliance issues (deduplicated)
     for protocol, issue_text in _protocol_issues(pc):
@@ -975,16 +983,10 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
 
     # === Critical Findings ===
     all_issues = []
-    vd = sch.get("voltage_derating", {}) if sch else {}
     pc = sch.get("protocol_compliance", {}) if sch else {}
 
-    for issue in vd.get("issues", []):
-        ref = issue.get("ref", "?")
-        ctype = issue.get("component_type", "")
-        rule = issue.get("derating_rule", "")
-        detail = f"{ref} ({issue.get('value','')}) — {rule}" if ctype != "ic" else \
-                 f"{ref} ({issue.get('value','')}) — abs max {_safe_float(issue.get('abs_max_vin'),'.1f')}V"
-        all_issues.append((issue.get("severity", "warning"), detail, "Voltage Derating"))
+    for sev, summary in _derating_findings(sch):
+        all_issues.append((sev, summary, "Voltage Derating"))
 
     for _protocol, issue_text in _protocol_issues(pc):
         all_issues.append(("warning", issue_text, "Protocol Compliance"))
@@ -1197,36 +1199,19 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
     # === Power Analysis ===
     has_power = False
 
-    if vd:
+    vd_all = [f for f in (sch.get("findings", []) if sch else [])
+              if f.get("detector") == "analyze_voltage_derating"]
+    if vd_all:
         a("## Power Analysis")
         a("")
         has_power = True
         a("### Voltage Derating")
         a("")
-        profile = vd.get("derating_profile", derating_profile)
-        a(f"Profile: **{profile}**. Checked: {vd.get('caps_checked',0)} caps, "
-          f"{vd.get('ics_checked',0)} ICs, {vd.get('resistors_checked',0)} resistors.")
+        a("| Rule | Severity | Finding |")
+        a("|------|----------|---------|")
+        for f in vd_all:
+            a(f"| {f.get('rule_id','')} | {f.get('severity','')} | {f.get('summary','')} |")
         a("")
-        if vd.get("issues"):
-            a("| Ref | Value | Type | Rail | Applied | Rated | Margin | Severity |")
-            a("|-----|-------|------|------|---------|-------|--------|----------|")
-            for i in vd["issues"]:
-                rated = i.get("rated_voltage", i.get("rated_power_w", ""))
-                applied = i.get("rail_voltage", i.get("voltage_across", ""))
-                a(f"| {i.get('ref','')} | {i.get('value','')} | {i.get('component_type','')} "
-                  f"| {i.get('rail','')} | {_safe_float(applied)} | {_safe_float(rated)} "
-                  f"| {_safe_float(i.get('margin_pct'),'.0f')}% | {i.get('severity','')} |")
-            a("")
-        if vd.get("over_designed"):
-            a("**Over-designed:**")
-            a("")
-            for od in vd["over_designed"]:
-                a(f"- {od.get('ref','')} ({od.get('value','')}) — margin {_safe_float(od.get('margin_pct'),'.0f')}%. "
-                  f"{od.get('suggestion','')}")
-            a("")
-        if not vd.get("issues") and not vd.get("over_designed"):
-            a("All components within derating limits.")
-            a("")
 
     # Sleep current
     sleep = sch.get("sleep_current_audit") if sch else None

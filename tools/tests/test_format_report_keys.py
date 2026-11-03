@@ -128,10 +128,14 @@ class DeratingFindingsTest(unittest.TestCase):
 
     def test_vd_error_sets_has_critical(self):
         text = "R1 (10k) 0805 exceeds power rating at 1.2W"
-        s, md, _ = self._render([_vd("VD-003", "error", text)])
+        s, md, full = self._render([_vd("VD-003", "error", text)])
         self.assertTrue(s["has_critical"])
         self.assertEqual(s["findings_count"], 1)
         self.assertEqual(md.count(text), 1)
+        crit = full.split("## Critical Findings")[1].split("\n## ")[0]
+        self.assertEqual(crit.count(text), 1)
+        self.assertIn(f"| CRITICAL | {text} | Voltage Derating |", crit)
+        self.assertEqual(full.count(text), 2)  # critical table + derating detail table
 
     def test_vd_warning_counts_without_critical(self):
         s, _, _ = self._render([_vd("VD-001", "warning", "C1 has marginal derating")])
@@ -141,7 +145,8 @@ class DeratingFindingsTest(unittest.TestCase):
     def test_vd_info_adds_no_row(self):
         s, _, full = self._render([_vd("VD-004", "info", "C2 is over-designed")])
         self.assertEqual(s["findings_count"], 0)
-        self.assertNotIn("C2 is over-designed", full)
+        self.assertNotIn("| CRITICAL | C2", full)
+        self.assertNotIn("| WARNING | C2", full)
 
     def test_other_schematic_error_does_not_gate(self):
         other = dict(_vd("SS-001", "error", "U1 has no MPN"), detector="audit_sourcing_gate")
