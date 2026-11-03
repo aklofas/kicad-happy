@@ -439,7 +439,9 @@ Or set up the [GitHub Action](github-action.md) and get automated analysis on ev
 
 ## 🎯 Release notes
 
-**Current release: v3.0.0 — the v3 refactor.** Same analyzers, same CLIs, same rule IDs; the code behind them is now a stdlib-only core plus `schematic/`, `pcb/` and `distributor_core/` packages. Output changes are additive except: EMC findings drop their duplicate `title`, every envelope gains `diagnostics`, and the datasheet-verification / summary tools use `error`/`warning`/`info`. Scripts that imported `kicad_utils`, `sexp_parser` or the analyzer modules' helpers: see the migration table in the CHANGELOG.
+**Current release: v3.0.1 — audit fixes.** The fixes from an independent audit of v3.0.0: datasheet downloads limited to public addresses, no writes through symlinks, and SPICE netlists that cannot pick up simulator commands; net names, pins, DNP, values and KiCad 10 variants read as KiCad reads them, and KiCad 5 pins and sheet connections corrected; fewer false signals (rails named like `VCC_EN`, parallel parts, lifecycle single-source); a new GP-001 check for high-speed traces whose reference plane changes. Upgrading: findings move on most designs (net names on hierarchical schematics, rail findings, outer-layer `impedance_ohm`); `fab_release_gate.py` exits 1 on a FAIL verdict; `translate_bom_pnp.py pnp` needs `--units` when the position file states none.
+
+**Previous: v3.0.0 — the v3 refactor.** Same analyzers, same CLIs, same rule IDs; the code behind them is now a stdlib-only core plus `schematic/`, `pcb/` and `distributor_core/` packages. Output changes are additive except: EMC findings drop their duplicate `title`, every envelope gains `diagnostics`, and the datasheet-verification / summary tools use `error`/`warning`/`info`. Scripts that imported `kicad_utils`, `sexp_parser` or the analyzer modules' helpers: see the migration table in the CHANGELOG.
 
 **Previous: v2.3.2 — backport.** AM-001 now reads the `<domain>_max` keys datasheet extractions use, so it fires on real extractions; every datasheets script reads and writes UTF-8; PU-001 and PP-001 stop flagging no-connect pins and gate-driver bootstrap pins; RS-001 says when it recognised a rail by name only; `cross_analysis.py` gives a usage error instead of a traceback on a directory. Upgrading: RS-001 on a name-only rail now carries `heuristic` confidence.
 
@@ -460,16 +462,16 @@ Everything above was validated against a [corpus of 5,800+ open-source KiCad pro
 | Metric                       | Value                                         |
 | ---------------------------- | --------------------------------------------- |
 | Repos in corpus              | 5,857                                         |
-| Schematic files analyzed     | 36,462 (100% success)                         |
-| PCB files analyzed           | 18,751 (100% success)                         |
-| Gerber directories analyzed  | 5,512 (100% success)                          |
-| EMC pre-compliance analyses  | 36,670 (100% success)                         |
-| SPICE simulation runs        | 36,589 (100% success)                         |
-| Components parsed            | 1,305,789                                     |
-| Nets traced                  | 2,090,189                                     |
-| Regression assertions        | 2,714,062 at 100.0% pass rate                 |
+| Schematic files analyzed     | 36,463                                        |
+| PCB files analyzed           | 18,751                                        |
+| Gerber directories analyzed  | 5,512                                         |
+| EMC pre-compliance analyses  | 36,544                                        |
+| SPICE simulation runs        | 36,544                                        |
+| Components parsed            | 1,300,475                                     |
+| Nets traced                  | 2,047,212                                     |
+| Regression assertions        | 2,716,889 at 100.0% pass rate                 |
 | Bugfix regression guards     | 175 (100% pass — no fixed bugs have returned) |
-| Closed analyzer issues       | 378                                           |
+| Closed analyzer issues       | 534                                           |
 
 Three-layer regression testing catches drift at every level:
 
