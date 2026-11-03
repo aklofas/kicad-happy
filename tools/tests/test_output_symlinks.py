@@ -70,6 +70,41 @@ class AtomicWriteNoFollow(_Tmp):
         self.assertFalse(os.path.isfile("/dev/null"))
         self.assertTrue(os.path.exists("/dev/null"))
 
+    def test_link_to_fifo_replaced_fifo_gets_nothing(self):
+        fifo = self.d / "victim_fifo"
+        os.mkfifo(fifo)
+        link = self.d / "out1.json"
+        os.symlink(fifo, link)
+        rfd = os.open(fifo, os.O_RDONLY | os.O_NONBLOCK)
+        self.addCleanup(os.close, rfd)
+        atomic_write_text(link, "payload", follow_symlinks=False)
+        try:
+            got = os.read(rfd, 4096)
+        except BlockingIOError:
+            got = b""
+        self.assertEqual(got, b"")
+        self.assertFalse(link.is_symlink())
+        self.assertEqual(link.read_text(encoding="utf-8"), "payload")
+
+    def test_fifo_named_directly_is_written(self):
+        fifo = self.d / "pipe"
+        os.mkfifo(fifo)
+        rfd = os.open(fifo, os.O_RDONLY | os.O_NONBLOCK)
+        self.addCleanup(os.close, rfd)
+        atomic_write_text(fifo, "pp", follow_symlinks=False)
+        self.assertEqual(os.read(rfd, 4096), b"pp")
+
+    @unittest.skipUnless(os.path.isdir("/dev/shm"), "no /dev/shm")
+    def test_regular_file_in_dev_shm_written_atomically(self):
+        fd, name = tempfile.mkstemp(dir="/dev/shm")
+        os.close(fd)
+        self.addCleanup(lambda: os.path.exists(name) and os.unlink(name))
+        before = os.stat(name).st_ino
+        atomic_write_text(name, "shm", follow_symlinks=False)
+        self.assertNotEqual(os.stat(name).st_ino, before)
+        with open(name, encoding="utf-8") as f:
+            self.assertEqual(f.read(), "shm")
+
     def test_default_still_follows(self):
         victim = self.d / "victim"
         victim.write_text("old", encoding="utf-8")
