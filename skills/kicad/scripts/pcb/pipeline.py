@@ -609,7 +609,7 @@ def finalize_for_cli(result: dict, config: dict, *, pcb_path: str, analysis_dir_
                 "hits": sum(1 for s in gp001_debug_data if s["hit"]),
                 "misses": sum(1 for s in gp001_debug_data if not s["hit"]),
                 "samples": gp001_debug_data,
-            }, indent=2))
+            }, indent=2), follow_symlinks=False)
             print(f"GP-001 debug: {len(gp001_debug_data)} samples written to {debug_path}",
                   file=sys.stderr)
         except OSError as e:

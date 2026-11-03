@@ -24,6 +24,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from kicad_core.diagnostics import record
+from kicad_core.fileio import atomic_write_text
 
 
 # ---------------------------------------------------------------------------
@@ -175,21 +176,11 @@ def load_manifest(analysis_dir: str) -> Dict[str, Any]:
 
 
 def save_manifest(analysis_dir: str, manifest: Dict[str, Any]) -> None:
-    """Write manifest.json atomically (write-to-temp then rename)."""
+    """Write manifest.json atomically. An existing file keeps its mode, a new one gets the
+    umask mode; a symlink at the path is replaced, never written through."""
     os.makedirs(analysis_dir, exist_ok=True)
     manifest_path = os.path.join(analysis_dir, MANIFEST_FILENAME)
-    with tempfile.NamedTemporaryFile(
-        mode='w',
-        encoding='utf-8',
-        dir=analysis_dir,
-        prefix=MANIFEST_FILENAME + '.',
-        suffix='.tmp',
-        delete=False,
-    ) as f:
-        json.dump(manifest, f, indent=2)
-        f.write('\n')
-        tmp_path = f.name
-    os.replace(tmp_path, manifest_path)
+    atomic_write_text(manifest_path, json.dumps(manifest, indent=2) + '\n', follow_symlinks=False)
 
 
 # ---------------------------------------------------------------------------

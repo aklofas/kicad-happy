@@ -13,6 +13,7 @@ from envelopes.pcb import PCBEnvelope
 from schema_codec import emit_schema
 from inputs_builder import build_inputs, build_compat
 from capability_mode import get_capability_mode_ref
+from kicad_core.fileio import atomic_write_text
 from kicad_core.cli import (add_compact_arg, add_config_arg, add_only_deterministic_arg,
                             add_output_arg, add_schema_arg, add_stage_audience_args, add_text_arg,
                             utf8_text_stdout)
@@ -157,7 +158,7 @@ def main(argv: list[str] | None = None) -> int:
                           retention=int(analysis_cfg.get("retention", 0) or 0))
 
     elif args.output:
-        Path(args.output).write_text(output, encoding="utf-8")
+        atomic_write_text(args.output, output, follow_symlinks=False)
         print(f"Written to {args.output}", file=sys.stderr)
     else:
         print(output)

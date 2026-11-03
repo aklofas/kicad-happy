@@ -23,6 +23,7 @@ import sys
 
 from analysis_cache import merged_overlay_path
 from finding_schema import group_findings_by_detection_type
+from kicad_core.fileio import atomic_write_text
 from kicad_core.render import fmt_g4, fmt_signed, summary_or_title
 from kicad_core.cli import add_only_deterministic_arg, add_output_arg, add_text_arg, utf8_text_stdout
 from diff_engine import (
@@ -525,15 +526,13 @@ def main(argv: list[str] | None = None) -> int:
         if args.text:
             text = _format_deep_review_text(output)
             if args.output:
-                with open(args.output, "w", encoding="utf-8") as f:
-                    f.write(text)
+                atomic_write_text(args.output, text, follow_symlinks=False)
             else:
                 print(text)
         else:
             output_json = json.dumps(output, indent=2)
             if args.output:
-                with open(args.output, "w", encoding="utf-8") as f:
-                    f.write(output_json)
+                atomic_write_text(args.output, output_json, follow_symlinks=False)
             else:
                 print(output_json)
         return 0
@@ -559,15 +558,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.text:
         text = format_text(output)
         if args.output:
-            with open(args.output, "w", encoding="utf-8") as f:
-                f.write(text)
+            atomic_write_text(args.output, text, follow_symlinks=False)
         else:
             print(text)
     else:
         output_json = json.dumps(output, indent=2)
         if args.output:
-            with open(args.output, "w", encoding="utf-8") as f:
-                f.write(output_json)
+            atomic_write_text(args.output, output_json, follow_symlinks=False)
         else:
             print(output_json)
     return 0
