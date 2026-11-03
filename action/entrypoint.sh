@@ -233,7 +233,7 @@ if [ -n "$SCH_JSON" ] || [ -n "$PCB_JSON" ]; then
         SUMMARY=$(python3 -c "import json; d=json.load(open('$EMC_JSON')); s=d.get('summary',{}); bs=s.get('by_severity',{}); print(f\"score {s.get('emc_risk_score',0)}/100, {bs.get('error',s.get('critical',0))} error, {bs.get('warning',s.get('high',0))} warning, {bs.get('info',s.get('medium',0))} info\")" 2>/dev/null || echo "?")
         echo "EMC: $SUMMARY"
     else
-        # analyze_emc.py exits nonzero only on an input error, with no JSON written.
+        # analyze_emc.py exits nonzero on an input error or a crash; neither writes findings JSON.
         # Keep a valid JSON report if one is there anyway; with no/malformed JSON,
         # clear it and warn.
         if [ -f "$EMC_JSON" ] && python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$EMC_JSON" >/dev/null 2>&1; then
@@ -265,8 +265,8 @@ if [ -n "$SCH_JSON" ] && [ -n "$PCB_JSON" ]; then
         SUMMARY=$(python3 -c "import json; d=json.load(open('$THERMAL_JSON')); s=d.get('summary',{}); bs=s.get('by_severity',{}); print(f\"score {s.get('thermal_score',0)}/100, {bs.get('error',s.get('critical',0))} error, {bs.get('warning',s.get('high',0))} warning, {s.get('components_analyzed',0)} components\")" 2>/dev/null || echo "?")
         echo "Thermal: $SUMMARY"
     else
-        # Mirror the EMC block above: thermal exits nonzero only on an input
-        # error, with no JSON written. Keep a valid JSON report if one is there
+        # Mirror the EMC block above: thermal exits nonzero on an input
+        # error or a crash; neither writes findings JSON. Keep a valid JSON report if one is there
         # anyway; clear it when the file is missing or malformed.
         if [ -f "$THERMAL_JSON" ] && python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$THERMAL_JSON" >/dev/null 2>&1; then
             SUMMARY=$(python3 -c "import json; d=json.load(open('$THERMAL_JSON')); s=d.get('summary',{}); bs=s.get('by_severity',{}); print(f\"score {s.get('thermal_score',0)}/100, {bs.get('error',s.get('critical',0))} error, {bs.get('warning',s.get('high',0))} warning, {s.get('components_analyzed',0)} components\")" 2>/dev/null || echo "?")

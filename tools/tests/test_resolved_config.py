@@ -1,4 +1,5 @@
 import contextlib, io, json, os, sys, tempfile, unittest
+from unittest import mock
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "skills" / "kicad" / "scripts"))
 import project_config as pc
@@ -47,7 +48,9 @@ class ResolveConfig(unittest.TestCase):
 
     def test_discovery_without_config_is_silent(self):
         err = io.StringIO()
-        with tempfile.TemporaryDirectory() as d, contextlib.redirect_stderr(err):
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as home, \
+                mock.patch.dict(os.environ, {"HOME": home, "USERPROFILE": home}), \
+                contextlib.redirect_stderr(err):
             pc.resolve_config(None, d)
         self.assertEqual(err.getvalue(), "")
 
