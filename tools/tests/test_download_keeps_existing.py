@@ -504,15 +504,31 @@ class SyncDownloadFailureTest(unittest.TestCase):
             self.assertEqual(r["failed"], 1)
             self.assertIn("LM358DR — All download methods failed", self.stderr.getvalue())
 
-    def test_force_all_real_answer_replaces_the_ok_entry(self):
-        def no_datasheet(p, *a):
-            return {**_not_found(p), "status": "no_datasheet", "error": "listing has no datasheet URL"}
-        for outcome, status in ((lambda p, *a: _not_found(p), "not_found"), (no_datasheet, "no_datasheet")):
+    @staticmethod
+    def _no_datasheet(p, *a):
+        return {**_not_found(p), "status": "no_datasheet", "error": "listing has no datasheet URL"}
+
+    def test_force_all_no_datasheet_answer_keeps_a_present_ok_entry(self):
+        for outcome, status in ((lambda p, *a: _not_found(p), "not_found"),
+                                (self._no_datasheet, "no_datasheet")):
             with self.subTest(status=status), tempfile.TemporaryDirectory() as d:
                 out, r, entry = self._force_all(d, outcome)
-                self.assertEqual(entry["status"], status)
+                self.assertEqual(entry, self.OK)
                 self.assertEqual(r["failed"], 1)
-                self.assertFalse((out / "LM358DR.pdf").exists())
+                self.assertEqual((out / "LM358DR.pdf").read_bytes(), GOOD)
+
+    def test_force_all_other_distributor_not_found_keeps_the_ok_entry(self):
+        # one manifest shared by two distributors: A found the datasheet, B does not list the part
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "out").mkdir()
+            _, m = self._sync(d, _named("distA", self._ok_as(d, "LM358DR.pdf")))
+            ok = m["parts"]["LM358DR"]
+            self.assertEqual(ok["status"], "ok")
+            for outcome in (lambda p, *a: _not_found(p), self._no_datasheet):
+                r, m = self._sync(d, _named("distB", outcome), force_all=True)
+                self.assertEqual(m["parts"]["LM358DR"], ok)
+                self.assertEqual(r["failed"], 1)
+                self.assertEqual((Path(d) / "out" / "LM358DR.pdf").read_bytes(), GOOD + b"new")
 
     @staticmethod
     def _ok_as(d, name):
@@ -539,8 +555,8 @@ class SyncDownloadFailureTest(unittest.TestCase):
     def test_force_all_keeps_a_file_another_entry_names(self):
         other = {"file": "LM358DR.pdf", "status": "ok", "references": ["U2"]}
         with tempfile.TemporaryDirectory() as d:
-            out, _, entry = self._force_all(d, lambda p, *a: _not_found(p), extra={"OTHER": other})
-            self.assertEqual(entry["status"], "not_found")
+            out, _, entry = self._force_all(d, self._ok_as(d, "LM358DR_new.pdf"), extra={"OTHER": other})
+            self.assertEqual(entry["file"], "LM358DR_new.pdf")
             self.assertEqual((out / "LM358DR.pdf").read_bytes(), GOOD)
 
     def test_force_all_keeps_a_file_the_new_name_spells_in_another_case(self):
@@ -560,7 +576,7 @@ class SyncDownloadFailureTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d, mock.patch("os.path.samefile", samefile):
             (Path(d) / "out").mkdir()
             (Path(d) / "out" / "lm358dr.PDF").write_bytes(GOOD)
-            out, _, _ = self._force_all(d, lambda p, *a: _not_found(p), extra={"OTHER": other})
+            out, _, _ = self._force_all(d, self._ok_as(d, "LM358DR_new.pdf"), extra={"OTHER": other})
             self.assertTrue((out / "LM358DR.pdf").exists())
 
     def test_force_all_saves_the_manifest_before_removing_the_old_file(self):
@@ -578,7 +594,7 @@ class SyncDownloadFailureTest(unittest.TestCase):
             return real_unlink(self_, *a, **k)
         with tempfile.TemporaryDirectory() as d, mock.patch.object(sync, "save_index", save), \
                 mock.patch.object(Path, "unlink", unlink):
-            self._force_all(d, lambda p, *a: _not_found(p))
+            self._force_all(d, self._ok_as(d, "LM358DR_new.pdf"))
         self.assertIn("unlink:LM358DR.pdf", order)
         self.assertLess(order.index("save"), order.index("unlink:LM358DR.pdf"))
 
@@ -596,7 +612,8 @@ class SyncDownloadFailureTest(unittest.TestCase):
                         self.skipTest("symlinks unavailable")
                 (out / "manifest.json").write_text(
                     json.dumps({"parts": {"LM358DR": {**self.OK, "file": name}}}), encoding="utf-8")
-                self._sync(d, _provider(lambda p, *a: _not_found(p)), force_all=True)
+                _, m = self._sync(d, _provider(self._ok_as(d, "LM358DR_new.pdf")), force_all=True)
+                self.assertEqual(m["parts"]["LM358DR"]["file"], "LM358DR_new.pdf")
                 self.assertEqual((Path(d) / "outside.pdf").read_bytes(), GOOD)
                 self.assertEqual((out / "sub" / "inner.pdf").read_bytes(), GOOD)
 

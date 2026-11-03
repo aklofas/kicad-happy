@@ -91,7 +91,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Fixed
 
-- `--force-all` removes the old PDF when a refresh replaces an entry with a real answer (not found, a different part, no datasheet) or with a file of another name, instead of leaving an orphan no manifest entry names. A file another entry names, a link, and anything outside `datasheets/` are left alone. (KH-813)
+- `--force-all` removes the old PDF when a refresh finds the datasheet under a file of another name, instead of leaving an orphan no manifest entry names. A refresh that finds no datasheet (not found, a different part, no datasheet listed, a failed download) keeps the `ok` entry and its PDF, whichever distributor gave the answer. A file another entry names, a link, and anything outside `datasheets/` are left alone. (KH-813)
 - The Deep Review gate no longer verifies a quote `15 V` against a page that reads `± 15 V` (a ± set apart from its number, or at the end of a wrapped line); it also accepts the quote `±15 V` against that spaced page.
 - `merge_results.py` writes the extraction and plan files atomically; an interrupted merge no longer leaves a truncated file in the cache. (KH-797)
 - `what_if.py` takes the confidence of a suggested regulator-Vout fix from the detector's own Vout provenance instead of the Vref source, so `--suggest-fixes` labels a lookup-table Vref `heuristic` and only a datasheet Vref `deterministic`, as the regulator detector does. A `±tol` suffix with a sweep and `--output` with a sweep are usage errors (exit 2) instead of being silently ignored, and `--output` with no affected subcircuit writes the unchanged analysis and says so on stderr instead of writing nothing. (KH-826, KH-827, KH-828)
