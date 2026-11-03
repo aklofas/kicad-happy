@@ -43,7 +43,6 @@ All v2 fields are nullable. None means 'datasheet didn't specify or
 extraction couldn't verify', distinct from explicit False.
 """
 
-import hashlib
 import json
 import os
 import re

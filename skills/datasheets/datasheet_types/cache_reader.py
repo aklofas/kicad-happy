@@ -230,6 +230,10 @@ def lookup(mpn: str, *, cache_dir: Path) -> Optional[DatasheetFacts]:
         - cache file is JSON but does not satisfy DatasheetFacts shape
           (required fields missing)
 
+    A source.local_path that is not a string, or resolves outside the
+    datasheets/ folder, or names something other than a regular file,
+    reads as STALE_PDF_MISSING.
+
     Pure read: never writes, never extracts, never triggers an LLM call.
     On a cache miss the caller decides whether to run an extraction.
 
