@@ -135,6 +135,49 @@ class AtomicWriteNoFollow(_Tmp):
 
 
 @unittest.skipIf(os.name == "nt", "symlinks and POSIX modes")
+class AtomicWriteFollowSpecialNodes(_Tmp):
+    _CODE = ("import sys; sys.path.insert(0, %r)\n"
+             "from kicad_core.fileio import atomic_write_text\n"
+             "atomic_write_text('/dev/stdout', 'HELLO\\n')\n") % str(SCRIPTS)
+
+    def test_fifo_named_directly_is_written(self):
+        fifo = self.d / "pipe"
+        os.mkfifo(fifo)
+        rfd = os.open(fifo, os.O_RDONLY | os.O_NONBLOCK)
+        self.addCleanup(os.close, rfd)
+        atomic_write_text(fifo, "pp")
+        self.assertEqual(os.read(rfd, 4096), b"pp")
+        self.assertFalse(fifo.is_file())
+
+    def test_link_to_fifo_writes_the_fifo_and_keeps_the_link(self):
+        fifo = self.d / "pipe"
+        os.mkfifo(fifo)
+        link = self.d / "out.json"
+        os.symlink(fifo, link)
+        rfd = os.open(fifo, os.O_RDONLY | os.O_NONBLOCK)
+        self.addCleanup(os.close, rfd)
+        atomic_write_text(link, "lk")
+        self.assertEqual(os.read(rfd, 4096), b"lk")
+        self.assertTrue(link.is_symlink())
+
+    def test_dev_stdout_into_a_pipe(self):
+        r = subprocess.run([sys.executable, "-c", self._CODE], capture_output=True, text=True,
+                           env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"))
+        self.assertEqual((r.returncode, r.stdout), (0, "HELLO\n"), r.stderr)
+
+    def test_dev_stdout_redirected_to_a_file_keeps_the_inode(self):
+        out = self.d / "o.txt"
+        with open(out, "w", encoding="utf-8") as fh:
+            ino = os.fstat(fh.fileno()).st_ino
+            r = subprocess.run([sys.executable, "-c", self._CODE], stdout=fh,
+                               stderr=subprocess.PIPE, text=True,
+                               env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(os.stat(out).st_ino, ino)
+        self.assertEqual(out.read_text(encoding="utf-8"), "HELLO\n")
+
+
+@unittest.skipIf(os.name == "nt", "symlinks and POSIX modes")
 class ManifestMode(_Tmp):
     def test_new_manifest_is_umask_mode(self):
         from analysis_cache import save_manifest

@@ -79,6 +79,14 @@ class RunDirTest(unittest.TestCase):
                 self.assertEqual(r.returncode, 0, r.stderr)
                 self.assertEqual(out.stat().st_mode & 0o777, mode)
 
+    @unittest.skipIf(os.name == "nt", "/dev/stdout")
+    def test_output_to_dev_stdout(self):
+        r = subprocess.run([sys.executable, str(SCRIPT), "--analysis-dir", str(self.ad),
+                            "--output", "/dev/stdout"], capture_output=True, text=True,
+                           encoding="utf-8", timeout=120)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(json.loads(r.stdout)["tasks"][0]["task_id"], "design_context")
+
 
 if __name__ == "__main__":
     unittest.main()

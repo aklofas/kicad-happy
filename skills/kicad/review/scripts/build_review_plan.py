@@ -14,7 +14,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))   # skills/kicad/scripts
 
-from deep_review_gate import resolve_run_dir, write_text_atomic   # noqa: E402
+from deep_review_gate import resolve_run_dir   # noqa: E402
+from kicad_core.fileio import atomic_write_text   # noqa: E402
 
 
 def _now_iso():
@@ -62,7 +63,7 @@ def main():
     plan = build_plan(args.analysis_dir)
     out = json.dumps(plan, indent=2, sort_keys=True) + "\n"
     if args.output:
-        write_text_atomic(args.output, out)
+        atomic_write_text(args.output, out, follow_symlinks=False)
     else:
         print(out)
     return 0

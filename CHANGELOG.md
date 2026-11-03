@@ -23,6 +23,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Typed datasheet lookups no longer fall back to the parent folder's `datasheets/extracted`. (KH-819)
 - `analyze_pcb.py --output` and `diff_analysis.py --output` write atomically and replace a symlink at that path instead of writing through it. (KH-806)
 - Datasheet extraction files are opened without following links and checked as opened, so a link swapped in after the check is no longer read, and a named pipe in the cache no longer hangs the analyzers. The extraction cache (`datasheets/extracted/`) is not read when the project's `datasheets/` or `extracted/` folder is a symlink (one warning on stderr); replace the link with a real folder, or for `analyze_thermal.py` name it with `--datasheets`. The SPICE spec fetcher and the voltage-derating abs-max check now read extractions with the same checks, the size cap, and the same refusal of manifest `file` values that leave the cache. (KH-811)
+- `what_if.py --output`, the BOM export and `build_review_plan.py --output` write into a named pipe or `/dev/stdout` instead of replacing it, so piping them works and a redirected file keeps its inode.
 
 ### Changed
 

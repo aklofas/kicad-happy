@@ -16,12 +16,23 @@ def atomic_write_text(path, text: str, newline: str | None = None, *,
     A symlink at *path* is resolved and its target rewritten, unless *follow_symlinks* is
     false: then the link itself is replaced by a regular file and its target is never touched.
     An existing file's mode is kept unless *keep_mode* is false (the new file then gets the
-    umask mode). With *follow_symlinks* false, nothing is replaced for a FIFO or device named
-    directly, or for a link or non-regular node under /dev or /proc (/dev/stdout, /dev/null,
-    /dev/fd/N): the text is written into the existing node, as a plain write would. Any other
-    link, including one to a FIFO or device, is replaced.
+    umask mode). In both modes nothing is replaced for a FIFO or device named directly, or for
+    a link or non-regular node under /dev or /proc (/dev/stdout, /dev/null, /dev/fd/N): the
+    text is written into the existing node, as a plain write would. The modes differ only for
+    other links: followed, or replaced (including a link to a FIFO or device when not
+    following).
     *newline* is passed to the file object ("" keeps the text's line endings as given)."""
     if follow_symlinks:
+        try:
+            st_mode = os.stat(path).st_mode
+        except OSError:
+            st_mode = None
+        system = os.path.islink(path) and os.path.abspath(path).startswith(("/dev/", "/proc/"))
+        if st_mode is not None and (system or not stat.S_ISREG(st_mode)):
+            # /dev/stdout, a FIFO or a link to one: replacing it would be wrong, so write into it
+            with open(path, "w", encoding="utf-8", newline=newline) as f:
+                f.write(text)
+            return
         target = Path(path).resolve()
     else:
         # only the last component is kept as given; the kernel resolves the directory part
