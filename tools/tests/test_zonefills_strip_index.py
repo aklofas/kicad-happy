@@ -7,6 +7,7 @@ Adapted from the test in the pull request that proposed the strip index (alan-ry
 import math
 import random
 import sys
+import tracemalloc
 import unittest
 from pathlib import Path
 
@@ -41,10 +42,16 @@ def _query_points(poly, rng):
             for i in range(len(poly))]
     pts += [(x0, y0), (x1, y1), (x0, y1), (x1, y0)]
     pts += [(rng.uniform(x0, x1), rng.uniform(y0, y1)) for _ in range(3000)]
-    k = max(1, min(4096, len(poly) // 8))
-    h = (y1 - y0) / k or 1.0
-    pts += [(rng.uniform(x0, x1), y0 + b * h) for b in range(k + 1)]    # strip boundaries
+    zf = ZoneFills()
+    zf.add(0, "F.Cu", poly)
+    sy0, h, k, _strips = zf._strip_index(0)
+    for b in range(k + 1):                                              # strip boundaries
+        yb = sy0 + b * h
+        x = rng.uniform(x0, x1)
+        pts += [(x, yb), (x, math.nextafter(yb, -math.inf)), (x, math.nextafter(yb, math.inf))]
     pts += [(x0, y0 - 1), (x0, y1 + 1), (x0, float("nan"))]             # outside the polygon
+    inf = math.inf
+    pts += [(x0, inf), (x0, -inf), (inf, y0), (-inf, y1), (inf, inf), (-inf, -inf)]
     return pts
 
 
@@ -110,6 +117,20 @@ class StripIndex(unittest.TestCase):
         for _ in range(1500):
             x, y = rng.uniform(-1, 4000), rng.uniform(-6, 101)
             self.assertEqual(zf._contains(0, x, y, poly), _point_in_polygon(x, y, poly), (x, y))
+
+    def test_comb_fill_index_build_stays_within_its_bound(self):
+        # the strip count is chosen before the strips are filled: no oversized index on the way
+        poly = [(x, 0 if x % 2 else 100) for x in range(4000)] + [(3999, -5), (0, -5)]
+        zf = ZoneFills()
+        zf.add(0, "F.Cu", poly)
+        tracemalloc.start()
+        try:
+            zf._strip_index(0)
+            _cur, peak = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+        # 32n list slots of 8 bytes, with room for list headers and growth
+        self.assertLess(peak, 2 * 32 * len(poly) * 8)
 
     def test_edges_argument_defaults_to_full_walk(self):
         poly = [(0, 0), (10, 0), (10, 10), (0, 10)]

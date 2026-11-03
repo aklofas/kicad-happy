@@ -397,19 +397,19 @@ class ZoneFills:
         ys = [p[1] for p in coords]
         y0 = min(ys, default=0.0)
         span = max(ys, default=0.0) - y0
+        spans = [(min(ys[i], ys[i - 1]), max(ys[i], ys[i - 1])) for i in range(n)]
         k = max(1, min(4096, n // 8))
-        while True:
-            h = span / k or 1.0
-            strips: list[list[int]] = [[] for _ in range(k)]
-            for i in range(n):
-                ya, yb = ys[i], ys[i - 1]
-                for b in range(_strip_of(min(ya, yb), y0, h, k),
-                               _strip_of(max(ya, yb), y0, h, k) + 1):
-                    strips[b].append(i)
-            # tall edges are listed in every strip they cross: coarsen a comb-shaped fill
-            if k == 1 or sum(map(len, strips)) <= 32 * n:
-                break
+        # tall edges are listed in every strip they cross: coarsen a comb-shaped fill until the
+        # index holds at most 32n entries, counted before any strip is filled
+        while k > 1 and sum(_strip_of(hi, y0, span / k or 1.0, k)
+                            - _strip_of(lo, y0, span / k or 1.0, k) + 1
+                            for lo, hi in spans) > 32 * n:
             k //= 2
+        h = span / k or 1.0
+        strips: list[list[int]] = [[] for _ in range(k)]
+        for i, (lo, hi) in enumerate(spans):
+            for b in range(_strip_of(lo, y0, h, k), _strip_of(hi, y0, h, k) + 1):
+                strips[b].append(i)
         s = (y0, h, k, strips)
         self._strips[fill_id] = s
         return s
