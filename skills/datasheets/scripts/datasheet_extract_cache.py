@@ -55,7 +55,8 @@ _TYPES_PARENT = str(Path(__file__).resolve().parent.parent)
 if _TYPES_PARENT not in sys.path:
     sys.path.insert(0, _TYPES_PARENT)
 
-from datasheet_types.cache_reader import read_json_object, safe_extract_dir  # noqa: E402
+from datasheet_types.cache_reader import (  # noqa: E402
+    _compute_pdf_sha256, read_json_object, safe_extract_dir)
 from distributor_core.manifest import manifest_file_path, write_json_atomic  # noqa: E402
 
 _KICAD_SCRIPTS = str(Path(__file__).resolve().parents[2] / "kicad" / "scripts")
@@ -141,16 +142,9 @@ def _pdf_hash(pdf_path):
         pdf_path: Path to the PDF file
 
     Returns:
-        "sha256:<hex>" string, or None if file doesn't exist
+        "sha256:<hex>" string, or None if it is not a readable regular file
     """
-    try:
-        h = hashlib.sha256()
-        with open(pdf_path, "rb") as f:
-            for chunk in iter(lambda: f.read(65536), b""):
-                h.update(chunk)
-        return f"sha256:{h.hexdigest()}"
-    except OSError:
-        return None
+    return _compute_pdf_sha256(Path(pdf_path))
 
 
 # ---------------------------------------------------------------------------
@@ -380,9 +374,14 @@ def is_extraction_stale(extract_dir, mpn, datasheets_dir=None):
     # Check PDF hash
     if datasheets_dir:
         source_pdf_name = meta.get("source_pdf", "")
-        if source_pdf_name:
-            pdf_path = Path(datasheets_dir) / source_pdf_name
-            if pdf_path.exists():
+        if source_pdf_name and isinstance(source_pdf_name, str):
+            root = Path(datasheets_dir)
+            pdf_path = root / source_pdf_name
+            try:
+                inside = pdf_path.resolve().is_relative_to(root.resolve())
+            except (OSError, RuntimeError, ValueError):
+                inside = False
+            if inside:
                 current_hash = _pdf_hash(pdf_path)
                 stored_hash = meta.get("source_pdf_hash", "")
                 if current_hash and stored_hash and current_hash != stored_hash:

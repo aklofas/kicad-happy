@@ -1,11 +1,58 @@
 # tools/tests/test_cache_reader.py
-import contextlib, io, json, os, shutil, subprocess, sys, tempfile, unittest
+import contextlib, hashlib, io, json, os, shutil, subprocess, sys, tempfile, unittest
 from unittest import mock
 from pathlib import Path
 from tools.tests._fixtures import fixture, fixture_path
 DS = Path(__file__).resolve().parents[2] / "skills" / "datasheets"
 sys.path.insert(0, str(DS))
 FX = fixture_path()
+
+
+PDF = b"%PDF-1.4 fixture\n"
+
+
+def _plant(tmp, local_path):
+    """A project whose LM2596-ADJ cache names local_path; the same PDF bytes sit in datasheets/IN.pdf and outside the project at OUT.pdf."""
+    ds = tmp / "proj" / "datasheets"; ex = ds / "extracted"; ex.mkdir(parents=True)
+    (ds / "IN.pdf").write_bytes(PDF); (tmp / "OUT.pdf").write_bytes(PDF)
+    data = json.loads(fixture("datasheets-extracted", "LM2596-ADJ.json").read_text(encoding="utf-8"))
+    data["source"]["local_path"] = local_path(tmp, ds) if callable(local_path) else local_path
+    data["source"]["sha256"] = "sha256:" + hashlib.sha256(PDF).hexdigest()
+    (ex / "LM2596-ADJ.json").write_text(json.dumps(data), encoding="utf-8")
+    return ds, ex
+
+
+class CachePdfContainment(unittest.TestCase):
+    def _ctx(self, local_path):
+        from datasheet_types.cache_reader import lookup
+        with tempfile.TemporaryDirectory() as d:
+            ds, ex = _plant(Path(d), local_path)
+            f = lookup("LM2596-ADJ", cache_dir=ex)
+            return f.stale, f._cache_context.pdf_path, ds
+
+    def test_inside_paths_are_hashed(self):
+        for lp in ("IN.pdf", "datasheets/IN.pdf", lambda t, ds: str(ds / "IN.pdf")):
+            stale, pdf, ds = self._ctx(lp)
+            self.assertEqual((stale, pdf), (False, ds / "IN.pdf"), lp)
+
+    def test_outside_and_non_string_paths_are_missing(self):
+        for lp in ("../../OUT.pdf", lambda t, ds: str(t / "OUT.pdf"), 5):
+            stale, pdf, _ = self._ctx(lp)
+            self.assertEqual((stale, pdf), (True, None), lp)
+
+    @unittest.skipUnless(os.path.exists("/dev/zero") and hasattr(os, "mkfifo"), "POSIX devices and FIFOs")
+    def test_device_and_fifo_end_promptly(self):
+        for lp, fifo in (("/dev/zero", False), ("FIFO.pdf", True)):
+            with tempfile.TemporaryDirectory() as d:
+                ds, ex = _plant(Path(d), lp)
+                if fifo:
+                    os.mkfifo(ds / "FIFO.pdf")
+                code = ("import sys; sys.path.insert(0, %r); from pathlib import Path; "
+                        "from datasheet_types.cache_reader import lookup; "
+                        "print(lookup('LM2596-ADJ', cache_dir=Path(%r)).stale)") % (str(DS), str(ex))
+                out = subprocess.run([sys.executable, "-I", "-c", code], capture_output=True,
+                                     text=True, timeout=20, check=True).stdout
+                self.assertEqual(out.strip(), "True", lp)
 
 
 class CacheReader(unittest.TestCase):
@@ -16,6 +63,31 @@ class CacheReader(unittest.TestCase):
         d = json.loads(out)
         self.assertEqual(d["lookup"], "datasheet_types.cache_reader")
         self.assertFalse(d["scripts_on_path"])
+
+    def test_feature_fallback_maps_the_mpn_like_the_cache(self):
+        sys.path.insert(0, str(DS / "scripts"))
+        import datasheet_features as df
+        ldo = {"topology": "ldo", "pins": [], "features": {"has_pg": True},
+               "extraction_metadata": {"extraction_version": 2, "extraction_score": 9}}
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            (d / "outside").mkdir()
+            (d / "outside" / "ACME123.json").write_text(json.dumps(ldo), encoding="utf-8")
+            ex = d / "proj" / "datasheets" / "extracted"; ex.mkdir(parents=True)
+            for mpn in ("../../../outside/ACME123", str(d / "outside" / "ACME123")):
+                self.assertIsNone(df.get_regulator_features(mpn, extract_dir=str(ex)), mpn)
+            (ex / "LDO.1-A.json").write_text(json.dumps(ldo), encoding="utf-8")
+            self.assertIs(df.get_regulator_features("LDO.1-A", extract_dir=str(ex))["has_pg"], True)
+
+    def test_legacy_staleness_hashes_only_inside_datasheets(self):
+        sys.path.insert(0, str(DS / "scripts"))
+        import datasheet_extract_cache as dec
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d); ds = d / "proj" / "datasheets"; ex = ds / "extracted"; ex.mkdir(parents=True)
+            (d / "OUT.pdf").write_bytes(b"%PDF other")
+            dec.cache_extraction(ex, "P1", {"extraction_metadata": {
+                "extraction_score": 9, "source_pdf": "../../OUT.pdf", "source_pdf_hash": "sha256:" + "0" * 64}})
+            self.assertEqual(dec.is_extraction_stale(ex, "P1", ds), (False, ""))
 
     def test_lookup_miss_and_malformed_json_return_none(self):
         from datasheet_types.cache_reader import lookup

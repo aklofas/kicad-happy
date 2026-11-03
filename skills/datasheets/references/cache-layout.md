@@ -33,6 +33,8 @@ Sanitization rules (`skills/datasheets/datasheet_types/cache_reader.py`):
 - Replace any character NOT in `[A-Za-z0-9_.-]` with `_`.
 - No hash suffix. Two MPNs that sanitize to the same string collide; this
   is acceptably rare in practice given real MPN character sets.
+- A hand-dropped extraction file must use this sanitized name; the dict helpers in
+  `datasheet_features.py` apply the same mapping and do not read any other path.
 
 Examples:
 - `LM2596-ADJ` → `LM2596-ADJ.json`

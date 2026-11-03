@@ -151,17 +151,27 @@ class CacheContext:
 
 
 def _compute_pdf_sha256(pdf_path: Path) -> Optional[str]:
-    """Return 'sha256:<hex>' for the file at pdf_path, or None if missing.
+    """Return 'sha256:<hex>' for the regular file at pdf_path, or None.
 
-    Reads in 64KB chunks to avoid loading large PDFs into memory at once.
-    Any OSError (permission denied, IO error, etc.) returns None, which
-    the caller treats as 'PDF unavailable' → stale.
+    Reads in 64KB chunks, at most the file's size at open. None for a missing
+    file, a device or pipe (never read to the end), or any OSError; the
+    caller treats None as 'PDF unavailable' -> stale.
     """
     try:
-        h = hashlib.sha256()
-        with pdf_path.open("rb") as f:
-            for chunk in iter(lambda: f.read(65536), b""):
+        flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NONBLOCK", 0)
+        fd = os.open(pdf_path, flags)
+        with os.fdopen(fd, "rb") as f:
+            st = os.fstat(f.fileno())
+            if not stat.S_ISREG(st.st_mode):
+                return None
+            h = hashlib.sha256()
+            remaining = st.st_size
+            while remaining > 0:
+                chunk = f.read(min(65536, remaining))
+                if not chunk:
+                    break
                 h.update(chunk)
+                remaining -= len(chunk)
         return f"sha256:{h.hexdigest()}"
     except OSError:
         return None
@@ -178,10 +188,11 @@ def _resolve_pdf_path(cache_dir: Path, source_local_path: Optional[str]) -> Opti
 
     So the PDF lives at cache_dir.parent / source.local_path.
 
-    Returns None when source_local_path is None (datasheet wasn't sourced
-    locally) — caller treats None as 'pdf_missing'.
+    Returns None when source_local_path is not a non-empty string
+    (datasheet wasn't sourced locally) or when the path resolves outside
+    cache_dir.parent — caller treats None as 'pdf_missing'.
     """
-    if source_local_path is None:
+    if not isinstance(source_local_path, str) or not source_local_path:
         return None
     # local_path is stored relative; if it starts with "datasheets/" already
     # (a v1.3 convention), treat it as relative to cache_dir.parent.parent.
@@ -189,6 +200,11 @@ def _resolve_pdf_path(cache_dir: Path, source_local_path: Optional[str]) -> Opti
     candidate = base / source_local_path
     if not candidate.is_file() and source_local_path.startswith("datasheets/"):
         candidate = base.parent / source_local_path
+    try:
+        if not candidate.resolve().is_relative_to(base.resolve()):
+            return None
+    except (OSError, RuntimeError, ValueError):
+        return None
     return candidate
 
 
