@@ -959,7 +959,7 @@ def analyze_orientation_consistency(footprints: list[dict]) -> list[dict]:
         layer = fp.get("layer", "F.Cu")
         angle = fp.get("angle", 0) or 0
         # Normalize angle to 0-179 range (0 and 180 are same orientation)
-        norm_angle = round(angle % 180)
+        norm_angle = round(angle) % 180
         passives_by_side.setdefault(layer, []).append((ref, norm_angle))
 
     for side, components in passives_by_side.items():
