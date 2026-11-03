@@ -2,6 +2,20 @@
 
 The story of each kicad-happy release — what changed and why it matters when upgrading. For line-level detail, see the [CHANGELOG](CHANGELOG.md).
 
+## 🔧 v3.0.1 — Audit fixes
+
+v3.0.0 changed how the code is organised, not what it reports. Before it shipped, its code went through an independent audit: about thirty separate reviews of security, false signals, KiCad file handling, the detectors and the tools around them. v3.0.1 is the fixes from that audit, made in a series of waves, each checked against the full regression corpus before the next began.
+
+Security comes first. Datasheet downloads accept only public `http`/`https` addresses, rechecked on every redirect, with size and time limits. Syncs and the `analysis/` folder no longer write through planted symlinks. SPICE netlists can no longer pick up simulator commands from schematic text or from a cached model file. The DigiKey token is cached in a private per-user folder.
+
+Most of the other changes bring the analyzers closer to how KiCad itself reads a design. Net names follow KiCad's driver priority and tie-break, so on hierarchical schematics a net carries the name KiCad shows. Escaped names (`{slash}`), alternate pin functions, the DNP attribute, per-instance values and KiCad 10 design variants (`--variant`) are read as KiCad reads them. KiCad 5 files gain correct pin positions and hierarchical connections. Component values parse the way KiCad's simulator parses them (`4,7k`, `Meg`, `μ`). Boards use only their own project and rule files, KiCad's default stackup when none is given, and the real board outline for edge clearance.
+
+False signals were the other large group. Rails named like `VCC_EN` or `3V3_PG` are signals, not supplies. Negative and decimal rails keep their sign and value. Parallel resistors and capacitors count as one equivalent part in dividers and filters. A SPICE `pass` now means a measurement was taken and found in tolerance. The lifecycle audit uses a distributor's answer only for the exact part asked about, and stops calling parts single-source when another distributor simply gave no status.
+
+Thanks to PGIRang, whose three reports (#60, #61, #62) on a KiCad 10 test board fed straight into this release, including a new GP-001 check for high-speed traces whose reference plane changes between two nets. Thanks also to alan-ryu for PR #65, a strip index for zone-fill lookups that makes `analyze_pcb.py --full` many times faster on boards with large pours, with identical output.
+
+Upgrading: findings on a typical design will move. Expect renamed nets on hierarchical schematics, fewer power-rail and rail-source findings, different counts where parallel parts used to be split, and higher `impedance_ohm` on outer layers (microstrip permittivity). `fab_release_gate.py` now exits 1 on a FAIL verdict. `translate_bom_pnp.py pnp` needs `--units` when the position file does not state one. The full list is in the CHANGELOG.
+
 ## 🚀 v3.0.0 — The v3 refactor
 
 The 2.x line had grown around a few very large files: the schematic analyzer alone was over nine thousand lines, a shared utility module was imported by everything, and each distributor kept its own copy of the datasheet sync loop. v3 restructures that code without changing what it reports. It was done in nine gated rounds. Eight changed no analysis output: every output field was compared against the previous candidate and found identical, on a 200-project cross-section of the regression corpus (5,829 open-source KiCad projects) for the first two rounds and on all 149,629 corpus analysis units for the other six. One round changed output on purpose, under a declared budget that the corpus gate checked class by class; the corpus was then relocked at schema era `v3.0`. The last round removed the compatibility layer that kept the old import paths alive while the corpus tooling moved to the new ones.
