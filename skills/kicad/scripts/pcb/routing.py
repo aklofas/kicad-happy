@@ -403,12 +403,7 @@ def analyze_return_path_continuity(tracks, net_names, zones, zone_fills,
             power zone copper (`_build_reference_layer_map`).
         reference_changes: If a list is passed, one dict is appended per place
             where a signal trace's reference plane changes from one plane net
-            to another: {net, layer, reference_layer, from_net, to_net, x, y}.
-            A sample's plane net is the one ground or power fill under its
-            centre; it counts only when the neighbouring sample on the same
-            segment has the same net, so a pad-sized island is not a change.
-            A change between segments is found where two segment ends of the
-            net meet on one layer.
+            to another (`_plane_net_changes`).
 
     Returns:
         List of gap findings: [{net, layer, gap_start_mm, gap_length_mm, ...}]
@@ -483,8 +478,7 @@ def analyze_return_path_continuity(tracks, net_names, zones, zone_fills,
         net_name = net_names.get(net_id, f"net_{net_id}")
         total_samples = 0
         gap_samples = 0
-        net_changes = []
-        ends: dict = {}
+        seg_samples = []
 
         for seg in segs:
             layer = seg.get("layer", "F.Cu")
@@ -519,7 +513,7 @@ def analyze_return_path_continuity(tracks, net_names, zones, zone_fills,
                     gap_samples += 1
                 if track_refs:
                     ref_net = _ref_net_at(px, py, opp_layer) if hit and not antipad_credit else None
-                    seg_refs.append((ref_net, px, py))
+                    seg_refs.append((ref_net, px, py, t * length))
                 if debug_samples is not None:
                     sample = {
                         'net': net_name, 'x': round(px, 2),
@@ -530,27 +524,18 @@ def analyze_return_path_continuity(tracks, net_names, zones, zone_fills,
                         sample['antipad_credit'] = True
                     debug_samples.append(sample)
             if track_refs:
-                # A plane net counts only over two consecutive samples.
-                known = [r for k, r in enumerate(seg_refs) if r[0] is not None
-                         and any(0 <= j < len(seg_refs) and seg_refs[j][0] == r[0]
-                                 for j in (k - 1, k + 1))]
-                for a, b in zip(known, known[1:]):
-                    if a[0] != b[0]:
-                        net_changes.append((layer, opp_layer, a[0], b[0],
-                                            (a[1] + b[1]) / 2, (a[2] + b[2]) / 2))
-                if known:
-                    for (ex, ey), r in (((x1, y1), known[0]), ((x2, y2), known[-1])):
-                        ends.setdefault((layer, opp_layer, round(ex, 3), round(ey, 3)), []).append(r[0])
+                seg_samples.append((layer, opp_layer, (layer, round(x1, 3), round(y1, 3)),
+                                    (layer, round(x2, 3), round(y2, 3)), seg_refs))
 
         if track_refs:
-            for (lyr, rl, ex, ey), refs in ends.items():
-                if len(set(refs)) > 1:
-                    a, b = sorted(set(refs))[:2]
-                    net_changes.append((lyr, rl, a, b, ex, ey))
-            for lyr, rl, a, b, cx, cy in net_changes:
-                reference_changes.append({"net": net_name, "layer": lyr, "reference_layer": rl,
-                                          "from_net": a, "to_net": b,
-                                          "x": round(cx, 2), "y": round(cy, 2)})
+            for lyr, rl, sa, sb, cx, cy in _plane_net_changes(seg_samples, SAMPLE_INTERVAL):
+                if sa[0] > sb[0]:
+                    sa, sb = sb, sa
+                reference_changes.append({
+                    "net": net_name, "layer": lyr, "reference_layer": rl,
+                    "net_a": sa[0], "net_b": sb[0], "x": round(cx, 2), "y": round(cy, 2),
+                    "sample_points": [[round(sa[1], 2), round(sa[2], 2)],
+                                      [round(sb[1], 2), round(sb[2], 2)]]})
 
         if total_samples > 0 and gap_samples > 0:
             coverage_pct = round((1 - gap_samples / total_samples) * 100, 1)
@@ -570,6 +555,74 @@ def analyze_return_path_continuity(tracks, net_names, zones, zone_fills,
     # Sort by coverage (worst first)
     findings.sort(key=lambda f: f["reference_plane_coverage_pct"])
     return findings
+
+
+def _plane_net_changes(segs, min_run_mm):
+    """Where the plane net under one signal net's trace changes.
+
+    segs: one (layer, reference_layer, start_key, end_key, samples) per segment, the keys
+    naming the segment ends (segments of the net meet where keys are equal) and samples
+    [(plane net or None, x, y, mm along the segment)] in order. A plane net counts only
+    where it holds over at least min_run_mm of trace, counted across segment ends that
+    meet, so a pad-sized island is not a change. Returns (layer, reference_layer,
+    sample_a, sample_b, x, y): consecutive counted samples of different nets on a
+    segment (the change at their midpoint), or the nearest counted samples of two nets
+    on segments that meet (the change at the junction).
+    """
+    runs = []  # (segment index, first sample, last sample, net)
+    parent: list[int] = []
+    at_end: dict = {}  # (segment end, net) -> runs touching it
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    for si, (_l, _r, k_start, k_end, smp) in enumerate(segs):
+        k = 0
+        while k < len(smp):
+            j = k
+            while j + 1 < len(smp) and smp[j + 1][0] == smp[k][0]:
+                j += 1
+            if smp[k][0] is not None:
+                parent.append(len(runs))
+                if k == 0:
+                    at_end.setdefault((k_start, smp[k][0]), []).append(len(runs))
+                if j == len(smp) - 1:
+                    at_end.setdefault((k_end, smp[k][0]), []).append(len(runs))
+                runs.append((si, k, j, smp[k][0]))
+            k = j + 1
+    for members in at_end.values():
+        for ri in members[1:]:
+            parent[find(ri)] = find(members[0])
+    held: dict = {}
+    for ri, (si, k0, k1, _net) in enumerate(runs):
+        smp = segs[si][4]
+        held[find(ri)] = held.get(find(ri), 0.0) + smp[k1][3] - smp[k0][3]
+    known: dict = {}
+    for ri, (si, k0, k1, _net) in enumerate(runs):
+        if held[find(ri)] >= min_run_mm - 1e-6:
+            known.setdefault(si, []).extend(segs[si][4][k0:k1 + 1])
+
+    changes = []
+    ends: dict = {}
+    for si, ks in known.items():
+        layer, ref_layer, k_start, k_end, _smp = segs[si]
+        for a, b in zip(ks, ks[1:]):
+            if a[0] != b[0]:
+                changes.append((layer, ref_layer, a, b, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2))
+        ends.setdefault(k_start, []).append((layer, ref_layer, ks[0]))
+        ends.setdefault(k_end, []).append((layer, ref_layer, ks[-1]))
+    for key, items in ends.items():
+        by_net: dict = {}
+        for layer, ref_layer, smp in items:
+            by_net.setdefault(smp[0], (layer, ref_layer, smp))
+        if len(by_net) > 1:
+            a, b = sorted(by_net)[:2]
+            layer, ref_layer, sa = by_net[a]
+            changes.append((layer, ref_layer, sa, by_net[b][2], key[1], key[2]))
+    return changes
 
 
 def _safe_num(val, default=0):

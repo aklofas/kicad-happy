@@ -158,9 +158,9 @@ def renamed(text, name):
     return text.replace('(net 1 "SIG")', f'(net 1 "{name}")')
 
 
-def cap(ref, x, y, net_a="+3V3", net_b="+5V"):
-    """A two-pad capacitor joining net_a and net_b, centred at (x, y)."""
-    return (f'(footprint "Capacitor_SMD:C_0402" (layer "F.Cu") (at {x} {y})\n'
+def cap(ref, x, y, net_a="+3V3", net_b="+5V", lib="Capacitor_SMD:C_0402"):
+    """A two-pad part (a capacitor by default) joining net_a and net_b, centred at (x, y)."""
+    return (f'(footprint "{lib}" (layer "F.Cu") (at {x} {y})\n'
             f' (property "Reference" "{ref}" (at 0 -1 0) (layer "F.SilkS"))\n'
             f' (property "Value" "100n" (at 0 1 0) (layer "F.Fab"))\n'
             f' (pad "1" smd rect (at -0.5 0) (size 0.5 0.5) (layers "F.Cu") (net {net_no(net_a)} "{net_a}"))\n'
@@ -172,7 +172,8 @@ class ReferencePlaneChanges(unittest.TestCase):
         out = analyze(board(SPLIT_3V3_5V))
         self.assertEqual(out["reference_plane_changes"],
                          [{"net": "SIG", "layer": "F.Cu", "reference_layer": "B.Cu",
-                           "from_net": "+3V3", "to_net": "+5V", "x": 10.0, "y": 10.0}])
+                           "net_a": "+3V3", "net_b": "+5V", "x": 10.0, "y": 10.0,
+                           "sample_points": [[8.0, 10.0], [12.0, 10.0]]}])
 
     def test_split_leaves_return_path_continuity_alone(self):
         self.assertEqual(analyze(board(SPLIT_3V3_5V))["return_path_continuity"], [])
@@ -195,7 +196,31 @@ class ReferencePlaneChanges(unittest.TestCase):
         out = analyze(board(SPLIT_3V3_5V, track=corner))
         self.assertEqual(out["reference_plane_changes"],
                          [{"net": "SIG", "layer": "F.Cu", "reference_layer": "B.Cu",
-                           "from_net": "+3V3", "to_net": "+5V", "x": 10.0, "y": 10.0}])
+                           "net_a": "+3V3", "net_b": "+5V", "x": 10.0, "y": 10.0,
+                           "sample_points": [[8.0, 10.0], [12.0, 11.33]]}])
+
+    def test_island_under_a_short_segment_is_no_change(self):
+        # A 1.4 mm +5V island at x 9.3..10.7 under a 1 mm segment between two longer ones:
+        # the island holds for under 2 mm of trace, counted across the segment ends.
+        island = (zone("+3V3", "B.Cu", 0, 9.1) + zone("+3V3", "B.Cu", 10.9, 20)
+                  + zone("+5V", "B.Cu", 9.3, 10.7, 9.3, 10.7))
+        trk = ('(segment (start 2 10) (end 9.5 10) (width 0.2) (layer "F.Cu") (net 1))\n'
+               '(segment (start 9.5 10) (end 10.5 10) (width 0.2) (layer "F.Cu") (net 1))\n'
+               '(segment (start 10.5 10) (end 18 10) (width 0.2) (layer "F.Cu") (net 1))\n')
+        out = analyze(renamed(board(island, track=trk), "CLK"))
+        self.assertEqual(out["reference_plane_changes"], [])
+        self.assertEqual(split_findings(out), [])
+        out = analyze(renamed(board(island), "CLK"))
+        self.assertEqual(out["reference_plane_changes"], [])
+
+    def test_plane_net_held_across_short_segments_is_a_change(self):
+        # +5V under x 10.5..20 is crossed by short 1.5 mm segments only: together they
+        # hold +5V over more than 2 mm of trace, so the split still counts.
+        trk = ('(segment (start 2 10) (end 9 10) (width 0.2) (layer "F.Cu") (net 1))\n'
+               + "".join(f'(segment (start {x} 10) (end {x + 1.5} 10) (width 0.2)'
+                         f' (layer "F.Cu") (net 1))\n' for x in (9, 10.5, 12, 13.5)))
+        changes = analyze(board(SPLIT_3V3_5V, track=trk))["reference_plane_changes"]
+        self.assertEqual([(c["net_a"], c["net_b"]) for c in changes], [("+3V3", "+5V")])
 
     def test_via_antipad_sample_is_not_a_reference(self):
         # A through via at x=10 in a 1.6 mm slot: the sample there is credited as covered,
@@ -205,7 +230,7 @@ class ReferencePlaneChanges(unittest.TestCase):
         self.assertEqual(analyze(board(slot + via))["reference_plane_changes"], [])
         split = zone("+3V3", "B.Cu", 0, 9.2) + zone("+5V", "B.Cu", 10.8, 20)
         changes = analyze(board(split + via))["reference_plane_changes"]
-        self.assertEqual([(c["from_net"], c["to_net"], c["x"]) for c in changes],
+        self.assertEqual([(c["net_a"], c["net_b"], c["x"]) for c in changes],
                          [("+3V3", "+5V", 10.0)])
 
 
@@ -244,6 +269,37 @@ class SplitCrossingFinding(unittest.TestCase):
     def test_bridging_capacitor_farther_than_5_mm_still_reports(self):
         out = analyze(renamed(board(SPLIT_3V3_5V + cap("C1", 10, 30)), "CLK"))
         self.assertEqual(len(split_findings(out)), 1)
+
+    def test_vc_reference_capacitor_bridges(self):
+        out = analyze(renamed(board(SPLIT_3V3_5V + cap("VC1", 10, 13, lib="Custom:Part")), "CLK"))
+        self.assertEqual(split_findings(out), [])
+
+    def test_capacitor_library_part_bridges(self):
+        out = analyze(renamed(board(SPLIT_3V3_5V + cap("X1", 10, 13, lib="Capacitor_SMD:C_0603")),
+                              "CLK"))
+        self.assertEqual(split_findings(out), [])
+
+    def test_resistor_does_not_bridge(self):
+        out = analyze(renamed(board(SPLIT_3V3_5V + cap("R1", 10, 13, lib="Resistor_SMD:R_0402")),
+                              "CLK"))
+        self.assertEqual(len(split_findings(out)), 1)
+
+    def test_bridging_distance_is_to_the_nearer_sample(self):
+        # A 6 mm gap (x 7..13): the change midpoint is x=10, the bounding samples x=6 and
+        # x=14. A cap at (6, 13.5) is 3.5 mm from the x=6 sample but 5.3 mm from the midpoint.
+        wide = zone("+3V3", "B.Cu", 0, 7) + zone("+5V", "B.Cu", 13, 20)
+        out = analyze(renamed(board(wide + cap("C1", 6, 13.5)), "CLK"))
+        self.assertEqual(len(out["reference_plane_changes"]), 1)
+        self.assertEqual(split_findings(out), [])
+
+    def test_description_names_every_reference_layer(self):
+        out = analyze(renamed(board(SPLIT_3V3_5V), "CLK"))
+        out["reference_plane_changes"].append(
+            {**out["reference_plane_changes"][0], "layer": "B.Cu", "reference_layer": "In1.Cu",
+             "x": 40.0, "y": 40.0, "sample_points": [[39.0, 40.0], [41.0, 40.0]]})
+        (f,) = split_findings(out)
+        self.assertIn("2 time(s)", f["description"])
+        self.assertIn("on B.Cu, In1.Cu", f["description"])
 
     def test_capacitor_on_other_nets_does_not_bridge(self):
         out = analyze(renamed(board(SPLIT_3V3_5V + cap("C1", 10, 13, "+3V3", "GND")), "CLK"))

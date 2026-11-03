@@ -37,6 +37,7 @@ from kicad_core.parts import (
     lookup_switching_freq as _estimate_switching_freq,
     default_switching_freq as _default_switching_freq,
 )
+from kicad_core.classify import classify_component
 from kicad_core.netnames import is_ground_name, is_power_net_name, net_leaf
 from kicad_core.netquery import build_net_id_map
 from kicad_core.diagnostics import record
@@ -526,21 +527,26 @@ def _split_crossing_findings(pcb: Dict, touch: set) -> List[Dict]:
     Where the plane under a trace changes from one net to another (a split between,
     say, +3V3 and +5V), the return current has to cross the split through whatever
     couples the two nets, so the loop grows (Ott, EMC Engineering ch. 16). A crossing
-    with a capacitor joining the two plane nets within SPLIT_BRIDGE_CAP_MM is
-    bridged and not reported. The high-speed test reads the net's own name, not its
-    sheet path.
+    with a capacitor joining the two plane nets within SPLIT_BRIDGE_CAP_MM of either
+    sample point bounding it is bridged and not reported. A capacitor is a part the
+    reference designator classifies as one, or one from a capacitor footprint library.
+    The high-speed test reads the net's own name, not its sheet path.
     """
     caps = []
     for fp in pcb.get('footprints') or []:
         nets = set(fp.get('connected_nets') or [])
-        if re.match(r'C\d', fp.get('reference') or '') and len(nets) == 2 \
-                and fp.get('x') is not None and fp.get('y') is not None:
+        lib = fp.get('library') or ''
+        is_cap = (lib.lower().startswith('capacitor')
+                  or classify_component(fp.get('reference') or '', lib, fp.get('value') or '',
+                                        footprint=fp.get('footprint') or '') == 'capacitor')
+        if is_cap and len(nets) == 2 and fp.get('x') is not None and fp.get('y') is not None:
             caps.append((nets, fp['x'], fp['y']))
 
     by_net: Dict[str, List[Dict]] = {}
     for ch in pcb.get('reference_plane_changes') or []:
-        pair = {ch.get('from_net'), ch.get('to_net')}
-        if any(nets == pair and math.hypot(x - ch.get('x', 0), y - ch.get('y', 0))
+        pair = {ch.get('net_a'), ch.get('net_b')}
+        points = ch.get('sample_points') or [[ch.get('x', 0), ch.get('y', 0)]]
+        if any(nets == pair and min(math.hypot(x - px, y - py) for px, py in points)
                <= SPLIT_BRIDGE_CAP_MM for nets, x, y in caps):
             continue
         by_net.setdefault(ch.get('net', ''), []).append(ch)
@@ -550,13 +556,14 @@ def _split_crossing_findings(pcb: Dict, touch: set) -> List[Dict]:
         if net_name in touch or not _is_high_speed_net(net_leaf(net_name)):
             continue
         changes = by_net[net_name]
-        pairs = sorted({' / '.join(sorted((c['from_net'], c['to_net']))) for c in changes})
+        pairs = sorted({' / '.join(sorted((c['net_a'], c['net_b']))) for c in changes})
+        ref_layers = sorted({c.get('reference_layer') or 'the reference layer' for c in changes})
         findings.append(_make_finding(
             'ground_plane', 'HIGH', rule_id='GP-001', detector='emc_ground_plane',
             title='Signal crosses a split between reference planes',
             description=(
                 f'Net {net_name} changes reference plane net {len(changes)} time(s) '
-                f'({", ".join(pairs)}) on {changes[0].get("reference_layer") or "the reference layer"}. '
+                f'({", ".join(pairs)}) on {", ".join(ref_layers)}. '
                 f'The return current must cross the split through decoupling or stitching capacitors.'
             ),
             nets=[net_name],
