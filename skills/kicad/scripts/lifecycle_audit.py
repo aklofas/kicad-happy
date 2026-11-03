@@ -28,7 +28,7 @@ import json
 import sys
 from pathlib import Path
 
-from analysis_cache import merged_overlay_path
+from analysis_cache import reviewed_overlay
 from kicad_core.project import extraction_project_dir
 from kicad_core.cli import add_only_deterministic_arg, add_output_arg
 from lifecycle_engine import _TEMP_PRESETS, audit_bom
@@ -78,9 +78,9 @@ def main(argv: list[str] | None = None) -> int:
     # Load analyzer JSON (honor --only-deterministic: skip merged/ overlay)
     input_path = Path(args.input)
     if not args.only_deterministic:
-        candidate = Path(merged_overlay_path(str(input_path)))
-        if candidate.exists():
-            input_path = candidate
+        overlay = reviewed_overlay(str(input_path))
+        if overlay:
+            input_path = Path(overlay)
     expected = "expected the JSON file written by analyze_schematic.py"
     if not input_path.is_file():
         what = "is a directory" if input_path.is_dir() else "no such file"

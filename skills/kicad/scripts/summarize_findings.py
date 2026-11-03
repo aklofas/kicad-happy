@@ -24,7 +24,7 @@ import sys
 from collections import defaultdict
 
 from kicad_core.cli import add_only_deterministic_arg
-from analysis_cache import get_run, merged_overlay_path
+from analysis_cache import get_run, reviewed_overlay
 from finding_schema import VALID_CONFIDENCES, VALID_EVIDENCE_SOURCES
 
 _SEV_RANK = {"error": 0, "high": 0, "critical": 0,
@@ -67,9 +67,9 @@ def _resolve_analyzer_json(run_dir: str, name: str, only_deterministic: bool) ->
     """
     raw = os.path.join(run_dir, name)
     if not only_deterministic:
-        merged_candidate = merged_overlay_path(raw)
-        if os.path.isfile(merged_candidate):
-            return merged_candidate
+        overlay = reviewed_overlay(raw)
+        if overlay:
+            return overlay
     return raw
 
 

@@ -21,7 +21,7 @@ import json
 import os
 import sys
 
-from analysis_cache import merged_overlay_path
+from analysis_cache import reviewed_overlay
 from finding_schema import group_findings_by_detection_type
 from kicad_core.fileio import atomic_write_text
 from kicad_core.render import fmt_g4, fmt_signed, summary_or_title
@@ -460,9 +460,9 @@ def main(argv: list[str] | None = None) -> int:
         from pathlib import Path
         p = Path(path)
         if not args.only_deterministic:
-            candidate = Path(merged_overlay_path(str(p)))
-            if candidate.exists():
-                p = candidate
+            overlay = reviewed_overlay(str(p))
+            if overlay:
+                p = Path(overlay)
         try:
             with open(p, encoding="utf-8") as f:
                 return json.load(f)

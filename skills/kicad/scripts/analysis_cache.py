@@ -25,6 +25,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from kicad_core.diagnostics import record
 from kicad_core.fileio import atomic_write_text
+from finding_schema import strip_llm_overlays
 
 
 # ---------------------------------------------------------------------------
@@ -115,6 +116,27 @@ def merged_overlay_path(path: str) -> str:
     consumers read unless --only-deterministic is given."""
     run_dir, name = os.path.split(path)
     return os.path.join(os.path.dirname(run_dir), "merged", os.path.basename(run_dir), name)
+
+
+def reviewed_overlay(path: str) -> Optional[str]:
+    """merged_overlay_path(path) when that reviewed copy holds the same deterministic content as
+    *path* (its llm_* fields stripped, it equals the raw file), else None. A copy that no longer
+    matches, such as one merged before the raw file was rewritten, is reported and not used."""
+    overlay = merged_overlay_path(path)
+    if not os.path.lexists(overlay):
+        return None
+    try:
+        if os.path.isfile(overlay):
+            with open(overlay, encoding="utf-8") as f:
+                merged = json.load(f)
+            with open(path, encoding="utf-8") as f:
+                if strip_llm_overlays(merged) == json.load(f):
+                    return overlay
+    except (ValueError, OSError):
+        pass
+    print(f"Note: {overlay} does not match {path}; reading the raw file "
+          f"(re-run merge_annotations.py to use the review)", file=sys.stderr)
+    return None
 
 
 def _empty_manifest() -> Dict[str, Any]:

@@ -33,7 +33,7 @@ from kicad_core.values import parse_value
 from kicad_core.render import fmt_g4, fmt_signed, severity_bucket
 from kicad_core.fileio import atomic_write_text
 from kicad_core.cli import add_only_deterministic_arg, add_output_arg, add_text_arg, utf8_text_stdout
-from analysis_cache import merged_overlay_path
+from analysis_cache import reviewed_overlay
 from finding_schema import group_findings_by_detection_type, is_old_schema
 
 
@@ -1458,9 +1458,9 @@ def main(argv: list[str] | None = None) -> int:
         from pathlib import Path
         p = Path(path)
         if not args.only_deterministic:
-            candidate = Path(merged_overlay_path(str(p)))
-            if candidate.exists():
-                return candidate
+            overlay = reviewed_overlay(str(p))
+            if overlay:
+                return Path(overlay)
         return p
 
     try:

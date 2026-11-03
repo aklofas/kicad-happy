@@ -229,6 +229,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `--schema` declares `fix_params` on findings and five PCB keys the analyzer already emitted (`layer_transitions`, `dimensions`, `groups`, `thermal_pad_scan`, `copper_presence_summary`). (KH-821, KH-854)
 - `analysis/manifest.json` is written with the usual umask-based mode (an existing manifest keeps its mode) instead of owner-only; an existing owner-only (0600) manifest is rewritten with that mode. (KH-791)
 - A ferrite bead value written as impedance with a rated current or test frequency (`600R/200mA`, `220Ω/100MHz`) is no longer read as a resistance, so it no longer appears as a 600 H inductor in an LC filter. (KH-850)
+- `summarize_findings.py`, `diff_analysis.py`, `what_if.py` and `lifecycle_audit.py` read a reviewed copy in `analysis/merged/` only while it still equals the current raw output once its `llm_*` fields are stripped; a stale copy is reported and the raw file is read.
 
 ### Documentation
 
