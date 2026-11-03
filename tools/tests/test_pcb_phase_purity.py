@@ -14,7 +14,7 @@ KW = dict(return_path_radius_mm=2.0, gp001_debug=False, resolved_power_rails=Non
 def _default(o):
     from pcb.geometry import ZoneFills
     if isinstance(o, ZoneFills):
-        # the fill data; `_grids` is a lazily built memo of `_fills`, not state
+        # the fill data; `_grids` and `_strips` are lazily built memos of `_fills`, not state
         return {"fills": o._fills, "next_fill_id": o._next_fill_id}
     if dataclasses.is_dataclass(o):
         return dataclasses.asdict(o)

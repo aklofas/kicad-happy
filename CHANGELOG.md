@@ -87,6 +87,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Two internal moves, with no change to any analyzer output: the circuit detectors query the netlist through `ctx.nq.components_on_net` directly (the `_get_net_components` wrapper is gone), and the lifecycle engine (distributor queries, extraction temperature reads, `audit_component`, `audit_bom`) lives in `lifecycle_engine.py`, with `lifecycle_audit.py` as its CLI; the schematic analyzer's `--lifecycle` run imports the engine, not the CLI. (KH-new-detector-family-layout, KH-new-lifecycle-engine-owner)
 - Internal restructures, with no change to any analyzer output: the four sync CLIs share one argument declaration; distributor downloads build their manifest entry in one place; the four overlay consumers share one merged-overlay path rule, and `summarize_findings` scans its run once; the schematic and PCB pipelines pass facts and checks without relay copies; design intent and risk scoring live in `design_intent.py` and `risk_summary.py`; the Action's compact and full reports share their input projections; and `check_refactor` prints budget rows from one helper.
 - The Action's nonzero-exit notice for EMC and thermal no longer says the analyzer reported blocking findings. (KH-852)
+- PCB `--full` point-in-fill queries test only nearby fill edges: same results, much faster on boards with large pours.
 
 ### Fixed
 

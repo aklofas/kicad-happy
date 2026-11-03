@@ -298,24 +298,27 @@ def _shoelace_area(pts_node: list) -> float:
 
 
 def _point_in_polygon(px: float, py: float,
-                      polygon: list[tuple[float, float]]) -> bool:
+                      polygon: list[tuple[float, float]],
+                      edges=None) -> bool:
     """Ray-casting point-in-polygon test.
 
     Returns True if point (px, py) is inside the polygon defined by
     a list of (x, y) vertices.
+
+    edges: optional iterable of vertex indices i, each naming the edge (i - 1, i).
+    Only those edges are tested; the result is unchanged as long as it holds every
+    edge whose y-span contains py (the ZoneFills strip index).
     """
     n = len(polygon)
     if n < 3:
         return False
     inside = False
-    j = n - 1
-    for i in range(n):
+    for i in (range(n) if edges is None else edges):
         xi, yi = polygon[i]
-        xj, yj = polygon[j]
+        xj, yj = polygon[i - 1]
         if ((yi > py) != (yj > py)) and \
                 (px < (xj - xi) * (py - yi) / (yj - yi) + xi):
             inside = not inside
-        j = i
     return inside
 
 
@@ -331,6 +334,12 @@ def _polygon_bbox(
     return (min(xs), min(ys), max(xs), max(ys))
 
 
+def _strip_of(y: float, y0: float, h: float, k: int) -> int:
+    """The strip a y falls in, clamped to 0..k-1 (NaN falls in strip 0)."""
+    t = (y - y0) / h
+    return 0 if not t > 0 else k - 1 if t >= k else int(t)
+
+
 class ZoneFills:
     """Spatial index for zone filled polygon data.
 
@@ -344,7 +353,8 @@ class ZoneFills:
 
     `min_edge_distance` additionally maintains a lazily built per-fill
     segment grid so nearest-edge queries don't need to walk every
-    vertex of every fill.
+    vertex of every fill. Point queries use a lazily built per-fill strip
+    index (`_strip_index`) so the ray cast only tests edges near the point's y.
     """
 
     def __init__(self) -> None:
@@ -354,6 +364,7 @@ class ZoneFills:
         ] = []
         self._next_fill_id = 0
         self._grids: dict[int, tuple] = {}
+        self._strips: dict[int, tuple] = {}
         self._inflate: dict[int, float] = {}
 
     def add(self, zone_idx: int, layer: str,
@@ -371,9 +382,46 @@ class ZoneFills:
                     bbox[2] + inflate, bbox[3] + inflate)
         self._fills.append((fill_id, zone_idx, layer, coords, bbox))
 
+    def _strip_index(self, fill_id: int):
+        """Lazily built horizontal strips: strip -> indices i of the edges (i - 1, i)
+        whose y-span overlaps that strip. (y0, strip height, strip count, strips).
+
+        The ray cast only toggles on an edge with min(yi, yj) <= py < max(yi, yj). The strip
+        number never decreases as y grows, so every such edge is listed in py's strip and
+        testing that strip alone gives the same answer as walking every edge."""
+        s = self._strips.get(fill_id)
+        if s is not None:
+            return s
+        coords = self._fills[fill_id][3]
+        n = len(coords)
+        ys = [p[1] for p in coords]
+        y0 = min(ys, default=0.0)
+        span = max(ys, default=0.0) - y0
+        k = max(1, min(4096, n // 8))
+        while True:
+            h = span / k or 1.0
+            strips: list[list[int]] = [[] for _ in range(k)]
+            for i in range(n):
+                ya, yb = ys[i], ys[i - 1]
+                for b in range(_strip_of(min(ya, yb), y0, h, k),
+                               _strip_of(max(ya, yb), y0, h, k) + 1):
+                    strips[b].append(i)
+            # tall edges are listed in every strip they cross: coarsen a comb-shaped fill
+            if k == 1 or sum(map(len, strips)) <= 32 * n:
+                break
+            k //= 2
+        s = (y0, h, k, strips)
+        self._strips[fill_id] = s
+        return s
+
     def _contains(self, fill_id: int, x: float, y: float,
                   coords: list[tuple[float, float]]) -> bool:
-        if _point_in_polygon(x, y, coords):
+        if len(coords) >= 3:
+            y0, h, k, strips = self._strip_index(fill_id)
+            inside = _point_in_polygon(x, y, coords, strips[_strip_of(y, y0, h, k)])
+        else:
+            inside = False
+        if inside:
             return True
         r = self._inflate.get(fill_id)
         return r is not None and self._near_edge(fill_id, x, y, r)
