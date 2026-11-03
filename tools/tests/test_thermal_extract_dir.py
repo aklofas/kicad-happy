@@ -1,6 +1,6 @@
 """Thermal reads datasheet extractions only from the project the schematic
 analysis names, never from the folder the analysis JSON happens to sit in."""
-import json, shutil, subprocess, sys, tempfile, unittest
+import json, os, shutil, subprocess, sys, tempfile, unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -43,6 +43,7 @@ class ThermalExtractDirTest(unittest.TestCase):
                             "-p", str(json_dir / "pcb.json"), "-o", str(out)],
                            capture_output=True, text=True, cwd=cwd or self.tmp)
         self.assertEqual(r.returncode, 0, r.stderr[-600:])
+        self.stderr = r.stderr
         d = json.loads(out.read_text(encoding="utf-8"))
         (a,) = d["assessments"]
         return a, sorted(f["rule_id"] for f in d["findings"])
@@ -64,6 +65,24 @@ class ThermalExtractDirTest(unittest.TestCase):
             a, _ = self.run_thermal(json_dir, sch)
             self.assertEqual((a["tj_max_c"], a["tj_max_source"]), (60.0, "datasheet"), json_dir)
             self.assertEqual(a["margin_c"], -25.0)
+
+    @unittest.skipIf(os.name == "nt", "symlinks")
+    def test_symlinked_project_datasheets_folder_is_refused(self):
+        real = self.tmp / "elsewhere"
+        self.plant(real)
+        proj = self.tmp / "proj"
+        proj.mkdir()
+        os.symlink(real / "datasheets", proj / "datasheets")
+        a, _ = self.run_thermal(proj, schematic([str(proj / "board.kicad_sch")]))
+        self.assertEqual((a["tj_max_c"], a["tj_max_source"]), (125.0, "default_125"))
+        self.assertIn("is reached through a symlink; datasheet extraction cache ignored", self.stderr)
+
+    def test_regular_project_datasheets_folder_is_read_without_warning(self):
+        proj = self.tmp / "proj"
+        self.plant(proj)
+        a, _ = self.run_thermal(proj, schematic([str(proj / "board.kicad_sch")]))
+        self.assertEqual((a["tj_max_c"], a["tj_max_source"]), (60.0, "datasheet"))
+        self.assertNotIn("symlink", self.stderr)
 
     def test_relative_source_path(self):
         # `analyze_schematic.py board.kicad_sch` records the path as typed.
