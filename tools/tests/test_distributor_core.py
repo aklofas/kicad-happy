@@ -27,6 +27,15 @@ class Download(unittest.TestCase):
 
 
 class Manifest(unittest.TestCase):
+    def test_missing_manifest_is_empty_and_a_bad_one_raises(self):
+        from distributor_core.manifest import load_index, MANIFEST_FILENAME
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / MANIFEST_FILENAME
+            self.assertEqual(load_index(p), {"schematic": "", "last_sync": "", "parts": {}})
+            p.write_text("[]", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "is not a readable manifest"):
+                load_index(p)
+
     def test_save_index_migrates_legacy_sibling(self):
         from distributor_core.manifest import load_index, save_index, MANIFEST_FILENAME
         with tempfile.TemporaryDirectory() as d:

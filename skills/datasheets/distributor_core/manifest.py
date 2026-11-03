@@ -7,6 +7,8 @@ import re
 import tempfile
 from pathlib import Path
 
+from datasheet_types.cache_reader import read_json_object
+
 
 # ---------------------------------------------------------------------------
 # Filename sanitization
@@ -83,15 +85,18 @@ def _manifest_path(out_dir: Path) -> Path:
 
 
 def load_index(path: Path) -> dict:
-    """Load existing manifest.json (or legacy index.json) or return empty."""
+    """Load existing manifest.json (or legacy index.json) or return empty. A manifest that is
+    there but unreadable (a link, oversized, not a JSON object, wrong ``parts`` shape) raises
+    ValueError so the caller does not replace it."""
     path = _manifest_path(path.parent) if path.name in (MANIFEST_FILENAME, LEGACY_MANIFEST_FILENAME) else path
-    if path.exists():
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except (json.JSONDecodeError, OSError):
-            pass
-    return {"schematic": "", "last_sync": "", "parts": {}}
+    if not os.path.lexists(path):
+        return {"schematic": "", "last_sync": "", "parts": {}}
+    data = read_json_object(path)
+    parts = data.get("parts", {}) if data is not None else None
+    if (data is None or not isinstance(parts, dict)
+            or not all(isinstance(v, dict) for v in parts.values())):
+        raise ValueError(f"{path} is not a readable manifest; fix or move it aside")
+    return data
 
 
 def write_json_atomic(path: Path, data, sort_keys: bool = False) -> None:

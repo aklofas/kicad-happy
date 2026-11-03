@@ -95,6 +95,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Fixed
 
+- The datasheet syncs read `manifest.json` without following a link or reading past 10 MB, stop with an error on a manifest they cannot read instead of replacing it, and read null fields in a precomputed BOM as empty.
 - The 120 s datasheet download limit also holds while a server is still sending the status line and headers through `requests`: the download stops at the limit instead of waiting for the headers to finish.
 - A datasheet extraction cache whose blocks have the wrong JSON type (a null required block, a non-object `extraction_metadata`, `features`, `peripherals` or pin, a string version, score or pin threshold) is now a cache miss for the feature helpers, the staleness check, the thermal and SPICE readers and the VD-002 abs-max reader instead of a traceback.
 - A copy into `analysis/` that is refused because of a symlink is no longer listed in the run manifest, reported as "Analysis cached", or counted as success, and a corrupt manifest whose `.bak` backup is refused says "no backup made" instead of "backed up".

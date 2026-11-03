@@ -291,7 +291,10 @@ def sync_datasheets(
 
     out_dir.mkdir(parents=True, exist_ok=True)
     index_path = out_dir / MANIFEST_FILENAME
-    index = load_index(index_path)
+    try:
+        index = load_index(index_path)
+    except ValueError as exc:
+        return _error(str(exc), as_json)
 
     # Determine what needs processing
     to_download = []

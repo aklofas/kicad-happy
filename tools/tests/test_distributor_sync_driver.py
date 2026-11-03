@@ -1,5 +1,5 @@
 # tools/tests/test_distributor_sync_driver.py
-import io, json, sys, tempfile, unittest
+import io, json, os, sys, tempfile, unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
@@ -243,6 +243,55 @@ class RepeatedRows(unittest.TestCase):
 
 class MachineOutput(unittest.TestCase):
     """Progress goes to stderr; every --json return prints JSON; an error is always reported."""
+
+    def _sync_with_manifest(self, d, plant):
+        from distributor_core.sync import sync_datasheets
+        out = d / "out"; out.mkdir()
+        plant(out / "manifest.json")
+        mpns = d / "mpns.txt"; mpns.write_text("LM358DR\n", encoding="utf-8")
+        so = io.StringIO()
+        with redirect_stdout(so), redirect_stderr(io.StringIO()):
+            r = sync_datasheets(fake_provider(), mpn_list=str(mpns), output_dir=str(out), as_json=True)
+        return r, so.getvalue(), f"{out / 'manifest.json'} is not a readable manifest; fix or move it aside"
+
+    def test_unreadable_manifest_is_an_error_and_is_kept(self):
+        for text in ("[]", '{"parts": []}', '{"parts": {"LM358DR": "ok"}}', "{not json"):
+            with self.subTest(text=text), tempfile.TemporaryDirectory() as d:
+                r, so, want = self._sync_with_manifest(Path(d), lambda p: p.write_text(text, encoding="utf-8"))
+                self.assertEqual(r, {"error": want})
+                self.assertEqual(json.loads(so), {"error": want})
+                self.assertEqual((Path(d) / "out" / "manifest.json").read_text(encoding="utf-8"), text)
+
+    @unittest.skipIf(os.name == "nt", "symlinks")
+    def test_linked_manifest_is_an_error_and_the_link_is_kept(self):
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d); real = d / "real.json"
+            real.write_text('{"parts": {}}', encoding="utf-8")
+            try:
+                r, _, want = self._sync_with_manifest(d, lambda p: os.symlink(real, p))
+            except OSError:
+                self.skipTest("symlinks unavailable")
+            self.assertEqual(r, {"error": want})
+            self.assertTrue((d / "out" / "manifest.json").is_symlink())
+
+    def test_null_bom_fields_read_as_empty_and_a_bad_bom_is_an_error(self):
+        from distributor_core.sync import sync_datasheets
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d); good, bad = d / "bom.json", d / "bad.json"
+            good.write_text(json.dumps({"bom": [
+                {"type": "ic", "mpn": None, "digikey": "296-1-ND", "references": None, "value": None},
+                {"type": "ic", "mpn": "LM358DR", "references": ["U2"], "manufacturer": None}]}), encoding="utf-8")
+            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                r = sync_datasheets(fake_provider(), input_path=str(good), output_dir=str(d / "o"),
+                                    dry_run=True, as_json=True)
+            self.assertEqual(r["would_download"], ["296-1-ND", "LM358DR"])
+            for bom in ({"x": 1}, [1]):
+                bad.write_text(json.dumps({"bom": bom}), encoding="utf-8")
+                se = io.StringIO()
+                with redirect_stdout(io.StringIO()), redirect_stderr(se):
+                    r = sync_datasheets(fake_provider(), input_path=str(bad), output_dir=str(d / "o"), as_json=True)
+                self.assertEqual(r, {"error": "Failed to analyze schematic"})
+                self.assertIn("'bom' is not a list of objects", se.getvalue())
 
     def test_nothing_to_do_prints_json(self):
         from distributor_core.sync import sync_datasheets

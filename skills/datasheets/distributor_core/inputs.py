@@ -60,6 +60,10 @@ def get_analyzer_output(input_path: Path) -> dict | None:
         if not isinstance(data, dict):
             print(f"Error: {input_path} is not analyzer output (a JSON object)", file=sys.stderr)
             return None
+        bom = data.get("bom", [])
+        if not isinstance(bom, list) or not all(isinstance(e, dict) for e in bom):
+            print(f"Error: {input_path}: 'bom' is not a list of objects", file=sys.stderr)
+            return None
         return data
 
     if input_path.suffix in (".kicad_sch", ".sch"):
@@ -104,6 +108,14 @@ def get_analyzer_output(input_path: Path) -> dict | None:
 # MPN extraction from BOM
 # ---------------------------------------------------------------------------
 
+def _str(v) -> str:
+    return v if isinstance(v, str) else ""
+
+
+def _text(v) -> str:
+    return v.strip() if isinstance(v, str) else ""
+
+
 def extract_parts(analyzer_output: dict, id_keys=("digikey", "mouser", "lcsc"), search_key=None) -> list[dict]:
     """Extract unique parts with real MPNs or distributor PNs from analyzer BOM output.
 
@@ -121,11 +133,11 @@ def extract_parts(analyzer_output: dict, id_keys=("digikey", "mouser", "lcsc"), 
     for entry in bom:
         if entry.get("dnp"):
             continue
-        if entry.get("type", "") in _SKIP_TYPES:
+        if _str(entry.get("type")) in _SKIP_TYPES:
             continue
 
-        mpn = entry.get("mpn", "").strip()
-        ids = {k: entry.get(k, "").strip() for k in id_keys}
+        mpn = _text(entry.get("mpn"))
+        ids = {k: _text(entry.get(k)) for k in id_keys}
 
         # Need at least one identifier to search for a datasheet
         has_mpn = is_real_mpn(mpn)
@@ -137,8 +149,8 @@ def extract_parts(analyzer_output: dict, id_keys=("digikey", "mouser", "lcsc"), 
         from_value = False
         searchable_pn = bool(ids.get(search_key)) if search_key else has_distributor_pn
         if not has_mpn and not searchable_pn:
-            value = entry.get("value", "").strip()
-            lib_id = entry.get("lib_id", "")
+            value = _text(entry.get("value"))
+            lib_id = _str(entry.get("lib_id"))
             if is_real_mpn(value) and not lib_id.startswith("Device:"):
                 from_value = True
                 mpn = value
@@ -146,14 +158,16 @@ def extract_parts(analyzer_output: dict, id_keys=("digikey", "mouser", "lcsc"), 
         if not has_mpn and not has_distributor_pn:
             continue
 
+        refs = entry.get("references")
+        refs = refs if isinstance(refs, list) else []
         parts.append({
             "mpn": mpn if has_mpn else "",
-            "manufacturer": entry.get("manufacturer", ""),
-            "value": entry.get("value", ""),
-            "description": entry.get("description", ""),
-            "datasheet": entry.get("datasheet", ""),
-            "references": entry.get("references", []),
-            "type": entry.get("type", ""),
+            "manufacturer": _str(entry.get("manufacturer")),
+            "value": _str(entry.get("value")),
+            "description": _str(entry.get("description")),
+            "datasheet": _str(entry.get("datasheet")),
+            "references": [r for r in refs if isinstance(r, str)],
+            "type": _str(entry.get("type")),
             "mpn_source": "value" if from_value else "",
             **{k: ids[k] for k in id_keys},
         })
