@@ -90,6 +90,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Fixed
 
+- `merge_results.py` writes the extraction and plan files atomically; an interrupted merge no longer leaves a truncated file in the cache. (KH-797)
 - `what_if.py` takes the confidence of a suggested regulator-Vout fix from the detector's own Vout provenance instead of the Vref source, so `--suggest-fixes` labels a lookup-table Vref `heuristic` and only a datasheet Vref `deterministic`, as the regulator detector does. A `±tol` suffix with a sweep and `--output` with a sweep are usage errors (exit 2) instead of being silently ignored, and `--output` with no affected subcircuit writes the unchanged analysis and says so on stderr instead of writing nothing. (KH-826, KH-827, KH-828)
 - The EMC risk score, per-net scores, test plan and regulatory coverage no longer depend on `--severity`: they cover every unsuppressed finding, and `--severity` filters only the emitted `findings` list and its counts. (KH-818)
 - A `--config` path that does not exist now prints `Warning: config file not found: <path>; using built-in defaults` on stderr; the run still uses the defaults and exits as before. Discovery with no config file stays silent. (KH-822)

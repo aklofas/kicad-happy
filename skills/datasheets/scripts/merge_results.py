@@ -33,6 +33,7 @@ if _SKILL_PARENT not in sys.path:
     sys.path.insert(0, _SKILL_PARENT)
 
 from datasheet_types.cache_reader import sanitize_mpn  # noqa: E402
+from distributor_core.manifest import write_json_atomic  # noqa: E402
 
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]          # skills/datasheets
@@ -266,7 +267,7 @@ def merge(cache: Path, mpn: str, *, retry_failed: bool = False) -> int:
     if failed_tasks and not retry_failed:
         # First merge with failures: write plan state, exit nonzero.
         # Caller re-dispatches failed tasks, then re-runs with --retry-failed.
-        plan_path.write_text(json.dumps(plan, indent=2, sort_keys=True), encoding="utf-8")
+        write_json_atomic(plan_path, plan, sort_keys=True)
         for task, err in failed_tasks:
             print(f"failed: {task['task_id']}: {err}", file=sys.stderr)
         print(
@@ -303,8 +304,8 @@ def merge(cache: Path, mpn: str, *, retry_failed: bool = False) -> int:
     plan["execution"]["completed_at"] = _now_iso()
 
     out_path = cache / f"{sanitize_mpn(mpn)}.json"
-    out_path.write_text(json.dumps(extraction, indent=2, sort_keys=True), encoding="utf-8")
-    plan_path.write_text(json.dumps(plan, indent=2, sort_keys=True), encoding="utf-8")
+    write_json_atomic(out_path, extraction, sort_keys=True)
+    write_json_atomic(plan_path, plan, sort_keys=True)
     print(f"{mpn}: merged → {out_path}")
     return 0
 

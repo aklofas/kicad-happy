@@ -94,14 +94,14 @@ def load_index(path: Path) -> dict:
     return {"schematic": "", "last_sync": "", "parts": {}}
 
 
-def write_json_atomic(path: Path, data) -> None:
+def write_json_atomic(path: Path, data, sort_keys: bool = False) -> None:
     """Write JSON to ``path`` through a uniquely named temp file beside it. An existing
     file keeps its mode; a new one gets the umask mode."""
     path = Path(path)
     fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=path.name + ".", suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
+            json.dump(data, f, indent=2, sort_keys=sort_keys)
         try:
             mode = os.stat(path).st_mode & 0o7777
         except OSError:

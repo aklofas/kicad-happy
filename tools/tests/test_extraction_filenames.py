@@ -82,6 +82,34 @@ class MergeResults(unittest.TestCase):
             self.assertEqual(out["extraction"]["plan_ref"], "LM317_NOPB.plan.json")
             self.assertEqual(cache_path_for("LM317/NOPB", cache), cache / "LM317_NOPB.json")
 
+    def _merge_ready(self, cache):
+        self._plan(cache, "LM317_NOPB", "base")
+        (cache / "LM317_NOPB.base.result.json").write_text(json.dumps(
+            {"task_id": "base", "status": "complete", "pdf_sha256": "sha256:0",
+             "data": {"family": "LM317"}}), encoding="utf-8")
+
+    def test_merged_files_are_sorted_indented_json_without_a_temp_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            cache = Path(d)
+            self._merge_ready(cache)
+            self.assertEqual(self._merge(cache, "LM317/NOPB"), 0)
+            for name in ("LM317_NOPB.json", "LM317_NOPB.plan.json"):
+                raw = (cache / name).read_bytes()
+                obj = json.loads(raw.decode("utf-8"))
+                self.assertEqual(raw, json.dumps(obj, indent=2, sort_keys=True).encode("utf-8"))
+            self.assertEqual([p.name for p in cache.iterdir() if p.name.endswith(".tmp")], [])
+
+    def test_a_failed_replace_keeps_the_old_file_and_leaves_no_temp(self):
+        with tempfile.TemporaryDirectory() as d:
+            cache = Path(d)
+            self._merge_ready(cache)
+            (cache / "LM317_NOPB.json").write_text("old", encoding="utf-8")
+            with mock.patch("os.replace", side_effect=OSError("boom")):
+                with self.assertRaises(OSError):
+                    self._merge(cache, "LM317/NOPB")
+            self.assertEqual((cache / "LM317_NOPB.json").read_text(encoding="utf-8"), "old")
+            self.assertEqual([p.name for p in cache.iterdir() if p.name.endswith(".tmp")], [])
+
     def test_task_id_outside_the_cache_is_a_failed_task(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
