@@ -1991,7 +1991,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("directory", nargs="?", help="Path to gerber/drill file directory")
     add_output_arg(parser)
     parser.add_argument("--analysis-dir",
-                        help="Write gerbers.json to this directory (analysis folder convention)")
+                        help="Write gerber.json into the current run of this analysis directory (analysis folder convention)")
     add_compact_arg(parser)
     parser.add_argument("--full", action="store_true",
                         help="Include full pin-to-net connectivity data")

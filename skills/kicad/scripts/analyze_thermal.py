@@ -917,7 +917,7 @@ def main(argv: list[str] | None = None) -> int:
                         help="Path to datasheets/extracted/ directory")
     add_config_arg(parser)
     parser.add_argument("--analysis-dir",
-                        help="Write thermal.json to this directory (analysis folder convention)")
+                        help="Write thermal.json into the current run of this analysis directory (analysis folder convention)")
     add_schema_arg(parser)
     add_stage_audience_args(parser)
     add_only_deterministic_arg(parser)

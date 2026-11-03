@@ -232,6 +232,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `summarize_findings.py`, `diff_analysis.py`, `what_if.py` and `lifecycle_audit.py` read a reviewed copy in `analysis/merged/` only while it still equals the current raw output once its `llm_*` fields are stripped; a stale copy is reported and the raw file is read.
 - PCB `--schema` declares `decoupling_placement` as a list and the `decoupling_proximity`, `switching_loop_areas` and `return_path_continuity` lists the analyzer already emitted.
 - The Gerber `zip_archives` schema text lists the keys the scan writes (`modified`, `vs_loose_files`, `age_delta_hours`, `error`) and no longer names a `staleness_warning` it never emits.
+- `analyze_gerbers.py --analysis-dir` and `analyze_thermal.py --analysis-dir` help names the file written (`gerber.json`, `thermal.json`) and says it goes into the current run.
 
 ### Documentation
 

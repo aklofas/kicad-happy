@@ -37,6 +37,15 @@ class CliHelperTests(unittest.TestCase):
         add_only_deterministic_arg(p, consumer=True)
         self.assertTrue(next(a for a in p._actions if a.dest == "only_deterministic").help.startswith("Read raw analysis/<run>/<analyzer>.json"))
 
+    def test_derived_analysis_dir_help_names_the_run_file(self):
+        for mod, name in ((analyze_gerbers, "gerber.json"), (analyze_thermal, "thermal.json")):
+            out = io.StringIO()
+            with redirect_stdout(out), self.assertRaises(SystemExit):
+                mod.main(["--help"])
+            text = " ".join(out.getvalue().split())
+            self.assertIn(f"Write {name} into the current run", text, mod.__name__)
+            self.assertNotIn("gerbers.json", text)
+
     def test_every_cli_main_takes_argv_and_returns_int(self):
         for mod in (analyze_schematic, analyze_pcb, analyze_gerbers, analyze_thermal, cross_analysis, diff_analysis, what_if, lifecycle_audit, summarize_findings, analyze_emc, simulate_subcircuits, extract_parasitics):
             sig = inspect.signature(mod.main)
