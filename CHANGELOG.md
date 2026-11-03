@@ -209,6 +209,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `--help` and `--schema` descriptions now match the values the analyzers accept and the fields they emit: `summarize_findings.py --confidence` and `--evidence-source` list exactly the accepted values (the help named `simulation`, `user_config` and `lookup`, which are rejected), `board_thickness_mm` is described as the thickness used by the current-capacity check (1.6 when the board gives none, present only with current-capacity findings), `via_analysis` lists `via_in_pad` and `fanout_patterns`, and the thermal `skipped` reason lists `no_operating_current`; help text no longer cites spec sections or phases, `simulate_subcircuits --pcb` says parasitics apply to RC-filter testbenches, and the malformed-sidecar warning drops its issue tag (KH-659, KH-new-pcb-schema-thickness-via-analysis, KH-new-summarize-help-vocabulary).
 - Reports, review files, BOM/CPL files and SPICE artefacts are read and written as UTF-8 on every platform; a non-UTF-8 locale (Windows cp1252) no longer crashes or mis-decodes them (KH-849).
 - The Action's `has-critical` and `findings-count` count voltage-derating findings again (they had been read from a retired key). (KH-814)
+- `--schema` declares `fix_params` on findings and five PCB keys the analyzer already emitted (`layer_transitions`, `dimensions`, `groups`, `thermal_pad_scan`, `copper_presence_summary`). (KH-821, KH-854)
 
 ### Documentation
 

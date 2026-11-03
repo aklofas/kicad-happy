@@ -408,3 +408,22 @@ class PCBEnvelope:
         "description": "Not in CLI output: violations move to "
                        "findings[] (detector analyze_dfm), the rest to "
                        "dfm_summary."})
+    layer_transitions: Optional[list] = field(default=None, metadata={
+        "description": "Nets that change copper layer, when any do. Items: net, "
+                       "net_number, copper_layers, layer_count, via_count, "
+                       "via_positions."})
+    dimensions: Optional[list] = field(default=None, metadata={
+        "description": "Dimension annotations, when the board has any. Items: "
+                       "value_mm, layer, text, endpoints."})
+    groups: Optional[list] = field(default=None, metadata={
+        "description": "Board groups, when the board has any. Items: name, "
+                       "member_count."})
+    thermal_pad_scan: Optional[list] = field(default=None, metadata={
+        "description": "Thermal-pad via scan, one item per pad. Items: component, "
+                       "pad, pad_size_mm, pad_area_mm2, net, nearby_thermal_vias, "
+                       "standalone_vias, footprint_via_pads, layer, detector, "
+                       "rule_id, category."})
+    copper_presence_summary: Optional[list] = field(default=None, metadata={
+        "description": "Components grouped by the opposite-layer nets they sit "
+                       "over. Items: opposite_layer_nets (comma-joined names), "
+                       "component_count, components."})

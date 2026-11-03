@@ -13,6 +13,7 @@ NOT_EMITTED_BY_DEFAULT = {
     "stages": "added later by output_filters.assign_stages",
     "detection_id": "supplied by the detector through make_finding's **extra",
     "provenance": "supplied by the detector through make_finding's **extra",
+    "fix_params": "supplied by the detector, and only on findings that carry a machine-readable fix",
     "extra": "schema-only container; make_finding merges extra kwargs flat into the finding",
 }
 
