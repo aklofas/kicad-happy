@@ -161,8 +161,8 @@ if [ -n "$SCHEMATIC" ] && [ -f "$SCHEMATIC" ]; then
     [ -n "$CONFIG_PATH" ] && SCH_CMD+=(--config "$CONFIG_PATH")
     if python3 "${SCH_CMD[@]}" 2>"$OUTDIR/schematic.err"; then
         echo "schematic-json=$SCH_JSON" >> "$GITHUB_OUTPUT"
-        COMP_COUNT=$(python3 -c "import json; d=json.load(open('$SCH_JSON')); print(d.get('statistics',{}).get('total_components',0))" 2>/dev/null || echo "?")
-        NET_COUNT=$(python3 -c "import json; d=json.load(open('$SCH_JSON')); print(d.get('statistics',{}).get('total_nets',0))" 2>/dev/null || echo "?")
+        COMP_COUNT=$(python3 -I -c "import json; d=json.load(open('$SCH_JSON')); print(d.get('statistics',{}).get('total_components',0))" 2>/dev/null || echo "?")
+        NET_COUNT=$(python3 -I -c "import json; d=json.load(open('$SCH_JSON')); print(d.get('statistics',{}).get('total_nets',0))" 2>/dev/null || echo "?")
         echo "Components: $COMP_COUNT, Nets: $NET_COUNT"
     else
         echo "::error::Schematic analysis failed"
@@ -203,7 +203,7 @@ if [ "${INPUT_SPICE:-true}" = "true" ] && [ -n "$SCH_JSON" ]; then
         echo "::group::SPICE Simulation"
         SPICE_JSON="$OUTDIR/spice.json"
         if python3 "$SPICE_SCRIPTS/simulate_subcircuits.py" "$SCH_JSON" --compact -o "$SPICE_JSON" 2>"$OUTDIR/spice.err"; then
-            SUMMARY=$(python3 -c "import json; d=json.load(open('$SPICE_JSON')); s=d.get('summary',{}); print(f\"{s.get('pass',0)} pass, {s.get('warn',0)} warn, {s.get('fail',0)} fail, {s.get('skip',0)} skip, {s.get('info',0)} info\")" 2>/dev/null || echo "?")
+            SUMMARY=$(python3 -I -c "import json; d=json.load(open('$SPICE_JSON')); s=d.get('summary',{}); print(f\"{s.get('pass',0)} pass, {s.get('warn',0)} warn, {s.get('fail',0)} fail, {s.get('skip',0)} skip, {s.get('info',0)} info\")" 2>/dev/null || echo "?")
             echo "SPICE: $SUMMARY"
         else
             echo "::notice::SPICE simulation failed (non-blocking)"
@@ -230,14 +230,14 @@ if [ -n "$SCH_JSON" ] || [ -n "$PCB_JSON" ]; then
         EMC_ARGS+=(--spice-enhanced)
     fi
     if python3 "$ACTION_PATH/skills/emc/scripts/analyze_emc.py" "${EMC_ARGS[@]}" 2>"$OUTDIR/emc.err"; then
-        SUMMARY=$(python3 -c "import json; d=json.load(open('$EMC_JSON')); s=d.get('summary',{}); bs=s.get('by_severity',{}); print(f\"score {s.get('emc_risk_score',0)}/100, {bs.get('error',s.get('critical',0))} error, {bs.get('warning',s.get('high',0))} warning, {bs.get('info',s.get('medium',0))} info\")" 2>/dev/null || echo "?")
+        SUMMARY=$(python3 -I -c "import json; d=json.load(open('$EMC_JSON')); s=d.get('summary',{}); bs=s.get('by_severity',{}); print(f\"score {s.get('emc_risk_score',0)}/100, {bs.get('error',s.get('critical',0))} error, {bs.get('warning',s.get('high',0))} warning, {bs.get('info',s.get('medium',0))} info\")" 2>/dev/null || echo "?")
         echo "EMC: $SUMMARY"
     else
         # analyze_emc.py exits nonzero on an input error or a crash; neither writes findings JSON.
         # Keep a valid JSON report if one is there anyway; with no/malformed JSON,
         # clear it and warn.
-        if [ -f "$EMC_JSON" ] && python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$EMC_JSON" >/dev/null 2>&1; then
-            SUMMARY=$(python3 -c "import json; d=json.load(open('$EMC_JSON')); s=d.get('summary',{}); bs=s.get('by_severity',{}); print(f\"score {s.get('emc_risk_score',0)}/100, {bs.get('error',s.get('critical',0))} error, {bs.get('warning',s.get('high',0))} warning, {bs.get('info',s.get('medium',0))} info\")" 2>/dev/null || echo "?")
+        if [ -f "$EMC_JSON" ] && python3 -I -c "import json,sys; json.load(open(sys.argv[1]))" "$EMC_JSON" >/dev/null 2>&1; then
+            SUMMARY=$(python3 -I -c "import json; d=json.load(open('$EMC_JSON')); s=d.get('summary',{}); bs=s.get('by_severity',{}); print(f\"score {s.get('emc_risk_score',0)}/100, {bs.get('error',s.get('critical',0))} error, {bs.get('warning',s.get('high',0))} warning, {bs.get('info',s.get('medium',0))} info\")" 2>/dev/null || echo "?")
             echo "::notice::EMC analyzer exited nonzero but left a valid JSON report; using it"
             echo "EMC: $SUMMARY"
         else
@@ -262,14 +262,14 @@ if [ -n "$SCH_JSON" ] && [ -n "$PCB_JSON" ]; then
         THERMAL_ARGS+=(--datasheets "$DS_DIR/extracted")
     fi
     if python3 "$SCRIPTS/analyze_thermal.py" "${THERMAL_ARGS[@]}" 2>"$OUTDIR/thermal.err"; then
-        SUMMARY=$(python3 -c "import json; d=json.load(open('$THERMAL_JSON')); s=d.get('summary',{}); bs=s.get('by_severity',{}); print(f\"score {s.get('thermal_score',0)}/100, {bs.get('error',s.get('critical',0))} error, {bs.get('warning',s.get('high',0))} warning, {s.get('components_analyzed',0)} components\")" 2>/dev/null || echo "?")
+        SUMMARY=$(python3 -I -c "import json; d=json.load(open('$THERMAL_JSON')); s=d.get('summary',{}); bs=s.get('by_severity',{}); print(f\"score {s.get('thermal_score',0)}/100, {bs.get('error',s.get('critical',0))} error, {bs.get('warning',s.get('high',0))} warning, {s.get('components_analyzed',0)} components\")" 2>/dev/null || echo "?")
         echo "Thermal: $SUMMARY"
     else
         # Mirror the EMC block above: thermal exits nonzero on an input
         # error or a crash; neither writes findings JSON. Keep a valid JSON report if one is there
         # anyway; clear it when the file is missing or malformed.
-        if [ -f "$THERMAL_JSON" ] && python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$THERMAL_JSON" >/dev/null 2>&1; then
-            SUMMARY=$(python3 -c "import json; d=json.load(open('$THERMAL_JSON')); s=d.get('summary',{}); bs=s.get('by_severity',{}); print(f\"score {s.get('thermal_score',0)}/100, {bs.get('error',s.get('critical',0))} error, {bs.get('warning',s.get('high',0))} warning, {s.get('components_analyzed',0)} components\")" 2>/dev/null || echo "?")
+        if [ -f "$THERMAL_JSON" ] && python3 -I -c "import json,sys; json.load(open(sys.argv[1]))" "$THERMAL_JSON" >/dev/null 2>&1; then
+            SUMMARY=$(python3 -I -c "import json; d=json.load(open('$THERMAL_JSON')); s=d.get('summary',{}); bs=s.get('by_severity',{}); print(f\"score {s.get('thermal_score',0)}/100, {bs.get('error',s.get('critical',0))} error, {bs.get('warning',s.get('high',0))} warning, {s.get('components_analyzed',0)} components\")" 2>/dev/null || echo "?")
             echo "::notice::Thermal analyzer exited nonzero but left a valid JSON report; using it"
             echo "Thermal: $SUMMARY"
         else
@@ -380,9 +380,9 @@ fi
 
 # Set finding outputs
 if [ -f "$SUMMARY_JSON" ]; then
-    FINDINGS_COUNT=$(python3 -c "import json; print(json.load(open('$SUMMARY_JSON')).get('findings_count',0))")
-    HAS_CRITICAL=$(python3 -c "import json; print(str(json.load(open('$SUMMARY_JSON')).get('has_critical',False)).lower())")
-    VERIFIED_COUNT=$(python3 -c "import json; print(json.load(open('$SUMMARY_JSON')).get('verified_count',0))")
+    FINDINGS_COUNT=$(python3 -I -c "import json; print(json.load(open('$SUMMARY_JSON')).get('findings_count',0))")
+    HAS_CRITICAL=$(python3 -I -c "import json; print(str(json.load(open('$SUMMARY_JSON')).get('has_critical',False)).lower())")
+    VERIFIED_COUNT=$(python3 -I -c "import json; print(json.load(open('$SUMMARY_JSON')).get('verified_count',0))")
     echo "findings-count=$FINDINGS_COUNT" >> "$GITHUB_OUTPUT"
     echo "has-critical=$HAS_CRITICAL" >> "$GITHUB_OUTPUT"
 else

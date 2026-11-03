@@ -25,6 +25,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Datasheet extraction files are opened without following links and checked as opened, so a link swapped in after the check is no longer read, and a named pipe in the cache no longer hangs the analyzers. The extraction cache (`datasheets/extracted/`) is not read when the project's `datasheets/` or `extracted/` folder is a symlink (one warning on stderr); replace the link with a real folder, or for `analyze_thermal.py` name it with `--datasheets`. The SPICE spec fetcher and the voltage-derating abs-max check now read extractions with the same checks, the size cap, and the same refusal of manifest `file` values that leave the cache. (KH-811)
 - `what_if.py --output`, the BOM export and `build_review_plan.py --output` write into a named pipe or `/dev/stdout` instead of replacing it, so piping them works and a redirected file keeps its inode.
 - A cached datasheet PDF path (`source.local_path`) is read only inside the project's `datasheets/` folder and only as a regular file, so an absolute or `..` path, a device or a pipe is treated as a missing PDF; `datasheet_features` maps an MPN to its cache file the same way the typed lookup does and no longer reads outside `extracted/`. (KH-870, KH-782)
+- The GitHub Action's inline JSON readers run Python in isolated mode, so a `json.py` (or any module) in the checked-out workspace is never imported by an Action step.
 
 ### Changed
 
