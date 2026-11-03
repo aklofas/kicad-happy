@@ -130,7 +130,7 @@ Two levels of connectivity checking are performed.
 
 ### 3.1 Without `--full`
 
-A net with at least 2 pads counts as routed when it has any track, arc, via, zone or net-bearing copper graphic. `routing_complete` then means only that, and one `diagnostics` record says completeness is not proven.
+A net with at least 2 pads counts as routed when it has any track, arc, via, zone or net-bearing copper graphic. `routing_complete` then means only that: the plain-mode limit is stated in the `routing_complete` description of `--schema`, and only `--full` proves completeness, through the copper graph (3.2).
 
 ### 3.2 With `--full`
 

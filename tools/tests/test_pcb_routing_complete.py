@@ -13,7 +13,6 @@ sys.path.insert(0, str(SCRIPTS))
 
 from pcb.pipeline import analyze_pcb  # noqa: E402
 
-NOTE = "routing_complete means every multi-pad net has copper; completeness not proven without --full"
 LAYERS = ('(layers (0 "F.Cu" signal) (31 "B.Cu" signal) (38 "B.Mask" user) (39 "F.Mask" user)'
           ' (44 "Edge.Cuts" user))\n')
 
@@ -71,7 +70,7 @@ def _rt001(res):
 
 
 def _notes(res):
-    return [d for d in res["diagnostics"] if d["effect"] == NOTE]
+    return [d for d in res["diagnostics"] if "routing_complete" in d["effect"]]
 
 
 class TestRoutingFromGraph(unittest.TestCase):
