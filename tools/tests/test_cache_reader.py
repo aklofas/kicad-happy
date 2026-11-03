@@ -142,6 +142,29 @@ class CacheReader(unittest.TestCase):
             q = df.get_regulator_features("P2", extract_dir=d)["quality"]
             self.assertEqual((q["trusted"], q["reasons"]), (False, ["stale_version (1 < 2)"]))
 
+    def test_falsy_wrong_typed_legacy_blocks_keep_their_old_result(self):
+        sys.path.insert(0, str(DS / "scripts"))
+        import datasheet_features as df
+        meta = {"extraction_version": 2, "extraction_score": 9}
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "P1.json").write_text(json.dumps(
+                {"topology": "ldo", "extraction_metadata": {"extraction_version": None, "extraction_score": 9}}),
+                encoding="utf-8")
+            q = df.get_regulator_features("P1", extract_dir=d)["quality"]
+            self.assertEqual((q["trusted"], q["reasons"]), (False, ["stale_version (0 < 2)"]))
+            for blk in ({"features": []}, {"features": ""}, {"pins": {}}, {"peripherals": []}, {"peripherals": {"usb": ""}}):
+                (Path(d) / "P2.json").write_text(json.dumps(
+                    dict(blk, topology="ldo", extraction_metadata=meta)), encoding="utf-8")
+                self.assertIsNotNone(df.get_regulator_features("P2", extract_dir=d), blk)
+
+    def test_verify_trust_gate_tolerates_non_dict_quality_blocks(self):
+        sys.path.insert(0, str(DS / "scripts"))
+        import datasheet_verify as dv
+        for ext in ({"extraction_metadata": [1]}, {"meta": "x"}, {"extraction": "x", "meta": {"extraction_score": 3}}):
+            dv._passes_trust_gate(ext)
+        self.assertTrue(dv._passes_trust_gate({"extraction_metadata": "x", "meta": {"extraction_score": 7}}))
+        self.assertFalse(dv._passes_trust_gate({"extraction_metadata": [1], "meta": {"extraction_score": 3}}))
+
     def test_legacy_staleness_with_malformed_metadata_is_stale(self):
         sys.path.insert(0, str(DS / "scripts"))
         import datasheet_extract_cache as dec

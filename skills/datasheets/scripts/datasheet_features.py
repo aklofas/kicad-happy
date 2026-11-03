@@ -92,17 +92,19 @@ def _legacy_shape_ok(ext):
     if meta is not None:
         if not isinstance(meta, dict):
             return False
-        if 'extraction_version' in meta and not _is_number(meta['extraction_version']):
+        ver = meta.get('extraction_version')
+        if ver is not None and not _is_number(ver):
             return False
+    # Falsy wrong-typed blocks were always read as empty; only truthy ones are rejected.
     for key in ('features', 'peripherals'):
-        if ext.get(key) is not None and not isinstance(ext[key], dict):
+        if ext.get(key) and not isinstance(ext[key], dict):
             return False
     periph = ext.get('peripherals')
-    if isinstance(periph, dict) and periph.get('usb') is not None \
+    if isinstance(periph, dict) and periph.get('usb') \
             and not isinstance(periph['usb'], dict):
         return False
     pins = ext.get('pins')
-    if pins is not None:
+    if pins:
         if not isinstance(pins, list):
             return False
         for pin in pins:

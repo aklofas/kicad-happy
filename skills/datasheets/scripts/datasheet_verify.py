@@ -199,7 +199,8 @@ def _not_verifiable_finding(mpn: str, detail: str) -> dict:
 def _v13_score(extraction: dict):
     """Legacy 0-10 score: the cache manager's `extraction_metadata`, else `meta`."""
     for block in ("extraction_metadata", "meta"):
-        score = (extraction.get(block) or {}).get("extraction_score")
+        meta = extraction.get(block)
+        score = meta.get("extraction_score") if isinstance(meta, dict) else None
         if isinstance(score, (int, float)):
             return score
     return None
@@ -212,7 +213,8 @@ def _passes_trust_gate(extraction: dict) -> bool:
     v1.3: extraction_metadata (else meta).extraction_score 0-10, threshold 6.0.
     No quality metadata at all: pass (don't gate; let downstream decide).
     """
-    quality_v14 = (extraction.get("extraction") or {}).get("quality_score")
+    ext_block = extraction.get("extraction")
+    quality_v14 = ext_block.get("quality_score") if isinstance(ext_block, dict) else None
     if isinstance(quality_v14, (int, float)):
         return quality_v14 >= 60
     quality_v13 = _v13_score(extraction)
