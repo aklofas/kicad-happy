@@ -7,7 +7,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 PCB_KEYS = ("layer_transitions", "dimensions", "groups",
-            "thermal_pad_scan", "copper_presence_summary")
+            "thermal_pad_scan", "copper_presence_summary",
+            "decoupling_placement", "decoupling_proximity",
+            "switching_loop_areas", "return_path_continuity")
 
 
 def _schema(script):

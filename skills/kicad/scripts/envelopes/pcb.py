@@ -388,6 +388,13 @@ class PCBEnvelope:
                        "midpoint between the two bounding samples or the segment "
                        "junction), sample_points ([[x, y] over net_a, [x, y] over "
                        "net_b], the nearest samples on either side)."})
+    return_path_continuity: Optional[list[dict]] = field(default=None, metadata={
+        "description": "Nets whose traces lose their reference plane for part "
+                       "of their length; [] when checked and no net is under "
+                       "95 % coverage. Emitted in --full mode on boards with "
+                       "zone fills. Items: net, total_trace_mm, "
+                       "samples_checked, samples_with_reference_plane, "
+                       "reference_plane_coverage_pct, gap_note; worst first."})
 
     # --- Optional analysis bags (gated on content) ---
     thermal_analysis: Optional[dict] = field(default=None, metadata={
@@ -406,9 +413,25 @@ class PCBEnvelope:
     tombstoning_risk: Optional[dict] = field(default=None, metadata={
         "description": "Not in CLI output: its entries move to "
                        "findings[] (detector analyze_tombstoning_risk)."})
-    decoupling_placement: Optional[dict] = field(default=None, metadata={
-        "description": "Decoupling capacitor placement audit "
-                       "(when triggered)."})
+    decoupling_placement: Optional[list[dict]] = field(default=None, metadata={
+        "description": "Decoupling capacitor placement audit, one entry per IC "
+                       "with capacitors nearby; emitted only when non-empty. "
+                       "Items: ic, value, layer, nearby_caps, closest_cap_mm, "
+                       "gnd_only_caps (optional), category ('esd_bypass' for "
+                       "ESD/TVS ICs). nearby_caps items: cap, value, "
+                       "distance_mm, shared_nets, same_side; nearest first, "
+                       "within 10 mm, sharing a non-ground net."})
+    decoupling_proximity: Optional[list[dict]] = field(default=None, metadata={
+        "description": "Capacitor-to-IC proximity pairs; emitted only when "
+                       "non-empty. Items: ic_ref, cap_ref, distance_mm, "
+                       "cap_value, same_side, shared_nets."})
+    switching_loop_areas: Optional[list[dict]] = field(default=None, metadata={
+        "description": "Switching-regulator hot-loop areas; emitted with "
+                       "--schematic, for switching topologies only, and only "
+                       "when non-empty. Items: regulator_ref, regulator_value, "
+                       "inductor_ref, cap_ref, area_mm2 (null when "
+                       "degenerate), vertices_mm (cap, IC and inductor "
+                       "centres), estimate ('degenerate', optional)."})
     current_capacity: Optional[dict] = field(default=None, metadata={
         "description": "Not in CLI output: its entries move to "
                        "findings[] (detector analyze_current_capacity)."})
