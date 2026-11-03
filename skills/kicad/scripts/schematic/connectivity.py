@@ -555,7 +555,8 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
                   no_connects: list[dict] | None = None,
                   sheet_names: list[str] | None = None,
                   bus_elements: dict | None = None,
-                  diagnostics: list | None = None) -> dict[str, Net]:
+                  diagnostics: list | None = None,
+                  sheet_paths: list[str] | None = None) -> dict[str, Net]:
     """Build a connectivity map using union-find on coordinates.
 
     Groups all electrically connected points into nets, then names them
@@ -573,6 +574,10 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
     by bus entry, and — across sheet pins — positionally to the child sheet's
     hier-label bus. On ``bus_elements=None`` or a board with no bus wires the
     pass is inert and the output is byte-identical to the pre-#25 map.
+
+    ``sheet_paths`` gives each sheet index its human sheet path ("/", "/Power/");
+    with it, equal-rank labels on different sheets tie-break as KiCad does (see
+    the driver loop).  Without it the sheet index stands in for the path.
     """
     # Collect all electrical points
     # Each point: (sheet, x, y, source_info)
@@ -1077,10 +1082,13 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
         # this net (LB-001 reads this; also useful for report annotations).
         # Dedup by (name, label_type).
         # best = (priority, tiebreak_sheet, tiebreak_name, name, is_local, sheet)
-        # tiebreak_sheet is -1 for global-scope sources, else the sheet index
-        # (breadth-first, so a lower index is never deeper): at equal priority
-        # KiCad prefers the shallower sheet, then the alphabetically lower
-        # escaped name (ResolveDrivers, propagateToNeighbors).
+        # At equal priority KiCad prefers the shallower sheet, then the lower
+        # full net name, sheet path included ("/Amplifier/EN" before
+        # "/Video/AMP_STB"; ResolveDrivers, propagateToNeighbors).
+        # tiebreak_sheet is -1 for global-scope sources, else the sheet depth
+        # and tiebreak_name the escaped name behind the sheet path.  Without
+        # sheet_paths it is the sheet index (breadth-first, never deeper for a
+        # lower index) and the bare escaped name.
         best = None
         net_labels_seen: set[tuple[str, str]] = set()
         net_labels: list[dict] = []
@@ -1113,8 +1121,14 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
                 else:
                     continue
                 if cand_name:
-                    cand = (p, m_sheet if sheet_scoped else -1, _driver_sort_name(tie_name),
-                            cand_name, is_local, m_sheet)
+                    if not sheet_scoped:
+                        tie = (-1, _driver_sort_name(tie_name))
+                    elif sheet_paths and 0 <= m_sheet < len(sheet_paths):
+                        sp = sheet_paths[m_sheet]
+                        tie = (sp.count("/"), sp + _driver_sort_name(tie_name))
+                    else:
+                        tie = (m_sheet, _driver_sort_name(tie_name))
+                    cand = (p, *tie, cand_name, is_local, m_sheet)
                     if best is None or cand[:3] < best[:3]:
                         best = cand
         net_name = best[3] if best else None

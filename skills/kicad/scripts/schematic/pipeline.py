@@ -1389,7 +1389,8 @@ def analyze_schematic(path: str, project_root: str | None = None,
     nets = build_net_map(all_components, all_wires, all_labels, power_symbols, all_junctions,
                          all_no_connects,
                          sheet_names=[Path(p).stem for p in sheets_parsed],
-                         bus_elements=merged_bus, diagnostics=pipeline_diagnostics)
+                         bus_elements=merged_bus, diagnostics=pipeline_diagnostics,
+                         sheet_paths=parsed.get("sheet_paths"))
 
     # Generate BOM
     bom = generate_bom(all_components)

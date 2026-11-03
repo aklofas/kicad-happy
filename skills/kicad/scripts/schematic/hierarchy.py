@@ -208,6 +208,7 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
         dict with keys:
             components, wires, labels, junctions, no_connects, lib_symbols,
             text_annotations, bus_elements, title_block, sheets_parsed,
+            sheet_paths (each sheet's human path, "/" for the root),
             power_symbols, root_symbol_instances, generator_version,
             file_version
     """
@@ -255,6 +256,7 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
     all_bus_elements = []
     root_title_block = {}
     sheets_parsed = []
+    sheet_paths = []
 
     # Each queue entry carries the chain of sheet files above it: a sheet that
     # names one of its own ancestors would otherwise expand forever.
@@ -322,6 +324,8 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
         if sheet_idx == 0:
             root_title_block = title_block
         sheets_parsed.append(sheet_path)
+        # KiCad's human sheet path: the sheet names below the root ("/", "/Power/")
+        sheet_paths.append("/" + "".join(node["name"] + "/" for node in reversed(text_chain[:-1])))
 
         chain = ancestors + (sheet_path,)
         for sub_path, sub_uuid in sub_sheets:
@@ -371,6 +375,7 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
         "bus_elements": merged_bus,
         "title_block": root_title_block,
         "sheets_parsed": sheets_parsed,
+        "sheet_paths": sheet_paths,
         "power_symbols": power_symbols,
         "root_symbol_instances": root_symbol_instances,
         "generator_version": generator_version,
@@ -420,7 +425,7 @@ def merge_top_level_sheets(parsed: dict, path: str, *,
             for item in items:
                 item["_sheet"] = item.get("_sheet", 0) + offset
         for key in ("components", "wires", "labels", "junctions", "no_connects",
-                    "text_annotations", "sheets_parsed"):
+                    "text_annotations", "sheets_parsed", "sheet_paths"):
             parsed[key].extend(sub[key])
         for key, items in bus.items():
             parsed["bus_elements"].setdefault(key, []).extend(items)
