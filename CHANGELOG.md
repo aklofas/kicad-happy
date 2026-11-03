@@ -26,6 +26,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Changed
 
+- With `--full`, trace impedance on top and bottom layers uses the effective permittivity of a microstrip (Hammerstad), so `impedance_ohm` rises by about 7–23 % (typically 22 %); inner-layer values are unchanged. (KH-820)
 - Lifecycle audit uses a distributor result only when it is the requested part number (case, spacing, dashes, slashes, commas and parentheses aside; an ordering variant such as `LM358DRG4`, `/NOPB`, `MAX3232ECUE+` or `#PBF` is another part number, and `.` counts, so `AP2112K-3.3` is not `AP2112K-33`; Mouser is searched with its exact option), so a sibling such as `TPS54332DR` for `TPS54331DR` no longer supplies the status, and a part no distributor lists reads unknown (LC-004). LCSC lookups read the current jlcsearch row shape (top-level `mfr`, no `extra` block), so LCSC answers again (KH-600).
 - LC-005 (single source) counts only distributors that state a lifecycle status; a distributor that returns no status no longer makes a DigiKey-active part look single-sourced, and an outage still never counts (KH-601).
 - Lifecycle status takes the worst status any distributor reports, whatever the query order, reads discontinuation flags, and maps "Discontinued at DigiKey" to discontinued and "Not Recommended for New Designs" to NRND (KH-577).

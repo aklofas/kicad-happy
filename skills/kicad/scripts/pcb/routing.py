@@ -618,17 +618,20 @@ def _via_spans_layer(via_layers: list[str], layer: str, copper_order: list[str])
     return min(a, b) <= l <= max(a, b)
 
 
-def _microstrip_impedance(width_mm, height_mm, thickness_mm, epsilon_r):
+def _microstrip_impedance(width_mm, height_mm, thickness_mm, epsilon_r, outer=True):
     """Calculate single-ended microstrip characteristic impedance.
 
-    Uses Wheeler's equations (IPC-2141) with effective width correction
-    for finite copper thickness.
+    Hammerstad's closed form with effective width correction for finite copper
+    thickness. On an outer layer the field is partly in air, so Z0 uses the
+    effective permittivity; an inner layer (outer=False) keeps the bulk
+    epsilon_r, a rough estimate since a buried trace is stripline.
 
     Args:
         width_mm: Trace width in mm
         height_mm: Dielectric height to reference plane in mm
         thickness_mm: Copper thickness in mm
         epsilon_r: Relative permittivity of dielectric
+        outer: True for a top or bottom copper layer
 
     Returns:
         Characteristic impedance in ohms, or None if inputs invalid
@@ -648,15 +651,21 @@ def _microstrip_impedance(width_mm, height_mm, thickness_mm, epsilon_r):
         w_eff = w + (t / math.pi) * (1 + math.log(2 * h / t))
     else:
         w_eff = w + (t / math.pi) * (1 + math.log(4 * math.pi * w / t))
-    # Wheeler's equations
-    # Source: IPC-2141 Design Guide
-    # Verified: https://f4inx.github.io/posts/microstrip-formulas-comparison.html
+    # Source: E. Hammerstad, "Equations for Microstrip Circuit Design", Proc. 5th European
+    # Microwave Conf., 1975; Pozar, Microwave Engineering, 4th ed., §3.8 (eqs. 3.195-3.196)
+    u = w_eff / h
+    e_eff = er
+    if outer:
+        # EQ-109: εeff = (εr+1)/2 + (εr−1)/2·[(1+12h/w)^−½ + 0.04(1−w/h)² for w/h<1] (Hammerstad)
+        e_eff = (er + 1) / 2 + (er - 1) / 2 * (1 + 12 / u) ** -0.5
+        if u < 1:
+            e_eff += (er - 1) / 2 * 0.04 * (1 - u) ** 2
     if w_eff / h < 1:
-        # EQ-023: Z₀ = (60/√εr)ln(8h/w+w/4h) (Wheeler narrow microstrip)
-        z0 = (60 / math.sqrt(er)) * math.log(8 * h / w_eff + w_eff / (4 * h))
+        # EQ-023: Z₀ = (60/√εeff)ln(8h/w+w/4h) (Hammerstad narrow microstrip)
+        z0 = (60 / math.sqrt(e_eff)) * math.log(8 * h / w_eff + w_eff / (4 * h))
     else:
-        # EQ-024: Z₀ = 120π/(√εr(w/h+1.393+0.667ln(w/h+1.444))) (Wheeler wide)
-        z0 = (120 * math.pi) / (math.sqrt(er) * (w_eff / h + 1.393 + 0.667 * math.log(w_eff / h + 1.444)))
+        # EQ-024: Z₀ = 120π/(√εeff(w/h+1.393+0.667ln(w/h+1.444))) (Hammerstad wide)
+        z0 = (120 * math.pi) / (math.sqrt(e_eff) * (w_eff / h + 1.393 + 0.667 * math.log(w_eff / h + 1.444)))
     return z0
 
 
@@ -716,11 +725,13 @@ def analyze_net_lengths(tracks: dict, vias: dict,
     per-via drill size, for parasitic extraction by the SPICE simulation skill.
 
     When stackup is provided, each trace segment also gets a characteristic
-    impedance estimate (microstrip formula from IPC-2141).
+    impedance estimate (microstrip formula; see _microstrip_impedance).
     """
     # EQ-050: L = √(Δx²+Δy²) (track segment length)
     # Pre-compute layer-to-dielectric-height mapping for impedance calculation
     layer_heights = _build_layer_heights(stackup) if stackup else {}
+    copper = [l.get("name") for l in (stackup or []) if l.get("type") == "copper"]
+    outer_layers = {copper[0], copper[-1]} if copper else set()
 
     net_data: dict[int, dict] = {}
 
@@ -750,7 +761,8 @@ def analyze_net_lengths(tracks: dict, vias: dict,
             # Add impedance if stackup is available
             if stackup and layer_heights and layer in layer_heights:
                 h, er, cu_t = layer_heights[layer]
-                z0 = _microstrip_impedance(seg.get("width", 0), h, cu_t, er)
+                z0 = _microstrip_impedance(seg.get("width", 0), h, cu_t, er,
+                                            outer=layer in outer_layers)
                 if z0:
                     seg_entry["impedance_ohm"] = round(z0, 1)
             d.setdefault("trace_segments", []).append(seg_entry)
@@ -784,7 +796,8 @@ def analyze_net_lengths(tracks: dict, vias: dict,
             }
             if stackup and layer_heights and layer in layer_heights:
                 h, er, cu_t = layer_heights[layer]
-                z0 = _microstrip_impedance(arc.get("width", 0), h, cu_t, er)
+                z0 = _microstrip_impedance(arc.get("width", 0), h, cu_t, er,
+                                            outer=layer in outer_layers)
                 if z0:
                     seg_entry["impedance_ohm"] = round(z0, 1)
             d.setdefault("trace_segments", []).append(seg_entry)

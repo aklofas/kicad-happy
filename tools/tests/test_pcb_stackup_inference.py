@@ -17,7 +17,7 @@ sys.path.insert(0, str(SCRIPTS))
 sys.path.insert(0, str(SCRIPTS.parents[1] / "emc" / "scripts"))
 
 from kicad_core.sexp import parse  # noqa: E402
-from pcb import pipeline  # noqa: E402
+from pcb import pipeline, routing  # noqa: E402
 from pcb.reader import extract_setup  # noqa: E402
 
 CU4 = '(0 "F.Cu" signal) (1 "In1.Cu" signal) (2 "In2.Cu" signal) (31 "B.Cu" signal)'
@@ -90,6 +90,30 @@ class InferredStackup(unittest.TestCase):
             out = pipeline.analyze_pcb(path, include_trace_segments=True)
         segs = {s["layer"]: s for nl in out["net_lengths"] for s in nl.get("trace_segments", [])}
         self.assertIn("impedance_ohm", segs["In1.Cu"])
+
+
+class MicrostripEffectivePermittivity(unittest.TestCase):
+    """Outer-layer Z0 uses the Hammerstad effective permittivity (Pozar 4th ed. §3.8,
+    eqs. 3.195-3.196); inner layers keep the bulk epsilon_r."""
+
+    def test_pozar_example_3_7(self):
+        # epsilon_r 2.20, d 1.58 mm, W 4.87 mm: eps_eff 1.87, Z0 50 ohm (by hand 50.28)
+        self.assertAlmostEqual(routing._microstrip_impedance(4.87, 1.58, 1e-6, 2.2),
+                               50.27, delta=0.1)
+
+    def test_inner_layer_keeps_bulk_permittivity(self):
+        # (60/sqrt(4.5)) * ln(8h/w_eff + w_eff/4h); w < 2*pi*t, so w_eff = 0.25876 mm
+        self.assertAlmostEqual(
+            routing._microstrip_impedance(0.2, 0.48, 0.035, 4.5, outer=False),
+            76.54797434343233, places=9)
+
+    def test_four_layer_board_raises_outer_only(self):
+        with BoardFile(board_text()) as path:
+            out = pipeline.analyze_pcb(path, include_trace_segments=True)
+        segs = {s["layer"]: s for nl in out["net_lengths"] for s in nl.get("trace_segments", [])}
+        self.assertEqual(segs["In1.Cu"]["impedance_ohm"], 76.5)
+        # u = 0.5391, eps_eff = 3.1277, Z0 = (60/sqrt(3.1277)) * ln(8/u + u/4)
+        self.assertEqual(segs["F.Cu"]["impedance_ohm"], 91.8)
 
 
 class GeneralThicknessWithoutSetup(unittest.TestCase):
