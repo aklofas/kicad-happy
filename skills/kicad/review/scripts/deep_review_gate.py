@@ -198,6 +198,8 @@ _TOKEN_RE = re.compile(
     r"|(?:(?<![^\W_]|\.)-(?=\.?[0-9])|±(?=\.?[0-9]))?"
     r"(?:(?<![^\W_]|\.)\.(?=[0-9]))?"
     r"(?:[^\W_]|(?<=[0-9])[.,](?=[0-9]))+")
+# a ± set apart from the number it precedes (a space or a wrapped line)
+_PLUSMINUS_GAP_RE = re.compile(r"±\s+(?=\.?[0-9])")
 _LEADING_POINT_RE = re.compile(r"(?<![^\s±-])\.(?=[0-9])")
 
 
@@ -207,13 +209,14 @@ def _norm_text(s):
     s = unicodedata.normalize("NFKC", s).lower()
     s = _DASH_RE.sub("-", s)
     s = _PLUSMINUS_RE.sub("±", s).replace("≤", "<=").replace("≥", ">=")
+    s = _PLUSMINUS_GAP_RE.sub("±", s)
     # ".5" is written "0.5" so both spellings compare equal
     return _LEADING_POINT_RE.sub("0.", " ".join(_TOKEN_RE.findall(s)))
 
 
 def _squash(s):
     # Two numbers side by side stay apart ("0.9 1.0" is not "0.91.0"), and
-    # so does a ± set apart from its number ("± 12" is not "±12").
+    # so does a ± set apart from a word ("± x" is not "±x").
     return re.sub(r"(?<=[0-9]) (?=[-±0-9])|(?<=±) ", "|", _norm_text(s)).replace(" ", "")
 
 
