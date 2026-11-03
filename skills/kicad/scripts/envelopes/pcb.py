@@ -381,10 +381,13 @@ class PCBEnvelope:
                        "one ground or power plane net to another (a split between "
                        "plane nets); [] when none. Emitted in --full mode on boards "
                        "with zone fills, with return_path_continuity. A plane net "
-                       "counts only over two consecutive sample points (about 2 mm "
-                       "apart), so a pad-sized island is not a change. Items: net, layer, "
-                       "reference_layer, from_net, to_net, x, y (mm, the midpoint "
-                       "between the two samples or the segment junction)."})
+                       "counts only where it holds over about 2 mm of trace (across "
+                       "segment ends), so a pad-sized island is not a change. Items: "
+                       "net, layer, reference_layer, net_a and net_b (the two plane "
+                       "nets, an unordered pair: net_a sorts first), x, y (mm, the "
+                       "midpoint between the two bounding samples or the segment "
+                       "junction), sample_points ([[x, y] over net_a, [x, y] over "
+                       "net_b], the nearest samples on either side)."})
 
     # --- Optional analysis bags (gated on content) ---
     thermal_analysis: Optional[dict] = field(default=None, metadata={
