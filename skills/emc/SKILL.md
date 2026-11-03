@@ -84,6 +84,22 @@ python3 <skill-path>/scripts/analyze_emc.py --analysis-dir analysis/ --severity 
 python3 <skill-path>/scripts/analyze_emc.py --analysis-dir analysis/ --text
 ```
 
+### Optional: Screen supplied harmonic lines against supplied limits
+
+For spectral lines that are already expressed as RMS dBµV, dBµV/m, or dBµA, use the standalone screen. Levels must be RMS: subtract 3.01 dB from peak-amplitude spectra first, including this skill's own harmonic estimates (`harmonic_spectrum()` returns peak `amplitude_dbuv`).
+
+**Limit values must come from the user.** Build a limit profile only from limit values the user provides, together with their source (for example a standard's edition and table or clause, where applicable), and record that source in `source.citation`. Never write limit tables from memory or fill in missing bands, detectors, or units; if the user has not supplied limits, ask for them instead of running the screen.
+
+```bash
+python3 <skill-path>/scripts/analyze_harmonic_limits.py \
+  --spectrum harmonic-lines.json \
+  --limits limit-profile.json \
+  --limit-column peak \
+  --output harmonic-limit-screen.json
+```
+
+This command is separate from `analyze_emc.py`. It does not calculate a spectrum, add an EMC finding, change the risk score, write `emc.json`, or determine compliance. See [Harmonic-Limit Screening](references/harmonic-limit-screen.md) for the input schemas and interpretation boundary.
+
 ### Step 3: Interpret results
 
 Read the JSON report and incorporate findings into the design review. Each finding has a severity, rule ID, description, and actionable recommendation. See "Interpreting Results" below.
