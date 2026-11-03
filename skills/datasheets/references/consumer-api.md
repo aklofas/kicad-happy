@@ -192,6 +192,8 @@ Resolves the `datasheets/extracted/` directory for a project:
 3. If `analysis_json` is provided, use the directory of its `"file"` field, else of its first `inputs.source_files` entry.
 4. Otherwise return `None`: there is no cache, and the helpers return `None`. There is no shared temp-directory fallback.
 
+In cases 2 and 3 the result is also `None` (with one stderr warning) when the project's `datasheets/` or `datasheets/extracted/` folder is a symlink (`cache_reader.safe_extract_dir`). An `override_dir` is used as given, link or not.
+
 ```python
 extract_dir = resolve_extract_dir(project_dir="/path/to/project")
 ```

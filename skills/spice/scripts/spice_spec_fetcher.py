@@ -573,6 +573,7 @@ def fetch_specs_from_extraction(mpn, project_dir):
         return None
     from pathlib import Path
     from datasheet_types.cache_reader import read_json_object, safe_extract_dir
+    from distributor_core.manifest import manifest_file_path
     extract_dir = safe_extract_dir(Path(project_dir) / "datasheets" / "extracted")
     if extract_dir is None:
         return None
@@ -594,8 +595,8 @@ def fetch_specs_from_extraction(mpn, project_dir):
                 break
     if not entry:
         return None
-    json_file = extract_dir / entry.get("file", "")
-    if not json_file.exists():
+    json_file = manifest_file_path(extract_dir, entry.get("file") if isinstance(entry, dict) else None)
+    if json_file is None or not json_file.exists():
         return None
     extraction = read_json_object(json_file)
     if extraction is None:

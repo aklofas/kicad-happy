@@ -116,5 +116,37 @@ class SymlinkedProjectCacheTest(unittest.TestCase):
         self._check(_derating_vin_max, [5], [])
 
 
+class ManifestFileEscapeTest(unittest.TestCase):
+    """A manifest ``file`` value that leaves the extraction cache is a miss for the SPICE spec
+    fetcher and the voltage-derating abs-max reader; a plain leaf name is read."""
+
+    def _read_both(self, file_value, linked_sub=False):
+        from spice_spec_fetcher import fetch_specs_from_extraction
+        with tempfile.TemporaryDirectory() as tmp:
+            outside = Path(tmp) / "outside"
+            _write_cache(outside)
+            proj = Path(tmp) / "proj"
+            ex = proj / "datasheets" / "extracted"
+            ex.mkdir(parents=True)
+            if linked_sub:
+                os.symlink(outside, ex / "sub")
+            if file_value == "LEAF.json":
+                (ex / "LEAF.json").write_bytes((outside / "XA100.json").read_bytes())
+            value = str(outside / "XA100.json") if file_value == "ABS" else file_value
+            (ex / "manifest.json").write_text(json.dumps(
+                {"extractions": {"XA100": {"file": value}}}), encoding="utf-8")
+            spice = (fetch_specs_from_extraction("XA100", str(proj)) or {}).get("gbw_hz")
+            return spice, _derating_vin_max(proj)
+
+    def test_leaf_name_is_read(self):
+        self.assertEqual(self._read_both("LEAF.json"), (1000000, [5]))
+
+    def test_dotdot_absolute_and_linked_subdir_are_a_miss(self):
+        for value, linked in (("../../../outside/XA100.json", False),
+                              ("ABS", False), ("sub/XA100.json", True)):
+            with self.subTest(value=value):
+                self.assertEqual(self._read_both(value, linked), (None, []))
+
+
 if __name__ == "__main__":
     unittest.main()

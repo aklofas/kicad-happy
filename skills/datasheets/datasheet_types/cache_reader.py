@@ -91,8 +91,8 @@ def safe_extract_dir(extract_dir) -> Optional[Path]:
     if p.is_symlink() or p.parent.is_symlink():
         if str(p) not in _WARNED_LINKED_DIRS:
             _WARNED_LINKED_DIRS.add(str(p))
-            print(f"Warning: {p} is reached through a symlink; datasheet cache ignored",
-                  file=sys.stderr)
+            print(f"Warning: {p} is reached through a symlink; datasheet extraction cache "
+                  f"ignored (replace the link with a real folder)", file=sys.stderr)
         return None
     return p
 

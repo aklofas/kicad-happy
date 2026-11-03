@@ -769,6 +769,7 @@ def analyze_voltage_derating(ctx: AnalysisContext, signal_analysis: dict,
             return None
         try:
             from datasheet_types.cache_reader import read_json_object, safe_extract_dir
+            from distributor_core.manifest import manifest_file_path
         except ImportError:     # no datasheet_types, no extraction cache
             return None
         extracted_dir = safe_extract_dir(Path(project_dir) / "datasheets" / "extracted")
@@ -785,9 +786,10 @@ def analyze_voltage_derating(ctx: AnalysisContext, signal_analysis: dict,
                 idx = read_json_object(idx_path) or {}
                 for k, v in idx.get("extractions", {}).items():
                     if k.upper() == sanitized.upper():
-                        extract_path = extracted_dir / v.get("file", "")
+                        extract_path = manifest_file_path(
+                            extracted_dir, v.get("file") if isinstance(v, dict) else None)
                         break
-            if not extract_path.exists():
+            if extract_path is None or not extract_path.exists():
                 return None
         data = read_json_object(extract_path)
         return data.get("absolute_maximum_ratings") if data is not None else None
