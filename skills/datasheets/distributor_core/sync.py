@@ -18,6 +18,7 @@ Imports ``distributor_core.inputs``/``manifest``/``download`` and the stdlib onl
 """
 
 import json
+import os
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -147,20 +148,32 @@ class _Run:
         self.warnings = []  # parts whose verification says the datasheet is probably wrong
 
 
-def _remove_replaced_file(run, part_key: str, previous: dict, stored: dict) -> None:
-    """Delete the PDF a replaced ``ok`` entry named, unless the new entry names the same file or
-    another entry does: no manifest entry would point at it any more."""
+def _same_file(out_dir: Path, a: object, b: object) -> bool:
+    """Whether two manifest ``file`` values name one file: the same physical file when both exist
+    (a case-insensitive volume, ``./x.pdf``), else the same name after normalising case and
+    separators."""
+    if not isinstance(a, str) or not isinstance(b, str):
+        return False
+    if a == b:
+        return True
+    try:
+        return os.path.samefile(out_dir / a, out_dir / b)
+    except OSError:
+        return os.path.normcase(os.path.normpath(a)) == os.path.normcase(os.path.normpath(b))
+
+
+def _replaced_file(run, part_key: str, previous: dict, stored: dict) -> Path | None:
+    """The PDF a replaced ``ok`` entry named, when nothing names it any more: not the new entry
+    and not another entry."""
     old = manifest_file_path(run.out_dir, previous.get("file", ""))
     if old is None or not old.is_file():
-        return
-    if stored.get("file") == previous.get("file") or any(
-            k != part_key and e.get("file") == previous.get("file")
+        return None
+    name = previous.get("file")
+    if _same_file(run.out_dir, stored.get("file"), name) or any(
+            k != part_key and _same_file(run.out_dir, e.get("file"), name)
             for k, e in run.index.get("parts", {}).items() if isinstance(e, dict)):
-        return
-    try:
-        old.unlink()
-    except OSError as exc:
-        print(f"Warning: cannot remove {old}: {exc}", file=sys.stderr)
+        return None
+    return old
 
 
 def _record(run, part, outcome) -> None:
@@ -175,8 +188,10 @@ def _record(run, part, outcome) -> None:
     run.index.setdefault("parts", {})[part_key] = stored
     if stored is not result:
         run.kept_errors[part_key] = result["error"]
-    elif previous.get("status") == "ok":
-        _remove_replaced_file(run, part_key, previous, stored)
+        replaced = None
+    else:
+        replaced = (_replaced_file(run, part_key, previous, stored)
+                    if previous.get("status") == "ok" else None)
 
     if result["status"] == "ok":
         run.downloaded.append(part_key)
@@ -195,6 +210,12 @@ def _record(run, part, outcome) -> None:
     run.index["schematic"] = run.source
     run.index["last_sync"] = datetime.now(timezone.utc).isoformat()
     save_index(run.index_path, run.index)
+    # Removed only after the manifest no longer names it
+    if replaced is not None:
+        try:
+            replaced.unlink()
+        except OSError as exc:
+            print(f"Warning: cannot remove {replaced}: {exc}", file=sys.stderr)
 
 
 def sync_datasheets(

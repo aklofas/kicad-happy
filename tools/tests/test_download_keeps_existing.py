@@ -489,7 +489,7 @@ class SyncDownloadFailureTest(unittest.TestCase):
 
     def _force_all(self, d, outcome, *, extra=None):
         out = Path(d) / "out"
-        out.mkdir()
+        out.mkdir(exist_ok=True)
         (out / "LM358DR.pdf").write_bytes(GOOD)
         parts = {"LM358DR": self.OK, **(extra or {})}
         (out / "manifest.json").write_text(json.dumps({"parts": parts}), encoding="utf-8")
@@ -542,6 +542,45 @@ class SyncDownloadFailureTest(unittest.TestCase):
             out, _, entry = self._force_all(d, lambda p, *a: _not_found(p), extra={"OTHER": other})
             self.assertEqual(entry["status"], "not_found")
             self.assertEqual((out / "LM358DR.pdf").read_bytes(), GOOD)
+
+    def test_force_all_keeps_a_file_the_new_name_spells_in_another_case(self):
+        # a case-insensitive volume: lm358dr.pdf and LM358DR.pdf are one file
+        def samefile(a, b):
+            return str(a).lower() == str(b).lower()
+        with tempfile.TemporaryDirectory() as d, mock.patch("os.path.samefile", samefile):
+            out, _, entry = self._force_all(d, self._ok_as(d, "lm358dr.pdf"))
+            self.assertEqual(entry["file"], "lm358dr.pdf")
+            self.assertTrue((out / "lm358dr.pdf").exists())
+            self.assertTrue((out / "LM358DR.pdf").exists())
+
+    def test_force_all_keeps_a_file_another_entry_spells_in_another_case(self):
+        def samefile(a, b):
+            return str(a).lower() == str(b).lower()
+        other = {"file": "lm358dr.PDF", "status": "ok", "references": ["U2"]}
+        with tempfile.TemporaryDirectory() as d, mock.patch("os.path.samefile", samefile):
+            (Path(d) / "out").mkdir()
+            (Path(d) / "out" / "lm358dr.PDF").write_bytes(GOOD)
+            out, _, _ = self._force_all(d, lambda p, *a: _not_found(p), extra={"OTHER": other})
+            self.assertTrue((out / "LM358DR.pdf").exists())
+
+    def test_force_all_saves_the_manifest_before_removing_the_old_file(self):
+        from distributor_core import sync
+        order = []
+        real_save = sync.save_index
+        real_unlink = Path.unlink
+
+        def save(path, index):
+            order.append("save")
+            return real_save(path, index)
+
+        def unlink(self_, *a, **k):
+            order.append("unlink:" + self_.name)
+            return real_unlink(self_, *a, **k)
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(sync, "save_index", save), \
+                mock.patch.object(Path, "unlink", unlink):
+            self._force_all(d, lambda p, *a: _not_found(p))
+        self.assertIn("unlink:LM358DR.pdf", order)
+        self.assertLess(order.index("save"), order.index("unlink:LM358DR.pdf"))
 
     def test_force_all_never_removes_through_a_link_or_outside_the_folder(self):
         for name in ("link.pdf", "../outside.pdf", "sub/inner.pdf"):
