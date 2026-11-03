@@ -6,7 +6,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ---
 
-## v3.0.0 — unreleased
+## v3.0.0 — 2026-11-03
 
 **Theme: the v3 refactor — the same analyzers, CLIs and rule IDs on a restructured codebase: a stdlib-only shared core (`kicad_core/`), `schematic/` and `pcb/` packages with named pipeline phases, and one datasheet sync driver over four provider adapters. Output is unchanged except for the items under Changed. Python scripts that imported the analyzers' internals need the new import paths listed under Removed.**
 
