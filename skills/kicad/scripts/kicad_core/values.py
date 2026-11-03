@@ -30,6 +30,9 @@ def format_frequency(hz: float) -> str:
 # (sim_model.cpp value inference).
 _MICRO_SIGNS = str.maketrans({"\u00b5": "u", "\u03bc": "u"})
 _OHM_SIGNS = str.maketrans({c: "\u03a9" for c in "\u2126\U0001d6c0\U0001d6fa\U0001d76e"})
+_IMPEDANCE_SLASH = re.compile(
+    r"\s*[0-9][0-9.,]*\s*(?:[RrZΩ]|[Oo][Hh][Mm][Ss]?)\s*/\s*[0-9][0-9.,]*\s*"
+    r"(?:[mu]?A(?:[0-9]+)?|[kMG]?[Hh][Zz])(?![A-Za-z])")
 _MANTISSA = re.compile(r"[+-]?[0-9][0-9.,]*|[+-]?[.,][0-9][0-9.,]*")
 
 
@@ -117,6 +120,10 @@ def _parse_value(value_str: str, component_type: str | None) -> float | None:
     if not value_str:
         return None
     value_str = value_str.translate(_MICRO_SIGNS).translate(_OHM_SIGNS)
+    # A ferrite's impedance with its test frequency or rated current ("600R/200mA",
+    # "220Ω/100MHz") is not a resistance: None, like "120R@100MHz" below.
+    if _IMPEDANCE_SLASH.match(value_str):
+        return None
 
     # Strip tolerance, voltage rating, package, and other suffixes
     # Common formats: "680K 1%", "220k/R0402", "22uF/6.3V/20%/X5R/C0603"
@@ -153,8 +160,7 @@ def _parse_value(value_str: str, component_type: str | None) -> float | None:
         except ValueError:
             return None
     # Ferrite impedance notation ("120R@100MHz") is not a component value: None.
-    # ("600R/200mA" does not reach here; the "/" split above leaves "600R".)
-    if re.search(r'\d+[Rr]\s*[/@]\s*\d', s):
+    if re.search(r'\d+[Rr]\s*@\s*\d', s):
         return None
 
     # Strip trailing unit words (mOhm, Ohm, ohm, ohms) before single-char stripping

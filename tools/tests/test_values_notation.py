@@ -67,6 +67,33 @@ class ValueNotation(unittest.TestCase):
                     ("u1", "capacitor", 1e-7), ("4.7uF film", "capacitor", 4.7e-6),
                     ("10k fq", "resistor", 1e4)])
 
+    def test_impedance_with_current_or_frequency_is_not_a_value(self):
+        for text in ("600R/200mA", "220R/1.0A", "60R/3A5", "600\u03a9/100MHz", "120Ohm / 100Mhz",
+                     "600OHM/2A/UPZ2012E-601-2R0TF/0805"):
+            self.assertIsNone(parse_value(text), msg=text)
+
+    def test_slash_notations_that_are_values_stay(self):
+        self.check([("10k/1%", "resistor", 1e4), ("49.9R/1%/R0402", "resistor", 49.9),
+                    ("100n/50V", "capacitor", 1e-7), ("2.2uH/4.3A", "inductor", 2.2e-6),
+                    ("0R1/2W", "resistor", 0.1), ("4.7uH/0R900", "inductor", 4.7e-6),
+                    ("1k/0.1A", "resistor", 1e3)])
+
+    def test_inductor_with_impedance_value_makes_no_lc_filter(self):
+        from signal_detectors import detect_lc_filters
+        comps = [{"reference": "L2", "type": "inductor", "value": "120Ohm / 100Mhz", "lib_id": "Device:L"},
+                 {"reference": "C205", "type": "capacitor", "value": "4.7u", "lib_id": "Device:C"}]
+        nets = {"IN": {"name": "IN", "pins": [{"component": "L2", "pin_number": "1"}]},
+                "OUT": {"name": "OUT", "pins": [{"component": "L2", "pin_number": "2"},
+                                                 {"component": "C205", "pin_number": "1"}]},
+                "GND": {"name": "GND", "pins": [{"component": "C205", "pin_number": "2"}]}}
+        with contextlib.redirect_stderr(io.StringIO()):
+            ctx = build_analysis_context(comps, nets, {})
+        self.assertEqual(detect_lc_filters(ctx), [])
+        comps[0]["value"] = "120u"
+        with contextlib.redirect_stderr(io.StringIO()):
+            ctx = build_analysis_context(comps, nets, {})
+        self.assertEqual(len(detect_lc_filters(ctx)), 1)
+
 
 def _ctx(components):
     with contextlib.redirect_stderr(io.StringIO()):
