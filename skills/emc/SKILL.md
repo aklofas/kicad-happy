@@ -94,7 +94,7 @@ Read the JSON report and incorporate findings into the design review. Each findi
 
 | Category | Rules | What it detects |
 |----------|-------|-----------------|
-| **Ground plane** | GP-001 to GP-005 | Signal crossing voids, zone fragmentation, missing ground planes, low fill ratio, multiple ground domains |
+| **Ground plane** | GP-001 to GP-005 | Signal crossing voids or plane splits, zone fragmentation, missing ground planes, low fill ratio, multiple ground domains |
 | **Decoupling** | DC-001 to DC-003 | Cap too far from IC, IC with no decoupling cap, cap too far from via |
 | **I/O filtering** | IO-001, IO-002 | Connector without filtering, insufficient ground pins |
 | **Switching EMC** | SW-001 to SW-003 | Harmonic overlap, switching node copper area, input cap loop area |

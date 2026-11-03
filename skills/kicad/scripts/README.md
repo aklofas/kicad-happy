@@ -261,7 +261,7 @@ Nets are assigned names with KiCad's driver priority:
 5. Sheet pin name
 6. `__unnamed_N` for nets with no label
 
-Between equal-priority names, the shallower sheet wins, then the alphabetically lower name as KiCad escapes it (`/` as `{slash}`).
+Between equal-priority names, the shallower sheet wins, then the lower full net name, sheet path included (sheet names escaped as KiCad escapes them, `/` as `{slash}`). In KiCad 5 `.sch` files, sibling sheets of equal depth still resolve by sheet order.
 
 A label's net name is its shown text with `/` escaped as `{slash}` (KiCad's net-name escaping), so a label shown `A/B` names the net `A{slash}B`; the net's `display_name` carries the shown form. Board net names are read as the file writes them.
 

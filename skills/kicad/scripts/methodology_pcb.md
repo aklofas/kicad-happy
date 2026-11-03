@@ -458,7 +458,7 @@ Sections previously at top level (`thermal_analysis`, `thermal_pad_vias`, `tombs
 
 4. **Zone connectivity approximation**: In union-find connectivity analysis, zones are assumed to connect all pads on the same net + layer. This is accurate for filled planes but may overcount for partial zones with cutouts.
 
-5. **No impedance calculation**: The analyzer doesn't compute controlled impedance from stackup data. It reports trace widths and layer assignments; impedance calculation requires knowing dielectric thickness and Er, which are in the stackup but not processed into impedance values.
+5. **First-order impedance only**: `--full` emits `impedance_ohm` from a microstrip estimate (Hammerstad effective permittivity on outer layers, bulk Er on inner layers). It is not a field solve; use a stackup calculator for controlled-impedance design.
 
 6. **Single-file analysis**: Only processes one `.kicad_pcb` file. Doesn't handle multi-board projects or panelized designs.
 

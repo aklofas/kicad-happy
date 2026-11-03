@@ -81,8 +81,9 @@ def get_emission_limit(freq_hz: float, standard: str = 'fcc-class-b') -> Optiona
 
     Returns (limit_dBuV_m, measurement_distance_m) or None if frequency
     is outside the standard's range. On the edge between two bands, the
-    tighter (lower) limit applies (47 CFR 15.209(b); CISPR transition
-    frequencies); the top edge of a table is inside it.
+    tighter (lower) limit applies, following the band-edge convention of
+    47 CFR 15.209(b) (the tighter limit applies at a band edge) and the
+    CISPR transition frequencies; the top edge of a table is inside it.
     """
     freq_mhz = freq_hz / 1e6
     table = STANDARDS.get(standard, FCC_CLASS_B_RADIATED)
