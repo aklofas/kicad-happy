@@ -153,6 +153,14 @@ class LcscReplyShapes(unittest.TestCase):
             with self.subTest(body=body):
                 self.assertIsNone(self._reply(body, "search_lcsc", "LM35X"))
 
+    def test_long_query_with_malformed_mfr_does_not_raise(self):
+        prov = _load("lcsc", "provider")
+        for mfr in (None, 5):
+            with self.subTest(mfr=mfr):
+                hit = self._reply({"components": [{"mfr": mfr, "lcsc": None}]}, "search_lcsc", "LM358DR-LONG")
+                self.assertEqual((prov._get_mpn(hit), prov._get_lcsc_code(hit), prov._get_datasheet_url(hit)),
+                                 ("", "", ""))
+
     def test_direct_shapes(self):
         for body in ([{"productCode": "C12345"}], {"result": [{"productCode": "C12345"}]}, {"result": 7}):
             with self.subTest(body=body):

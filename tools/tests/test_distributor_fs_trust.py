@@ -190,6 +190,19 @@ class FsTrust(unittest.TestCase):
                                         output_dir=str(d / "out"), parallel=par)
                 self.assertEqual(r["failed"], 2)
 
+    def test_failure_outside_sync_one_part_still_propagates(self):
+        from distributor_core import sync
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            mpns = d / "mpns.txt"
+            mpns.write_text("LM358DR\nNE555P\n", encoding="utf-8")
+            with mock.patch.object(sync, "_record", side_effect=RuntimeError("boom")):
+                for par in (1, 2):
+                    with self.subTest(parallel=par), redirect_stderr(io.StringIO()), redirect_stdout(io.StringIO()):
+                        with self.assertRaises(RuntimeError):
+                            sync.sync_datasheets(fake_provider(), mpn_list=str(mpns),
+                                                 output_dir=str(d / f"out{par}"), parallel=par)
+
 
 if __name__ == "__main__":
     unittest.main()
