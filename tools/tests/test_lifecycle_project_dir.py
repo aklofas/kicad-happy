@@ -361,6 +361,21 @@ class PipelineLifecycleTest(unittest.TestCase):
         self.assertEqual(len(lc7), 1)
         self.assertIn("AttributeError", json.dumps(lc7[0]))
 
+    def test_import_failure_names_the_engine(self):
+        err = io.StringIO()
+        result = {"bom": [{"references": ["U1"], "mpn": "LM358DR", "type": "ic"}], "findings": []}
+        from schematic.pipeline import finalize_for_cli
+        with tempfile.TemporaryDirectory() as d, \
+                mock.patch.dict(sys.modules, {"lifecycle_engine": None}), \
+                contextlib.redirect_stderr(err):
+            finalize_for_cli(result, {}, schematic_path=str(Path(d) / "board.kicad_sch"),
+                             lifecycle=True, stage=None)
+        lc7 = [f for f in result["findings"] if f.get("rule_id") == "LC-007"]
+        self.assertEqual(len(lc7), 1)
+        text = json.dumps(lc7[0]) + err.getvalue()
+        self.assertIn("lifecycle_engine could not be imported", text)
+        self.assertNotIn("lifecycle_audit.py", text)
+
 
 class TempStringCarryTest(unittest.TestCase):
     def test_swapped_range_is_sorted(self):

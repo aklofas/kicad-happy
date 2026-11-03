@@ -1503,9 +1503,9 @@ def finalize_for_cli(result: dict, config: dict, *, schematic_path: str, lifecyc
                     "fields on BOM parts and re-run with --lifecycle"
                 )
                 print("Lifecycle: no components with MPNs to check", file=sys.stderr)
-        except ImportError:
-            _lifecycle_skip_reason = "lifecycle_audit.py not found"
-            print("Warning: lifecycle_audit.py not found", file=sys.stderr)
+        except ImportError as e:
+            _lifecycle_skip_reason = f"lifecycle_engine could not be imported: {e}"
+            print(f"Warning: lifecycle_engine could not be imported: {e}", file=sys.stderr)
         except (OSError, ValueError, TypeError, KeyError, AttributeError) as e:
             _lifecycle_skip_reason = f"audit raised {type(e).__name__}: {e}"
             print(f"Warning: lifecycle audit failed: {e}", file=sys.stderr)
