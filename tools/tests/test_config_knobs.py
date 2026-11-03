@@ -140,6 +140,7 @@ class ManifestShape(unittest.TestCase):
                                     "pinned": meta["pinned"], "hashed": sorted(meta["source_hashes"])}
                          for rid, meta in m["runs"].items()}}
 
+    @unittest.skipUnless(shutil.which("ngspice"), "ngspice not installed")
     def test_emc_and_spice_manifest_steps(self):
         with tempfile.TemporaryDirectory() as d:
             proj = Path(d) / "proj"

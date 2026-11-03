@@ -159,6 +159,8 @@ jobs:
           git checkout 61016aa5968
       - name: Install harness dev deps (jsonschema, referencing)
         run: python3 -m pip install --disable-pip-version-check -r /tmp/harness/requirements-dev.txt
+      - name: Install ngspice (SPICE tools tests)
+        run: sudo apt-get update -q && sudo apt-get install -y -q ngspice
       - name: tools unit tests (all, against the pinned harness fixtures)
         env:
           KH_FIXTURES: /tmp/harness/tests/fixtures
