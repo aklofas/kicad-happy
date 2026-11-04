@@ -299,6 +299,28 @@ def _is_ic_supply_input_net(net_info: dict, comp_lookup: dict, ref_pins: dict) -
 _SUPPLY_PIN_FULL_NAME = re.compile(
     r'(?:[ADP]|IO)?V(?:CC|DD)[A-Z0-9]*|[AP]?VIN\d*|V(?:BAT|BATT|BUS|SUP|SYS|PWR|S|M)\d*|V\+')
 
+# Bridge outputs KiCad types power_out (DRV8833 AOUT1, A4950 OUT1, STSPIN OUTA1/OUTU,
+# DRV8800 OUT+): two of them on one IC drive a load between them, not a rail.
+_BRIDGE_OUTPUT_PIN = re.compile(r'[A-D]?OUT(?:[A-D]?\d+[A-D]?|[A-D]|[UVW])?[+-]?')
+
+
+def _bridge_output_name(pin_name: str) -> bool:
+    compact = re.sub(r'[^0-9A-Z+-]', '', unescape_string(pin_name).upper())
+    return compact != "OUT" and bool(_BRIDGE_OUTPUT_PIN.fullmatch(compact))
+
+
+def _has_sibling_bridge_output(ref: str, net: str, ref_pins: dict) -> bool:
+    """True when IC *ref* has a bridge-named power_out pin on a net other than *net*."""
+    for num, (other_net, info) in ref_pins.get(ref, {}).items():
+        if other_net == net:
+            continue
+        for p in info.get("pins", []):
+            if (p.get("component") == ref and p.get("pin_number") == num
+                    and str(p.get("pin_type") or "").split("+")[0] == "power_out"
+                    and _bridge_output_name(p.get("pin_name") or "")):
+                return True
+    return False
+
 
 def topology_rail_nets(nets: dict[str, dict], comp_lookup: dict[str, dict], ref_pins: dict,
                        is_rail, is_ground) -> frozenset[str]:
@@ -307,8 +329,11 @@ def topology_rail_nets(nets: dict[str, dict], comp_lookup: dict[str, dict], ref_
     Every IC pin on the net is a supply input or a power output, and a capacitor goes to
     ground. A pin typed passive counts as a supply by its name (VCC, VDD, VIN); other
     passive pins are allowed only beside a pin KiCad types as power (a load-switch FET
-    drawn as an IC). A reference node (REF in the name) and a net with a resistor to
-    ground (a divider midpoint) stay signals."""
+    drawn as an IC). A reference node (REF in the name), a net with a resistor to
+    ground (a divider midpoint) and a motor-driver output stay signals. A bridge-named
+    output (OUT1 beside an OUT2 on another net) of a part not classed as power
+    management makes a rail only beside a supply input it feeds (a PMIC's OUT1), not
+    alone (an H-bridge's motor lead)."""
     def far_net(ref: str, net: str) -> str | None:
         others = {n for n, _ in ref_pins.get(ref, {}).values() if n != net}
         return next(iter(others)) if len(others) == 1 else None
@@ -330,6 +355,12 @@ def topology_rail_nets(nets: dict[str, dict], comp_lookup: dict[str, dict], ref_
                 excluded = ("".join(tokens).startswith(_NOT_SUPPLY_PIN_PREFIXES)
                             or any(t in _NOT_SUPPLY_PIN_NAMES for t in tokens))
                 if ptype == "power_out" and not excluded:
+                    function = _ic_function(comp_lookup.get(ref) or {})
+                    if function == "motor_driver":
+                        break
+                    if (function != "power_management" and _bridge_output_name(pname)
+                            and _has_sibling_bridge_output(ref, name, ref_pins)):
+                        continue   # not a supply by itself: needs a supply input beside it
                     typed_supply += 1
                 elif "".join(tokens) == "VS" and _has_bootstrap_pin(ref, ref_pins):
                     break

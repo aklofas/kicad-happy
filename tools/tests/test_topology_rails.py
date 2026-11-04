@@ -1,7 +1,7 @@
 # tools/tests/test_topology_rails.py
 """A named net is a power rail by its pins: every IC pin on it is a supply input or a power
 output, and a capacitor goes to ground. A reference node, a divider midpoint, a crystal
-pin and a bootstrap node stay signals. VM-001 keeps reading an IC's I/O level from its
+pin, a bootstrap node, a flying cap and a motor-driver output stay signals. VM-001 keeps reading an IC's I/O level from its
 named rails, and CS-DET keeps a shunt whose sense side is such a rail."""
 import sys
 import unittest
@@ -97,6 +97,44 @@ class TopologyRails(unittest.TestCase):
                     "SW_BOOT": [("U1", "3", "BST", "power_in"), _p("C2", "2")],
                     "GND": [_p("C1", "2")]})
         self.assertEqual(ctx.topology_rails, frozenset())
+
+    def test_flying_cap_stays_a_signal(self):
+        # A charge pump's flying cap joins C1+ and C1-, not ground
+        ctx = _ctx([_ic("U1", "MAX232"), _c("C1", "1u")],
+                   {"C1P": [("U1", "1", "C1+", "passive"), _p("C1", "1")],
+                    "C1N": [("U1", "3", "C1-", "passive"), _p("C1", "2")]})
+        self.assertEqual(ctx.topology_rails, frozenset())
+
+    def test_motor_driver_outputs_stay_signals(self):
+        # DRV8833 bridge outputs are typed power_out; EMI caps to GND do not make them rails
+        comps = [_ic("U1", "DRV8833PWP"), _c("C1", "10n"), _c("C2", "10n")]
+        comps[0]["lib_id"] = "Driver_Motor:DRV8833PWP"
+        ctx = _ctx(comps, {"MOTOR_A": [("U1", "2", "AOUT1", "power_out"), _p("C1", "1")],
+                           "MOTOR_B": [("U1", "4", "AOUT2", "power_out"), _p("C2", "1")],
+                           "GND": [_p("C1", "2"), _p("C2", "2")]})
+        self.assertEqual(ctx.topology_rails, frozenset())
+        # A part the classifier names a motor driver: any power_out pin, whatever its name
+        ctx = _ctx(comps[:2], {"PHASE": [("U1", "2", "MOT", "power_out"), _p("C1", "1")],
+                               "GND": [_p("C1", "2")]})
+        self.assertEqual(ctx.topology_rails, frozenset())
+
+    def test_bridge_outputs_of_an_unclassified_part_stay_signals(self):
+        # A custom-library H-bridge (OUT1/OUT2 power_out) makes no rail; a dual-output
+        # regulator's OUT1/OUT2 do, and so does an unclassified PMIC output that feeds
+        # a supply input
+        comps = [_ic("U1", "TLE9201SG"), _ic("U2", "LP3996"), _ic("U3", "ACT8945A"),
+                 _ic("U4", "SOC"), _c("C1", "10n"), _c("C2", "10n"), _c("C3", "1u"),
+                 _c("C4", "1u"), _c("C5", "1u"), _c("C6", "1u")]
+        comps[1]["lib_id"] = "Regulator_Linear:LP3996SD"
+        ctx = _ctx(comps, {"ETB_P": [("U1", "1", "OUT1", "power_out"), _p("C1", "1")],
+                           "ETB_N": [("U1", "2", "OUT2", "power_out"), _p("C2", "1")],
+                           "LDO_A": [("U2", "1", "OUT1", "power_out"), _p("C3", "1")],
+                           "LDO_B": [("U2", "2", "OUT2", "power_out"), _p("C4", "1")],
+                           "VDDCORE": [("U3", "1", "OUT1", "power_out"),
+                                       ("U4", "1", "VDDCORE", "power_in"), _p("C5", "1")],
+                           "PMIC_SPARE": [("U3", "2", "OUT2", "power_out"), _p("C6", "1")],
+                           "GND": [_p(f"C{i}", "2") for i in range(1, 7)]})
+        self.assertEqual(ctx.topology_rails, frozenset({"LDO_A", "LDO_B", "VDDCORE"}))
 
 
 class Containment(unittest.TestCase):
