@@ -322,7 +322,7 @@ for line in lines:
 
 ### Component Side Detection
 
-Components that appear only on B.Cu (back copper) TO.C attributes but not F.Cu are back-side components. Those appearing on F.Cu are front-side. Through-hole components appear on both layers (front pad + back pad).
+Components whose TO.P pad references appear only on B.Cu (back copper) and not F.Cu are back-side components. Those appearing on F.Cu are front-side. Through-hole components appear on both layers (front pad + back pad).
 
 ```python
 front_components = set()
@@ -378,7 +378,7 @@ pending_aper_function = None
 for line in lines:
     s = line.strip()
 
-    # Per-tool TA function (KiCad 6+ only)
+    # Per-tool TA function in the drill file (KiCad 6+ only; gerber TA attributes are 5.1+)
     ta_match = re.match(r';\s*#@!\s*TA\.AperFunction,(.*)', s)
     if ta_match:
         pending_aper_function = ta_match.group(1).strip()
@@ -436,7 +436,7 @@ Every KiCad version can write mm or inch in any zeros format, so neither the KiC
 
 ### Drill Classification
 
-**With TA.AperFunction (KiCad 6+):**
+**With the drill-file TA.AperFunction tool comment (KiCad 6+):**
 - `Plated,PTH,ViaDrill` — via
 - `Plated,PTH,ComponentDrill` — through-hole component pad
 - `NonPlated,NPTH,BoardEdge` — board cutout or slot
@@ -579,7 +579,7 @@ for layer in job.get('MaterialStackup', []):
 | Layer completeness | Filename matching | .gbrjob expected list |
 | Drill sizes | Tool definitions | Same + TA classification |
 | Trace widths | Aperture dimensions (heuristic) | TA.AperFunction Conductor |
-| Component list | Not available | TO.C attributes |
+| Component list | Not available | TO.P references on pads (TO.C on non-pad objects) |
 | Net list | Not available | TO.N attributes |
 | Pin-to-net map | Not available | TO.P + TO.N attributes |
 | Pad count | Flash count (heuristic) | TA.AperFunction classification |
@@ -597,7 +597,7 @@ When both gerber and PCB analysis outputs are available:
 
 ### Cross-Reference Against Schematic Analyzer
 
-1. **Component list**: Gerber component refs (from TO.C) should be a subset of schematic BOM. Missing = DNP components or power symbols (expected). Extra = fabrication-only components
+1. **Component list**: Gerber component refs (from TO.P, and TO.C on non-pad objects) should be a subset of schematic BOM. Missing = DNP components or power symbols (expected). Extra = fabrication-only components
 2. **Net names**: Named nets from gerber TO.N should match schematic net names. Unnamed gerber nets (`Net-(...)`) are auto-generated and may differ
 3. **Pin count per component**: Gerber pad count should match schematic pin count for each reference designator
 

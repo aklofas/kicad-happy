@@ -583,7 +583,7 @@ From the Edge_Cuts gerber:
 
 ### Cross-Referencing Gerber with KiCad Source
 
-**KiCad 6+ (full X2 attributes available):**
+**KiCad 5.1+ (X2 attributes available):**
 1. **Component count**: Gerber X2 component count vs PCB footprint count. Difference = non-electrical footprints (logos, mounting holes, test points without copper pads)
 2. **Net count**: Gerber X2 unique `%TO.N,...*%` values should match PCB `(net N "name")` count
 3. **Pad count**: F_Cu D03 flash count vs total pad count in PCB footprints
@@ -624,7 +624,7 @@ Quickly determine the KiCad version from gerber files:
 |-----------|---------|----------|
 | X2 attribute format | `G04 #@! TF.*` (X2 off) | `%TF.*%` |
 | Aperture attributes | `G04 #@! TA.*` (5.1) or native | `%TA.AperFunction,...*%` |
-| Object attributes | `G04 #@! TO.*` (5.1) or native | `%TO.P,...*%`, `%TO.N,...*%`, `%TO.C,...*%` |
+| Object attributes | `G04 #@! TO.*` (X2 off) or native | `%TO.P,...*%`, `%TO.N,...*%`, `%TO.C,...*%` |
 | Silkscreen suffix | `_SilkS` | `_Silkscreen` |
 | Job file | `.gbrjob` from 5.1 | `.gbrjob` present |
 | Mask/paste pad openings | Regions (G36/G37) | Flashes (D03) |
