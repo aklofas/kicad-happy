@@ -235,7 +235,7 @@ When encountering a new project, check in this order:
 
 ## Field Name Variants
 
-Comprehensive list of every field name variant observed across 56 open-source KiCad projects, grouped by canonical name. The `bom_manager.py` script recognizes all of these.
+Comprehensive list of every field name variant observed across 56 open-source KiCad projects, grouped by canonical name. `bom_manager.py` reads every name below except those marked *not read*.
 
 ### MPN (Manufacturer Part Number)
 
@@ -252,7 +252,7 @@ Comprehensive list of every field name variant observed across 56 open-source Ki
 | `MFN` | Rare abbreviation |
 | `MFPN` | Rare abbreviation |
 | `Partno` | Rare variant |
-| `PN` | Ambiguous — see note below |
+| `PN` | *Not read* (ambiguous; see note below) |
 | `MP` | SnapEDA imports |
 | `Mfg Part` / `MfgPart` | Various |
 
@@ -280,7 +280,7 @@ Comprehensive list of every field name variant observed across 56 open-source Ki
 | `DigiKey_Part_Number` | Underscore verbose |
 | `Digikey Part Number` | No hyphen variant |
 | `DK` | Short abbreviation |
-| `Vendor Part Number` | When `Vendor` = "Digi-Key" (slot pattern) |
+| `Vendor Part Number` | *Not read*; only `Supplier N` slots are read (next row) |
 | `Supplier 1 Part #` | When `Supplier 1` = "Digikey" (slot pattern) |
 
 ### Mouser
@@ -316,6 +316,8 @@ Comprehensive list of every field name variant observed across 56 open-source Ki
 | Various `_PN` / `Part Number` suffixed variants | Same pattern as other distributors |
 
 ### Other Distributors
+
+Listed for reference; `bom_manager.py` does not read these fields.
 
 | Field Name | Notes |
 |---|---|

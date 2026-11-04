@@ -292,6 +292,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The report guide's schematic field table names detection-type keys and says how they map to detector strings, lists the fields the detectors emit (`estimated_vout`, `resonant_hz`, divider nets; feedback dividers are voltage-divider findings with `is_feedback`); the config reference says skipped suppressions warn on stderr; the diff guide says an item without an identity is matched by `finding_id` or content.
 - The Deep Review guide says what the evidence gate checks and that a finding whose quotes could not be checked, or that cites a computation, is kept as `evidence_checked: partial`.
 - The datasheets skill names its scout, plan, result and cache files by the sanitized MPN the scripts use (`LM317/NOPB` → `LM317_NOPB`), shows the scout-then-plan pipeline without the old page selector, and its op-amp example leaves an untabulated thermal resistance null.
+- The BOM field catalog marks the names `bom_manager.py` does not read (`PN`, `Vendor Part Number`, other distributors), and the BOM skill says stock and `Validated` carry over only for the same part.
 
 ---
 

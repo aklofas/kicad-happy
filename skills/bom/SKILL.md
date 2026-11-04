@@ -143,7 +143,7 @@ CSV columns are dynamic — only distributors the project uses get columns. Base
 
 The **Notes** column is seeded from schematic `BOM Comments` properties (or aliases like `Notes`, `Remarks`, `Ordering Notes`, etc.) on first export. On re-export, user edits in the CSV take priority — existing Notes values are preserved and schematic-sourced comments won't overwrite them.
 
-**Merge behavior:** Re-exporting preserves user-managed columns (stock, Chosen_Distributor, Validated, Notes) while updating schematic-derived columns.
+**Merge behavior:** Re-exporting updates schematic-derived columns and keeps user-managed ones. Stock, `Validated` and CSV-only distributor numbers carry over only when the row is the same part (MPN, or value and footprint without one); when a different part now holds those references, only `Notes` and `Chosen_Distributor` carry over. Manual rows with `Reference` = `--` are kept.
 
 ### Step 7: Check Stock
 
