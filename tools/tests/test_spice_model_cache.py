@@ -222,5 +222,51 @@ class SimulateSymlinkedProjectCacheTest(unittest.TestCase):
             self.assertEqual(report["diagnostics"], [])
 
 
+class ManifestReadTest(unittest.TestCase):
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "needs named pipes")
+    def test_fifo_manifest_is_a_miss(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            os.mkfifo(os.path.join(tmp, "manifest.json"))
+            code = ("import sys; sys.path.insert(0, %r); import spice_model_cache as m; "
+                    "print(m.get_cached_model(%r, 'LM358'))" % (str(SPICE), tmp))
+            out = subprocess.run([sys.executable, "-I", "-c", code], capture_output=True,
+                                 text=True, timeout=20, check=True).stdout
+            self.assertEqual(out.strip(), "(None, None)")
+
+    def test_list_manifest_is_replaced_on_write(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "manifest.json").write_text("[]", encoding="utf-8")
+            spice_model_cache.cache_model(tmp, "LM358", ".subckt LM358 1 2\n.ends\n", {}, "lookup", "opamp")
+            self.assertEqual(spice_model_cache.get_cached_model(tmp, "LM358")[0], ".subckt LM358 1 2\n.ends\n")
+
+    def _plant(self, tmp):
+        Path(tmp, "LM358.sub").write_text(".subckt LM358 1 2\n.ends\n", encoding="utf-8")
+        Path(tmp, "manifest.json").write_text(json.dumps(
+            {"LM358": {"file": "LM358.sub", "mpn": "LM358", "specs": {}}}), encoding="utf-8")
+
+    def test_oversize_model_file_is_not_used_and_is_reported(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(spice_model_cache, "_index_cache", {}):
+            self._plant(tmp)
+            sink = []
+            with open(Path(tmp, "LM358.sub"), "ab") as f:
+                f.truncate(10 * 1024 * 1024 + 1)
+            self.assertEqual(spice_model_cache.get_cached_model(tmp, "LM358", sink), (None, None))
+            self.assertEqual(len(sink), 1, sink)
+            self.assertEqual(sink[0]["effect"], "project model skipped")
+
+    @unittest.skipIf(os.name == "nt", "needs symlinks")
+    def test_linked_model_file_is_not_used_and_is_reported(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(spice_model_cache, "_index_cache", {}):
+            self._plant(tmp)
+            real = Path(tmp, "real.sub")
+            Path(tmp, "LM358.sub").rename(real)
+            os.symlink(real, Path(tmp, "LM358.sub"))
+            sink = []
+            self.assertEqual(spice_model_cache.get_cached_model(tmp, "LM358", sink), (None, None))
+            self.assertEqual(len(sink), 1, sink)
+
+
 if __name__ == "__main__":
     unittest.main()

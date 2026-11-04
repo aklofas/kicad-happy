@@ -443,21 +443,22 @@ def fetch_specs_from_datasheet(mpn, project_dir):
         return None
 
     from pathlib import Path
+    from datasheet_types.cache_reader import read_json_object
+    from distributor_core.manifest import manifest_file_path
     ds_dir = Path(project_dir) / "datasheets"
+    if ds_dir.is_symlink():
+        return None
     index_path = ds_dir / "manifest.json"
     if not index_path.exists():
         index_path = ds_dir / "index.json"
-    if not index_path.exists():
-        return None
-
-    try:
-        with open(index_path, encoding="utf-8") as f:
-            index = json.load(f)
-    except (json.JSONDecodeError, OSError):
+    index = read_json_object(index_path)
+    if index is None:
         return None
 
     # Look up MPN in index
-    parts = index.get("parts", {})
+    parts = index.get("parts")
+    if not isinstance(parts, dict):
+        return None
     entry = parts.get(mpn)
     if not entry:
         # Try case-insensitive match
@@ -465,11 +466,11 @@ def fetch_specs_from_datasheet(mpn, project_dir):
             if key.upper() == mpn.upper():
                 entry = val
                 break
-    if not entry or entry.get("status") != "ok":
+    if not isinstance(entry, dict) or entry.get("status") != "ok":
         return None
 
-    pdf_path = ds_dir / entry.get("file", "")
-    if not pdf_path.exists():
+    pdf_path = manifest_file_path(ds_dir, entry.get("file"))
+    if pdf_path is None or not pdf_path.is_file():
         return None
 
     # Try to extract text from PDF using pdftotext (optional dependency)
@@ -482,7 +483,7 @@ def fetch_specs_from_datasheet(mpn, project_dir):
         # Extract first 5 pages (electrical specs are usually in pages 2-5)
         result = subprocess.run(
             ["pdftotext", "-l", "5", str(pdf_path), "-"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10,
         )
         if result.returncode != 0:
             return None

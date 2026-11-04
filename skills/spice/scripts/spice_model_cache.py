@@ -32,6 +32,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import _core_path  # noqa: F401
+from datasheet_types.cache_reader import read_json_object, read_regular_bytes
 from distributor_core.manifest import DEFAULT_FILE_MODE, manifest_file_path
 from kicad_core.diagnostics import record
 from kicad_core.project import extraction_project_dir, project_dir_from_analysis  # noqa: F401  (re-exported)
@@ -101,7 +102,7 @@ def _cache_manifest_path(cache_dir):
     return new  # does not exist — return target path for write
 
 
-def get_cached_model(cache_dir, mpn):
+def get_cached_model(cache_dir, mpn, diagnostics=None):
     """Retrieve a cached model by MPN.
 
     Args:
@@ -123,10 +124,11 @@ def get_cached_model(cache_dir, mpn):
         if cached and cached[0] == mtime:
             index = cached[1]
         else:
-            with open(index_path, encoding="utf-8") as f:
-                index = json.load(f)
+            index = read_json_object(index_path)
+            if index is None:
+                return None, None
             _index_cache[cache_key] = (mtime, index)
-    except (json.JSONDecodeError, OSError):
+    except OSError:
         return None, None
 
     key = sanitize_mpn(mpn)
@@ -137,11 +139,19 @@ def get_cached_model(cache_dir, mpn):
     name = entry.get("file")
     model_file = manifest_file_path(Path(cache_dir), name)
     if model_file is None or not name.endswith(".sub") or not model_file.is_file():
+        if model_file is None and isinstance(name, str) and (Path(cache_dir) / name).is_symlink():
+            record(diagnostics, "spice_model_cache.get_cached_model",
+                   ValueError(f"{name} is a symlink"), "project model skipped")
         return None, None
 
+    raw = read_regular_bytes(model_file)
     try:
-        subckt = model_file.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
+        subckt = None if raw is None else raw.decode("utf-8")
+    except UnicodeDecodeError:
+        subckt = None
+    if subckt is None:
+        record(diagnostics, "spice_model_cache.get_cached_model",
+               ValueError(f"{name} is oversized or unreadable"), "project model skipped")
         return None, None
     return subckt, _read_spice_specs(entry.get("specs"))
 
@@ -216,13 +226,7 @@ def cache_model(cache_dir, mpn, subckt, specs, source, component_type):
 
     # Update manifest (prefer existing file; always write to manifest.json)
     read_path = _cache_manifest_path(cache_dir)
-    index = {}
-    if read_path.exists():
-        try:
-            with open(read_path, encoding="utf-8") as f:
-                index = json.load(f)
-        except (json.JSONDecodeError, OSError):
-            index = {}
+    index = read_json_object(read_path) or {}
 
     import datetime
     index[key] = {
@@ -342,7 +346,7 @@ def get_model_for_part(mpn, component_type=None, context=None, options=None, *, 
     # --- Tier 0: Project cache ---
     if use_cache:
         cache_dir = resolve_cache_dir(context or {}, override_dir=opts.cache_dir)
-        cached_subckt, cached_specs = get_cached_model(cache_dir, mpn)
+        cached_subckt, cached_specs = get_cached_model(cache_dir, mpn, diagnostics)
         problem = None
         if cached_subckt and not opts.trust_project_models:
             problem = model_text_problem(cached_subckt)

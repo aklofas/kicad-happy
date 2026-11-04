@@ -97,6 +97,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Fixed
 
+- SPICE model and datasheet manifests are read bounded and as regular files, project `.sub` models are size-capped, and the PDF spec fallback reads only a plain file inside `datasheets/`
 - The GitHub Action reports a failed (or missing) schematic or PCB analysis as an incomplete review instead of "No issues found": the report opens with a banner, `summary.json` lists `failed_analyzers`, the commit status is `error`, and the step fails when every selected analysis failed.
 - A jlcsearch or LCSC product-detail reply of the wrong JSON shape (a list root, a non-list `components`, a null or numeric `mfr`) no longer raises: it is no hit, or for a long query a fuzzy hit whose malformed fields read as empty. A part whose sync raises is recorded as an `error` entry while the queue goes on, a BOM `type` that is not a string no longer breaks the eligible-part count, and the datasheet URL backfill stops with an error on a manifest it cannot read.
 - The datasheet syncs read `manifest.json` without following a link or reading past 10 MB, stop with an error on a manifest they cannot read instead of replacing it, and read null fields in a precomputed BOM as empty.

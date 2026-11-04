@@ -54,9 +54,9 @@ STALE_PDF_HASH_MISMATCH = "pdf_hash_mismatch"
 MAX_CACHE_BYTES = 10 * 1024 * 1024
 
 
-def read_json_object(path) -> Optional[dict]:
-    """Read one cache JSON file; None when it is missing, a symlink, not a regular file,
-    oversized, undecodable (not UTF-8), malformed, or not a JSON object.
+def read_regular_bytes(path) -> Optional[bytes]:
+    """The bytes of one cache file; None when it is missing, a symlink, not a regular file,
+    oversized, or unreadable.
 
     The file is opened without following a link and checked as opened, so a link planted
     after any earlier check is still refused, and a named pipe is never waited on. Where
@@ -73,8 +73,21 @@ def read_json_object(path) -> Optional[dict]:
                 return None
             if not hasattr(os, "O_NOFOLLOW") and not os.path.samestat(st, os.lstat(path)):
                 return None
-            data = json.loads(f.read(MAX_CACHE_BYTES + 1).decode("utf-8"))
-    except (ValueError, OSError):
+            return f.read(MAX_CACHE_BYTES + 1)
+    except OSError:
+        return None
+
+
+def read_json_object(path) -> Optional[dict]:
+    """Read one cache JSON file; None when it is missing, a symlink, not a regular file,
+    oversized, undecodable (not UTF-8), malformed, or not a JSON object (see
+    ``read_regular_bytes`` for how the file is opened)."""
+    raw = read_regular_bytes(path)
+    if raw is None:
+        return None
+    try:
+        data = json.loads(raw.decode("utf-8"))
+    except ValueError:
         return None
     return data if isinstance(data, dict) else None
 
