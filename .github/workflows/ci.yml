@@ -201,6 +201,10 @@ jobs:
           git -c core.longpaths=true clone --filter=blob:none --no-checkout https://github.com/aklofas/kicad-happy-testharness.git "$RUNNER_TEMP/harness"
           cd "$RUNNER_TEMP/harness"
           git config core.longpaths true
+          # The harness corpus has paths Windows cannot hold (trailing spaces,
+          # colons). They stay outside the sparse cone, but Git for Windows
+          # rejects them while building the index unless protectNTFS is off.
+          git config core.protectNTFS false
           git sparse-checkout set tests/fixtures
           git checkout 28fc2f944c0
       - name: Install harness dev deps (jsonschema, referencing)
