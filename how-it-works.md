@@ -4,7 +4,7 @@ This document explains the full design review workflow — what happens when you
 
 ## The core idea
 
-The analysis scripts are **data extraction tools**, not AI. They're deterministic Python that parses KiCad's S-expression file format into structured JSON — component lists, net connectivity, detected subcircuits, board dimensions, DFM measurements. No machine learning, no heuristics that change between runs. The schematic, PCB, Gerber, EMC and thermal analyzers make no network calls. Two paths do, and both say so: `analyze_schematic.py --lifecycle` (opt-in) queries distributor APIs, and SPICE simulation looks up part models from distributors (LCSC needs no key, so part numbers leave your machine) unless run with `--offline`. You can run them yourself and read the output.
+The analysis scripts are **data extraction tools**, not AI. They're deterministic Python that parses KiCad's S-expression file format into structured JSON — component lists, net connectivity, detected subcircuits, board dimensions, DFM measurements. No machine learning, no heuristics that change between runs. The schematic, PCB, Gerber, EMC and thermal analyzers make no network calls unless asked. Two paths do, and both say so: `analyze_schematic.py --lifecycle` (opt-in) queries distributor APIs, and SPICE simulation looks up part models from distributors (LCSC needs no key, so part numbers leave your machine) unless run with `--offline`. You can run them yourself and read the output.
 
 The agent reads that JSON, reads your datasheets, and writes a design review. The AI part is the *reasoning about* the data — not the data itself.
 

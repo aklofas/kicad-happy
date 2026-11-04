@@ -60,7 +60,7 @@ This skill owns:
 ## Entry-point scripts
 
 - `scripts/datasheet_extract_cache.py` — v1.3 cache manager, resolver, indexer
-- `scripts/datasheet_page_selector.py` — page selection heuristics (used by both v1.3 and v1.4 pipelines)
+- `scripts/datasheet_page_selector.py` — page selection heuristics (manual helper; no pipeline script imports it)
 - `scripts/datasheet_score.py` — v1.3 extraction quality scoring
 - `scripts/datasheet_verify.py` — cross-check extraction vs schematic usage (v1.3 + v1.4 `verify_v14_extraction` mode)
 - `scripts/datasheet_features.py` — v1.3 consumer helper API (dual-reads v1.4 caches via `_derive_*_v14` translators)

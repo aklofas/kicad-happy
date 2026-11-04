@@ -677,7 +677,7 @@ analyzers provide facts; this pass is where the judgment happens.
 For each IC in the design:
 
 1. Pull its datasheet facts — extraction cache first
-   (`datasheets/extracted/<MPN>.json`), PDF fallback (read it
+   (`datasheets/extracted/<sanitized_mpn>.json`), PDF fallback (read it
    directly). If neither exists, say "<REF> unverified — no datasheet
    available" in the review text, not in deep_review.json, and move on.
 2. Compare against actual usage in the analyzer JSON: supply voltages

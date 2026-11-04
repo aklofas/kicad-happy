@@ -101,7 +101,7 @@ Not all "programming" connectors are JTAG. A 2x3 header (J2) with TX, RX, GND, 3
 
 ## Multi-Unit Symbols
 
-Components like LM324 (4 opamps), CD4066 (4 switches), or STM32 (multi-bank pin assignments) contain multiple units in one package. Each unit is a separate `_U_1` / `_U_2` / etc. sub-symbol in the `lib_symbols` section. When tracing nets:
+Components like LM324 (4 opamps), CD4066 (4 switches), or STM32 (multi-bank pin assignments) contain multiple units in one package. Each unit is a separate `<name>_1_1` / `<name>_2_1` / etc. sub-symbol in the `lib_symbols` section. When tracing nets:
 
 1. **Identify which unit is placed**: the placed symbol's `(unit N)` gives the unit number. Its pins are the library sub-symbols `<name>_N_<body style>` plus the shared `<name>_0_<body style>`. The placed `lib_id` carries no unit suffix.
 2. **Each unit has its own pin set** — unit 1 of an LM324 has pins 1/2/3 (IN+/IN-/OUT), unit 2 has pins 5/6/7, etc. Power pins (VCC/GND) are typically in a shared sub-symbol `_0_1`
