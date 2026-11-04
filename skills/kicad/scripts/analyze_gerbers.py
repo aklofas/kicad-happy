@@ -252,15 +252,20 @@ def _extend_extents(s: str, st: dict, x_div: float, y_div: float, scale: float, 
             d = int(m.group(5))
             if d in (1, 2, 3):
                 st["op"] = d
-        if m.group(1) is None and m.group(2) is None:
+        if m.group(1) is None and m.group(2) is None and not (
+                m.group(5) and int(m.group(5)) in (1, 3)):
             continue
         px, py = st["x"], st["y"]
         x = int(m.group(1)) / x_div * scale if m.group(1) is not None else px
         y = int(m.group(2)) / y_div * scale if m.group(2) is not None else py
         st["x"], st["y"] = x, y
-        if x is None or y is None:
+        # D02 moves deposit nothing; a draw covers its start and end, and a
+        # bare D01/D03 operates at the current point.
+        if x is None or y is None or st["op"] == 2:
             continue
         pts = [(x, y)]
+        if st["op"] == 1 and px is not None and py is not None:
+            pts.append((px, py))
         if (st["op"] == 1 and st["mode"] in (2, 3) and st["multi"] and px is not None
                 and py is not None and (m.group(3) is not None or m.group(4) is not None)):
             cx = px + (int(m.group(3)) / x_div * scale if m.group(3) is not None else 0.0)

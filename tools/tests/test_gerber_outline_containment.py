@@ -180,5 +180,32 @@ class DegenerateOutlineTest(unittest.TestCase):
         self.assertEqual(r["alignment"]["issues"],
                          ["F.Cu extends 5.0mm outside the board outline"])
 
+
+def _copper(body):
+    return f"%TF.FileFunction,Copper,L1,Top*%\n{HEAD_MM}{body}M02*\n"
+
+
+class MoveExtentsTest(unittest.TestCase):
+    def test_parking_move_before_in_board_copper_is_aligned(self):
+        # A D02 to 100 mm draws nothing; the copper itself lies in 2..8.
+        body = ("X100000000Y100000000D02*\nX2000000Y2000000D02*\n"
+                "X8000000Y2000000D01*\nX8000000Y8000000D01*\n")
+        r = _run({"b-F_Cu.gtl": _copper(body), "b-Edge_Cuts.gm1": EDGE})
+        self.assertTrue(r["alignment"]["aligned"])
+        self.assertEqual(_gr002(r), [])
+
+    def test_draw_from_the_parked_point_is_reported(self):
+        body = "X100000000Y5000000D02*\nX5000000Y5000000D01*\n"
+        r = _run({"b-F_Cu.gtl": _copper(body), "b-Edge_Cuts.gm1": EDGE})
+        self.assertEqual(len(_gr002(r)), 1)
+
+    def test_altium_move_then_bare_flash_keeps_its_extent(self):
+        # X..Y..D02* sets the point and the bare D03* flashes there.
+        g = _parse(_copper("X3000000Y4000000D02*\nD03*\n"))
+        cr = g["coordinate_range"]
+        self.assertEqual((cr["x_min"], cr["x_max"], cr["y_min"], cr["y_max"]),
+                         (3.0, 3.0, 4.0, 4.0))
+
+
 if __name__ == "__main__":
     unittest.main()

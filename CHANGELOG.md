@@ -108,6 +108,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Fixed
 
+- Gerber copper-containment check (GR-002): moves that draw nothing no longer count as copper outside the board.
 - GR-005 (open board outline): a duplicated or reversed outline segment no longer counts as a closed loop.
 - TE-001 and the schematic test coverage no longer count capacitive touch pads with TP references (a touch footprint or value, as CP-003 reads them) as test points.
 - USB power switches and load switches (RT9742, TPS2061, AP2171, MT9700, SY6280) are no longer reported as LDO regulators; the regulator screen and the power-path detector share one load-switch part list. The output net of a load switch fed from a sourced rail counts as sourced in RS-001.
