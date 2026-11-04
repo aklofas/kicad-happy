@@ -129,9 +129,15 @@ def reviewed_overlay(path: str) -> Optional[str]:
         if os.path.isfile(overlay):
             with open(overlay, encoding="utf-8") as f:
                 merged = json.load(f)
-            with open(path, encoding="utf-8") as f:
-                if strip_llm_overlays(merged) == json.load(f):
-                    return overlay
+            try:
+                with open(path, encoding="utf-8") as f:
+                    raw = json.load(f)
+            except (ValueError, OSError):
+                print(f"Note: cannot read {path}; ignoring the reviewed copy {overlay}",
+                      file=sys.stderr)
+                return None
+            if strip_llm_overlays(merged) == raw:
+                return overlay
     except (ValueError, OSError):
         pass
     print(f"Note: {overlay} does not match {path}; reading the raw file "

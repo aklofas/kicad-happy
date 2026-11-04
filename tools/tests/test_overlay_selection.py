@@ -57,6 +57,14 @@ class OverlaySelection(unittest.TestCase):
         self.assertNotIn("M-1", text)
         self.assertIn("Note:", text)
 
+    def test_missing_raw_file_is_named_not_called_a_mismatch(self):
+        self.merged.write_text(json.dumps(RAW), encoding="utf-8")
+        self.raw.unlink()
+        rc, text = _run(lambda a: analysis_cache.reviewed_overlay(a[0]), [str(self.raw)])
+        self.assertIsNone(rc)
+        self.assertIn("cannot read", text)
+        self.assertNotIn("does not match", text)
+
     def test_directory_overlay_falls_back_to_raw(self):
         self.merged.mkdir()
         self.assertIsNone(analysis_cache.reviewed_overlay(str(self.raw)))

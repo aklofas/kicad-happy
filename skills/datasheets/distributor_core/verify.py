@@ -117,7 +117,7 @@ def fetch_mismatch(query: str, hit_mpn: str, hit_pns=()) -> str:
 def refuse_fetch_hit(label: str, query: str, other: str, as_json: bool):
     """Report that a fetch ``--search`` hit is another part, then exit 2."""
     msg = f"No matching {label} result for '{query}' (closest: '{other}', a different part)"
-    print(f"{msg}; search_lcsc.py does a keyword search", file=sys.stderr)
+    print(msg, file=sys.stderr)
     if as_json:
         json.dump({"success": False, "error": msg}, sys.stdout)
     sys.exit(2)

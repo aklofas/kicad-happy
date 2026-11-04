@@ -407,5 +407,18 @@ class FetchCliIdentity(unittest.TestCase):
                     self.assertEqual((rc, calls[:1], out["success"]), (1, [URL], False))
 
 
+class RefuseFetchHit(unittest.TestCase):
+    def test_refusal_names_no_other_distributors_script(self):
+        from distributor_core.verify import refuse_fetch_hit
+        for label in ("DigiKey", "Mouser", "LCSC", "element14"):
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err), self.assertRaises(SystemExit) as cm:
+                refuse_fetch_hit(label, "LM358", "LM358DR", False)
+            self.assertEqual(cm.exception.code, 2)
+            self.assertEqual(err.getvalue().strip(),
+                             f"No matching {label} result for 'LM358' (closest: 'LM358DR', a different part)")
+
+
 if __name__ == "__main__":
     unittest.main()
+

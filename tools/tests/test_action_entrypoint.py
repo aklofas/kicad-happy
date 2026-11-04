@@ -85,6 +85,32 @@ class EntrypointFailedAnalysisTest(unittest.TestCase):
             self.assertIn('"state":"error"', (tmp / "curl.args").read_text(encoding="utf-8"))
             self.assertIn("pcb-json", out)
 
+    def test_both_selected_analyses_failed_fails_the_step(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / "bin").mkdir()
+            curl = tmp / "bin" / "curl"
+            curl.write_text(f'#!/bin/sh\nprintf "%s\\n" "$@" > {tmp / "curl.args"}\n', encoding="utf-8")
+            curl.chmod(0o755)
+            r, out = run_entrypoint(tmp, {"top.kicad_sch": "", "top.kicad_pcb": ""},
+                                    PATH=f"{tmp / 'bin'}{os.pathsep}{os.environ['PATH']}",
+                                    GITHUB_TOKEN="t", GITHUB_REPOSITORY="o/r", GITHUB_SHA="abc")
+            self.assertEqual(r.returncode, 1, r.stderr)
+            self.assertIn('"state":"error"', (tmp / "curl.args").read_text(encoding="utf-8"))
+            report = Path(out["report-path"]).read_text(encoding="utf-8")
+            self.assertIn("Incomplete review", report)
+            self.assertIn("Schematic, PCB analysis failed", report)
+
+    def test_failed_pcb_beside_a_schematic_is_listed_and_does_not_fail_the_step(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            r, out = run_entrypoint(Path(tmp), {"top.kicad_sch": SCH, "top.kicad_pcb": ""})
+            self.assertEqual(r.returncode, 0, r.stderr)
+            report = Path(out["report-path"]).read_text(encoding="utf-8")
+            self.assertIn("Incomplete review", report)
+            self.assertIn("PCB analysis failed", report)
+            self.assertNotIn("Schematic analysis failed", report)
+            self.assertNotIn("Schematic, ", report)
+
 
 class EntrypointStaticTest(unittest.TestCase):
     def test_no_inline_python_reads_the_workspace(self):
