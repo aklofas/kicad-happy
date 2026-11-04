@@ -245,6 +245,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `fetch_datasheet_digikey.py`, `_mouser.py`, `_lcsc.py` and `_element14.py` `--search` refuse a hit that is another part (exit 2, naming the closest result) instead of downloading its datasheet; a family match and the distributor's own part number are accepted, and the PDF is verified against the part asked for.
 - SPICE model metadata (such as the op-amp `model_source`) is echoed one word per value, so a part value like `LM358 gain_1k=20` can no longer add or overwrite a measured result.
 - The GitHub Action's `severity` input now filters the EMC and thermal rows of the Findings table and the findings count too; `critical` no longer keeps their warning rows.
+- The GitHub Action's PR comment lists PCB footprint changes (added, removed, modified) and shows the "...and N more" count even when none of the changed items could be listed.
 
 ### Documentation
 

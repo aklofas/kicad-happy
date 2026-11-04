@@ -79,6 +79,22 @@ class ActionPrComment(unittest.TestCase):
         one = diff_doc({"components": {"modified": [comp]}}, 1, modified=1)
         self.assertNotIn("more*", comment(one))
 
+    def test_footprint_changes_get_rows(self):
+        fp = {"added": [{"reference": "J2", "value": "USB_C", "footprint": "USB_C_Receptacle", "layer": "F.Cu"}],
+              "removed": [{"reference": "TP1", "value": "TP", "layer": "B.Cu"}],
+              "modified": [{"reference": "R1", "changes": [{"field": "footprint", "base": "R_0402", "head": "R_0603"},
+                                                           {"field": "layer", "base": "F.Cu", "head": "B.Cu"}]}]}
+        md = comment(dict(analyzer_type="pcb", **diff_doc({"footprints": fp}, 3, added=1, removed=1, modified=1)))
+        self.assertIn("| + PCB J2 | New footprint: USB_C USB_C_Receptacle |", md)
+        self.assertIn("| - PCB TP1 | Removed footprint: TP |", md)
+        self.assertIn("| ~ PCB R1 footprint | R_0402 → R_0603 |", md)
+        self.assertIn("| ~ PCB R1 layer | F.Cu → B.Cu |", md)
+        self.assertNotIn("more*", md)
+
+    def test_unlisted_items_are_counted_without_rows(self):
+        md = comment(diff_doc({"bom": {"added": [{"line": 1}, {"line": 2}]}}, 2, added=2))
+        self.assertIn("| | *...and 2 more* |", md)
+
     def test_markup_and_mentions_are_inert_in_a_cell(self):
         f = {"rule_id": "X-1", "severity": "info", "components": [], "summary": "<!-- hide --> @octocat"}
         md = comment(diff_doc({"signal_analysis": {"t": {"added": [f], "removed": [], "modified": []}}}, 1, added=1))

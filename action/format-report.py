@@ -464,6 +464,7 @@ def _diff_rows(diff_detail, source=""):
     def add(row, first=True):
         rows.append((first, "| " + " | ".join(_cell(c) for c in row) + " |"))
 
+    src = f" {source}" if source else ""
     comps = diff_detail.get("components", {})
     for c in comps.get("added", [])[:5]:
         add((f"+ {c.get('reference', '?')}", f"New: {c.get('value', '')} {c.get('footprint', '')}"))
@@ -472,6 +473,15 @@ def _diff_rows(diff_detail, source=""):
     for c in comps.get("modified", [])[:5]:
         for i, ch in enumerate(c.get("changes", [])):
             add((f"~ {c.get('reference', '?')} {ch.get('field', '')}",
+                 f"{ch.get('base', '?')} → {ch.get('head', '?')}"), first=i == 0)
+    fps = diff_detail.get("footprints", {})
+    for f in fps.get("added", [])[:5]:
+        add((f"+{src} {f.get('reference', '?')}", f"New footprint: {f.get('value', '')} {f.get('footprint', '')}"))
+    for f in fps.get("removed", [])[:5]:
+        add((f"-{src} {f.get('reference', '?')}", f"Removed footprint: {f.get('value', '')}"))
+    for f in fps.get("modified", [])[:5]:
+        for i, ch in enumerate(f.get("changes", [])):
+            add((f"~{src} {f.get('reference', '?')} {ch.get('field', '')}",
                  f"{ch.get('base', '?')} → {ch.get('head', '?')}"), first=i == 0)
     # Signal analysis changes (diff output may still use signal_analysis key)
     for det_type, det_diff in diff_detail.get("signal_analysis", {}).items():
@@ -489,7 +499,6 @@ def _diff_rows(diff_detail, source=""):
                     first=i == 0)
     # Rich finding changes (EMC, thermal, PCB)
     fd = diff_detail.get("findings", {})
-    src = f" {source}" if source else ""
     for f in fd.get("new", [])[:3]:
         add((f"NEW{src} {f.get('severity', '?')}", f"{f.get('rule_id', '?')}: {summary_or_title(f)}"))
     for f in fd.get("resolved", [])[:3]:
@@ -524,7 +533,7 @@ def _render_changes(diffs):
         L.append(f"> No added, removed or modified items ({sev})")
     L.append("")
     shown = rows[:_ROW_LIMIT]
-    if shown:
+    if shown or total:
         L.append("| Change | Detail |")
         L.append("|--------|--------|")
         L.extend(r for _, r in shown)
