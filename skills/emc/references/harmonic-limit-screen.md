@@ -55,15 +55,15 @@ The repository does not provide regulatory tables. The following values are synt
 ```json
 {
   "schema_version": "emc-limit-profile/1",
-  "profile_id": "fictional-user-profile",
+  "profile_id": "synthetic-user-profile",
   "limit_unit": "dbuv",
   "source": {
     "kind": "user_supplied",
-    "citation": "Fictional example — not a regulatory source"
+    "citation": "Synthetic example — not a regulatory source"
   },
   "bands": [
     {
-      "name": "fictional-band",
+      "name": "synthetic-band",
       "start_hz": 500000,
       "stop_hz": 1800000,
       "limits": {
@@ -102,12 +102,12 @@ An empty band has null worst-point fields; it reports a flat limit but a null `l
   "level_unit": "dbuv",
   "spectrum_source": {"kind": "simulation", "description": "synthetic spectral lines"},
   "profile": {
-    "profile_id": "fictional-user-profile",
-    "source": {"kind": "user_supplied", "citation": "Fictional example — not a regulatory source"}
+    "profile_id": "synthetic-user-profile",
+    "source": {"kind": "user_supplied", "citation": "Synthetic example — not a regulatory source"}
   },
   "bands": [
     {
-      "name": "fictional-band",
+      "name": "synthetic-band",
       "worst_frequency_hz": 1000000.0,
       "level": 42.0,
       "limit": 50.0,

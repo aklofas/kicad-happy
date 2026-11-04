@@ -80,8 +80,7 @@ python3 <skill-path>/scripts/simulate_subcircuits.py --analysis-dir analysis/ --
 python3 <skill-path>/scripts/simulate_subcircuits.py --analysis-dir analysis/ --compact
 ```
 
-To run a complete user-supplied deck (PSpice is explicit-only; the deck is trusted input), see "External Decks and PSpice" in `spice-integration.md`.
-
+To run a complete user-supplied deck (PSpice is explicit-only; the deck is trusted input), see "External Decks and PSpice" in the repository's `spice-integration.md`.
 ### Step 2b (optional): PCB parasitic-aware simulation
 
 When both schematic and PCB exist, low-pass RC filters can be simulated with the PCB trace resistance and via inductance of their output net:

@@ -36,15 +36,15 @@ VALID_SPECTRUM = {
 
 VALID_PROFILE = {
     "schema_version": "emc-limit-profile/1",
-    "profile_id": "fictional-user-profile",
+    "profile_id": "synthetic-user-profile",
     "limit_unit": "dbuv",
     "source": {
         "kind": "user_supplied",
-        "citation": "Fictional example — not a regulatory source",
+        "citation": "Synthetic example — not a regulatory source",
     },
     "bands": [
         {
-            "name": "fictional-band",
+            "name": "synthetic-band",
             "start_hz": 500_000,
             "stop_hz": 1_800_000,
             "limits": {
@@ -168,13 +168,13 @@ class TestLimitProfileValidation(unittest.TestCase):
 
     def test_valid_profile_preserves_required_provenance(self):
         normalized = self._validate(copy.deepcopy(VALID_PROFILE))
-        self.assertEqual(normalized["profile_id"], "fictional-user-profile")
+        self.assertEqual(normalized["profile_id"], "synthetic-user-profile")
         self.assertEqual(normalized["source"], VALID_PROFILE["source"])
 
     def test_extra_source_fields_are_preserved(self):
         data = copy.deepcopy(VALID_PROFILE)
         data["source"]["url"] = "https://example.invalid/profile"
-        data["source"]["edition"] = "fictional-1"
+        data["source"]["edition"] = "synthetic-1"
         normalized = self._validate(data)
         self.assertEqual(normalized["source"], data["source"])
 
@@ -245,10 +245,10 @@ class TestLimitProfileValidation(unittest.TestCase):
 
     def test_sloped_limit_shape_is_validated(self):
         cases = (
-            ({"start": 66}, "exactly 'start' and 'stop'"),
+            ({"start": 70}, "exactly 'start' and 'stop'"),
             ({"start": 70, "stop": 60, "mid": 60}, "exactly"),
-            ({"start": math.nan, "stop": 56}, r"limits\.peak\.start"),
-            ({"start": 66, "stop": True}, r"limits\.peak\.stop"),
+            ({"start": math.nan, "stop": 60}, r"limits\.peak\.start"),
+            ({"start": 70, "stop": True}, r"limits\.peak\.stop"),
         )
         for limit, expected in cases:
             with self.subTest(limit=limit):
@@ -649,7 +649,7 @@ class TestScreenHarmonics(unittest.TestCase):
             }
         ]
         band = self._screen(spectrum, profile, margin=3.0)["bands"][0]
-        # Margins: -1 (above), ~13.6, ~2.2 (near), 0 (near).
+        # Margins: -1 (above), ~17.6, ~2.2 (near), 0 (near).
         self.assertEqual(band["lines_above_limit"], 1)
         self.assertEqual(band["lines_near_limit"], 2)
 

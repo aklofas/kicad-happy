@@ -25,6 +25,14 @@ def select_backend(simulator: str):
     return detect_simulator(simulator)
 
 
+# Files each simulator writes beside the deck, named <stem><suffix>.
+_SIMULATOR_OUTPUT_SUFFIXES = {
+    "pspice": (".out", ".json", ".dat"),
+    "ltspice": (".log", ".raw"),
+    "xyce": (".mt0",),
+}
+
+
 def native_output_for(deck: Path, simulator: str) -> Path | None:
     if simulator == "pspice":
         return PspiceBackend.native_output_path(deck)
@@ -161,14 +169,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.timeout <= 0:
         parser.error("--timeout must be greater than zero")
 
-    if args.simulator == "pspice" and deck.suffix.lower() in (
-        ".out",
-        ".json",
-        ".dat",
+    if deck.suffix.lower() in _SIMULATOR_OUTPUT_SUFFIXES.get(
+        args.simulator, ()
     ):
         parser.error(
-            f"deck must not use the {deck.suffix} suffix, which PSpice uses "
-            f"for the files it writes next to the deck: {deck}"
+            f"deck must not use the {deck.suffix} suffix, which "
+            f"{args.simulator} uses for the files it writes next to the "
+            f"deck: {deck}"
         )
 
     native_output = native_output_for(deck, args.simulator)
