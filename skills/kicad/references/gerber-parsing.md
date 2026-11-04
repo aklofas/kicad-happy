@@ -618,17 +618,22 @@ Pre-submission check before sending to manufacturer:
 
 ### KiCad Version Detection
 
-Quickly determine the KiCad version from gerber files:
+The generating KiCad version is in the software string (`TF.GenerationSoftware,KiCad,Pcbnew,<version>`, or `Created by KiCad (PCBNEW ...` in older files); the analyzer reads its major number. These version facts hold whatever the X2 setting:
 
-| Indicator | KiCad 5 / X2 output off | KiCad 5.1+ with X2 output on |
+| Indicator | KiCad 5 | KiCad 6+ |
+|-----------|---------|----------|
+| Software string | `Pcbnew,5.x.x` | `Pcbnew,6.x.x` / `7.x.x` / `8.x.x` / `9.x.x` |
+| Silkscreen suffix | `_SilkS` | `_Silkscreen` |
+| Job file | `.gbrjob` from 5.1 | `.gbrjob` present |
+| Mask/paste pad openings | Regions (G36/G37) | Flashes (D03) |
+
+The attribute syntax depends on the X2 output setting (KiCad 5.1+), not the version:
+
+| Attribute | X2 output off | X2 output on |
 |-----------|---------|----------|
 | File attributes | `G04 #@! TF.*` | `%TF.*%` |
 | Aperture attributes | `G04 #@! TA.*` | `%TA.AperFunction,...*%` |
 | Object attributes | `G04 #@! TO.*` | `%TO.P,...*%`, `%TO.N,...*%`, `%TO.C,...*%` |
-| Silkscreen suffix | `_SilkS` | `_Silkscreen` |
-| Job file | `.gbrjob` from 5.1 | `.gbrjob` present |
-| Mask/paste pad openings | Regions (G36/G37) | Flashes (D03) |
-| Software string | `Pcbnew,5.x.x` | `Pcbnew,6.x.x` / `7.x.x` / `8.x.x` / `9.x.x` |
 
 ---
 
