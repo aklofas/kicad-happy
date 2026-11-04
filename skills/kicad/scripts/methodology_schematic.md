@@ -130,10 +130,12 @@ Library symbols define pin positions relative to the symbol origin. The analyzer
 
 1. Look up the component's `lib_id` in the library symbol table.
 2. For multi-unit symbols, merge unit-specific pins with unit 0 (shared pins — typically power/ground).
-3. Apply mirror transforms (KiCad's `(mirror x)` or `(mirror y)`).
-4. Apply rotation (symbol placement angle).
+3. Apply rotation (symbol placement angle, counter-clockwise).
+4. Apply the mirror to the rotated offset: `(mirror x)` flips the Y term, `(mirror y)` the X term.
 5. Apply Y-axis inversion (symbol coordinates use math-up convention; schematic coordinates use screen-down).
 6. Add the component's placement offset `(at x y)`.
+
+Worked examples, with the formulas for each angle: `references/net-tracing.md`.
 
 This gives each pin an absolute `(x, y)` in schematic space, which is how pins connect to wires in the net-building step.
 
@@ -200,9 +202,12 @@ A point that is left unjoined within 0.01 mm of another point, or within 0.05 mm
 ### Net Naming Priority
 
 After union-find, connected groups are named by priority:
-1. **Power symbol name** (e.g., `+3V3`, `GND`) — highest priority
-2. **Label name** (global, hierarchical, or local)
-3. **`__unnamed_N`** — auto-generated for nets with pins but no labels
+1. **Global label name** — highest priority
+2. **Power symbol name** (e.g., `+3V3`, `GND`)
+3. **Local label**, then **hierarchical label**, then **sheet pin** name
+4. **`__unnamed_N`** — auto-generated for nets with pins but no labels
+
+Names of equal rank resolve to the shallower sheet, then the lower full name, as KiCad does.
 
 When multiple disconnected wire groups share the same name (e.g., two separate `GND` networks), their pins are merged into a single net entry. This matches KiCad's behavior where same-named labels create global connectivity.
 
@@ -844,7 +849,7 @@ Power symbols (`#PWR`, `#FLG`) and DNP components are excluded from the BOM coun
 
 6. **Set iteration order**: Some analyses iterate over Python sets, which have non-deterministic ordering. This can cause output field order to vary between runs for certain sections (e.g., `protection_devices`, `pwr_flag_warnings`). The data is identical when sorted.
 
-7. **No `.lib` parsing**: The analyzer reads only `.kicad_sch` files and their embedded `(lib_symbols)` sections. External library files (`.kicad_sym`, `.lib`) are not parsed. This means all symbol information must be embedded in the schematic — which KiCad does by default when saving.
+7. **External libraries only for KiCad 5**: a `.kicad_sch` is read with its embedded `(lib_symbols)`; external `.kicad_sym` libraries are not read (KiCad embeds every used symbol when it saves). A KiCad 5 `.sch` project takes its pins from the `<project>-cache.lib`, the `sym-lib-table` or `.pro` libraries (`.lib` files), and a built-in table for common symbols.
 
 8. **Solder jumper gates**: Voltage dividers gated by solder jumpers (where opening/closing a jumper changes the divider ratio) are not detected as conditional configurations.
 

@@ -136,11 +136,12 @@ KiCad schematics don't store netlists — connectivity is implicit through coord
 ### Net Names
 
 Nets are named by (priority order):
-1. Power symbol name (e.g., `GND`, `+3V3`, `+5V`)
-2. Global label name
+1. Global label name
+2. Power symbol name (e.g., `GND`, `+3V3`)
 3. Local label name
 4. Hierarchical label name
-5. Unnamed (auto-generated `__unnamed_N`)
+5. Sheet pin name
+6. Unnamed (auto-generated `__unnamed_N`)
 
 ### Legacy Format
 
@@ -258,8 +259,9 @@ When verifying analyzer output (or your own manual parse) against the raw schema
 ### Component Count Validation
 
 1. Count all `(symbol (lib_id ...))` blocks after `(lib_symbols)` section
-2. Subtract power symbols (`#PWR`, `#FLG` references)
-3. Result should exactly match the analyzer's `component_count`
+2. Leave out power symbols and power flags (`#PWR`, `#FLG` references)
+3. Count each reference once: the units of a multi-unit part (U1A, U1B) are one component
+4. The result should match the analyzer's `statistics.total_components`
 
 ### Net Count Validation
 

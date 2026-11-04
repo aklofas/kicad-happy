@@ -285,6 +285,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The Gerber, Deep Review and what-if docs match the code: GR-002 reports copper outside the board outline (not layer-extent alignment); the gate accepts a net by any of its three identities and finds the run folder portably; a missing datasheet is a line in the review text, not a `deep_review.json` finding; the reference table's line counts are current (KH-484).
 - The datasheet and distributor docs, extraction schemas and prompts no longer carry phase labels, issue ids or future-release promises; they say what the code does today, and the install guide's pre-release examples use placeholders.
 - The file-formats guide and the design-rule code comment say how conditional `.kicad_dru` rules are treated: listed as skipped, and an item is reported only when it breaks the rule whatever the condition, so such a rule can hide a violation but never add one.
+- The schematic methodology and manual-parsing guides rank net names as KiCad does (global label, power symbol, local label, hierarchical label, sheet pin), rotate a pin before mirroring it, count a multi-unit part once against `statistics.total_components`, and say that KiCad 5 projects are read with their `.lib` libraries.
 
 ---
 
