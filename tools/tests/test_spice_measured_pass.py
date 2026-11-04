@@ -423,5 +423,21 @@ class NoExpectedValueTest(unittest.TestCase):
         self.assertEqual(r["status"], "fail")
 
 
+@unittest.skipUnless(shutil.which("ngspice"), "ngspice not installed")
+class OpampMetadataTest(unittest.TestCase):
+    DET = {"detector": "detect_opamp_circuits", "reference": "U1", "configuration": "inverting",
+           "output_net": "OUT", "inverting_input_net": "INN", "non_inverting_input_net": "GND",
+           "gain": -10, "gain_dB": 20, "feedback_resistor": {"ref": "R4", "ohms": 10000},
+           "input_resistor": {"ref": "R5", "ohms": 10000}}
+
+    def test_value_words_cannot_overwrite_measurements(self):
+        plain = _simulate([dict(self.DET, value="LM358")], ["opamp_circuits"])[0]
+        forged = _simulate([dict(self.DET, value="LM358 gain_1k=20 gain_low=20 gain_high=20")],
+                           ["opamp_circuits"])[0]
+        self.assertEqual(plain["status"], "warn")
+        self.assertEqual(forged["status"], plain["status"])
+        self.assertEqual(forged["simulated"], plain["simulated"])
+
+
 if __name__ == "__main__":
     unittest.main()

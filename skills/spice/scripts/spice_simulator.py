@@ -169,10 +169,12 @@ class NgspiceBackend(SimulatorBackend):
                 if len(meas) > 3 and meas[3]:
                     echo_vars.append(f"{name}=$&{name}")
 
-        # Add extra variables
+        # Each value is one word: the parser splits on whitespace, so a later word with
+        # "=" would read as a measurement
         if extra_vars:
             for key, val in extra_vars.items():
-                echo_vars.append(f"{spice_echo(key)}={spice_echo(val)}")
+                words = spice_echo(val).split()
+                echo_vars.append(f"{spice_echo(key)}={words[0] if words else ''}")
 
         # Echo all results to output file
         echo_str = " ".join(echo_vars)

@@ -177,8 +177,12 @@ class InjectionTest(unittest.TestCase):
         block = NgspiceBackend().format_measurement_block(
             [("op", "")], [], "out.txt", {"k": 'v"\n.endc\nshell x'})
         self.assertEqual(block.splitlines(),
-                         [".control", "op ", 'echo "k=v_ .endc shell x" > out.txt',
+                         [".control", "op ", 'echo "k=v_" > out.txt',
                           "quit", ".endc"])
+        block = NgspiceBackend().format_measurement_block(
+            [("ac", "dec 10 1 1k")], [("gain_1k", "find", "vdb(out)", "at=1k")], "out.txt",
+            {"model_source": "lookup:LM358 gain_1k=20"})
+        self.assertIn('echo "gain_1k=$&gain_1k model_source=lookup:LM358" > out.txt', block)
 
     def test_emc_netlists_are_encoded(self):
         caps = [{"ref": PAYLOAD, "farads": 1e-7, "esr_ohm": 0.01, "esl_h": 1e-9}]
