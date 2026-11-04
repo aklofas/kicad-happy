@@ -1072,9 +1072,18 @@ def _prohibits(restrictions: dict, key: str) -> bool:
     return restrictions.get(key) == "not_allowed"
 
 
+def _area_copper_layers(layers: list[str]) -> bool:
+    """True when a rule area covers a copper layer (*.Cu, F&B.Cu or a named copper layer)."""
+    return any(layer.endswith(".Cu") for layer in layers)
+
+
 def analyze_keepout_violations(footprints: list[dict], vias: dict,
                                 keepout_zones: list[dict]) -> list[dict]:
-    """KO-001: Check for components or vias inside keepout zones (bbox check)."""
+    """KO-001: Check for components or through vias inside keepout zones (bbox check).
+
+    A rule area's "vias" restriction prohibits through vias only (KiCad's DRC_DISALLOW_VIAS);
+    a through via spans every copper layer, so it meets any area on a copper layer.
+    """
     findings: list[dict] = []
     if not keepout_zones:
         return findings
@@ -1089,12 +1098,6 @@ def analyze_keepout_violations(footprints: list[dict], vias: dict,
         restrictions = kz.get("restrictions", {})
         kz_name = kz.get("name", "unnamed")
         kz_layers = kz.get("layers", [])
-        # KiCad rule-area "allowed net" — items on this net are ALLOWED
-        # inside the keepout (e.g., an antenna keepout that excludes copper
-        # except the antenna's own net). 0 / "" / None means "no exemption,
-        # restrict all items".
-        kz_allowed_net_id = kz.get("net") or 0
-        kz_allowed_net_name = kz.get("net_name") or ""
 
         # Check footprints
         if _prohibits(restrictions, "footprints"):
@@ -1106,25 +1109,10 @@ def analyze_keepout_violations(footprints: list[dict], vias: dict,
                 if not any(l in kz_layers or l == "*" or "*.Cu" in kz_layers for l in [fp_layer]):
                     continue
                 if kx1 <= fx <= kx2 and ky1 <= fy <= ky2:
-                    # Net exclusion: if any pad of this footprint is on the
-                    # keepout's allowed net, the footprint is permitted here.
-                    if kz_allowed_net_name:
-                        fp_nets = fp.get("connected_nets", []) or list(
-                            (fp.get("pad_nets") or {}).values())
-                        # pad_nets values are dicts with 'net' key; connected_nets is strings
-                        fp_net_names = set()
-                        for n in fp_nets:
-                            if isinstance(n, str):
-                                fp_net_names.add(n)
-                            elif isinstance(n, dict) and n.get("net"):
-                                fp_net_names.add(n["net"])
-                        if kz_allowed_net_name in fp_net_names:
-                            continue
                     findings.append({
                         "component": ref,
                         "keepout_name": kz_name,
                         "keepout_layers": kz_layers,
-                        "keepout_allowed_net": kz_allowed_net_name,
                         "detector": "analyze_keepout_violations",
                         "rule_id": "KO-001",
                         "category": "placement",
@@ -1141,25 +1129,19 @@ def analyze_keepout_violations(footprints: list[dict], vias: dict,
                     })
 
         # Check vias
-        if _prohibits(restrictions, "vias"):
+        if _prohibits(restrictions, "vias") and _area_copper_layers(kz_layers):
             for via in via_list:
+                if via.get("type", "through") != "through":
+                    continue
                 vx = via.get("x")
                 vy = via.get("y")
                 if vx is None or vy is None:
                     continue
                 if kx1 <= vx <= kx2 and ky1 <= vy <= ky2:
-                    # Net exclusion: a via on the keepout's allowed net is
-                    # permitted (e.g., an antenna trace's tuning via inside
-                    # the antenna keepout).
-                    if kz_allowed_net_id:
-                        via_net_id = via.get("net")
-                        if via_net_id == kz_allowed_net_id:
-                            continue
                     findings.append({
                         "via_x": round(vx, 2),
                         "via_y": round(vy, 2),
                         "keepout_name": kz_name,
-                        "keepout_allowed_net": kz_allowed_net_name,
                         "detector": "analyze_keepout_violations",
                         "rule_id": "KO-001",
                         "category": "placement",

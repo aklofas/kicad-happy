@@ -1414,9 +1414,8 @@ def _extract_keepout_zones(zones: list[dict],
             'restrictions': z.get('keepout', {}),
             'bounding_box': bbox,
             'area_mm2': z.get('outline_area_mm2', 0),
-            # Net the keepout is associated with — items on this net are
-            # ALLOWED inside the keepout (KiCad rule-area semantic). 0 / ""
-            # means "no specific net" → keepout applies to all items.
+            # The net the file gives the rule area; KiCad clears it on load, and it exempts
+            # nothing from the area's restrictions.
             'net': z.get('net', 0),
             'net_name': z.get('net_name', ''),
         }

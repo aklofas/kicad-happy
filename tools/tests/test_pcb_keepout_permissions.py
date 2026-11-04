@@ -13,16 +13,17 @@ from pcb.assembly import analyze_keepout_violations  # noqa: E402
 CRTYD = ' (fp_rect (start -1 -1) (end 1 1) (layer "F.CrtYd") (stroke (width 0.05) (type solid)))'
 
 
-def _ko001(footprints, vias, crtyd=""):
+def _ko001(footprints, vias, crtyd="", via="(via (at 110 110) (size 0.6) (drill 0.3) (layers \"F.Cu\" \"B.Cu\") (net 0))",
+           zone_layers='"F.Cu" "B.Cu"', zone_net='(net 0) (net_name "")', nets=""):
     board = f'''(kicad_pcb (version 20221018) (generator pcbnew)
   (general (thickness 1.6))
   (layers (0 "F.Cu" signal) (31 "B.Cu" signal) (44 "Edge.Cuts" user))
-  (net 0 "")
-  (via (at 110 110) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 0))
+  (net 0 ""){nets}
+  {via}
   (footprint "L:F" (layer "F.Cu") (at 105 105)
     (property "Reference" "R1") (property "Value" "v")
     (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu" "F.Paste" "F.Mask")){crtyd})
-  (zone (net 0) (net_name "") (layers "F.Cu" "B.Cu") (name "ko") (hatch edge 0.5)
+  (zone {zone_net} (layers {zone_layers}) (name "ko") (hatch edge 0.5)
     (keepout (tracks allowed) (vias {vias}) (pads allowed) (copperpour allowed) (footprints {footprints}))
     (polygon (pts (xy 100 100) (xy 120 100) (xy 120 120) (xy 100 120))))
 )
@@ -55,6 +56,27 @@ class TestKeepoutPermissions(unittest.TestCase):
         self.assertEqual(len(f), 1)
         self.assertIn("via_x", f[0])
         self.assertNotIn("component", f[0])
+
+    def test_blind_buried_micro_vias_are_never_reported(self):
+        # KiCad prohibits through vias only (DRC_DISALLOW_VIAS); kicad-cli 10.0.7 agrees
+        for kind in ("blind", "buried", "micro"):
+            via = f'(via {kind} (at 110 110) (size 0.6) (drill 0.3) (layers "F.Cu" "In1.Cu") (net 0))'
+            self.assertEqual(_ko001("allowed", "not_allowed", via=via), [], kind)
+
+    def test_through_via_under_a_one_layer_area_is_reported(self):
+        for layer in ('"F.Cu"', '"B.Cu"', '"In1.Cu"'):
+            f = _ko001("allowed", "not_allowed", zone_layers=layer)
+            self.assertEqual(len(f), 1, layer)
+
+    def test_area_without_a_copper_layer_restricts_nothing(self):
+        self.assertEqual(_ko001("allowed", "not_allowed", zone_layers='"Edge.Cuts"'), [])
+
+    def test_via_on_the_areas_net_is_still_reported_and_key_is_gone(self):
+        via = '(via (at 110 110) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 1))'
+        f = _ko001("allowed", "not_allowed", via=via, zone_net='(net 1) (net_name "ANT")',
+                   nets=' (net 1 "ANT")')
+        self.assertEqual(len(f), 1)
+        self.assertNotIn("keepout_allowed_net", f[0])
 
 
 if __name__ == "__main__":
