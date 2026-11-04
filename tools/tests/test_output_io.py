@@ -116,6 +116,7 @@ class WriteDerivedOutput(unittest.TestCase):
             self.assertEqual(os.path.basename(out), "gerber.json")
 
 
+@unittest.skipIf(os.name == "nt", "symlinks")
 class RefusedPrimaryOverwrite(unittest.TestCase):
     def test_refused_current_run_copy_is_not_reported_as_updated(self):
         import contextlib, io
@@ -151,6 +152,7 @@ class RefusedPrimaryOverwrite(unittest.TestCase):
             self.assertIn("Analysis cache updated (current run)", err.getvalue())
 
 
+@unittest.skipIf(os.name == "nt", "symlinks")
 class RefusedDerivedCopy(unittest.TestCase):
     """A derived output whose current-run file is a planted symlink is not copied, and
     nothing reports it as written."""

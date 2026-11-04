@@ -258,6 +258,7 @@ class LeafSymlinkTest(unittest.TestCase):
             f.write(text)
         return path
 
+    @unittest.skipIf(os.name == "nt", "symlinks")
     def test_symlinked_previous_output_is_not_copied_forward(self):
         with tempfile.TemporaryDirectory() as tmp:
             ad = os.path.join(tmp, "analysis")
@@ -276,6 +277,7 @@ class LeafSymlinkTest(unittest.TestCase):
             self.assertFalse(os.path.lexists(new_leaf))
             self.assertIn("symlink", err.getvalue())
 
+    @unittest.skipIf(os.name == "nt", "symlinks")
     def test_symlink_planted_in_the_new_run_is_not_written_through(self):
         with tempfile.TemporaryDirectory() as tmp:
             ad = os.path.join(tmp, "analysis")
@@ -292,6 +294,7 @@ class LeafSymlinkTest(unittest.TestCase):
             self.assertNotIn("schematic",
                              analysis_cache.load_manifest(ad)["runs"]["r1"]["outputs"])
 
+    @unittest.skipIf(os.name == "nt", "symlinks")
     def test_overwrite_current_does_not_write_through_a_symlink(self):
         with tempfile.TemporaryDirectory() as tmp:
             ad = os.path.join(tmp, "analysis")
@@ -333,6 +336,7 @@ class LeafSymlinkTest(unittest.TestCase):
             self.assertEqual(sorted(os.listdir(os.path.join(ad, "r2"))), ["pcb.json", "schematic.json"])
 
 
+@unittest.skipIf(os.name == "nt", "symlinks")
 class PlantedSymlinkWriterTest(unittest.TestCase):
     def _secret(self, tmp):
         path = os.path.join(tmp, "victim.txt")

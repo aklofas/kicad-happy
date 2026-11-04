@@ -87,6 +87,7 @@ class SyncRootsTest(unittest.TestCase):
     def test_dotdot_sheet_not_written(self):
         self.check(self.root_with_sheet("../outside/other.kicad_sch"))
 
+    @unittest.skipIf(os.name == "nt", "symlinks")
     def test_symlinked_sheet_not_written(self):
         try:
             os.symlink(self.other, self.proj / "link.kicad_sch")

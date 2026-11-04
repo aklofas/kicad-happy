@@ -146,6 +146,7 @@ class ManifestFileTest(_CacheCase):
                     self.assertEqual(smc.get_cached_model(self.models, "LM358"), (None, None))
                 self.assertNotIn("secret.sub", read)
 
+    @unittest.skipIf(os.name == "nt", "symlinks")
     def test_symlink_leaf_is_miss(self):
         outside = self.root / "outside.sub"
         outside.write_text(CLEAN, encoding="utf-8")
@@ -153,6 +154,7 @@ class ManifestFileTest(_CacheCase):
         os.symlink(outside, self.models / "LM358.sub")
         self.assertEqual(smc.get_cached_model(self.models, "LM358"), (None, None))
 
+    @unittest.skipIf(os.name == "nt", "symlinks")
     def test_symlink_leaf_not_written_through(self):
         outside = self.root / "outside.txt"
         outside.write_text("keep", encoding="utf-8")

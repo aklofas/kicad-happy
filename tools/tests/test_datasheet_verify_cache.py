@@ -97,6 +97,7 @@ class ExtractDirResolution(unittest.TestCase):
             out = dv.run_datasheet_verification(ic_analysis(), project_dir=str(proj))
             self.assertEqual(out["summary"]["ics_with_extractions"], 1)
 
+    @unittest.skipIf(os.name == "nt", "symlinks")
     def test_symlinked_manifest_is_not_read(self):
         with tempfile.TemporaryDirectory() as t:
             d = Path(t) / "extracted"; d.mkdir()
@@ -246,6 +247,7 @@ class MultiUnit(unittest.TestCase):
 
 
 class CacheFileLimits(unittest.TestCase):
+    @unittest.skipIf(os.name == "nt", "symlinks")
     def test_symlinked_cache_file_is_not_read(self):
         with tempfile.TemporaryDirectory() as t:
             d = Path(t) / "extracted"; d.mkdir()

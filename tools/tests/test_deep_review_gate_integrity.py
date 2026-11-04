@@ -380,6 +380,7 @@ class GateCliTest(unittest.TestCase):
         self.assertEqual(sorted(p.name for p in self.tmp.iterdir()),
                          ["analysis", "datasheets", "deep_review.json"])
 
+    @unittest.skipIf(os.name == "nt", "symlinks")
     def test_symlinked_document_is_replaced_not_followed(self):
         real = self.tmp / "elsewhere.json"
         real.write_text(json.dumps(self._doc([self._finding()])), encoding="utf-8")

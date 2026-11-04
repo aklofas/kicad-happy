@@ -1,4 +1,4 @@
-import contextlib, importlib.util, io, json, re, subprocess, sys, tempfile, unittest
+import contextlib, importlib.util, io, json, os, re, subprocess, sys, tempfile, unittest
 from unittest import mock
 from pathlib import Path
 from tools.tests._fixtures import fixture_path, have
@@ -640,6 +640,7 @@ class NormPathAndRoot(unittest.TestCase):
         self.assertEqual(cr._substitute_root("/tmp/snap/x", "/tmp/snap"), "<SNAP>/x")
         self.assertEqual(cr._substitute_root("/tmp/snap", "/tmp/snap"), "<SNAP>")
 
+    @unittest.skipIf(os.name == "nt", "symlinks")
     def test_substitute_handles_resolved_form(self):
         with tempfile.TemporaryDirectory() as td:
             real = Path(td).resolve() / "real"

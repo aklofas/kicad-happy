@@ -99,6 +99,7 @@ class PdfManifestTest(unittest.TestCase):
             (proj / "datasheets" / "manifest.json").write_text(body, encoding="utf-8")
             self.assertIsNone(ssf.fetch_specs_from_datasheet(MPN, proj), body)
 
+    @unittest.skipIf(os.name == "nt", "FIFOs")
     @unittest.skipUnless(hasattr(os, "mkfifo"), "needs named pipes")
     def test_fifo_pdf_manifest_returns_promptly(self):
         proj = self.tmp / "fifoproj"

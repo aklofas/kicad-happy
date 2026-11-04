@@ -25,6 +25,7 @@ class FsTrust(unittest.TestCase):
         p.start()
         self.addCleanup(p.stop)
 
+    @unittest.skipIf(os.name == "nt", "symlinks")
     def test_part_symlink_not_followed(self):
         from distributor_core import download
         with tempfile.TemporaryDirectory() as d:
@@ -87,6 +88,7 @@ class FsTrust(unittest.TestCase):
                     self.assertFalse(download.download_pdf("https://example.com/x.pdf", target))
                 self.assertEqual(os.listdir(d), [])
 
+    @unittest.skipIf(os.name == "nt", "symlinks")
     def test_manifest_tmp_symlink_not_followed(self):
         from distributor_core.manifest import save_index
         with tempfile.TemporaryDirectory() as d:
@@ -102,6 +104,7 @@ class FsTrust(unittest.TestCase):
             self.assertFalse(m.is_symlink())
             self.assertEqual(json.loads(m.read_text(encoding="utf-8")), {"parts": {}})
 
+    @unittest.skipIf(os.name == "nt", "symlinks")
     def test_manifest_file_path(self):
         from distributor_core.manifest import manifest_file_path
         with tempfile.TemporaryDirectory() as d:
@@ -133,6 +136,7 @@ class FsTrust(unittest.TestCase):
             self.assertEqual([p.name for p in out.iterdir() if p.suffix == ".pdf"], [])
             self.assertIn("names a file outside", err.getvalue())
 
+    @unittest.skipIf(os.name == "nt", "symlinks")
     def test_derived_datasheets_symlink_refused(self):
         from distributor_core.sync import sync_datasheets
         with tempfile.TemporaryDirectory() as d:
@@ -161,6 +165,7 @@ class FsTrust(unittest.TestCase):
             finally:
                 os.chdir(cwd)
 
+    @unittest.skipIf(os.name == "nt", "symlinks")
     def test_explicit_output_symlink_allowed(self):
         from distributor_core.sync import sync_datasheets
         with tempfile.TemporaryDirectory() as d:

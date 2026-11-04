@@ -57,6 +57,7 @@ class TestGp001DebugPath(unittest.TestCase):
         self.assertTrue(os.path.isfile(os.path.join(self.d, "A", "gp001_debug.json")))
         self.assertEqual(os.listdir(os.path.join(self.d, "proj")), ["b.kicad_pcb"])
 
+    @unittest.skipIf(os.name == "nt", "symlinks")
     @unittest.skipUnless(hasattr(os, "symlink"), "no symlinks")
     def test_symlinked_target_is_not_followed(self):
         victim = os.path.join(self.d, "victim.txt")

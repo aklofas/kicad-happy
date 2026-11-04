@@ -228,6 +228,7 @@ class OverwriteTest(unittest.TestCase):
             ok = analysis_cache.overwrite_current(self.ad, self.out, source_hashes={"a.kicad_sch": "sha256:cc"})
         return ok, err.getvalue(), _manifest(self.ad)["runs"]["cur"]
 
+    @unittest.skipIf(os.name == "nt", "symlinks")
     def test_stale_output_leaves_when_another_file_is_refused(self):
         outside = os.path.join(self.tmp, "outside.json")
         Path(outside).write_text("outside", encoding="utf-8")
@@ -243,6 +244,7 @@ class OverwriteTest(unittest.TestCase):
         self.assertIn("thermal.json dropped from the run", err)
         self.assertEqual(Path(outside).read_text(encoding="utf-8"), "outside")
 
+    @unittest.skipIf(os.name == "nt", "symlinks")
     def test_symlinked_thermal_is_unlinked_and_its_target_untouched(self):
         outside = os.path.join(self.tmp, "outside-thermal.json")
         Path(outside).write_text('{"precious": true}', encoding="utf-8")

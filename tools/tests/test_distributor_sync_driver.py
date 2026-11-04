@@ -408,6 +408,7 @@ class MachineOutput(unittest.TestCase):
         self.assertEqual(so.getvalue(), "")
         self.assertIn("Downloaded 10 bytes via urllib", se.getvalue())
 
+    @unittest.skipIf(os.name == "nt", "symlinks")
     def test_symlinked_datasheets_refusal_reaches_the_user(self):
         import os, subprocess
         skills = Path(__file__).resolve().parents[2] / "skills"

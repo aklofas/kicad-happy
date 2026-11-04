@@ -171,6 +171,7 @@ class CacheFileModeTest(unittest.TestCase):
             self.assertEqual((Path(tmp) / "manifest.json").stat().st_mode & 0o777, 0o640)
 
 
+@unittest.skipIf(os.name == "nt", "symlinks")
 class SimulateSymlinkedProjectCacheTest(unittest.TestCase):
     """A project whose spice/ or spice/models/ is a symlink caches under the run's
     workdir instead; an explicit cache dir is the user's choice and is used as given."""
@@ -223,6 +224,7 @@ class SimulateSymlinkedProjectCacheTest(unittest.TestCase):
 
 
 class ManifestReadTest(unittest.TestCase):
+    @unittest.skipIf(os.name == "nt", "FIFOs")
     @unittest.skipUnless(hasattr(os, "mkfifo"), "needs named pipes")
     def test_fifo_manifest_is_a_miss(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -294,6 +296,7 @@ class ManifestReadTest(unittest.TestCase):
             os.symlink(real, sub)
         self._refused_case(link)
 
+    @unittest.skipIf(os.name == "nt", "FIFOs")
     @unittest.skipUnless(hasattr(os, "mkfifo"), "needs named pipes")
     def test_non_regular_model_file_is_never_replaced_by_the_fallback(self):
         def fifo(sub):

@@ -184,6 +184,7 @@ class CacheReader(unittest.TestCase):
         for payload in (b"null", b"[]", b"\xff\xfe{", b'{"a": "\xe9"}'):
             self.assertIsNone(self._lookup_bytes(payload), payload)
 
+    @unittest.skipIf(os.name == "nt", "symlinks")
     def test_symlinked_and_oversized_caches_are_a_miss(self):
         from datasheet_types import cache_reader
         src = fixture("datasheets-extracted", "LM2596-ADJ.json")
@@ -336,6 +337,7 @@ class CacheReadLinksAndPipes(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
+    @unittest.skipIf(os.name == "nt", "FIFOs")
     def test_fifo_returns_none_promptly(self):
         fifo = self.d / "fifo.json"
         os.mkfifo(fifo)
@@ -368,6 +370,7 @@ class CacheReadLinksAndPipes(unittest.TestCase):
         return (mock.patch.object(cache_reader.os, "open", fake_open),
                 mock.patch.object(cache_reader.os.path, "getsize", fake_getsize))
 
+    @unittest.skipIf(os.name == "nt", "symlinks")
     def test_link_swapped_in_after_the_check_is_refused(self):
         from datasheet_types import cache_reader
         target = self.d / "ok.json"
@@ -381,6 +384,7 @@ class CacheReadLinksAndPipes(unittest.TestCase):
         with mock.patch.object(cache_reader, "os", _NoNofollowOs()):
             self.assertEqual(cache_reader.read_json_object(self.d / "ok.json"), {"a": 1})
 
+    @unittest.skipIf(os.name == "nt", "symlinks")
     def test_without_o_nofollow_a_link_and_a_swap_are_refused(self):
         from datasheet_types import cache_reader
         os.symlink(self.d / "secret.json", self.d / "link.json")
@@ -391,6 +395,7 @@ class CacheReadLinksAndPipes(unittest.TestCase):
         with p1, p2, mock.patch.object(cache_reader, "os", _NoNofollowOs()):
             self.assertIsNone(cache_reader.read_json_object(target))
 
+    @unittest.skipIf(os.name == "nt", "symlinks")
     def test_safe_extract_dir_refuses_a_symlinked_datasheets_or_extracted(self):
         from datasheet_types.cache_reader import safe_extract_dir
         real = self.d / "proj" / "datasheets" / "extracted"
@@ -405,6 +410,7 @@ class CacheReadLinksAndPipes(unittest.TestCase):
             self.assertIsNone(safe_extract_dir(self.d / "b" / "datasheets" / "extracted"))
         self.assertIn("symlink", err.getvalue())
 
+    @unittest.skipIf(os.name == "nt", "symlinks")
     def test_explicit_extract_dir_that_is_a_symlink_is_followed(self):
         import datasheet_extract_cache as dec
         from datasheet_types.cache_reader import lookup

@@ -188,6 +188,7 @@ class DrillDiscoveryTest(unittest.TestCase):
         self.assertIn("g.drl", diag["message"])
         self.assertIn("Warning: analyze_gerbers.analyze_gerbers: IsADirectoryError", err.getvalue())
 
+    @unittest.skipIf(os.name == "nt", "symlinks")
     def test_dangling_drill_symlink_is_skipped(self):
         with tempfile.TemporaryDirectory() as d:
             _write(d, "b-Edge_Cuts.gm1", EDGE)
@@ -198,6 +199,7 @@ class DrillDiscoveryTest(unittest.TestCase):
         self.assertEqual(r["statistics"]["drill_files"], 0)
         self.assertEqual([x["exception"] for x in sink], ["FileNotFoundError"])
 
+    @unittest.skipIf(os.name == "nt", "symlinks")
     def test_symlinked_drill_outside_the_folder_is_read(self):
         # Discovery has never refused a symlinked input; it is read like a file.
         with tempfile.TemporaryDirectory() as d:

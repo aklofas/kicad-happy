@@ -598,6 +598,7 @@ class SyncDownloadFailureTest(unittest.TestCase):
         self.assertIn("unlink:LM358DR.pdf", order)
         self.assertLess(order.index("save"), order.index("unlink:LM358DR.pdf"))
 
+    @unittest.skipIf(os.name == "nt", "symlinks")
     def test_force_all_never_removes_through_a_link_or_outside_the_folder(self):
         for name in ("link.pdf", "../outside.pdf", "sub/inner.pdf"):
             with self.subTest(name=name), tempfile.TemporaryDirectory() as d:

@@ -59,6 +59,7 @@ def _derating_vin_max(project_dir):
     return [f.get("abs_max_vin") for f in out if f.get("rule_id") == "VD-002"]
 
 
+@unittest.skipIf(os.name == "nt", "symlinks")
 class SymlinkedProjectCacheTest(unittest.TestCase):
     """Every reader that derives the cache from a project folder reads a regular tree and
     ignores one whose datasheets/ or datasheets/extracted/ is a symlink."""
@@ -141,6 +142,7 @@ class ManifestFileEscapeTest(unittest.TestCase):
     def test_leaf_name_is_read(self):
         self.assertEqual(self._read_both("LEAF.json"), (1000000, [5]))
 
+    @unittest.skipIf(os.name == "nt", "symlinks")
     def test_dotdot_absolute_and_linked_subdir_are_a_miss(self):
         for value, linked in (("../../../outside/XA100.json", False),
                               ("ABS", False), ("sub/XA100.json", True)):
