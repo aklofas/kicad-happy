@@ -1,0 +1,1 @@
+{"success": false, "url": "https://example.com/nope.pdf", "error": "Download failed"}

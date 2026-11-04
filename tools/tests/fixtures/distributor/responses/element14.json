@@ -1,0 +1,101 @@
+{
+  "direct": {},
+  "downloads": {
+    "https://example.com/nope.pdf": false,
+    "https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATMEGA328P-AU-DataSheet.pdf": "ATMEGA328P-AU datasheet",
+    "https://www.farnell.com/datasheets/fixture/atmega.pdf": false,
+    "https://www.farnell.com/datasheets/fixture/bme280.pdf": "BME280 fixture datasheet text for the offline oracle (page 1).",
+    "https://www.farnell.com/datasheets/fixture/failall.pdf": false,
+    "https://www.farnell.com/datasheets/fixture/gone2.pdf": "GONE2 fixture datasheet text for the offline oracle (page 1).",
+    "https://www.farnell.com/datasheets/fixture/lm358.pdf": "LM358DR fixture datasheet text for the offline oracle (page 1).",
+    "https://www.farnell.com/datasheets/fixture/si2302.pdf": "SI2302 fixture datasheet text for the offline oracle (page 1).",
+    "https://www.ti.com/lit/ds/symlink/tps61023.pdf": "TPS61023DRLR fixture datasheet text for the offline oracle (page 1)."
+  },
+  "scrape": {},
+  "search": {
+    "94AK6874": {
+      "brandName": "Bosch",
+      "datasheets": [
+        {
+          "url": "https://www.farnell.com/datasheets/fixture/bme280.pdf"
+        }
+      ],
+      "displayName": "Environmental Sensor",
+      "sku": "94AK6874",
+      "translatedManufacturerPartNumber": "BME280"
+    },
+    "ATMEGA328P-AU": {
+      "brandName": "Microchip Technology",
+      "datasheets": [
+        {
+          "url": "https://www.farnell.com/datasheets/fixture/atmega.pdf"
+        }
+      ],
+      "displayName": "8-bit AVR Microcontroller",
+      "sku": "13AB1003",
+      "translatedManufacturerPartNumber": "ATMEGA328P-AU"
+    },
+    "FAILALL77": {
+      "brandName": "Acme",
+      "datasheets": [
+        {
+          "url": "https://www.farnell.com/datasheets/fixture/failall.pdf"
+        }
+      ],
+      "displayName": "Broken link part",
+      "sku": "14AB1004",
+      "translatedManufacturerPartNumber": "FAILALL77"
+    },
+    "GONE2": {
+      "brandName": "Mfg",
+      "datasheets": [
+        {
+          "url": "https://www.farnell.com/datasheets/fixture/gone2.pdf"
+        }
+      ],
+      "displayName": "Gone part revised",
+      "sku": "16AB1006",
+      "translatedManufacturerPartNumber": "GONE2"
+    },
+    "LM358DR": {
+      "brandName": "Texas Instruments",
+      "datasheets": [
+        {
+          "url": "https://www.farnell.com/datasheets/fixture/lm358.pdf"
+        }
+      ],
+      "displayName": "Dual Operational Amplifier",
+      "sku": "11AB1001",
+      "translatedManufacturerPartNumber": "LM358DR"
+    },
+    "NODATA1234": {
+      "brandName": "Acme",
+      "datasheets": [],
+      "displayName": "Mystery part",
+      "sku": "12AB1002",
+      "translatedManufacturerPartNumber": "NODATA1234"
+    },
+    "SI2302": {
+      "brandName": "Vishay",
+      "datasheets": [
+        {
+          "url": "https://www.farnell.com/datasheets/fixture/si2302.pdf"
+        }
+      ],
+      "displayName": "N-Channel MOSFET 20V",
+      "sku": "15AB1005",
+      "translatedManufacturerPartNumber": "SI2302"
+    },
+    "TPS61023DRLR": {
+      "brandName": "Texas Instruments",
+      "datasheets": [
+        {
+          "url": "https://www.ti.com/lit/ds/symlink/tps61023.pdf"
+        }
+      ],
+      "displayName": "Boost Converter 5.5V",
+      "sku": "10AB1000",
+      "translatedManufacturerPartNumber": "TPS61023DRLR"
+    }
+  }
+}

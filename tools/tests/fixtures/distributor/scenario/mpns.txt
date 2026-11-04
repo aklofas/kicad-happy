@@ -1,0 +1,6 @@
+# fixture MPN list
+LM358DR
+TPS61023DRLR   # inline comment
+1234
+LM358DR
+MISSING9999

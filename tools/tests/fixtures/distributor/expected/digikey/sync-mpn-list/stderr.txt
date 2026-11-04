@@ -1,0 +1,30 @@
+Loading MPNs from mpns.txt...
+  Skipping '1234': doesn't look like a real MPN
+Loaded 3 unique MPNs
+[1/3] LM358DR
+  Searching DigiKey for 'LM358DR'...
+  Downloading from https://www.digikey.com/fixture/lm358.pdf...
+  OK: LM358DR_Dual_Operational_Amplifier.pdf (79 bytes)
+[2/3] TPS61023DRLR
+  Searching DigiKey for 'TPS61023DRLR'...
+  Downloading from https://www.ti.com/lit/ds/symlink/tps61023.pdf...
+  OK: TPS61023DRLR_Boost_Converter_5.5V.pdf (84 bytes)
+[3/3] MISSING9999
+  Searching DigiKey for 'MISSING9999'...
+  NOT_FOUND: No DigiKey results for 'MISSING9999'
+
+Datasheet sync complete:
+  Downloaded: 2
+    LM358DR
+    TPS61023DRLR
+  Already present: 0
+  Failed: 1
+    MISSING9999 — No DigiKey results for 'MISSING9999'
+  Skipped (no identifier): 0
+  Output: <WORK>/ds/
+
+  Tip: Try LCSC or element14 sync to fill gaps — they share the same datasheets/ directory and skip already-downloaded parts.
+
+  Next: extract structured specs for IC-aware analyzer checks
+        (VM-001, PS-001, PR-004, DP-002). The `datasheets` skill
+        reads PDFs and writes <WORK>/ds/extracted/<MPN>.json.

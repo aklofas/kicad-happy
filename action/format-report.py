@@ -18,7 +18,8 @@ _kicad_scripts = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 if os.path.isdir(_kicad_scripts):
     sys.path.insert(0, os.path.abspath(_kicad_scripts))
 
-from finding_schema import Det, group_findings, normalize_severity
+from finding_schema import Det, group_findings
+from kicad_core.render import normalize_severity, summary_or_title
 
 
 # Icon glyphs by normalized severity (v1.4 vocab). Used by raw-finding renderers
@@ -117,7 +118,7 @@ def _render_thermal_block(thermal, *, heading_level: int) -> list[str]:
         sev = f.get("severity", "")
         if normalize_severity(sev) in ("error", "warning"):
             rule = f.get("rule_id", "")
-            title = f.get("title", "")
+            title = summary_or_title(f)
             lines.append(f"- {_sev_icon(sev)} {rule}: {title}")
     lines.append("")
     return lines
@@ -145,6 +146,20 @@ def _safe_float(val, fmt=".1f"):
     if isinstance(val, (int, float)):
         return f"{val:{fmt}}"
     return str(val) if val else "—"
+
+def _ref(comp):
+    """The reference of a detector's component record ({"ref": ..., "value": ...})."""
+    return comp.get("ref", "") if isinstance(comp, dict) else str(comp or "")
+
+
+def _single_pin_net_text(entry):
+    """'<net> (<ref> pin <n>)' for a connectivity_issues.single_pin_nets entry."""
+    if not isinstance(entry, dict):
+        return str(entry)
+    pin = entry.get("pin") or {}
+    where = f"{pin.get('component', '')} pin {pin.get('pin_number', '')}".strip()
+    return f"{entry.get('net', '')} ({where})" if pin else str(entry.get("net", ""))
+
 
 def _extract_rail_names(rails):
     """Extract rail names from list that may contain strings or dicts."""
@@ -208,7 +223,7 @@ def _render_top_risks(emc, thermal):
             conf_badge = f" `{conf}`" if conf else ""
             source = f.get("source", "")
             L.append(f"- {icon} **{f.get('rule_id', '')}**: "
-                     f"{f.get('title', '')}{conf_badge} ({source})")
+                     f"{summary_or_title(f)}{conf_badge} ({source})")
         L.append("")
 
     return L
@@ -452,9 +467,9 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
                     rows.append(f"| ~ {label} {m.get('identity', '?')} | {ch.get('field', '')}: {base_v} → {head_v}{pct_str} |")
         # EMC finding changes
         for f in diff_detail.get("findings", {}).get("new", [])[:3]:
-            rows.append(f"| NEW {f.get('severity', '?')} | {f.get('rule_id', '?')}: {f.get('title', '')} |")
+            rows.append(f"| NEW {f.get('severity', '?')} | {f.get('rule_id', '?')}: {summary_or_title(f)} |")
         for f in diff_detail.get("findings", {}).get("resolved", [])[:3]:
-            rows.append(f"| RESOLVED | {f.get('rule_id', '?')}: {f.get('title', '')} |")
+            rows.append(f"| RESOLVED | {f.get('rule_id', '?')}: {summary_or_title(f)} |")
         # SPICE status changes
         for sc in diff_detail.get("status_changes", [])[:3]:
             comps = ", ".join(sc.get("components", []))
@@ -514,7 +529,7 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
     # Connectivity issues
     conn = sch.get("connectivity_issues", {}) if sch else {}
     for net in conn.get("single_pin_nets", [])[:3]:
-        findings.append(("warning", f"Single-pin net: {net}", "Connectivity"))
+        findings.append(("warning", f"Single-pin net: {_single_pin_net_text(net)}", "Connectivity"))
 
     # Filter by severity
     if severity == "critical":
@@ -762,7 +777,7 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
 
     # === PCB (dense one-liner) ===
     if pcb:
-        dfm = pcb.get("dfm", {})
+        dfm = pcb.get("dfm_summary", {})
         metrics = dfm.get("metrics", {})
         w = metrics.get("board_width_mm", "?")
         h = metrics.get("board_height_mm", "?")
@@ -830,7 +845,7 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
             # EMC findings in the rich report; legacy uppercase normalizes too.
             if normalize_severity(sev) == "error":
                 rule = f.get("rule_id", "")
-                title = f.get("title", "")
+                title = summary_or_title(f)
                 L.append(f"- {_sev_icon(sev)} {rule}: {title}")
         L.append("")
 
@@ -1007,11 +1022,11 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
             a("")
             for d in dividers:
                 ratio = d.get('ratio')
-                vout = d.get('vout_estimated')
+                vout = d.get('vout_V')
                 ratio_str = f"{float(ratio):.3f}" if isinstance(ratio, (int, float)) else str(ratio)
-                vout_str = f"{float(vout):.2f}V" if isinstance(vout, (int, float)) else str(vout)
-                a(f"- {d.get('top_ref','')} / {d.get('bottom_ref','')}: "
-                  f"ratio={ratio_str}, Vout={vout_str}")
+                vout_str = f", Vout={float(vout):.2f}V" if isinstance(vout, (int, float)) else ""
+                a(f"- {_ref(d.get('r_top'))} / {_ref(d.get('r_bottom'))}: "
+                  f"ratio={ratio_str}{vout_str}")
             a("")
 
         # Filters
@@ -1021,16 +1036,17 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
                 a(f"### {fname}")
                 a("")
                 for f in filters:
-                    if ftype == Det.RC_FILTERS:
-                        comps = f"{f.get('resistor','')} + {f.get('capacitor','')}"
-                    else:
-                        comps = f"{f.get('inductor','')} + {', '.join(str(c) for c in f.get('capacitors', []))}"
-                    fc = f.get("cutoff_frequency_hz") or f.get("resonant_frequency_hz")
+                    first = f.get("resistor") if ftype == Det.RC_FILTERS else f.get("inductor")
+                    cap = f.get("capacitor")
+                    caps = (cap.get("parallel_caps") if isinstance(cap, dict) else None) or [_ref(cap)]
+                    comps = f"{_ref(first)} + {', '.join(caps)}"
+                    fc = f.get("cutoff_hz") or f.get("resonant_hz")
                     if isinstance(fc, (int, float)) and fc:
                         fc_str = f"{fc:.0f} Hz" if fc < 1000 else f"{fc/1000:.1f} kHz"
                     else:
                         fc_str = "—"
-                    a(f"- {comps}: fc = {fc_str} ({f.get('type', '')})")
+                    kind = f" ({f['type']})" if f.get("type") else ""
+                    a(f"- {comps}: fc = {fc_str}{kind}")
                 a("")
 
         # Opamps
@@ -1136,7 +1152,7 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
             a("| Severity | Rule | Finding |")
             a("|----------|------|---------|")
             for f in actionable[:15]:
-                a(f"| {f.get('severity','')} | {f.get('rule_id','')} | {f.get('title','')} |")
+                a(f"| {f.get('severity','')} | {f.get('rule_id','')} | {summary_or_title(f)} |")
             a("")
 
         # Test plan highlights
@@ -1305,7 +1321,7 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
     if pcb:
         a("## PCB Layout Analysis")
         a("")
-        dfm = pcb.get("dfm", {})
+        dfm = pcb.get("dfm_summary", {})
         metrics = dfm.get("metrics", {})
         all_layers = pcb.get("layers", [])
         signal_layers = sum(1 for l in all_layers if l.get("type") == "signal")

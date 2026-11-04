@@ -12,3 +12,6 @@ docs/
 
 # Preserved removed-skill source (kidoc removed in v1.4)
 old/
+
+# analysis-cache sidecars written by a CLI run with a scripts dir as cwd (never ship)
+/skills/*/scripts/analysis/

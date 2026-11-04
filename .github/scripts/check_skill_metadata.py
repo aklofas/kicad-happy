@@ -64,42 +64,6 @@ def extract_description(skill_md: Path) -> tuple[str | None, str | None]:
     return desc, None
 
 
-def check_one(skill_md: Path, warn_margin: int) -> tuple[str, int]:
-    """Return (status_label, exit_contribution).
-
-    exit_contribution is 1 for failures (OVER), 0 for passes/warnings.
-    """
-    desc, err = extract_description(skill_md)
-    if err is not None:
-        print(f"  {skill_md}: ERROR — {err}", file=sys.stderr)
-        return ("ERROR", 1)
-
-    length = len(desc)
-    margin = DESCRIPTION_CAP - length
-
-    if margin < 0:
-        label = "OVER"
-        contribution = 1
-        print(
-            f"  {skill_md}: {length} chars — "
-            f"OVER cap by {-margin} (max {DESCRIPTION_CAP})",
-            file=sys.stderr,
-        )
-    elif margin < warn_margin:
-        label = "CLOSE"
-        contribution = 0
-        print(
-            f"  {skill_md}: {length} chars — "
-            f"CLOSE to cap (only {margin}-char buffer; warn margin {warn_margin})",
-            file=sys.stderr,
-        )
-    else:
-        label = "OK"
-        contribution = 0
-
-    return (label, contribution)
-
-
 def find_skill_mds(targets: list[str]) -> list[Path]:
     """Resolve targets to a list of SKILL.md files."""
     if not targets:

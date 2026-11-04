@@ -28,28 +28,58 @@ Each skill has a `SKILL.md` with YAML frontmatter (name, description, triggers) 
 
 | File | LOC | Purpose |
 |------|-----|---------|
-| `kicad/scripts/analyze_schematic.py` | ~9,500 | S-expression parser + schematic analysis orchestrator |
-| `kicad/scripts/signal_detectors.py` | ~4,400 | Core signal path detectors (regulators, filters, opamps, dividers, crystals, protection) |
-| `kicad/scripts/domain_detectors.py` | ~6,100 | Domain-specific detectors (Ethernet, USB-C, BMS, motor drive, sensors, audio, LEDs, etc.) |
-| `kicad/scripts/validation_detectors.py` | ~1,300 | Validation detectors (pull-ups, voltage mismatch, protocol buses, power sequencing, feedback stability) |
-| `kicad/scripts/lookup_detectors.py` | ~700 | v1.4 datasheet-backed detectors (AM-001, OV-001, FT-001, PM-001, EX-001 via Phase 2 lookup API) |
-| `kicad/scripts/analyze_pcb.py` | ~6,700 | PCB layout analysis (footprints, tracks, vias, zones, DFM, assembly checks, connectivity graph) |
-| `kicad/scripts/analyze_gerbers.py` | ~1,700 | Gerber/Excellon verification |
-| `kicad/scripts/cross_analysis.py` | ~1,100 | Schematic + PCB cross-domain checks |
+| `kicad/scripts/analyze_schematic.py` | ~135 | CLI: argparse → `schematic.pipeline` → output |
+| `kicad/scripts/schematic/pipeline.py` | ~1,520 | The named analysis phases and the project-level orchestration (`analyze_schematic`, `run_analyses`, `finalize_for_cli`) |
+| `kicad/scripts/schematic/reader.py` | ~800 | `.kicad_sch` reader: symbols, pins, wires, labels, sheets → `SheetData` |
+| `kicad/scripts/schematic/legacy_reader.py` | ~790 | KiCad 5 `.sch` / `.lib` reader |
+| `kicad/scripts/schematic/hierarchy.py` | ~280 | Sheet traversal and top-level sheet merge |
+| `kicad/scripts/schematic/connectivity.py` | ~890 | `build_net_map`, bus pass, label output filter |
+| `kicad/scripts/schematic/ic_analysis.py` | ~520 | IC function classification, pinouts, subcircuits |
+| `kicad/scripts/schematic/net_analysis.py` | ~1,400 | Net classification, power domains, bus/protocol detection, diff pairs, design rules |
+| `kicad/scripts/schematic/audits.py` | ~1,350 | Annotation, label, PWR_FLAG, footprint, sourcing, DNP, symbol and coverage audits |
+| `kicad/scripts/schematic/system_analyses.py` | ~2,630 | PDN, sleep current, derating, power budget/sequencing, USB, inrush and other system-level analyses |
+| `kicad/scripts/schematic/bom_stats.py` | ~115 | `generate_bom`, `compute_statistics` |
+| `kicad/scripts/schematic/presentation.py` | ~500 | Result-dict assembly in the historical key order |
+| `kicad/scripts/output_io.py` | ~100 | `write_primary_run` / `write_derived_output`: the analysis-cache write paths shared by the kicad CLIs |
+| `kicad/scripts/signal_detectors.py` | ~4,770 | Core signal path detectors (regulators, filters, opamps, dividers, crystals, protection); the regulator detector = screen/build phases per IC + three passes (feedback dividers, capacitors, dissipation) |
+| `kicad/scripts/domain_detectors.py` | ~6,150 | Domain-specific detectors (Ethernet, USB-C, BMS, motor drive, sensors, audio, LEDs, etc.) |
+| `kicad/scripts/validation_detectors.py` | ~1,430 | Validation detectors (pull-ups, voltage mismatch, protocol buses, power sequencing, feedback stability) |
+| `kicad/scripts/lookup_detectors.py` | ~690 | v1.4 datasheet-backed detectors (AM-001, OV-001, FT-001, PM-001, EX-001 via Phase 2 lookup API) |
+| `kicad/scripts/analyze_pcb.py` | ~160 | PCB CLI (the analyzer lives in `kicad/scripts/pcb/`) |
+| `kicad/scripts/pcb/pipeline.py` | ~620 | `read_board` → `run_facts` → `run_checks` (`run_analyses` composes them) → `presentation.assemble_result`; `resolve_power_rails`, `finalize_for_cli` |
+| `kicad/scripts/pcb/presentation.py` | ~460 | `assemble_result`, `group_components`, `compute_statistics`: result dict in the historical key order |
+| `kicad/scripts/pcb/reader.py` | ~1,515 | `.kicad_pcb` extraction: layers, nets, footprints, tracks, vias, zones, outline, net classes |
+| `kicad/scripts/pcb/connectivity.py` | ~515 | Union-find copper connectivity graph |
+| `kicad/scripts/pcb/geometry.py` | ~660 | Polygon math, `ZoneFills`, `CopperPresence`, `copper_connected`, pad outlines |
+| `kicad/scripts/pcb/dfm.py` | ~1,020 | Fab tables (JLCPCB standard/advanced, IPC classes), drill measurement, `_measure_*` scans and `_emit_*` violation builders composed by `analyze_dfm`, design-rule compliance |
+| `kicad/scripts/pcb/assembly.py` | ~1,080 | Decoupling and placement, tombstoning, switching loops, fiducials, test points, silkscreen, keepouts |
+| `kicad/scripts/pcb/routing.py` | ~1,165 | Routing, return path, net lengths and impedance, ground domains, trace proximity, current capacity |
+| `kicad/scripts/pcb/copper.py` | ~1,350 | Via, thermal-via, thermal-pad, copper-presence and via-in-pad analyses |
+| `kicad/scripts/analyze_gerbers.py` | ~1,650 | Gerber/Excellon verification |
+| `kicad/scripts/cross_analysis.py` | ~1,200 | Schematic + PCB cross-domain checks |
 | `kicad/scripts/finding_schema.py` | ~680 | Rich finding factory, `Det` constants, consumer helpers, trust_summary aggregation |
-| `kicad/scripts/output_filters.py` | ~470 | Stage/audience filtering for all analyzers |
-| `kicad/scripts/kicad_utils.py` | ~2,000 | Shared utilities (component classification, value parsing, net detection, switching frequencies) |
-| `kicad/scripts/kicad_types.py` | ~120 | `AnalysisContext` dataclass — shared state for all detectors |
-| `kicad/scripts/sexp_parser.py` | ~230 | S-expression parser shared by schematic and PCB analyzers |
-| `kicad/scripts/analyzer_envelope.py` | ~300 | Typed envelope dataclasses (Finding, Assessment, TrustSummary, InputsBlock, CompatBlock) — single source of truth for analyzer output shape |
-| `emc/scripts/emc_rules.py` | ~4,250 | 44 EMC rule implementations |
-| `emc/scripts/emc_formulas.py` | ~1,400 | Radiation formulas, harmonic analysis, PDN impedance |
+| `kicad/scripts/output_filters.py` | ~460 | Stage/audience filtering for all analyzers |
+| `kicad/scripts/kicad_types.py` | ~150 | `AnalysisContext` + `build_analysis_context`, the single production construction point — shared state for all detectors |
+| `kicad/scripts/kicad_core/sexp.py` | ~235 | S-expression parser shared by schematic and PCB analyzers |
+| `kicad/scripts/kicad_core/render.py` | ~80 | Severity normaliser (`normalize_severity`, `severity_bucket`) and text-report fragments |
+| `kicad/scripts/kicad_core/cli.py` | ~50 | Shared argparse declarations (`--stage`/`--audience`, `--output`, `--schema`, `--compact`, `--text`, `--config`, `--only-deterministic`) |
+| `kicad/scripts/analyzer_envelope.py` | ~295 | Typed envelope dataclasses (Finding, Assessment, TrustSummary, InputsBlock, CompatBlock) — single source of truth for analyzer output shape |
+| `emc/scripts/emc_rules.py` | ~4,530 | 44 EMC rule implementations |
+| `emc/scripts/emc_formulas.py` | ~1,390 | Radiation formulas, harmonic analysis, PDN impedance |
 | `emc/scripts/emc_spice.py` | ~710 | SPICE-enhanced PDN, filter insertion loss, harmonic FFT |
 | `datasheets/scripts/datasheet_extract_cache.py` | ~540 | Per-MPN extraction cache manager |
-| `datasheets/scripts/datasheet_features.py` | ~380 | Consumer API for analyzers (get_regulator_features, get_mcu_features, etc.) — v1.4 dual-cache-read path |
-| `datasheets/scripts/datasheet_lookup.py` | ~240 | v1.4 typed `lookup(mpn) → DatasheetFacts` facade with staleness detection |
+| `datasheets/scripts/datasheet_features.py` | ~420 | Consumer API for analyzers (get_regulator_features, get_mcu_features, etc.) — v1.4 dual-cache-read path |
 | `datasheets/datasheet_types/` | — | v1.4 typed access layer (DatasheetFacts, SpecValue, Pin, Pinout, trust_gating helpers) |
-| `kicad/review/scripts/merge_annotations.py` | — | Review overlay merge: validates + applies review annotations to `analysis/merged/<analyzer>.json` |
+| `datasheets/datasheet_types/cache_reader.py` | ~235 | Typed `lookup(mpn) → DatasheetFacts` with staleness detection; `cache_path_for`, `sanitize_mpn` |
+| `datasheets/distributor_core/sync.py` | ~320 | The one datasheet sync driver, `sync_datasheets(provider, ...)`, over a provider adapter |
+| `datasheets/distributor_core/inputs.py` | ~195 | BOM / MPN-list projection for the sync CLIs (`extract_parts`, `load_mpn_list`, `is_real_mpn`) |
+| `datasheets/distributor_core/manifest.py` | ~120 | Datasheet `manifest.json` IO and filename helpers |
+| `datasheets/distributor_core/download.py` | ~180 | PDF download cascade (requests, urllib, Playwright), redirect normalisation, alternative sources |
+| `datasheets/distributor_core/verify.py` | ~135 | PDF text extraction and datasheet verification |
+| `<p>/scripts/provider_<p>.py` | ~315–400 | Provider adapter for digikey, mouser, lcsc, element14: auth, search, accessors, `sync_one_part` |
+| `<p>/scripts/sync_datasheets_<p>.py` | ~115–130 | Sync CLI: argparse → `distributor_core.sync` with the provider adapter |
+| `<p>/scripts/fetch_datasheet_<p>.py` | ~130–160 | Single-datasheet fetch CLI |
+| `kicad/review/scripts/merge_annotations.py` | ~175 | Review overlay merge: validates + applies review annotations to `analysis/merged/<analyzer>.json` |
 
 ### Zero-dependency policy
 
@@ -59,27 +89,33 @@ Optional dependencies (`requests`, `playwright`, `pdftotext`) are only used for 
 
 ## How signal detectors work
 
-The analysis pipeline runs in three phases:
+The schematic pipeline (`schematic/pipeline.py`) runs in named phases:
 
-1. **Parse** — `analyze_schematic.py` reads the KiCad S-expression file, extracts components, nets, and pins, and builds an `AnalysisContext` object.
+1. **`detect_topologies`** — pure detectors in dependency order; each receives the `AnalysisContext` and returns records.
+2. **`reconcile_detections`** — mutates phase-1 records in place: `postfilter_vd_and_dedup`, `enrich_transistor_led_drivers`.
+3. **`run_domain_detectors`** — domain, validation and lookup detectors; the RS/PP audits share one `BridgeFacts`.
+4. **`assemble_signal_results`** — crystal/RC exclusion, the `signal_analysis` dict in its historical key order, certifications/observations, capacitor enrichment and derating.
+5. **`finalize_for_cli`** — command-specific annotation in the CLI.
 
-2. **Detect** — `analyze_signal_paths()` calls each detector function in order. Each detector receives the `AnalysisContext` (and sometimes prior detector results for cross-referencing) and returns a list of findings.
+At project level, `analyze_schematic` → `run_analyses` → `presentation.assemble_result` reads the sheets, builds the context, runs these phases plus the audits, and assembles the output.
 
-3. **Report** — Results are assembled into JSON output or consumed by the agent to write a design review.
+The PCB pipeline (`pcb/pipeline.py`) has the same shape: `read_board` → `run_facts` → `run_checks` → `presentation.assemble_result`, then `finalize_for_cli` for the CLI-only annotation. `run_analyses` composes the facts and checks phases; neither mutates the board (`tools/tests/test_pcb_phase_purity.py`).
 
 ### AnalysisContext
 
-Every detector receives an `AnalysisContext` (`kicad_types.py`) — a dataclass containing:
+Every detector receives an `AnalysisContext` (`kicad_types.py`); production code builds it with `kicad_types.build_analysis_context`. It is a dataclass containing:
 
 - `components` — list of all parsed components
 - `nets` — dict of net name to net info (pins, labels)
 - `comp_lookup` — dict of reference to component (O(1) lookup)
 - `parsed_values` — dict of reference to parsed numeric value
 - `known_power_rails` — set of net names connected to power symbols
-- `ref_pins` — reverse index: reference to {pin_num: (net_name, net_id)}
-- `pin_net` — forward index: (reference, pin_num) to (net_name, net_id)
-- `nq` — optional `NetlistQueries` object for multi-hop net tracing
+- `ref_pins` — reverse index: reference to {pin_num: (net_name, net_record)}
+- `pin_net` — forward index: (reference, pin_num) to `PinNetEntry` = (net_name, net_record) — the full net dict, not a pin name
+- `nq` — `NetlistQueries` index for multi-hop net tracing; always present on production contexts
 - Helper methods: `is_power_net()`, `is_ground()`, `get_two_pin_nets()`
+
+Production code never constructs `AnalysisContext` directly: `kicad_types.build_analysis_context(components, nets, lib_symbols, ...)` builds every index and installs `nq` before any detector runs. Tests may construct it directly with explicit overrides.
 
 ### Writing a new detector
 
@@ -91,7 +127,7 @@ Detectors live in one of two files:
 A detector function follows this pattern, emitting findings via the `make_finding()` factory in `finding_schema.py`:
 
 ```python
-from finding_schema import make_finding, Det
+from finding_schema import make_finding
 
 def detect_my_circuit(ctx: AnalysisContext, prior_results=None) -> list[dict]:
     """Detect [circuit type] and validate [what]."""
@@ -106,21 +142,27 @@ def detect_my_circuit(ctx: AnalysisContext, prior_results=None) -> list[dict]:
         # 4. Check against rules/thresholds
         # 5. Emit a rich finding (factory enforces severity / confidence / evidence_source enums)
         findings.append(make_finding(
-            detector=Det.MY_CIRCUIT,
+            detector="detect_my_circuit",
             rule_id="MC-001",
+            schema_era="v3.0",
             category="signal",
             severity="warning",          # error | warning | info
             confidence="deterministic",  # deterministic | heuristic | datasheet-backed
             evidence_source="topology",  # see finding_schema for the full enum
             summary=f"{comp['reference']}: ...",
+            description="...",
             recommendation="...",
             components=[comp["reference"]],
-            report_context={"value": parsed_value, ...},
+            report_section="My Circuit",
         ))
     return findings
 ```
 
-Then register the new `Det` constant in `finding_schema.py` and call the detector from `analyze_schematic.py`'s `analyze_signal_paths()`, where the detector call order is defined.
+`detector`, `rule_id` and `schema_era` are string literals at the call site (the harness scans them). Every emit site carries a `schema_era`. `v1.4` marks the datasheet-authority detectors added in v1.4; `v3.0` marks every emit site whose emitted dict changed in the v3 line (shape, keys or behaviour). A new detector uses the current literal `v3.0`.
+
+A guard that catches an exception and falls back never uses `except Exception: pass`. It calls `kicad_core.diagnostics.record(sink, source, exc, effect)`, which prints one stderr line and appends a `Diagnostic` to the `diagnostics` list the envelope carries.
+
+If consumers filter on the new detector, add a `Det` constant in `finding_schema.py` whose value equals the literal. Call the detector from the phase function in `schematic/pipeline.py` that owns the call order (`detect_topologies` for topology detectors, `run_domain_detectors` for domain, validation and lookup detectors).
 
 ### Adding an EMC rule
 
@@ -145,7 +187,7 @@ description: One paragraph describing what this skill does and when to use it. I
 ```
 
 2. Add any scripts to `skills/<name>/scripts/`
-3. Add a symlink in `.agents/skills/`: `ln -s ../../skills/<name> .agents/skills/<name>`
+3. Add the relative link `.agents/skills/<name>` beside the existing ones (they are tracked; copy an existing entry)
     *   **Antigravity CLI / Gemini:** Run `agy plugin install .` to install/update the local plugin.
     *   **opencode:** No per-skill registration needed — `.opencode/opencode.json` points the loader at the whole `skills/` tree, so new skills under `skills/<name>/SKILL.md` are auto-discovered.
 4. Update the manual install lists in `README.md` (Claude Code, Codex, Antigravity/Gemini, and opencode sections)
@@ -165,11 +207,7 @@ Every skill's frontmatter `description:` must stay under **1024 characters** —
 python3 .github/scripts/check_skill_metadata.py
 ```
 
-Reports current length + buffer for every skill, warns when buffer drops below 50 chars, fails when any skill is over the cap. To enable as a git pre-commit hook so it runs automatically on `git commit`:
-
-```bash
-ln -sf ../../.github/scripts/check_skill_metadata.py .git/hooks/pre-commit
-```
+Reports current length + buffer for every skill, warns when buffer drops below 50 chars, fails when any skill is over the cap. Run it before committing; CI runs it on every PR.
 
 The `bom` and `kicad` skills' descriptions are currently the closest to the cap (their trigger-phrase lists are the longest); be conservative when adding phrases there.
 
@@ -205,30 +243,51 @@ Changes to any analysis script must be validated against the [test harness](http
 | Layer | What it catches | How |
 |-------|----------------|-----|
 | **Crash testing** | Parser errors, unhandled exceptions, edge cases | Runs every analyzer against every file in the corpus |
-| **Regression assertions** | Output drift, lost detections, changed values | 2.3M+ assertions on known-good outputs |
+| **Regression assertions** | Output drift, lost detections, changed values | 2.7M assertions on known-good outputs |
 | **Bugfix guards** | Previously fixed bugs returning | Targeted assertions on specific past failures |
 | **Equation audits** | Formula correctness | 107 equations tracked with primary source citations |
 | **Constant audits** | Magic numbers drifting | 105+ switching frequencies + other constants tracked, 0 critical-risk |
 | **Schema drift** | Analyzer `--schema` output diverging from emitted JSON | Symmetric-difference check across all 8 analyzers |
 
-### Running the harness
+### Checking a change: the three tiers
 
-The harness lives in a separate repo (`kicad-happy-testharness`). After making changes:
+**1. Local, no corpus.** The product-side checks take about a minute and need no corpus:
 
 ```bash
-# Clone the harness (if you haven't already)
-git clone https://github.com/aklofas/kicad-happy-testharness.git
-
-# Run schematic analyzer across full corpus (parallel)
-python3 run/run_schematic.py --jobs 16
-
-# Run EMC analyzer across full corpus
-python3 run/run_emc.py --jobs 16
-
-# Run regression assertions
-python3 regression/run_checks.py --type schematic
-python3 regression/run_checks.py --type emc
+python3 -m unittest discover -s tools/tests -t .   # tool and phase tests
+python3 tools/check_refactor.py imports            # dependency direction (see ARCHITECTURE.md)
+python3 tools/check_refactor.py tags               # literal detector/rule_id/schema_era at emit sites
 ```
+
+Several tool tests read the harness fixtures from `/tmp/harness-pin/tests/fixtures` (some honour `KH_FIXTURES`); clone the harness there to run them all. To compare analyzer output, snapshot the fixtures once on `main` and then run `quick` on your branch. One snapshot directory holds both the JSON outputs and the masked text-report artefacts, so it serves as both baselines:
+
+```bash
+# on main
+python3 tools/check_refactor.py snapshot --fixtures <harness>/tests/fixtures --out /tmp/base
+# on your branch
+python3 tools/check_refactor.py quick --fixtures <harness>/tests/fixtures --baseline /tmp/base --text-baseline /tmp/base
+```
+
+`quick` runs imports, tags, install-smoke, determinism, the in-process A/B/A check, the strict-field compare against `--baseline`, the distributor offline oracle (`sync-offline`) and the text compare against `--text-baseline`. A refactor PR is expected to come back clean. An intended output change says so in the PR and lists the fields and text lines that move.
+
+The datasheet sync and fetch CLIs make network calls, so they have their own offline oracle: `python3 tools/distributor_offline.py --all --expected tools/tests/fixtures/distributor/expected` replays recorded provider responses through all four providers and compares the manifests, summaries and transcripts byte-for-byte.
+
+A deliberate change that retires or renames a known legacy site shrinks the baseline; run `python3 tools/check_refactor.py tags --update-baseline` (or `imports --update-baseline`) in the same commit. The update refuses to add entries; a new untagged site must be tagged, not baselined. The one exception is a verbatim file move: add `--moved-from <root-relative path>` (repeatable) and the update accepts relocated entries only if each new entry's shape matches an entry retired from a moved file.
+
+**2. The pinned harness tiers.** CI clones the harness at a pinned commit; read the SHA from the `git checkout` line of the harness-smoke job in `.github/workflows/ci.yml` and use the same one:
+
+```bash
+git clone https://github.com/aklofas/kicad-happy-testharness.git
+cd kicad-happy-testharness
+git checkout <sha from .github/workflows/ci.yml>
+pip install -r requirements-dev.txt
+KICAD_HAPPY_DIR=<path to this repo> python3 -m pytest -m "unit or offline_contract" -q
+KICAD_HAPPY_DIR=<path to this repo> python3 -m pytest tests/contract/
+```
+
+The first pytest line is what CI's harness-smoke job runs, followed by a determinism guard that analyses the harness's simple project twice. CI's refactor-check job runs `tools.tests.test_check_refactor`, `imports`, `tags` and `install-smoke`. The second line runs the whole schema contract suite.
+
+**3. The maintainer's corpus gate.** Before merge the maintainer runs the corpus gate: 5,829 real KiCad projects and 2.7M assertions. You do not need the corpus. Describe the expected corpus movement in the PR instead: which detectors or rules change, in which direction, and why.
 
 The target is 100% pass rate across all assertion types. Any regression should be investigated — not suppressed.
 
@@ -246,6 +305,35 @@ For significant new features, write a test plan that the harness can execute:
 4. Include targeted checks on specific repos where the feature should trigger
 
 The harness agent executes test plans and reports results. After validation, the test plan file is deleted and results are archived.
+
+### Literal-tag scan policy (owned by the harness; copied from its `tools/SCANNER_POLICY.md` v1)
+
+**What the harness scans.** Every `*.py` under `skills/*/scripts/**` and `skills/*/*/scripts/**` (recursive; `__pycache__` skipped), identified by its root-relative POSIX path. Scanners read source with `ast` only; they never import or `eval` product code.
+
+**What counts as a finding emit site.** A call is an emit site when either holds: (1) its callee's last name segment is `make_finding` or `_make_finding`, or (2) it carries all three keywords `detector=`, `rule_id=`, `schema_era=`.
+
+**What an emit site must look like (new or migrated code).** `detector=` **string literal** (the emitted detector string — frozen for v3); `rule_id=` **string literal**; `schema_era=` **string literal** when the finding belongs to a changed-detector set. Anything else — a variable, an f-string, an attribute, a positional shape — is *unresolved* and fails the harness check unless it is one of the grandfathered exceptions below.
+
+**Grandfathered exceptions** (harness `tools/scan_exceptions.json`; counts may only shrink, and a shrink is committed together with the product change that removed the sites):
+
+| id | shape | count @6a91aaa | retire by |
+|---|---|---:|---|
+| emc-positional-make-finding | `_make_finding('<category>', '<sev>', '<RULE>', ...)` in `skills/emc/scripts/emc_rules.py`; detector derived as `emc_<category>` | 53 | EMC reshape round |
+| det-enum-shorted-two-pin | `detector=Det.SHORTED_TWO_PIN` in `skills/kicad/scripts/signal_detectors.py` | 2 | first SP-001 touch |
+| usb-compliance-rule-id-loop | `rule_id=_rid` loop in the schematic USB compliance analysis | 1 | first UC-00x touch |
+
+Legacy sites without `schema_era` are tolerated per (detector, rule_id); a **new** untagged site under a key whose count grows fails the harness check. Emitted `detector` strings, rule IDs and script paths are frozen regardless of policy; changing how a detector string is *derived* is allowed only if the emitted value is byte-identical. The product-side mirror of this check is `python3 tools/check_refactor.py tags`.
+
+### Accepted analyzer exit codes (harness `harnesslib/execution.py` `ACCEPTED_EXITS`)
+
+The harness treats a run as successful only when the analyzer exits with one of these codes **and** writes valid JSON; anything else is `exit_unexpected`, `crash` or `no_output` and fails the unit:
+
+| analyzer | accepted exits |
+|---|---:|
+| schematic, pcb, gerber, cross_analysis, spice, datasheets | 0 |
+| emc, thermal | 0, 1 (1 = findings present) |
+
+Exit codes are frozen for the v3 arc. A new CLI must document its exit codes here and in the harness before it is gated.
 
 ## Code style
 

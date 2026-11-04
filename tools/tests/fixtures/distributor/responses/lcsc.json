@@ -1,0 +1,182 @@
+{
+  "direct": {
+    "C14663": {
+      "datasheet": "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/C14663.pdf",
+      "description": "1A Low Dropout Regulator 3.3V",
+      "extra": {
+        "datasheet": {
+          "pdf": "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/C14663.pdf"
+        },
+        "description": "1A Low Dropout Regulator 3.3V",
+        "manufacturer": {
+          "name": "AMS"
+        },
+        "mpn": "AMS1117-3.3",
+        "number": "C14663"
+      },
+      "lcsc": "14663",
+      "mfr": "AMS1117-3.3",
+      "price": null,
+      "stock": 5000
+    }
+  },
+  "downloads": {
+    "https://example.com/nope.pdf": false,
+    "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/fixture/atmega.pdf": false,
+    "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/fixture/failall.pdf": false,
+    "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/fixture/gone2.pdf": "GONE2 fixture datasheet text for the offline oracle (page 1).",
+    "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/fixture/lm358.pdf": "LM358DR fixture datasheet text for the offline oracle (page 1).",
+    "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/fixture/si2302.pdf": "SI2302 fixture datasheet text for the offline oracle (page 1).",
+    "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/C14663.pdf": "AMS1117-3.3 fixture datasheet text for the offline oracle (page 1).",
+    "https://ww1.microchip.com/downloads/aemDocuments/documents/MCU08/ProductDocuments/DataSheets/ATMEGA328P-AU-DataSheet.pdf": "ATMEGA328P-AU datasheet",
+    "https://www.ti.com/lit/ds/symlink/tps61023.pdf": "TPS61023DRLR fixture datasheet text for the offline oracle (page 1)."
+  },
+  "scrape": {},
+  "search": {
+    "ATMEGA328P-AU": {
+      "datasheet": "",
+      "description": "8-bit AVR Microcontroller",
+      "extra": {
+        "datasheet": {
+          "pdf": "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/fixture/atmega.pdf"
+        },
+        "description": "8-bit AVR Microcontroller",
+        "manufacturer": {
+          "name": "Microchip Technology"
+        },
+        "mpn": "ATMEGA328P-AU",
+        "number": "C1003"
+      },
+      "lcsc": "1003",
+      "mfr": "ATMEGA328P-AU",
+      "price": 0.1,
+      "stock": 100
+    },
+    "C14663": {
+      "description": "LDO 3.3V 1A",
+      "extra": {
+        "description": "1A Low Dropout Regulator 3.3V",
+        "manufacturer": {
+          "name": "Advanced Monolithic Systems"
+        },
+        "mpn": "AMS1117-3.3",
+        "number": "C14663"
+      },
+      "lcsc": "14663",
+      "mfr": "AMS1117-3.3",
+      "price": 0.05,
+      "stock": 5000
+    },
+    "FAILALL77": {
+      "datasheet": "",
+      "description": "Broken link part",
+      "extra": {
+        "datasheet": {
+          "pdf": "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/fixture/failall.pdf"
+        },
+        "description": "Broken link part",
+        "manufacturer": {
+          "name": "Acme"
+        },
+        "mpn": "FAILALL77",
+        "number": "C1004"
+      },
+      "lcsc": "1004",
+      "mfr": "FAILALL77",
+      "price": 0.1,
+      "stock": 100
+    },
+    "GONE2": {
+      "datasheet": "",
+      "description": "Gone part revised",
+      "extra": {
+        "datasheet": {
+          "pdf": "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/fixture/gone2.pdf"
+        },
+        "description": "Gone part revised",
+        "manufacturer": {
+          "name": "Mfg"
+        },
+        "mpn": "GONE2",
+        "number": "C1006"
+      },
+      "lcsc": "1006",
+      "mfr": "GONE2",
+      "price": 0.1,
+      "stock": 100
+    },
+    "LM358DR": {
+      "datasheet": "",
+      "description": "Dual Operational Amplifier",
+      "extra": {
+        "datasheet": {
+          "pdf": "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/fixture/lm358.pdf"
+        },
+        "description": "Dual Operational Amplifier",
+        "manufacturer": {
+          "name": "Texas Instruments"
+        },
+        "mpn": "LM358DR",
+        "number": "C1001"
+      },
+      "lcsc": "1001",
+      "mfr": "LM358DR",
+      "price": 0.1,
+      "stock": 100
+    },
+    "NODATA1234": {
+      "datasheet": "",
+      "description": "Mystery part",
+      "extra": {
+        "description": "Mystery part",
+        "manufacturer": {
+          "name": "Acme"
+        },
+        "mpn": "NODATA1234",
+        "number": "C1002"
+      },
+      "lcsc": "1002",
+      "mfr": "NODATA1234",
+      "price": 0.1,
+      "stock": 100
+    },
+    "SI2302": {
+      "datasheet": "",
+      "description": "N-Channel MOSFET 20V",
+      "extra": {
+        "datasheet": {
+          "pdf": "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/fixture/si2302.pdf"
+        },
+        "description": "N-Channel MOSFET 20V",
+        "manufacturer": {
+          "name": "Vishay"
+        },
+        "mpn": "SI2302",
+        "number": "C1005"
+      },
+      "lcsc": "1005",
+      "mfr": "SI2302",
+      "price": 0.1,
+      "stock": 100
+    },
+    "TPS61023DRLR": {
+      "datasheet": "",
+      "description": "Boost Converter 5.5V",
+      "extra": {
+        "datasheet": {
+          "pdf": "https://www.ti.com/lit/ds/symlink/tps61023.pdf"
+        },
+        "description": "Boost Converter 5.5V",
+        "manufacturer": {
+          "name": "Texas Instruments"
+        },
+        "mpn": "TPS61023DRLR",
+        "number": "C1000"
+      },
+      "lcsc": "1000",
+      "mfr": "TPS61023DRLR",
+      "price": 0.1,
+      "stock": 100
+    }
+  }
+}

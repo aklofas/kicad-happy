@@ -1,0 +1,671 @@
+[
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_return_path_coverage",
+  "line": 386,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 0
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_return_path_coverage",
+  "line": 410,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 1
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_return_path_coverage",
+  "line": 444,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 2
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_ground_zone_coverage",
+  "line": 482,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 0
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_ground_zone_coverage",
+  "line": 502,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 1
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_ground_zone_coverage",
+  "line": 520,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 2
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_ground_domains",
+  "line": 546,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 0
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_decoupling_distance",
+  "line": 593,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 0
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_decoupling_distance",
+  "line": 609,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 1
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_missing_decoupling",
+  "line": 641,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 0
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_decoupling_via_distance",
+  "line": 761,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 0
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_connector_filtering",
+  "line": 904,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 0
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_connector_ground_pins",
+  "line": 976,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 0
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_switching_harmonics",
+  "line": 1062,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 0
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_clock_routing",
+  "line": 1157,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 0
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_clock_routing",
+  "line": 1172,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 1
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_clock_near_connector",
+  "line": 1242,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 0
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_crystal_guard_ring",
+  "line": 1318,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 0
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_via_stitching",
+  "line": 1400,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 0
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_stackup",
+  "line": 1465,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 0
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_stackup",
+  "line": 1508,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 1
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_stackup",
+  "line": 1542,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 2
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "estimate_cavity_resonances",
+  "line": 1595,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 0
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "estimate_switching_emissions",
+  "line": 1673,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 0
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_switching_node_area",
+  "line": 1773,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 0
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_input_cap_loop_area",
+  "line": 1866,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 0
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_input_cap_loop_area",
+  "line": 1951,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 1
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_diff_pair_skew",
+  "line": 2088,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 0
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_diff_pair_cm_radiation",
+  "line": 2197,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 0
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_diff_pair_reference_plane",
+  "line": 2259,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 0
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_diff_pair_layer",
+  "line": 2323,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 0
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_trace_near_board_edge",
+  "line": 2443,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 0
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_trace_near_board_edge",
+  "line": 2458,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 1
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_ground_pour_ring",
+  "line": 2538,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 0
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_connector_area_stitching",
+  "line": 2631,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 0
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_crosstalk_3h_rule",
+  "line": 2761,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 0
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_crosstalk_3h_rule",
+  "line": 2781,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 1
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_emi_filter_effectiveness",
+  "line": 2861,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 0
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_emi_filter_effectiveness",
+  "line": 2881,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 1
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_esd_protection_path",
+  "line": 2985,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 0
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_esd_protection_path",
+  "line": 3025,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 1
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_esd_protection_path",
+  "line": 3043,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 2
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_thermal_emc",
+  "line": 3133,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 0
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_thermal_emc",
+  "line": 3193,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 1
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_shielding_advisory",
+  "line": 3301,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 0
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_pdn_impedance",
+  "line": 3515,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 0
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_pdn_impedance",
+  "line": 3558,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 1
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_pdn_impedance",
+  "line": 3589,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 2
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_pdn_distributed",
+  "line": 3750,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 0
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_pdn_distributed",
+  "line": 3819,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 1
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_layer_transition_stitching",
+  "line": 3994,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 0
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_layer_transition_stitching",
+  "line": 4013,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 1
+ },
+ {
+  "callee": "_make_finding",
+  "file": "skills/emc/scripts/emc_rules.py",
+  "function": "check_inductor_leakage",
+  "line": 4467,
+  "missing": [
+   "detector",
+   "rule_id"
+  ],
+  "nonliteral": [],
+  "ordinal": 0
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/schematic/system_analyses.py",
+  "function": "analyze_usb_compliance",
+  "line": 2467,
+  "missing": [],
+  "nonliteral": [
+   "rule_id"
+  ],
+  "ordinal": 0
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/signal_detectors.py",
+  "function": "detect_shorted_two_pin_components",
+  "line": 4023,
+  "missing": [],
+  "nonliteral": [
+   "detector"
+  ],
+  "ordinal": 0
+ },
+ {
+  "callee": "make_finding",
+  "file": "skills/kicad/scripts/signal_detectors.py",
+  "function": "detect_shorted_two_pin_components",
+  "line": 4067,
+  "missing": [],
+  "nonliteral": [
+   "detector"
+  ],
+  "ordinal": 1
+ }
+]

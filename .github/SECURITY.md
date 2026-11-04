@@ -10,4 +10,4 @@ Do not open a public issue for security vulnerabilities.
 
 The analysis scripts (`analyze_schematic.py`, `analyze_pcb.py`, `analyze_gerbers.py`) parse untrusted KiCad files. Bugs that could cause code execution, path traversal, or information disclosure when parsing a malicious file are in scope.
 
-The scripts are read-only by design — they never modify input files. The BOM management scripts can write KiCad symbol properties but only with explicit `--write` flags.
+The scripts are read-only by design — they never modify input files. The BOM management scripts write KiCad symbol properties when run; `--dry-run` previews the change without writing.

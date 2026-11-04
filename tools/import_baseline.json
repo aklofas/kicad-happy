@@ -1,0 +1,51 @@
+[
+ {
+  "file": "skills/emc/scripts/emc_spice.py",
+  "line": 28,
+  "module": "spice_simulator",
+  "ordinal": 0,
+  "rule": "optional-to-optional"
+ },
+ {
+  "file": "skills/emc/scripts/emc_spice.py",
+  "line": 136,
+  "module": "spice_simulator",
+  "ordinal": 1,
+  "rule": "optional-to-optional"
+ },
+ {
+  "file": "skills/emc/scripts/emc_spice.py",
+  "line": 137,
+  "module": "spice_templates",
+  "ordinal": 0,
+  "rule": "optional-to-optional"
+ },
+ {
+  "file": "skills/emc/scripts/emc_spice.py",
+  "line": 268,
+  "module": "spice_templates",
+  "ordinal": 1,
+  "rule": "optional-to-optional"
+ },
+ {
+  "file": "skills/emc/scripts/emc_spice.py",
+  "line": 662,
+  "module": "spice_templates",
+  "ordinal": 2,
+  "rule": "optional-to-optional"
+ },
+ {
+  "file": "skills/kicad/scripts/schematic/pipeline.py",
+  "line": 1411,
+  "module": "lifecycle_audit",
+  "ordinal": 0,
+  "rule": "no-cli-import"
+ },
+ {
+  "file": "skills/kicad/scripts/what_if.py",
+  "line": 305,
+  "module": "simulate_subcircuits",
+  "ordinal": 0,
+  "rule": "no-cli-import"
+ }
+]

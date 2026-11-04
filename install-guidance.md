@@ -20,7 +20,7 @@ the plugin ecosystem evolves.
 |-------------|---------|
 | Python | 3.10+ (3.8 EOL Oct 2024; CI tests 3.10 and 3.12) |
 | Dependencies | None required. All analysis scripts use Python stdlib only. |
-| Optional packages | `requests` (HTTP), `playwright` (JS-heavy PDF sites), `pdftotext` (PDF extraction) |
+| Optional packages | `requests` (HTTP), `playwright` (JS-heavy PDF sites), `pdftotext` (PDF extraction), `jsonschema` (datasheet extraction merge/validate: `merge_results.py`, `validate_extraction_result.py`) |
 | Optional system tools | `ngspice` / `LTspice` / `Xyce` (SPICE simulation, auto-detected) |
 | KiCad | Not required at runtime. Analyzes saved `.kicad_sch` / `.kicad_pcb` files directly. |
 | KiCad versions | 5, 6, 7, 8, 9, 10 (all supported) |
@@ -528,7 +528,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - run: sudo apt-get install -y ngspice poppler-utils
-      - uses: aklofas/kicad-happy@v1
+      - uses: aklofas/kicad-happy@v3
         id: analysis
       - uses: thollander/actions-comment-pull-request@v3
         if: github.event_name == 'pull_request'
@@ -552,7 +552,7 @@ branch — component additions/removals, signal parameter shifts, new/resolved
 findings:
 
 ```yaml
-      - uses: aklofas/kicad-happy@v1
+      - uses: aklofas/kicad-happy@v3
         id: analysis
         with:
           diff-base: true
@@ -622,7 +622,7 @@ Add secrets in your repo: Settings → Secrets and variables → Actions → New
 
 ### Action outputs
 
-The `aklofas/kicad-happy@v1` step exposes these outputs for downstream steps:
+The `aklofas/kicad-happy@v3` step exposes these outputs for downstream steps:
 
 | Output | Description |
 |--------|-------------|
