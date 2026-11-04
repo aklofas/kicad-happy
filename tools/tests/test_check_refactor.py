@@ -731,10 +731,11 @@ class AbaReal(unittest.TestCase):
     def test_aba_relative_paths(self):
         import os
         old = os.getcwd()
-        os.chdir("/tmp")
+        base = str(cr.REPO_ROOT.parent)  # same drive as the product, so relpath works on Windows
+        os.chdir(base)
         try:
-            rc, out, err = _run_main(["aba", "--product", os.path.relpath(str(cr.REPO_ROOT), "/tmp"),
-                                      "--fixtures", os.path.relpath(str(FX_REAL), "/tmp")])
+            rc, out, err = _run_main(["aba", "--product", os.path.relpath(str(cr.REPO_ROOT), base),
+                                      "--fixtures", os.path.relpath(str(FX_REAL), base)])
         finally:
             os.chdir(old)
         self.assertEqual(rc, 0, out + err)

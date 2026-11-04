@@ -314,6 +314,7 @@ class CacheReader(unittest.TestCase):
         import datasheet_extract_cache as dec
         with tempfile.TemporaryDirectory() as d:
             ex = Path(d) / "extracted"; ex.mkdir()
+            (ex / "sub").mkdir()  # on Windows the backslash name resolves into sub/, so the file exists there
             (ex / "sub\\x.json").write_text('{"ok": 1}', encoding="utf-8")
             (ex / "manifest.json").write_text(json.dumps(
                 {"extractions": {dec._sanitize_mpn("P1"): {"file": "sub\\x.json"}}}), encoding="utf-8")
