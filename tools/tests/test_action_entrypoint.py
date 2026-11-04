@@ -53,6 +53,39 @@ class EntrypointIsolationTest(unittest.TestCase):
             self.assertEqual(out["has-critical"], "false")
 
 
+PCB = '(kicad_pcb (version 20240108) (generator "pcbnew") (general (thickness 1.6)) (layers (0 "F.Cu" signal) (31 "B.Cu" signal) (44 "Edge.Cuts" user)))\n'
+
+
+@unittest.skipIf(os.name == "nt" or not shutil.which("bash"), "runs the bash entrypoint")
+class EntrypointFailedAnalysisTest(unittest.TestCase):
+    def test_only_selected_analysis_failed_fails_the_step(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            r, out = run_entrypoint(Path(tmp), {"top.kicad_sch": ""})
+            self.assertEqual(r.returncode, 1)
+            self.assertEqual(out["has-critical"], "false")
+            self.assertIn("Incomplete review", Path(out["report-path"]).read_text(encoding="utf-8"))
+
+    def test_missing_configured_path_counts_as_failed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            r, out = run_entrypoint(Path(tmp), {"x": ""}, INPUT_SCHEMATIC="nope.kicad_sch")
+            self.assertEqual(r.returncode, 1)
+            self.assertIn("Schematic analysis failed", Path(out["report-path"]).read_text(encoding="utf-8"))
+
+    def test_failed_schematic_beside_a_pcb_posts_an_error_status(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / "bin").mkdir()
+            curl = tmp / "bin" / "curl"
+            curl.write_text(f'#!/bin/sh\nprintf "%s\\n" "$@" > {tmp / "curl.args"}\n', encoding="utf-8")
+            curl.chmod(0o755)
+            r, out = run_entrypoint(tmp, {"top.kicad_sch": "", "top.kicad_pcb": PCB},
+                                    PATH=f"{tmp / 'bin'}{os.pathsep}{os.environ['PATH']}",
+                                    GITHUB_TOKEN="t", GITHUB_REPOSITORY="o/r", GITHUB_SHA="abc")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn('"state":"error"', (tmp / "curl.args").read_text(encoding="utf-8"))
+            self.assertIn("pcb-json", out)
+
+
 class EntrypointStaticTest(unittest.TestCase):
     def test_no_inline_python_reads_the_workspace(self):
         for name in ("entrypoint.sh", "diff_base.sh", "detect_project.sh"):

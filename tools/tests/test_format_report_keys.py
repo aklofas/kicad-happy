@@ -28,6 +28,19 @@ def _render(tmp, **inputs):
         return f.read(), g.read()
 
 
+class FailedAnalysisTest(unittest.TestCase):
+    def test_failed_schematic_is_named_in_both_reports(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            summ = os.path.join(tmp, "summary.json")
+            md, full = _render(tmp, failed="schematic", **{"output-summary": summ})
+            with open(summ, encoding="utf-8") as f:
+                s = json.load(f)
+        self.assertIn("> **Incomplete review:** Schematic analysis failed; its checks are missing from this report.", md)
+        self.assertIn("Schematic analysis failed", full)
+        self.assertEqual(s["failed_analyzers"], ["schematic"])
+        self.assertFalse(s["has_critical"])
+
+
 @unittest.skipUnless(have(FX / "simple-project" / "simple.kicad_pcb"), "fixtures absent")
 class FixtureReportTest(unittest.TestCase):
     def assertNoPlaceholders(self, *texts):

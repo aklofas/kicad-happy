@@ -632,6 +632,8 @@ The `aklofas/kicad-happy@v3` step exposes these outputs for downstream steps:
 | `findings-count` | Number of critical and warning rows in the report's Findings table (EMC and thermal each add one row per severity, however many findings it holds) |
 | `has-critical` | `true` or `false` (a string): whether the report has a critical row. VD-* derating `error` findings and EMC or thermal `error` findings set it; other schematic and PCB findings and SPICE results do not |
 
+When a selected schematic or PCB analysis fails, the report opens with an incomplete-review banner and the commit status is `error`; the step fails only when every selected analysis failed.
+
 ---
 
 ## Windows symlink issues

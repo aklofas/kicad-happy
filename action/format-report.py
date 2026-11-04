@@ -544,9 +544,14 @@ def _render_changes(diffs):
 # Tier 1: PR Comment
 # ---------------------------------------------------------------------------
 
+def _incomplete_banner(failed):
+    names = ", ".join(_SOURCE_LABELS[n] for n in failed)
+    return f"> **Incomplete review:** {names} analysis failed; its checks are missing from this report."
+
+
 def format_report(schematic_path, pcb_path, spice_path, emc_path,
                   severity, derating_profile, run_url=None, diff_path=None,
-                  thermal_path=None):
+                  thermal_path=None, failed=None):
     sch = _load_json(schematic_path)
     pcb = _load_json(pcb_path)
     spice = _load_json(spice_path)
@@ -562,6 +567,9 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
     # === Header ===
     L.append("## KiCad Design Review")
     L.append("")
+    if failed:
+        L.append(_incomplete_banner(failed))
+        L.append("")
 
     if sch:
         stats = sch.get("statistics", {})
@@ -943,6 +951,7 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
         "has_pcb": pcb is not None,
         "has_spice": spice is not None,
         "has_emc": emc is not None,
+        "failed_analyzers": sorted(failed or []),
     }
 
     return report, summary_data
@@ -953,7 +962,7 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
 # ---------------------------------------------------------------------------
 
 def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
-                       derating_profile, thermal_path=None):
+                       derating_profile, thermal_path=None, failed=None):
     """Generate the full step summary — no JSON dumps, all human-readable."""
     sch = _load_json(schematic_path)
     pcb = _load_json(pcb_path)
@@ -970,6 +979,9 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
     # === Header ===
     a("# Design Review — Full Report")
     a("")
+    if failed:
+        a(_incomplete_banner(failed))
+        a("")
     if sch:
         filename = _source_name(sch)
         rails = stats.get("power_rails", [])
@@ -1392,6 +1404,8 @@ def main():
     parser.add_argument("--emc", help="Path to EMC analysis JSON")
     parser.add_argument("--diff", action="append", help="Path to diff analysis JSON (from diff_analysis.py); repeat for each diff")
     parser.add_argument("--thermal", help="Path to thermal analysis JSON (from analyze_thermal.py)")
+    parser.add_argument("--failed", action="append", choices=["schematic", "pcb"],
+                        help="Primary analysis that failed; repeat per analyzer")
     parser.add_argument("--severity", default="all", help="Filter: all, warning, critical")
     parser.add_argument("--derating-profile", default="commercial")
     parser.add_argument("--run-url", help="GitHub Actions run URL for 'Full report' link")
@@ -1406,6 +1420,7 @@ def main():
         run_url=args.run_url,
         diff_path=args.diff,
         thermal_path=args.thermal,
+        failed=args.failed,
     )
 
     with open(args.output, "w", encoding="utf-8") as f:
@@ -1413,7 +1428,7 @@ def main():
 
     if args.output_full:
         full = format_full_report(args.schematic, args.pcb, args.spice, args.emc,
-                                   args.derating_profile, thermal_path=args.thermal)
+                                   args.derating_profile, thermal_path=args.thermal, failed=args.failed)
         with open(args.output_full, "w", encoding="utf-8") as f:
             f.write(full)
         print(f"Full report: {args.output_full} ({len(full)} chars)", file=sys.stderr)

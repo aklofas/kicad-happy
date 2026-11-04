@@ -152,9 +152,17 @@ echo "::endgroup::"
 # Run schematic analysis
 # ---------------------------------------------------------------------------
 
+RAN=0
+FAILED=()
 SCH_JSON=""
+if [ -n "$SCHEMATIC" ] && [ ! -f "$SCHEMATIC" ]; then
+    echo "::error::Schematic not found: $SCHEMATIC"
+    RAN=$((RAN + 1))
+    FAILED+=(schematic)
+fi
 if [ -n "$SCHEMATIC" ] && [ -f "$SCHEMATIC" ]; then
     echo "::group::Schematic Analysis"
+    RAN=$((RAN + 1))
     SCH_JSON="$OUTDIR/schematic.json"
     echo "Analyzing: $SCHEMATIC"
     SCH_CMD=("$SCRIPTS/analyze_schematic.py" "$SCHEMATIC" -o "$SCH_JSON")
@@ -168,6 +176,7 @@ if [ -n "$SCHEMATIC" ] && [ -f "$SCHEMATIC" ]; then
         echo "::error::Schematic analysis failed"
         cat "$OUTDIR/schematic.err" >&2 || true
         SCH_JSON=""
+        FAILED+=(schematic)
     fi
     echo "::endgroup::"
 fi
@@ -177,8 +186,14 @@ fi
 # ---------------------------------------------------------------------------
 
 PCB_JSON=""
+if [ -n "$PCB" ] && [ ! -f "$PCB" ]; then
+    echo "::error::PCB not found: $PCB"
+    RAN=$((RAN + 1))
+    FAILED+=(pcb)
+fi
 if [ -n "$PCB" ] && [ -f "$PCB" ]; then
     echo "::group::PCB Analysis"
+    RAN=$((RAN + 1))
     PCB_JSON="$OUTDIR/pcb.json"
     echo "Analyzing: $PCB"
     PCB_CMD=("$SCRIPTS/analyze_pcb.py" "$PCB" -o "$PCB_JSON")
@@ -186,9 +201,10 @@ if [ -n "$PCB" ] && [ -f "$PCB" ]; then
     if python3 "${PCB_CMD[@]}" 2>"$OUTDIR/pcb.err"; then
         echo "pcb-json=$PCB_JSON" >> "$GITHUB_OUTPUT"
     else
-        echo "::warning::PCB analysis failed"
+        echo "::error::PCB analysis failed"
         cat "$OUTDIR/pcb.err" >&2 || true
         PCB_JSON=""
+        FAILED+=(pcb)
     fi
     echo "::endgroup::"
 fi
@@ -357,6 +373,7 @@ for _diff in ${DIFF_JSONS[@]+"${DIFF_JSONS[@]}"}; do
     [ -f "$_diff" ] && ARGS+=(--diff "$_diff")
 done
 [ -n "$THERMAL_JSON" ] && [ -f "$THERMAL_JSON" ] && ARGS+=(--thermal "$THERMAL_JSON")
+for _f in ${FAILED[@]+"${FAILED[@]}"}; do ARGS+=(--failed "$_f"); done
 ARGS+=(--severity "${INPUT_SEVERITY:-all}")
 ARGS+=(--derating-profile "${INPUT_DERATING_PROFILE:-commercial}")
 ARGS+=(--output "$REPORT")
@@ -395,7 +412,10 @@ fi
 
 # Post commit status check (works on both push and PR events)
 if [ -n "${GITHUB_TOKEN:-}" ] && [ -n "${GITHUB_REPOSITORY:-}" ] && [ -n "${GITHUB_SHA:-}" ]; then
-    if [ "$HAS_CRITICAL" = "true" ]; then
+    if [ "${#FAILED[@]}" -gt 0 ]; then
+        STATUS_STATE="error"
+        STATUS_DESC="${FAILED[*]} analysis failed; review incomplete"
+    elif [ "$HAS_CRITICAL" = "true" ]; then
         STATUS_STATE="failure"
         STATUS_DESC="$FINDINGS_COUNT finding(s), including critical issues"
     elif [ "$FINDINGS_COUNT" -gt 0 ] 2>/dev/null; then
@@ -421,3 +441,8 @@ if [ -n "${GITHUB_TOKEN:-}" ] && [ -n "${GITHUB_REPOSITORY:-}" ] && [ -n "${GITH
 fi
 
 echo "::endgroup::"
+
+if [ "${#FAILED[@]}" -gt 0 ] && [ "${#FAILED[@]}" -eq "$RAN" ]; then
+    echo "::error::Every selected analysis failed; the report holds no design checks"
+    exit 1
+fi
