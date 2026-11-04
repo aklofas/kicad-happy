@@ -8,14 +8,14 @@ This document tells an orchestrator running inside Claude Code how to dispatch t
 
 Two files in `<cache_dir>`:
 
-- `<mpn>.plan.json` — the plan written by `plan_extraction.py`
-- `<mpn>.scout.json` — the unwrapped scout output (used to inject metadata if a prompt template needs it; the shipped prompts need only `plan.tasks[].pages`)
+- `<sanitized_mpn>.plan.json` (the MPN with every character outside `[A-Za-z0-9_.-]` replaced by `_`: `LM317/NOPB` → `LM317_NOPB`) — the plan written by `plan_extraction.py`
+- `<sanitized_mpn>.scout.json` — the unwrapped scout output (used to inject metadata if a prompt template needs it; the shipped prompts need only `plan.tasks[].pages`)
 
 ## Workflow
 
 ### Step 1 — Confirm scout has run
 
-If `<mpn>.scout.json` does not exist, run the scout first:
+If `<sanitized_mpn>.scout.json` does not exist, run the scout first:
 
 1. Read `skills/datasheets/prompts/scout.md`.
 2. Substitute placeholders from the requested part (no plan exists yet): `{{MPN}}` = the target MPN, `{{PDF_PATH}}` = the source PDF path, `{{SCHEMA_PATH}}` = `skills/datasheets/schemas/scout.schema.json`.
@@ -23,7 +23,7 @@ If `<mpn>.scout.json` does not exist, run the scout first:
    - `subagent_type: general-purpose`
    - `description: "Datasheet scout for <mpn>"`
    - `prompt`: the substituted prompt
-4. Capture the agent's JSON output. Validate against `skills/datasheets/schemas/scout.schema.json`. If valid, write the unwrapped JSON to `<cache_dir>/<mpn>.scout.json` with an added `"pdf_sha256": "sha256:<hex of the PDF>"` field (`plan_extraction.py --use-cached-scout` refuses a scout whose SHA differs from the PDF's and warns about one without a SHA) AND a wrapped version to `<cache_dir>/<mpn>.scout.result.json` (status complete, schema_version 1.0, extracted_at now, model_tier B, model_id claude-{current model}, data = the JSON).
+4. Capture the agent's JSON output. Validate against `skills/datasheets/schemas/scout.schema.json`. If valid, write the unwrapped JSON to `<cache_dir>/<sanitized_mpn>.scout.json` with an added `"pdf_sha256": "sha256:<hex of the PDF>"` field (`plan_extraction.py --use-cached-scout` refuses a scout whose SHA differs from the PDF's and warns about one without a SHA) AND a wrapped version to `<cache_dir>/<sanitized_mpn>.scout.result.json` (status complete, schema_version 1.0, extracted_at now, model_tier B, model_id claude-{current model}, data = the JSON).
 5. Then re-invoke `plan_extraction.py <mpn> <pdf_path> --use-cached-scout --cache-dir <cache_dir>` to generate the plan.
 
 ### Step 2 — Dispatch per-task subagents in parallel
@@ -67,7 +67,7 @@ For each returned agent output:
      "error": "<validation error message>"  // only if status == failed
    }
    ```
-4. Write to `<cache_dir>/<mpn>.<task_id>.result.json`.
+4. Write to `<cache_dir>/<sanitized_mpn>.<task_id>.result.json`.
 
 ### Step 4 — Run merge_results.py
 
@@ -75,7 +75,7 @@ For each returned agent output:
 python3 skills/datasheets/scripts/merge_results.py <mpn> --cache-dir <cache_dir>
 ```
 
-If exit code is 0: extraction is complete; `<cache_dir>/<mpn>.json` is the canonical cache file. Done.
+If exit code is 0: extraction is complete; `<cache_dir>/<sanitized_mpn>.json` is the canonical cache file. Done.
 
 If exit code is 1: at least one task is in `failed` status. Read stderr for the specific task IDs.
 
@@ -83,7 +83,7 @@ If exit code is 1: at least one task is in `failed` status. Read stderr for the 
 
 For each failed task:
 
-1. Read the existing `<mpn>.<task_id>.result.json` to get the `error` message.
+1. Read the existing `<sanitized_mpn>.<task_id>.result.json` to get the `error` message.
 2. Read `task.prompt_template` again, substitute placeholders, **and append**:
 
    ```
@@ -156,7 +156,7 @@ The `design_context` task reuses this same dispatcher contract. Key differences:
 - Tasks have `task_type: "review"` (vs `"extraction"` for datasheet tasks).
 - The design_context task lives at `skills/kicad/review/prompts/design_context.md`. The reviewer task is retired in v2.0 (superseded by the Deep Review pass — see `skills/kicad/references/deep-review.md`).
 - Result schemas live under `skills/kicad/review/schemas/{design_context,review_annotations}.schema.json`.
-- Result paths are `analysis/<artifact>.json` (NOT `<mpn>.<task>.result.json` — review outputs are run-level, not MPN-level).
+- Result paths are `analysis/<artifact>.json` (NOT `<sanitized_mpn>.<task>.result.json` — review outputs are run-level, not MPN-level).
 
 ### Task → Subagent mapping
 
@@ -166,7 +166,7 @@ When you see a task with `task_type: "review"`:
 |-----------|------|----------------|
 | `design_context` | B (cheaper) | `skills/kicad/review/prompts/design_context.md` |
 
-Same dispatch primitive (Claude Code `Task` tool); same output-validation contract (validate against `result_schema` after subagent returns); same retry semantics (one retry on hard fail with error context).
+Same dispatch primitive (Claude Code `Agent` tool); same output-validation contract (validate against `result_schema` after subagent returns); same retry semantics (one retry on hard fail with error context).
 
 ### After the design_context task completes
 

@@ -145,12 +145,7 @@ Example (LM358 — Fairchild/ON Semi BJT general-purpose dual single-supply, SOI
   "unity_gain_stable": true,
   "shutdown_pin": null,
   "thermal_resistance": {
-    "rtheta_ja": [
-      {"min": null, "typ": null, "max": 150, "unit": "°C/W",
-       "condition": "SOIC-8 package, free air",
-       "notes": "Typical value for SOIC-8; not explicitly tabulated in this datasheet.",
-       "evidence": {"page": 2, "section": "Absolute Maximum Ratings", "confidence": "medium", "method": "prose"}}
-    ],
+    "rtheta_ja": null,
     "rtheta_jc": null,
     "rtheta_jl": null
   },

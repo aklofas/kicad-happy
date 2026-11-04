@@ -58,12 +58,12 @@ The distributor download manifest, written by the sync scripts: `{schematic, las
 
 ### Orchestration audit files
 
-`<MPN>.plan.json` (written by `plan_extraction.py`) and `<MPN>.scout.json`
+`<sanitized_mpn>.plan.json` (written by `plan_extraction.py`) and `<sanitized_mpn>.scout.json`
 (the scout subagent's output, saved by the dispatcher per `dispatch-claude-code.md`) sit alongside the
-main `<MPN>.json`. They persist the scout output and the per-task
+main `<sanitized_mpn>.json`. They persist the scout output and the per-task
 orchestration plan for audit and replay.
 
-`<MPN>.json` references these side-files via `extraction.plan_ref`
+`<sanitized_mpn>.json` references these side-files via `extraction.plan_ref`
 (relative filename). A missing plan or scout file does not invalidate
 the cache — those files are audit metadata, not required for
 consumption by `lookup()`.
@@ -145,7 +145,7 @@ Two distinct directories that look similar but serve different purposes:
   to make the v1.4 schemas self-documenting via concrete instances.
   Six MPNs: `lm2596-adj`, `abm8g-106-12.000mhz-t`, `irlml6344`,
   `lm358`, `stm32f103c8t6`, `mbrs540t3g`.
-- **`<user-project>/datasheets/extracted/<MPN>.json`** — runtime cache,
+- **`<user-project>/datasheets/extracted/<sanitized_mpn>.json`** — runtime cache,
   populated by running the extraction pipeline on the parts of their
   own schematics. `lookup(mpn, cache_dir=<user-project>/datasheets/extracted)`
   reads from here.
@@ -167,6 +167,6 @@ examples.
 - `skills/datasheets/scripts/datasheet_features.py` — the dict helpers,
   which read v1.4 caches first and fall back to v1.3 caches.
 - `skills/datasheets/scripts/plan_extraction.py` and `merge_results.py` —
-  the extraction pipeline; they write new entries and `<MPN>.plan.json`.
-  The scout's output, `<MPN>.scout.json`, is saved by the dispatcher (the
+  the extraction pipeline; they write new entries and `<sanitized_mpn>.plan.json`.
+  The scout's output, `<sanitized_mpn>.scout.json`, is saved by the dispatcher (the
   agent following `dispatch-claude-code.md`).

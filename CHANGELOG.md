@@ -291,6 +291,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The Gerber methodology and manual guide say KiCad 5.1 and later write X2 aperture and object attributes (as `G04 #@!` comments with X2 off), follow KiCad's pad order (`TO.P`, then `TO.N`, no `TO.C`) in the manual state machine, and describe routed slots as one hole at the plunge point; the job-file link in the Gerber guide's contents works again.
 - The report guide's schematic field table names detection-type keys and says how they map to detector strings, lists the fields the detectors emit (`estimated_vout`, `resonant_hz`, divider nets; feedback dividers are voltage-divider findings with `is_feedback`); the config reference says skipped suppressions warn on stderr; the diff guide says an item without an identity is matched by `finding_id` or content.
 - The Deep Review guide says what the evidence gate checks and that a finding whose quotes could not be checked, or that cites a computation, is kept as `evidence_checked: partial`.
+- The datasheets skill names its scout, plan, result and cache files by the sanitized MPN the scripts use (`LM317/NOPB` → `LM317_NOPB`), shows the scout-then-plan pipeline without the old page selector, and its op-amp example leaves an untabulated thermal resistance null.
 
 ---
 

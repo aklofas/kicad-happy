@@ -17,12 +17,13 @@ Distributor skills download PDFs:
   digikey/mouser/lcsc/element14  → <project>/datasheets/<MPN>.pdf
 
 v1.4 typed pipeline (current):
-  <MPN>.pdf  → page selector  → target pages
-             → plan_extraction.py + scout subagent
+  <MPN>.pdf  → scout subagent (reads the PDF's contents and headings; saved as <sanitized_mpn>.scout.json,
+               where sanitized_mpn is the MPN with every character outside [A-Za-z0-9_.-] replaced by _)
+             → plan_extraction.py --use-cached-scout (task pages from the scout)
              → category extractor prompts (base, pinout, regulator, diode,
                                             transistor, opamp, mcu, crystal)
              → merge_results.py validates, merges and scores (0–100)
-             → <project>/datasheets/extracted/<MPN>.json (typed schema v1.0+)
+             → <project>/datasheets/extracted/<sanitized_mpn>.json (typed schema v1.0+)
              → optional: datasheet_verify.py --self-consistency checks invariants
 
 v1.3 legacy pipeline (read-only in v1.4):

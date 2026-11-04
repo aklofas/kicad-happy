@@ -2,21 +2,21 @@
 
 > **Status:** stable. The contract applies to every dispatcher implementation. The only one shipped is `dispatch-claude-code.md`; an SDK runner or another agent platform would implement the same contract.
 
-A **dispatcher** is the swappable layer between `plan_extraction.py` and `merge_results.py` in the extraction pipeline. Its job: read `<mpn>.plan.json`, run each per-task subagent under its native LLM-dispatch primitive, write per-task wrapped result files. Python (plan_extraction + merge_results) is platform-agnostic; plan_extraction is stdlib-only, merge_results needs the `jsonschema` package (`pip install jsonschema`); the dispatcher is the only agent-specific component.
+A **dispatcher** is the swappable layer between `plan_extraction.py` and `merge_results.py` in the extraction pipeline. Its job: read `<sanitized_mpn>.plan.json` (the MPN with every character outside `[A-Za-z0-9_.-]` replaced by `_`: `LM317/NOPB` → `LM317_NOPB`), run each per-task subagent under its native LLM-dispatch primitive, write per-task wrapped result files. Python (plan_extraction + merge_results) is platform-agnostic; plan_extraction is stdlib-only, merge_results needs the `jsonschema` package (`pip install jsonschema`); the dispatcher is the only agent-specific component.
 
 ## Inputs
 
 The dispatcher reads:
 
-- `<cache_dir>/<mpn>.plan.json` — `plan.schema.json` shape
-- `<cache_dir>/<mpn>.scout.json` — `scout.schema.json` shape (for prompt placeholder injection)
+- `<cache_dir>/<sanitized_mpn>.plan.json` — `plan.schema.json` shape
+- `<cache_dir>/<sanitized_mpn>.scout.json` — `scout.schema.json` shape (for prompt placeholder injection)
 - The PDF at `<plan.pdf_path>` (each subagent reads it directly; the dispatcher does not read PDF content)
 - Each `task.prompt_template` (Markdown with `{{MPN}}`, `{{PDF_PATH}}`, `{{PAGES}}`, `{{SCHEMA_PATH}}` placeholders)
 - Each `task.schema` (JSON Schema for validation)
 
 ## Outputs
 
-Per task: `<cache_dir>/<mpn>.<task_id>.result.json` — the **wrapped result file**.
+Per task: `<cache_dir>/<sanitized_mpn>.<task_id>.result.json` — the **wrapped result file**.
 
 ```json
 {
@@ -46,7 +46,7 @@ Per task: `<cache_dir>/<mpn>.<task_id>.result.json` — the **wrapped result fil
 
 | | The dispatcher |
 |---|---|
-| **MUST** | For each task in `plan.tasks` where `status: "pending"`: instantiate the subagent with `task.prompt_template` (placeholders substituted) and the task's PDF page list, capture subagent output, write the wrapped result file to `<cache_dir>/<mpn>.<task_id>.result.json`. |
+| **MUST** | For each task in `plan.tasks` where `status: "pending"`: instantiate the subagent with `task.prompt_template` (placeholders substituted) and the task's PDF page list, capture subagent output, write the wrapped result file to `<cache_dir>/<sanitized_mpn>.<task_id>.result.json`. |
 | **MUST** | Set `status: "complete"` if subagent output passes JSON-schema validation against `task.schema`; set `status: "failed"` with an `error` field if validation fails or the subagent reports an explicit error. |
 | **MUST** | Respect `task.depends_on` — never dispatch a task whose dependencies haven't all reached `status: "complete"`. (the shipped extraction tasks all have `depends_on: []`, so this is a future-proofing constraint.) |
 | **MUST** | Be idempotent — if a result file already exists with `status: "complete"` and its `pdf_sha256` equals `plan.pdf_sha256`, skip that task (resume-safe). A schema major-version bump does not invalidate old results; pass `--force` to re-run them. |
@@ -57,14 +57,14 @@ Per task: `<cache_dir>/<mpn>.<task_id>.result.json` — the **wrapped result fil
 | **MUST NOT** | Modify `plan.json` itself. `merge_results.py` owns `execution.outcomes`. |
 | **MUST NOT** | Skip schema validation. A result file with `status: "complete"` implies schema-valid by contract. |
 | **MUST NOT** | Overwrite an existing `status: "complete"` result file that is bound to `plan.pdf_sha256` without an explicit `--force` flag passed to the dispatcher. A result with no `pdf_sha256`, or a different one, is not complete for this plan and is re-dispatched. |
-| **MUST NOT** | Edit or merge into `<mpn>.json` directly. That's `merge_results.py`'s job. |
-| **MUST NOT** | Read or generate `<mpn>.json` (except for resume-safety idempotence checks against the result files, which is fine). |
+| **MUST NOT** | Edit or merge into `<sanitized_mpn>.json` directly. That's `merge_results.py`'s job. |
+| **MUST NOT** | Read or generate `<sanitized_mpn>.json` (except for resume-safety idempotence checks against the result files, which is fine). |
 
 ## Retry semantics
 
 The dispatcher is invoked **at most twice per pipeline run**:
 
-1. **First invocation**: dispatch all `pending` tasks. Result files written. `merge_results.py` runs, validates, writes `<mpn>.json`. If any task is `failed`, exit nonzero — the orchestrator that drives the pipeline re-invokes the dispatcher once more, re-running just the failed tasks (delete or rename their result files first to bypass idempotence).
+1. **First invocation**: dispatch all `pending` tasks. Result files written. `merge_results.py` runs, validates, writes `<sanitized_mpn>.json`. If any task is `failed`, exit nonzero — the orchestrator that drives the pipeline re-invokes the dispatcher once more, re-running just the failed tasks (delete or rename their result files first to bypass idempotence).
 
 2. **Second invocation** (`--retry-failed` mode in the dispatcher recipe): re-dispatch the failed tasks with the original prompt + appended error message ("Your previous output failed schema validation: <error>. Try again."). Write new result files (overwriting the failed ones). `merge_results.py --retry-failed` then runs; tasks that succeed merge cleanly; tasks that still fail get partial-merged with `{"_extraction_failed": true, "reason": ...}`.
 
@@ -97,7 +97,7 @@ The Claude Code recipe makes this optional (the cost data isn't auditable from i
                        plan_extraction.py
                                │
                                ▼
-                       <mpn>.plan.json
+                       <sanitized_mpn>.plan.json
                                │
                                ▼
             ┌──────────────────────────────────────┐
@@ -108,7 +108,7 @@ The Claude Code recipe makes this optional (the cost data isn't auditable from i
                        merge_results.py
                                │
                                ▼
-                       <mpn>.json
+                       <sanitized_mpn>.json
 ```
 
-The dispatcher knows nothing about `<mpn>.json`. Plan in, result files out.
+The dispatcher knows nothing about `<sanitized_mpn>.json`. Plan in, result files out.

@@ -117,9 +117,8 @@ def sanitize_mpn(mpn: str) -> str:
     Strips whitespace; replaces any non-[A-Za-z0-9_.-] character with '_'.
     Dots and hyphens are preserved because they appear in valid MPNs
     (crystals like `ABM8G-106-12.000MHZ-T`, hyphenated families like
-    `LM2596-ADJ`). This MUST match the planner/merger which write
-    literal MPN-named files via `plan_extraction.py` and `merge_results.py`;
-    stripping dots here would miss the cache for dot-containing MPNs. No
+    `LM2596-ADJ`). `plan_extraction.py` and `merge_results.py`
+    name their files with this function too; stripping dots here would miss the cache for dot-containing MPNs. No
     hash suffix — rare collisions are acceptable.
 
     Examples:
