@@ -26,7 +26,7 @@ For the PCB file format details (S-expression structure, fields, layer definitio
 
 ## Setup and Stackup
 
-The `(setup ...)` section contains board-level configuration. The analyzer extracts layer count, thickness, copper finish, and paste ratios automatically. Use this section for **impedance calculations** which require the full stackup detail.
+The `(setup ...)` section contains board-level configuration. The analyzer reads layer count, copper finish and paste ratios from it, and the board thickness from the `(general (thickness ...))` entry (`setup.board_thickness_mm`). Use this section for **impedance calculations** which require the full stackup detail.
 
 ### Stackup Structure
 ```

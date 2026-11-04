@@ -35,11 +35,13 @@ Extracts from `(layers ...)` block: layer numbers, names, types (signal, user, e
 ### 2.2 Setup / Design Rules
 
 Extracts from `(setup ...)` block:
-- Board thickness, copper weight
+- Copper weight
 - Default trace width, via size/drill, clearance
 - Solder mask/paste margins
 - Zone fill settings (thermal relief, spoke width)
 - DRC settings (min track width, min drill, min clearance)
+
+Board thickness comes from `(general (thickness ...))`, which KiCad writes with or without a `(setup)` section, and is reported as `setup.board_thickness_mm`.
 
 ### 2.3 Net Definitions
 
@@ -173,8 +175,8 @@ Reports minimum track width per power net — the current bottleneck.
 
 ## 6. Decoupling Placement Analysis
 
-For each IC (U-prefix footprint), finds capacitors (C-prefix) within 10mm:
-- Distance from IC center to cap center
+For each IC (`U` or `IC` reference), finds capacitors (C-prefix) within 10mm:
+- Distance from the nearest IC power or ground pad to the nearest cap pad (footprint centres when pad positions are missing)
 - Whether cap shares a net with the IC (likely decoupling)
 - Whether cap is on the same PCB side as the IC
 - Reports closest capacitor distance per IC
@@ -414,14 +416,14 @@ Legacy KiCad 5 net class definitions (stored in PCB file): default and named cla
     "findings": [{ "detector", "rule_id", "category", "severity", "confidence",
                     "summary", "description", "components", "nets", "recommendation",
                     "report_context": { "section", "impact", "standard_ref" }, ... }],
-    "file": "path/to/board.kicad_pcb",
     "kicad_version": "9.0.0",
     "statistics": { "footprint_count", "smd_count", "tht_count", "copper_layers_used",
                     "track_segments", "via_count", "zone_count", "total_track_length_mm",
                     "board_width_mm", "board_height_mm", "routing_complete" },
     "layers": [...],
     "setup": { "board_thickness_mm", "design_rules", "defaults", ... },
-    "nets": { "net_name": net_number, ... },
+    "nets": { "net_number": "net_name", ... },
+    "net_name_to_id": { "net_name": net_number, ... },
     "board_outline": { "edges", "bounding_box" },
     "component_groups": { "R": {"count": 45, "references": [...]}, ... },
     "footprints": [{ "reference", "value", "x", "y", "layer", "type", "connected_nets", ... }],
@@ -456,12 +458,12 @@ Sections previously at top level (`thermal_analysis`, `thermal_pad_vias`, `tombs
 
 3. **Track spacing approximation**: Minimum trace spacing is estimated from endpoint-to-endpoint distances, not full segment-to-segment geometry. The actual minimum spacing could be smaller (e.g., traces running parallel but sampled at endpoints). The DFM report notes this approximation.
 
-4. **Zone connectivity approximation**: In union-find connectivity analysis, zones are assumed to connect all pads on the same net + layer. This is accurate for filled planes but may overcount for partial zones with cutouts.
+4. **Zone connectivity follows the saved fills**: in the `--full` connectivity graph a zone joins only the pads, vias and track ends that lie inside the same saved fill region; a zone with no saved fill joins nothing. Stale or missing fills therefore give stale or missing joins (see 2).
 
 5. **First-order impedance only**: `--full` emits `impedance_ohm` from a microstrip estimate (Hammerstad effective permittivity on outer layers, bulk Er on inner layers). It is not a field solve; use a stackup calculator for controlled-impedance design.
 
 6. **Single-file analysis**: Only processes one `.kicad_pcb` file. Doesn't handle multi-board projects or panelized designs.
 
-7. **Courtyard-only overlap detection**: Component overlap uses courtyard bounding boxes, not actual pad/silk geometry. Components without courtyards aren't checked.
+7. **Courtyard overlap only**: overlap is tested on the courtyard shapes (bounding boxes first, then the courtyard polygons when both parts have them, with KiCad's 0.005 mm shrink); pad and silk geometry are not compared, and parts without a courtyard are not checked.
 
 8. **Tombstoning risk is heuristic**: Thermal mass estimation uses track width × length as a proxy. Actual thermal behavior depends on copper weight, zone connections, and thermal relief geometry that aren't fully modeled.

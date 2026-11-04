@@ -431,10 +431,10 @@ This verification must happen at the PCB pad level, not just the schematic pin l
 [Components likely simulatable vs needing SPICE models, coverage percentage]
 
 ### Ordering Notes
-[Practical manufacturing summary for ordering — this section bridges the design review and the fabrication order. Extract surface finish from the PCB stackup (`copper_finish` field in setup section), solder mask color from board setup, and board thickness from the stackup layer sum. Designers use this to configure their PCB order, so always include it when a PCB was analyzed.]
+[Practical manufacturing summary for ordering — this section bridges the design review and the fabrication order. Extract surface finish from the PCB stackup (`copper_finish` field in setup section), solder mask color from board setup, and board thickness from `setup.board_thickness_mm`. Designers use this to configure their PCB order, so always include it when a PCB was analyzed.]
 - Layer count: [N] layers, surface finish: [HASL/ENIG/OSP — from PCB stackup `copper_finish`], solder mask color: [green/black/etc. — from board setup]
 - Stencil: [recommend if SMD components present, note if fine-pitch requires frameless stencil]
-- Board thickness: [standard 1.6mm or custom — from stackup total thickness]
+- Board thickness: [standard 1.6mm or custom — from `setup.board_thickness_mm`]
 - DFM tier: [standard vs advanced capability requirements based on min trace/space/drill from DFM section]
 - Copper weight: [1oz/2oz based on current requirements — from stackup copper layer thickness, 0.035mm = 1oz]
 - Assembly notes: [reflow profile considerations, mixed SMD/THT implications]

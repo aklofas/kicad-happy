@@ -206,13 +206,14 @@ def arc_length(sx, sy, mx, my, ex, ey):
     ux = (by * (ax*ax + ay*ay) - ay * (bx*bx + by*by)) / D + mx
     uy = (ax * (bx*bx + by*by) - bx * (ax*ax + ay*ay)) / D + my
     radius = math.hypot(sx - ux, sy - uy)
-    # Angle subtended
+    # Angle swept from start through mid to end
     a1 = math.atan2(sy - uy, sx - ux)
     a2 = math.atan2(ey - uy, ex - ux)
-    angle = abs(a2 - a1)
-    if angle > math.pi:
-        angle = 2 * math.pi - angle
-    return radius * angle
+    am = math.atan2(my - uy, mx - ux)
+    sweep = (a2 - a1) % (2 * math.pi)          # counter-clockwise, start -> end
+    if (am - a1) % (2 * math.pi) > sweep:      # the mid point is on the other way round
+        sweep = 2 * math.pi - sweep
+    return radius * sweep
 ```
 
 ### Vias

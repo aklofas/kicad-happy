@@ -287,6 +287,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The file-formats guide and the design-rule code comment say how conditional `.kicad_dru` rules are treated: listed as skipped, and an item is reported only when it breaks the rule whatever the condition, so such a rule can hide a violation but never add one.
 - The schematic methodology and manual-parsing guides rank net names as KiCad does (global label, power symbol, local label, hierarchical label, sheet pin), rotate a pin before mirroring it, count a multi-unit part once against `statistics.total_components`, and say that KiCad 5 projects are read with their `.lib` libraries.
 - The net-tracing guide finds a placed unit from its `(unit N)`, the schematic guide's worked tolerance example reads 5.25 V, and its datasheet walkthrough uses the current extraction layout (`base.pinout[].numbers`, per-pin and per-domain limits) and the sanitized cache file name.
+- The PCB guides describe the output and limits as the code has them: `nets` maps id to name with `net_name_to_id` beside it and no `file` key, decoupling distance is pad to pad, zones join only copper inside the same saved fill, courtyard overlap uses the courtyard shapes, board thickness comes from `(general (thickness))`, and the manual arc-length helper measures arcs longer than a half turn.
 
 ---
 
