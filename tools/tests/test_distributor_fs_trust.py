@@ -45,6 +45,7 @@ class FsTrust(unittest.TestCase):
             self.assertEqual((out / "x.pdf").read_bytes(), b"%PDF-1.4 test")
             self.assertTrue((out / "x.pdf.part").is_symlink())
 
+    @unittest.skipIf(os.name == "nt", "POSIX modes")
     def test_umask_untouched_and_import_time_mode_used(self):
         from distributor_core import download, manifest
         with tempfile.TemporaryDirectory() as d:

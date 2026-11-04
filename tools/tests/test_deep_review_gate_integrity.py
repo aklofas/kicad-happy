@@ -370,6 +370,7 @@ class GateCliTest(unittest.TestCase):
         r, out = self._gate(self._doc([self._finding()]))
         self.assertEqual(r.returncode, 0, r.stderr)
 
+    @unittest.skipIf(os.name == "nt", "POSIX modes")
     def test_rewrite_keeps_the_file_mode_and_leaves_no_temp(self):
         path = self.tmp / "deep_review.json"
         path.write_text(json.dumps(self._doc([])), encoding="utf-8")

@@ -121,6 +121,7 @@ class TrackingCsvMergeTest(unittest.TestCase):
         self.assertEqual(self.csv.read_bytes(), before)
         self.assertEqual(os.listdir(self.csv.parent), ["bom.csv"])
 
+    @unittest.skipIf(os.name == "nt", "POSIX modes")
     def test_new_csv_takes_the_umask_mode_and_an_existing_one_keeps_its_mode(self):
         old = os.umask(0o022)
         try:

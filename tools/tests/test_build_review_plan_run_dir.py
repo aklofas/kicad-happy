@@ -55,6 +55,7 @@ class RunDirTest(unittest.TestCase):
                 self.assertEqual(_task(self.ad)["input_artifacts"][0],
                                  str(self.ad / "schematic.json"))
 
+    @unittest.skipIf(os.name == "nt", "POSIX modes and sh")
     def test_output_written_whole_with_its_mode(self):
         out = self.ad / "review_plan.json"
         out.write_text("old", encoding="utf-8")
@@ -68,6 +69,7 @@ class RunDirTest(unittest.TestCase):
         self.assertEqual(out.stat().st_mode & 0o777, 0o640)
         self.assertEqual(sorted(p.name for p in self.ad.iterdir()), ["review_plan.json"])
 
+    @unittest.skipIf(os.name == "nt", "POSIX modes and sh")
     def test_new_output_gets_the_umask_mode(self):
         for umask, mode in (("022", 0o644), ("027", 0o640)):    # 0o666 & ~umask
             with self.subTest(umask=umask):

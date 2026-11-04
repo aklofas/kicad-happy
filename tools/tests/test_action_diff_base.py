@@ -25,6 +25,7 @@ def _bash(repo, script):
                           cwd=repo, capture_output=True, text=True, encoding="utf-8")
 
 
+@unittest.skipIf(os.name == "nt", "POSIX paths through bash")
 @unittest.skipUnless(shutil.which("git") and shutil.which("bash") and shutil.which("tar"), "needs git, bash, tar")
 class DiffBaseTest(unittest.TestCase):
     def setUp(self):

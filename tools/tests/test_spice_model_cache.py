@@ -161,6 +161,7 @@ class SimulateCacheDirTest(unittest.TestCase):
             self.assertFalse((Path(wd) / "spice").exists())
 
 
+@unittest.skipIf(os.name == "nt", "POSIX modes")
 class CacheFileModeTest(unittest.TestCase):
     def test_model_and_manifest_use_the_import_time_mode(self):
         with tempfile.TemporaryDirectory() as tmp, \

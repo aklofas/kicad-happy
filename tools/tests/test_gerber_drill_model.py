@@ -211,6 +211,7 @@ class DrillDiscoveryTest(unittest.TestCase):
             r = ag.analyze_gerbers(src)
         self.assertEqual((r["statistics"]["drill_files"], r["statistics"]["total_holes"]), (1, 1))
 
+    @unittest.skipIf(os.name == "nt", "POSIX modes")
     @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0, "root reads mode-000 files")
     def test_unreadable_drill_file_does_not_crash(self):
         with tempfile.TemporaryDirectory() as d:

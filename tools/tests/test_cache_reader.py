@@ -266,6 +266,7 @@ class CacheReader(unittest.TestCase):
                 self.assertIsNone(df.get_mcu_features("P1", extract_dir=d), payload)
                 self.assertIsNone(df.get_pin_function("P1", "1", extract_dir=d), payload)
 
+    @unittest.skipIf(os.name == "nt", "POSIX modes")
     def test_manifest_and_extraction_files_keep_or_get_umask_modes(self):
         sys.path.insert(0, str(DS / "scripts"))
         import datasheet_extract_cache as dec
