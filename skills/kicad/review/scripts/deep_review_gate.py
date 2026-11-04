@@ -11,8 +11,9 @@ One command, zero ceremony:
    not fatal) plus the cross-field rule the mini validator can't
    express: >=1 design anchor AND >=1 evidence source.
 2. Checks citations: components/nets/pins exist in the analyzer JSON
-   (pins check the component ref only — a floating-pin finding
-   legitimately cites a pin on no net); the cited datasheet page
+   (a pin REF.PIN names a pin number or name that component has in the
+   analyzer JSON, a floating pin included; a PCB-only part with a pad on
+   no net has its pins unchecked); the cited datasheet page
    contains the quote (pdftotext when available; missing tool or PDF
    -> evidence_checked=partial, never quarantine); a computation's
    script path resolves against --project-dir. The gate never runs a
@@ -79,35 +80,63 @@ def load_anchor_sets(analysis_dir, run_id=None):
     A physical net carries up to three identities: schematic
     internal name, annotated display_name, PCB net name. All three are
     accepted as citations.
-    Returns (components: set[str], nets: set[str]); raises ValueError
-    naming the file when one cannot be read as a JSON object.
+    Returns (components, nets, pins): sets of upper-case strings plus a
+    map of upper-case ref -> upper-case pin numbers and names the gate can
+    check. A ref with no checkable pins is absent: no source lists any, or
+    it is a PCB-only footprint with a pad on no net (pad_nets omits those).
+    Raises ValueError naming the file when one cannot be read as a JSON
+    object.
     """
     run_dir = resolve_run_dir(analysis_dir, run_id)
-    comps, nets = set(), set()
+    comps, nets, pins, open_refs = set(), set(), {}, set()
     sch = run_dir / "schematic.json"
     if sch.is_file():
         data = _load_object(sch)
         for c in _as_list(data.get("components")):
             if isinstance(c, dict) and c.get("reference"):
-                comps.add(str(c["reference"]).upper())
+                ref = str(c["reference"]).upper()
+                comps.add(ref)
+                for key in ("pin_nets", "pin_uuids"):
+                    if isinstance(c.get(key), dict):
+                        pins.setdefault(ref, set()).update(str(n).upper() for n in c[key])
         sch_nets = data.get("nets")
         for name, info in (sch_nets.items() if isinstance(sch_nets, dict) else ()):
             nets.add(str(name).upper())
-            if isinstance(info, dict) and info.get("display_name"):
+            if not isinstance(info, dict):
+                continue
+            if info.get("display_name"):
                 nets.add(str(info["display_name"]).upper())
+            for p in _as_list(info.get("pins")):
+                if isinstance(p, dict) and p.get("component"):
+                    ids = pins.setdefault(str(p["component"]).upper(), set())
+                    ids.update(str(p[k]).upper() for k in ("pin_number", "pin_name") if p.get(k))
+    sch_pinned = {ref for ref, ids in pins.items() if ids}
     pcb = run_dir / "pcb.json"
     if pcb.is_file():
         data = _load_object(pcb)
         for fp in _as_list(data.get("footprints")):
             if isinstance(fp, dict) and fp.get("reference"):
-                comps.add(str(fp["reference"]).upper())
+                ref = str(fp["reference"]).upper()
+                comps.add(ref)
+                pad_nets = fp.get("pad_nets") if isinstance(fp.get("pad_nets"), dict) else {}
+                ids = pins.setdefault(ref, set())
+                for num, entry in pad_nets.items():
+                    ids.add(str(num).upper())
+                    if isinstance(entry, dict) and entry.get("pin"):
+                        ids.add(str(entry["pin"]).upper())
+                # pad_nets omits a pad on no net, so a PCB-only part with one is unchecked
+                if ref not in sch_pinned and not (
+                        isinstance(fp.get("pad_count"), int) and fp["pad_count"] <= len(pad_nets)):
+                    open_refs.add(ref)
         net_map = data.get("nets")
         if isinstance(net_map, dict):
             nets.update(str(v).upper() for v in net_map.values() if v)
         name_map = data.get("net_name_to_id")
         if isinstance(name_map, dict):
             nets.update(str(k).upper() for k in name_map if k)
-    return comps, nets
+    for ref in open_refs:
+        pins.pop(ref, None)
+    return comps, nets, {ref: ids for ref, ids in pins.items() if ids}
 
 
 def write_text_atomic(path, text):
@@ -154,7 +183,7 @@ def _as_list(value):
     return value if isinstance(value, list) else []
 
 
-def check_anchors(ev, comps, nets):
+def check_anchors(ev, comps, nets, pins):
     fails = []
     for ref in ev.get("components") or []:
         if str(ref).upper() not in comps:
@@ -163,9 +192,13 @@ def check_anchors(ev, comps, nets):
         if str(net).upper() not in nets:
             fails.append(f"net {net} not found in analyzer JSON")
     for pin in ev.get("pins") or []:
-        ref = str(pin).rsplit(".", 1)[0]
-        if ref.upper() not in comps:
+        ref, _, num = str(pin).rpartition(".")
+        if not ref or not num:
+            fails.append(f"pin {pin}: not a REF.PIN citation")
+        elif ref.upper() not in comps:
             fails.append(f"pin {pin}: component {ref} not found in analyzer JSON")
+        elif ref.upper() in pins and num.upper() not in pins[ref.upper()]:
+            fails.append(f"pin {pin}: {ref} has no pin {num} in analyzer JSON")
     return fails
 
 
@@ -377,7 +410,7 @@ def check_computation(comp, project_dir):
     return [], True
 
 
-def gate_finding(finding, item_schema, comps, nets, datasheets_dir, project_dir):
+def gate_finding(finding, item_schema, comps, nets, pins, datasheets_dir, project_dir):
     """Returns (kept_finding | None, quarantined_finding | None)."""
     # Strip all gate-stamped output fields so re-runs produce identical key order.
     _GATE_FIELDS = frozenset(
@@ -397,7 +430,7 @@ def gate_finding(finding, item_schema, comps, nets, datasheets_dir, project_dir)
                      "quote and/or a computation")
     partial = False
     if not fails:
-        fails += check_anchors(ev, comps, nets)
+        fails += check_anchors(ev, comps, nets, pins)
         ds_fails, ds_partial = check_datasheet(ev.get("datasheet"), datasheets_dir)
         comp_fails, comp_partial = check_computation(ev.get("computation"), project_dir)
         fails += ds_fails + comp_fails
@@ -450,7 +483,7 @@ def main():
             return 2
 
     try:
-        comps, nets = load_anchor_sets(args.analysis_dir, args.run)
+        comps, nets, pins = load_anchor_sets(args.analysis_dir, args.run)
     except ValueError as e:
         print(f"deep_review_gate: cannot load inputs: {e}", file=sys.stderr)
         return 2
@@ -463,7 +496,7 @@ def main():
             quarantined.append({"quarantine_reason": "not a JSON object",
                                 "value": finding})
             continue
-        ok, bad = gate_finding(finding, item_schema, comps, nets,
+        ok, bad = gate_finding(finding, item_schema, comps, nets, pins,
                                args.datasheets_dir, project_dir)
         if ok is not None:
             kept.append(ok)

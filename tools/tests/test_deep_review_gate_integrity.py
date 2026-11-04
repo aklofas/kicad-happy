@@ -168,6 +168,28 @@ class EvidenceTest(unittest.TestCase):
                              {"description": "d", "result": "r", "script": "nope.py"}}, sets)
         self.assertEqual(bad["quarantine_reason"], "computation script not found: nope.py")
 
+    def test_pin_must_exist_on_its_component(self):
+        sets = self._sets(sch=self.SCH)
+        calc = {"description": "d", "result": "r"}
+        for pin, ok in (("U3.17", True), ("u3.vin", True), ("U3.4", True),
+                        ("U3.9", True), ("U3.99", False), ("U3", False),
+                        ("R1.2", True), ("U7.1", False)):
+            with self.subTest(pin=pin):
+                kept, bad = self._gate({"pins": [pin], "computation": calc}, sets)
+                self.assertIs(kept is not None, ok, bad and bad["quarantine_reason"])
+        _, bad = self._gate({"pins": ["U3.99"], "computation": calc}, sets)
+        self.assertEqual(bad["quarantine_reason"],
+                         "pin U3.99: U3 has no pin 99 in analyzer JSON")
+
+    def test_pcb_pads_off_every_net_leave_pins_unchecked(self):
+        pcb = {"footprints": [
+            {"reference": "J1", "pad_count": 2, "pad_nets": {"1": {"net": "GND"}}},
+            {"reference": "J2", "pad_count": 2,
+             "pad_nets": {"1": {"net": "GND"}, "2": {"net": "VCC", "pin": "Pin_2"}}}]}
+        comps, nets, pins = self._sets(pcb=pcb)
+        self.assertNotIn("J1", pins)
+        self.assertEqual(pins["J2"], {"1", "2", "PIN_2"})
+
 
 def _pdf(pages):
     """A minimal PDF, one Helvetica text page per entry (WinAnsi: µ = 0xB5)."""

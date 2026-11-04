@@ -186,12 +186,12 @@ class CurrentRunReadersTest(unittest.TestCase):
             ad, outside = self._hostile(tmp)
             _write(os.path.join(outside, "schematic.json"),
                    {"components": [{"reference": "LOOT1"}], "nets": {}})
-            self.assertEqual(deep_review_gate.load_anchor_sets(ad), (set(), set()))
+            self.assertEqual(deep_review_gate.load_anchor_sets(ad), (set(), set(), {}))
             os.makedirs(os.path.join(ad, "r1"))
             _write(os.path.join(ad, "r1", "schematic.json"),
                    {"components": [{"reference": "U1"}], "nets": {"VCC": {}}})
             _write(os.path.join(ad, "manifest.json"), {"current": "r1", "runs": {"r1": {}}})
-            self.assertEqual(deep_review_gate.load_anchor_sets(ad), ({"U1"}, {"VCC"}))
+            self.assertEqual(deep_review_gate.load_anchor_sets(ad), ({"U1"}, {"VCC"}, {}))
 
     def test_spice_refuses_an_escaping_current(self):
         with tempfile.TemporaryDirectory() as tmp:

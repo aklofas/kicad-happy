@@ -115,6 +115,9 @@ Record findings in `analysis/deep_review.json` per
 - A cited net passes the gate if it exists anywhere in the run's analyzer
   JSON under any of its identities: schematic name, `display_name`, or
   PCB net name (case-insensitive).
+- A cited pin is `REF.PIN` by pin number or pin name (`U3.7`, `U3.VIN`,
+  case-insensitive). It passes if that component has that pin in the run's
+  analyzer JSON; a floating pin counts.
 - The gate finds the run folder from `analysis/manifest.json` and the
   run id inside `--analysis-dir` (`--run` picks another), so a moved or
   copied analysis folder still gates; no absolute path is stored.
