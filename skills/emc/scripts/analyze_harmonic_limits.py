@@ -277,7 +277,7 @@ def screen_harmonics(
                     for point in in_band
                 ),
                 key=lambda pair: (
-                    pair[1] - pair[0]["level"],
+                    round(pair[1] - pair[0]["level"], MARGIN_DECIMALS),
                     pair[0]["frequency_hz"],
                 ),
             )
@@ -437,7 +437,9 @@ def _write_json(payload: dict, output: Path | None):
     try:
         descriptor = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
         created = True
-        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+        with os.fdopen(
+            descriptor, "w", encoding="utf-8", newline="\n"
+        ) as stream:
             stream.write(text)
             stream.flush()
             os.fsync(stream.fileno())

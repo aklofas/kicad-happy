@@ -86,7 +86,7 @@ python3 <skill-path>/scripts/analyze_emc.py --analysis-dir analysis/ --text
 
 ### Optional: Screen supplied harmonic lines against supplied limits
 
-For spectral lines that are already expressed as RMS dBµV, dBµV/m, or dBµA, use the standalone screen. Levels must be RMS: subtract 3.01 dB from peak-amplitude spectra first, including this skill's own harmonic estimates (`harmonic_spectrum()` returns peak `amplitude_dbuv`).
+For spectral lines that are already expressed as RMS dBµV, dBµV/m, or dBµA, use the standalone screen. Levels must be RMS: subtract 3.01 dB from peak-amplitude spectra first. This skill's `harmonic_spectrum()` gives switch-node source amplitudes, not emission levels, so it is not a valid input without a coupling/path model.
 
 **Limit values must come from the user.** Build a limit profile only from limit values the user provides, together with their source (for example a standard's edition and table or clause, where applicable), and record that source in `source.citation`. Never write limit tables from memory or fill in missing bands, detectors, or units; if the user has not supplied limits, ask for them instead of running the screen.
 

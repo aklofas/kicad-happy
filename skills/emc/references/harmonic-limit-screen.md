@@ -21,7 +21,7 @@ The result must be written separately from both inputs. An `--output` path that 
 
 The input must use schema `harmonic-lines/1` and a `level_unit` of `dbuv` (dBµV), `dbuv_per_m` (dBµV/m), or `dbua` (dBµA). Frequencies are positive finite hertz values, each `level` is a finite RMS-referenced value in that unit, and duplicate frequencies are rejected.
 
-Levels must be RMS. A spectrum expressed as sinusoid peak amplitudes must be converted before screening by subtracting 20·log10(√2) ≈ 3.01 dB from every level; the tool cannot detect or correct this. This applies to the EMC skill's own harmonic estimates: `trapezoidal_harmonic_amplitude()` and `harmonic_spectrum()` in `emc_formulas.py` return peak amplitudes (`amplitude_v`, `amplitude_dbuv`), so subtract 3.01 dB from `amplitude_dbuv` to obtain `level`.
+Levels must be RMS. A spectrum expressed as sinusoid peak amplitudes must be converted before screening by subtracting 20·log10(√2) ≈ 3.01 dB from every level; the tool cannot detect or correct this. The EMC skill's own `harmonic_spectrum()` and `trapezoidal_harmonic_amplitude()` in `emc_formulas.py` return switch-node source amplitudes, not emission levels at a LISN or antenna, so they are not a valid `level` without a coupling and path model; use measured or simulated spectra at the point the limit applies to.
 
 An optional `source` must be an object; it is echoed to the output as `spectrum_source` (`null` when absent). Input files must be UTF-8 (a leading byte-order mark is accepted) and at most 16 MB (16,000,000 bytes) each, JSON objects with duplicate keys are rejected rather than resolved last-wins, and non-finite numbers (`NaN`, `Infinity`, `-Infinity`, or a literal such as `1e400` that overflows) are rejected at load time with an error naming the file.
 
@@ -44,13 +44,13 @@ An optional `source` must be an object; it is echoed to the output as `spectrum_
 
 Profiles use schema `emc-limit-profile/1`. `profile_id`, `limit_unit`, `source.kind`, and `source.citation` are required, and any additional `source` fields (for example a URL or edition) are copied to the output unchanged. A profile needs at least one band. Each uniquely named band has an inclusive positive frequency range and at least one finite limit named `peak`, `quasi_peak`, or `average`, expressed in the profile's `limit_unit` (`dbuv`, `dbuv_per_m`, or `dbua`). `limit_unit` must equal the spectrum's `level_unit`; a mismatch is rejected rather than converted, so for example a dBµV/m radiated limit cannot be compared with conducted dBµV levels.
 
-A limit is either a number (flat across the band) or an object `{"start": <limit at start_hz>, "stop": <limit at stop_hz>}` for a limit that varies linearly with log-frequency across the band, as many conducted-emission limits do between 150 kHz and 500 kHz. The limit at frequency `f` is `start + (stop - start) * log10(f / start_hz) / log10(stop_hz / start_hz)`, rounded to 1e-6 dB; at `start_hz` and `stop_hz` the `start` and `stop` values are used exactly. A band whose `start_hz` equals `stop_hz` must use equal `start` and `stop` values. For example, a fictional quasi-peak limit falling from 66 to 56:
+A limit is either a number (flat across the band) or an object `{"start": <limit at start_hz>, "stop": <limit at stop_hz>}` for a limit that varies linearly with log-frequency across the band, as many conducted-emission limits do between 150 kHz and 500 kHz. The limit at frequency `f` is `start + (stop - start) * log10(f / start_hz) / log10(stop_hz / start_hz)`, rounded to 1e-6 dB; at `start_hz` and `stop_hz` the `start` and `stop` values are used exactly. A band whose `start_hz` equals `stop_hz` must use equal `start` and `stop` values. For example, a synthetic quasi-peak limit falling from 70 to 60:
 
 ```json
-"limits": {"quasi_peak": {"start": 66.0, "stop": 56.0}}
+"limits": {"quasi_peak": {"start": 70.0, "stop": 60.0}}
 ```
 
-The repository does not provide regulatory tables. The following values are fictional and must not be used for a product decision:
+The repository does not provide regulatory tables. The following values are synthetic and must not be used for a product decision:
 
 ```json
 {
@@ -67,9 +67,9 @@ The repository does not provide regulatory tables. The following values are fict
       "start_hz": 500000,
       "stop_hz": 1800000,
       "limits": {
-        "peak": 54.0,
-        "quasi_peak": 41.0,
-        "average": 34.0
+        "peak": 50.0,
+        "quasi_peak": 40.0,
+        "average": 30.0
       }
     }
   ]
@@ -110,8 +110,8 @@ An empty band has null worst-point fields; it reports a flat limit but a null `l
       "name": "fictional-band",
       "worst_frequency_hz": 1000000.0,
       "level": 42.0,
-      "limit": 54.0,
-      "margin_db": 12.0,
+      "limit": 50.0,
+      "margin_db": 8.0,
       "status": "at_or_below_limit_screen",
       "lines_above_limit": 0,
       "lines_near_limit": 0

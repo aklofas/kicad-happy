@@ -48,9 +48,9 @@ VALID_PROFILE = {
             "start_hz": 500_000,
             "stop_hz": 1_800_000,
             "limits": {
-                "peak": 54.0,
-                "quasi_peak": 41.0,
-                "average": 34.0,
+                "peak": 50.0,
+                "quasi_peak": 40.0,
+                "average": 30.0,
             },
         }
     ],
@@ -246,7 +246,7 @@ class TestLimitProfileValidation(unittest.TestCase):
     def test_sloped_limit_shape_is_validated(self):
         cases = (
             ({"start": 66}, "exactly 'start' and 'stop'"),
-            ({"start": 66, "stop": 56, "mid": 60}, "exactly"),
+            ({"start": 70, "stop": 60, "mid": 60}, "exactly"),
             ({"start": math.nan, "stop": 56}, r"limits\.peak\.start"),
             ({"start": 66, "stop": True}, r"limits\.peak\.stop"),
         )
@@ -480,14 +480,14 @@ class TestScreenHarmonics(unittest.TestCase):
                 "name": "sloped",
                 "start_hz": 150_000,
                 "stop_hz": 500_000,
-                "limits": {"peak": {"start": 66, "stop": 56}},
+                "limits": {"peak": {"start": 70, "stop": 60}},
             }
         ]
         return self._screen(spectrum, profile)["bands"][0]
 
     def test_sloped_limit_interpolates_linearly_in_log_frequency(self):
         geometric_mean = math.sqrt(150_000 * 500_000)
-        cases = ((150_000, 66.0), (geometric_mean, 61.0), (500_000, 56.0))
+        cases = ((150_000, 70.0), (geometric_mean, 65.0), (500_000, 60.0))
         for frequency, limit in cases:
             with self.subTest(frequency=frequency):
                 band = self._sloped(
@@ -505,24 +505,34 @@ class TestScreenHarmonics(unittest.TestCase):
         )
         self.assertEqual(band["worst_frequency_hz"], 500_000.0)
         self.assertEqual(band["level"], 52.0)
-        self.assertEqual(band["limit"], 56.0)
-        self.assertEqual(band["margin_db"], 4.0)
+        self.assertEqual(band["limit"], 60.0)
+        self.assertEqual(band["margin_db"], 8.0)
+
+    def test_sloped_limit_tie_break_uses_the_rounded_margin(self):
+        band = self._sloped(
+            [
+                {"frequency_hz": 150_000, "level": 70},
+                {"frequency_hz": 500_000, "level": 60.0000001},
+            ]
+        )
+        self.assertEqual(band["margin_db"], 0.0)
+        self.assertEqual(band["worst_frequency_hz"], 150_000.0)
 
     def test_sloped_limit_keeps_exact_endpoints_on_a_narrow_band(self):
         stop_hz = 150_000.00000000003
         spectrum = copy.deepcopy(VALID_SPECTRUM)
-        spectrum["points"] = [{"frequency_hz": stop_hz, "level": 60}]
+        spectrum["points"] = [{"frequency_hz": stop_hz, "level": 64}]
         profile = copy.deepcopy(VALID_PROFILE)
         profile["bands"] = [
             {
                 "name": "narrow",
                 "start_hz": 150_000,
                 "stop_hz": stop_hz,
-                "limits": {"peak": {"start": 66, "stop": 56}},
+                "limits": {"peak": {"start": 70, "stop": 60}},
             }
         ]
         band = self._screen(spectrum, profile)["bands"][0]
-        self.assertEqual(band["limit"], 56.0)
+        self.assertEqual(band["limit"], 60.0)
         self.assertEqual(band["status"], "above_limit_screen")
 
     def test_flat_limit_still_selects_highest_level(self):
@@ -557,7 +567,7 @@ class TestScreenHarmonics(unittest.TestCase):
         }
         self.assertEqual(
             results,
-            {"peak": 54.0, "quasi_peak": 41.0, "average": 34.0},
+            {"peak": 50.0, "quasi_peak": 40.0, "average": 30.0},
         )
 
     def test_empty_spectrum_marks_every_band_not_assessed(self):
@@ -624,10 +634,10 @@ class TestScreenHarmonics(unittest.TestCase):
     def test_lines_above_and_near_limit_are_counted_per_band(self):
         spectrum = copy.deepcopy(VALID_SPECTRUM)
         spectrum["points"] = [
-            {"frequency_hz": 150_000, "level": 67},
+            {"frequency_hz": 150_000, "level": 71},
             {"frequency_hz": 200_000, "level": 50},
-            {"frequency_hz": 300_000, "level": 58},
-            {"frequency_hz": 500_000, "level": 56},
+            {"frequency_hz": 300_000, "level": 62},
+            {"frequency_hz": 500_000, "level": 60},
         ]
         profile = copy.deepcopy(VALID_PROFILE)
         profile["bands"] = [
@@ -635,7 +645,7 @@ class TestScreenHarmonics(unittest.TestCase):
                 "name": "sloped",
                 "start_hz": 150_000,
                 "stop_hz": 500_000,
-                "limits": {"peak": {"start": 66, "stop": 56}},
+                "limits": {"peak": {"start": 70, "stop": 60}},
             }
         ]
         band = self._screen(spectrum, profile, margin=3.0)["bands"][0]
@@ -652,7 +662,7 @@ class TestScreenHarmonics(unittest.TestCase):
                 profile["limit_unit"] = unit
                 result = self._screen(spectrum, profile)
                 self.assertEqual(result["level_unit"], unit)
-                self.assertEqual(result["bands"][0]["margin_db"], 12.0)
+                self.assertEqual(result["bands"][0]["margin_db"], 8.0)
 
     def test_mismatched_units_are_rejected(self):
         profile = copy.deepcopy(VALID_PROFILE)
