@@ -614,6 +614,7 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
             k, (x, y, info))
         return k
 
+    nc_pins: list[tuple] = []  # (own key, position key) of each NC-type pin
     # Add component pins. PWR_FLAG is an ERC marker, not a real connection —
     # still register its position so the net gets a has_pwr_flag annotation.
     for comp in components:
@@ -625,6 +626,22 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
         sheet = comp.get("_sheet", 0)
         number_keys: dict[str, list] = {}
         for pin in pins:
+            if not is_pwr_flag and pin["type"] in ("no_connect", "unconnected"):
+                # KiCad never joins an NC-type pin to anything at its position
+                # (SCH_PIN::ConnectionPropagatesTo): the pin is a net of its own.
+                k = ("nc_pin", len(nc_pins))
+                pos = key(pin["x"], pin["y"], sheet)
+                parent.setdefault(pos, pos)  # what else lands here keeps its place in net order
+                parent[k] = k
+                point_info[k] = [{
+                    "source": "pin",
+                    "component": comp["reference"],
+                    "pin_number": pin["number"],
+                    "pin_name": pin["name"],
+                    "pin_type": pin["type"],
+                }]
+                nc_pins.append((k, pos))
+                continue
             if is_pwr_flag:
                 add_point(pin["x"], pin["y"], {
                     "source": "pwr_flag",
@@ -1052,11 +1069,44 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
 
     _record_near_misses(near_buckets, near_wires, wire_segments, find, sheet_names, diagnostics)
 
-    # Build net groups
+    # An NC-type pin is touched when another pin or a connection point other than a
+    # no-connect marker sits on it (ERC TestNoConnectPins); stacked NC pins report once.
+    nc_keys = {k for k, _pos in nc_pins}
     net_groups: dict[tuple, list[tuple]] = {}
     for k in parent:
-        root_k = find(k)
-        net_groups.setdefault(root_k, []).append(k)
+        if k not in nc_keys:
+            net_groups.setdefault(find(k), []).append(k)
+    named_roots = {r for r, ms in net_groups.items()
+                   if any(i["source"] in ("pin", "label", "power_symbol")
+                          for m in ms for i in point_info.get(m, ()))}
+    nc_touched: set = set()
+    nc_marked: set = set()
+    nc_later: set = set()  # split off a net that still exists: numbered after the other nets
+    seen_positions: set = set()
+    for k, pos in nc_pins:
+        here = point_info.get(pos, ())
+        if any(i["source"] == "no_connect" for i in here):
+            nc_marked.add(k)
+        if any(i["source"] != "no_connect" for i in here) and pos not in seen_positions:
+            nc_touched.add(k)
+        if find(pos) in named_roots or pos in seen_positions:
+            nc_later.add(k)
+        seen_positions.add(pos)
+
+    # Build net groups
+    ordered: dict[tuple, list[tuple]] = {}
+    for k in parent:
+        if k in nc_keys:
+            if k not in nc_later:
+                ordered[k] = [k]
+            continue
+        r = find(k)
+        if r not in ordered:
+            ordered[r] = net_groups[r]
+    for k, _pos in nc_pins:
+        if k in nc_later:
+            ordered[k] = [k]
+    net_groups = ordered
 
     # Name the nets
     staged = []
@@ -1137,7 +1187,8 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
 
         # Check if any member of this group is a no-connect marker OR a
         # library-defined NC pin (pin type "no_connect" in the symbol def).
-        nc_marker = any(i["source"] == "no_connect" for i in all_info)
+        nc_marker = (any(i["source"] == "no_connect" for i in all_info)
+                     or root_k in nc_marked)
         has_nc_marker = (
             nc_marker
             or any(i.get("pin_type") in ("no_connect", "unconnected")
@@ -1177,6 +1228,7 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
                 "no_connect": has_nc_marker,
                 "has_pwr_flag": has_pwr_flag,
                 "nc_marker": nc_marker,
+                "nc_touched": root_k in nc_touched,
                 "labels": net_labels,
             })
 
@@ -1217,6 +1269,8 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
             }
             if e["nc_marker"]:
                 entry["_nc_marker"] = True  # a no-connect marker, not only an NC-type pin
+            if e["nc_touched"]:
+                entry["_nc_touched"] = True  # something else sits on this NC-type pin
             # The key keeps KiCad's escaped name; display_name is the name KiCad shows.
             shown = unescape_string(bare)
             if k != shown:

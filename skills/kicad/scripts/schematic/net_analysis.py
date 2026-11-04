@@ -1519,25 +1519,17 @@ def _check_erc_warnings(ctx: AnalysisContext) -> list:
 def _no_connect_connected(pins: list[dict], net_info: dict, positions: dict) -> bool:
     """KiCad's no_connect_connected test for one net that carries a no-connect.
 
-    An NC-type pin is connected when anything but NC-type pins touches it (TestNoConnectPins):
-    another pin type, a label, or a wire to an NC pin elsewhere. A no-connect marker is
-    connected when the net has more than one other pin, stacked pins counted once
-    (ercCheckNoConnects; NC-type pins never join the marker's net).
+    An NC-type pin is a net of its own. It is connected when anything but a no-connect marker
+    sits on its point (TestNoConnectPins): another pin, a wire end, a label; one record per
+    point. A no-connect marker is connected when the net has more than one other pin, stacked
+    pins counted once (ercCheckNoConnects).
     """
-    nc = [p for p in pins if erc_pins.pin_kind(p.get("pin_type")) == "no_connect"]
-    if nc:
-        if len(nc) < len(pins) or net_info.get("labels"):
-            return True
-        points = {positions.get((p["component"], p["pin_number"]), (p["component"], p["pin_number"]))[:3]
-                  for p in nc}
-        if len(points) > 1:
-            return True
+    if any(erc_pins.pin_kind(p.get("pin_type")) == "no_connect" for p in pins):
+        return bool(net_info.get("_nc_touched"))
     if not net_info.get("_nc_marker"):
         return False
     unique: list[dict] = []
     for p in pins:
-        if p in nc:
-            continue
         if not any(erc_pins.is_stacked(p, q, positions) for q in unique):
             unique.append(p)
     return len(unique) > 1

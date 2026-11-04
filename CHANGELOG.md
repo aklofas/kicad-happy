@@ -96,6 +96,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Internal restructures, with no change to any analyzer output: the four sync CLIs share one argument declaration; distributor downloads build their manifest entry in one place; the four overlay consumers share one merged-overlay path rule, and `summarize_findings` scans its run once; the schematic and PCB pipelines pass facts and checks without relay copies; design intent and risk scoring live in `design_intent.py` and `risk_summary.py`; the Action's compact and full reports share their input projections; and `check_refactor` prints budget rows from one helper.
 - The Action's nonzero-exit notice for EMC and thermal no longer says the analyzer reported blocking findings. (KH-852)
 - PCB `--full` point-in-fill queries test only nearby fill edges: same results, much faster on boards with large pours.
+- A pin whose type is no-connect is a net of its own, as in KiCad, in legacy `.sch` files too: a wire, label or other pin on it no longer joins it to a net, and ERC reports it once per point as `no_connect_connected`. (KH-685)
 
 ### Added
 

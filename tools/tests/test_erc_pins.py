@@ -12,7 +12,7 @@ sys.path.insert(0, str(ROOT / "skills" / "kicad" / "scripts"))
 sys.path.insert(0, str(ROOT))
 
 from schematic.net_analysis import _check_erc_warnings, analyze_connectivity  # noqa: E402
-from tools.tests.test_same_sheet_power_names import R_LIB, Sheet, run  # noqa: E402
+from tools.tests.test_same_sheet_power_names import R_LIB, Sheet, members, power_lib, run  # noqa: E402
 
 
 def pin(ref, num, ptype, name=None):
@@ -185,11 +185,18 @@ class UndrivenTest(unittest.TestCase):
 
 class NoConnectConnectedTest(unittest.TestCase):
     def test_nc_pin_wired_to_a_resistor(self):
-        nets, comps = two_pin_net("no_connect", "passive", no_connect=True)
-        recs = by_type(erc(nets, comps), "no_connect_connected")
-        self.assertEqual([(r["net"], r["severity"]) for r in recs], [("N", "warning")])
-        # KiCad's marker names the NC pin.
-        self.assertEqual(sorted(p["component"] for p in recs[0]["pins"]), ["U1", "U2"])
+        # The NC pin is a net of its own; the wire on its point makes it connected.
+        c = [comp("U1", [("1", "no_connect", "NC", 0, 0)]), comp("R1", [("1", "passive", "~", 10, 0)])]
+        nets = {"N": {"pins": [pin("R1", "1", "passive", "~")]},
+                "__unnamed_1": {"pins": [pin("U1", "1", "no_connect", "NC")], "no_connect": True,
+                                "_nc_touched": True}}
+        recs = by_type(erc(nets, c), "no_connect_connected")
+        self.assertEqual([(r["net"], r["severity"]) for r in recs], [("__unnamed_1", "warning")])
+        self.assertEqual([p["component"] for p in recs[0]["pins"]], ["U1"])
+
+    def test_untouched_nc_pin(self):
+        nets = {"__unnamed_0": {"pins": [pin("U1", "1", "no_connect", "NC")], "no_connect": True}}
+        self.assertEqual(by_type(erc(nets), "no_connect_connected"), [])
 
     def test_stacked_nc_pins_alone(self):
         # TestNoConnectPins skips a point where every item is an NC-type pin.
@@ -225,6 +232,18 @@ def _u_lib(ptype):
     return ('(symbol "t:U" (in_bom yes) (on_board yes)'
             ' (property "Reference" "U" (at 0 0 0)) (property "Value" "U" (at 0 0 0))'
             f' (symbol "U_1_1" (pin {ptype} line (at -5.08 0 0) (length 0) (name "A") (number "1"))))')
+
+
+def _stacked_nc_lib():
+    return ('(symbol "t:NN" (in_bom yes) (on_board yes)'
+            ' (property "Reference" "U" (at 0 0 0)) (property "Value" "NN" (at 0 0 0))'
+            ' (symbol "NN_1_1" (pin no_connect line (at 0 0 270) (length 0) (name "NC") (number "1"))'
+            ' (pin no_connect line (at 0 0 270) (length 0) (name "NC") (number "2"))))')
+
+
+def net_of_pin(result, ref, num):
+    return next(n for n, info in result["nets"].items()
+                if any(p["component"] == ref and p["pin_number"] == num for p in info["pins"]))
 
 
 def _one_pin_lib(name, ptype):
@@ -280,8 +299,8 @@ class SchematicTest(unittest.TestCase):
         self.assertEqual(kinds, [("no_connect_connected", "warning")])
 
     def test_marker_and_wired_nc_pin_as_kicad(self):
-        # kicad-cli 10.0.7: no_connect_connected [U2 Pin 1, wire] and no_connect_connected on the
-        # marker; no pin_not_driven (the marker on the U1/U3 net silences the drive test).
+        # kicad-cli 10.0.7: no_connect_connected [U2 Pin 1, wire] and no_connect_connected
+        # [marker, U3 Pin 1]; no pin_not_driven (the marker on the U1/U3 net silences the drive test).
         s = Sheet(20250114)
         s.symbol("t:I", "U1", "I", 50, 50, ("1",))
         s.symbol("t:N", "U2", "N", 60, 50, ("1",))
@@ -290,9 +309,56 @@ class SchematicTest(unittest.TestCase):
         s.items.append('(no_connect (at 70 50) (uuid "00000000-0000-0000-0000-00000000fffe"))')
         r = run({"t.kicad_sch": s.text([_one_pin_lib("I", "input"), _one_pin_lib("N", "no_connect")])})
         recs = r["design_analysis"]["erc_warnings"]
-        self.assertEqual(sorted(w["type"] for w in recs), ["no_connect_connected"])
-        self.assertEqual(sorted(p["component"] for p in recs[0]["pins"]), ["U1", "U2", "U3"])
-        self.assertNotIn("_nc_marker", r["nets"][recs[0]["net"]])
+        self.assertEqual(sorted((w["type"], tuple(sorted(p["component"] for p in w["pins"])))
+                                for w in recs),
+                         [("no_connect_connected", ("U1", "U3")), ("no_connect_connected", ("U2",))])
+        self.assertEqual([p["component"] for p in r["nets"][net_of_pin(r, "U2", "1")]["pins"]], ["U2"])
+
+    def test_nc_pin_wired_to_a_label_is_its_own_net(self):
+        # kicad-cli 10.0.7: U2.1 on its own net unconnected-(U2-A-Pad1), U1.1 on TEST;
+        # no_connect_connected [U2 Pin 1, wire].
+        s = Sheet(20250114)
+        s.symbol("t:N", "U2", "N", 60, 50, ("1",))
+        s.symbol("t:I", "U1", "I", 80, 50, ("1",))
+        s.wire(60, 50, 70, 50); s.label("label", "TEST", 70, 50)
+        s.wire(80, 50, 80, 40); s.label("label", "TEST", 80, 40)
+        r = run({"t.kicad_sch": s.text([_one_pin_lib("I", "input"), _one_pin_lib("N", "no_connect")])})
+        self.assertEqual([p["component"] for p in r["nets"]["TEST"]["pins"]], ["U1"])
+        own = net_of_pin(r, "U2", "1")
+        self.assertTrue(own.startswith("__unnamed_"))
+        self.assertEqual([p["component"] for p in r["nets"][own]["pins"]], ["U2"])
+        recs = [w for w in r["design_analysis"]["erc_warnings"] if w["type"] == "no_connect_connected"]
+        self.assertEqual([w["net"] for w in recs], [own])
+
+    def test_stacked_nc_pins_are_two_nets(self):
+        # kicad-cli 10.0.7: two single-pin nets, no ERC record (only NC pins at the point).
+        s = Sheet(20250114)
+        s.symbol("t:NN", "U1", "NN", 50, 50, ("1", "2"))
+        r = run({"t.kicad_sch": s.text([_stacked_nc_lib()])})
+        self.assertNotEqual(net_of_pin(r, "U1", "1"), net_of_pin(r, "U1", "2"))
+        self.assertEqual(r["design_analysis"]["erc_warnings"], [])
+
+    def test_nc_pin_on_a_wire_stub(self):
+        # kicad-cli 10.0.7: no_connect_connected [U1 Pin 1, wire].
+        s = Sheet(20250114)
+        s.symbol("t:N", "U1", "N", 50, 50, ("1",))
+        s.wire(50, 50, 60, 50)
+        r = run({"t.kicad_sch": s.text([_one_pin_lib("N", "no_connect")])})
+        recs = r["design_analysis"]["erc_warnings"]
+        self.assertEqual([(w["type"], [p["component"] for p in w["pins"]]) for w in recs],
+                         [("no_connect_connected", ["U1"])])
+
+    def test_nc_pin_on_ground_leaves_the_ground_net(self):
+        # kicad-cli 10.0.7: GND holds R1.1 only; U1.1 is unconnected-(U1-A-Pad1).
+        s = Sheet(20250114)
+        s.symbol("t:N", "U1", "N", 50, 50, ("1",))
+        s.symbol("power:GND", "#PWR01", "GND", 50, 50, ("1",))
+        s.r("R1", 40, 50); s.wire(40, 50, 50, 50)
+        r = run({"t.kicad_sch": s.text([R_LIB, _one_pin_lib("N", "no_connect"),
+                                        power_lib("power:GND", "GND", hidden=False)])})
+        self.assertEqual(members(r, "GND"), ["R1.1"])
+        self.assertFalse(r["nets"]["GND"]["no_connect"])
+        self.assertTrue(r["nets"][net_of_pin(r, "U1", "1")]["no_connect"])
 
     def test_no_connect_marker_on_a_wired_pin(self):
         s = Sheet(20250114)

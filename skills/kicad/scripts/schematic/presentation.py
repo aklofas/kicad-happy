@@ -24,6 +24,7 @@ def _nets_for_output(nets):
     strip_net_label_internals(nets)
     for info in nets.values():
         info.pop("_nc_marker", None)
+        info.pop("_nc_touched", None)
     return nets
 
 
