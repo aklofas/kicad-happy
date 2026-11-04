@@ -75,6 +75,7 @@ def _outline_has_loop(content: str, fmt: dict | None, units: str | None) -> bool
     cur_x = cur_y = None
     op = None
     arc = False
+    g_arc = "2"
     segments = []
     for stmt in body.split("*"):
         stmt = stmt.strip()
@@ -83,11 +84,15 @@ def _outline_has_loop(content: str, fmt: dict | None, units: str | None) -> bool
         g = re.match(r"G0?([0-3])(?!\d)", stmt)
         if g:
             arc = g.group(1) in ("2", "3")
+            if arc:
+                g_arc = g.group(1)
         d = re.search(r"D0?([123])$", stmt)
         if d:
             op = d.group(1)
         mx = re.search(r"X([+-]?\d+)", stmt)
         my = re.search(r"Y([+-]?\d+)", stmt)
+        mi = re.search(r"I([+-]?\d+)", stmt)
+        mj = re.search(r"J([+-]?\d+)", stmt)
         if not (mx or my):
             continue
         nx = coord(mx.group(1), x_int, x_dec) if mx else None
@@ -99,8 +104,13 @@ def _outline_has_loop(content: str, fmt: dict | None, units: str | None) -> bool
             nx = cur_x if nx is None else nx
             ny = cur_y if ny is None else ny
         if op == "1" and None not in (cur_x, cur_y, nx, ny):
+            centre = None
+            if arc:
+                centre = (cur_x + (coord(mi.group(1), x_int, x_dec) if mi else 0.0),
+                          cur_y + (coord(mj.group(1), y_int, y_dec) if mj else 0.0),
+                          g_arc)
             segments.append(((cur_x, cur_y), (nx, ny),
-                             arc and (cur_x, cur_y) == (nx, ny)))
+                             arc and (cur_x, cur_y) == (nx, ny), centre))
         cur_x, cur_y = nx, ny
 
     if not segments:
@@ -122,6 +132,8 @@ def _outline_has_loop(content: str, fmt: dict | None, units: str | None) -> bool
         return len(vertices) - 1
 
     parent = {}
+    tree = {}
+    seen_arcs = set()
 
     def root(i):
         parent.setdefault(i, i)
@@ -130,16 +142,53 @@ def _outline_has_loop(content: str, fmt: dict | None, units: str | None) -> bool
             i = parent[i]
         return i
 
-    for a, b, full_circle in segments:
+    def tree_path(src, dst):
+        prev = {src: None}
+        todo = [src]
+        while todo:
+            v = todo.pop()
+            if v == dst:
+                break
+            for w, is_arc in tree.get(v, ()):
+                if w not in prev:
+                    prev[w] = (v, is_arc)
+                    todo.append(w)
+        path, arcs = [dst], False
+        while prev[path[-1]] is not None:
+            v, is_arc = prev[path[-1]]
+            arcs = arcs or is_arc
+            path.append(v)
+        return path, arcs
+
+    def collinear(ids):
+        (x0, y0), (x1, y1) = vertices[ids[0]], vertices[ids[1]]
+        return all(abs((x1 - x0) * (vertices[k][1] - y0) - (y1 - y0) * (vertices[k][0] - x0))
+                   <= tol * math.hypot(x1 - x0, y1 - y0) for k in ids[2:])
+
+    for a, b, full_circle, centre in segments:
         if full_circle:
             return True
         ia, ib = vertex(a), vertex(b)
         if ia == ib:
             continue
+        if centre is not None:
+            # The same arc drawn twice (either way round) bounds nothing.
+            ccw = centre[2] == "3"
+            key = ((ia, ib, ccw) if ia < ib else (ib, ia, not ccw),
+                   round(centre[0] / tol), round(centre[1] / tol))
+            if key in seen_arcs:
+                continue
+            seen_arcs.add(key)
         ra, rb = root(ia), root(ib)
         if ra == rb:
-            return True
+            path, arcs = tree_path(ia, ib)
+            # Lines doubling back along themselves close no area.
+            if arcs or centre is not None or not collinear(path):
+                return True
+            continue
         parent[ra] = rb
+        tree.setdefault(ia, []).append((ib, centre is not None))
+        tree.setdefault(ib, []).append((ia, centre is not None))
     return False
 
 

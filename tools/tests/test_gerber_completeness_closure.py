@@ -155,6 +155,26 @@ class OutlineClosureTest(unittest.TestCase):
                 "X0Y10000000D01*\nX50Y0D01*\n")
         self.assertEqual(self._gr005(body), [])
 
+    def test_doubled_reversed_line_open(self):
+        self.assertEqual(len(self._gr005("X0Y0D02*\nX10000000Y0D01*\nX0Y0D01*\n")), 1)
+
+    def test_open_polyline_plus_duplicate_edge(self):
+        body = ("X0Y10000000D02*\nX0Y0D01*\nX10000000Y0D01*\nX10000000Y10000000D01*\n"
+                "X0Y0D02*\nX10000000Y0D01*\n")
+        self.assertEqual(len(self._gr005(body)), 1)
+
+    def test_collinear_backtrack_open(self):
+        self.assertEqual(len(self._gr005("X0Y0D02*\nX10000000Y0D01*\nX5000000Y0D01*\nX0Y0D01*\n")), 1)
+
+    def test_same_arc_twice_open(self):
+        arc = "G75*\nX10000000Y0D02*\nG03X0Y10000000I-10000000J0D01*\n"
+        self.assertEqual(len(self._gr005(arc + "X10000000Y0D02*\nG03X0Y10000000I-10000000J0D01*\n")), 1)
+
+    def test_two_semicircles_closed(self):
+        body = ("G75*\nX10000000Y0D02*\nG03X-10000000Y0I-10000000J0D01*\n"
+                "G03X10000000Y0I10000000J0D01*\n")
+        self.assertEqual(self._gr005(body), [])
+
 
 class X2PinNetTest(unittest.TestCase):
     def test_x2_pin_net_after_p(self):
