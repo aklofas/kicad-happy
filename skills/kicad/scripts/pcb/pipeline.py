@@ -243,6 +243,8 @@ class PcbFacts:
     gp001_samples: Any
     keepout_zones: Any
     reference_changes: Any = None
+    power_rails: Any = None
+    pin_signals: Any = frozenset()
 
 
 @dataclass
@@ -446,6 +448,8 @@ def run_facts(board: BoardData, *, include_trace_segments: bool, return_path_rad
         gp001_samples=gp001_samples,
         keepout_zones=keepout_zones,
         reference_changes=reference_changes,
+        power_rails=_resolved_power_rails,
+        pin_signals=pin_signals,
     )
 
 
@@ -467,7 +471,7 @@ def run_checks(board: BoardData, facts: PcbFacts, *, include_trace_segments: boo
     ref_layer_map = facts.ref_layer_map
 
     # Decoupling placement analysis
-    decoupling = analyze_decoupling_placement(footprints)
+    decoupling = analyze_decoupling_placement(footprints, facts.power_rails, facts.pin_signals)
 
     # Via analysis (types, annular ring, via-in-pad, fanout, current)
     via_analysis = analyze_vias(vias, footprints, net_names)

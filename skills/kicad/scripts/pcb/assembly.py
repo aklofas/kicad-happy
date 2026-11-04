@@ -6,7 +6,7 @@ import re
 
 from kicad_core.classify import is_touch_pad
 from kicad_core.hotloop import triangle_loop_area
-from kicad_core.netnames import is_ground_name
+from kicad_core.netnames import IC_SIGNAL_PIN_TYPES, is_ground_name, is_power_net_name
 from pcb.geometry import (_outline_shape_points, _refined_overlap_mm2, courtyards_collide,
                           outline_edge_distance, outline_loops, overlap_area_mm2,
                           point_in_outline)
@@ -67,8 +67,27 @@ def _min_power_pad_distance(ic_fp: dict, cap_fp: dict) -> float:
     return min_dist
 
 
-def _nearby_decoupling_caps(ic: dict, caps: list[dict]) -> tuple[list[dict], list[str]]:
-    """Caps within 10 mm that share a non-ground net with the IC.
+def _ic_signal_nets(ic: dict, power_rails: set[str] | None, pin_signals) -> set[str]:
+    """The IC's nets that its own pad marks as a signal pin (KiCad 6+ pad pin types), less the
+    power rails: the rail set, a rail name (bar the VPP/VM nets in *pin_signals*), or the IC's
+    supply pin on the net. A cap on such a net is a load, filter or timing cap."""
+    rails, signals = set(), set()
+    for pad in ic.get("pads", []):
+        n = pad.get("net_name")
+        if not n:
+            continue
+        pin_type = str(pad.get("pintype", "")).split("+")[0]
+        if ((n not in pin_signals and is_power_net_name(n, power_rails))
+                or pin_type in ("power_in", "power_out")):
+            rails.add(n)
+        elif pin_type in IC_SIGNAL_PIN_TYPES:
+            signals.add(n)
+    return signals - rails
+
+
+def _nearby_decoupling_caps(ic: dict, caps: list[dict], signals: set[str] = frozenset()
+                            ) -> tuple[list[dict], list[str]]:
+    """Caps within 10 mm that share a non-ground net with the IC, other than its *signals*.
     Returns (nearby sorted by distance, refs of <=10 mm caps rejected as
     ground-only)."""
     ic_nets = {p.get("net_name") for p in ic.get("pads", []) if p.get("net_name")}
@@ -82,6 +101,9 @@ def _nearby_decoupling_caps(ic: dict, caps: list[dict]) -> tuple[list[dict], lis
         if not shared:
             rejected.append(cap["reference"])
             continue
+        shared -= signals
+        if not shared:
+            continue
         nearby.append({"cap": cap["reference"], "value": cap.get("value", ""),
                        "distance_mm": round(dist, 2), "shared_nets": sorted(shared),
                        "same_side": cap["layer"] == ic["layer"]})
@@ -89,10 +111,13 @@ def _nearby_decoupling_caps(ic: dict, caps: list[dict]) -> tuple[list[dict], lis
     return nearby, sorted(rejected)
 
 
-def analyze_decoupling_placement(footprints: list[dict]) -> list[dict]:
+def analyze_decoupling_placement(footprints: list[dict], power_rails: set[str] | None = None,
+                                 pin_signals=frozenset()) -> list[dict]:
     """For each IC, find nearby capacitors and report distances.
 
-    Helps verify decoupling caps are placed close to IC power pins.
+    Helps verify decoupling caps are placed close to IC power pins. A cap that shares only
+    the IC's signal-pin nets (`_ic_signal_nets`) is not its decoupling; an ESD part's bypass
+    cap counts on any shared non-ground net.
     """
     # EQ-048: d = √(Δx²+Δy²) (cap-to-IC distance)
     ics = [fp for fp in footprints
@@ -106,7 +131,8 @@ def analyze_decoupling_placement(footprints: list[dict]) -> list[dict]:
 
     results = []
     for ic in ics:
-        nearby, rejected = _nearby_decoupling_caps(ic, caps)
+        nearby, rejected = _nearby_decoupling_caps(
+            ic, caps, _ic_signal_nets(ic, power_rails, pin_signals))
         if nearby:
             entry = {
                 "ic": ic["reference"],
