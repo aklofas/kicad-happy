@@ -554,13 +554,18 @@ def _en_endpoint_compatible(ctx: AnalysisContext, p: dict, net_name: str, v_min:
 _USB_D_NOT_DATA = re.compile(r"USB_D[B-LOQ-Z]")
 
 
+# Data-pair prefixes seen on USB and Ethernet pairs (LsD+, TD+, RD+, UD+, U1D+, XUD+, DBGD+);
+# a word that merely ends in D (HOLD, MOD, AVDD, SDD) is not one.
+_DATA_PAIR_NAME = re.compile(r"(?:^|[^A-Z0-9])(?:LS|[TRQIDU]|U\d|XU|IU|UC|DBG)?D[+-]$")
+
+
 def _is_usb_dp_dm(net_name: str, nets) -> bool:
     name = net_name.upper()
     if is_usb_data_net_name(name):
         return not _USB_D_NOT_DATA.search(name)
     # A D+ / D- pair under another name (LsD+ / LsD-, TD+ / TD-) is differential data too;
     # a lone HOLD- or SPEED- is a logic signal.
-    if name.endswith(("D+", "D-")):
+    if _DATA_PAIR_NAME.search(name):
         return (net_name[:-1] + ("-" if net_name.endswith("+") else "+")) in nets
     return False
 

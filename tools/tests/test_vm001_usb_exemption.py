@@ -56,6 +56,12 @@ class Vm001Exemption(unittest.TestCase):
         self.assertEqual(_vm001("LsD+", "LsD-"), [])
         self.assertEqual(_vm001("TD+", "TD-"), [])
 
+    def test_pairs_of_words_ending_in_d_are_checked(self):
+        self.assertEqual(_vm001("AVDD+", "AVDD-"), ["Net AVDD+", "Net AVDD-"])
+        self.assertEqual(_vm001("HOLD+", "HOLD-"), ["Net HOLD+", "Net HOLD-"])
+        self.assertEqual(_vm001("MOD+", "MOD-", "SDD+", "SDD-"),
+                         ["Net MOD+", "Net MOD-", "Net SDD+", "Net SDD-"])
+
 
 if __name__ == "__main__":
     unittest.main()
