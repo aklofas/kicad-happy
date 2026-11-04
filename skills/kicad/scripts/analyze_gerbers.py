@@ -518,6 +518,10 @@ def parse_gerber(path: str) -> dict:
 
         _extend_extents(s, extent_state, x_div, y_div, mm_scale, result["coordinate_range"])
 
+    if result["format"] is None and not (
+            result["flash_count"] or result["draw_count"] or result["region_count"]):
+        raise ValueError("not a Gerber file: no format statement and no operations")
+
     # Fix infinite values if no coordinates found
     for key in result["coordinate_range"]:
         if result["coordinate_range"][key] in (float("inf"), float("-inf")):
@@ -895,67 +899,80 @@ def identify_layer_type(filename: str, x2_attrs: dict, kicad_major: int | None =
 # Job file parser
 # ---------------------------------------------------------------------------
 
-def parse_job_file(path: str) -> dict | None:
-    """Parse a .gbrjob file and extract structured metadata."""
+def parse_job_file(path: str, diagnostics: list | None = None) -> dict | None:
+    """Parse a .gbrjob file and extract structured metadata.
+
+    A job file that cannot be read, or is not a JSON object, gives None and
+    one diagnostic.
+    """
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
-    except (ValueError, OSError):
+        if not isinstance(data, dict):
+            raise ValueError(f"job file holds a JSON {type(data).__name__}, not an object")
+    except (ValueError, OSError) as e:
+        record_diagnostic(diagnostics, "analyze_gerbers.parse_job_file", e,
+                          "job file not read; layers checked against the defaults")
         return None
 
     result = {}
+    try:
+        header = data.get("Header", {})
+        gen_sw = header.get("GenerationSoftware", {})
+        if gen_sw:
+            result["generator"] = f"{gen_sw.get('Application', '')} {gen_sw.get('Version', '')}".strip()
+            result["vendor"] = gen_sw.get("Vendor", "")
+        result["creation_date"] = header.get("CreationDate", "")
 
-    header = data.get("Header", {})
-    gen_sw = header.get("GenerationSoftware", {})
-    if gen_sw:
-        result["generator"] = f"{gen_sw.get('Application', '')} {gen_sw.get('Version', '')}".strip()
-        result["vendor"] = gen_sw.get("Vendor", "")
-    result["creation_date"] = header.get("CreationDate", "")
+        specs = data.get("GeneralSpecs", {})
+        if specs:
+            size = specs.get("Size", {})
+            result["board_width_mm"] = size.get("X", 0)
+            result["board_height_mm"] = size.get("Y", 0)
+            result["layer_count"] = specs.get("LayerNumber", 0)
+            result["board_thickness_mm"] = specs.get("BoardThickness", 0)
+            result["finish"] = specs.get("Finish", "")
+            project = specs.get("ProjectId", {})
+            if project:
+                result["project_name"] = project.get("Name", "")
 
-    specs = data.get("GeneralSpecs", {})
-    if specs:
-        size = specs.get("Size", {})
-        result["board_width_mm"] = size.get("X", 0)
-        result["board_height_mm"] = size.get("Y", 0)
-        result["layer_count"] = specs.get("LayerNumber", 0)
-        result["board_thickness_mm"] = specs.get("BoardThickness", 0)
-        result["finish"] = specs.get("Finish", "")
-        project = specs.get("ProjectId", {})
-        if project:
-            result["project_name"] = project.get("Name", "")
+        rules = data.get("DesignRules", [])
+        if rules:
+            result["design_rules"] = []
+            for rule in rules:
+                entry = {"layers": rule.get("Layers", "")}
+                for key in ("PadToPad", "PadToTrack", "TrackToTrack",
+                            "MinLineWidth", "TrackToRegion", "RegionToRegion"):
+                    if key in rule:
+                        entry[key] = rule[key]
+                result["design_rules"].append(entry)
 
-    rules = data.get("DesignRules", [])
-    if rules:
-        result["design_rules"] = []
-        for rule in rules:
-            entry = {"layers": rule.get("Layers", "")}
-            for key in ("PadToPad", "PadToTrack", "TrackToTrack",
-                        "MinLineWidth", "TrackToRegion", "RegionToRegion"):
-                if key in rule:
-                    entry[key] = rule[key]
-            result["design_rules"].append(entry)
+        files = data.get("FilesAttributes", [])
+        if files:
+            result["expected_files"] = []
+            for f in files:
+                result["expected_files"].append({
+                    "path": f.get("Path", ""),
+                    "function": f.get("FileFunction", ""),
+                    "polarity": f.get("FilePolarity", ""),
+                })
 
-    files = data.get("FilesAttributes", [])
-    if files:
-        result["expected_files"] = []
-        for f in files:
-            result["expected_files"].append({
-                "path": f.get("Path", ""),
-                "function": f.get("FileFunction", ""),
-                "polarity": f.get("FilePolarity", ""),
-            })
-
-    stackup = data.get("MaterialStackup", [])
-    if stackup:
-        result["stackup"] = []
-        for layer in stackup:
-            entry = {"type": layer.get("Type", ""), "name": layer.get("Name", "")}
-            if "Thickness" in layer:
-                entry["thickness_mm"] = layer["Thickness"]
-            if "Material" in layer:
-                entry["material"] = layer["Material"]
-            result["stackup"].append(entry)
-
+        stackup = data.get("MaterialStackup", [])
+        if stackup:
+            result["stackup"] = []
+            for layer in stackup:
+                entry = {"type": layer.get("Type", ""), "name": layer.get("Name", "")}
+                if "Thickness" in layer:
+                    entry["thickness_mm"] = layer["Thickness"]
+                if "Material" in layer:
+                    entry["material"] = layer["Material"]
+                result["stackup"].append(entry)
+        if not isinstance(result.get("layer_count", 0), int):
+            raise TypeError(f"LayerNumber is {type(result['layer_count']).__name__}, not an integer")
+    except (AttributeError, TypeError) as e:
+        record_diagnostic(diagnostics, "analyze_gerbers.parse_job_file", e,
+                          "job file not read; layers checked against the defaults")
+        return None
     return result
 
 
@@ -1066,6 +1083,7 @@ def _implied_inner_absent(gerbers: list[dict], covered: set,
     if not stackup_layers or stackup_layers < 3:
         return set()
     unindexed = sum(1 for g in gerbers if g.get("layer_type") == "unknown"
+                    and "error" not in g
                     and _INNER_COPPER_EXT.search(g.get("filename", "")))
     implied = [f"In{i}.Cu" for i in range(1, stackup_layers - 1)]
     absent = [lt for lt in implied if lt not in covered]
@@ -1452,7 +1470,7 @@ _GERBER_EXTENSIONS = frozenset({
 
 
 def scan_zip_archives(gerber_dir: Path, loose_gerber_files: list[Path],
-                      loose_drill_files: list[Path]) -> list[dict] | None:
+                      loose_drill_files: list[Path], diagnostics: list | None = None) -> list[dict] | None:
     """Scan zip files for gerber/drill contents and compare against loose files.
 
     Reports each zip's contents, modification time, and how its timestamp
@@ -1477,13 +1495,19 @@ def scan_zip_archives(gerber_dir: Path, loose_gerber_files: list[Path],
 
     results = []
     for zf_path in zip_files:
-        entry: dict = {
-            "filename": zf_path.name,
-            "size_bytes": zf_path.stat().st_size,
-        }
+        entry: dict = {"filename": zf_path.name}
+        try:
+            st = zf_path.stat()
+        except OSError as e:
+            entry["error"] = str(e)
+            record_diagnostic(diagnostics, "analyze_gerbers.scan_zip_archives", e,
+                              "archive not scanned")
+            results.append(entry)
+            continue
+        entry["size_bytes"] = st.st_size
 
         try:
-            zf_mtime = zf_path.stat().st_mtime
+            zf_mtime = st.st_mtime
             entry["modified"] = datetime.fromtimestamp(
                 zf_mtime, tz=timezone.utc
             ).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -1609,6 +1633,13 @@ def _is_excellon_file(path: Path) -> bool:
         return False
 
 
+def _is_repo_or_fs_artifact(name: str) -> bool:
+    """Version-control entries, macOS resource forks and Windows download
+    markers match the ``*.g*`` glob but are never layers. Other dot-names stay:
+    some CAM tools write ``.kicad_pcb-F_Cu.gtl``."""
+    return name.startswith((".git", "._")) or ":Zone.Identifier" in name
+
+
 def analyze_gerbers(directory: str, full: bool = False, diagnostics: list | None = None) -> dict:
     """Main analysis function for a gerber directory.
 
@@ -1657,11 +1688,12 @@ def analyze_gerbers(directory: str, full: bool = False, diagnostics: list | None
 
     gerber_files = sorted(set(gerber_files))
     gerber_files = [f for f in gerber_files
-                    if f.suffix.lower() not in (".drl", ".gbrjob", ".zip", ".pos", ".txt")]
+                    if f.suffix.lower() not in (".drl", ".gbrjob", ".zip", ".pos", ".txt")
+                    and not _is_repo_or_fs_artifact(f.name)]
     drill_files = sorted(set(drill_files))
 
     # Scan zip archives before parsing (uses file lists for timestamp comparison)
-    zip_scan = scan_zip_archives(gerber_dir, gerber_files, drill_files)
+    zip_scan = scan_zip_archives(gerber_dir, gerber_files, drill_files, diagnostics)
 
     # Parse
     gerbers = []
@@ -1671,6 +1703,8 @@ def analyze_gerbers(directory: str, full: bool = False, diagnostics: list | None
         except (OSError, ValueError, UnicodeDecodeError) as e:
             gerbers.append({"file": str(gf), "filename": gf.name, "error": str(e),
                             "layer_type": "unknown"})
+            record_diagnostic(diagnostics, "analyze_gerbers.analyze_gerbers", e,
+                              "not read as a Gerber layer")
 
     # Gerber drill files are drills, and their hole attributes stay out of
     # the layer analyses.
@@ -1694,7 +1728,7 @@ def analyze_gerbers(directory: str, full: bool = False, diagnostics: list | None
 
     job_info = None
     if job_files:
-        job_info = parse_job_file(str(job_files[0]))
+        job_info = parse_job_file(str(job_files[0]), diagnostics)
 
     # Stackup count from positional evidence only; file counts and filename
     # indexes can neither prove nor rule out a missing inner layer.
