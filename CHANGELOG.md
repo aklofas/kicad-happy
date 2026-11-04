@@ -268,6 +268,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A project that sets `unconnected_items` to ignore gets no RT-001 findings, and one that sets `copper_edge_clearance` to ignore gets no BV-001 findings; the routing facts stay.
 - A `.kicad_dru` that KiCad refuses (no leading version statement, an unknown severity or top-level form, a rule without a name) applies none of its rules, as in KiCad; `project_settings.custom_rules_error` gives KiCad's message. A comment on the first or last line no longer drops the file.
 - On KiCad 10 boards a net named only on a copper graphic keeps its name and id.
+- PCB ground domains use the shared ground-name rule: a net KiCad names after a pin (`unconnected-(U1-GND-Pad3)`, `Net-(U1-GND)`) is no longer a ground domain, a 0 V or battery-negative net is, and `COM` is one only when a power symbol names it. EMC GP-005 lists the domain names (it listed `?`), and its count, the risk score and the ground-plane summary follow.
 
 ### Documentation
 

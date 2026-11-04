@@ -660,7 +660,7 @@ def check_ground_domains(pcb: Dict) -> List[Dict]:
 
     if domain_count > 1:
         domains = gd.get('domains', [])
-        domain_names = [d.get('net_name', '?') for d in domains] if isinstance(domains, list) else []
+        domain_names = [d.get('net', '?') for d in domains] if isinstance(domains, list) else []
         findings.append(_make_finding(
             'ground_plane', 'MEDIUM', 'GP-005',
             title=f'{domain_count} ground domains detected',

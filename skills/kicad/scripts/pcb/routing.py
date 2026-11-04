@@ -4,7 +4,7 @@ path, net lengths/impedance, ground domains, trace proximity, current capacity, 
 import heapq
 import math
 
-from kicad_core.netnames import is_ground_name, is_pin_guarded_signal, is_power_net_name
+from kicad_core.netnames import is_ground_name, is_pin_guarded_signal, is_power_net_name, net_leaf
 from pcb.geometry import CopperPresence, _arc_length_3pt
 
 
@@ -956,18 +956,19 @@ def analyze_net_lengths(tracks: dict, vias: dict,
 
 
 def analyze_ground_domains(footprints: list[dict], net_names: dict[int, str],
-                           zones: list[dict]) -> dict:
+                           zones: list[dict], power_rails: set[str] | None = None) -> dict:
     """Identify ground domain splits and component membership.
 
     Detects separate ground nets (GND, AGND, DGND, PGND, etc.) and reports
     which components connect to each. Components on multiple ground domains
     are flagged — these may be intentional (star ground) or errors.
     """
-    ground_nets: dict[int, str] = {}
-    for net_num, name in net_names.items():
-        nu = name.upper()
-        if any(g in nu for g in ("GND", "VSS", "GROUND")):
-            ground_nets[net_num] = name
+    # COM also names an analog-switch or motor common: a ground domain only when the rail
+    # set names it.
+    ground_nets: dict[int, str] = {
+        net_num: name for net_num, name in net_names.items()
+        if is_ground_name(name, power_rails)
+        and (net_leaf(name).upper() != "COM" or name in (power_rails or ()))}
 
     if not ground_nets:
         return {"domain_count": 0, "domains": [], "multi_domain_components": []}

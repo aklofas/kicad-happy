@@ -331,7 +331,8 @@ def run_facts(board: BoardData, *, include_trace_segments: bool, return_path_rad
             footprints, tracks, vias, net_names)
 
     # Ground domain identification
-    ground_domains = analyze_ground_domains(footprints, net_names, zones)
+    ground_domains = analyze_ground_domains(footprints, net_names, zones,
+                                            power_rails=_resolved_power_rails)
 
     # Current capacity facts
     current_capacity = analyze_current_capacity(tracks, vias, zones, net_names, setup,
