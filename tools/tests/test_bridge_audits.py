@@ -33,6 +33,30 @@ class RailSources(unittest.TestCase):
         f = audit_rail_sources(ctx, solder_jumpers=[{"reference": "JP1", "default_state": "bridged", "nets": ["N_SYS", "VBUS", "X"]}])
         self.assertEqual([x["rule_id"] for x in f if x["nets"][0] == "N_SYS"], ["RS-001"])
 
+    def test_net_tie_makes_a_sourced_net_the_rail_source(self):
+        comps = [U, {"reference": "NT1", "type": "net_tie", "value": "Net-Tie_2"}]
+        nets = {"VDD": [("U1", "1", "power_in"), ("NT1", "2", "passive")],
+                "Net-(C2-Pad2)": [("U1", "2", "power_out"), ("NT1", "1", "passive")]}
+        ctx = _ctx(comps, nets)
+        self.assertEqual([x["rule_id"] for x in audit_rail_sources(ctx) if x["nets"][0] == "VDD"], [])
+
+    def test_net_tie_to_a_jumper_sourced_net_is_rs003(self):
+        comps = [U, {"reference": "NT1", "type": "net_tie"}, {"reference": "JP1", "type": "jumper", "value": "SJ"}]
+        nets = {"VDD": [("U1", "1", "power_in"), ("NT1", "2", "passive")],
+                "N_T": [("NT1", "1", "passive"), ("JP1", "1", "passive")],
+                "VBUS": [("JP1", "2", "passive")]}
+        ctx = _ctx(comps, nets)
+        ctx.nets["VBUS"]["has_pwr_flag"] = True
+        f = audit_rail_sources(ctx, solder_jumpers=[{"reference": "JP1", "default_state": "bridged", "nets": ["N_T", "VBUS"]}])
+        self.assertEqual([x["rule_id"] for x in f if x["nets"][0] == "VDD"], ["RS-003"])
+
+    def test_duplicate_net_tie_reference_does_not_source(self):
+        nt = {"reference": "NT?", "type": "net_tie"}
+        nets = {"VDD": [("U1", "1", "power_in"), ("NT?", "2", "passive")],
+                "Net-(C2-Pad2)": [("U1", "2", "power_out"), ("NT?", "1", "passive")]}
+        ctx = _ctx([U, nt, dict(nt)], nets)
+        self.assertEqual([x["rule_id"] for x in audit_rail_sources(ctx) if x["nets"][0] == "VDD"], ["RS-001"])
+
 
 class PowerPinPaths(unittest.TestCase):
     def _board(self, bridge):
@@ -54,6 +78,14 @@ class PowerPinPaths(unittest.TestCase):
         ):
             f = audit_power_pin_dc_paths(self._board(comp))
             self.assertEqual(len([x for x in f if x["rule_id"] == "PP-001"]), expect, comp)
+
+    def test_net_tie_bridges_and_a_ground_tied_pin_is_a_ground_pin(self):
+        f = audit_power_pin_dc_paths(self._board({"reference": "NT1", "type": "net_tie"}))
+        self.assertEqual(len([x for x in f if x["rule_id"] == "PP-001"]), 0)
+        comps = [U, C, {"reference": "NT1", "type": "net_tie"}]
+        ctx = _ctx(comps, {"GND": [("C1", "2", "passive"), ("NT1", "1", "passive")],
+                           "AGND": [("U1", "1", "power_in"), ("NT1", "2", "passive"), ("C1", "1", "passive")]})
+        self.assertEqual([x for x in audit_power_pin_dc_paths(ctx) if x["rule_id"] == "PP-001"], [])
 
     def test_jumper_bridges_only_when_detected_bridged(self):
         jp = {"reference": "JP1", "type": "jumper", "value": "SJ"}

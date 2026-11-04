@@ -25,7 +25,7 @@ from kicad_core.netnames import (
     net_leaf,
     parse_voltage_from_net_name as _parse_voltage_from_net_name,
 )
-from kicad_core.netquery import build_bridge_facts, build_ref_pins
+from kicad_core.netquery import build_bridge_facts, build_ref_pins, tie_conductors
 from kicad_types import AnalysisContext
 from finding_schema import make_provenance, make_finding, Det
 from detector_helpers import index_two_pin_components, get_components_by_type, get_unique_ics
@@ -4442,6 +4442,12 @@ def audit_rail_sources(ctx: AnalysisContext,
         jumper_bridges.setdefault(a, []).append((b, state, fact.ref))
         jumper_bridges.setdefault(b, []).append((a, state, fact.ref))
 
+    # A net tie joins its nets into one conductor: a rail tied to a sourced net is sourced.
+    ties = tie_conductors(bridge_facts)
+
+    def _conductor(net_name: str) -> list[str]:
+        return sorted(ties.get(net_name, (net_name,)))
+
     def _has_direct_source(net_info: dict, net_name: str) -> bool:
         # Direct power_out pin anywhere on the net, OR an explicit PWR_FLAG
         # tied to it, OR the rail is a regulator output.
@@ -4473,18 +4479,19 @@ def audit_rail_sources(ctx: AnalysisContext,
             continue
         if is_ground_name(net_name):
             continue  # ground handled elsewhere
-        if _has_direct_source(net_info, net_name):
-            continue  # sourced directly, nothing to report
+        conductor = _conductor(net_name)
+        if any(_has_direct_source(nets.get(n, {}), n) for n in conductor):
+            continue  # sourced directly or through a net tie, nothing to report
 
         # No direct source. Trace one hop through jumpers.
-        jumper_paths = jumper_bridges.get(net_name, [])
+        jumper_paths = [j for n in conductor for j in jumper_bridges.get(n, [])]
         bridged_sources: list[tuple[str, str]] = []   # (neighbour, jumper_ref)
         open_sources: list[tuple[str, str]] = []
         for neighbour, state, jref in jumper_paths:
             neighbour_info = nets.get(neighbour, {})
             if not neighbour_info:
                 continue
-            if _has_direct_source(neighbour_info, neighbour):
+            if any(_has_direct_source(nets.get(n, {}), n) for n in _conductor(neighbour)):
                 if state == "bridged":
                     bridged_sources.append((neighbour, jref))
                 else:  # open
@@ -4756,6 +4763,7 @@ def audit_power_pin_dc_paths(ctx: AnalysisContext,
     if bridge_facts is None:
         bridge_facts = build_bridge_facts(
             ctx.components or [], ref_pins, solder_jumpers)
+    ties = tie_conductors(bridge_facts)
 
     # Component-type-based bridge predicate.
     def _bridges_dc(ref: str) -> bool:
@@ -4769,7 +4777,7 @@ def audit_power_pin_dc_paths(ctx: AnalysisContext,
             return fact.resistance is not None and fact.resistance <= 1.0
         if fact.kind == "jumper":
             return fact.default_state == "bridged"
-        return False
+        return fact.kind == "net_tie"
 
     def _is_capacitor(ref: str) -> bool:
         c = components.get(ref) or {}
@@ -4814,7 +4822,8 @@ def audit_power_pin_dc_paths(ctx: AnalysisContext,
             # Ground pins (VSS, GND, AGND, SGND, VSSA, etc.) are already
             # at the ground reference — they don't need a path to a positive
             # power rail. Flagging them would be a false positive.
-            if ctx.is_ground(net_name):
+            # A net tied to ground is ground too (one conductor).
+            if any(ctx.is_ground(n) for n in ties.get(net_name, (net_name,))):
                 continue
 
             if _is_bootstrap_pin_name(pin_name):

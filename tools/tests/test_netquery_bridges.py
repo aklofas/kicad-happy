@@ -81,6 +81,27 @@ class Bridges(unittest.TestCase):
         facts = nq.build_bridge_facts(comps[::-1], nq.build_ref_pins(_nets()), [])
         self.assertIn("R1", facts.by_ref)
 
+    def test_net_tie_joins_nets_into_one_conductor(self):
+        nets = {"A": {"pins": [{"component": "NT1", "pin_number": "1", "pin_type": "passive"}]},
+                "B": {"pins": [{"component": "NT1", "pin_number": "2", "pin_type": "passive"},
+                               {"component": "NT2", "pin_number": "1", "pin_type": "passive"}]},
+                "C": {"pins": [{"component": "NT2", "pin_number": "2", "pin_type": "passive"}]},
+                "Z": {"pins": []}}
+        comps = [{"reference": "NT1", "type": "net_tie"}, {"reference": "NT2", "type": "net_tie"}]
+        facts = nq.build_bridge_facts(comps, nq.build_ref_pins(nets), [])
+        cond = nq.tie_conductors(facts)
+        self.assertEqual(cond["A"], frozenset("ABC"))
+        self.assertEqual(cond["C"], frozenset("ABC"))
+        self.assertNotIn("Z", cond)
+
+    def test_net_tie_sharing_a_reference_joins_nothing(self):
+        nets = {"A": {"pins": [{"component": "NT?", "pin_number": "1", "pin_type": "passive"}]},
+                "B": {"pins": [{"component": "NT?", "pin_number": "2", "pin_type": "passive"}]}}
+        comps = [{"reference": "NT?", "type": "net_tie"}, {"reference": "NT?", "type": "net_tie"}]
+        facts = nq.build_bridge_facts(comps, nq.build_ref_pins(nets), [])
+        self.assertNotIn("NT?", facts.by_ref)
+        self.assertEqual(nq.tie_conductors(facts), {})
+
 
 if __name__ == "__main__":
     unittest.main()
