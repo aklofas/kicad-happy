@@ -257,6 +257,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The Deep Review gate quarantines a pin citation that names a pin its component does not have (`U3.99`) or that is not `REF.PIN` (`U3`); a pin number or name from the analyzer JSON passes.
 - A suppression that names a net matches it on the root sheet too (`/NAME`).
 - `--variant` applies a variant's MPN, Manufacturer and distributor part-number overrides.
+- VM-001 checks nets such as `HOLD-` or `SPEED-` again; only USB data lines and `D+`/`D-` pairs are exempt.
 
 ### Documentation
 

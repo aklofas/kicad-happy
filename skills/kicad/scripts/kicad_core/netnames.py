@@ -102,10 +102,18 @@ _RAIL_SIGNAL_SUFFIXES = _VOLTAGE_SIGNAL_SUFFIXES | frozenset({
     "SHDN", "RESET", "RST", "NEN"})
 
 
+# D+ / D- as the whole name or after a separator (USB_D+, MCU-D-, /USB/D+), or after USB<n>
+# (USBD+, USB2D-); not the tail of a word (HOLD-, LED-, SPEED-, RTD+).
+_USB_D_SUFFIX = re.compile(r"(?:^|[^A-Z0-9]|USB\d*)D[+-]$")
+
+
 def is_usb_data_net_name(name_upper: str) -> bool:
     """True if an upper-cased net name looks like a USB data line."""
-    return (any(m in name_upper for m in USB_DATA_NET_MARKERS)
-            or name_upper.endswith(("D+", "D-")))
+    if any(m in name_upper for m in USB_DATA_NET_MARKERS):
+        return True
+    if not name_upper.endswith(("D+", "D-")):
+        return False
+    return "USB" in name_upper or bool(_USB_D_SUFFIX.search(name_upper))
 
 
 def is_power_net_name(net_name: str | None, power_rails: set[str] | None = None) -> bool:

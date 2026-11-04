@@ -554,9 +554,15 @@ def _en_endpoint_compatible(ctx: AnalysisContext, p: dict, net_name: str, v_min:
 _USB_D_NOT_DATA = re.compile(r"USB_D[B-LOQ-Z]")
 
 
-def _is_usb_dp_dm(net_name: str) -> bool:
+def _is_usb_dp_dm(net_name: str, nets) -> bool:
     name = net_name.upper()
-    return is_usb_data_net_name(name) and not _USB_D_NOT_DATA.search(name)
+    if is_usb_data_net_name(name):
+        return not _USB_D_NOT_DATA.search(name)
+    # A D+ / D- pair under another name (LsD+ / LsD-, TD+ / TD-) is differential data too;
+    # a lone HOLD- or SPEED- is a logic signal.
+    if name.endswith(("D+", "D-")):
+        return (net_name[:-1] + ("-" if net_name.endswith("+") else "+")) in nets
+    return False
 
 
 def validate_voltage_levels(ctx: AnalysisContext, level_shifters: list[dict] | None = None) -> list[dict]:
@@ -596,7 +602,7 @@ def validate_voltage_levels(ctx: AnalysisContext, level_shifters: list[dict] | N
         if net_name in shifted_nets:
             continue
         # USB D+/D- swing at most 3.6 V whatever the device supply (USB 2.0, 7.1.1 drivers).
-        if _is_usb_dp_dm(net_name):
+        if _is_usb_dp_dm(net_name, ctx.nets):
             continue
 
         ic_pins_on_net = []
