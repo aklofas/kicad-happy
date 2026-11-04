@@ -294,6 +294,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The datasheets skill names its scout, plan, result and cache files by the sanitized MPN the scripts use (`LM317/NOPB` → `LM317_NOPB`), shows the scout-then-plan pipeline without the old page selector, and its op-amp example leaves an untabulated thermal resistance null.
 - The BOM field catalog marks the names `bom_manager.py` does not read (`PN`, `Vendor Part Number`, other distributors), and the BOM skill says stock and `Validated` carry over only for the same part.
 - How-it-works says which paths use the network (`--lifecycle`, SPICE model lookup without `--offline`) and that schematic points join only at KiCad's exact coordinates, with near misses listed in `diagnostics`; the contributor docs give the corpus as 5,857 projects.
+- The SPICE integration guide gives the impedance formulas the analyzer uses (effective permittivity on outer layers) and KiCad's inferred default stackup, and the architecture guide says all twelve CLIs exit with `sys.exit(main())`.
 
 ---
 

@@ -124,14 +124,15 @@ Via resistance and coupling capacitance are reported by `extract_parasitics.py` 
 
 ### Trace Impedance
 
-The PCB analyzer computes characteristic impedance per trace segment using Wheeler's microstrip equations (IPC-2141):
+The PCB analyzer (`--full`) estimates characteristic impedance per trace with Hammerstad's microstrip equations, widening the trace for copper thickness (IPC-2141):
 
 ```
-For w/h < 1: Z0 = (60/sqrt(er)) * ln(8h/w_eff + w_eff/4h)
-For w/h >= 1: Z0 = (120*pi) / (sqrt(er) * (w_eff/h + 1.393 + 0.667*ln(w_eff/h + 1.444)))
+e_eff = (er+1)/2 + (er-1)/2 * (1 + 12h/w_eff)^-0.5      (+ (er-1)/2 * 0.04*(1 - w_eff/h)^2 when w_eff/h < 1)
+For w_eff/h < 1:  Z0 = (60/sqrt(e_eff)) * ln(8h/w_eff + w_eff/4h)
+For w_eff/h >= 1: Z0 = (120*pi) / (sqrt(e_eff) * (w_eff/h + 1.393 + 0.667*ln(w_eff/h + 1.444)))
 ```
 
-This uses the board's stackup data (epsilon_r, dielectric thickness, copper weight). Boards without explicit stackup get a default 2-layer FR4 (1.6mm, 1oz, er=4.5).
+Outer layers use `e_eff`; inner layers use the same formulas with the bulk `er`, a first-order estimate rather than a stripline model. The stackup comes from the board file. A board without one gets the stackup KiCad builds by default for its copper count and thickness (0.035 mm copper, FR4 εr 4.5, the board thickness, 1.6 mm if the file gives none, shared among the dielectrics; `setup.stackup_source: inferred`).
 
 ### What Parasitics Catch
 
