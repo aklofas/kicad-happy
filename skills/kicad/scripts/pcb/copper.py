@@ -4,6 +4,7 @@ via-in-pad, board-edge via clearance."""
 import math
 import re
 
+from kicad_core.classify import is_touch_pad
 from kicad_core.netnames import is_ground_name
 from pcb.dfm import _degenerate_drills, _is_real_drill, _pad_drills
 from pcb.geometry import (ZoneFills, _pad_on_layer, _pad_sample_points, _point_in_pad,
@@ -1199,20 +1200,9 @@ def analyze_copper_presence(footprints: list[dict], zones: list[dict],
         ref = fp.get("reference", "")
         if ref not in opp_uncovered:
             continue
-        lib = fp.get("library", "").lower()
-        val = (fp.get("value") or "").lower()
-        # A bare "TP" ref prefix is not evidence of a touch pad (it also
-        # matches TestPoint:* library parts). Require positive evidence
-        # instead (a touch/capacitive-sensing library or value, or a
-        # TOUCH/TCH ref);
-        # a testpoint library is never touch even if it also matches those.
-        if "testpoint" in lib or "test_point" in lib:
-            is_touch = False
-        else:
-            is_touch = (any(k in lib for k in ("touch", "capacitive", "captouch", "cap_touch"))
-                        or any(k in val for k in ("touch", "capacitive", "captouch", "cap_touch"))
-                        or ref.upper().startswith(("TOUCH", "TCH")))
-        if not is_touch:
+        # A bare "TP" ref prefix is not evidence of a touch pad (it also matches TestPoint:*
+        # library parts).
+        if not is_touch_pad(ref, fp.get("value"), fp.get("library", "")):
             continue
         fp_layer = fp.get("layer", "F.Cu")
         min_dist, _basis = _nearest_zone_copper_distance(fp, fp_layer,

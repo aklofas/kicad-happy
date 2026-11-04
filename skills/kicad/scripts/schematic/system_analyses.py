@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import math
 import re
+from kicad_core.classify import is_touch_pad
 from kicad_types import (
     AnalysisContext,
 )
@@ -1898,11 +1899,12 @@ def analyze_test_coverage(ctx: AnalysisContext) -> dict:
     for comp in components:
         ref = comp["reference"]
         fp = comp.get("footprint", "").lower()
-        is_tp = (ref.startswith("TP") or
-                 "testpoint" in fp or "test_point" in fp or
-                 "testpad" in fp or "test_pad" in fp or
-                 comp.get("value", "").lower() in ("testpoint", "test_point", "tp",
-                                                    "testpad", "test_pad"))
+        is_tp = ((ref.startswith("TP") or
+                  "testpoint" in fp or "test_point" in fp or
+                  "testpad" in fp or "test_pad" in fp or
+                  comp.get("value", "").lower() in ("testpoint", "test_point", "tp",
+                                                     "testpad", "test_pad"))
+                 and not is_touch_pad(ref, comp.get("value", ""), fp))
         if is_tp:
             # Find what net it's on
             for pnum, (net_name, _) in ref_pins.get(ref, {}).items():

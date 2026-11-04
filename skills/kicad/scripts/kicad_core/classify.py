@@ -6,6 +6,20 @@ import re
 NON_COMPONENT_TYPES = frozenset({"power_symbol", "power_flag", "flag", "test_point",
                                  "mounting_hole", "fiducial", "graphic"})
 
+_TOUCH_MARKERS = ("touch", "capacitive", "captouch", "cap_touch")
+
+
+def is_touch_pad(reference: str, value: str, footprint: str) -> bool:
+    """A capacitive touch electrode: a touch marker in the footprint or value, or a TOUCH/TCH
+    reference. A test-point footprint is never one, whatever its value says."""
+    fp = (footprint or "").lower()
+    if "testpoint" in fp or "test_point" in fp:
+        return False
+    val = (value or "").lower()
+    return (any(k in fp for k in _TOUCH_MARKERS) or any(k in val for k in _TOUCH_MARKERS)
+            or (reference or "").upper().startswith(("TOUCH", "TCH")))
+
+
 _LED_WORD = re.compile(r'(?<![a-z])led(?![a-z])')
 _NON_LED_DIODE_SYMBOL = re.compile(r'(?<![a-z])(zener|schottky|tvs|1n4\d{3}|bat\d{2}|bav\d{2}|d_small|d_bridge)'
                                    r'|^d(_[a-z]+)?$|^diode')

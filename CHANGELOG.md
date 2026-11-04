@@ -107,6 +107,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Fixed
 
+- TE-001 and the schematic test coverage no longer count capacitive touch pads with TP references (a touch footprint or value, as CP-003 reads them) as test points.
 - USB power switches and load switches (RT9742, TPS2061, AP2171, MT9700, SY6280) are no longer reported as LDO regulators; the regulator screen and the power-path detector share one load-switch part list. The output net of a load switch fed from a sourced rail counts as sourced in RS-001.
 - `what_if.py --output`, the BOM export and `build_review_plan.py --output` write into a named pipe or `/dev/stdout` instead of replacing it, so piping them works and a redirected file keeps its inode.
 - `lifecycle_audit.py` now exits with the return code of `main()` instead of discarding it; it is always 0 today, so no run changes.

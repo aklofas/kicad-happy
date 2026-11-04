@@ -4,6 +4,7 @@ tombstoning, switching loops, fiducials, test points, orientation, silkscreen ov
 import math
 import re
 
+from kicad_core.classify import is_touch_pad
 from kicad_core.hotloop import triangle_loop_area
 from kicad_core.netnames import is_ground_name
 from pcb.geometry import (_outline_shape_points, _refined_overlap_mm2, courtyards_collide,
@@ -811,9 +812,15 @@ def _has_pad_property(fp: dict, prop: str) -> bool:
     return any(p.get("_property") == prop for p in fp.get("pads", []))
 
 
+def _is_tp_reference(fp: dict) -> bool:
+    """A TP reference that is not a capacitive touch pad."""
+    ref = fp.get("reference", "")
+    return ref.upper().startswith("TP") and not is_touch_pad(
+        ref, fp.get("value"), fp.get("library", ""))
+
+
 def _is_test_point(fp: dict) -> bool:
-    return (fp.get("reference", "").upper().startswith("TP")
-            or _has_pad_property(fp, "pad_prop_testpoint"))
+    return _is_tp_reference(fp) or _has_pad_property(fp, "pad_prop_testpoint")
 
 
 def analyze_fiducials(footprints: list[dict]) -> dict:
@@ -889,7 +896,7 @@ def analyze_test_point_coverage(footprints: list[dict], net_names: dict) -> dict
         if not _is_test_point(fp):
             continue
         # A TP footprint tests every pad; elsewhere only the pads marked as test points
-        tp_ref = fp.get("reference", "").upper().startswith("TP")
+        tp_ref = _is_tp_reference(fp)
         for pad in fp.get("pads", []):
             if not tp_ref and pad.get("_property") != "pad_prop_testpoint":
                 continue
