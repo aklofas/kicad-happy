@@ -112,9 +112,15 @@ def get_cached_model(cache_dir, mpn, diagnostics=None):
     Returns:
         (subckt_string, specs_dict) or (None, None) if not cached
     """
+    return _lookup_cached_model(cache_dir, mpn, diagnostics)[:2]
+
+
+def _lookup_cached_model(cache_dir, mpn, diagnostics=None):
+    """(subckt, specs, refused): ``refused`` is True when the manifest names a model file
+    that was not used (link, oversize, undecodable), so the caller must not overwrite it."""
     index_path = _cache_manifest_path(cache_dir)
     if not index_path.exists():
-        return None, None
+        return None, None, False
 
     # Use in-memory cache keyed on file mtime to avoid re-parsing
     cache_key = str(cache_dir)
@@ -126,15 +132,15 @@ def get_cached_model(cache_dir, mpn, diagnostics=None):
         else:
             index = read_json_object(index_path)
             if index is None:
-                return None, None
+                return None, None, False
             _index_cache[cache_key] = (mtime, index)
     except OSError:
-        return None, None
+        return None, None, False
 
     key = sanitize_mpn(mpn)
     entry = index.get(key) if isinstance(index, dict) else None
     if not isinstance(entry, dict):
-        return None, None
+        return None, None, False
 
     name = entry.get("file")
     model_file = manifest_file_path(Path(cache_dir), name)
@@ -142,7 +148,8 @@ def get_cached_model(cache_dir, mpn, diagnostics=None):
         if model_file is None and isinstance(name, str) and (Path(cache_dir) / name).is_symlink():
             record(diagnostics, "spice_model_cache.get_cached_model",
                    ValueError(f"{name} is a symlink"), "project model skipped")
-        return None, None
+            return None, None, True
+        return None, None, False
 
     raw = read_regular_bytes(model_file)
     try:
@@ -152,8 +159,8 @@ def get_cached_model(cache_dir, mpn, diagnostics=None):
     if subckt is None:
         record(diagnostics, "spice_model_cache.get_cached_model",
                ValueError(f"{name} is oversized or unreadable"), "project model skipped")
-        return None, None
-    return subckt, _read_spice_specs(entry.get("specs"))
+        return None, None, True
+    return subckt, _read_spice_specs(entry.get("specs")), False
 
 
 # ngspice recognises dot-cards by prefix, so ".controlx" opens a control block and
@@ -346,7 +353,9 @@ def get_model_for_part(mpn, component_type=None, context=None, options=None, *, 
     # --- Tier 0: Project cache ---
     if use_cache:
         cache_dir = resolve_cache_dir(context or {}, override_dir=opts.cache_dir)
-        cached_subckt, cached_specs = get_cached_model(cache_dir, mpn, diagnostics)
+        cached_subckt, cached_specs, refused = _lookup_cached_model(cache_dir, mpn, diagnostics)
+        if refused:
+            use_cache = False
         problem = None
         if cached_subckt and not opts.trust_project_models:
             problem = model_text_problem(cached_subckt)

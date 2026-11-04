@@ -251,9 +251,27 @@ class ManifestReadTest(unittest.TestCase):
             sink = []
             with open(Path(tmp, "LM358.sub"), "ab") as f:
                 f.truncate(10 * 1024 * 1024 + 1)
-            self.assertEqual(spice_model_cache.get_cached_model(tmp, "LM358", sink), (None, None))
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err):
+                self.assertEqual(spice_model_cache.get_cached_model(tmp, "LM358", sink), (None, None))
             self.assertEqual(len(sink), 1, sink)
             self.assertEqual(sink[0]["effect"], "project model skipped")
+            self.assertIn("project model skipped", err.getvalue())
+
+    def test_refused_model_file_is_never_overwritten_by_the_fallback(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(spice_model_cache, "_index_cache", {}):
+            self._plant(tmp)
+            sub, man = Path(tmp, "LM358.sub"), Path(tmp, "manifest.json")
+            with open(sub, "ab") as f:
+                f.truncate(10 * 1024 * 1024 + 1)
+            before = (sub.read_bytes(), man.read_bytes())
+            with contextlib.redirect_stderr(io.StringIO()):
+                _, source, _ = spice_model_cache.get_model_for_part(
+                    "LM358", "opamp", None,
+                    options=ModelOptions(cache_dir=tmp, offline=True))
+            self.assertEqual(source, "lookup:LM358")
+            self.assertEqual((sub.read_bytes(), man.read_bytes()), before)
 
     @unittest.skipIf(os.name == "nt", "needs symlinks")
     def test_linked_model_file_is_not_used_and_is_reported(self):
@@ -264,8 +282,11 @@ class ManifestReadTest(unittest.TestCase):
             Path(tmp, "LM358.sub").rename(real)
             os.symlink(real, Path(tmp, "LM358.sub"))
             sink = []
-            self.assertEqual(spice_model_cache.get_cached_model(tmp, "LM358", sink), (None, None))
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err):
+                self.assertEqual(spice_model_cache.get_cached_model(tmp, "LM358", sink), (None, None))
             self.assertEqual(len(sink), 1, sink)
+            self.assertIn("project model skipped", err.getvalue())
 
 
 if __name__ == "__main__":

@@ -73,7 +73,8 @@ def read_regular_bytes(path) -> Optional[bytes]:
                 return None
             if not hasattr(os, "O_NOFOLLOW") and not os.path.samestat(st, os.lstat(path)):
                 return None
-            return f.read(MAX_CACHE_BYTES + 1)
+            raw = f.read(MAX_CACHE_BYTES + 1)
+            return None if len(raw) > MAX_CACHE_BYTES else raw
     except OSError:
         return None
 
