@@ -149,6 +149,10 @@ def _lookup_cached_model(cache_dir, mpn, diagnostics=None):
             record(diagnostics, "spice_model_cache.get_cached_model",
                    ValueError(f"{name} is a symlink"), "project model skipped")
             return None, None, True
+        if model_file is not None and name.endswith(".sub") and os.path.lexists(model_file):
+            record(diagnostics, "spice_model_cache.get_cached_model",
+                   ValueError(f"{name} is not a regular file"), "project model skipped")
+            return None, None, True
         return None, None, False
 
     raw = read_regular_bytes(model_file)

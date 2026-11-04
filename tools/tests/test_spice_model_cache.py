@@ -1,6 +1,6 @@
 """The SPICE model cache sits beside the project the analysis names, never in one
 machine-wide temp directory, and it writes its manifest atomically."""
-import contextlib, io, json, os, subprocess, sys, tempfile, unittest
+import contextlib, io, json, os, stat, subprocess, sys, tempfile, unittest
 from pathlib import Path
 from unittest import mock
 
@@ -258,20 +258,48 @@ class ManifestReadTest(unittest.TestCase):
             self.assertEqual(sink[0]["effect"], "project model skipped")
             self.assertIn("project model skipped", err.getvalue())
 
-    def test_refused_model_file_is_never_overwritten_by_the_fallback(self):
+    def _refused_case(self, make_refused, still=None):
         with tempfile.TemporaryDirectory() as tmp, \
                 mock.patch.object(spice_model_cache, "_index_cache", {}):
-            self._plant(tmp)
-            sub, man = Path(tmp, "LM358.sub"), Path(tmp, "manifest.json")
-            with open(sub, "ab") as f:
-                f.truncate(10 * 1024 * 1024 + 1)
-            before = (sub.read_bytes(), man.read_bytes())
+            models = Path(tmp, "spice", "models")
+            models.mkdir(parents=True)
+            self._plant(models)
+            sub, man = models / "LM358.sub", models / "manifest.json"
+            make_refused(sub)
+            before = (os.path.lexists(sub), os.path.islink(sub), man.read_bytes())
+            target = os.readlink(sub) if os.path.islink(sub) else None
             with contextlib.redirect_stderr(io.StringIO()):
                 _, source, _ = spice_model_cache.get_model_for_part(
                     "LM358", "opamp", None,
                     options=ModelOptions(cache_dir=tmp, offline=True))
             self.assertEqual(source, "lookup:LM358")
-            self.assertEqual((sub.read_bytes(), man.read_bytes()), before)
+            self.assertEqual((os.path.lexists(sub), os.path.islink(sub), man.read_bytes()), before)
+            self.assertEqual(os.readlink(sub) if os.path.islink(sub) else None, target)
+            if not os.path.islink(sub) and sub.is_file():
+                self.assertEqual(sub.stat().st_size, 10 * 1024 * 1024 + 1)
+            if still:
+                self.assertTrue(still(sub))
+
+    def test_oversize_model_file_is_never_overwritten_by_the_fallback(self):
+        def oversize(sub):
+            with open(sub, "ab") as f:
+                f.truncate(10 * 1024 * 1024 + 1)
+        self._refused_case(oversize)
+
+    @unittest.skipIf(os.name == "nt", "needs symlinks")
+    def test_linked_model_file_is_never_overwritten_by_the_fallback(self):
+        def link(sub):
+            real = sub.with_name("real.sub")
+            sub.rename(real)
+            os.symlink(real, sub)
+        self._refused_case(link)
+
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "needs named pipes")
+    def test_non_regular_model_file_is_never_replaced_by_the_fallback(self):
+        def fifo(sub):
+            sub.unlink()
+            os.mkfifo(sub)
+        self._refused_case(fifo, still=lambda sub: stat.S_ISFIFO(os.lstat(sub).st_mode))
 
     @unittest.skipIf(os.name == "nt", "needs symlinks")
     def test_linked_model_file_is_not_used_and_is_reported(self):
