@@ -1204,8 +1204,9 @@ def analyze_design_rule_compliance(
             })
 
     # --- Custom rules (.kicad_dru) ---
-    # A conditional rule is not evaluated: it is listed as skipped and only lowers the floor
-    # (an item may be judged by it), never raises it.
+    # A conditional rule is not evaluated: it is listed as skipped, and an item is reported only
+    # when it breaks every bound the rule might set (a conditional rule may relax a minimum or a
+    # maximum, or switch the check off with severity ignore), so it can hide a violation, never add one.
     conditional_rules_skipped = []
     for ri, rule in enumerate(custom_rules or []):
         if rule.get('condition'):

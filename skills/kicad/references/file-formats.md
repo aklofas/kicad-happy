@@ -309,6 +309,8 @@ Text-based constraint rules applied during DRC. Example:
 ```
 Useful for enforcing manufacturer capabilities (e.g., JLCPCB, PCBWay).
 
+The PCB analyzer applies a rule without a `(condition ...)` as KiCad does. It does not evaluate conditions. A conditional rule is listed in `design_rule_compliance.conditional_rules_skipped`, and an item is reported only when it breaks the rule whichever way the condition goes. A conditional rule therefore never adds a violation, but it can hide one (a relaxed minimum or maximum, or `(severity ignore)`); run KiCad's DRC for those rules.
+
 ---
 
 ## Netlist (`.net`)
