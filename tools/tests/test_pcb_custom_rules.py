@@ -181,5 +181,50 @@ class CustomRuleTest(unittest.TestCase):
         self.assertEqual(violations(compliance(pad, dru, LOW_MINIMA)), [])
 
 
+TRACK_RULE = "(rule w (constraint track_width (min 0.5mm)))"
+
+
+def refused(dru_text):
+    """compliance() variant with the .kicad_dru written verbatim; returns (violations, error)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        board = os.path.join(tmp, "b.kicad_pcb")
+        with open(board, "w", encoding="utf-8") as f:
+            f.write(BOARD.format(items=track(0.2)))
+        with open(os.path.join(tmp, "b.kicad_dru"), "w", encoding="utf-8") as f:
+            f.write(dru_text)
+        result = analyze_pcb(board)
+        return (violations(result["design_rule_compliance"]),
+                result["project_settings"].get("custom_rules_error"))
+
+
+class RefusedFileTest(unittest.TestCase):
+    """kicad-cli 10.0.7 DRC on a board with one 0.2 mm track and track_width (min 0.5mm): the
+    track is reported (rules applied) or not (file refused) as asserted per case."""
+    APPLIED = [("custom:w", "min", 0.5, 0.2)]
+
+    def test_applied(self):
+        for name, text in (
+                ("version 1", "(version 1)\n" + TRACK_RULE + "\n"),
+                ("version 1.1", "(version 1.1)\n" + TRACK_RULE + "\n"),
+                ("exclusion severity", "(version 1)\n" + TRACK_RULE
+                 + "\n(rule x (severity exclusion) (constraint clearance (min 0.01mm)))\n"),
+                ("comments on first and last line",
+                 '# leading comment (with "quote\n(version 1)\n' + TRACK_RULE
+                 + "\n# trailing comment no newline")):
+            with self.subTest(name):
+                self.assertEqual(refused(text), (self.APPLIED, None))
+
+    def test_refused(self):
+        for name, text, message in (
+                ("no version", TRACK_RULE + "\n", "Missing version statement."),
+                ("unknown severity", "(version 1)\n" + TRACK_RULE
+                 + "\n(rule z (severity banana) (constraint clearance (min 0.01mm)))\n",
+                 "Unrecognized severity."),
+                ("unknown top-level form", "(version 1)\n" + TRACK_RULE + "\n(foo bar)\n",
+                 "Expected rule or version.")):
+            with self.subTest(name):
+                self.assertEqual(refused(text), ([], message))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -198,7 +198,7 @@ Output of `python3 skills/kicad/scripts/analyze_pcb.py <file>.kicad_pcb`.
 | `component_groups` | `dict[str, ComponentGroup]` | yes | Refdes prefix -> {count, references}. |
 | `silkscreen` | `dict` | yes | Silkscreen rollup: board_text_count, refs_visible_on_silk, refs_hidden_on_silk, documentation_warnings[], fab_notes_completeness, silkscreen_completeness. |
 | `dfm_summary` | `dict` | yes | DFM rollup: dfm_tier, metrics, violation_count. |
-| `project_settings` | `dict` | yes | Selected settings extracted from .kicad_pro: source, net_classes, design_rules. |
+| `project_settings` | `dict` | yes | Selected settings extracted from .kicad_pro: source, net_classes, design_rules; custom_rules from .kicad_dru, with custom_rules_error (KiCad's parse message) when KiCad would refuse the file and so applies none of its rules. |
 | `design_rule_compliance` | `dict` | no | Design rule compliance: compliant, rules_checked, rules_source; empty dict when project_settings missing or compliance not computed. |
 | `board_thickness_mm` | `float \| null` | no | Board thickness (mm) used by the current-capacity check: the setup thickness, or 1.6 when the file gives none. Present only when current-capacity findings exist. |
 | `board_metadata` | `dict` | no | Board metadata bag (paper size, title block fragments, etc.); empty dict when no metadata extracted. |

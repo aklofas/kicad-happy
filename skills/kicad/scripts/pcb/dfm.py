@@ -1044,7 +1044,8 @@ def analyze_design_rule_compliance(
     rules_checked = 0
 
     all_vias = vias.get("vias", [])
-    rules_load = _dru_loads_in_kicad(custom_rules or [])
+    rules_load = (not project_settings.get('custom_rules_error')
+                  and _dru_loads_in_kicad(custom_rules or []))
     rules_by_type: dict[str, list] = {}
     for ri, rule in enumerate(custom_rules if rules_load else []):
         for ci, constraint in enumerate(rule.get('constraints', [])):

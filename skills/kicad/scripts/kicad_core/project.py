@@ -640,7 +640,39 @@ def parse_dru_length(text: str) -> float | None:
     return round(float(m[1]) * _DRU_UNIT_MM[m[2]], 6) if m else None
 
 
+_DRU_SEVERITIES = frozenset(('ignore', 'warning', 'error', 'exclusion'))
+
+
+def _dru_parse_error(tree: list) -> str | None:
+    """KiCad's message for a .kicad_dru it refuses to load, or None. A parse error drops every
+    custom rule of the file (drc_rule_parser.cpp Parse, drc_engine.cpp InitEngine). Checked:
+    the leading version statement, the top-level forms, rule names and severity names."""
+    if any(not isinstance(f, list) for f in tree[1:]):
+        return "Missing '('."
+    forms = tree[1:]
+    if forms and forms[0][:1] != ['version']:
+        return "Missing version statement."
+    for form in forms:
+        if form[:1] == ['version']:
+            if len(form) < 2 or not re.fullmatch(r'[-+]?\d+(\.\d*)?', str(form[1])):
+                return "Missing version number."
+        elif form[:1] == ['rule']:
+            if len(form) < 2 or not isinstance(form[1], str):
+                return "Missing rule name."
+            if any(len(sev) < 2 or sev[1] not in _DRU_SEVERITIES
+                   for sev in find_all(form, 'severity')):
+                return "Unrecognized severity."
+        else:
+            return "Expected rule or version."
+    return None
+
+
 def load_kicad_dru(file_path: str) -> list[dict] | None:
+    """The custom rules of the board's ``.kicad_dru`` (`load_kicad_dru_checked`), or None."""
+    return load_kicad_dru_checked(file_path)[0]
+
+
+def load_kicad_dru_checked(file_path: str) -> tuple[list[dict] | None, str | None]:
     """Load custom design rules from ``.kicad_dru`` adjacent to a KiCad file.
 
     Returns list of rule dicts::
@@ -652,26 +684,28 @@ def load_kicad_dru(file_path: str) -> list[dict] | None:
 
     Bounds are mm (`parse_dru_length`); a bound that is not a plain length stays its text.
     Conditions are kept as raw strings — not evaluated. ``severity`` is kept when set.
-    Returns None if no ``.kicad_dru`` found.
+    Returns (None, None) if no ``.kicad_dru`` found. The second item is KiCad's parse error
+    when KiCad would refuse the file (`_dru_parse_error`); the rules are still returned.
 
     Only the board reads rules, and KiCad takes the file named like the board,
     so discovery is exact-stem via `find_project_settings_file`.
     """
     dru_path = find_project_settings_file(file_path, '.kicad_dru', exact=True)
     if not dru_path:
-        return None
+        return None, None
 
     try:
         with open(dru_path, 'r', encoding='utf-8', errors='replace') as f:
             content = f.read()
     except OSError:
-        return None
+        return None, None
 
-    # .kicad_dru has multiple top-level forms — wrap in synthetic root
+    # .kicad_dru has multiple top-level forms — wrap in synthetic root. The newlines keep a
+    # '#' comment on the first or last line a comment and off the closing parenthesis.
     try:
-        tree = _sexp_parse(f'(dru_root {content})')
+        tree = _sexp_parse(f'(dru_root\n{content}\n)')
     except (ValueError, IndexError):
-        return None
+        return None, None
 
     rules = []
     for r in find_all(tree, 'rule'):
@@ -711,7 +745,9 @@ def load_kicad_dru(file_path: str) -> list[dict] | None:
             rule_dict['constraints'] = constraints
         rules.append(rule_dict)
 
-    return rules if rules else None
+    if not rules:
+        return None, None
+    return rules, _dru_parse_error(tree)
 
 
 def load_lib_tables(file_path: str) -> dict:

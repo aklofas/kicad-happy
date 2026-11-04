@@ -131,5 +131,17 @@ class TestGraphicCopper(unittest.TestCase):
                          1)
 
 
+class GraphicOnlyNetNameTest(unittest.TestCase):
+    # KiCad 10 files declare no nets. kicad-cli `pcb export gerbers` writes %TO.N,ANT*% for a
+    # net named only on a copper graphic.
+    def test_graphic_only_net_keeps_its_id(self):
+        poly = ('(gr_poly (pts (xy 20 5) (xy 25 5) (xy 25 9) (xy 20 9)) (stroke (width 0.2)'
+                ' (type solid)) (fill yes) (layer "F.Cu") (net "ANT"))\n')
+        bd = _read(_board(poly, version="20260206", nets=""))
+        ids = {n: i for i, n in bd.net_names.items() if n}
+        self.assertEqual(sorted(ids), ["ANT", "N"])
+        self.assertEqual([g["net"] for g in bd.graphics], [ids["ANT"]])
+
+
 if __name__ == "__main__":
     unittest.main()

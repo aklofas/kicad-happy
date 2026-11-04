@@ -304,7 +304,10 @@ class PCBEnvelope:
         "description": "DFM rollup: dfm_tier, metrics, violation_count."})
     project_settings: dict = field(metadata={
         "description": "Selected settings extracted from .kicad_pro: "
-                       "source, net_classes, design_rules."})
+                       "source, net_classes, design_rules; custom_rules from "
+                       ".kicad_dru, with custom_rules_error (KiCad's parse "
+                       "message) when KiCad would refuse the file and so "
+                       "applies none of its rules."})
 
     # --- Defaulted-fields tail (must come after all non-default fields per
     # dataclass rules). Schema-required keys that the emitter

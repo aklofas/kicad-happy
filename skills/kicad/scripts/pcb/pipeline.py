@@ -23,7 +23,7 @@ from typing import Any
 from kicad_core.sexp import get_value, parse_file
 from kicad_core.project import (load_kicad_pro, extract_pro_net_classes,
                                 extract_pro_design_rules, extract_pro_text_variables,
-                                load_kicad_dru, load_lib_tables,
+                                load_kicad_dru_checked, load_lib_tables,
                                 find_project_settings_file, ignored_drc_checks)
 from kicad_core.diagnostics import record
 from kicad_core.model import PcbReaderState
@@ -189,7 +189,7 @@ def read_board(path: str, *, state: PcbReaderState | None = None) -> BoardData:
 
     # KiCad 10: no net declarations — build synthetic mapping from content
     if not net_names:
-        net_names = reader._build_net_mapping(footprints, tracks, vias, zones, state)
+        net_names = reader._build_net_mapping(footprints, tracks, vias, zones, state, graphics)
         # Backfill net IDs now that the mapping is built
         for seg in tracks.get("segments", []):
             if "_net_name" in seg:
@@ -386,9 +386,11 @@ def run_facts(board: BoardData, *, include_trace_segments: bool, return_path_rad
         project_settings['_ignored_drc_checks'] = ignored
 
     # Custom design rules (.kicad_dru)
-    custom_rules = load_kicad_dru(str(path))
+    custom_rules, dru_error = load_kicad_dru_checked(str(path))
     if custom_rules:
         project_settings['custom_rules'] = custom_rules
+    if dru_error:
+        project_settings['custom_rules_error'] = dru_error
 
     # Library tables
     lib_tables = load_lib_tables(str(path))

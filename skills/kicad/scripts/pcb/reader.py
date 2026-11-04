@@ -282,10 +282,11 @@ def _net_id(val: str | None) -> int:
 
 
 def _build_net_mapping(footprints: list[dict], tracks: dict, vias: dict,
-                       zones: list[dict], state: PcbReaderState) -> dict[int, str]:
+                       zones: list[dict], state: PcbReaderState,
+                       graphics: list[dict] = ()) -> dict[int, str]:
     """Build synthetic net ID mapping for KiCad 10 (no net declarations).
 
-    Scans all pads, tracks, vias, and zones for unique net names and assigns
+    Scans all pads, tracks, vias, zones and copper graphics for unique net names and assigns
     sequential integer IDs. Returns the same dict[int, str] format as
     extract_nets() for backward compatibility.
     """
@@ -309,6 +310,10 @@ def _build_net_mapping(footprints: list[dict], tracks: dict, vias: dict,
             names.add(n)
     for z in zones:
         n = z.get("net_name", "")
+        if n:
+            names.add(n)
+    for g in graphics:
+        n = g.get("_net_name", "")
         if n:
             names.add(n)
     # Assign sequential IDs (0 = unconnected, 1+ = real nets)
