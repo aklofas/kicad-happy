@@ -2,8 +2,11 @@
 
 The Deep Review pass is a per-IC comparison of actual usage against
 datasheet requirements, with findings recorded durably in
-`analysis/deep_review.json` and machine-verified by the evidence
-gate. This guide holds the depth the SKILL.md loop points to:
+`analysis/deep_review.json` and checked by the evidence gate: cited
+components, nets and pins must exist in the run's analyzer JSON, and each
+datasheet quote must appear on its page. A finding the gate could not check in
+full is kept with `evidence_checked: partial`; treat that part of its evidence
+as unverified. This guide holds the depth the SKILL.md loop points to:
 comparison heuristics per part class, interacting-pair patterns,
 helper-script conventions, evidence quality, and fan-out for big
 BOMs. Checks are DERIVED from each part's datasheet — the lists
@@ -101,7 +104,9 @@ Record findings in `analysis/deep_review.json` per
   `thermal`, `protection`, `required_externals`) — the diff and the
   summary group by it.
 - Datasheet quotes must be verbatim text from the cited page — the
-  gate greps the page via pdftotext; paraphrases quarantine. Mid-quote
+  gate greps the page via pdftotext; paraphrases quarantine. If the PDF is not
+  found, `pdftotext` is not installed, or `pdftotext` fails, the quote is not
+  checked and the finding is `partial`. Mid-quote
   elision (`...` or `…`) is fine for trimming a long quote down to the
   relevant clauses — each segment on either side must still appear on
   the page, in order.
