@@ -608,17 +608,6 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
     for net in conn.get("single_pin_nets", [])[:3]:
         findings.append(("warning", f"Single-pin net: {_single_pin_net_text(net)}", "Connectivity"))
 
-    # Filter by severity
-    if severity == "critical":
-        findings = [f for f in findings if f[0] == "critical"]
-    elif severity == "warning":
-        findings = [f for f in findings if f[0] in ("critical", "warning")]
-
-    # NOTE: critical_count + warning_count computed AFTER all findings appends
-    # (EMC + thermal sections append below). Computing them here would
-    # silently exclude EMC critical/high findings from the Action's
-    # has-critical / findings-count public outputs.
-
     # === Collect verified items ===
     for reg in sig.get(Det.POWER_REGULATORS, []):
         vout = reg.get("estimated_vout")
@@ -672,6 +661,12 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
             findings.append(("critical", f"Thermal: {th_err_pre} error-severity finding(s) — score {th_score_pre}/100", "thermal"))
         if th_warn_pre > 0:
             findings.append(("warning", f"Thermal: {th_warn_pre} warning-severity finding(s)", "thermal"))
+
+    # Filter after every analyzer has appended its rows, then count the filtered table.
+    if severity == "critical":
+        findings = [f for f in findings if f[0] == "critical"]
+    elif severity == "warning":
+        findings = [f for f in findings if f[0] in ("critical", "warning")]
 
     # Count findings AFTER all append paths so EMC/thermal/voltage-derating/
     # protocol entries flow into has-critical / findings-count.

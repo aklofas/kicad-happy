@@ -41,6 +41,35 @@ class FailedAnalysisTest(unittest.TestCase):
         self.assertFalse(s["has_critical"])
 
 
+class SeverityFilterTest(unittest.TestCase):
+    EMC = {"analyzer_type": "emc", "summary": {"emc_risk_score": 80, "by_severity": {"error": 0, "warning": 2, "info": 0}}, "findings": []}
+    THERMAL = {"analyzer_type": "thermal", "summary": {"thermal_score": 90, "by_severity": {"error": 0, "warning": 1, "info": 0}}, "findings": []}
+
+    def _render_with(self, severity):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = {}
+            for name, doc in (("emc", self.EMC), ("thermal", self.THERMAL)):
+                paths[name] = os.path.join(tmp, name + ".json")
+                with open(paths[name], "w", encoding="utf-8") as f:
+                    json.dump(doc, f)
+            summ = os.path.join(tmp, "summary.json")
+            md, _ = _render(tmp, severity=severity, emc=paths["emc"], thermal=paths["thermal"],
+                            **{"output-summary": summ})
+            with open(summ, encoding="utf-8") as f:
+                return json.load(f), md
+
+    def test_critical_drops_emc_and_thermal_warnings(self):
+        s, md = self._render_with("critical")
+        self.assertEqual(s["findings_count"], 0)
+        self.assertNotIn("warning-severity finding(s)", md)
+
+    def test_warning_keeps_them(self):
+        s, md = self._render_with("warning")
+        self.assertEqual(s["findings_count"], 2)
+        self.assertIn("| \u26a0\ufe0f | EMC: 2 warning-severity finding(s) | emc |", md)
+        self.assertIn("| \u26a0\ufe0f | Thermal: 1 warning-severity finding(s) | thermal |", md)
+
+
 @unittest.skipUnless(have(FX / "simple-project" / "simple.kicad_pcb"), "fixtures absent")
 class FixtureReportTest(unittest.TestCase):
     def assertNoPlaceholders(self, *texts):
