@@ -103,12 +103,12 @@ Not all "programming" connectors are JTAG. A 2x3 header (J2) with TX, RX, GND, 3
 
 Components like LM324 (4 opamps), CD4066 (4 switches), or STM32 (multi-bank pin assignments) contain multiple units in one package. Each unit is a separate `_U_1` / `_U_2` / etc. sub-symbol in the `lib_symbols` section. When tracing nets:
 
-1. **Identify which unit is placed** — the placed symbol's `lib_id` suffix (e.g., `LM324_1_1` = unit 1) tells you which sub-symbol provides the pin offsets
+1. **Identify which unit is placed**: the placed symbol's `(unit N)` gives the unit number. Its pins are the library sub-symbols `<name>_N_<body style>` plus the shared `<name>_0_<body style>`. The placed `lib_id` carries no unit suffix.
 2. **Each unit has its own pin set** — unit 1 of an LM324 has pins 1/2/3 (IN+/IN-/OUT), unit 2 has pins 5/6/7, etc. Power pins (VCC/GND) are typically in a shared sub-symbol `_0_1`
 3. **Power pins may not be placed** — the `_0_1` sub-symbol with VCC/GND is often placed on only one instance (or a dedicated power sheet). Don't flag missing power connections on other units — check if any unit of the same component has them connected
 4. **Reference designator is shared** — all units share the same reference (e.g., U1A, U1B, U1C, U1D are all U1). The analyzer reports them as separate symbol instances with the same `reference` field
 
-To find all units of a component: search for placed symbols where the `lib_id` base name matches (ignoring the `_U_V` suffix) and the `reference` property is the same.
+To find all units of a component: search for placed symbols with the same `lib_id` and the same `reference`; each has its own `(unit N)`.
 
 ## Hierarchical buses
 
