@@ -1,5 +1,5 @@
 # tools/tests/test_extraction_binding.py
-import contextlib, io, json, subprocess, sys, tempfile, unittest
+import contextlib, io, json, os, subprocess, sys, tempfile, unittest
 from pathlib import Path
 from unittest import mock
 
@@ -98,16 +98,15 @@ class ReplanDropsStaleResults(unittest.TestCase):
             decoy = root / "escape.result.json"
             decoy.write_text("{}", encoding="utf-8")
             target = root / "outside.txt"; target.write_text("keep", encoding="utf-8")
-            try:
+            if os.name != "nt":  # Windows links need a privilege; the rest still runs
                 (cache / "X1.link.result.json").symlink_to(target)
-            except OSError:
-                pass
             (cache / "X1.regulator.result.json").write_text("{}", encoding="utf-8")
             self.assertEqual(self._replan(cache, pdf), 0)
             self.assertFalse((cache / "X1.base.result.json").exists())
             self.assertFalse((cache / "X1.pinout.result.json").exists())
             self.assertTrue(decoy.exists())
             self.assertEqual(target.read_text(encoding="utf-8"), "keep")
+            self.assertFalse(os.path.lexists(cache / "X1.link.result.json"))  # the link itself is removed
             self.assertTrue((cache / "X1.regulator.result.json").exists())
             new = json.loads((cache / "X1.plan.json").read_text(encoding="utf-8"))
             self.assertEqual(new["pdf_sha256"], plan_extraction._sha256(pdf))
