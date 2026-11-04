@@ -515,7 +515,8 @@ def run_checks(board: BoardData, facts: PcbFacts, *, include_trace_segments: boo
             {(e.get("component", ""), str(e.get("pad_number", "")))
              for e in (thermal_pad_vias or [])})
 
-        edge_via = analyze_board_edge_via_clearance(vias, outline)
+        if 'copper_edge_clearance' not in ignored_checks:
+            edge_via = analyze_board_edge_via_clearance(vias, outline)
 
     return PcbChecks(
         decoupling=decoupling,

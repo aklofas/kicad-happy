@@ -469,7 +469,7 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
     unrouted = connectivity.pop('unrouted', None)
     if result['connectivity'] is not connectivity:
         unrouted = result['connectivity'].pop('unrouted', None)
-    if unrouted:
+    if unrouted and 'unconnected_items' not in ignored_checks:
         findings.extend(unrouted)
 
     copper = result.pop('copper_presence', None)

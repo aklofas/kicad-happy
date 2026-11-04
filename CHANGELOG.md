@@ -264,6 +264,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - VM-001 checks nets such as `HOLD-` or `SPEED-` again; only USB data lines and `D+`/`D-` pairs are exempt.
 - A regulator's fixed output voltage is read from a part-name suffix only where it is unambiguous: package names (`_SOT-23`, `SOT-89`, `QFN-48`) are ignored, a two-digit suffix is a decimal (`-33` is 3.3 V), and suffixes that are also common supply voltages (`-05`, `-09`, `-10`, `-12`, `-15`, `-24`, `-48`) give no estimate, since KiCad's own library reads them both ways (`AP7361C-12E` is 1.2 V, `LM1085-12` is 12 V). A regulator whose symbol or value names a shorter part family than its MPN (`RT6` against `RT6150`) takes the reference voltage of the longer part number. A part without an estimate falls back to its reference-voltage table entry or its feedback divider; estimates are removed or corrected, none are added, and the thermal, EMC and SPICE results that used them follow.
 - Rail-source (RS-001) and power-pin (PP-001) audits treat a net tie as one conductor: a rail fed through a net tie is sourced, and a pin tied to ground is a ground pin. Net names stay as KiCad gives them, and two net ties that share a reference (`NT?`) join nothing.
+- A project that sets `unconnected_items` to ignore gets no RT-001 findings, and one that sets `copper_edge_clearance` to ignore gets no BV-001 findings; the routing facts stay.
 
 ### Documentation
 
