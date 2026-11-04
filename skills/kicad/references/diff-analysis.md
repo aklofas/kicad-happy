@@ -223,7 +223,7 @@ When a detection type is not in `SIGNAL_REGISTRY`, `_generic_identity()` is used
 1. Top-level `reference` or `ref` field.
 2. Any nested dict with a `ref` sub-key.
 
-Returns `None` if nothing is found (item is excluded from matching).
+Returns `None` if nothing is found. The diff then matches the item by its `finding_id`, or, without one, by a content key (rule id, nets, components and summary); only the multi-run trend extraction skips it.
 
 ### Validation
 

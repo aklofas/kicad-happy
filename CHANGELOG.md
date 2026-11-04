@@ -289,6 +289,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The net-tracing guide finds a placed unit from its `(unit N)`, the schematic guide's worked tolerance example reads 5.25 V, and its datasheet walkthrough uses the current extraction layout (`base.pinout[].numbers`, per-pin and per-domain limits) and the sanitized cache file name.
 - The PCB guides describe the output and limits as the code has them: `nets` maps id to name with `net_name_to_id` beside it and no `file` key, decoupling distance is pad to pad, zones join only copper inside the same saved fill, courtyard overlap uses the courtyard shapes, board thickness comes from `(general (thickness))`, and the manual arc-length helper measures arcs longer than a half turn.
 - The Gerber methodology and manual guide say KiCad 5.1 and later write X2 aperture and object attributes (as `G04 #@!` comments with X2 off), follow KiCad's pad order (`TO.P`, then `TO.N`, no `TO.C`) in the manual state machine, and describe routed slots as one hole at the plunge point; the job-file link in the Gerber guide's contents works again.
+- The report guide's schematic field table names detection-type keys and says how they map to detector strings, lists the fields the detectors emit (`estimated_vout`, `resonant_hz`, divider nets; feedback dividers are voltage-divider findings with `is_feedback`); the config reference says skipped suppressions warn on stderr; the diff guide says an item without an identity is matched by `finding_id` or content.
 
 ---
 

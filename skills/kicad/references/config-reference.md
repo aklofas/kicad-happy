@@ -77,7 +77,7 @@ Each entry:
 
 **Matching:** `rule_id` must match exactly. If `components` is present, the finding must reference at least one matching component. If `nets` is present, the finding must reference at least one matching net. All present filters must match (AND logic). Patterns use Python `fnmatch` syntax (`*`, `?`, `[seq]`).
 
-**Entries missing `rule_id` are silently skipped** with a stderr warning.
+**Entries missing `rule_id`, or that are not objects, are skipped** with a `Warning:` line on stderr.
 
 ```jsonc
 "suppressions": [
