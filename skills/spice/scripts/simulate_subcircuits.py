@@ -93,7 +93,7 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
 
     Args:
         analysis_json: Parsed JSON dict from analyze_schematic.py
-        workdir: Directory for .cir and output files (default: temp dir)
+        workdir: Directory whose new spice_sim_* subfolder receives the .cir and output files (default: temp dir)
         timeout: Seconds per simulation (default: 5)
         types: List of detector types to simulate, or None for all supported
         parasitics: PCB parasitic data from extract_parasitics.py
@@ -177,7 +177,7 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
 
     sim_diagnostics: list = []  # Monte Carlo trials add only records the nominal runs lack
 
-    # An analysis that names no source file caches its models under this run's workdir,
+    # An analysis that names no source file caches its models under this run's folder,
     # and so does a project whose spice/ or spice/models/ is a symlink, which would
     # send cache writes to the link's target.
     from spice_model_cache import project_dir_from_analysis
@@ -190,11 +190,11 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
             if linked is not None:
                 record(sim_diagnostics, "simulate_subcircuits.simulate_subcircuits",
                        OSError(f"{linked} is a symlink"),
-                       "part models cached in the run's workdir")
+                       "part models cached in the run's folder")
         if project_dir is None or linked is not None:
             from spice_model_cache import ModelOptions
             model_options = dataclasses.replace(model_options or ModelOptions(),
-                                                cache_dir=workdir)
+                                                cache_dir=run_dir)
 
     results = []
     total_time = 0
@@ -653,7 +653,7 @@ def main(argv: list[str] | None = None) -> int:
                                      trust_project_models=trust_project_models)
 
     if workdir and os.path.islink(workdir):
-        print(f"Error: --workdir {workdir} is a symlink; refusing to write SPICE files "
+        print(f"Error: workdir {workdir} is a symlink; refusing to write SPICE files "
               f"through it.", file=sys.stderr)
         return 1
 

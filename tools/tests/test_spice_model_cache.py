@@ -134,8 +134,11 @@ class SimulateCacheDirTest(unittest.TestCase):
             rcd = self._run(wd)
             self.assertTrue(rcd.call_args_list)
             for c in rcd.call_args_list:
-                self.assertEqual(c.kwargs["override_dir"], wd)
-            self.assertTrue((Path(wd) / "spice" / "models" / "manifest.json").is_file())
+                run_dir = c.kwargs["override_dir"]
+                self.assertEqual(os.path.dirname(run_dir), wd)
+                self.assertTrue(os.path.basename(run_dir).startswith("spice_sim_"))
+            self.assertTrue((Path(run_dir) / "spice" / "models" / "manifest.json").is_file())
+            self.assertFalse((Path(wd) / "spice").exists())
 
             other = os.path.join(tmp, "other")
             rcd = self._run(os.path.join(tmp, "ws2"), ModelOptions(cache_dir=other))
@@ -196,7 +199,10 @@ class SimulateSymlinkedProjectCacheTest(unittest.TestCase):
                 wd = tmp / "ws"
                 report = self._run(str(wd), {"file": str(proj / "board.kicad_sch")})
                 self.assertEqual(os.listdir(outside), [])
-                self.assertTrue((wd / "spice" / "models" / "manifest.json").is_file())
+                run_dir = Path(report["workdir"])
+                self.assertEqual(run_dir.parent, wd)
+                self.assertTrue((run_dir / "spice" / "models" / "manifest.json").is_file())
+                self.assertFalse((wd / "spice").exists())
                 cache_records = [d for d in report["diagnostics"]
                                  if d["source"] == "simulate_subcircuits.simulate_subcircuits"]
                 self.assertEqual(len(cache_records), 1, report["diagnostics"])

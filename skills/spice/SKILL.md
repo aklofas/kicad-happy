@@ -235,7 +235,7 @@ Check the `note` field first. Common causes:
 | "Testbench generation failed: KeyError" | Analyzer detection is missing expected fields | Check analyzer JSON — the detection may be incomplete |
 | "ngspice/ltspice/xyce failed: ..." | Simulator error | Check `.log` file for error messages |
 
-When debugging, use `--workdir` to preserve simulation files (each run writes them into a new `spice_sim_*` folder inside it). The `.cir` file is a standard SPICE netlist that can be run manually (`ngspice -b file.cir`, or opened in LTspice/Xyce). The `.log` file contains simulator stdout/stderr.
+When debugging, use `--workdir` to preserve simulation files (each run writes them into a new `spice_sim_*` folder inside it). The `.cir` file is a standard SPICE netlist that can be run manually (`ngspice -n -b file.cir`, or opened in LTspice/Xyce). The `.log` file contains simulator stdout/stderr.
 
 ## Presenting Results to Users
 

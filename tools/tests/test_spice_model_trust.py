@@ -216,7 +216,10 @@ class SimulateKeepsTrustTest(unittest.TestCase):
                 {"findings": [{"detector": "detect_opamp_circuits", "reference": "U1"}]},
                 workdir=wd, types=["opamp_circuits"], simulator_backend=object(),
                 model_options=ModelOptions(trust_project_models=True))
-        self.assertEqual(seen, [ModelOptions(cache_dir=wd, trust_project_models=True)])
+        self.assertEqual(len(seen), 1)
+        self.assertEqual(os.path.dirname(seen[0].cache_dir), wd)
+        self.assertEqual(seen[0], ModelOptions(cache_dir=seen[0].cache_dir,
+                                               trust_project_models=True))
 
 
 if __name__ == "__main__":
