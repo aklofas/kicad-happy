@@ -62,7 +62,7 @@ Extracted via regex from the file content:
 | State Machine | Tracked By | Purpose |
 |---|---|---|
 | Aperture attributes | `pending_aper_function` | TA.AperFunction preceding AD definition |
-| Current component | `current_component` | TO.C object attribute |
+| Current component | `current_component` | TO.C object attribute (non-pad objects; pads carry their ref in TO.P) |
 | Current net | `current_net` | TO.N object attribute |
 | Component pad counts | `component_pads{}` | Flash count per component ref |
 | Component net sets | `component_nets{}` | Which nets each component connects to |
@@ -72,8 +72,8 @@ Extracted via regex from the file content:
 
 Two formats are supported:
 
-- **Modern** (KiCad 6+): `%TF.Key,Value*%` — standard X2 extended attributes
-- **KiCad 5 comment format**: `G04 #@! TF.Key,Value*` — same data embedded in G-code comments
+- **Native X2** (KiCad 5.1+ with X2 output on): `%TF.Key,Value*%` — standard X2 extended attributes
+- **Comment format** (X2 output off, and older KiCad 5): `G04 #@! TF.Key,Value*` — same data embedded in G-code comments
 
 The comment format is checked second, so modern attributes take precedence if both exist.
 
@@ -285,11 +285,11 @@ The source is tagged in the output so the consumer knows which method was used. 
 
 `build_component_analysis()` merges X2 object attribute data across all Gerber layers to build a board-level view of components.
 
-**Only produces output when X2 TO attributes are present** (KiCad 6+ exports). Without X2 data, no component analysis is possible from Gerbers alone.
+**Only produces output when X2 TO attributes are present** (KiCad 5.1+ exports). Without X2 data, no component analysis is possible from Gerbers alone.
 
 **Merging logic:**
-- Component references are collected from all layers that have `TO.C` attributes
-- Front/back side assignment: if a component's `TO.C` appears on F.Cu, it's front-side; if on B.Cu, it's back-side. Components appearing only on B.Cu are counted as back-only.
+- Component references are collected from all layers: `TO.C` refs plus the `TO.P` refs that KiCad writes on pads
+- Front/back side assignment: refs (`TO.C`) on F.Cu/F.Mask/F.SilkS/F.Paste are front-side and on the B.* layers back-side. A copper pad's `TO.P` ref names a side only when the part has copper on one side alone (through-hole pads appear on both). Components appearing only on the back are counted as back-only.
 - Pad counts: maximum pad count per component across all layers (same pad appears on copper, mask, and paste layers)
 - Nets per component: union of all nets associated with each component across layers
 
