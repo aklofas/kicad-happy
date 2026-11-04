@@ -181,6 +181,29 @@ class EvidenceTest(unittest.TestCase):
         self.assertEqual(bad["quarantine_reason"],
                          "pin U3.99: U3 has no pin 99 in analyzer JSON")
 
+    def test_dotted_pin_name_splits_at_the_first_dot(self):
+        sch = {"components": [{"reference": "U1"}],
+               "nets": {"N": {"pins": [{"component": "U1", "pin_number": "5",
+                                        "pin_name": " P0.12 "}]}}}
+        sets = self._sets(sch=sch)
+        calc = {"description": "d", "result": "r"}
+        for pin, ok in (("U1.P0.12", True), ("U1.P0.13", False), ("U1.5", True)):
+            with self.subTest(pin=pin):
+                kept, bad = self._gate({"pins": [pin], "computation": calc}, sets)
+                self.assertIs(kept is not None, ok, bad and bad["quarantine_reason"])
+
+    def test_numbers_only_ref_leaves_name_citations_unchecked(self):
+        sch = {"components": [{"reference": "U3", "pin_nets": {"1": "VCC"}}], "nets": {}}
+        pcb = {"footprints": [{"reference": "J1", "pad_count": 1,
+                               "pad_nets": {"1": {"net": "GND"}}}]}
+        sets = self._sets(sch=sch, pcb=pcb)
+        calc = {"description": "d", "result": "r"}
+        for pin, ok in (("U3.VIN", True), ("U3.1", True), ("U3.2", False),
+                        ("J1.GND", True), ("J1.2", False)):
+            with self.subTest(pin=pin):
+                kept, bad = self._gate({"pins": [pin], "computation": calc}, sets)
+                self.assertIs(kept is not None, ok, bad and bad["quarantine_reason"])
+
     def test_pcb_pads_off_every_net_leave_pins_unchecked(self):
         pcb = {"footprints": [
             {"reference": "J1", "pad_count": 2, "pad_nets": {"1": {"net": "GND"}}},

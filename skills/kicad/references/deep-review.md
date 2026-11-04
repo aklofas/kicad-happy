@@ -117,7 +117,9 @@ Record findings in `analysis/deep_review.json` per
   PCB net name (case-insensitive).
 - A cited pin is `REF.PIN` by pin number or pin name (`U3.7`, `U3.VIN`,
   case-insensitive). It passes if that component has that pin in the run's
-  analyzer JSON; a floating pin counts.
+  analyzer JSON; a floating pin counts. Names match exactly: when an
+  alternate pin function is selected the analyzer lists the alternate's name,
+  so cite such pins by number.
 - The gate finds the run folder from `analysis/manifest.json` and the
   run id inside `--analysis-dir` (`--run` picks another), so a moved or
   copied analysis folder still gates; no absolute path is stored.

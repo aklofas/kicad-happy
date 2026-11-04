@@ -71,6 +71,16 @@ def resolve_run_dir(analysis_dir, run_id=None):
     return analysis_dir
 
 
+class _PinIds(set):
+    """Pin numbers and names of one component; has_names is False when the
+    analyzer JSON lists numbers only."""
+    has_names = False
+
+    def add_name(self, name):
+        self.add(name)
+        self.has_names = True
+
+
 def load_anchor_sets(analysis_dir, run_id=None):
     """Component refs + net identities from the analyzer JSON.
 
@@ -98,7 +108,7 @@ def load_anchor_sets(analysis_dir, run_id=None):
                 comps.add(ref)
                 for key in ("pin_nets", "pin_uuids"):
                     if isinstance(c.get(key), dict):
-                        pins.setdefault(ref, set()).update(str(n).upper() for n in c[key])
+                        pins.setdefault(ref, _PinIds()).update(str(n).upper() for n in c[key])
         sch_nets = data.get("nets")
         for name, info in (sch_nets.items() if isinstance(sch_nets, dict) else ()):
             nets.add(str(name).upper())
@@ -108,8 +118,11 @@ def load_anchor_sets(analysis_dir, run_id=None):
                 nets.add(str(info["display_name"]).upper())
             for p in _as_list(info.get("pins")):
                 if isinstance(p, dict) and p.get("component"):
-                    ids = pins.setdefault(str(p["component"]).upper(), set())
-                    ids.update(str(p[k]).upper() for k in ("pin_number", "pin_name") if p.get(k))
+                    ids = pins.setdefault(str(p["component"]).upper(), _PinIds())
+                    if p.get("pin_number"):
+                        ids.add(str(p["pin_number"]).upper())
+                    if str(p.get("pin_name") or "").strip():
+                        ids.add_name(str(p["pin_name"]).strip().upper())
     sch_pinned = {ref for ref, ids in pins.items() if ids}
     pcb = run_dir / "pcb.json"
     if pcb.is_file():
@@ -119,11 +132,11 @@ def load_anchor_sets(analysis_dir, run_id=None):
                 ref = str(fp["reference"]).upper()
                 comps.add(ref)
                 pad_nets = fp.get("pad_nets") if isinstance(fp.get("pad_nets"), dict) else {}
-                ids = pins.setdefault(ref, set())
+                ids = pins.setdefault(ref, _PinIds())
                 for num, entry in pad_nets.items():
                     ids.add(str(num).upper())
                     if isinstance(entry, dict) and entry.get("pin"):
-                        ids.add(str(entry["pin"]).upper())
+                        ids.add_name(str(entry["pin"]).strip().upper())
                 # pad_nets omits a pad on no net, so a PCB-only part with one is unchecked
                 if ref not in sch_pinned and not (
                         isinstance(fp.get("pad_count"), int) and fp["pad_count"] <= len(pad_nets)):
@@ -193,12 +206,20 @@ def check_anchors(ev, comps, nets, pins):
             fails.append(f"net {net} not found in analyzer JSON")
     for pin in ev.get("pins") or []:
         ref, _, num = str(pin).rpartition(".")
+        if ref.upper() not in comps and "." in str(pin):
+            # a dotted pin name such as P0.12: split at the first dot instead
+            first, _, rest = str(pin).partition(".")
+            if first.upper() in comps:
+                ref, num = first, rest
         if not ref or not num:
             fails.append(f"pin {pin}: not a REF.PIN citation")
         elif ref.upper() not in comps:
             fails.append(f"pin {pin}: component {ref} not found in analyzer JSON")
         elif ref.upper() in pins and num.upper() not in pins[ref.upper()]:
-            fails.append(f"pin {pin}: {ref} has no pin {num} in analyzer JSON")
+            ids = pins[ref.upper()]
+            # with numbers only on record, a non-numeric citation may be a name
+            if ids.has_names or num.isdigit():
+                fails.append(f"pin {pin}: {ref} has no pin {num} in analyzer JSON")
     return fails
 
 
