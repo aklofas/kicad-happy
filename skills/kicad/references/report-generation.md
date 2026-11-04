@@ -483,14 +483,14 @@ Quick reference for what each analyzer produces, to ensure no analysis dimension
 | `findings[] (type: power_regulators)` | Power Regulators | topology, vref_source, estimated_vout, assumed_vref, feedback_divider, inverting |
 | `findings[] (type: voltage_dividers, is_feedback: true)` | Feedback Networks | r_top, r_bottom, ratio, mid_point_connections |
 | `findings[] (type: voltage_dividers)` | Voltage Dividers | r_top, r_bottom, ratio, top_net, mid_net, bottom_net |
-| `findings[] (type: rc_filters)` | RC/LC Filters | cutoff_hz, filter_type |
+| `findings[] (type: rc_filters)` | RC/LC Filters | type (low-pass/high-pass), cutoff_hz, input_net, output_net |
 | `findings[] (type: lc_filters)` | RC/LC Filters | resonant_hz |
 | `findings[] (type: opamp_circuits)` | Op-Amp Circuits | configuration, gain |
-| `findings[] (type: protection_devices)` | Protection Devices | type, placement |
-| `findings[] (type: transistor_circuits)` | Transistor Circuits | load_type (motor/heater/fan/solenoid/etc.), is_pchannel, gate_drive |
+| `findings[] (type: protection_devices)` | Protection Devices | type, protected_net, clamp_net |
+| `findings[] (type: transistor_circuits)` | Transistor Circuits | load_type (motor/heater/fan/solenoid/etc.), is_pchannel, gate_resistors, gate_driver_ics, gate_pulldown |
 | `findings[] (type: bridge_circuits)` | Bridge Circuits | topology, half_bridges, driver_ics |
-| `findings[] (type: crystal_circuits)` | Crystal Circuits | cload, frequency |
-| `findings[] (type: current_sense)` | Current Sense | shunt_value, gain |
+| `findings[] (type: crystal_circuits)` | Crystal Circuits | frequency, effective_load_pF, target_load_pF, load_cap_status |
+| `findings[] (type: current_sense)` | Current Sense | shunt, sense_ic, max_current_50mV_A |
 | `findings[] (type: decoupling_analysis)` | Decoupling Analysis | per-rail cap inventory |
 | `findings[] (type: buzzer_speaker_circuits)` | Buzzer/Speaker | driver topology |
 | `findings[] (type: rf_chains)` | RF Chains | component chain |
