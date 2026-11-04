@@ -4,7 +4,7 @@ This document explains the full design review workflow — what happens when you
 
 ## The core idea
 
-The analysis scripts are **data extraction tools**, not AI. They're deterministic Python that parses KiCad's S-expression file format into structured JSON — component lists, net connectivity, detected subcircuits, board dimensions, DFM measurements. No machine learning, no heuristics that change between runs, no cloud calls. You can run them yourself and read the output.
+The analysis scripts are **data extraction tools**, not AI. They're deterministic Python that parses KiCad's S-expression file format into structured JSON — component lists, net connectivity, detected subcircuits, board dimensions, DFM measurements. No machine learning, no heuristics that change between runs. The schematic, PCB, Gerber, EMC and thermal analyzers make no network calls. Two paths do, and both say so: `analyze_schematic.py --lifecycle` (opt-in) queries distributor APIs, and SPICE simulation looks up part models from distributors (LCSC needs no key, so part numbers leave your machine) unless run with `--offline`. You can run them yourself and read the output.
 
 The agent reads that JSON, reads your datasheets, and writes a design review. The AI part is the *reasoning about* the data — not the data itself.
 
@@ -26,7 +26,7 @@ The schematic analyzer (`analyze_schematic.py`) reads your `.kicad_sch` file and
 
 3. **Extracts every component** with all its properties: reference designator, value, footprint, lib_id, MPN, datasheet URL, pin positions (after applying rotation/mirror transforms).
 
-4. **Builds the net graph** using union-find on pin coordinates. Every wire endpoint, label, power symbol, and component pin gets a coordinate key. Points within 0.01mm are merged. Wires union their endpoints. Labels union their position with any wire they touch. The result: for every net, a complete list of which component pins are connected.
+4. **Builds the net graph** using union-find on pin coordinates. Every wire endpoint, label, power symbol, and component pin gets a coordinate key. Points join only at KiCad's exact coordinates (its 100 nm grid); a point that misses another by up to 0.01 mm is not joined and is listed in `diagnostics` as a `CoordinateNearMiss`. Wires union their endpoints. Labels union their position with any wire they touch. The result: for every net, a complete list of which component pins are connected.
 
 5. **Runs 60+ signal, domain, validation, and audit detectors.** Each is a pure function that looks for specific circuit patterns in the connectivity graph:
 
@@ -114,7 +114,7 @@ Being honest about limitations is more useful than pretending they don't exist.
 
 - **Unusual symbol conventions.** If a symbol uses non-standard pin names or a reference designator prefix the classifier doesn't recognize, the component may be misclassified. The classifier handles hundreds of conventions, but edge cases exist.
 
-- **Pin-to-net mapping near sheet borders.** Hierarchical sheet pins can be tricky when labels don't quite align with wire endpoints. The analyzer uses tolerance-based matching that works for 99%+ of real designs, but complex hierarchical routing occasionally produces a missed connection. The review process includes explicit net tracing to catch these.
+- **Pin-to-net mapping near sheet borders.** Hierarchical sheet pins can be tricky when labels don't quite align with wire endpoints. The analyzer joins points only where KiCad does, at exact coordinates, and lists near misses (`CoordinateNearMiss` in `diagnostics`) instead of joining them; a near miss on a sheet pin or label is usually a drawing slip that KiCad also leaves unconnected. The review process includes explicit net tracing to catch these.
 
 ## Addressing common concerns
 
@@ -170,7 +170,7 @@ The JSON is the truth. Everything the agent says should trace back to it. If it 
 
 ### "Open source analysis scripts are a liability — what if they have bugs?"
 
-The scripts are tested against a [dedicated test harness](https://github.com/aklofas/kicad-happy-testharness) containing 5,829 open-source KiCad projects from GitHub, Codeberg, and GitLab, spanning KiCad versions 5 through 10. That's single-sheet hobby boards, multi-sheet industrial controllers, complex hierarchical designs with repeated sub-sheets, and everything in between. All parse and produce output without errors. Detection accuracy is harder to quantify — you can't count what you didn't catch — which is why this document exists and the test harness uses three layers of regression testing (see below).
+The scripts are tested against a [dedicated test harness](https://github.com/aklofas/kicad-happy-testharness) containing 5,857 open-source KiCad projects from GitHub, Codeberg, and GitLab, spanning KiCad versions 5 through 10. That's single-sheet hobby boards, multi-sheet industrial controllers, complex hierarchical designs with repeated sub-sheets, and everything in between. All parse and produce output without errors. Detection accuracy is harder to quantify — you can't count what you didn't catch — which is why this document exists and the test harness uses three layers of regression testing (see below).
 
 More importantly, the scripts are designed so that bugs produce *missing data*, not *wrong data*. If a detector fails to recognize a circuit pattern, you get a gap in the analysis (the reviewer's blind spot). If a detector misidentifies a circuit, it reports incorrect facts (the reviewer is misled). The detection logic is tuned to avoid the second failure mode — it's better to miss a voltage divider than to report one that doesn't exist.
 

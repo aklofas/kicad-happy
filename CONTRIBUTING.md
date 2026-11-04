@@ -236,7 +236,7 @@ The analyzers exit 0 on success, including when they report findings; usage erro
 
 ## Test harness
 
-Changes to any analysis script must be validated against the [test harness](https://github.com/aklofas/kicad-happy-testharness) — a corpus of 5,829 real-world KiCad projects spanning hobby boards, production hardware, motor controllers, RF frontends, battery management systems, IoT devices, audio amplifiers, and more. KiCad 5 through 10.
+Changes to any analysis script must be validated against the [test harness](https://github.com/aklofas/kicad-happy-testharness) — a corpus of 5,857 real-world KiCad projects spanning hobby boards, production hardware, motor controllers, RF frontends, battery management systems, IoT devices, audio amplifiers, and more. KiCad 5 through 10.
 
 ### What the harness checks
 
@@ -287,7 +287,7 @@ KICAD_HAPPY_DIR=<path to this repo> python3 -m pytest tests/contract/
 
 The first pytest line is what CI's harness-smoke job runs, followed by a determinism guard that analyses the harness's simple project twice. CI's refactor-check job runs `tools.tests.test_check_refactor`, `imports`, `tags` and `install-smoke`. The second line runs the whole schema contract suite.
 
-**3. The maintainer's corpus gate.** Before merge the maintainer runs the corpus gate: 5,829 real KiCad projects and 2.7M assertions. You do not need the corpus. Describe the expected corpus movement in the PR instead: which detectors or rules change, in which direction, and why.
+**3. The maintainer's corpus gate.** Before merge the maintainer runs the corpus gate: 5,857 real KiCad projects and 2.7M assertions. You do not need the corpus. Describe the expected corpus movement in the PR instead: which detectors or rules change, in which direction, and why.
 
 The target is 100% pass rate across all assertion types. Any regression should be investigated — not suppressed.
 

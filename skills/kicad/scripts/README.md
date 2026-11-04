@@ -343,7 +343,7 @@ Many detectors use keyword lists to identify component types from value/lib_id s
 
 3. **Filter high-fanout nets**. Power rails (+3V3, GND) connect to many components. Most detection patterns should skip or special-case nets with >4-6 connections, or nets identified as power/ground by `is_power_net()`/`is_ground()`.
 
-4. **Test against the harness**. See `kicad-happy-testharness` repo — `run_tests.py --smoke` runs the 565-test PR-gate subset in ~30s with no corpus dependency, `run_tests.py --quick-sanity` runs 5-repo assertions, and `run/run_schematic.py --jobs 16` runs the full 5,829-repo corpus regression (~30 min).
+4. **Test against the harness**. See `kicad-happy-testharness` repo — `run_tests.py --smoke` runs the 565-test PR-gate subset in ~30s with no corpus dependency, `run_tests.py --quick-sanity` runs 5-repo assertions, and `run/run_schematic.py --jobs 16` runs the full 5,857-repo corpus regression (~30 min).
 
 5. **Count detections across the corpus** to calibrate sensitivity. Too many detections (>1000 for a specific pattern across the 36,000+ schematic files) suggests false positives. Too few (<5) might mean overly narrow keywords. Use `run/run_schematic.py --cross-section smoke` or `--cross-section quick_200` for faster calibration passes.
 
@@ -353,9 +353,9 @@ Many detectors use keyword lists to identify component types from value/lib_id s
 
 Location: `kicad-happy-testharness` sibling repo.
 
-- 5,829 open-source KiCad projects spanning KiCad 5 through 10
+- 5,857 open-source KiCad projects spanning KiCad 5 through 10
 - ~36,500 schematic files, ~18,700 PCB files, ~5,500 gerber dirs
-- 2M+ regression assertions at 99.98%+ pass, 565-test smoke subset, 5-repo quick-sanity
+- 2.7M+ regression assertions (current pass rate in VALIDATION.md), 565-test smoke subset, 5-repo quick-sanity
 - Schema drift tests across all 8 analyzer types
 - Equation audit (107 tagged equations), constants audit (105+ switching freqs), bugfix guards
 
