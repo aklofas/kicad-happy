@@ -2,6 +2,21 @@
 import re
 
 
+# Load-switch and power-distribution-switch part families (lowercase substrings of lib_id + value).
+# Shared by the power-path detector and the regulator screen, which must not record them as LDOs.
+LOAD_SWITCH_KEYWORDS = (
+    "tps229", "tps2291", "tps2293", "tps2295",
+    "tps2281", "tps2283", "tps2285",
+    "tps2211", "tps2219", "tps2221",
+    "tps22918", "tps22919", "tps22810",
+    "tps206", "ap217", "mt9700",
+    "sy628",
+    "rt9742", "rt9701", "ap2281", "ap2191",
+    "stmps2", "ncp380", "ncp381",
+    "mic205", "mic209",
+)
+
+
 # Regulator Vref lookup table — maps part number prefixes to their internal
 # reference voltage.  Used by the feedback divider Vout estimator instead of
 # guessing from a list.  Lookup uses longest-prefix-match so that specific

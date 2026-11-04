@@ -15,7 +15,7 @@ import re
 from collections import Counter
 
 from kicad_types import AnalysisContext
-from kicad_core.parts import lookup_regulator_vref
+from kicad_core.parts import LOAD_SWITCH_KEYWORDS, lookup_regulator_vref
 from kicad_core.values import format_frequency, parse_value
 from kicad_core.netnames import parse_voltage_from_net_name
 from detector_helpers import (is_led_rail, led_forward_voltage, led_string, match_family,
@@ -2748,17 +2748,6 @@ def detect_debug_interfaces(ctx: AnalysisContext) -> list[dict]:
 # Power Path / Load Switch Detection
 # ---------------------------------------------------------------------------
 
-_LOAD_SWITCH_KEYWORDS = (
-    "tps229", "tps2291", "tps2293", "tps2295",
-    "tps2281", "tps2283", "tps2285",
-    "tps2211", "tps2219", "tps2221",
-    "tps22918", "tps22919", "tps22810",
-    "sy6280", "sy6282", "sy6288",
-    "rt9742", "rt9701", "ap2281", "ap2191",
-    "stmps2", "ncp380", "ncp381",
-    "mic205", "mic209",
-)
-
 _IDEAL_DIODE_KEYWORDS = (
     "ltc4412", "ltc4413", "ltc4414",
     "tps2113", "tps2115", "tps2121",
@@ -2818,7 +2807,7 @@ def detect_power_path(ctx: AnalysisContext) -> list[dict]:
 
         # Classify device type
         device_type = None
-        if any(kw in combined for kw in _LOAD_SWITCH_KEYWORDS):
+        if any(kw in combined for kw in LOAD_SWITCH_KEYWORDS):
             device_type = "load_switch"
         elif any(kw in combined for kw in _IDEAL_DIODE_KEYWORDS):
             # Distinguish ideal diode from power MUX by pin count/keywords

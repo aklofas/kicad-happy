@@ -106,6 +106,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Fixed
 
+- USB power switches and load switches (RT9742, TPS2061, AP2171, MT9700, SY6280) are no longer reported as LDO regulators; the regulator screen and the power-path detector share one load-switch part list.
 - `what_if.py --output`, the BOM export and `build_review_plan.py --output` write into a named pipe or `/dev/stdout` instead of replacing it, so piping them works and a redirected file keeps its inode.
 - `lifecycle_audit.py` now exits with the return code of `main()` instead of discarding it; it is always 0 today, so no run changes.
 - The GitHub Action reports a failed (or missing) schematic or PCB analysis as an incomplete review instead of "No issues found": the report opens with a banner, `summary.json` lists `failed_analyzers`, the commit status is `error`, and the step fails when every selected analysis failed.
