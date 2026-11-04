@@ -335,13 +335,30 @@ class TestExternalDeckCli(unittest.TestCase):
                 self.assertIn(expected, message)
                 self.assertNotIn("Traceback", message)
 
-    def test_pspice_deck_with_out_suffix_is_rejected(self):
-        clashing = Path(self.tempdir.name) / "clash.OUT"
-        clashing.write_text("* synthetic deck\n.end\n", encoding="utf-8")
-        message = self._usage_error(
-            [str(clashing), "--simulator", "pspice"]
+    def test_pspice_deck_with_a_native_output_suffix_is_rejected(self):
+        for suffix in (".out", ".OUT", ".json", ".dat"):
+            with self.subTest(suffix=suffix):
+                clashing = Path(self.tempdir.name) / f"clash{suffix}"
+                clashing.write_text(
+                    "* synthetic deck\n.end\n", encoding="utf-8"
+                )
+                message = self._usage_error(
+                    [str(clashing), "--simulator", "pspice"]
+                )
+                self.assertIn(f"{suffix} suffix", message)
+                self.assertEqual(
+                    clashing.read_text(encoding="utf-8"),
+                    "* synthetic deck\n.end\n",
+                )
+
+    def test_sidecar_suffix_deck_is_allowed_for_other_simulators(self):
+        deck = Path(self.tempdir.name) / "plain.json"
+        deck.write_text("* synthetic deck\n.end\n", encoding="utf-8")
+        backend = self._backend("ngspice", (True, "", ""))
+        code, _, _ = self._run(
+            [str(deck), "--simulator", "ngspice"], backend
         )
-        self.assertIn(".out suffix", message)
+        self.assertEqual(code, 0)
 
     def test_default_timeout_is_ten_minutes(self):
         backend = self._backend("pspice", (True, "", ""))

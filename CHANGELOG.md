@@ -97,6 +97,11 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The Action's nonzero-exit notice for EMC and thermal no longer says the analyzer reported blocking findings. (KH-852)
 - PCB `--full` point-in-fill queries test only nearby fill edges: same results, much faster on boards with large pours.
 
+### Added
+
+- `skills/emc/scripts/analyze_harmonic_limits.py` — a standalone screen that compares harmonic lines you supply (RMS, with their unit) against limit values you supply, flat or sloped across a band, and reports the margin per band as `screening_only`. The repository ships no limit tables, and the result is not a compliance determination. (#63 — contributed by janos-varga.)
+- `skills/spice/scripts/run_external_deck.py` — runs a complete user-supplied SPICE deck and reports whether the simulator completed, with an explicit-only PSpice backend (never auto-detected or chosen by `SPICE_SIMULATOR`). The author tested it against an installed PSpice; here it is exercised with stub simulator processes only. (#64 — contributed by janos-varga.)
+
 ### Fixed
 
 - `what_if.py --output`, the BOM export and `build_review_plan.py --output` write into a named pipe or `/dev/stdout` instead of replacing it, so piping them works and a redirected file keeps its inode.

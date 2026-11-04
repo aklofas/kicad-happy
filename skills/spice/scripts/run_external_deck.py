@@ -161,10 +161,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.timeout <= 0:
         parser.error("--timeout must be greater than zero")
 
-    if args.simulator == "pspice" and deck.suffix.lower() == ".out":
+    if args.simulator == "pspice" and deck.suffix.lower() in (
+        ".out",
+        ".json",
+        ".dat",
+    ):
         parser.error(
-            f"deck must not use the .out suffix, which PSpice uses for its "
-            f"native output: {deck}"
+            f"deck must not use the {deck.suffix} suffix, which PSpice uses "
+            f"for the files it writes next to the deck: {deck}"
         )
 
     native_output = native_output_for(deck, args.simulator)

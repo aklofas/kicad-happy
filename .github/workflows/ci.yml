@@ -213,7 +213,9 @@ jobs:
         run: |
           for s in skills/kicad/scripts/analyze_schematic.py skills/kicad/scripts/analyze_pcb.py \
                    skills/kicad/scripts/analyze_gerbers.py skills/emc/scripts/analyze_emc.py \
-                   skills/spice/scripts/simulate_subcircuits.py skills/bom/scripts/bom_manager.py \
+                   skills/emc/scripts/analyze_harmonic_limits.py \
+                   skills/spice/scripts/simulate_subcircuits.py skills/spice/scripts/run_external_deck.py \
+                   skills/bom/scripts/bom_manager.py \
                    skills/lcsc/scripts/search_lcsc.py; do
             echo "$s"; python "$s" --help > /dev/null
           done
