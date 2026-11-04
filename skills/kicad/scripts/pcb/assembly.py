@@ -12,6 +12,10 @@ from pcb.geometry import (_outline_shape_points, _refined_overlap_mm2, courtyard
                           point_in_outline)
 
 
+# Whole-name match: VIN+/VINA/VBAT_OK/VREF/VCOUT and op-amp "+" pins are signals.
+_SUPPLY_PIN_NAME = re.compile(
+    r"(?:VCC|VDD|VIN|AVDD|DVDD|PVDD|VDDA|VDDIO|VDDQ|VBAT)(?:_?\d+)?|V\+", re.I)
+
 _ESD_TVS_PREFIXES = ("esd", "prtr", "usblc", "tpd", "pesd", "sp05",
                      "rclamp", "nup", "lesd", "ip4", "dt104")
 
@@ -67,10 +71,12 @@ def _min_power_pad_distance(ic_fp: dict, cap_fp: dict) -> float:
     return min_dist
 
 
-def _ic_signal_nets(ic: dict, power_rails: set[str] | None, pin_signals) -> set[str]:
+def _ic_signal_nets(ic: dict, power_rails: set[str] | None,
+                    pin_signals: frozenset[str]) -> set[str]:
     """The IC's nets that its own pad marks as a signal pin (KiCad 6+ pad pin types), less the
     power rails: the rail set, a rail name (bar the VPP/VM nets in *pin_signals*), or the IC's
-    supply pin on the net. A cap on such a net is a load, filter or timing cap."""
+    supply pin on the net (by pin type or a supply pin name). A cap on such a net is a load,
+    filter or timing cap."""
     rails, signals = set(), set()
     for pad in ic.get("pads", []):
         n = pad.get("net_name")
@@ -78,14 +84,16 @@ def _ic_signal_nets(ic: dict, power_rails: set[str] | None, pin_signals) -> set[
             continue
         pin_type = str(pad.get("pintype", "")).split("+")[0]
         if ((n not in pin_signals and is_power_net_name(n, power_rails))
-                or pin_type in ("power_in", "power_out")):
+                or pin_type in ("power_in", "power_out")
+                or _SUPPLY_PIN_NAME.fullmatch(str(pad.get("pinfunction", "")))):
             rails.add(n)
         elif pin_type in IC_SIGNAL_PIN_TYPES:
             signals.add(n)
     return signals - rails
 
 
-def _nearby_decoupling_caps(ic: dict, caps: list[dict], signals: set[str] = frozenset()
+def _nearby_decoupling_caps(ic: dict, caps: list[dict],
+                            signals: set[str] | frozenset[str] = frozenset()
                             ) -> tuple[list[dict], list[str]]:
     """Caps within 10 mm that share a non-ground net with the IC, other than its *signals*.
     Returns (nearby sorted by distance, refs of <=10 mm caps rejected as
@@ -112,7 +120,7 @@ def _nearby_decoupling_caps(ic: dict, caps: list[dict], signals: set[str] = froz
 
 
 def analyze_decoupling_placement(footprints: list[dict], power_rails: set[str] | None = None,
-                                 pin_signals=frozenset()) -> list[dict]:
+                                 pin_signals: frozenset[str] = frozenset()) -> list[dict]:
     """For each IC, find nearby capacitors and report distances.
 
     Helps verify decoupling caps are placed close to IC power pins. A cap that shares only

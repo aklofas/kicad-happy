@@ -50,6 +50,22 @@ class DecouplingSignalPins(unittest.TestCase):
         out = analyze_decoupling_placement([u1, cap("C1", "+3V3", 2.0)])
         self.assertEqual(caps_of(out, "U1"), [["C1"]])
 
+    def test_supply_pin_named_vdd_typed_input_counts(self):
+        u9 = ic("U9", "MCP9700", [pad("1", "Net-(U9-VDD)", 0.0, "input"),
+                                  pad("2", "GND", 0.5, "power_in")])
+        u9["pads"][0]["pinfunction"] = "VDD"
+        out = analyze_decoupling_placement([u9, cap("C1", "Net-(U9-VDD)", 2.0)])
+        self.assertEqual(caps_of(out, "U9"), [["C1"]])
+
+    def test_signal_pins_named_like_supplies_still_drop(self):
+        for name, pintype in (("VCOUT", "output"), ("V0", "output"), ("VIN+", "input"),
+                              ("+", "input")):
+            u1 = ic("U1", "X", [pad("1", "Net-(U1-P1)", 0.0, pintype),
+                                pad("2", "GND", 0.5, "power_in")])
+            u1["pads"][0]["pinfunction"] = name
+            out = analyze_decoupling_placement([u1, cap("C1", "Net-(U1-P1)", 2.0)])
+            self.assertEqual(caps_of(out, "U1"), [], name)
+
     def test_no_pin_types_unchanged(self):
         u1 = ic("U1", "NE555", [pad("1", "/TIMING", 0.0), pad("2", "GND", 0.5)])
         out = analyze_decoupling_placement([u1, cap("C1", "/TIMING", 2.0)])
