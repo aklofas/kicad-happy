@@ -262,9 +262,9 @@ def _find_outside_numbers(t, q, pos):
     while idx != -1:
         before = t[idx - 1] if idx else ""
         after = t[idx + len(q):idx + len(q) + 1]
-        inside = ((q[0].isdigit() and before and (before.isdigit() or before in ".-±"))
+        inside = ((q[0].isdigit() and before and (before.isdigit() or before in ".,-±"))
                   or (q[0] == "." and before.isdigit())
-                  or (q[-1].isdigit() and after and (after.isdigit() or after == ".")))
+                  or (q[-1].isdigit() and after and (after.isdigit() or after in ".,")))
         if not inside:
             return idx
         idx = t.find(q, idx + 1)
