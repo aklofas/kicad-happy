@@ -107,7 +107,11 @@ Record findings in `analysis/deep_review.json` per
   the page, in order.
 - Page numbers are PDF page indexes (what pdftotext counts), not the
   printed page footer.
-- Computations cite the helper script path and paste its result line.
+- Computations cite the helper script path and paste its result line. The
+  gate checks that the script exists but does not run it, so a finding with a
+  computation is recorded as `evidence_checked: partial`. `full` means every
+  cited datasheet quote was found on its page and nothing else was cited
+  unchecked.
 - A cited net passes the gate if it exists anywhere in the run's analyzer
   JSON under any of its identities: schematic name, `display_name`, or
   PCB net name (case-insensitive).

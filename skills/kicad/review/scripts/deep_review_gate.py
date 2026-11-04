@@ -14,8 +14,9 @@ One command, zero ceremony:
    (pins check the component ref only — a floating-pin finding
    legitimately cites a pin on no net); the cited datasheet page
    contains the quote (pdftotext when available; missing tool or PDF
-   -> evidence_checked=partial, never quarantine); computation script
-   paths resolve against --project-dir.
+   -> evidence_checked=partial, never quarantine); a computation's
+   script path resolves against --project-dir. The gate never runs a
+   computation, so a finding that cites one is evidence_checked=partial.
 3. Stamps finding_ids (assign_deep_review_ids), mirrors evidence
    anchors to top-level components/nets/pins, canonical-sorts, writes
    back. Re-evaluates quarantined[] so corrected findings promote.
@@ -366,11 +367,14 @@ def check_datasheet(cites, datasheets_dir):
 
 
 def check_computation(comp, project_dir):
-    fails = []
-    script = (comp or {}).get("script")
+    """Returns (failures, partial). The gate never runs a computation, so
+    a cited one is always partial; a cited script must still exist."""
+    if not comp:
+        return [], False
+    script = comp.get("script")
     if script and not (Path(project_dir) / script).is_file():
-        fails.append(f"computation script not found: {script}")
-    return fails
+        return [f"computation script not found: {script}"], True
+    return [], True
 
 
 def gate_finding(finding, item_schema, comps, nets, datasheets_dir, project_dir):
@@ -394,9 +398,10 @@ def gate_finding(finding, item_schema, comps, nets, datasheets_dir, project_dir)
     partial = False
     if not fails:
         fails += check_anchors(ev, comps, nets)
-        ds_fails, partial = check_datasheet(ev.get("datasheet"), datasheets_dir)
-        fails += ds_fails
-        fails += check_computation(ev.get("computation"), project_dir)
+        ds_fails, ds_partial = check_datasheet(ev.get("datasheet"), datasheets_dir)
+        comp_fails, comp_partial = check_computation(ev.get("computation"), project_dir)
+        fails += ds_fails + comp_fails
+        partial = ds_partial or comp_partial
     if fails:
         q = dict(finding)
         q["quarantine_reason"] = "; ".join(fails)

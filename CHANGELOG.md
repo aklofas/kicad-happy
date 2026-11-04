@@ -248,6 +248,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The GitHub Action's `severity` input now filters the EMC and thermal rows of the Findings table and the findings count too; `critical` no longer keeps their warning rows.
 - The GitHub Action's PR comment lists PCB footprint changes (added, removed, modified) and shows the "...and N more" count even when none of the changed items could be listed.
 - The Deep Review gate no longer verifies a quote that starts or ends inside a comma-grouped number: "500 mA" against "1,500 mA" is quarantined.
+- The Deep Review gate records a finding that cites a computation as `evidence_checked: partial`, since it checks that the script exists but never runs it; `full` now means every source was checked.
 
 ### Documentation
 

@@ -129,6 +129,46 @@ class QuoteMatchTest(unittest.TestCase):
         self.assertFalse(deep_review_gate._quote_in_text("and -40 C", page))
 
 
+class EvidenceTest(unittest.TestCase):
+    """Pin citations and computations, checked without pdftotext."""
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.item_schema = json.loads(deep_review_gate.SCHEMA_PATH.read_text(
+            encoding="utf-8"))["properties"]["findings"]["items"]
+
+    def _sets(self, sch=None, pcb=None):
+        for name, data in (("schematic.json", sch), ("pcb.json", pcb)):
+            if data is not None:
+                (self.tmp / name).write_text(json.dumps(data), encoding="utf-8")
+        return deep_review_gate.load_anchor_sets(self.tmp)
+
+    def _gate(self, evidence, sets):
+        f = {"detector": "deep_review", "category": "power", "severity": "warning",
+             "confidence": "high", "summary": "s", "evidence": evidence}
+        return deep_review_gate.gate_finding(f, self.item_schema, *sets,
+                                             str(self.tmp), str(self.tmp))
+
+    SCH = {"components": [{"reference": "U3", "pin_nets": {"17": "VCC"}},
+                          {"reference": "U3", "pin_nets": {"4": "GND"}},
+                          {"reference": "R1"}],
+           "nets": {"VCC": {"pins": [{"component": "U3", "pin_number": "17", "pin_name": "VIN"}]},
+                    "__unnamed_0": {"pins": [{"component": "U3", "pin_number": "9", "pin_name": "NC"}]}}}
+
+    def test_unrun_computation_is_partial(self):
+        (self.tmp / "check.py").write_text("print(1)\n", encoding="utf-8")
+        sets = self._sets(sch=self.SCH)
+        for comp in ({"description": "d", "result": "r"},
+                     {"description": "d", "result": "r", "script": "check.py"}):
+            with self.subTest(comp=comp):
+                kept, bad = self._gate({"components": ["U3"], "computation": comp}, sets)
+                self.assertIsNone(bad)
+                self.assertEqual(kept["evidence_checked"], "partial")
+        _, bad = self._gate({"components": ["U3"], "computation":
+                             {"description": "d", "result": "r", "script": "nope.py"}}, sets)
+        self.assertEqual(bad["quarantine_reason"], "computation script not found: nope.py")
+
+
 def _pdf(pages):
     """A minimal PDF, one Helvetica text page per entry (WinAnsi: µ = 0xB5)."""
     objs = ["<< /Type /Catalog /Pages 2 0 R >>", None,
