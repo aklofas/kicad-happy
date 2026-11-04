@@ -900,7 +900,9 @@ def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
             footprint = var_fields.get("Footprint", footprint)
             datasheet = var_fields.get("Datasheet", datasheet)
             description = var_fields.get("Description", description)
-            _props = {k: var_fields.get(k, v) for k, v in _props.items()}
+            # _props keys are lower-cased; a variant names its fields as the symbol does
+            var_props = {k.lower(): v for k, v in var_fields.items()}
+            _props = {k: var_props.get(k, v) for k, v in _props.items()}
         in_bom = overrides.get("in_bom", get_value(sym, "in_bom") != "no")
         dnp_token = get_value(sym, "dnp")
         if "dnp" in overrides:

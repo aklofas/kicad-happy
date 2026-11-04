@@ -54,13 +54,13 @@ def _prop(name, val):
 
 
 def _sym(uid, ref, value, path, at, *, variant="", dnp="no", in_bom="yes", lib_id="Device:R",
-         fp=FP, pins=("1", "2")):
+         fp=FP, pins=("1", "2"), extra=()):
     pl = " ".join(f'(pin "{p}" (uuid "{uid()}"))' for p in pins)
     var = f' (variant (name "A") {variant})' if variant else ""
     return (f'(symbol (lib_id "{lib_id}") (at {at[0]} {at[1]} 0) (unit 1) (exclude_from_sim no)'
             f' (in_bom {in_bom}) (on_board yes) (dnp {dnp}) (uuid "{uid()}")'
             f' {_prop("Reference", ref)} {_prop("Value", value)} {_prop("Footprint", fp)}'
-            f' {_prop("Datasheet", "")} {pl}'
+            f' {_prop("Datasheet", "")} {" ".join(_prop(k, v) for k, v in extra)} {pl}'
             f' (instances (project "vt" (path "{path}" (reference "{ref}") (unit 1){var}))))')
 
 
@@ -82,6 +82,10 @@ def write_project(tmp, version=20260306):
         _sym(uid, "R70", "2k", rp, (10, 30), variant="(in_bom no)"),
         _sym(uid, "R71", "3k", rp, (10, 50), in_bom="no", variant="(in_bom yes)"),
         _sym(uid, "R80", "10k", rp, (20, 10), variant='(field (name "Value") (value "HV"))'),
+        _sym(uid, "R82", "10k", rp, (20, 30),
+             extra=(("MPN", "BASE-1"), ("Manufacturer", "Acme"), ("LCSC", "C1")),
+             variant=('(field (name "MPN") (value "VAR-2")) (field (name "Manufacturer") (value "Other"))'
+                      ' (field (name "LCSC") (value "C2"))')),
         _sym(uid, "#PWR1", "+5V", rp, (20, 0), lib_id="power:+5V", fp="", pins=("1",),
              variant='(field (name "Value") (value "+12V"))'),
         wire,
@@ -152,6 +156,14 @@ class AnalyzerVariantTest(_Project):
         self.assertTrue(comps["R90"]["dnp"])
         self.assertFalse(comps["R91"]["in_bom"])
         self.assertEqual(result["project_settings"]["variant"], "A")
+
+    def test_variant_applies_sourcing_fields(self):
+        base, _ = self.comps()
+        self.assertEqual((base["R82"]["mpn"], base["R82"]["manufacturer"], base["R82"]["lcsc"]),
+                         ("BASE-1", "Acme", "C1"))
+        comps, _ = self.comps("A")
+        self.assertEqual((comps["R82"]["mpn"], comps["R82"]["manufacturer"], comps["R82"]["lcsc"]),
+                         ("VAR-2", "Other", "C2"))
 
     def test_power_net_keeps_the_base_value(self):
         _comps, result = self.comps("A")
