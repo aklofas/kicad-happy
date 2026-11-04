@@ -424,12 +424,11 @@ Each entry in the `drills` array contains:
 
 ### X2 Attribute Dependency
 
-- Component analysis, net analysis, and pin connectivity **require X2 object attributes** (TO.C, TO.N, TO.P). These are only present in KiCad 6+ and other modern CAD exports that support the X2 extension.
-- KiCad 5 exports include X2 file attributes (TF, via G04 comments) but not object attributes. For KiCad 5 Gerbers, the analyzer provides layer identification and statistics but no component or net data.
+- Component analysis, net analysis and pin connectivity require X2 object attributes (`TO.C`, `TO.N`, `TO.P`), either native (`%TO…*%`) or as `G04 #@! TO…` comments (X2 output off). KiCad 5.1 and later write them; for pads KiCad writes `TO.P` and `TO.N` and no `TO.C`. Gerbers without object attributes (older KiCad, some other tools) get layer identification and statistics but no component or net data.
 
 ### Drill Interpretation
 
-- **Routing commands**: G85 (routed slot), M15/M16 (routed drilling) are not interpreted. Routed slots are not counted as holes.
+- **Routing commands**: a routed slot (`G00` move, `M15` plunge, cut, `M16` retract) counts as one hole of its tool at the plunge point; its length is not measured. A `G85` slot is not interpreted: it counts as one hole at its first point.
 - **Multiple drill files**: Some exports split PTH and NPTH into separate files, others combine them. The analyzer handles both — it parses all `.drl` files and merges results. But if a combined file has no X2 attributes and no filename hint, it defaults to `"unknown"` type.
 
 ### Cross-Layer Analysis

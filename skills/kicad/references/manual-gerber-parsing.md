@@ -204,7 +204,7 @@ for m in re.finditer(r'G04 #@! TF\.(\w+),([^*]*)\*', content):
 | `CreationDate` | `2026-02-24T01:31:01-08:00` | File generation timestamp |
 | `SameCoordinates` | `Original` | Alignment verification |
 
-### Aperture Attributes (TA) — KiCad 6+ Only
+### Aperture Attributes (TA) — KiCad 5.1+
 
 Aperture attributes classify aperture function. They appear **before** the `%AD` definition they apply to:
 
@@ -243,9 +243,9 @@ for line in lines:
 | `Conductor` | Traces | Circle diameter = trace width |
 | `NonConductor` | Non-electrical | Fiducials, logos |
 
-**KiCad 5 has no TA attributes.** Classify heuristically: small circle apertures used with D01 = traces; apertures used with D03 only = pads.
+**Gerbers without TA attributes** (KiCad 5.0 and older, some other tools): classify heuristically: small circle apertures used with D01 = traces; apertures used with D03 only = pads.
 
-### Object Attributes (TO) — KiCad 6+ Only
+### Object Attributes (TO) — KiCad 5.1+
 
 Object attributes map copper features to schematic components and nets. This is the most powerful X2 feature — it enables reverse-engineering the netlist from gerber files alone.
 
@@ -254,59 +254,71 @@ Object attributes map copper features to schematic components and nets. This is 
 ```python
 current_component = None
 current_net = None
+pending_pin = None    # (ref, pin, pin_name) waiting for the next D01/D03
+pad_ref = None        # reference from the last TO.P
 components = {}       # ref -> {pads, nets}
 pin_mappings = []     # [{ref, pin, pin_name, net}]
 
 for line in lines:
     s = line.strip()
 
-    # TO.C sets current component reference
+    # X2 output off: the same commands arrive as "G04 #@! TO.N,GND*" comments
+    if s.startswith("G04 #@! T") and not s.startswith("G04 #@! TF."):
+        s = "%" + s[8:] + ("%" if s.endswith("*") else "*%")
+
+    # TO.C sets the component of a non-pad object
     m = re.match(r'%TO\.C,([^*]*)\*%', s)
     if m:
         current_component = m.group(1)
-        if current_component not in components:
-            components[current_component] = {'pads': 0, 'nets': set()}
+        components.setdefault(current_component, {'pads': 0, 'nets': set()})
         continue
 
-    # TO.N sets current net name
+    # TO.P (ref, pin number, optional pin name) precedes each pad
+    m = re.match(r'%TO\.P,([^,]*),([^,*]*)(?:,([^*]*))?\*%', s)
+    if m:
+        pending_pin = (m.group(1), m.group(2), m.group(3) or '')
+        pad_ref = m.group(1)
+        components.setdefault(pad_ref, {'pads': 0, 'nets': set()})
+        continue
+
+    # TO.N sets the current net; an empty net is a pad that connects to nothing
     m = re.match(r'%TO\.N,([^*]*)\*%', s)
     if m:
         current_net = m.group(1)
-        if current_component and current_component in components:
-            components[current_component]['nets'].add(current_net)
+        owner = current_component or pad_ref
+        if current_net and owner:
+            components[owner]['nets'].add(current_net)
         continue
 
-    # TO.P records pin mapping (ref, pin_number, pin_name)
-    m = re.match(r'%TO\.P,([^,]*),([^,*]*)(?:,([^*]*))?\*%', s)
-    if m:
-        pin_mappings.append({
-            'ref': m.group(1),
-            'pin': m.group(2),
-            'pin_name': m.group(3) or '',
-            'net': current_net or '',
-        })
-        continue
-
-    # TD clears all object attributes
+    # TD clears all object attributes, TD.P only the pin
     if s == '%TD*%':
-        current_component = None
-        current_net = None
+        current_component = current_net = pending_pin = pad_ref = None
+        continue
+    if s == '%TD.P*%':
+        pending_pin = pad_ref = None
         continue
 
-    # On flash (D03), count pad for current component
-    if 'D03' in s and current_component and current_component in components:
-        components[current_component]['pads'] += 1
+    # The pin is recorded at the flash or draw it is attached to, with the current net
+    if pending_pin and ('D03' in s or 'D01' in s):
+        pin_mappings.append({'ref': pending_pin[0], 'pin': pending_pin[1],
+                             'pin_name': pending_pin[2], 'net': current_net or ''})
+        pending_pin = None
+
+    # On flash (D03), count a pad for the owner
+    owner = current_component or pad_ref
+    if 'D03' in s and owner:
+        components[owner]['pads'] += 1
 ```
 
 **Important state management rules:**
-- `%TO.C,R1*%` sets component context — all subsequent features belong to R1
-- `%TO.N,GND*%` sets net context — often changes within the same component
-- `%TO.P,R1,1,PAD*%` records a pin mapping — pin 1 of R1 is named "PAD"
-- `%TD*%` clears ALL TO attributes — resets component, net, and pin
-- The same component may appear multiple times (e.g., different pads on different draw passes)
-- TO attributes appear on **copper layers only** — mask/paste/silk layers don't have them
+- `TO.P` then `TO.N` precede each flashed pad (KiCad writes no `TO.C` for pads): the pad belongs to the `TO.P` reference, and its net is the `TO.N` that follows.
+- `TO.C` names the component of a non-pad object.
+- Record a pin's net at the flash or draw it is attached to, not when `TO.P` is read.
+- `%TD*%` clears all object attributes.
+- An empty `TO.N` is a pad that connects to nothing.
+- TO attributes are on copper layers only.
 
-**KiCad 5 has no TO attributes.** Component and net mapping requires the `.kicad_pcb` source file.
+**Gerbers without TO attributes** (KiCad 5.0 and older, some other tools): component and net mapping requires the `.kicad_pcb` source file.
 
 ### Component Side Detection
 
@@ -516,7 +528,7 @@ Some fabs prefer Protel-style extensions:
 
 ## Gerber Job File (.gbrjob)
 
-**KiCad 6+ only.** JSON format with board metadata. Parse before individual gerbers — it's the most reliable source for board dimensions, layer count, and design rules.
+**KiCad 5.1+.** JSON format with board metadata. Parse before individual gerbers — it's the most reliable source for board dimensions, layer count, and design rules.
 
 ```python
 import json
@@ -549,7 +561,7 @@ for layer in job.get('MaterialStackup', []):
     material = layer.get('Material', '')    # "FR4", etc.
 ```
 
-**When .gbrjob is absent (KiCad 5):**
+**When .gbrjob is absent (KiCad 5.0 and older, other tools):**
 - Board dimensions: compute from Edge.Cuts gerber coordinate bounding box
 - Layer count: count inner copper gerber files + 2 (F.Cu + B.Cu), or check drill `TF.FileFunction` layer span
 - Design rules: not available from gerber files; check `.kicad_pro` source
@@ -560,7 +572,7 @@ for layer in job.get('MaterialStackup', []):
 
 ### What Can Be Verified from Gerbers Alone
 
-| Check | KiCad 5 | KiCad 6+ |
+| Check | Without X2 / job file | With X2 and job file (KiCad 5.1+) |
 |-------|---------|----------|
 | Board dimensions | Edge.Cuts extents | .gbrjob or Edge.Cuts |
 | Layer count | Inner copper file count + drill span | .gbrjob or same |

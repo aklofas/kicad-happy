@@ -10,7 +10,7 @@ This reference covers parsing Gerber (RS-274X) and Excellon drill files for anal
 4. [Layer Identification](#layer-identification)
 5. [Gerber Attributes (X2)](#gerber-attributes-x2)
 6. [Excellon Drill Format](#excellon-drill-format)
-7. [Gerber Job File](#gerber-job-file-gbrjob--kicad-6-only)
+7. [Gerber Job File](#gerber-job-file-gbrjob--kicad-51)
 8. [Analysis Techniques](#analysis-techniques)
 
 ---
