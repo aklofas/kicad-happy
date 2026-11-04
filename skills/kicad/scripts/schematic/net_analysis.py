@@ -294,6 +294,67 @@ def _is_ic_supply_input_net(net_info: dict, comp_lookup: dict, ref_pins: dict) -
         for p in ic_pins)
 
 
+# A passive-typed IC pin is a supply by its whole name only (VCC, AVDD_PLL, VIN2, V+);
+# a token match would take OSC_IN or V1.
+_SUPPLY_PIN_FULL_NAME = re.compile(
+    r'(?:[ADP]|IO)?V(?:CC|DD)[A-Z0-9]*|[AP]?VIN\d*|V(?:BAT|BATT|BUS|SUP|SYS|PWR|S|M)\d*|V\+')
+
+
+def topology_rail_nets(nets: dict[str, dict], comp_lookup: dict[str, dict], ref_pins: dict,
+                       is_rail, is_ground) -> frozenset[str]:
+    """Named nets that are supply rails by their pins, whatever their name.
+
+    Every IC pin on the net is a supply input or a power output, and a capacitor goes to
+    ground. A pin typed passive counts as a supply by its name (VCC, VDD, VIN); other
+    passive pins are allowed only beside a pin KiCad types as power (a load-switch FET
+    drawn as an IC). A reference node (REF in the name) and a net with a resistor to
+    ground (a divider midpoint) stay signals."""
+    def far_net(ref: str, net: str) -> str | None:
+        others = {n for n, _ in ref_pins.get(ref, {}).values() if n != net}
+        return next(iter(others)) if len(others) == 1 else None
+
+    found = set()
+    for name, info in nets.items():
+        if (name.startswith("__unnamed_") or is_rail(name) or is_ground(name)
+                or any("REF" in t for t in _name_tokens(name.rsplit("/", 1)[-1]))):
+            continue
+        typed_supply = named_supply = untyped_other = 0
+        cap_to_ground = False
+        for p in info.get("pins", []):
+            ref = p.get("component") or ""
+            kind = (comp_lookup.get(ref) or {}).get("type")
+            if kind == "ic":
+                ptype = str(p.get("pin_type") or "").split("+")[0]
+                pname = p.get("pin_name") or ""
+                tokens = _name_tokens(pname)
+                excluded = ("".join(tokens).startswith(_NOT_SUPPLY_PIN_PREFIXES)
+                            or any(t in _NOT_SUPPLY_PIN_NAMES for t in tokens))
+                if ptype == "power_out" and not excluded:
+                    typed_supply += 1
+                elif "".join(tokens) == "VS" and _has_bootstrap_pin(ref, ref_pins):
+                    break
+                elif ptype == "power_in" and _is_supply_pin_name(pname):
+                    typed_supply += 1
+                elif (ptype in ("passive", "unspecified", "") and _SUPPLY_PIN_FULL_NAME.fullmatch(
+                        re.sub(r'[^0-9A-Z+]', '', unescape_string(pname).upper()))):
+                    named_supply += 1
+                elif ptype in ("passive", "unspecified", "") and not excluded:
+                    untyped_other += 1
+                else:
+                    break
+            elif kind in ("capacitor", "resistor"):
+                far = far_net(ref, name)
+                if kind == "capacitor" and far and is_ground(far):
+                    cap_to_ground = True
+                elif kind == "resistor" and far and is_ground(far):
+                    break
+        else:
+            if (cap_to_ground and (typed_supply or named_supply)
+                    and (typed_supply or not untyped_other)):
+                found.add(name)
+    return frozenset(found)
+
+
 def _classify_nets(ctx: AnalysisContext) -> dict:
     """Classify all nets by type (ground, power, clock, data, etc.)."""
     nets = ctx.nets

@@ -136,13 +136,17 @@ class AnalysisContext:
     project_dir: str | None = field(default=None, repr=False)
     diagnostics: list = field(default_factory=list, repr=False)
     pin_guarded_signals: frozenset = field(default_factory=frozenset, repr=False)
+    topology_rails: frozenset = field(default_factory=frozenset, repr=False)
     rail_by_net: dict[str, float] = field(default_factory=dict, repr=False)
     rail_overrides: dict[str, float] = field(default_factory=dict, repr=False)
     rail_ignore: tuple[str, ...] = field(default=(), repr=False)
     parallel_group_cache: dict = field(default_factory=dict, init=False, repr=False, compare=False)
 
-    def is_power_net(self, name: str | None) -> bool:
-        return name not in self.pin_guarded_signals and is_power_net_name(name, self.known_power_rails)
+    def is_power_net(self, name: str | None, *, by_pins: bool = True) -> bool:
+        """*by_pins* False leaves out the rails known only by their pins (``topology_rails``)."""
+        return name not in self.pin_guarded_signals and (
+            is_power_net_name(name, self.known_power_rails)
+            or (by_pins and name in self.topology_rails))
 
     def is_ground(self, name: str | None) -> bool:
         return is_ground_name(name, self.known_power_rails)
@@ -238,6 +242,9 @@ def build_analysis_context(components: list[dict], nets: dict[str, dict], lib_sy
             if isinstance(v, (int, float)) and not isinstance(v, bool)}
         ctx.rail_ignore = tuple(
             p for p in (power_rails_config.get("ignore") or ()) if isinstance(p, str))
+    from schematic.net_analysis import topology_rail_nets  # local: net_analysis imports this module
+    ctx.topology_rails = topology_rail_nets(
+        nets, comp_lookup, ctx.ref_pins, ctx.is_power_net, ctx.is_ground)
     from netlist_queries import NetlistQueries  # local: netlist_queries annotates with this class
     ctx.nq = NetlistQueries(ctx)
     return ctx

@@ -25,7 +25,7 @@ from kicad_core.netnames import (
     net_leaf,
     parse_voltage_from_net_name as _parse_voltage_from_net_name,
 )
-from kicad_core.netquery import build_bridge_facts, build_ref_pins, tie_conductors
+from kicad_core.netquery import build_bridge_facts, build_ref_pins, conductor_of, tie_conductors
 from kicad_types import AnalysisContext
 from finding_schema import make_provenance, make_finding, Det
 from detector_helpers import index_two_pin_components, get_components_by_type, get_unique_ics
@@ -1353,9 +1353,10 @@ def detect_current_sense(ctx: AnalysisContext) -> list[dict]:
                 continue
         if s_n1 == s_n2:
             continue
-        # Skip if both nets are power/ground (bulk decoupling, not sensing)
-        s1_pwr_or_gnd = ctx.is_ground(s_n1) or ctx.is_power_net(s_n1)
-        s2_pwr_or_gnd = ctx.is_ground(s_n2) or ctx.is_power_net(s_n2)
+        # Skip if both nets are power/ground (bulk decoupling, not sensing). A rail known
+        # only by its pins is a sense side here: a shunt feeding one is still a shunt.
+        s1_pwr_or_gnd = ctx.is_ground(s_n1) or ctx.is_power_net(s_n1, by_pins=False)
+        s2_pwr_or_gnd = ctx.is_ground(s_n2) or ctx.is_power_net(s_n2, by_pins=False)
         if s1_pwr_or_gnd and s2_pwr_or_gnd:
             continue
 
@@ -1370,8 +1371,8 @@ def detect_current_sense(ctx: AnalysisContext) -> list[dict]:
 
         # Treat power nets the same as GND — they connect to many ICs
         # through power pins and would cause the same false positive flood.
-        side1_is_pwr = ctx.is_ground(s_n1) or ctx.is_power_net(s_n1)
-        side2_is_pwr = ctx.is_ground(s_n2) or ctx.is_power_net(s_n2)
+        side1_is_pwr = ctx.is_ground(s_n1) or ctx.is_power_net(s_n1, by_pins=False)
+        side2_is_pwr = ctx.is_ground(s_n2) or ctx.is_power_net(s_n2, by_pins=False)
         has_pwr_side = side1_is_pwr or side2_is_pwr
 
         comps_on_n1 = set()
@@ -4445,9 +4446,6 @@ def audit_rail_sources(ctx: AnalysisContext,
     # A net tie joins its nets into one conductor: a rail tied to a sourced net is sourced.
     ties = tie_conductors(bridge_facts)
 
-    def _conductor(net_name: str) -> list[str]:
-        return sorted(ties.get(net_name, (net_name,)))
-
     def _has_direct_source(net_info: dict, net_name: str) -> bool:
         # Direct power_out pin anywhere on the net, OR an explicit PWR_FLAG
         # tied to it, OR the rail is a regulator output.
@@ -4479,7 +4477,7 @@ def audit_rail_sources(ctx: AnalysisContext,
             continue
         if is_ground_name(net_name):
             continue  # ground handled elsewhere
-        conductor = _conductor(net_name)
+        conductor = conductor_of(ties, net_name)
         if any(_has_direct_source(nets.get(n, {}), n) for n in conductor):
             continue  # sourced directly or through a net tie, nothing to report
 
@@ -4491,7 +4489,7 @@ def audit_rail_sources(ctx: AnalysisContext,
             neighbour_info = nets.get(neighbour, {})
             if not neighbour_info:
                 continue
-            if any(_has_direct_source(nets.get(n, {}), n) for n in _conductor(neighbour)):
+            if any(_has_direct_source(nets.get(n, {}), n) for n in conductor_of(ties, neighbour)):
                 if state == "bridged":
                     bridged_sources.append((neighbour, jref))
                 else:  # open
@@ -4823,7 +4821,7 @@ def audit_power_pin_dc_paths(ctx: AnalysisContext,
             # at the ground reference — they don't need a path to a positive
             # power rail. Flagging them would be a false positive.
             # A net tied to ground is ground too (one conductor).
-            if any(ctx.is_ground(n) for n in ties.get(net_name, (net_name,))):
+            if any(ctx.is_ground(n) for n in conductor_of(ties, net_name)):
                 continue
 
             if _is_bootstrap_pin_name(pin_name):

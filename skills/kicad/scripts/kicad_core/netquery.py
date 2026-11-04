@@ -1,4 +1,4 @@
-"""Pin/net index primitives (kicad_core): the net-id map helper, the pin and reference index builders, and the bridge facts (BridgeFact, BridgeFacts, build_bridge_facts)."""
+"""Pin/net index primitives (kicad_core): the net-id map helper, the pin and reference index builders, and the bridge facts (BridgeFact, BridgeFacts, build_bridge_facts) and the net-tie conductors (tie_conductors, conductor_of)."""
 
 from collections import Counter
 from dataclasses import dataclass
@@ -161,3 +161,8 @@ def tie_conductors(bridge_facts: BridgeFacts) -> dict[str, frozenset[str]]:
     for n in parent:
         groups.setdefault(root(n), set()).add(n)
     return {n: frozenset(groups[root(n)]) for n in parent}
+
+
+def conductor_of(ties: dict[str, frozenset[str]], net: str) -> tuple[str, ...]:
+    """The nets one conductor with *net* through net ties (``tie_conductors``), sorted."""
+    return tuple(sorted(ties.get(net, (net,))))

@@ -97,6 +97,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The Action's nonzero-exit notice for EMC and thermal no longer says the analyzer reported blocking findings. (KH-852)
 - PCB `--full` point-in-fill queries test only nearby fill edges: same results, much faster on boards with large pours.
 - A pin whose type is no-connect is a net of its own, as in KiCad, in legacy `.sch` files too: a wire, label or other pin on it no longer joins it to a net, and ERC reports it once per point as `no_connect_connected`. (KH-685)
+- A net whose pins make it a supply (only IC supply pins and power outputs, with a capacitor to ground) now counts as a power rail whatever its name. Supplies named like `CAN_VCC_PROTECTED` or `4.5V-28V IN` get decoupling records, lose false RC filters made from pull-ups, and no longer raise "no DC path to a power rail". A net with REF in its name or a resistor to ground stays a signal, and VM-001 and current-sense detection still read rails by name. (KH-894, KH-877)
 
 ### Added
 

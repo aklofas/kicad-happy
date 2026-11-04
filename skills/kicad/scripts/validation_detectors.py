@@ -470,7 +470,10 @@ def _ic_rail_voltage(ctx: AnalysisContext, ref: str) -> tuple[float | None, bool
     def pin_voltage(net):
         return ctx.rail_voltage_or(net, parse_voltage_from_net_name)
 
-    pins = ctx.ref_pins.get(ref, {})
+    # A rail known only by its pins is often a core or PLL supply; the first one by pin
+    # order is not the IC's I/O level.
+    pins = {num: entry for num, entry in ctx.ref_pins.get(ref, {}).items()
+            if entry[0] not in ctx.topology_rails}
     # A supply on an ignored rail has an unknown voltage; the IC's other supply does not
     # stand in for it.
     if any(net and ctx.is_power_net(net) and not ctx.is_ground(net) and ctx.rail_ignored(net)
