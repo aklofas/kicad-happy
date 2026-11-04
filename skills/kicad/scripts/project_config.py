@@ -484,13 +484,12 @@ def matches_suppression(finding: Dict[str, Any],
         finding_nets = finding.get('nets', [])
         if not finding_nets:
             return False
-        # finding nets may carry sheet-qualified keys
-        # (/<sheet>/<name>); fall back to matching the bare tail so
-        # existing suppression patterns written against bare names
-        # still apply.
+        # finding nets may carry KiCad's sheet path (/<name> on the root
+        # sheet, /<sheet>/<name> below it); fall back to matching the bare
+        # tail so suppression patterns written against bare names apply.
         def _net_candidates(fn: str) -> set:
             candidates = {fn}
-            if fn.startswith("/") and fn.count("/") >= 2:
+            if fn.startswith("/"):
                 candidates.add(fn.rsplit("/", 1)[-1])
             # A pattern written against the shown name (D1/TX) still
             # matches the escaped net name (D1{slash}TX).

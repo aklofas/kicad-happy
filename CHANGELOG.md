@@ -255,6 +255,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The Deep Review gate no longer verifies a quote that starts or ends inside a comma-grouped number: "500 mA" against "1,500 mA" is quarantined.
 - The Deep Review gate records a finding that cites a computation as `evidence_checked: partial`, since it checks that the script exists but never runs it; `full` now means every source was checked.
 - The Deep Review gate quarantines a pin citation that names a pin its component does not have (`U3.99`) or that is not `REF.PIN` (`U3`); a pin number or name from the analyzer JSON passes.
+- A suppression that names a net matches it on the root sheet too (`/NAME`).
 
 ### Documentation
 

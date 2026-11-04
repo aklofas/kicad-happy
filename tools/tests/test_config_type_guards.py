@@ -36,6 +36,12 @@ class SuppressionStringTest(unittest.TestCase):
         self.assertFalse(matches_suppression({"rule_id": "DC-001", "nets": ["GND"]}, sup))
         self.assertTrue(matches_suppression({"rule_id": "DC-001", "nets": ["+3V3"]}, sup))
 
+    def test_bare_net_pattern_matches_the_root_sheet_net(self):
+        sup = {"rule_id": "DC-001", "nets": "NAME"}
+        self.assertTrue(matches_suppression({"rule_id": "DC-001", "nets": ["/NAME"]}, sup))
+        self.assertTrue(matches_suppression({"rule_id": "DC-001", "nets": ["/Sheet/NAME"]}, sup))
+        self.assertFalse(matches_suppression({"rule_id": "DC-001", "nets": ["/OTHER"]}, sup))
+
     def test_validator_wraps_a_string_and_warns(self):
         cfg, err = _load({"suppressions": [{"rule_id": "TS-001", "components": "Q9*"}]})
         self.assertEqual(cfg["suppressions"], [{"rule_id": "TS-001", "components": ["Q9*"]}])
