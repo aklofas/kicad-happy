@@ -4393,6 +4393,10 @@ def detect_solder_jumpers(ctx: AnalysisContext) -> list[dict]:
 # Rail source audit (RS-001 / RS-002)
 # ---------------------------------------------------------------------------
 
+_SWITCH_INPUT_PINS = frozenset({"VIN", "IN", "INPUT", "VI"})
+_SWITCH_OUTPUT_PINS = frozenset({"VOUT", "OUT", "OUTPUT", "VO"})
+
+
 def audit_rail_sources(ctx: AnalysisContext,
                        power_regulators: list[dict] | None = None,
                        solder_jumpers: list[dict] | None = None,
@@ -4460,7 +4464,37 @@ def audit_rail_sources(ctx: AnalysisContext,
             comp = p.get("component") or ""
             if comp.startswith("#FLG"):
                 return True
-        return net_name in reg_output_nets
+        return net_name in reg_output_nets or net_name in switch_output_nets
+
+    # A load or USB power switch passes its input rail on: its output net is
+    # sourced when its input conductor is. Chains of switches settle in a few passes.
+    switch_pins: list[tuple[str, str]] = []  # (input net, output net)
+    switch_refs = {c["reference"] for c in ctx.components
+                   if c.get("type") == "ic"
+                   and any(k in (c.get("lib_id", "") + " " + c.get("value", "")).lower()
+                           for k in LOAD_SWITCH_KEYWORDS)}
+    if switch_refs:
+        by_ref: dict[str, dict[str, set[str]]] = {}
+        for net_name, net_info in nets.items():
+            for p in net_info.get("pins", []):
+                if p.get("component") in switch_refs:
+                    base = (p.get("pin_name") or "").upper().rstrip("0123456789_")
+                    side = ("in" if base in _SWITCH_INPUT_PINS
+                            else "out" if base in _SWITCH_OUTPUT_PINS else None)
+                    if side:
+                        by_ref.setdefault(p["component"], {"in": set(), "out": set()})[side].add(net_name)
+        for sides in by_ref.values():
+            switch_pins += [(i, o) for i in sorted(sides["in"]) for o in sorted(sides["out"])]
+    switch_output_nets: set[str] = set()
+    for _ in range(len(switch_pins)):
+        grew = False
+        for in_net, out_net in switch_pins:
+            if out_net not in switch_output_nets and any(
+                    _has_direct_source(nets.get(n, {}), n) for n in conductor_of(ties, in_net)):
+                switch_output_nets.add(out_net)
+                grew = True
+        if not grew:
+            break
 
     def _power_rail(net_name: str, net_info: dict) -> bool:
         # "Power rail" = named like a rail OR has a power_in pin on it that is
