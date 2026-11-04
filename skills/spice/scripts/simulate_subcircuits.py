@@ -168,7 +168,12 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
         workdir = tempfile.mkdtemp(prefix="spice_sim_")
         cleanup_workdir = True
     else:
+        if os.path.islink(workdir):
+            raise ValueError(f"workdir {workdir} is a symlink")
         os.makedirs(workdir, exist_ok=True)
+    # Benches go into a new private folder, so files a project left in a reused
+    # workdir are never written through or sourced by the simulator
+    run_dir = workdir if cleanup_workdir else tempfile.mkdtemp(prefix="spice_sim_", dir=workdir)
 
     sim_diagnostics: list = []  # Monte Carlo trials add only records the nominal runs lack
 
@@ -277,9 +282,9 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
         """Simulate a batch of detections — shared by signal_analysis and top-level loops."""
         for i, det in enumerate(detections):
             label = _make_label(det_type, det, i)
-            cir_file = os.path.join(workdir, f"{label}.cir")
-            out_file = os.path.join(workdir, f"{label}.out")
-            log_file = os.path.join(workdir, f"{label}.log")
+            cir_file = os.path.join(run_dir, f"{label}.cir")
+            out_file = os.path.join(run_dir, f"{label}.out")
+            log_file = os.path.join(run_dir, f"{label}.log")
 
             # Nominal simulation
             result, elapsed = _run_single_sim(
@@ -324,9 +329,9 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
                 if components:
                     mc_results_list = []
                     sampled_values_list = []
-                    mc_cir = os.path.join(workdir, f"{label}_mc.cir")
-                    mc_out = os.path.join(workdir, f"{label}_mc.out")
-                    mc_log = os.path.join(workdir, f"{label}_mc.log")
+                    mc_cir = os.path.join(run_dir, f"{label}_mc.cir")
+                    mc_out = os.path.join(run_dir, f"{label}_mc.out")
+                    mc_log = os.path.join(run_dir, f"{label}_mc.log")
 
                     trial_sink = OnceSink(sim_diagnostics)
                     seeded = len(trial_sink)
@@ -394,7 +399,7 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
 
     report = build_report(results)
     report["diagnostics"] = sim_diagnostics + report["diagnostics"]
-    report["workdir"] = workdir
+    report["workdir"] = run_dir
     report["total_elapsed_s"] = round(total_time, 3)
     report["simulator"] = find_ngspice() or None
     report["ngspice"] = report["simulator"]  # backward compat alias
@@ -646,6 +651,11 @@ def main(argv: list[str] | None = None) -> int:
         from spice_model_cache import ModelOptions
         model_options = ModelOptions(cache_dir=args.model_cache_dir, offline=args.offline,
                                      trust_project_models=trust_project_models)
+
+    if workdir and os.path.islink(workdir):
+        print(f"Error: --workdir {workdir} is a symlink; refusing to write SPICE files "
+              f"through it.", file=sys.stderr)
+        return 1
 
     # Run simulations
     report = simulate_subcircuits(

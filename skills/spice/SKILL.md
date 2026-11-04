@@ -57,8 +57,8 @@ python3 <kicad-skill-path>/scripts/analyze_schematic.py design.kicad_sch --analy
 
 Pass `--analysis-dir analysis/` — the script auto-resolves `schematic.json`
 from the manifest's current run, writes `spice.json` into the same run
-folder, and parks intermediate `.cir` / `.raw` files at
-`<run>/spice_work/` by default.
+folder, and parks intermediate `.cir` / `.raw` files in a new
+`spice_sim_*` folder under `<run>/spice_work/` by default.
 
 ```bash
 # Recommended: auto-resolve schematic + write spice.json into the current run
@@ -70,7 +70,7 @@ python3 <skill-path>/scripts/simulate_subcircuits.py analysis.json --output sim_
 # Simulate specific types only
 python3 <skill-path>/scripts/simulate_subcircuits.py --analysis-dir analysis/ --types rc_filters,voltage_dividers
 
-# Keep simulation files for debugging (default: <run>/spice_work/ when --analysis-dir is set, else a temp dir)
+# Keep simulation files for debugging in a new spice_sim_* folder inside the directory (default: <run>/spice_work/ when --analysis-dir is set, else a temp dir)
 python3 <skill-path>/scripts/simulate_subcircuits.py --analysis-dir analysis/ --workdir ./spice_runs
 
 # Increase timeout for complex circuits (default: 5s per subcircuit)
@@ -235,7 +235,7 @@ Check the `note` field first. Common causes:
 | "Testbench generation failed: KeyError" | Analyzer detection is missing expected fields | Check analyzer JSON — the detection may be incomplete |
 | "ngspice/ltspice/xyce failed: ..." | Simulator error | Check `.log` file for error messages |
 
-When debugging, use `--workdir` to preserve simulation files. The `.cir` file is a standard SPICE netlist that can be run manually (`ngspice -b file.cir`, or opened in LTspice/Xyce). The `.log` file contains simulator stdout/stderr.
+When debugging, use `--workdir` to preserve simulation files (each run writes them into a new `spice_sim_*` folder inside it). The `.cir` file is a standard SPICE netlist that can be run manually (`ngspice -b file.cir`, or opened in LTspice/Xyce). The `.log` file contains simulator stdout/stderr.
 
 ## Presenting Results to Users
 

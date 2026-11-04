@@ -46,13 +46,14 @@ class SpiceFailureTest(unittest.TestCase):
     def test_testbench_is_utf8_under_an_ascii_locale(self):
         with tempfile.TemporaryDirectory() as tmp:
             # Like ngspice, the fake echoes the testbench (its title carries the value) to stdout.
-            r, report, wd = _simulate(tmp, 'cat "$2"\nexit 0\n', {"LC_ALL": "C", "LANG": "C",
+            r, report, wd = _simulate(tmp, 'cat "$3"\nexit 0\n', {"LC_ALL": "C", "LANG": "C",
                                                        "PYTHONUTF8": "0", "PYTHONCOERCECLOCALE": "0"})
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertNotIn("Traceback", r.stderr)
-            cirs = [n for n in os.listdir(wd) if n.endswith(".cir")]
+            run_dir = report["workdir"]
+            cirs = [n for n in os.listdir(run_dir) if n.endswith(".cir")]
             self.assertTrue(cirs)
-            with open(os.path.join(wd, cirs[0]), encoding="utf-8") as f:
+            with open(os.path.join(run_dir, cirs[0]), encoding="utf-8") as f:
                 self.assertIn(VALUE, f.read())
 
     def test_failed_run_is_a_skip_without_a_diagnostic(self):

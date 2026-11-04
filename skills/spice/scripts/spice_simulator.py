@@ -110,7 +110,7 @@ class NgspiceBackend(SimulatorBackend):
             return False, "", "ngspice not found"
         try:
             result = subprocess.run(
-                [binary, "-b", cir_file],
+                [binary, "-n", "-b", cir_file],
                 capture_output=True, text=True, encoding="utf-8", errors="replace",
                 timeout=timeout, cwd=cwd,
             )

@@ -62,7 +62,7 @@ class WorkdirTest(unittest.TestCase):
                 ss.simulate_subcircuits(analysis, workdir=wd)
             self.assertTrue(calls)
             for cmd, kw in calls:
-                self.assertEqual(os.path.normpath(kw["cwd"]), os.path.normpath(wd))
+                self.assertEqual(os.path.normpath(os.path.dirname(kw["cwd"])), os.path.normpath(wd))
                 self.assertEqual(cmd[-1], os.path.basename(cmd[-1]))
                 self.assertTrue(cmd[-1].endswith(".cir"))
 
@@ -87,7 +87,7 @@ class WorkdirTest(unittest.TestCase):
                 os.chdir(old)
             self.assertTrue(calls)
             for cmd, kw in calls:
-                self.assertEqual(kw["cwd"], here)
+                self.assertEqual(os.path.dirname(kw["cwd"]), here)
 
     @unittest.skipUnless(shutil.which("ngspice"), "ngspice not installed")
     def test_space_in_workdir_same_as_without(self):
@@ -115,6 +115,72 @@ class WorkdirTest(unittest.TestCase):
                  analysis, "--workdir", os.path.join(tmp, "w"), "--compact"],
                 capture_output=True, text=True, cwd=tmp, env=env)
             self.assertGreaterEqual(json.loads(r.stdout)["summary"]["pass"], 1, r.stderr)
+
+    def test_ngspice_skips_init_files(self):
+        import simulate_subcircuits as ss
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(_analysis(tmp), encoding="utf-8") as f:
+                analysis = json.load(f)
+            calls = []
+
+            def fake(cmd, **kw):
+                calls.append(cmd)
+                return subprocess.CompletedProcess(cmd, 0, "", "")
+            with mock.patch("spice_simulator.subprocess.run", side_effect=fake), \
+                     mock.patch("spice_simulator.NgspiceBackend.find", return_value=FAKE_NGSPICE):
+                ss.simulate_subcircuits(analysis, workdir=os.path.join(tmp, "w"))
+            self.assertTrue(calls)
+            for cmd in calls:
+                self.assertEqual(cmd[1:3], ["-n", "-b"])
+
+    @unittest.skipUnless(shutil.which("ngspice"), "ngspice not installed")
+    def test_project_spiceinit_is_not_read(self):
+        from spice_simulator import NgspiceBackend
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, ".spiceinit").write_text("echo SPICEINIT-SENTINEL\n", encoding="utf-8")
+            Path(tmp, "t.cir").write_text("* t\nV1 a 0 1\nR1 a 0 1k\n.op\n.end\n", encoding="utf-8")
+            ok, out, err = NgspiceBackend().run("t.cir", cwd=tmp)
+            self.assertTrue(ok)
+            self.assertNotIn("SPICEINIT-SENTINEL", out + err)
+
+    @unittest.skipIf(os.name == "nt", "needs symlinks")
+    def test_planted_links_in_a_reused_workdir_are_not_written(self):
+        import simulate_subcircuits as ss
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(_analysis(tmp), encoding="utf-8") as f:
+                analysis = json.load(f)
+            victim = os.path.join(tmp, "victim")
+            Path(victim).write_text("keep", encoding="utf-8")
+            wd = os.path.join(tmp, "wd")
+            os.makedirs(wd)
+            for ext in (".cir", ".log"):
+                os.symlink(victim, os.path.join(wd, "rc-filter_R1_C1" + ext))
+
+            def fake(cmd, **kw):
+                return subprocess.CompletedProcess(cmd, 0, "", "")
+            with mock.patch("spice_simulator.subprocess.run", side_effect=fake), \
+                     mock.patch("spice_simulator.NgspiceBackend.find", return_value=FAKE_NGSPICE):
+                report = ss.simulate_subcircuits(analysis, workdir=wd)
+            self.assertEqual(Path(victim).read_text(encoding="utf-8"), "keep")
+            self.assertEqual(os.path.dirname(report["workdir"]), wd)
+            self.assertTrue(os.path.basename(report["workdir"]).startswith("spice_sim_"))
+            self.assertTrue(os.path.isfile(os.path.join(report["workdir"], "rc-filter_R1_C1.cir")))
+
+    @unittest.skipIf(os.name == "nt", "needs symlinks")
+    def test_a_workdir_that_is_a_symlink_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            analysis = _analysis(tmp)
+            target = os.path.join(tmp, "target")
+            os.makedirs(target)
+            link = os.path.join(tmp, "link")
+            os.symlink(target, link)
+            r = subprocess.run(
+                [sys.executable, str(SPICE / "simulate_subcircuits.py"),
+                 analysis, "--workdir", link, "--compact"],
+                capture_output=True, text=True)
+            self.assertEqual(r.returncode, 1, r.stderr)
+            self.assertIn("symlink", r.stderr)
+            self.assertEqual(os.listdir(target), [])
 
 
 if __name__ == "__main__":
