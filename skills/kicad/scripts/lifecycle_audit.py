@@ -165,5 +165,4 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    # Bare call kept: the missing-input traceback quotes this line, and that text is frozen.
-    main()
+    sys.exit(main())
