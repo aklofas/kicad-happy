@@ -483,7 +483,7 @@ Quick reference for what each analyzer produces, to ensure no analysis dimension
 | `findings[] (type: power_regulators)` | Power Regulators | topology, vref_source, estimated_vout, assumed_vref, feedback_divider, inverting |
 | `findings[] (type: voltage_dividers, is_feedback: true)` | Feedback Networks | r_top, r_bottom, ratio, mid_point_connections |
 | `findings[] (type: voltage_dividers)` | Voltage Dividers | r_top, r_bottom, ratio, top_net, mid_net, bottom_net |
-| `findings[] (type: rc_filters)` | RC/LC Filters | type (low-pass/high-pass), cutoff_hz, input_net, output_net |
+| `findings[] (type: rc_filters)` | RC/LC Filters | type (low-pass/high-pass/RC-network), cutoff_hz, input_net, output_net |
 | `findings[] (type: lc_filters)` | RC/LC Filters | resonant_hz |
 | `findings[] (type: opamp_circuits)` | Op-Amp Circuits | configuration, gain |
 | `findings[] (type: protection_devices)` | Protection Devices | type, protected_net, clamp_net |

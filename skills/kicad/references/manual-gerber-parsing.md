@@ -178,19 +178,19 @@ X2 attributes are the most valuable data in modern gerber files. They come in th
 
 ### File Attributes (TF) — All KiCad Versions
 
-File attributes identify the layer and provide metadata. **KiCad 5 and 6+ both emit them**, but in different syntax:
+File attributes identify the layer and provide metadata. **KiCad 5.1+ writes them** natively with X2 output on and as `G04 #@!` comments with X2 output off (and in older KiCad 5):
 
 ```python
 x2_attrs = {}
 
-# Modern format (KiCad 6+): %TF.Key,Value*%
+# Native form (X2 output on, KiCad 5.1+): %TF.Key,Value*%
 for m in re.finditer(r'%TF\.(\w+),([^*]*)\*%', content):
     x2_attrs[m.group(1)] = m.group(2)
 
-# KiCad 5 comment format: G04 #@! TF.Key,Value*
+# Comment form (X2 output off): G04 #@! TF.Key,Value*
 for m in re.finditer(r'G04 #@! TF\.(\w+),([^*]*)\*', content):
     key = m.group(1)
-    if key not in x2_attrs:  # Don't override modern format
+    if key not in x2_attrs:  # Don't override native form
         x2_attrs[key] = m.group(2)
 ```
 

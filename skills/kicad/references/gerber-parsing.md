@@ -217,9 +217,9 @@ With Protel extensions enabled:
 
 ### Gerber X2 File Attributes
 
-KiCad writes X2 attributes that identify the layer, but the **format differs by version**:
+KiCad 5.1+ writes X2 attributes that identify the layer, but the **syntax depends on the X2 output setting**:
 
-**KiCad 6+ (X2 directives):**
+**Native directives (X2 output on, KiCad 5.1+):**
 ```gerber
 %TF.GenerationSoftware,KiCad,Pcbnew,9.0.0*%
 %TF.CreationDate,2025-01-15T10:30:00-06:00*%
@@ -229,7 +229,7 @@ KiCad writes X2 attributes that identify the layer, but the **format differs by 
 %TF.FilePolarity,Positive*%
 ```
 
-**KiCad 5 (X2 in G04 comments):**
+**Comment form (X2 output off, and older KiCad 5):**
 ```gerber
 G04 #@! TF.GenerationSoftware,KiCad,Pcbnew,5.1.5-52549c5~84~ubuntu18.04.1*
 G04 #@! TF.CreationDate,2020-03-09T10:29:23-07:00*
@@ -239,9 +239,9 @@ G04 #@! TF.FileFunction,Copper,L1,Top*
 G04 #@! TF.FilePolarity,Positive*
 ```
 
-KiCad 5 embeds X2 attributes as structured comments (`G04 #@!`) rather than native `%TF.*%` directives. The attribute names and values are identical — only the container syntax differs. When parsing, check for both patterns:
-- `%TF.FileFunction,(.*)\\*%` (KiCad 6+)
-- `G04 #@! TF.FileFunction,(.*)\\*` (KiCad 5)
+With X2 output off KiCad embeds the attributes as structured comments (`G04 #@!`) rather than native `%TF.*%` directives. The attribute names and values are identical — only the container syntax differs. When parsing, check for both patterns:
+- `%TF.FileFunction,(.*)\\*%` (X2 output on)
+- `G04 #@! TF.FileFunction,(.*)\\*` (X2 output off, older KiCad 5)
 
 ### FileFunction Values
 
@@ -504,7 +504,7 @@ This produces the same information as the PCB netlist without needing the KiCad 
 
 #### 3. Aperture Function Classification
 
-**KiCad 6+:** Aperture attributes categorize copper features:
+**KiCad 5.1+:** Aperture attributes categorize copper features:
 
 | AperFunction | Description | What to count |
 |-------------|-------------|---------------|
@@ -620,11 +620,11 @@ Pre-submission check before sending to manufacturer:
 
 Quickly determine the KiCad version from gerber files:
 
-| Indicator | KiCad 5 | KiCad 6+ |
+| Indicator | KiCad 5 / X2 output off | KiCad 5.1+ with X2 output on |
 |-----------|---------|----------|
-| X2 attribute format | `G04 #@! TF.*` (X2 off) | `%TF.*%` |
-| Aperture attributes | `G04 #@! TA.*` (5.1) or native | `%TA.AperFunction,...*%` |
-| Object attributes | `G04 #@! TO.*` (X2 off) or native | `%TO.P,...*%`, `%TO.N,...*%`, `%TO.C,...*%` |
+| File attributes | `G04 #@! TF.*` | `%TF.*%` |
+| Aperture attributes | `G04 #@! TA.*` | `%TA.AperFunction,...*%` |
+| Object attributes | `G04 #@! TO.*` | `%TO.P,...*%`, `%TO.N,...*%`, `%TO.C,...*%` |
 | Silkscreen suffix | `_SilkS` | `_Silkscreen` |
 | Job file | `.gbrjob` from 5.1 | `.gbrjob` present |
 | Mask/paste pad openings | Regions (G36/G37) | Flashes (D03) |
