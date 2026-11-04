@@ -148,21 +148,49 @@ _OUTPUT_DRIVE_KEYWORDS: tuple[str, ...] = (
 )
 
 
+def _regulator_candidates(value: str, lib_id: str, mpn: str) -> tuple[list[str], tuple[float | None, str]]:
+    """The candidate names the Vref was taken from, and the lookup result.
+
+    Value and lib_id part name come first; the MPN is consulted only when they
+    give nothing, or when it names a longer table key (RT6150 over RT6).
+    """
+    candidates = [value.upper()]
+    if ":" in lib_id:
+        candidates.append(lib_id.split(":")[-1].upper())
+    result = _lookup_vref(candidates)
+    if mpn:
+        mpn_candidates = [mpn.upper()]
+        mpn_result = _lookup_vref(mpn_candidates)
+        if result[0] is None:
+            return mpn_candidates, mpn_result
+        if result[1] == "lookup" and mpn_result[1] == "lookup":
+            keys = [_longest_vref_key(c) or "" for c in (candidates + mpn_candidates)]
+            if len(keys[-1]) > max(len(k) for k in keys[:-1]):
+                return mpn_candidates, mpn_result
+    return candidates, result
+
+
 def lookup_regulator_vref(value: str, lib_id: str, mpn: str = "") -> tuple[float | None, str]:
     """Look up a regulator's internal Vref from its value, lib_id or MPN.
 
     Returns (vref, source) where source is "fixed_suffix" for a fixed-output
     part number, "lookup" for a table hit, or (None, "") if not found.  Tries
     the value field first (usually the part number), then the lib_id part name
-    after the colon; the MPN is consulted only when neither gives an answer.
+    after the colon; the MPN is consulted when neither gives an answer or when
+    it names a longer table key.
     """
-    candidates = [value.upper()]
-    if ":" in lib_id:
-        candidates.append(lib_id.split(":")[-1].upper())
-    vref, source = _lookup_vref(candidates)
-    if vref is None and mpn:
-        vref, source = _lookup_vref([mpn.upper()])
-    return vref, source
+    return _regulator_candidates(value, lib_id, mpn)[1]
+
+
+# A package name in a part or symbol name (_SOT-23, SOT-89-10, _TO220) is not a voltage.
+_PACKAGE_TOKEN = re.compile(
+    r'[-_]?(?:SOT|SOD|SC|TO|DFN|QFN|SON|SOIC|SOP|MSOP|SSOP|TSSOP|HTSSOP|VSSOP|TSOT|'
+    r'WSON|VSON|USON|UDFN|WDFN|XDFN|TDFN|VQFN|WQFN|LGA|BGA|DIP|PDIP|SIP|LQFP|TQFP|QFP|'
+    r'DPAK|D2PAK)[-_]?\d+(?:[-_]\d+)?')
+# A two-digit suffix that is also a common supply voltage is read both ways in
+# KiCad's library (AP7361C-12E is 1.2 V, LM1085-12 is 12 V; AP1117-15 is 1.5 V,
+# LM3480-15 is 15 V; LM341T-05 is 5 V; NID30S48-24 is 24 V), so it gives no value.
+_AMBIGUOUS_SUFFIXES = frozenset({"05", "09", "10", "12", "15", "24", "48"})
 
 
 def _lookup_vref(candidates: list[str]) -> tuple[float | None, str]:
@@ -175,9 +203,10 @@ def _lookup_vref(candidates: list[str]) -> tuple[float | None, str]:
             v = int(m.group(1))
             if v in (5, 6, 8, 9, 10, 12, 15, 18, 24):
                 return float(v), "fixed_suffix"
-    # Check for fixed-output voltage suffix (e.g., LM2596S-12, AMS1117-3.3,
-    # TLV1117LV-33, RT9013-18GV — patterns: -3.3, -33, -3V3, -1V8, -12)
+    # Check for fixed-output voltage suffix (e.g., AMS1117-3.3, TLV1117LV-33,
+    # RT9013-18GV — patterns: -3.3, -33, -3V3, -1V8)
     for candidate in candidates:
+        candidate = _PACKAGE_TOKEN.sub("", candidate)
         m = re.search(r'[-_](\d+)V(\d+)', candidate)
         if m:
             return float(f"{m.group(1)}.{m.group(2)}"), "fixed_suffix"
@@ -187,17 +216,10 @@ def _lookup_vref(candidates: list[str]) -> tuple[float | None, str]:
             if 0.5 <= fixed_v <= 60:
                 return fixed_v, "fixed_suffix"
         m = re.search(r'[-_](\d{2})(?=[^0-9.]|$)', candidate)
-        if m:
-            # Two-digit suffix: could be implicit decimal (33→3.3V) or
-            # integer voltage (12→12V, 15→15V). Check integer first for
-            # common high-voltage rails.
-            digits = m.group(1)
-            int_v = int(digits)
-            if int_v in (10, 12, 15, 24, 48):
-                return float(int_v), "fixed_suffix"
-            fixed_v = float(digits[0] + "." + digits[1])
-            if 0.5 <= fixed_v <= 9.9:
-                return fixed_v, "fixed_suffix"
+        if m and m.group(1) not in _AMBIGUOUS_SUFFIXES:
+            # A two-digit suffix is an implied decimal, as in KiCad's library:
+            # AP1117-33 is 3.3 V, LDK130-08 is 0.8 V.
+            return float(m.group(1)[0] + "." + m.group(1)[1]), "fixed_suffix"
     for candidate in candidates:
         key = _longest_vref_key(candidate)
         if key is not None:
@@ -234,13 +256,7 @@ def regulator_vref_key(value: str, lib_id: str, mpn: str = "") -> tuple[str, str
     """(key, part): the _REGULATOR_VREF key that lookup_regulator_vref takes a
     "lookup" Vref from and the value, lib_id part name or MPN it matched (same
     candidate order), or None when the Vref is not a table hit."""
-    candidates = [value.upper()]
-    if ":" in lib_id:
-        candidates.append(lib_id.split(":")[-1].upper())
-    vref, source = _lookup_vref(candidates)
-    if vref is None and mpn:
-        candidates = [mpn.upper()]
-        vref, source = _lookup_vref(candidates)
+    candidates, (vref, source) = _regulator_candidates(value, lib_id, mpn)
     if source != "lookup":
         return None
     return next((k, c) for c in candidates if (k := _longest_vref_key(c)) is not None)
