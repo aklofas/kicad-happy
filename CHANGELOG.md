@@ -110,7 +110,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Fixed
 
-- EMC rules IO-001, IO-002, BE-001 and RP-001 classify power and ground nets with the same name rules as the rest of the analyzers, as the earlier changelog entry said: rails such as `MCU3V3` and `/sheet/VCC` are power, and control nets such as `VCC_EN`, `3V3_PG` and `PWR_ON` are signals. Names the shared rules do not cover (`5V PCIE`, `PWR`, `V-`) keep their earlier classification.
+- EMC rules IO-001, IO-002, BE-001 and RP-001 classify power and ground nets with the same name rules as the rest of the analyzers, not their own shorter list: rails such as `MCU3V3` and `/sheet/VCC` are power, and control nets such as `VCC_EN`, `3V3_PG` and `PWR_ON` are signals. Names the shared rules do not cover (`5V PCIE`, `PWR`, `V-`) keep their earlier classification.
 - SW-002 sizes switching-node zone copper from the zone's fill, not its outline.
 - A capacitor marked do-not-populate no longer counts as bridging a split between reference planes (GP-001).
 - ES-001 and ES-002 now check discrete TVS diodes (SMAJ, SMBJ, PESD, ESD5Z and similar two-pin parts), which the protection detector reports as type `diode`; only ESD arrays and varistors were checked before. A discrete TVS diode whose clamp net is not a ground (one across a supply rail) gets no ES-002.
