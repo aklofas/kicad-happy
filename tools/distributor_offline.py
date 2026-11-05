@@ -30,6 +30,7 @@ import datetime as _dt
 import importlib
 import io
 import json
+import re
 import os
 import shutil
 import sys
@@ -388,7 +389,10 @@ def run_fetch(provider: str, run: str, workdir: Path, product: Path = REPO_ROOT,
 def _scrub(text: str, roots: list[tuple[str, str]]) -> str:
     for root, label in roots:
         text = text.replace(json.dumps(root)[1:-1], label).replace(root, label)
-    return text
+    # A Windows path below a root keeps its separators: write them as the goldens do
+    labels = "|".join(re.escape(label) for label in {label for _, label in roots})
+    return re.sub(rf"(?:{labels})[^\s\"']*",
+                  lambda m: m.group(0).replace("\\\\", "/").replace("\\", "/"), text)
 
 
 def render(res: RunResult, workdir: Path, fixtures: str | None = None) -> dict[str, bytes]:
@@ -446,9 +450,16 @@ def compare_run(provider: str, run: str, expected_dir, product: Path = REPO_ROOT
             diffs.append(f"{name}: unexpected artefact")
         elif have is None:
             diffs.append(f"{name}: missing artefact")
-        elif want != have:
+        elif want != have and not (name == "files.txt" and os.name == "nt"
+                                   and _names(want) == _names(have)):
             diffs.append(f"{name}: {_first_diff(want, have)}")
     return diffs
+
+
+def _names(listing: bytes) -> list[str]:
+    # The goldens record POSIX sizes; a file holding the longer Windows work path differs
+    # in size only, so on Windows files.txt compares the names.
+    return [line.rpartition(":")[0] for line in listing.decode("utf-8").splitlines()]
 
 
 def write_artefacts(arts: dict[str, bytes], out: Path) -> None:

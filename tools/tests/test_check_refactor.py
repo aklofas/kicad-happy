@@ -992,6 +992,8 @@ class FailClosedGaps(unittest.TestCase):
             snap = td / "snap"
             stats = cr.run_snapshot(fx, snap, cr.REPO_ROOT, cr.analyzer_env("0"))
             self.assertEqual(stats["failures"], [])
+            if os.path.splitdrive(str(cr.REPO_ROOT))[0].lower() != os.path.splitdrive(str(td))[0].lower():
+                self.skipTest("the repo and the temp dir are on different drives: no relative path")
             old = os.getcwd()
             os.chdir(td)
             try:

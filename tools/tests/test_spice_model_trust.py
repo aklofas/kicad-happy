@@ -181,7 +181,7 @@ class TrustFlagSourceTest(unittest.TestCase):
             captured["opts"] = kw.get("model_options")
             return {"summary": {}}
 
-        with mock.patch.dict(os.environ, {"HOME": home}), \
+        with mock.patch.dict(os.environ, {"HOME": home, "USERPROFILE": home}), \
                 mock.patch.object(spice_simulator, "detect_simulator", return_value=object()), \
                 mock.patch.object(ss, "simulate_subcircuits", fake), \
                 contextlib.redirect_stdout(io.StringIO()):

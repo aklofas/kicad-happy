@@ -555,7 +555,7 @@ class AllowPrivateTest(unittest.TestCase):
         try:
             if cwd:
                 os.chdir(cwd)
-            with mock.patch.dict(os.environ, {"HOME": home}):
+            with mock.patch.dict(os.environ, {"HOME": home, "USERPROFILE": home}):
                 return download._allow_private_hosts()
         finally:
             os.chdir(old)
@@ -579,7 +579,7 @@ class AllowPrivateTest(unittest.TestCase):
         from kicad_core.project import load_user_config
         with tempfile.TemporaryDirectory() as home:
             cfg = os.path.join(home, ".kicad-happy.json")
-            with mock.patch.dict(os.environ, {"HOME": home}):
+            with mock.patch.dict(os.environ, {"HOME": home, "USERPROFILE": home}):
                 self.assertEqual(load_user_config(), {})
                 for text in ("{not json", "[1, 2]", "\xff"):
                     with open(cfg, "w", encoding="latin-1") as f:

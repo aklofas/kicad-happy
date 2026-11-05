@@ -94,7 +94,7 @@ def stable(files):
     with tempfile.TemporaryDirectory() as tmp:
         result = analyze(files, tmp)
         (result.get("inputs") or {}).pop("run_id", None)
-        return json.dumps(result, sort_keys=True, default=str).replace(tmp, "<tmp>")
+        return json.dumps(result, sort_keys=True, default=str).replace(json.dumps(tmp)[1:-1], "<tmp>")
 
 
 class SiblingSheetOrderTest(unittest.TestCase):

@@ -377,7 +377,7 @@ class MachineOutput(unittest.TestCase):
             (d / "list.json").write_text("[]", encoding="utf-8")
             cases = (({"mpn_list": str(d / "gone.txt")},
                       f"cannot read {(d / 'gone.txt').resolve()}: [Errno 2] No such file or directory: "
-                      f"'{(d / 'gone.txt').resolve()}'"),
+                      f"{str((d / 'gone.txt').resolve())!r}"),
                      ({"input_path": str(d / "list.json")}, "Failed to analyze schematic"))
             for kw, message in cases:
                 with self.subTest(**kw):
