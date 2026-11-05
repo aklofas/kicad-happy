@@ -177,7 +177,7 @@ Reports minimum track width per power net — the current bottleneck.
 
 For each IC (`U` or `IC` reference), finds capacitors (C-prefix) within 10mm:
 - Distance from the nearest IC power or ground pad to the nearest cap pad (footprint centres when pad positions are missing)
-- Whether cap shares a net with the IC (likely decoupling)
+- Whether cap shares a net with the IC other than the IC's signal-pin nets (likely decoupling)
 - Whether cap is on the same PCB side as the IC
 - Reports closest capacitor distance per IC
 
