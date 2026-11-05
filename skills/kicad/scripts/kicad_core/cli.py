@@ -50,6 +50,18 @@ def add_config_arg(parser) -> None:
                         help="Path to .kicad-happy.json project config file")
 
 
+def utf8_stdio() -> None:
+    """Re-encode stdout and stderr as UTF-8 when they are not, so a script piped under a
+    legacy code page (Windows cp1252) neither fails on a help text's arrow or a report's
+    Ω nor hands a UTF-8 reader cp1252 bytes. Called first in each script's __main__
+    block; scripts that import nothing from the core do the same inline."""
+    import sys
+    for stream in (sys.stdout, sys.stderr):
+        enc = (getattr(stream, "encoding", None) or "").lower().replace("-", "").replace("_", "")
+        if enc != "utf8" and hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+
+
 def utf8_text_stdout() -> None:
     """For --text output: re-encode stdout as UTF-8 when it is not, so a redirect under a
     legacy code page (Windows cp1252) never fails on the report's Ω, ≤ or ≥."""

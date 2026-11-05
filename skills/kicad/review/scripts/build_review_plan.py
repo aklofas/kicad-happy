@@ -70,4 +70,6 @@ def main():
 
 
 if __name__ == "__main__":
+    from kicad_core.cli import utf8_stdio
+    utf8_stdio()
     sys.exit(main())
