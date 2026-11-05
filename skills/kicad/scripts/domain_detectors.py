@@ -263,6 +263,15 @@ def detect_key_matrices(ctx: AnalysisContext) -> list[dict]:
     return key_matrices
 
 
+# ISO anywhere, or a whole _B / _SEC token (3.3V_B, VCC_B2, 5V_SEC_OUT); V_BAT,
+# MIC_BIAS and VCCA_BR are not secondary-side rails.
+_ISOLATED_RAIL = re.compile(r'ISO|_(?:B|SEC)\d*(?=[_/]|$)')
+
+
+def _is_isolated_rail_name(net: str) -> bool:
+    return _ISOLATED_RAIL.search(net.upper()) is not None
+
+
 def detect_isolation_barriers(ctx: AnalysisContext) -> list[dict]:
     """Detect galvanic isolation domains."""
     isolation_barriers: list[dict] = []
@@ -310,9 +319,7 @@ def detect_isolation_barriers(ctx: AnalysisContext) -> list[dict]:
 
             isolated_power_rails = [
                 n for n in ctx.nets
-                if ctx.is_power_net(n) and any(
-                    k in n.upper() for k in ("ISO", "ISOL", "_B", "_SEC")
-                )
+                if ctx.is_power_net(n) and _is_isolated_rail_name(n)
             ]
 
             has_iso_evidence = (
