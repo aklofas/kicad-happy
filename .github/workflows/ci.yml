@@ -109,7 +109,7 @@ jobs:
         run: |
           git clone https://github.com/aklofas/kicad-happy-testharness.git /tmp/harness
           cd /tmp/harness
-          git checkout 28fc2f944c0
+          git checkout 808ea4971e5
 
       - name: Install harness dev deps (pytest, jsonschema, referencing, pyyaml)
         run: python -m pip install --disable-pip-version-check -r /tmp/harness/requirements-dev.txt
@@ -168,7 +168,7 @@ jobs:
         run: |
           git clone https://github.com/aklofas/kicad-happy-testharness.git /tmp/harness
           cd /tmp/harness
-          git checkout 28fc2f944c0
+          git checkout 808ea4971e5
       - name: Install harness dev deps (jsonschema, referencing)
         run: python3 -m pip install --disable-pip-version-check -r /tmp/harness/requirements-dev.txt
       - name: Install ngspice (SPICE tools tests)
@@ -206,7 +206,7 @@ jobs:
           # rejects them while building the index unless protectNTFS is off.
           git config core.protectNTFS false
           git sparse-checkout set tests/fixtures
-          git checkout 28fc2f944c0
+          git checkout 808ea4971e5
       - name: Install harness dev deps (jsonschema, referencing)
         shell: bash
         run: python -m pip install --disable-pip-version-check -r "$RUNNER_TEMP/harness/requirements-dev.txt"
