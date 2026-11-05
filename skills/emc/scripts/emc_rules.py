@@ -31,7 +31,7 @@ from emc_formulas import (
     DIFF_PAIR_PROTOCOLS, MARKET_STANDARDS,
     build_power_tree, enrich_power_tree_with_pcb,
     distributed_pdn_impedance_sweep, cross_rail_transient_current,
-    parallel_cap_impedance,
+    parallel_cap_impedance, polygon_area,
 )
 from kicad_core.parts import (
     lookup_switching_freq as _estimate_switching_freq,
@@ -47,6 +47,7 @@ from kicad_core.project import existing_source_dir
 from kicad_core.render import normalize_severity
 from kicad_core.sexp import unescape_string
 from finding_schema import Det, get_findings
+from pcb.geometry import outline_loops, point_in_outline
 
 try:
     import _core_path  # noqa: F401
@@ -1555,29 +1556,60 @@ def check_via_stitching(pcb: Dict, schematic: Optional[Dict] = None) -> List[Dic
 # Category 7: Stackup Quality
 # ---------------------------------------------------------------------------
 
-# An inner copper layer whose zone fill covers at least this share of the board's
-# bounding box is a reference plane.
+# An inner copper layer whose ground or power zone fill covers at least this share of
+# the board area is a reference plane.
 _PLANE_MIN_FILL_FRACTION = 0.25
+
+
+def _plane_fill_board_area(pcb: Dict, fill: Dict[str, float]) -> float:
+    """Board area the plane fill is measured against: the outline's bounding box, or,
+    when the file holds several boards (outer outline loops), their summed area.
+
+    The summed area never drops below the largest layer fill, so an outline the
+    analysis under-reads cannot turn a modest pour into a plane.
+    """
+    board = _safe_float((pcb.get('statistics') or {}).get('board_area_mm2'))
+    edges = (pcb.get('board_outline') or {}).get('edges') or []
+    loops = outline_loops(edges) if board > 0 and edges else None
+    if not loops or len(loops) < 2:
+        return board
+    area = 0.0
+    outer = 0
+    for i, loop in enumerate(loops):
+        others = [other for j, other in enumerate(loops) if j != i]
+        depth = sum(point_in_outline(loop[0][0], loop[0][1], [o]) for o in others)
+        if depth % 2:
+            area -= polygon_area(loop)
+        else:
+            area += polygon_area(loop)
+            outer += 1
+    if outer < 2:
+        return board
+    return min(board, max(area, max(fill.values(), default=0.0)))
 
 
 def _reference_plane_layers(pcb: Dict) -> set:
     """Copper layers that act as a reference plane.
 
     KiCad gives a new inner layer the type 'signal' whatever it carries, so an inner
-    layer with zone fill is judged by that fill: a plane when the fill of all its nets
-    together covers at least _PLANE_MIN_FILL_FRACTION of the board's bounding box. An outer
-    layer, or an inner layer with no fill, is a plane when KiCad types it 'power' or
-    'mixed' (a 'jumper' layer carries wire jumpers, not a plane).
+    layer with ground or power zone fill is judged by that fill: a plane when the fill of
+    its ground and power nets together covers at least _PLANE_MIN_FILL_FRACTION of the
+    board area (_plane_fill_board_area). An outer layer, or an inner layer with no such
+    fill, is a plane when KiCad types it 'power' or 'mixed' (a 'jumper' layer carries
+    wire jumpers, not a plane).
     """
     fill: Dict[str, float] = {}
     for zone in pcb.get('zones') or []:
-        if not isinstance(zone, dict) or zone.get('is_keepout') or not zone.get('net_name'):
+        if not isinstance(zone, dict) or zone.get('is_keepout'):
+            continue
+        net = zone.get('net_name') or ''
+        if not (is_ground_name(net) or is_emc_ground_name(net) or is_power_net_name(net)):
             continue
         for layer in zone.get('layers') or []:
             area = _zone_layer_area_mm2(zone, layer)
             if area > 0:
                 fill[layer] = fill.get(layer, 0.0) + area
-    board = _safe_float((pcb.get('statistics') or {}).get('board_area_mm2'))
+    board = _plane_fill_board_area(pcb, fill)
     planes = set()
     for layer in pcb.get('layers') or []:
         name = layer.get('name') or ''

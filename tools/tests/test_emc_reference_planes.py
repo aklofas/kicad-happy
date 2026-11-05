@@ -60,9 +60,16 @@ class FilledInnerLayersArePlanes(unittest.TestCase):
     def test_no_stripline_request_for_diff_pairs(self):
         self.assertEqual(check_diff_pair_layer(self.pcb, PAIRS), [])
 
-    def test_any_net_fill_counts(self):
-        pcb = _board(FOUR, {"In1.Cu": ("N_VDD33", 0.9), "In2.Cu": ("DBVDD", 0.9)})
-        self.assertNotIn("SU-001", [f["rule_id"] for f in check_stackup(pcb)])
+    def test_a_signal_net_pour_is_not_a_plane(self):
+        pcb = _board(FOUR, {"In1.Cu": ("HSE_IN", 0.85), "In2.Cu": ("GND", 0.9)})
+        self.assertEqual([r for r in _rules(check_stackup(pcb)) if r[0] == "SU-001"],
+                         [("SU-001", "error")])
+        self.assertEqual(len(check_clock_routing(pcb)), 1)
+
+    def test_a_filled_outer_layer_is_ignored(self):
+        pcb = _board(FOUR, {"F.Cu": ("GND", 0.9), "B.Cu": ("GND", 0.9)})
+        self.assertEqual([r for r in _rules(check_stackup(pcb)) if r[0] == "SU-001"],
+                         [("SU-001", "error")] * 3)
 
 
 class SmallPourOnInnerLayer(unittest.TestCase):
@@ -121,6 +128,35 @@ class LayerTypeFallback(unittest.TestCase):
         pcb = _board({"F.Cu": "jumper", "B.Cu": "signal"},
                      {"F.Cu": ("GND", 0.8)}, dielectrics=[1.5])
         self.assertEqual(_rules(check_stackup(pcb)), [("SU-001", "info")])
+
+
+def _square(x0, y0, side):
+    pts = [(x0, y0), (x0 + side, y0), (x0 + side, y0 + side), (x0, y0 + side)]
+    return [{"type": "line", "start": list(a), "end": list(b)}
+            for a, b in zip(pts, pts[1:] + pts[:1])]
+
+
+class SeveralBoardsInOneFile(unittest.TestCase):
+    """Two 40 mm boards side by side (bounding box 100 x 40 mm): planes covering 60 %
+    of one board are planes, though they cover 24 % of the bounding box."""
+
+    def _pcb(self, edges):
+        pcb = _board(FOUR, {"In1.Cu": ("GND", 0.0), "In2.Cu": ("+3V3", 0.0)})
+        pcb["statistics"]["board_area_mm2"] = 4000.0
+        for zone in pcb["zones"]:
+            zone["filled_area_mm2"] = 0.6 * 1600
+        pcb["board_outline"] = {"edges": edges}
+        return pcb
+
+    def test_planes_on_one_of_two_boards_count(self):
+        pcb = self._pcb(_square(0, 0, 40) + _square(60, 0, 40))
+        self.assertNotIn("SU-001", [f["rule_id"] for f in check_stackup(pcb)])
+        self.assertEqual(check_clock_routing(pcb), [])
+
+    def test_one_board_keeps_the_bounding_box(self):
+        outline = [{"type": "rect", "start": [0, 0], "end": [100, 40]}]
+        pcb = self._pcb(outline + _square(5, 5, 10))  # a cutout, not a second board
+        self.assertIn(("SU-001", "error"), _rules(check_stackup(pcb)))
 
 
 class Su002UsesTheSamePlanes(unittest.TestCase):

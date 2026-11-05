@@ -143,7 +143,7 @@ Quantitative design rules used by the EMC analyzer. Each rule has a threshold, r
 
 ### SU-001: Adjacent signal layers
 - **Severity:** info on two-layer boards, error on boards with more copper layers
-- **Threshold:** Two adjacent copper layers, neither a reference plane. An inner layer with zone fill is a plane when the fill of all its nets together covers at least 25 % of the board's bounding box, whatever its KiCad layer type (KiCad types a new inner layer `signal`). An outer layer, or an inner layer without fill, is a plane when its KiCad type is `power` or `mixed`.
+- **Threshold:** Two adjacent copper layers, neither a reference plane. An inner layer with ground or power zone fill is a plane when the fill of its ground and power nets together covers at least 25 % of the board's bounding box (of the boards' summed outline area when the file holds several boards), whatever its KiCad layer type (KiCad types a new inner layer `signal`). An outer layer, or an inner layer without ground or power fill, is a plane when its KiCad type is `power` or `mixed`.
 - **Source:** Ott, H.W. ["PCB Stack-Up."](http://www.hottconsultants.com/techtips/pcb-stack-up-2.html) hottconsultants.com — recommended 4-layer stackup is SIG/GND/PWR/SIG with tight coupling (0.1–0.2mm) between signal and adjacent reference plane.
 
 ### SU-002: Signal layer far from reference
