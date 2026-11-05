@@ -49,7 +49,35 @@ class Dp003Stitching(unittest.TestCase):
         pcb = {"layer_transitions": [_transition("USB_DP", [(0, 0)])],
                "vias": {"vias": [{"x": 0.5, "y": 0, "net_name": "GND"}]}}
         (finding,) = check_diff_pair_reference_plane(pcb, SCHEMATIC)
-        self.assertIn("within 1.0mm", finding["description"])
+        self.assertIn("within 1mm", finding["description"])
+
+    def test_without_a_via_list_the_description_says_stitching_was_not_checked(self):
+        pcb = {"layer_transitions": [_transition("USB_DP", [(0, 0)])]}
+        (finding,) = check_diff_pair_reference_plane(pcb, SCHEMATIC)
+        self.assertIn("No via list", finding["description"])
+        self.assertIn("--full", finding["description"])
+        self.assertNotIn("not all with a ground via", finding["description"])
+
+    def test_unstitched_description_with_a_via_list_names_the_radius(self):
+        pcb = {"layer_transitions": [_transition("USB_DP", [(0, 0)])],
+               "vias": {"vias": [{"x": 20, "y": 0, "net_name": "GND"}]}}
+        (finding,) = check_diff_pair_reference_plane(pcb, SCHEMATIC)
+        self.assertIn("not all with a ground via within 1mm", finding["description"])
+
+    def test_one_ground_via_can_stitch_both_signal_vias(self):
+        self.assertEqual(_severities([(0, 0), (1.5, 0)], [(0.75, 0)]), ["info"])
+
+    def test_the_radius_is_inclusive(self):
+        self.assertEqual(_severities([(0, 0)], [(1.0, 0)]), ["info"])
+        self.assertEqual(_severities([(0, 0)], [(1.01, 0)]), ["warning"])
+
+    def test_the_stated_radius_is_the_one_used(self):
+        pcb = {"setup": {"stackup": [{"type": "core", "thickness": 1.51}]},
+               "layer_transitions": [_transition("USB_DP", [(0, 0)])],
+               "vias": {"vias": [{"x": 3.0, "y": 0, "net_name": "GND"}]}}
+        (finding,) = check_diff_pair_reference_plane(pcb, SCHEMATIC)
+        self.assertEqual(finding["severity"], "info")
+        self.assertIn("within 3.02mm", finding["description"])
 
 
 if __name__ == "__main__":

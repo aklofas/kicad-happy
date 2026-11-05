@@ -2395,28 +2395,35 @@ def check_diff_pair_reference_plane(pcb: Optional[Dict],
             # Stitched when a ground via sits within RP-001's radius of every signal via;
             # without a via list nothing can be shown, so it is not stitched.
             positions = trans.get('via_positions') or []
+            has_via_list = bool((pcb.get('vias') or {}).get('vias'))
             stitched = bool(positions) and all(
                 _via_stitched(vp, gnd_vias, radius) for vp in positions)
+            lead = (f'Net {net_name} (part of {protocol} diff pair) transitions '
+                    f'across {len(layers)} layers ({", ".join(layers)}) with '
+                    f'{via_count} via(s)')
             if stitched:
                 description = (
-                    f'Net {net_name} (part of {protocol} diff pair) transitions '
-                    f'across {len(layers)} layers ({", ".join(layers)}) with '
-                    f'{via_count} via(s), each with a ground via within '
-                    f'{radius:.1f}mm. A layer change is still a DM-to-CM '
-                    f'conversion point.'
+                    f'{lead}, each with a ground via within {radius:g}mm. '
+                    f'A layer change is still a DM-to-CM conversion point.'
                 )
                 recommendation = ('Keep diff pairs on one layer where routing '
                                   'allows; the transitions are stitched.')
             else:
-                description = (
-                    f'Net {net_name} (part of {protocol} diff pair) transitions '
-                    f'across {len(layers)} layers ({", ".join(layers)}) with '
-                    f'{via_count} via(s), not all with a ground via within '
-                    f'{radius:.1f}mm. Each layer transition is a potential '
-                    f'DM-to-CM conversion point.'
-                )
+                if has_via_list and positions:
+                    description = (
+                        f'{lead}, not all with a ground via within {radius:g}mm. '
+                        f'Each layer transition is a potential DM-to-CM '
+                        f'conversion point.'
+                    )
+                else:
+                    description = (
+                        f'{lead}. No via list was available, so ground '
+                        f'stitching was not checked; run analyze_pcb --full to '
+                        f'grade it. Each layer transition is a potential '
+                        f'DM-to-CM conversion point.'
+                    )
                 recommendation = (
-                    f'Add a ground stitching via within {radius:.1f}mm of '
+                    f'Add a ground stitching via within {radius:g}mm of '
                     f'each signal via. Preferably route diff pairs on a single '
                     f'layer to avoid layer transitions entirely.'
                 )
