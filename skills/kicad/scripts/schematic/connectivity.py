@@ -44,7 +44,7 @@ def expand_bus_name(name, aliases=None, _depth=0):
                 return None
             return [f"{base}{markup}{{{mem}}}" for mem in inner]
         members = []
-        for tok in m.group("members").split():
+        for tok in re.findall(r"[^\s,]+", m.group("members")):
             if aliases and tok in aliases:
                 sub = []
                 for am in aliases[tok]:
