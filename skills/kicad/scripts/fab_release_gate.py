@@ -325,9 +325,13 @@ def check_gerbers(gerber_data: Optional[Dict],
         holes = _pcb_has_holes(pcb)
         if holes is True:
             stats = (pcb or {}).get("statistics") or {}
-            extra.append(("fail",
-                          f"{problem}; the PCB has {stats.get('via_count') or 0} via(s) "
-                          f"and {stats.get('tht_count') or 0} through-hole pad(s)"))
+            vias, tht = stats.get("via_count"), stats.get("tht_count")
+            if (isinstance(vias, int) and vias > 0) or (isinstance(tht, int) and tht > 0):
+                facts = f"{vias or 0} via(s) and {tht or 0} through-hole pad(s)"
+            else:
+                smallest = pcb["dfm_summary"]["metrics"]["min_drill_mm"]
+                facts = f"drilled holes (smallest drill {smallest} mm)"
+            extra.append(("fail", f"{problem}; the PCB has {facts}"))
         elif holes is None:
             extra.append(("warn", f"{problem}; PCB hole count unknown"))
     if extra:

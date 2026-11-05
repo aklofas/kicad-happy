@@ -118,6 +118,17 @@ class GerberCompletenessTest(unittest.TestCase):
         self.assertEqual(_completeness(g, pcb)["status"], "fail")
         self.assertEqual(_completeness(g, HOLELESS_PCB)["status"], "pass")
 
+    def test_missing_drill_message_uses_the_smallest_drill_when_counts_are_zero(self):
+        g = {"completeness": {"source": "gbrjob", "missing": []},
+             "findings": [{"rule_id": "GR-003", "severity": "info",
+                           "summary": "No drill file"}]}
+        pcb = {"statistics": {"via_count": 0, "tht_count": 0},
+               "dfm_summary": {"dfm_tier": "standard", "metrics": {"min_drill_mm": 3.2}}}
+        c = _completeness(g, pcb)
+        self.assertEqual(c["status"], "fail")
+        self.assertIn("3.2", c["message"])
+        self.assertNotIn("0 via", c["message"])
+
     def test_open_outline_fails(self):
         g = {"completeness": {"source": "gbrjob", "missing": []},
              "findings": [{"rule_id": "GR-005", "severity": "error",
