@@ -139,8 +139,9 @@ def build_audience_summary(findings: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Compute designer / reviewer / manager summaries from findings list.
 
     All three views are always computed and returned together under their
-    respective keys.
+    respective keys. Suppressed findings are not counted.
     """
+    findings = [f for f in findings if not f.get('suppressed')]
     # ------------------------------------------------------------------
     # Pre-compute buckets
     # ------------------------------------------------------------------
@@ -341,6 +342,8 @@ def format_text(
     if audience == 'manager':
         summary = build_audience_summary(active_findings)
         mgr = summary['manager']
+        # A blocker outside the active stage still leaves that stage unready.
+        readiness = build_audience_summary(findings)['manager']['stage_readiness']
         lines = [
             '=== Manager Summary ===',
             '',
@@ -352,13 +355,14 @@ def format_text(
             '',
             'Stage Readiness:',
         ]
-        readiness = mgr['stage_readiness']
         for s in STAGES:
             status = readiness.get(s, 'pass')
             lines.append(f'  {s:<12} {_readiness_char(status)}')
 
         # Blocker list
-        blockers = [f for f in active_findings if severity_bucket(f.get('severity', '')) == 'error']
+        blockers = [f for f in active_findings
+                    if not f.get('suppressed')
+                    and severity_bucket(f.get('severity', '')) == 'error']
         if blockers:
             lines += ['', 'Blockers:']
             for f in blockers:

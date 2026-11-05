@@ -112,9 +112,20 @@ def check_dfm(pcb: Dict) -> List[Dict]:
     violations = [f for f in pcb.get("findings", [])
                   if isinstance(f, dict) and f.get("category") == "dfm"]
 
-    if tier == "standard" and not violations:
-        return [_check("dfm", "fab_capability", "pass",
-                        "Design within standard fab capability")]
+    if tier == "standard":
+        active = [v for v in violations
+                  if not v.get("suppressed")
+                  and normalize_severity(v.get("severity")) in ("error", "warning")]
+        if not active:
+            return [_check("dfm", "fab_capability", "pass",
+                            "Design within standard fab capability")]
+        rule_ids = sorted({str(v.get("rule_id", "?")) for v in active})
+        v_summary = [{"rule_id": v.get("rule_id", "?"), "summary": v.get("summary")}
+                     for v in active[:5]]
+        return [_check("dfm", "fab_capability", "warn",
+                        f"Standard fab tier; {len(active)} DFM warning(s): "
+                        f"{', '.join(rule_ids)}",
+                        {"dfm_tier": tier, "violations": v_summary})]
     elif tier == "advanced":
         v_summary = [{"parameter": v.get("parameter", v.get("rule_id", "?")),
                        "actual_mm": v.get("actual_mm"),
@@ -239,7 +250,26 @@ def _is_critical_layer(layer: str) -> bool:
             or re.fullmatch(r"In\d+\.Cu", layer) is not None)
 
 
-def check_gerbers(gerber_data: Optional[Dict]) -> List[Dict]:
+def _pcb_has_holes(pcb: Optional[Dict]) -> Optional[bool]:
+    """True/False when the PCB analysis says whether the board is drilled,
+    None when it carries no (or only partial) hole facts."""
+    if not isinstance(pcb, dict):
+        return None
+    stats = pcb.get("statistics")
+    stats = stats if isinstance(stats, dict) else {}
+    dfm = pcb.get("dfm_summary")
+    metrics = dfm.get("metrics") if isinstance(dfm, dict) else None
+    vias, tht = stats.get("via_count"), stats.get("tht_count")
+    if ((isinstance(vias, int) and vias > 0) or (isinstance(tht, int) and tht > 0)
+            or (isinstance(metrics, dict) and "min_drill_mm" in metrics)):
+        return True
+    if isinstance(vias, int) and isinstance(tht, int) and isinstance(metrics, dict):
+        return False
+    return None
+
+
+def check_gerbers(gerber_data: Optional[Dict],
+                  pcb: Optional[Dict] = None) -> List[Dict]:
     """Check Gerber layer completeness and alignment."""
     if not gerber_data:
         return [_check("gerbers", "layer_completeness", "skip",
@@ -270,20 +300,41 @@ def check_gerbers(gerber_data: Optional[Dict]) -> List[Dict]:
                     if any(k in l.upper() for k in ("SILK", "LEGEND"))]
 
     if not missing:
-        checks.append(_check("gerbers", "layer_completeness", "pass",
-                              "All expected layers present"))
+        status, message = "pass", "All expected layers present"
     elif critical_missing:
-        checks.append(_check("gerbers", "layer_completeness", "fail",
-                              f"Critical layers missing: {', '.join(critical_missing)}",
-                              {"missing_layers": missing}))
+        status = "fail"
+        message = f"Critical layers missing: {', '.join(critical_missing)}"
     elif silk_missing:
-        checks.append(_check("gerbers", "layer_completeness", "warn",
-                              f"Non-critical layers missing: {', '.join(silk_missing)}",
-                              {"missing_layers": missing}))
+        status = "warn"
+        message = f"Non-critical layers missing: {', '.join(silk_missing)}"
     else:
-        checks.append(_check("gerbers", "layer_completeness", "warn",
-                              f"Some layers missing: {', '.join(missing[:5])}",
-                              {"missing_layers": missing}))
+        status = "warn"
+        message = f"Some layers missing: {', '.join(missing[:5])}"
+    details = {"missing_layers": missing} if missing else None
+
+    # The analyzer reports an open outline and a missing or empty drill file
+    # as findings, not as missing layers.
+    g_findings = [f for f in (gerber_data.get("findings") or [])
+                  if isinstance(f, dict)]
+    extra = []
+    if any(f.get("rule_id") == "GR-005" for f in g_findings):
+        extra.append(("fail", "Board outline is not closed"))
+    drill = next((f for f in g_findings if f.get("rule_id") == "GR-003"), None)
+    if drill is not None:
+        problem = str(drill.get("summary") or "Drill file problem")
+        holes = _pcb_has_holes(pcb)
+        if holes is True:
+            stats = (pcb or {}).get("statistics") or {}
+            extra.append(("fail",
+                          f"{problem}; the PCB has {stats.get('via_count') or 0} via(s) "
+                          f"and {stats.get('tht_count') or 0} through-hole pad(s)"))
+        elif holes is None:
+            extra.append(("warn", f"{problem}; PCB hole count unknown"))
+    if extra:
+        rank = {"pass": 0, "warn": 1, "fail": 2}
+        status = max([status] + [e[0] for e in extra], key=rank.__getitem__)
+        message = "; ".join(([message] if missing else []) + [e[1] for e in extra])
+    checks.append(_check("gerbers", "layer_completeness", status, message, details))
 
     # Alignment
     alignment = gerber_data.get("alignment", {})
@@ -322,7 +373,12 @@ def check_thermal(thermal_data: Optional[Dict]) -> List[Dict]:
                         f"{len(warnings)} warning-severity thermal finding(s)",
                         {"warning_count": len(warnings)})]
     else:
-        score = thermal_data.get("summary", {}).get("thermal_score", "?")
+        summary = thermal_data.get("summary") or {}
+        score = summary.get("thermal_score")
+        if score is None:
+            reason = summary.get("skipped_reason") or "no components assessed"
+            return [_check("thermal", "thermal_risk", "skip",
+                            f"Thermal not scored: {reason}")]
         return [_check("thermal", "thermal_risk", "pass",
                         f"Thermal score {score}/100 — no critical/high findings")]
 
@@ -444,7 +500,7 @@ def run_gate(sch: Dict, pcb: Dict,
     all_checks.extend(check_dfm(pcb))
     all_checks.extend(check_documentation(pcb))
     all_checks.extend(check_consistency(sch, pcb))
-    all_checks.extend(check_gerbers(gerber_data))
+    all_checks.extend(check_gerbers(gerber_data, pcb))
     all_checks.extend(check_thermal(thermal_data))
     all_checks.extend(check_emc(emc_data))
 

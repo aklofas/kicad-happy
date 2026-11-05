@@ -10,9 +10,9 @@ sys.path.insert(0, str(SCRIPTS))
 import fab_release_gate as gate  # noqa: E402
 
 
-def _run(script, *args):
+def _run(script, *args, cwd=None):
     return subprocess.run([sys.executable, str(SCRIPTS / script), *args],
-                          capture_output=True, text=True, encoding="utf-8",
+                          capture_output=True, text=True, encoding="utf-8", cwd=cwd,
                           env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
 
 
@@ -31,8 +31,13 @@ PASS_PCB = {"connectivity": {"total_nets_with_pads": 2, "unrouted_count": 0,
             "silkscreen": {"documentation_warnings": []}}
 
 
-def _completeness(gerber_data):
-    return [c for c in gate.check_gerbers(gerber_data) if c["check_id"] == "layer_completeness"][0]
+def _completeness(gerber_data, pcb=None):
+    return [c for c in gate.check_gerbers(gerber_data, pcb)
+            if c["check_id"] == "layer_completeness"][0]
+
+
+HOLELESS_PCB = {"statistics": {"via_count": 0, "tht_count": 0},
+                "dfm_summary": {"dfm_tier": "standard", "metrics": {}}}
 
 
 class GerberCompletenessTest(unittest.TestCase):
@@ -77,6 +82,82 @@ class GerberCompletenessTest(unittest.TestCase):
                                             "missing_recommended": ["F.SilkS"]}})
         self.assertEqual(c["status"], "warn")
 
+    def _simple_pcb(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        r = _run("analyze_pcb.py", fixture("simple-project", "simple.kicad_pcb"), cwd=tmp)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout)
+
+    def test_missing_drill_fails_when_pcb_has_holes(self):
+        c = _completeness(self._analyze_without("simple.drl"), self._simple_pcb())
+        self.assertEqual(c["status"], "fail")
+        self.assertIn("drill", c["message"].lower())
+
+    def test_missing_drill_and_job_fails_when_pcb_has_holes(self):
+        c = _completeness(self._analyze_without("simple.drl", "simple-job.gbrjob"),
+                          self._simple_pcb())
+        self.assertEqual(c["status"], "fail")
+        self.assertIn("drill", c["message"].lower())
+
+    def test_missing_drill_holeless_pcb_not_failed(self):
+        c = _completeness(self._analyze_without("simple.drl"), HOLELESS_PCB)
+        self.assertNotEqual(c["status"], "fail")
+
+    def test_missing_drill_unknown_holes_warns(self):
+        c = _completeness(self._analyze_without("simple.drl"), PASS_PCB)
+        self.assertEqual(c["status"], "warn")
+        c = _completeness(self._analyze_without("simple.drl"))
+        self.assertEqual(c["status"], "warn")
+
+    def test_empty_drill_file_fails_when_pcb_has_holes(self):
+        g = {"completeness": {"source": "gbrjob", "missing": []},
+             "findings": [{"rule_id": "GR-003", "severity": "info",
+                           "summary": "Drill file has 0 holes"}]}
+        pcb = {"statistics": {"via_count": 3, "tht_count": 0}}
+        self.assertEqual(_completeness(g, pcb)["status"], "fail")
+        self.assertEqual(_completeness(g, HOLELESS_PCB)["status"], "pass")
+
+    def test_open_outline_fails(self):
+        g = {"completeness": {"source": "gbrjob", "missing": []},
+             "findings": [{"rule_id": "GR-005", "severity": "error",
+                           "category": "gerber_completeness"}]}
+        for pcb in (None, HOLELESS_PCB):
+            c = _completeness(g, pcb)
+            self.assertEqual(c["status"], "fail")
+            self.assertIn("outline", c["message"])
+
+
+class DfmTierTest(unittest.TestCase):
+    def _pcb(self, *findings):
+        return {**PASS_PCB, "dfm_summary": {"dfm_tier": "standard",
+                                            "metrics": {"min_drill_mm": 0.3}},
+                "findings": list(findings)}
+
+    def _f(self, rule_id, severity, **kw):
+        return {"rule_id": rule_id, "category": "dfm", "severity": severity,
+                "summary": "x", **kw}
+
+    def test_standard_tier_warning_warns(self):
+        c = gate.check_dfm(self._pcb(self._f("VP-001", "warning")))[0]
+        self.assertEqual(c["status"], "warn")
+        self.assertIn("VP-001", c["message"])
+
+    def test_strict_fails_on_standard_tier_warning(self):
+        r = gate.run_gate(PASS_SCH, self._pcb(self._f("BV-001", "warning")),
+                          strict=True)
+        self.assertEqual(r["overall_status"], "FAIL")
+        r = gate.run_gate(PASS_SCH, self._pcb(self._f("BV-001", "warning")))
+        self.assertEqual(r["overall_status"], "WARN")
+
+    def test_info_only_passes(self):
+        c = gate.check_dfm(self._pcb(self._f("DFM-001", "info")))[0]
+        self.assertEqual(c["status"], "pass")
+
+    def test_suppressed_warning_passes(self):
+        c = gate.check_dfm(self._pcb(self._f("SK-001", "warning", suppressed=True)))[0]
+        self.assertEqual(c["status"], "pass")
+
 
 class EmcThermalTest(unittest.TestCase):
     def _findings(self, n_active, n_suppressed=0):
@@ -99,6 +180,31 @@ class EmcThermalTest(unittest.TestCase):
         c = gate.check_emc({"findings": [{"severity": "warning"}] + self._findings(0, 2),
                             "summary": {"by_severity": {"error": 2}}})[0]
         self.assertEqual(c["status"], "pass")
+
+    def test_thermal_null_score_skips(self):
+        c = gate.check_thermal({"summary": {"thermal_score": None,
+                                            "skipped_reason": "no power data"},
+                                "findings": []})[0]
+        self.assertEqual(c["status"], "skip")
+        self.assertIn("no power data", c["message"])
+        self.assertNotIn("None", c["message"])
+
+    def test_thermal_real_output_null_score_skips(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        sch = _run("analyze_schematic.py", fixture("simple-project", "simple.kicad_sch"), cwd=tmp)
+        pcb = _run("analyze_pcb.py", fixture("simple-project", "simple.kicad_pcb"), cwd=tmp)
+        self.assertEqual((sch.returncode, pcb.returncode), (0, 0))
+        sp = _dump(tmp, "s.json", json.loads(sch.stdout))
+        pp = _dump(tmp, "p.json", json.loads(pcb.stdout))
+        r = _run("analyze_thermal.py", "--schematic", sp, "--pcb", pp, cwd=tmp)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        th = json.loads(r.stdout)
+        if (th.get("summary") or {}).get("thermal_score") is not None:
+            self.skipTest("fixture now has a thermal score")
+        c = gate.check_thermal(th)[0]
+        self.assertEqual(c["status"], "skip")
+        self.assertNotIn("None", c["message"])
 
     def test_thermal_empty_components(self):
         c = gate.check_thermal({"findings": [{"severity": "error", "components": []}]})[0]
