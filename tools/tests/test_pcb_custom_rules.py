@@ -184,17 +184,22 @@ class CustomRuleTest(unittest.TestCase):
 TRACK_RULE = "(rule w (constraint track_width (min 0.5mm)))"
 
 
-def refused(dru_text):
-    """compliance() variant with the .kicad_dru written verbatim; returns (violations, error)."""
+def analyze_with_dru(dru_text):
+    """analyze_pcb() of a board with one 0.2 mm track and the .kicad_dru written verbatim."""
     with tempfile.TemporaryDirectory() as tmp:
         board = os.path.join(tmp, "b.kicad_pcb")
         with open(board, "w", encoding="utf-8") as f:
             f.write(BOARD.format(items=track(0.2)))
         with open(os.path.join(tmp, "b.kicad_dru"), "w", encoding="utf-8") as f:
             f.write(dru_text)
-        result = analyze_pcb(board)
-        return (violations(result["design_rule_compliance"]),
-                result["project_settings"].get("custom_rules_error"))
+        return analyze_pcb(board)
+
+
+def refused(dru_text):
+    """(violations, custom_rules_error) for the .kicad_dru written verbatim."""
+    result = analyze_with_dru(dru_text)
+    return (violations(result["design_rule_compliance"]),
+            result["project_settings"].get("custom_rules_error"))
 
 
 class RefusedFileTest(unittest.TestCase):
@@ -208,6 +213,8 @@ class RefusedFileTest(unittest.TestCase):
                 ("version 1.1", "(version 1.1)\n" + TRACK_RULE + "\n"),
                 ("exclusion severity", "(version 1)\n" + TRACK_RULE
                  + "\n(rule x (severity exclusion) (constraint clearance (min 0.01mm)))\n"),
+                ("unitless count", "(version 1)\n" + TRACK_RULE
+                 + "\n(rule v (constraint via_count (max 2)))\n"),
                 ("comments on first and last line",
                  '# leading comment (with "quote\n(version 1)\n' + TRACK_RULE
                  + "\n# trailing comment no newline")):
@@ -221,9 +228,17 @@ class RefusedFileTest(unittest.TestCase):
                  + "\n(rule z (severity banana) (constraint clearance (min 0.01mm)))\n",
                  "Unrecognized severity."),
                 ("unknown top-level form", "(version 1)\n" + TRACK_RULE + "\n(foo bar)\n",
-                 "Expected rule or version.")):
+                 "Expected rule or version."),
+                ("length without a unit", "(version 1)\n" + TRACK_RULE
+                 + "\n(rule b (constraint hole_size (min 0.2)))\n", "Missing units.")):
             with self.subTest(name):
                 self.assertEqual(refused(text), ([], message))
+
+    def test_refused_file_lists_no_skipped_conditional_rule(self):
+        result = analyze_with_dru(
+            TRACK_RULE + "\n(rule c (condition \"A.NetClass == 'P'\") (constraint track_width (min 1mm)))\n")
+        self.assertEqual(result["project_settings"]["custom_rules_error"], "Missing version statement.")
+        self.assertNotIn("conditional_rules_skipped", result["design_rule_compliance"])
 
 
 if __name__ == "__main__":

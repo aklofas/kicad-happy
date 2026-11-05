@@ -876,10 +876,6 @@ _BOARD_MINIMUM_ITEMS = (
 _BOARD_MINIMUM_FOR = {kind: name for name, kinds in _BOARD_MINIMUM_ITEMS for kind in kinds}
 _CUSTOM_CHECKED_TYPES = ('track_width', 'via_diameter', 'hole_size', 'annular_width')
 _ANNULUS_DIRECT_SHAPES = ('circle', 'oval', 'rect', 'roundrect')
-# Constraint types whose values take no unit (drc_rule_parser.cpp parseConstraint).
-_UNITLESS_CONSTRAINTS = frozenset(('via_count', 'min_resolved_spokes', 'track_angle',
-                                   'via_dangling', 'bridged_mask'))
-_BARE_NUMBER = re.compile(r'\s*[-+]?(?:\d+\.?\d*|\.\d+)\s*')
 
 
 def _drc_check_key(ctype: str, kind: str) -> str:
@@ -887,21 +883,6 @@ def _drc_check_key(ctype: str, kind: str) -> str:
     if ctype == 'hole_size':
         return 'microvia_drill_out_of_range' if kind == 'micro' else 'drill_out_of_range'
     return ctype
-
-
-def _dru_loads_in_kicad(custom_rules: list[dict]) -> bool:
-    """False when a length bound is a bare number: KiCad's "Missing units" parse error drops
-    every custom rule of the file and keeps only the board's implicit rules (drc_engine.cpp
-    InitEngine)."""
-    for rule in custom_rules:
-        for constraint in rule.get('constraints', []):
-            if constraint.get('type') in _UNITLESS_CONSTRAINTS:
-                continue
-            for bound in ('min', 'max', 'opt'):
-                value = constraint.get(bound)
-                if isinstance(value, str) and _BARE_NUMBER.fullmatch(value):
-                    return False
-    return True
 
 
 def _is_length(value) -> bool:
@@ -1044,8 +1025,8 @@ def analyze_design_rule_compliance(
     rules_checked = 0
 
     all_vias = vias.get("vias", [])
-    rules_load = (not project_settings.get('custom_rules_error')
-                  and _dru_loads_in_kicad(custom_rules or []))
+    # A file KiCad refuses applies none of its rules; it keeps only the board's implicit rules.
+    rules_load = not project_settings.get('custom_rules_error')
     rules_by_type: dict[str, list] = {}
     for ri, rule in enumerate(custom_rules if rules_load else []):
         for ci, constraint in enumerate(rule.get('constraints', [])):
@@ -1209,11 +1190,9 @@ def analyze_design_rule_compliance(
     # when it breaks every bound the rule might set (a conditional rule may relax a minimum or a
     # maximum, or switch the check off with severity ignore), so it can hide a violation, never add one.
     conditional_rules_skipped = []
-    for ri, rule in enumerate(custom_rules or []):
+    for ri, rule in enumerate(custom_rules if rules_load else []):
         if rule.get('condition'):
             conditional_rules_skipped.append(rule.get('name', ''))
-            continue
-        if not rules_load:
             continue
         if rule.get('severity') == 'ignore':
             continue

@@ -641,12 +641,29 @@ def parse_dru_length(text: str) -> float | None:
 
 
 _DRU_SEVERITIES = frozenset(('ignore', 'warning', 'error', 'exclusion'))
+# Constraint types whose values take no unit (drc_rule_parser.cpp parseConstraint).
+_DRU_UNITLESS_CONSTRAINTS = frozenset(('via_count', 'min_resolved_spokes', 'track_angle',
+                                       'via_dangling', 'bridged_mask'))
+_DRU_BARE_NUMBER = re.compile(r'\s*[-+]?(?:\d+\.?\d*|\.\d+)\s*')
+
+
+def _dru_bare_length(constraint: list) -> bool:
+    """True when a length bound of *constraint* is a bare number (KiCad's "Missing units")."""
+    if len(constraint) < 2 or constraint[1] in _DRU_UNITLESS_CONSTRAINTS:
+        return False
+    for bound in constraint[2:]:
+        if isinstance(bound, list) and bound[:1] in (['min'], ['max'], ['opt']):
+            text = ' '.join(str(t) for t in bound[1:] if not isinstance(t, list))
+            if _DRU_BARE_NUMBER.fullmatch(text):
+                return True
+    return False
 
 
 def _dru_parse_error(tree: list) -> str | None:
     """KiCad's message for a .kicad_dru it refuses to load, or None. A parse error drops every
     custom rule of the file (drc_rule_parser.cpp Parse, drc_engine.cpp InitEngine). Checked:
-    the leading version statement, the top-level forms, rule names and severity names."""
+    the leading version statement, the top-level forms, rule names, severity names and
+    length bounds without a unit."""
     if any(not isinstance(f, list) for f in tree[1:]):
         return "Missing '('."
     forms = tree[1:]
@@ -659,9 +676,13 @@ def _dru_parse_error(tree: list) -> str | None:
         elif form[:1] == ['rule']:
             if len(form) < 2 or not isinstance(form[1], str):
                 return "Missing rule name."
-            if any(len(sev) < 2 or sev[1] not in _DRU_SEVERITIES
-                   for sev in find_all(form, 'severity')):
-                return "Unrecognized severity."
+            for item in form[2:]:
+                if not isinstance(item, list):
+                    continue
+                if item[:1] == ['severity'] and (len(item) < 2 or item[1] not in _DRU_SEVERITIES):
+                    return "Unrecognized severity."
+                if item[:1] == ['constraint'] and _dru_bare_length(item):
+                    return "Missing units."
         else:
             return "Expected rule or version."
     return None
