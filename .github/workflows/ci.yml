@@ -205,6 +205,8 @@ jobs:
           # colons). They stay outside the sparse cone, but Git for Windows
           # rejects them while building the index unless protectNTFS is off.
           git config core.protectNTFS false
+          # LF fixtures, as on Linux: Git for Windows would check them out CRLF.
+          git config core.autocrlf false
           git sparse-checkout set tests/fixtures
           git checkout 85225511bfd
       - name: Install harness dev deps (jsonschema, referencing)
@@ -223,6 +225,23 @@ jobs:
                    skills/lcsc/scripts/search_lcsc.py; do
             echo "$s"; python "$s" --help > /dev/null
           done
+      - name: PROBE pdftotext (temporary)
+        continue-on-error: true
+        shell: bash
+        run: |
+          which -a pdftotext pdfinfo || true
+          pdftotext -v 2>&1 | head -3 || true
+          python - <<'PY'
+          import subprocess, sys, tempfile, os
+          sys.path.insert(0, "tools/tests")
+          from test_deep_review_gate_integrity import _pdf, PAGES
+          d = tempfile.mkdtemp(); p = os.path.join(d, "t.pdf")
+          open(p, "wb").write(_pdf(PAGES))
+          for args in (["-f", "3", "-l", "3"], ["-f", "2", "-l", "2"], ["-enc", "UTF-8", "-f", "2", "-l", "2"], ["-enc", "UTF-8", "-f", "3", "-l", "3"]):
+              r = subprocess.run(["pdftotext", *args, p, "-"], capture_output=True)
+              print(args, "rc", r.returncode, "out", r.stdout[:120], "err", r.stderr[:200])
+          r = subprocess.run(["pdfinfo", p], capture_output=True); print("pdfinfo rc", r.returncode, r.stdout[:300], r.stderr[:200])
+          PY
       - name: In-skill unit tests
         shell: bash
         run: |
