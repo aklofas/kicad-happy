@@ -197,5 +197,68 @@ class DeratingFindingsTest(unittest.TestCase):
         self.assertEqual(s["findings_count"], 0)
 
 
+def _supp(rule, sev, suppressed):
+    f = {"rule_id": rule, "severity": sev, "summary": "x"}
+    if suppressed:
+        f.update(suppressed=True, suppression_reason="r")
+    return f
+
+
+def _render_docs(**docs):
+    with tempfile.TemporaryDirectory() as tmp:
+        paths = {}
+        for name, doc in docs.items():
+            paths[name] = os.path.join(tmp, name + ".json")
+            with open(paths[name], "w", encoding="utf-8") as f:
+                json.dump(doc, f)
+        summ = os.path.join(tmp, "summary.json")
+        md, _ = _render(tmp, **paths, **{"output-summary": summ})
+        with open(summ, encoding="utf-8") as f:
+            return json.load(f), md
+
+
+class SuppressedStatusTest(unittest.TestCase):
+    @staticmethod
+    def _emc(findings, errors, suppressed):
+        return {"analyzer_type": "emc", "findings": findings,
+                "summary": {"by_severity": {"error": errors, "warning": 0, "info": 0}, "suppressed": suppressed,
+                            "active": errors - suppressed, "total_findings": errors, "emc_risk_score": 90}}
+
+    @staticmethod
+    def _thermal(findings, errors, suppressed):
+        return {"analyzer_type": "thermal", "findings": findings,
+                "summary": {"by_severity": {"error": errors, "warning": 0, "info": 0}, "suppressed": suppressed,
+                            "active": errors - suppressed, "total_findings": errors, "thermal_score": 80}}
+
+    def test_suppressed_emc_error_does_not_fail(self):
+        s, md = _render_docs(emc=self._emc([_supp("GP-001", "error", True)], 1, 1))
+        self.assertFalse(s["has_critical"])
+        self.assertEqual(s["findings_count"], 0)
+        self.assertIn("1 suppressed", md)
+        self.assertIn("EMC risk score 90/100 \u2014 no unsuppressed error/warning findings (1 suppressed)", md)
+
+    def test_suppressed_thermal_error_does_not_fail(self):
+        s, md = _render_docs(thermal=self._thermal([_supp("TS-001", "error", True)], 1, 1))
+        self.assertFalse(s["has_critical"])
+        self.assertEqual(s["findings_count"], 0)
+        self.assertIn("1 suppressed", md)
+        self.assertIn("Thermal score 80/100 \u2014 no unsuppressed error/warning findings (1 suppressed)", md)
+
+    def test_mixed_counts_only_the_active_error(self):
+        s, md = _render_docs(emc=self._emc([_supp("GP-001", "error", False), _supp("GP-002", "error", True)], 2, 1))
+        self.assertTrue(s["has_critical"])
+        self.assertIn("EMC: 1 error-severity", md)
+
+
+class VerifiedCountTest(unittest.TestCase):
+    def test_bar_counts_thermal_verified(self):
+        thermal = {"analyzer_type": "thermal",
+                   "summary": {"thermal_score": 99, "total_findings": 1, "by_severity": {"error": 0, "warning": 0, "info": 1}},
+                   "findings": [{"rule_id": "TS-005", "severity": "info", "summary": "y"}]}
+        s, md = _render_docs(thermal=thermal)
+        self.assertIn("> 1 verified", md)
+        self.assertEqual(s["verified_count"], 1)
+
+
 if __name__ == "__main__":
     unittest.main()

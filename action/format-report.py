@@ -59,6 +59,27 @@ def _summary_counts(summary_block):
     return (err, warn, total)
 
 
+def _active_counts(doc):
+    """(error, warning, total, suppressed) for an EMC or thermal document.
+
+    The summary's by_severity counts suppressed findings too, so the suppressed
+    error/warning findings are subtracted from it. Subtracting rather than
+    recounting keeps documents whose summary carries counts but whose findings
+    list is empty working.
+    """
+    summary = doc.get("summary", {})
+    err, warn, total = _summary_counts(summary)
+    for f in doc.get("findings") or []:
+        if not f.get("suppressed"):
+            continue
+        sev = normalize_severity(f.get("severity", ""))
+        if sev == "error":
+            err = max(err - 1, 0)
+        elif sev == "warning":
+            warn = max(warn - 1, 0)
+    return (err, warn, total, summary.get("suppressed", 0) or 0)
+
+
 def _emc_one_liner(emc_summary, *, include_suppressed: bool) -> str:
     """Return the EMC score/checks/severity one-liner used by both report
     paths. Compact PR comment includes the suppressed count inline; full
@@ -644,18 +665,23 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
         if spice_pass > 0:
             verified.append(f"{spice_pass} SPICE subcircuit(s) confirmed")
 
+    suppressed_total = 0
     if emc:
         emc_summary = emc.get("summary", {})
         emc_score = emc_summary.get("emc_risk_score", 0)
         # v1.4 EMC emits summary.by_severity (was critical/high legacy keys).
         # _summary_counts() handles both shapes for forward + backward compat.
-        emc_err, emc_warn, emc_total = _summary_counts(emc_summary)
+        emc_err, emc_warn, emc_total, emc_sup = _active_counts(emc)
+        suppressed_total += emc_sup
         if emc_err > 0:
             findings.append(("critical", f"EMC: {emc_err} error-severity finding(s) — score {emc_score}/100", "emc"))
         if emc_warn > 0:
             findings.append(("warning", f"EMC: {emc_warn} warning-severity finding(s)", "emc"))
         if emc_total > 0 and emc_err == 0 and emc_warn == 0:
-            verified.append(f"EMC risk score {emc_score}/100 — no error/warning findings")
+            if emc_sup:
+                verified.append(f"EMC risk score {emc_score}/100 — no unsuppressed error/warning findings ({emc_sup} suppressed)")
+            else:
+                verified.append(f"EMC risk score {emc_score}/100 — no error/warning findings")
 
     if thermal:
         # Mirror the EMC append above so thermal error/warning findings flow
@@ -665,11 +691,17 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
         # runs AFTER counts are computed below.
         thermal_summary = thermal.get("summary", {})
         th_score_pre = thermal_summary.get("thermal_score", 0)
-        th_err_pre, th_warn_pre, _th_total_pre = _summary_counts(thermal_summary)
+        th_err_pre, th_warn_pre, th_total_pre, th_sup = _active_counts(thermal)
+        suppressed_total += th_sup
         if th_err_pre > 0:
             findings.append(("critical", f"Thermal: {th_err_pre} error-severity finding(s) — score {th_score_pre}/100", "thermal"))
         if th_warn_pre > 0:
             findings.append(("warning", f"Thermal: {th_warn_pre} warning-severity finding(s)", "thermal"))
+        if th_total_pre > 0 and th_err_pre == 0 and th_warn_pre == 0:
+            if th_sup:
+                verified.append(f"Thermal score {th_score_pre}/100 — no unsuppressed error/warning findings ({th_sup} suppressed)")
+            else:
+                verified.append(f"Thermal score {th_score_pre}/100 — no error/warning findings")
 
     # Filter after every analyzer has appended its rows, then count the filtered table.
     if severity == "critical":
@@ -689,6 +721,8 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
     if warning_count:
         parts.append(f"{warning_count} warning{'s' if warning_count != 1 else ''}")
     parts.append(f"{len(verified)} verified")
+    if suppressed_total:
+        parts.append(f"{suppressed_total} suppressed")
     if run_url:
         parts.append(f"[**Full report →**]({run_url})")
     L.append(f"> {' · '.join(parts)}")
@@ -909,12 +943,6 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
     # === Thermal Analysis ===
     # Shared helper — keeps compact + full report paths in lockstep.
     L.extend(_render_thermal_block(thermal, heading_level=3))
-    if thermal:
-        ts = thermal.get("summary", {})
-        th_score = ts.get("thermal_score", 0)
-        th_err, th_warn, th_total = _summary_counts(ts)
-        if th_err == 0 and th_warn == 0 and th_total > 0:
-            verified.append(f"Thermal score {th_score}/100 — no error/warning findings")
 
     # === Missing Information ===
     mi_lines = _render_missing_info(sch, thermal)
