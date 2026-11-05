@@ -1856,7 +1856,9 @@ def check_switching_node_area(pcb: Optional[Dict],
         for zone in zones:
             if zone.get('net_name') != sw_net:
                 continue
-            a = zone.get('outline_area_mm2') or zone.get('filled_area_mm2') or 0
+            # The fill is the copper; an unfilled zone counts its outline
+            a = (zone['filled_area_mm2'] if 'filled_area_mm2' in zone
+                 else zone.get('outline_area_mm2') or 0)
             if isinstance(a, (int, float)):
                 zone_area += a
 

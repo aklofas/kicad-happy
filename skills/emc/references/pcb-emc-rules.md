@@ -83,7 +83,7 @@ Quantitative design rules used by the EMC analyzer. Each rule has a threshold, r
 
 ### SW-002: Large switching node copper area
 - **Severity:** error (>100 mm²), warning (25–100 mm²)
-- **Threshold:** Total copper area on SW/PH/LX net >25 mm² (zones + traces combined)
+- **Threshold:** Total copper area on SW/PH/LX net >25 mm² (zone fill, or the outline of an unfilled zone, plus traces)
 - **Rationale:** Large copper on the switching node acts as an antenna for switching noise. Only minimal copper should connect IC pin to inductor pad.
 - **Source:** TI SLVA477, "Layout Tips for Switching Regulators."
 - **Fix:** Remove unnecessary zones or copper pours on SW node. Use minimal-area traces from IC to inductor only.

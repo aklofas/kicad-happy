@@ -109,6 +109,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Fixed
 
+- SW-002 sizes switching-node zone copper from the zone's fill, not its outline.
 - A capacitor marked do-not-populate no longer counts as bridging a split between reference planes (GP-001).
 - ES-001 and ES-002 now check discrete TVS diodes (SMAJ, SMBJ, PESD, ESD5Z and similar two-pin parts), which the protection detector reports as type `diode`; only ESD arrays and varistors were checked before.
 - EMC DC-002 no longer skips ICs whose value merely contains `tp` (TPS…, TP4056, MAX31865ATP); only a part valued `TP` is a test point. ESD/TVS arrays the schematic identifies as protection devices (USBLC6, RCLAMP, SRV05) are no longer reported as ICs without decoupling.
