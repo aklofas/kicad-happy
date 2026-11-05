@@ -581,19 +581,7 @@ class PspiceBackend(SimulatorBackend):
 
     @staticmethod
     def _find_windows_exe():
-        """Search absolute PATH entries for pspice.exe only.
-
-        Unlike shutil.which, this never searches the current directory and
-        does not try other PATHEXT suffixes.
-        """
-        for entry in os.environ.get("PATH", "").split(os.pathsep):
-            entry = entry.strip('"')
-            if not os.path.isabs(entry):
-                continue
-            candidate = os.path.join(entry, "pspice.exe")
-            if os.path.isfile(candidate):
-                return os.path.abspath(candidate)
-        return None
+        return find_executable("pspice")
 
     def _command(self, binary, deck_name, output_name):
         return [binary, "-r", "-e", deck_name, "-o", output_name]
