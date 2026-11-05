@@ -204,7 +204,7 @@ def _load_and_validate(path: str) -> Optional[Dict[str, Any]]:
     import sys
     try:
         cfg = load_jsonc(path)
-    except (json.JSONDecodeError, OSError) as exc:
+    except (ValueError, RecursionError, OSError) as exc:
         print(f'Warning: failed to parse {path}: {exc}', file=sys.stderr)
         return None
 
@@ -250,6 +250,12 @@ def _load_and_validate(path: str) -> Optional[Dict[str, Any]]:
                                      f"{type(val).__name__}"),
                            f"suppressions[{i}] ignored")
                     bad_patterns = True
+                elif isinstance(val, list) and not all(isinstance(p, str) for p in val):
+                    # Dropped whole: a list pruned to [] would match every finding of the rule.
+                    record(None, "project_config._load_and_validate",
+                           TypeError(f"{path}: suppressions[{i}].{list_key} must be a list of strings"),
+                           f"suppressions[{i}] ignored")
+                    bad_patterns = True
             if bad_patterns:
                 continue
             valid_suppressions.append(s)
@@ -257,7 +263,7 @@ def _load_and_validate(path: str) -> Optional[Dict[str, Any]]:
 
     # Validate project section (ambient temperature feeds thermal arithmetic)
     raw_project = cfg.get('project')
-    if raw_project is not None:
+    if 'project' in cfg:
         if not isinstance(raw_project, dict):
             _wrong_type(cfg, 'project', 'project', 'an object')
         else:

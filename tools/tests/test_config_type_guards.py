@@ -10,7 +10,7 @@ SCRIPTS = ROOT / "skills" / "kicad" / "scripts"
 FX = fixture_path("simple-project")
 sys.path.insert(0, str(SCRIPTS))
 
-from project_config import _load_and_validate, matches_suppression  # noqa: E402
+from project_config import _load_and_validate, load_config, matches_suppression  # noqa: E402
 from design_intent import resolve_design_intent  # noqa: E402
 
 
@@ -52,6 +52,34 @@ class SuppressionStringTest(unittest.TestCase):
         self.assertEqual(cfg["suppressions"], [])
         self.assertIn("suppressions[0] ignored", err)
 
+    def test_validator_drops_an_entry_with_a_non_string_pattern(self):
+        keep = {"rule_id": "IO-001", "components": ["J1"]}
+        cfg, err = _load({"suppressions": [{"rule_id": "IO-001", "components": [1]},
+                                           {"rule_id": "IO-001", "nets": [None]}, keep]})
+        self.assertEqual(cfg["suppressions"], [keep])
+        self.assertEqual(err.count("suppressions[0] ignored"), 1, err)
+        self.assertEqual(err.count("suppressions[1] ignored"), 1, err)
+
+
+class UnreadableConfigTest(unittest.TestCase):
+    def _check(self, data):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = os.path.join(tmp, ".kicad-happy.json")
+            Path(p).write_bytes(data)
+            err = io.StringIO()
+            with redirect_stderr(err):
+                out = _load_and_validate(p)
+                cfg = load_config(tmp)
+            self.assertIsNone(out)
+            self.assertIn("Warning: failed to parse", err.getvalue())
+            self.assertEqual(cfg["suppressions"], [])
+
+    def test_non_utf8_file_warns_and_is_skipped(self):
+        self._check(b'\xff{"project": {}}')
+
+    def test_deeply_nested_file_warns_and_is_skipped(self):
+        self._check(('{"project": ' + "[" * 100000 + "]" * 100000 + "}").encode())
+
 
 class WrongTypeTest(unittest.TestCase):
     CASES = [
@@ -68,6 +96,7 @@ class WrongTypeTest(unittest.TestCase):
         ({"design_intent": {"expected_lifetime_years": [5]}}, "design_intent.expected_lifetime_years"),
         ({"project": {"ambient_temperature_c": "bogus"}}, "project.ambient_temperature_c"),
         ({"project": "bogus"}, "project"),
+        ({"project": None}, "project"),
     ]
 
     def test_each_wrong_type_warns_once_and_resolves(self):
@@ -123,6 +152,26 @@ class CliTest(unittest.TestCase):
             self.assertIn("project.ambient_temperature_c ignored, default used", r.stderr)
             with open(out, encoding="utf-8") as f:
                 self.assertEqual(json.load(f)["summary"]["ambient_c"], 25.0)
+
+    def test_emc_and_thermal_survive_a_null_project(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            sch, pcb = os.path.join(tmp, "sch.json"), os.path.join(tmp, "pcb.json")
+            self.assertEqual(self._run("analyze_schematic.py", str(FX / "simple.kicad_sch"), "-o", sch,
+                                       cwd=tmp).returncode, 0)
+            self.assertEqual(self._run("analyze_pcb.py", str(FX / "simple.kicad_pcb"), "-o", pcb,
+                                       cwd=tmp).returncode, 0)
+            cfg = os.path.join(tmp, "cfg.json")
+            Path(cfg).write_text('{"project": null}', encoding="utf-8")
+            emc = os.path.join(ROOT, "skills", "emc", "scripts", "analyze_emc.py")
+            runs = [subprocess.run([sys.executable, emc, "--schematic", sch, "--pcb", pcb, "--config", cfg,
+                                    "-o", os.path.join(tmp, "e.json")], capture_output=True, text=True,
+                                   encoding="utf-8", cwd=tmp, timeout=300),
+                    self._run("analyze_thermal.py", "--schematic", sch, "--pcb", pcb, "--config", cfg,
+                              "-o", os.path.join(tmp, "t.json"), cwd=tmp)]
+            for r in runs:
+                self.assertEqual(r.returncode, 0, r.stderr[-1500:])
+                self.assertNotIn("Traceback", r.stderr)
+                self.assertIn("project ignored, default used", r.stderr)
 
 
 if __name__ == "__main__":

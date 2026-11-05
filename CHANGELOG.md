@@ -288,6 +288,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A datasheet download no longer reads the body of a redirect response, so the size cap holds across redirects and a server cannot make the download stream data it will not keep.
 - A datasheet manifest, extraction cache or Deep Review input nested deeply enough to overflow the JSON parser is reported as unreadable (a cache miss, a named `manifest.json` error, or the gate's exit 2) instead of ending the run with a traceback.
 - A cached datasheet extraction with a null pin or spec entry, or a quoted or boolean number where a spec value or page is expected, is ignored as a whole (a cache miss) instead of crashing the schematic analyzer or replacing the datasheet verification with an error; a null pin no longer breaks the pin-function and regulator lookups, and an extraction whose `extraction` block is not an object no longer fails the quality check.
+- A configuration file that is not UTF-8 or is nested too deeply, a suppression whose `components` or `nets` holds a non-string pattern, and `"project": null` are each warned about and skipped instead of ending the run with a traceback; the suppression is dropped whole, never narrowed to match every finding of the rule.
 
 ### Documentation
 
