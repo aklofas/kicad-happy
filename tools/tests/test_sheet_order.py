@@ -94,7 +94,11 @@ def stable(files):
     with tempfile.TemporaryDirectory() as tmp:
         result = analyze(files, tmp)
         (result.get("inputs") or {}).pop("run_id", None)
-        return json.dumps(result, sort_keys=True, default=str).replace(json.dumps(tmp)[1:-1], "<tmp>")
+        text = json.dumps(result, sort_keys=True, default=str)
+        # Windows may name the temp dir by its short form (RUNNER~1) and record the long one
+        for form in sorted({tmp, os.path.realpath(tmp)}, key=len, reverse=True):
+            text = text.replace(json.dumps(form)[1:-1], "<tmp>")
+        return text
 
 
 class SiblingSheetOrderTest(unittest.TestCase):

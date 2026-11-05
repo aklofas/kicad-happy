@@ -24,7 +24,7 @@ class ByteIdentity(_Tmp):
         a = self.d / "a"
         b = self.d / "b"
         atomic_write_text(a, text, follow_symlinks=False)
-        b.write_text(text, encoding="utf-8")
+        b.write_text(text, encoding="utf-8", newline="\n")
         self.assertEqual(a.read_bytes(), b.read_bytes())
 
 

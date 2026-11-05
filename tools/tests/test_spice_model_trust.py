@@ -31,7 +31,7 @@ class _CacheCase(unittest.TestCase):
 
     def plant(self, text, file="LM358.sub", specs=None):
         if text is not None:
-            (self.models / file).write_text(text, encoding="utf-8")
+            (self.models / file).write_text(text, encoding="utf-8", newline="\n")
         entry = {"file": file, "mpn": "LM358", "type": "opamp", "source": "lookup",
                  "specs": {"gbw_hz": 1000000.0} if specs is None else specs}
         (self.models / "manifest.json").write_text(json.dumps({"LM358": entry}),
