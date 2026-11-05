@@ -233,8 +233,11 @@ def _lookup_vref(candidates: list[str]) -> tuple[float | None, str]:
         m = re.search(r'[-_](\d{2})(?=[^0-9.]|$)', candidate)
         if m and m.group(1) not in _AMBIGUOUS_SUFFIXES:
             # A two-digit suffix is an implied decimal, as in KiCad's library:
-            # AP1117-33 is 3.3 V, LDK130-08 is 0.8 V.
-            return float(m.group(1)[0] + "." + m.group(1)[1]), "fixed_suffix"
+            # AP1117-33 is 3.3 V, LDK130-08 is 0.8 V. No fixed part is below
+            # 0.5 V, so LC78_03-05 (a 3.3 V module) gives no value.
+            fixed_v = float(m.group(1)[0] + "." + m.group(1)[1])
+            if fixed_v >= 0.5:
+                return fixed_v, "fixed_suffix"
     for candidate in candidates:
         key = _longest_vref_key(candidate)
         if key is not None:

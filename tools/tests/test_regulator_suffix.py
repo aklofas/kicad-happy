@@ -21,6 +21,11 @@ class FixedSuffix(unittest.TestCase):
             vref, source = lookup_regulator_vref(name, "")
             self.assertNotEqual(source, "fixed_suffix", name)
 
+    def test_suffix_below_half_a_volt_gives_no_value(self):
+        # LC78_03-05 is a 3.3 V module, not 0.3 V.
+        self.assertNotEqual(lookup_regulator_vref("LC78_03-05", "")[1], "fixed_suffix")
+        self.assertEqual(lookup_regulator_vref("AP7361C-33E-13", ""), (3.3, "fixed_suffix"))
+
     def test_package_names_give_no_value(self):
         for name in ["LDO_SOT-23", "REG_SOT-89-10", "AXP209(QFN-48)", "LM2675-5-WSON-16",
                      "XYZ_TO-92", "REG_SOT-223"]:
