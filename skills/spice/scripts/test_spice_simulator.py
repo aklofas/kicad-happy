@@ -342,9 +342,11 @@ class TestExternalDeckCli(unittest.TestCase):
             ("xyce", (".mt0", ".MT0")),
         )
         for simulator, suffixes in cases:
-            for suffix in suffixes:
+            for index, suffix in enumerate(suffixes):
                 with self.subTest(simulator=simulator, suffix=suffix):
-                    clashing = Path(self.tempdir.name) / f"clash{suffix}"
+                    # A stem per case: on a case-insensitive filesystem
+                    # clash.OUT would be the clash.out written before it.
+                    clashing = Path(self.tempdir.name) / f"clash-{simulator}-{index}{suffix}"
                     clashing.write_text(
                         "* synthetic deck\n.end\n", encoding="utf-8"
                     )
