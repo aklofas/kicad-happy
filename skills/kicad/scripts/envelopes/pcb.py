@@ -432,9 +432,13 @@ class PCBEnvelope:
         "description": "Switching-regulator hot-loop areas; emitted with "
                        "--schematic, for switching topologies only, and only "
                        "when non-empty. Items: regulator_ref, regulator_value, "
-                       "inductor_ref, cap_ref, area_mm2 (null when "
-                       "degenerate), vertices_mm (cap, IC and inductor "
-                       "centres), estimate ('degenerate', optional)."})
+                       "inductor_ref, cap_ref, method ('pad'), area_mm2 (null "
+                       "when not estimated), loop_pads and vertices_mm (the "
+                       "input-cap supply, regulator supply, SW, inductor SW, "
+                       "regulator ground and input-cap ground pads, in loop "
+                       "order; absent when the pads are not resolved), "
+                       "estimate ('pads_unresolved' or 'degenerate', "
+                       "optional)."})
     current_capacity: Optional[dict] = field(default=None, metadata={
         "description": "Not in CLI output: its entries move to "
                        "findings[] (detector analyze_current_capacity)."})

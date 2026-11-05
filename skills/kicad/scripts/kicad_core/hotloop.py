@@ -1,9 +1,19 @@
-"""Switching-regulator hot-loop area proxy, shared by the PCB analyzer and EMC SW-003.
+"""Switching-regulator hot-loop area proxies, shared by the PCB analyzer and EMC SW-003.
 
-The proxy is the triangle through the footprint centres of the input capacitor,
-the regulator and the inductor. It is not the hot loop itself (that runs through
-the pads, vias and the ground return), so when the centres lie in a line the
-triangle says nothing about the loop and no area is given.
+The PCB analyzer measures a polygon through six pads in loop order: input-cap
+supply pad, regulator supply pad, regulator SW pad, inductor SW pad, regulator
+ground pad, input-cap ground pad (polygon_loop_area). The SW -> inductor ->
+ground leg folds back across the input side, so the polygon often crosses
+itself; the shoelace area then nets the crossing lobes against each other. It
+is a placement proxy, not the exact loop (which also runs through vias and the
+ground return).
+
+EMC SW-003 without pad positions falls back to the triangle through the
+footprint centres of the input capacitor, the regulator and the inductor
+(triangle_loop_area).
+
+When the points lie in a line neither proxy says anything about the loop and
+no area is given.
 """
 
 # Below this area a triangle whose longest side reaches DEGENERATE_MIN_SPAN_MM
@@ -31,5 +41,32 @@ def triangle_loop_area(vertices) -> float | None:
                   ((cx - bx) ** 2 + (cy - by) ** 2) ** 0.5,
                   ((ax - cx) ** 2 + (ay - cy) ** 2) ** 0.5)
     if area < DEGENERATE_MAX_AREA_MM2 and longest >= DEGENERATE_MIN_SPAN_MM:
+        return None
+    return area
+
+
+def polygon_area(vertices) -> float:
+    """Shoelace area in mm² of a closed polygon of (x, y) points in loop order."""
+    n = len(vertices)
+    twice = 0.0
+    for i in range(n):
+        j = (i + 1) % n
+        twice += vertices[i][0] * vertices[j][1] - vertices[j][0] * vertices[i][1]
+    return abs(twice) / 2.0
+
+
+def polygon_loop_area(vertices) -> float | None:
+    """polygon_area, or None when the polygon is degenerate.
+
+    Degenerate, as for the triangle: fewer than three distinct points, or an
+    area under DEGENERATE_MAX_AREA_MM2 while two points are at least
+    DEGENERATE_MIN_SPAN_MM apart.
+    """
+    if len(set(vertices)) < 3:
+        return None
+    area = polygon_area(vertices)
+    span = max(((bx - ax) ** 2 + (by - ay) ** 2) ** 0.5
+               for ax, ay in vertices for bx, by in vertices)
+    if area < DEGENERATE_MAX_AREA_MM2 and span >= DEGENERATE_MIN_SPAN_MM:
         return None
     return area

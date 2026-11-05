@@ -5,7 +5,7 @@ import math
 import re
 
 from kicad_core.classify import is_touch_pad
-from kicad_core.hotloop import triangle_loop_area
+from kicad_core.hotloop import polygon_loop_area
 from kicad_core.netnames import IC_SIGNAL_PIN_TYPES, is_ground_name, is_power_net_name
 from pcb.geometry import (_outline_shape_points, _refined_overlap_mm2, courtyards_collide,
                           outline_edge_distance, outline_loops, overlap_area_mm2,
@@ -738,24 +738,81 @@ def analyze_tombstoning_risk(footprints: list[dict], tracks: dict,
     return at_risk
 
 
-def _compute_switching_loop_areas(footprints: list, schematic_data: dict) -> list:
-    """Compute hot loop triangle areas for switching regulators.
+def _nearest_pad(pads: list, to: tuple):
+    return min(pads, key=lambda p: (p["abs_x"] - to[0]) ** 2 + (p["abs_y"] - to[1]) ** 2)
 
-    Uses regulator refs from schematic + footprint positions from PCB.
-    Returns list of {regulator_ref, regulator_value, inductor_ref, cap_ref,
-    area_mm2, vertices_mm}; when the centres lie in a line area_mm2 is None
-    and the record carries estimate "degenerate".
+
+def _pad_loop(reg_fp: dict, ind_fp: dict, cap_fp: dict, ind_sw_pins: set):
+    """The hot-loop pads in loop order, or None when they cannot be resolved.
+
+    Input-cap supply pad -> regulator supply pad, regulator SW pad -> inductor
+    SW pad, regulator ground pad -> input-cap ground pad. Pads are matched by
+    net: the cap's ground-named net and its other net, both also on the
+    regulator; the SW net is shared by the regulator and the inductor and is
+    neither of those (when the inductor's other side also reaches the
+    regulator, ``ind_sw_pins``, the inductor pins on the schematic SW net,
+    decide). Where a part has several pads on a net, the one nearest the
+    previous loop point is used.
+    """
+    def placed(fp):
+        return [p for p in fp.get("pads") or []
+                if p.get("net_name") and "abs_x" in p and "abs_y" in p]
+
+    reg_pads, ind_pads, cap_pads = placed(reg_fp), placed(ind_fp), placed(cap_fp)
+    cap_nets = {p["net_name"] for p in cap_pads}
+    gnd = [n for n in cap_nets if is_ground_name(n)]
+    vin = [n for n in cap_nets if not is_ground_name(n)]
+    if len(gnd) != 1 or len(vin) != 1:
+        return None
+    gnd, vin = gnd[0], vin[0]
+    reg_nets = {p["net_name"] for p in reg_pads}
+    if gnd not in reg_nets or vin not in reg_nets:
+        return None
+    sw = sorted(({p["net_name"] for p in ind_pads} & reg_nets) - {gnd, vin})
+    if len(sw) > 1 and ind_sw_pins:
+        sw = [n for n in sw if any(p["net_name"] == n and p.get("number") in ind_sw_pins
+                                   for p in ind_pads)]
+    if len(sw) != 1:
+        return None
+    sw = sw[0]
+
+    def on(pads, net):
+        return [p for p in pads if p["net_name"] == net]
+
+    cap_vin = on(cap_pads, vin)[0]
+    reg_vin = _nearest_pad(on(reg_pads, vin), (cap_vin["abs_x"], cap_vin["abs_y"]))
+    reg_sw = _nearest_pad(on(reg_pads, sw), (reg_vin["abs_x"], reg_vin["abs_y"]))
+    ind_sw = _nearest_pad(on(ind_pads, sw), (reg_sw["abs_x"], reg_sw["abs_y"]))
+    cap_gnd = on(cap_pads, gnd)[0]
+    reg_gnd = _nearest_pad(on(reg_pads, gnd), (cap_gnd["abs_x"], cap_gnd["abs_y"]))
+    return [(cap_fp, cap_vin), (reg_fp, reg_vin), (reg_fp, reg_sw),
+            (ind_fp, ind_sw), (reg_fp, reg_gnd), (cap_fp, cap_gnd)]
+
+
+def _compute_switching_loop_areas(footprints: list, schematic_data: dict) -> list:
+    """Hot-loop areas for switching regulators, from pad positions.
+
+    The loop runs input-cap supply pad -> regulator supply pad, regulator SW
+    pad -> inductor SW pad, regulator ground pad -> input-cap ground pad
+    (method "pad"), through the input cap whose pads are nearest the
+    regulator's supply and ground pads. The polygon can cross itself (see
+    kicad_core.hotloop).
+    Returns list of {regulator_ref, regulator_value,
+    inductor_ref, cap_ref, method, area_mm2, loop_pads, vertices_mm};
+    area_mm2 is None with estimate "pads_unresolved" when the pads cannot be
+    matched by net, or "degenerate" when they lie in a line.
     """
     regulators = [f for f in schematic_data.get('findings', [])
                   if f.get('detector') == 'detect_power_regulators']
     if not regulators:
         return []
 
-    fp_pos = {}
+    sch_nets = schematic_data.get('nets') or {}
+    fp_by_ref = {}
     for fp in footprints:
         ref = fp.get('reference', '')
         if ref:
-            fp_pos[ref] = (fp.get('x') or 0, fp.get('y') or 0)
+            fp_by_ref.setdefault(ref, fp)
 
     results = []
     for reg in regulators:
@@ -771,27 +828,44 @@ def _compute_switching_loop_areas(footprints: list, schematic_data: dict) -> lis
         if not inductor_ref or not input_caps:
             continue
 
-        ic_pos = fp_pos.get(ref)
-        ind_pos = fp_pos.get(inductor_ref)
-        cap_ref = input_caps[0].get('ref', '') if isinstance(input_caps[0], dict) else str(input_caps[0])
-        cap_pos = fp_pos.get(cap_ref)
-
-        if not ic_pos or not ind_pos or not cap_pos:
+        reg_fp, ind_fp = fp_by_ref.get(ref), fp_by_ref.get(inductor_ref)
+        cap_refs = [c.get('ref', '') if isinstance(c, dict) else str(c) for c in input_caps]
+        cap_fps = [fp_by_ref[c] for c in cap_refs if c in fp_by_ref]
+        if not reg_fp or not ind_fp or not cap_fps:
             continue
-        if ic_pos == (0, 0) or ind_pos == (0, 0) or cap_pos == (0, 0):
+        if any((fp.get('x') or 0, fp.get('y') or 0) == (0, 0) for fp in (reg_fp, ind_fp, cap_fps[0])):
             continue
 
-        vertices = [cap_pos, ic_pos, ind_pos]
-        area_mm2 = triangle_loop_area(vertices)
+        sw_pins = {p.get('pin_number') for p in sch_nets.get(reg.get('sw_net') or '', {}).get('pins', [])
+                   if p.get('component') == inductor_ref}
+        # The input cap nearest the regulator's supply and ground pads closes the loop.
+        best = None
+        for cap_fp in cap_fps:
+            pads = _pad_loop(reg_fp, ind_fp, cap_fp, sw_pins)
+            if pads is None:
+                continue
+            vertices = [(p["abs_x"], p["abs_y"]) for _, p in pads]
+            reach = math.dist(vertices[0], vertices[1]) + math.dist(vertices[4], vertices[5])
+            if best is None or reach < best[0]:
+                best = (reach, cap_fp, pads, vertices)
 
         loop = {
             "regulator_ref": ref,
             "regulator_value": reg.get('value', ''),
             "inductor_ref": inductor_ref,
-            "cap_ref": cap_ref,
-            "area_mm2": round(area_mm2, 1) if area_mm2 is not None else None,
-            "vertices_mm": [list(v) for v in vertices],
+            "cap_ref": best[1]['reference'] if best else cap_fps[0]['reference'],
+            "method": "pad",
         }
+        if best is None:
+            loop["area_mm2"] = None
+            loop["estimate"] = "pads_unresolved"
+            results.append(loop)
+            continue
+        _, _, pads, vertices = best
+        area_mm2 = polygon_loop_area(vertices)
+        loop["area_mm2"] = round(area_mm2, 1) if area_mm2 is not None else None
+        loop["loop_pads"] = [f"{fp['reference']}.{p.get('number', '')}" for fp, p in pads]
+        loop["vertices_mm"] = [list(v) for v in vertices]
         if area_mm2 is None:
             loop["estimate"] = "degenerate"
         results.append(loop)
