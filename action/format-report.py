@@ -72,7 +72,8 @@ def _active_counts(doc):
     for f in doc.get("findings") or []:
         if not f.get("suppressed"):
             continue
-        sev = normalize_severity(f.get("severity", ""))
+        # The producers count only a literal "error" or "warning" in by_severity.
+        sev = str(f.get("severity", "")).lower()
         if sev == "error":
             err = max(err - 1, 0)
         elif sev == "warning":
@@ -122,10 +123,11 @@ def _render_thermal_block(thermal, *, heading_level: int) -> list[str]:
     suppressed = ts.get("suppressed", 0)
     heading = "#" * heading_level + " Thermal Analysis"
     sup_str = f", {suppressed} suppressed" if suppressed else ""
+    score_str = "not scored" if score is None else f"{score}/100"
     lines = [
         heading,
         "",
-        (f"Score **{score}/100** — {total} checks, "
+        (f"Score **{score_str}** — {total} checks, "
          f"total dissipation {pdiss:.2f}W{sup_str}"),
         "",
     ]
@@ -697,7 +699,8 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
             findings.append(("critical", f"Thermal: {th_err_pre} error-severity finding(s) — score {th_score_pre}/100", "thermal"))
         if th_warn_pre > 0:
             findings.append(("warning", f"Thermal: {th_warn_pre} warning-severity finding(s)", "thermal"))
-        if th_total_pre > 0 and th_err_pre == 0 and th_warn_pre == 0:
+        if (th_total_pre > 0 and th_err_pre == 0 and th_warn_pre == 0
+                and th_score_pre is not None):
             if th_sup:
                 verified.append(f"Thermal score {th_score_pre}/100 — no unsuppressed error/warning findings ({th_sup} suppressed)")
             else:

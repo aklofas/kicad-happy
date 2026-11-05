@@ -250,6 +250,13 @@ class SuppressedStatusTest(unittest.TestCase):
         self.assertIn("EMC: 1 error-severity", md)
 
 
+    def test_suppressed_finding_the_producer_did_not_count_is_not_subtracted(self):
+        emc = self._emc([_supp("GP-001", "error", False), _supp("GP-002", "HIGH", True)], 1, 1)
+        s, md = _render_docs(emc=emc)
+        self.assertTrue(s["has_critical"])
+        self.assertIn("EMC: 1 error-severity", md)
+
+
 class VerifiedCountTest(unittest.TestCase):
     def test_bar_counts_thermal_verified(self):
         thermal = {"analyzer_type": "thermal",
@@ -258,6 +265,15 @@ class VerifiedCountTest(unittest.TestCase):
         s, md = _render_docs(thermal=thermal)
         self.assertIn("> 1 verified", md)
         self.assertEqual(s["verified_count"], 1)
+
+    def test_skipped_thermal_run_is_not_verified(self):
+        thermal = {"analyzer_type": "thermal",
+                   "summary": {"thermal_score": None, "total_findings": 1,
+                               "by_severity": {"error": 0, "warning": 0, "info": 1}},
+                   "findings": [{"rule_id": "TS-005", "severity": "info", "summary": "y"}]}
+        s, md = _render_docs(thermal=thermal)
+        self.assertNotIn("None/100", md)
+        self.assertEqual(s["verified_count"], 0)
 
 
 if __name__ == "__main__":
