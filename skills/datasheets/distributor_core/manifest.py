@@ -105,7 +105,7 @@ def write_json_atomic(path: Path, data, sort_keys: bool = False) -> None:
     path = Path(path)
     fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=path.name + ".", suffix=".tmp")
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
             json.dump(data, f, indent=2, sort_keys=sort_keys)
         try:
             mode = os.stat(path).st_mode & 0o7777

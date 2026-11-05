@@ -324,7 +324,7 @@ def ensure_gitignore(analysis_dir: str) -> None:
             record(None, "analysis_cache.ensure_gitignore",
                    ValueError(f"{path} is a symlink"), "file not written")
         return
-    with open(path, 'w', encoding='utf-8') as f:
+    with open(path, 'w', encoding='utf-8', newline="\n") as f:
         f.write(GITIGNORE_CONTENT)
 
 

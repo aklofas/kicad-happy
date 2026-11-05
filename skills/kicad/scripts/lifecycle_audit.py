@@ -138,7 +138,7 @@ def main(argv: list[str] | None = None) -> int:
         if out_path:
             print(f"Audit written to {out_path}", file=sys.stderr)
     elif output_path:
-        with open(output_path, "w", encoding="utf-8") as f:
+        with open(output_path, "w", encoding="utf-8", newline="\n") as f:
             f.write(output_json)
         print(f"Audit written to {output_path}", file=sys.stderr)
     else:

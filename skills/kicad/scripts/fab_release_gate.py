@@ -634,7 +634,7 @@ def main(argv=None) -> int:
         print(format_text_report(result))
     elif args.output:
         indent = None if args.compact else 2
-        with open(args.output, "w", encoding="utf-8") as f:
+        with open(args.output, "w", encoding="utf-8", newline="\n") as f:
             json.dump(result, f, indent=indent)
         overall = result["overall_status"]
         total = result["summary"]["total_checks"]

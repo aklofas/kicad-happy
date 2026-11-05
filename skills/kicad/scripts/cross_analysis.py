@@ -1388,7 +1388,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.output:
-        with open(args.output, 'w', encoding="utf-8") as f:
+        with open(args.output, 'w', encoding="utf-8", newline="\n") as f:
             json.dump(result, f, indent=2)
         print(f'Cross-analysis: {len(findings)} findings -> {args.output}', file=sys.stderr)
     elif args.analysis_dir:

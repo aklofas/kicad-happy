@@ -238,7 +238,7 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
                 diagnostics.extend(cir_content.diagnostics)
             cir_content = cir_content.render(simulator_backend, out_file_spice)
 
-        with open(cir_file, "w", encoding="utf-8") as f:
+        with open(cir_file, "w", encoding="utf-8", newline="\n") as f:
             f.write(cir_content)
 
         t0 = time.monotonic()
@@ -253,7 +253,7 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
         elapsed = time.monotonic() - t0
         total_time += elapsed
 
-        with open(log_file, "w", encoding="utf-8") as f:
+        with open(log_file, "w", encoding="utf-8", newline="\n") as f:
             f.write(f"=== stdout ===\n{stdout}\n=== stderr ===\n{stderr}\n")
 
         if not success:
@@ -703,10 +703,10 @@ def main(argv: list[str] | None = None) -> int:
         from output_filters import format_text
         print(format_text(report.get("findings", []), "designer"))
         if args.output:
-            with open(args.output, "w", encoding="utf-8") as f:
+            with open(args.output, "w", encoding="utf-8", newline="\n") as f:
                 f.write(output_json)
     elif args.output:
-        with open(args.output, "w", encoding="utf-8") as f:
+        with open(args.output, "w", encoding="utf-8", newline="\n") as f:
             f.write(output_json)
         # Print summary to stderr
         print(_summary_line(report), file=sys.stderr)

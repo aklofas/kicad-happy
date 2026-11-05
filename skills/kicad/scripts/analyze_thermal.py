@@ -1169,7 +1169,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Thermal analysis complete: {len(findings)} findings "
                   f"(score {score_str}) -> {out_path}", file=sys.stderr)
     elif output_path:
-        with open(output_path, "w", encoding="utf-8") as f:
+        with open(output_path, "w", encoding="utf-8", newline="\n") as f:
             json.dump(result, f, indent=2)
         score_str = "SKIPPED" if score is None else f"{score}/100"
         print(f"Thermal analysis complete: {len(findings)} findings "

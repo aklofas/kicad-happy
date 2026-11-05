@@ -658,7 +658,7 @@ def main():
     output = json.dumps(report, indent=2)
     if args.output:
         os.makedirs(os.path.dirname(os.path.abspath(args.output)) or ".", exist_ok=True)
-        with open(args.output, "w", encoding="utf-8") as f:
+        with open(args.output, "w", encoding="utf-8", newline="\n") as f:
             f.write(output)
             f.write("\n")
         print(f"Written to {args.output}", file=sys.stderr)

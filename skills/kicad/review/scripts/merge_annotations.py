@@ -124,7 +124,7 @@ def merge(raw_dir, review_path, merged_dir) -> dict:
     merged_dir.mkdir(parents=True, exist_ok=True)
     for stem, env in envelopes.items():
         (merged_dir / f"{stem}.json").write_text(
-            json.dumps(env, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            json.dumps(env, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
 
     # HI-3 round-trip verification (per-analyzer)
     for stem in envelopes:
@@ -149,7 +149,7 @@ def merge(raw_dir, review_path, merged_dir) -> dict:
         "reviewer_observations_count": len(review.get("reviewer_observations", [])),
     }
     (merged_dir / "_merge_report.json").write_text(
-        json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
     return report
 
 

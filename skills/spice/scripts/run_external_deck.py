@@ -136,7 +136,7 @@ def _write_json(payload, output_path):
                 suffix=".tmp",
             )
             try:
-                with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+                with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
                     json.dump(payload, stream, indent=2)
                     stream.write("\n")
                 os.chmod(temp_name, _result_mode(target))

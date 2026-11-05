@@ -52,7 +52,7 @@ def store_token(name, client_id, token, ttl_s):
     try:
         folder = cache_dir()
         fd, tmp = tempfile.mkstemp(dir=folder, prefix=f".{name}.", suffix=".tmp")
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
             os.chmod(tmp, 0o600)
             json.dump({"client_id": client_id, "token": token,
                        "expires_at": time.time() + ttl_s}, f)

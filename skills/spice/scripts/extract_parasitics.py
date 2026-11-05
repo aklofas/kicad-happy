@@ -309,7 +309,7 @@ def main(argv: list[str] | None = None) -> int:
 
     output = json.dumps(result, indent=2)
     if args.output:
-        with open(args.output, "w", encoding="utf-8") as f:
+        with open(args.output, "w", encoding="utf-8", newline="\n") as f:
             f.write(output)
     else:
         print(output)

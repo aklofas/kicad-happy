@@ -9,7 +9,7 @@ import stat
 from pathlib import Path
 
 
-def atomic_write_text(path, text: str, newline: str | None = None, *,
+def atomic_write_text(path, text: str, newline: str | None = "\n", *,
                       follow_symlinks: bool = True, keep_mode: bool = True) -> None:
     """Write UTF-8 text to path via a temp file and os.replace.
 
@@ -21,7 +21,8 @@ def atomic_write_text(path, text: str, newline: str | None = None, *,
     text is written into the existing node, as a plain write would. The modes differ only for
     other links: followed, or replaced (including a link to a FIFO or device when not
     following).
-    *newline* is passed to the file object ("" keeps the text's line endings as given)."""
+    *newline* is passed to the file object: "\n" (the default) writes LF on every platform,
+    "" keeps the text's line endings as given."""
     if follow_symlinks:
         try:
             st_mode = os.stat(path).st_mode

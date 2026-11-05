@@ -62,7 +62,7 @@ def write_primary_run(analysis_dir_arg: str, output_text: str, *, analyzer: str,
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         out_file = os.path.join(tmp_dir, CANONICAL_OUTPUTS.get(analyzer, f"{analyzer}.json"))
-        Path(out_file).write_text(output_text, encoding='utf-8')
+        Path(out_file).write_text(output_text, encoding='utf-8', newline="\n")
 
         if should_create_new_run(analysis_dir, tmp_dir, diff_threshold):
             if script_entry is None:
@@ -93,7 +93,7 @@ def write_derived_output(analysis_dir_arg: str, output_text: str, *, analyzer: s
     analysis_dir = resolve_analysis_dir(analysis_dir_arg)
     filename = CANONICAL_OUTPUTS.get(analyzer, f"{analyzer}.json")
     with tempfile.TemporaryDirectory() as tmp_dir:
-        Path(os.path.join(tmp_dir, filename)).write_text(output_text, encoding='utf-8')
+        Path(os.path.join(tmp_dir, filename)).write_text(output_text, encoding='utf-8', newline="\n")
         if not overwrite_current(analysis_dir, tmp_dir, source_hashes=None):
             return None
     current = get_current_run(analysis_dir)

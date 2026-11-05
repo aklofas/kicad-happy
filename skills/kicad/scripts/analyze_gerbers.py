@@ -2164,7 +2164,7 @@ def main(argv: list[str] | None = None) -> int:
         if out_path:
             print(f"Written to {out_path}", file=sys.stderr)
     elif output_path:
-        Path(output_path).write_text(output_json, encoding="utf-8")
+        Path(output_path).write_text(output_json, encoding="utf-8", newline="\n")
         print(f"Written to {output_path}", file=sys.stderr)
     elif args.text:
         from output_filters import format_text

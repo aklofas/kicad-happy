@@ -169,7 +169,7 @@ def write_text_atomic(path, text):
         except FileExistsError:
             continue
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
             f.write(text)
         if exists:
             shutil.copymode(path, tmp)

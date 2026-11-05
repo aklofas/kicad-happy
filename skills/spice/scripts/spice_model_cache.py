@@ -222,7 +222,7 @@ def cache_model(cache_dir, mpn, subckt, specs, source, component_type):
 
     # A temp file swapped in replaces a planted symlink instead of writing through it
     tmp = tempfile.NamedTemporaryFile(dir=cache_dir, prefix=f"{key}.", suffix=".tmp",
-                                      delete=False, mode="w", encoding="utf-8")
+                                      delete=False, mode="w", encoding="utf-8", newline="\n")
     try:
         with tmp:
             tmp.write(subckt)
@@ -252,7 +252,7 @@ def cache_model(cache_dir, mpn, subckt, specs, source, component_type):
     # Write beside the target and swap it in, so a reader never sees a half-written manifest
     write_path = cache_dir / MANIFEST_FILENAME
     tmp = tempfile.NamedTemporaryFile(dir=cache_dir, prefix="manifest.", suffix=".tmp",
-                                      delete=False, mode="w", encoding="utf-8")
+                                      delete=False, mode="w", encoding="utf-8", newline="\n")
     try:
         with tmp:
             json.dump(index, tmp, indent=2)

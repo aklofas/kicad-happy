@@ -1360,7 +1360,7 @@ def _run_emc_preview(analysis: dict, patched_json: dict,
         fd, sch_path = tempfile.mkstemp(suffix=".json")
         out_path = sch_path + ".emc.json"
         try:
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
+            with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
                 json.dump(schematic_json, f, indent=2)
             cmd = [sys.executable, emc_script, "--schematic", sch_path, "--output", out_path]
             if pcb_path:

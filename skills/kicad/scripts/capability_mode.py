@@ -185,7 +185,7 @@ def get_or_create_capability_mode(
     #      reads the winner's record, so every analyzer in the run shares
     #      one run_id (HI-7).
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
             f.write(json.dumps(record, indent=2, sort_keys=True) + "\n")
         try:
             os.link(tmp_path, path)

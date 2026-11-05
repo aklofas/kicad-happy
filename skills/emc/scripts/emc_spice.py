@@ -172,7 +172,7 @@ def run_pdn_spice(caps, plane_cap_f=0, backend=None,
 
     try:
         cir_content = tb.render(backend, os.path.basename(out_file))
-        with open(cir_file, 'w', encoding="utf-8") as f:
+        with open(cir_file, 'w', encoding="utf-8", newline="\n") as f:
             f.write(cir_content)
 
         success, stdout, stderr = backend.run(os.path.basename(cir_file), timeout=timeout, cwd=workdir)
@@ -293,7 +293,7 @@ def run_filter_spice(inductor_h, cap_f, switching_freq_hz,
 
     try:
         cir_content = tb.render(backend, os.path.basename(out_file))
-        with open(cir_file, 'w', encoding="utf-8") as f:
+        with open(cir_file, 'w', encoding="utf-8", newline="\n") as f:
             f.write(cir_content)
 
         success, stdout, stderr = backend.run(os.path.basename(cir_file), timeout=timeout, cwd=workdir)
@@ -422,7 +422,7 @@ def run_switching_fft(v_peak, duty_cycle, rise_time_s, switching_freq_hz,
             f'.end\n'
         )
 
-        with open(cir_file, 'w', encoding="utf-8") as f:
+        with open(cir_file, 'w', encoding="utf-8", newline="\n") as f:
             f.write(cir_content)
 
         success, stdout, stderr = backend.run(os.path.basename(cir_file), timeout=timeout, cwd=workdir)
@@ -695,7 +695,7 @@ def run_distributed_pdn_spice(node, plane_cap_f=0, backend=None,
 
     try:
         cir_content = tb.render(backend, os.path.basename(out_file))
-        with open(cir_file, 'w', encoding="utf-8") as f:
+        with open(cir_file, 'w', encoding="utf-8", newline="\n") as f:
             f.write(cir_content)
 
         success, stdout, stderr = backend.run(os.path.basename(cir_file), timeout=timeout, cwd=workdir)
