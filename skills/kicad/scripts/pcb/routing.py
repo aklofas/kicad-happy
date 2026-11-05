@@ -964,11 +964,19 @@ def analyze_ground_domains(footprints: list[dict], net_names: dict[int, str],
     are flagged — these may be intentional (star ground) or errors.
     """
     # COM also names an analog-switch or motor common: a ground domain only when the rail
-    # set names it.
+    # set names it. AGND_CODEC, PGND2 or ESP_GND2 are grounds too, but a net KiCad names
+    # after a pin (Net-(U1-GND), unconnected-(U1-GND-Pad3), a panel's Board_0-Net-(U1-GND))
+    # is not.
+    def _is_ground(name: str) -> bool:
+        leaf = net_leaf(name).upper()
+        if leaf == "COM":
+            return name in (power_rails or ())
+        return is_ground_name(name, power_rails) or (
+            any(g in leaf for g in ("GND", "VSS", "GROUND"))
+            and "NET-(" not in leaf and "UNCONNECTED-(" not in leaf)
+
     ground_nets: dict[int, str] = {
-        net_num: name for net_num, name in net_names.items()
-        if is_ground_name(name, power_rails)
-        and (net_leaf(name).upper() != "COM" or name in (power_rails or ()))}
+        net_num: name for net_num, name in net_names.items() if _is_ground(name)}
 
     if not ground_nets:
         return {"domain_count": 0, "domains": [], "multi_domain_components": []}

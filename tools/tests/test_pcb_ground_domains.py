@@ -17,7 +17,12 @@ def names(nets, rails=None):
 
 class GroundDomains(unittest.TestCase):
     def test_pin_named_net_is_not_a_domain(self):
-        self.assertEqual(names(["GND", "unconnected-(U1-GND-Pad3)", "Net-(U1-GND)"]), ["GND"])
+        self.assertEqual(names(["GND", "unconnected-(U1-GND-Pad3)", "Net-(U1-GND)", "Board_0-Net-(U1-GND)"]), ["GND"])
+
+    def test_named_grounds_beyond_the_shared_rule_are_domains(self):
+        self.assertEqual(
+            names(["GND", "/Audio/AGND_CODEC", "PGND2", "ESP_GND2", "unconnected-(U1-GND-Pad3)"]),
+            ["/Audio/AGND_CODEC", "ESP_GND2", "GND", "PGND2"])
 
     def test_zero_volt_and_battery_negative_are_domains(self):
         self.assertEqual(sorted(names(["0V", "BATT-", "+5V"])), ["0V", "BATT-"])
