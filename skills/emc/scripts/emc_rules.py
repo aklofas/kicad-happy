@@ -1603,7 +1603,7 @@ def _reference_plane_layers(pcb: Dict) -> set:
         if not isinstance(zone, dict) or zone.get('is_keepout'):
             continue
         net = zone.get('net_name') or ''
-        if not (is_ground_name(net) or is_emc_ground_name(net) or is_power_net_name(net)):
+        if not _is_power_or_ground(net):
             continue
         for layer in zone.get('layers') or []:
             area = _zone_layer_area_mm2(zone, layer)

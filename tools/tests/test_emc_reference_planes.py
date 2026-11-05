@@ -66,6 +66,11 @@ class FilledInnerLayersArePlanes(unittest.TestCase):
                          [("SU-001", "error")])
         self.assertEqual(len(check_clock_routing(pcb)), 1)
 
+    def test_a_spaced_rail_name_is_a_power_plane(self):
+        pcb = _board(FOUR, {"In1.Cu": ("3.3V OUT", 0.89), "In2.Cu": ("GND", 0.9)})
+        self.assertNotIn("SU-001", [f["rule_id"] for f in check_stackup(pcb)])
+        self.assertEqual(check_clock_routing(pcb), [])
+
     def test_a_filled_outer_layer_is_ignored(self):
         pcb = _board(FOUR, {"F.Cu": ("GND", 0.9), "B.Cu": ("GND", 0.9)})
         self.assertEqual([r for r in _rules(check_stackup(pcb)) if r[0] == "SU-001"],
