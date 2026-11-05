@@ -392,7 +392,8 @@ def check_datasheet(cites, datasheets_dir):
         if pdf is None:
             partial = True
             continue
-        cmd = ["pdftotext"]
+        # UTF-8 is poppler's default; xpdf's pdftotext (some Windows installs) writes Latin-1
+        cmd = ["pdftotext", "-enc", "UTF-8"]
         if page is not None:
             cmd += ["-f", str(page), "-l", str(page)]
         cmd += [str(pdf), "-"]
