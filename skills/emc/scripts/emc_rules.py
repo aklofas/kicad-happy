@@ -1237,13 +1237,11 @@ def _has_spread_spectrum(value: str) -> bool:
 def check_clock_routing(pcb: Dict, schematic: Optional[Dict] = None) -> List[Dict]:
     """Check clock signal routing quality for EMC."""
     findings = []
-    layers = pcb.get('layers', [])
     footprints = pcb.get('footprints', [])
     net_lengths_map = _build_net_length_map(pcb)
 
-    # Determine if stripline layers exist (inner signal layers between planes)
-    copper_layers = [l for l in layers if l.get('type') in ('signal', 'power')]
-    has_inner_layers = len(copper_layers) > 2
+    # Stripline routing needs an inner layer that is not itself a plane
+    has_inner_layers = _has_inner_signal_layer(pcb)
 
     # Identify clock nets from schematic
     clock_nets = set()
@@ -1557,6 +1555,51 @@ def check_via_stitching(pcb: Dict, schematic: Optional[Dict] = None) -> List[Dic
 # Category 7: Stackup Quality
 # ---------------------------------------------------------------------------
 
+# An inner copper layer whose zone fill covers at least this share of the board's
+# bounding box is a reference plane.
+_PLANE_MIN_FILL_FRACTION = 0.25
+
+
+def _reference_plane_layers(pcb: Dict) -> set:
+    """Copper layers that act as a reference plane.
+
+    KiCad gives a new inner layer the type 'signal' whatever it carries, so an inner
+    layer with zone fill is judged by that fill: a plane when the fill of all its nets
+    together covers at least _PLANE_MIN_FILL_FRACTION of the board's bounding box. An outer
+    layer, or an inner layer with no fill, is a plane when KiCad types it 'power' or
+    'mixed' (a 'jumper' layer carries wire jumpers, not a plane).
+    """
+    fill: Dict[str, float] = {}
+    for zone in pcb.get('zones') or []:
+        if not isinstance(zone, dict) or zone.get('is_keepout') or not zone.get('net_name'):
+            continue
+        for layer in zone.get('layers') or []:
+            area = _zone_layer_area_mm2(zone, layer)
+            if area > 0:
+                fill[layer] = fill.get(layer, 0.0) + area
+    board = _safe_float((pcb.get('statistics') or {}).get('board_area_mm2'))
+    planes = set()
+    for layer in pcb.get('layers') or []:
+        name = layer.get('name') or ''
+        if not name.endswith('.Cu'):
+            continue
+        if name not in ('F.Cu', 'B.Cu') and name in fill and board > 0:
+            if fill[name] >= _PLANE_MIN_FILL_FRACTION * board:
+                planes.add(name)
+        elif layer.get('type') in ('power', 'mixed'):
+            planes.add(name)
+    return planes
+
+
+def _has_inner_signal_layer(pcb: Dict) -> bool:
+    """True when an inner copper layer is free for stripline routing (not a plane)."""
+    planes = _reference_plane_layers(pcb)
+    return any((l.get('name') or '').endswith('.Cu')
+               and l.get('name') not in ('F.Cu', 'B.Cu')
+               and l.get('name') not in planes
+               for l in pcb.get('layers') or [])
+
+
 def check_stackup(pcb: Dict) -> List[Dict]:
     """Check PCB stackup for EMC best practices."""
     findings = []
@@ -1583,12 +1626,13 @@ def check_stackup(pcb: Dict) -> List[Dict]:
     # Check for adjacent signal layers without reference plane
     layer_types = pcb.get('layers', [])
     layer_type_map = {l['name']: l.get('type', 'signal') for l in layer_types}
+    planes = _reference_plane_layers(pcb)
 
     for i in range(len(copper_layers) - 1):
         l1 = copper_layers[i]
         l2 = copper_layers[i + 1]
-        t1 = layer_type_map.get(l1['name'], 'signal')
-        t2 = layer_type_map.get(l2['name'], 'signal')
+        t1 = 'plane' if l1['name'] in planes else 'signal'
+        t2 = 'plane' if l2['name'] in planes else 'signal'
 
         # Two adjacent signal layers with no ground/power between them.
         # Severity scales by copper-layer count — on a 2-layer board
@@ -1618,16 +1662,14 @@ def check_stackup(pcb: Dict) -> List[Dict]:
 
     # Check ground plane proximity (dielectric thickness)
     for i, cl in enumerate(copper_layers):
-        lt = layer_type_map.get(cl['name'], 'signal')
-        if lt != 'signal':
+        if cl['name'] in planes:
             continue
 
         # Find nearest reference plane
         min_dielectric = float('inf')
         nearest_ref = None
         for j, rl in enumerate(copper_layers):
-            rt = layer_type_map.get(rl['name'], 'signal')
-            if rt in ('power', 'ground', 'mixed') or is_emc_ground_name(rl['name']):
+            if rl['name'] in planes:
                 # Calculate dielectric thickness between layers
                 # Sum dielectric layers between them in the stackup
                 idx_min = min(cl['index'], rl['index'])
@@ -2467,10 +2509,8 @@ def check_diff_pair_layer(pcb: Optional[Dict],
     if not diff_pairs:
         return findings
 
-    layers = pcb.get('layers', [])
-    copper_layers = [l for l in layers if l.get('type') in ('signal', 'power')]
-    if len(copper_layers) <= 2:
-        return findings  # 2-layer board — no inner layers available
+    if not _has_inner_signal_layer(pcb):
+        return findings  # no inner layer free for stripline routing
 
     net_map = _build_net_length_map(pcb)
 

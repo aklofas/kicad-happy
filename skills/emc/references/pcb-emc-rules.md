@@ -101,7 +101,7 @@ Quantitative design rules used by the EMC analyzer. Each rule has a threshold, r
 
 ### CK-001: Clock on outer layer
 - **Severity:** warning
-- **Threshold:** >50% of clock routing on F.Cu/B.Cu when inner layers are available
+- **Threshold:** >50% of clock routing on F.Cu/B.Cu when an inner copper layer is not a reference plane (see SU-001), so stripline routing is available
 - **Rationale:** Outer-layer microstrip radiates more than inner-layer stripline. Stripline is shielded by reference planes above and below.
 - **Source:** Armstrong, K. "PCB Design Techniques for Lowest-Cost EMC Compliance." Part 5 — routing discipline and stripline preference for clocks.
 
@@ -143,12 +143,12 @@ Quantitative design rules used by the EMC analyzer. Each rule has a threshold, r
 
 ### SU-001: Adjacent signal layers
 - **Severity:** info on two-layer boards, error on boards with more copper layers
-- **Threshold:** Two signal-type layers adjacent without ground/power plane between them
+- **Threshold:** Two adjacent copper layers, neither a reference plane. An inner layer with zone fill is a plane when the fill of all its nets together covers at least 25 % of the board's bounding box, whatever its KiCad layer type (KiCad types a new inner layer `signal`). An outer layer, or an inner layer without fill, is a plane when its KiCad type is `power` or `mixed`.
 - **Source:** Ott, H.W. ["PCB Stack-Up."](http://www.hottconsultants.com/techtips/pcb-stack-up-2.html) hottconsultants.com — recommended 4-layer stackup is SIG/GND/PWR/SIG with tight coupling (0.1–0.2mm) between signal and adjacent reference plane.
 
 ### SU-002: Signal layer far from reference
 - **Severity:** info
-- **Threshold:** Signal layer >0.3mm from nearest reference plane
+- **Threshold:** Signal layer >0.3mm from nearest reference plane (planes as in SU-001)
 - **Source:** Ott, PCB Stack-Up series — tight coupling reduces loop area. Every halving of signal-to-reference spacing reduces emissions by ~6 dB (from E ∝ loop area ∝ dielectric height).
 
 ### SU-003: Power/ground plane pair spacing
@@ -249,7 +249,7 @@ Source: Goldfarb, E. & Pucha, R. "Modeling Via Grounds in Microstrip." IEEE Micr
 
 ### DP-004: Diff pair on outer layer
 - **Severity:** warning
-- **Threshold:** >50% of diff pair routing on F.Cu/B.Cu when inner layers available
+- **Threshold:** >50% of diff pair routing on F.Cu/B.Cu when an inner copper layer is not a reference plane (see SU-001)
 - **Rationale:** Same as CK-001. Outer-layer microstrip radiates more than inner-layer stripline.
 
 ## Board Edge Analysis
