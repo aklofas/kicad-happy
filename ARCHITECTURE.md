@@ -71,7 +71,7 @@ One row per module outside the packages. "Imports" lists only in-repo modules, a
 | `lifecycle_audit.py` | lifecycle audit CLI over `lifecycle_engine` | `lifecycle_engine`, `kicad_core`, `analysis_cache`, `output_io` (lazy) |
 | `lifecycle_engine.py` | distributor lifecycle and temperature audit (LC-001..006, LT-001): the four distributor queries, extraction temperature reads, `audit_component`, `audit_bom` | `kicad_core`, `finding_schema` (lazy); lazy `distributor_core`, `datasheet_extract_cache`, `datasheet_types` from the datasheets skill |
 | `summarize_findings.py` | cross-run finding summary, CLI | `kicad_core` |
-| `export_issues.py` | findings to GitHub Issues through `gh`, CLI | stdlib |
+| `export_issues.py` | findings to GitHub Issues through `gh`, CLI | `diff_engine`, `kicad_core` |
 | `fab_release_gate.py` | fab-readiness pass/fail gate over analyzer JSON | `finding_schema` |
 | `check_report_sections.py` | report completeness gate (required report sections from analyzer data) | `analysis_cache` (lazy) |
 | `cross_verify.py` | schematic-to-PCB cross-verification script | stdlib |
