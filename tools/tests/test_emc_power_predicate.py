@@ -9,8 +9,8 @@ sys.path.insert(0, str(ROOT / "skills" / "emc" / "scripts"))
 from emc_rules import _is_power_or_ground  # noqa: E402
 
 POWER_OR_GROUND = ["MCU3V3", "/sheet/VCC", "+3V3", "VBUS", "V+", "GND", "EARTH", "/5V",
-                   "+BATT", "USB_5V", "5V PCIE", "PWR", "V-", "VMOT"]
-SIGNALS = ["VCC_EN", "3V3_PG", "VBUS_SENSE", "VBAT_PGOOD", "+5V_EN", "SDA", "BIT0", ""]
+                   "+BATT", "USB_5V", "5V PCIE", "PWR", "V-", "VMOT", "/sub/3V3"]
+SIGNALS = ["VCC_EN", "3V3_PG", "VBUS_SENSE", "VBAT_PGOOD", "+5V_EN", "/sub/VCC_EN", "/pwr/3V3_PG", "SDA", "BIT0", ""]
 
 
 class PowerPredicate(unittest.TestCase):
