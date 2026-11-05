@@ -270,6 +270,13 @@ class SplitCrossingFinding(unittest.TestCase):
         out = analyze(renamed(board(SPLIT_3V3_5V + cap("C1", 10, 30)), "CLK"))
         self.assertEqual(len(split_findings(out)), 1)
 
+    def test_unfitted_bridging_capacitor_does_not_bridge(self):
+        fitted = cap("C1", 10, 13)
+        dnp = fitted.replace("(at 10 13)\n", "(at 10 13)\n (attr smd dnp)\n", 1)
+        self.assertNotEqual(fitted, dnp)
+        out = analyze(renamed(board(SPLIT_3V3_5V + dnp), "CLK"))
+        self.assertEqual(len(split_findings(out)), 1)
+
     def test_vc_reference_capacitor_bridges(self):
         out = analyze(renamed(board(SPLIT_3V3_5V + cap("VC1", 10, 13, lib="Custom:Part")), "CLK"))
         self.assertEqual(split_findings(out), [])

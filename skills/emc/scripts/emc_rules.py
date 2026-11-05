@@ -543,7 +543,8 @@ def _split_crossing_findings(pcb: Dict, touch: set) -> List[Dict]:
                                   footprint=fp.get('footprint') or '')
         is_cap = kind == 'capacitor' or (kind in ('other', 'connector')
                                          and lib.lower().startswith('capacitor'))
-        if is_cap and len(nets) == 2 and fp.get('x') is not None and fp.get('y') is not None:
+        if (is_cap and not fp.get('dnp') and len(nets) == 2
+                and fp.get('x') is not None and fp.get('y') is not None):
             caps.append((nets, fp['x'], fp['y']))
 
     by_net: Dict[str, List[Dict]] = {}
