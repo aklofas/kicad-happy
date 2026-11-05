@@ -23,6 +23,7 @@ import _core_path  # noqa: F401
 from kicad_core import token_cache
 from kicad_core.diagnostics import record
 from kicad_core.executables import find_executable
+from distributor_core.verify import same_part
 
 
 # ---------------------------------------------------------------------------
@@ -193,6 +194,11 @@ def _extract_specs_from_params(params, param_map):
 # LCSC / jlcsearch (no auth required)
 # ---------------------------------------------------------------------------
 
+def _is_requested(mpn, hit):
+    """True when a distributor's part number is the requested one (an exact match)."""
+    return isinstance(hit, str) and same_part(mpn, hit, ordering_suffixes=False)
+
+
 def fetch_specs_lcsc(mpn):
     """Query LCSC (jlcsearch) for parametric specs. No auth needed.
 
@@ -208,8 +214,7 @@ def fetch_specs_lcsc(mpn):
         for comp in data.get("components", []):
             extra = comp.get("extra", {})
             comp_mpn = extra.get("mpn", "")
-            # Match MPN (case-insensitive prefix)
-            if not comp_mpn or not comp_mpn.upper().startswith(mpn.upper()[:6]):
+            if not _is_requested(mpn, comp_mpn):
                 continue
 
             attrs = extra.get("attributes", {})
@@ -304,7 +309,7 @@ def fetch_specs_digikey(mpn):
 
         for product in data.get("Products", []):
             prod_mpn = product.get("ManufacturerProductNumber", "")
-            if not prod_mpn.upper().startswith(mpn.upper()[:6]):
+            if not _is_requested(mpn, prod_mpn):
                 continue
 
             parameters = product.get("Parameters", [])
@@ -358,6 +363,8 @@ def fetch_specs_element14(mpn):
 
         products = data.get("manufacturerPartNumberSearchReturn", {}).get("products", [])
         for product in products:
+            if not _is_requested(mpn, product.get("translatedManufacturerPartNumber")):
+                continue
             attrs = product.get("attributes", [])
             if not attrs:
                 continue
@@ -403,6 +410,8 @@ def fetch_specs_mouser(mpn):
             data = json.loads(resp.read())
 
         for part in data.get("SearchResults", {}).get("Parts", []):
+            if not _is_requested(mpn, part.get("ManufacturerPartNumber")):
+                continue
             attrs = part.get("ProductAttributes", [])
             if not attrs:
                 continue

@@ -117,7 +117,7 @@ The twelve analyzer and consumer CLIs (`analyze_schematic`, `analyze_pcb`, `anal
 |---|---|---|
 | `simulate_subcircuits.py` | simulation orchestrator CLI | spice modules; core `kicad_core`, `analysis_cache` (lazy), `output_filters` (lazy) |
 | `extract_parasitics.py` | PCB parasitic R/L/C extraction CLI | core `kicad_core` |
-| `spice_templates.py`, `spice_models.py`, `spice_model_generator.py`, `spice_model_cache.py`, `spice_part_library.py`, `spice_spec_fetcher.py` | testbenches, behavioral models, the project model cache, the part spec table and spec fetching | spice modules; core `kicad_core` (`spice_spec_fetcher`) |
+| `spice_templates.py`, `spice_models.py`, `spice_model_generator.py`, `spice_model_cache.py`, `spice_part_library.py`, `spice_spec_fetcher.py` | testbenches, behavioral models, the project model cache, the part spec table and spec fetching | spice modules; core `kicad_core` (`spice_spec_fetcher`); `distributor_core.verify` (`spice_spec_fetcher`) |
 | `spice_simulator.py`, `spice_results.py` | simulator backends; result parsing | spice modules; core `kicad_core.executables`; `spice_results` lazily imports core `finding_schema` |
 | `spice_tolerance.py` | Monte Carlo tolerance analysis | core `kicad_core`, `detection_schema` |
 
