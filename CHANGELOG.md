@@ -32,6 +32,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Changed
 
+- DP-003 (a differential pair changing layers) is a warning when a transition has no ground via within RP-001's stitching radius, or when the PCB analysis has no via list (run with `--full`), and info when every transition has one; it was always an error.
 - With `--full`, trace impedance on top and bottom layers uses the effective permittivity of a microstrip (Hammerstad), so `impedance_ohm` rises by about 7–23 % (typically 22 %); inner-layer values are unchanged. (KH-820)
 - On hierarchical schematics, a net named by labels on several sheets takes the name KiCad gives it: the label on the shallower sheet, then the lower full name (`/Amplifier/EN` before `/Video/AMP_STB`). The analysis no longer depends on the order the sheets are stored in the file. KiCad 5 `.sch` files are unchanged: there, sibling sheets still resolve by sheet order. (KH-800)
 - Lifecycle audit uses a distributor result only when it is the requested part number (case, spacing, dashes, slashes, commas and parentheses aside; an ordering variant such as `LM358DRG4`, `/NOPB`, `MAX3232ECUE+` or `#PBF` is another part number, and `.` counts, so `AP2112K-3.3` is not `AP2112K-33`; Mouser is searched with its exact option), so a sibling such as `TPS54332DR` for `TPS54331DR` no longer supplies the status, and a part no distributor lists reads unknown (LC-004). LCSC lookups read the current jlcsearch row shape (top-level `mfr`, no `extra` block), so LCSC answers again (KH-600).

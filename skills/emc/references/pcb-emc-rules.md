@@ -241,7 +241,7 @@ Source: Goldfarb, E. & Pucha, R. "Modeling Via Grounds in Microstrip." IEEE Micr
 - **Source:** Ott, *EMC Engineering*, Ch. 19; Johnson, *High-Speed Signal Propagation*, Ch. 11; Altium, "Guide to Mode Conversion."
 
 ### DP-003: Reference plane change under diff pair
-- **Severity:** error
+- **Severity:** warning when a transition has no ground via within RP-001's stitching radius (the larger of 1 mm and twice the first dielectric thickness), or when the PCB analysis has no via list (run `--full`) to show stitching; info when every transition has one
 - **Threshold:** Any layer transition on a differential pair net
 - **Rationale:** Each layer transition forces the return current to change planes. Without a nearby stitching via or decoupling cap, the return current takes a long path, converting DM to CM.
 - **Source:** Armstrong, "PCB Design Techniques for Lowest-Cost EMC Compliance," Part 5.
