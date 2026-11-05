@@ -744,6 +744,9 @@ def check_missing_decoupling(pcb: Dict, schematic: Optional[Dict] = None) -> Lis
 
     # ICs that have decoupling analysis entries
     ics_with_caps = {e.get('ic', '') for e in decoupling}
+    # ESD/TVS arrays the schematic identified need no decoupling capacitor
+    protection_refs = {pd.get('ref') for pd in get_findings(schematic or {}, Det.PROTECTION_DEVICES)
+                       if pd.get('type') != 'fuse'}
 
     # All IC-like footprints
     for fp in footprints:
@@ -753,7 +756,9 @@ def check_missing_decoupling(pcb: Dict, schematic: Optional[Dict] = None) -> Lis
         # Skip known non-ICs (ESD, TVS, etc.)
         raw_val = fp.get('value', '')
         val = (raw_val if isinstance(raw_val, str) else str(raw_val)).lower()
-        if any(p in val for p in ('esd', 'tvs', 'test', 'tp', 'net_tie')):
+        if (ref in protection_refs
+                or any(p in val for p in ('esd', 'tvs', 'test', 'net_tie'))
+                or 'tp' in re.split(r'[^a-z0-9]+', val)):
             continue
         if ref not in ics_with_caps:
             findings.append(_make_finding(
