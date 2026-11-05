@@ -758,6 +758,7 @@ def check_missing_decoupling(pcb: Dict, schematic: Optional[Dict] = None) -> Lis
         val = (raw_val if isinstance(raw_val, str) else str(raw_val)).lower()
         if (ref in protection_refs
                 or any(p in val for p in ('esd', 'tvs', 'test', 'net_tie'))
+                or re.match(r'tpd\d', val)  # TI TPD ESD arrays
                 or 'tp' in re.split(r'[^a-z0-9]+', val)):
             continue
         if ref not in ics_with_caps:

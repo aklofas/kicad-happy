@@ -26,6 +26,9 @@ class MissingDecoupling(unittest.TestCase):
     def test_pcb_only_esd_and_tvs_values_stay_exempt(self):
         self.assertEqual(_flagged([("U1", "PESD5V0S1BL"), ("U2", "TVS_SMAJ")]), [])
 
+    def test_pcb_only_ti_tpd_arrays_stay_exempt(self):
+        self.assertEqual(_flagged([("U1", "TPD4E05U06"), ("U2", "TPD2E001"), ("U3", "TPS5430")]), ["U3"])
+
     def test_schematic_protection_array_is_skipped(self):
         sch = {"findings": [{"detector": Det.PROTECTION_DEVICES, "ref": "U1", "type": "esd_ic"}]}
         self.assertEqual(_flagged([("U1", "USBLC6-2SC6"), ("U2", "TPS2378")], sch), ["U2"])
