@@ -6,7 +6,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ---
 
-## v3.0.1 — 2026-11-03
+## v3.0.1 — 2026-11-05
 
 ### Security
 
@@ -280,7 +280,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The Deep Review gate asks `pdftotext` for UTF-8 text. xpdf's `pdftotext` (some Windows installs) writes Latin-1 by default, so quotes with `µ`, `Ω` or `±` failed to verify there. A cited page past the end of the PDF is reported as such with xpdf too (it exits 0 with no output, where poppler exits 99).
 - IB-DET counts a power rail as isolated only when its name has `ISO` or a whole `_B` / `_SEC` token (`3.3V_B`, `VCC_B2`, `5V_SEC_OUT`). Rails like `V_BAT`, `MIC_BIAS`, `PWR_BUTTON` or `/line_buffer/VCC` no longer report an isolation barrier on a board with several ground domains and no isolation part. (KH-944)
 - Rail-source (RS-001) and power-pin (PP-001) audits treat a net tie as one conductor: a rail fed through a net tie is sourced, and a pin tied to ground is a ground pin. Net names stay as KiCad gives them, and two net ties that share a reference (`NT?`) join nothing.
-- A `.kicad_dru` that KiCad refuses (no leading version statement, an unknown severity or top-level form, a rule without a name, a length bound without a unit) applies none of its rules, as in KiCad, and lists none of its conditional rules as skipped; `project_settings.custom_rules_error` gives KiCad's message. A comment on the first or last line no longer drops the file.
+- A `.kicad_dru` that KiCad refuses (no leading version statement, an unknown severity or top-level form, a rule without a name, a length bound without a unit; unbalanced parentheses are not detected yet) applies none of its rules, as in KiCad, and lists none of its conditional rules as skipped; `project_settings.custom_rules_error` gives KiCad's message. A comment on the first or last line no longer drops the file.
 - On KiCad 10 boards a net named only on a copper graphic keeps its name and id.
 - PCB ground domains no longer count a net KiCad names after a pin (`unconnected-(U1-GND-Pad3)`, `Net-(U1-GND)`); a 0 V or battery-negative net is a ground domain, other GND-, VSS- or GROUND-named nets (`AGND_CODEC`, `PGND2`) stay ones, and `COM` counts only when it is a known power rail (from the `--schematic` analysis or `--power-rails`). EMC GP-005 lists the domain names (it listed `?`), and its count, the risk score and the ground-plane summary follow.
 
