@@ -2,8 +2,8 @@
 """Custom .kicad_dru rules as KiCad 10 applies them: minimum and maximum bounds, the rule's
 layer, (severity ignore), mil/in units, pad holes and plated pad annuli, and precedence (a later
 rule replaces an earlier one and any custom minimum replaces the board minimum). Expected values
-are kicad-cli 10.0.7 DRC results on the same boards."""
-import json, os, sys, tempfile, unittest
+are kicad-cli 10.0.8 DRC results on the same boards."""
+import json, os, subprocess, sys, tempfile, unittest
 from unittest import mock
 from pathlib import Path
 SCRIPTS = Path(__file__).resolve().parents[2] / "skills" / "kicad" / "scripts"
@@ -215,7 +215,7 @@ def refused(dru_text):
 
 
 class RefusedFileTest(unittest.TestCase):
-    """kicad-cli 10.0.7 DRC on a board with one 0.2 mm track and track_width (min 0.5mm): the
+    """kicad-cli 10.0.8 DRC on a board with one 0.2 mm track and track_width (min 0.5mm): the
     track is reported (rules applied) or not (file refused) as asserted per case."""
     APPLIED = [("custom:w", "min", 0.5, 0.2)]
 
@@ -242,9 +242,34 @@ class RefusedFileTest(unittest.TestCase):
                 ("unknown top-level form", "(version 1)\n" + TRACK_RULE + "\n(foo bar)\n",
                  "Expected rule or version."),
                 ("length without a unit", "(version 1)\n" + TRACK_RULE
-                 + "\n(rule b (constraint hole_size (min 0.2)))\n", "Missing units.")):
+                 + "\n(rule b (constraint hole_size (min 0.2)))\n", "Missing units."),
+                ("nested severity", "(version 1)\n" + TRACK_RULE
+                 + "\n(rule r (severity (error)) (constraint clearance (min 0.01mm)))\n",
+                 "Unrecognized severity."),
+                ("nested constraint type", "(version 1)\n" + TRACK_RULE
+                 + "\n(rule n (constraint (track_width) (min 0.5mm)))\n",
+                 "Unrecognized constraint type."),
+                ("nested layer", "(version 1)\n" + TRACK_RULE
+                 + "\n(rule l (layer (F.Cu)) (constraint track_width (min 0.5mm)))\n",
+                 "Unrecognized layer.")):
             with self.subTest(name):
                 self.assertEqual(refused(text), ([], message))
+
+    def test_nested_layer_is_reported_by_the_cli(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            board = os.path.join(tmp, "b.kicad_pcb")
+            with open(board, "w", encoding="utf-8") as f:
+                f.write(BOARD.format(items=track(0.2)))
+            with open(os.path.join(tmp, "b.kicad_dru"), "w", encoding="utf-8") as f:
+                f.write("(version 1)\n" + TRACK_RULE
+                        + "\n(rule l (layer (F.Cu)) (constraint track_width (min 0.5mm)))\n")
+            out = os.path.join(tmp, "o.json")
+            r = subprocess.run([sys.executable, str(SCRIPTS / "analyze_pcb.py"), board, "-o", out], capture_output=True,
+                               text=True, encoding="utf-8", timeout=300)
+            self.assertEqual(r.returncode, 0, r.stderr[-1500:])
+            with open(out, encoding="utf-8") as f:
+                self.assertEqual(json.load(f)["project_settings"]["custom_rules_error"],
+                                 "Unrecognized layer.")
 
     def test_refused_file_lists_no_skipped_conditional_rule(self):
         result = analyze_with_dru(

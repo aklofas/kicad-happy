@@ -649,7 +649,8 @@ _DRU_BARE_NUMBER = re.compile(r'\s*[-+]?(?:\d+\.?\d*|\.\d+)\s*')
 
 def _dru_bare_length(constraint: list) -> bool:
     """True when a length bound of *constraint* is a bare number (KiCad's "Missing units")."""
-    if len(constraint) < 2 or constraint[1] in _DRU_UNITLESS_CONSTRAINTS:
+    if (len(constraint) < 2 or not isinstance(constraint[1], str)
+            or constraint[1] in _DRU_UNITLESS_CONSTRAINTS):
         return False
     for bound in constraint[2:]:
         if isinstance(bound, list) and bound[:1] in (['min'], ['max'], ['opt']):
@@ -662,8 +663,8 @@ def _dru_bare_length(constraint: list) -> bool:
 def _dru_parse_error(tree: list) -> str | None:
     """KiCad's message for a .kicad_dru it refuses to load, or None. A parse error drops every
     custom rule of the file (drc_rule_parser.cpp Parse, drc_engine.cpp InitEngine). Checked:
-    the leading version statement, the top-level forms, rule names, severity names and
-    length bounds without a unit."""
+    the leading version statement, the top-level forms, rule names, severity names, a
+    nested list where a constraint type or layer name belongs, and length bounds without a unit."""
     if any(not isinstance(f, list) for f in tree[1:]):
         return "Missing '('."
     forms = tree[1:]
@@ -679,8 +680,13 @@ def _dru_parse_error(tree: list) -> str | None:
             for item in form[2:]:
                 if not isinstance(item, list):
                     continue
-                if item[:1] == ['severity'] and (len(item) < 2 or item[1] not in _DRU_SEVERITIES):
+                if item[:1] == ['severity'] and (len(item) < 2 or not isinstance(item[1], str)
+                                                 or item[1] not in _DRU_SEVERITIES):
                     return "Unrecognized severity."
+                if item[:1] == ['constraint'] and len(item) > 1 and not isinstance(item[1], str):
+                    return "Unrecognized constraint type."
+                if item[:1] == ['layer'] and len(item) > 1 and not isinstance(item[1], str):
+                    return "Unrecognized layer."
                 if item[:1] == ['constraint'] and _dru_bare_length(item):
                     return "Missing units."
         else:
