@@ -1664,7 +1664,8 @@ def analyze_gerbers(directory: str, full: bool = False, diagnostics: list | None
             gerber_files.extend(sorted(gerber_dir.glob(ext)))
 
     named_drills = []
-    for df in drill_files:
+    # Windows globs ignore case, so *.drl and *.DRL can both name one file
+    for df in dict.fromkeys(drill_files):
         if df.is_file():
             named_drills.append(df)
         else:
@@ -1699,6 +1700,8 @@ def analyze_gerbers(directory: str, full: bool = False, diagnostics: list | None
     gerbers = []
     for gf in gerber_files:
         try:
+            if gf.is_dir():  # Windows raises PermissionError opening a directory
+                raise IsADirectoryError(errno.EISDIR, os.strerror(errno.EISDIR), str(gf))
             gerbers.append(parse_gerber(str(gf)))
         except (OSError, ValueError, UnicodeDecodeError) as e:
             gerbers.append({"file": str(gf), "filename": gf.name, "error": str(e),
