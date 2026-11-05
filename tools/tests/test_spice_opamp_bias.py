@@ -130,6 +130,20 @@ class NegativeRailTest(unittest.TestCase):
                 self.assertEqual(T._infer_opamp_rails({"reference": "U1"}, _rails(vcc, vee), info), want)
                 self.assertEqual(info["rails_named"], vcc != "VCC")
 
+    def test_shared_plus_minus_name_gives_each_pin_its_sign(self):
+        pins = [{"component": "U1", "pin_name": n, "pin_type": "power_in"} for n in ("V+", "V-")]
+        for net, v in (("/A/\u00b112V", 12), ("A\u00b12V5", 2.5)):
+            with self.subTest(net=net):
+                info = {}
+                got = T._infer_opamp_rails({"reference": "U1"}, {"nets": {net: {"pins": pins}}, "components": []}, info)
+                self.assertEqual(got, (v, -v))
+                self.assertTrue(info["rails_named"])
+
+    def test_bare_vcc_under_a_sheet_path_keeps_the_default_supply(self):
+        info = {}
+        self.assertEqual(T._infer_opamp_rails({"reference": "U1"}, _rails("/analog/VCC", "(-)5V"), info), (5, -5))
+        self.assertFalse(info["rails_named"])
+
     def test_swapped_pins_keep_the_positive_rail_as_vcc(self):
         ctx = {"nets": {"+12V": {"pins": [{"component": "U1", "pin_name": "V-", "pin_type": "power_in"}]}},
                "components": []}

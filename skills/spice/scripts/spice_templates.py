@@ -774,19 +774,20 @@ def _infer_opamp_rails(det, context, info=None):
 
     for net_name, net_data in nets.items():
         pins = net_data.get("pins", [])
-        # The rail's own name, read from its leaf wherever it carries a voltage
-        # (VCC_1V8, /Analog/+1V8, A+2V5, A-2V5) before the start-anchored guesses
+        # A voltage written in the rail's own leaf (VCC_1V8, /Analog/+1V8, A+2V5,
+        # A-2V5, a shared +-12V) is read before the start-anchored guesses; a
+        # name without one keeps the guess from the full net name
         leaf = net_name.rsplit("/", 1)[-1]
-        neg_v = _infer_negative_rail(re.sub(r'^[A-Za-z]+_?(?=-\d)', '', leaf.upper()))
-        named_v = (neg_v if isinstance(neg_v, float)
-                   else _rail_name_voltage(re.sub(r'^[A-Za-z]+_?(?=\+\d)', '', leaf)))
-        v_net = named_v if named_v is not None else _infer_voltage(leaf, default=None)
+        named_pos = _leaf_voltage(leaf.replace("\u00b1", "+"))
+        named_neg = _leaf_voltage(leaf.replace("\u00b1", "-"))
         for pin in pins:
             if pin.get("component") != ref:
                 continue
             pname = (pin.get("pin_name") or "").upper()
             ptype = (pin.get("pin_type") or "").lower()
-            v = v_net
+            on_vee = pname in _VEE_PIN_NAMES
+            named_v = named_neg if on_vee else named_pos
+            v = named_v if named_v is not None else _infer_voltage(net_name, default=None)
             # VCC/VDD/V+ pins
             if pname in ("VCC", "VDD", "V+", "VS+", "V_P", "VP", "AVDD", "DVDD") or \
                (ptype == "power_in" and not found_vcc and v is not None and v > 0):
@@ -795,7 +796,7 @@ def _infer_opamp_rails(det, context, info=None):
                     found_vcc = True
                     vcc_named = named_v is not None or _voltage_in_name(leaf)
             # VEE/VSS/V- pins
-            elif pname in ("VEE", "VSS", "V-", "VS-", "V_N", "VN", "GND", "AVSS", "DVSS"):
+            elif on_vee:
                 named = v is not None and (named_v is not None or _voltage_in_name(leaf))
                 if v is None:
                     v = _infer_negative_rail(leaf)
@@ -825,6 +826,18 @@ def _infer_opamp_rails(det, context, info=None):
         info["vee_assumed"] = vee_assumed
         info["rails_named"] = vcc_named and vee_named
     return vcc_v, vee_v
+
+
+_VEE_PIN_NAMES = ("VEE", "VSS", "V-", "VS-", "V_N", "VN", "GND", "AVSS", "DVSS")
+
+
+def _leaf_voltage(leaf):
+    """Voltage written in a rail's leaf name, skipping a letter prefix glued
+    to the sign ('A+2V5', 'A-2V5'); negative for '-' rails; None if none."""
+    neg_v = _infer_negative_rail(re.sub(r'^[A-Za-z]+_?(?=-\d)', '', leaf.upper()))
+    if isinstance(neg_v, float):
+        return neg_v
+    return _rail_name_voltage(re.sub(r'^[A-Za-z]+_?(?=\+\d)', '', leaf))
 
 
 def _voltage_in_name(net_name):
