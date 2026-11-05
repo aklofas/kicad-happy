@@ -90,7 +90,7 @@ Quantitative design rules used by the EMC analyzer. Each rule has a threshold, r
 
 ### SW-003: Large input capacitor hot loop
 - **Severity:** error (>100 mm²), warning (25–100 mm²), only for a loop measured from pads; info otherwise
-- **Threshold:** Pad-loop area >25 mm². The loop runs input-cap supply pad → regulator supply pad, regulator SW pad → inductor SW pad, regulator ground pad → input-cap ground pad; `analyze_pcb.py --schematic` measures it (`switching_loop_areas`, `method: "pad"`).
+- **Threshold:** Pad-loop area ≥25 mm². The loop runs input-cap supply pad → regulator supply pad, regulator SW pad → inductor SW pad, regulator ground pad → input-cap ground pad; `analyze_pcb.py --schematic` measures it (`switching_loop_areas`, `method: "pad"`).
 - **Without a pad loop:** the area falls back to the triangle through the footprint centres of the input cap, IC and inductor (a `switching_loop_areas` record without `method` is also a centre triangle). The centres say little about the loop through the pads, so a triangle ≥25 mm² gives one info finding with the estimated area and the `--schematic` command, not a grade.
 - **Not estimated:** when the centres lie in a line, or the pad loop has an area under 1 mm² across 2 mm or more (pads in a line or crossing lobes that cancel), or the pads cannot be matched to the supply, SW and ground nets, SW-003 reports an info finding instead of 0 mm².
 - **Rationale:** Hot loops radiate switching noise proportional to loop area × current × frequency. The input capacitor loop is the dominant emission source in most switching regulators.
@@ -340,7 +340,7 @@ Source: Goldfarb, E. & Pucha, R. "Modeling Via Grounds in Microstrip." IEEE Micr
 - **Fix:** Move TVS within 10mm of connector. Keep ESD current path as short as possible.
 
 ### ES-002: Insufficient ground vias near ESD device
-- **Severity:** error (no ground via within 3mm), info (single ground via)
+- **Severity:** error (no ground via within 3mm), info (single ground via); a discrete TVS diode whose clamp net is not a ground is not checked
 - **Threshold:** <2 ground stitching vias within 3mm of TVS ground pad
 - **Rationale:** TVS ground path inductance is the most critical parasitic in ESD protection. Two parallel vias halve the inductance (~0.5 nH → ~0.25 nH), improving clamping by ~9V at 37.5 GA/s.
 - **Fix:** Add ≥2 ground vias directly adjacent to TVS ground pad. Use short, wide traces to ground plane.

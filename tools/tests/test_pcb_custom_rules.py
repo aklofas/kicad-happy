@@ -4,11 +4,12 @@ layer, (severity ignore), mil/in units, pad holes and plated pad annuli, and pre
 rule replaces an earlier one and any custom minimum replaces the board minimum). Expected values
 are kicad-cli 10.0.7 DRC results on the same boards."""
 import json, os, sys, tempfile, unittest
+from unittest import mock
 from pathlib import Path
 SCRIPTS = Path(__file__).resolve().parents[2] / "skills" / "kicad" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
-from kicad_core.project import load_kicad_dru, parse_dru_length  # noqa: E402
+from kicad_core.project import load_kicad_dru, load_kicad_dru_checked, parse_dru_length  # noqa: E402
 from pcb.pipeline import analyze_pcb  # noqa: E402
 
 BOARD = """(kicad_pcb (version 20221018) (generator pcbnew)
@@ -86,6 +87,17 @@ class DruLengthTest(unittest.TestCase):
                                                     "max": 0.1524}])
         self.assertEqual(rules[1]["severity"], "ignore")
         self.assertEqual(rules[1]["constraints"][0]["min"], "2*0.1mm")
+
+    def test_unparseable_file_sets_an_error_and_applies_no_rules(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, "b.kicad_dru"), "w", encoding="utf-8") as f:
+                f.write('(version 1)\n(rule w (constraint track_width (min 5mil)))\n')
+            # the reader's S-expression parser tolerates most damage, so make it refuse
+            with mock.patch("kicad_core.project._sexp_parse",
+                            side_effect=ValueError("Unexpected end of input at position 9")):
+                rules, error = load_kicad_dru_checked(os.path.join(tmp, "b.kicad_pcb"))
+        self.assertIsNone(rules)
+        self.assertEqual(error, "Unexpected end of input at position 9")
 
 
 class CustomRuleTest(unittest.TestCase):

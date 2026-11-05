@@ -777,7 +777,7 @@ def _infer_opamp_rails(det, context, info=None):
         # A voltage written in the rail's own leaf (VCC_1V8, /Analog/+1V8, A+2V5,
         # A-2V5, a shared +-12V) is read before the start-anchored guesses; a
         # name without one keeps the guess from the full net name
-        leaf = net_name.rsplit("/", 1)[-1]
+        leaf = net_name.rsplit("/", 1)[-1].replace("+/-", "\u00b1").replace("+-", "\u00b1")
         named_pos = _leaf_voltage(leaf.replace("\u00b1", "+"))
         named_neg = _leaf_voltage(leaf.replace("\u00b1", "-"))
         for pin in pins:

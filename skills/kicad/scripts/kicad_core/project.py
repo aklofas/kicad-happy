@@ -725,8 +725,8 @@ def load_kicad_dru_checked(file_path: str) -> tuple[list[dict] | None, str | Non
     # '#' comment on the first or last line a comment and off the closing parenthesis.
     try:
         tree = _sexp_parse(f'(dru_root\n{content}\n)')
-    except (ValueError, IndexError):
-        return None, None
+    except (ValueError, IndexError) as e:
+        return None, str(e)
 
     rules = []
     for r in find_all(tree, 'rule'):

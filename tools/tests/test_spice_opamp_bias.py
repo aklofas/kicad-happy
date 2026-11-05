@@ -132,7 +132,7 @@ class NegativeRailTest(unittest.TestCase):
 
     def test_shared_plus_minus_name_gives_each_pin_its_sign(self):
         pins = [{"component": "U1", "pin_name": n, "pin_type": "power_in"} for n in ("V+", "V-")]
-        for net, v in (("/A/\u00b112V", 12), ("A\u00b12V5", 2.5)):
+        for net, v in (("/A/\u00b112V", 12), ("A\u00b12V5", 2.5), ("+-5V", 5)):
             with self.subTest(net=net):
                 info = {}
                 got = T._infer_opamp_rails({"reference": "U1"}, {"nets": {net: {"pins": pins}}, "components": []}, info)
