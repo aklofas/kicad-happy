@@ -242,7 +242,6 @@ def _pdf(pages):
 PAGES = ["Maximum input voltage 5.5 V at -40 C", "Quiescent current 10 µA typical"]
 
 
-@unittest.skipUnless(shutil.which("pdftotext"), "pdftotext (poppler) not installed")
 class PdftotextFormsTest(unittest.TestCase):
     """poppler and xpdf report a page past the end differently; both are past the end."""
 
@@ -268,6 +267,7 @@ class PdftotextFormsTest(unittest.TestCase):
         self.assertIn("quote not found page 3", fails[0])
 
 
+@unittest.skipUnless(shutil.which("pdftotext"), "pdftotext (poppler) not installed")
 class GateCliTest(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
