@@ -4014,6 +4014,43 @@ def check_pdn_distributed(pcb: Optional[Dict],
 # Category 12: Return Path Enhancement
 # ---------------------------------------------------------------------------
 
+def _ground_via_positions(pcb: Dict) -> List[tuple]:
+    """(x, y) of every via on a ground net (empty without the --full via list)."""
+    nets = pcb.get('nets', {})
+    positions = []
+    for via in (pcb.get('vias') or {}).get('vias') or []:
+        net = via.get('net_name', via.get('net', ''))
+        if isinstance(net, int):
+            net = nets.get(net, nets.get(str(net), '')) if isinstance(nets, dict) else ''
+        elif not isinstance(net, str):
+            continue
+        if is_emc_ground_name(str(net)):
+            positions.append((via.get('x', 0), via.get('y', 0)))
+    return positions
+
+
+def _stitch_radius_mm(pcb: Dict) -> float:
+    """How near a ground via must be to stitch a layer change: 2x the first dielectric, at least 1 mm."""
+    default_h = 0.2  # mm
+    for layer in pcb.get('setup', {}).get('stackup', []):
+        if layer.get('type') in ('core', 'prepreg'):
+            try:
+                h = float(layer.get('thickness', 0.2))
+                if h > 0:
+                    default_h = h
+                    break
+            except (ValueError, TypeError):
+                pass
+    return max(default_h * 2, 1.0)
+
+
+def _via_stitched(via: Dict, gnd_via_positions: List[tuple], radius: float) -> bool:
+    """True when a ground via lies within *radius* of the signal via."""
+    vx, vy = via.get('x', 0), via.get('y', 0)
+    return any(math.sqrt((vx - gx)**2 + (vy - gy)**2) <= radius
+               for gx, gy in gnd_via_positions)
+
+
 def check_layer_transition_stitching(pcb: Dict,
                                      schematic: Optional[Dict] = None) -> List[Dict]:
     """RP-001: Check for ground stitching vias at signal layer transitions.
@@ -4037,40 +4074,11 @@ def check_layer_transition_stitching(pcb: Dict,
     if not all_vias:
         return findings  # Can't check without individual via positions
 
-    nets = pcb.get('nets', {})
-
-    # Identify which vias are ground vias (connected to ground nets)
-    gnd_via_positions = []
-    for via in all_vias:
-        net = via.get('net_name', via.get('net', ''))
-        if isinstance(net, str) and is_emc_ground_name(net):
-            gnd_via_positions.append((via.get('x', 0), via.get('y', 0)))
-        elif isinstance(net, int):
-            # Net number — look up name
-            if isinstance(nets, dict):
-                net_name = nets.get(net, nets.get(str(net), ''))
-            else:
-                net_name = ''
-            if is_emc_ground_name(str(net_name)):
-                gnd_via_positions.append((via.get('x', 0), via.get('y', 0)))
-
+    gnd_via_positions = _ground_via_positions(pcb)
     if not gnd_via_positions:
         return findings  # Can't determine which vias are ground
 
-    # Get default dielectric height for proximity threshold
-    default_h = 0.2  # mm
-    stackup = pcb.get('setup', {}).get('stackup', [])
-    for layer in stackup:
-        if layer.get('type') in ('core', 'prepreg'):
-            try:
-                h = float(layer.get('thickness', 0.2))
-                if h > 0:
-                    default_h = h
-                    break
-            except (ValueError, TypeError):
-                pass
-
-    search_radius = max(default_h * 2, 1.0)  # At least 1mm, or 2× dielectric height
+    search_radius = _stitch_radius_mm(pcb)
 
     # Diff-pair nets for severity
     dp_nets = set()
@@ -4102,17 +4110,7 @@ def check_layer_transition_stitching(pcb: Dict,
         total_transitions = len(via_positions)
 
         for vp in via_positions:
-            vx = vp.get('x', 0)
-            vy = vp.get('y', 0)
-
-            # Find nearest ground via
-            min_dist = float('inf')
-            for gx, gy in gnd_via_positions:
-                d = math.sqrt((vx - gx)**2 + (vy - gy)**2)
-                if d < min_dist:
-                    min_dist = d
-
-            if min_dist > search_radius:
+            if not _via_stitched(vp, gnd_via_positions, search_radius):
                 unstitched_count += 1
 
         if unstitched_count == 0:
