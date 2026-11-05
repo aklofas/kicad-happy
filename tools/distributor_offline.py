@@ -389,6 +389,8 @@ def run_fetch(provider: str, run: str, workdir: Path, product: Path = REPO_ROOT,
 def _scrub(text: str, roots: list[tuple[str, str]]) -> str:
     for root, label in roots:
         text = text.replace(json.dumps(root)[1:-1], label).replace(root, label)
+    if os.name != "nt":
+        return text
     # A Windows path below a root keeps its separators: write them as the goldens do
     labels = "|".join(re.escape(label) for label in {label for _, label in roots})
     return re.sub(rf"(?:{labels})[^\s\"']*",
@@ -457,9 +459,10 @@ def compare_run(provider: str, run: str, expected_dir, product: Path = REPO_ROOT
 
 
 def _names(listing: bytes) -> list[str]:
-    # The goldens record POSIX sizes; a file holding the longer Windows work path differs
-    # in size only, so on Windows files.txt compares the names.
-    return [line.rpartition(":")[0] for line in listing.decode("utf-8").splitlines()]
+    # The goldens record POSIX sizes. A manifest holds the work path, longer on Windows,
+    # so there its size is left out; every other file's size still compares.
+    return [line.rpartition(":")[0] if line.rpartition(":")[0].endswith("manifest.json")
+            else line for line in listing.decode("utf-8").splitlines()]
 
 
 def write_artefacts(arts: dict[str, bytes], out: Path) -> None:
