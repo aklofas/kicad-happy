@@ -172,13 +172,76 @@ class SW003Test(unittest.TestCase):
         pcb = {"footprints": COMPACT, "switching_loop_areas": _compute_switching_loop_areas(COMPACT, SYNTH_SCH)}
         self.assertEqual(check_input_cap_loop_area(pcb, SYNTH_SCH), [])
 
-    def test_large_loop_still_reported(self):
-        self.assertEqual(_compute_switching_loop_areas(LARGE, SYNTH_SCH)[0]["area_mm2"], 105.0)
-        for pcb in ({"footprints": LARGE},
-                    {"footprints": LARGE, "switching_loop_areas": _compute_switching_loop_areas(LARGE, SYNTH_SCH)}):
-            findings = check_input_cap_loop_area(pcb, SYNTH_SCH)
-            self.assertEqual([(f["rule_id"], f["severity"]) for f in findings], [("SW-003", "error")])
+    def test_pad_loop_not_estimated_names_the_pad_reason(self):
+        u1 = _fp("U1", 10.0, 10.0, [("1", "VIN", 10.0, 10.0), ("2", "SW", 11.0, 10.0), ("3", "GND", 9.0, 10.0)])
+        l1 = _fp("L1", 20.0, 10.0, [("1", "SW", 19.0, 10.0), ("2", "VOUT", 21.0, 10.0)])
+        c1 = _fp("C1", 3.0, 10.0, [("1", "VIN", 2.0, 10.0), ("2", "GND", 4.0, 10.0)])
+        sch = _schematic("U1", "L1", ("C1",), "TPS54331")
+        pcb = {"footprints": [u1, l1, c1], "switching_loop_areas": _compute_switching_loop_areas([u1, l1, c1], sch)}
+        f, = check_input_cap_loop_area(pcb, sch)
+        self.assertEqual((f["severity"], f["summary"]), ("info", "Hot loop for U1 not estimated"))
+        self.assertIn("area under 1 mm² across 2 mm or more: pads in a line or crossing lobes that cancel",
+                      f["description"])
+        self.assertNotIn("centre", f["description"])
 
+    def test_unresolved_pads_say_the_pads_were_not_matched(self):
+        fps = [{"reference": fp["reference"], "x": fp["x"], "y": fp["y"], "pads": []} for fp in REPORTER]
+        pcb = {"footprints": fps, "switching_loop_areas": _compute_switching_loop_areas(fps, REPORTER_SCH)}
+        f, = check_input_cap_loop_area(pcb, REPORTER_SCH)
+        self.assertIn("could not be matched", f["description"])
+        self.assertNotIn("centre", f["description"])
+        self.assertNotIn("1 mm²", f["description"])
+
+    def test_fallback_collinear_keeps_the_centre_text(self):
+        f, = check_input_cap_loop_area({"footprints": REPORTER}, REPORTER_SCH)
+        self.assertIn("lie in a line", f["description"])
+
+    def test_large_centre_triangle_is_an_info_estimate(self):
+        f, = check_input_cap_loop_area({"footprints": LARGE}, SYNTH_SCH)
+        self.assertEqual((f["rule_id"], f["severity"]), ("SW-003", "info"))
+        self.assertEqual(f["summary"], "Hot loop for U1 not graded: estimated from part centres")
+        self.assertIn("312mm²", f["description"])
+        self.assertIn("analyze_pcb.py", f["description"])
+        self.assertIn("--schematic", f["description"])
+        self.assertIn("not graded", f["description"])
+        self.assertEqual(f["nets"], ["SW"])
+        self.assertEqual(f["detector"], "emc_switching_emc")
+
+    def test_precomputed_record_without_method_is_an_info_estimate(self):
+        pcb = {"footprints": [], "switching_loop_areas": [
+            {"regulator_ref": "U1", "regulator_value": "TPS54331", "inductor_ref": "L1", "cap_ref": "C1",
+             "area_mm2": 150.0, "vertices_mm": [[10, 0], [0, 0], [0, 10]]}]}
+        f, = check_input_cap_loop_area(pcb, SYNTH_SCH)
+        self.assertEqual((f["severity"], f["summary"]), ("info", "Hot loop for U1 not graded: estimated from part centres"))
+        self.assertIn("150mm²", f["description"])
+        self.assertIn("--schematic", f["description"])
+
+    def test_small_centre_triangle_still_has_no_finding(self):
+        pcb = {"footprints": [], "switching_loop_areas": [
+            {"regulator_ref": "U1", "regulator_value": "TPS54331", "inductor_ref": "L1", "cap_ref": "C1",
+             "area_mm2": 24.9}]}
+        self.assertEqual(check_input_cap_loop_area(pcb, SYNTH_SCH), [])
+
+    def test_pad_loop_is_graded(self):
+        for area, severity in ((40.0, "warning"), (150.0, "error"), (24.9, None)):
+            pcb = {"footprints": [], "switching_loop_areas": [
+                {"regulator_ref": "U1", "regulator_value": "TPS54331", "inductor_ref": "L1", "cap_ref": "C1",
+                 "method": "pad", "area_mm2": area}]}
+            findings = check_input_cap_loop_area(pcb, SYNTH_SCH)
+            if severity is None:
+                self.assertEqual(findings, [])
+                continue
+            f, = findings
+            self.assertEqual((f["rule_id"], f["severity"], f["summary"]), ("SW-003", severity, "Large hot loop for U1"))
+            self.assertIn(f"{area:.0f}mm²", f["description"])
+            self.assertIn("pads", f["description"])
+            self.assertNotIn("triangle", f["description"] + f["recommendation"])
+
+    def test_large_pad_loop_still_reported(self):
+        self.assertEqual(_compute_switching_loop_areas(LARGE, SYNTH_SCH)[0]["area_mm2"], 105.0)
+        pcb = {"footprints": LARGE, "switching_loop_areas": _compute_switching_loop_areas(LARGE, SYNTH_SCH)}
+        findings = check_input_cap_loop_area(pcb, SYNTH_SCH)
+        self.assertEqual([(f["rule_id"], f["severity"]) for f in findings], [("SW-003", "error")])
 
 if __name__ == "__main__":
     unittest.main()

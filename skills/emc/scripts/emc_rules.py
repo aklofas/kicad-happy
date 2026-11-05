@@ -1934,17 +1934,20 @@ def check_switching_node_area(pcb: Optional[Dict],
 def check_input_cap_loop_area(pcb: Optional[Dict],
                               schematic: Optional[Dict],
                               spice_backend=None) -> List[Dict]:
-    """SW-003: Estimate hot loop area for switching regulators.
+    """SW-003: Hot loop area for switching regulators.
 
     The hot loop (input cap → IC → inductor → back) should be as small
-    as possible. Large loops radiate switching noise. Uses component
-    placement coordinates from PCB data to estimate the enclosed area.
+    as possible. Large loops radiate switching noise. Only a loop the PCB
+    analyzer measured through the pads (a switching_loop_areas record with
+    method "pad", written by analyze_pcb --schematic) is graded.
 
-    For integrated converters (most common), approximates as a triangle:
-    input cap → IC → inductor.
+    Without one, the area falls back to the triangle through the footprint
+    centres of the input cap, IC and inductor (also what a record without
+    method holds). The centres say little about the loop through the pads,
+    so a large triangle is reported as an info estimate, not graded.
 
-    When SPICE is available, estimates radiated E-field from loop area ×
-    switching current × frequency using dm_radiation_dbuv_m().
+    When SPICE is available, estimates radiated E-field from a graded loop's
+    area × switching current × frequency using dm_radiation_dbuv_m().
     """
     # EQ-088: A = polygon_area(cap, IC, inductor) (hot loop area estimation)
     findings = []
@@ -1953,20 +1956,53 @@ def check_input_cap_loop_area(pcb: Optional[Dict],
 
     regulators = get_findings(schematic, Det.POWER_REGULATORS)
 
-    def _not_estimated(ref, val, inductor_ref, cap_ref):
+    def _not_estimated(ref, val, inductor_ref, cap_ref, loop=None):
+        if not loop or loop.get('method') != 'pad':
+            why = (f'the centres of {cap_ref}, {ref} and {inductor_ref} lie in '
+                   f'a line, so the centre-triangle proxy gives no loop area.')
+        elif loop.get('estimate') == 'pads_unresolved':
+            why = (f'the pads of {cap_ref}, {ref} and {inductor_ref} could not '
+                   f'be matched to the supply, SW and ground nets, so no loop '
+                   f'was measured.')
+        else:
+            why = (f'the loop through the pads of {cap_ref}, {ref} and '
+                   f'{inductor_ref} has an area under 1 mm² across 2 mm or more: '
+                   f'pads in a line or crossing lobes that cancel, so it gives '
+                   f'no loop area.')
         return _make_finding(
             'switching_emc', 'INFO', rule_id='SW-003', detector='emc_switching_emc',
             title=f'Hot loop for {ref} not estimated',
             description=(
-                f'{ref} ({val}): the centres of {cap_ref}, {ref} and '
-                f'{inductor_ref} lie in a line, so the centre-triangle proxy '
-                f'gives no loop area. The hot loop itself runs through the '
+                f'{ref} ({val}): {why} The hot loop itself runs through the '
                 f'pads, vias and ground return and was not estimated.'
             ),
             components=[ref, inductor_ref, cap_ref],
             recommendation=(
                 f'Check the hot loop by hand: input cap {cap_ref} adjacent to '
                 f'the {ref} VIN and GND pins, with a short ground return.'
+            ),
+            confidence='heuristic',
+            schema_era="v3.0",
+        )
+
+    def _centre_estimate(ref, val, inductor_ref, cap_ref, area_mm2, nets):
+        return _make_finding(
+            'switching_emc', 'INFO', rule_id='SW-003', detector='emc_switching_emc',
+            title=f'Hot loop for {ref} not graded: estimated from part centres',
+            description=(
+                f'{ref} ({val}): the triangle through the centres of {cap_ref}, '
+                f'{ref} and {inductor_ref} spans about {area_mm2:.0f}mm². The hot '
+                f'loop runs through their pads, so this is not its area and the '
+                f'loop is not graded. To measure it from the pads, run '
+                f'analyze_pcb.py <board>.kicad_pcb --schematic <schematic '
+                f'analysis>.json, then analyze_emc.py on that PCB output.'
+            ),
+            components=[ref, inductor_ref, cap_ref],
+            nets=nets,
+            recommendation=(
+                f'Measure the loop from the pads, or check by hand that input '
+                f'cap {cap_ref} sits next to the {ref} VIN and GND pins and '
+                f'{inductor_ref} next to the SW pin.'
             ),
             confidence='heuristic',
             schema_era="v3.0",
@@ -1983,16 +2019,19 @@ def check_input_cap_loop_area(pcb: Optional[Dict],
 
             area_mm2 = loop.get('area_mm2', 0)
             if area_mm2 is None:
-                findings.append(_not_estimated(ref, val, inductor_ref, cap_ref))
+                findings.append(_not_estimated(ref, val, inductor_ref, cap_ref, loop))
                 continue
             if area_mm2 < 25:
                 continue  # Acceptable
+            if loop.get('method') != 'pad':
+                findings.append(_centre_estimate(ref, val, inductor_ref, cap_ref, area_mm2, []))
+                continue
 
             severity = 'HIGH' if area_mm2 > 100 else 'MEDIUM'
 
             desc = (
-                f'{ref} ({val}) hot loop area ≈ {area_mm2:.0f}mm² '
-                f'(triangle: {cap_ref} → {ref} → {inductor_ref}). '
+                f'{ref} ({val}) hot loop area ≈ {area_mm2:.0f}mm², measured '
+                f'through the pads of {cap_ref}, {ref} and {inductor_ref}. '
                 f'Recommended: <25mm² for low EMI.'
             )
 
@@ -2029,9 +2068,9 @@ def check_input_cap_loop_area(pcb: Optional[Dict],
                 description=desc + spice_note,
                 components=[ref, inductor_ref, cap_ref],
                 recommendation=(
-                    f'Place {cap_ref}, {ref}, and {inductor_ref} in a tight triangle. '
-                    f'Minimize trace length between them. Input cap should be adjacent '
-                    f'to the IC with the inductor on the opposite side.'
+                    f'Place {cap_ref} with its pads next to the {ref} VIN and GND '
+                    f'pins and {inductor_ref} next to the SW pin. Minimize trace '
+                    f'length between them.'
                 ),
                 confidence='heuristic',
                 schema_era="v3.0",
@@ -2080,50 +2119,9 @@ def check_input_cap_loop_area(pcb: Optional[Dict],
         if area_mm2 < 25:
             continue  # Acceptable
 
-        if area_mm2 > 100:
-            severity = 'HIGH'
-        else:
-            severity = 'MEDIUM'
-
-        desc = (
-            f'{ref} ({val}) hot loop area ≈ {area_mm2:.0f}mm² '
-            f'(triangle: {cap_ref} → {ref} → {inductor_ref}). '
-            f'Recommended: <25mm² for low EMI.'
-        )
-
-        # SPICE enhancement: estimate radiated emission from loop
-        spice_note = ''
-        if spice_backend and area_mm2 > 25:
-            sw_freq = reg.get('switching_frequency_hz') or _estimate_switching_freq(val) or _default_switching_freq(topology)
-            if sw_freq:
-                area_m2 = area_mm2 * 1e-6
-                # Estimate switching current from power dissipation or default 0.5A
-                pdiss = reg.get('power_dissipation', {})
-                i_sw = pdiss.get('estimated_iout_A', 0.5)
-                e_dbuv = dm_radiation_dbuv_m(sw_freq, area_m2, i_sw, 3.0, ground_plane=True)
-                limit = get_emission_limit(sw_freq, 'fcc-class-b')
-                if limit:
-                    margin = limit[0] - e_dbuv
-                    spice_note = (
-                        f' Estimated radiation at {sw_freq/1e6:.1f}MHz: '
-                        f'{e_dbuv:.0f} dBµV/m (limit: {limit[0]:.0f}, '
-                        f'margin: {margin:.0f}dB).'
-                    )
-
-        findings.append(_make_finding(
-            'switching_emc', severity, 'SW-003',
-            title=f'Large hot loop for {ref}',
-            description=desc + spice_note,
-            components=[ref, inductor_ref, cap_ref],
-            nets=[reg.get('sw_net', '')] if reg.get('sw_net') else [],
-            recommendation=(
-                f'Place {cap_ref}, {ref}, and {inductor_ref} in a tight triangle. '
-                f'Minimize trace length between them. Input cap should be adjacent '
-                f'to the IC with the inductor on the opposite side.'
-            ),
-            confidence='heuristic',
-            schema_era="v3.0",
-        ))
+        findings.append(_centre_estimate(
+            ref, val, inductor_ref, cap_ref, area_mm2,
+            [reg.get('sw_net', '')] if reg.get('sw_net') else []))
 
     return findings
 
