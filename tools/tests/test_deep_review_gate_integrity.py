@@ -4,6 +4,7 @@ list and a page below 1 or past the end of the PDF quarantine instead of crashin
 or verifying."""
 import json, os, shutil, subprocess, sys, tempfile, unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 REVIEW = ROOT / "skills" / "kicad" / "review" / "scripts"
@@ -38,6 +39,11 @@ QUOTE_CASES = [
     ("3.3-5.5 V", "3.3-5.5 V", True, "range dash"),
     ("10 µA", "10 μA", True, "micro sign vs Greek mu"),
     ("10 µA", "10 A", False, "unit prefix dropped"),
+    ("1e-3 A", "1e3 A", False, "exponent sign dropped"),
+    ("1e3 A", "1e-3 A", False, "exponent sign added"),
+    ("1E-6 A", "1e−6 A", True, "Unicode minus in an exponent"),
+    ("3 A", "1e-3 A", False, "exponent read as a value"),
+    ("1e-3 A", "1e-3A", True, "exponent, unit spacing"),
     ("1 kΩ", "1 k", False, "ohm sign dropped"),
     ("1,000 hours", "1,000 hours", True, "thousands comma"),
     ("500 mA", "1,500 mA", False, "tail of a comma-grouped number"),
@@ -204,6 +210,22 @@ class EvidenceTest(unittest.TestCase):
                 kept, bad = self._gate({"pins": [pin], "computation": calc}, sets)
                 self.assertIs(kept is not None, ok, bad and bad["quarantine_reason"])
 
+    def test_unchecked_pins_are_partial(self):
+        sch = {"components": [{"reference": "U3", "pin_nets": {"17": "VCC"}},
+                              {"reference": "R1"}], "nets": {}}
+        pcb = {"footprints": [
+            {"reference": "J1", "pad_count": 2, "pad_nets": {"1": {"net": "GND"}}}]}
+        sets = self._sets(sch=sch, pcb=pcb)
+        cite = {"mpn": "X", "page": 1, "quote": "q"}
+        for pin, partial in (("R1.2", True), ("J1.2", True), ("U3.VIN", True),
+                             ("U3.17", False)):
+            with self.subTest(pin=pin), mock.patch.object(
+                    deep_review_gate, "check_datasheet", return_value=([], False)):
+                kept, bad = self._gate({"pins": [pin], "datasheet": [cite]}, sets)
+                self.assertIsNone(bad)
+                self.assertEqual(kept["evidence_checked"],
+                                 "partial" if partial else "full")
+
     def test_pcb_pads_off_every_net_leave_pins_unchecked(self):
         pcb = {"footprints": [
             {"reference": "J1", "pad_count": 2, "pad_nets": {"1": {"net": "GND"}}},
@@ -309,14 +331,16 @@ class GateCliTest(unittest.TestCase):
         (self.tmp / "analysis" / "schematic.json").write_text(json.dumps(
             {"components": [{"reference": "U1"}], "nets": {"VCC": {}}}), encoding="utf-8")
 
-    def _gate(self, doc, env=None):
+    def _gate(self, doc, env=None, cwd=None, ds=True):
         path = self.tmp / "deep_review.json"
         raw = doc if isinstance(doc, str) else json.dumps(doc, ensure_ascii=False)
         path.write_text(raw, encoding="utf-8")
-        r = subprocess.run([sys.executable, str(GATE), str(path),
-                            "--analysis-dir", str(self.tmp / "analysis"),
-                            "--datasheets-dir", str(self.tmp / "datasheets")],
-                           capture_output=True, text=True, encoding="utf-8", timeout=120,
+        cmd = [sys.executable, str(GATE), str(path),
+               "--analysis-dir", str(self.tmp / "analysis")]
+        if ds:
+            cmd += ["--datasheets-dir", str(self.tmp / "datasheets")]
+        r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
+                           timeout=120, cwd=cwd,
                            env=dict(os.environ, **(env or {})))
         self.assertNotIn("Traceback", r.stderr)
         after = path.read_text(encoding="utf-8")
@@ -341,6 +365,30 @@ class GateCliTest(unittest.TestCase):
         r, out = self._gate(self._doc([finding]))
         self.assertEqual(r.returncode, rc, r.stderr)
         return out
+
+    def test_default_datasheets_dir_follows_the_project(self):
+        other = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, other)
+        r, out = self._gate(self._doc([self._finding()]), cwd=other, ds=False)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(out["findings"][0]["evidence_checked"], "full")
+
+    def test_explicit_relative_datasheets_dir_is_cwd_relative(self):
+        path = self.tmp / "deep_review.json"
+        path.write_text(json.dumps(self._doc([self._finding()])), encoding="utf-8")
+        r = subprocess.run([sys.executable, str(GATE), str(path),
+                            "--analysis-dir", str(self.tmp / "analysis"),
+                            "--datasheets-dir", "datasheets"], cwd=self.tmp,
+                           capture_output=True, text=True, encoding="utf-8", timeout=120)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        out = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(out["findings"][0]["evidence_checked"], "full")
+
+    def test_unchecked_pin_is_partial(self):
+        c = {"mpn": "TPS1", "page": 1, "quote": "Maximum input voltage 5.5 V"}
+        out = self._one(self._finding({"components": ["U1"], "pins": ["U1.3"],
+                                       "datasheet": [c]}), 0)
+        self.assertEqual(out["findings"][0]["evidence_checked"], "partial")
 
     def test_legitimate_respellings_verify(self):
         for quote, page in (("Maximum input voltage 5.5V", 1),

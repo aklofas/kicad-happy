@@ -198,7 +198,8 @@ def _as_list(value):
 
 
 def check_anchors(ev, comps, nets, pins):
-    fails = []
+    """Returns (failures, partial); a cited pin that cannot be checked is partial."""
+    fails, partial = [], False
     for ref in ev.get("components") or []:
         if str(ref).upper() not in comps:
             fails.append(f"component {ref} not found in analyzer JSON")
@@ -216,12 +217,16 @@ def check_anchors(ev, comps, nets, pins):
             fails.append(f"pin {pin}: not a REF.PIN citation")
         elif ref.upper() not in comps:
             fails.append(f"pin {pin}: component {ref} not found in analyzer JSON")
-        elif ref.upper() in pins and num.upper() not in pins[ref.upper()]:
+        elif ref.upper() not in pins:
+            partial = True
+        elif num.upper() not in pins[ref.upper()]:
             ids = pins[ref.upper()]
             # with numbers only on record, a non-numeric citation may be a name
             if ids.has_names or num.isdigit():
                 fails.append(f"pin {pin}: {ref} has no pin {num} in analyzer JSON")
-    return fails
+            else:
+                partial = True
+    return fails, partial
 
 
 def find_pdf(datasheets_dir, mpn):
@@ -247,13 +252,14 @@ _PLUSMINUS_RE = re.compile(r"\+(?:\s*/\s*)?[-\u2014]")
 # the first digit (".5", but not a dot leader "....37" or "100Ω.5"); a
 # leading minus that starts a number outside a word ("-40", "(−40"; not
 # "SOT-23" or "3.3-5.5"); and a ± written against its number ("±15",
-# "+/-15"). So "15" is neither "-15" nor "±15", and "5" is not ".5". Unit
-# letters such as µ and ω are letters.
+# "+/-15"); and the minus of an exponent such as "1e-3". So "15" is neither
+# "-15" nor "±15", and "5" is not ".5". Unit letters such as µ and ω are
+# letters.
 _TOKEN_RE = re.compile(
     r"<=|>=|±(?!\.?[0-9])|<|>|="
     r"|(?:(?<![^\W_]|\.)-(?=\.?[0-9])|±(?=\.?[0-9]))?"
     r"(?:(?<![^\W_]|\.)\.(?=[0-9]))?"
-    r"(?:[^\W_]|(?<=[0-9])[.,](?=[0-9]))+")
+    r"(?:[^\W_]|(?<=[0-9])[.,](?=[0-9])|(?<=[0-9]e)-(?=[0-9]))+")
 # a ± set apart from the number it precedes (a space or a wrapped line)
 _PLUSMINUS_GAP_RE = re.compile(r"±\s+(?=\.?[0-9])")
 _LEADING_POINT_RE = re.compile(r"(?<![^\s±-])\.(?=[0-9])")
@@ -457,11 +463,12 @@ def gate_finding(finding, item_schema, comps, nets, pins, datasheets_dir, projec
                      "quote and/or a computation")
     partial = False
     if not fails:
-        fails += check_anchors(ev, comps, nets, pins)
+        a_fails, a_partial = check_anchors(ev, comps, nets, pins)
+        fails += a_fails
         ds_fails, ds_partial = check_datasheet(ev.get("datasheet"), datasheets_dir)
         comp_fails, comp_partial = check_computation(ev.get("computation"), project_dir)
         fails += ds_fails + comp_fails
-        partial = ds_partial or comp_partial
+        partial = a_partial or ds_partial or comp_partial
     if fails:
         q = dict(finding)
         q["quarantine_reason"] = "; ".join(fails)
@@ -478,7 +485,8 @@ def main():
     ap.add_argument("deep_review_json")
     ap.add_argument("--analysis-dir", required=True)
     ap.add_argument("--run", default=None, help="run id (default: manifest current)")
-    ap.add_argument("--datasheets-dir", default="datasheets")
+    ap.add_argument("--datasheets-dir", default=None,
+                    help="folder of datasheet PDFs (default: <project-dir>/datasheets)")
     ap.add_argument("--project-dir", default=None,
                      help="project root for resolving computation script "
                           "paths (default: --analysis-dir's parent)")
@@ -489,6 +497,7 @@ def main():
         # root -- anchor to it, not the invoking cwd, so the
         # gate works when run from elsewhere.
         project_dir = str(Path(args.analysis_dir).resolve().parent)
+    datasheets_dir = args.datasheets_dir or str(Path(project_dir) / "datasheets")
 
     path = Path(args.deep_review_json)
     try:
@@ -524,7 +533,7 @@ def main():
                                 "value": finding})
             continue
         ok, bad = gate_finding(finding, item_schema, comps, nets, pins,
-                               args.datasheets_dir, project_dir)
+                               datasheets_dir, project_dir)
         if ok is not None:
             kept.append(ok)
         else:

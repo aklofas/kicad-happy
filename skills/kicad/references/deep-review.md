@@ -125,6 +125,10 @@ Record findings in `analysis/deep_review.json` per
   analyzer JSON; a floating pin counts. Names match exactly: when an
   alternate pin function is selected the analyzer lists the alternate's name,
   so cite such pins by number.
+  A pin of a component whose pins the analyzer JSON does not list (a part
+  listed without pins, a PCB-only footprint with a pad on no net), or a pin
+  name on a part listed by number only, is not checked and makes the
+  finding `partial`.
 - The gate finds the run folder from `analysis/manifest.json` and the
   run id inside `--analysis-dir` (`--run` picks another), so a moved or
   copied analysis folder still gates; no absolute path is stored.
@@ -137,7 +141,8 @@ Gate, then deal with the fallout:
         analysis/deep_review.json --analysis-dir analysis/
 
 `--project-dir` (for resolving `evidence.computation.script` paths)
-defaults to `--analysis-dir`'s parent — pass it explicitly only when
+defaults to `--analysis-dir`'s parent, and `--datasheets-dir` defaults to
+`<project-dir>/datasheets` — pass `--project-dir` explicitly only when
 the gate runs from outside the normal `<project>/analysis/` layout:
 
     python3 <skill-path>/review/scripts/deep_review_gate.py \
