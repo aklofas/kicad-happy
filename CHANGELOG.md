@@ -284,6 +284,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A `.kicad_dru` that KiCad refuses (no leading version statement, an unknown severity or top-level form, a rule without a name, a length bound without a unit; unbalanced parentheses are not detected yet) applies none of its rules, as in KiCad, and lists none of its conditional rules as skipped; `project_settings.custom_rules_error` gives KiCad's message. A comment on the first or last line no longer drops the file.
 - On KiCad 10 boards a net named only on a copper graphic keeps its name and id.
 - PCB ground domains no longer count a net KiCad names after a pin (`unconnected-(U1-GND-Pad3)`, `Net-(U1-GND)`); a 0 V or battery-negative net is a ground domain, other GND-, VSS- or GROUND-named nets (`AGND_CODEC`, `PGND2`) stay ones, and `COM` counts only when it is a known power rail (from the `--schematic` analysis or `--power-rails`). EMC GP-005 lists the domain names (it listed `?`), and its count, the risk score and the ground-plane summary follow.
+- A datasheet URL whose host is not ASCII (`http://faß.example.com/`) is refused instead of being handed to the transports, which disagree on how to resolve it; an ASCII `xn--` host and non-ASCII characters in the path still download.
 
 ### Documentation
 

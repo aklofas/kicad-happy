@@ -74,7 +74,8 @@ def _with_fake_urllib_handler(fake):
 class UrlProblemTest(unittest.TestCase):
     def test_url_problem_table(self):
         with mock.patch.object(download, "_resolve", return_value=PUBLIC):
-            for url in ("https://example.com/a.pdf", "http://example.com/a.pdf"):
+            for url in ("https://example.com/a.pdf", "http://example.com/a.pdf",
+                        "http://xn--fa-hia.example.com/x.pdf", "https://example.com/\u00df.pdf"):
                 self.assertIsNone(download.url_problem(url, allow_private=False), url)
             for url in ("file:///etc/passwd", "ftp://example.com/a.pdf",
                         "data:application/pdf;base64,JVBE", "https:///a.pdf",
@@ -105,7 +106,9 @@ class UrlProblemTest(unittest.TestCase):
                         "http://user:pw@example.com/a.pdf", "http://@example.com/a.pdf",
                         "http://exa mple.com/", "http://example.com/a\tb.pdf",
                         "http://example.com/a.pdf\n", "http://example.com/a\x00.pdf",
-                        "http://example.com/a\x7f.pdf", "http://example.com\\a.pdf"):
+                        "http://example.com/a\x7f.pdf", "http://example.com\\a.pdf",
+                        "http://fa\u00df.example.com/x.pdf", "https://\uff25\uff38\uff21\uff2d\uff30\uff2c\uff25.com/x.pdf",
+                        "http://example.com:\uff18\uff10/x.pdf"):
                 for allow_private in (False, True):
                     self.assertIsInstance(
                         download.url_problem(url, allow_private=allow_private), str, url)
@@ -171,6 +174,18 @@ class DownloadPolicyTest(unittest.TestCase):
         self.assertEqual([u for u, _ in fake.calls], ["https://example.com/x.pdf"])
         self.assertIs(fake.calls[0][1]["allow_redirects"], False)
         self.assertIs(fake.calls[0][1]["stream"], True)
+
+    def test_requests_redirect_to_non_ascii_host_refused(self):
+        fake = _FakeRequests({
+            "https://example.com/x.pdf":
+                lambda: _FakeRequestsResponse(302, {"Location": "http://fa\u00df.example.com/x.pdf"}),
+            "http://fa\u00df.example.com/x.pdf": lambda: _FakeRequestsResponse(200, chunks=[PDF]),
+        })
+        self.assertFalse(self._download("https://example.com/x.pdf", requests=fake,
+                                        urllib_fn=_fail, playwright=_fail))
+        self.assertEqual([u for u, _ in fake.calls], ["https://example.com/x.pdf"])
+        self.assertIn("download refused", self.stderr.getvalue())
+        self.assertIn("non-ASCII", self.stderr.getvalue())
 
     def test_spaces_after_the_host_are_encoded(self):
         fake = _FakeRequests({

@@ -157,6 +157,8 @@ def url_problem(url: str, *, allow_private: bool) -> str | None:
         return "credentials in the URL"
     if "%" in parts.netloc:
         return "a percent-encoded host or port"
+    if not parts.netloc.isascii():
+        return "a non-ASCII host"
     if allow_private:
         return None
     try:
