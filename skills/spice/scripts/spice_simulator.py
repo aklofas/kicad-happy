@@ -23,6 +23,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import _core_path  # noqa: F401
+from kicad_core.executables import find_executable
 from spice_models import spice_echo
 
 
@@ -99,9 +101,9 @@ class NgspiceBackend(SimulatorBackend):
         if env_path and os.path.isfile(env_path):
             return os.path.abspath(env_path)
         # Standard PATH lookup
-        found = shutil.which("ngspice")
+        found = find_executable("ngspice")
         if found:
-            return os.path.abspath(found)
+            return found
         # Windows default
         for candidate in [
             os.path.join(os.environ.get("PROGRAMFILES", ""), "Spice64", "bin", "ngspice.exe"),
@@ -214,9 +216,9 @@ class LtspiceBackend(SimulatorBackend):
 
         # Standard PATH
         for name in ("ltspice", "LTspice", "XVIIx64"):
-            found = shutil.which(name)
+            found = find_executable(name)
             if found:
-                return os.path.abspath(found)
+                return found
 
         # Platform-specific defaults
         if sys.platform == "win32":
@@ -233,7 +235,7 @@ class LtspiceBackend(SimulatorBackend):
                 return candidate
 
         # Linux: check for wine + LTspice
-        wine = shutil.which("wine")
+        wine = find_executable("wine")
         if wine:
             home = os.path.expanduser("~")
             for candidate in [
@@ -361,9 +363,9 @@ class XyceBackend(SimulatorBackend):
         if env_path and os.path.isfile(env_path):
             return os.path.abspath(env_path)
         for name in ("Xyce", "xyce"):
-            found = shutil.which(name)
+            found = find_executable(name)
             if found:
-                return os.path.abspath(found)
+                return found
         return None
 
     def run(self, cir_file, timeout=5, cwd=None):

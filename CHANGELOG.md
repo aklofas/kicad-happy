@@ -112,6 +112,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Fixed
 
+- On Windows, ngspice, LTspice, Xyce, `pdftotext`, `pdfinfo` and `gh` are found only through absolute `PATH` entries and launched by their full path, so a program of that name sitting in a project folder you open is no longer run. A `.cmd`/`.bat`-only install is no longer found, and a tool kept inside a project needs its `NGSPICE_PATH`, `LTSPICE_PATH` or `XYCE_PATH` variable. Linux and macOS are unchanged.
 - EMC rules IO-001, IO-002, BE-001 and RP-001 classify power and ground nets with the same name rules as the rest of the analyzers, not their own shorter list: rails such as `MCU3V3` and `/sheet/VCC` are power, and control nets such as `VCC_EN`, `3V3_PG` and `PWR_ON` are signals. Names the shared rules do not cover (`5V PCIE`, `PWR`, `V-`) keep their earlier classification.
 - SW-002 sizes switching-node zone copper from the zone's fill, not its outline.
 - A capacitor marked do-not-populate no longer counts as bridging a split between reference planes (GP-001).

@@ -130,15 +130,18 @@ def _extract_pdf_text(pdf_path: str, max_pages: int = 3) -> str:
     back to scanning raw PDF bytes for ASCII strings.
     """
     # Strategy 1: pdftotext (best quality, handles all encodings)
-    try:
-        result = subprocess.run(
-            ["pdftotext", "-l", str(max_pages), pdf_path, "-"],
-            capture_output=True, text=True, timeout=10,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return result.stdout
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
+    from kicad_core.executables import find_executable
+    tool = find_executable("pdftotext")
+    if tool:
+        try:
+            result = subprocess.run(
+                [tool, "-l", str(max_pages), pdf_path, "-"],
+                capture_output=True, text=True, timeout=10,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return result.stdout
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
 
     # Strategy 2: raw byte scanning (no dependencies needed)
     try:

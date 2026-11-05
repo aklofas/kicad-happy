@@ -1160,5 +1160,41 @@ class TestExistingBackendSelection(unittest.TestCase):
         xyce_find.assert_called_once_with()
 
 
+class TestSimulatorDiscoveryWindows(unittest.TestCase):
+    """On Windows a simulator in the current directory is never picked."""
+
+    CASES = (
+        (spice_simulator.NgspiceBackend, "NGSPICE_PATH", "ngspice.exe"),
+        (spice_simulator.LtspiceBackend, "LTSPICE_PATH", "XVIIx64.exe"),
+        (spice_simulator.XyceBackend, "XYCE_PATH", "Xyce.exe"),
+    )
+
+    def test_cwd_tool_not_found_absolute_path_found(self):
+        from kicad_core import executables
+        for backend, var, exe in self.CASES:
+            with self.subTest(backend=backend.__name__):
+                with tempfile.TemporaryDirectory() as tmp:
+                    tmp = Path(tmp)
+                    cwd, bin_, empty = tmp / "cwd", tmp / "bin", tmp / "empty"
+                    for d in (cwd, bin_, empty):
+                        d.mkdir()
+                    for name in (exe, exe[:-4]):
+                        (cwd / name).write_bytes(b"")
+                        (cwd / name).chmod(0o755)
+                    (bin_ / exe).write_bytes(b"")
+                    env = {var: "", "PROGRAMFILES": str(empty), "PROGRAMFILES(X86)": str(empty),
+                           "LOCALAPPDATA": str(empty), "PATH": "."}
+                    old = os.getcwd()
+                    os.chdir(cwd)
+                    try:
+                        with patch.dict(os.environ, env), \
+                                patch.object(executables, "_on_windows", return_value=True):
+                            self.assertIsNone(backend().find())
+                            os.environ["PATH"] = os.pathsep.join([".", str(bin_)])
+                            self.assertEqual(backend().find(), str(bin_ / exe))
+                    finally:
+                        os.chdir(old)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

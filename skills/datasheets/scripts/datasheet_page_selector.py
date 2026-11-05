@@ -20,10 +20,16 @@ Usage:
 """
 
 import re
-import shutil
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+
+_KICAD_SCRIPTS = str(Path(__file__).resolve().parents[2] / "kicad" / "scripts")
+if _KICAD_SCRIPTS not in sys.path:
+    sys.path.append(_KICAD_SCRIPTS)
+
+from kicad_core.executables import find_executable  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -164,12 +170,12 @@ _CATEGORY_KEYWORDS = {
 
 def _has_pdftotext():
     """Check if pdftotext is available."""
-    return shutil.which("pdftotext") is not None
+    return find_executable("pdftotext") is not None
 
 
 def _has_pdfinfo():
     """Check if pdfinfo is available."""
-    return shutil.which("pdfinfo") is not None
+    return find_executable("pdfinfo") is not None
 
 
 def _get_page_count(pdf_path):
@@ -179,10 +185,11 @@ def _get_page_count(pdf_path):
     """
     pdf_path = str(pdf_path)
 
-    if _has_pdfinfo():
+    pdfinfo = find_executable("pdfinfo")
+    if pdfinfo:
         try:
             result = subprocess.run(
-                ["pdfinfo", pdf_path],
+                [pdfinfo, pdf_path],
                 capture_output=True, text=True, timeout=10,
             )
             if result.returncode == 0:
@@ -214,7 +221,8 @@ def _extract_pages_text(pdf_path, first_page=1, last_page=None):
     Returns:
         Dict mapping page_number -> text
     """
-    if not _has_pdftotext():
+    pdftotext = find_executable("pdftotext")
+    if not pdftotext:
         return {}
 
     total = _get_page_count(pdf_path)
@@ -224,7 +232,7 @@ def _extract_pages_text(pdf_path, first_page=1, last_page=None):
     # Extract all requested pages at once (faster than per-page)
     try:
         result = subprocess.run(
-            ["pdftotext", "-f", str(first_page), "-l", str(last_page),
+            [pdftotext, "-f", str(first_page), "-l", str(last_page),
              "-layout", str(pdf_path), "-"],
             capture_output=True, text=True, timeout=30,
         )

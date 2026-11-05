@@ -22,6 +22,7 @@ import urllib.parse
 import _core_path  # noqa: F401
 from kicad_core import token_cache
 from kicad_core.diagnostics import record
+from kicad_core.executables import find_executable
 
 
 # ---------------------------------------------------------------------------
@@ -474,15 +475,15 @@ def fetch_specs_from_datasheet(mpn, project_dir):
         return None
 
     # Try to extract text from PDF using pdftotext (optional dependency)
-    import shutil
-    if not shutil.which("pdftotext"):
+    tool = find_executable("pdftotext")
+    if not tool:
         return None  # Can't extract without pdftotext
 
     import subprocess
     try:
         # Extract first 5 pages (electrical specs are usually in pages 2-5)
         result = subprocess.run(
-            ["pdftotext", "-l", "5", str(pdf_path), "-"],
+            [tool, "-l", "5", str(pdf_path), "-"],
             capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10,
         )
         if result.returncode != 0:

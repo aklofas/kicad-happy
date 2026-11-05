@@ -117,8 +117,8 @@ The twelve analyzer and consumer CLIs (`analyze_schematic`, `analyze_pcb`, `anal
 |---|---|---|
 | `simulate_subcircuits.py` | simulation orchestrator CLI | spice modules; core `kicad_core`, `analysis_cache` (lazy), `output_filters` (lazy) |
 | `extract_parasitics.py` | PCB parasitic R/L/C extraction CLI | core `kicad_core` |
-| `spice_templates.py`, `spice_models.py`, `spice_model_generator.py`, `spice_model_cache.py`, `spice_part_library.py`, `spice_spec_fetcher.py` | testbenches, behavioral models, the project model cache, the part spec table and spec fetching | spice modules only |
-| `spice_simulator.py`, `spice_results.py` | simulator backends; result parsing | spice modules; `spice_results` lazily imports core `finding_schema` |
+| `spice_templates.py`, `spice_models.py`, `spice_model_generator.py`, `spice_model_cache.py`, `spice_part_library.py`, `spice_spec_fetcher.py` | testbenches, behavioral models, the project model cache, the part spec table and spec fetching | spice modules; core `kicad_core` (`spice_spec_fetcher`) |
+| `spice_simulator.py`, `spice_results.py` | simulator backends; result parsing | spice modules; core `kicad_core.executables`; `spice_results` lazily imports core `finding_schema` |
 | `spice_tolerance.py` | Monte Carlo tolerance analysis | core `kicad_core`, `detection_schema` |
 
 ### `skills/bom/scripts/` (optional skill; imports the core only, through `_core_path`)
@@ -146,6 +146,7 @@ The twelve analyzer and consumer CLIs (`analyze_schematic`, `analyze_pcb`, `anal
 | `netquery.py` | net helper (`build_net_id_map`), `build_pin_to_net_map`, `build_ref_pins`, `BridgeFact`/`BridgeFacts`/`build_bridge_facts` | `model`, `values` |
 | `render.py` | severity normaliser and text fragments: `normalize_severity` + `SEVERITY_ALIASES`; `severity_bucket` (the text-report bucket, kept as a named adapter: it differs on `WARN` and accepts `ERROR`); `plural`, `finding_line`, `wrap_lines`, `fmt_signed`, `fmt_g4` | stdlib |
 | `diagnostics.py` | `Diagnostic` and `record(sink, source, exc, effect)`: a guarded failure that degraded a run is printed to stderr and appended to the envelope's `diagnostics` list | stdlib |
+| `executables.py` | `find_executable`: absolute path of an external program (Windows: absolute `PATH` entries only, never the current directory) | stdlib |
 | `cli.py` | shared argparse declarations: `STAGES`, `AUDIENCES`, `add_stage_audience_args`, `add_only_deterministic_arg`, `add_schema_arg`, `add_output_arg`, `add_compact_arg`, `add_text_arg`, `add_config_arg` | stdlib |
 
 `kicad_core` imports stdlib and itself only (CI-enforced).
@@ -193,7 +194,7 @@ Mutation contract: `read_board` backfills `net`/`net_number` on the extracted re
 | `distributor_core/inputs.py` | BOM / MPN-list projection (`extract_parts`, `load_mpn_list` with per-provider `id_keys`), `is_real_mpn`, `get_analyzer_output` (runs the schematic analyzer) | stdlib; lazy `schematic.pipeline` from the kicad skill, with `analyze_schematic.py` as a subprocess fallback |
 | `distributor_core/manifest.py` | `manifest.json` IO (legacy `index.json` migration), filename primitives (`sanitize_filename`, `friendly_filename`) | stdlib |
 | `distributor_core/download.py` | transport cascade (`requests` → `urllib` → Playwright), redirect normalisation (opt-in via `resolve_redirects`), the Microchip alternative source | stdlib + optional `requests`/`playwright` (guarded; declared in the harness compat policy) |
-| `distributor_core/verify.py` | PDF text extraction and datasheet verification | stdlib (+ optional `pdftotext` binary) |
+| `distributor_core/verify.py` | PDF text extraction and datasheet verification | stdlib (+ optional `pdftotext` binary); `kicad_core.executables` (lazy) |
 | `distributor_core/sync.py` | `sync_datasheets(provider, ...)`: the one sync driver over a provider adapter (thirteen substitution sites over the adapter's `DEFAULT_DELAY`, `preflight`, `ID_KEYS`, `SKIPPED_COUNTS_IDS`, `LABELS`, `KEY_PRIORITY`, `RENAME_PRESENT`, `authenticate`, `sync_one_part`, `FAILED_DETAIL_WITH_URL`, `report_tail`) | `inputs`, `manifest` |
 | `skills/<p>/scripts/provider_<p>.py` (×4) | the adapter: auth, search, response accessors, `sync_one_part(part, output_dir, delay, ctx)`, adapter constants | `distributor_core` (via `_core_path`) |
 | `fetch_datasheet_<p>.py`, `sync_datasheets_<p>.py` (×4 each) | argparse `main()`; basenames and flags frozen | `provider_<p>`, `distributor_core` |

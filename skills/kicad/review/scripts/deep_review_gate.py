@@ -45,6 +45,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))   # ski
 from _mini_jsonschema import iter_errors            # noqa: E402
 from analysis_cache import get_run                  # noqa: E402
 from finding_schema import assign_deep_review_ids   # noqa: E402
+from kicad_core.executables import find_executable  # noqa: E402
 
 SCHEMA_PATH = (Path(__file__).resolve().parents[1] / "schemas"
                / "deep_review.schema.json")
@@ -378,7 +379,8 @@ def _nearest_match(quote, text, window=80, stride=40):
 def check_datasheet(cites, datasheets_dir):
     """Returns (failures, partial). Missing tool/PDF -> partial, not failure."""
     fails, partial = [], False
-    have_tool = shutil.which("pdftotext") is not None
+    tool = find_executable("pdftotext")
+    have_tool = tool is not None
     for cite in cites or []:
         quote = cite.get("quote", "")
         page = cite.get("page")
@@ -393,7 +395,7 @@ def check_datasheet(cites, datasheets_dir):
             partial = True
             continue
         # UTF-8 is poppler's default; xpdf's pdftotext (some Windows installs) writes Latin-1
-        cmd = ["pdftotext", "-enc", "UTF-8"]
+        cmd = [tool, "-enc", "UTF-8"]
         if page is not None:
             cmd += ["-f", str(page), "-l", str(page)]
         cmd += [str(pdf), "-"]

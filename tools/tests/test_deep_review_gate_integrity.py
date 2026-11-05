@@ -266,6 +266,37 @@ class PdftotextFormsTest(unittest.TestCase):
         self.assertEqual(len(fails), 1)
         self.assertIn("quote not found page 3", fails[0])
 
+    def _windows_check(self, path_dirs, files):
+        from unittest import mock
+        from kicad_core import executables
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        cwd, bin_ = tmp / "cwd", tmp / "bin"
+        cwd.mkdir(); bin_.mkdir()
+        for where, name in files:
+            ((cwd, bin_)[where] / name).write_bytes(b"")
+        old = os.getcwd()
+        self.addCleanup(os.chdir, old)
+        os.chdir(cwd)
+        env = os.pathsep.join(str((cwd, bin_)[d]) if d else "." for d in path_dirs)
+        done = subprocess.CompletedProcess([], 0, "Maximum input voltage 5.5 V", "")
+        with mock.patch.object(executables, "_on_windows", return_value=True), \
+                mock.patch.dict(os.environ, {"PATH": env}), \
+                mock.patch.object(deep_review_gate, "find_pdf", return_value=Path("TPS1.pdf")), \
+                mock.patch.object(deep_review_gate.subprocess, "run", return_value=done) as run:
+            result = deep_review_gate.check_datasheet(
+                [{"mpn": "TPS1", "page": 3, "quote": "Maximum input voltage 5.5 V"}], ".")
+        return result, run, bin_
+
+    def test_windows_launches_absolute_pdftotext(self):
+        result, run, bin_ = self._windows_check([0, 1], [(0, "pdftotext.exe"), (1, "pdftotext.exe")])
+        self.assertEqual(run.call_args.args[0][0], str(bin_ / "pdftotext.exe"))
+
+    def test_windows_cwd_pdftotext_is_partial_and_not_run(self):
+        result, run, _ = self._windows_check([0], [(0, "pdftotext.exe")])
+        self.assertEqual(result, ([], True))
+        run.assert_not_called()
+
 
 @unittest.skipUnless(shutil.which("pdftotext"), "pdftotext (poppler) not installed")
 class GateCliTest(unittest.TestCase):

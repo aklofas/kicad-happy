@@ -27,6 +27,7 @@ import subprocess
 import sys
 
 from diff_engine import _canonical, _fid_stem, finding_key
+from kicad_core.executables import find_executable
 
 # ---------------------------------------------------------------------------
 # Severity ranking: lower number = higher priority
@@ -359,11 +360,18 @@ def issue_labels(finding: dict, extra_labels: "list[str]") -> list[str]:
 # GitHub CLI integration
 # ---------------------------------------------------------------------------
 
+def _gh() -> str:
+    path = find_executable("gh")
+    if path is None:
+        raise FileNotFoundError("gh not found on PATH")
+    return path
+
+
 def check_gh_available() -> bool:
     """Return True if ``gh`` is installed and authenticated."""
     try:
         result = subprocess.run(
-            ["gh", "auth", "status"],
+            [_gh(), "auth", "status"],
             capture_output=True,
             timeout=15,
         )
@@ -382,7 +390,7 @@ def list_open_issues(repo: str) -> "list[dict]":
     try:
         result = subprocess.run(
             [
-                "gh", "issue", "list",
+                _gh(), "issue", "list",
                 f"--repo={repo}",
                 "--label=kicad-happy",
                 "--state=open",
@@ -532,6 +540,7 @@ def create_issue(
         cmd.append(f"--milestone={milestone}")
 
     try:
+        cmd[0] = _gh()
         result = subprocess.run(
             cmd,
             capture_output=True,
