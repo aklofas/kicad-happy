@@ -243,6 +243,31 @@ PAGES = ["Maximum input voltage 5.5 V at -40 C", "Quiescent current 10 µA typic
 
 
 @unittest.skipUnless(shutil.which("pdftotext"), "pdftotext (poppler) not installed")
+class PdftotextFormsTest(unittest.TestCase):
+    """poppler and xpdf report a page past the end differently; both are past the end."""
+
+    def _check(self, rc, stdout, stderr=""):
+        from unittest import mock
+        done = subprocess.CompletedProcess([], rc, stdout, stderr)
+        with mock.patch.object(deep_review_gate.shutil, "which", return_value="pdftotext"), \
+                mock.patch.object(deep_review_gate, "find_pdf", return_value=Path("TPS1.pdf")), \
+                mock.patch.object(deep_review_gate.subprocess, "run", return_value=done):
+            return deep_review_gate.check_datasheet(
+                [{"mpn": "TPS1", "page": 3, "quote": "Maximum input voltage 5.5 V"}], ".")
+
+    def test_poppler_exit_99(self):
+        self.assertEqual(self._check(99, "", "Wrong page range given"),
+                         (["page 3 is past the end of TPS1.pdf"], False))
+
+    def test_xpdf_empty_output(self):
+        self.assertEqual(self._check(0, ""), (["page 3 is past the end of TPS1.pdf"], False))
+
+    def test_blank_page_is_a_page(self):
+        fails, _ = self._check(0, "\f")
+        self.assertEqual(len(fails), 1)
+        self.assertIn("quote not found page 3", fails[0])
+
+
 class GateCliTest(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())

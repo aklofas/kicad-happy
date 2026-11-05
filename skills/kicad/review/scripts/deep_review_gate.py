@@ -403,8 +403,11 @@ def check_datasheet(cites, datasheets_dir):
         except OSError:
             partial = True
             continue
-        # pdftotext exits 99 with "Wrong page range given" past the last page
-        if page is not None and proc.returncode == 99 and "page" in proc.stderr.lower():
+        # Past the last page poppler's pdftotext exits 99 ("Wrong page range given"); xpdf's
+        # exits 0 with no output at all, where any real page, even a blank one, gives a form feed
+        if page is not None and (
+                (proc.returncode == 99 and "page" in proc.stderr.lower())
+                or (proc.returncode == 0 and proc.stdout == "")):
             fails.append(f"page {page} is past the end of {pdf.name}")
             continue
         if proc.returncode != 0:
