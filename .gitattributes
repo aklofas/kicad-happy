@@ -1,0 +1,2 @@
+# LF on every checkout, Windows included: tests and tools compare text files byte for byte.
+* text=auto eol=lf
