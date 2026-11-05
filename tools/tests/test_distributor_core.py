@@ -35,6 +35,9 @@ class Manifest(unittest.TestCase):
             p.write_text("[]", encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "is not a readable manifest"):
                 load_index(p)
+            p.write_bytes(b'{"parts": ' + b"[" * 100000 + b"]" * 100000 + b"}")
+            with self.assertRaisesRegex(ValueError, "is not a readable manifest"):
+                load_index(p)
 
     def test_save_index_migrates_legacy_sibling(self):
         from distributor_core.manifest import load_index, save_index, MANIFEST_FILENAME

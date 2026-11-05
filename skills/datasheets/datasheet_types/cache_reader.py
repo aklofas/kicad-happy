@@ -81,14 +81,14 @@ def read_regular_bytes(path) -> Optional[bytes]:
 
 def read_json_object(path) -> Optional[dict]:
     """Read one cache JSON file; None when it is missing, a symlink, not a regular file,
-    oversized, undecodable (not UTF-8), malformed, or not a JSON object (see
+    oversized, undecodable (not UTF-8), malformed, nested too deeply, or not a JSON object (see
     ``read_regular_bytes`` for how the file is opened)."""
     raw = read_regular_bytes(path)
     if raw is None:
         return None
     try:
         data = json.loads(raw.decode("utf-8"))
-    except ValueError:
+    except (ValueError, RecursionError):
         return None
     return data if isinstance(data, dict) else None
 

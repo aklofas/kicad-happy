@@ -63,7 +63,7 @@ def resolve_run_dir(analysis_dir, run_id=None):
     if manifest.is_file():
         try:
             m = json.loads(manifest.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+        except (OSError, ValueError, RecursionError):
             m = None
         if isinstance(m, dict) and isinstance(m.get("runs"), dict):
             run = get_run(str(analysis_dir), run_id or m.get("current"), m)
@@ -186,7 +186,7 @@ def write_text_atomic(path, text):
 def _load_object(path):
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as e:
+    except (OSError, ValueError, RecursionError) as e:
         raise ValueError(f"{path}: {e}") from None
     if not isinstance(data, dict):
         raise ValueError(f"{path}: not a JSON object")
@@ -494,7 +494,7 @@ def main():
     try:
         doc = json.loads(path.read_text(encoding="utf-8"))
         schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as e:
+    except (OSError, ValueError, RecursionError) as e:
         print(f"deep_review_gate: cannot load inputs: {e}", file=sys.stderr)
         return 2
     top_required = ("schema_version", "produced_for_run_id", "produced_at",

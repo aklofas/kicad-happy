@@ -311,7 +311,7 @@ class GateCliTest(unittest.TestCase):
 
     def _gate(self, doc, env=None):
         path = self.tmp / "deep_review.json"
-        raw = json.dumps(doc, ensure_ascii=False)
+        raw = doc if isinstance(doc, str) else json.dumps(doc, ensure_ascii=False)
         path.write_text(raw, encoding="utf-8")
         r = subprocess.run([sys.executable, str(GATE), str(path),
                             "--analysis-dir", str(self.tmp / "analysis"),
@@ -406,7 +406,8 @@ class GateCliTest(unittest.TestCase):
         doc = self._doc([self._finding()])
         for name, raw in (("schematic.json", b"[1]"), ("schematic.json", b"{not json"),
                           ("schematic.json", b'{"components": "\xff"}'),
-                          ("pcb.json", b'"a string"')):
+                          ("pcb.json", b'"a string"'),
+                          ("schematic.json", b'{"components": ' + b"[" * 100000 + b"]" * 100000 + b"}")):
             with self.subTest(name=name, raw=raw):
                 (self.tmp / "analysis" / "schematic.json").write_text(
                     json.dumps({"components": [{"reference": "U1"}]}), encoding="utf-8")
@@ -417,6 +418,18 @@ class GateCliTest(unittest.TestCase):
                 self.assertIn("cannot load inputs", r.stderr)
                 self.assertIn(name, r.stderr)
                 self.assertIsNone(out)
+
+    def test_deeply_nested_document_exits_2(self):
+        r, out = self._gate("[" * 100000 + "]" * 100000)
+        self.assertEqual(r.returncode, 2, r.stderr)
+        self.assertIn("cannot load inputs", r.stderr)
+        self.assertIsNone(out)
+
+    def test_deeply_nested_run_manifest_falls_back(self):
+        (self.tmp / "analysis" / "manifest.json").write_text(
+            "[" * 100000 + "]" * 100000, encoding="utf-8")
+        r, out = self._gate(self._doc([self._finding()]))
+        self.assertEqual(r.returncode, 0, r.stderr)
 
     def test_odd_shapes_inside_analyzer_json_are_ignored(self):
         (self.tmp / "analysis" / "schematic.json").write_text(json.dumps(

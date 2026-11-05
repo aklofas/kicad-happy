@@ -55,6 +55,9 @@ class CachePdfContainment(unittest.TestCase):
                 self.assertEqual(out.strip(), "True", lp)
 
 
+DEEP = b"[" * 100000 + b"]" * 100000
+
+
 class CacheReader(unittest.TestCase):
     def test_lookup_is_a_normal_package_export_without_scripts_on_path(self):
         code = ("import sys, json; from pathlib import PurePath; sys.path.insert(0, %r); import datasheet_types as dt; "
@@ -181,8 +184,8 @@ class CacheReader(unittest.TestCase):
             return lookup("P1", cache_dir=cache)
 
     def test_null_list_utf16_and_latin1_caches_are_a_miss(self):
-        for payload in (b"null", b"[]", b"\xff\xfe{", b'{"a": "\xe9"}'):
-            self.assertIsNone(self._lookup_bytes(payload), payload)
+        for payload in (b"null", b"[]", b"\xff\xfe{", b'{"a": "\xe9"}', DEEP):
+            self.assertIsNone(self._lookup_bytes(payload), payload[:20])
 
     @unittest.skipIf(os.name == "nt", "symlinks")
     def test_symlinked_and_oversized_caches_are_a_miss(self):
@@ -247,7 +250,7 @@ class CacheReader(unittest.TestCase):
         root = Path(__file__).resolve().parents[2]
         sch = Path(__file__).parent / "fixtures" / "datasheet_cache" / "opamp.kicad_sch"
         for payload in (b"null", b"[1]", b'"x"', b"7", b"\xff\xfe{", b'{"a": "\xe9"}'):
-            with self.subTest(payload=payload), tempfile.TemporaryDirectory() as d:
+            with self.subTest(payload=payload[:30]), tempfile.TemporaryDirectory() as d:
                 ex = Path(d) / "datasheets" / "extracted"; ex.mkdir(parents=True)
                 (ex / "LM358.json").write_bytes(payload)
                 shutil.copy(sch, Path(d) / sch.name)
@@ -292,7 +295,8 @@ class CacheReader(unittest.TestCase):
     def test_unreadable_manifest_is_never_overwritten(self):
         sys.path.insert(0, str(DS / "scripts"))
         import datasheet_extract_cache as dec
-        for payload in (b'{"extractions": {"A": "\xe9"}}', b"{broken", b"[1]"):
+        for payload in (b'{"extractions": {"A": "\xe9"}}', b"{broken", b"[1]",
+                        b'{"extractions": ' + DEEP + b"}"):
             with self.subTest(payload=payload), tempfile.TemporaryDirectory() as d:
                 ex = Path(d) / "extracted"; ex.mkdir()
                 (ex / "manifest.json").write_bytes(payload)

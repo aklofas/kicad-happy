@@ -286,6 +286,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - PCB ground domains no longer count a net KiCad names after a pin (`unconnected-(U1-GND-Pad3)`, `Net-(U1-GND)`); a 0 V or battery-negative net is a ground domain, other GND-, VSS- or GROUND-named nets (`AGND_CODEC`, `PGND2`) stay ones, and `COM` counts only when it is a known power rail (from the `--schematic` analysis or `--power-rails`). EMC GP-005 lists the domain names (it listed `?`), and its count, the risk score and the ground-plane summary follow.
 - A datasheet URL whose host is not ASCII (`http://faß.example.com/`) is refused instead of being handed to the transports, which disagree on how to resolve it; an ASCII `xn--` host and non-ASCII characters in the path still download.
 - A datasheet download no longer reads the body of a redirect response, so the size cap holds across redirects and a server cannot make the download stream data it will not keep.
+- A datasheet manifest, extraction cache or Deep Review input nested deeply enough to overflow the JSON parser is reported as unreadable (a cache miss, a named `manifest.json` error, or the gate's exit 2) instead of ending the run with a traceback.
 
 ### Documentation
 
