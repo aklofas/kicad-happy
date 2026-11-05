@@ -121,6 +121,69 @@ class CacheReader(unittest.TestCase):
             tgt[path[-1]] = None
             self.assertIsNone(self._lookup_bytes(json.dumps(d).encode()), path)
 
+    @staticmethod
+    def _lm2596():
+        return json.loads(fixture("datasheets-extracted", "LM2596-ADJ.json").read_text(encoding="utf-8"))
+
+    def test_null_list_elements_are_a_miss(self):
+        def null_pin(d): d["base"]["pinout"].insert(0, None)
+        def null_number(d): d["base"]["pinout"][0]["numbers"] = [None]
+        def null_spec(d): d["base"]["absolute_max"]["VIN_max"] = [None]
+        for mutate in (null_pin, null_number, null_spec):
+            d = self._lm2596(); mutate(d)
+            self.assertIsNone(self._lookup_bytes(json.dumps(d).encode()), mutate.__name__)
+
+    def test_non_numeric_spec_value_is_a_miss(self):
+        def spec(d): return d["base"]["absolute_max"]["VIN_max"][0]
+        def quoted(d): spec(d)["max"] = "36"
+        def boolean(d): spec(d)["max"] = True
+        def page(d): spec(d)["evidence"]["page"] = "5"
+        for mutate in (quoted, boolean, page):
+            d = self._lm2596(); mutate(d)
+            self.assertIsNone(self._lookup_bytes(json.dumps(d).encode()), mutate.__name__)
+        d = self._lm2596(); d["base"]["absolute_max"]["VIN_max"][0]["max"] = 36
+        facts = self._lookup_bytes(json.dumps(d).encode())
+        self.assertEqual(facts.base.absolute_max["VIN_max"][0].max, 36)
+
+    def test_feature_readers_survive_a_null_pin(self):
+        sys.path.insert(0, str(DS / "scripts"))
+        import datasheet_features as df
+        d = self._lm2596(); d["base"]["pinout"].insert(0, None)
+        with tempfile.TemporaryDirectory() as t:
+            ex = Path(t) / "datasheets" / "extracted"; ex.mkdir(parents=True)
+            (ex / "LM2596-ADJ.json").write_text(json.dumps(d), encoding="utf-8")
+            df.get_regulator_features("LM2596-ADJ", extract_dir=ex)
+            df.get_pin_function("LM2596-ADJ", "1", extract_dir=ex)
+
+    def test_legacy_view_skips_a_null_pin(self):
+        sys.path.insert(0, str(DS / "scripts"))
+        import datasheet_verify as dv
+        pin = {"numbers": ["1"], "name": "VIN", "type": "power_in"}
+        view = dv._legacy_verifier_view({"base": {"pinout": [None, pin]}})
+        self.assertEqual(len(view["pins"]), 1)
+
+    def test_analyzer_survives_malformed_cache(self):
+        root = Path(__file__).resolve().parents[2]
+        sch = Path(__file__).parent / "fixtures" / "datasheet_cache" / "opamp.kicad_sch"
+        good = json.loads(fixture("datasheets-extracted", "LM358.json").read_text(encoding="utf-8"))
+        def quoted_max(d):
+            for specs in d["base"]["absolute_max"].values():
+                for sv in specs:
+                    sv["max"] = "36"
+        def null_pin(d): d["base"]["pinout"].insert(0, None)
+        for mutate in (quoted_max, null_pin):
+            with self.subTest(mutate=mutate.__name__), tempfile.TemporaryDirectory() as d:
+                data = copy.deepcopy(good); mutate(data)
+                ex = Path(d) / "datasheets" / "extracted"; ex.mkdir(parents=True)
+                (ex / "LM358.json").write_text(json.dumps(data), encoding="utf-8")
+                shutil.copy(sch, Path(d) / sch.name)
+                r = subprocess.run([sys.executable, "-I", str(root / "skills/kicad/scripts/analyze_schematic.py"),
+                                    str(Path(d) / sch.name), "--output", str(Path(d) / "o.json")],
+                                   capture_output=True, text=True, cwd=d)
+                self.assertEqual(r.returncode, 0, r.stderr[-400:])
+                out = json.loads((Path(d) / "o.json").read_text(encoding="utf-8"))
+                self.assertNotIn("error", (out.get("datasheet_verification") or {}).get("summary", {}))
+
     def test_malformed_nested_legacy_cache_is_a_miss(self):
         sys.path.insert(0, str(DS / "scripts"))
         import datasheet_features as df
@@ -167,6 +230,9 @@ class CacheReader(unittest.TestCase):
             dv._passes_trust_gate(ext)
         self.assertTrue(dv._passes_trust_gate({"extraction_metadata": "x", "meta": {"extraction_score": 7}}))
         self.assertFalse(dv._passes_trust_gate({"extraction_metadata": [1], "meta": {"extraction_score": 3}}))
+        for blk in ("x", [1]):
+            self.assertEqual(dv._quality_finding(
+                "P1", {"extraction": blk, "meta": {"extraction_score": 3}})["quality_score"], 3)
 
     def test_legacy_staleness_with_malformed_metadata_is_stale(self):
         sys.path.insert(0, str(DS / "scripts"))

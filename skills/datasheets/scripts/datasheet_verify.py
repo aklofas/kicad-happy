@@ -152,6 +152,8 @@ def _legacy_verifier_view(extraction: dict) -> dict:
     pinout = base.get("pinout") or []
     v1_pins = []
     for pin in pinout:
+        if not isinstance(pin, dict):
+            continue
         numbers = pin.get("numbers") or []
         if isinstance(numbers, str):
             numbers = [numbers]
@@ -206,6 +208,13 @@ def _v13_score(extraction: dict):
     return None
 
 
+def _v14_score(extraction: dict):
+    """v1.4 0-100 score from the `extraction` block, or None."""
+    block = extraction.get("extraction")
+    score = block.get("quality_score") if isinstance(block, dict) else None
+    return score if isinstance(score, (int, float)) else None
+
+
 def _passes_trust_gate(extraction: dict) -> bool:
     """Return True if extraction quality is acceptable (or unknown).
 
@@ -213,9 +222,8 @@ def _passes_trust_gate(extraction: dict) -> bool:
     v1.3: extraction_metadata (else meta).extraction_score 0-10, threshold 6.0.
     No quality metadata at all: pass (don't gate; let downstream decide).
     """
-    ext_block = extraction.get("extraction")
-    quality_v14 = ext_block.get("quality_score") if isinstance(ext_block, dict) else None
-    if isinstance(quality_v14, (int, float)):
+    quality_v14 = _v14_score(extraction)
+    if quality_v14 is not None:
         return quality_v14 >= 60
     quality_v13 = _v13_score(extraction)
     if isinstance(quality_v13, (int, float)):
@@ -231,9 +239,9 @@ def _quality_finding(mpn, extraction):
     """
     if not extraction or _passes_trust_gate(extraction):
         return None
-    q14 = (extraction.get("extraction") or {}).get("quality_score")
+    q14 = _v14_score(extraction)
     q13 = _v13_score(extraction)
-    score = q14 if isinstance(q14, (int, float)) else q13
+    score = q14 if q14 is not None else q13
     return {
         "type": "extraction_quality_low",
         "severity": "info",
