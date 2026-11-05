@@ -774,25 +774,31 @@ def _infer_opamp_rails(det, context, info=None):
 
     for net_name, net_data in nets.items():
         pins = net_data.get("pins", [])
+        # The rail's own name, read from its leaf wherever it carries a voltage
+        # (VCC_1V8, /Analog/+1V8, A+2V5, A-2V5) before the start-anchored guesses
+        leaf = net_name.rsplit("/", 1)[-1]
+        neg_v = _infer_negative_rail(re.sub(r'^[A-Za-z]+_?(?=-\d)', '', leaf.upper()))
+        named_v = (neg_v if isinstance(neg_v, float)
+                   else _rail_name_voltage(re.sub(r'^[A-Za-z]+_?(?=\+\d)', '', leaf)))
+        v_net = named_v if named_v is not None else _infer_voltage(leaf, default=None)
         for pin in pins:
             if pin.get("component") != ref:
                 continue
             pname = (pin.get("pin_name") or "").upper()
             ptype = (pin.get("pin_type") or "").lower()
+            v = v_net
             # VCC/VDD/V+ pins
             if pname in ("VCC", "VDD", "V+", "VS+", "V_P", "VP", "AVDD", "DVDD") or \
-               (ptype == "power_in" and not found_vcc and _infer_voltage(net_name, default=None) is not None):
-                v = _infer_voltage(net_name, default=None)
+               (ptype == "power_in" and not found_vcc and v is not None and v > 0):
                 if v is not None and v > 0:
                     vcc_v = v
                     found_vcc = True
-                    vcc_named = _voltage_in_name(net_name)
+                    vcc_named = named_v is not None or _voltage_in_name(leaf)
             # VEE/VSS/V- pins
             elif pname in ("VEE", "VSS", "V-", "VS-", "V_N", "VN", "GND", "AVSS", "DVSS"):
-                v = _infer_voltage(net_name, default=None)
-                named = v is not None and _voltage_in_name(net_name)
+                named = v is not None and (named_v is not None or _voltage_in_name(leaf))
                 if v is None:
-                    v = _infer_negative_rail(net_name)
+                    v = _infer_negative_rail(leaf)
                     named = v is not None and v != _MIRROR_VCC
                 if v is not None:
                     vee_v = v

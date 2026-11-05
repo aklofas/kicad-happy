@@ -109,6 +109,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Fixed
 
+- The SPICE op-amp supply is read from the voltage in the rail's own name wherever it sits in the leaf: `VCC_1V8`, `/Analog/+1V8`, `A+2V5` with `A-2V5`, and `/A/-12V` no longer fall back to the default ±5 V, so a part run below its minimum supply on such a rail is reported as a named-rail warning instead of an assumed-rail note. A bare `VCC` under a sheet path reads 3.3 V like a bare `VCC` at the top level.
 - Gerber analysis: a file that cannot be read, or is not a Gerber, no longer counts as a layer and is reported in diagnostics; version-control entries (`.git*`), macOS `._*` files and `:Zone.Identifier` markers are not taken for layers; a damaged job file or a dangling archive link is reported instead of stopping the run or being skipped silently.
 - TE-001 and the schematic test coverage no longer count capacitive touch pads with TP references (a touch footprint or value, as CP-003 reads them) as test points.
 - USB power switches and load switches (RT9742, TPS2061, AP2171, MT9700, SY6280) are no longer reported as LDO regulators; the regulator screen and the power-path detector share one load-switch part list. The output net of a load switch fed from a sourced rail counts as sourced in RS-001.

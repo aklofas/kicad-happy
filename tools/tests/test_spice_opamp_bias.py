@@ -121,6 +121,20 @@ class NegativeRailTest(unittest.TestCase):
             with self.subTest(vee=vee):
                 self.assertEqual(T._infer_opamp_rails({"reference": "U1"}, _rails(vcc, vee)), want)
 
+    def test_rail_voltage_is_read_from_the_leaf_of_the_name(self):
+        for vcc, vee, want in (("VCC_1V8", "GND", (1.8, 0)), ("/Analog/+1V8", "GND", (1.8, 0)),
+                               ("A+2V5", "A-2V5", (2.5, -2.5)), ("/A/+12V", "/A/-12V", (12, -12)),
+                               ("VCC", "VEE", (3.3, -3.3))):
+            with self.subTest(vcc=vcc, vee=vee):
+                info = {}
+                self.assertEqual(T._infer_opamp_rails({"reference": "U1"}, _rails(vcc, vee), info), want)
+                self.assertEqual(info["rails_named"], vcc != "VCC")
+
+    def test_swapped_pins_keep_the_positive_rail_as_vcc(self):
+        ctx = {"nets": {"+12V": {"pins": [{"component": "U1", "pin_name": "V-", "pin_type": "power_in"}]}},
+               "components": []}
+        self.assertEqual(T._infer_opamp_rails({"reference": "U1"}, ctx), (12, 0))
+
     def test_named_negative_rail_mirrors_vcc(self):
         info = {}
         self.assertEqual(T._infer_opamp_rails({"reference": "U1"}, _rails("+15V", "VEE"), info), (15, -15))
