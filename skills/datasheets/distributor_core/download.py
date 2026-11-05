@@ -466,14 +466,18 @@ def download_pdf(url: str, output_path: str, *, resolve_redirects: bool = True) 
 # ---------------------------------------------------------------------------
 
 def _get_before_deadline(url: str, deadline: float, **kwargs):
-    """``_requests.get`` on a worker thread, so the deadline also holds while a server sends the
+    """A ``requests`` GET on a worker thread, so the deadline also holds while a server sends the
     status line and headers, before there is a response whose socket can be watched. At the
     deadline the call is abandoned; a response that still arrives is closed by the worker."""
     box, lock = {}, threading.Lock()
 
     def run():
         try:
-            resp = _requests.get(url, **kwargs)
+            with _requests.Session() as session:
+                # Session.send reads a whole 3xx body even with allow_redirects=False;
+                # _download_requests follows each hop itself.
+                session.get_redirect_target = lambda resp: None
+                resp = session.get(url, **kwargs)
         except BaseException as exc:
             with lock:
                 box["exc"] = exc

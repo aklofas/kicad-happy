@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "skills" / "datasheets"))
 
 from distributor_core import download  # noqa: E402
+from tools.tests._download_fakes import fake_requests  # noqa: E402
 
 PUBLIC = ["93.184.216.34"]
 PDF = b"%PDF-1.4 datasheet\n"
@@ -47,6 +48,9 @@ class _FakeRequests:
     def get(self, url, **kw):
         self.calls.append((url, kw))
         return self.answers[url]()
+
+    def Session(self):
+        return fake_requests(self.get).Session()
 
 
 def _urllib_handler(answers, seen):
@@ -396,10 +400,49 @@ class TrickleDeadlineTest(unittest.TestCase):
         slow = _HeaderTrickle()
         self.addCleanup(slow.close)
 
-        class Requests:
-            def get(self, url, **kw):
-                return slow.response(url)  # blocks in HTTPResponse.begin() while headers trickle
-        self._run(_requests=Requests(), _download_urllib=_fail)
+        # blocks in HTTPResponse.begin() while headers trickle
+        self._run(_requests=fake_requests(lambda url, **kw: slow.response(url)),
+                  _download_urllib=_fail)
+
+    @unittest.skipIf(download._requests is None, "requests is not installed")
+    def test_redirect_body_is_not_read(self):
+        body = 64 * 2**20
+        sent = [0]
+        srv = socket.socket()
+        srv.bind(("127.0.0.1", 0))
+        srv.listen(4)
+
+        def serve():
+            while True:
+                try:
+                    conn, _ = srv.accept()
+                except OSError:
+                    return
+                with conn:
+                    if b"/final.pdf" in conn.recv(65536):
+                        conn.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 8\r\n"
+                                     b"Connection: close\r\n\r\n%PDF-1.4")
+                        continue
+                    conn.sendall(b"HTTP/1.1 302 Found\r\nLocation: /final.pdf\r\n"
+                                 b"Content-Length: %d\r\n\r\n" % body)
+                    chunk = b"\0" * 65536
+                    try:
+                        while sent[0] < body:
+                            conn.sendall(chunk)
+                            sent[0] += len(chunk)
+                    except OSError:
+                        pass
+        t = threading.Thread(target=serve, daemon=True)
+        t.start()
+        self.addCleanup(lambda: (srv.close(), t.join(5)))
+        url = f"http://127.0.0.1:{srv.getsockname()[1]}/x.pdf"
+        with mock.patch.object(download, "_allow_private_hosts", return_value=True), \
+             mock.patch.dict(os.environ, {"NO_PROXY": "127.0.0.1", "no_proxy": "127.0.0.1"}), \
+             mock.patch.multiple(download, _sync_playwright=None, _download_urllib=_fail), \
+             redirect_stderr(io.StringIO()):
+            ok = download.download_pdf(url, os.path.join(self.dir.name, "x.pdf"))
+        self.assertTrue(ok)
+        self.assertLess(sent[0], 8 * 2**20)
 
     @unittest.skipIf(download._requests is None, "requests is not installed")
     def test_real_requests_header_trickle_stops_at_the_deadline(self):

@@ -11,6 +11,8 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "skills" / "datasheets"))
 sys.path.insert(0, str(ROOT / "skills" / "lcsc" / "scripts"))
 
+from tools.tests._download_fakes import fake_requests  # noqa: E402
+
 GOOD = b"%PDF-1.4 good datasheet\n"
 
 
@@ -407,7 +409,7 @@ class DownloadTransportNoteTest(unittest.TestCase):
     def test_redirect_limit_lets_the_next_method_try(self):
         from distributor_core import download
         resp = SimpleNamespace(status_code=302, headers={"Location": "/again"}, close=lambda: None)
-        fake = SimpleNamespace(get=lambda *a, **k: resp, exceptions=_FAKE_REQUESTS.exceptions)
+        fake = fake_requests(lambda *a, **k: resp, exceptions=_FAKE_REQUESTS.exceptions)
         download.take_transport_failure()
         with tempfile.TemporaryDirectory() as d, \
                 mock.patch.object(download, "_requests", fake), \
@@ -421,7 +423,7 @@ class DownloadTransportNoteTest(unittest.TestCase):
     def test_redirect_limit_alone_is_not_a_transport_failure(self):
         from distributor_core import download
         resp = SimpleNamespace(status_code=302, headers={"Location": "/again"}, close=lambda: None)
-        fake = SimpleNamespace(get=lambda *a, **k: resp, exceptions=_FAKE_REQUESTS.exceptions)
+        fake = fake_requests(lambda *a, **k: resp, exceptions=_FAKE_REQUESTS.exceptions)
         download.take_transport_failure()
         with tempfile.TemporaryDirectory() as d, \
                 mock.patch.object(download, "_requests", fake), \
