@@ -1,6 +1,6 @@
 # tools/tests/test_bom_write_roots.py
 """BOM schematic write-back stays inside the project, is atomic, and escapes names and line breaks."""
-import contextlib, io, json, os, sys, tempfile, unittest
+import contextlib, io, json, os, subprocess, sys, tempfile, unittest
 from pathlib import Path
 from unittest import mock
 
@@ -100,6 +100,45 @@ class SyncRootsTest(unittest.TestCase):
         sub.write_text(sheet_text("R2", "", "B"), encoding="utf-8")
         self.run_sync(self.root_with_sheet("sub.kicad_sch"))
         self.assertIn("https://e.com/b.pdf", sub.read_text(encoding="utf-8"))
+
+
+class LockFileTest(unittest.TestCase):
+    def setUp(self):
+        self._td = tempfile.TemporaryDirectory()
+        self.addCleanup(self._td.cleanup)
+        self.dir = Path(self._td.name).resolve()
+        self.sch = self.dir / "root.kicad_sch"
+        self.sch.write_text(sheet_text("R1", "", "A"), encoding="utf-8")
+
+    def run_edit(self):
+        upd = self.dir / "upd.json"
+        upd.write_text(json.dumps({"R1": {"MPN": "X"}}), encoding="utf-8")
+        return subprocess.run(
+            [sys.executable, str(ROOT / "skills" / "bom" / "scripts" / "edit_properties.py"),
+             str(self.sch), "--updates", str(upd)],
+            capture_output=True, text=True).stderr
+
+    def test_lock_path_name(self):
+        self.assertEqual(kicad_sexp.kicad_lock_path(Path("a/b.kicad_sch")),
+                         Path("a/~b.kicad_sch.lck"))
+
+    def test_edit_properties_warns_on_kicad_lock(self):
+        (self.dir / "~root.kicad_sch.lck").write_text("{}", encoding="utf-8")
+        self.assertIn("KiCad lock file detected (~root.kicad_sch.lck)", self.run_edit())
+
+    def test_no_lock_no_warning(self):
+        self.assertNotIn("lock file", self.run_edit())
+
+    def test_sync_warns_on_kicad_lock(self):
+        (self.dir / "datasheets").mkdir()
+        (self.dir / "datasheets" / "manifest.json").write_text(json.dumps({"parts": {
+            "A": {"status": "ok", "datasheet_url": "https://e.com/a.pdf", "references": ["R1"]}}}),
+            encoding="utf-8")
+        (self.dir / "~root.kicad_sch.lck").write_text("{}", encoding="utf-8")
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            sync_datasheet_urls.sync_datasheet_urls(str(self.sch), recursive=False)
+        self.assertIn("KiCad lock file detected for root.kicad_sch", err.getvalue())
 
 
 class AtomicWriteTest(unittest.TestCase):

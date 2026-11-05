@@ -17,6 +17,11 @@ from kicad_core.instances import (inline_instances, instance_variants, resolve_i
 from kicad_core.sexp import parse
 
 
+def kicad_lock_path(sch: Path) -> Path:
+    """The lock file KiCad keeps next to an open schematic: ``~name.kicad_sch.lck``."""
+    return sch.with_name(f"~{sch.name}.lck")
+
+
 def find_matching_paren(text: str, start: int) -> int:
     """Find the index of the closing paren matching the open paren at `start`.
 

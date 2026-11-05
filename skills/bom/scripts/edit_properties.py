@@ -48,7 +48,7 @@ from datetime import datetime
 from pathlib import Path
 
 from kicad_sexp import (atomic_write_text, escape_kicad_string, find_matching_paren,
-                        iter_placed_symbol_blocks, sch_file_version)
+                        iter_placed_symbol_blocks, kicad_lock_path, sch_file_version)
 
 # First schematic format whose effects block takes "(hide yes)"; KiCad 6/7 only accept bare "hide".
 _HIDE_YES_MIN_VERSION = 20231120
@@ -358,7 +358,7 @@ def main():
         sys.exit(1)
 
     # Check for KiCad lock file — indicates schematic is open in KiCad
-    lock_path = args.schematic.parent / f"{args.schematic.name}.lck"
+    lock_path = kicad_lock_path(args.schematic)
     if lock_path.exists() and not args.dry_run:
         print(
             f"WARNING: KiCad lock file detected ({lock_path.name}).\n"

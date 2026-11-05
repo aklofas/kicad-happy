@@ -40,7 +40,7 @@ from bom_fields import _canonical_for, _pick_mpn_from_props, _symbol_slots
 from distributor_core.manifest import load_index
 from edit_properties import apply_updates
 from kicad_sexp import (atomic_write_text, collect_schematic_files,
-                        iter_placed_symbol_blocks)
+                        iter_placed_symbol_blocks, kicad_lock_path)
 
 
 # ---------------------------------------------------------------------------
@@ -341,8 +341,7 @@ def sync_datasheet_urls(
     # Lock file warning (same as edit_properties.py)
     if not dry_run and files_modified:
         for sch_file in sch_files:
-            lock_path = sch_file.parent / f"{sch_file.name}.lck"
-            if lock_path.exists():
+            if kicad_lock_path(sch_file).exists():
                 print(
                     f"\nWARNING: KiCad lock file detected for {sch_file.name}.\n"
                     f"Close and reopen the schematic (File > Open Recent) to see changes.\n"
