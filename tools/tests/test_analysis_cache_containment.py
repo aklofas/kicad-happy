@@ -418,8 +418,81 @@ class ReadBytesTest(unittest.TestCase):
             _write(os.path.join(ad, "manifest.json"),
                    {"version": 1, "current": "r1", "runs": {"r1": {"timestamp": "t"}}})
             Path(ad, "r1", "pcb.json").write_bytes(b"\xff\xfe")
-            with redirect_stdout(io.StringIO()):
+            err = io.StringIO()
+            with redirect_stdout(io.StringIO()), redirect_stderr(err):
                 self.assertEqual(summarize_findings.main([ad, "--json"]), 0)
+            self.assertIn("Warning: skipping", err.getvalue())
+
+    def _run_dir(self, ad):
+        os.makedirs(os.path.join(ad, "r1"))
+        _write(os.path.join(ad, "manifest.json"),
+               {"version": 1, "current": "r1", "runs": {"r1": {"timestamp": "t"}}})
+
+    def _summarize(self, ad):
+        import summarize_findings
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            rc = summarize_findings.main([ad, "--json"])
+        return rc, out.getvalue(), err.getvalue()
+
+    def test_summarize_skips_a_non_object_output(self):
+        with tempfile.TemporaryDirectory() as ad:
+            self._run_dir(ad)
+            _write(os.path.join(ad, "r1", "pcb.json"), [])
+            _write(os.path.join(ad, "r1", "schematic.json"),
+                   {"findings": [{"rule_id": "XX-001", "severity": "high"}]})
+            rc, out, err = self._summarize(ad)
+            self.assertEqual(rc, 0)
+            self.assertIn("Warning: skipping", err)
+            self.assertIn("XX-001", out)
+
+    def test_summarize_skips_non_list_findings(self):
+        with tempfile.TemporaryDirectory() as ad:
+            self._run_dir(ad)
+            _write(os.path.join(ad, "r1", "pcb.json"), {"findings": 5, "assessments": 5})
+            self.assertEqual(self._summarize(ad)[0], 0)
+
+    def test_summarize_non_object_manifest_is_a_clean_error(self):
+        import summarize_findings
+        for manifest, text in (([], "not a JSON object"),
+                               ({"version": "two", "current": "r1",
+                                 "runs": {"r1": {"timestamp": "t"}}}, "version is not an integer")):
+            with self.subTest(text=text), tempfile.TemporaryDirectory() as ad:
+                os.makedirs(os.path.join(ad, "r1"))
+                _write(os.path.join(ad, "manifest.json"), manifest)
+                with self.assertRaises(SystemExit) as cm:
+                    summarize_findings.main([ad, "--json"])
+                self.assertIn(text, str(cm.exception))
+
+    def test_summarize_skips_a_deeply_nested_output(self):
+        with tempfile.TemporaryDirectory() as ad:
+            self._run_dir(ad)
+            Path(ad, "r1", "pcb.json").write_bytes(b"[" * 100000 + b"]" * 100000)
+            rc, _out, err = self._summarize(ad)
+            self.assertEqual(rc, 0)
+            self.assertIn("Warning: skipping", err)
+
+    def test_summarize_skips_a_deeply_nested_deep_review(self):
+        with tempfile.TemporaryDirectory() as ad:
+            self._run_dir(ad)
+            Path(ad, "deep_review.json").write_bytes(b"[" * 100000 + b"]" * 100000)
+            rc, _out, err = self._summarize(ad)
+            self.assertEqual(rc, 0)
+            self.assertIn("Warning:", err)
+
+    def test_summarize_skips_non_list_deep_review_findings(self):
+        with tempfile.TemporaryDirectory() as ad:
+            self._run_dir(ad)
+            _write(os.path.join(ad, "deep_review.json"), {"findings": 5})
+            self.assertEqual(self._summarize(ad)[0], 0)
+
+    def test_summarize_skips_a_non_object_deep_review(self):
+        with tempfile.TemporaryDirectory() as ad:
+            self._run_dir(ad)
+            _write(os.path.join(ad, "deep_review.json"), [1])
+            rc, _out, err = self._summarize(ad)
+            self.assertEqual(rc, 0)
+            self.assertIn("Warning: skipping", err)
 
     def test_summarize_unreadable_manifest_is_a_clean_error(self):
         import summarize_findings

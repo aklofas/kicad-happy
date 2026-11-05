@@ -290,6 +290,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A cached datasheet extraction with a null pin or spec entry, or a quoted or boolean number where a spec value or page is expected, is ignored as a whole (a cache miss) instead of crashing the schematic analyzer or replacing the datasheet verification with an error; a null pin no longer breaks the pin-function and regulator lookups, and an extraction whose `extraction` block is not an object no longer fails the quality check.
 - A configuration file that is not UTF-8 or is nested too deeply, a suppression whose `components` or `nets` holds a non-string pattern, and `"project": null` are each warned about and skipped instead of ending the run with a traceback; the suppression is dropped whole, never narrowed to match every finding of the rule.
 - A `.kicad_dru` rule whose severity, constraint type or layer is written as a nested list, such as `(severity (error))`, is refused as KiCad refuses it (no custom rule applies, `custom_rules_error` says why) instead of ending `analyze_pcb.py` with a traceback.
+- `summarize_findings.py` skips an analysis output, `deep_review.json` or findings list that is unreadable or not the expected JSON shape, or nested too deeply, with a `Warning:` on stderr, and stops with a named error for a manifest that is not an object or has a non-integer version; `export_issues.py` names a file that is not UTF-8 or whose root is not an object. Each was a traceback before.
 
 ### Documentation
 

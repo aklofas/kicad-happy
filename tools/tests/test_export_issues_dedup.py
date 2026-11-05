@@ -336,5 +336,29 @@ class ExportDedupTest(unittest.TestCase):
         self.assertEqual(self.kv(creates[0], "title"), "[RG-001] --web")
 
 
+class LoadFindingsTest(unittest.TestCase):
+    def _load(self, data):
+        sys.path.insert(0, str(SCRIPTS))
+        try:
+            import export_issues
+        finally:
+            sys.path.pop(0)
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "a.json"
+            p.write_bytes(data)
+            with self.assertRaises(SystemExit) as cm:
+                export_issues.load_findings(str(p))
+        return str(cm.exception)
+
+    def test_non_object_root_is_a_named_error(self):
+        self.assertIn("not a JSON object", self._load(b"[]"))
+
+    def test_deeply_nested_file_is_a_named_error(self):
+        self.assertIn("cannot read", self._load(b"[" * 100000 + b"]" * 100000))
+
+    def test_non_utf8_file_is_a_named_error(self):
+        self.assertIn("cannot read", self._load(b"\xff"))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -46,6 +46,8 @@ def _resolve_run_dir(
             manifest = json.load(f)
     except (OSError, ValueError) as e:
         raise SystemExit(f"error: cannot read {manifest_path!r}: {e}")
+    if not isinstance(manifest, dict):
+        raise SystemExit(f"error: {manifest_path!r} is not a JSON object")
     run_id = run_override or manifest.get("current")
     run = get_run(analysis_dir, run_id, manifest)
     if run is None:
@@ -55,7 +57,10 @@ def _resolve_run_dir(
     if not os.path.isdir(path):
         raise SystemExit(
             f"error: run directory missing on disk: {path!r}")
-    manifest_version = int(manifest.get("version", 1))
+    try:
+        manifest_version = int(manifest.get("version", 1))
+    except (TypeError, ValueError):
+        raise SystemExit(f"error: {manifest_path!r}: version is not an integer")
     return path, run_id, manifest_version
 
 
@@ -89,13 +94,18 @@ def _collect(run_dir: str, only_deterministic: bool = True) -> tuple[list[dict],
         try:
             with open(full, "r", encoding="utf-8") as f:
                 data = json.load(f)
-        except (OSError, ValueError):
+        except (OSError, ValueError, RecursionError) as e:
+            print(f"Warning: skipping {full}: {e}", file=sys.stderr)
             continue
-        for finding in data.get("findings", []) or []:
+        if not isinstance(data, dict):
+            print(f"Warning: skipping {full}: not a JSON object", file=sys.stderr)
+            continue
+        raw_findings, raw_assessments = data.get("findings"), data.get("assessments")
+        for finding in raw_findings if isinstance(raw_findings, list) else []:
             if isinstance(finding, dict):
                 finding.setdefault("_source_file", name)
                 findings.append(finding)
-        for a in data.get("assessments", []) or []:
+        for a in raw_assessments if isinstance(raw_assessments, list) else []:
             if isinstance(a, dict):
                 rid = a.get("rule_id") or "(unknown)"
                 counter[rid] += 1
@@ -326,11 +336,15 @@ def main(argv: list[str] | None = None) -> int:
             try:
                 with open(dr_path, "r", encoding="utf-8") as f:
                     dr = json.load(f)
-            except (OSError, ValueError) as e:
+            except (OSError, ValueError, RecursionError) as e:
                 print(f"Warning: skipping unreadable {dr_path}: {e}", file=sys.stderr)
                 dr = {}
+            if not isinstance(dr, dict):
+                print(f"Warning: skipping {dr_path}: not a JSON object", file=sys.stderr)
+                dr = {}
             included = 0
-            for finding in dr.get("findings") or []:
+            dr_findings = dr.get("findings")
+            for finding in dr_findings if isinstance(dr_findings, list) else []:
                 if not isinstance(finding, dict):
                     continue
                 row = dict(finding)

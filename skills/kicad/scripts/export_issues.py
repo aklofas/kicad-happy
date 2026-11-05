@@ -154,8 +154,10 @@ def load_findings(path: str) -> list[dict]:
     try:
         with open(path, "r", encoding="utf-8") as fh:
             data = json.load(fh)
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, ValueError, RecursionError) as exc:
         raise SystemExit(f"error: cannot read {path!r}: {exc}") from exc
+    if not isinstance(data, dict):
+        raise SystemExit(f"error: {path!r} is not a JSON object")
 
     raw = data.get("findings", [])
     if not isinstance(raw, list):
