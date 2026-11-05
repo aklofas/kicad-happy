@@ -67,7 +67,7 @@ class PdfManifestTest(unittest.TestCase):
         return proj
 
     def _pdftotext_calls(self, proj):
-        with mock.patch("shutil.which", return_value="/usr/bin/pdftotext"), \
+        with mock.patch.object(ssf, "find_executable", return_value="/fake/pdftotext"), \
                 mock.patch("subprocess.run") as run:
             ssf.fetch_specs_from_datasheet(MPN, proj)
         return [c.args[0][-2] for c in run.call_args_list]

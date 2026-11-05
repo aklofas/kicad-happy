@@ -270,7 +270,7 @@ class PdftotextFormsTest(unittest.TestCase):
     def _check(self, rc, stdout, stderr=""):
         from unittest import mock
         done = subprocess.CompletedProcess([], rc, stdout, stderr)
-        with mock.patch.object(deep_review_gate.shutil, "which", return_value="pdftotext"), \
+        with mock.patch.object(deep_review_gate, "find_executable", return_value="/fake/pdftotext"), \
                 mock.patch.object(deep_review_gate, "find_pdf", return_value=Path("TPS1.pdf")), \
                 mock.patch.object(deep_review_gate.subprocess, "run", return_value=done):
             return deep_review_gate.check_datasheet(
