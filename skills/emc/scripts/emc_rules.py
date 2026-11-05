@@ -38,7 +38,8 @@ from kicad_core.parts import (
     default_switching_freq as _default_switching_freq,
 )
 from kicad_core.classify import classify_component
-from kicad_core.netnames import is_ground_name, is_power_net_name, net_leaf
+from kicad_core.netnames import (is_ground_name, is_power_net_name, net_leaf,
+                                 _RAIL_SIGNAL_SUFFIXES)
 from kicad_core.netquery import build_net_id_map
 from kicad_core.diagnostics import record
 from kicad_core.hotloop import triangle_loop_area
@@ -69,8 +70,8 @@ def _schematic_project_dir(schematic):
 # ---------------------------------------------------------------------------
 
 
-def _is_power_or_ground(name: str) -> bool:
-    """Check if a net name is power or ground."""
+def _is_power_or_ground_prefix(name: str) -> bool:
+    """Prefix rule for names the shared power rules do not cover (spaced names, PWR, V-)."""
     if not name:
         return False
     low = unescape_string(name).lower().strip('+')
@@ -87,6 +88,23 @@ def _is_power_or_ground(name: str) -> bool:
     if re.match(r'^[+-]?\d+\.?\d*v', low):
         return True
     return False
+
+
+def _is_power_or_ground(name: str) -> bool:
+    """Check if a net name is power or ground.
+
+    The shared net-name rules decide first (EARTH counts as ground). Names they
+    do not cover fall back to a prefix rule, except control and status nets of a
+    rail (VCC_EN, 3V3_PG), which are signals.
+    """
+    if not name:
+        return False
+    if is_ground_name(name) or is_emc_ground_name(name) or is_power_net_name(name):
+        return True
+    leaf = net_leaf(unescape_string(name)).upper()
+    if leaf.rsplit('_', 1)[-1] in _RAIL_SIGNAL_SUFFIXES:
+        return False
+    return _is_power_or_ground_prefix(name)
 
 
 def is_emc_ground_name(name: str) -> bool:
