@@ -3111,7 +3111,8 @@ def check_esd_protection_path(pcb: Dict,
     for pd in protection:
         ref = pd.get('reference', pd.get('ref', ''))
         ptype = pd.get('type', '')
-        if ptype not in ('tvs', 'esd', 'esd_ic', 'tvs_array', 'varistor'):
+        # The protection detector types a discrete TVS by its component type, 'diode'
+        if ptype not in ('tvs', 'esd', 'esd_ic', 'tvs_array', 'varistor', 'diode'):
             continue
 
         if ref not in fp_positions:
