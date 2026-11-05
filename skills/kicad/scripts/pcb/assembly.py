@@ -751,8 +751,11 @@ def _pad_loop(reg_fp: dict, ind_fp: dict, cap_fp: dict, ind_sw_pins: set):
     regulator; the SW net is shared by the regulator and the inductor and is
     neither of those (when the inductor's other side also reaches the
     regulator, ``ind_sw_pins``, the inductor pins on the schematic SW net,
-    decide). Where a part has several pads on a net, the one nearest the
-    previous loop point is used.
+    decide). The cap's first pad on each net is used; where the regulator or
+    the inductor has several pads on a net, the one nearest a loop neighbour
+    is used (regulator supply nearest the cap supply pad, SW nearest the
+    regulator supply pad, inductor SW nearest the regulator SW pad,
+    regulator ground nearest the cap ground pad).
     """
     def placed(fp):
         return [p for p in fp.get("pads") or []
@@ -800,7 +803,9 @@ def _compute_switching_loop_areas(footprints: list, schematic_data: dict) -> lis
     Returns list of {regulator_ref, regulator_value,
     inductor_ref, cap_ref, method, area_mm2, loop_pads, vertices_mm};
     area_mm2 is None with estimate "pads_unresolved" when the pads cannot be
-    matched by net, or "degenerate" when they lie in a line.
+    matched by net, or "degenerate" when the area is under 1 mm² across a
+    reach of 2 mm or more (the pads lie in a line, or the loop crosses itself
+    and its lobes cancel).
     """
     regulators = [f for f in schematic_data.get('findings', [])
                   if f.get('detector') == 'detect_power_regulators']

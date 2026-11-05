@@ -9,6 +9,7 @@ sys.path.insert(0, str(ROOT / "skills" / "kicad" / "scripts"))
 sys.path.insert(0, str(ROOT / "skills" / "emc" / "scripts"))
 
 from emc_rules import check_input_cap_loop_area  # noqa: E402
+from kicad_core.hotloop import polygon_area, triangle_loop_area  # noqa: E402
 from pcb.assembly import _compute_switching_loop_areas  # noqa: E402
 
 
@@ -79,6 +80,20 @@ class PadLoopTest(unittest.TestCase):
         self.assertEqual(loop["estimate"], "degenerate")
         self.assertEqual(len(loop["vertices_mm"]), 6)
 
+    def test_self_crossing_loop_whose_lobes_cancel_is_degenerate(self):
+        # ButterStick r1.0 U9 (TLV62569DRL), C77, L5: the pads are compact (C77 about 1.3 mm from U9.3) but edge
+        # U9.2 -> C77.2 crosses edge U9.3 -> U9.4, so the two lobes net to 0.03 mm² across a 3.6 mm reach.
+        u9 = _fp("U9", 176.55, 97.55, [("2", "GND", 177.3, 97.55), ("3", "+5V", 177.3, 97.05),
+                                       ("4", "SW", 175.8, 97.05)])
+        l5 = _fp("L5", 174.02, 97.97, [("1", "SW", 174.02, 97.0325), ("2", "+1V1", 174.02, 98.9075)])
+        c77 = _fp("C77", 177.1, 95.8, [("1", "+5V", 177.585, 95.8), ("2", "GND", 176.615, 95.8)])
+        loop = _compute_switching_loop_areas([u9, l5, c77], _schematic("U9", "L5", ("C77",), "TLV62569DRL",
+                                                                       sw_pins=(("L5", "1"),)))[0]
+        self.assertEqual(loop["loop_pads"], ["C77.1", "U9.3", "U9.4", "L5.1", "U9.2", "C77.2"])
+        self.assertAlmostEqual(polygon_area([tuple(v) for v in loop["vertices_mm"]]), 0.029375, places=6)
+        self.assertIsNone(loop["area_mm2"])
+        self.assertEqual(loop["estimate"], "degenerate")
+
     def test_nearest_input_cap_closes_the_loop(self):
         far = _fp("C9", 160.0, 150.0, [("1", "+5V", 159.2, 150.0), ("2", "GND", 160.8, 150.0)])
         loop = _compute_switching_loop_areas(REPORTER + [far], _schematic(caps=("C9", "C3"), sw_net="/SW"))[0]
@@ -93,6 +108,25 @@ class PadLoopTest(unittest.TestCase):
         self.assertEqual(loop["loop_pads"][2:4], ["U2.1", "L1.2"])
         no_pins = _compute_switching_loop_areas([u2, C3, L1], _schematic(sw_net="/SW", sw_pins=()))[0]
         self.assertEqual(no_pins["estimate"], "pads_unresolved")
+
+
+class TriangleTest(unittest.TestCase):
+    """The centre triangle EMC SW-003 falls back to without pad positions."""
+
+    def test_real_triangle(self):
+        # (1,1), (11,1), (1,11): 0.5 × 10 × 10 = 50 mm².
+        self.assertEqual(triangle_loop_area([(1.0, 1.0), (11.0, 1.0), (1.0, 11.0)]), 50.0)
+
+    def test_near_collinear_long_line_is_degenerate(self):
+        # Base 20 mm, apex 0.05 mm off it: 0.5 × 20 × 0.05 = 0.5 mm² < 1 with a 20 mm side.
+        self.assertIsNone(triangle_loop_area([(100.0, 100.0), (110.0, 100.05), (120.0, 100.0)]))
+
+    def test_coincident_centres_are_degenerate(self):
+        self.assertIsNone(triangle_loop_area([(10.0, 10.0), (10.0, 10.0), (20.0, 15.0)]))
+
+    def test_compact_small_triangle_keeps_its_area(self):
+        # (10,10), (11,10), (10,11.2): 0.5 × 1 × 1.2 = 0.6 mm², longest side √(1 + 1.44) = 1.56 mm < 2.
+        self.assertAlmostEqual(triangle_loop_area([(10.0, 10.0), (11.0, 10.0), (10.0, 11.2)]), 0.6)
 
 
 # Centres (5,5), (30,5), (5,30): centre triangle 0.5 × 25 × 25 = 312.5 mm².

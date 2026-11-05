@@ -12,12 +12,14 @@ EMC SW-003 without pad positions falls back to the triangle through the
 footprint centres of the input capacitor, the regulator and the inductor
 (triangle_loop_area).
 
-When the points lie in a line neither proxy says anything about the loop and
-no area is given.
+Neither proxy gives an area when it is degenerate: under 1 mm² across a reach
+of 2 mm or more. For the triangle that means the centres lie in a line; for
+the polygon, the pads lie in a line or the loop crosses itself and its lobes
+cancel. Either way the area says nothing about the loop.
 """
 
-# Below this area a triangle whose longest side reaches DEGENERATE_MIN_SPAN_MM
-# is a line of parts, not a compact loop.
+# Below this area, with two points at least DEGENERATE_MIN_SPAN_MM apart, the
+# points lie in a line or a crossing loop's lobes cancel: not a compact loop.
 DEGENERATE_MAX_AREA_MM2 = 1.0
 DEGENERATE_MIN_SPAN_MM = 2.0
 
@@ -58,9 +60,10 @@ def polygon_area(vertices) -> float:
 def polygon_loop_area(vertices) -> float | None:
     """polygon_area, or None when the polygon is degenerate.
 
-    Degenerate, as for the triangle: fewer than three distinct points, or an
-    area under DEGENERATE_MAX_AREA_MM2 while two points are at least
-    DEGENERATE_MIN_SPAN_MM apart.
+    Degenerate: fewer than three distinct points, or an area under
+    DEGENERATE_MAX_AREA_MM2 while two points are at least
+    DEGENERATE_MIN_SPAN_MM apart. The pads then lie in a line, or the loop
+    crosses itself and its lobes cancel.
     """
     if len(set(vertices)) < 3:
         return None

@@ -437,8 +437,10 @@ class PCBEnvelope:
                        "input-cap supply, regulator supply, SW, inductor SW, "
                        "regulator ground and input-cap ground pads, in loop "
                        "order; absent when the pads are not resolved), "
-                       "estimate ('pads_unresolved' or 'degenerate', "
-                       "optional)."})
+                       "estimate ('pads_unresolved', or 'degenerate': area "
+                       "under 1 mm2 across a reach of 2 mm or more, the pads "
+                       "in a line or the loop crossing itself so its lobes "
+                       "cancel; optional)."})
     current_capacity: Optional[dict] = field(default=None, metadata={
         "description": "Not in CLI output: its entries move to "
                        "findings[] (detector analyze_current_capacity)."})
