@@ -187,7 +187,7 @@ union(a, b):  merge two sets
    - **Global labels**: Connect across all sheets. Keyed by `(name,)`.
    - **Hierarchical labels**: Connect across sheets (parent ↔ child). Keyed by `(name,)`.
 
-4. **Power symbols** — Always cross-sheet. The symbol's pin position (not its center) is used as the connection point. Like a component pin, it joins a wire only at a wire end. PWR_FLAG symbols are excluded.
+4. **Power symbols** — A global power symbol crosses sheets by name; a local one (lib symbol `(power local)`) joins only within its own sheet. The symbol's pin position (not its center) is used as the connection point. Like a component pin, it joins a wire only at a wire end. PWR_FLAG symbols are excluded.
 
 5. **Junctions** — Added and unioned with every wire they lie exactly on (0 IU).
 

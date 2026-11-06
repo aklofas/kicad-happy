@@ -123,7 +123,7 @@ Three operation types are counted:
 
 ### 2.8 Coordinate Range
 
-Every coordinate in the file (modal X/Y, with or without a leading `G01`/`G02`/`G03`) updates a running min/max bounding box, in millimetres: coordinates are divided by the format's decimal precision and inch files (`%MOIN*%`) are multiplied by 25.4. An arc under `G75` adds the axis extremes it sweeps, and an arc whose start equals its end is a full circle. The box is used later for layer alignment checking and board dimension estimation.
+Only points where copper is put update a running min/max bounding box: a D01 draw's start and end, a D03 flash, and the axis extremes an arc sweeps. D02 moves are skipped. Coordinates are modal X/Y, with or without a leading `G01`/`G02`/`G03`, and the box is kept in millimetres: coordinates are divided by the format's decimal precision and inch files (`%MOIN*%`) are multiplied by 25.4. An arc under `G75` is swept from start to end, and an arc whose start equals its end is a full circle. The box is used later for layer alignment checking and board dimension estimation.
 
 ### 2.9 Aperture Analysis Summary
 

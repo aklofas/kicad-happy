@@ -118,6 +118,7 @@ for line in lines:
     # Coordinate + operation
     m = re.match(r'(?:X(-?\d+))?(?:Y(-?\d+))?D0([123])\*', s)
     if m:
+        prev_x, prev_y = current_x, current_y
         if m.group(1):
             current_x = int(m.group(1)) / x_div
         if m.group(2):
@@ -130,11 +131,17 @@ for line in lines:
             draw_count += 1
         # op == 2 is move (pen up)
 
-        # Track extents
-        x_min = min(x_min, current_x)
-        x_max = max(x_max, current_x)
-        y_min = min(y_min, current_y)
-        y_max = max(y_max, current_y)
+        # Track extents: a move puts down no copper, so skip it. A draw
+        # covers its start and end point; a flash covers its point.
+        if op != 2:
+            pts = [(current_x, current_y)]
+            if op == 1:
+                pts.append((prev_x, prev_y))
+            for px, py in pts:
+                x_min = min(x_min, px)
+                x_max = max(x_max, px)
+                y_min = min(y_min, py)
+                y_max = max(y_max, py)
 ```
 
 **Key operation codes:**
@@ -168,7 +175,7 @@ X160000000Y100000000I5000000J0D01*  ; Arc to (160,100) with center offset (5,0)
 - Arc radius = sqrt(I^2 + J^2)
 - Arc appears in Edge.Cuts for rounded board corners and occasionally in copper for curved traces
 
-For board outline analysis, you mainly need arc endpoints for bounding box calculation. For precise geometry (closed polygon verification), compute the arc center and trace the path.
+An arc can bulge past its endpoints, so a bounding box also needs the axis extremes the arc sweeps: the points at center ± radius on X and Y that lie inside the sweep from start to end angle (a full circle when start equals end). For precise geometry (closed polygon verification), compute the arc center and trace the path.
 
 ---
 

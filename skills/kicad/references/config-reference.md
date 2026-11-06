@@ -72,7 +72,7 @@ Each entry:
 |-------|------|----------|-------------|
 | `rule_id` | string | **Yes** | Exact rule ID to suppress (e.g., `"DC-001"`, `"SW-002"`) |
 | `components` | array of strings | No | fnmatch glob patterns for component refs. At least one finding component must match at least one pattern. |
-| `nets` | array of strings | No | fnmatch glob patterns for net names. At least one finding net must match at least one pattern. |
+| `nets` | array of strings | No | fnmatch glob patterns for net names. At least one finding net must match at least one pattern. A pattern also matches the name after the sheet path (`/NAME` on the root sheet, `/<sheet>/NAME` below it) and the shown form of an escaped name (`D1/TX` for `D1{slash}TX`). |
 | `reason` | string | No | Human-readable explanation; shown in reports |
 
 **Matching:** `rule_id` must match exactly. If `components` is present, the finding must reference at least one matching component. If `nets` is present, the finding must reference at least one matching net. All present filters must match (AND logic). Patterns use Python `fnmatch` syntax (`*`, `?`, `[seq]`).
@@ -84,18 +84,18 @@ Each entry:
   // Suppress for all instances of this rule
   {
     "rule_id": "DC-001",
-    "reason": "Intentional — test pad left floating"
+    "reason": "Bulk cap sits away from the IC by design; local 100 nF caps cover high frequencies"
   },
   // Suppress only for specific components
   {
     "rule_id": "SW-002",
-    "components": ["Q1", "Q2"],
-    "reason": "Bootstrap topology confirmed with vendor"
+    "components": ["U3"],
+    "reason": "Larger switch-node copper accepted for heat spreading; layout follows the vendor reference design"
   },
   // Suppress only for specific nets
   {
-    "rule_id": "EMC-005",
-    "nets": ["VBUS_RAW", "USB_*"],
+    "rule_id": "IO-001",
+    "components": ["J1"],
     "reason": "USB VBUS handled by upstream filter board"
   },
 ]
@@ -314,12 +314,12 @@ Production consumer electronics board targeting the EU market. LCSC primary supp
       "reason": "Test points intentionally unpopulated in production build"
     },
     {
-      "rule_id": "EMC-011",
-      "nets": ["VBUS_RAW"],
+      "rule_id": "IO-001",
+      "components": ["J1"],
       "reason": "VBUS filtered upstream on power input board; this board sees clean rail"
     },
     {
-      "rule_id": "THM-002",
+      "rule_id": "TS-002",
       "components": ["U4"],
       "reason": "U4 (WiFi module) has internal thermal management; Rth_JA from module datasheet used directly"
     }

@@ -127,18 +127,43 @@ Power nets typically have names like `GND`, `+3V3`, `+5V`, `VBUS`.
 
 ## Footprint Extraction
 
-After extracting footprint blocks with depth-tracking (see above), extract pads from each block:
+After extracting footprint blocks with depth-tracking (see above), split each block into its `(pad ...)` sub-blocks the same way and read every field from that pad's own text. A single regex over the whole footprint block is not safe: a pad with no `(net ...)` would take the next pad's net.
 
 ```python
+def pad_blocks(block):
+    """Yield each top-level (pad ...) sub-block of a footprint block."""
+    start = None
+    depth = 0
+    in_str = False
+    for i, ch in enumerate(block):
+        if ch == '"':
+            in_str = not in_str
+        elif in_str:
+            continue
+        elif ch == '(':
+            if start is None and block.startswith('(pad', i):
+                start, depth = i, 0
+            depth += 1 if start is not None else 0
+        elif ch == ')' and start is not None:
+            depth -= 1
+            if depth == 0:
+                yield block[start:i + 1]
+                start = None
+
+pads = []
 for ref, fp in footprints.items():
-    # KiCad ≤9: (net 5 "+3V3"), KiCad 10: (net "+3V3")
-    pads = re.findall(
-        r'\(pad\s+"([^"]+)"\s+(\w+)\s+\w+\s+'
-        r'\(at\s+([\d.-]+)\s+([\d.-]+).*?\)'
-        r'\s+\(size\s+([\d.-]+)\s+([\d.-]+)\).*?'
-        r'\(net\s+(?:(\d+)\s+)?"([^"]*)"',
-        fp['block'], re.DOTALL)
-    # pads: list of (pad_num, type, rel_x, rel_y, size_w, size_h, net_id_or_empty, net_name)
+    for pb in pad_blocks(fp['block']):
+        m_pad = re.match(r'\(pad\s+"([^"]+)"\s+(\w+)', pb)
+        m_at = re.search(r'\(at\s+([\d.-]+)\s+([\d.-]+)', pb)
+        m_size = re.search(r'\(size\s+([\d.-]+)\s+([\d.-]+)\)', pb)
+        # KiCad <=9: (net 5 "+3V3"), KiCad 10: (net "+3V3"); no (net ...) = unconnected
+        m_net = re.search(r'\(net\s+(?:\d+\s+)?"([^"]*)"', pb)
+        if m_pad and m_at and m_size:
+            pads.append((ref, m_pad.group(1), m_pad.group(2),
+                         float(m_at.group(1)), float(m_at.group(2)),
+                         float(m_size.group(1)), float(m_size.group(2)),
+                         m_net.group(1) if m_net else ""))
+    # pads: (ref, pad_num, type, rel_x, rel_y, size_w, size_h, net_name)
 ```
 
 ### Absolute Pad Positions

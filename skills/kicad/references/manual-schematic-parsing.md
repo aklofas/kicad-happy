@@ -129,9 +129,9 @@ KiCad schematics don't store netlists — connectivity is implicit through coord
 
 **Critical rules:**
 - **Y-axis inversion**: `absolute_Y = symbol_Y - pin_Y` (not `+`)
-- **Sheet isolation**: Each sheet has a separate coordinate space. Only global labels and power symbols connect across sheets. Local labels are scoped to their sheet.
+- **Sheet isolation**: Each sheet has a separate coordinate space. Only global labels and global power symbols connect across sheets. Local labels are scoped to their sheet.
 - **Junctions**: Wires crossing at a point only connect if there's an explicit `(junction (at X Y))`. T-junctions (wire endpoint touching mid-wire) also connect.
-- **Power symbols connect globally**: All instances of `GND`, `+3V3`, etc. are the same net regardless of sheet.
+- **Power symbols connect globally**: All instances of `GND`, `+3V3`, etc. are the same net regardless of sheet. The exception is a local power symbol (lib symbol `(power local)`), which joins only within its own sheet.
 
 ### Net Names
 

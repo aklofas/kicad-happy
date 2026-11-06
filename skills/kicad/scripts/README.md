@@ -179,7 +179,7 @@ output_io.write_primary_run / write_derived_output (thermal/cross/gerber)  -- JS
 ### Key Data Structures
 
 - **`nets`**: `{net_name: {"pins": [{component, pin_number, pin_name, pin_type, x, y}], ...}}`
-- **`pin_net`**: `{(reference, pin_number): (net_name, pin_type)}` — reverse lookup from `build_pin_to_net_map()`
+- **`pin_net`**: `{(reference, pin_number): (net_name, net_info)}` — reverse lookup from `build_pin_to_net_map()`
 - **`comp_lookup`**: `{reference: component_dict}` — built locally in analysis functions
 - **`parsed_values`**: `{reference: float}` — numeric values for passive components
 
@@ -247,9 +247,9 @@ The sheet's UUID comes from the parent's `(sheet ... (uuid "xxx"))` block.
 - **Local labels** (`label`): Connect only within their sheet (`_sheet` index must match)
 - **Global labels** (`global_label`): Connect across all sheets
 - **Hierarchical labels** (`hierarchical_label`): Connect via parent sheet's hierarchical pin
-- **Power symbols**: Behave like global labels (connect across all sheets by name)
+- **Power symbols**: Global ones behave like global labels (connect across all sheets by name); a local one (`(power local)`) joins only within its own sheet
 
-In `build_net_map()`, local labels use `(name, sheet)` as their union key, while global/hierarchical labels and power symbols use `(name,)` (no sheet) and also `(name, sheet)`, so a same-name local label on their own sheet joins them (sheet pins excepted).
+In `build_net_map()`, local labels and local power symbols use `(name, sheet)` as their union key, while global/hierarchical labels and global power symbols use `(name,)` (no sheet) and also `(name, sheet)`, so a same-name local label on their own sheet joins them (sheet pins excepted).
 
 ### Net Name Assignment
 
@@ -333,7 +333,7 @@ Many detectors use keyword lists to identify component types from value/lib_id s
 
 **X prefix ambiguity**: X can mean crystal (IEC standard) or connector (some designers). The code checks value/lib keywords. Active oscillators (MEMS, TCXO) with "oscillator" in lib but not "crystal"/"xtal" get typed as `"oscillator"` (an IC-like active device), not `"crystal"` (passive).
 
-**Power symbols**: Detected by `(power)` flag in lib_symbol definition, or `#PWR`/`#FLG` reference prefix, or `lib_prefix == "power"` / `lib_prefix.endswith("_power")`. The substring check was previously too broad.
+**Power symbols**: Detected by a `(power)`, `(power global)` or `(power local)` flag in the lib_symbol definition, or `#PWR`/`#FLG` reference prefix, or `lib_prefix == "power"` / `lib_prefix.endswith("_power")`. The substring check was previously too broad.
 
 ## Adding New Detection Features
 

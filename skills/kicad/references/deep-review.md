@@ -105,8 +105,9 @@ Record findings in `analysis/deep_review.json` per
   summary group by it.
 - Datasheet quotes must be verbatim text from the cited page — the
   gate greps the page via pdftotext; paraphrases quarantine. If the PDF is not
-  found, `pdftotext` is not installed, or `pdftotext` fails, the quote is not
-  checked and the finding is `partial`. Mid-quote
+  found, `pdftotext` is not installed, or `pdftotext` cannot run, the quote is
+  not checked and the finding is `partial`. A cited page below 1, or past the
+  last page of the PDF, quarantines the finding. Mid-quote
   elision (`...` or `…`) is fine for trimming a long quote down to the
   relevant clauses — each segment on either side must still appear on
   the page, in order.

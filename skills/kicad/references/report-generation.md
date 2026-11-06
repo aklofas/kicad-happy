@@ -470,7 +470,7 @@ Quick reference for what each analyzer produces, to ensure no analysis dimension
 
 ### Schematic Analyzer (`analyze_schematic.py`)
 
-`type: X` rows name detection-type keys: `finding_schema.group_findings_by_detection_type(data)` returns the findings grouped under them, and `finding_schema.DETECTOR_TO_SCHEMA_KEY` maps each key to the `detector` strings it covers (`power_regulators` = `detect_power_regulators` + `detect_integrated_ldos`). To filter by one detector, use `get_findings(data, Det.*)`.
+`type: X` rows name detection-type keys: `finding_schema.group_findings_by_detection_type(data)` returns the findings grouped under them, and `finding_schema.DETECTOR_TO_SCHEMA_KEY` maps each `detector` string to its key (`detect_power_regulators` and `detect_integrated_ldos` both map to `power_regulators`). To filter by one detector, use `get_findings(data, Det.*)`.
 
 | Output Section | Report Section | Key Fields |
 |---|---|---|
