@@ -511,6 +511,11 @@ def main(argv: list[str] | None = None) -> int:
                                             active_findings)
 
     findings = filter_by_severity(findings, severity)
+    # --compact is presentation-only: strip info findings before the summary
+    # and category counts are built, so they describe the emitted list
+    if args.compact:
+        findings = [f for f in findings
+                    if str(f.get('severity', 'info')).lower() != 'info']
 
     # Build summary over the standard v1.3 severity vocabulary.  EMC
     # findings go through _make_finding which normalizes legacy
@@ -575,19 +580,13 @@ def main(argv: list[str] | None = None) -> int:
         'elapsed_s': round(elapsed, 3),
     }
 
-    # --compact is presentation-only: strip info findings from output
-    if args.compact:
-        result['findings'] = [f for f in result['findings']
-                              if str(f.get('severity', 'info')).lower() != 'info']
-
     from output_filters import apply_output_filters
     apply_output_filters(result, args.stage)
 
     # Rebuild summary + trust_summary post-filter so the envelope matches
-    # the final findings[] emitted to consumers. --compact and
-    # apply_output_filters can both mutate findings after the initial
-    # summary was built, so trust_summary, total_findings and by_severity
-    # are recomputed from the final list.
+    # the final findings[] emitted to consumers. apply_output_filters can
+    # mutate findings after the summary was built, so trust_summary,
+    # total_findings and by_severity are recomputed from the final list.
     _final = result.get('findings', []) if isinstance(result.get('findings'), list) else []
     _final_counts = {'error': 0, 'warning': 0, 'info': 0}
     for _f in _final:

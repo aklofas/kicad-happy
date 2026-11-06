@@ -310,6 +310,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - EMC PD-001 and PD-002 stay `heuristic` under `--spice-enhanced`: the SPICE sweep uses package-estimated ESR and ESL, so a simulated result no longer claims `datasheet-backed` confidence.
 - RP-002 on a board whose PCB analysis has plane gaps but no reference-plane coverage (zone fills unavailable) is recorded in `checks_run` as not run, with that reason, instead of as a check that ran and found nothing; a coverage list that is present but empty counts as measured.
 - DP-005 measures pair lengths from `net_lengths`, which counts arcs, so an arc-routed pair is not reported as a length mismatch.
+- `--compact` EMC output: `summary.active`, `summary.suppressed`, `summary.categories_checked`, `category_summary` and the stderr finding count describe the findings emitted, not the info findings `--compact` drops.
 
 ### Documentation
 
