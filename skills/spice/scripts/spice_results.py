@@ -1244,6 +1244,17 @@ EVALUATOR_REGISTRY = {
 }
 
 
+def _format_delta(metric, value):
+    """A delta value in the unit its key names: ``*_dB`` in dB, ``*_pct`` as a signed percent."""
+    if not isinstance(value, (int, float)):
+        return str(value)
+    if metric.endswith("_dB"):
+        return f"{value:.2f} dB"
+    if metric.endswith("_pct"):
+        return f"{value:+.2f}%"
+    return f"{value:g}"
+
+
 def build_report(simulation_runs):
     """Build the final simulation report from a list of individual results.
 
@@ -1283,15 +1294,15 @@ def build_report(simulation_runs):
         _exp = run.get("expected") or {}
         _sim = run.get("simulated") or {}
         _detail_parts = []
-        for metric, pct in _delta.items():
-            if pct is not None:
-                _detail_parts.append(f"{metric}: {pct:+.2f}%")
+        for metric, value in _delta.items():
+            if value is not None:
+                _detail_parts.append(f"{metric}: {_format_delta(metric, value)}")
         _delta_summary = "; ".join(_detail_parts) if _detail_parts else "no numeric delta"
         _expected_keys = ", ".join(f"{k}={v}" for k, v in _exp.items()) if _exp else "—"
         _simulated_keys = ", ".join(f"{k}={v}" for k, v in _sim.items()) if _sim else "—"
         _description = (
             f"SPICE simulation of {subtype} ({ref}) "
-            f"{'failed to converge' if status == 'fail' else 'converged with warnings'}. "
+            f"{'measured values failed the check' if status == 'fail' else 'measured values need review'}. "
             f"Expected: {_expected_keys}. "
             f"Simulated: {_simulated_keys}. "
             f"Delta: {_delta_summary}."
@@ -1305,7 +1316,7 @@ def build_report(simulation_runs):
             "evidence_source": "heuristic_rule",
             "category": "simulation",
             "summary": (
-                f"{subtype} {ref} — SPICE {'did not converge to expected values' if status == 'fail' else 'converged with warnings'}".strip()
+                f"{subtype} {ref} — SPICE {'check failed on the measured values' if status == 'fail' else 'measured values need review'}".strip()
             ),
             "description": _description,
             "components": run.get("components", []) or [],

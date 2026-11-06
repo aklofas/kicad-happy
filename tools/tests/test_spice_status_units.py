@@ -199,5 +199,18 @@ class DiffInfoTest(unittest.TestCase):
         self.assertEqual(delta["summary.info"], {"base": 0, "head": 1, "delta": 1})
 
 
+class FindingTextTest(unittest.TestCase):
+    def test_delta_units_follow_the_key_and_a_miss_is_not_a_convergence_failure(self):
+        runs = [{"subcircuit_type": "opamp_circuit", "components": ["U1"], "status": "fail",
+                 "delta": {"gain_error_dB": 3.0}},
+                {"subcircuit_type": "rc_filter", "components": ["R1", "C1"], "status": "warn",
+                 "delta": {"fc_error_pct": -4.5}}]
+        fail, warn = R.build_report(runs)["findings"]
+        self.assertIn("gain_error_dB: 3.00 dB", fail["description"])
+        self.assertIn("fc_error_pct: -4.50%", warn["description"])
+        for f in (fail, warn):
+            self.assertNotIn("converge", f["summary"] + f["description"])
+
+
 if __name__ == "__main__":
     unittest.main()
