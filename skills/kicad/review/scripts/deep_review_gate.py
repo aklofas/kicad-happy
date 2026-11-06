@@ -336,10 +336,13 @@ _PLUSMINUS_GAP_RE = re.compile(r"±\s+(?=\.?[0-9])")
 _LEADING_POINT_RE = re.compile(r"(?<![^\s±-])\.(?=[0-9])")
 # An exponent the PDF text splits ("1e- 3", "1 e-3"). The digits before the e
 # must be a number of their own: "MAX3232E -40" is a part number and a value.
-_EXP_BASE = r"(?<![^\W_])[0-9]*\.?[0-9]+"
+# A single digit glued to a letter ("A1e-3", "IC1e-3") stays an exponent. A
+# token heuristic cannot separate every glued label from a part number; this
+# one calls two or more digits a part number.
+_EXP_BASE = r"(?:(?<![^\W_])[0-9]*\.?[0-9]+|(?<=[^\W\d_])[0-9](?![0-9]))"
 _EXP_GAP_RE = re.compile(rf"({_EXP_BASE})[ \t]*e[ \t]*-\s*(?=[0-9])")
 # a part-number token such as "max3232e-40" is not an exponent
-_PARTNO_EXP_RE = re.compile(r"([^\W\d_][^\W_]*[0-9]e)-(?=[0-9])")
+_PARTNO_EXP_RE = re.compile(r"([^\W\d_][^\W_]*[0-9]{2}e)-(?=[0-9])")
 
 
 def _norm_text(s):

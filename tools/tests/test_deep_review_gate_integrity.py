@@ -134,6 +134,17 @@ QUOTE_CASES = [
     ("-40 to 85", "SP3232E -40 to 85", True, "negative start after a part number ending in E"),
     ("-40", "MAX3232E-40", True, "negative value against a part number ending in E"),
     ("2.2e-12 F", "cap 2.2e- 12 F", True, "decimal mantissa split exponent"),
+    ("-3", "A1e-3", False, "negative value against an exponent glued to A1e-3"),
+    ("-3 A", "A1e-3 A", False, "negative value against an exponent glued to A1e-3 A"),
+    ("-3", "x1e-3", False, "negative value against an exponent glued to x1e-3"),
+    ("-3", "0x1E-3", False, "negative value against an exponent glued to 0x1E-3"),
+    ("-3", "IC1e-3", False, "negative value against an exponent glued to IC1e-3"),
+    ("-3", "R1e-3", False, "negative value against an exponent glued to R1e-3"),
+    ("-3", "MAX3232E1e-3", False, "negative value against an exponent glued to MAX3232E1e-3"),
+    ("-3 A", "leakage1e-3 A", False, "negative value against an exponent glued to leakage1e-3 A"),
+    ("-3 A", "Ileak1e-3 A max", False, "negative value against an exponent glued to Ileak1e-3 A max"),
+    ("-40", "µ1e-40", False, "negative value against an exponent glued to µ1e-40"),
+    ("-3", "1e1e-3", False, "negative value against an exponent glued to 1e1e-3"),
     ("Type 1e - 3 pins", "Type 1e - 3 pins", True, "spaced e and dash"),
 ]
 
