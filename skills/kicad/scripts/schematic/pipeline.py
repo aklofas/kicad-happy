@@ -532,7 +532,8 @@ def run_domain_detectors(ctx: AnalysisContext, topo: dict) -> dict:
         bridge_facts=bridge_facts)
     label_aliases = detect_label_aliases(ctx)
     power_pin_dc_paths = audit_power_pin_dc_paths(
-        ctx, solder_jumpers=solder_jumpers, bridge_facts=bridge_facts)
+        ctx, solder_jumpers=solder_jumpers, bridge_facts=bridge_facts,
+        power_regulators=power_regulators)
 
     return {
         "buzzer_speaker_circuits": buzzer_speaker_circuits,

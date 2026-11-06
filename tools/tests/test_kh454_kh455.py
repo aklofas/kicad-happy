@@ -1,6 +1,8 @@
 # tools/tests/test_kh454_kh455.py
 """RS-001 does not audit a net whose only power_in pins are bootstrap pins; PP-001
-dedups on (ref, pin, net) so duplicate / unannotated refs keep every power pin."""
+dedups on (ref, pin, net) so duplicate / unannotated refs keep every power pin, and a
+rail known only by its pins ends the PP-001 walk unless a capacitor is its only link to
+another rail."""
 import sys, unittest
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
@@ -68,6 +70,49 @@ class DuplicateRefPowerPins(unittest.TestCase):
                 "GND": [("C1", "2", "~", "passive")]}
         f = _rules(audit_power_pin_dc_paths(_ctx(self.COMPS, nets)), "PP-001")
         self.assertEqual([x["pins"] for x in f], [["U?.48 (VDD)"]])
+
+
+class PinRecognisedRail(unittest.TestCase):
+    """N_U1 is a rail by its pins (a supply pin and a capacitor to ground)."""
+    COMPS = [{"reference": r, "type": "ic", "value": "MCU"} for r in ("U1", "U2")] + \
+            [{"reference": r, "type": "capacitor", "value": "100n"} for r in ("C1", "C2", "C10")] + \
+            [{"reference": "D1", "type": "diode", "value": "BAT54"}]
+
+    def _pp(self, extra=None, power_regulators=None):
+        nets = {"N_U1": [("U1", "1", "VCC", "power_in"), ("C1", "1", "~", "passive")],
+                "GND": [("C1", "2", "~", "passive"), ("U1", "2", "GND", "power_in")],
+                "+3V3": [("U2", "1", "VCC", "power_in")]}
+        for net, pins in (extra or {}).items():
+            nets.setdefault(net, []).extend(pins)
+        ctx = _ctx(self.COMPS, nets, flagged={"GND", "+3V3"})
+        self.assertIn("N_U1", ctx.topology_rails)
+        f = audit_power_pin_dc_paths(ctx, power_regulators=power_regulators)
+        return [x["start_net"] for x in _rules(f, "PP-001")]
+
+    AC = {"N_U1": [("C2", "1", "~", "passive")], "+3V3": [("C2", "2", "~", "passive")]}
+
+    def test_decoupled_rail_without_source_ends_the_walk(self):
+        self.assertEqual(self._pp(), [])
+
+    def test_ac_coupled_rail_gets_pp001(self):
+        self.assertEqual(self._pp(self.AC), ["N_U1"])
+
+    def test_power_out_pin_is_a_source(self):
+        self.assertEqual(self._pp({**self.AC, "N_U1": self.AC["N_U1"] + [("U2", "5", "VOUT", "power_out")]}), [])
+
+    def test_regulator_output_is_a_source(self):
+        self.assertEqual(self._pp(self.AC, power_regulators=[{"output_rail": "N_U1"}]), [])
+
+    def test_diode_fed_rail_ends_the_walk(self):
+        self.assertEqual(self._pp({**self.AC, "N_U1": self.AC["N_U1"] + [("D1", "2", "K", "passive")],
+                                   "+5V": [("D1", "1", "A", "passive")]}), [])
+
+    def test_duplicate_ref_capacitor_is_not_a_coupling_cap(self):
+        # C10 is two symbols sharing one reference: four pins, not a capacitor across the nets.
+        self.assertEqual(self._pp({"N_U1": [("C10", "1", "~", "passive")],
+                                   "+3V3": [("C10", "2", "~", "passive")],
+                                   "GND": [("C10", "3", "~", "passive")],
+                                   "N_X": [("C10", "4", "~", "passive")]}), [])
 
 
 if __name__ == "__main__":

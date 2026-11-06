@@ -4782,7 +4782,8 @@ def _is_bootstrap_pin_name(pin_name: str) -> bool:
 
 def audit_power_pin_dc_paths(ctx: AnalysisContext,
                              solder_jumpers: list[dict] | None = None,
-                             bridge_facts=None) -> list[dict]:
+                             bridge_facts=None,
+                             power_regulators: list[dict] | None = None) -> list[dict]:
     """For every IC power_in pin, prove a DC path to a power rail exists.
 
     A power_in pin that only reaches ground through a capacitor is
@@ -4796,10 +4797,16 @@ def audit_power_pin_dc_paths(ctx: AnalysisContext,
       - solder jumpers with default_state='bridged'    (bridge)
     and REJECT crossing capacitors. If no named power rail is reachable
     within 2 hops, emit PP-001 at severity=error (info on module-internal LDO rails).
+    A net known as a rail only from its pins (a supply pin and a capacitor to ground)
+    counts as reached unless it is AC-coupled: a capacitor joins it to another rail
+    and it shows no source of its own (a power_out pin, a PWR_FLAG or a regulator
+    output). Then the walk goes on, as for an unnamed net.
     """
     findings: list[dict] = []
     nets = ctx.nets or {}
     components = {c.get("reference"): c for c in (ctx.components or [])}
+    reg_output_nets = {reg.get("output_rail") or reg.get("vout_net")
+                       for reg in (power_regulators or [])} - {None, ""}
 
     # Map component ref -> list of (pin_number, net_name, pin_type) for net hops.
     ref_pins = build_ref_pins(nets)
@@ -4807,6 +4814,37 @@ def audit_power_pin_dc_paths(ctx: AnalysisContext,
         bridge_facts = build_bridge_facts(
             ctx.components or [], ref_pins, solder_jumpers)
     ties = tie_conductors(bridge_facts)
+
+    def _has_source(net: str) -> bool:
+        info = nets.get(net, {})
+        return (bool(info.get("has_pwr_flag")) or net in reg_output_nets
+                or any(p.get("pin_type") == "power_out"
+                       or (p.get("component") or "").startswith("#FLG")
+                       for p in info.get("pins", [])))
+
+    def _ac_coupled(net: str) -> bool:
+        # Only IC pins and capacitors on the net, and a two-pin capacitor from it
+        # to another (non-ground) rail: the supply reaches the pin through a cap.
+        to_rail = False
+        for p in nets.get(net, {}).get("pins", []):
+            cref = p.get("component") or ""
+            kind = (components.get(cref) or {}).get("type")
+            if kind == "ic" or cref.startswith("#"):
+                continue
+            if kind != "capacitor":
+                return False
+            far = {n for _pn, n, _pt in ref_pins.get(cref, []) if n != net}
+            if len(ref_pins.get(cref, [])) == 2 and len(far) == 1:
+                (far_net,) = far
+                to_rail = to_rail or (ctx.is_power_net(far_net) and not ctx.is_ground(far_net))
+        return to_rail
+
+    def _is_dc_rail(net: str) -> bool:
+        if ctx.is_ground(net) or not ctx.is_power_net(net):
+            return False
+        if ctx.is_power_net(net, by_pins=False):
+            return True
+        return _has_source(net) or not _ac_coupled(net)
 
     # Component-type-based bridge predicate.
     def _bridges_dc(ref: str) -> bool:
@@ -4885,9 +4923,8 @@ def audit_power_pin_dc_paths(ctx: AnalysisContext,
 
             frontier: set[str] = {net_name}
             visited: set[str] = {net_name}
-            # A power_in pin directly on a named power rail already has DC.
-            reached_rail = (ctx.is_power_net(net_name)
-                            and not ctx.is_ground(net_name))
+            # A power_in pin directly on a DC rail is already fed.
+            reached_rail = _is_dc_rail(net_name)
             # Track whether any capacitor blocked the walk — only emit PP-001
             # when a cap-only path exists (not just "no source declared").
             # That distinguishes the AC-coupling bug from missing-PWR_FLAG
@@ -4915,9 +4952,7 @@ def audit_power_pin_dc_paths(ctx: AnalysisContext,
                                 continue
                             visited.add(other_net)
                             next_frontier.add(other_net)
-                            if ((ctx.is_power_net(other_net)
-                                    and not ctx.is_ground(other_net))
-                                    or other_net in nets_with_connector):
+                            if _is_dc_rail(other_net) or other_net in nets_with_connector:
                                 reached_rail = True
                 frontier = next_frontier
                 if not frontier:
