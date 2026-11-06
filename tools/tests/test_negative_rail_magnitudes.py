@@ -47,8 +47,24 @@ class LdoBudget(unittest.TestCase):
         ldo = analyze_power_budget(ctx, sig)["rails"]["-15V"]["ldo_dissipation"]
         self.assertEqual(ldo["dropout"], 10.0)
 
+    def test_ldo_dissipation_reads_the_output_override(self):
+        ctx = _ctx(["+5V", "+3V3"], {"+3V3": 3.0})
+        sig = {"power_regulators": [{"ref": "U1", "value": "AMS1117-3.3", "topology": "LDO",
+                                     "estimated_vout": 3.3, "input_rail": "+5V",
+                                     "output_rail": "+3V3"}]}
+        ldo = analyze_power_budget(ctx, sig)["rails"]["+3V3"]["ldo_dissipation"]
+        self.assertEqual(ldo["dropout"], 2.0)
+
 
 class RegulatorDissipation(unittest.TestCase):
+    def test_dissipation_reads_the_output_override(self):
+        ctx = _ctx(["+5V", "+3V3"], {"+3V3": 3.0})
+        reg = {"ref": "U1", "topology": "LDO", "input_rail": "+5V", "output_rail": "+3V3",
+               "estimated_vout": 3.3, "output_capacitors": [{"ref": "C1", "farads": 10e-6}]}
+        _estimate_regulator_dissipation(ctx, [reg])
+        self.assertEqual((reg["power_dissipation"]["vout_V"], reg["power_dissipation"]["dropout_V"]),
+                         (3.0, 2.0))
+
     def test_negative_ldo_gets_a_dissipation_estimate(self):
         ctx = _ctx(["VNEG_IN", "VNEG"], {"VNEG_IN": -12.0})
         reg = {"ref": "U1", "topology": "LDO", "input_rail": "VNEG_IN", "estimated_vout": -5.0,

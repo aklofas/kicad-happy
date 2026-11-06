@@ -2325,6 +2325,9 @@ def _estimate_regulator_dissipation(ctx: AnalysisContext, power_regulators: list
         topology = reg.get("topology", "")
         vin_rail = reg.get("input_rail")
         vout = reg.get("estimated_vout")
+        v_cfg = ctx.config_rail_voltage(reg.get("output_rail"))
+        if v_cfg is not None:
+            vout = v_cfg
         if topology == "LDO" and vin_rail and vout:
             vin = ctx.rail_voltage_or(vin_rail, _infer_rail_voltage)
             # A negative LDO (-12 V in, -5 V out) drops |Vin| - |Vout|; both rails share a sign.

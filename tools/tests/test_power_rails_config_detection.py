@@ -156,6 +156,16 @@ class VoltageOverride(unittest.TestCase):
         self.assertEqual(topo["rail_voltages"], {"+3V3": 3.0})
 
 
+class CrossDomainCompatibility(unittest.TestCase):
+    def test_cross_domain_reads_overrides(self):
+        from schematic.net_analysis import _parse_voltage_from_net_name as parse
+        from schematic.net_analysis import _rails_voltage_compatible
+        self.assertFalse(_rails_voltage_compatible({"VDD_IO"}, {"+3V3"}))
+        self.assertTrue(_rails_voltage_compatible(
+            {"VDD_IO"}, {"+3V3"}, lambda r: {"VDD_IO": 3.3}.get(r) or parse(r)))
+        self.assertFalse(_rails_voltage_compatible({"+3V3"}, {"+5V"}))
+
+
 class IgnoredRail(unittest.TestCase):
     def test_ignored_rail_leaves_map_sleep_audit_and_lr001(self):
         base = run()

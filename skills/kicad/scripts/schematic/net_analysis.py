@@ -548,13 +548,14 @@ def _get_io_domains_for_refs(refs: set, power_domains: dict,
     return domains
 
 
-def _rails_voltage_compatible(rails_a: set, rails_b: set) -> bool:
+def _rails_voltage_compatible(rails_a: set, rails_b: set,
+                              voltage=_parse_voltage_from_net_name) -> bool:
     """Check if two sets of rails share a rail or voltage."""
     if rails_a & rails_b:
         return True
     # Parse voltages from net names and check overlap
-    va = {_parse_voltage_from_net_name(r) for r in rails_a} - {None}
-    vb = {_parse_voltage_from_net_name(r) for r in rails_b} - {None}
+    va = {voltage(r) for r in rails_a} - {None}
+    vb = {voltage(r) for r in rails_b} - {None}
     return bool(va & vb)
 
 
@@ -643,7 +644,9 @@ def _detect_cross_domain_signals(ctx: AnalysisContext, power_domains: dict,
                         for j_idx in range(i_idx + 1, len(ic_list)):
                             a_io = _get_io_domains_for_refs({ic_list[i_idx]}, power_domains, is_ground)
                             b_io = _get_io_domains_for_refs({ic_list[j_idx]}, power_domains, is_ground)
-                            if not _rails_voltage_compatible(a_io, b_io):
+                            if not _rails_voltage_compatible(
+                                    a_io, b_io,
+                                    lambda r: ctx.rail_voltage_or(r, _parse_voltage_from_net_name)):
                                 needs_shifter = True
                                 break
                         if needs_shifter:

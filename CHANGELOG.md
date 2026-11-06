@@ -25,6 +25,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Bus labels with quoted member or prefix names (`{"A B" C}`), as KiCad 10 allows, now expand to their members, and a group member containing a space is named with the space escaped (`A\ B`), as KiCad names it.
 - A `.kicad-happy.json` or `.kicad_pro` saved with a UTF-8 byte-order mark (common Windows editors) is now read instead of skipped.
 - `"analysis": null` or a non-string entry in `power_rails.ignore` / `flag` is now warned and ignored instead of dropping every power-rail setting.
+- A `voltage_overrides` entry now also sets the output voltage used for an LDO's dropout and dissipation, and counts when deciding whether two ICs' I/O rails need a level shifter.
 
 ### Documentation
 

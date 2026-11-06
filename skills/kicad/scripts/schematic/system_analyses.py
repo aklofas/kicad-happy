@@ -1583,9 +1583,12 @@ def analyze_power_budget(ctx: AnalysisContext,
             # LDO thermal dissipation: uses the rail's total estimated load
             # (ICs plus LEDs and other non-IC loads), so the dissipation
             # covers every load on the rail.
-            if reg.get("topology") == "LDO" and v_in_rail and v_out:
+            v_ldo_out = ctx.config_rail_voltage(rail)
+            if v_ldo_out is None:
+                v_ldo_out = v_out
+            if reg.get("topology") == "LDO" and v_in_rail and v_ldo_out:
                 v_in = abs(ctx.rail_voltage_or(v_in_rail, _estimate_rail_voltage) or 0)
-                v_out = abs(v_out)  # a negative LDO drops |Vin| - |Vout|
+                v_out = abs(v_ldo_out)  # a negative LDO drops |Vin| - |Vout|
                 if v_in and v_in > v_out:
                     total_load_mA = rail_info["estimated_load_mA"]
                     v_drop = v_in - v_out
