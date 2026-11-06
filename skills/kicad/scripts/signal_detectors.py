@@ -2022,7 +2022,7 @@ def _build_regulator_record(ctx: AnalysisContext, cand: _RegulatorCandidate,
             "source": "fixed_suffix",
             "confidence": "deterministic",
         }
-        if vout_pin:
+        if vout_pin and not ctx.is_ground(vout_pin[1]):
             reg_info["output_rail"] = vout_pin[1]
 
     # Check feedback divider for output voltage estimation
