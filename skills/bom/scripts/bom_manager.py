@@ -202,6 +202,7 @@ def detect_convention(
     # Maps the value inside the Supplier field to canonical distributor names
     # Track KiCad "Supplier N" slot mappings: slot_number -> (name_field, pn_field, canonical)
     supplier_slots: dict[int, dict] = {}  # "supplier" here refers to KiCad field names
+    slot_names: dict[int, set] = {}  # slot -> every distinct name the symbols give it
 
     for sym in all_symbols:
         for name, value in sym["raw_properties"].items():
@@ -218,6 +219,7 @@ def detect_convention(
                 slot = int(sup_match.group(1))
                 dist_name = value.strip().lower()
                 canonical_sup = _SUPPLIER_NAME_MAP.get(dist_name)
+                slot_names.setdefault(slot, set()).add(canonical_sup or dist_name)
                 if canonical_sup and slot not in supplier_slots:
                     supplier_slots[slot] = {
                         "name_field": name,
@@ -282,6 +284,9 @@ def detect_convention(
         "preferred_distributor": preferred_distributor,
         "names_canonical": names_canonical,
         "suggested_fields": suggested,
+        # slots every naming symbol gives the same known distributor; internal, not reported
+        "slot_distributors": {slot: next(iter(names)) for slot, names in slot_names.items()
+                              if len(names) == 1 and next(iter(names)) in _SUPPLIER_NAME_MAP.values()},
     }
 
 
@@ -320,7 +325,7 @@ def generate_bom(symbols: list[dict], convention: dict,
                                   for u in units):
             props = merge_unit_fields((u.get("unit", 1), u["raw_properties"]) for u in units)
 
-        slots = _symbol_slots(props)
+        slots = _symbol_slots(props, convention.get("slot_distributors"))
 
         # Extract canonical field values using the project's actual field names
         def get_canonical(canonical_name: str) -> str:

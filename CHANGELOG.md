@@ -49,6 +49,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - After a schematic change, `--analysis-dir` drops the previous run's `lifecycle.json` instead of carrying the old parts' lifecycle forward.
 - BOM tools read and edit KiCad 9 private fields and escaped text: an existing private field is updated instead of duplicated, an update to the value a field already holds is reported unchanged, and a sub-sheet file name with an escaped quote is followed.
 - `edit_properties.py` and `sync_datasheet_urls.py` find a part by the reference KiCad shows on each sheet. An edit through one instance of a repeated sheet writes that sheet once and warns that every instance changes, two instances given different values for one field are refused, and two parts sharing a stale reference no longer receive each other's datasheet URL.
+- A `Supplier N Part Number` on a symbol without its own `Supplier N` name is filed under the distributor the rest of the project names for that slot.
 
 ### Documentation
 

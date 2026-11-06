@@ -33,6 +33,25 @@ class SupplierSlots(unittest.TestCase):
         self.assertEqual((b["R1"]["digikey"], b["R1"]["mouser"]), ("X-ND", ""))
         self.assertEqual((b["R2"]["mouser"], b["R2"]["digikey"]), ("595-Y", ""))
 
+    def test_pn_without_slot_name_takes_project_slot(self):
+        b = bom_of(
+            sym("R1", "1k", {"Supplier 1": "DigiKey", "Supplier 1 Part Number": "X-ND"}, "a"),
+            sym("R2", "2k", {"Supplier 1 Part Number": "Y-ND"}, "b"))
+        self.assertEqual(b["R2"]["digikey"], "Y-ND")
+
+    def test_disagreeing_project_slot_no_fallback(self):
+        b = bom_of(
+            sym("R1", "1k", {"Supplier 1": "DigiKey", "Supplier 1 Part Number": "X-ND"}, "a"),
+            sym("R2", "2k", {"Supplier 1": "Mouser", "Supplier 1 Part Number": "595-Y"}, "b"),
+            sym("R3", "3k", {"Supplier 1 Part Number": "Z"}, "c"))
+        self.assertEqual((b["R3"]["digikey"], b["R3"]["mouser"]), ("", ""))
+
+    def test_unknown_named_slot_no_fallback(self):
+        b = bom_of(
+            sym("R1", "1k", {"Supplier 1": "DigiKey", "Supplier 1 Part Number": "X-ND"}, "a"),
+            sym("R2", "2k", {"Supplier 1": "TME", "Supplier 1 Part Number": "T1"}, "b"))
+        self.assertEqual(b["R2"]["digikey"], "")
+
     def test_corpus_spellings(self):
         spellings = [("Supplier Part Number 2", "81-Z"), ("Supplier Part Num 2", "81-Z"),
                      ("SUPPLIER PART NUMBER 2", "81-Z"), ("Supplier_2 P/N", "81-Z"),

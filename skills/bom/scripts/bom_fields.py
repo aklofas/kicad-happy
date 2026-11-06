@@ -99,13 +99,19 @@ def _slot_pn_number(name: str):
     return int(m.group(1) or m.group(2)) if m else None
 
 
-def _symbol_slots(props: dict) -> dict[str, str]:
-    """Distributor -> part number from this symbol's own `Supplier N` fields (lowest slot wins)."""
+def _symbol_slots(props: dict, project_slots: dict[int, str] | None = None) -> dict[str, str]:
+    """Distributor -> part number from this symbol's own `Supplier N` fields (lowest slot wins).
+
+    A slot the symbol does not name takes the distributor the whole project names for it
+    (*project_slots*); a slot the symbol names with another or unknown name never does.
+    """
     names = {}
     for name, value in props.items():
         m = _SLOT_NAME_RE.match(name.strip())
         if m and str(value).strip():
             names[int(m.group(1))] = _SUPPLIER_NAME_MAP.get(str(value).strip().lower())
+    for slot, dist in (project_slots or {}).items():
+        names.setdefault(slot, dist)
     out: dict[str, str] = {}
     pns = sorted((_slot_pn_number(n), n) for n in props if _slot_pn_number(n) is not None)
     for slot, name in pns:
