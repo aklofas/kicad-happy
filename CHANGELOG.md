@@ -318,6 +318,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Gerber analysis no longer counts a comment that mentions `D01` or `D03` as an operation, reports a `.drl` that holds no Excellon data instead of crediting it as the drill file (a BOM `.txt` that merely mentions a tool code is not taken for a drill file at all), ignores `._*` and `.git*` companion files when it picks the job, drill and archive files, and reports a job file whose `Path` or `FileFunction` is not text instead of stopping.
 - An op-amp supply net named `+/-15V` is read as a +15 V / −15 V pair in both the legacy and the KiCad 6 and later spelling, and a negative supply pin that reads at or above the positive one is simulated single-supply with a note saying so.
 - SP-FAIL and SP-WARN findings show a gain error in dB, not as a percent, and no longer describe a failed check as a convergence failure.
+- The I2C VOL check reads the voltage of a supply pull-up rail that `rail_voltages` has no entry for from its name, as the pull-up voltage check beside it does, instead of skipping the rail; the two checks no longer disagree about it.
 
 ### Documentation
 

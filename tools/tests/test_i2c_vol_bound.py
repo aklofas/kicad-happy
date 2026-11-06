@@ -1,6 +1,7 @@
 # tools/tests/test_i2c_vol_bound.py
 """The I2C VOL check flags a pull-up below UM10204's lower bound Rp(min) = (VDD - 0.4 V) / 3 mA,
-with the line's fitted pull-ups combined in parallel and VDD read from the rail map."""
+with the line's fitted pull-ups combined in parallel and VDD read from the rail map, or from
+the name of a supply rail the map has no voltage for."""
 import sys, unittest
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
@@ -91,6 +92,22 @@ class I2cVolLowerBound(unittest.TestCase):
         self.assertIsNone(_vol([("5.1k", "VDD")], regulators=[reg]))
         reg = {"output_rail": "VDD", "estimated_vout": 5.0}
         self.assertEqual(_vol([("1k", "VDD")], regulators=[reg])["min_for_vol"], 1533)
+
+    def test_supply_rail_missing_from_the_rail_map_reads_its_voltage_from_its_name(self):
+        comps = [SENSOR, _res("R1", "1k")]
+        nets = {"SDA": [("U1", "1", "SDA", "bidirectional"), ("R1", "1", "~", "passive")],
+                "SDA_PULLUP_5V": [("R1", "2", "~", "passive")]}
+        full = {n: {"name": n, "pins": [dict(component=r, pin_number=p, pin_name=pn, pin_type=t)
+                                        for r, p, pn, t in pins],
+                    "point_count": 0, "no_connect": False, "labels": []}
+                for n, pins in nets.items()}
+        ctx = build_analysis_context(comps, full, {}, known_power_rails={"SDA_PULLUP_5V"})
+        ctx.rail_by_net = {}
+        design = {"bus_analysis": {"i2c": _detect_i2c_buses(ctx)}}
+        out = analyze_protocol_compliance(comps, ctx.nets, design, {}, ctx.pin_net, ctx=ctx)
+        vc = out["findings"][0]["checks"]["vol_compatibility"]
+        self.assertEqual(vc["pull_up_voltage"], 5.0)
+        self.assertEqual(vc["min_for_vol"], 1533)
 
     def test_usb_data_line_is_not_a_5v_pull_up_rail(self):
         self.assertEqual(_estimate_rail_voltage("USB_FS_DM"), 5.0)  # the name parse alone would say 5 V

@@ -1025,13 +1025,23 @@ def analyze_voltage_derating(ctx: AnalysisContext, signal_analysis: dict,
     return findings
 
 
+def _pull_up_rail_voltage(ctx: AnalysisContext, rail: str | None) -> float | None:
+    """The rail map's voltage for a pull-up rail; a supply rail the map has no voltage
+    for falls back to its name, as the pull-up voltage compatibility check does. A net that is not a
+    supply (a USB data line, say) gets no voltage from its name."""
+    v = ctx.rail_voltage(rail)
+    if v is None and ctx.is_power_net(rail):
+        v = ctx.rail_voltage_or(rail, _estimate_rail_voltage)
+    return v
+
+
 def analyze_protocol_compliance(components: list[dict], nets: dict,
                                 design_analysis: dict, signal_analysis: dict,
                                 pin_net: dict, *, ctx: AnalysisContext | None = None) -> dict:
     """Validate electrical characteristics of detected communication buses.
 
-    The I2C VOL check reads pull-up rail voltages from ``ctx``'s rail map and is
-    skipped without a context.
+    The I2C VOL check reads pull-up rail voltages from ``ctx``'s rail map (a supply
+    rail missing from it falls back to its name) and is skipped without a context.
     """
     # EQ-063: t_rise = 0.8473 × R × C (I2C rise time estimation)
     buses = design_analysis.get("bus_analysis", {})
@@ -1120,7 +1130,7 @@ def analyze_protocol_compliance(components: list[dict], nets: dict,
             # as one Thevenin source.
             vol_pullups = [pu for pu in sda_pullups if ctx and pu.get("ohms", 0) > 0
                            and not ctx.comp_lookup.get(pu.get("ref"), {}).get("dnp")]
-            vol_rails = [ctx.rail_voltage(pu.get("to_rail")) for pu in vol_pullups]
+            vol_rails = [_pull_up_rail_voltage(ctx, pu.get("to_rail")) for pu in vol_pullups]
             if vol_pullups and all(v is not None for v in vol_rails):
                 g_total = sum(1 / pu["ohms"] for pu in vol_pullups)
                 r_pu = 1 / g_total
