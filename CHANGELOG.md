@@ -20,6 +20,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - An `ipc_class` of `true` passed straight to the PCB analyzer no longer reads as IPC Class 1.
 - A design variant overrides a symbol field only when it names the field with the same case, as KiCad does.
 - A corrupt or unreadable datasheet extraction file is now reported in the schematic output's diagnostics instead of silently disabling the IC absolute-maximum voltage check.
+- With a datasheet extraction in hand, a regulator whose only output-side capacitor is a feedforward cap (rail to FB) is now reported as missing its output capacitor.
 
 ### Documentation
 

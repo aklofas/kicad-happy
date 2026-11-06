@@ -583,9 +583,9 @@ def detect_wrong_signal_type(ctx) -> list[dict]:
 # EX-001 — missing required component (regulator passives)
 # ---------------------------------------------------------------------------
 
-def _net_has_component_type(ctx, net: str, comp_type: str) -> bool:
-    """True iff any component of comp_type ('capacitor', 'inductor', etc.)
-    is connected to `net`."""
+def _net_has_grounded_capacitor(ctx, net: str) -> bool:
+    """True iff a capacitor on `net` returns to ground. A feedforward cap from the
+    rail to a feedback pin is not a decoupling cap."""
     if not net:
         return False
     net_info = ctx.nets.get(net) or {}
@@ -594,7 +594,10 @@ def _net_has_component_type(ctx, net: str, comp_type: str) -> bool:
         if not comp_ref:
             continue
         comp = ctx.comp_lookup.get(comp_ref) or {}
-        if comp.get("type") == comp_type:
+        if comp.get("type") != "capacitor":
+            continue
+        other = [n for n in ctx.get_two_pin_nets(comp_ref) if n != net]
+        if other and ctx.is_ground(other[0]):
             return True
     return False
 
@@ -631,7 +634,7 @@ def detect_missing_required_components(ctx, power_regulators: list) -> list[dict
         cin_specs = getattr(regulator, "cin_min", None)
         if has_data(cin_specs) and input_rail:
             sv = best(cin_specs, min_confidence="medium")
-            if sv is not None and not _net_has_component_type(ctx, input_rail, "capacitor"):
+            if sv is not None and not _net_has_grounded_capacitor(ctx, input_rail):
                 findings.append(_make_ex_001(
                     ref, mpn, "input cap", input_rail, sv,
                     "regulator.cin_min", ctx.source,
@@ -642,7 +645,7 @@ def detect_missing_required_components(ctx, power_regulators: list) -> list[dict
         cout_specs = getattr(regulator, "cout_min", None)
         if has_data(cout_specs) and output_rail:
             sv = best(cout_specs, min_confidence="medium")
-            if sv is not None and not _net_has_component_type(ctx, output_rail, "capacitor"):
+            if sv is not None and not _net_has_grounded_capacitor(ctx, output_rail):
                 findings.append(_make_ex_001(
                     ref, mpn, "output cap", output_rail, sv,
                     "regulator.cout_min", ctx.source,
