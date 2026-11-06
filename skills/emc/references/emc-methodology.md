@@ -127,7 +127,7 @@ The analyzer output uses only these three names. `--severity` still takes the ol
 
 5. **Switching frequency estimation.** Taken from the detector's `switching_frequency_hz`, else the part-number table `lookup_switching_freq()`, else a topology default (`default_switching_freq()`: 500 kHz for buck and boost, 300 kHz for buck-boost, inverting and SEPIC). A regulator is skipped only when none of the three gives a frequency. The table to extend is in `kicad_core/parts.py`.
 
-6. **2-layer board limitations.** The adjacent signal layer check (SU-001) needs a stackup in the PCB JSON and tests each pair of adjacent copper layers in the stackup and fires when neither is a reference plane (a layer counts as one by ground/power fill area, or when KiCad types it power or mixed); on a 2-copper-layer board it is reported at info severity with a next-revision recommendation. This is technically correct (2-layer boards inherently have worse EMC than multi-layer) but may generate noise for simple designs where EMC compliance isn't a goal.
+6. **2-layer board limitations.** The adjacent signal layer check (SU-001) needs a stackup in the PCB JSON and tests each pair of adjacent copper layers in the stackup and fires when neither is a reference plane (an inner layer counts as one by ground/power fill area or when KiCad types it power or mixed; an outer layer only by that type); on a 2-copper-layer board it is reported at info severity with a next-revision recommendation. This is technically correct (2-layer boards inherently have worse EMC than multi-layer) but may generate noise for simple designs where EMC compliance isn't a goal.
 
 ## SPICE-Enhanced Mode
 
