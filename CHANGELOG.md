@@ -14,6 +14,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A `.kicad_dru` bound written in parentheses or as arithmetic, such as `(min (0.5mm))` or `2*0.1mm`, is now evaluated as KiCad evaluates it, so the rule is checked; a bound KiCad cannot read refuses the file.
 - More `.kicad_dru` files that KiCad refuses are now refused too (an unknown constraint type, item or layer name, a malformed condition, the same constraint twice in one rule), so their rules no longer apply where KiCad applies none.
 - `analyze_pcb.py --schematic` given a JSON file that is not an object, or not UTF-8, now warns and continues without schematic cross-reference instead of stopping with a traceback.
+- DFM no longer carries net-class track-width and via-diameter checks: KiCad treats those class values as routing defaults, not minima, and the checks never ran.
 
 ### Documentation
 

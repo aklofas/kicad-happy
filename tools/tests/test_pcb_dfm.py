@@ -6,7 +6,7 @@ from tools.tests._fixtures import fixture_path, have
 SCRIPTS = Path(__file__).resolve().parents[2] / "skills" / "kicad" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
-from pcb.dfm import _min_drill_with_source, _is_real_drill, analyze_dfm  # noqa: E402
+from pcb.dfm import _min_drill_with_source, _is_real_drill, analyze_dfm, analyze_design_rule_compliance  # noqa: E402
 from pcb.pipeline import read_board  # noqa: E402
 
 FX = fixture_path()
@@ -65,6 +65,30 @@ class TestPcbDfmSynthetic(unittest.TestCase):
                          [("track_width", 0.1), ("track_spacing", 0.08), ("via_drill", 0.15),
                           ("annular_ring", 0.1)])
         self.assertEqual(r["violation_count"], 4)
+
+
+class TestNetClassValuesArePreferred(unittest.TestCase):
+    """A net class's track width and via diameter are routing defaults, not minima."""
+    SEG = {"layer": "F.Cu", "width": 0.15, "net": 1, "net_name": "A",
+           "x1": 0.0, "y1": 0.0, "x2": 5.0, "y2": 0.0}
+    SETTINGS = {"net_classes": [{"name": "Power", "track_width": 0.5, "via_diameter": 0.8,
+                                 "nets": ["A"]}]}
+
+    def _check(self, minima=None):
+        return analyze_design_rule_compliance(
+            {"segments": [self.SEG], "arcs": []},
+            {"vias": [{"size": 0.4, "drill": 0.2, "net": 1, "net_name": "A", "x": 1.0, "y": 1.0}]},
+            self.SETTINGS, minima=minima)
+
+    def test_net_class_values_are_not_checked_as_minima(self):
+        r = self._check()
+        self.assertFalse([v for v in r.get("violations", []) if v["rule"].startswith("net_class:")])
+        self.assertNotIn("net_class_violations", r)
+        self.assertEqual(r["net_class_summary"][0]["name"], "Power")
+
+    def test_board_minimum_is_still_reported(self):
+        r = self._check(minima={"min_track_width": (0.2, "project")})
+        self.assertTrue([v for v in r["violations"] if "track_width" in v["rule"]], r)
 
 
 IPC_BOARD = """(kicad_pcb (version 20221018) (generator pcbnew)
