@@ -455,7 +455,7 @@ Per-release stories are in [release-notes.md](release-notes.md); line-level deta
 
 ## 🧪 Test harness
 
-Everything above was validated against a [corpus of 5,800+ open-source KiCad projects](https://github.com/aklofas/kicad-happy-testharness) — the kind of designs real engineers actually build. The corpus spans hobby boards, production hardware, motor controllers, RF frontends, battery management systems, IoT devices, audio amplifiers, and everything in between. KiCad 5 through 10. Single-sheet and multi-sheet hierarchical. 2-layer through 6-layer. For full methodology and reproducibility instructions, see [VALIDATION.md](VALIDATION.md).
+Everything above was run against a [corpus of 5,800+ open-source KiCad projects](https://github.com/aklofas/kicad-happy-testharness) — the kind of designs real engineers actually build. The corpus spans hobby boards, production hardware, motor controllers, RF frontends, battery management systems, IoT devices, audio amplifiers, and everything in between. KiCad 5 through 10. Single-sheet and multi-sheet hierarchical. 2-layer through 6-layer. The corpus checks stability: a change in analyzer output is caught and has to be declared. It does not prove the output is correct. For full methodology and reproducibility instructions, see [VALIDATION.md](VALIDATION.md).
 
 **The numbers:**
 

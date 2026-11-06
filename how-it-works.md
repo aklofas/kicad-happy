@@ -20,7 +20,7 @@ This separation matters because it means:
 
 The schematic analyzer (`analyze_schematic.py`) reads your `.kicad_sch` file and:
 
-1. **Parses the S-expression format** into a generic tree. No KiCad-version-specific logic — the parser handles KiCad 5 through 10 because it operates on structure, not schema.
+1. **Parses the S-expression format** into a generic tree. The parser reads the KiCad 6–10 files by structure, not schema. KiCad 5 `.sch` files are line-based, not S-expressions, and a separate legacy reader handles them.
 
 2. **Walks hierarchical sheets.** If your design has sub-sheets (including multi-instance sheets where the same sub-sheet is placed multiple times with different reference designators), the analyzer traverses them breadth-first, remapping references per instance.
 
@@ -128,7 +128,7 @@ Valid concern. Here's how this system is different from "paste your schematic in
 
 3. **The review is verifiable.** Every finding includes the path to verify it — which components, which nets, which datasheet page. If the agent says your thermal vias are insufficient, it tells you the via count, the pad area, and the IPC recommendation. You can check.
 
-4. **Hallucination risk is bounded by the data.** The agent can misinterpret analyzer data or draw wrong conclusions from datasheets — the same mistakes a human reviewer can make. But it can't invent components that aren't in your schematic or fabricate net connections that don't exist, because the analysis JSON constrains what it's working with.
+4. **Hallucination risk is bounded by the data.** The agent can misinterpret analyzer data or draw wrong conclusions from datasheets — the same mistakes a human reviewer can make. The findings come from the analysis JSON, and the agent can still write a part or net that is not in it, so check findings against the JSON. Only Deep Review findings are checked automatically: the gate quarantines one that cites a component, net or pin missing from the analyzer JSON. The rest of the review report is not checked.
 
 Is it perfect? No. That's why step 4 is "you review the review." But it's a lot better than skipping the review entirely — which is what happens on most projects when time runs out before tapeout.
 
@@ -138,7 +138,7 @@ No. This replaces *not doing a design review* with doing one.
 
 Most hardware teams don't have a formal peer review process for every board revision. The senior engineer is busy, the deadline is Thursday, and the board goes to fab with a quick eyeball check. Two weeks later it comes back and the regulator output is wrong because nobody noticed the feedback resistor values were swapped during a late-night edit.
 
-This tool does the tedious, systematic part — trace every net, check every value, verify every pin mapping, cross-reference every datasheet. It produces a structured report that a human engineer reviews. The human makes the engineering decisions. The tool just makes sure nothing gets missed.
+This tool does the tedious, systematic part — trace every net, check every value, verify every pin mapping, cross-reference every datasheet. It produces a structured report that a human engineer reviews. The human makes the engineering decisions. The tool covers what its detectors recognise. A circuit they do not recognise is a gap in the analysis, and the human reviewer has to cover it.
 
 If you're a senior EE who already does thorough design reviews, this saves you time. If you're a solo engineer or a small team without a dedicated reviewer, this gives you a second pair of eyes you didn't have before.
 
@@ -172,7 +172,7 @@ The JSON is the truth. Everything the agent says should trace back to it. If it 
 
 The scripts are tested against a [dedicated test harness](https://github.com/aklofas/kicad-happy-testharness) containing 5,857 open-source KiCad projects from GitHub, Codeberg, and GitLab, spanning KiCad versions 5 through 10. That's single-sheet hobby boards, multi-sheet industrial controllers, complex hierarchical designs with repeated sub-sheets, and everything in between. All parse and produce output without errors. Detection accuracy is harder to quantify — you can't count what you didn't catch — which is why this document exists and the test harness uses three layers of regression testing (see below).
 
-More importantly, the scripts are designed so that bugs produce *missing data*, not *wrong data*. If a detector fails to recognize a circuit pattern, you get a gap in the analysis (the reviewer's blind spot). If a detector misidentifies a circuit, it reports incorrect facts (the reviewer is misled). The detection logic is tuned to avoid the second failure mode — it's better to miss a voltage divider than to report one that doesn't exist.
+A missed pattern is a gap in the analysis, which is the reviewer's blind spot. A misdetection is worse: the detector reports a circuit that is not there, or gets one wrong, and the reviewer is misled. Both happen, and each release fixes false signals of the second kind. The detection logic is tuned to prefer missing a voltage divider over reporting one that doesn't exist.
 
 Every detector output includes the raw component values, net names, and pin connections so you can verify the conclusion independently. The scripts don't just say "there's a problem" — they show you exactly what they found and how they interpreted it.
 
@@ -242,7 +242,7 @@ The harness uses three complementary layers, each catching things the others mis
 6. Promote confirmed findings to assertions
 7. Create a new baseline
 
-This means every analyzer change is validated against real hardware designs before it ships — not toy examples or hand-crafted test cases, but the actual KiCad projects that people are building.
+The corpus gate checks that an analyzer change alters no output on the corpus beyond the changes declared for it. It runs on real KiCad projects rather than hand-made examples. It shows output is stable, not that the output is correct.
 
 ## Further reading
 
