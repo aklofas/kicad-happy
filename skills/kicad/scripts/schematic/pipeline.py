@@ -325,7 +325,8 @@ def build_rail_map(ctx: AnalysisContext, power_regulators: list[dict]) -> dict[s
     its output net (the last regulator on a net wins), then, for a regulator with
     no estimate, the voltage in the name of the sheet holding its output net (the
     regulator records it as ``_output_rail_voltage_provenance``), then
-    the voltage in the name of a power or ground net. The project config has the
+    the voltage in the name of a power or ground net (a net that is a supply only by
+    its pins gets none from its name). The project config has the
     last word: an ignored rail is dropped and an override is set on every net it names.
     """
     by_net: dict[str, float] = {}
@@ -346,7 +347,7 @@ def build_rail_map(ctx: AnalysisContext, power_regulators: list[dict]) -> dict[s
                 by_net[out_rail] = v
                 reg["_output_rail_voltage_provenance"] = {"source": "sheet name", "voltage": v}
     for net_name in sorted(ctx.nets):
-        if net_name not in by_net and (ctx.is_power_net(net_name) or ctx.is_ground(net_name)):
+        if net_name not in by_net and (ctx.is_power_net(net_name, by_pins=False) or ctx.is_ground(net_name)):
             v = _estimate_rail_voltage(net_name)
             if v is not None:
                 by_net[net_name] = v
