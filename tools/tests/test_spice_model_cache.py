@@ -57,6 +57,20 @@ class FallbackDirTest(unittest.TestCase):
             self.assertTrue(Path(got).resolve().is_relative_to(Path(root).resolve()), got)
 
 
+class ProcessCacheCleanupTest(unittest.TestCase):
+    def test_fallback_dir_removed_at_exit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            code = ("import sys; sys.path.insert(0, %r); import spice_model_cache as m; "
+                    "p = m.resolve_cache_dir({}); p.mkdir(parents=True); "
+                    "(p / 'manifest.json').write_text('{}'); print(p.parent.parent)" % str(SPICE))
+            out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                                 timeout=30, check=True, env=dict(os.environ, TMPDIR=tmp)).stdout
+            printed = out.strip()
+            self.assertTrue(Path(printed).resolve().is_relative_to(Path(tmp).resolve()), printed)
+            self.assertFalse(os.path.exists(printed), printed)
+            self.assertEqual(os.listdir(tmp), [])
+
+
 class ManifestTest(unittest.TestCase):
     def test_manifest_write_is_atomic(self):
         with tempfile.TemporaryDirectory() as tmp:

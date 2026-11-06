@@ -183,5 +183,51 @@ class WorkdirTest(unittest.TestCase):
             self.assertEqual(os.listdir(target), [])
 
 
+class AutoWorkdirCleanupTest(unittest.TestCase):
+    """The temp folder a run creates for itself is removed at exit; a --workdir is kept."""
+
+    def _run(self, analysis, **kw):
+        import simulate_subcircuits as ss
+
+        def fake(cmd, **kwargs):
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        with mock.patch("spice_simulator.subprocess.run", side_effect=fake), \
+                mock.patch("spice_simulator.NgspiceBackend.find", return_value=FAKE_NGSPICE), \
+                mock.patch("simulate_subcircuits.atexit.register") as reg:
+            report = ss.simulate_subcircuits(analysis, **kw)
+        return report, reg
+
+    def test_auto_workdir_registered_for_removal(self):
+        with tempfile.TemporaryDirectory() as tmp, mock.patch("tempfile.tempdir", tmp):
+            analysis = json.load(open(_analysis(tmp), encoding="utf-8"))
+            report, reg = self._run(analysis)
+            reg.assert_any_call(shutil.rmtree, report["workdir"], True)
+
+    def test_given_workdir_not_registered(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            analysis = json.load(open(_analysis(tmp), encoding="utf-8"))
+            wd = os.path.join(tmp, "w")
+            report, reg = self._run(analysis, workdir=wd)
+            named = {str(a) for c in reg.call_args_list for a in c.args}
+            self.assertNotIn(wd, named)
+            self.assertNotIn(report["workdir"], named)
+            self.assertTrue(os.path.isdir(report["workdir"]))
+
+    @unittest.skipUnless(shutil.which("ngspice"), "ngspice not installed")
+    def test_cli_leaves_no_temp_folder(self):
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as tmp2:
+            out = os.path.join(tmp, "out.json")
+            env = {k: v for k, v in os.environ.items()
+                   if not k.startswith(("DIGIKEY_", "MOUSER_", "ELEMENT14_"))}
+            env["TMPDIR"] = tmp2
+            r = subprocess.run(
+                [sys.executable, str(SPICE / "simulate_subcircuits.py"), _analysis(tmp),
+                 "--offline", "--output", out], capture_output=True, text=True, env=env)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(list(Path(tmp2).glob("spice_sim_*")), [])
+            with open(out, encoding="utf-8") as f:
+                self.assertEqual(json.load(f)["simulation_results"][0]["status"], "pass")
+
+
 if __name__ == "__main__":
     unittest.main()

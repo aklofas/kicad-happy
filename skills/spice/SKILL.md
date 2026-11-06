@@ -70,7 +70,7 @@ python3 <skill-path>/scripts/simulate_subcircuits.py analysis.json --output sim_
 # Simulate specific types only
 python3 <skill-path>/scripts/simulate_subcircuits.py --analysis-dir analysis/ --types rc_filters,voltage_dividers
 
-# Keep simulation files for debugging in a new spice_sim_* folder inside the directory (default: <run>/spice_work/ when --analysis-dir is set, else a temp dir)
+# Keep simulation files for debugging in a new spice_sim_* folder inside the directory (default: <run>/spice_work/ when --analysis-dir is set, else a temp dir removed when the run ends)
 python3 <skill-path>/scripts/simulate_subcircuits.py --analysis-dir analysis/ --workdir ./spice_runs
 
 # Increase timeout for complex circuits (default: 5s per subcircuit)

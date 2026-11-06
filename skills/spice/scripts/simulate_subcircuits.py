@@ -23,10 +23,12 @@ Requires: ngspice (install: apt install ngspice / brew install ngspice)
 """
 
 import argparse
+import atexit
 import dataclasses
 import inspect
 import json
 import os
+import shutil
 import sys
 import tempfile
 import time
@@ -166,6 +168,8 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
     cleanup_workdir = False
     if workdir is None:
         workdir = tempfile.mkdtemp(prefix="spice_sim_")
+        # Removed at exit, not on return, so library callers can still read the benches
+        atexit.register(shutil.rmtree, workdir, True)
         cleanup_workdir = True
     else:
         if os.path.islink(workdir):

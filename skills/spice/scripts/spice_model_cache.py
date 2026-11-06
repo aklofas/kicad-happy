@@ -25,8 +25,10 @@ The model resolution cascade (get_model_for_part):
 Offline mode skips tiers 2-4.
 """
 
+import atexit
 import json
 import os
+import shutil
 import stat
 import tempfile
 from dataclasses import dataclass
@@ -59,8 +61,9 @@ def resolve_cache_dir(analysis_json, override_dir=None):
         2. beside the first source file the analysis JSON names
            ("file", or "inputs.source_files[0]"); a relative path counts only
            when that file exists from the current directory
-        3. one per-process temp directory, created on first use, so two
-           processes never share a manifest and no model leaks across projects
+        3. one per-process temp directory, created on first use and removed
+           when the process exits, so two processes never share a manifest and
+           no model leaks across projects
 
     simulate_subcircuits passes its workdir as override_dir when the analysis
     names no source file, or a relative one not found from the current
@@ -83,6 +86,7 @@ def resolve_cache_dir(analysis_json, override_dir=None):
 
     if _PROCESS_CACHE_DIR is None:
         _PROCESS_CACHE_DIR = Path(tempfile.mkdtemp(prefix="kicad-happy-spice-"))
+        atexit.register(shutil.rmtree, _PROCESS_CACHE_DIR, True)
     return _PROCESS_CACHE_DIR / "spice" / "models"
 
 
