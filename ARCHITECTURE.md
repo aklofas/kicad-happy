@@ -99,7 +99,7 @@ One row per module outside the packages. "Imports" lists only in-repo modules, a
 | `lookup_detectors.py` | datasheet-backed detectors over `lookup()` | `finding_schema`, `lookup_helpers` |
 | `lookup_helpers.py` | detector-side `lookup()` glue | `kicad_core`, `datasheet_types` |
 
-The twelve analyzer and consumer CLIs (`analyze_schematic`, `analyze_pcb`, `analyze_gerbers`, `analyze_thermal`, `cross_analysis`, `diff_analysis`, `what_if`, `lifecycle_audit`, `summarize_findings`, and outside this directory `analyze_emc`, `simulate_subcircuits`, `extract_parasitics`) define `main(argv=None) -> int` and take their shared flag declarations from `kicad_core/cli.py`. All twelve exit with `sys.exit(main())`. Each calls `kicad_core.cli.utf8_stdio()` first in its `__main__` block, which re-encodes stdout and stderr as UTF-8 when they are not; it sets the encoding only, not line endings.
+The twelve analyzer and consumer CLIs (`analyze_schematic`, `analyze_pcb`, `analyze_gerbers`, `analyze_thermal`, `cross_analysis`, `diff_analysis`, `what_if`, `lifecycle_audit`, `summarize_findings`, and outside this directory `analyze_emc`, `simulate_subcircuits`, `extract_parasitics`) define `main(argv=None) -> int` and take their shared flag declarations from `kicad_core/cli.py`. All twelve exit with `sys.exit(main())`. Each calls `kicad_core.cli.utf8_stdio()` first in its `__main__` block, which re-encodes stdout and stderr as UTF-8 when they are not, and writes LF line endings on every platform.
 
 ### `skills/emc/scripts/` (optional skill; imports the core only, through `_core_path`)
 

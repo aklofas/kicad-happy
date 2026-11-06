@@ -1,9 +1,11 @@
 """Every command-line script writes UTF-8 to a pipe under a legacy code page (Windows cp1252)."""
+import io
 import os
 import re
 import subprocess
 import sys
 import unittest
+from unittest import mock
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -53,6 +55,55 @@ class Cp1252Pipe(unittest.TestCase):
                 self.assertTrue("utf8_stdio()" in block or
                                 ("sys.stdout, sys.stderr" in block and "reconfigure(" in block),
                                 rel)
+
+
+class StdoutLineEndings(unittest.TestCase):
+    def _run(self, helper, encoding, text, newline="\r\n"):
+        sys.path.insert(0, str(REPO / "skills" / "kicad" / "scripts"))
+        try:
+            from kicad_core import cli
+        finally:
+            sys.path.pop(0)
+        buf = io.BytesIO()
+        w = io.TextIOWrapper(buf, encoding=encoding, newline=newline)
+        e = io.TextIOWrapper(io.BytesIO(), encoding=encoding, newline=newline)
+        with mock.patch.object(sys, "stdout", w), mock.patch.object(sys, "stderr", e):
+            getattr(cli, helper)()
+            print(text)
+            w.flush()
+        return buf.getvalue(), w
+
+    def test_crlf_stream_becomes_lf(self):
+        for helper in ("utf8_stdio", "utf8_text_stdout"):
+            with self.subTest(helper=helper):
+                self.assertEqual(self._run(helper, "utf-8", "a")[0], b"a\n")
+
+    def test_cp1252_crlf_stream_becomes_utf8_lf(self):
+        for helper in ("utf8_stdio", "utf8_text_stdout"):
+            with self.subTest(helper=helper):
+                self.assertEqual(self._run(helper, "cp1252", "\u03a9")[0], b"\xce\xa9\n")
+
+    def test_subprocess_stdout_is_lf(self):
+        code = ("import sys; sys.path.insert(0, %r); from kicad_core.cli import utf8_stdio; "
+                "utf8_stdio(); print('a')" % str(REPO / "skills" / "kicad" / "scripts"))
+        r = subprocess.run([sys.executable, "-c", code], capture_output=True, timeout=60)
+        self.assertEqual(r.stdout, b"a\n")
+
+    def test_lf_utf8_stream_unchanged(self):
+        out, w = self._run("utf8_stdio", "utf-8", "a", newline=None)
+        self.assertEqual(out, b"a\n")
+        self.assertEqual((w.encoding, w.errors), ("utf-8", "strict"))
+
+    def test_stream_without_reconfigure_is_left_alone(self):
+        sys.path.insert(0, str(REPO / "skills" / "kicad" / "scripts"))
+        try:
+            from kicad_core import cli
+        finally:
+            sys.path.pop(0)
+        with mock.patch.object(sys, "stdout", io.StringIO()), \
+                mock.patch.object(sys, "stderr", io.StringIO()):
+            cli.utf8_stdio()
+            cli.utf8_text_stdout()
 
 
 if __name__ == "__main__":
