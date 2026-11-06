@@ -96,6 +96,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Datasheet downloads: a server that stalls while sending headers no longer keeps its connection and a thread open after the download gives up.
 - The lifecycle audit no longer tells you to replace a part that no distributor returned (LC-004); it says to check the part number, and the credentials when no distributor answered at all.
 - The lifecycle audit looks up each part of an MPN field that lists alternatives (`1012, 1012C`, `LM358 / LM2904`) instead of searching for the whole field; part numbers that contain a slash (`BAV99/215`) are unchanged.
+- The lifecycle audit looks a part up by its DigiKey or Mouser part number from the schematic first, so a short MPN that the keyword search buries (BSS138) gets its real status instead of "unknown"; a part number that names a different part is ignored with a warning.
 
 ### Documentation
 

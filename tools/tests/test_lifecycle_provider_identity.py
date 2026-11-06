@@ -182,6 +182,85 @@ class RequestedPartIsReadTest(ProviderIdentityBase):
                          {"mouserPartNumber": "LM358DR", "partSearchOptions": "Exact"})
 
 
+class DistributorPartNumberTest(ProviderIdentityBase):
+    """A DigiKey or Mouser part number on the BOM line is asked first; a hit that is
+    another part is not an answer."""
+
+    def setUp(self):
+        super().setUp()
+        self.by_keyword = {}
+
+    def _urlopen(self, req, timeout=None):
+        if "digikey" in req.full_url and self.by_keyword:
+            self.requests.append(req)
+            key = json.loads(req.data)["Keywords"]
+            return _Body(json.dumps(self.by_keyword.get(key, {"Products": []})).encode())
+        return super()._urlopen(req, timeout)
+
+    def bom(self, **extra):
+        return {"bom": [dict({"references": ["Q1"], "mpn": "BSS138", "type": "transistor"},
+                             **extra)]}
+
+    @staticmethod
+    def dk_pn_product(mpn, pn, status="Active"):
+        return {"Products": [{"ManufacturerProductNumber": mpn, "DigiKeyProductNumber": pn,
+                              "ProductStatus": {"Status": status}, "Discontinued": False,
+                              "Parameters": []}]}
+
+    def test_digikey_pn_resolves_when_keyword_results_are_other_parts(self):
+        self.by_keyword = {"BSS138": dk("BSS138BK", "BSS138W", "BSS138PS"),
+                           "BSS138CT-ND": self.dk_pn_product("BSS138", "BSS138CT-ND")}
+        err = io.StringIO()
+        with mock.patch.object(sys, "stderr", err):
+            out = lifecycle_engine.audit_bom(self.bom(digikey="BSS138CT-ND"),
+                                             sources=["digikey"], delay=0)
+        f = out["findings"][0]
+        self.assertEqual((f["status"], f["rule_id"]), ("active", "LC-ACT"))
+        self.assertEqual(len(self.requests), 1)
+        self.assertIn("digikey: matched by DigiKey PN BSS138CT-ND", err.getvalue())
+
+    def test_part_without_a_pn_makes_the_same_requests_as_before(self):
+        self.by_keyword = {"BSS138": dk("BSS138BK")}
+        lifecycle_engine.audit_bom(self.bom(), sources=["digikey"], delay=0)
+        self.assertEqual([json.loads(r.data) for r in self.requests],
+                         [{"Keywords": "BSS138", "Limit": 3}])
+
+    def test_stale_pn_naming_another_part_is_ignored(self):
+        self.by_keyword = {"BSS138CT-ND": self.dk_pn_product("2N7002", "BSS138CT-ND")}
+        err = io.StringIO()
+        with mock.patch.object(sys, "stderr", err):
+            out = lifecycle_engine.audit_bom(self.bom(digikey="BSS138CT-ND"),
+                                             sources=["digikey"], delay=0)
+        self.assertEqual(out["findings"][0]["rule_id"], "LC-004")
+        self.assertIn("PN BSS138CT-ND is 2N7002, not BSS138; PN ignored", err.getvalue())
+
+    def test_pn_miss_falls_back_to_the_mpn_search(self):
+        self.by_keyword = {"BSS138": dk("BSS138", status="Obsolete")}
+        out = lifecycle_engine.audit_bom(self.bom(digikey="BSS138CT-ND"),
+                                         sources=["digikey"], delay=0)
+        self.assertEqual(out["findings"][0]["rule_id"], "LC-001")
+        self.assertEqual([json.loads(r.data)["Keywords"] for r in self.requests],
+                         ["BSS138CT-ND", "BSS138"])
+
+    def test_pn_is_not_applied_to_a_field_of_alternatives(self):
+        self.by_keyword = {"BSS138CT-ND": self.dk_pn_product("BSS138", "BSS138CT-ND")}
+        lifecycle_engine.audit_bom(self.bom(mpn="BSS138, BSS84", digikey="BSS138CT-ND"),
+                                   sources=["digikey"], delay=0)
+        self.assertEqual([json.loads(r.data)["Keywords"] for r in self.requests],
+                         ["BSS138", "BSS84"])
+
+    def test_mouser_pn_search_and_identity(self):
+        self.bodies["mouser"] = {"SearchResults": {"Parts": [
+            {"ManufacturerPartNumber": "BSS138", "MouserPartNumber": "512-BSS138",
+             "LifecycleStatus": "End of Life", "IsDiscontinued": "false",
+             "ProductAttributes": []}]}}
+        got = lifecycle_engine.query_lifecycle_mouser_pn("512-BSS138", "BSS138")
+        self.assertEqual(got["status"], "End of Life")
+        self.assertEqual(json.loads(self.requests[-1].data)["SearchByPartRequest"],
+                         {"mouserPartNumber": "512-BSS138", "partSearchOptions": "Exact"})
+        self.assertIsNone(lifecycle_engine.query_lifecycle_mouser_pn("512-BSS138", "2N7002"))
+
+
 class LcscCurrentShapeTest(ProviderIdentityBase):
     def test_row_without_extra_is_read(self):
         self.bodies["jlcsearch"] = lcsc("LM358DR")
