@@ -1,7 +1,6 @@
 """Schematic audits (annotation, labels, PWR_FLAG, footprint filters, sourcing, datasheet coverage, generic transistor symbols, grounds, bus topology, wire geometry, pin coverage, instance and hierarchical-label consistency)."""
 from __future__ import annotations
 
-import json
 import math
 import re
 from pathlib import (

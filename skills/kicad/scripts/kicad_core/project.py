@@ -1,5 +1,4 @@
 """KiCad project discovery and project-file readers (kicad_core): the project directory an analysis JSON names, .kicad_pro, .kicad_dru, lib tables, root-schematic resolution."""
-import json
 import os
 import re
 from collections.abc import Iterable

@@ -1,6 +1,6 @@
 """A JSON input nested deeper than Python can parse is malformed input: the CLIs give it the
 error and exit code a syntactically broken file gets, never a traceback."""
-import json, os, subprocess, sys, tempfile, unittest
+import os, subprocess, sys, tempfile, unittest
 from pathlib import Path
 from tools.tests._fixtures import fixture_path, have
 
@@ -15,9 +15,14 @@ DEEP = "[" * 100000
 
 
 def _run(args):
+    with tempfile.TemporaryDirectory() as cwd:
+        return _run_in(args, cwd)
+
+
+def _run_in(args, cwd):
     env = {k: v for k, v in os.environ.items() if not k.endswith(("_API_KEY", "_CLIENT_SECRET"))}
     return subprocess.run([sys.executable, *map(str, args)], capture_output=True, text=True,
-                          timeout=120, env=env)
+                          timeout=120, env=env, cwd=cwd)
 
 
 class CliDeepJsonTest(unittest.TestCase):
