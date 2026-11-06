@@ -506,6 +506,8 @@ def extract_footprints(root: list, diagnostics: list | None = None) -> list[dict
             for pn in pad:
                 if isinstance(pn, list) and pn[:1] == ["property"]:
                     for t in pn[1:]:
+                        if not isinstance(t, str):
+                            continue
                         if t in _PAD_PROPERTIES:
                             prop = t
                         elif t == "none":

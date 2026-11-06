@@ -127,6 +127,10 @@ class PadPropertyAndFootprintVersion(unittest.TestCase):
         self.assertEqual(self._pad_prop(" (property pad_prop_bga) (property pad_prop_testpoint)"),
                          "pad_prop_testpoint")
 
+    def test_nested_list_token_is_skipped(self):
+        self.assertEqual(self._pad_prop(" (property (x) pad_prop_bga)"), "pad_prop_bga")
+        self.assertIsNone(self._pad_prop(" (property (x))"))
+
     def test_none_clears_the_property(self):
         self.assertIsNone(self._pad_prop(" (property pad_prop_bga none)"))
 
