@@ -334,8 +334,12 @@ _TOKEN_RE = re.compile(
 # a ± set apart from the number it precedes (a space or a wrapped line)
 _PLUSMINUS_GAP_RE = re.compile(r"±\s+(?=\.?[0-9])")
 _LEADING_POINT_RE = re.compile(r"(?<![^\s±-])\.(?=[0-9])")
-# an exponent the PDF text splits ("1e- 3", "1 e-3")
-_EXP_GAP_RE = re.compile(r"(?<=[0-9])[ \t]*e[ \t]*-\s*(?=[0-9])")
+# An exponent the PDF text splits ("1e- 3", "1 e-3"). The digits before the e
+# must be a number of their own: "MAX3232E -40" is a part number and a value.
+_EXP_BASE = r"(?<![^\W_])[0-9]*\.?[0-9]+"
+_EXP_GAP_RE = re.compile(rf"({_EXP_BASE})[ \t]*e[ \t]*-\s*(?=[0-9])")
+# a part-number token such as "max3232e-40" is not an exponent
+_PARTNO_EXP_RE = re.compile(r"([^\W\d_][^\W_]*[0-9]e)-(?=[0-9])")
 
 
 def _norm_text(s):
@@ -345,15 +349,17 @@ def _norm_text(s):
     s = _DASH_RE.sub("-", s)
     s = _PLUSMINUS_RE.sub("±", s).replace("≤", "<=").replace("≥", ">=")
     s = _PLUSMINUS_GAP_RE.sub("±", s)
-    s = _EXP_GAP_RE.sub("e-", s)
+    s = _EXP_GAP_RE.sub(r"\1e-", s)
     # ".5" is written "0.5" so both spellings compare equal
-    return _LEADING_POINT_RE.sub("0.", " ".join(_TOKEN_RE.findall(s)))
+    s = _LEADING_POINT_RE.sub("0.", " ".join(_TOKEN_RE.findall(s)))
+    return _PARTNO_EXP_RE.sub(r"\1 -", s)
 
 
 def _squash(s):
     # Two numbers side by side stay apart ("0.9 1.0" is not "0.91.0"), and
     # so does a ± set apart from a word ("± x" is not "±x").
-    return re.sub(r"(?<=[0-9]) (?=[-±0-9])|(?<=±) ", "|", _norm_text(s)).replace(" ", "")
+    return re.sub(r"(?<=[0-9]) (?=[-±0-9])|(?<=[0-9]e) (?=-)|(?<=±) ", "|",
+                  _norm_text(s)).replace(" ", "")
 
 
 # a whole run of dots is one marker, so a dot leader leaves no stray point

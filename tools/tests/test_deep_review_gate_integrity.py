@@ -130,6 +130,10 @@ QUOTE_CASES = [
     ("-3 A", "1e-\n3 A", False, "negative value inside a wrapped exponent"),
     ("-3 A", "1e-3 A", False, "negative value inside an exponent"),
     ("-40 to 85", "range -40 to 85", True, "genuine negative range"),
+    ("-40°C to +85°C", "MAX3232E -40°C to +85°C", True, "range after a part number ending in E"),
+    ("-40 to 85", "SP3232E -40 to 85", True, "negative start after a part number ending in E"),
+    ("-40", "MAX3232E-40", True, "negative value against a part number ending in E"),
+    ("2.2e-12 F", "cap 2.2e- 12 F", True, "decimal mantissa split exponent"),
     ("Type 1e - 3 pins", "Type 1e - 3 pins", True, "spaced e and dash"),
 ]
 
