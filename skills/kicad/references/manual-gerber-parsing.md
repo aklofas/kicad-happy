@@ -144,6 +144,8 @@ for line in lines:
                 y_max = max(y_max, py)
 ```
 
+This snippet handles straight draws and flashes only: its regex does not match arc lines (`X...Y...I...J...D01*`) or lines with a `G01` prefix, so arcs need the swept extremes computed as `analyze_gerbers.py` does.
+
 **Key operation codes:**
 
 | Code | Name | Action |

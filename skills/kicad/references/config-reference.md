@@ -92,7 +92,7 @@ Each entry:
     "components": ["U3"],
     "reason": "Larger switch-node copper accepted for heat spreading; layout follows the vendor reference design"
   },
-  // Suppress only for specific nets
+  // Suppress only for a specific connector
   {
     "rule_id": "IO-001",
     "components": ["J1"],
@@ -310,8 +310,8 @@ Production consumer electronics board targeting the EU market. LCSC primary supp
   "suppressions": [
     {
       "rule_id": "DC-003",
-      "components": ["TP*"],
-      "reason": "Test points intentionally unpopulated in production build"
+      "components": ["C12"],
+      "reason": "C12 sits beside the board-edge connector where no via fits within 3 mm"
     },
     {
       "rule_id": "IO-001",
