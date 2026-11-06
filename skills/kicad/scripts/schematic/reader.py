@@ -15,6 +15,7 @@ from kicad_core.classify import classify_component, classify_connector, classify
 from kicad_core.fields import DIGIKEY_FIELD_ALIASES, MANDATORY_STRIP, pick_field, pick_mpn
 from kicad_core.instances import (inline_instances, instance_variants, resolve_instance,
                                   tilde_is_empty, variant_overrides)
+from kicad_core.project import expand_sheet_file
 from kicad_core.model import Component, Pin, SheetData
 from kicad_core.textvars import resolve_text_vars, unescape_text_vars
 
@@ -1326,7 +1327,7 @@ def parse_single_sheet(path: str, instance_uuid: str = "",
         # KiCad 7+: (property "Sheet file" "filename.kicad_sch")
         sheet_file = sheet_property(sheet, "SHEETFILE")
         if sheet_file:
-            sub_path = base_dir / sheet_file
+            sub_path = base_dir / expand_sheet_file(sheet_file, path)
             if sub_path.exists():
                 sheet_uuid = get_value(sheet, "uuid") or ""
                 sub_sheet_paths.append((str(sub_path), sheet_uuid))

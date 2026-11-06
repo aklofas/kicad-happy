@@ -4,6 +4,7 @@ import os
 import re
 from pathlib import Path
 
+from kicad_core.textvars import expand_text_vars
 from kicad_core.sexp import parse as _sexp_parse, parse_file as _sexp_parse_file, find_all, find_first, get_value
 
 
@@ -277,6 +278,41 @@ def declared_top_level_sheets(pro_path: str | None, pro: dict | None = None) -> 
     return sheets
 
 
+def expand_sheet_file(name: str, sch_path: str, pro: dict | None = None) -> str:
+    """A (sheet) block's file name with the project's text variables expanded, as KiCad opens
+    it; an unknown ``${TOKEN}`` stays as written. *pro* defaults to the project of *sch_path*."""
+    if "${" not in name:
+        return name
+    if pro is None:
+        pro = load_kicad_pro(sch_path) or {}
+    pro_file = find_project_settings_file(sch_path, '.kicad_pro')
+    stem = os.path.basename(pro_file)[:-len('.kicad_pro')] if pro_file else ""
+    variables = pro.get('text_variables')
+    variables = variables if isinstance(variables, dict) else {}
+
+    def resolve(token):
+        if token == "PROJECTNAME":
+            return stem
+        value = variables.get(token)
+        return None if value is None else str(value)
+
+    return expand_text_vars(name, resolve)
+
+
+def _expanded_sheet_refs(sch_path: str, content: str) -> set[str]:
+    """Absolute paths of the sheet files *sch_path* names through project text variables."""
+    refs = set()
+    for m in _SHEETFILE_VAR.finditer(content):
+        expanded = expand_sheet_file(m.group(1), sch_path)
+        if "${" not in expanded:
+            refs.add(os.path.normcase(os.path.abspath(
+                os.path.join(os.path.dirname(os.path.abspath(sch_path)), expanded))))
+    return refs
+
+
+_SHEETFILE_VAR = re.compile(r'\(property\s+"Sheet ?file"\s+"([^"]*\$\{[^"]*)"', re.IGNORECASE)
+
+
 def is_referenced_as_child(file_path: str) -> bool:
     """Check if a .kicad_sch is referenced as a child sheet by a sibling.
 
@@ -299,7 +335,7 @@ def is_referenced_as_child(file_path: str) -> bool:
                     with open(sibling, 'r', encoding='utf-8',
                               errors='replace') as f:
                         content = f.read()
-                    if basename in content:
+                    if basename in content or os.path.normcase(abs_path) in _expanded_sheet_refs(sibling, content):
                         return True
                 except OSError:
                     continue
@@ -331,6 +367,8 @@ def _root_references_target(root_sch: str, target: str) -> bool:
         for needle in (rel_path, rel_path.replace(os.sep, '/'), basename):
             if needle in content:
                 return True
+        if os.path.normcase(target_abs) in _expanded_sheet_refs(root_sch, content):
+            return True
     except OSError:
         pass
     return False
@@ -395,7 +433,8 @@ def discover_root_schematic(target_path: str) -> str | None:
         try:
             with open(candidate, 'r', encoding='utf-8', errors='replace') as f:
                 content = f.read()
-            if target_basename in content:
+            if (target_basename in content
+                    or os.path.normcase(target) in _expanded_sheet_refs(candidate, content)):
                 return candidate
         except OSError:
             continue

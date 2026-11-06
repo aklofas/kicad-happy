@@ -297,6 +297,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `edit_properties.py` and `sync_datasheet_urls.py` look for the lock file KiCad really writes (`~name.kicad_sch.lck`), so the warning that the schematic is open in KiCad now appears; they looked for `name.kicad_sch.lck`, which KiCad never creates.
 - A distributor's answer (LCSC, DigiKey, element14, Mouser) now gives a SPICE model only when its part number is the one requested, ignoring case, spaces and `-_/,()`; before, LCSC and DigiKey accepted any part sharing the first six characters, so `OPA2335` could take the numbers of `OPA2333AIDR`, and element14 and Mouser checked nothing. A Value such as `LM358`, where the distributor's first hit is `LM358DR`, no longer gets a distributor model and falls to the later tiers or the ideal model. Models cached before are kept.
 - OV-001 compares only supply pins with the datasheet's recommended supply range; an enable input tied to ground (the LM2596's ON/OFF) is no longer told to raise GND to 4.5 V.
+- A sub-sheet whose file name uses a project text variable (for example `${BLOCK_DIR}/amp.kicad_sch` or `${PROJECTNAME}_sub.kicad_sch`) is read, and project and root discovery follow it, instead of the sheet being dropped without a message. Only the project's text variables and `${PROJECTNAME}` are expanded, as KiCad does; an unknown variable or an environment variable stays literal.
 
 ### Documentation
 

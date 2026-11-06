@@ -12,7 +12,7 @@ from pathlib import Path
 
 from kicad_core.diagnostics import record
 from kicad_core.sexp import find_all, get_at, get_value, net_name_escape, parse_file
-from kicad_core.project import (declared_top_level_sheets, empty_input_error,
+from kicad_core.project import (declared_top_level_sheets, empty_input_error, expand_sheet_file,
                                  find_project_settings_file, load_kicad_pro)
 from schematic.reader import (
     TextVarRegistry,
@@ -66,7 +66,7 @@ def _sheet_list(root_path: str, root_tree: list) -> dict:
         for _x, _y, suuid, fname in sorted(kids, key=lambda k: k[:3]):
             if not fname:
                 continue
-            sub = str((Path(file_path).parent / fname).resolve())
+            sub = str((Path(file_path).parent / expand_sheet_file(fname, file_path)).resolve())
             if sub in ancestors or not os.path.isfile(sub):
                 continue
             if sub not in trees:
