@@ -393,8 +393,7 @@ class MouserScrapePolicyTest(unittest.TestCase):
         self.requests = _FakeRequests({})
         for patch in (mock.patch.object(download, "_resolve", return_value=PUBLIC),
                       mock.patch.object(download, "_allow_private_hosts", return_value=False),
-                      mock.patch.object(download, "_requests", self.requests),
-                      mock.patch.object(provider_mouser, "_requests", self.requests, create=True)):
+                      mock.patch.object(download, "_requests", self.requests)):
             patch.start()
             self.addCleanup(patch.stop)
 
@@ -617,6 +616,7 @@ class TrickleDeadlineTest(unittest.TestCase):
     @unittest.skipIf(download._PinnedAdapter is None, "requests cannot pin addresses")
     def test_abandoned_header_trickle_releases_a_pinned_connection(self):
         self._abandon(pinned=True)
+
 
 class _FakeRoute:
     """A Playwright route for ``url``; ``chain`` answers each fetched URL with
