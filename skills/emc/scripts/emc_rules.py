@@ -1235,6 +1235,22 @@ def _has_spread_spectrum(value: str) -> bool:
 # Category 5: Clock Routing Quality
 # ---------------------------------------------------------------------------
 
+def _outer_layer_ratio(layer_dist: Dict) -> Optional[float]:
+    """Share of a net's routed length on F.Cu/B.Cu; segment counts when no length is given."""
+    outer = total = 0.0
+    for lname, ldata in layer_dist.items():
+        if isinstance(ldata, dict):
+            amount = ldata.get('length_mm', ldata.get('segments', 1))
+        else:
+            amount = ldata
+        if not isinstance(amount, (int, float)):
+            continue
+        total += amount
+        if lname in ('F.Cu', 'B.Cu'):
+            outer += amount
+    return outer / total if total > 0 else None
+
+
 def check_clock_routing(pcb: Dict, schematic: Optional[Dict] = None) -> List[Dict]:
     """Check clock signal routing quality for EMC."""
     findings = []
@@ -1276,17 +1292,7 @@ def check_clock_routing(pcb: Dict, schematic: Optional[Dict] = None) -> List[Dic
             continue
 
         # Check if clock is routed on outer layers
-        outer_segs = 0
-        total_segs = 0
-        for lname, ldata in layer_dist.items():
-            seg_count = ldata.get('segments', ldata) if isinstance(ldata, dict) else ldata
-            if isinstance(seg_count, dict):
-                seg_count = seg_count.get('segments', 1)
-            total_segs += seg_count
-            if lname in ('F.Cu', 'B.Cu'):
-                outer_segs += seg_count
-
-        outer_ratio = outer_segs / total_segs if total_segs > 0 else 0
+        outer_ratio = _outer_layer_ratio(layer_dist) or 0
 
         if has_inner_layers and outer_ratio > 0.5:
             findings.append(_make_finding(
@@ -2558,19 +2564,9 @@ def check_diff_pair_layer(pcb: Optional[Dict],
             if not layer_dist:
                 continue
 
-            outer_segs = 0
-            total_segs = 0
-            for lname, ldata in layer_dist.items():
-                seg_count = ldata.get('segments', ldata) if isinstance(ldata, dict) else ldata
-                if isinstance(seg_count, dict):
-                    seg_count = seg_count.get('segments', 1)
-                total_segs += seg_count
-                if lname in ('F.Cu', 'B.Cu'):
-                    outer_segs += seg_count
-
-            if total_segs <= 0:
+            outer_ratio = _outer_layer_ratio(layer_dist)
+            if outer_ratio is None:
                 continue
-            outer_ratio = outer_segs / total_segs
 
             if outer_ratio > 0.5:
                 findings.append(_make_finding(
