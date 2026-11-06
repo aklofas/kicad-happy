@@ -579,7 +579,7 @@ class RefusedCopyHonestyTest(unittest.TestCase):
                 os.makedirs(os.path.join(ad, "r1"))
                 os.symlink(outside, os.path.join(ad, "r1", "schematic.json"))
 
-            with mock.patch.object(analysis_cache, "generate_run_folder_name", return_value="r1"):
+            with mock.patch.object(analysis_cache, "_new_run_dir", return_value="r1"):
                 ad = os.path.join(tmp, "analysis")
                 plant(ad)
                 with redirect_stderr(io.StringIO()):
@@ -721,6 +721,113 @@ class HostileManifestTest(unittest.TestCase):
             Path(tmp, "merged", "r1", "schematic.json").write_text("[" * 100000, encoding="utf-8")
             result, _ = self._err(analysis_cache.reviewed_overlay, os.path.join(run, "schematic.json"))
             self.assertIsNone(result)
+
+class ParallelRunTest(unittest.TestCase):
+    def _sources(self, tmp):
+        sch = os.path.join(tmp, "x.kicad_sch")
+        pcb = os.path.join(tmp, "x.kicad_pcb")
+        Path(sch).write_text("s", encoding="utf-8")
+        Path(pcb).write_text("p", encoding="utf-8")
+        return sch, pcb
+
+    def test_parallel_primary_writes_share_one_run(self):
+        import threading
+        import output_io
+        decide, save = threading.Barrier(2), threading.Barrier(2)
+        real_decide, real_save = output_io.should_create_new_run, analysis_cache.save_manifest
+
+        def meet(barrier):
+            try:
+                barrier.wait(timeout=0.5)
+            except threading.BrokenBarrierError:
+                pass
+
+        def slow_decide(*a, **k):
+            meet(decide)
+            return real_decide(*a, **k)
+
+        def slow_save(*a, **k):
+            meet(save)
+            return real_save(*a, **k)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            ad = os.path.join(tmp, "analysis")
+            sch, pcb = self._sources(tmp)
+            errors = []
+
+            def run(analyzer, src):
+                try:
+                    output_io.write_primary_run(ad, json.dumps({"analyzer_type": analyzer}),
+                                                analyzer=analyzer, source_path=src,
+                                                script_name="x.py")
+                except BaseException as exc:  # surfaced in the main thread
+                    errors.append(exc)
+
+            with mock.patch.object(analysis_cache, "generate_run_folder_name", return_value="R"), \
+                    mock.patch.object(output_io, "should_create_new_run", slow_decide), \
+                    mock.patch.object(analysis_cache, "save_manifest", slow_save), \
+                    redirect_stderr(io.StringIO()):
+                threads = [threading.Thread(target=run, args=("schematic", sch)),
+                           threading.Thread(target=run, args=("pcb", pcb))]
+                for t in threads:
+                    t.start()
+                for t in threads:
+                    t.join()
+            self.assertEqual(errors, [])
+            runs = [n for n in os.listdir(ad) if os.path.isdir(os.path.join(ad, n))]
+            self.assertEqual(runs, ["R"])
+            manifest = analysis_cache.load_manifest(ad)
+            outputs = manifest["runs"][manifest["current"]]["outputs"]
+            self.assertEqual(sorted(outputs), ["pcb", "schematic"])
+            self.assertFalse(os.path.lexists(os.path.join(ad, ".manifest.lock")))
+
+    def test_existing_generated_name_not_reused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ad = os.path.join(tmp, "analysis")
+            os.makedirs(os.path.join(ad, "R"))
+            Path(ad, "R", "x.txt").write_text("keep", encoding="utf-8")
+            with mock.patch.object(analysis_cache, "generate_run_folder_name", return_value="R"):
+                rid = analysis_cache.create_run(ad, _outputs(tmp), {}, {})
+            self.assertEqual(rid, "R-2")
+            self.assertEqual(os.listdir(os.path.join(ad, "R")), ["x.txt"])
+            self.assertTrue(os.path.isfile(os.path.join(ad, "R-2", "schematic.json")))
+
+    def test_stale_lock_broken(self):
+        import output_io
+        with tempfile.TemporaryDirectory() as tmp:
+            ad = os.path.join(tmp, "analysis")
+            os.makedirs(ad)
+            lock = os.path.join(ad, ".manifest.lock")
+            Path(lock).write_text("", encoding="utf-8")
+            sch, _ = self._sources(tmp)
+            err = io.StringIO()
+            with mock.patch.object(analysis_cache, "_LOCK_STALE_S", 0.1), redirect_stderr(err):
+                output_io.write_primary_run(ad, json.dumps({"analyzer_type": "schematic"}),
+                                            analyzer="schematic", source_path=sch,
+                                            script_name="x.py")
+            self.assertIn("stale lock", err.getvalue())
+            self.assertIn(lock, err.getvalue())
+            self.assertIn("Analysis cached", err.getvalue())
+            self.assertFalse(os.path.lexists(lock))
+
+    def test_derived_write_holds_the_lock(self):
+        import output_io
+        with tempfile.TemporaryDirectory() as tmp:
+            ad = os.path.join(tmp, "analysis")
+            os.makedirs(ad)
+            entered = []
+            real = analysis_cache.overwrite_current
+
+            def spy(*a, **k):
+                entered.append(os.path.lexists(os.path.join(ad, ".manifest.lock")))
+                return real(*a, **k)
+
+            with mock.patch.object(output_io, "overwrite_current", spy), \
+                    redirect_stderr(io.StringIO()):
+                path = output_io.write_derived_output(ad, "{}", analyzer="thermal")
+            self.assertEqual(entered, [True])
+            self.assertTrue(os.path.isfile(path))
+            self.assertFalse(os.path.lexists(os.path.join(ad, ".manifest.lock")))
 
 
 def stat_isreg(path):

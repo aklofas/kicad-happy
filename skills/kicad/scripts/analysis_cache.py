@@ -20,6 +20,8 @@ import shutil
 import stat
 import sys
 import tempfile
+import time
+from contextlib import contextmanager
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -263,6 +265,56 @@ def save_manifest(analysis_dir: str, manifest: Dict[str, Any]) -> None:
                       follow_symlinks=False, keep_mode=not owner_only)
 
 
+_LOCK_FILENAME = '.manifest.lock'
+_LOCK_POLL_S = 0.05
+_LOCK_STALE_S = 30.0
+
+
+@contextmanager
+def manifest_lock(analysis_dir: str):
+    """Hold analysis/.manifest.lock for one read-decide-write of the manifest.
+
+    The lock is the file's existence (created with O_EXCL and closed at once, so Windows can
+    remove it). A lock still there after _LOCK_STALE_S is taken as left by a crashed run: it
+    is removed with a warning and taken over. Not reentrant: create_run and overwrite_current
+    do not take it, their callers do.
+    """
+    os.makedirs(analysis_dir, exist_ok=True)
+    path = os.path.join(analysis_dir, _LOCK_FILENAME)
+    deadline = time.monotonic() + _LOCK_STALE_S
+    held = False
+    while True:
+        try:
+            os.close(os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+            held = True
+            break
+        except FileExistsError:
+            if time.monotonic() < deadline:
+                time.sleep(_LOCK_POLL_S)
+                continue
+        except OSError as exc:
+            record(None, "analysis_cache.manifest_lock", exc, "manifest written without the lock")
+            break
+        try:
+            os.unlink(path)
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            record(None, "analysis_cache.manifest_lock", exc, "manifest written without the lock")
+            break
+        record(None, "analysis_cache.manifest_lock",
+               TimeoutError(f"stale lock {path} held for over {_LOCK_STALE_S:g} s"), "lock removed")
+        deadline = time.monotonic() + _LOCK_STALE_S
+    try:
+        yield
+    finally:
+        if held:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+
+
 # ---------------------------------------------------------------------------
 # Source file hashing
 # ---------------------------------------------------------------------------
@@ -446,6 +498,21 @@ def _note_dropped(filename: str, upstream: str) -> None:
           f"re-run its analyzer", file=sys.stderr)
 
 
+def _new_run_dir(analysis_dir: str, base: str) -> str:
+    """Create a run folder that did not exist, named *base*, else *base*-2, *base*-3, ...;
+    return its name. A folder another run made between the name check and here is never
+    shared."""
+    os.makedirs(analysis_dir, exist_ok=True)
+    name, suffix = base, 1
+    while True:
+        try:
+            os.mkdir(os.path.join(analysis_dir, name))
+            return name
+        except FileExistsError:
+            suffix += 1
+            name = f'{base}-{suffix}'
+
+
 def create_run(analysis_dir: str,
                outputs_dir: str,
                source_hashes: Dict[str, str],
@@ -472,10 +539,11 @@ def create_run(analysis_dir: str,
     """
     manifest = load_manifest(analysis_dir)
     if run_id is None:
-        run_id = generate_run_folder_name(analysis_dir)
-
-    run_dir = os.path.join(analysis_dir, run_id)
-    os.makedirs(run_dir, exist_ok=True)
+        run_id = _new_run_dir(analysis_dir, generate_run_folder_name(analysis_dir))
+        run_dir = os.path.join(analysis_dir, run_id)
+    else:
+        run_dir = os.path.join(analysis_dir, run_id)
+        os.makedirs(run_dir, exist_ok=True)
 
     # Copy forward outputs from previous current run. Per-file staleness
     # check: a carried-forward output is stale only if *its* source files
