@@ -280,13 +280,14 @@ def declared_top_level_sheets(pro_path: str | None, pro: dict | None = None) -> 
 
 def expand_sheet_file(name: str, sch_path: str, pro: dict | None = None) -> str:
     """A (sheet) block's file name with the project's text variables expanded, as KiCad opens
-    it; an unknown ``${TOKEN}`` stays as written. *pro* defaults to the project of *sch_path*."""
+    it; an unknown ``${TOKEN}``, and ``${PROJECTNAME}`` when no project file is found, stays as
+    written. *pro* defaults to the project of *sch_path*."""
     if "${" not in name:
         return name
     if pro is None:
         pro = load_kicad_pro(sch_path) or {}
     pro_file = find_project_settings_file(sch_path, '.kicad_pro')
-    stem = os.path.basename(pro_file)[:-len('.kicad_pro')] if pro_file else ""
+    stem = os.path.basename(pro_file)[:-len('.kicad_pro')] if pro_file else None
     variables = pro.get('text_variables')
     variables = variables if isinstance(variables, dict) else {}
 

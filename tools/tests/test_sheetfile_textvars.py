@@ -102,6 +102,12 @@ class SheetFileTextVarsTest(unittest.TestCase):
                 else:
                     os.environ["ENVDIR"] = old
 
+    def test_projectname_without_project_file_stays_literal(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            sch = os.path.join(tmp, "amp.kicad_sch")
+            self.assertEqual(expand_sheet_file("${PROJECTNAME}/sub.kicad_sch", sch),
+                             "${PROJECTNAME}/sub.kicad_sch")
+
     def test_plain_name_is_unchanged(self):
         self.assertEqual(expand_sheet_file("a/b.kicad_sch", "/nonexistent/x.kicad_sch"),
                          "a/b.kicad_sch")
