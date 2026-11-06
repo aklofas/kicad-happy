@@ -5,8 +5,9 @@ Handles manufacturer-specific quirks:
 - TI: DigiKey returns JS-redirect URLs; this script extracts the direct PDF URL
 - Protocol-relative URLs (//mm.digikey.com/...): adds https: prefix
 - Microchip: Redirects to login; uses alternative URL patterns as fallback
-- Various manufacturers that block bare urllib: sends a browser User-Agent
-  (requests, with HTTP/2, is used only when datasheets.allow_private_hosts is on)
+- Various manufacturers that block bare urllib: uses requests library with
+  proper User-Agent (some sites, such as analog.com, time out over urllib but
+  answer requests)
 
 Usage:
     python3 fetch_datasheet_digikey.py <url> [--output <path>]
@@ -16,8 +17,8 @@ The --search mode requires DIGIKEY_CLIENT_ID and DIGIKEY_CLIENT_SECRET
 environment variables.
 
 Dependencies:
-    - requests (pip install requests) — optional; downloads use it only when
-      datasheets.allow_private_hosts is on, otherwise urllib (some sites may fail)
+    - requests (pip install requests) — preferred, handles all manufacturer sites
+    - Falls back to urllib if requests is not installed (some sites may fail)
 
 Exit codes:
     0 = success (PDF downloaded)

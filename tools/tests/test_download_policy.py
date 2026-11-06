@@ -150,12 +150,9 @@ class DownloadPolicyTest(unittest.TestCase):
     def _resolve(host):
         return {"intranet.example": ["10.1.2.3"]}.get(host, PUBLIC)
 
-    def _download(self, url, *, requests=None, urllib_fn=None, playwright=None, handlers=None,
-                  allow_private=False):
-        """``allow_private`` runs ``requests`` first, the only order that uses it."""
+    def _download(self, url, *, requests=None, urllib_fn=None, playwright=None, handlers=None):
         patches = [mock.patch.object(download, "_requests", requests),
-                   mock.patch.object(download, "_sync_playwright", playwright),
-                   mock.patch.object(download, "_allow_private_hosts", return_value=allow_private)]
+                   mock.patch.object(download, "_sync_playwright", playwright)]
         if urllib_fn is not None:
             patches.append(mock.patch.object(download, "_download_urllib", urllib_fn))
         if handlers is not None:
@@ -185,29 +182,14 @@ class DownloadPolicyTest(unittest.TestCase):
         self.assertEqual(seen, ["https://example.com/x.pdf"])
         self.assertEqual(os.listdir(self.dir.name), [])
 
-    def test_default_policy_skips_requests(self):
-        # requests resolves the host again when it connects, so only the pinned urllib runs.
-        fake = _FakeRequests({
-            "https://example.com/x.pdf": lambda: _FakeRequestsResponse(200, chunks=[PDF])})
-        seen = []
-        handlers = _with_fake_urllib_handler(
-            _urllib_handler({"https://example.com/x.pdf": (200, None, PDF)}, seen))
-        self.assertTrue(self._download("https://example.com/x.pdf", requests=fake,
-                                       handlers=handlers, playwright=_fail))
-        self.assertEqual(fake.calls, [])
-        self.assertEqual(seen, ["https://example.com/x.pdf"])
-        os.remove(self.out)
-        self.assertTrue(self._download("https://example.com/x.pdf", requests=fake,
-                                       urllib_fn=_fail, playwright=_fail, allow_private=True))
-        self.assertEqual([u for u, _ in fake.calls], ["https://example.com/x.pdf"])
-
-    def test_requests_redirect_to_another_scheme_refused(self):
+    def test_requests_redirect_to_private_refused(self):
         fake = _FakeRequests({
             "https://example.com/x.pdf":
-                lambda: _FakeRequestsResponse(302, {"Location": "file:///etc/passwd"}),
+                lambda: _FakeRequestsResponse(302, {"Location": "http://127.0.0.1/x.pdf"}),
+            "http://127.0.0.1/x.pdf": lambda: _FakeRequestsResponse(200, chunks=[PDF]),
         })
         self.assertFalse(self._download("https://example.com/x.pdf", requests=fake,
-                                        urllib_fn=_fail, playwright=_fail, allow_private=True))
+                                        urllib_fn=_fail, playwright=_fail))
         self.assertEqual([u for u, _ in fake.calls], ["https://example.com/x.pdf"])
         self.assertIs(fake.calls[0][1]["allow_redirects"], False)
         self.assertIs(fake.calls[0][1]["stream"], True)
@@ -219,8 +201,7 @@ class DownloadPolicyTest(unittest.TestCase):
             "http://fa\u00df.example.com/x.pdf": lambda: _FakeRequestsResponse(200, chunks=[PDF]),
         })
         self.assertFalse(self._download("https://example.com/x.pdf", requests=fake,
-                                        urllib_fn=_fail, playwright=_fail,
-                                        allow_private=True))
+                                        urllib_fn=_fail, playwright=_fail))
         self.assertEqual([u for u, _ in fake.calls], ["https://example.com/x.pdf"])
         self.assertIn("download refused", self.stderr.getvalue())
         self.assertIn("non-ASCII", self.stderr.getvalue())
@@ -231,14 +212,13 @@ class DownloadPolicyTest(unittest.TestCase):
                 lambda: _FakeRequestsResponse(200, chunks=[PDF]),
         })
         self.assertTrue(self._download("https://example.com/Data Sheet.pdf?a=b c#p 2",
-                                       requests=fake, urllib_fn=_fail, playwright=_fail,
-                                       allow_private=True))
+                                       requests=fake, urllib_fn=_fail, playwright=_fail))
         self.assertEqual([u for u, _ in fake.calls],
                          ["https://example.com/Data%20Sheet.pdf?a=b%20c#p%202"])
         for url in ("http://exa mple.com/a.pdf", "http://example.com/a\tb.pdf",
                     "http://example.com/a b\\c.pdf", "http://u ser@example.com/a.pdf"):
-            self.assertFalse(self._download(url, requests=_FakeRequests({}), urllib_fn=_fail,
-                                            playwright=_fail, allow_private=True), url)
+            self.assertFalse(self._download(url, requests=_FakeRequests({}),
+                                            urllib_fn=_fail, playwright=_fail), url)
 
     def test_percent_encoded_host_refused(self):
         self.assertIsInstance(download.url_problem("http://%31%32%37.0.0.1/x.pdf",
@@ -252,7 +232,7 @@ class DownloadPolicyTest(unittest.TestCase):
                 lambda: _FakeRequestsResponse(302, {"Location": "http://%31%36%39.254.169.254/"}),
         })
         self.assertFalse(self._download("https://example.com/x.pdf", requests=fake,
-                                        urllib_fn=_fail, playwright=_fail, allow_private=True))
+                                        urllib_fn=_fail, playwright=_fail))
         self.assertEqual([u for u, _ in fake.calls], ["https://example.com/x.pdf"])
 
     def test_redirect_with_backslash_userinfo_refused(self):
@@ -262,18 +242,18 @@ class DownloadPolicyTest(unittest.TestCase):
                     302, {"Location": "http://169.254.169.254\\@public.example/x.pdf"}),
         })
         self.assertFalse(self._download("https://example.com/x.pdf", requests=fake,
-                                        urllib_fn=_fail, playwright=_fail, allow_private=True))
+                                        urllib_fn=_fail, playwright=_fail))
         self.assertEqual([u for u, _ in fake.calls], ["https://example.com/x.pdf"])
         self.assertEqual(os.listdir(self.dir.name), [])
 
     def test_relative_redirect_to_intranet_refused(self):
-        seen = []
-        answers = {"https://example.com/x.pdf": (301, "//intranet.example/x.pdf", b""),
-                   "https://intranet.example/x.pdf": (200, None, PDF)}
-        handlers = _with_fake_urllib_handler(_urllib_handler(answers, seen))
-        self.assertFalse(self._download("https://example.com/x.pdf", handlers=handlers,
-                                        playwright=_fail))
-        self.assertEqual(seen, ["https://example.com/x.pdf"])
+        fake = _FakeRequests({
+            "https://example.com/x.pdf":
+                lambda: _FakeRequestsResponse(301, {"Location": "//intranet.example/x.pdf"}),
+        })
+        self.assertFalse(self._download("https://example.com/x.pdf", requests=fake,
+                                        urllib_fn=_fail, playwright=_fail))
+        self.assertEqual(len(fake.calls), 1)
 
     def test_public_redirect_followed(self):
         seen = []
@@ -291,8 +271,7 @@ class DownloadPolicyTest(unittest.TestCase):
                 lambda: _FakeRequestsResponse(302, {"Location": "https://cdn.example.org/x.pdf"}),
             "https://cdn.example.org/x.pdf": lambda: _FakeRequestsResponse(200, chunks=[PDF]),
         })
-        self.assertTrue(self._download("https://example.com/x.pdf", requests=fake, urllib_fn=_fail,
-                                       allow_private=True))
+        self.assertTrue(self._download("https://example.com/x.pdf", requests=fake, urllib_fn=_fail))
         self.assertEqual([u for u, _ in fake.calls],
                          ["https://example.com/x.pdf", "https://cdn.example.org/x.pdf"])
 
@@ -306,8 +285,7 @@ class DownloadPolicyTest(unittest.TestCase):
             _urllib_handler({"https://example.com/x.pdf": (200, None, body)}, seen))
         with mock.patch.object(download, "MAX_DOWNLOAD_BYTES", 1024 * 1024):
             self.assertFalse(self._download("https://example.com/x.pdf", requests=fake,
-                                            handlers=handlers, playwright=_fail,
-                                            allow_private=True))
+                                            handlers=handlers, playwright=_fail))
             self.assertEqual(os.listdir(self.dir.name), [])
             self.assertFalse(self._download("https://example.com/x.pdf", handlers=handlers,
                                             playwright=_fail))
@@ -326,8 +304,7 @@ class DownloadPolicyTest(unittest.TestCase):
         with mock.patch.object(download, "DOWNLOAD_TIMEOUT_S", 60.0), \
              mock.patch.object(download.time, "monotonic", lambda: clock[0]):
             self.assertFalse(self._download("https://example.com/x.pdf", requests=fake,
-                                            urllib_fn=_fail, playwright=_fail,
-                                            allow_private=True))
+                                            urllib_fn=_fail, playwright=_fail))
         self.assertEqual(os.listdir(self.dir.name), [])
         self.assertEqual(fake.calls[0][1]["timeout"], 20)
 
@@ -401,11 +378,10 @@ class TrickleDeadlineTest(unittest.TestCase):
         self.dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.dir.cleanup)
 
-    def _run(self, allow_private=False, **patches):
+    def _run(self, **patches):
         stderr = io.StringIO()
         start = time.monotonic()
-        with mock.patch.object(download, "_allow_private_hosts", return_value=allow_private), \
-             mock.patch.multiple(download, _sync_playwright=None, **patches), \
+        with mock.patch.multiple(download, _sync_playwright=None, **patches), \
              redirect_stderr(stderr), redirect_stdout(io.StringIO()):
             ok = download.download_pdf(self.URL, os.path.join(self.dir.name, "x.pdf"))
         elapsed = time.monotonic() - start
@@ -433,15 +409,14 @@ class TrickleDeadlineTest(unittest.TestCase):
 
             def iter_content(self, size):
                 return iter(lambda: self.raw.read(size), b"")
-        self._run(allow_private=True, _requests=_FakeRequests({self.URL: Resp}),
-                  _download_urllib=_fail)
+        self._run(_requests=_FakeRequests({self.URL: Resp}), _download_urllib=_fail)
 
     def test_requests_header_trickle_stops_at_the_deadline(self):
         slow = _HeaderTrickle()
         self.addCleanup(slow.close)
 
         # blocks in HTTPResponse.begin() while headers trickle
-        self._run(allow_private=True, _requests=fake_requests(lambda url, **kw: slow.response(url)),
+        self._run(_requests=fake_requests(lambda url, **kw: slow.response(url)),
                   _download_urllib=_fail)
 
     @unittest.skipIf(download._requests is None, "requests is not installed")
@@ -831,6 +806,104 @@ class PinnedConnectTest(unittest.TestCase):
             with open(out, "rb") as f:
                 self.assertEqual(f.read(), PDF)
         self.assertEqual(download._call.pins, {})
+
+
+@unittest.skipIf(download._requests is None or not hasattr(
+    download._requests.adapters.HTTPAdapter, "build_connection_pool_key_attributes"),
+    "requests 2.32.2 or later is not installed")
+class PinnedRequestsTest(unittest.TestCase):
+    """Real requests and urllib3 over a socket pair: the resolver, the TCP connect and the
+    TLS handshake are faked; urllib3's own certificate name check runs."""
+
+    def _download(self, cert_names, addresses=PUBLIC, refused=(), redirect=None):
+        """Download https://example.com/x.pdf from servers whose certificate names
+        ``cert_names``; ``refused`` addresses refuse the connect and ``redirect`` is a
+        Location the first answer sends."""
+        import urllib3.connection
+        import urllib3.util.connection
+        connected, server_names, sent = [], [], []
+        answers = [b"HTTP/1.1 200 OK\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s"
+                   % (len(PDF), PDF)]
+        if redirect:
+            answers.insert(0, b"HTTP/1.1 302 Found\r\nLocation: %s\r\nContent-Length: 0\r\n"
+                              b"Connection: close\r\n\r\n" % redirect.encode())
+
+        def serve(server, answer):
+            data = b""
+            while b"\r\n\r\n" not in data:
+                chunk = server.recv(65536)
+                if not chunk:
+                    return
+                data += chunk
+            sent.append(data)
+            server.sendall(answer)
+
+        def create_connection(address, *a, **k):
+            connected.append(address)
+            if address[0] in refused:
+                raise ConnectionRefusedError(111, "Connection refused")
+            client, server = socket.socketpair()
+            t = threading.Thread(target=serve, args=(server, answers.pop(0)), daemon=True)
+            t.start()
+            self.addCleanup(t.join, 5)
+            self.addCleanup(server.close)
+            self.addCleanup(client.close)
+            return client
+
+        class TLSSocket:
+            def __init__(self, sock):
+                self._sock = sock
+
+            def getpeercert(self, binary_form=False):
+                return {"subjectAltName": tuple(("DNS", n) for n in cert_names)}
+
+            def __getattr__(self, name):
+                return getattr(self._sock, name)
+
+        def ssl_wrap_socket(sock, *a, server_hostname=None, **k):
+            server_names.append(server_hostname)
+            return TLSSocket(sock)
+
+        resolved = {"example.com": addresses, "cdn.example.org": ["93.184.216.40"]}
+        with tempfile.TemporaryDirectory() as d, \
+             mock.patch.object(download, "_resolve", side_effect=resolved.__getitem__), \
+             mock.patch.object(download, "_allow_private_hosts", return_value=False), \
+             mock.patch.multiple(download, _sync_playwright=None, _download_urllib=_fail), \
+             mock.patch.object(urllib3.util.connection, "create_connection", create_connection), \
+             mock.patch.object(urllib3.connection, "ssl_wrap_socket", ssl_wrap_socket), \
+             mock.patch.dict(os.environ, {"no_proxy": "*", "NO_PROXY": "*"}), \
+             redirect_stderr(io.StringIO()):
+            ok = download.download_pdf("https://example.com/x.pdf", os.path.join(d, "x.pdf"))
+        return ok, connected, server_names, sent
+
+    def test_requests_connects_to_the_checked_address_and_checks_the_host_name(self):
+        ok, connected, server_names, sent = self._download(["example.com"])
+        self.assertTrue(ok)
+        self.assertEqual(connected, [(PUBLIC[0], 443)])
+        self.assertEqual(server_names, ["example.com"])
+        self.assertIn(b"\r\nHost: example.com\r\n", sent[0])
+
+    def test_certificate_for_another_name_is_refused(self):
+        ok, connected, server_names, sent = self._download(["other.example"])
+        self.assertFalse(ok)
+        self.assertEqual(connected, [(PUBLIC[0], 443)])
+        self.assertEqual(server_names, ["example.com"])
+        self.assertEqual(sent, [])
+
+    def test_next_checked_address_after_a_refused_connect(self):
+        ok, connected, _, _ = self._download(
+            ["example.com"], addresses=["93.184.216.34", "93.184.216.35"], refused={"93.184.216.34"})
+        self.assertTrue(ok)
+        self.assertEqual(connected, [("93.184.216.34", 443), ("93.184.216.35", 443)])
+
+    def test_redirect_hop_is_checked_and_pinned(self):
+        ok, connected, server_names, sent = self._download(
+            ["example.com", "cdn.example.org"], redirect="https://cdn.example.org/y.pdf")
+        self.assertTrue(ok)
+        self.assertEqual(connected, [(PUBLIC[0], 443), ("93.184.216.40", 443)])
+        self.assertEqual(server_names, ["example.com", "cdn.example.org"])
+        self.assertIn(b"\r\nHost: example.com\r\n", sent[0])
+        self.assertIn(b"\r\nHost: cdn.example.org\r\n", sent[1])
 
 
 class AllowPrivateTest(unittest.TestCase):

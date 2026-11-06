@@ -296,7 +296,7 @@ python3 <skill-path>/scripts/fetch_datasheet_digikey.py --search "ADP1706" --jso
 ```
 
 The script:
-- **OS-agnostic** — uses Python `urllib` (no wget/curl dependency), connecting only to the address the URL check approved. The `requests` library is tried first only when `datasheets.allow_private_hosts` is on.
+- **OS-agnostic** — uses Python `requests` library (no wget/curl dependency). Falls back to `urllib` if `requests` isn't installed.
 - **Refuses another part** — a `--search` hit that is a different part is not downloaded (exit 2); a family match is accepted
 - **Normalizes redirect URLs** — DigiKey's `DatasheetUrl` for TI parts points to a JS redirect page; the script extracts the direct PDF link. Also fixes protocol-relative `//mm.digikey.com/...` URLs.
 - **Sets proper User-Agent** — many manufacturer sites (Nexperia, Lite-On, STMicro, Molex) block bare `urllib` or `curl` requests but serve PDFs fine with a browser User-Agent
@@ -305,7 +305,7 @@ The script:
 - **Headless browser fallback** — if `playwright` is installed, automatically uses a headless Chromium browser as a last resort for sites that serve PDFs via JavaScript (Broadcom doc viewer, Espressif download redirects). Intercepts download events and reads response bodies directly.
 - **Exit codes**: 0 = success, 1 = download failed, 2 = search/API error
 - **Dependencies**:
-  - `pip install requests` (used only when `datasheets.allow_private_hosts` is on; urllib can't handle HTTP/2 sites like analog.com, which then need the browser fallback)
+  - `pip install requests` (strongly recommended; some manufacturer sites, such as analog.com, time out over urllib but answer requests)
   - `pip install playwright && playwright install chromium` (optional; enables headless browser fallback for JS-heavy sites)
 
 ### Manufacturer Compatibility
@@ -315,7 +315,7 @@ Tested against 240 components across 8 open-source KiCad projects (96% download 
 | Manufacturer | Status | Notes |
 |---|---|---|
 | TI | Works | URL normalization strips JS redirect wrapper |
-| ADI / Analog | Works | HTTP/2: `requests` (only with `datasheets.allow_private_hosts` on) or the browser fallback |
+| ADI / Analog | Works | Needs `requests`; urllib times out |
 | STMicro | Works | Requires User-Agent header |
 | Nexperia | Works | Requires User-Agent header |
 | Lite-On | Works | Requires User-Agent header |

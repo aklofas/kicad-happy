@@ -424,7 +424,7 @@ Or set up the [GitHub Action](github-action.md) and get automated analysis on ev
 | element14 | `ELEMENT14_API_KEY`                          | [partner.element14.com](https://partner.element14.com/) |
 | LCSC      | *none*                                       | Free community API                                      |
 
-**Optional**: Python packages `requests` (HTTP/2; datasheet downloads use it only when `datasheets.allow_private_hosts` is on) and `playwright` (JS-heavy datasheet sites); the `pdftotext` executable (poppler-utils) for PDF text extraction.
+**Optional**: Python packages `requests` (some manufacturer sites, such as analog.com, time out over urllib but answer requests) and `playwright` (JS-heavy datasheet sites); the `pdftotext` executable (poppler-utils) for PDF text extraction.
 
 ## ✅ KiCad version support
 

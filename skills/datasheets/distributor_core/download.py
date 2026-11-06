@@ -1,10 +1,9 @@
-"""Download transport: urllib → playwright cascade (requests first when private hosts are
-allowed) with PDF sniffing, manufacturer redirect normalisation (opt-in per provider), the
-Microchip alternative pattern.
+"""Download transport: requests → urllib → playwright cascade with PDF sniffing,
+manufacturer redirect normalisation (opt-in per provider), the Microchip alternative pattern.
 
 Every URL, and every redirect, must be http or https on a public address (see
-``url_problem``), and each urllib connection goes to the address that was checked; a
-download stops at ``MAX_DOWNLOAD_BYTES`` or after ``DOWNLOAD_TIMEOUT_S`` seconds."""
+``url_problem``), and each connection goes to the address that was checked; a download
+stops at ``MAX_DOWNLOAD_BYTES`` or after ``DOWNLOAD_TIMEOUT_S`` seconds."""
 
 import argparse
 import errno
@@ -425,10 +424,13 @@ def download_pdf(url: str, output_path: str, *, resolve_redirects: bool = True) 
     """Download a PDF from a URL, trying multiple methods.
 
     Strategy:
-    1. Try requests library (handles HTTP/2), only when private hosts are allowed
-    2. Python urllib (HTTP/1.1 only — some sites may timeout), connecting only to the
-       addresses the check approved
+    1. Try requests library (some manufacturer sites, such as analog.com, time out over
+       urllib but answer requests)
+    2. Fall back to Python urllib (some sites may timeout)
     3. Fall back to a headless browser (playwright) when installed
+
+    requests and urllib connect only to the addresses the check approved (requests from
+    2.32.2), except through a proxy, which resolves the host itself.
 
     A URL the policy refuses (``url_problem``) is never fetched. A refused redirect or
     an exceeded limit ends the whole call: no other method is tried.
@@ -454,9 +456,7 @@ def download_pdf(url: str, output_path: str, *, resolve_redirects: bool = True) 
     os.close(fd)
 
     methods = []
-    # requests resolves the host again inside urllib3, where the checked address cannot be
-    # pinned with the standard library.
-    if allow_private and _requests is not None:
+    if _requests is not None:
         methods.append(("requests", _download_requests))
     methods.append(("urllib", _download_urllib))
     if _sync_playwright is not None:
@@ -527,10 +527,14 @@ def _get_before_deadline(url: str, deadline: float, **kwargs):
     status line and headers, before there is a response whose socket can be watched. At the
     deadline the call is abandoned; a response that still arrives is closed by the worker."""
     box, lock = {}, threading.Lock()
+    pins = dict(getattr(_call, "pins", {}))  # _call is per thread
 
     def run():
         try:
             with _requests.Session() as session:
+                if pins and _PinnedAdapter is not None:
+                    session.mount("http://", _PinnedAdapter(pins))
+                    session.mount("https://", _PinnedAdapter(pins))
                 # Session.send reads a whole 3xx body even with allow_redirects=False;
                 # _download_requests follows each hop itself.
                 session.get_redirect_target = lambda resp: None
@@ -558,7 +562,7 @@ def _get_before_deadline(url: str, deadline: float, **kwargs):
 
 
 def _download_requests(url: str, output_path: str) -> bool:
-    """Download using the requests library (handles HTTP/2, all manufacturers).
+    """Download using the requests library.
     Redirects are followed here, each one checked against the policy."""
     if _requests is None:
         return False
@@ -587,6 +591,61 @@ def _download_requests(url: str, output_path: str) -> bool:
             finally:
                 resp.close()
     raise DownloadRedirectLimit(f"more than {_MAX_REDIRECTS} redirects")
+
+
+_PinnedAdapter = None
+if _requests is not None and hasattr(_requests.adapters.HTTPAdapter,
+                                     "build_connection_pool_key_attributes"):
+    from requests.exceptions import ConnectionError as _RequestsConnectionError
+    from requests.utils import select_proxy as _select_proxy
+    # urllib3's connect error, as requests itself imports it (urllib3 is not imported here).
+    _ConnectTimeoutError = _requests.adapters.ConnectTimeoutError
+
+    class _PinnedAdapter(_requests.adapters.HTTPAdapter):
+        """An adapter that connects a pinned host only to its checked addresses, each tried
+        in turn. The URL host stays the ``Host`` header, the TLS server name and the name
+        the certificate is checked against. A request through a proxy is not pinned."""
+
+        def __init__(self, pins):
+            super().__init__()
+            self._pins = pins
+            self._ip = None
+
+        def send(self, request, **kwargs):
+            addresses = None
+            if not _select_proxy(request.url, kwargs.get("proxies")):
+                addresses = self._pins.get(urllib.parse.urlsplit(request.url).hostname)
+            if not addresses:
+                return super().send(request, **kwargs)
+            error = None
+            for ip in addresses:
+                self._ip = ip
+                try:
+                    return super().send(request, **kwargs)
+                except _RequestsConnectionError as exc:
+                    reason = getattr(exc.args[0] if exc.args else None, "reason", None)
+                    if not isinstance(reason, _ConnectTimeoutError):
+                        raise
+                    error = exc
+                finally:
+                    self._ip = None
+            raise error
+
+        def add_headers(self, request, **kwargs):
+            if self._ip is not None:
+                request.headers["Host"] = urllib.parse.urlsplit(request.url).netloc
+
+        def get_connection_with_tls_context(self, request, verify, proxies=None, cert=None):
+            if self._ip is None:
+                return super().get_connection_with_tls_context(request, verify, proxies, cert)
+            host_params, pool_kwargs = self.build_connection_pool_key_attributes(
+                request, verify, cert)
+            host = host_params["host"]
+            host_params["host"] = self._ip
+            if host_params["scheme"] == "https":
+                pool_kwargs["server_hostname"] = host
+                pool_kwargs["assert_hostname"] = host
+            return self.poolmanager.connection_from_host(**host_params, pool_kwargs=pool_kwargs)
 
 
 class _CheckedRedirectHandler(urllib.request.HTTPRedirectHandler):

@@ -15,9 +15,8 @@ Download strategy per part:
   3. Try manufacturer-specific alternative URL patterns
 
 Download methods (per URL, tried in order):
-  - requests library (HTTP/2, redirects, anti-bot headers), only when
-    datasheets.allow_private_hosts is on
-  - Python urllib (HTTP/1.1), connecting only to the address the URL check approved
+  - requests library (redirects, anti-bot headers; some sites time out over urllib)
+  - Python urllib (HTTP/1.1 fallback)
   - Playwright headless browser (JS-rendered pages, last resort)
 
 Usage:

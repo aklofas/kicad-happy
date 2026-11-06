@@ -248,13 +248,13 @@ python3 <skill-path>/scripts/fetch_datasheet_element14.py --search "GRM155R71C10
 ```
 
 The script:
-- **OS-agnostic** — uses `urllib` → `playwright` fallback chain (`requests` first only when `datasheets.allow_private_hosts` is on)
+- **OS-agnostic** — uses `requests` → `urllib` → `playwright` fallback chain
 - **Refuses another part** — a `--search` hit that is a different part is not downloaded (exit 2); a family match is accepted
 - **Validates PDF headers** — rejects HTML error pages
 - **Falls back to alternative manufacturer sources** when element14 URL fails
 - **Exit codes**: 0 = success, 1 = download failed, 2 = search/API error
 - **Dependencies**:
-  - `pip install requests` (optional; used only when `datasheets.allow_private_hosts` is on; urllib works fine for element14)
+  - `pip install requests` (recommended; urllib fallback works fine for element14)
   - `pip install playwright && playwright install chromium` (optional; rarely needed)
 
 ## Web Search Fallback

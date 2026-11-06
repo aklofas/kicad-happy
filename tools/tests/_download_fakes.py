@@ -15,6 +15,9 @@ class _FakeSession:
     def close(self):
         pass
 
+    def mount(self, prefix, adapter):
+        pass
+
 
 def fake_requests(get, **attrs):
     """A ``requests`` stand-in whose module-level ``get`` and every ``Session().get`` call

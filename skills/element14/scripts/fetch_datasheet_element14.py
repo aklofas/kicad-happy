@@ -18,8 +18,8 @@ Environment:
     ELEMENT14_API_KEY — required for search (free from partner.element14.com)
 
 Dependencies:
-    - requests (pip install requests) — optional; downloads use it only when
-      datasheets.allow_private_hosts is on, otherwise urllib
+    - requests (pip install requests) — preferred
+    - Falls back to urllib if requests is not installed
     - playwright (optional) — for JS-rendered datasheet pages
 """
 

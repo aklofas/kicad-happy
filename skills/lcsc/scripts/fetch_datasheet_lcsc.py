@@ -16,8 +16,8 @@ Exit codes:
     2 = search failed (part not found)
 
 Dependencies:
-    - requests (pip install requests) — optional; downloads use it only when
-      datasheets.allow_private_hosts is on, otherwise urllib
+    - requests (pip install requests) — preferred
+    - Falls back to urllib if requests is not installed
     - playwright (optional) — for JS-rendered datasheet pages
 """
 
