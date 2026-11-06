@@ -4,6 +4,7 @@ intermediates computed by pcb.pipeline.run_analyses into the analyzer output dic
 
 import math
 import re
+from typing import TYPE_CHECKING
 
 from kicad_core.diagnostics import record
 from kicad_core.netnames import is_ground_name, is_power_net_name
@@ -14,6 +15,9 @@ from pcb.assembly import (
     _compute_switching_loop_areas,
 )
 from finding_schema import compute_trust_summary, show_decoded_names, sort_findings
+
+if TYPE_CHECKING:
+    from pcb.pipeline import BoardData, PcbAnalyses
 
 
 def group_components(footprints: list[dict]) -> dict:

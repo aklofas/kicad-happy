@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from kicad_core.model import PinNetEntry
 from kicad_core.netquery import build_pin_to_net_map
@@ -18,6 +19,9 @@ from kicad_core.netnames import (
 )
 from kicad_core.diagnostics import record
 from kicad_core.values import AmbiguousValueSeparator, ambiguous_separator, parse_value
+
+if TYPE_CHECKING:
+    from netlist_queries import NetlistQueries
 
 _AMBIGUOUS_RECORD_CAP = 20
 _AMBIGUOUS_EFFECT = "value not parsed; value-based checks skip the part"

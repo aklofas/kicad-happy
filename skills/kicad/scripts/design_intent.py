@@ -10,7 +10,7 @@ Zero external dependencies - stdlib only.
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 _IPC_CLASS_PATTERNS = [
     re.compile(r'IPC.?6012.*Class\s*([123])', re.IGNORECASE),
