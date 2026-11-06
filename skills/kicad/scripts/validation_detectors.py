@@ -141,7 +141,7 @@ def _find_pulldowns_on_net(
 
 
 def _net_has_driver(ctx: AnalysisContext, net_name: str, exclude_ref: str) -> bool:
-    """Check if a net has at least one push-pull driver (non-OD/OC IC output)."""
+    """True when another IC sits on the net. Any IC counts, whatever its pin type: it may drive the line push-pull or hold it with a firmware-enabled internal pull-up, neither of which the schematic shows, so PU-001 does not ask for an external resistor."""
     if not net_name or net_name not in ctx.nets:
         return False
     for p in ctx.nets[net_name]['pins']:
