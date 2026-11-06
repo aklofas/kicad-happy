@@ -39,6 +39,18 @@ def _sev_icon(raw_sev):
     return _SEV_ICON.get(normalize_severity(raw_sev), "\U0001f7e1")
 
 
+def _routing_wording(pcb):
+    """(verified line, one-liner value, table value) for a PCB whose connectivity says routing is complete.
+
+    Only the --full analysis builds the connectivity graph that proves a net is joined end to end;
+    the plain run reports that every multi-pad net has some copper, so it does not claim "complete".
+    """
+    if "connectivity_graph" in pcb:
+        return "PCB routing 100% complete", "100%", "100% complete"
+    text = "every multi-pad net has copper (`--full` proves routing)"
+    return f"PCB: {text}", text, text
+
+
 def _score_text(score):
     """A 0-100 score for display; a run that could not be scored reads "not scored"."""
     return "not scored" if score is None else f"{score}/100"
@@ -698,7 +710,7 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
     if pcb:
         pcb_conn = pcb.get("connectivity", {})
         if pcb_conn.get("routing_complete"):
-            verified.append("PCB routing 100% complete")
+            verified.append(_routing_wording(pcb)[0])
 
     if spice:
         spice_pass = spice.get("summary", {}).get("pass", 0)
@@ -917,7 +929,7 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
         via_count = pcb.get("vias", {}).get("count", 0)
         tier = dfm.get("dfm_tier", "?")
         pcb_conn = pcb.get("connectivity", {})
-        routing = "100%" if pcb_conn.get("routing_complete") else f"{pcb_conn.get('unrouted_count', '?')} unrouted"
+        routing = _routing_wording(pcb)[1] if pcb_conn.get("routing_complete") else f"{pcb_conn.get('unrouted_count', '?')} unrouted"
 
         L.append("### PCB")
         L.append("")
@@ -1432,7 +1444,7 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
         a(f"| Vias | {pcb.get('vias',{}).get('count',0)} |")
         a(f"| DFM tier | {_md(dfm.get('dfm_tier','?'))} |")
         if pcb_conn.get("routing_complete"):
-            a(f"| Routing | 100% complete |")
+            a(f"| Routing | {_routing_wording(pcb)[2]} |")
         elif pcb_conn.get("unrouted_count", 0) > 0:
             a(f"| Routing | **{pcb_conn['unrouted_count']} unrouted** |")
         a(f"| Min track | {metrics.get('min_track_width_mm','?')} mm |")

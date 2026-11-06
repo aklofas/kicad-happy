@@ -336,5 +336,40 @@ class ReportCountsTest(unittest.TestCase):
         self.assertIn("2 suppressed", md)
 
 
+class RoutingWordingTest(unittest.TestCase):
+    @staticmethod
+    def _pcb(**extra):
+        return dict({"connectivity": {"routing_complete": True, "unrouted_count": 0},
+                     "dfm_summary": {"dfm_tier": "standard", "metrics": {}}}, **extra)
+
+    def _reports(self, pcb):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "pcb.json")
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(pcb, f)
+            return _render(tmp, pcb=path)
+
+    def test_plain_run_does_not_claim_routing_is_complete(self):
+        md, full = self._reports(self._pcb())
+        self.assertNotIn("PCB routing 100% complete", md)
+        self.assertNotIn("Routing: 100%", md)
+        self.assertNotIn("| Routing | 100% complete |", full)
+        self.assertIn("has copper", md)
+        self.assertIn("| Routing | every multi-pad net has copper", full)
+
+    def test_full_run_keeps_the_complete_wording(self):
+        md, full = self._reports(self._pcb(connectivity_graph={}))
+        self.assertIn("PCB routing 100% complete", md)
+        self.assertIn("Routing: 100%", md)
+        self.assertIn("| Routing | 100% complete |", full)
+
+    def test_unrouted_count_is_unchanged(self):
+        pcb = self._pcb()
+        pcb["connectivity"] = {"routing_complete": False, "unrouted_count": 2}
+        md, full = self._reports(pcb)
+        self.assertIn("Routing: 2 unrouted", md)
+        self.assertIn("**2 unrouted**", full)
+
+
 if __name__ == "__main__":
     unittest.main()
