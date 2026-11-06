@@ -66,11 +66,24 @@ class DrillTest(unittest.TestCase):
         self.assertEqual([f["severity"] for f in env["findings"] if f["rule_id"] == "GR-003"], ["info"])
 
 
+class DrillCandidateTest(unittest.TestCase):
+    def test_bom_text_is_not_a_drill_candidate_but_excellon_text_is(self):
+        with tempfile.TemporaryDirectory() as d:
+            _four_layer(d)
+            _write(d, "bom.txt", "Ref  Value\nC1 cap T1C2 0402\nR1 res\n")
+            _write(d, "eagle.txt", "M48\nMETRIC\nT1C0.8\n%\nT1\nX1000Y2000\nM30\n")
+            env = _main(d)
+        self.assertEqual(sorted(x["filename"] for x in env["drills"] if "bom" in x["filename"]), [])
+        self.assertIn("eagle.txt", [x["filename"] for x in env["drills"]])
+        self.assertFalse([x for x in env["drills"] if "error" in x])
+        self.assertEqual(_diags(env, "ValueError"), [])
+
+
 class CompanionFileTest(unittest.TestCase):
     def test_dot_companions_are_not_job_drill_or_archive_inputs(self):
         with tempfile.TemporaryDirectory() as d:
             _four_layer(d)
-            _write(d, "._b.gbrjob", "\x00\x00 not json")
+            _write(d, "._b.gbrjob", json.dumps({"GeneralSpecs": {"LayerNumber": 2}, "FilesAttributes": []}))
             _write(d, "._b-PTH.drl", "")
             _write(d, ".git-x.drl", "")
             _write(d, "._b.zip", "x")
@@ -79,6 +92,7 @@ class CompanionFileTest(unittest.TestCase):
         self.assertEqual([x["filename"] for x in env["drills"]], ["b.drl"])
         self.assertNotIn("zip_archives", env)
         self.assertNotIn("job_file", env)
+        self.assertEqual(env["completeness"]["source"], "defaults")
         self.assertFalse([p for p in env["inputs"]["source_files"] if os.path.basename(p).startswith(("._", ".git"))])
 
 

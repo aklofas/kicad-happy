@@ -659,6 +659,14 @@ def _add_hole(result: dict, tool: str | None, x: float, y: float) -> None:
     if y > cr["y_max"]: cr["y_max"] = y
 
 
+# A line only an Excellon file starts with. Header and tool definition alone admit a
+# .txt/.xln/.nc candidate (a G-code or Gerber file also starts lines with a coordinate);
+# a coordinate line is enough once the file is read as a drill.
+_EXCELLON_HEAD = r"M48(?!\d)|T\d+C"
+_EXCELLON_HEAD_LINE = re.compile(r"\ufeff?(?:" + _EXCELLON_HEAD + r")")
+_EXCELLON_LINE = re.compile(r"\ufeff?(?:" + _EXCELLON_HEAD + r"|G?0?0?X-?\d)")
+
+
 def parse_drill(path: str) -> dict:
     """Parse an Excellon drill file."""
     with open(path, "r", encoding="utf-8", errors="replace") as f:
@@ -684,7 +692,7 @@ def parse_drill(path: str) -> dict:
 
     for line in lines:
         line = line.strip()
-        if re.match(r"\ufeff?(?:M48(?!\d)|T\d+C|G?0?0?X-?\d)", line):
+        if _EXCELLON_LINE.match(line):
             looks_excellon = True
 
         # Units
@@ -1638,8 +1646,7 @@ def _is_excellon_file(path: Path) -> bool:
     try:
         with open(path, "r", encoding="utf-8", errors="replace") as f:
             head = f.read(1024)
-        return re.search(r"(?m)^\ufeff?[ \t]*M48(?!\d)", head) is not None \
-            or re.search(r"T\d+C\d", head) is not None
+        return any(_EXCELLON_HEAD_LINE.match(ln.strip()) for ln in head.splitlines())
     except (OSError, UnicodeDecodeError):
         return False
 
@@ -1697,14 +1704,15 @@ def analyze_gerbers(directory: str, full: bool = False, diagnostics: list | None
     candidates = [*gerber_dir.glob("*.TXT"), *gerber_dir.glob("*.txt"),
                   *(p for p in sorted(gerber_dir.glob("*.*")) if p.suffix.lower() in (".xln", ".nc"))]
     for txt_path in candidates:
-        if txt_path not in drill_set and txt_path.is_file() and _is_excellon_file(txt_path):
+        if (txt_path not in drill_set and txt_path.is_file()
+                and not _is_repo_or_fs_artifact(txt_path.name) and _is_excellon_file(txt_path)):
             drill_files.append(txt_path)
 
     gerber_files = sorted(set(gerber_files))
     gerber_files = [f for f in gerber_files
                     if f.suffix.lower() not in (".drl", ".gbrjob", ".zip", ".pos", ".txt")
                     and not _is_repo_or_fs_artifact(f.name)]
-    drill_files = sorted(f for f in set(drill_files) if not _is_repo_or_fs_artifact(f.name))
+    drill_files = sorted(set(drill_files))
 
     # Scan zip archives before parsing (uses file lists for timestamp comparison)
     zip_scan = scan_zip_archives(gerber_dir, gerber_files, drill_files, diagnostics)
