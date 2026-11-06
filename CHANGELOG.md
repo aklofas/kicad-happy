@@ -53,6 +53,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - BOM tools and the pick-and-place translator read a part as DNP when its Value is `DNF`, `NoPop`, `nostuff` or `Do Not Place`, or when a DNP field holds `Y`, `x` or `*`; both share one marker list.
 - `datasheet_verify.py` now exits 0 when an extraction has only warnings (exit 1 is kept for errors). It reports one warning per unresolved `power_domain` value instead of one per pin, and reports a null or malformed pin entry instead of crashing.
 - Datasheet downloads refuse NAT64, 6to4 and IPv4-compatible IPv6 addresses that embed a private or loopback IPv4 address.
+- A datasheet download connects to the address the URL check approved, on every redirect, so a host cannot switch to a private address between the check and the connect (through a proxy, the proxy resolves the host). The `requests` library resolves the host again, so downloads use it only when `datasheets.allow_private_hosts` is on; otherwise urllib runs first, then the browser fallback.
 
 ### Documentation
 

@@ -1,9 +1,10 @@
-"""Download transport: requests → urllib → playwright cascade with PDF sniffing,
-manufacturer redirect normalisation (opt-in per provider), the Microchip alternative pattern.
+"""Download transport: urllib → playwright cascade (requests first when private hosts are
+allowed) with PDF sniffing, manufacturer redirect normalisation (opt-in per provider), the
+Microchip alternative pattern.
 
 Every URL, and every redirect, must be http or https on a public address (see
-``url_problem``); a download stops at ``MAX_DOWNLOAD_BYTES`` or after
-``DOWNLOAD_TIMEOUT_S`` seconds."""
+``url_problem``), and each urllib connection goes to the address that was checked; a
+download stops at ``MAX_DOWNLOAD_BYTES`` or after ``DOWNLOAD_TIMEOUT_S`` seconds."""
 
 import argparse
 import errno
@@ -159,42 +160,47 @@ def url_problem(url: str, *, allow_private: bool) -> str | None:
     """``None`` when ``url`` may be downloaded, else a short reason. Only http and https
     with a host; every address the host resolves to must be public unless
     ``allow_private``."""
+    return _checked(url, allow_private)[0]
+
+
+def _checked(url: str, allow_private: bool) -> tuple[str | None, list[str]]:
+    """``url_problem`` and the addresses it checked (none when ``allow_private``)."""
     # Parsers disagree on where the host of such a URL ends (urlsplit and urllib3 split
     # ``http://a\\@b/`` differently), and a datasheet URL never needs credentials.
     if any(c == "\\" or c.isspace() or ord(c) < 32 or ord(c) == 127 for c in url):
-        return "a backslash, blank or control character in the URL"
+        return "a backslash, blank or control character in the URL", []
     try:
         parts = urllib.parse.urlsplit(url)
         host = parts.hostname
     except ValueError:
-        return "not a valid URL"
+        return "not a valid URL", []
     scheme = parts.scheme.lower()
     if scheme not in ("http", "https"):
-        return f"scheme {scheme or '(none)'} is not http or https"
+        return f"scheme {scheme or '(none)'} is not http or https", []
     if not host:
-        return "no host"
+        return "no host", []
     if "@" in parts.netloc:
-        return "credentials in the URL"
+        return "credentials in the URL", []
     if "%" in parts.netloc:
-        return "a percent-encoded host or port"
+        return "a percent-encoded host or port", []
     if not parts.netloc.isascii():
-        return "a non-ASCII host"
+        return "a non-ASCII host", []
     if allow_private:
-        return None
+        return None, []
     try:
         addresses = [str(ipaddress.ip_address(host))]
     except ValueError:
         try:
             addresses = _resolve(host)
         except (OSError, UnicodeError) as exc:
-            return f"{host} does not resolve ({type(exc).__name__})"
+            return f"{host} does not resolve ({type(exc).__name__})", []
         if not addresses:
-            return f"{host} does not resolve"
+            return f"{host} does not resolve", []
     for address in addresses:
         problem = _address_problem(address)
         if problem:
-            return problem if address == host else f"{host}: {problem}"
-    return None
+            return (problem if address == host else f"{host}: {problem}"), []
+    return None, addresses
 
 
 def _allow_private_hosts() -> bool:
@@ -259,10 +265,35 @@ def _socket_timeout(deadline: float) -> float:
     return min(_SOCKET_TIMEOUT_S, remaining)
 
 
+def _pin(url: str, addresses: list[str]) -> None:
+    """Connect to ``url``'s host only at ``addresses``, the ones its check approved."""
+    host = urllib.parse.urlsplit(url).hostname
+    if host and addresses:
+        _call.pins[host] = addresses
+
+
 def _check_redirect(newurl: str) -> None:
-    problem = url_problem(newurl, allow_private=_allow_private_now())
+    problem, addresses = _checked(newurl, _allow_private_now())
     if problem:
         raise DownloadRefused(f"redirect to {newurl}: {problem}")
+    _pin(newurl, addresses)
+
+
+def _pinned_create_connection(address, *args, **kwargs):
+    """``socket.create_connection`` to the checked addresses of a pinned host, so a DNS answer
+    that changes after the check is never used. A host without a pin (a proxy, or any host
+    when private hosts are allowed) connects as usual."""
+    host, port = address[:2]
+    pinned = getattr(_call, "pins", {}).get(str(host).lower())
+    if not pinned:
+        return socket.create_connection(address, *args, **kwargs)
+    error = None
+    for ip in pinned:
+        try:
+            return socket.create_connection((ip, port), *args, **kwargs)
+        except OSError as exc:
+            error = exc
+    raise error
 
 
 def _copy_bounded(chunks, f, deadline: float) -> int:
@@ -394,8 +425,9 @@ def download_pdf(url: str, output_path: str, *, resolve_redirects: bool = True) 
     """Download a PDF from a URL, trying multiple methods.
 
     Strategy:
-    1. Try requests library (handles HTTP/2, all manufacturer sites)
-    2. Fall back to Python urllib (HTTP/1.1 only — some sites may timeout)
+    1. Try requests library (handles HTTP/2), only when private hosts are allowed
+    2. Python urllib (HTTP/1.1 only — some sites may timeout), connecting only to the
+       addresses the check approved
     3. Fall back to a headless browser (playwright) when installed
 
     A URL the policy refuses (``url_problem``) is never fetched. A refused redirect or
@@ -411,7 +443,7 @@ def download_pdf(url: str, output_path: str, *, resolve_redirects: bool = True) 
     """
     url = _encode_spaces(normalize_url(url, resolve_redirects=resolve_redirects))
     allow_private = _allow_private_hosts()
-    problem = url_problem(url, allow_private=allow_private)
+    problem, addresses = _checked(url, allow_private)
     if problem:
         print(f"Warning: download refused: {url}: {problem}", file=sys.stderr)
         return False
@@ -422,7 +454,9 @@ def download_pdf(url: str, output_path: str, *, resolve_redirects: bool = True) 
     os.close(fd)
 
     methods = []
-    if _requests is not None:
+    # requests resolves the host again inside urllib3, where the checked address cannot be
+    # pinned with the standard library.
+    if allow_private and _requests is not None:
         methods.append(("requests", _download_requests))
     methods.append(("urllib", _download_urllib))
     if _sync_playwright is not None:
@@ -433,6 +467,8 @@ def download_pdf(url: str, output_path: str, *, resolve_redirects: bool = True) 
     prior_failure = getattr(_transport, "failure", None)
     _call.deadline = time.monotonic() + DOWNLOAD_TIMEOUT_S
     _call.allow_private = allow_private
+    _call.pins = {}
+    _pin(url, addresses)
     try:
         for name, fn in methods:
             try:
@@ -475,6 +511,7 @@ def download_pdf(url: str, output_path: str, *, resolve_redirects: bool = True) 
     finally:
         _call.deadline = None
         _call.allow_private = False
+        _call.pins = {}
         try:
             os.remove(part_path)
         except FileNotFoundError:
@@ -561,14 +598,25 @@ class _CheckedRedirectHandler(urllib.request.HTTPRedirectHandler):
 
 
 # No file:, ftp: or data: handler: only http(s), every redirect checked. The proxy handler
-# keeps http_proxy/https_proxy working; the policy still checks the target URL.
+# keeps http_proxy/https_proxy working; the policy still checks the target URL, but the
+# proxy resolves it, so the pin does not apply there.
 class _WatchedHTTPConnection(http.client.HTTPConnection):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._create_connection = _pinned_create_connection
+
     def connect(self):
         super().connect()
         _watch_current(self.sock)
 
 
+# The pin changes only the address: http.client still sends the host name for SNI and
+# checks the certificate against it.
 class _WatchedHTTPSConnection(http.client.HTTPSConnection):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._create_connection = _pinned_create_connection
+
     def connect(self):
         super().connect()
         _watch_current(self.sock)

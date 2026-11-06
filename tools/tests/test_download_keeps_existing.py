@@ -377,12 +377,14 @@ class DownloadTransportNoteTest(unittest.TestCase):
         self.assertTrue(noted.startswith("network failure, retried next run: OSError"), noted)
 
     def _two_methods(self, second, before=None):
-        """requests drops the connection, then urllib ends with ``second``."""
+        """requests drops the connection, then urllib ends with ``second``. requests runs
+        only when private hosts are allowed."""
         from distributor_core import download
         download.take_transport_failure()
         if before is not None:
             download.note_transport_failure(before)
         with tempfile.TemporaryDirectory() as d, \
+                mock.patch.object(download, "_allow_private_hosts", return_value=True), \
                 mock.patch.object(download, "_requests", _FAKE_REQUESTS), \
                 mock.patch.object(download, "_sync_playwright", None), \
                 mock.patch.object(download, "_download_requests",
@@ -412,6 +414,7 @@ class DownloadTransportNoteTest(unittest.TestCase):
         fake = fake_requests(lambda *a, **k: resp, exceptions=_FAKE_REQUESTS.exceptions)
         download.take_transport_failure()
         with tempfile.TemporaryDirectory() as d, \
+                mock.patch.object(download, "_allow_private_hosts", return_value=True), \
                 mock.patch.object(download, "_requests", fake), \
                 mock.patch.object(download, "_sync_playwright", None), \
                 mock.patch.object(download, "_download_urllib", _writer(GOOD)), \
@@ -426,6 +429,7 @@ class DownloadTransportNoteTest(unittest.TestCase):
         fake = fake_requests(lambda *a, **k: resp, exceptions=_FAKE_REQUESTS.exceptions)
         download.take_transport_failure()
         with tempfile.TemporaryDirectory() as d, \
+                mock.patch.object(download, "_allow_private_hosts", return_value=True), \
                 mock.patch.object(download, "_requests", fake), \
                 mock.patch.object(download, "_sync_playwright", None), \
                 mock.patch.object(download, "_download_urllib", lambda *a: False), \

@@ -74,7 +74,7 @@ Each skill has a `SKILL.md` with YAML frontmatter (name, description, triggers) 
 | `datasheets/distributor_core/sync.py` | ~320 | The one datasheet sync driver, `sync_datasheets(provider, ...)`, over a provider adapter |
 | `datasheets/distributor_core/inputs.py` | ~195 | BOM / MPN-list projection for the sync CLIs (`extract_parts`, `load_mpn_list`, `is_real_mpn`) |
 | `datasheets/distributor_core/manifest.py` | ~120 | Datasheet `manifest.json` IO and filename helpers |
-| `datasheets/distributor_core/download.py` | ~180 | PDF download cascade (requests, urllib, Playwright), redirect normalisation, alternative sources |
+| `datasheets/distributor_core/download.py` | ~180 | PDF download cascade (urllib, Playwright; requests first only with private hosts allowed), redirect normalisation, alternative sources |
 | `datasheets/distributor_core/verify.py` | ~135 | PDF text extraction and datasheet verification |
 | `<p>/scripts/provider_<p>.py` | ~315–400 | Provider adapter for digikey, mouser, lcsc, element14: auth, search, accessors, `sync_one_part` |
 | `<p>/scripts/sync_datasheets_<p>.py` | ~115–130 | Sync CLI: argparse → `distributor_core.sync` with the provider adapter |

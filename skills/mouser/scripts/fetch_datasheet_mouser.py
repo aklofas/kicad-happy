@@ -7,8 +7,9 @@ by trying multiple download methods and falling back to alternative
 manufacturer URL patterns.
 
 Download methods (tried in order):
-  - requests library (HTTP/2, redirects, anti-bot headers)
-  - Python urllib (HTTP/1.1 fallback)
+  - requests library (HTTP/2, redirects, anti-bot headers), only when
+    datasheets.allow_private_hosts is on
+  - Python urllib (HTTP/1.1), connecting only to the address the URL check approved
   - Playwright headless browser (JS-rendered pages, last resort)
 
 After download, the PDF is verified by extracting text and checking
@@ -27,8 +28,8 @@ Exit codes:
     2 = search failed (API error or part not found)
 
 Dependencies:
-    - requests (pip install requests) — preferred, handles all manufacturer sites
-    - Falls back to urllib if requests is not installed (some sites may fail)
+    - requests (pip install requests) — optional; downloads use it only when
+      datasheets.allow_private_hosts is on, otherwise urllib (some sites may fail)
     - playwright (optional) — for JS-rendered datasheet pages
 """
 
