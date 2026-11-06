@@ -116,6 +116,54 @@ class WrongTypeTest(unittest.TestCase):
         self.assertEqual(out, cfg)
 
 
+class ConfigShapeTest(unittest.TestCase):
+    def test_null_analysis_warns_and_uses_default(self):
+        out, err = _load({"analysis": None})
+        self.assertNotIn("analysis", out)
+        self.assertIn("project_config._load_and_validate", err)
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, ".kicad-happy.json"), "w", encoding="utf-8") as f:
+                json.dump({"analysis": None}, f)
+            with redirect_stderr(io.StringIO()):
+                cfg = load_config(tmp)
+                self.assertEqual(cfg["analysis"]["output_dir"], "analysis")
+                from project_config import apply_power_rails_config
+                apply_power_rails_config({"VBAT": 3.7}, [], cfg)
+
+    def test_non_string_ignore_item_is_dropped(self):
+        out, err = _load({"analysis": {"power_rails": {"ignore": ["VBAT", 5], "flag": [None, "V*"]}}})
+        pr = out["analysis"]["power_rails"]
+        self.assertEqual(pr["ignore"], ["VBAT"])
+        self.assertEqual(pr["flag"], ["V*"])
+        self.assertIn("non-string entries ignored", err)
+
+    def test_valid_rail_lists_pass_unchanged(self):
+        cfg = {"analysis": {"power_rails": {"ignore": ["VBAT"], "flag": ["V*"]}}}
+        out, err = _load(json.loads(json.dumps(cfg)))
+        self.assertEqual(err, "")
+        self.assertEqual(out, cfg)
+
+    def test_bom_config_loads(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = os.path.join(tmp, ".kicad-happy.json")
+            with open(p, "wb") as f:
+                f.write(b"\xef\xbb\xbf" + json.dumps(
+                    {"analysis": {"power_rails": {"ignore": ["VBAT"]}}}).encode())
+            err = io.StringIO()
+            with redirect_stderr(err):
+                out = _load_and_validate(p)
+        self.assertEqual(out["analysis"]["power_rails"]["ignore"], ["VBAT"])
+        self.assertNotIn("failed to parse", err.getvalue())
+
+    def test_bom_kicad_pro_loads(self):
+        from kicad_core.project import load_kicad_pro
+        with tempfile.TemporaryDirectory() as tmp:
+            p = os.path.join(tmp, "a.kicad_pro")
+            with open(p, "wb") as f:
+                f.write(b"\xef\xbb\xbf" + json.dumps({"meta": {"version": 1}}).encode())
+            self.assertEqual(load_kicad_pro(p), {"meta": {"version": 1}})
+
+
 @unittest.skipUnless(have(FX), "harness fixtures not present")
 class CliTest(unittest.TestCase):
     def _run(self, script, *args, cwd):

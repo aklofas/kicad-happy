@@ -124,7 +124,7 @@ def _strip_jsonc(text: str) -> str:
 
 def load_jsonc(path: str) -> dict:
     """Load a JSONC file, returning parsed dict."""
-    with open(path, 'r', encoding='utf-8') as f:
+    with open(path, 'r', encoding='utf-8-sig') as f:
         raw = f.read()
     return json.loads(_strip_jsonc(raw))
 

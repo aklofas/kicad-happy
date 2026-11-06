@@ -308,6 +308,8 @@ def _load_and_validate(path: str) -> Optional[Dict[str, Any]]:
                 del raw_bom['group_by']
 
     # Validate analysis.power_rails
+    if 'analysis' in cfg and not isinstance(cfg['analysis'], dict):
+        _wrong_type(cfg, 'analysis', 'analysis', 'an object')
     raw_analysis = cfg.get('analysis')
     if isinstance(raw_analysis, dict):
         raw_pr = raw_analysis.get('power_rails')
@@ -324,6 +326,13 @@ def _load_and_validate(path: str) -> Optional[Dict[str, Any]]:
                               f'{list_key} must be a list, ignoring',
                               file=sys.stderr)
                         del raw_pr[list_key]
+                    elif val is not None:
+                        kept = [v for v in val if isinstance(v, str)]
+                        if len(kept) != len(val):
+                            print(f'Warning: {path}: analysis.power_rails.'
+                                  f'{list_key}: non-string entries ignored',
+                                  file=sys.stderr)
+                            raw_pr[list_key] = kept
                 overrides = raw_pr.get('voltage_overrides')
                 if overrides is not None:
                     if not isinstance(overrides, dict):
