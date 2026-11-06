@@ -385,6 +385,8 @@ def parse_gerber(path: str) -> dict:
         # Structured comments (X2 off) carry the same TA/TO/TD commands.
         if s.startswith("G04 #@! T") and not s.startswith("G04 #@! TF."):
             s = "%" + s[8:] + ("%" if s.endswith("*") else "*%")
+        elif s.startswith("G04"):
+            continue  # a comment holds no operation, whatever text it carries
 
         # -- Aperture attribute (TA) --
         m = re.match(r"%TA\.AperFunction,([^*]*)\*%", s)
@@ -678,9 +680,12 @@ def parse_drill(path: str) -> dict:
     fmt_decimals = None       # from ; FORMAT={3:3/...} comment
     coord_divisor = None      # set on first coordinate line
     route_start = None        # G00 position of a routed slot, drilled at M15
+    looks_excellon = False
 
     for line in lines:
         line = line.strip()
+        if re.match(r"\ufeff?(?:M48(?!\d)|T\d+C|G?0?0?X-?\d)", line):
+            looks_excellon = True
 
         # Units
         if "METRIC" in line or "MOMM" in line.upper():
@@ -773,6 +778,9 @@ def parse_drill(path: str) -> dict:
                 route_start = (x, y)
             else:
                 _add_hole(result, current_tool, x, y)
+
+    if not looks_excellon:
+        raise ValueError("not an Excellon drill file: no M48 header, tool definition or coordinate line")
 
     # Fix infinite values
     for key in result["coordinate_range"]:
@@ -951,6 +959,9 @@ def parse_job_file(path: str, diagnostics: list | None = None) -> dict | None:
         if files:
             result["expected_files"] = []
             for f in files:
+                for key in ("Path", "FileFunction"):
+                    if not isinstance(f.get(key, ""), str):
+                        raise TypeError(f"{key} is {type(f[key]).__name__}, not a string")
                 result["expected_files"].append({
                     "path": f.get("Path", ""),
                     "function": f.get("FileFunction", ""),
@@ -1479,7 +1490,7 @@ def scan_zip_archives(gerber_dir: Path, loose_gerber_files: list[Path],
     left over from an old unzip.
     """
     zip_files = sorted(gerber_dir.glob("*.zip")) + sorted(gerber_dir.glob("*.ZIP"))
-    zip_files = sorted(set(zip_files))
+    zip_files = sorted(f for f in set(zip_files) if not _is_repo_or_fs_artifact(f.name))
     if not zip_files:
         return None
 
@@ -1651,7 +1662,8 @@ def analyze_gerbers(directory: str, full: bool = False, diagnostics: list | None
     # Find all gerber and drill files
     gerber_files = sorted(gerber_dir.glob("*.gbr")) + sorted(gerber_dir.glob("*.g*"))
     drill_files = sorted(gerber_dir.glob("*.drl"))
-    job_files = sorted(gerber_dir.glob("*.gbrjob"))
+    job_files = [f for f in sorted(gerber_dir.glob("*.gbrjob"))
+                 if not _is_repo_or_fs_artifact(f.name)]
 
     # Also pick up uppercase extensions
     for ext in ("*.GBR", "*.GTL", "*.GBL", "*.GTS", "*.GBS", "*.GTO", "*.GBO",
@@ -1663,6 +1675,7 @@ def analyze_gerbers(directory: str, full: bool = False, diagnostics: list | None
         else:
             gerber_files.extend(sorted(gerber_dir.glob(ext)))
 
+    drill_files = [f for f in drill_files if not _is_repo_or_fs_artifact(f.name)]
     named_drills = []
     # Windows globs ignore case, so *.drl and *.DRL can both name one file
     for df in dict.fromkeys(drill_files):
@@ -1691,7 +1704,7 @@ def analyze_gerbers(directory: str, full: bool = False, diagnostics: list | None
     gerber_files = [f for f in gerber_files
                     if f.suffix.lower() not in (".drl", ".gbrjob", ".zip", ".pos", ".txt")
                     and not _is_repo_or_fs_artifact(f.name)]
-    drill_files = sorted(set(drill_files))
+    drill_files = sorted(f for f in set(drill_files) if not _is_repo_or_fs_artifact(f.name))
 
     # Scan zip archives before parsing (uses file lists for timestamp comparison)
     zip_scan = scan_zip_archives(gerber_dir, gerber_files, drill_files, diagnostics)
@@ -1728,6 +1741,8 @@ def analyze_gerbers(directory: str, full: bool = False, diagnostics: list | None
             drills.append(parse_drill(str(df)))
         except (OSError, ValueError, UnicodeDecodeError) as e:
             drills.append({"file": str(df), "filename": df.name, "error": str(e)})
+            record_diagnostic(diagnostics, "analyze_gerbers.analyze_gerbers", e,
+                              "not read as a drill file")
 
     job_info = None
     if job_files:
@@ -1957,7 +1972,7 @@ def _build_gerber_findings(completeness, alignment, drill_classification,
         })
 
     # GR-003: Missing or empty drill file
-    has_drill = statistics.get('drill_files', 0) > 0
+    has_drill = any('error' not in d for d in drills)
     if not has_drill:
         findings.append({
             'detector': 'analyze_gerbers',
@@ -2114,7 +2129,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(f"directory {args.directory}: no such file or directory")
     if _gerber_dir.is_dir():
         for p in sorted(_gerber_dir.iterdir()):
-            if not p.is_file():
+            if not p.is_file() or _is_repo_or_fs_artifact(p.name):
                 continue
             if p.suffix.lower() in _gerber_exts or p.name.lower().endswith(".gbrjob"):
                 _gerber_files.append(p)

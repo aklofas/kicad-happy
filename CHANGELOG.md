@@ -312,6 +312,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - RP-002 on a board whose PCB analysis has plane gaps but no reference-plane coverage (zone fills unavailable) is recorded in `checks_run` as not run, with that reason, instead of as a check that ran and found nothing; a coverage list that is present but empty counts as measured.
 - DP-005 measures pair lengths from `net_lengths`, which counts arcs, so an arc-routed pair is not reported as a length mismatch.
 - `--compact` EMC output: `summary.active`, `summary.suppressed`, `summary.categories_checked`, `category_summary` and the stderr finding count describe the findings emitted, not the info findings `--compact` drops.
+- Gerber analysis no longer counts a comment that mentions `D01` or `D03` as an operation, reports a `.drl` that holds no Excellon data instead of crediting it as the drill file, ignores `._*` and `.git*` companion files when it picks the job, drill and archive files, and reports a job file whose `Path` or `FileFunction` is not text instead of stopping.
 
 ### Documentation
 
