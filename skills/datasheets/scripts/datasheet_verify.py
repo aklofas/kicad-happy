@@ -11,14 +11,13 @@ pipeline (via sync_datasheets_digikey + Claude extraction).
 import os
 import re
 import sys
-from pathlib import Path
 
 # Allow imports from same directory
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from datasheet_types.cache_reader import MAX_CACHE_BYTES, read_json_object, safe_extract_dir  # noqa: E402
-from distributor_core.manifest import manifest_file_path  # noqa: E402
+from datasheet_extract_cache import find_extraction  # noqa: E402
 
 
 MAX_EXTRACTION_BYTES = MAX_CACHE_BYTES
@@ -32,6 +31,9 @@ def _load_extraction(extract_dir: str, mpn: str) -> dict:
     OSError. Quality is NOT a gate here — callers emit an `extraction_quality_low` info finding via
     `_quality_finding` instead.
 
+    Lookup order (shared with the feature helpers and the lifecycle audit):
+    the extraction manifest, then the file named after the part.
+
     Two cache shapes supported:
     - v1.4: extraction.quality_score on 0-100 scale.
     - v1.3 legacy: extraction_metadata.extraction_score (cache manager) or
@@ -40,41 +42,7 @@ def _load_extraction(extract_dir: str, mpn: str) -> dict:
     if not extract_dir or not mpn:
         return {}
 
-    # Preserve dots and hyphens — planner/merger write literal MPN-named
-    # files (`ABM8G-106-12.000MHZ-T.json`), so the legacy positional path
-    # MUST match what they wrote. Aligned with
-    # datasheet_types.cache_reader.sanitize_mpn and the flag-mode regex in
-    # _cli_v14 below.
-    sanitized = re.sub(r'[^A-Za-z0-9_.-]', '_', mpn.strip())
-
-    # Direct file lookup
-    path = os.path.join(extract_dir, f"{sanitized}.json")
-    if os.path.isfile(path):
-        return _read_extraction_file(path)
-
-    # Manifest-based lookup; try manifest.json, fall back to legacy
-    # index.json. The cache manager keys entries by a hashed file stem and
-    # records the requested MPN in `mpn`, so match either.
-    idx_path = os.path.join(extract_dir, "manifest.json")
-    if not os.path.isfile(idx_path):
-        idx_path = os.path.join(extract_dir, "index.json")
-    if os.path.isfile(idx_path):
-        try:
-            idx = read_json_object(idx_path) or {}
-            entries = idx.get("extractions", {})
-            for k, v in entries.items():
-                if not isinstance(v, dict):
-                    continue
-                if (k.upper() != sanitized.upper()
-                        and str(v.get("mpn") or "").strip().upper() != mpn.strip().upper()):
-                    continue
-                fpath = manifest_file_path(Path(extract_dir), v.get("file"))
-                if fpath is not None and fpath.is_file():
-                    return _read_extraction_file(str(fpath))
-        except (ValueError, OSError, AttributeError):
-            pass
-
-    return {}
+    return find_extraction(extract_dir, mpn)[0] or {}
 
 
 def _read_extraction_file(path: str) -> dict:

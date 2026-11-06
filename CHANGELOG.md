@@ -59,6 +59,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A project copied or moved to another folder keeps trusting its datasheet extractions: the PDF is found in `datasheets/` by name when the recorded path no longer exists, and new extractions record the path relative to `datasheets/`. An extraction that is still not trusted is named in the schematic analysis `diagnostics`.
 - `plan_extraction.py --use-cached-scout` with no saved scout, or an unreadable plan or scout, stops with a one-line message and exit 2 instead of a traceback; the extraction pipeline no longer follows a symlinked cache file or waits on a named pipe.
 - Datasheet verification after a download no longer fails with an import error when the distributor scripts are used from another tool.
+- `datasheet_verify`, the datasheet feature helpers and the lifecycle audit now find a part's extraction the same way (extraction manifest first, then the file named after the part), so they no longer read different extractions for the same part.
 
 ### Documentation
 

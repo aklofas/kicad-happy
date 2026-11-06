@@ -21,7 +21,7 @@ from typing import Optional
 
 from datasheet_extract_cache import (
     resolve_extract_dir,
-    get_cached_extraction,
+    find_extraction,
     EXTRACTION_VERSION,
     MIN_SCORE,
 )
@@ -33,7 +33,6 @@ _TYPES_PARENT = str(Path(__file__).resolve().parent.parent)
 if _TYPES_PARENT not in sys.path:
     sys.path.insert(0, _TYPES_PARENT)
 
-from datasheet_types.cache_reader import cache_path_for, read_json_object  # noqa: E402
 from datasheet_types.extraction import DatasheetFacts  # noqa: E402
 from datasheet_types.trust_gating import FACTS_MIN_SCORE  # noqa: E402
 
@@ -75,11 +74,7 @@ def _load(mpn, extract_dir=None, analysis_json=None, project_dir=None):
         )
         if extract_dir is None:
             return None
-    ext = get_cached_extraction(extract_dir, mpn)
-    if not ext:
-        # Direct-file fallback: allows test fixtures (and simple single-file drops)
-        # that write {mpn}.json directly without a manifest index.
-        ext = read_json_object(cache_path_for(mpn, extract_dir))
+    ext = find_extraction(extract_dir, mpn)[0]
     return ext if ext is not None and _legacy_shape_ok(ext) else None
 
 

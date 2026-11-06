@@ -61,9 +61,9 @@ class ExtractDirTest(unittest.TestCase):
             self.assertIsNone(dec.resolve_extract_dir(analysis_json=a), a)
         self.assertIsNone(dec.resolve_extract_dir())
         self.assertIsNone(dec.get_cached_extraction(None, MPN))
-        with mock.patch.object(df, "get_cached_extraction", side_effect=AssertionError("cache read")), \
+        with mock.patch.object(df, "find_extraction", side_effect=AssertionError("cache read")), \
              mock.patch.object(cache_reader, "lookup", side_effect=AssertionError("cache read")), \
-             mock.patch.object(df, "read_json_object", side_effect=AssertionError("cache read")):
+             mock.patch.object(dec, "read_json_object", side_effect=AssertionError("cache read")):
             for kw in ({}, {"analysis_json": {}}, {"project_dir": None},
                        {"analysis_json": {"inputs": {"source_files": []}}}):
                 self.assertIsNone(df.get_mcu_features(MPN, **kw), kw)

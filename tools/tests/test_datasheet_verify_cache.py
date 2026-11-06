@@ -286,5 +286,47 @@ class BuckBoard(unittest.TestCase):
         self.assertEqual(len(dvr["findings"]), 1)
 
 
+class SharedLookupOrder(unittest.TestCase):
+    """The verifier, the feature helpers and the lifecycle audit read the same extraction."""
+
+    def _ext(self, root, files, manifest=None):
+        ext = Path(root) / "datasheets" / "extracted"
+        ext.mkdir(parents=True)
+        for name, (lo, hi) in files.items():
+            (ext / name).write_text(json.dumps({
+                "category": "opamp", "mpn": "P1",
+                "recommended_operating_conditions": {"temp_min_c": lo, "temp_max_c": hi}}),
+                encoding="utf-8")
+        if manifest is not None:
+            (ext / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        return ext
+
+    def _read_all(self, root, ext):
+        import datasheet_features as df
+        import lifecycle_engine
+        out = {}
+        out["verify"] = dv._load_extraction(str(ext), "P1")["recommended_operating_conditions"]["temp_min_c"]
+        out["features"] = df._load("P1", extract_dir=str(ext))["recommended_operating_conditions"]["temp_min_c"]
+        out["lifecycle"] = lifecycle_engine.read_extraction_temperature("P1", str(root))["temp_min_c"]
+        return out
+
+    def test_manifest_entry_wins_over_direct_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            ext = self._ext(d, {"P1.json": (0, 70), "P1_v2.json": (-40, 85)},
+                            {"extractions": {"P1": {"file": "P1_v2.json", "mpn": "P1"}}})
+            self.assertEqual(self._read_all(d, ext), {"verify": -40, "features": -40, "lifecycle": -40})
+
+    def test_direct_file_without_manifest_is_still_read(self):
+        with tempfile.TemporaryDirectory() as d:
+            ext = self._ext(d, {"P1.json": (0, 70)})
+            self.assertEqual(self._read_all(d, ext), {"verify": 0, "features": 0, "lifecycle": 0})
+
+    def test_manifest_found_by_recorded_mpn_when_key_differs(self):
+        with tempfile.TemporaryDirectory() as d:
+            ext = self._ext(d, {"abc.json": (-40, 85)},
+                            {"extractions": {"abc": {"file": "abc.json", "mpn": "p1"}}})
+            self.assertEqual(self._read_all(d, ext), {"verify": -40, "features": -40, "lifecycle": -40})
+
+
 if __name__ == "__main__":
     unittest.main()

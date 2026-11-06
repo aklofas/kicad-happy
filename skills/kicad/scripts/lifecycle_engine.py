@@ -550,8 +550,8 @@ def read_extraction_temperature(mpn: str, project_dir: str) -> dict | None:
     """Operating temperature range from the project's datasheet extraction cache.
 
     Looks the MPN up in <project_dir>/datasheets/extracted the way the
-    datasheet consumers do (manifest, then <mpn>.json), then under the older
-    underscore-only file name. A file that is not a readable JSON object is
+    datasheet consumers do (manifest, then <mpn>.json, then the older
+    underscore-only file name). A file that is not a readable JSON object is
     skipped with one warning.
     """
     if not project_dir:
@@ -559,43 +559,23 @@ def read_extraction_temperature(mpn: str, project_dir: str) -> dict | None:
     ds_scripts = str(Path(__file__).resolve().parents[2] / "datasheets" / "scripts")
     if ds_scripts not in sys.path:
         sys.path.insert(0, ds_scripts)
-    from datasheet_extract_cache import get_cached_extraction
-    from datasheet_types.cache_reader import read_json_object, safe_extract_dir, sanitize_mpn
-    from distributor_core.manifest import manifest_file_path
+    from datasheet_extract_cache import _load_index, find_extraction
+    from datasheet_types.cache_reader import safe_extract_dir
 
     extract_dir = safe_extract_dir(Path(project_dir) / "datasheets" / "extracted")
     if extract_dir is None:
         return None
-    ext, path = get_cached_extraction(extract_dir, mpn), extract_dir
+    ext, path = find_extraction(extract_dir, mpn)
     if ext is None:
-        legacy = re.sub(r'[^A-Za-z0-9_]', '_', mpn.strip())
-        candidates = [f"{sanitize_mpn(mpn)}.json", f"{legacy}.json"]
-        for idx_name in ("manifest.json", "index.json"):
-            idx = read_json_object(extract_dir / idx_name)
-            if idx is not None:
-                entries = idx.get("extractions")
-                if entries is not None and not isinstance(entries, dict):
-                    print(f"Warning: {extract_dir / idx_name}: 'extractions' is not an object; "
-                          f"manifest ignored", file=sys.stderr)
-                for k, v in (entries.items() if isinstance(entries, dict) else ()):
-                    if str(k).upper() == legacy.upper() and isinstance(v, dict) \
-                            and isinstance(v.get("file"), str):
-                        candidates.append(v["file"])
-                        break
-                break
-        for name in dict.fromkeys(candidates):
-            p = manifest_file_path(extract_dir, name)
-            if p is None or not p.is_file():
-                continue
-            ext, path = read_json_object(p), p
-            if ext is None:
-                print(f"Warning: {p}: not a readable JSON object; extraction ignored",
-                      file=sys.stderr)
-                return None
-            break
-    if ext is None:
+        if path is not None:
+            print(f"Warning: {path}: not a readable JSON object; extraction ignored",
+                  file=sys.stderr)
+        else:
+            entries = _load_index(extract_dir).get("extractions")
+            if entries is not None and not isinstance(entries, dict):
+                print(f"Warning: {extract_dir}: manifest 'extractions' is not an object; "
+                      f"manifest ignored", file=sys.stderr)
         return None
-
     rng = _v2_operating_temperature(ext) or _v1_operating_temperature(ext, path)
     if rng is None:
         return None
