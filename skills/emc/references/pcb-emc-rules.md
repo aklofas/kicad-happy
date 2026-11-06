@@ -44,7 +44,7 @@ Quantitative design rules used by the EMC analyzer. Each rule has a threshold, r
 
 ### DC-002: Missing decoupling
 - **Severity:** error
-- **Threshold:** IC (U/IC prefix) with no capacitor (`C` prefix) within 10mm, measured from the IC's power and ground-net pads to the capacitor's pads (footprint centres if no such pad exists), that shares a non-ground net with the IC other than the IC's own signal-pin nets. Skipped: ICs the schematic analyzer lists as protection devices other than fuses, values containing `esd`, `tvs`, `test` or `net_tie`, `tpd<n>` values, a `tp` value token, and values starting with a common ESD/TVS part prefix
+- **Threshold:** IC (U/IC prefix) with no capacitor (`C` prefix) within 10mm, measured from the IC's power and ground-net pads to the capacitor's pads (footprint centres if no such pad exists), that shares a non-ground net with the IC other than the IC's own signal-pin nets. Skipped: ICs the schematic analyzer lists as protection devices other than fuses, values containing `esd`, `tvs`, `test` or `net_tie`, `tpd<n>` values and a `tp` value token. An IC whose value starts with a common ESD/TVS part prefix (`esd`, `usblc`, `prtr`, ...) is not skipped: it passes with a capacitor within 10mm on any shared non-ground net (its own signal nets are not excluded)
 - **Source:** Every major IC manufacturer's application notes recommend decoupling on all power pins. TI SLUA383, Analog Devices MT-101.
 
 ### DC-003: Decoupling cap far from via
@@ -341,7 +341,7 @@ Source: Goldfarb, E. & Pucha, R. "Modeling Via Grounds in Microstrip." IEEE Micr
 
 ### ES-002: Insufficient ground vias near ESD device
 - **Severity:** error (no ground via within 3mm), info (single ground via); a discrete TVS diode whose clamp net is not a ground is not checked
-- **Threshold:** <2 ground stitching vias within 3mm of the TVS footprint centre
+- **Threshold:** <2 ground stitching vias within 3mm of the TVS footprint centre; checked only for a device within 50mm of a detected connector, and only when the PCB JSON has vias
 - **Rationale:** TVS ground path inductance is the most critical parasitic in ESD protection. Two parallel vias halve the inductance (~0.5 nH → ~0.25 nH), improving clamping by ~9V at 37.5 GA/s.
 - **Fix:** Add ≥2 ground vias directly adjacent to the TVS. Use short, wide traces to ground plane.
 
