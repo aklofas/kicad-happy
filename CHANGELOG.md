@@ -19,6 +19,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A footprint pad with several fabrication-property tokens, or a footprint that declares its own newer file version, is read as KiCad reads it.
 - An `ipc_class` of `true` passed straight to the PCB analyzer no longer reads as IPC Class 1.
 - A design variant overrides a symbol field only when it names the field with the same case, as KiCad does.
+- A corrupt or unreadable datasheet extraction file is now reported in the schematic output's diagnostics instead of silently disabling the IC absolute-maximum voltage check.
 
 ### Documentation
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import math
 import re
+from kicad_core.diagnostics import record
 from kicad_core.classify import is_active_low_enable, is_touch_pad
 from kicad_types import (
     AnalysisContext,
@@ -795,7 +796,13 @@ def analyze_voltage_derating(ctx: AnalysisContext, signal_analysis: dict,
             if extract_path is None or not extract_path.exists():
                 return None
         data = read_json_object(extract_path)
-        abs_max = data.get("absolute_maximum_ratings") if data is not None else None
+        if data is None:
+            record(getattr(ctx, "diagnostics", None),
+                   "schematic.system_analyses.analyze_voltage_derating",
+                   ValueError(f"{extract_path.name} is not a readable JSON object"),
+                   f"IC abs-max derating skipped for {mpn}")
+            return None
+        abs_max = data.get("absolute_maximum_ratings")
         return abs_max if isinstance(abs_max, dict) else None
 
     profile = _DERATING_PROFILES.get(derating_profile, _DERATING_PROFILES["commercial"])

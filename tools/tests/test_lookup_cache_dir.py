@@ -45,6 +45,16 @@ def _write_cache(ex):
         {"extractions": {"XA100": {"file": "XA100.json"}}}), encoding="utf-8")
 
 
+def _derating_ctx():
+    return SimpleNamespace(
+        components=[{"type": "ic", "reference": "U1", "value": "XA100", "mpn": "XA100",
+                     "pins": [{"number": "1"}]}],
+        nets={}, pin_net={("U1", "1"): ("+12V", None)},
+        is_power_net=lambda n: n == "+12V", is_ground=lambda n: False,
+        rail_by_net={}, rail_voltage_or=lambda n, f: 12.0,
+        rail_source_fields=lambda *a: {}, diagnostics=[])
+
+
 def _derating_vin_max(project_dir):
     """abs_max_vin of the VD-002 finding analyze_voltage_derating gives an XA100 on a 12 V rail."""
     from schematic.system_analyses import analyze_voltage_derating
@@ -115,6 +125,32 @@ class SymlinkedProjectCacheTest(unittest.TestCase):
 
     def test_voltage_derating_abs_max(self):
         self._check(_derating_vin_max, [5], [])
+
+
+class UnreadableExtractionTest(unittest.TestCase):
+    def _run(self, text):
+        from schematic.system_analyses import analyze_voltage_derating
+        with tempfile.TemporaryDirectory() as tmp:
+            ex = Path(tmp) / "datasheets" / "extracted"
+            _write_cache(ex)
+            if text is not None:
+                (ex / "XA100.json").write_text(text, encoding="utf-8")
+            ctx = _derating_ctx()
+            with contextlib.redirect_stderr(io.StringIO()):
+                out = analyze_voltage_derating(ctx, {}, project_dir=tmp)
+        return [f for f in out if f.get("rule_id") == "VD-002"], ctx.diagnostics
+
+    def test_malformed_extraction_records_one_diagnostic(self):
+        findings, diags = self._run("{not json")
+        self.assertEqual(findings, [])
+        self.assertEqual(len(diags), 1)
+        self.assertEqual(diags[0]["source"], "schematic.system_analyses.analyze_voltage_derating")
+        self.assertIn("XA100", diags[0]["effect"])
+
+    def test_readable_extraction_records_nothing(self):
+        findings, diags = self._run(None)
+        self.assertEqual([f["abs_max_vin"] for f in findings], [5])
+        self.assertEqual(diags, [])
 
 
 class ManifestFileEscapeTest(unittest.TestCase):
