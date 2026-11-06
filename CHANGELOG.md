@@ -299,6 +299,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - OV-001 compares only supply pins with the datasheet's recommended supply range; an enable input tied to ground (the LM2596's ON/OFF) is no longer told to raise GND to 4.5 V.
 - A sub-sheet whose file name uses a project text variable (for example `${BLOCK_DIR}/amp.kicad_sch` or `${PROJECTNAME}_sub.kicad_sch`) is read, and project and root discovery follow it, instead of the sheet being dropped without a message. Only the project's text variables and `${PROJECTNAME}` are expanded, as KiCad does; an unknown variable or an environment variable stays literal.
 - A micro via is held to the micro-via diameter of its own net class (the first class by priority that sets one, else the Default class), as KiCad's DRC does, instead of the Default class's for the whole board.
+- PCB DFM judges annular rings against the IPC class the design intent resolves (project config, fab notes or title block) instead of always Class 2.
 
 ### Documentation
 

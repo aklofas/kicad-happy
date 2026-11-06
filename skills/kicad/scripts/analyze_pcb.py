@@ -125,7 +125,7 @@ def main(argv: list[str] | None = None) -> int:
                          schematic_data=schematic_data,
                          return_path_radius_mm=args.return_path_radius_mm,
                          gp001_debug=args.gp001_debug,
-                         power_rails=power_rails)
+                         power_rails=power_rails, config=config)
     # Inject provenance and drop legacy 'file' key (already removed from
     # internal result assembly, but belt-and-suspenders).
     diagnostics = result.pop("diagnostics", [])

@@ -67,5 +67,58 @@ class TestPcbDfmSynthetic(unittest.TestCase):
         self.assertEqual(r["violation_count"], 4)
 
 
+IPC_BOARD = """(kicad_pcb (version 20221018) (generator pcbnew)
+  (general (thickness 1.6))
+  (layers (0 "F.Cu" signal) (31 "B.Cu" signal) (44 "Edge.Cuts" user))
+  (setup (pad_to_mask_clearance 0))
+  (net 0 "") (net 1 "A")
+  (via (at 10 10) (size 0.42) (drill 0.2) (layers "F.Cu" "B.Cu") (net 1))
+  (gr_line (start 0 0) (end 20 0) (stroke (width 0.1) (type solid)) (layer "Edge.Cuts"))
+  (gr_line (start 20 0) (end 20 20) (stroke (width 0.1) (type solid)) (layer "Edge.Cuts"))
+  (gr_line (start 20 20) (end 0 20) (stroke (width 0.1) (type solid)) (layer "Edge.Cuts"))
+  (gr_line (start 0 20) (end 0 0) (stroke (width 0.1) (type solid)) (layer "Edge.Cuts"))
+  {extra})
+"""
+
+
+def _ipc_dfm(config=None, extra=""):
+    """(dfm_summary.ipc_class_compliance, DFM-002 summaries) of a board whose via annular
+    ring is 0.11 mm."""
+    import tempfile
+    from pcb.pipeline import analyze_pcb
+    with tempfile.TemporaryDirectory() as tmp:
+        board = os.path.join(tmp, "b.kicad_pcb")
+        with open(board, "w", encoding="utf-8") as f:
+            f.write(IPC_BOARD.format(extra=extra))
+        result = analyze_pcb(board, config=config)
+    return (result["dfm_summary"].get("ipc_class_compliance"),
+            [f["summary"] for f in result["findings"] if f["rule_id"] == "DFM-002"])
+
+
+class TestDfmDesignIntent(unittest.TestCase):
+    """DFM judges annular rings against the IPC class the design intent resolves."""
+
+    def test_config_class_3_reaches_the_dfm(self):
+        comp, summaries = _ipc_dfm({"design_intent": {"ipc_class": 3}})
+        self.assertEqual(comp, {"detected_class": 3, "detection_source": "config"})
+        self.assertTrue(any("IPC Class 3 minimum 0.15mm" in s for s in summaries))
+
+    def test_config_class_1_accepts_a_ring_class_2_rejects(self):
+        comp, summaries = _ipc_dfm({"design_intent": {"ipc_class": 1}})
+        self.assertEqual(comp, {"detected_class": 1, "detection_source": "config"})
+        self.assertEqual(summaries, [])
+
+    def test_fab_note_names_the_class(self):
+        note = ('(gr_text "Fabricate to IPC Class 3" (at 5 5) (layer "F.Fab")'
+                ' (effects (font (size 1 1))))')
+        comp, _ = _ipc_dfm(extra=note)
+        self.assertEqual(comp, {"detected_class": 3, "detection_source": "pcb_fab_notes"})
+
+    def test_auto_keeps_class_2_and_the_default_source(self):
+        comp, summaries = _ipc_dfm()
+        self.assertEqual(comp, {"detected_class": 2, "detection_source": "default"})
+        self.assertTrue(any("IPC Class 2 minimum 0.125mm" in s for s in summaries))
+
+
 if __name__ == "__main__":
     unittest.main()

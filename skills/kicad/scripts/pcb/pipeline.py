@@ -457,7 +457,21 @@ def run_facts(board: BoardData, *, include_trace_segments: bool, return_path_rad
     )
 
 
-def run_checks(board: BoardData, facts: PcbFacts, *, include_trace_segments: bool) -> PcbChecks:
+def _dfm_design_intent(config: dict | None, silkscreen: dict, metadata: dict | None) -> dict | None:
+    """The design intent DFM judges against: the IPC class the project config, the fab notes or
+    the title block name, as the ``design_intent`` block reports it. None when none names one
+    (DFM then uses IPC Class 2)."""
+    try:
+        from design_intent import resolve_design_intent
+    except ImportError:
+        return None
+    intent = resolve_design_intent(config or {}, pcb_data={
+        'text_items': (silkscreen or {}).get('fab_texts', []), 'metadata': metadata or {}})
+    return None if intent['source']['ipc_class'] == 'auto' else intent
+
+
+def run_checks(board: BoardData, facts: PcbFacts, *, include_trace_segments: bool,
+               config: dict | None = None) -> PcbChecks:
     """Phase 3: the checks in call order. assemble_result writes the results of the last
     seven (fiducials through board-edge vias). Reads the board and *facts*;
     mutates neither (tools/tests/test_pcb_phase_purity.py)."""
@@ -492,7 +506,8 @@ def run_checks(board: BoardData, facts: PcbFacts, *, include_trace_segments: boo
     design_rules = (project_settings.get('design_rules')
                     or setup.get("design_rules"))
     dfm = analyze_dfm(footprints, tracks, vias, outline, design_rules,
-                       net_classes=net_classes, design_intent=None)
+                       net_classes=net_classes,
+                       design_intent=_dfm_design_intent(config, silkscreen, facts.metadata))
 
     # Tombstoning risk assessment for small passives
     tombstoning = analyze_tombstoning_risk(footprints, tracks, vias, zones)
@@ -549,13 +564,15 @@ def run_checks(board: BoardData, facts: PcbFacts, *, include_trace_segments: boo
 
 
 def run_analyses(board: BoardData, *, include_trace_segments: bool, return_path_radius_mm: float,
-                 gp001_debug: bool, resolved_power_rails: set[str] | None) -> PcbAnalyses:
+                 gp001_debug: bool, resolved_power_rails: set[str] | None,
+                 config: dict | None = None) -> PcbAnalyses:
     """Phases 2–3: run_facts then run_checks, composed into one PcbAnalyses."""
     facts = run_facts(board, include_trace_segments=include_trace_segments,
                       return_path_radius_mm=return_path_radius_mm,
                       gp001_debug=gp001_debug,
                       resolved_power_rails=resolved_power_rails)
-    checks = run_checks(board, facts, include_trace_segments=include_trace_segments)
+    checks = run_checks(board, facts, include_trace_segments=include_trace_segments,
+                        config=config)
     return PcbAnalyses(facts=facts, checks=checks)
 
 
@@ -564,7 +581,8 @@ def analyze_pcb(path: str, *, proximity: bool = False,
                 schematic_data: dict = None,
                 return_path_radius_mm: float = 0.5,
                 gp001_debug: bool = False,
-                power_rails: set[str] | None = None) -> dict:
+                power_rails: set[str] | None = None,
+                config: dict | None = None) -> dict:
     """Main analysis function.
 
     Args:
@@ -580,6 +598,8 @@ def analyze_pcb(path: str, *, proximity: bool = False,
             rails (overrides name heuristics). Takes priority over rails
             auto-read from `schematic_data`; when neither is given, net
             classification falls back to name-based heuristics alone.
+        config: Optional loaded ``.kicad-happy.json``; its ``design_intent.ipc_class``
+            sets the IPC class DFM judges against (else the fab notes or title block, else 2).
     """
     # One reader state per call — nothing survives into the next analyze_pcb()
     # in the same process (a stale mapping could leak a wrong non-zero net_number).
@@ -590,7 +610,8 @@ def analyze_pcb(path: str, *, proximity: bool = False,
     analyses = run_analyses(board, include_trace_segments=include_trace_segments,
                             return_path_radius_mm=return_path_radius_mm,
                             gp001_debug=gp001_debug,
-                            resolved_power_rails=_resolved_power_rails)
+                            resolved_power_rails=_resolved_power_rails,
+                            config=config)
     return assemble_result(board, analyses, proximity=proximity,
                            include_trace_segments=include_trace_segments,
                            schematic_data=schematic_data,
