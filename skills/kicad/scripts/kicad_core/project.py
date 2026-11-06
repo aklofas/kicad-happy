@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 
 from kicad_core.textvars import expand_text_vars
+from kicad_core import sexp as _sexp
 from kicad_core.sexp import parse as _sexp_parse, parse_file as _sexp_parse_file, find_all, find_first, get_value
 
 
@@ -734,6 +735,21 @@ def _dru_parse_error(tree: list) -> str | None:
     return None
 
 
+def _dru_unbalanced(content: str) -> str | None:
+    """KiCad's message when the parentheses of *content* do not balance, or None. Counted over
+    the parser's own tokens, so a parenthesis in a quoted string or a comment line is not counted;
+    the parser itself closes an open list at the end and stops at a stray ')' without error."""
+    depth = 0
+    for tok in _sexp._tokenize(content):
+        if tok is _sexp._LPAREN:
+            depth += 1
+        elif tok is _sexp._RPAREN:
+            depth -= 1
+            if depth < 0:
+                return "Missing '('."
+    return "Missing ')'." if depth else None
+
+
 def load_kicad_dru(file_path: str) -> list[dict] | None:
     """The custom rules of the board's ``.kicad_dru`` (`load_kicad_dru_checked`), or None."""
     return load_kicad_dru_checked(file_path)[0]
@@ -814,7 +830,7 @@ def load_kicad_dru_checked(file_path: str) -> tuple[list[dict] | None, str | Non
 
     if not rules:
         return None, None
-    return rules, _dru_parse_error(tree)
+    return rules, _dru_parse_error(tree) or _dru_unbalanced(content)
 
 
 def load_lib_tables(file_path: str) -> dict:

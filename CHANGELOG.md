@@ -10,6 +10,8 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Fixed
 
+- A `.kicad_dru` with unbalanced parentheses is now refused as KiCad refuses it: none of its rules apply and `custom_rules_error` says why.
+
 ### Documentation
 
 - The kicad skill no longer tells the agent that SPICE and EMC runs are mandatory proof. It reports a SPICE pass as a check, an `info` or generic-model bench as a measurement, and heuristic EMC findings as screening. A board with no datasheet evidence may still state KiCad-file facts (nets, pads, tracks, DRC/ERC) as verified.

@@ -229,7 +229,12 @@ class RefusedFileTest(unittest.TestCase):
                  + "\n(rule v (constraint via_count (max 2)))\n"),
                 ("comments on first and last line",
                  '# leading comment (with "quote\n(version 1)\n' + TRACK_RULE
-                 + "\n# trailing comment no newline")):
+                 + "\n# trailing comment no newline"),
+                ("paren inside a quoted condition", "(version 1)\n" + TRACK_RULE
+                 + "\n(rule a (condition \"A.NetName == '(x'\") (constraint clearance (min 0.01mm)))\n"),
+                ("paren in a comment line",
+                 "(version 1)\n# a comment with ( unbalanced\n" + TRACK_RULE + "\n"),
+                ("CRLF line ends", ("(version 1)\n" + TRACK_RULE + "\n").replace("\n", "\r\n"))):
             with self.subTest(name):
                 self.assertEqual(refused(text), (self.APPLIED, None))
 
@@ -251,9 +256,20 @@ class RefusedFileTest(unittest.TestCase):
                  "Unrecognized constraint type."),
                 ("nested layer", "(version 1)\n" + TRACK_RULE
                  + "\n(rule l (layer (F.Cu)) (constraint track_width (min 0.5mm)))\n",
-                 "Unrecognized layer.")):
+                 "Unrecognized layer."),
+                ("missing close paren", "(version 1)\n" + TRACK_RULE
+                 + "\n(rule x (constraint clearance (min 0.01mm))\n", "Missing ')'."),
+                ("missing close in the only rule",
+                 "(version 1)\n(rule w (constraint track_width (min 0.5mm))\n", "Missing ')'."),
+                ("stray close paren", "(version 1)\n" + TRACK_RULE + ")\n", "Missing '('.")):
             with self.subTest(name):
                 self.assertEqual(refused(text), ([], message))
+
+    def test_unbalanced_file_without_rules_is_not_reported(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, "b.kicad_dru"), "w", encoding="utf-8") as f:
+                f.write('\t(condition "x"))\n')
+            self.assertEqual(load_kicad_dru_checked(os.path.join(tmp, "b.kicad_pcb")), (None, None))
 
     def test_nested_layer_is_reported_by_the_cli(self):
         with tempfile.TemporaryDirectory() as tmp:
