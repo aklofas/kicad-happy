@@ -11,7 +11,7 @@ KiCad schematic
   -> analyze_schematic.py -> schematic.json (frequencies, subcircuits, protection devices)
 
 KiCad PCB
-  -> analyze_pcb.py --full -> pcb.json (traces, zones, vias, stackup, placement)
+  -> analyze_pcb.py --full --schematic schematic.json -> pcb.json (traces, zones, vias, stackup, placement)
 
 Both JSONs
   -> analyze_emc.py -> emc.json (findings, risk score, test plan, regulatory coverage)
@@ -181,7 +181,7 @@ The analyzer generates a test plan to help you prepare for lab testing:
 
 When a SPICE simulator is available (ngspice, LTspice, or Xyce), the `--spice-enhanced` flag improves four areas:
 
-**PDN impedance (PD-001, PD-002)** — Instead of the analytical parallel-RLC model, SPICE runs an actual AC sweep of the decoupling network. This captures phase interactions between capacitors that the analytical model misses, particularly at anti-resonance peaks. In testing, SPICE found a 33 ohm anti-resonance peak where the analytical model estimated 3.4 ohm — a 10x difference that could mean the difference between catching a real PDN problem and missing it.
+**PDN impedance (PD-001, PD-002)** — The analytical model sums the complex admittances of the capacitor branches (ESR, ESL and capacitance each), so it already includes the phase between branches. With `--spice-enhanced`, SPICE runs an AC sweep of the same RLC network using the same package-estimated ESR and ESL. PD-001 and PD-002 stay `heuristic` confidence either way, because the ESR and ESL are package estimates.
 
 **SPICE-verified cap suggestions** — When PD-001 flags an anti-resonance peak, the tool computes a specific cap value whose SRF fills the gap (rounded to E12 standard values), then re-runs the SPICE sweep with the suggested cap added to verify the peak is resolved. The recommendation includes the exact component value and verification result: "Add 220pF 0603 MLCC (SPICE-verified: peak reduced from 33.5 ohm to 8.9 ohm)."
 
@@ -191,7 +191,7 @@ When a SPICE simulator is available (ngspice, LTspice, or Xyce), the `--spice-en
 
 ```bash
 # Enable SPICE-enhanced mode
-python3 analyze_emc.py --schematic sch.json --pcb pcb.json --spice-enhanced
+python3 skills/emc/scripts/analyze_emc.py --schematic sch.json --pcb pcb.json --spice-enhanced
 
 # The GitHub Action enables this automatically when ngspice is installed
 ```
@@ -242,7 +242,7 @@ python3 skills/emc/scripts/analyze_emc.py \
   --schematic schematic.json --pcb pcb.json --severity high
 ```
 
-PCB analyzer should be run with `--full` for best results (enables per-track coordinates needed for ground plane crossing, board edge proximity, and return path checks).
+PCB analyzer should be run with `--full` for best results (enables per-track coordinates needed for ground plane crossing, board edge proximity, and return path checks) and with `--schematic schematic.json` (without it SW-003 has no pad loop and reports only an info estimate).
 
 ## References
 

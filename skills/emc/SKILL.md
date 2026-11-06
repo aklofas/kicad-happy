@@ -45,7 +45,7 @@ Automated EMC risk analysis for KiCad PCB designs. Identifies the most common ca
 
 ```bash
 python3 <kicad-skill-path>/scripts/analyze_schematic.py design.kicad_sch --analysis-dir analysis/
-python3 <kicad-skill-path>/scripts/analyze_pcb.py design.kicad_pcb --full --analysis-dir analysis/
+python3 <kicad-skill-path>/scripts/analyze_pcb.py design.kicad_pcb --full --schematic analysis/<run_id>/schematic.json --analysis-dir analysis/
 ```
 
 ### Step 2: Run EMC analysis
