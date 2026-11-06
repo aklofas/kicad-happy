@@ -41,6 +41,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The SPICE LCSC spec lookup matches parts by the top-level `mfr` field jlcsearch now returns.
 - `--analysis-dir` no longer fails on a symlinked or malformed run entry, a manifest that is a link, a FIFO or a deeply nested file, and no longer hangs on a FIFO named `manifest.json`.
 - Every analyzer and tool reports a JSON input nested deeper than Python can parse as malformed, with its usual error and exit code, instead of a traceback.
+- A symlink under `/dev` (for example in `/dev/shm`) is no longer written through; on Windows an `--output` file held open by another program gives a one-line error.
 
 ### Documentation
 

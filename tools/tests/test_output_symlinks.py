@@ -1,11 +1,13 @@
 """atomic_write_text with follow_symlinks=False, the --output writers and the manifest mode."""
-import json, os, subprocess, sys, tempfile, unittest
+import json, os, secrets, subprocess, sys, tempfile, unittest
+from unittest import mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "skills" / "kicad" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
+from kicad_core import fileio  # noqa: E402
 from kicad_core.fileio import atomic_write_text  # noqa: E402
 
 
@@ -105,6 +107,26 @@ class AtomicWriteNoFollow(_Tmp):
         with open(name, encoding="utf-8") as f:
             self.assertEqual(f.read(), "shm")
 
+    @unittest.skipUnless(os.path.isdir("/dev/shm"), "no /dev/shm")
+    def test_link_under_dev_shm_replaced_victim_kept(self):
+        victim = self.d / "victim"
+        victim.write_text("keep", encoding="utf-8")
+        link = "/dev/shm/kh_%s.json" % secrets.token_hex(6)
+        os.symlink(victim, link)
+        self.addCleanup(lambda: os.path.lexists(link) and os.unlink(link))
+        atomic_write_text(link, "new", follow_symlinks=False)
+        self.assertEqual(victim.read_text(encoding="utf-8"), "keep")
+        self.assertFalse(os.path.islink(link))
+        with open(link, encoding="utf-8") as f:
+            self.assertEqual(f.read(), "new")
+
+    def test_dev_fd_pipe_is_streamed(self):
+        r, w = os.pipe()
+        self.addCleanup(os.close, r)
+        self.addCleanup(os.close, w)
+        atomic_write_text(f"/dev/fd/{w}", "piped", follow_symlinks=False)
+        self.assertEqual(os.read(r, 4096), b"piped")
+
     def test_default_still_follows(self):
         victim = self.d / "victim"
         victim.write_text("old", encoding="utf-8")
@@ -132,6 +154,28 @@ class AtomicWriteNoFollow(_Tmp):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(out.read_text(encoding="utf-8"), "HELLO\n")
         self.assertTrue(os.path.islink("/dev/stdout"))
+
+
+class WindowsOpenTarget(_Tmp):
+    def test_windows_open_target_clear_error(self):
+        out = self.d / "out.json"
+        out.write_text("old", encoding="utf-8")
+        with mock.patch.object(fileio, "_is_windows", return_value=True), \
+                mock.patch.object(fileio.os, "replace", side_effect=PermissionError(13, "denied")):
+            with self.assertRaises(SystemExit) as cm:
+                atomic_write_text(out, "new", follow_symlinks=False)
+        self.assertIn("open in another program", str(cm.exception.code))
+        self.assertIn(str(out), str(cm.exception.code))
+        self.assertEqual(sorted(os.listdir(self.d)), ["out.json"])
+        self.assertEqual(out.read_text(encoding="utf-8"), "old")
+
+    def test_permission_error_elsewhere_propagates(self):
+        out = self.d / "out.json"
+        with mock.patch.object(fileio, "_is_windows", return_value=False), \
+                mock.patch.object(fileio.os, "replace", side_effect=PermissionError(13, "denied")):
+            with self.assertRaises(PermissionError):
+                atomic_write_text(out, "new", follow_symlinks=False)
+        self.assertEqual(os.listdir(self.d), [])
 
 
 @unittest.skipIf(os.name == "nt", "symlinks and POSIX modes")
