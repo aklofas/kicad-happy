@@ -13,9 +13,9 @@ SHA_A = "sha256:" + "a" * 64
 SHA_B = "sha256:" + "b" * 64
 
 
-def _plan(cache, sha, tids=("base", "pinout")):
+def _plan(cache, sha, tids=("base", "pinout"), pdf_path="x.pdf"):
     (cache / "X1.plan.json").write_text(json.dumps({
-        "mpn": "X1", "pdf_path": "x.pdf", "pdf_sha256": sha,
+        "mpn": "X1", "pdf_path": pdf_path, "pdf_sha256": sha,
         "tasks": [{"task_id": t, "subagent_role": t, "tier": "B",
                    "schema": "skills/datasheets/schemas/base.schema.json",
                    "pages": [1], "status": "pending", "result_ref": None} for t in tids],
@@ -67,6 +67,37 @@ class MergeBinding(unittest.TestCase):
             rc, err = _merge(cache)
             self.assertNotEqual(rc, 0)
             self.assertIn(SHA_A, err)
+
+
+class MergeLocalPath(unittest.TestCase):
+    def test_pdf_inside_datasheets_is_stored_relative(self):
+        import hashlib, shutil
+        from datasheet_types.cache_reader import lookup
+        pdf_bytes = b"%PDF-1.4 x1\n"
+        sha = "sha256:" + hashlib.sha256(pdf_bytes).hexdigest()
+        with tempfile.TemporaryDirectory() as d:
+            proj = Path(d) / "proj"; other = Path(d) / "other"
+            cache = proj / "datasheets" / "extracted"; cache.mkdir(parents=True)
+            (proj / "datasheets" / "X1.pdf").write_bytes(pdf_bytes)
+            _plan(cache, sha, ("base",), pdf_path=str(proj / "datasheets" / "X1.pdf"))
+            base = json.loads((DS / "examples" / "lm2596-adj.json").read_text(encoding="utf-8"))["base"]
+            _result(cache, "base", pdf_sha256=sha, data=base)
+            self.assertEqual(_merge(cache)[0], 0)
+            out = json.loads((cache / "X1.json").read_text(encoding="utf-8"))
+            self.assertEqual(out["source"]["local_path"], "X1.pdf")
+            shutil.copytree(proj, other)
+            shutil.rmtree(proj)
+            facts = lookup("X1", cache_dir=other / "datasheets" / "extracted")
+            self.assertIs(facts.stale, False)
+
+    def test_pdf_outside_datasheets_is_kept_as_given(self):
+        with tempfile.TemporaryDirectory() as d:
+            cache = Path(d)
+            _plan(cache, SHA_A, ("base",))
+            _result(cache, "base", pdf_sha256=SHA_A)
+            self.assertEqual(_merge(cache)[0], 0)
+            out = json.loads((cache / "X1.json").read_text(encoding="utf-8"))
+            self.assertEqual(out["source"]["local_path"], "x.pdf")
 
 
 def _scout(cache, pdf):

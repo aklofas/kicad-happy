@@ -46,11 +46,11 @@ def _adj_ldo(value, out, lib_id="Custom:Adjustable"):
             {"1": ("VIN", "+12V"), "2": ("VOUT", out), "3": ("FB", "FB"), "4": ("GND", "GND")})
 
 
-def _extraction_cache(root, mpn, vref, with_pdf):
+def _extraction_cache(root, mpn, vref, with_pdf, local_path=None):
     """A v1.4 extraction cache for *mpn* whose feedback reference is *vref*; untrusted without its PDF."""
     data = json.loads(EXAMPLE_EXTRACTION.read_text(encoding="utf-8"))
     data["source"]["mpn"] = mpn
-    data["source"]["local_path"] = mpn + ".pdf"
+    data["source"]["local_path"] = local_path or mpn + ".pdf"
     data["regulator"]["reference_voltage"][0].update(typ=vref, min=None, max=None)
     pdf = b"%PDF-1.4 test"
     data["source"]["sha256"] = "sha256:" + hashlib.sha256(pdf).hexdigest()
@@ -173,6 +173,16 @@ class RegulatorPhases(unittest.TestCase):
         self.assertEqual(r["vref_source"], "datasheet")
         self.assertEqual(r["_estimated_vout_provenance"],
                          {"source": "divider_plus_datasheet", "confidence": "deterministic"})
+
+    def test_copied_project_extraction_stays_trusted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = _extraction_cache(tmp, "TPS54040", 0.765, with_pdf=True,
+                                      local_path="/nonexistent/old-checkout/datasheets/TPS54040.pdf")
+            ctx = _ctx([_adj_ldo("BUCK", "VOUT_ADJ")], mpn="TPS54040", cache_dir=cache)
+            r = detect_power_regulators(ctx, [_fb_divider("VOUT_ADJ", 10000.0, 10000.0)])[0]
+        self.assertEqual(r["vref_source"], "datasheet")
+        self.assertEqual(r["estimated_vout"], 1.53)
+        self.assertEqual(ctx.diagnostics, [])
 
     def test_untrusted_extraction_falls_back_to_table(self):
         with tempfile.TemporaryDirectory() as tmp:

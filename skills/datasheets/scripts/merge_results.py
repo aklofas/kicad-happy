@@ -145,7 +145,17 @@ def _splice_field(extraction: dict, task_id: str, role: str, data) -> None:
             cats.append(role)
 
 
-def _initial_extraction(plan: dict) -> dict:
+def _local_path(pdf_path: str, cache: Path) -> str:
+    """Return pdf_path relative to datasheets/ (the cache's parent) when the
+    PDF is inside it, so the extraction survives a copied or moved project;
+    otherwise pdf_path as given."""
+    try:
+        return Path(pdf_path).resolve().relative_to(cache.resolve().parent).as_posix()
+    except (OSError, RuntimeError, ValueError):
+        return pdf_path
+
+
+def _initial_extraction(plan: dict, cache: Path) -> dict:
     return {
         "schema_version": {"base": "1.0", "categories": {}},
         "source": {
@@ -154,7 +164,7 @@ def _initial_extraction(plan: dict) -> dict:
             "datasheet_revision": None,
             "datasheet_date": None,
             "source_url": None,
-            "local_path": plan["pdf_path"],
+            "local_path": _local_path(plan["pdf_path"], cache),
             "sha256": plan["pdf_sha256"],
             "page_count": None,
             "family_ref": None,
@@ -227,7 +237,7 @@ def merge(cache: Path, mpn: str, *, retry_failed: bool = False) -> int:
     if plan["execution"]["started_at"] is None:
         plan["execution"]["started_at"] = _now_iso()
 
-    extraction = _initial_extraction(plan)
+    extraction = _initial_extraction(plan, cache)
     _enrich_source_from_scout(extraction, cache, mpn)
 
     failed_tasks: list[tuple[dict, str]] = []

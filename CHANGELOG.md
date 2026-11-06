@@ -55,6 +55,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Datasheet downloads refuse NAT64, 6to4 and IPv4-compatible IPv6 addresses that embed a private or loopback IPv4 address.
 - A datasheet download connects to the address the URL check approved, on every redirect, so a host cannot switch to a private address between the check and the connect (through a proxy, the proxy resolves the host). With `requests` older than 2.32.2, and in the browser fallback, the host is still resolved again when connecting.
 - The browser fallback for datasheet downloads blocks service workers and WebSockets, checks the declared size before reading a response into memory, and stops at the download deadline.
+- A project copied or moved to another folder keeps trusting its datasheet extractions: the PDF is found in `datasheets/` by name when the recorded path no longer exists, and new extractions record the path relative to `datasheets/`.
 
 ### Documentation
 

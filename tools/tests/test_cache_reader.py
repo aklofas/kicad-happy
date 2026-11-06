@@ -40,6 +40,36 @@ class CachePdfContainment(unittest.TestCase):
             stale, pdf, _ = self._ctx(lp)
             self.assertEqual((stale, pdf), (True, None), lp)
 
+    def test_copied_project_finds_the_pdf_by_name(self):
+        for lp in (lambda t, ds: str(t / "gone" / "sacmap" / "datasheets" / "IN.pdf"),
+                   "C:\\Users\\a\\gone\\IN.pdf"):
+            stale, pdf, ds = self._ctx(lp)
+            self.assertEqual((stale, pdf), (False, ds / "IN.pdf"), lp)
+
+    def test_name_match_with_other_bytes_is_a_hash_mismatch(self):
+        from datasheet_types.cache_reader import lookup
+        with tempfile.TemporaryDirectory() as d:
+            t = Path(d)
+            ds, ex = _plant(t, str(t / "gone" / "datasheets" / "IN.pdf"))
+            (ds / "IN.pdf").write_bytes(b"%PDF-1.4 other")
+            f = lookup("LM2596-ADJ", cache_dir=ex)
+            self.assertIs(f.stale, True)
+            self.assertEqual(f._cache_context.stale_reason, "pdf_hash_mismatch")
+
+    def test_absolute_path_to_an_existing_pdf_reads_as_before(self):
+        from datasheet_types.cache_reader import lookup
+        with tempfile.TemporaryDirectory() as d:
+            t = Path(d)
+            ds, ex = _plant(t, lambda t, ds: str(ds / "IN.pdf"))
+            (ds / "other").mkdir(); (ds / "other" / "IN.pdf").write_bytes(b"%PDF-1.4 other")
+            f = lookup("LM2596-ADJ", cache_dir=ex)
+            self.assertEqual((f.stale, f._cache_context.pdf_path), (False, ds / "IN.pdf"))
+            # An in-tree path whose file is gone keeps pointing at it.
+            os.remove(ds / "IN.pdf")
+            f = lookup("LM2596-ADJ", cache_dir=ex)
+            self.assertEqual((f.stale, f._cache_context.stale_reason, f._cache_context.pdf_path),
+                             (True, "pdf_missing", ds / "IN.pdf"))
+
     @unittest.skipUnless(os.path.exists("/dev/zero") and hasattr(os, "mkfifo"), "POSIX devices and FIFOs")
     def test_device_and_fifo_end_promptly(self):
         for lp, fifo in (("/dev/zero", False), ("FIFO.pdf", True)):
