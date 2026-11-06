@@ -71,6 +71,9 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Deep Review quotes against a datasheet saved by the datasheet sync (`<MPN>_<description>.pdf`, or listed in `datasheets/manifest.json`) are now checked; they were graded partial because the gate looked only for `<MPN>.pdf`.
 - Deep Review: a pin cited by name on a part where some pins carry no name is graded partial instead of quarantined, and `RESET` matches a `~{RESET}` pin (not the other way round).
 - Deep Review: a datasheet quote whose exponent the PDF text splits with a space or a line break (`1e- 3`) matches again, and a quote that drops such an exponent's sign, or reads its negative exponent as a negative value, no longer passes. A datasheet the sync marked as the wrong part is not used to check quotes.
+- Deep Review: a pin cited by name on a part where some pins carry no name is graded partial instead of quarantined, and `RESET` matches a `~{RESET}` pin.
+- Deep Review: a datasheet quote whose exponent the PDF text splits with a space or a line break (`1e- 3`) matches again, and a quote that drops such an exponent's sign no longer passes.
+- DigiKey datasheet sync: a run longer than the API token's ten-minute life fetches a new token instead of failing every later part as an access error.
 
 ### Documentation
 

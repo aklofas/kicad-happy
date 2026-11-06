@@ -753,6 +753,68 @@ class DigikeyRateLimitTest(unittest.TestCase):
         self.assertIsNone(noted)
 
 
+class DigikeyTokenRefreshTest(unittest.TestCase):
+    PRODUCT = {"ManufacturerProductNumber": "LM358DR", "DigiKeyProductNumber": "296-1395-1-ND"}
+
+    def setUp(self):
+        self.prov = _load_provider("digikey")
+        self.prov._fresh_tokens.clear()
+        self.addCleanup(self.prov._fresh_tokens.clear)
+
+    @staticmethod
+    def _401():
+        return urllib.error.HTTPError("https://api.digikey.com", 401, "Unauthorized", {}, None)
+
+    def _search(self, responses, refresh=("NEW", "CID"), token="TOKEN"):
+        from distributor_core import download
+        seen = {"auth": [], "refresh": 0}
+
+        def urlopen(req, *a, **k):
+            seen["auth"].append(req.get_header("Authorization"))
+            r = responses.pop(0)
+            if isinstance(r, Exception):
+                raise r
+            return _Resp(json.dumps(r).encode())
+
+        def get_oauth_token():
+            seen["refresh"] += 1
+            return refresh
+
+        download.take_transport_failure()
+        with mock.patch.object(self.prov.urllib.request, "urlopen", urlopen), \
+                mock.patch.object(self.prov, "get_oauth_token", get_oauth_token), \
+                redirect_stderr(io.StringIO()):
+            hit = self.prov.search_digikey_with_token("LM358DR", token, "CID")
+        return hit, seen, download.take_transport_failure()
+
+    def test_expired_token_is_refreshed_once_and_the_search_retried(self):
+        hit, seen, noted = self._search([self._401(), {"Products": [self.PRODUCT]}])
+        self.assertEqual(hit, self.PRODUCT)
+        self.assertEqual(seen["auth"], ["Bearer TOKEN", "Bearer NEW"])
+        self.assertEqual(seen["refresh"], 1)
+        self.assertIsNone(noted)
+
+    def test_later_parts_use_the_refreshed_token(self):
+        self._search([self._401(), {"Products": [self.PRODUCT]}])
+        hit, seen, noted = self._search([{"Products": [self.PRODUCT]}])
+        self.assertEqual(hit, self.PRODUCT)
+        self.assertEqual(seen["auth"], ["Bearer NEW"])
+        self.assertEqual(seen["refresh"], 0)
+
+    def test_refused_new_token_is_a_credentials_error(self):
+        hit, seen, noted = self._search([self._401(), self._401()])
+        self.assertIsNone(hit)
+        self.assertEqual(seen["refresh"], 1)
+        self.assertIn("HTTP 401", noted)
+        self.assertIn("credentials", noted)
+
+    def test_failed_refresh_is_a_credentials_error(self):
+        hit, seen, noted = self._search([self._401()], refresh=None)
+        self.assertIsNone(hit)
+        self.assertEqual(seen["refresh"], 1)
+        self.assertIn("credentials", noted)
+
+
 class Element14SearchLadderTest(unittest.TestCase):
     """A hit the identity guard rejects does not end element14's search ladder."""
 
