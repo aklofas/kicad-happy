@@ -256,6 +256,8 @@ def evaluate_opamp_circuit(det, sim_results):
         model_note = "ideal opamp (Aol=1e6, GBW~10MHz) — real part may limit bandwidth"
     if sim_results.get("vee_assumed"):
         model_note += "; negative rail assumed at -VCC (its net name gives no voltage)"
+    if sim_results.get("vee_repaired"):
+        model_note += "; the negative supply pin reads at or above the positive one, so the bench runs single-supply"
     if sim_results.get("ref_on_ground"):
         model_note += "; reference input on a ground net re-biased to mid-supply"
     try:

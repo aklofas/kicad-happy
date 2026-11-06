@@ -132,7 +132,8 @@ class NegativeRailTest(unittest.TestCase):
 
     def test_shared_plus_minus_name_gives_each_pin_its_sign(self):
         pins = [{"component": "U1", "pin_name": n, "pin_type": "power_in"} for n in ("V+", "V-")]
-        for net, v in (("/A/\u00b112V", 12), ("A\u00b12V5", 2.5), ("+-5V", 5)):
+        for net, v in (("/A/\u00b112V", 12), ("A\u00b12V5", 2.5), ("+-5V", 5),
+                       ("+/-15V", 15), ("/A/+/-15V", 15), ("+{slash}-15V", 15), ("/A/+{slash}-15V", 15)):
             with self.subTest(net=net):
                 info = {}
                 got = T._infer_opamp_rails({"reference": "U1"}, {"nets": {net: {"pins": pins}}, "components": []}, info)
@@ -148,6 +149,19 @@ class NegativeRailTest(unittest.TestCase):
         ctx = {"nets": {"+12V": {"pins": [{"component": "U1", "pin_name": "V-", "pin_type": "power_in"}]}},
                "components": []}
         self.assertEqual(T._infer_opamp_rails({"reference": "U1"}, ctx), (12, 0))
+
+    def test_a_negative_pin_at_or_above_the_positive_one_is_repaired_not_named(self):
+        info = {}
+        self.assertEqual(T._infer_opamp_rails({"reference": "U1"}, _rails("+3V3", "+5V"), info), (3.3, 0))
+        self.assertTrue(info["vee_repaired"])
+        self.assertFalse(info["rails_named"])
+        with tempfile.TemporaryDirectory() as tmp:
+            from spice_model_cache import ModelOptions
+            tb = T.generate_opamp_circuit(_INVERTING, "b.out", context=_rails("+3V3", "+5V"),
+                                          model_options=ModelOptions(cache_dir=tmp, offline=True))
+            sim = dict(tb.extra_vars, gain_1k=20.0, bw_3db=9.0e4)
+        note = R.evaluate_opamp_circuit(_INVERTING, sim)["model_note"]
+        self.assertIn("negative supply pin reads at or above the positive one", note)
 
     def test_named_negative_rail_mirrors_vcc(self):
         info = {}

@@ -548,6 +548,8 @@ def generate_opamp_circuit(det, output_file, context=None, parasitics=None,
     }
     if rail_info["vee_assumed"]:
         model_extra["vee_assumed"] = "1"
+    if rail_info.get("vee_repaired"):
+        model_extra["vee_repaired"] = "1"
     if ref_on_ground:
         model_extra["ref_on_ground"] = "1"
     supply_min = (model_specs or {}).get("supply_min")
@@ -754,8 +756,10 @@ def _infer_opamp_rails(det, context, info=None):
         det: Opamp detection dict (has 'reference')
         context: Full analysis JSON dict
         info: Optional dict; receives ``vee_assumed`` (a negative rail named
-            without a voltage, assumed to mirror VCC) and ``rails_named``
-            (both rails read from voltages in their net names)
+            without a voltage, assumed to mirror VCC), ``vee_repaired`` (the
+            negative pin read at or above the positive one, so the bench is
+            single-supply) and ``rails_named`` (both rails read from voltages
+            in their net names)
 
     Returns:
         (vcc_voltage, vee_voltage) tuple of floats
@@ -777,7 +781,9 @@ def _infer_opamp_rails(det, context, info=None):
         # A voltage written in the rail's own leaf (VCC_1V8, /Analog/+1V8, A+2V5,
         # A-2V5, a shared +-12V) is read before the start-anchored guesses; a
         # name without one keeps the guess from the full net name
-        leaf = net_name.rsplit("/", 1)[-1].replace("+/-", "\u00b1").replace("+-", "\u00b1")
+        # a shared '+/-15V' reaches the net map as '+/-15V' (legacy .sch) or '+{slash}-15V'
+        # (KiCad 6+): read it as one +-15V rail before '/' is taken for a sheet separator
+        leaf = _PLUS_MINUS_SLASH.sub("\u00b1", net_name).rsplit("/", 1)[-1].replace("+-", "\u00b1")
         named_pos = _leaf_voltage(leaf.replace("\u00b1", "+"))
         named_neg = _leaf_voltage(leaf.replace("\u00b1", "-"))
         for pin in pins:
@@ -818,16 +824,20 @@ def _infer_opamp_rails(det, context, info=None):
         vee_v = -vcc_v
 
     # Sanity check: VEE must be less than VCC
-    if vee_v >= vcc_v:
+    vee_repaired = vee_v >= vcc_v
+    if vee_repaired:
         vee_v = 0  # Fall back to single-supply
         vee_named = False
 
     if info is not None:
         info["vee_assumed"] = vee_assumed
+        if vee_repaired:
+            info["vee_repaired"] = True
         info["rails_named"] = vcc_named and vee_named
     return vcc_v, vee_v
 
 
+_PLUS_MINUS_SLASH = re.compile(r"\+(?:/|\{slash\})-")
 _VEE_PIN_NAMES = ("VEE", "VSS", "V-", "VS-", "V_N", "VN", "GND", "AVSS", "DVSS")
 
 

@@ -313,6 +313,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - DP-005 measures pair lengths from `net_lengths`, which counts arcs, so an arc-routed pair is not reported as a length mismatch.
 - `--compact` EMC output: `summary.active`, `summary.suppressed`, `summary.categories_checked`, `category_summary` and the stderr finding count describe the findings emitted, not the info findings `--compact` drops.
 - Gerber analysis no longer counts a comment that mentions `D01` or `D03` as an operation, reports a `.drl` that holds no Excellon data instead of crediting it as the drill file, ignores `._*` and `.git*` companion files when it picks the job, drill and archive files, and reports a job file whose `Path` or `FileFunction` is not text instead of stopping.
+- An op-amp supply net named `+/-15V` is read as a +15 V / −15 V pair in both the legacy and the KiCad 6 and later spelling, and a negative supply pin that reads at or above the positive one is simulated single-supply with a note saying so.
 
 ### Documentation
 
