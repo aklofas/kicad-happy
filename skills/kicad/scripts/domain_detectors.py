@@ -5333,7 +5333,6 @@ def build_power_sequencing_graph(ctx: AnalysisContext,
         en_net = src.get("enable_net")  # load switches already have this
         en_pin = None
         if not en_net:
-            en_net = None
             matched = _match_pin(pin_nets, _EN_PIN_NAMES)
             if matched:
                 en_pin, en_net = matched

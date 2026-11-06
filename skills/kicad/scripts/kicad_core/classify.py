@@ -13,9 +13,11 @@ def is_active_low_enable(pin_name: str) -> bool:
     """True when an enable pin's overbar marks it active-low, so ground enables it.
 
     An overbar shutdown (``~{SHDN}``, ``~{SHUTDOWN}``) is asserted by ground instead.
-    Any other enable pin's polarity is not known from its name. *pin_name* is upper-cased.
+    Any other enable pin's polarity is not known from its name. The caller passes
+    *pin_name* upper-cased.
     """
     return pin_name.startswith("~") and "SHDN" not in pin_name and "SHUTDOWN" not in pin_name
+
 
 def is_touch_pad(reference: str, value: str, footprint: str) -> bool:
     """A capacitive touch electrode: a touch marker in the footprint or value, or a TOUCH/TCH
