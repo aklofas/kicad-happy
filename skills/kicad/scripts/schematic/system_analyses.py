@@ -12,6 +12,7 @@ from pathlib import (
 )
 from kicad_core.netnames import (
     _clean_hierarchical_name,
+    is_vss_name,
 )
 from schematic.net_analysis import (
     _estimate_rail_voltage,
@@ -1661,12 +1662,16 @@ def analyze_power_sequencing(ctx: AnalysisContext,
             }
 
             # Determine what drives EN
-            if is_ground(en_net):
+            if is_ground(en_net) and not is_vss_name(en_net):
                 dep_entry["en_source"] = ("always_on" if is_active_low_enable(en_pin_name)
                                           else "tied_to_ground")
                 dep_entry["en_driven_by"] = en_net
             elif is_power_net(en_net):
                 dep_entry["en_source"] = "always_on"
+                dep_entry["en_driven_by"] = en_net
+            elif is_ground(en_net):
+                # VSS-named: may be a negative supply, so not read as tied to ground
+                dep_entry["en_source"] = "disabled"
                 dep_entry["en_driven_by"] = en_net
             elif en_net in nets:
                 en_pins = nets[en_net]["pins"]

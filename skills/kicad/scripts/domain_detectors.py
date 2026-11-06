@@ -18,7 +18,7 @@ from kicad_types import AnalysisContext
 from kicad_core.classify import is_active_low_enable
 from kicad_core.parts import LOAD_SWITCH_KEYWORDS, lookup_regulator_vref
 from kicad_core.values import format_frequency, parse_value
-from kicad_core.netnames import parse_voltage_from_net_name
+from kicad_core.netnames import is_vss_name, parse_voltage_from_net_name
 from detector_helpers import (is_led_rail, led_forward_voltage, led_string, match_family,
                               match_ic_keywords, get_unique_ics, get_pin_net)
 from finding_schema import make_finding, make_provenance
@@ -5362,7 +5362,7 @@ def build_power_sequencing_graph(ctx: AnalysisContext,
         en_type = "always_on"
 
         if en_net:
-            if ctx.is_ground(en_net):
+            if ctx.is_ground(en_net) and not is_vss_name(en_net):
                 en_pin = source_en_pins.get(ref)
                 en_type = ("always_on" if en_pin and is_active_low_enable(en_pin)
                            else "tied_to_ground")

@@ -14,11 +14,12 @@ from schematic.system_analyses import analyze_power_sequencing  # noqa: E402
 
 # ref -> (enable pin name, enable net)
 ENABLES = {"U1": ("EN", "GND"), "U2": ("~{EN}", "GND"), "U3": ("~{SHDN}", "GND"),
-           "U4": ("EN", "+5V"), "U5": ("EN", "EN_FLOAT"), "U6": ("~{ON}/OFF", "GND")}
+           "U4": ("EN", "+5V"), "U5": ("EN", "EN_FLOAT"), "U6": ("~{ON}/OFF", "GND"),
+           "U7": ("EN", "VSS_SW_EN"), "U8": ("EN", "VSS_DRV")}
 
 
 def _ctx():
-    comps, nets = [], {"+5V": [], "GND": [], "EN_FLOAT": []}
+    comps, nets = [], {"+5V": [], "GND": [], "EN_FLOAT": [], "VSS_SW_EN": [], "VSS_DRV": []}
     for ref, (en_name, en_net) in ENABLES.items():
         comps.append({"reference": ref, "type": "ic", "value": "REG", "lib_id": "Regulator:REG",
                       "footprint": "", "properties": {},
@@ -28,6 +29,10 @@ def _ctx():
         nets["GND"].append(dict(component=ref, pin_number="2", pin_name="GND", pin_type="power_in"))
         nets[en_net].append(dict(component=ref, pin_number="3", pin_name=en_name, pin_type="input"))
         nets["OUT_" + ref] = [dict(component=ref, pin_number="4", pin_name="VOUT", pin_type="power_out")]
+    # U8's enable net has a driver: a connector pin
+    comps.append({"reference": "J1", "type": "connector", "value": "CONN", "lib_id": "Connector:C",
+                  "footprint": "", "properties": {}, "pins": [{"number": "1", "name": "1"}]})
+    nets["VSS_DRV"].append(dict(component="J1", pin_number="1", pin_name="1", pin_type="passive"))
     full = {n: {"name": n, "pins": ps, "point_count": 0, "no_connect": False, "has_pwr_flag": False,
                 "labels": []} for n, ps in nets.items()}
     return build_analysis_context(comps, full, {}, known_power_rails={"+5V", "GND"}, source="test")
@@ -59,6 +64,12 @@ class DependencyEnSource(unittest.TestCase):
     def test_floating_enable_is_floating(self):
         self.assertEqual(self.deps["U5"]["en_source"], "floating")
 
+    def test_enable_on_a_vss_named_net_is_not_tied_to_ground(self):
+        # VSS can be a negative supply: the enable keeps its pre-ground-test reading
+        for ref in ("U7", "U8"):
+            self.assertEqual(self.deps[ref]["en_source"], "disabled", ref)
+            self.assertEqual(self.deps[ref]["en_net"], ENABLES[ref][1], ref)
+
     def test_observation_lists_only_the_always_on_regulators(self):
         self.assertIn("2 regulator(s) always enabled: U2, U4", self.out["observations"])
 
@@ -86,6 +97,11 @@ class PowerTreeEnableType(unittest.TestCase):
 
     def test_floating_enable_is_floating(self):
         self.assertEqual(self.tree["U5"]["enable_type"], "floating")
+
+    def test_enable_on_a_vss_named_net_is_not_tied_to_ground(self):
+        self.assertEqual(self.tree["U7"]["enable_type"], "floating")
+        self.assertEqual(self.tree["U8"]["enable_type"], "gpio_controlled")
+        self.assertEqual(self.tree["U8"]["enabled_by"], "J1")
 
 
 if __name__ == "__main__":

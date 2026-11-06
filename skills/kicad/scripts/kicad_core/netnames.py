@@ -284,6 +284,14 @@ def is_ground_name(net_name: str | None, power_rails: set[str] | None = None) ->
     return False
 
 
+
+def is_vss_name(net_name: str | None) -> bool:
+    """True for a VSS-prefixed net name (sheet path stripped); VSS can be a negative supply."""
+    if not net_name:
+        return False
+    return unescape_string(net_name).rsplit("/", 1)[-1].upper().startswith("VSS")
+
+
 _UUID_RE = re.compile(
     r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}',
     re.IGNORECASE,
