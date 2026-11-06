@@ -257,6 +257,7 @@ Changes to any analysis script must be validated against the [test harness](http
 python3 -m unittest discover -s tools/tests -t .   # tool and phase tests
 python3 tools/check_refactor.py imports            # dependency direction (see ARCHITECTURE.md)
 python3 tools/check_refactor.py tags               # literal detector/rule_id/schema_era at emit sites
+ruff check --isolated --target-version py310 --select E9,F63,F7,F82,F811,B006,E722 skills tools action .github/scripts   # CI lint job; pip install ruff==0.17.3
 ```
 
 Several tool tests read the harness fixtures from `/tmp/harness-pin/tests/fixtures` (some honour `KH_FIXTURES`); clone the harness there to run them all. To compare analyzer output, snapshot the fixtures once on `main` and then run `quick` on your branch. One snapshot directory holds both the JSON outputs and the masked text-report artefacts, so it serves as both baselines:
@@ -285,7 +286,7 @@ KICAD_HAPPY_DIR=<path to this repo> python3 -m pytest -m "unit or offline_contra
 KICAD_HAPPY_DIR=<path to this repo> python3 -m pytest tests/contract/
 ```
 
-The first pytest line is what CI's harness-smoke job runs, followed by a determinism guard that analyses the harness's simple project twice. CI's refactor-check job installs ngspice, runs every test under `tools/tests` against the pinned harness fixtures, then runs `imports`, `tags` and `install-smoke` (the isolated-install smoke). The windows job byte-compiles the scripts, runs the CLI `--help` smoke and the in-skill unit tests, and runs the same `tools/tests` suite without ngspice, so its SPICE tests skip. The second line runs the whole schema contract suite.
+The first pytest line is what CI's harness-smoke job runs, followed by a determinism guard that analyses the harness's simple project twice. CI's refactor-check job installs ngspice, runs every test under `tools/tests` against the pinned harness fixtures, then runs `imports`, `tags` and `install-smoke` (the isolated-install smoke). The lint job runs a pinned ruff over syntax errors, undefined names, redefinitions, mutable defaults and bare excepts. The windows job byte-compiles the scripts, runs the CLI `--help` smoke and the in-skill unit tests, and runs the same `tools/tests` suite without ngspice, so its SPICE tests skip. The second line runs the whole schema contract suite.
 
 **3. The maintainer's corpus gate.** Before merge the maintainer runs the corpus gate: 5,857 real KiCad projects and 2.7M assertions. You do not need the corpus. Describe the expected corpus movement in the PR instead: which detectors or rules change, in which direction, and why.
 

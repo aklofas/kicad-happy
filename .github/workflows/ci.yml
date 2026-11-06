@@ -155,6 +155,21 @@ jobs:
         env:
           KICAD_HAPPY_DIR: ${{ github.workspace }}
 
+  lint:
+    # Narrow ruff gate: syntax errors, undefined names, redefinitions, mutable
+    # defaults and bare except. Pinned so a ruff release cannot turn CI red.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install ruff
+        run: python -m pip install --disable-pip-version-check ruff==0.17.3
+      - name: ruff check
+        run: ruff check --isolated --target-version py310 --select E9,F63,F7,F82,F811,B006,E722 skills tools action .github/scripts
+
   refactor-check:
     # Static layering/tag ratchets, isolated-install smoke, tool unit tests.
     runs-on: ubuntu-latest
