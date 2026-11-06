@@ -72,14 +72,40 @@ def resolve_run_dir(analysis_dir, run_id=None):
     return analysis_dir
 
 
+def _strip_overbar(name):
+    """KiCad's active-low markup: ~{RESET} is RESET."""
+    return re.sub(r"~\{([^{}]*)\}", r"\1", name)
+
+
 class _PinIds(set):
-    """Pin numbers and names of one component; has_names is False when the
-    analyzer JSON lists numbers only."""
+    """Pin numbers and names of one component. has_names is False when the
+    analyzer JSON lists numbers only; names_complete is True only when every
+    pin with a number on record also has a name."""
     has_names = False
+
+    def __init__(self, *args):
+        super().__init__(*args)
+        self._named, self._unnamed = set(), set()
 
     def add_name(self, name):
         self.add(name)
+        stripped = _strip_overbar(name)
+        if stripped != name:
+            self.add(stripped)
         self.has_names = True
+
+    def add_pin(self, number, name):
+        number = str(number).upper()
+        self.add(number)
+        if str(name or "").strip():
+            self.add_name(str(name).strip().upper())
+            self._named.add(number)
+        else:
+            self._unnamed.add(number)
+
+    @property
+    def names_complete(self):
+        return self.has_names and not (self._unnamed - self._named)
 
 
 def load_anchor_sets(analysis_dir, run_id=None):
@@ -121,8 +147,8 @@ def load_anchor_sets(analysis_dir, run_id=None):
                 if isinstance(p, dict) and p.get("component"):
                     ids = pins.setdefault(str(p["component"]).upper(), _PinIds())
                     if p.get("pin_number"):
-                        ids.add(str(p["pin_number"]).upper())
-                    if str(p.get("pin_name") or "").strip():
+                        ids.add_pin(p["pin_number"], p.get("pin_name"))
+                    elif str(p.get("pin_name") or "").strip():
                         ids.add_name(str(p["pin_name"]).strip().upper())
     sch_pinned = {ref for ref, ids in pins.items() if ids}
     pcb = run_dir / "pcb.json"
@@ -135,9 +161,7 @@ def load_anchor_sets(analysis_dir, run_id=None):
                 pad_nets = fp.get("pad_nets") if isinstance(fp.get("pad_nets"), dict) else {}
                 ids = pins.setdefault(ref, _PinIds())
                 for num, entry in pad_nets.items():
-                    ids.add(str(num).upper())
-                    if isinstance(entry, dict) and entry.get("pin"):
-                        ids.add_name(str(entry["pin"]).strip().upper())
+                    ids.add_pin(num, entry.get("pin") if isinstance(entry, dict) else None)
                 # pad_nets omits a pad on no net, so a PCB-only part with one is unchecked
                 if ref not in sch_pinned and not (
                         isinstance(fp.get("pad_count"), int) and fp["pad_count"] <= len(pad_nets)):
@@ -219,10 +243,11 @@ def check_anchors(ev, comps, nets, pins):
             fails.append(f"pin {pin}: component {ref} not found in analyzer JSON")
         elif ref.upper() not in pins:
             partial = True
-        elif num.upper() not in pins[ref.upper()]:
+        elif (num.upper() not in pins[ref.upper()]
+              and _strip_overbar(num.upper()) not in pins[ref.upper()]):
             ids = pins[ref.upper()]
-            # with numbers only on record, a non-numeric citation may be a name
-            if ids.has_names or num.isdigit():
+            # a name may belong to a pin the analyzer JSON lists without one
+            if ids.names_complete or num.isdigit():
                 fails.append(f"pin {pin}: {ref} has no pin {num} in analyzer JSON")
             else:
                 partial = True
@@ -304,6 +329,8 @@ _TOKEN_RE = re.compile(
 # a ± set apart from the number it precedes (a space or a wrapped line)
 _PLUSMINUS_GAP_RE = re.compile(r"±\s+(?=\.?[0-9])")
 _LEADING_POINT_RE = re.compile(r"(?<![^\s±-])\.(?=[0-9])")
+# an exponent the PDF text splits ("1e- 3", "1 e-3")
+_EXP_GAP_RE = re.compile(r"(?<=[0-9])[ \t]*e[ \t]*-\s*(?=[0-9])")
 
 
 def _norm_text(s):
@@ -313,6 +340,7 @@ def _norm_text(s):
     s = _DASH_RE.sub("-", s)
     s = _PLUSMINUS_RE.sub("±", s).replace("≤", "<=").replace("≥", ">=")
     s = _PLUSMINUS_GAP_RE.sub("±", s)
+    s = _EXP_GAP_RE.sub("e-", s)
     # ".5" is written "0.5" so both spellings compare equal
     return _LEADING_POINT_RE.sub("0.", " ".join(_TOKEN_RE.findall(s)))
 

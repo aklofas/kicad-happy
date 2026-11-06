@@ -126,12 +126,12 @@ Record findings in `analysis/deep_review.json` per
   PCB net name (case-insensitive).
 - A cited pin is `REF.PIN` by pin number or pin name (`U3.7`, `U3.VIN`,
   case-insensitive). It passes if that component has that pin in the run's
-  analyzer JSON; a floating pin counts. Names match exactly: when an
+  analyzer JSON; a floating pin counts. Names match case-insensitively, ignoring KiCad's `~{…}` active-low markup: when an
   alternate pin function is selected the analyzer lists the alternate's name,
   so cite such pins by number.
   A pin of a component whose pins the analyzer JSON does not list (a part
   listed without pins, a PCB-only footprint with a pad on no net), or a pin
-  name on a part listed by number only, is not checked and makes the
+  name on a part listed by number only or on a part some of whose pins carry no name, is not checked and makes the
   finding `partial`.
 - The gate finds the run folder from `analysis/manifest.json` and the
   run id inside `--analysis-dir` (`--run` picks another), so a moved or

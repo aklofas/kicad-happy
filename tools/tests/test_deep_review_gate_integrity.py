@@ -117,6 +117,13 @@ QUOTE_CASES = [
     ("-15 V", "+—15 V", False, "minus vs +—15 V"),
     ("15 V", "+—15 V", False, "unsigned vs +—15 V"),
     ("±15 V", "+—15 V", True, "± vs +—15 V"),
+    ("1e-3 A", "leakage 1e- 3 A max", True, "exponent split after the sign"),
+    ("1e-3 A", "leakage 1e-\n3 A max", True, "exponent wrapped after the sign"),
+    ("1e-3 A", "leakage 1 e-3 A", True, "space before the exponent"),
+    ("3e-2", "3e-\n2", True, "wrapped exponent alone"),
+    ("1e3 A", "1e- 3 A", False, "split exponent sign dropped"),
+    ("3 A", "1e- 3 A", False, "split exponent read as a value"),
+    ("Type 1e - 3 pins", "Type 1e - 3 pins", True, "spaced e and dash"),
 ]
 
 
@@ -225,6 +232,47 @@ class EvidenceTest(unittest.TestCase):
                 self.assertIsNone(bad)
                 self.assertEqual(kept["evidence_checked"],
                                  "partial" if partial else "full")
+
+
+    def test_name_citation_of_an_unnamed_pad_is_partial(self):
+        pcb = {"footprints": [{"reference": "U1", "pad_count": 3, "pad_nets": {
+            "1": {"net": "VIN", "pin": "VIN"}, "2": {"net": "GND"}, "3": {"net": "OUT"}}}]}
+        sets = self._sets(pcb=pcb)
+        cite = {"mpn": "X", "page": 1, "quote": "q"}
+        for pin, ok in (("U1.GND", True), ("U1.VIN", True), ("U1.7", False)):
+            with self.subTest(pin=pin), mock.patch.object(
+                    deep_review_gate, "check_datasheet", return_value=([], False)):
+                kept, bad = self._gate({"pins": [pin], "datasheet": [cite]}, sets)
+                self.assertIs(kept is not None, ok, bad and bad["quarantine_reason"])
+                if pin == "U1.GND":
+                    self.assertEqual(kept["evidence_checked"], "partial")
+                if pin == "U1.VIN":
+                    self.assertEqual(kept["evidence_checked"], "full")
+
+    def test_active_low_markup_is_ignored_in_pin_names(self):
+        sch = {"components": [{"reference": "U2"}],
+               "nets": {"N": {"pins": [{"component": "U2", "pin_number": "5",
+                                        "pin_name": "~{RESET}"}]}}}
+        sets = self._sets(sch=sch)
+        calc = {"description": "d", "result": "r"}
+        for pin, ok in (("U2.RESET", True), ("u2.~{reset}", True), ("U2.5", True),
+                        ("U2.RST", False)):
+            with self.subTest(pin=pin):
+                kept, bad = self._gate({"pins": [pin], "computation": calc}, sets)
+                self.assertIs(kept is not None, ok, bad and bad["quarantine_reason"])
+
+    def test_fully_named_or_tilde_named_parts_still_reject_unknown_names(self):
+        pcb = {"footprints": [{"reference": "J2", "pad_count": 2, "pad_nets": {
+            "1": {"net": "GND", "pin": "A"}, "2": {"net": "V", "pin": "B"}}}]}
+        sch = {"components": [{"reference": "R1"}],
+               "nets": {"N": {"pins": [{"component": "R1", "pin_number": "1", "pin_name": "~"},
+                                       {"component": "R1", "pin_number": "2", "pin_name": "~"}]}}}
+        sets = self._sets(sch=sch, pcb=pcb)
+        calc = {"description": "d", "result": "r"}
+        for pin in ("J2.FOO", "R1.FOO"):
+            with self.subTest(pin=pin):
+                kept, _ = self._gate({"pins": [pin], "computation": calc}, sets)
+                self.assertIsNone(kept)
 
     def test_pcb_pads_off_every_net_leave_pins_unchecked(self):
         pcb = {"footprints": [
