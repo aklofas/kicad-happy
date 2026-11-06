@@ -8,6 +8,7 @@ stops at ``MAX_DOWNLOAD_BYTES`` or after ``DOWNLOAD_TIMEOUT_S`` seconds."""
 import argparse
 import errno
 import http.client
+import io
 import ipaddress
 import math
 import os
@@ -298,15 +299,16 @@ def _pinned_create_connection(address, *args, **kwargs):
     raise error
 
 
-def _copy_bounded(chunks, f, deadline: float) -> int:
+def _copy_bounded(chunks, f, deadline: float, limit: int | None = None) -> int:
     """Write ``chunks`` to ``f``; raise ``DownloadLimitExceeded`` past either limit."""
+    limit = MAX_DOWNLOAD_BYTES if limit is None else limit
     total = 0
     for chunk in chunks:
         if not chunk:
             continue
         total += len(chunk)
-        if total > MAX_DOWNLOAD_BYTES:
-            raise DownloadLimitExceeded(f"larger than {MAX_DOWNLOAD_BYTES:,} bytes")
+        if total > limit:
+            raise DownloadLimitExceeded(f"larger than {limit:,} bytes")
         if time.monotonic() > deadline:
             raise DownloadLimitExceeded(f"took longer than {DOWNLOAD_TIMEOUT_S:g} s")
         f.write(chunk)
@@ -564,9 +566,11 @@ def _get_before_deadline(url: str, deadline: float, **kwargs):
     return box["resp"]
 
 
-def _download_requests(url: str, output_path: str) -> bool:
+def _download_requests(url: str, output_path: str, *, sink=None, headers=None,
+                       limit: int | None = None) -> bool:
     """Download using the requests library.
-    Redirects are followed here, each one checked against the policy."""
+    Redirects are followed here, each one checked against the policy. ``sink`` (a binary file
+    object), ``headers`` and ``limit`` serve ``fetch_page_text``."""
     if _requests is None:
         return False
     deadline = _deadline()
@@ -575,7 +579,7 @@ def _download_requests(url: str, output_path: str) -> bool:
             resp = _get_before_deadline(
                 url,
                 deadline,
-                headers={"User-Agent": _USER_AGENT},
+                headers={"User-Agent": _USER_AGENT, **(headers or {})},
                 timeout=_socket_timeout(deadline),
                 allow_redirects=False,
                 stream=True,
@@ -588,6 +592,8 @@ def _download_requests(url: str, output_path: str) -> bool:
                     _check_redirect(url)
                     continue
                 resp.raise_for_status()
+                if sink is not None:
+                    return _copy_bounded(resp.iter_content(_CHUNK_BYTES), sink, deadline, limit) > 0
                 with open(output_path, "wb") as f:
                     total = _copy_bounded(resp.iter_content(_CHUNK_BYTES), f, deadline)
                 return total > 0
@@ -713,16 +719,53 @@ def _urllib_opener() -> urllib.request.OpenerDirector:
     return opener
 
 
-def _download_urllib(url: str, output_path: str) -> bool:
-    """Download using Python urllib (fallback, HTTP/1.1 only)."""
+def _download_urllib(url: str, output_path: str, *, sink=None, headers=None,
+                     limit: int | None = None) -> bool:
+    """Download using Python urllib (fallback, HTTP/1.1 only). ``sink``, ``headers`` and ``limit``
+    serve ``fetch_page_text``."""
     deadline = _deadline()
-    req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
+    req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT, **(headers or {})})
     with _Watchdog(deadline) as watchdog:
         with _urllib_opener().open(req, timeout=_socket_timeout(deadline)) as resp:
             watchdog.watch(resp)
+            if sink is not None:
+                return _copy_bounded(iter(lambda: resp.read(_CHUNK_BYTES), b""), sink, deadline, limit) > 0
             with open(output_path, "wb") as f:
                 total = _copy_bounded(iter(lambda: resp.read(_CHUNK_BYTES), b""), f, deadline)
     return total > 0
+
+
+def fetch_page_text(url: str, *, max_bytes: int = 4 * 2**20, timeout_s: float = 30.0,
+                    headers: dict | None = None) -> str:
+    """The text of a web page, fetched under the same policy as ``download_pdf``: public addresses
+    only, every redirect checked, a size and a time limit. A refused URL or any failure gives
+    ``""``; a failed page read is not recorded as a transport failure."""
+    allow_private = _allow_private_hosts()
+    problem, addresses = _checked(url, allow_private)
+    if problem:
+        print(f"Warning: page fetch refused: {url}: {problem}", file=sys.stderr)
+        return ""
+    _call.deadline = time.monotonic() + timeout_s
+    _call.allow_private = allow_private
+    _call.pins = {}
+    _pin(url, addresses)
+    buf = io.BytesIO()
+    try:
+        for fn in ((_download_requests,) if _requests is not None else ()) + (_download_urllib,):
+            buf.seek(0)
+            buf.truncate()
+            try:
+                if fn(url, "", sink=buf, headers=headers, limit=max_bytes):
+                    return buf.getvalue().decode("utf-8", errors="ignore")
+            except (DownloadRefused, DownloadLimitExceeded):
+                return ""
+            except Exception:
+                pass
+        return ""
+    finally:
+        _call.deadline = None
+        _call.allow_private = False
+        _call.pins = {}
 
 
 def _ms_left(deadline: float, cap_ms: float) -> float:

@@ -379,6 +379,71 @@ class _HeaderTrickle(_Trickle):
         self.thread.start()
 
 
+class MouserScrapePolicyTest(unittest.TestCase):
+    PAGE = "https://www.mouser.com/ProductDetail/x"
+    LINK = b'<a href="/datasheet/2/x.pdf">Data Sheet</a>'
+
+    def setUp(self):
+        sys.path.insert(0, str(ROOT / "skills" / "mouser" / "scripts"))
+        try:
+            import provider_mouser
+        finally:
+            sys.path.pop(0)
+        self.prov = provider_mouser
+        self.requests = _FakeRequests({})
+        for patch in (mock.patch.object(download, "_resolve", return_value=PUBLIC),
+                      mock.patch.object(download, "_allow_private_hosts", return_value=False),
+                      mock.patch.object(download, "_requests", self.requests),
+                      mock.patch.object(provider_mouser, "_requests", self.requests, create=True)):
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def _scrape(self, answers, resolve=None):
+        seen = []
+        handlers = _with_fake_urllib_handler(_urllib_handler(answers, seen))
+        err = io.StringIO()
+        with mock.patch.object(download, "_URLLIB_HANDLERS", handlers), redirect_stderr(err):
+            if resolve:
+                with mock.patch.object(download, "_resolve", return_value=resolve):
+                    got = self.prov.scrape_product_page(self.PAGE)
+            else:
+                got = self.prov.scrape_product_page(self.PAGE)
+        return got, seen, err.getvalue()
+
+    def test_private_product_url_is_not_fetched(self):
+        got, seen, err = self._scrape({self.PAGE: (200, None, self.LINK)}, resolve=["10.0.0.5"])
+        self.assertEqual(got, "")
+        self.assertEqual(seen, [])
+        self.assertEqual(self.requests.calls, [])
+        self.assertIn("refused", err)
+
+    def test_redirect_to_a_private_host_is_refused(self):
+        got, seen, _ = self._scrape({self.PAGE: (302, "http://10.0.0.5/p", b""),
+                                     "http://10.0.0.5/p": (200, None, self.LINK)})
+        self.assertEqual(got, "")
+        self.assertEqual(seen, [self.PAGE])
+
+    def test_oversized_page_is_dropped(self):
+        body = b"x" * (4 * 2**20) + self.LINK
+        got, _, _ = self._scrape({self.PAGE: (200, None, body)})
+        self.assertEqual(got, "")
+
+    def test_page_only_requests_can_fetch_is_read(self):
+        page = self.PAGE
+
+        class Resp(_FakeRequestsResponse):
+            def iter_content(self, size):
+                return iter([MouserScrapePolicyTest.LINK])
+        self.requests.answers[page] = lambda: Resp(200)
+        got, seen, _ = self._scrape({})
+        self.assertEqual(got, "https://www.mouser.com/datasheet/2/x.pdf")
+        self.assertEqual(seen, [])
+
+    def test_public_page_link_is_found(self):
+        got, _, _ = self._scrape({self.PAGE: (200, None, self.LINK)})
+        self.assertEqual(got, "https://www.mouser.com/datasheet/2/x.pdf")
+
+
 class TrickleDeadlineTest(unittest.TestCase):
     URL = "https://example.com/x.pdf"
 
