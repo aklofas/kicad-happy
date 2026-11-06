@@ -1044,8 +1044,11 @@ def evaluate_inrush(det, sim_results):
         result["status"] = "warn"
         result["note"] = "not measured: inrush current not available from the simulation"
         return result
-    result["status"] = "pass"
-    result["note"] = f"Peak inrush {i_peak*1000:.1f}mA at {t_peak*1e6:.0f}µs" if t_peak else f"Peak inrush {i_peak*1000:.1f}mA"
+    # the bench ramps the analyzer's assumed soft-start into the output caps, so the peak
+    # restates that assumption; nothing in the design is a limit to compare it with
+    result["status"] = "info"
+    peak = f"Peak inrush {i_peak*1000:.1f}mA at {t_peak*1e6:.0f}µs" if t_peak else f"Peak inrush {i_peak*1000:.1f}mA"
+    result["note"] = f"{peak} on the assumed soft-start; not compared against a limit"
 
     return result
 
@@ -1149,8 +1152,10 @@ def evaluate_snubber(det, sim_results):
     if tau:
         tau_f = float(tau)
         if 1e-9 <= tau_f <= 1e-4:
-            result["status"] = "pass"
-            result["note"] = f"Snubber τ={tau_f*1e6:.2f}µs, f={float(f_analytical or 0)/1e3:.1f}kHz"
+            # tau is R*C from the detection, not a measurement, so the window is no verdict
+            result["status"] = "info"
+            result["note"] = (f"Snubber τ={tau_f*1e6:.2f}µs, f={float(f_analytical or 0)/1e3:.1f}kHz "
+                              "(from the R and C values; not compared against the switching node)")
         else:
             result["status"] = "warn"
             result["note"] = f"Snubber τ={tau_f*1e6:.2f}µs — outside typical 1ns-100µs range"

@@ -60,7 +60,7 @@ class InrushTest(unittest.TestCase):
                "output_caps": [{"ref": "C1", "farads": 100e-6}], "assumed_soft_start_ms": 0.5,
                "estimated_inrush_A": 0.66}
         r = _run(T.generate_inrush, R.evaluate_inrush, det)
-        self.assertEqual(r["status"], "pass")
+        self.assertEqual(r["status"], "info")
         self.assertAlmostEqual(r["simulated"]["i_peak_A"], 0.660, delta=0.0066)
         self.assertAlmostEqual(r["simulated"]["t_peak_us"], 79.0, delta=3.0)
 
@@ -403,11 +403,16 @@ class NoExpectedValueTest(unittest.TestCase):
         r = R.evaluate_snubber(det, {"z_min": 10.0, "f_at_zmin": 1e6})
         self.assertEqual(r["status"], "info")
 
-    def test_snubber_with_time_constant_keeps_its_verdict(self):
-        # 10 ohm x 1 nF = 10 ns, inside 1 ns-100 us
+    def test_snubber_time_constant_in_range_is_info(self):
+        # 10 ohm x 1 nF = 10 ns: R*C from the detection, not a measurement
         det = {"reference": "Q1", "snubber_data": {"resistor_ref": "R1", "capacitor_ref": "C1"}}
         r = R.evaluate_snubber(det, {"z_min": 10.0, "tau": "1e-8", "f_analytical": "15.9e6"})
-        self.assertEqual(r["status"], "pass")
+        self.assertEqual(r["status"], "info")
+
+    def test_snubber_time_constant_out_of_range_warns(self):
+        det = {"reference": "Q1", "snubber_data": {"resistor_ref": "R1", "capacitor_ref": "C1"}}
+        r = R.evaluate_snubber(det, {"z_min": 10.0, "tau": "1e-3", "f_analytical": "159"})
+        self.assertEqual(r["status"], "warn")
 
     def test_rf_chain_on_heuristic_gains_is_info(self):
         det = {"stage_gains": {"U1": {"role": "lna", "gain_dB": 15}}, "frequency_band": "2.4GHz",
