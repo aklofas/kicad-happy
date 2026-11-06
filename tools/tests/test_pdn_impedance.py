@@ -13,6 +13,7 @@ from kicad_types import build_analysis_context  # noqa: E402
 from schematic.system_analyses import analyze_pdn_impedance  # noqa: E402
 import emc_formulas as ef  # noqa: E402
 import emc_rules as er  # noqa: E402
+import emc_spice  # noqa: E402
 
 # 1 µF ‖ 10 nF, each 1 nH and 10 mΩ: anti-resonance where the two reactances cancel,
 # f = √((1/C₁ + 1/C₂)/(2L)) / 2π = 35.77 MHz; there |Z| = 2.431 Ω.
@@ -236,6 +237,37 @@ class Pd001TransientSource(unittest.TestCase):
     def test_no_estimate_keeps_the_default(self):
         f = self._pd001()
         self.assertEqual((f["transient_a"], f["transient_source"]), (0.5, "default"))
+
+
+class SpiceSweepConfidence(unittest.TestCase):
+    """A SPICE sweep runs on package-estimated ESR and ESL, so its PD-001/PD-002 stay heuristic."""
+
+    def _found(self, peak):
+        reg = _reg("U1", "+5V", 5.0, topo="ldo", caps=[("C1", 10e-6), ("C2", 100e-9)])
+        sweep = [{"freq_hz": 1e6, "impedance_ohm": 0.01}]
+        with mock.patch.object(emc_spice, "run_pdn_spice", return_value=(True, sweep)), \
+                mock.patch.object(er, "find_anti_resonances", return_value=[peak]):
+            return [f for f in er.check_pdn_impedance(None, {"findings": [reg]}, spice_backend=object())
+                    if f["rule_id"] in ("PD-001", "PD-002")]
+
+    def _check(self, peak, rule_id, severity):
+        (f,) = self._found(peak)
+        self.assertEqual((f["rule_id"], f["severity"]), (rule_id, severity))
+        self.assertTrue(f["spice_verified"])
+        self.assertEqual(f["method"], "spice")
+        self.assertEqual((f["confidence"], f["evidence_source"]), ("heuristic", "heuristic_rule"))
+
+    def test_in_band_peak_over_target(self):
+        self._check({"freq_hz": 1e6, "freq_mhz": 1.0, "impedance_ohm": 10.0, "exceeds_target": True},
+                    "PD-001", "error")
+
+    def test_out_of_band_peak_over_target(self):
+        self._check({"freq_hz": 9e8, "freq_mhz": 900.0, "impedance_ohm": 10.0, "exceeds_target": True},
+                    "PD-001", "info")
+
+    def test_peak_within_target(self):
+        self._check({"freq_hz": 1e6, "freq_mhz": 1.0, "impedance_ohm": 1e-4, "exceeds_target": False},
+                    "PD-002", "info")
 
 
 class Pd003Held(unittest.TestCase):

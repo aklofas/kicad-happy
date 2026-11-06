@@ -306,6 +306,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - EMC PD-001 labels a transient current taken from the regulator's estimated output current `transient_source: "output_cap_proxy"` instead of `power_budget`: that estimate is sized from the output capacitance, not read from the power budget. The current and the finding are unchanged.
 - On a PCB with no ground vias, RP-001 checks layer transitions when ground copper is filled on two or more layers, and VS-001 counts ground vias (zero) instead of every via; VS-001 is not reported when the board has neither a ground via nor ground fill.
 - EMC CK-001 and DP-004 compute the share of a net routed on outer layers from track length, not segment count, so short fanout pieces on an outer layer no longer outweigh a long inner-layer run.
+- EMC PD-001 and PD-002 stay `heuristic` under `--spice-enhanced`: the SPICE sweep uses package-estimated ESR and ESL, so a simulated result no longer claims `datasheet-backed` confidence.
 
 ### Documentation
 
