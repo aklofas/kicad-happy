@@ -62,6 +62,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `datasheet_verify`, the datasheet feature helpers and the lifecycle audit now find a part's extraction the same way (extraction manifest first, then the file named after the part), so they no longer read different extractions for the same part.
 - `capability_mode.json` reports `datasheet_coverage_pct`: the share of the parts in `datasheets/manifest.json` that have an extraction (it was always 0).
 - Schematic text (component values, net and rail names, finding summaries) can no longer add links, headings or table cells to the Action's PR comment and step summary, or to issue bodies from `export_issues.py`.
+- With `severity: critical`, the Action's Top Risks lists only error findings. A thermal run that could not be scored reads "not scored" in the Findings table, not "None/100". Suppressed EMC and thermal findings are left out of the EMC score line and the full-report EMC table, and the suppressed count matches the findings.
 
 ### Documentation
 

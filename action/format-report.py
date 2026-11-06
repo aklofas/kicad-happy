@@ -39,6 +39,11 @@ def _sev_icon(raw_sev):
     return _SEV_ICON.get(normalize_severity(raw_sev), "\U0001f7e1")
 
 
+def _score_text(score):
+    """A 0-100 score for display; a run that could not be scored reads "not scored"."""
+    return "not scored" if score is None else f"{score}/100"
+
+
 def _summary_counts(summary_block):
     """Extract (error_count, warning_count, total_count) from an analyzer's
     summary block, accepting both v1.4 and legacy shapes.
@@ -66,11 +71,16 @@ def _active_counts(doc):
     The summary's by_severity counts suppressed findings too, so the suppressed
     error/warning findings are subtracted from it. Subtracting rather than
     recounting keeps documents whose summary carries counts but whose findings
-    list is empty working.
+    list is empty working. The suppressed count is the findings list's own; the
+    summary's figure stands in only when the list is empty.
     """
     summary = doc.get("summary", {})
     err, warn, total = _summary_counts(summary)
-    for f in doc.get("findings") or []:
+    findings = doc.get("findings") or []
+    suppressed = sum(1 for f in findings if f.get("suppressed"))
+    if not findings:
+        suppressed = summary.get("suppressed", 0) or 0
+    for f in findings:
         if not f.get("suppressed"):
             continue
         # The producers count only a literal "error" or "warning" in by_severity.
@@ -79,10 +89,10 @@ def _active_counts(doc):
             err = max(err - 1, 0)
         elif sev == "warning":
             warn = max(warn - 1, 0)
-    return (err, warn, total, summary.get("suppressed", 0) or 0)
+    return (err, warn, total, suppressed)
 
 
-def _emc_one_liner(emc_summary, *, include_suppressed: bool) -> str:
+def _emc_one_liner(emc, *, include_suppressed: bool) -> str:
     """Return the EMC score/checks/severity one-liner used by both report
     paths. Compact PR comment includes the suppressed count inline; full
     step summary omits it. Caller picks via kwarg.
@@ -90,11 +100,10 @@ def _emc_one_liner(emc_summary, *, include_suppressed: bool) -> str:
     Routing both paths through this helper keeps a fix to the one-liner from
     landing at only one site.
     """
-    score = emc_summary.get("emc_risk_score", 0)
-    err, warn, total = _summary_counts(emc_summary)
+    score = emc.get("summary", {}).get("emc_risk_score", 0)
+    err, warn, total, suppressed = _active_counts(emc)
     sup_str = ""
     if include_suppressed:
-        suppressed = emc_summary.get("suppressed", 0)
         if suppressed:
             sup_str = f", {suppressed} suppressed"
     return (f"Risk score **{score}/100** — {total} checks: "
@@ -121,10 +130,10 @@ def _render_thermal_block(thermal, *, heading_level: int) -> list[str]:
     if total <= 0:
         return []
     pdiss = ts.get("total_board_dissipation_w", 0)
-    suppressed = ts.get("suppressed", 0)
+    suppressed = _active_counts(thermal)[3]
     heading = "#" * heading_level + " Thermal Analysis"
     sup_str = f", {suppressed} suppressed" if suppressed else ""
-    score_str = "not scored" if score is None else f"{score}/100"
+    score_str = _score_text(score)
     lines = [
         heading,
         "",
@@ -232,8 +241,8 @@ def _extract_rail_names(rails):
 # Top-Risk Summary
 # ---------------------------------------------------------------------------
 
-def _render_top_risks(emc, thermal):
-    """Render top-risk summary from EMC and thermal findings."""
+def _render_top_risks(emc, thermal, severity="all"):
+    """Render top-risk summary from EMC and thermal findings, narrowed by the severity filter."""
     try:
         from risk_summary import compute_top_risks
     except ImportError:
@@ -248,6 +257,12 @@ def _render_top_risks(emc, thermal):
         for f in thermal.get("findings", []):
             f.setdefault("source", "Thermal")
             all_findings.append(f)
+
+    if severity == "critical":
+        all_findings = [f for f in all_findings if normalize_severity(f.get("severity")) == "error"]
+    elif severity == "warning":
+        all_findings = [f for f in all_findings
+                        if normalize_severity(f.get("severity")) in ("error", "warning")]
 
     if not all_findings:
         return []
@@ -642,7 +657,7 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
         L.extend(_render_changes(diffs))
 
     # === Top-Risk Summary ===
-    risk_lines = _render_top_risks(emc, thermal)
+    risk_lines = _render_top_risks(emc, thermal, severity)
     if risk_lines:
         L.extend(risk_lines)
 
@@ -719,7 +734,7 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
         th_err_pre, th_warn_pre, th_total_pre, th_sup = _active_counts(thermal)
         suppressed_total += th_sup
         if th_err_pre > 0:
-            findings.append(("critical", f"Thermal: {th_err_pre} error-severity finding(s) — score {th_score_pre}/100", "thermal"))
+            findings.append(("critical", f"Thermal: {th_err_pre} error-severity finding(s) — score {_score_text(th_score_pre)}", "thermal"))
         if th_warn_pre > 0:
             findings.append(("warning", f"Thermal: {th_warn_pre} warning-severity finding(s)", "thermal"))
         if (th_total_pre > 0 and th_err_pre == 0 and th_warn_pre == 0
@@ -947,12 +962,11 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
 
     # === EMC (one-liner summary + error-severity findings) ===
     if emc:
-        emc_s = emc.get("summary", {})
 
         L.append("### EMC")
         L.append("")
         # Shared one-liner — keeps compact + full report paths in lockstep.
-        L.append(_emc_one_liner(emc_s, include_suppressed=True))
+        L.append(_emc_one_liner(emc, include_suppressed=True))
 
         for f in emc.get("findings", []):
             if f.get("suppressed"):
@@ -1239,16 +1253,16 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
     # invocations too (sibling to Power Analysis / Thermal Analysis below,
     # not nested under "if sig:" Signal Analysis Review).
     if emc:
-        emc_s = emc.get("summary", {})
         a("## EMC Pre-Compliance")
         a("")
         # Shared one-liner — keeps compact + full report paths in lockstep.
         # The full report omits the suppressed count inline.
-        a(_emc_one_liner(emc_s, include_suppressed=False))
+        a(_emc_one_liner(emc, include_suppressed=False))
         a("")
         emc_findings = emc.get("findings", [])
         actionable = [f for f in emc_findings
-                      if normalize_severity(f.get("severity")) in ("error", "warning")]
+                      if normalize_severity(f.get("severity")) in ("error", "warning")
+                      and not f.get("suppressed")]
         if actionable:
             a("| Severity | Rule | Finding |")
             a("|----------|------|---------|")

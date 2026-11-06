@@ -276,5 +276,65 @@ class VerifiedCountTest(unittest.TestCase):
         self.assertEqual(s["verified_count"], 0)
 
 
+class ReportCountsTest(unittest.TestCase):
+    @staticmethod
+    def _emc(findings):
+        return {"analyzer_type": "emc", "findings": findings,
+                "summary": {"by_severity": {"error": 1, "warning": 2, "info": 0}, "suppressed": 0,
+                            "total_findings": 3, "emc_risk_score": 80}}
+
+    @staticmethod
+    def _full(emc):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "emc.json")
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(emc, f)
+            return _render(tmp, emc=path)[1]
+
+    def _two_findings(self):
+        return [{"rule_id": "GP-002", "severity": "error", "category": "ground_plane", "summary": "gap"},
+                {"rule_id": "VS-001", "severity": "warning", "category": "switching_emc", "summary": "slow edge"}]
+
+    def test_top_risks_follow_the_severity_filter(self):
+        emc = self._emc(self._two_findings())
+        _, everything = _render_docs(emc=emc)
+        self.assertIn("**GP-002**", everything)
+        self.assertIn("**VS-001**", everything)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "emc.json")
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(emc, f)
+            md, _ = _render(tmp, emc=path, severity="critical")
+        self.assertIn("**GP-002**", md)
+        self.assertNotIn("**VS-001**", md)
+
+    def test_skipped_thermal_with_errors_reads_not_scored(self):
+        thermal = {"analyzer_type": "thermal",
+                   "summary": {"thermal_score": None, "total_findings": 1,
+                               "by_severity": {"error": 1, "warning": 0, "info": 0}},
+                   "findings": [{"rule_id": "TS-001", "severity": "error", "summary": "hot"}]}
+        _, md = _render_docs(thermal=thermal)
+        self.assertNotIn("None/100", md)
+        self.assertIn("score not scored", md)
+
+    def test_suppressed_findings_leave_one_liner_bar_and_table(self):
+        findings = self._two_findings() + [dict(_supp("GP-001", "warning", True), summary="stub")]
+        emc = self._emc(findings)
+        _, md = _render_docs(emc=emc)
+        self.assertIn("1 error, 1 warning, 1 suppressed", md)
+        self.assertIn("\u00b7 1 suppressed", md)
+        self.assertNotIn("| warning | GP-001 |", self._full(emc))
+
+    def test_one_liner_without_suppressed_findings_is_unchanged(self):
+        _, md = _render_docs(emc=self._emc(self._two_findings()))
+        self.assertIn("Risk score **80/100** \u2014 3 checks: 1 error, 2 warning", md)
+
+    def test_suppressed_count_falls_back_to_the_summary_without_findings(self):
+        emc = self._emc([])
+        emc["summary"]["suppressed"] = 2
+        _, md = _render_docs(emc=emc)
+        self.assertIn("2 suppressed", md)
+
+
 if __name__ == "__main__":
     unittest.main()
