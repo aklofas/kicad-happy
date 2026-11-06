@@ -154,16 +154,15 @@ def main(argv: list[str] | None = None) -> int:
     indent = None if args.compact else 2
     output = json.dumps(result, indent=indent, default=str)
 
-    if args.analysis_dir:
+    if args.output:
+        atomic_write_text(args.output, output, follow_symlinks=False)
+        print(f"Written to {args.output}", file=sys.stderr)
+    elif args.analysis_dir:
         from output_io import write_primary_run
         write_primary_run(args.analysis_dir, output, analyzer="pcb", source_path=args.pcb,
                           script_name="analyze_pcb.py", track_in_git=False,
                           diff_threshold=analysis_cfg.get("diff_threshold", "major"),
                           retention=int(analysis_cfg.get("retention", 0) or 0))
-
-    elif args.output:
-        atomic_write_text(args.output, output, follow_symlinks=False)
-        print(f"Written to {args.output}", file=sys.stderr)
     else:
         print(output)
     return 0

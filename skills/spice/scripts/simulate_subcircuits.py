@@ -686,7 +686,7 @@ def main(argv: list[str] | None = None) -> int:
     # Analysis cache integration — write spice.json into the current run folder
     # and update the manifest so downstream tools pick it up.
     # No project-config resolution in this CLI, so the analysis-cache knobs keep their defaults.
-    if args.analysis_dir:
+    if args.analysis_dir and not args.output:
         from output_io import write_primary_run
         write_primary_run(analysis_dir, json.dumps(report, indent=2), analyzer='spice', source_path=input_path,
                           script_name='simulate_subcircuits.py', script_entry='simulate_subcircuits.py',

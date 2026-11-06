@@ -43,12 +43,14 @@ class TestGp001DebugPath(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertTrue(os.path.isfile(os.path.join(self.d, "proj", "gp001_debug.json")))
 
-    def test_analysis_dir_wins_over_output(self):
+    def test_output_wins_over_analysis_dir(self):
+        os.makedirs(os.path.join(self.d, "O"))
         r = _run(self.d, "proj/b.kicad_pcb", "--full", "--gp001-debug",
                  "--analysis-dir", "A", "--output", "O/pcb.json")
         self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertTrue(os.path.isfile(os.path.join(self.d, "O", "pcb.json")))
         self.assertTrue(os.path.isfile(os.path.join(self.d, "A", "gp001_debug.json")))
-        self.assertFalse(os.path.exists(os.path.join(self.d, "O")))
+        self.assertFalse(os.path.exists(os.path.join(self.d, "A", "manifest.json")))
         self.assertEqual(os.listdir(os.path.join(self.d, "proj")), ["b.kicad_pcb"])
 
     def test_analysis_dir_only(self):

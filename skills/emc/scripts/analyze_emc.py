@@ -614,8 +614,8 @@ def main(argv: list[str] | None = None) -> int:
     from finding_schema import assign_finding_ids
     assign_finding_ids(result.get('findings', []), 'emc')
 
-    # Analysis cache integration
-    if args.analysis_dir:
+    # Analysis cache integration (--output wins when both are given)
+    if args.analysis_dir and not args.output:
         # output_io lives in skills/kicad/scripts/ — already on sys.path
         from output_io import write_primary_run
         write_primary_run(args.analysis_dir, json.dumps(result, indent=2), analyzer='emc',

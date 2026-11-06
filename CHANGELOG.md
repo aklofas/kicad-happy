@@ -43,6 +43,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Every analyzer and tool reports a JSON input nested deeper than Python can parse as malformed, with its usual error and exit code, instead of a traceback.
 - A symlink under `/dev` (for example in `/dev/shm`) is no longer written through; on Windows an `--output` file held open by another program gives a one-line error.
 - Every CLI's `--output` replaces a symlink at the path instead of writing through it.
+- Given both `--output` and `--analysis-dir`, the schematic, PCB, EMC and SPICE CLIs write only `--output`, like the other analyzers.
 
 ### Documentation
 

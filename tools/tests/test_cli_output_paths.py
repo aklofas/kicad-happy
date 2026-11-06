@@ -44,6 +44,45 @@ class AnalysisDirRoundTrips(unittest.TestCase):
             self.assertEqual(list((Path(d) / "adir").rglob("gerber.json")), [])
             self.assertIn("Written to g.json", r.stderr)
 
+    def _assert_no_run(self, adir):
+        self.assertFalse((adir / "manifest.json").exists())
+        self.assertEqual([p for p in adir.iterdir() if p.is_dir()] if adir.is_dir() else [], [])
+
+    def test_schematic_output_wins_over_analysis_dir(self):
+        with tempfile.TemporaryDirectory() as d:
+            r = run("analyze_schematic.py", str(FX / "simple.kicad_sch"), "-o", "s.json",
+                    "--analysis-dir", "adir", cwd=d)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            json.loads((Path(d) / "s.json").read_text(encoding="utf-8"))
+            self._assert_no_run(Path(d) / "adir")
+
+    def test_emc_output_wins_over_analysis_dir(self):
+        with tempfile.TemporaryDirectory() as d:
+            for s, f, o in (("analyze_schematic.py", "simple.kicad_sch", "sch.json"),
+                            ("analyze_pcb.py", "simple.kicad_pcb", "pcb.json")):
+                self.assertEqual(run(s, str(FX / f), "-o", o, cwd=d).returncode, 0)
+            emc = SCRIPTS.parents[1] / "emc" / "scripts" / "analyze_emc.py"
+            r = subprocess.run([sys.executable, str(emc), "--schematic", "sch.json", "--pcb", "pcb.json",
+                                "--output", "emc.json", "--analysis-dir", "adir"], cwd=d,
+                               capture_output=True, text=True, encoding="utf-8")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            json.loads((Path(d) / "emc.json").read_text(encoding="utf-8"))
+            self._assert_no_run(Path(d) / "adir")
+
+    def test_spice_output_wins_over_analysis_dir(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(run("analyze_schematic.py", str(FX / "simple.kicad_sch"),
+                                 "--analysis-dir", "adir", cwd=d).returncode, 0)
+            sim = SCRIPTS.parents[1] / "spice" / "scripts" / "simulate_subcircuits.py"
+            env = {k: v for k, v in os.environ.items()
+                   if k not in ("DIGIKEY_CLIENT_ID", "DIGIKEY_CLIENT_SECRET", "MOUSER_SEARCH_API_KEY")}
+            r = subprocess.run([sys.executable, str(sim), "--analysis-dir", "adir", "--output", "sp.json",
+                                "--offline"], cwd=d, capture_output=True, text=True, encoding="utf-8",
+                               env=env, timeout=120)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            json.loads((Path(d) / "sp.json").read_text(encoding="utf-8"))
+            self.assertEqual(list((Path(d) / "adir").rglob("spice.json")), [])
+
 
 if __name__ == "__main__":
     unittest.main()

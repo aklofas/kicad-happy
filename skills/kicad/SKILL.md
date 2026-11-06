@@ -302,8 +302,8 @@ The `findings` list is the single authoritative source for all findings. Use `fi
 
 All analyzers support `--text` (human-readable report), `--analysis-dir`
 (run-folder output, preferred) and `--output` (one JSON file). Pass only one
-JSON destination: given both, schematic and PCB write only the run folder,
-EMC writes both, and gerber, thermal and cross-analysis write only `--output`.
+JSON destination: given both, every analyzer writes only `--output` (the
+`capability_mode.json` sidecar still goes to `--analysis-dir`).
 
 ### Stage and Audience Filtering
 
