@@ -14,7 +14,7 @@ import _core_path  # noqa: F401
 from kicad_core.fileio import atomic_write_text  # noqa: F401  (bom scripts import it from here)
 from kicad_core.instances import (inline_instances, instance_variants, resolve_instance,
                                   variant_overrides)
-from kicad_core.sexp import parse
+from kicad_core.sexp import parse, unescape_quoted
 
 
 def kicad_lock_path(sch: Path) -> Path:
@@ -159,7 +159,7 @@ def find_sub_sheet_entries(text: str, base_dir: Path) -> list[SubSheet]:
         file_match = _SHEET_FILE.search(block)
         if not file_match:
             continue
-        filepath = base_dir / file_match.group(1)
+        filepath = base_dir / unescape_quoted(file_match.group(1))
         if not filepath.exists():
             continue
         at = _AT.match(direct_child(block, "at") or "")

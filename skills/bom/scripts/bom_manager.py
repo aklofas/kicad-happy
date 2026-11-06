@@ -47,7 +47,7 @@ from kicad_core.fields import (merge_unit_fields, MPN_FIELD_ALIASES, MPN_FIELD_A
                                MPN_FIELD_ALIASES_GENERIC, DIGIKEY_FIELD_ALIASES,
                                normalize_field_name)
 from kicad_core.instances import tilde_is_empty, variant_overrides
-from kicad_core.sexp import get_value, parse
+from kicad_core.sexp import get_value, parse, unescape_quoted
 from kicad_sexp import (atomic_write_text, find_matching_paren, direct_child, direct_value, find_sub_sheet_entries,
                         iter_placed_symbol_blocks, resolved_instance, sheet_variant, symbol_instances_of)
 
@@ -112,11 +112,11 @@ def extract_properties(symbol_block: str) -> dict[str, str]:
     """Extract all (property "name" "value" ...) from a symbol block."""
     props = {}
     for match in re.finditer(
-        r'\(property\s+"((?:[^"\\]|\\.)*)"\s+"((?:[^"\\]|\\.)*)"',
+        r'\(property\s+(?:private\s+)?"((?:[^"\\]|\\.)*)"\s+"((?:[^"\\]|\\.)*)"',
         symbol_block,
     ):
-        name = match.group(1)
-        value = match.group(2)
+        name = unescape_quoted(match.group(1))
+        value = unescape_quoted(match.group(2))
         props[name] = value
     return props
 

@@ -39,6 +39,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from bom_fields import _canonical_for, _pick_mpn_from_props, _symbol_slots
 from distributor_core.manifest import load_index
 from edit_properties import apply_updates
+from kicad_core.sexp import unescape_quoted
 from kicad_sexp import (atomic_write_text, collect_schematic_files,
                         iter_placed_symbol_blocks, kicad_lock_path)
 
@@ -79,11 +80,7 @@ def urls_match(a: str, b: str) -> bool:
 # Schematic parsing (lightweight — only extracts Reference + Datasheet)
 # ---------------------------------------------------------------------------
 
-_PROP_RE = re.compile(r'\(property\s+"((?:[^"\\]|\\.)*)"\s+"((?:[^"\\]|\\.)*)"')
-
-
-def _unescape(s: str) -> str:
-    return re.sub(r'\\(.)', lambda m: {"n": "\n"}.get(m.group(1), m.group(1)), s)
+_PROP_RE = re.compile(r'\(property\s+(?:private\s+)?"((?:[^"\\]|\\.)*)"\s+"((?:[^"\\]|\\.)*)"')
 
 
 def extract_ref_datasheets(text: str) -> dict[str, str]:
@@ -101,7 +98,7 @@ def extract_symbols(text: str) -> dict[str, dict]:
     result = {}
 
     for _sym_start, _sym_end, block in iter_placed_symbol_blocks(text):
-        props = {_unescape(k): _unescape(v) for k, v in _PROP_RE.findall(block)}
+        props = {unescape_quoted(k): unescape_quoted(v) for k, v in _PROP_RE.findall(block)}
         ref = props.get("Reference")
         if ref is None or ref.startswith("#"):
             continue

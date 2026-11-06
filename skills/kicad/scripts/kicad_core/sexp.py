@@ -114,7 +114,7 @@ _C_ESCAPES = {"a": "\x07", "b": "\x08", "f": "\x0c", "n": "\n", "r": "\r",
 _C_ESCAPE_RE = re.compile(r"\\(x[0-9A-Fa-f]{1,2}|[0-7]{1,3}|.)", re.S)
 
 
-def _unescape_c(raw: str) -> str:
+def unescape_quoted(raw: str) -> str:
     """Decode a quoted token's escapes as KiCad's lexer does (dsnlexer.cpp).
 
     \\x and octal escapes are raw bytes that the token then reads as UTF-8; an
@@ -193,7 +193,7 @@ def _tokenize(text: str) -> list:
                 else:
                     j += 1
             raw = text[i + 1 : j]
-            tok = _decoded(_unescape_c(raw))
+            tok = _decoded(unescape_quoted(raw))
             tokens.append(_Quoted(tok) if tok in _KEYWORD_LOOKALIKES else tok)
             i = j + 1
         else:

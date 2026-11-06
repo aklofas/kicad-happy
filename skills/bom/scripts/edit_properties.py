@@ -47,6 +47,8 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+import _core_path  # noqa: F401
+from kicad_core.sexp import unescape_quoted
 from kicad_sexp import (atomic_write_text, escape_kicad_string, find_matching_paren,
                         iter_placed_symbol_blocks, kicad_lock_path, sch_file_version)
 
@@ -87,7 +89,7 @@ def find_property_in_block(text: str, sym_start: int, sym_end: int, prop_name: s
     """
     block = text[sym_start:sym_end + 1]
     escaped_name = re.escape(escape_kicad_string(prop_name))
-    pattern = re.compile(rf'\(property\s+"{escaped_name}"\s+"')
+    pattern = re.compile(rf'\(property\s+(?:private\s+)?"{escaped_name}"\s+"')
 
     match = pattern.search(block)
     if not match:
@@ -106,7 +108,7 @@ def find_last_property_end(text: str, sym_start: int, sym_end: int) -> int:
     block = text[sym_start:sym_end + 1]
     last_prop_end = sym_start  # fallback
 
-    for match in re.finditer(r'\(property\s+"', block):
+    for match in re.finditer(r'\(property\s+(?:private\s+)?"', block):
         prop_start = sym_start + match.start()
         prop_end = find_matching_paren(text, prop_start)
         if prop_end > last_prop_end:
@@ -118,7 +120,7 @@ def find_last_property_end(text: str, sym_start: int, sym_end: int) -> int:
 def detect_indentation(text: str, sym_start: int, sym_end: int) -> str:
     """Detect the indentation used for properties in this symbol."""
     block = text[sym_start:sym_end + 1]
-    match = re.search(r'\n(\s+)\(property\s+"', block)
+    match = re.search(r'\n(\s+)\(property\s+(?:private\s+)?"', block)
     if match:
         return match.group(1)
     return "\t\t"  # default to 2 tabs
@@ -165,7 +167,7 @@ def update_property_value(
     # Replace just the value string after the property name
     escaped_name = re.escape(escape_kicad_string(prop_name))
     new_block = re.sub(
-        rf'(\(property\s+"{escaped_name}"\s+)"(?:[^"\\]|\\.)*"',
+        rf'(\(property\s+(?:private\s+)?"{escaped_name}"\s+)"(?:[^"\\]|\\.)*"',
         lambda m: f'{m.group(1)}"{escaped_value}"',
         old_block,
         count=1,
@@ -232,10 +234,10 @@ def apply_updates(
                     # Extract current value
                     old_block = text[prop_start:prop_end + 1]
                     old_match = re.search(
-                        rf'\(property\s+"{re.escape(escape_kicad_string(prop_name))}"\s+"((?:[^"\\]|\\.)*)"',
+                        rf'\(property\s+(?:private\s+)?"{re.escape(escape_kicad_string(prop_name))}"\s+"((?:[^"\\]|\\.)*)"',
                         old_block,
                     )
-                    old_value = old_match.group(1) if old_match else ""
+                    old_value = unescape_quoted(old_match.group(1)) if old_match else ""
 
                     if old_value == new_value:
                         change_log.append({

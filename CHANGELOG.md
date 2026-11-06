@@ -47,6 +47,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Given both `--output` and `--analysis-dir`, the schematic, PCB, EMC and SPICE CLIs write only `--output`, like the other analyzers.
 - Analyzers run in parallel into one `--analysis-dir` no longer lose each other's manifest entries; they share the current run folder.
 - After a schematic change, `--analysis-dir` drops the previous run's `lifecycle.json` instead of carrying the old parts' lifecycle forward.
+- BOM tools read and edit KiCad 9 private fields and escaped text: an existing private field is updated instead of duplicated, an update to the value a field already holds is reported unchanged, and a sub-sheet file name with an escaped quote is followed.
 
 ### Documentation
 
