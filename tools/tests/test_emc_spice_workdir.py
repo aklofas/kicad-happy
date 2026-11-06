@@ -107,5 +107,54 @@ class EmcSpiceWorkdirTest(unittest.TestCase):
                 else:
                     self.assertEqual(result, (False, None))
 
+class SwitchingFftTest(unittest.TestCase):
+    def test_waveform_linearized_before_dump(self):
+        calls, fake = _calls()
+        seen = {}
+
+        def capture(cmd, **kw):
+            with open(os.path.join(kw["cwd"], cmd[-1]), encoding="utf-8") as f:
+                seen["cir"] = f.read()
+            return fake(cmd, **kw)
+        with mock.patch.object(NgspiceBackend, "find", return_value="ngspice"), \
+                mock.patch("spice_simulator.subprocess.run", side_effect=capture):
+            emc_spice.run_switching_fft(5.0, 0.5, 5e-9, 1e6, backend=NgspiceBackend())
+        lines = seen["cir"].splitlines()
+        body = lines[lines.index(".control") + 1:lines.index(".endc")]
+        self.assertEqual(body[:3], ["run", "linearize v(sw)", "wrdata fft_raw.txt v(sw)"])
+        self.assertTrue(body[3].startswith("echo "), body)
+
+    def test_fallback_uses_the_rate_of_the_samples_used(self):
+        times = [k * 1e-8 for k in range(170)] + [10e-6 + (k - 170) * 1e-8 for k in range(170, 200)]
+
+        def fake_run(self, cir, timeout=0, cwd=None):
+            with open(os.path.join(cwd, "fft_raw.txt"), "w", encoding="utf-8") as f:
+                for t in times:
+                    f.write(f"{t:.9e} 1.0\n")
+            return True, "", ""
+        rates = []
+
+        def goertzel(samples, rate, freq):
+            rates.append(rate)
+            return 1.0
+        with mock.patch.object(NgspiceBackend, "run", fake_run), \
+                mock.patch.object(emc_spice, "_goertzel_magnitude", side_effect=goertzel):
+            emc_spice.run_switching_fft(5.0, 0.5, 5e-9, 1e6, backend=NgspiceBackend())
+        self.assertTrue(rates)
+        expect = 199 / (times[-1] - times[0])
+        for r in rates:
+            self.assertAlmostEqual(r / expect, 1.0, delta=1e-9)
+
+    @unittest.skipUnless(shutil.which("ngspice"), "ngspice not installed")
+    def test_uniform_harmonics_match_trapezoid(self):
+        ok, harmonics = emc_spice.run_switching_fft(12, 0.4, 10e-9, 1e6, backend=NgspiceBackend(),
+                                                    n_harmonics=7)
+        self.assertTrue(ok)
+        self.assertEqual(len(harmonics), 7, harmonics)
+        by = {h["harmonic"]: h for h in harmonics}
+        self.assertAlmostEqual(by[1]["amplitude_v"], 7.264, places=2)
+        self.assertAlmostEqual(by[3]["amplitude_v"], 1.494, places=2)
+
+
 if __name__ == "__main__":
     unittest.main()

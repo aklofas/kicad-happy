@@ -303,6 +303,7 @@ def run_switching_fft(v_peak, duty_cycle, rise_time_s, switching_freq_hz,
             f'.tran {_format_eng(t_step)} {_format_eng(t_sim)}\n'
             f'.control\n'
             f'run\n'
+            f'linearize v(sw)\n'
             f'wrdata {os.path.basename(raw_file)} v(sw)\n'
             f'echo "done=1" > {os.path.basename(out_file)}\n'
             f'.endc\n'
@@ -352,12 +353,14 @@ def run_switching_fft(v_peak, duty_cycle, rise_time_s, switching_freq_hz,
                 break
 
         steady_values = values[start_idx:]
+        steady_times = times[start_idx:]
         if len(steady_values) < 50:
             steady_values = values  # Fall back to full waveform
+            steady_times = times
 
         # Compute sample rate from time data
         if len(times) > 1:
-            dt = (times[-1] - times[start_idx]) / (len(steady_values) - 1)
+            dt = (steady_times[-1] - steady_times[0]) / (len(steady_values) - 1)
             sample_rate = 1.0 / dt if dt > 0 else 1.0 / t_step
         else:
             return False, None
