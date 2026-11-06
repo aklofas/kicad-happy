@@ -90,7 +90,8 @@ def resolve_design_intent(config: Dict[str, Any],
     ipc_class = 2  # default
     ipc_source = 'auto'
 
-    if 'ipc_class' in explicit and explicit['ipc_class'] in VALID_IPC_CLASSES:
+    if (not isinstance(explicit.get('ipc_class'), bool)
+            and explicit.get('ipc_class') in VALID_IPC_CLASSES):
         ipc_class = explicit['ipc_class']
         ipc_source = 'config'
         signals.append(f'IPC class {ipc_class} from config')

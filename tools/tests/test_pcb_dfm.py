@@ -143,6 +143,18 @@ class TestDfmDesignIntent(unittest.TestCase):
         self.assertEqual(comp, {"detected_class": 2, "detection_source": "default"})
         self.assertTrue(any("IPC Class 2 minimum 0.125mm" in s for s in summaries))
 
+    def test_boolean_class_is_ignored(self):
+        compliance, summaries = _ipc_dfm({"design_intent": {"ipc_class": True}})
+        self.assertEqual(compliance, {"detected_class": 2, "detection_source": "default"})
+        self.assertEqual(summaries, ["Via annular ring 0.11mm below IPC Class 2 minimum 0.125mm"])
+        from design_intent import resolve_design_intent
+        self.assertEqual(resolve_design_intent({"design_intent": {"ipc_class": True}})["source"]["ipc_class"], "auto")
+
+    def test_market_class_does_not_drive_dfm(self):
+        compliance, summaries = _ipc_dfm({"design_intent": {"target_market": "medical"}})
+        self.assertEqual(compliance, {"detected_class": 2, "detection_source": "default"})
+        self.assertEqual(summaries, ["Via annular ring 0.11mm below IPC Class 2 minimum 0.125mm"])
+
 
 if __name__ == "__main__":
     unittest.main()

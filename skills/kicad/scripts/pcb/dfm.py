@@ -811,7 +811,8 @@ def analyze_dfm(footprints: list[dict], tracks: dict, vias: dict,
 
     # Determine active IPC class
     ipc_class = 2  # default
-    if design_intent and design_intent.get('ipc_class') in (1, 2, 3):
+    if (design_intent and not isinstance(design_intent.get('ipc_class'), bool)
+            and design_intent.get('ipc_class') in (1, 2, 3)):
         ipc_class = design_intent['ipc_class']
     ipc_limits = IPC_CLASS_LIMITS[ipc_class]
 
