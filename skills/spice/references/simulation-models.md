@@ -122,7 +122,7 @@ The ideal model's 10 MHz GBW is a rough middle ground. Here's how it compares to
 | OPA1612 | 80 MHz | 8 MHz | 1 MHz (8x too low) |
 | AD8099 | 710 MHz | 71 MHz | 1 MHz (71x too low) |
 
-**Guidance for reporting:** The gain measurement at 1 kHz is always accurate (well within the flat passband of any real opamp). The bandwidth measurement is only accurate if the real part happens to have GBW near 10 MHz. Always qualify bandwidth results with the actual part's GBW.
+**Guidance for reporting:** The gain is measured at GBW / (100 x |gain|), clamped to 1-1000 Hz (the ideal model has a 10 MHz GBW), which is normally well inside the flat passband. A feedback-capacitor pole below that frequency also lowers the measured gain. The bandwidth measurement is only accurate if the real part happens to have GBW near 10 MHz. Always qualify bandwidth results with the actual part's GBW.
 
 ### What the Ideal Opamp Model IS Good For
 
@@ -238,7 +238,7 @@ KiCad net names are translated to ngspice-safe names:
 |-----------|-------------|------|
 | `GND`, `gnd`, `earth`, `VSS` | `0` | Ground nets → node 0 |
 | `3V3` | `n3V3` | Leading digit → prefix with `n` |
-| `Net-(U3-pin7)` | `Net__U3_pin7_` | Special chars → underscores |
+| `Net-(U3-pin7)` | `Net-_U3-pin7_` | Parentheses → underscores, `-` kept |
 | `__unnamed_0` | `__unnamed_0` | Internal nets pass through |
 
 The `_sanitize_net()` function in `spice_models.py` handles this translation. When debugging a `.cir` file, KiCad net names in the comment header map to the sanitized names in the netlist.
@@ -333,7 +333,7 @@ Straightforward: VIN → R_top → mid_net → R_bottom → ground. No load resi
 
 ## Per-Part Behavioral Models
 
-When a recognized MPN is detected (e.g., LM358, TL072, MCP6002), the skill generates a parameterized `.subckt` with the part's actual GBW, slew rate, input offset, and output swing from the lookup table in `spice_part_library.py`.
+When a recognized MPN is detected (e.g., LM358, TL072, MCP6002), the skill generates a parameterized `.subckt` with the part's actual GBW, input offset, and output swing from the lookup table in `spice_part_library.py`.
 
 ### Model Parameters Used
 

@@ -211,7 +211,7 @@ In testing across real projects, passive simulations consistently show <0.3% err
 
 ### Opamp circuits
 
-For recognized parts (49 op-amps in the built-in table, more through distributor APIs), the skill uses a **per-part behavioral model** with the correct GBW, slew rate, input offset, and output swing. For unrecognized parts, it falls back to the ideal model (Aol=1e6, GBW=10MHz).
+For recognized parts (49 op-amps in the built-in table, more through distributor APIs), the skill uses a **per-part behavioral model** with the correct GBW, input offset, and output swing. For unrecognized parts, it falls back to the ideal model (Aol=1e6, GBW=10MHz).
 
 The `model_note` field in the report indicates which model was used:
 - `"LM358 behavioral (lookup:LM358, GBW=1.0MHz)"` — per-part model, bandwidth results are accurate
@@ -309,7 +309,7 @@ For detailed information about the behavioral models used, their accuracy envelo
 
 ## Per-Part Behavioral Models
 
-When the analyzer detects an opamp with a recognized MPN (e.g., LM358, TL072, MCP6002), the skill uses a **per-part behavioral model** instead of the generic ideal opamp. The model captures the actual GBW, slew rate, input offset, and output swing from the part's datasheet.
+When the analyzer detects an opamp with a recognized MPN (e.g., LM358, TL072, MCP6002), the skill uses a **per-part behavioral model** instead of the generic ideal opamp. The model captures the actual GBW, input offset, and output swing from the part's datasheet.
 
 Model resolution cascade:
 1. **Project cache** (`<project>/spice/models/`, beside the schematic the analysis JSON names) — previously resolved models
@@ -332,5 +332,5 @@ Models are cached project-locally in a `spice/` directory beside the schematic t
 - **LC filter Q factor uses estimated inductor ESR.** A default Q=100 is assumed for the inductor, so the reported `Q_factor` reflects that assumption (`model_note`) and never sets the status. Real inductor Q varies from 10 (power inductors) to 300+ (RF inductors). The resonant frequency is accurate regardless of Q.
 - **Opamp supply rails are inferred from net names.** May default to +/-5V if the power nets aren't labeled with voltage. Negative rails are read from names like `-12V`, `NEG15V` or `-3V3`; a negative rail named without a voltage (`VEE`, `V-`, `-VCC`) is assumed at -VCC and the result's `model_note` says so. Single-supply designs are detected when only VCC is found (VEE defaults to 0V); their benches are biased at mid-supply, the stage's AC ground. A supply below the part model's minimum is never a pass: `warn` when the rails' voltages are in their net names, `info` when the supply was assumed.
 - **Per-part models cover 103 built-in parts.** Uncommon opamps/LDOs fall back to ideal models. The lookup table can be extended by adding entries to `spice_part_library.py`.
-- **High-gain opamp circuits with realistic GBW** may show lower-than-expected gain at the 1 kHz measurement point when bandwidth is limited. This is physically correct behavior (the model correctly captures the GBW limitation) but may need lower-frequency measurement for accurate gain comparison.
+- **High-gain opamp circuits with realistic GBW** may show lower-than-expected gain at the measurement point (GBW / (100 x gain), clamped to 1-1000 Hz) when bandwidth is limited. This is physically correct behavior (the model correctly captures the GBW limitation) but may need lower-frequency measurement for accurate gain comparison.
 - **Net names from the analyzer may be `__unnamed_N`.** These are KiCad internal net names for unlabeled wires. They work correctly in simulation but make `.cir` files less readable.
