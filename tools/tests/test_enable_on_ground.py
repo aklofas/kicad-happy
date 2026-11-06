@@ -14,7 +14,7 @@ from schematic.system_analyses import analyze_power_sequencing  # noqa: E402
 
 # ref -> (enable pin name, enable net)
 ENABLES = {"U1": ("EN", "GND"), "U2": ("~{EN}", "GND"), "U3": ("~{SHDN}", "GND"),
-           "U4": ("EN", "+5V"), "U5": ("EN", "EN_FLOAT")}
+           "U4": ("EN", "+5V"), "U5": ("EN", "EN_FLOAT"), "U6": ("~{ON}/OFF", "GND")}
 
 
 def _ctx():
@@ -69,10 +69,16 @@ class PowerTreeEnableType(unittest.TestCase):
         self.tree = {e["source"]: e for e in out["power_tree"]}
 
     def test_enable_on_ground_is_tied_to_ground_with_no_sequence_order(self):
-        for ref in ("U1", "U2", "U3"):
+        for ref in ("U1", "U3"):
             self.assertEqual(self.tree[ref]["enable_type"], "tied_to_ground", ref)
             self.assertEqual(self.tree[ref]["enabled_by"], "GND", ref)
             self.assertNotIn("sequence_order", self.tree[ref], ref)
+
+    def test_overbar_enable_on_ground_is_always_on_and_starts_the_sequence(self):
+        for ref in ("U2", "U6"):
+            self.assertEqual(self.tree[ref]["enable_type"], "always_on", ref)
+            self.assertEqual(self.tree[ref]["enabled_by"], "GND", ref)
+            self.assertEqual(self.tree[ref]["sequence_order"], 0, ref)
 
     def test_enable_on_a_rail_starts_the_sequence(self):
         self.assertEqual(self.tree["U4"]["enable_type"], "tied_to_rail")

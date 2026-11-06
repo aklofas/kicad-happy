@@ -15,6 +15,7 @@ import re
 from collections import Counter
 
 from kicad_types import AnalysisContext
+from kicad_core.classify import is_active_low_enable
 from kicad_core.parts import LOAD_SWITCH_KEYWORDS, lookup_regulator_vref
 from kicad_core.values import format_frequency, parse_value
 from kicad_core.netnames import parse_voltage_from_net_name
@@ -5294,10 +5295,12 @@ def build_power_sequencing_graph(ctx: AnalysisContext,
 
     # For each source, find EN and PG pins by scanning IC pins
     source_en_nets: dict[str, str | None] = {}  # ref -> en_net
+    source_en_pins: dict[str, str | None] = {}  # ref -> matched EN pin name
     source_pg_nets: dict[str, str | None] = {}  # ref -> pg_net
 
-    def _match_pin(pin_nets: dict[str, str], names: set[str]) -> str | None:
-        """Match a pin name from *pin_nets* against a set of canonical names.
+    def _match_pin(pin_nets: dict[str, str], names: set[str]) -> tuple[str, str] | None:
+        """Match a pin name from *pin_nets* against a set of canonical names and
+        return the matched pin's own name and its net.
 
         KiCad 6+ overbar markup (``~{EN}``) is stripped before comparison so
         that both ``EN`` and ``~{EN}`` match the canonical ``"EN"`` entry.
@@ -5309,17 +5312,17 @@ def build_power_sequencing_graph(ctx: AnalysisContext,
         # same pin on every run instead of following set hash order.
         for pname in sorted(names):
             if pname in pin_nets:
-                return pin_nets[pname]
+                return pname, pin_nets[pname]
         # Second pass: normalize raw pin names and match against base names
         # strip ~{ } overbar wrappers and retry
         for raw_pname, net in pin_nets.items():
             norm = raw_pname.replace("~{", "").replace("}", "")
             if norm in names:
-                return net
+                return raw_pname, net
             # Also try with trailing digits stripped (EN1 → EN)
             base = norm.rstrip("0123456789")
             if base and base in names:
-                return net
+                return raw_pname, net
         return None
 
     for src in all_sources:
@@ -5328,13 +5331,18 @@ def build_power_sequencing_graph(ctx: AnalysisContext,
 
         # EN pin
         en_net = src.get("enable_net")  # load switches already have this
+        en_pin = None
         if not en_net:
-            en_net = _match_pin(pin_nets, _EN_PIN_NAMES)
+            en_net = None
+            matched = _match_pin(pin_nets, _EN_PIN_NAMES)
+            if matched:
+                en_pin, en_net = matched
         source_en_nets[ref] = en_net
+        source_en_pins[ref] = en_pin
 
         # PG pin
-        pg_net = _match_pin(pin_nets, _PG_PIN_NAMES)
-        source_pg_nets[ref] = pg_net
+        matched = _match_pin(pin_nets, _PG_PIN_NAMES)
+        source_pg_nets[ref] = matched[1] if matched else None
 
     # Build PG→EN cross-reference: which PG net drives which EN net
     pg_to_ref: dict[str, str] = {}  # pg_net -> source ref that outputs it
@@ -5356,7 +5364,9 @@ def build_power_sequencing_graph(ctx: AnalysisContext,
 
         if en_net:
             if ctx.is_ground(en_net):
-                en_type = "tied_to_ground"
+                en_pin = source_en_pins.get(ref)
+                en_type = ("always_on" if en_pin and is_active_low_enable(en_pin)
+                           else "tied_to_ground")
                 en_source = en_net
             elif ctx.is_power_net(en_net):
                 en_type = "tied_to_rail"

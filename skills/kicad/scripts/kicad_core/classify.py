@@ -9,6 +9,14 @@ NON_COMPONENT_TYPES = frozenset({"power_symbol", "power_flag", "flag", "test_poi
 _TOUCH_MARKERS = ("touch", "capacitive", "captouch", "cap_touch")
 
 
+def is_active_low_enable(pin_name: str) -> bool:
+    """True when an enable pin's overbar marks it active-low, so ground enables it.
+
+    An overbar shutdown (``~{SHDN}``, ``~{SHUTDOWN}``) is asserted by ground instead.
+    Any other enable pin's polarity is not known from its name. *pin_name* is upper-cased.
+    """
+    return pin_name.startswith("~") and "SHDN" not in pin_name and "SHUTDOWN" not in pin_name
+
 def is_touch_pad(reference: str, value: str, footprint: str) -> bool:
     """A capacitive touch electrode: a touch marker in the footprint or value, or a TOUCH/TCH
     reference. A test-point footprint is never one, whatever its value says."""
