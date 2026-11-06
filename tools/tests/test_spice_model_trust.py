@@ -88,6 +88,13 @@ class ModelTrustTest(_CacheCase):
         self.assertEqual(sink[0]["effect"], "project model skipped")
         self.assertEqual((self.models / "LM358.sub").read_text(encoding="utf-8"), text)
 
+    def test_trailing_end_dropped_from_pasted_model(self):
+        self.plant(CLEAN + ".END\n")
+        (subckt, source, _), sink = self.resolve()
+        self.assertEqual(source, "cache:LM358")
+        self.assertEqual(subckt, CLEAN)
+        self.assertEqual(sink, [])
+
     def test_element_names_like_control_words_used(self):
         text = ".subckt LM358 1 2 3 4 5\nSOURCE1 1 2 3 4 SW1\nshellcap 1 2 1p\n.ends\n"
         self.plant(text)
@@ -136,11 +143,10 @@ class ModelTextProblemTest(unittest.TestCase):
                     ".include helper.lib\n", ".incx a\n", ".lib\n", "  .Inc\n+ x.lib\n"):
             self.assertIsNotNone(smc.model_text_problem(bad), bad)
 
-
     def test_only_model_library_cards_pass(self):
         for bad in (".print tran v(1)\n", ".MEASURE TRAN t1 FIND v(1) AT=1u\n",
                     ".meas ac x max vdb(1)\n", ".save all\n", ".options reltol=1e-4\n",
-                    ".temp 85\n", ".end\n", ".tran 1n 1u\n", ".op\n", ".backanno\n",
+                    ".temp 85\n", ".tran 1n 1u\n", ".op\n", ".backanno\n",
                     ".wave out.wav 16 44100 v(1)\n", ".subcktx A 1 2\n", ".endl\n",
                     ".ic v(1)=0\n"):
             self.assertIsNotNone(smc.model_text_problem(bad), bad)
@@ -155,6 +161,15 @@ class ModelTextProblemTest(unittest.TestCase):
                     '.model t table2d(file="t.tbl")\n',
                     '.model d d_source(input_file = "x")\n',
                     '.model src filesource\n+ (file="/etc/passwd")\n'):
+            self.assertIsNotNone(smc.model_text_problem(bad), bad)
+        for ok in ("R1 1 2 1k ; data file= foo\n", "R1 1 2 1k $ file=x\n"):
+            self.assertIsNone(smc.model_text_problem(ok), ok)
+
+    def test_trailing_end_allowed_only_last(self):
+        self.assertIsNone(smc.model_text_problem(".subckt X 1 2\n.ends\n.end\n\n"))
+        for bad in (".subckt X 1 2\n.ends\n.end\n.subckt Y 1 2\n.ends\n",
+                    ".subckt X 1 2\n.end\n.ends\n", ".end\n.model D1 D\n",
+                    ".subckt X 1 2\n.ends\n.end\n* after\n", ".ends\n.end tran\n"):
             self.assertIsNotNone(smc.model_text_problem(bad), bad)
 
     def test_generated_models_pass(self):

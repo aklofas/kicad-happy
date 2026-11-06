@@ -1,6 +1,6 @@
 """The SPICE model cache sits beside the project the analysis names, never in one
 machine-wide temp directory, and it writes its manifest atomically."""
-import contextlib, io, json, os, stat, subprocess, sys, tempfile, unittest
+import contextlib, io, json, os, shutil, stat, subprocess, sys, tempfile, unittest
 from pathlib import Path
 from unittest import mock
 
@@ -250,13 +250,11 @@ class ManifestReadTest(unittest.TestCase):
                                  text=True, timeout=20, check=True).stdout
             self.assertEqual(out.strip(), "(None, None)")
 
-    def test_list_manifest_is_kept_on_write(self):
+    def test_list_manifest_is_replaced_on_write(self):
         with tempfile.TemporaryDirectory() as tmp:
             Path(tmp, "manifest.json").write_text("[]", encoding="utf-8")
-            with self.assertRaises(OSError):
-                spice_model_cache.cache_model(tmp, "LM358", ".subckt LM358 1 2\n.ends\n", {}, "lookup", "opamp")
-            self.assertEqual(Path(tmp, "manifest.json").read_text(encoding="utf-8"), "[]")
-            self.assertEqual(spice_model_cache.get_cached_model(tmp, "LM358"), (None, None))
+            spice_model_cache.cache_model(tmp, "LM358", ".subckt LM358 1 2\n.ends\n", {}, "lookup", "opamp")
+            self.assertEqual(spice_model_cache.get_cached_model(tmp, "LM358")[0], ".subckt LM358 1 2\n.ends\n")
 
     def _plant(self, tmp):
         Path(tmp, "LM358.sub").write_text(".subckt LM358 1 2\n.ends\n", encoding="utf-8")
@@ -342,7 +340,7 @@ class RelativeSourceCacheTest(unittest.TestCase):
 
     def setUp(self):
         self.root = Path(tempfile.mkdtemp())
-        self.addCleanup(__import__("shutil").rmtree, self.root, True)
+        self.addCleanup(shutil.rmtree, self.root, True)
         old = os.getcwd()
         self.addCleanup(os.chdir, old)
 
@@ -388,7 +386,7 @@ class RefusedManifestTest(unittest.TestCase):
 
     def setUp(self):
         self.root = Path(tempfile.mkdtemp())
-        self.addCleanup(__import__("shutil").rmtree, self.root, True)
+        self.addCleanup(shutil.rmtree, self.root, True)
         patcher = mock.patch.object(spice_model_cache, "_index_cache", {})
         patcher.start()
         self.addCleanup(patcher.stop)

@@ -199,13 +199,15 @@ class AutoWorkdirCleanupTest(unittest.TestCase):
 
     def test_auto_workdir_registered_for_removal(self):
         with tempfile.TemporaryDirectory() as tmp, mock.patch("tempfile.tempdir", tmp):
-            analysis = json.load(open(_analysis(tmp), encoding="utf-8"))
+            with open(_analysis(tmp), encoding="utf-8") as f:
+                analysis = json.load(f)
             report, reg = self._run(analysis)
             reg.assert_any_call(shutil.rmtree, report["workdir"], True)
 
     def test_given_workdir_not_registered(self):
         with tempfile.TemporaryDirectory() as tmp:
-            analysis = json.load(open(_analysis(tmp), encoding="utf-8"))
+            with open(_analysis(tmp), encoding="utf-8") as f:
+                analysis = json.load(f)
             wd = os.path.join(tmp, "w")
             report, reg = self._run(analysis, workdir=wd)
             named = {str(a) for c in reg.call_args_list for a in c.args}

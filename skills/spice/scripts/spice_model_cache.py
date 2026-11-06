@@ -186,6 +186,8 @@ _CONTROL_WORDS = ("shell", "source")
 _MODEL_LIBRARY_CARDS = frozenset({".subckt", ".ends", ".model", ".param", ".func", ".global"})
 # XSPICE code models such as filesource, d_source and d_state read the file they name
 _FILE_PARAMETER = re.compile(r"(?i)(?<!\w)(?:file|input_file|state_file)\s*=")
+# ngspice inline comments: ";" anywhere, "$" between blanks
+_INLINE_COMMENT = re.compile(r";.*|\s\$(?:\s.*)?$")
 
 
 def _logical_lines(text):
@@ -207,18 +209,34 @@ def model_text_problem(text):
     file (``.inc``/``.include``/``.lib``; included files resolve from the simulation
     directory and are never scanned), opens or closes a simulator control block, runs
     ``shell`` or ``source``, is any other dot-card, or gives a code model a file to read.
+    A bare ``.end`` is allowed as the last line only; ``model_for_bench`` drops it.
     """
-    for line in _logical_lines(text):
+    lines = _logical_lines(text)
+    last = max((i for i, line in enumerate(lines) if line), default=-1)
+    for i, line in enumerate(lines):
         card = line.lower().split(None, 1)[0] if line else ""
+        if i == last and line.lower() == ".end":
+            continue
         if card.startswith(_INCLUDE_CARD_PREFIXES):
             return f"model includes a file: {line[:60]}"
         if card.startswith(_CONTROL_CARD_PREFIXES) or card in _CONTROL_WORDS:
             return f"model contains a simulator control command: {line[:60]}"
         if card.startswith(".") and card not in _MODEL_LIBRARY_CARDS:
             return f"model contains a simulator command card: {line[:60]}"
-        if card and not card.startswith("*") and _FILE_PARAMETER.search(line):
+        if card and not card.startswith("*") and _FILE_PARAMETER.search(
+                _INLINE_COMMENT.sub("", line)):
             return f"model reads a file: {line[:60]}"
     return None
+
+
+def model_for_bench(text):
+    """``text`` without a trailing ``.end`` line, which would end the bench's netlist."""
+    lines = text.splitlines(keepends=True)
+    while lines and not lines[-1].strip():
+        lines.pop()
+    if lines and lines[-1].strip().lower() == ".end":
+        return "".join(lines[:-1])
+    return text
 
 
 def cache_model(cache_dir, mpn, subckt, specs, source, component_type):
@@ -236,13 +254,12 @@ def cache_model(cache_dir, mpn, subckt, specs, source, component_type):
     cache_dir.mkdir(parents=True, exist_ok=True)
 
     # Rewriting a manifest that cannot be read would drop every entry it holds;
-    # an empty regular file has none to lose.
+    # an empty regular file or an empty JSON list has none to lose.
     read_path = _cache_manifest_path(cache_dir)
-    if os.path.lexists(read_path) and not _is_empty_regular_file(read_path):
-        index = read_json_object(read_path)
-        if index is None:
+    index = read_json_object(read_path) if os.path.lexists(read_path) else {}
+    if index is None:
+        if not _holds_no_entries(read_path):
             raise OSError(f"{read_path.name} is unreadable; model not cached")
-    else:
         index = {}
 
     key = sanitize_mpn(mpn)
@@ -303,12 +320,21 @@ def cache_model(cache_dir, mpn, subckt, specs, source, component_type):
     _index_cache.pop(str(cache_dir), None)
 
 
-def _is_empty_regular_file(path):
+def _holds_no_entries(path):
+    """True for a regular file that is empty or holds the JSON value []."""
     try:
         st = os.lstat(path)
     except OSError:
         return False
-    return stat.S_ISREG(st.st_mode) and st.st_size == 0
+    if not stat.S_ISREG(st.st_mode):
+        return False
+    if st.st_size == 0:
+        return True
+    raw = read_regular_bytes(path)
+    try:
+        return raw is not None and json.loads(raw.decode("utf-8")) == []
+    except (ValueError, RecursionError):
+        return False
 
 
 def _serialize_specs(specs):
@@ -403,6 +429,8 @@ def get_model_for_part(mpn, component_type=None, context=None, options=None, *, 
                 # The fallback model is used but never replaces the user's file
                 use_cache = False
         if cached_subckt and not problem:
+            if not opts.trust_project_models:
+                cached_subckt = model_for_bench(cached_subckt)
             return cached_subckt, f"cache:{mpn}", cached_specs
 
     # --- Tier 1: Distributor API parametric specs ---
