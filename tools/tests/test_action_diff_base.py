@@ -35,13 +35,15 @@ class DiffBaseTest(unittest.TestCase):
         _git(self.repo, "init", "-q")
         for rel, text in {"hw/top.kicad_sch": "top base", "hw/sub/child.kicad_sch": "child base",
                           "hw/top.kicad_pro": "pro base", "hw/top.kicad_pcb": "pcb base",
-                          ".kicad-happy.json": "cfg base", "hw/notes.txt": "not kicad"}.items():
+                          ".kicad-happy.json": "cfg base", "hw/notes.txt": "not kicad", "shared/common.kicad_sch": "common base",
+                          "docs/readme.md": "docs"}.items():
             _write(self.repo, rel, text)
         _git(self.repo, "add", "-A")
         _git(self.repo, "commit", "-qm", "base")
         _git(self.repo, "tag", "base")
         for rel in ("hw/top.kicad_sch", "hw/sub/child.kicad_sch", "hw/top.kicad_pcb", ".kicad-happy.json"):
             _write(self.repo, rel, rel + " head")
+        _write(self.repo, "shared/common.kicad_sch", "common head")
         _write(self.repo, "hw/sub/new.kicad_sch", "new in head")
         _git(self.repo, "add", "-A")
         _git(self.repo, "commit", "-qm", "head")
@@ -63,8 +65,14 @@ class DiffBaseTest(unittest.TestCase):
         self.assertEqual(self._read(".kicad-happy.json"), "cfg base")
         self.assertFalse((Path(self.dest) / "hw/sub/new.kicad_sch").exists())
         self.assertFalse((Path(self.dest) / "hw/notes.txt").exists())
+        self.assertFalse((Path(self.dest) / "docs/readme.md").exists())
         self.assertEqual((Path(self.repo) / "hw/sub/child.kicad_sch").read_text(encoding="utf-8"),
                          "hw/sub/child.kicad_sch head")
+
+    def test_sub_sheet_outside_the_root_folder_comes_from_base(self):
+        r = _bash(self.repo, f'kh_extract_base base "{self.dest}" hw/top.kicad_sch "" ""')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self._read("shared/common.kicad_sch"), "common base")
 
     def test_no_pcb_no_config(self):
         r = _bash(self.repo, f'kh_extract_base base "{self.dest}" hw/top.kicad_sch "" ""; '
