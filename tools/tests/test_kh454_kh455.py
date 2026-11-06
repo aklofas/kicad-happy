@@ -76,15 +76,18 @@ class PinRecognisedRail(unittest.TestCase):
     """N_U1 is a rail by its pins (a supply pin and a capacitor to ground)."""
     COMPS = [{"reference": r, "type": "ic", "value": "MCU"} for r in ("U1", "U2")] + \
             [{"reference": r, "type": "capacitor", "value": "100n"} for r in ("C1", "C2", "C10")] + \
-            [{"reference": "D1", "type": "diode", "value": "BAT54"}]
+            [{"reference": "D1", "type": "diode", "value": "BAT54"},
+             {"reference": "U3", "type": "ic", "value": "SENSOR"},
+             {"reference": "FB1", "type": "ferrite_bead", "value": "600R"},
+             {"reference": "C3", "type": "capacitor", "value": "100n"}]
 
-    def _pp(self, extra=None, power_regulators=None):
+    def _pp(self, extra=None, power_regulators=None, flagged=()):
         nets = {"N_U1": [("U1", "1", "VCC", "power_in"), ("C1", "1", "~", "passive")],
                 "GND": [("C1", "2", "~", "passive"), ("U1", "2", "GND", "power_in")],
                 "+3V3": [("U2", "1", "VCC", "power_in")]}
         for net, pins in (extra or {}).items():
             nets.setdefault(net, []).extend(pins)
-        ctx = _ctx(self.COMPS, nets, flagged={"GND", "+3V3"})
+        ctx = _ctx(self.COMPS, nets, flagged={"GND", "+3V3", *flagged})
         self.assertIn("N_U1", ctx.topology_rails)
         f = audit_power_pin_dc_paths(ctx, power_regulators=power_regulators)
         return [x["start_net"] for x in _rules(f, "PP-001")]
@@ -106,6 +109,33 @@ class PinRecognisedRail(unittest.TestCase):
     def test_diode_fed_rail_ends_the_walk(self):
         self.assertEqual(self._pp({**self.AC, "N_U1": self.AC["N_U1"] + [("D1", "2", "K", "passive")],
                                    "+5V": [("D1", "1", "A", "passive")]}), [])
+
+    def test_stacked_power_out_pin_is_a_source(self):
+        self.assertEqual(self._pp({**self.AC, "N_U1": self.AC["N_U1"]
+                                   + [("U2", "5", "VOUT", "power_out+passive")]}), [])
+
+    def test_pwr_flag_is_a_source(self):
+        self.assertEqual(self._pp(self.AC, flagged={"N_U1"}), [])
+        self.assertEqual(self._pp({**self.AC, "N_U1": self.AC["N_U1"]
+                                   + [("#FLG01", "1", "pwr", "passive")]}), [])
+
+    def test_ground_cap_alongside_the_coupling_cap_keeps_pp001(self):
+        self.assertEqual(self._pp({**self.AC, "N_U1": self.AC["N_U1"] + [("C3", "1", "~", "passive")],
+                                   "GND": [("C3", "2", "~", "passive")]}), ["N_U1"])
+
+    # U3 on another sheet takes its supply through FB1 from the sheet where N_U1 is decoupled.
+    OTHER_SHEET = {"/sensor/N_U3": [("U3", "1", "VDD", "power_in"), ("FB1", "2", "~", "passive")],
+                   "N_U1": [("FB1", "1", "~", "passive")],
+                   "GND": [("U3", "2", "GND", "power_in")]}
+
+    def test_rail_reached_from_another_sheet_ends_the_walk(self):
+        self.assertEqual(self._pp(self.OTHER_SHEET), [])
+        # Without U1's supply pin N_U1 is no rail, and the walk from U3 meets only C1.
+        ctx = _ctx(self.COMPS, {**self.OTHER_SHEET,
+                                "N_U1": self.OTHER_SHEET["N_U1"] + [("C1", "1", "~", "passive")],
+                                "GND": self.OTHER_SHEET["GND"] + [("C1", "2", "~", "passive")]})
+        self.assertEqual([x["start_net"] for x in _rules(audit_power_pin_dc_paths(ctx), "PP-001")],
+                         ["/sensor/N_U3"])
 
     def test_duplicate_ref_capacitor_is_not_a_coupling_cap(self):
         # C10 is two symbols sharing one reference: four pins, not a capacitor across the nets.

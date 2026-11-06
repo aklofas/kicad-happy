@@ -4803,9 +4803,10 @@ def audit_power_pin_dc_paths(ctx: AnalysisContext,
     and REJECT crossing capacitors. If no named power rail is reachable
     within 2 hops, emit PP-001 at severity=error (info on module-internal LDO rails).
     A net known as a rail only from its pins (a supply pin and a capacitor to ground)
-    counts as reached unless it is AC-coupled: a capacitor joins it to another rail
-    and it shows no source of its own (a power_out pin, a PWR_FLAG or a regulator
-    output). Then the walk goes on, as for an unnamed net.
+    counts as reached unless it is AC-coupled: only IC pins and capacitors sit on it,
+    a two-pin capacitor joins it to another rail, and it shows no source of its own
+    (a power_out pin, a PWR_FLAG or a regulator output). Then the walk goes on, as for
+    an unnamed net.
     """
     findings: list[dict] = []
     nets = ctx.nets or {}
@@ -4823,7 +4824,7 @@ def audit_power_pin_dc_paths(ctx: AnalysisContext,
     def _has_source(net: str) -> bool:
         info = nets.get(net, {})
         return (bool(info.get("has_pwr_flag")) or net in reg_output_nets
-                or any(p.get("pin_type") == "power_out"
+                or any(str(p.get("pin_type") or "").split("+")[0] == "power_out"
                        or (p.get("component") or "").startswith("#FLG")
                        for p in info.get("pins", [])))
 
