@@ -123,6 +123,13 @@ QUOTE_CASES = [
     ("3e-2", "3e-\n2", True, "wrapped exponent alone"),
     ("1e3 A", "1e- 3 A", False, "split exponent sign dropped"),
     ("3 A", "1e- 3 A", False, "split exponent read as a value"),
+    ("-3 A", "1e- 3 A", False, "negative value inside a split exponent"),
+    ("-3 A max", "leakage 1e- 3 A max", False, "negative value inside a split exponent, longer"),
+    ("-40 to 85", "range 1e- 40 to 85", False, "negative range start inside a split exponent"),
+    ("-40", "2e- 40", False, "negative value inside a split exponent, alone"),
+    ("-3 A", "1e-\n3 A", False, "negative value inside a wrapped exponent"),
+    ("-3 A", "1e-3 A", False, "negative value inside an exponent"),
+    ("-40 to 85", "range -40 to 85", True, "genuine negative range"),
     ("Type 1e - 3 pins", "Type 1e - 3 pins", True, "spaced e and dash"),
 ]
 
@@ -233,7 +240,6 @@ class EvidenceTest(unittest.TestCase):
                 self.assertEqual(kept["evidence_checked"],
                                  "partial" if partial else "full")
 
-
     def test_name_citation_of_an_unnamed_pad_is_partial(self):
         pcb = {"footprints": [{"reference": "U1", "pad_count": 3, "pad_nets": {
             "1": {"net": "VIN", "pin": "VIN"}, "2": {"net": "GND"}, "3": {"net": "OUT"}}}]}
@@ -260,6 +266,17 @@ class EvidenceTest(unittest.TestCase):
             with self.subTest(pin=pin):
                 kept, bad = self._gate({"pins": [pin], "computation": calc}, sets)
                 self.assertIs(kept is not None, ok, bad and bad["quarantine_reason"])
+
+    def test_overbar_citation_does_not_match_a_plain_pin_name(self):
+        sch = {"components": [{"reference": "U2"}],
+               "nets": {"N": {"pins": [{"component": "U2", "pin_number": "5",
+                                        "pin_name": "RESET"}]}}}
+        sets = self._sets(sch=sch)
+        calc = {"description": "d", "result": "r"}
+        for pin, ok in (("U2.RESET", True), ("U2.~{RESET}", False)):
+            with self.subTest(pin=pin):
+                kept, _ = self._gate({"pins": [pin], "computation": calc}, sets)
+                self.assertIs(kept is not None, ok)
 
     def test_fully_named_or_tilde_named_parts_still_reject_unknown_names(self):
         pcb = {"footprints": [{"reference": "J2", "pad_count": 2, "pad_nets": {
@@ -567,8 +584,6 @@ class GateCliTest(unittest.TestCase):
         self.assertEqual(out["findings"][0]["summary"], "Iq 10 µA")
 
 
-
-
 class FindPdfTest(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
@@ -604,6 +619,11 @@ class FindPdfTest(unittest.TestCase):
         self.assertEqual(self._find("X1"), self.tmp / "X1.pdf")
         # a failed entry is not used; the folder lookup still finds the file
         self.assertEqual(self._find("X2"), self.tmp / "X2_Part.pdf")
+
+    def test_wrong_part_entry_stops_the_lookup(self):
+        self._touch("X3_Part.pdf", "X3.pdf")
+        self._manifest({"X3": {"status": "ok", "verification": "wrong", "file": "X3_Part.pdf"}})
+        self.assertIsNone(self._find("X3"))
 
     def test_prefix_needs_the_separator(self):
         self._touch("LM3580_Op.pdf")

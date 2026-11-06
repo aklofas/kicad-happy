@@ -69,8 +69,8 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The fork-safe comment example posts only to the pull request whose head is the analysed commit, and refuses a PR number that is not a plain integer, so a fork can no longer choose which PR or issue the write-token job comments on.
 - The Action's `derating-profile` input is deprecated: it never changed the analysis (the commercial profile is always used), and GitHub now warns when it is set.
 - Deep Review quotes against a datasheet saved by the datasheet sync (`<MPN>_<description>.pdf`, or listed in `datasheets/manifest.json`) are now checked; they were graded partial because the gate looked only for `<MPN>.pdf`.
-- Deep Review: a pin cited by name on a part where some pins carry no name is graded partial instead of quarantined, and `RESET` matches a `~{RESET}` pin.
-- Deep Review: a datasheet quote whose exponent the PDF text splits with a space or a line break (`1e- 3`) matches again, and a quote that drops such an exponent's sign no longer passes.
+- Deep Review: a pin cited by name on a part where some pins carry no name is graded partial instead of quarantined, and `RESET` matches a `~{RESET}` pin (not the other way round).
+- Deep Review: a datasheet quote whose exponent the PDF text splits with a space or a line break (`1e- 3`) matches again, and a quote that drops such an exponent's sign, or reads its negative exponent as a negative value, no longer passes. A datasheet the sync marked as the wrong part is not used to check quotes.
 
 ### Documentation
 

@@ -243,8 +243,7 @@ def check_anchors(ev, comps, nets, pins):
             fails.append(f"pin {pin}: component {ref} not found in analyzer JSON")
         elif ref.upper() not in pins:
             partial = True
-        elif (num.upper() not in pins[ref.upper()]
-              and _strip_overbar(num.upper()) not in pins[ref.upper()]):
+        elif num.upper() not in pins[ref.upper()]:
             ids = pins[ref.upper()]
             # a name may belong to a pin the analyzer JSON lists without one
             if ids.names_complete or num.isdigit():
@@ -261,7 +260,9 @@ def _datasheets_pkg():
 
 
 def _manifest_pdf(d, mpn):
-    """The PDF datasheets/manifest.json (or legacy index.json) lists for `mpn`, or None."""
+    """(path, stop): the PDF datasheets/manifest.json (or legacy index.json) lists for
+    `mpn`, and True when the entry marks the download as the wrong part, so no other
+    file may stand in for it."""
     _datasheets_pkg()
     from datasheet_types.cache_reader import read_json_object
     from distributor_core.manifest import manifest_file_path
@@ -271,18 +272,20 @@ def _manifest_pdf(d, mpn):
             continue
         parts = data.get("parts")
         if not isinstance(parts, dict):
-            return None
+            return None, False
         entry = parts.get(mpn)
         if entry is None:
             want = mpn.strip().lower()
             entry = next((v for k, v in parts.items()
                           if isinstance(k, str) and k.strip().lower() == want), None)
         if isinstance(entry, dict) and entry.get("status") == "ok":
+            if entry.get("verification") == "wrong":
+                return None, True
             path = manifest_file_path(d, entry.get("file"))
             if path is not None and path.is_file():
-                return path
-        return None
-    return None
+                return path, False
+        return None, False
+    return None, False
 
 
 def find_pdf(datasheets_dir, mpn):
@@ -291,7 +294,9 @@ def find_pdf(datasheets_dir, mpn):
     d = Path(datasheets_dir)
     if not d.is_dir():
         return None
-    listed = _manifest_pdf(d, mpn)
+    listed, stop = _manifest_pdf(d, mpn)
+    if stop:
+        return None
     if listed is not None:
         return listed
     sanitized = re.sub(r"[^A-Za-z0-9_.-]", "_", mpn.strip())
@@ -394,6 +399,7 @@ def _find_outside_numbers(t, q, pos):
         before = t[idx - 1] if idx else ""
         after = t[idx + len(q):idx + len(q) + 1]
         inside = ((q[0].isdigit() and before and (before.isdigit() or before in ".,-±"))
+                  or (q[0] == "-" and re.search(r"[0-9]e$", t[max(0, idx - 2):idx]))
                   or (q[0] == "." and before.isdigit())
                   or (q[-1].isdigit() and after and (after.isdigit() or after in ".,")))
         if not inside:
