@@ -809,7 +809,6 @@ def check_return_path_enhanced(schematic, pcb, recorder=None):
     conn_graph = pcb.get('connectivity_graph') or {}
     net_id_map = _build_net_id_map(pcb)
     rpc_flagged = _flagged_return_path_entries(pcb, threshold_pct=95.0)
-    has_rpc_data = len(pcb.get('return_path_continuity', []) or []) > 0
     plane_gaps = []
     for net_name, graph in conn_graph.items():
         if not (is_cross_analysis_ground_name(net_name) or _is_power_net(net_name)):
@@ -845,7 +844,9 @@ def check_return_path_enhanced(schematic, pcb, recorder=None):
             continue
         if net_name in flagged:
             continue
-        if has_rpc_data and net_name not in rpc_flagged:
+        # A gap is the rectangle between two islands' bounding boxes, so a
+        # crossing is reported only where measured plane coverage is short.
+        if net_name not in rpc_flagged:
             continue
         classification = _get_net_classification(net_name, schematic)
         if not classification:
@@ -865,7 +866,7 @@ def check_return_path_enhanced(schematic, pcb, recorder=None):
                     category='return_path',
                     summary=f'{net_type} net {net_name} crosses {gap["net"]} plane gap',
                     description=f'{net_type} signal {net_name} crosses a gap in {gap["net"]} plane on layer {gap.get("layer", "?")}.',
-                    severity=severity, confidence='deterministic', evidence_source='topology',
+                    severity=severity, confidence='heuristic', evidence_source='topology',
                     nets=[net_name, gap['net']],
                     recommendation=f'Re-route {net_name} to avoid the {gap["net"]} plane gap, or bridge with a stitching capacitor.',
                     impact='Increased EMI from enlarged return path loop',
@@ -997,7 +998,10 @@ def check_plane_splits(schematic, pcb, recorder=None):
             category='plane_integrity',
             summary=f'{plane_net} plane split: {graph["islands"]} islands{", " + str(len(crossing_signals_rpc)) + " signals crossing" if crossing_signals_rpc else ""}',
             description=f'{plane_net} plane has {graph["islands"]} disconnected islands.{desc_signals}',
-            severity=severity, confidence='deterministic', evidence_source='topology',
+            # The island count is measured; a crossing is a track overlapping
+            # the rectangle between two islands' bounding boxes.
+            severity=severity, confidence='heuristic' if crossing_signals_rpc else 'deterministic',
+            evidence_source='topology',
             nets=[plane_net] + crossing_signals_rpc[:5],
             recommendation=(
                 'Bridge the plane gap with copper pour or stitching vias. '
