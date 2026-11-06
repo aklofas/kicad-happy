@@ -186,8 +186,6 @@ _CONTROL_WORDS = ("shell", "source")
 _MODEL_LIBRARY_CARDS = frozenset({".subckt", ".ends", ".model", ".param", ".func", ".global"})
 # XSPICE code models such as filesource, d_source and d_state read the file they name
 _FILE_PARAMETER = re.compile(r"(?i)(?<!\w)(?:file|input_file|state_file)\s*=")
-# ngspice inline comments: ";" anywhere, "$" between blanks
-_INLINE_COMMENT = re.compile(r";.*|\s\$(?:\s.*)?$")
 
 
 def _logical_lines(text):
@@ -223,8 +221,7 @@ def model_text_problem(text):
             return f"model contains a simulator control command: {line[:60]}"
         if card.startswith(".") and card not in _MODEL_LIBRARY_CARDS:
             return f"model contains a simulator command card: {line[:60]}"
-        if card and not card.startswith("*") and _FILE_PARAMETER.search(
-                _INLINE_COMMENT.sub("", line)):
+        if card and not card.startswith("*") and _FILE_PARAMETER.search(line):
             return f"model reads a file: {line[:60]}"
     return None
 

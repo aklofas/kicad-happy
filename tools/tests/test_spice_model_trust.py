@@ -160,10 +160,12 @@ class ModelTextProblemTest(unittest.TestCase):
                     '.model s d_state(state_file="x.in")\n',
                     '.model t table2d(file="t.tbl")\n',
                     '.model d d_source(input_file = "x")\n',
-                    '.model src filesource\n+ (file="/etc/passwd")\n'):
+                    '.model src filesource\n+ (file="/etc/passwd")\n',
+                    '.model src filesource ; c\n+ (file="x" amploffset=[0])\n',
+                    '.model s filesource(x="a;b" file="x" amploffset=[0])\n',
+                    '.model s filesource(x=1 $ c\n+ file="x" amploffset=[0])\n',
+                    'R1 1 2 1k ; data file= foo\n'):
             self.assertIsNotNone(smc.model_text_problem(bad), bad)
-        for ok in ("R1 1 2 1k ; data file= foo\n", "R1 1 2 1k $ file=x\n"):
-            self.assertIsNone(smc.model_text_problem(ok), ok)
 
     def test_trailing_end_allowed_only_last(self):
         self.assertIsNone(smc.model_text_problem(".subckt X 1 2\n.ends\n.end\n\n"))
