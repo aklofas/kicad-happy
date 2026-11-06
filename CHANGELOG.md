@@ -296,6 +296,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The GitHub Action no longer fails its status for EMC or thermal errors the project suppressed, the PR comment shows how many findings were suppressed in its summary bar, and the verified count in that bar includes the thermal check.
 - `edit_properties.py` and `sync_datasheet_urls.py` look for the lock file KiCad really writes (`~name.kicad_sch.lck`), so the warning that the schematic is open in KiCad now appears; they looked for `name.kicad_sch.lck`, which KiCad never creates.
 - A distributor's answer (LCSC, DigiKey, element14, Mouser) now gives a SPICE model only when its part number is the one requested, ignoring case, spaces and `-_/,()`; before, LCSC and DigiKey accepted any part sharing the first six characters, so `OPA2335` could take the numbers of `OPA2333AIDR`, and element14 and Mouser checked nothing. A Value such as `LM358`, where the distributor's first hit is `LM358DR`, no longer gets a distributor model and falls to the later tiers or the ideal model. Models cached before are kept.
+- OV-001 compares only supply pins with the datasheet's recommended supply range; an enable input tied to ground (the LM2596's ON/OFF) is no longer told to raise GND to 4.5 V.
 
 ### Documentation
 

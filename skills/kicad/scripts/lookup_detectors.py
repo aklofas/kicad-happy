@@ -186,8 +186,14 @@ def detect_absolute_max_violations(ctx, rail_voltages: dict) -> list[dict]:
 # OV-001 — VCC outside recommended operating range
 # ---------------------------------------------------------------------------
 
+# Pin types that take a supply rail. Recommended operating ranges are supply
+# ratings, so OV-001 reads only these pins: an EN or ON/OFF input listed in the
+# VIN domain may sit at 0 V by design.
+_SUPPLY_PIN_TYPES = frozenset({"power_in", "power"})
+
+
 def detect_vcc_outside_recommended(ctx, rail_voltages: dict) -> list[dict]:
-    """OV-001: For each IC pin with a power_domain, verify the connected
+    """OV-001: For each IC supply pin with a power_domain, verify the connected
     rail voltage is within base.recommended_operating[domain] range
     (with synonym resolution).
 
@@ -214,7 +220,7 @@ def detect_vcc_outside_recommended(ctx, rail_voltages: dict) -> list[dict]:
 
         for pin in pinout:
             domain = getattr(pin, "power_domain", None)
-            if not domain:
+            if not domain or str(getattr(pin, "type", "")).lower() not in _SUPPLY_PIN_TYPES:
                 continue
             net = _connected_net(ctx, ref, getattr(pin, "numbers", []))
             if net is None:
