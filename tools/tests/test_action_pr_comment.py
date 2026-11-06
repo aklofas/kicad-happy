@@ -1,5 +1,5 @@
 """The Action PR comment renders every diff it is given, one row per added/removed/changed item."""
-import json, subprocess, sys, tempfile, unittest
+import json, re, subprocess, sys, tempfile, unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -23,6 +23,55 @@ def comment(*diffs):
         r = subprocess.run(args, capture_output=True, text=True, encoding="utf-8")
         assert r.returncode == 0, r.stderr
         return (d / "pr.md").read_text(encoding="utf-8")
+
+
+def schematic_reports(findings):
+    """(compact comment, full report) rendered from a schematic JSON with these findings."""
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        doc = {"statistics": {"total_components": 1}, "findings": findings}
+        (d / "sch.json").write_text(json.dumps(doc), encoding="utf-8")
+        r = subprocess.run([sys.executable, str(FORMATTER), "--schematic", str(d / "sch.json"),
+                            "--output", str(d / "pr.md"), "--output-full", str(d / "full.md")],
+                           capture_output=True, text=True, encoding="utf-8")
+        assert r.returncode == 0, r.stderr
+        return (d / "pr.md").read_text(encoding="utf-8"), (d / "full.md").read_text(encoding="utf-8")
+
+
+def regulator(**kw):
+    return dict({"detector": "detect_power_regulators", "ref": "U1", "value": "LDO", "topology": "LDO",
+                 "input_rail": "VIN", "output_rail": "+3V3", "estimated_vout": 3.3}, **kw)
+
+
+class MarkdownEscapeTest(unittest.TestCase):
+    def test_schematic_strings_cannot_add_links_headings_or_cells(self):
+        reg = regulator(value="LM|1117 [pwn](https://e.x) `tick` *b*", output_rail="+3V3\n## Forged")
+        for md in schematic_reports([reg]):
+            self.assertNotIn("\n## Forged", md)
+            self.assertNotIn("[pwn](https://e.x)", md)
+            self.assertIn("\\[pwn\\](https://e.x)", md)
+        full = schematic_reports([reg])[1]
+        row = next(line for line in full.splitlines() if line.startswith("| U1 |"))
+        self.assertEqual(len(re.findall(r"(?<!\\)\|", row)), 8)
+
+    def test_plain_values_render_unchanged(self):
+        reg = regulator(value="Conn_01x02_Pin", input_rail="~{RESET}", output_rail="4.7\u00b5F/16V")
+        for md in schematic_reports([reg]):
+            for text in ("Conn_01x02_Pin", "~{RESET}", "4.7\u00b5F/16V"):
+                self.assertIn(text, md)
+            self.assertNotIn("\\_", md)
+
+    def test_missing_mpn_list_cannot_open_a_heading(self):
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            doc = {"statistics": {"total_components": 2, "missing_mpn": ["# Forged", "R1"]}}
+            (d / "sch.json").write_text(json.dumps(doc), encoding="utf-8")
+            subprocess.run([sys.executable, str(FORMATTER), "--schematic", str(d / "sch.json"),
+                            "--output", str(d / "pr.md"), "--output-full", str(d / "full.md")],
+                           check=True, capture_output=True)
+            full = (d / "full.md").read_text(encoding="utf-8")
+        self.assertNotIn("\n# Forged", full)
+        self.assertIn("\\# Forged, R1", full)
 
 
 class ActionPrComment(unittest.TestCase):

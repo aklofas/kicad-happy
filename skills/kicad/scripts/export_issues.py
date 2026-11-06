@@ -81,6 +81,37 @@ def _inert(text: str) -> str:
     return _escape_html_comment(text).replace("@", "@\u200b")
 
 
+def _md_inline(text: str) -> str:
+    """Escape the characters that open a link, emphasis or code span."""
+    for ch in ("\\", "`", "*", "[", "]"):
+        text = text.replace(ch, "\\" + ch)
+    return text
+
+
+def _md_cell(text: str) -> str:
+    """One table cell: inline escapes, pipes escaped, line breaks flattened."""
+    return (_md_inline(text).replace("|", "\\|")
+            .replace("\r", " ").replace("\n", " "))
+
+
+def _code(text: str) -> str:
+    """Text for a code span: backslashes print literally there, so drop the
+    backticks and line breaks that would end the span instead."""
+    return text.replace("`", "").replace("\r", " ").replace("\n", " ")
+
+
+def _paragraph(text: str) -> str:
+    """Inline escapes, with a line-leading heading, quote, rule or list
+    marker made literal. Line breaks stay."""
+    out = []
+    for line in _md_inline(text).splitlines():
+        body = line.lstrip()
+        if body[:1] in ("#", ">", "=", "-", "+"):
+            line = line[:len(line) - len(body)] + "\\" + body
+        out.append(line)
+    return "\n".join(out)
+
+
 def finding_marker(finding: dict) -> str:
     """Return the hidden marker line for a finding, or '' when it has no id.
 
@@ -238,9 +269,9 @@ def format_issue_body(finding: dict) -> str:
     esc = _inert
     rule_id = esc(str(finding.get("rule_id", "")))
     severity = _norm_severity(finding.get("severity", "info"))
-    confidence = esc(str(finding.get("confidence", "")))
-    evidence = esc(str(finding.get("evidence_source", "")))
-    category = esc(str(finding.get("category", "")))
+    confidence = _md_cell(esc(str(finding.get("confidence", ""))))
+    evidence = _md_cell(esc(str(finding.get("evidence_source", ""))))
+    category = _md_cell(esc(str(finding.get("category", ""))))
     detector = esc(str(finding.get("detector", "")))
 
     lines: list[str] = []
@@ -253,7 +284,7 @@ def format_issue_body(finding: dict) -> str:
     # --- Metadata table ---
     lines.append("| Field | Value |")
     lines.append("|-------|-------|")
-    lines.append(f"| **Rule** | `{rule_id}` |")
+    lines.append(f"| **Rule** | `{_code(rule_id)}` |")
     lines.append(f"| **Severity** | {severity} |")
     if confidence:
         lines.append(f"| **Confidence** | {confidence} |")
@@ -262,11 +293,11 @@ def format_issue_body(finding: dict) -> str:
     if category:
         lines.append(f"| **Category** | {category} |")
     if detector:
-        lines.append(f"| **Detector** | `{detector}` |")
+        lines.append(f"| **Detector** | `{_code(detector)}` |")
     lines.append("")
 
     # --- Summary ---
-    summary = esc((finding.get("summary") or "").strip())
+    summary = _paragraph(esc((finding.get("summary") or "").strip()))
     if summary:
         lines.append("## Summary")
         lines.append("")
@@ -274,7 +305,7 @@ def format_issue_body(finding: dict) -> str:
         lines.append("")
 
     # --- Description ---
-    description = esc((finding.get("description") or "").strip())
+    description = _paragraph(esc((finding.get("description") or "").strip()))
     if description:
         lines.append("## Description")
         lines.append("")
@@ -288,9 +319,9 @@ def format_issue_body(finding: dict) -> str:
         lines.append("")
         for comp in components:
             if isinstance(comp, dict):
-                ref = esc(str(comp.get("ref") or comp.get("reference") or comp.get("name") or ""))
-                val = esc(str(comp.get("value") or ""))
-                fp = esc(str(comp.get("footprint") or ""))
+                ref = _code(esc(str(comp.get("ref") or comp.get("reference") or comp.get("name") or "")))
+                val = _md_cell(esc(str(comp.get("value") or "")))
+                fp = _md_cell(esc(str(comp.get("footprint") or "")))
                 parts = [f"`{ref}`" if ref else ""]
                 if val:
                     parts.append(val)
@@ -298,7 +329,7 @@ def format_issue_body(finding: dict) -> str:
                     parts.append(f"({fp})")
                 lines.append(f"- {' '.join(p for p in parts if p)}")
             elif isinstance(comp, str):
-                lines.append(f"- `{esc(comp)}`")
+                lines.append(f"- `{_code(esc(comp))}`")
         lines.append("")
 
     # --- Nets ---
@@ -308,14 +339,14 @@ def format_issue_body(finding: dict) -> str:
         lines.append("")
         for net in nets:
             if isinstance(net, str):
-                lines.append(f"- `{esc(net)}`")
+                lines.append(f"- `{_code(esc(net))}`")
             elif isinstance(net, dict):
                 name = net.get("name") or net.get("net") or str(net)
-                lines.append(f"- `{esc(str(name))}`")
+                lines.append(f"- `{_code(esc(str(name)))}`")
         lines.append("")
 
     # --- Recommendation ---
-    recommendation = esc((finding.get("recommendation") or "").strip())
+    recommendation = _paragraph(esc((finding.get("recommendation") or "").strip()))
     if recommendation:
         lines.append("## Recommendation")
         lines.append("")

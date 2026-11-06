@@ -61,6 +61,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Datasheet verification after a download no longer fails with an import error when the distributor scripts are used from another tool.
 - `datasheet_verify`, the datasheet feature helpers and the lifecycle audit now find a part's extraction the same way (extraction manifest first, then the file named after the part), so they no longer read different extractions for the same part.
 - `capability_mode.json` reports `datasheet_coverage_pct`: the share of the parts in `datasheets/manifest.json` that have an extraction (it was always 0).
+- Schematic text (component values, net and rail names, finding summaries) can no longer add links, headings or table cells to the Action's PR comment and step summary, or to issue bodies from `export_issues.py`.
 
 ### Documentation
 

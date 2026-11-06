@@ -139,7 +139,7 @@ def _render_thermal_block(thermal, *, heading_level: int) -> list[str]:
         if normalize_severity(sev) in ("error", "warning"):
             rule = f.get("rule_id", "")
             title = summary_or_title(f)
-            lines.append(f"- {_sev_icon(sev)} {rule}: {title}")
+            lines.append(f"- {_sev_icon(sev)} {_md(rule)}: {_md(title)}")
     lines.append("")
     return lines
 
@@ -177,7 +177,7 @@ def _safe_float(val, fmt=".1f"):
     """Format a value as float, handling strings gracefully."""
     if isinstance(val, (int, float)):
         return f"{val:{fmt}}"
-    return str(val) if val else "—"
+    return _md(val) if val else "—"
 
 def _ref(comp):
     """The reference of a detector's component record ({"ref": ..., "value": ...})."""
@@ -277,10 +277,10 @@ def _render_top_risks(emc, thermal):
             sev = f.get("severity", "?")
             icon = _sev_icon(sev)
             conf = f.get("confidence", "")
-            conf_badge = f" `{conf}`" if conf else ""
+            conf_badge = f" `{_code(conf)}`" if conf else ""
             source = f.get("source", "")
-            L.append(f"- {icon} **{f.get('rule_id', '')}**: "
-                     f"{summary_or_title(f)}{conf_badge} ({source})")
+            L.append(f"- {icon} **{_md(f.get('rule_id', ''))}**: "
+                     f"{_md(summary_or_title(f))}{conf_badge} ({_md(source)})")
         L.append("")
 
     return L
@@ -298,19 +298,19 @@ def _render_missing_info(sch, thermal):
         mi = sch.get("missing_info", {})
         mpn = mi.get("missing_mpn", [])
         if mpn:
-            items.append(f"**Missing MPNs** ({len(mpn)}): {', '.join(mpn[:8])}"
+            items.append(f"**Missing MPNs** ({len(mpn)}): {_md(', '.join(mpn[:8]))}"
                          + (f" +{len(mpn)-8} more" if len(mpn) > 8 else ""))
         ds = mi.get("missing_datasheet", [])
         if ds:
-            items.append(f"**Missing datasheets** ({len(ds)}): {', '.join(ds[:8])}"
+            items.append(f"**Missing datasheets** ({len(ds)}): {_md(', '.join(ds[:8]))}"
                          + (f" +{len(ds)-8} more" if len(ds) > 8 else ""))
         fp = mi.get("missing_footprint", [])
         if fp:
-            items.append(f"**Missing footprints** ({len(fp)}): {', '.join(fp[:8])}"
+            items.append(f"**Missing footprints** ({len(fp)}): {_md(', '.join(fp[:8]))}"
                          + (f" +{len(fp)-8} more" if len(fp) > 8 else ""))
         vref = mi.get("heuristic_vref", [])
         if vref:
-            items.append(f"**Heuristic Vref** ({len(vref)}): {', '.join(vref)} "
+            items.append(f"**Heuristic Vref** ({len(vref)}): {_md(', '.join(vref))} "
                          "— output voltage estimated from part number, not datasheet")
 
     if thermal:
@@ -318,7 +318,7 @@ def _render_missing_info(sch, thermal):
         rtheta = mi.get("default_rtheta_ja", [])
         if rtheta:
             items.append(f"**Default thermal resistance** ({len(rtheta)}): "
-                         f"{', '.join(rtheta[:6])}"
+                         f"{_md(', '.join(rtheta[:6]))}"
                          + (f" +{len(rtheta)-6} more" if len(rtheta) > 6 else "")
                          + " — using conservative fallback, not datasheet value")
 
@@ -461,10 +461,32 @@ _ROW_LIMIT = 10
 _SOURCE_LABELS = {"schematic": "Schematic", "pcb": "PCB", "emc": "EMC", "thermal": "Thermal", "spice": "SPICE"}
 
 
+def _md(text):
+    """Inline markdown text from analyzer data: no links, emphasis, code spans or table cells,
+    no line breaks, no raw HTML (`<`), no live @mentions. `_` and `~` stay as they are: GFM ignores
+    intraword `_` and `~{NET}` is common net notation."""
+    text = str(text)
+    for ch in ("\\", "`", "*", "[", "]", "|"):
+        text = text.replace(ch, "\\" + ch)
+    return text.replace("\r", " ").replace("\n", " ").replace("<", "&lt;").replace("@", "@\u200b")
+
+
 def _cell(text):
-    """One markdown table cell: pipes escaped, line breaks flattened, no raw HTML, no live @mentions."""
-    return (str(text).replace("|", "\\|").replace("\r", " ").replace("\n", " ")
-            .replace("<", "&lt;").replace(">", "&gt;").replace("@", "@\u200b"))
+    """A diff-table cell: `_md`, and a literal `>` too."""
+    return _md(text).replace(">", "&gt;")
+
+
+def _code(text):
+    """Text for a code span: a backslash prints literally there, so drop the backticks and
+    line breaks that would end the span."""
+    return str(text).replace("`", "").replace("\r", " ").replace("\n", " ")
+
+
+def _lead(text):
+    """A line that starts with analyzer text, with a heading, quote, rule or list marker made literal."""
+    if text[:1] in ("#", ">", "-", "+", "="):
+        return "\\" + text
+    return text
 
 
 def _detection_text(item):
@@ -568,7 +590,7 @@ def _render_changes(diffs):
     if metrics:
         names = sorted(set(metrics))
         more = f" and {len(names) - 8} more" if len(names) > 8 else ""
-        L.append(f"Metric changes: {', '.join(names[:8])}{more}")
+        L.append(f"Metric changes: {_md(', '.join(names[:8]))}{more}")
         L.append("")
     return L
 
@@ -609,7 +631,7 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
         filename = _source_name(sch)
         rails = stats.get("power_rails", [])
         rail_str = f", {len(rails)} power rails" if rails else ""
-        L.append(f"**{filename}** — {stats.get('total_components', 0)} components, "
+        L.append(f"**{_md(filename)}** — {stats.get('total_components', 0)} components, "
                  f"{stats.get('unique_parts', 0)} unique, "
                  f"{stats.get('total_nets', 0)} nets{rail_str}")
         L.append("")
@@ -645,7 +667,7 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
     for reg in sig.get(Det.POWER_REGULATORS, []):
         vout = reg.get("estimated_vout")
         if vout and isinstance(vout, (int, float)):
-            verified.append(f"{reg['ref']} → {reg.get('output_rail','')} at {vout:.2f}V")
+            verified.append(f"{_md(reg['ref'])} → {_md(reg.get('output_rail',''))} at {vout:.2f}V")
 
     for finding in pc.get("findings", []):
         checks = finding.get("checks", {})
@@ -740,7 +762,7 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
         L.append("|---|---|---|")
         for sev, detail, source in sorted(findings, key=lambda x: (0 if x[0] == "critical" else 1)):
             icon = "🔴" if sev == "critical" else "⚠️"
-            L.append(f"| {icon} | {detail} | {source} |")
+            L.append(f"| {icon} | {_md(detail)} | {_md(source)} |")
         L.append("")
 
     # === Power ===
@@ -753,8 +775,8 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
             vout = reg.get("estimated_vout")
             vout_str = f"→ {vout:.2f}V" if isinstance(vout, (int, float)) else ""
             topo = reg.get("topology", "")
-            L.append(f"- **{reg['ref']}** ({reg.get('value','')}) {topo} "
-                     f"{reg.get('input_rail','')} {vout_str} on {reg.get('output_rail','')}")
+            L.append(f"- **{_md(reg['ref'])}** ({_md(reg.get('value',''))}) {_md(topo)} "
+                     f"{_md(reg.get('input_rail',''))} {vout_str} on {_md(reg.get('output_rail',''))}")
             # Output caps
             out_caps = reg.get("output_capacitors", [])
             if out_caps:
@@ -779,7 +801,7 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
             checks = finding.get("checks", {})
             devices = finding.get("devices", [])
             dev_names = _device_names(devices, 4)
-            dev_str = f" ({', '.join(dev_names)})" if dev_names else ""
+            dev_str = f" ({_md(', '.join(dev_names))})" if dev_names else ""
 
             if proto == "I2C" and checks:
                 detail_key = f"I2C:{finding.get('sda_net','')}"
@@ -796,7 +818,7 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
                     pv = checks.get("pull_up_value", {})
                     for ln in ("sda", "scl"):
                         if ln in pv:
-                            parts.append(f"{pv[ln].get('ref','')}={pv[ln].get('ohms','')}Ω")
+                            parts.append(f"{_md(pv[ln].get('ref',''))}={_md(pv[ln].get('ohms',''))}Ω")
                 for ln in ("sda", "scl"):
                     if ln in rt:
                         tr = rt[ln]
@@ -808,9 +830,9 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
                     continue
                 seen_proto.add(issue_key)
                 if issues:
-                    L.append(f"- **{proto}**{dev_str}: {issues[0]}")
+                    L.append(f"- **{_md(proto)}**{dev_str}: {_md(issues[0])}")
                 else:
-                    L.append(f"- **{proto}**{dev_str}: OK")
+                    L.append(f"- **{_md(proto)}**{dev_str}: OK")
 
         # Add buses that had no protocol compliance findings
         for bus_type in ("spi", "can"):
@@ -862,9 +884,9 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
         L.append("### Op-Amp Checks")
         L.append("")
         for ref, warning in opamp_warnings:
-            L.append(f"- {ref}: {warning}")
+            L.append(f"- {_md(ref)}: {_md(warning)}")
         for ref, channels in unused_channels:
-            L.append(f"- {ref}: unused channel(s) {channels}")
+            L.append(f"- {_md(ref)}: unused channel(s) {_md(channels)}")
         L.append("")
 
     # === PCB (dense one-liner) ===
@@ -885,7 +907,7 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
         L.append("### PCB")
         L.append("")
         L.append(f"{w} × {h}mm · {signal_layers} layers · {fp_count} footprints · "
-                 f"{track_count} tracks · {via_count} vias · DFM: {tier} · Routing: {routing}")
+                 f"{track_count} tracks · {via_count} vias · DFM: {_md(tier)} · Routing: {routing}")
         L.append("")
 
         # Thermal pad warnings
@@ -893,7 +915,7 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
         insufficient = [t for t in tpv if t.get("adequacy") == "insufficient"]
         if insufficient:
             for t in insufficient[:3]:
-                L.append(f"- ⚠️ {t.get('reference','')} ({t.get('value','')}) thermal vias: "
+                L.append(f"- ⚠️ {_md(t.get('reference',''))} ({_md(t.get('value',''))}) thermal vias: "
                          f"{t.get('via_count',0)} — insufficient")
             L.append("")
 
@@ -915,12 +937,12 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
         # Show failures and warnings
         for r in spice.get("simulation_results", []):
             if r.get("status") == "fail":
-                comps = ", ".join(r.get("components", []))
-                L.append(f"- 🔴 FAIL: {r.get('subcircuit_type','')} ({comps})")
+                comps = _md(", ".join(r.get("components", [])))
+                L.append(f"- 🔴 FAIL: {_md(r.get('subcircuit_type',''))} ({comps})")
             elif r.get("status") == "warn":
-                comps = ", ".join(r.get("components", []))
-                note = r.get("note", "")
-                L.append(f"- ⚠️ {r.get('subcircuit_type','')} ({comps}): {note}")
+                comps = _md(", ".join(r.get("components", [])))
+                note = _md(r.get("note", ""))
+                L.append(f"- ⚠️ {_md(r.get('subcircuit_type',''))} ({comps}): {note}")
         L.append("")
 
     # === EMC (one-liner summary + error-severity findings) ===
@@ -941,7 +963,7 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
             if normalize_severity(sev) == "error":
                 rule = f.get("rule_id", "")
                 title = summary_or_title(f)
-                L.append(f"- {_sev_icon(sev)} {rule}: {title}")
+                L.append(f"- {_sev_icon(sev)} {_md(rule)}: {_md(title)}")
         L.append("")
 
     # === Thermal Analysis ===
@@ -1021,12 +1043,12 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
     if sch:
         filename = _source_name(sch)
         rails = stats.get("power_rails", [])
-        a(f"**{filename}** — {stats.get('total_components', 0)} components "
+        a(f"**{_md(filename)}** — {stats.get('total_components', 0)} components "
           f"({stats.get('unique_parts', 0)} unique), {stats.get('total_nets', 0)} nets, "
           f"{stats.get('total_no_connects', 0)} no-connects")
         if rails:
             a(f"")
-            a(f"Power rails: {', '.join(_extract_rail_names(rails))}")
+            a(f"Power rails: {_md(', '.join(_extract_rail_names(rails)))}")
         a("")
 
     # === Critical Findings ===
@@ -1045,7 +1067,7 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
         a("| Severity | Issue | Section |")
         a("|----------|-------|---------|")
         for sev, detail, section in sorted(all_issues, key=lambda x: (0 if x[0] == "critical" else 1)):
-            a(f"| {sev.upper()} | {detail} | {section} |")
+            a(f"| {sev.upper()} | {_md(detail)} | {section} |")
     else:
         a("No critical or warning-level issues found.")
     a("")
@@ -1058,7 +1080,7 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
         a("| Type | Count |")
         a("|------|-------|")
         for t, c in sorted(type_counts.items(), key=lambda x: -x[1]):
-            a(f"| {t} | {c} |")
+            a(f"| {_md(t)} | {c} |")
         a("")
     missing = stats.get("missing_mpn", [])
     total = stats.get("total_components", 0)
@@ -1069,7 +1091,7 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
             a("")
             a(f"<details><summary>Missing MPNs ({len(missing)})</summary>")
             a("")
-            a(", ".join(missing))
+            a(_lead(_md(", ".join(missing))))
             a("")
             a("</details>")
     a("")
@@ -1089,9 +1111,9 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
             for r in regs:
                 vout = r.get("estimated_vout")
                 vout_str = f"{float(vout):.2f}V" if isinstance(vout, (int, float)) else "—"
-                a(f"| {r.get('ref','')} | {r.get('value','')} | {r.get('topology','')} "
-                  f"| {r.get('input_rail','')} | {r.get('output_rail','')} "
-                  f"| {vout_str} | {r.get('vref_source','')} |")
+                a(f"| {_md(r.get('ref',''))} | {_md(r.get('value',''))} | {_md(r.get('topology',''))} "
+                  f"| {_md(r.get('input_rail',''))} | {_md(r.get('output_rail',''))} "
+                  f"| {vout_str} | {_md(r.get('vref_source',''))} |")
             a("")
 
         # Voltage Dividers
@@ -1104,7 +1126,7 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
                 vout = d.get('vout_V')
                 ratio_str = f"{float(ratio):.3f}" if isinstance(ratio, (int, float)) else str(ratio)
                 vout_str = f", Vout={float(vout):.2f}V" if isinstance(vout, (int, float)) else ""
-                a(f"- {_ref(d.get('r_top'))} / {_ref(d.get('r_bottom'))}: "
+                a(f"- {_md(_ref(d.get('r_top')))} / {_md(_ref(d.get('r_bottom')))}: "
                   f"ratio={ratio_str}{vout_str}")
             a("")
 
@@ -1118,13 +1140,13 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
                     first = f.get("resistor") if ftype == Det.RC_FILTERS else f.get("inductor")
                     cap = f.get("capacitor")
                     caps = (cap.get("parallel_caps") if isinstance(cap, dict) else None) or [_ref(cap)]
-                    comps = f"{_ref(first)} + {', '.join(caps)}"
+                    comps = _md(f"{_ref(first)} + {', '.join(caps)}")
                     fc = f.get("cutoff_hz") or f.get("resonant_hz")
                     if isinstance(fc, (int, float)) and fc:
                         fc_str = f"{fc:.0f} Hz" if fc < 1000 else f"{fc/1000:.1f} kHz"
                     else:
                         fc_str = "—"
-                    kind = f" ({f['type']})" if f.get("type") else ""
+                    kind = f" ({_md(f['type'])})" if f.get("type") else ""
                     a(f"- {comps}: fc = {fc_str}{kind}")
                 a("")
 
@@ -1142,11 +1164,11 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
                     gain_str = f"gain={gain}"
                 else:
                     gain_str = ""
-                a(f"- **{oa['reference']}** ({oa.get('value','')}) — {oa['configuration']} {gain_str}")
+                a(f"- **{_md(oa['reference'])}** ({_md(oa.get('value',''))}) — {_md(oa['configuration'])} {_md(gain_str)}")
                 for w in oa.get("warnings", []):
-                    a(f"  - {w}")
+                    a(f"  - {_md(w)}")
                 if oa.get("unused_channels"):
-                    a(f"  - Unused channels: {oa['unused_channels']} ({oa.get('unused_channel_status','')})")
+                    a(f"  - Unused channels: {_md(oa['unused_channels'])} ({_md(oa.get('unused_channel_status',''))})")
             a("")
 
         # Protection
@@ -1157,7 +1179,7 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
             a("| Ref | Value | Type | Protected Net |")
             a("|-----|-------|------|---------------|")
             for p in protection:
-                a(f"| {p.get('ref','')} | {p.get('value','')} | {p.get('type','')} | {p.get('protected_net','')} |")
+                a(f"| {_md(p.get('ref',''))} | {_md(p.get('value',''))} | {_md(p.get('type',''))} | {_md(p.get('protected_net',''))} |")
             a("")
 
         # Transistors
@@ -1166,8 +1188,8 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
             a("### Transistor Circuits")
             a("")
             for t in transistors:
-                a(f"- **{t.get('reference','')}** ({t.get('value','')}) — {t.get('type','')}, "
-                  f"load: {t.get('load_classification', t.get('load_type', ''))}")
+                a(f"- **{_md(t.get('reference',''))}** ({_md(t.get('value',''))}) — {_md(t.get('type',''))}, "
+                  f"load: {_md(t.get('load_classification', t.get('load_type', '')))}")
             a("")
 
         # Crystals
@@ -1177,8 +1199,8 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
             a("")
             for c in crystals:
                 caps = c.get("load_caps", [])
-                cap_str = ", ".join(f"{lc.get('ref','')}={lc.get('value','')}" for lc in caps) if caps else "none detected"
-                a(f"- {c.get('reference','')} ({c.get('value','')}) — load caps: {cap_str}")
+                cap_str = ", ".join(f"{_md(lc.get('ref',''))}={_md(lc.get('value',''))}" for lc in caps) if caps else "none detected"
+                a(f"- {_md(c.get('reference',''))} ({_md(c.get('value',''))}) — load caps: {cap_str}")
             a("")
 
         # Decoupling
@@ -1190,8 +1212,8 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
             a("|------|------|----------|")
             for d in decoupling:
                 total_uf = d.get('total_capacitance_uF', 0)
-                uf_str = f"{float(total_uf):.1f}" if isinstance(total_uf, (int, float)) else str(total_uf)
-                a(f"| {d.get('rail','')} | {d.get('cap_count',0)} | {uf_str} |")
+                uf_str = f"{float(total_uf):.1f}" if isinstance(total_uf, (int, float)) else _md(total_uf)
+                a(f"| {_md(d.get('rail',''))} | {d.get('cap_count',0)} | {uf_str} |")
             a("")
 
         # SPICE
@@ -1209,8 +1231,8 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
                 a("| Type | Components | Status |")
                 a("|------|-----------|--------|")
                 for r in results:
-                    comps = ", ".join(r.get("components", []))
-                    a(f"| {r.get('subcircuit_type','')} | {comps} | {r.get('status','')} |")
+                    comps = _md(", ".join(r.get("components", [])))
+                    a(f"| {_md(r.get('subcircuit_type',''))} | {comps} | {_md(r.get('status',''))} |")
                 a("")
 
     # EMC Pre-Compliance — top-level section so it renders for emc-only
@@ -1231,7 +1253,7 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
             a("| Severity | Rule | Finding |")
             a("|----------|------|---------|")
             for f in actionable[:15]:
-                a(f"| {f.get('severity','')} | {f.get('rule_id','')} | {summary_or_title(f)} |")
+                a(f"| {_md(f.get('severity',''))} | {_md(f.get('rule_id',''))} | {_md(summary_or_title(f))} |")
             a("")
 
         # Test plan highlights
@@ -1241,7 +1263,7 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
         if high_risk:
             a("**Pre-compliance focus bands:**")
             for b in high_risk[:3]:
-                a(f"- {b['band']}: {b['source_count']} emission source(s) ({b['risk_level']} risk)")
+                a(f"- {_md(b['band'])}: {b['source_count']} emission source(s) ({_md(b['risk_level'])} risk)")
             a("")
 
     # === Power Analysis ===
@@ -1258,7 +1280,7 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
         a("| Rule | Severity | Finding |")
         a("|------|----------|---------|")
         for f in vd_all:
-            a(f"| {f.get('rule_id','')} | {f.get('severity','')} | {f.get('summary','')} |")
+            a(f"| {_md(f.get('rule_id',''))} | {_md(f.get('severity',''))} | {_md(f.get('summary',''))} |")
         a("")
 
     # Sleep current
@@ -1274,8 +1296,8 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
         a("|------|-----------|------|-------------|-------|")
         for rail_name, rail_data in sleep.get("rails", {}).items():
             for path in rail_data.get("current_paths", []):
-                a(f"| {rail_name} | {path.get('ref','')} ({path.get('value','')}) "
-                  f"| {path.get('type','')} | {path.get('current_uA','')} | {path.get('note','')} |")
+                a(f"| {_md(rail_name)} | {_md(path.get('ref',''))} ({_md(path.get('value',''))}) "
+                  f"| {_md(path.get('type',''))} | {path.get('current_uA','')} | {_md(path.get('note',''))} |")
         total = sleep.get("total_estimated_sleep_uA")
         if isinstance(total, (int, float)):
             a(f"")
@@ -1297,8 +1319,8 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
             total_uf = rail.get("total_output_capacitance_uF", 0)
             inrush_a = rail.get("estimated_inrush_A", 0)
             ss = rail.get("assumed_soft_start_ms", "")
-            a(f"| {rail.get('regulator','')} | {rail.get('output_rail','')} "
-              f"| {_safe_float(total_uf)} | {_safe_float(inrush_a, '.3f')} | {ss} |")
+            a(f"| {_md(rail.get('regulator',''))} | {_md(rail.get('output_rail',''))} "
+              f"| {_safe_float(total_uf)} | {_safe_float(inrush_a, '.3f')} | {_md(ss)} |")
         a("")
 
     # === Design Analysis ===
@@ -1334,13 +1356,13 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
                 checks = finding.get("checks", {})
                 devices = finding.get("devices", [])
                 dev_names = _device_names(devices)
-                dev_str = f" ({', '.join(dev_names)})" if dev_names else ""
-                a(f"**{proto}**{dev_str}")
+                dev_str = f" ({_md(', '.join(dev_names))})" if dev_names else ""
+                a(f"**{_md(proto)}**{dev_str}")
                 for check_name, check_data in checks.items():
                     if isinstance(check_data, dict) and "status" in check_data:
-                        a(f"- {check_name}: **{check_data['status']}**")
+                        a(f"- {_md(check_name)}: **{_md(check_data['status'])}**")
                 for issue in issues:
-                    a(f"- {issue}")
+                    a(f"- {_md(issue)}")
                 a("")
 
         # Cross-domain
@@ -1353,7 +1375,7 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
             a("### Cross-Domain Signals")
             a("")
             for s in xd[:10]:
-                a(f"- {s.get('net','')} crosses {', '.join(s.get('power_domains', []))}")
+                a(f"- {_md(s.get('net',''))} crosses {_md(', '.join(s.get('power_domains', [])))}")
             if len(xd) > 10:
                 a(f"- ... and {len(xd) - 10} more")
             a("")
@@ -1370,8 +1392,8 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
             a("|-----|-------|------|-------------|------------|")
             for ic in ic_pins:
                 decaps = ic.get("decoupling_caps_by_rail", {})
-                decap_str = ", ".join(f"{rail}: {len(caps)}" for rail, caps in decaps.items()) if decaps else "—"
-                a(f"| {ic.get('reference','')} | {ic.get('value','')} "
+                decap_str = ", ".join(f"{_md(rail)}: {len(caps)}" for rail, caps in decaps.items()) if decaps else "—"
+                a(f"| {_md(ic.get('reference',''))} | {_md(ic.get('value',''))} "
                   f"| {ic.get('total_pins',0)} | {ic.get('unconnected_pins',0)} | {decap_str} |")
             a("")
 
@@ -1394,7 +1416,7 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
         a(f"| Footprints | {len(pcb.get('footprints', []))} |")
         a(f"| Tracks | {pcb.get('tracks',{}).get('segment_count',0)} |")
         a(f"| Vias | {pcb.get('vias',{}).get('count',0)} |")
-        a(f"| DFM tier | {dfm.get('dfm_tier','?')} |")
+        a(f"| DFM tier | {_md(dfm.get('dfm_tier','?'))} |")
         if pcb_conn.get("routing_complete"):
             a(f"| Routing | 100% complete |")
         elif pcb_conn.get("unrouted_count", 0) > 0:
@@ -1414,8 +1436,8 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
             a("| Component | Value | Via Count | Adequacy |")
             a("|-----------|-------|-----------|----------|")
             for t in tpv:
-                a(f"| {t.get('reference','')} | {t.get('value','')} "
-                  f"| {t.get('via_count',0)} | {t.get('adequacy','')} |")
+                a(f"| {_md(t.get('reference',''))} | {_md(t.get('value',''))} "
+                  f"| {t.get('via_count',0)} | {_md(t.get('adequacy',''))} |")
             a("")
 
     # === Thermal Analysis ===
