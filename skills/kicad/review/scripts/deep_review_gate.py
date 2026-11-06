@@ -229,19 +229,60 @@ def check_anchors(ev, comps, nets, pins):
     return fails, partial
 
 
+def _datasheets_pkg():
+    pkg = str(Path(__file__).resolve().parents[3] / "datasheets")
+    if pkg not in sys.path:
+        sys.path.insert(0, pkg)
+
+
+def _manifest_pdf(d, mpn):
+    """The PDF datasheets/manifest.json (or legacy index.json) lists for `mpn`, or None."""
+    _datasheets_pkg()
+    from datasheet_types.cache_reader import read_json_object
+    from distributor_core.manifest import manifest_file_path
+    for name in ("manifest.json", "index.json"):
+        data = read_json_object(d / name)
+        if data is None:
+            continue
+        parts = data.get("parts")
+        if not isinstance(parts, dict):
+            return None
+        entry = parts.get(mpn)
+        if entry is None:
+            want = mpn.strip().lower()
+            entry = next((v for k, v in parts.items()
+                          if isinstance(k, str) and k.strip().lower() == want), None)
+        if isinstance(entry, dict) and entry.get("status") == "ok":
+            path = manifest_file_path(d, entry.get("file"))
+            if path is not None and path.is_file():
+                return path
+        return None
+    return None
+
+
 def find_pdf(datasheets_dir, mpn):
+    """The datasheet PDF for `mpn`: the manifest's file, else `<MPN>.pdf`, else the one
+    `<MPN>_*.pdf` the datasheet sync writes."""
     d = Path(datasheets_dir)
     if not d.is_dir():
         return None
+    listed = _manifest_pdf(d, mpn)
+    if listed is not None:
+        return listed
     sanitized = re.sub(r"[^A-Za-z0-9_.-]", "_", mpn.strip())
     direct = d / f"{sanitized}.pdf"
     if direct.is_file():
         return direct
     lowered = sanitized.lower()
-    for p in sorted(d.glob("*.pdf")):
+    pdfs = sorted(d.glob("*.pdf"))
+    for p in pdfs:
         if p.stem.lower() == lowered:
             return p
-    return None
+    _datasheets_pkg()
+    from distributor_core.manifest import sanitize_filename
+    bases = {lowered + "_", sanitize_filename(mpn.strip()).lower() + "_"} - {"_"}
+    hits = {p for p in pdfs if any(p.stem.lower().startswith(b) for b in bases)}
+    return hits.pop() if len(hits) == 1 else None
 
 
 _DASH_RE = re.compile("[\u2212\u2013\u2010\u2011]")

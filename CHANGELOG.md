@@ -68,6 +68,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - With `diff-base: true`, sub-sheets stored outside the root schematic's folder (for example `../shared/…`) are taken from the base branch too, so the diff no longer reports them as removed.
 - The fork-safe comment example posts only to the pull request whose head is the analysed commit, and refuses a PR number that is not a plain integer, so a fork can no longer choose which PR or issue the write-token job comments on.
 - The Action's `derating-profile` input is deprecated: it never changed the analysis (the commercial profile is always used), and GitHub now warns when it is set.
+- Deep Review quotes against a datasheet saved by the datasheet sync (`<MPN>_<description>.pdf`, or listed in `datasheets/manifest.json`) are now checked; they were graded partial because the gate looked only for `<MPN>.pdf`.
 
 ### Documentation
 

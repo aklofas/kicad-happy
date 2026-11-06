@@ -104,7 +104,9 @@ Record findings in `analysis/deep_review.json` per
   `thermal`, `protection`, `required_externals`) — the diff and the
   summary group by it.
 - Datasheet quotes must be verbatim text from the cited page — the
-  gate greps the page via pdftotext; paraphrases quarantine. If the PDF is not
+  gate greps the page via pdftotext; paraphrases quarantine. The PDF is the one
+  `datasheets/manifest.json` names for the MPN, else `<MPN>.pdf`, else the one
+  `<MPN>_*.pdf`. If the PDF is not
   found, `pdftotext` is not installed, cannot run, or exits with an error
   other than a missing page, the quote is not checked and the finding is
   `partial`. A cited page below 1, or past the

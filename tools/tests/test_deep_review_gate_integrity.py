@@ -519,5 +519,61 @@ class GateCliTest(unittest.TestCase):
         self.assertEqual(out["findings"][0]["summary"], "Iq 10 µA")
 
 
+
+
+class FindPdfTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+
+    def _touch(self, *names):
+        for n in names:
+            (self.tmp / n).write_bytes(b"")
+
+    def _manifest(self, parts):
+        (self.tmp / "manifest.json").write_text(json.dumps({"parts": parts}), encoding="utf-8")
+
+    def _find(self, mpn):
+        return deep_review_gate.find_pdf(self.tmp, mpn)
+
+    def test_sync_style_name_is_found(self):
+        self._touch("TPS61023DRLR_Boost_Converter.pdf")
+        self.assertEqual(self._find("TPS61023DRLR"), self.tmp / "TPS61023DRLR_Boost_Converter.pdf")
+
+    def test_manifest_entry_wins(self):
+        self._touch("LTC3780EG#PBF_Ctrl.pdf")
+        self._manifest({"LTC3780EG#PBF": {"status": "ok", "file": "LTC3780EG#PBF_Ctrl.pdf"}})
+        want = self.tmp / "LTC3780EG#PBF_Ctrl.pdf"
+        self.assertEqual(self._find("LTC3780EG#PBF"), want)
+        self.assertEqual(self._find("ltc3780eg#pbf"), want)
+
+    def test_manifest_entry_outside_the_folder_is_ignored(self):
+        self._manifest({"X1": {"status": "ok", "file": "../x.pdf"},
+                        "X2": {"status": "failed", "file": "X2_Part.pdf"}})
+        self._touch("X2_Part.pdf")
+        self.assertIsNone(self._find("X1"))
+        self._touch("X1.pdf")
+        self.assertEqual(self._find("X1"), self.tmp / "X1.pdf")
+        # a failed entry is not used; the folder lookup still finds the file
+        self.assertEqual(self._find("X2"), self.tmp / "X2_Part.pdf")
+
+    def test_prefix_needs_the_separator(self):
+        self._touch("LM3580_Op.pdf")
+        self.assertIsNone(self._find("LM358"))
+
+    def test_exact_name_preferred(self):
+        self._touch("LM358.pdf", "LM358_Op.pdf")
+        self.assertEqual(self._find("LM358"), self.tmp / "LM358.pdf")
+
+    def test_two_prefix_candidates_are_ambiguous(self):
+        self._touch("LM358_A.pdf", "LM358_B.pdf")
+        self.assertIsNone(self._find("LM358"))
+
+    def test_unreadable_manifest_is_ignored(self):
+        (self.tmp / "manifest.json").write_text("[]", encoding="utf-8")
+        self._touch("LM358.pdf")
+        self.assertEqual(self._find("LM358"), self.tmp / "LM358.pdf")
+
+
 if __name__ == "__main__":
     unittest.main()
