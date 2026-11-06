@@ -243,5 +243,33 @@ class SW003Test(unittest.TestCase):
         findings = check_input_cap_loop_area(pcb, SYNTH_SCH)
         self.assertEqual([(f["rule_id"], f["severity"]) for f in findings], [("SW-003", "error")])
 
+
+class SpiceNoteTest(unittest.TestCase):
+    def _run(self, backend):
+        import emc_rules
+        sch = _schematic("U1", "L1", ("C1",), "TPS54331")
+        sch["findings"][0]["switching_frequency_hz"] = 50e6
+        pcb = {"footprints": [], "switching_loop_areas": [
+            {"regulator_ref": "U1", "regulator_value": "TPS54331", "inductor_ref": "L1", "cap_ref": "C1",
+             "area_mm2": 150.0, "method": "pad", "vertices_mm": [[10, 0], [0, 0], [0, 10]]}]}
+        res = emc_rules.run_all_checks(sch, pcb, spice_backend=backend)
+        return [f for f in res if f["rule_id"] == "SW-003"]
+
+    def test_no_radiation_note_with_a_backend(self):
+        class Fake:
+            name = "fake"
+        f, = self._run(Fake())
+        self.assertTrue(f["description"].endswith("Recommended: <25mm² for low EMI."), f["description"])
+        self.assertNotIn("Estimated radiation", f["description"])
+
+    def test_description_same_with_and_without_a_backend(self):
+        class Fake:
+            name = "fake"
+        with_backend, = self._run(Fake())
+        without, = self._run(None)
+        self.assertEqual(with_backend["description"], without["description"])
+        self.assertEqual(without["severity"], "error")
+
+
 if __name__ == "__main__":
     unittest.main()

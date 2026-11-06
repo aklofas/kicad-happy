@@ -318,7 +318,7 @@ Requires ngspice, LTspice, or Xyce (auto-detected; PSpice is available only thro
 
 > "Check my differential pairs for skew-induced common-mode radiation"
 
-The **emc** skill predicts the most common causes of EMC test failures — ground plane voids, insufficient decoupling, unfiltered I/O cables, switching regulator harmonics, differential pair skew, and more. It operates on the schematic and PCB analyzer output using geometric rule checks and analytical emission formulas (Ott, Paul, Bogatin). With `--spice-enhanced` and a simulator, PDN impedance and EMI filter checks run an AC sweep of the same network (PDN findings stay heuristic) — otherwise analytical models are used.
+The **emc** skill predicts the most common causes of EMC test failures — ground plane voids, insufficient decoupling, unfiltered I/O cables, switching regulator harmonics, differential pair skew, and more. It operates on the schematic and PCB analyzer output using geometric rule checks and analytical emission formulas (Ott, Paul, Bogatin). With `--spice-enhanced` and a simulator, the PDN impedance check runs an AC sweep of the same network (PDN findings stay heuristic) — otherwise analytical models are used.
 
 ```
 EMC risk score: 68.5/100

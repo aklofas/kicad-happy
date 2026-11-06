@@ -21,7 +21,7 @@ from typing import List, Dict, Optional
 from emc_formulas import (
     lambda_over_20,
     knee_frequency, switching_harmonics_in_band, trapezoidal_corner_frequencies,
-    trapezoidal_harmonic_amplitude, dm_radiation_dbuv_m,
+    trapezoidal_harmonic_amplitude,
     cm_radiation_dbuv_m, get_emission_limit, board_cavity_resonances,
     estimate_esl, estimate_esr,
     interplane_capacitance_pf_per_cm2, propagation_delay_ps_per_mm,
@@ -2016,8 +2016,7 @@ def check_switching_node_area(pcb: Optional[Dict],
 
 
 def check_input_cap_loop_area(pcb: Optional[Dict],
-                              schematic: Optional[Dict],
-                              spice_backend=None) -> List[Dict]:
+                              schematic: Optional[Dict]) -> List[Dict]:
     """SW-003: Hot loop area for switching regulators.
 
     The hot loop (input cap → IC → inductor → back) should be as small
@@ -2029,9 +2028,6 @@ def check_input_cap_loop_area(pcb: Optional[Dict],
     centres of the input cap, IC and inductor (also what a record without
     method holds). The centres say little about the loop through the pads,
     so a large triangle is reported as an info estimate, not graded.
-
-    When SPICE is available, estimates radiated E-field from a graded loop's
-    area × switching current × frequency using dm_radiation_dbuv_m().
     """
     # EQ-088: A = polygon_area(cap, IC, inductor) (hot loop area estimation)
     findings = []
@@ -2119,37 +2115,10 @@ def check_input_cap_loop_area(pcb: Optional[Dict],
                 f'Recommended: <25mm² for low EMI.'
             )
 
-            # SPICE radiation estimate
-            spice_note = ''
-            if spice_backend and area_mm2 > 25:
-                reg_match = None
-                for reg in regulators:
-                    if reg.get('ref', reg.get('reference', '')) == ref:
-                        reg_match = reg
-                        break
-                if reg_match:
-                    sw_freq = (reg_match.get('switching_frequency_hz') or
-                               _estimate_switching_freq(val) or
-                               _default_switching_freq(reg_match.get('topology', '')))
-                    if sw_freq:
-                        area_m2 = area_mm2 * 1e-6
-                        pdiss = reg_match.get('power_dissipation', {})
-                        i_sw = pdiss.get('estimated_iout_A', 0.5)
-                        e_dbuv = dm_radiation_dbuv_m(sw_freq, area_m2, i_sw, 3.0,
-                                                      ground_plane=True)
-                        limit = get_emission_limit(sw_freq, 'fcc-class-b')
-                        if limit:
-                            margin = limit[0] - e_dbuv
-                            spice_note = (
-                                f' Estimated radiation at {sw_freq/1e6:.1f}MHz: '
-                                f'{e_dbuv:.0f} dBµV/m (limit: {limit[0]:.0f}, '
-                                f'margin: {margin:.0f}dB).'
-                            )
-
             findings.append(_make_finding(
                 'switching_emc', severity, 'SW-003',
                 title=f'Large hot loop for {ref}',
-                description=desc + spice_note,
+                description=desc,
                 components=[ref, inductor_ref, cap_ref],
                 recommendation=(
                     f'Place {cap_ref} with its pads next to the {ref} VIN and GND '
@@ -3093,13 +3062,11 @@ def _input_lc_filter(schematic: Dict, input_rail: str, *, exclude=()) -> tuple:
 
 
 def check_emi_filter_effectiveness(pcb: Optional[Dict],
-                                   schematic: Optional[Dict],
-                                   spice_backend=None) -> List[Dict]:
+                                   schematic: Optional[Dict]) -> List[Dict]:
     """EF-001: Verify EMI input filter cutoff vs switching frequency.
 
     For each switching regulator, check if there's an LC filter on the
     input rail with cutoff well below the switching frequency.
-    When spice_backend is provided, simulates actual insertion loss.
 
     Ref: Paul, "Introduction to EMC", Ch. 9.
          Analog Devices, "Speed Up the Design of EMI Filters for SMPS".
@@ -4850,7 +4817,7 @@ def run_all_checks(schematic: Optional[Dict], pcb: Optional[Dict],
         all_findings.extend(check_switching_harmonics(schematic, standard))
         all_findings.extend(estimate_switching_emissions(schematic, standard, spice_backend,
                                                          diagnostics=diagnostics))
-        all_findings.extend(check_emi_filter_effectiveness(pcb, schematic, spice_backend))
+        all_findings.extend(check_emi_filter_effectiveness(pcb, schematic))
 
     # Checks requiring both schematic and PCB
     if schematic and pcb:
@@ -4864,7 +4831,7 @@ def run_all_checks(schematic: Optional[Dict], pcb: Optional[Dict],
         all_findings.extend(check_pdn_distributed(pcb, schematic, spice_backend))
         all_findings.extend(check_thermal_emc(pcb, schematic))
         all_findings.extend(check_switching_node_area(pcb, schematic, net_id_map))
-        all_findings.extend(check_input_cap_loop_area(pcb, schematic, spice_backend))
+        all_findings.extend(check_input_cap_loop_area(pcb, schematic))
         all_findings.extend(check_inductor_leakage(pcb, schematic))
 
     return filter_by_severity(all_findings, severity_threshold)

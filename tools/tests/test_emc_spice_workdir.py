@@ -29,11 +29,16 @@ def _calls():
     return calls, fake
 
 
+class FilterSpiceRetiredTest(unittest.TestCase):
+    def test_no_filter_sweep_helpers(self):
+        self.assertFalse(hasattr(emc_spice, "run_filter_spice"))
+        self.assertFalse(hasattr(emc_spice, "generate_filter_netlist"))
+
+
 class EmcSpiceWorkdirTest(unittest.TestCase):
     def test_redirect_targets_are_bare_and_cwd_is_workdir(self):
         runs = {
             "run_pdn_spice": lambda b: emc_spice.run_pdn_spice([CAP], backend=b),
-            "run_filter_spice": lambda b: emc_spice.run_filter_spice(10e-6, 1e-6, 100e3, backend=b),
             "run_switching_fft": lambda b: emc_spice.run_switching_fft(5.0, 0.5, 5e-9, 1e6, backend=b),
             "run_distributed_pdn_spice": lambda b: emc_spice.run_distributed_pdn_spice(
                 {"output_caps": [CAP]}, backend=b),
@@ -65,7 +70,7 @@ class EmcSpiceWorkdirTest(unittest.TestCase):
                 os.makedirs(d)
                 tempfile.tempdir = d
                 try:
-                    out.append(emc_spice.run_filter_spice(10e-6, 1e-6, 100e3, backend=NgspiceBackend()))
+                    out.append(emc_spice.run_pdn_spice([CAP], backend=NgspiceBackend()))
                 finally:
                     tempfile.tempdir = saved
         self.assertTrue(out[0][0], out[0])
