@@ -17,6 +17,24 @@ _MAX_DEPTH = 4
 _MARKUP = ("_", "^", "~")
 
 
+def _quote_step(name, i, in_quotes):
+    """(consumed, in_quotes, text) for the quote handling shared by the bus parsers, or None
+    when name[i] is outside quotes and not a quote: an unescaped ``"`` toggles quoting; inside
+    quotes ``\\x`` is ``x`` and everything else, spaces included, is literal."""
+    ch = name[i]
+    if ch == '"':
+        backslashes = 0
+        while i - backslashes > 0 and name[i - backslashes - 1] == "\\":
+            backslashes += 1
+        if backslashes % 2 == 0:
+            return 1, not in_quotes, ""
+    if in_quotes:
+        if ch == "\\" and i + 1 < len(name):
+            return 2, True, name[i + 1]
+        return 1, True, ch
+    return None
+
+
 def _parse_bus_vector(name):
     """(prefix, suffix, ascending indices) for a KiCad vector bus name, else None.
 
@@ -25,10 +43,16 @@ def _parse_bus_vector(name):
     in the prefix (``R_{C}[0..1]``), wrap the name (``~{BE[0..3]}``) or decorate
     the range (``D_{[1..2]}``).
     """
-    prefix, nest, wraps, i, n = "", 0, False, 0, len(name)
+    prefix, nest, wraps, i, n, quoted = "", 0, False, 0, len(name), False
     while True:
         if i >= n:
             return None
+        step = _quote_step(name, i, quoted)
+        if step:
+            used, quoted, text = step
+            prefix += text
+            i += used
+            continue
         ch = name[i]
         if ch == "{":
             if i > 0 and name[i - 1] in _MARKUP:
@@ -88,8 +112,14 @@ def _parse_bus_group(name):
     commas, keep their markup (``~{OE}``), and text after the closing brace is
     ignored.
     """
-    prefix, nest, i, n = "", 0, 0, len(name)
+    prefix, nest, i, n, quoted = "", 0, 0, len(name), False
     while i < n:
+        step = _quote_step(name, i, quoted)
+        if step:
+            used, quoted, text = step
+            prefix += text
+            i += used
+            continue
         ch = name[i]
         if ch == "{":
             if i > 0 and name[i - 1] in _MARKUP:
@@ -114,8 +144,14 @@ def _parse_bus_group(name):
     if nest != 0 or i + 1 >= n:
         return None
     i += 1
-    members, tok = [], ""
+    members, tok, quoted = [], "", False
     while i < n:
+        step = _quote_step(name, i, quoted)
+        if step:
+            used, quoted, text = step
+            tok += text
+            i += used
+            continue
         ch = name[i]
         if ch == "{":
             if name[i - 1] in _MARKUP:
@@ -188,7 +224,8 @@ def expand_bus_name(name, aliases=None, _depth=0):
         else:
             # A plain group member is escaped as a net name; the group prefix and a nested
             # vector's members stay decoded, so kicad-cli joins neither to an escaped tap label.
-            sub = expand_bus_name(tok, aliases, _depth + 1) or [net_name_escape(tok)]
+            sub = (expand_bus_name(tok.replace(" ", "\\ "), aliases, _depth + 1)
+                   or [net_name_escape(tok).replace(" ", "\\ ")])
         for member in sub:
             members.append(f"{prefix}.{member}" if prefix else member)
     return members or None

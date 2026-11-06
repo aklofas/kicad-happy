@@ -207,6 +207,19 @@ class BusNameTest(unittest.TestCase):
         self.assertEqual(expand_bus_name("CTL{~{OE} WE}"), ["CTL.~{OE}", "CTL.WE"])
         self.assertEqual(expand_bus_name("X{A B} "), ["X.A", "X.B"])
 
+    def test_quoted_group_member_keeps_its_space(self):
+        self.assertEqual(expand_bus_name('{"A B" C}'), ["A\\ B", "C"])
+        self.assertEqual(expand_bus_name('X{"A B" C}'), ["X.A\\ B", "X.C"])
+        self.assertEqual(expand_bus_name('"X Y"{A B}'), ["X Y.A", "X Y.B"])
+        self.assertEqual(expand_bus_name("X{A\\ B C}"), ["X.A\\ B", "X.C"])
+
+    def test_quoted_vector_prefix_keeps_its_space(self):
+        self.assertEqual(expand_bus_name('"D Q"[0..1]'), ["D Q0", "D Q1"])
+        self.assertEqual(bus_kind('"D Q"[0..1]'), "vector")
+
+    def test_quoted_member_may_be_a_vector(self):
+        self.assertEqual(expand_bus_name('{"D[0..1]" C}'), ["D0", "D1", "C"])
+
     def test_names_are_parsed_after_unescaping(self):
         self.assertIsNone(expand_bus_name("A{comma}B"))
 
@@ -281,6 +294,13 @@ class SheetPinMappingTest(unittest.TestCase):
                    groups({"R1", "R3"}, {"R2", "R4"}))
         self.check(across_pin(["P{A B C}"], "C{A B}", "C{A B}", ["P.A", "P.B", "P.C"], ["C.A", "C.B"]),
                    groups({"R1", "R11"}, {"R2", "R12"}, {"R3"}))
+
+    def test_quoted_member_with_a_space_maps_by_its_escaped_name(self):
+        quoted = 'Q{\\"A B\\" C}'    # as written inside a .kicad_sch string
+        self.check(across_pin([quoted], quoted, quoted, ["Q.A\\ B", "Q.C"], ["Q.A\\ B", "Q.C"]),
+                   groups({"R1", "R11"}, {"R2", "R12"}))
+        self.check(across_pin([quoted], quoted, quoted, ["Q.A B", "Q.C"], ["Q.A B", "Q.C"]),
+                   groups({"R1"}, {"R11"}, {"R2", "R12"}))
 
     def test_different_widths_join_up_to_the_smaller(self):
         self.check(verifier_pin("P[0..3]", "D[0..1]", "D[0..1]", ["P0", "P1"], ["D0", "D1"]),

@@ -22,6 +22,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A corrupt or unreadable datasheet extraction file is now reported in the schematic output's diagnostics instead of silently disabling the IC absolute-maximum voltage check.
 - With a datasheet extraction in hand, a regulator whose only output-side capacitor is a feedforward cap (rail to FB) is now reported as missing its output capacitor.
 - Opening a sub-sheet now finds the project root through intermediate sheets, and no longer mistakes a sheet whose file name is contained in another sheet's name (`adc` in `my_adc`) for a child of that root.
+- Bus labels with quoted member or prefix names (`{"A B" C}`), as KiCad 10 allows, now expand to their members, and a group member containing a space is named with the space escaped (`A\ B`), as KiCad names it.
 
 ### Documentation
 
