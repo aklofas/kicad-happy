@@ -104,6 +104,17 @@ def best(
     return None
 
 
+FACTS_MIN_SCORE = 60
+
+
+def facts_trusted(facts) -> bool:
+    """True when a DatasheetFacts extraction is fit for detectors to use: quality
+    score at least FACTS_MIN_SCORE (0-100) and the source PDF unchanged."""
+    q = facts.quality
+    return (isinstance(q, (int, float)) and not isinstance(q, bool)
+            and q >= FACTS_MIN_SCORE and not getattr(facts, "stale", False))
+
+
 def trusted(
     specs: Optional[list[SpecValue]],
     *,

@@ -873,7 +873,7 @@ def detect_lvds_interfaces(ctx: AnalysisContext) -> list[dict]:
     for comp in ctx.components:
         if comp["type"] != "ic":
             continue
-        val_lib = (comp.get("value", "") + " " + comp.get("lib_id", "")).lower()
+        val_lib = (comp.get("value", "") + " " + comp.get("lib_id", "") + " " + (comp.get("mpn") or "")).lower()
         if not any(k in val_lib for k in _lvds_keywords):
             continue
 

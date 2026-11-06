@@ -18,8 +18,12 @@ if _DATASHEETS_PKG.is_dir() and str(_DATASHEETS_PKG) not in sys.path:
     sys.path.insert(0, str(_DATASHEETS_PKG))
 
 try:
-    from datasheet_types import has_data, best
+    from datasheet_types import has_data, best, facts_trusted
 except ImportError:
+    def facts_trusted(facts):
+        """Fallback when datasheet_types is unavailable. Returns False."""
+        return False
+
     def has_data(specs):
         """Fallback when datasheet_types is unavailable. Returns False."""
         return False

@@ -35,6 +35,7 @@ if _TYPES_PARENT not in sys.path:
 
 from datasheet_types.cache_reader import cache_path_for, read_json_object  # noqa: E402
 from datasheet_types.extraction import DatasheetFacts  # noqa: E402
+from datasheet_types.trust_gating import FACTS_MIN_SCORE  # noqa: E402
 
 
 _REGULATOR_TOPOLOGIES = ('boost', 'buck', 'ldo')
@@ -138,8 +139,8 @@ def _quality_v14(facts):
     """Quality flag for a v1.4 DatasheetFacts. Describes — never gates."""
     score = facts.quality
     reasons = []
-    if not isinstance(score, (int, float)) or score < 60:
-        reasons.append(f'low_score ({score} < 60)')
+    if not isinstance(score, (int, float)) or score < FACTS_MIN_SCORE:
+        reasons.append(f'low_score ({score} < {FACTS_MIN_SCORE})')
     if getattr(facts, 'stale', False):
         reasons.append('stale_pdf')
     return {

@@ -32,7 +32,7 @@ from finding_schema import make_provenance, make_finding, Det
 from detector_helpers import index_two_pin_components, get_components_by_type, get_unique_ics
 from detector_helpers import group_members, group_part, group_reps, group_value, parallel_groups
 
-from lookup_helpers import get_facts, has_data, best
+from lookup_helpers import get_facts, has_data, best, facts_trusted
 
 
 # ---------------------------------------------------------------------------
@@ -1864,7 +1864,7 @@ def _datasheet_vref(ctx: AnalysisContext, ic: dict) -> float | None:
     facts = get_facts(mpn, cache_dir=getattr(ctx, "cache_dir", None),
                       diagnostics=getattr(ctx, "diagnostics", None)) if mpn else None
     reg = getattr(facts, "regulator", None)
-    if reg is None or facts.stale or not isinstance(facts.quality, (int, float)) or facts.quality < 60:
+    if reg is None or not facts_trusted(facts):
         return None
     sv = best(reg.reference_voltage, min_confidence="medium") if has_data(reg.reference_voltage) else None
     if sv is None or sv.typ is None or sv.unit != "V":

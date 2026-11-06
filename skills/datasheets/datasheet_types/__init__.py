@@ -35,7 +35,7 @@ from .base_block import (
 )
 from .regulator import Regulator, StabilityConditions, Sequencing
 from .extraction import DatasheetFacts, Source, ExtractionMeta, SchemaVersion
-from .trust_gating import best, trusted, has_data
+from .trust_gating import best, trusted, has_data, facts_trusted, FACTS_MIN_SCORE
 from .cache_reader import lookup
 
 __all__ = [
@@ -60,6 +60,8 @@ __all__ = [
     "lookup",
     "best",
     "trusted",
+    "facts_trusted",
+    "FACTS_MIN_SCORE",
     "has_data",
 ]
 
