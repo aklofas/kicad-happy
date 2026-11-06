@@ -101,6 +101,21 @@ class UrlProblemTest(unittest.TestCase):
         self.assertIsNone(download.url_problem("http://10.0.0.5/a.pdf", allow_private=True))
         self.assertIsInstance(download.url_problem("file:///x", allow_private=True), str)
 
+    def test_embedded_ipv4_prefixes(self):
+        url = "https://h.example/a.pdf"
+        for address in ("64:ff9b::7f00:1", "64:ff9b::a00:1", "::127.0.0.1", "::10.0.0.1",
+                        "2002:a00:1::1", "2002:7f00:1::"):
+            with mock.patch.object(download, "_resolve", return_value=[address]):
+                self.assertIsInstance(download.url_problem(url, allow_private=False), str,
+                                      address)
+        self.assertIsInstance(download.url_problem("http://[64:ff9b::a9fe:a9fe]/latest",
+                                                   allow_private=False), str)
+        # A public IPv4 address behind a translator stays allowed: DNS64 resolvers
+        # synthesize the NAT64 form for every IPv4-only host.
+        for address in ("64:ff9b::5db8:d822", "::93.184.216.34"):
+            with mock.patch.object(download, "_resolve", return_value=[address]):
+                self.assertIsNone(download.url_problem(url, allow_private=False), address)
+
     def test_credentials_backslashes_and_blanks_refused(self):
         # Parsers disagree on where the host ends in these URLs (urlsplit reads
         # ``evil.com`` in the first one, requests and browsers read ``127.0.0.1``), so

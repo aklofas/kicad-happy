@@ -123,6 +123,21 @@ def _resolve(host: str) -> list[str]:
     return [info[4][0] for info in socket.getaddrinfo(host, None)]
 
 
+_NAT64 = ipaddress.ip_network("64:ff9b::/96")
+
+
+def _embedded_ipv4(ip: ipaddress.IPv6Address) -> ipaddress.IPv4Address | None:
+    """The IPv4 address a NAT64, 6to4 or IPv4-compatible address reaches through a
+    translator; ``is_global`` judges only the IPv6 prefix of these."""
+    if ip in _NAT64:
+        return ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF)
+    if ip.sixtofour is not None:
+        return ip.sixtofour
+    if int(ip) >> 32 == 0 and int(ip) > 1:
+        return ipaddress.IPv4Address(int(ip))
+    return None
+
+
 def _address_problem(text: str) -> str | None:
     try:
         ip = ipaddress.ip_address(text.split("%", 1)[0])
@@ -130,7 +145,12 @@ def _address_problem(text: str) -> str | None:
         return f"{text} is not an IP address"
     if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
         ip = ip.ipv4_mapped
-    if not ip.is_global or ip.is_multicast:
+    checked = [ip]
+    if isinstance(ip, ipaddress.IPv6Address):
+        embedded = _embedded_ipv4(ip)
+        if embedded is not None:
+            checked.append(embedded)
+    if any(not a.is_global or a.is_multicast for a in checked):
         return f"{text} is not a public address"
     return None
 
