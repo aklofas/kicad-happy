@@ -109,6 +109,35 @@ class I2cVolLowerBound(unittest.TestCase):
         self.assertEqual(vc["pull_up_voltage"], 5.0)
         self.assertEqual(vc["min_for_vol"], 1533)
 
+    def test_pull_up_to_a_supply_known_only_by_its_pins_keeps_its_voltage(self):
+        # Two transceivers' VCC pins and a cap to ground make CAN_3V3_PROTECTED a supply by its
+        # pins: the rail map parses no voltage from its name, the VOL check still does.
+        def comp(ref, ctype, value, pins):
+            return {"reference": ref, "type": ctype, "value": value, "lib_id": "",
+                    "pins": [{"number": n, "name": nm, "type": t} for n, nm, t in pins]}
+        comps = [SENSOR, _res("R1", "820"),
+                 comp("U2", "ic", "TCAN1042", [("1", "VCC", "passive"), ("2", "GND", "power_in")]),
+                 comp("U3", "ic", "TCAN1042", [("1", "VCC", "passive"), ("2", "GND", "power_in")]),
+                 comp("C1", "capacitor", "100n", [("1", "~", "passive"), ("2", "~", "passive")])]
+        nets = {"SDA": [("U1", "1", "SDA", "bidirectional"), ("R1", "1", "~", "passive")],
+                "CAN_3V3_PROTECTED": [("U2", "1", "VCC", "passive"), ("U3", "1", "VCC", "passive"),
+                                      ("C1", "1", "~", "passive"), ("R1", "2", "~", "passive")],
+                "GND": [("C1", "2", "~", "passive"), ("U2", "2", "GND", "power_in"),
+                        ("U3", "2", "GND", "power_in")]}
+        full = {n: {"name": n, "pins": [dict(component=r, pin_number=p, pin_name=pn, pin_type=t)
+                                        for r, p, pn, t in pins],
+                    "point_count": 0, "no_connect": False, "has_pwr_flag": False, "labels": []}
+                for n, pins in nets.items()}
+        ctx = build_analysis_context(comps, full, {}, known_power_rails={"GND"})
+        self.assertIn("CAN_3V3_PROTECTED", ctx.topology_rails)
+        ctx.rail_by_net = build_rail_map(ctx, [])
+        self.assertNotIn("CAN_3V3_PROTECTED", ctx.rail_by_net)
+        design = {"bus_analysis": {"i2c": _detect_i2c_buses(ctx)}}
+        out = analyze_protocol_compliance(comps, ctx.nets, design, {}, ctx.pin_net, ctx=ctx)
+        vc = out["findings"][0]["checks"]["vol_compatibility"]
+        self.assertEqual(vc["pull_up_voltage"], 3.3)
+        self.assertEqual(vc["min_for_vol"], 967)
+
     def test_usb_data_line_is_not_a_5v_pull_up_rail(self):
         self.assertEqual(_estimate_rail_voltage("USB_FS_DM"), 5.0)  # the name parse alone would say 5 V
         comps = [SENSOR, _res("R1", "820")]
