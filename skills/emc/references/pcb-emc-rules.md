@@ -44,7 +44,7 @@ Quantitative design rules used by the EMC analyzer. Each rule has a threshold, r
 
 ### DC-002: Missing decoupling
 - **Severity:** error
-- **Threshold:** IC (U/IC prefix) with no capacitor (`C` prefix) within 10mm, measured from the IC's power and ground-net pads to the capacitor's pads (footprint centres if no such pad exists), that shares a non-ground net with the IC other than the IC's own signal-pin nets. Skipped: ICs the schematic analyzer lists as protection devices other than fuses, values containing `esd`, `tvs`, `test` or `net_tie`, `tpd<n>` values and a `tp` value token. An IC whose value starts with a common ESD/TVS part prefix (`usblc`, `prtr`, `sp05`, `rclamp`, ...) is not skipped: it passes with a capacitor within 10mm on any shared non-ground net (its own signal nets are not excluded)
+- **Threshold:** IC (U/IC prefix) with no capacitor (`C` prefix) within 10mm, measured from the IC's power and ground-net pads to the capacitor's pads (footprint centres if no such pad exists), that shares a non-ground net with the IC other than the IC's own signal-pin nets. Skipped: ICs the schematic analyzer lists as protection devices other than fuses, values containing `esd`, `tvs`, `test` or `net_tie`, `tpd<n>` values and a `tp` value token. An IC whose value starts with an ESD/TVS part prefix such as `usblc`, `prtr`, `sp05` or `rclamp` is not skipped: it passes with a capacitor within 10mm on any shared non-ground net (its own signal nets are not excluded)
 - **Source:** Every major IC manufacturer's application notes recommend decoupling on all power pins. TI SLUA383, Analog Devices MT-101.
 
 ### DC-003: Decoupling cap far from via
