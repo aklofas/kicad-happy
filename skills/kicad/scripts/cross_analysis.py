@@ -1167,32 +1167,21 @@ def check_diff_pair_quality(schematic, pcb, recorder=None):
         _record(recorder, 'DP-005', False, 'no PCB data provided', 0, findings)
         return findings
     segments = (pcb.get('tracks') or {}).get('segments') or []
-    via_list = (pcb.get('vias') or {}).get('vias') or []
     if not segments:
         _record(recorder, 'DP-005', False, 'no PCB track segments present', 0, findings)
         return findings
-    net_id_map = _build_net_id_map(pcb)
     pairs = _find_diff_pairs(schematic)
     if not pairs:
         _record(recorder, 'DP-005', False, 'no differential pairs classified in schematic net_classifications', 0, findings)
         return findings
+    # net_lengths counts arcs as well as straight segments
     net_stats = {}
-    for seg in segments:
-        net_id = seg.get('net', 0)
-        net_name = net_id_map.get(net_id, '') if isinstance(net_id, int) else str(net_id)
-        if not net_name:
-            continue
-        x1, y1 = seg.get('x1', 0), seg.get('y1', 0)
-        x2, y2 = seg.get('x2', 0), seg.get('y2', 0)
-        length = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
-        stats = net_stats.setdefault(net_name, {'length_mm': 0, 'via_count': 0, 'layers': set()})
-        stats['length_mm'] += length
-        stats['layers'].add(seg.get('layer', ''))
-    for via in (via_list or []):
-        net_id = via.get('net', 0)
-        net_name = net_id_map.get(net_id, '') if isinstance(net_id, int) else str(net_id)
-        if net_name in net_stats:
-            net_stats[net_name]['via_count'] = net_stats[net_name].get('via_count', 0) + 1
+    for entry in pcb.get('net_lengths') or []:
+        layers = entry.get('layers') or {}
+        if entry.get('net') and layers:
+            net_stats[entry['net']] = {'length_mm': entry.get('total_length_mm', 0) or 0,
+                                       'via_count': entry.get('via_count', 0) or 0,
+                                       'layers': set(layers)}
     for p_net, n_net in pairs:
         p_stats = net_stats.get(p_net)
         n_stats = net_stats.get(n_net)

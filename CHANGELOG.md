@@ -309,6 +309,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - EMC CK-001 and DP-004 compute the share of a net routed on outer layers from track length, not segment count, so short fanout pieces on an outer layer no longer outweigh a long inner-layer run.
 - EMC PD-001 and PD-002 stay `heuristic` under `--spice-enhanced`: the SPICE sweep uses package-estimated ESR and ESL, so a simulated result no longer claims `datasheet-backed` confidence.
 - RP-002 on a board whose PCB analysis has plane gaps but no reference-plane coverage (zone fills unavailable) is recorded in `checks_run` as not run, with that reason, instead of as a check that ran and found nothing; a coverage list that is present but empty counts as measured.
+- DP-005 measures pair lengths from `net_lengths`, which counts arcs, so an arc-routed pair is not reported as a length mismatch.
 
 ### Documentation
 
