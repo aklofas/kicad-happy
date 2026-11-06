@@ -86,6 +86,15 @@ class RailMapByNet(unittest.TestCase):
         self.assertEqual([(f["components"], f["nets"], f["rail_voltage"]) for f in found],
                          [(["U3"], [VOUT1], 5.0)])
 
+    def test_domain_detectors_rebuild_a_missing_map(self):
+        ctx = _ctx()
+        topo = detect_topologies(ctx)
+        ctx.rail_by_net = {}
+        with patch.object(lookup_detectors, "get_facts", side_effect=_load_facts):
+            found = run_domain_detectors(ctx, topo)["am_001_findings"]
+        self.assertEqual([(f["components"], f["nets"], f["rail_voltage"]) for f in found],
+                         [(["U3"], [VOUT1], 5.0)])
+
     def test_sleep_audit_reads_each_instance(self):
         ctx = _ctx()
         topo = detect_topologies(ctx)

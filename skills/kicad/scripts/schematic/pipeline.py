@@ -465,6 +465,9 @@ def run_domain_detectors(ctx: AnalysisContext, topo: dict) -> dict:
     protection_devices = topo["protection_devices"]
     transistor_circuits = topo["transistor_circuits"]
 
+    if not ctx.rail_by_net:
+        ctx.rail_by_net = build_rail_map(ctx, power_regulators)
+
     buzzer_speaker_circuits = detect_buzzer_speakers(ctx, transistor_circuits)
     key_matrices = detect_key_matrices(ctx)
     isolation_barriers = detect_isolation_barriers(ctx)
