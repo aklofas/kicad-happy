@@ -2,6 +2,8 @@
 import json
 import os
 import re
+from collections.abc import Iterable
+from fnmatch import fnmatchcase
 from pathlib import Path
 
 from kicad_core.textvars import expand_text_vars
@@ -784,13 +786,16 @@ def _dru_eval(text: str) -> tuple[str, float | None]:
 
 
 def _dru_bound_error(constraint: list) -> str | None:
-    """KiCad's message for a length bound of *constraint* it cannot read, or None: "Missing
-    units." for a unitless result, "Syntax error" for text that is not an expression."""
-    if (len(constraint) < 2 or not isinstance(constraint[1], str)
-            or constraint[1] in _DRU_UNITLESS_CONSTRAINTS):
-        return None
+    """KiCad's message for an item of *constraint* it cannot read, or None: "Unrecognized
+    item." for a list that is not a bound, "Missing units." for a unitless length, "Syntax
+    error" for a length that is not an expression."""
     for bound in constraint[2:]:
-        if isinstance(bound, list) and len(bound) > 1 and bound[:1] in (['min'], ['max'], ['opt']):
+        if not isinstance(bound, list):
+            continue
+        if not bound or not isinstance(bound[0], str) or bound[0] not in _DRU_BOUND_ITEMS:
+            return "Unrecognized item."
+        if (len(bound) > 1 and bound[0] in ('min', 'max', 'opt')
+                and constraint[1] not in _DRU_UNITLESS_CONSTRAINTS):
             text = _dru_bound_text(bound)
             if parse_dru_length(text) is not None:
                 continue
@@ -802,12 +807,48 @@ def _dru_bound_error(constraint: list) -> str | None:
     return None
 
 
-def _dru_parse_error(tree: list) -> str | None:
+# drc_rule_parser.cpp parseConstraint: the constraint types, plus the deprecated names it maps.
+_DRU_CONSTRAINT_TYPES = frozenset((
+    'assertion', 'clearance', 'creepage', 'hole_clearance', 'edge_clearance', 'hole_size',
+    'hole_to_hole', 'courtyard_clearance', 'silk_clearance', 'text_height', 'text_thickness',
+    'track_width', 'track_angle', 'track_segment_length', 'connection_width', 'annular_width',
+    'via_diameter', 'via_dangling', 'zone_connection', 'thermal_relief_gap',
+    'thermal_spoke_width', 'min_resolved_spokes', 'solder_mask_expansion', 'solder_mask_sliver',
+    'solder_paste_abs_margin', 'solder_paste_rel_margin', 'disallow', 'length', 'skew',
+    'via_count', 'diff_pair_gap', 'diff_pair_uncoupled', 'physical_clearance',
+    'physical_hole_clearance', 'bridged_mask',
+    'hole', 'mechanical_clearance', 'mechanical_hole_clearance'))
+_DRU_RULE_ITEMS = frozenset(('constraint', 'condition', 'layer', 'severity'))
+_DRU_BOUND_ITEMS = frozenset(('min', 'max', 'opt', 'within_diff_pairs'))
+# Constraint types that take bare argument tokens instead of bounds.
+_DRU_ARGUMENT_CONSTRAINTS = frozenset(('disallow', 'zone_connection', 'assertion'))
+# The layer names a rule can match: LSET::Name over every layer id (lset.cpp) and the standard
+# names of LayerName (layer_id.cpp). The board's own names are added per file.
+_KICAD_LAYER_NAMES = frozenset((
+    'F.Cu', 'B.Cu', *(f'In{i}.Cu' for i in range(1, 63)),
+    'B.Adhes', 'F.Adhes', 'B.Paste', 'F.Paste', 'B.SilkS', 'F.SilkS', 'B.Mask', 'F.Mask',
+    'Dwgs.User', 'Cmts.User', 'Eco1.User', 'Eco2.User', 'Edge.Cuts', 'Margin',
+    'F.CrtYd', 'B.CrtYd', 'F.Fab', 'B.Fab', 'Rescue', *(f'User.{i}' for i in range(1, 46)),
+    'B.Adhesive', 'F.Adhesive', 'B.Silkscreen', 'F.Silkscreen', 'User.Drawings',
+    'User.Comments', 'User.Eco1', 'User.Eco2', 'F.Courtyard', 'B.Courtyard'))
+
+
+def _dru_layer_known(pattern: str, layer_names: frozenset[str]) -> bool:
+    """True when a rule's layer is ``outer``/``inner`` or a wildcard pattern matching a layer
+    name (wxString::Matches: ``*`` and ``?`` only, case-sensitive). A text variable is left to
+    KiCad's own expansion."""
+    if pattern in ('outer', 'inner') or '${' in pattern:
+        return True
+    pattern = pattern.replace('[', '[[]')
+    return any(fnmatchcase(name, pattern) for name in layer_names)
+
+
+def _dru_parse_error(tree: list, layer_names: frozenset[str] | None = None) -> str | None:
     """KiCad's message for a .kicad_dru it refuses to load, or None. A parse error drops every
     custom rule of the file (drc_rule_parser.cpp Parse, drc_engine.cpp InitEngine). Checked:
-    the leading version statement, the top-level forms, rule names, severity names, a
-    nested list where a constraint type or layer name belongs, and length bounds that are not
-    a length expression."""
+    the leading version statement, the top-level forms, rule names and items, severity names,
+    conditions, constraint types and items (once per rule), length bounds that are not a
+    length expression, and, given the board's *layer_names*, the rule's layer."""
     if any(not isinstance(f, list) for f in tree[1:]):
         return "Missing '('."
     forms = tree[1:]
@@ -820,18 +861,38 @@ def _dru_parse_error(tree: list) -> str | None:
         elif form[:1] == ['rule']:
             if len(form) < 2 or not isinstance(form[1], str):
                 return "Missing rule name."
+            constraint_types = set()
             for item in form[2:]:
                 if not isinstance(item, list):
                     continue
-                if item[:1] == ['severity'] and (len(item) < 2 or not isinstance(item[1], str)
-                                                 or item[1] not in _DRU_SEVERITIES):
+                if not item or not isinstance(item[0], str) or item[0] not in _DRU_RULE_ITEMS:
+                    return "Unrecognized item."
+                if item[0] == 'severity' and (len(item) < 2 or not isinstance(item[1], str)
+                                              or item[1] not in _DRU_SEVERITIES):
                     return "Unrecognized severity."
-                if item[:1] == ['constraint'] and len(item) > 1 and not isinstance(item[1], str):
-                    return "Unrecognized constraint type."
-                if item[:1] == ['layer'] and len(item) > 1 and not isinstance(item[1], str):
-                    return "Unrecognized layer."
-                if item[:1] == ['constraint'] and (bound_error := _dru_bound_error(item)):
-                    return bound_error
+                if item[0] == 'condition':
+                    if len(item) < 2:
+                        return "Missing condition expression."
+                    if isinstance(item[1], list):
+                        return "Unrecognized item."
+                    if len(item) > 2:
+                        return "Missing ')'."
+                if item[0] == 'constraint' and len(item) > 1:
+                    ctype = item[1]
+                    if not isinstance(ctype, str) or (ctype not in _DRU_CONSTRAINT_TYPES
+                                                      and '${' not in ctype):
+                        return "Unrecognized constraint type."
+                    if ctype in constraint_types:
+                        return f"Rule already has a '{ctype}' constraint."
+                    constraint_types.add(ctype)
+                    if ctype not in _DRU_ARGUMENT_CONSTRAINTS and (
+                            bound_error := _dru_bound_error(item)):
+                        return bound_error
+                if item[0] == 'layer' and len(item) > 1:
+                    if not isinstance(item[1], str) or (
+                            layer_names is not None
+                            and not _dru_layer_known(item[1], layer_names)):
+                        return "Unrecognized layer."
         else:
             return "Expected rule or version."
     return None
@@ -857,7 +918,8 @@ def load_kicad_dru(file_path: str) -> list[dict] | None:
     return load_kicad_dru_checked(file_path)[0]
 
 
-def load_kicad_dru_checked(file_path: str) -> tuple[list[dict] | None, str | None]:
+def load_kicad_dru_checked(file_path: str, *, layer_names: Iterable[str] | None = None
+                           ) -> tuple[list[dict] | None, str | None]:
     """Load custom design rules from ``.kicad_dru`` adjacent to a KiCad file.
 
     Returns list of rule dicts::
@@ -872,6 +934,8 @@ def load_kicad_dru_checked(file_path: str) -> tuple[list[dict] | None, str | Non
     Conditions are kept as raw strings — not evaluated. ``severity`` is kept when set.
     Returns (None, None) if no ``.kicad_dru`` found. The second item is KiCad's parse error
     when KiCad would refuse the file (`_dru_parse_error`); the rules are still returned.
+    The rule layers are checked only when the board's *layer_names* (names and user names)
+    are given.
 
     Only the board reads rules, and KiCad takes the file named like the board,
     so discovery is exact-stem via `find_project_settings_file`.
@@ -936,7 +1000,9 @@ def load_kicad_dru_checked(file_path: str) -> tuple[list[dict] | None, str | Non
 
     if not rules:
         return None, None
-    return rules, _dru_parse_error(tree) or _dru_unbalanced(content)
+    known_layers = (None if layer_names is None
+                    else _KICAD_LAYER_NAMES | frozenset(layer_names))
+    return rules, _dru_parse_error(tree, known_layers) or _dru_unbalanced(content)
 
 
 def load_lib_tables(file_path: str) -> dict:

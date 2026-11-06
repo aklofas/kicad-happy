@@ -392,7 +392,8 @@ def run_facts(board: BoardData, *, include_trace_segments: bool, return_path_rad
         project_settings['_ignored_drc_checks'] = ignored
 
     # Custom design rules (.kicad_dru)
-    custom_rules, dru_error = load_kicad_dru_checked(str(path))
+    custom_rules, dru_error = load_kicad_dru_checked(
+        str(path), layer_names=[n for layer in layers for n in (layer.get('name'), layer.get('alias')) if n])
     if custom_rules:
         project_settings['custom_rules'] = custom_rules
     if dru_error:

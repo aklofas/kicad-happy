@@ -257,6 +257,28 @@ class RefusedFileTest(unittest.TestCase):
                  + "\n(rule a (constraint length (max 10ps)))\n")):
             with self.subTest(name):
                 self.assertEqual(refused(text), (self.APPLIED, None))
+        for name, rule in (
+                *((f"layer {layer}", f"(rule z (layer {layer}) (constraint clearance (min 0.01mm)))")
+                  for layer in ("outer", "inner", '"In*.Cu"', '"In?.Cu"', "F.SilkS", "F.Silkscreen",
+                                "User.Drawings", "Dwgs.User", "User.45", "In62.Cu", "In5.Cu",
+                                '"F.Cu"')),
+                ("deprecated hole", "(rule a (constraint hole (min 0.2mm)))"),
+                ("deprecated mechanical_clearance",
+                 "(rule a (constraint mechanical_clearance (min 0.01mm)))"),
+                ("empty condition", '(rule a (condition "") (constraint clearance (min 0.01mm)))'),
+                ("bare-atom condition",
+                 "(rule a (condition A.Type=='track') (constraint clearance (min 0.01mm)))"),
+                ("component class in a condition", "(rule a (condition \"A.hasComponentClass('${Class:X}')\")"
+                 " (constraint clearance (min 0.01mm)))"),
+                ("assertion", "(rule a (constraint assertion \"A.Type == 'track'\"))"),
+                ("disallow", "(rule a (constraint disallow track))"),
+                ("constraint without bounds", "(rule a (constraint clearance))"),
+                ("severity ignore", "(rule a (severity ignore) (constraint clearance (min 0.01mm)))"),
+                ("rule items on several lines", "(rule a\n  (condition \"A.Type == 'track'\")\n"
+                 "  (constraint clearance (min 0.01mm)))")):
+            with self.subTest(name):
+                self.assertEqual(refused("(version 1)\n" + TRACK_RULE + "\n" + rule + "\n"),
+                                 (self.APPLIED, None))
         # 2*0.05mm is 0.1 mm: the rule applies and the 0.2 mm track passes
         self.assertEqual(refused("(version 1)\n(rule w (constraint track_width (min 2*0.05mm)))\n"),
                          ([], None))
@@ -296,7 +318,40 @@ class RefusedFileTest(unittest.TestCase):
                 ("trailing operator", "(version 1)\n(rule w (constraint track_width (min 0.5mm+)))\n",
                  "Syntax error"),
                 ("unitless expression",
-                 "(version 1)\n(rule w (constraint track_width (min 2*0.25)))\n", "Missing units.")):
+                 "(version 1)\n(rule w (constraint track_width (min 2*0.25)))\n", "Missing units."),
+                ("byte order mark", "\ufeff(version 1)\n" + TRACK_RULE + "\n", "Missing '('."),
+                ("capitalised version", "(Version 1)\n" + TRACK_RULE + "\n",
+                 "Missing version statement."),
+                *((name, "(version 1)\n" + TRACK_RULE + "\n" + rule + "\n", message)
+                  for name, rule, message in (
+                    ("unknown constraint type", "(rule z (constraint banana (min 0.1mm)))",
+                     "Unrecognized constraint type."),
+                    ("constraint type in the wrong case", "(rule z (constraint Clearance (min 0.01mm)))",
+                     "Unrecognized constraint type."),
+                    ("unknown layer", "(rule z (layer Foo.Cu) (constraint clearance (min 0.01mm)))",
+                     "Unrecognized layer."),
+                    ("layer in the wrong case", "(rule z (layer f.cu) (constraint clearance (min 0.01mm)))",
+                     "Unrecognized layer."),
+                    ("user layer past the last", "(rule z (layer User.46) (constraint clearance (min 0.01mm)))",
+                     "Unrecognized layer."),
+                    ("copper layer past the last",
+                     "(rule z (layer In63.Cu) (constraint clearance (min 0.01mm)))", "Unrecognized layer."),
+                    ("nested condition", "(rule a (condition (x)) (constraint clearance (min 0.2mm)))",
+                     "Unrecognized item."),
+                    ("empty condition item", "(rule a (condition) (constraint clearance (min 0.01mm)))",
+                     "Missing condition expression."),
+                    ("two condition strings",
+                     "(rule a (condition \"A.Type == 'track'\" \"x\") (constraint clearance (min 0.01mm)))",
+                     "Missing ')'."),
+                    ("unknown rule item", "(rule a (foo bar) (constraint clearance (min 0.01mm)))",
+                     "Unrecognized item."),
+                    ("unknown constraint item", "(rule a (constraint clearance (minimum 0.01mm)))",
+                     "Unrecognized item."),
+                    ("same constraint twice",
+                     "(rule a (constraint clearance (min 0.01mm)) (constraint clearance (min 0.02mm)))",
+                     "Rule already has a 'clearance' constraint."),
+                    ("capitalised severity", "(rule z (severity Error) (constraint clearance (min 0.01mm)))",
+                     "Unrecognized severity.")))):
             with self.subTest(name):
                 self.assertEqual(refused(text), ([], message))
 
@@ -305,6 +360,23 @@ class RefusedFileTest(unittest.TestCase):
             with open(os.path.join(tmp, "b.kicad_dru"), "w", encoding="utf-8") as f:
                 f.write('\t(condition "x"))\n')
             self.assertEqual(load_kicad_dru_checked(os.path.join(tmp, "b.kicad_pcb")), (None, None))
+
+    def test_board_user_layer_name(self):
+        # kicad-cli applies a rule naming the board's own name for a layer
+        board = BOARD.replace('(2 "In2.Cu" signal)', '(2 "In2.Cu" signal "MySig")')
+        with mock.patch(f"{__name__}.BOARD", board):
+            self.assertEqual(refused("(version 1)\n" + TRACK_RULE
+                                     + "\n(rule z (layer MySig) (constraint clearance (min 0.01mm)))\n"),
+                             (self.APPLIED, None))
+
+    def test_layer_unchecked_without_board_names(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, "b.kicad_dru"), "w", encoding="utf-8") as f:
+                f.write("(version 1)\n" + TRACK_RULE
+                        + "\n(rule z (layer Foo.Cu) (constraint clearance (min 0.01mm)))\n")
+            rules, error = load_kicad_dru_checked(os.path.join(tmp, "b.kicad_pcb"))
+        self.assertEqual(len(rules), 2)
+        self.assertIsNone(error)
 
     def test_nested_layer_is_reported_by_the_cli(self):
         with tempfile.TemporaryDirectory() as tmp:
