@@ -74,6 +74,26 @@ class SpiceFailureTest(unittest.TestCase):
                           if d["source"] == "simulate_subcircuits.run"], [])
 
 
+class ParseResultsExponentTest(unittest.TestCase):
+    """Signed exponents parse in LTspice and Xyce output; a non-number is skipped."""
+    def test_signed_exponents(self):
+        sys.path.insert(0, str(SIM.parent))
+        from spice_simulator import LtspiceBackend, XyceBackend
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, "x.out")
+            with open(os.path.join(tmp, "x.log"), "w") as f:
+                f.write("fc: v(out)=1.58e+04 at 5\nfb: v(out)=1.5917e+04\n"
+                        "fn: v(out)=-3.2E-05\nbad: v(out)=...\n")
+            with open(os.path.join(tmp, "x.mt0"), "w") as f:
+                f.write("fc = 1.58e+04\nfb = 1.5917e+04\nfn = -3.2E-05\nbad = ...\n")
+            for r in (LtspiceBackend().parse_results(out, "", ""),
+                      XyceBackend().parse_results(out, "", "")):
+                self.assertEqual(r["fc"], 15800.0)
+                self.assertEqual(r["fb"], 15917.0)
+                self.assertEqual(r["fn"], -3.2e-05)
+                self.assertNotIn("bad", r)
+
+
 class ParseResultsEncodingTest(unittest.TestCase):
     """A simulator log that is not UTF-8 (LTspice writes UTF-16) never crashes the parse."""
     def test_ltspice_log_and_xyce_mt0_with_bad_bytes(self):
