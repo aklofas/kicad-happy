@@ -319,7 +319,7 @@ Returns `None` for:
 
 ### Power Rail Identification
 
-A net is classified as a power rail by two complementary methods:
+A net is classified as a power rail by three methods:
 
 **Method 1 — Power symbol registration**: Any net that has a pin from a `#PWR` or `#FLG` component is added to the `known_power_rails` set. This is authoritative — it captures whatever the designer connected via power symbols. Membership is by the net's full name: a sheet-local net `/Sheet/X` is its own net, not the rail `X`.
 
@@ -331,7 +331,9 @@ A net is classified as a power rail by two complementary methods:
 - **Negative, decimal and prefixed rails**: `-12V`, `-5V_F`, `-BATT`, `-VIN`, `3.3V`, `1.25V_REF`, `VEE`, `VPP`, `VM`, `VNEG`, `MCU3V3`, `D+5V`. A leading `-` before anything but a voltage or a supply name (`-RESET`) is an active-low signal; a control prefix (`PWM3V3`, `PG3V3`) or a signal word after a decimal level (`3.3V_SDA`) keeps the name a signal. `VPP` and `VM` also follow the pins: an IC pin on the net and no power pin (a PIC's ~MCLR/VPP, an op-amp node `Vm`) make it a signal unless a power symbol names it.
 - **Control suffixes win**: a name whose last `_` part is a control or status word (`VCC_EN`, `3V3_PG`, `VBUS_SENSE`, `PWR_ON`) is a signal about the rail, not the rail, unless the net is in the power-symbol or project power-rail set.
 
-A net is considered a power net if **either** method matches.
+**Method 3 — Rails recognised by their pins** (`topology_rail_nets()`): a named net that no name rule or power symbol makes a rail is still a power net to the schematic detectors when its pins make it a supply. Every IC pin on it is a supply input (`power_in` named like a supply), a supply-named passive pin, or a power output, and a capacitor on it goes to ground. Other passive pins are allowed only beside a pin KiCad types as power (a load-switch FET drawn as an IC). A resistor to ground (a divider midpoint), `REF` in the name, or a motor-driver output keeps the net a signal. This is how `CAN_VCC_PROTECTED` or `4.5V-28V IN` become rails. These rails are not listed in `statistics.power_rails`, and `rail_voltages` reads no voltage from their names (one comes only from a regulator that drives the net or from the project config), so a PCB run given `--schematic` does not see them.
+
+A net is considered a power net if **any** of the three methods matches.
 
 ### Ground Net Identification
 

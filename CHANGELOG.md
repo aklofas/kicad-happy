@@ -360,6 +360,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The SPICE integration guide gives the impedance formulas the analyzer uses (effective permittivity on outer layers) and KiCad's inferred default stackup, and the architecture guide says all twelve CLIs exit with `sys.exit(main())`.
 - The architecture guide's module tables list every `kicad_core` module, `schematic/erc_pins.py` and `bom_fields.py`, give each module the imports it has (rows that said stdlib or omitted the core now name them), count the twelve names `sync.py` reads from a provider adapter, and say every CLI calls `utf8_stdio()` at start-up, which sets the output encoding to UTF-8 and nothing else.
 - The PCB-then-EMC workflows in the kicad and emc skills and in `emc-precompliance.md` pass `--schematic` to `analyze_pcb.py`, which SW-003 needs to grade the pad loop; the PDN text describes the complex-admittance model and its SPICE AC sweep, and the standalone `analyze_emc.py` example uses the full script path.
+- The power-rail methodology names the third detection method, rails recognised by their pins (`topology_rail_nets`), with its rule and limits (not in `statistics.power_rails`, no voltage read from the name, not seen by a PCB `--schematic` run), and the PCB methodology says which rail set the PCB analyzer uses: names plus `--power-rails`, else the schematic's `statistics.power_rails`, with pin-guarded signal names excluded.
 
 ---
 
