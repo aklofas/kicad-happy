@@ -4486,11 +4486,21 @@ def audit_rail_sources(ctx: AnalysisContext,
         for sides in by_ref.values():
             switch_pins += [(i, o) for i in sorted(sides["in"]) for o in sorted(sides["out"])]
     switch_output_nets: set[str] = set()
+
+    def _input_sourced(in_net: str) -> bool:
+        # The switch input is sourced directly, through a net tie, or across a
+        # bridged-by-default jumper (RS-003 territory: functional out of the box).
+        conductor = conductor_of(ties, in_net)
+        if any(_has_direct_source(nets.get(n, {}), n) for n in conductor):
+            return True
+        return any(state == "bridged"
+                   and any(_has_direct_source(nets.get(m, {}), m) for m in conductor_of(ties, nb))
+                   for n in conductor for nb, state, _ in jumper_bridges.get(n, []))
+
     for _ in range(len(switch_pins)):
         grew = False
         for in_net, out_net in switch_pins:
-            if out_net not in switch_output_nets and any(
-                    _has_direct_source(nets.get(n, {}), n) for n in conductor_of(ties, in_net)):
+            if out_net not in switch_output_nets and _input_sourced(in_net):
                 switch_output_nets.add(out_net)
                 grew = True
         if not grew:
