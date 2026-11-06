@@ -39,6 +39,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - LTspice and Xyce measurement output with a signed exponent (`1.58e+04`) is read as a number instead of crashing the simulation; ngspice parsing is unchanged.
 - The SPICE model resolver now reads `spice_specs` from extractions the `datasheets` skill caches (`datasheets/extracted/`), when the analysis names its project and the run is not `--offline`.
 - The SPICE LCSC spec lookup matches parts by the top-level `mfr` field jlcsearch now returns.
+- `fab_release_gate.py` leaves board-only graphics (logos) out of the component count and reports DNP footprints separately. It warns instead of failing when the board's DRC ignores unconnected items. It says what a routing pass without `--full` proves. It no longer prints `None` for an unknown drill size.
 - `--analysis-dir` no longer fails on a symlinked or malformed run entry, a manifest that is a link, a FIFO or a deeply nested file, and no longer hangs on a FIFO named `manifest.json`.
 - Every analyzer and tool reports a JSON input nested deeper than Python can parse as malformed, with its usual error and exit code, instead of a traceback.
 - A symlink under `/dev` (for example in `/dev/shm`) is no longer written through; on Windows an `--output` file held open by another program gives a one-line error.

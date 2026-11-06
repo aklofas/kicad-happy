@@ -242,6 +242,87 @@ class RoutingTest(unittest.TestCase):
         self.assertEqual(c["details"]["unrouted_nets"], ["+BATT", "/SW_MAIN"])
 
 
+    def test_drc_ignored_unconnected_warns(self):
+        pcb = {"connectivity": {"total_nets_with_pads": 60, "unrouted_count": 3,
+                                "routing_complete": False}, "findings": []}
+        c = gate.check_routing(pcb)[0]
+        self.assertEqual(c["status"], "warn")
+        self.assertIn("DRC", c["message"])
+        self.assertEqual(c["details"]["unrouted_count"], 3)
+
+    def test_suppressed_rt001_still_fails(self):
+        f = dict(_rt001("+BATT", "Unrouted net +BATT"), suppressed=True)
+        pcb = {"connectivity": {"total_nets_with_pads": 5, "unrouted_count": 1,
+                                "routing_complete": False}, "findings": [f]}
+        self.assertEqual(gate.check_routing(pcb)[0]["status"], "fail")
+
+    def test_plain_mode_pass_wording(self):
+        c = gate.check_routing(PASS_PCB)[0]
+        self.assertEqual(c["status"], "pass")
+        self.assertNotIn("All nets routed", c["message"])
+        self.assertIn("--full", c["message"])
+        c = gate.check_routing(dict(PASS_PCB, connectivity_graph={}))[0]
+        self.assertIn("All nets routed (2/2)", c["message"])
+
+
+class ConsistencyCountTest(unittest.TestCase):
+    SCH = {"statistics": {"total_components": 52, "dnp_parts": 0, "total_nets": 2}}
+
+    def _count(self, sch, pcb):
+        return [c for c in gate.check_consistency(sch, pcb)
+                if c["check_id"] == "component_count"][0]
+
+    def test_board_only_footprints_not_counted(self):
+        fps = ([{"reference": "R%d" % i, "pad_count": 2} for i in range(52)]
+               + [{"reference": "G***", "pad_count": 0, "board_only": True}] * 4)
+        c = self._count(self.SCH, {"statistics": {"footprint_count": 56},
+                                   "footprints": fps})
+        self.assertEqual(c["status"], "pass")
+        self.assertIn("4 board-only", c["message"])
+
+    def test_dnp_footprints_reported_separately(self):
+        sch = {"statistics": {"total_components": 10, "dnp_parts": 2, "total_nets": 2}}
+        fps = ([{"reference": "R%d" % i} for i in range(8)]
+               + [{"reference": "D%d" % i, "dnp": True} for i in range(2)])
+        c = self._count(sch, {"statistics": {"footprint_count": 10}, "footprints": fps})
+        self.assertEqual(c["status"], "pass")
+        self.assertIn("2 DNP", c["message"])
+
+    def test_real_mismatch_still_fails(self):
+        sch = {"statistics": {"total_components": 10, "dnp_parts": 0, "total_nets": 2}}
+        fps = [{"reference": "R%d" % i} for i in range(14)]
+        c = self._count(sch, {"statistics": {"footprint_count": 14}, "footprints": fps})
+        self.assertEqual(c["status"], "fail")
+
+    def test_count_only_input_unchanged(self):
+        sch = {"statistics": {"total_components": 5, "dnp_parts": 0, "total_nets": 2}}
+        c = self._count(sch, {"statistics": {"footprint_count": 5}, "footprints": []})
+        self.assertEqual(c["status"], "pass")
+
+
+class NullDrillTest(unittest.TestCase):
+    GR003 = {"findings": [{"rule_id": "GR-003", "summary": "No drill file"}],
+             "statistics": {}}
+
+    def test_null_min_drill_never_printed(self):
+        pcb = {"statistics": {"via_count": 0, "tht_count": 0},
+               "dfm_summary": {"metrics": {"min_drill_mm": None}}}
+        c = _completeness(self.GR003, pcb)
+        self.assertNotIn("None", c["message"])
+        self.assertNotEqual(c["status"], "fail")
+
+    def test_null_drill_without_counts_is_unknown(self):
+        pcb = {"statistics": {}, "dfm_summary": {"metrics": {"min_drill_mm": None}}}
+        c = _completeness(self.GR003, pcb)
+        self.assertIn("hole count unknown", c["message"])
+
+
+class ThermalWordingTest(unittest.TestCase):
+    def test_thermal_pass_wording(self):
+        c = gate.check_thermal({"summary": {"thermal_score": 80}, "findings": []})[0]
+        self.assertTrue(c["message"].endswith("no error/warning findings"))
+
+
 class ExitCodeTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
