@@ -348,33 +348,45 @@ def is_referenced_as_child(file_path: str) -> bool:
     return False
 
 
+_SHEETFILE_ANY = re.compile(r'\(property\s+"Sheet ?file"\s+"([^"]*)"', re.IGNORECASE)
+
+
+def _sheet_file_refs(sch_path: str, content: str) -> set[str]:
+    """Normalised absolute path of every sheet file *content* (the text of *sch_path*) names,
+    with project text variables expanded; a value that stays unresolved is dropped."""
+    base = os.path.dirname(os.path.abspath(sch_path))
+    refs = set()
+    for m in _SHEETFILE_ANY.finditer(content):
+        value = m.group(1)
+        if "${" in value:
+            value = expand_sheet_file(value, sch_path)
+            if "${" in value:
+                continue
+        refs.add(os.path.normcase(os.path.abspath(os.path.join(base, value.replace("\\", "/")))))
+    return refs
+
+
 def _root_references_target(root_sch: str, target: str) -> bool:
-    """Check if root_sch's sheet tree references target (by relative path).
-
-    Handles both same-directory and sub-directory layouts by computing the
-    relative path from the root's directory to the target.  Reads the full
-    file because sheet blocks can appear after large lib_symbols sections.
-    """
-    try:
-        root_dir = os.path.dirname(os.path.abspath(root_sch))
-        target_abs = os.path.abspath(target)
-        # Compute the relative path the root would use in Sheetfile property
-        rel_path = os.path.relpath(target_abs, root_dir)
-        # Also try just the basename (same-directory case)
-        basename = os.path.basename(target_abs)
-
-        with open(root_sch, 'r', encoding='utf-8', errors='replace') as f:
-            content = f.read()
-
-        # Check for relative path or basename in content
-        # KiCad uses forward slashes in Sheetfile even on Windows
-        for needle in (rel_path, rel_path.replace(os.sep, '/'), basename):
-            if needle in content:
-                return True
-        if os.path.normcase(target_abs) in _expanded_sheet_refs(root_sch, content):
+    """Check if the sheet tree under root_sch reaches target through whole sheet-file paths,
+    however many intermediate sheets lie between."""
+    wanted = os.path.normcase(os.path.abspath(target))
+    seen = set()
+    todo = [os.path.abspath(root_sch)]
+    while todo:
+        sch = todo.pop()
+        key = os.path.normcase(sch)
+        if key in seen:
+            continue
+        seen.add(key)
+        try:
+            with open(sch, 'r', encoding='utf-8', errors='replace') as f:
+                content = f.read()
+        except OSError:
+            continue
+        refs = _sheet_file_refs(sch, content)
+        if wanted in refs:
             return True
-    except OSError:
-        pass
+        todo.extend(r for r in refs if r not in seen)
     return False
 
 
@@ -437,8 +449,7 @@ def discover_root_schematic(target_path: str) -> str | None:
         try:
             with open(candidate, 'r', encoding='utf-8', errors='replace') as f:
                 content = f.read()
-            if (target_basename in content
-                    or os.path.normcase(target) in _expanded_sheet_refs(candidate, content)):
+            if os.path.normcase(target) in _sheet_file_refs(candidate, content):
                 return candidate
         except OSError:
             continue

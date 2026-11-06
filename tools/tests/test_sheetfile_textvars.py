@@ -129,5 +129,39 @@ class SheetFileTextVarsDiscoveryTest(unittest.TestCase):
                 os.path.abspath(root))
 
 
+class RootDiscoveryByWholePathTest(unittest.TestCase):
+    def _write(self, tmp, files):
+        for rel, text in files.items():
+            path = os.path.join(tmp, rel)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(text)
+
+    def test_grandchild_finds_the_root(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write(tmp, {"p.kicad_pro": "{}",
+                              "p.kicad_sch": root_sch("p", "a/mid.kicad_sch"),
+                              "a/mid.kicad_sch": root_sch("p", "b/leaf.kicad_sch"),
+                              "a/b/leaf.kicad_sch": sub_sch("p")})
+            self.assertEqual(discover_root_schematic(os.path.join(tmp, "a", "b", "leaf.kicad_sch")),
+                             os.path.abspath(os.path.join(tmp, "p.kicad_sch")))
+
+    def test_name_inside_another_name_is_not_a_reference(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write(tmp, {"p.kicad_pro": "{}",
+                              "p.kicad_sch": root_sch("p", "sheets/my_adc.kicad_sch"),
+                              "sheets/my_adc.kicad_sch": sub_sch("p"),
+                              "sheets/adc.kicad_sch": sub_sch("p")})
+            self.assertIsNone(discover_root_schematic(os.path.join(tmp, "sheets", "adc.kicad_sch")))
+
+    def test_direct_child_still_found(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write(tmp, {"p.kicad_pro": "{}",
+                              "p.kicad_sch": root_sch("p", "sheets/adc.kicad_sch"),
+                              "sheets/adc.kicad_sch": sub_sch("p")})
+            self.assertEqual(discover_root_schematic(os.path.join(tmp, "sheets", "adc.kicad_sch")),
+                             os.path.abspath(os.path.join(tmp, "p.kicad_sch")))
+
+
 if __name__ == "__main__":
     unittest.main()
