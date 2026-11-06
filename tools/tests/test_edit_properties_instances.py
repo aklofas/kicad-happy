@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT / "skills" / "bom" / "scripts"))
 sys.path.insert(0, str(ROOT / "skills" / "kicad" / "scripts"))
 
 import edit_properties
+import kicad_sexp
 import sync_datasheet_urls
 from kicad_core import sexp
 
@@ -117,20 +118,99 @@ class ForeignProjectTest(unittest.TestCase):
         got = sync_datasheet_urls.extract_symbols(foreign_entry_sheet(), "new")
         self.assertEqual(sorted(got), ["R1", "R3"])
 
-    def test_no_entry_for_the_project_uses_all_entries(self):
-        out, _ = edit_properties.apply_updates(foreign_entry_sheet(), {"R3": {"MPN": "Z"}},
-                                               project_name="elsewhere")
-        self.assertEqual(out.count('"MPN" "Z"'), 2)
 
+class ProjectResolutionTest(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.d = Path(self._tmp.name)
+        (self.d / "sub").mkdir()
+        self.child = self.d / "sub" / "child.kicad_sch"
+        self.child.write_text(foreign_entry_sheet(), encoding="utf-8")
 
-class ProjectNameTest(unittest.TestCase):
-    def test_project_name_comes_from_the_kicad_pro_beside_the_sheet(self):
-        import kicad_sexp
-        with tempfile.TemporaryDirectory() as td:
-            d = Path(td)
-            self.assertEqual(kicad_sexp.project_name_of(d / "sub.kicad_sch"), "sub")
-            (d / "board.kicad_pro").write_text("{}", encoding="utf-8")
-            self.assertEqual(kicad_sexp.project_name_of(d / "sub.kicad_sch"), "board")
+    def test_project_file_above_a_sub_sheet_names_the_project(self):
+        (self.d / "new.kicad_pro").write_text("{}", encoding="utf-8")
+        project, names = kicad_sexp.resolve_project(self.child, self.child.read_text(encoding="utf-8"))
+        self.assertEqual((project, names), ("new", ["old", "new"]))
+
+    def test_single_project_needs_no_project_file(self):
+        text = sch(sym("R1", "x", '(project "only" (path "/root-uuid" (reference "R1") (unit 1)))'))
+        self.assertEqual(kicad_sexp.resolve_project(self.child, text)[0], "only")
+
+    def test_several_projects_and_no_project_file_is_unresolved(self):
+        self.assertEqual(kicad_sexp.resolve_project(self.child, self.child.read_text(encoding="utf-8")),
+                         (None, ["old", "new"]))
+
+    def run_edit(self, path):
+        updates = self.d / "u.json"
+        updates.write_text('{"R3": {"MPN": "Z"}}', encoding="utf-8")
+        argv, sys.argv = sys.argv, ["edit_properties.py", str(path), "--updates", str(updates)]
+        try:
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                try:
+                    edit_properties.main()
+                    code = 0
+                except SystemExit as e:
+                    code = e.code
+        finally:
+            sys.argv = argv
+        return code, err.getvalue()
+
+    def test_edit_in_sub_sheet_uses_the_project_above(self):
+        (self.d / "new.kicad_pro").write_text("{}", encoding="utf-8")
+        code, err = self.run_edit(self.child)
+        out = self.child.read_text(encoding="utf-8")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out.count('"MPN" "Z"'), 1)
+        self.assertGreater(out.index('"MPN" "Z"'), out.index('(uuid "y")'))
+        self.assertNotIn("repeated sheet", err)
+
+    def test_edit_refused_when_projects_are_ambiguous(self):
+        before = self.child.read_text(encoding="utf-8")
+        code, err = self.run_edit(self.child)
+        self.assertEqual(code, 1)
+        self.assertIn("old, new", err)
+        self.assertIn("root schematic", err)
+        self.assertEqual(self.child.read_text(encoding="utf-8"), before)
+
+    def sync(self, path):
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            sync_datasheet_urls.sync_datasheet_urls(str(path))
+        return err.getvalue()
+
+    def manifest(self):
+        parts = {m: {"status": "ok", "datasheet_url": f"https://e.com/{m}.pdf", "references": [],
+                     "source": "digikey"} for m in ("A", "B")}
+        (self.d / "sub" / "datasheets").mkdir()
+        (self.d / "sub" / "datasheets" / "manifest.json").write_text(
+            json.dumps({"parts": parts}), encoding="utf-8")
+
+    def two_parts(self):
+        def part(ref, mpn, uuid, inst):
+            return sym(ref, uuid, inst, props=f'\t\t(property "MPN" "{mpn}" (at 0 0 0))\n'
+                                              '\t\t(property "Datasheet" "" (at 0 0 0))\n')
+        x = part("R1", "A", "x", '(project "old" (path "/o" (reference "R3") (unit 1))) '
+                                  '(project "new" (path "/root-uuid" (reference "R1") (unit 1)))')
+        y = part("R3", "B", "y", '(project "new" (path "/root-uuid" (reference "R3") (unit 1)))')
+        self.child.write_text(sch(x, y), encoding="utf-8")
+        self.manifest()
+
+    def datasheets(self):
+        tree = sexp.parse(self.child.read_text(encoding="utf-8"))
+        return [{q[1]: q[2] for q in sexp.find_all(s, "property")}["Datasheet"]
+                for s in sexp.find_all(tree, "symbol")]
+
+    def test_sync_on_a_sub_sheet_keeps_each_part_its_own_url(self):
+        (self.d / "new.kicad_pro").write_text("{}", encoding="utf-8")
+        self.two_parts()
+        self.sync(self.child)
+        self.assertEqual(self.datasheets(), ["https://e.com/A.pdf", "https://e.com/B.pdf"])
+
+    def test_sync_skips_a_sheet_with_ambiguous_projects(self):
+        self.two_parts()
+        before = self.child.read_text(encoding="utf-8")
+        self.assertIn("several projects", self.sync(self.child))
+        self.assertEqual(self.child.read_text(encoding="utf-8"), before)
 
 
 class ConflictTest(unittest.TestCase):

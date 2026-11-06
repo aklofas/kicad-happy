@@ -41,7 +41,7 @@ from distributor_core.manifest import load_index
 from edit_properties import apply_updates
 from kicad_core.sexp import unescape_quoted
 from kicad_sexp import (atomic_write_text, block_references, collect_schematic_files,
-                        iter_placed_symbol_blocks, kicad_lock_path, project_name_of)
+                        iter_placed_symbol_blocks, kicad_lock_path, resolve_project)
 
 
 # ---------------------------------------------------------------------------
@@ -220,9 +220,14 @@ def sync_datasheet_urls(
     files_modified = 0
 
     write_root = schematic_path.parent
-    project = project_name_of(schematic_path)
     for sch_file in sch_files:
         text = sch_file.read_text(encoding="utf-8")
+        project, projects = resolve_project(sch_file, text)
+        if project is None and len(projects) > 1:
+            print(f"Warning: {sch_file.name} holds instances of several projects "
+                  f"({', '.join(projects)}) and none has a .kicad_pro above it; skipped. "
+                  f"Run this on the project's root schematic.", file=sys.stderr)
+            continue
         current = extract_symbols(text, project)
         ref_url_map = {}
 

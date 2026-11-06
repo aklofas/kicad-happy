@@ -51,7 +51,7 @@ import _core_path  # noqa: F401
 from kicad_core.sexp import unescape_quoted
 from kicad_sexp import (atomic_write_text, block_references, escape_kicad_string,
                         find_matching_paren, iter_placed_symbol_blocks, kicad_lock_path,
-                        project_name_of, sch_file_version)
+                        resolve_project, sch_file_version)
 
 # First schematic format whose effects block takes "(hide yes)"; KiCad 6/7 only accept bare "hide".
 _HIDE_YES_MIN_VERSION = 20231120
@@ -414,9 +414,16 @@ def main():
     # Read schematic
     text = args.schematic.read_text(encoding="utf-8")
 
+    project, projects = resolve_project(args.schematic, text)
+    if project is None and len(projects) > 1:
+        print(f"Error: {args.schematic.name} holds instances of several projects "
+              f"({', '.join(projects)}) and none has a .kicad_pro above it; nothing written. "
+              f"Run this on the project's root schematic.", file=sys.stderr)
+        sys.exit(1)
+
     # Apply updates
     modified_text, change_log = apply_updates(text, updates, dry_run=args.dry_run,
-                                              project_name=project_name_of(args.schematic))
+                                              project_name=project)
 
     # Report changes
     actions = {}

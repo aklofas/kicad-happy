@@ -188,14 +188,27 @@ def symbol_instances_of(symbol_block: str, tilde_empty: bool = True) -> list[dic
     return inline_instances(["symbol", parse(node)], tilde_empty)
 
 
-def project_name_of(sch: Path) -> str:
-    """The project KiCad opens *sch* in: the stem of the .kicad_pro beside it (the one named
-    like the sheet, else the only one), else the sheet's own stem."""
-    pros = sorted(sch.parent.glob("*.kicad_pro")) if sch.parent.is_dir() else []
-    for pro in pros:
-        if pro.stem == sch.stem:
-            return pro.stem
-    return pros[0].stem if len(pros) == 1 else sch.stem
+def resolve_project(sch: Path, text: str) -> tuple[str | None, list[str]]:
+    """(project, projects named in the sheet's instances) for the sheet *sch* holding *text*.
+
+    The project is the nearest ancestor directory's .kicad_pro whose stem the instances
+    name (the walk stops at a directory holding .git); failing that, the only project the
+    instances name.  None when the sheet names several and none has a project file here: the
+    caller must not guess which one's references apply."""
+    names: list[str] = []
+    for _s, _e, block in iter_placed_symbol_blocks(text):
+        for entry in symbol_instances_of(block):
+            if entry["project"] and entry["project"] not in names:
+                names.append(entry["project"])
+    folder = sch.resolve().parent
+    while True:
+        for pro in sorted(folder.glob("*.kicad_pro")):
+            if pro.stem in names:
+                return pro.stem, names
+        if (folder / ".git").exists() or folder.parent == folder:
+            break
+        folder = folder.parent
+    return (names[0] if len(names) == 1 else None), names
 
 
 def block_references(symbol_block: str, project_name: str | None = None) -> list[str]:
