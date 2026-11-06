@@ -17,13 +17,13 @@ Two files in `<cache_dir>`:
 
 If `<sanitized_mpn>.scout.json` does not exist, run the scout first:
 
-1. Read `skills/datasheets/prompts/scout.md`.
-2. Substitute placeholders from the requested part (no plan exists yet): `{{MPN}}` = the target MPN, `{{PDF_PATH}}` = the source PDF path, `{{SCHEMA_PATH}}` = `skills/datasheets/schemas/scout.schema.json`.
+1. Read `<datasheets-skill-path>/prompts/scout.md`.
+2. Substitute placeholders from the requested part (no plan exists yet): `{{MPN}}` = the target MPN, `{{PDF_PATH}}` = the source PDF path, `{{SCHEMA_PATH}}` = `<datasheets-skill-path>/schemas/scout.schema.json`.
 3. Invoke `Agent` with:
    - `subagent_type: general-purpose`
    - `description: "Datasheet scout for <mpn>"`
    - `prompt`: the substituted prompt
-4. Capture the agent's JSON output. Validate against `skills/datasheets/schemas/scout.schema.json`. If valid, write the unwrapped JSON to `<cache_dir>/<sanitized_mpn>.scout.json` with an added `"pdf_sha256": "sha256:<hex of the PDF>"` field (`plan_extraction.py --use-cached-scout` refuses a scout whose SHA differs from the PDF's and warns about one without a SHA) AND a wrapped version to `<cache_dir>/<sanitized_mpn>.scout.result.json` (status complete, schema_version 1.0, extracted_at now, model_tier B, model_id claude-{current model}, data = the JSON).
+4. Capture the agent's JSON output. Validate against `<datasheets-skill-path>/schemas/scout.schema.json`. If valid, write the unwrapped JSON to `<cache_dir>/<sanitized_mpn>.scout.json` with an added `"pdf_sha256": "sha256:<hex of the PDF>"` field (`plan_extraction.py --use-cached-scout` refuses a scout whose SHA differs from the PDF's and warns about one without a SHA) AND a wrapped version to `<cache_dir>/<sanitized_mpn>.scout.result.json` (status complete, schema_version 1.0, extracted_at now, model_tier B, model_id claude-{current model}, data = the JSON).
 5. Then re-invoke `plan_extraction.py <mpn> <pdf_path> --use-cached-scout --cache-dir <cache_dir>` to generate the plan.
 
 ### Step 2 — Dispatch per-task subagents in parallel
@@ -32,7 +32,7 @@ For each `task` in `plan.tasks` with `status: "pending"` and `depends_on: []`, d
 
 For each task:
 
-1. Read the prompt template from `task.prompt_template` (relative to repo root).
+1. Read the prompt template from `task.prompt_template`. The plan stores repo-relative strings that start with `skills/datasheets/`; read the file at the same path under `<datasheets-skill-path>` (the skill's install directory) instead, and do the same for `task.schema`.
 2. Substitute placeholders:
    - `{{MPN}}` ← `plan.mpn`
    - `{{PDF_PATH}}` ← `plan.pdf_path`
@@ -72,7 +72,7 @@ For each returned agent output:
 ### Step 4 — Run merge_results.py
 
 ```bash
-python3 skills/datasheets/scripts/merge_results.py <mpn> --cache-dir <cache_dir>
+python3 <datasheets-skill-path>/scripts/merge_results.py <mpn> --cache-dir <cache_dir>
 ```
 
 If exit code is 0: extraction is complete; `<cache_dir>/<sanitized_mpn>.json` is the canonical cache file. Done.
@@ -101,7 +101,7 @@ For each failed task:
 ### Step 6 — Re-merge with --retry-failed
 
 ```bash
-python3 skills/datasheets/scripts/merge_results.py <mpn> --cache-dir <cache_dir> --retry-failed
+python3 <datasheets-skill-path>/scripts/merge_results.py <mpn> --cache-dir <cache_dir> --retry-failed
 ```
 
 Exit code 0 always (this is the second-and-final merge). Tasks that succeeded merge cleanly; tasks that still failed are partial-merged with `{"_extraction_failed": true, "reason": ...}`.
@@ -123,7 +123,7 @@ Tokens and cost are unavailable from inside Claude Code's `Agent` tool — leave
 ## Failure modes to watch for
 
 - **Agent returns prose with code fences.** Strip the fences before parsing.
-- **Agent emits non-canonical units** (e.g. `unit: "µF"` instead of `unit: "F"` with value 4.7e-4). The schema accepts µF as a string but the verifier and downstream consumers expect F. Treat as a hard failure (schema validation should catch via `datasheet_verify.py` v1.4 extensions running in the harness gate).
+- **Agent emits non-canonical units** (e.g. `unit: "µF"` instead of `unit: "F"` with value 4.7e-4). The SpecValue `unit` enum has no `µF` or `uF`, so the task fails schema validation at merge and is recorded as failed; re-dispatch it with the canonical unit.
 - **Agent invents pin numbers** in the regulator extractor that don't appear in pinout. The verifier catches this.
 - **Family-PDF disambiguation drift**: agent extracts a different variant's spec. Catches via sanity vector diff.
 - **Page list not honored**: agent reads pages outside `task.pages`. The prompt instructs "focus on these pages"; if the agent ranges further, that's allowed (the constraint is "not less than these pages", not "only these pages").

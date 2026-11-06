@@ -157,7 +157,7 @@ Returns:
 
 ```python
 {
-    "total": 8.2,
+    "total": 8.3,
     "pin_coverage": 9.0,
     "voltage_ratings": 8.5,
     "application_info": 7.0,

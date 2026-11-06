@@ -42,7 +42,7 @@ Example (abbreviated; `recommended_operating` is filled the same way as `absolut
     "code": "TO-263-5",
     "pin_count": 5,
     "thermal_pad": true,
-    "evidence": {"page": 1, "section": "Features", "confidence": "high", "method": "prose"}
+    "evidence": {"page": 1, "section": "Features", "confidence": "medium", "method": "prose"}
   },
   "thermal": {
     "theta_ja": [{"min": null, "typ": 50, "max": null, "unit": "°C/W",

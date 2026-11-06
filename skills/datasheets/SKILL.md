@@ -79,7 +79,7 @@ The recommended consumer surface is the typed `lookup(mpn, cache_dir=...)` facad
 
 ```python
 import sys, pathlib
-sys.path.insert(0, str(pathlib.Path(__file__).parent.parent / "datasheets"))
+sys.path.insert(0, "<datasheets-skill-path>")
 from datasheet_types import lookup, has_data, best, trusted
 
 # Returns Optional[DatasheetFacts]. None on cache miss or unreadable cache; quality is reported on the object, not gated.
@@ -88,10 +88,10 @@ if facts is None:
     return  # heuristic-only path; no datasheet evidence available
 
 # Field-level trust gating — every SpecValue list runs through has_data() / best() / trusted().
-pu_range = facts.base.recommended_pullup_range  # Optional[list[SpecValue]]
-if has_data(pu_range):
+vin = facts.base.recommended_operating.get("VIN")  # Optional[list[SpecValue]]; recommended_operating is dict[str, list[SpecValue]]
+if has_data(vin):
     # Most-trusted single value (first SpecValue meeting threshold, preserves extractor order).
-    rec = best(pu_range, min_confidence="medium")  # Optional[SpecValue]
+    rec = best(vin, min_confidence="medium")  # Optional[SpecValue]
     if rec is not None and rec.min is not None:
         ...  # use rec.min, rec.max, rec.typ, rec.unit, rec.evidence.{page,section,confidence}
 

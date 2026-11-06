@@ -15,7 +15,7 @@ Produce a single JSON **array** of pin objects matching this schema: `{{SCHEMA_P
 - `type`: exactly one of `input`, `output`, `bidirectional`, `tri_state`, `passive`, `open_collector`, `open_emitter`, `power_in`, `power_out`, `not_connected`, `unspecified` (the KiCad ERC pin types; the schema rejects anything else). Choose the closest match: supplies and grounds are `power_in` (a regulator's output rail is `power_out`), analog inputs/outputs are `input`/`output` with `subtype: "analog"`, open-drain and open-collector outputs are `open_collector`, open-emitter outputs `open_emitter`, three-state outputs `tri_state`, a no-connect is `not_connected`, an exposed thermal pad is `passive` with `subtype: "thermal_pad"`, reset/boot/clock/oscillator/debug/data pins take their direction (`input`, `output`, `bidirectional`) with the role in `subtype`.
 - `subtype`: optional free-form refinement (e.g. `switching` for a switcher's OUT pin, `analog`, `open_drain`, `thermal_pad`, `reset`, `clock`, `usb`, `i2c`, `spi`, `pwm`); null when none.
 - `description`: pin's functional description from the datasheet.
-- `power_domain`: name of the supply rail the pin is referenced to (e.g. `VIN`, `VDD`, `VDDIO`, `VBAT`). Must be a key in `base.recommended_operating` when populated. Null for ground or signal pins not domain-tagged.
+- `power_domain`: name of the supply rail the pin is referenced to (e.g. `VIN`, `VDD`, `VDDIO`, `VBAT`). Must be a key in `base.recommended_operating` when populated. Null for ground or signal pins not domain-tagged. A supply pin is range-checked against that entry only when its `type` is `power_in` and it has a `power_domain`; a signal pin's `power_domain` is not range-checked.
 - `alt_functions`: array of objects `{name, peripheral, role, af_code}` — alternate functions multiplexed onto this pin (MCU pins often have many). E.g. `{"name": "USART1_TX", "peripheral": "USART1", "role": "TX", "af_code": "AF7"}`; `role` and `af_code` may be null. Never plain strings.
 - `is_5v_tolerant`: bool or null (signal pins on MCUs).
 - `absolute_max`: SpecValue list (per-pin abs max if pin-specific, e.g. CMOS input vs. high-V tolerant input). Null if covered by base block.
@@ -36,7 +36,7 @@ Produce a single JSON **array** of pin objects matching this schema: `{{SCHEMA_P
 
 Return a JSON array. No prose, no Markdown fences. Output must validate against `{{SCHEMA_PATH}}`.
 
-Example (LM2596-ADJ, TO-263 NDH):
+Example (LM2596-ADJ, TO-263 NDH; an excerpt showing pins 1 and 2 of the five-pin part):
 
 ```json
 [

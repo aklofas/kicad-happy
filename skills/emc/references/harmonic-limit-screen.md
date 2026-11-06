@@ -5,13 +5,15 @@
 ## Command
 
 ```bash
-python3 skills/emc/scripts/analyze_harmonic_limits.py \
+python3 <emc-skill-path>/scripts/analyze_harmonic_limits.py \
   --spectrum harmonic-lines.json \
   --limits limit-profile.json \
   --limit-column peak \
   --design-margin-db 3 \
   --output harmonic-limit-screen.json
 ```
+
+`<emc-skill-path>` is the EMC skill's directory (in a repository checkout, `skills/emc`).
 
 The command exits with status 0 when the result is written and 2 on any error (invalid arguments, a missing or unreadable input, invalid JSON, a schema violation, or a failure to write `--output`). Errors are reported on stderr and no result is emitted.
 

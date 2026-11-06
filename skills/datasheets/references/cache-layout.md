@@ -33,8 +33,9 @@ Sanitization rules (`skills/datasheets/datasheet_types/cache_reader.py`):
 - Replace any character NOT in `[A-Za-z0-9_.-]` with `_`.
 - No hash suffix. Two MPNs that sanitize to the same string collide; this
   is acceptably rare in practice given real MPN character sets.
-- A hand-dropped extraction file must use this sanitized name; the dict helpers in
-  `datasheet_features.py` apply the same mapping and do not read any other path.
+- A hand-dropped extraction file must use this sanitized name. The dict helpers in
+  `datasheet_features.py` look the MPN up in the legacy manifest index first and
+  fall back to this sanitized file name.
 
 Examples:
 - `LM2596-ADJ` → `LM2596-ADJ.json`
@@ -76,10 +77,9 @@ other tooling.
 
 **Why the leading underscore:** distinguishes the reserved directory
 from per-MPN files that could theoretically sanitize to the same name.
-`_families` is NOT a valid sanitized MPN output (sanitizer preserves
-underscore, so `_families` could in principle be produced by an MPN
-literally named `_families`; the underscore prefix is a soft-social
-reservation, not a structural guarantee). A regression test in the
+The sanitizer keeps underscores, so an MPN literally named `_families`
+sanitizes to `_families`; the leading underscore is a naming convention,
+not a guarantee. A regression test in the
 test harness (`test_lookup_ignores_families_subdirectory_coexisting_with_cache_files`)
 locks the invariant that this edge case does not break `lookup()`.
 

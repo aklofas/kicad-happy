@@ -64,7 +64,7 @@ Per task: `<cache_dir>/<sanitized_mpn>.<task_id>.result.json` — the **wrapped 
 
 The dispatcher is invoked **at most twice per pipeline run**:
 
-1. **First invocation**: dispatch all `pending` tasks. Result files written. `merge_results.py` runs, validates, writes `<sanitized_mpn>.json`. If any task is `failed`, exit nonzero — the orchestrator that drives the pipeline re-invokes the dispatcher once more, re-running just the failed tasks (delete or rename their result files first to bypass idempotence).
+1. **First invocation**: dispatch all `pending` tasks. Result files written. `merge_results.py` runs and validates. With every task complete it writes `<sanitized_mpn>.json`. If any task is `failed`, it writes only the plan state, not `<sanitized_mpn>.json`, and exits 1 — the orchestrator that drives the pipeline re-invokes the dispatcher once more, re-running just the failed tasks (delete or rename their result files first to bypass idempotence).
 
 2. **Second invocation** (`--retry-failed` mode in the dispatcher recipe): re-dispatch the failed tasks with the original prompt + appended error message ("Your previous output failed schema validation: <error>. Try again."). Write new result files (overwriting the failed ones). `merge_results.py --retry-failed` then runs; tasks that succeed merge cleanly; tasks that still fail get partial-merged with `{"_extraction_failed": true, "reason": ...}`.
 

@@ -12,7 +12,7 @@ Full extraction-pipeline procedure. The SKILL.md main flow points here; scripts 
 3. Category extractor prompts (base, pinout, regulator, …) run per `dispatch-claude-code.md` and `dispatcher-contract.md`.
 4. `merge_results.py` validates per-task result files against schemas and merges into `<project>/datasheets/extracted/<sanitized_mpn>.json`.
 5. Three-dimension quality score lives at `facts.extraction.quality_score`.
-6. Consumers query via `lookup(mpn, cache_dir)` or via the v1.3 compat helpers in `datasheet_features.py`.
+6. Consumers query via `lookup(mpn, cache_dir=…)` or via the v1.3 compat helpers in `datasheet_features.py`.
 
 **v1.3 legacy pipeline (read-only in v1.4):**
 1. User runs an analyzer or requests extraction.

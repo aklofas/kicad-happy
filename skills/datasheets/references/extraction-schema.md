@@ -298,7 +298,7 @@ No universally required fields (MCU characteristics vary too widely). Optional f
 | `vout_formula` | string | yes | `"Vout = 0.595 * (1 + R1/R2)"` | Output voltage formula |
 | `notes` | array | yes | `["Place input cap close to IC", ...]` | Layout and application notes |
 
-The scoring check counts fields matching `_recommended` or in the set `{inductor_recommended, input_cap_recommended, output_cap_recommended, feedback_resistor_top_ohm, feedback_resistor_bottom_ohm, compensation_cap, bootstrap_cap, decoupling_cap}`. Two or more populated fields scores full marks; zero scores 0.
+The scoring check counts fields matching `_recommended` or in the set `{inductor_recommended, input_cap_recommended, output_cap_recommended, feedback_resistor_top_ohm, feedback_resistor_bottom_ohm, compensation_cap, bootstrap_cap, decoupling_cap}`. The score is a deduction: no populated field takes 3 points off, one takes 1.5 off, and two or more take nothing off.
 
 Additional `_recommended`-suffixed keys are also counted. Add device-specific keys freely.
 
@@ -371,7 +371,7 @@ The extractor populates `source_pdf` and `extracted_from_pages`. The cache manag
 }
 ```
 
-Index keys are MPN strings sanitized by `_sanitize_mpn()`: non-alphanumeric characters replaced with underscores, with a 6-character MD5 suffix appended to avoid collisions (e.g., `TPS61023DRLR_a1b2c3`). The suffix is derived from the raw MPN.
+Index keys are MPN strings sanitized by `_sanitize_mpn()`: characters other than `[A-Za-z0-9_]` replaced with underscores, with a 6-character MD5 suffix appended to avoid collisions (e.g., `TPS61023DRLR_a1b2c3`). The suffix is the MD5 of the whitespace-stripped MPN.
 
 ---
 
