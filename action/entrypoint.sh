@@ -198,6 +198,7 @@ if [ -n "$PCB" ] && [ -f "$PCB" ]; then
     echo "Analyzing: $PCB"
     PCB_CMD=("$SCRIPTS/analyze_pcb.py" "$PCB" -o "$PCB_JSON")
     [ -n "$CONFIG_PATH" ] && PCB_CMD+=(--config "$CONFIG_PATH")
+    [ -n "$SCH_JSON" ] && [ -f "$SCH_JSON" ] && PCB_CMD+=(--schematic "$SCH_JSON")
     if python3 "${PCB_CMD[@]}" 2>"$OUTDIR/pcb.err"; then
         echo "pcb-json=$PCB_JSON" >> "$GITHUB_OUTPUT"
     else
@@ -330,9 +331,12 @@ if [ "${INPUT_DIFF_BASE:-false}" = "true" ] && [ -n "${GITHUB_BASE_REF:-}" ]; th
             python3 "$SCRIPTS/analyze_schematic.py" "$BASE_SCH" -o "$OUTDIR/base/schematic.json" \
                 ${BASE_CFG_ARGS[@]+"${BASE_CFG_ARGS[@]}"} 2>/dev/null || true
         fi
+        BASE_SCH_ARGS=()
+        [ -f "$OUTDIR/base/schematic.json" ] && BASE_SCH_ARGS=(--schematic "$OUTDIR/base/schematic.json")
         if [ -n "$BASE_PCB" ] && [ -f "$BASE_PCB" ]; then
             python3 "$SCRIPTS/analyze_pcb.py" "$BASE_PCB" -o "$OUTDIR/base/pcb.json" \
-                ${BASE_CFG_ARGS[@]+"${BASE_CFG_ARGS[@]}"} 2>/dev/null || true
+                ${BASE_CFG_ARGS[@]+"${BASE_CFG_ARGS[@]}"} \
+                ${BASE_SCH_ARGS[@]+"${BASE_SCH_ARGS[@]}"} 2>/dev/null || true
         fi
 
         # Diff each analyzer pair that exists on both sides; the comment carries every diff

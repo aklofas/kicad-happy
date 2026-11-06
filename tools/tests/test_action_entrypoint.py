@@ -1,6 +1,8 @@
 """The Action entrypoint runs its inline Python isolated from the checked-out workspace."""
-import os, re, shutil, subprocess, tempfile, unittest
+import json, os, re, shutil, subprocess, tempfile, unittest
 from pathlib import Path
+
+from tools.tests._fixtures import fixture_path, have
 
 ROOT = Path(__file__).resolve().parents[2]
 SCH = ('(kicad_sch (version 20231120) (generator "eeschema") '
@@ -110,6 +112,53 @@ class EntrypointFailedAnalysisTest(unittest.TestCase):
             self.assertIn("PCB analysis failed", report)
             self.assertNotIn("Schematic analysis failed", report)
             self.assertNotIn("Schematic, ", report)
+
+
+SIMPLE = fixture_path("simple-project")
+
+
+def _simple_files():
+    return {n: (SIMPLE / n).read_text(encoding="utf-8")
+            for n in ("simple.kicad_sch", "simple.kicad_pcb", "simple.kicad_pro")}
+
+
+@unittest.skipIf(os.name == "nt" or not shutil.which("bash"), "runs the bash entrypoint")
+@unittest.skipUnless(have(SIMPLE / "simple.kicad_pcb"), "needs the simple-project fixture")
+class EntrypointPcbSchematicTest(unittest.TestCase):
+    def test_pcb_analysis_reads_the_schematic_json(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            r, out = run_entrypoint(Path(tmp), _simple_files())
+            self.assertEqual(r.returncode, 0, r.stderr)
+            pcb = json.loads(Path(out["pcb-json"]).read_text(encoding="utf-8"))
+            self.assertEqual(pcb["power_net_resolution"]["source"], "schematic")
+
+    def test_base_pcb_reads_the_base_schematic(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            files = _simple_files()
+            git = ["git", "-c", "user.name=t", "-c", "user.email=t"]
+            origin = tmp / "origin.git"
+            subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(origin)], check=True)
+            ws = tmp / "ws"
+            ws.mkdir()
+            for n, text in files.items():
+                (ws / n).write_text(text, encoding="utf-8")
+            for cmd in (["init", "-q", "-b", "main"], ["add", "."], ["commit", "-q", "-m", "base"],
+                        ["remote", "add", "origin", str(origin)], ["push", "-q", "origin", "main"]):
+                subprocess.run(git + cmd, cwd=ws, check=True, capture_output=True)
+            r, out = run_entrypoint(tmp, files, INPUT_DIFF_BASE="true", GITHUB_BASE_REF="main")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            base = Path(out["pcb-json"]).parent / "base" / "pcb.json"
+            self.assertTrue(base.is_file(), r.stderr)
+            self.assertEqual(json.loads(base.read_text(encoding="utf-8"))["power_net_resolution"]["source"],
+                             "schematic")
+
+    def test_failed_schematic_pcb_runs_without_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            r, out = run_entrypoint(Path(tmp), {"top.kicad_sch": "", "top.kicad_pcb": PCB})
+            self.assertEqual(r.returncode, 0, r.stderr)
+            pcb = json.loads(Path(out["pcb-json"]).read_text(encoding="utf-8"))
+            self.assertEqual(pcb["power_net_resolution"]["source"], "heuristic")
 
 
 class EntrypointStaticTest(unittest.TestCase):
