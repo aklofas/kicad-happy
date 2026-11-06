@@ -66,6 +66,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The Action no longer reports plain-mode PCB routing as "100% complete": without `--full` the report says every multi-pad net has copper.
 - The GitHub Action passes the schematic analysis to the PCB analysis, and does the same for the base-branch re-run, so power nets come from the schematic and switching-regulator loops are measured from pads. SW-003 in the Action's EMC section grades them.
 - With `diff-base: true`, sub-sheets stored outside the root schematic's folder (for example `../shared/…`) are taken from the base branch too, so the diff no longer reports them as removed.
+- The fork-safe comment example posts only to the pull request whose head is the analysed commit, and refuses a PR number that is not a plain integer, so a fork can no longer choose which PR or issue the write-token job comments on.
 
 ### Documentation
 

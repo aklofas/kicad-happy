@@ -30,11 +30,27 @@ jobs:
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      # pr-number.txt comes from the (possibly fork-controlled) analysis run, so
+      # accept only a plain integer and only the PR whose head is the analysed commit.
       - id: pr-number
         shell: bash
-        run: echo "number=$(cat pr-number.txt)" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          n=$(head -c 32 pr-number.txt | tr -d '\r\n')
+          if [ -z "$n" ]; then echo "::notice::no pull request number; not commenting"; exit 0; fi
+          [[ "$n" =~ ^[0-9]+$ ]] || { echo "::error::pr-number.txt is not a PR number"; exit 1; }
+          sha=$(gh api "repos/$REPO/pulls/$n" --jq .head.sha) || exit 1
+          if [ "$sha" != "$HEAD_SHA" ]; then
+            echo "::warning::PR #$n head is not the analysed commit; not commenting"
+            exit 0
+          fi
+          echo "number=$n" >> "$GITHUB_OUTPUT"
 
-      - uses: thollander/actions-comment-pull-request@v3
+      - if: steps.pr-number.outputs.number != ''
+        uses: thollander/actions-comment-pull-request@v3
         with:
           file-path: report.md
           comment-tag: kicad-happy-review
