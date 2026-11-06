@@ -26,7 +26,7 @@ from pathlib import Path
 _HERE = str(Path(__file__).resolve().parent)
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
-from bom_fields import POPULATE_UNFITTED  # noqa: E402
+from bom_fields import DNP_VALUE_MARKERS, POPULATE_UNFITTED  # noqa: E402
 from kicad_core.fileio import atomic_write_text  # noqa: E402
 
 
@@ -47,7 +47,7 @@ PNP_ROT_FIELDS = ("rotation", "rot", "angle")
 
 # --- Markers that indicate a row should be skipped --------------------------
 
-DNP_MARKERS = ("no stuff", "dnp", "do not populate", "dni", "noload", "no load")
+DNP_MARKERS = tuple(sorted(DNP_VALUE_MARKERS))
 # A marker counts only as a whole token: part numbers such as OPT4003DNPRQ1 contain one.
 _DNP_MARKER_RE = re.compile(
     r"(?<![a-z0-9])(?:" + "|".join(re.escape(m) for m in DNP_MARKERS) + r")(?![a-z0-9])"

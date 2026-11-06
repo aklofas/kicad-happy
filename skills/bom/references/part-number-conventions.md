@@ -335,6 +335,9 @@ Listed for reference; `bom_manager.py` does not read these fields.
 | `DNM` | Do Not Mount |
 | `POPULATE` | "0" / "no" / "false" / "DNP" = DNP, "1" / "yes" / "true" / empty = populate |
 | `Do Not Populate` | Verbose variant |
+| Value `DNP` / `DNF` / `NoPop` / `nostuff` / `Do Not Place` (the whole value) | Not fitted |
+
+A DNP-named field also accepts `Y`, `x` and `*` as DNP.
 
 ---
 
