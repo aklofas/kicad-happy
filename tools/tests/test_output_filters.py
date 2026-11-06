@@ -1,9 +1,10 @@
 """Audience summaries and the manager text view ignore suppressed findings
 and keep readiness for stages outside the active filter."""
-import sys, unittest
+import ast, sys, unittest
 from pathlib import Path
 
 SCRIPTS = Path(__file__).resolve().parents[2] / "skills" / "kicad" / "scripts"
+EMC_SCRIPTS = SCRIPTS.parents[1] / "emc" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 import output_filters as of  # noqa: E402
 
@@ -55,3 +56,50 @@ class ManagerTextTest(unittest.TestCase):
         text = of.format_text(fs, "manager")
         self.assertNotIn("X-1", text)
         self.assertIn("Blockers:      0", text)
+
+
+def _emc_rule_ids():
+    """Every rule_id literal passed to an EMC finding constructor."""
+    ids = set()
+    for path in EMC_SCRIPTS.glob("*.py"):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if not isinstance(node, ast.Call):
+                continue
+            name = getattr(node.func, "id", None) or getattr(node.func, "attr", None)
+            if name not in ("_make_finding", "make_finding"):
+                continue
+            arg = next((k.value for k in node.keywords if k.arg == "rule_id"), None)
+            if arg is None and name == "_make_finding" and len(node.args) >= 3:
+                arg = node.args[2]
+            if arg is not None:
+                ids |= {c.value for c in ast.walk(arg)
+                        if isinstance(c, ast.Constant) and isinstance(c.value, str)}
+    return ids
+
+
+class EmcStageMapTest(unittest.TestCase):
+    def test_every_emc_rule_has_a_stage_row(self):
+        ids = _emc_rule_ids()
+        self.assertGreater(len(ids), 40)
+        unmapped = sorted(r for r in ids
+                          if not any(r.startswith(p) for ps in of._STAGE_RULES.values() for p in ps))
+        self.assertEqual(unmapped, [])
+
+    def test_emc_board_families_are_layout(self):
+        fs = [_f(r, "warning") for r in ("SU-001", "SU-003", "PD-001", "PD-004", "EE-001", "EE-002")]
+        of.assign_stages(fs)
+        self.assertEqual([f["stages"] for f in fs], [["layout"]] * len(fs))
+
+    def test_schematic_pd_detector_unchanged(self):
+        fs = [_f("PD-DET", "info")]
+        of.assign_stages(fs)
+        self.assertEqual(fs[0]["stages"], ["schematic"])
+
+    def test_layout_stage_keeps_stackup_error(self):
+        result = {"findings": [_f("SU-001", "error"), _f("PU-001", "info")]}
+        of.apply_output_filters(result, "layout")
+        self.assertTrue(result["findings"][0]["in_active_stage"])
+        self.assertEqual(result["stage_filter"]["included_count"], 1)
+        readiness = result["audience_summary"]["manager"]["stage_readiness"]
+        self.assertEqual(readiness["layout"], "needs_work")
+        self.assertEqual(readiness["schematic"], "pass")

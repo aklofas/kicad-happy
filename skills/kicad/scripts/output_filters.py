@@ -56,6 +56,8 @@ _STAGE_RULES: Dict[str, List[str]] = {
         'NR-', 'RP-', 'TW-', 'PS-002',
         'VS-', 'DP-', 'GP-', 'DC-', 'SW-', 'CK-', 'BE-', 'XT-',
         'ML-', 'SH-', 'TH-',
+        # EMC stackup, PDN impedance and emission estimates
+        'SU-', 'PD-0', 'EE-',
         'DFM-001', 'DFM-002',
         'PM-001', 'PM-002',
         'TB-001',
