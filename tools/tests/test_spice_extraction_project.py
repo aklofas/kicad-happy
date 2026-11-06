@@ -51,6 +51,38 @@ class SpiceExtractionProjectTest(unittest.TestCase):
         self.assertIsNone(ssf.fetch_specs_from_datasheet(MPN, None))
 
 
+class CacheManagerExtractionTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "skills" / "datasheets" / "scripts"))
+        import datasheet_extract_cache as dec
+        self.dec = dec
+
+    def cache(self, score):
+        self.dec.cache_extraction(self.tmp / "datasheets" / "extracted", "LM358",
+                                  {"extraction_metadata": {"extraction_score": score},
+                                   "spice_specs": {"gbw_hz": 1e6}})
+
+    def test_datasheets_skill_cache_is_read(self):
+        self.cache(8.0)
+        self.assertEqual(ssf.fetch_specs_from_extraction("LM358", str(self.tmp)),
+                         {"gbw_hz": 1e6, "_source": "extraction:LM358"})
+
+    def test_cache_manager_low_score_is_a_miss(self):
+        self.cache(5.0)
+        self.assertIsNone(ssf.fetch_specs_from_extraction("LM358", str(self.tmp)))
+
+    def test_legacy_bare_key_cache_still_read(self):
+        ext = self.tmp / "datasheets" / "extracted"
+        ext.mkdir(parents=True)
+        (ext / "LM358.json").write_text(json.dumps(
+            {"meta": {"extraction_score": 8.0}, "spice_specs": {"gbw_hz": 1e6}}), encoding="utf-8")
+        (ext / "manifest.json").write_text(json.dumps(
+            {"extractions": {"LM358": {"file": "LM358.json"}}}), encoding="utf-8")
+        self.assertEqual(ssf.fetch_specs_from_extraction("LM358", str(self.tmp))["gbw_hz"], 1e6)
+
+
 class PdfManifestTest(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())

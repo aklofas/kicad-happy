@@ -578,16 +578,8 @@ def _read_spice_specs(raw):
     return specs
 
 
-def fetch_specs_from_extraction(mpn, project_dir):
-    """Extract SPICE-relevant specs from a cached datasheet extraction."""
-    if not project_dir:
-        return None
-    from pathlib import Path
-    from datasheet_types.cache_reader import read_json_object, safe_extract_dir
-    from distributor_core.manifest import manifest_file_path
-    extract_dir = safe_extract_dir(Path(project_dir) / "datasheets" / "extracted")
-    if extract_dir is None:
-        return None
+def _legacy_extraction(extract_dir, mpn, read_json_object, manifest_file_path):
+    """Read an extraction from a hand-made cache keyed by the bare part number."""
     index_path = extract_dir / "manifest.json"
     if not index_path.exists():
         index_path = extract_dir / "index.json"
@@ -596,8 +588,7 @@ def fetch_specs_from_extraction(mpn, project_dir):
     index = read_json_object(index_path)
     if index is None:
         return None
-    import re as _re
-    key = _re.sub(r'[^A-Za-z0-9_]', '_', mpn.strip())
+    key = re.sub(r'[^A-Za-z0-9_]', '_', mpn.strip())
     exts = index.get("extractions")
     if not isinstance(exts, dict):
         return None
@@ -612,12 +603,34 @@ def fetch_specs_from_extraction(mpn, project_dir):
     json_file = manifest_file_path(extract_dir, entry.get("file") if isinstance(entry, dict) else None)
     if json_file is None or not json_file.exists():
         return None
-    extraction = read_json_object(json_file)
-    if extraction is None:
+    return read_json_object(json_file)
+
+
+def fetch_specs_from_extraction(mpn, project_dir):
+    """Extract SPICE-relevant specs from a cached datasheet extraction."""
+    if not project_dir:
         return None
-    # Trust gate: skip low-quality extractions
-    meta = extraction.get("meta", {})
-    score = meta.get("extraction_score", 0) if isinstance(meta, dict) else None
+    from pathlib import Path
+    from datasheet_types.cache_reader import read_json_object, safe_extract_dir
+    from distributor_core.manifest import manifest_file_path
+    extract_dir = safe_extract_dir(Path(project_dir) / "datasheets" / "extracted")
+    if extract_dir is None:
+        return None
+    from datasheet_extract_cache import get_cached_extraction
+    extraction = get_cached_extraction(extract_dir, mpn)
+    if extraction is None:
+        extraction = _legacy_extraction(extract_dir, mpn, read_json_object, manifest_file_path)
+    if not isinstance(extraction, dict):
+        return None
+    # Trust gate: skip low-quality extractions. The cache manager writes
+    # `extraction_metadata`; hand-made caches use `meta`.
+    score = None
+    for block in ("extraction_metadata", "meta"):
+        meta = extraction.get(block)
+        value = meta.get("extraction_score") if isinstance(meta, dict) else None
+        if isinstance(value, (int, float)):
+            score = value
+            break
     if not isinstance(score, (int, float)) or isinstance(score, bool) or score < 6.0:
         return None
     specs = _read_spice_specs(extraction.get("spice_specs"))

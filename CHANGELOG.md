@@ -37,6 +37,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - An unreadable SPICE model manifest (`spice/models/manifest.json`) is left as it is, with a "model not cached" diagnostic, instead of being replaced by a manifest holding only the newest model.
 - `analyze_emc.py --severity` accepts `error`, `warning` and `info`, the names its output uses, as well as the older five-level names.
 - LTspice and Xyce measurement output with a signed exponent (`1.58e+04`) is read as a number instead of crashing the simulation; ngspice parsing is unchanged.
+- The SPICE model resolver now reads `spice_specs` from extractions the `datasheets` skill caches (`datasheets/extracted/`), when the analysis names its project and the run is not `--offline`.
 
 ### Documentation
 

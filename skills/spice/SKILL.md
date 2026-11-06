@@ -314,7 +314,7 @@ When the analyzer detects an opamp with a recognized MPN (e.g., LM358, TL072, MC
 Model resolution cascade:
 1. **Project cache** (`<project>/spice/models/`, beside the schematic the analysis JSON names) — previously resolved models
 2. **Distributor API specs** — LCSC (no key, needs network), then DigiKey, element14 and Mouser when their keys are set; the first source with usable specs wins
-3. **Legacy structured extraction** — a `spice_specs` record from `<project>/datasheets/extracted/` (score ≥ 6 of 10). It does not read v1.4 extractions, and in practice it finds nothing from the datasheets skill's cache; the typed `lookup()` facts are not used by this resolver.
+3. **Legacy structured extraction** — a `spice_specs` record from `<project>/datasheets/extracted/` (score ≥ 6 of 10). It reads the datasheets skill's cache and older hand-made caches; the typed `lookup()` facts are not used by this resolver.
    This tier and the PDF tier run only when the analysis names its project.
 4. **Datasheet PDF regex extraction** — reads from `<project>/datasheets/`, extracts via text pattern matching (needs `pdftotext`)
 5. **Built-in lookup table** — 103 op-amps, LDOs, comparators and references as offline fallback

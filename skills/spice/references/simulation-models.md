@@ -25,7 +25,7 @@ When the skill encounters an active component (opamp, LDO, comparator), it resol
 
 1. **Project cache** — `<project>/spice/models/manifest.json` (legacy name: `index.json`) stores previously resolved models (instant, no network)
 2. **Distributor API parametric data** — queries LCSC (no auth), DigiKey, element14, Mouser for real electrical specs like GBW, slew rate, offset voltage. Structured JSON, no PDF parsing.
-3. **Legacy structured extraction** — a `spice_specs` record from `<project>/datasheets/extracted/` (score ≥ 6 of the 0-10 completeness score). It does not read v1.4 extractions, and in practice it finds nothing from the `datasheets` skill's cache. This tier and the PDF tier run only when the analysis names its project. See `skills/datasheets/references/extraction-schema.md` and `skills/datasheets/references/quality-scoring.md`.
+3. **Legacy structured extraction** — a `spice_specs` record from `<project>/datasheets/extracted/` (score ≥ 6 of the 0-10 completeness score). It reads the `datasheets` skill's cache and older hand-made caches; v1.4 typed facts are not used. This tier and the PDF tier run only when the analysis names its project. See `skills/datasheets/references/extraction-schema.md` and `skills/datasheets/references/quality-scoring.md`.
 4. **Datasheet PDF regex extraction** — reads downloaded PDFs from `<project>/datasheets/`, extracts specs via text pattern matching. Requires `pdftotext`. Last-resort fallback.
 5. **Built-in lookup table** — `spice_part_library.py` has 103 op-amps, LDOs, comparators and references with datasheet-verified specs. Offline safety net.
 6. **Ideal model fallback** — generic model with fixed parameters (e.g., 10 MHz GBW for opamps)
