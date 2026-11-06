@@ -5355,7 +5355,10 @@ def build_power_sequencing_graph(ctx: AnalysisContext,
         en_type = "always_on"
 
         if en_net:
-            if ctx.is_power_net(en_net):
+            if ctx.is_ground(en_net):
+                en_type = "tied_to_ground"
+                en_source = en_net
+            elif ctx.is_power_net(en_net):
                 en_type = "tied_to_rail"
                 en_source = en_net
             elif en_net in pg_to_ref:

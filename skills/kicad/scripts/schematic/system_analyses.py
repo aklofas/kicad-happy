@@ -1651,11 +1651,14 @@ def analyze_power_sequencing(ctx: AnalysisContext,
             }
 
             # Determine what drives EN
-            if is_power_net(en_net):
-                dep_entry["en_source"] = "always_on"
+            if is_ground(en_net):
+                # An overbar marks an active-low enable, so ground enables it; any other
+                # enable pin's polarity is not known from its name
+                active_low_enable = en_pin_name.startswith("~") and "SHDN" not in en_pin_name
+                dep_entry["en_source"] = "always_on" if active_low_enable else "tied_to_ground"
                 dep_entry["en_driven_by"] = en_net
-            elif is_ground(en_net):
-                dep_entry["en_source"] = "disabled"
+            elif is_power_net(en_net):
+                dep_entry["en_source"] = "always_on"
                 dep_entry["en_driven_by"] = en_net
             elif en_net in nets:
                 en_pins = nets[en_net]["pins"]
