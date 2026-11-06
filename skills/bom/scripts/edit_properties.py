@@ -49,8 +49,9 @@ from pathlib import Path
 
 import _core_path  # noqa: F401
 from kicad_core.sexp import unescape_quoted
-from kicad_sexp import (atomic_write_text, block_references, escape_kicad_string, find_matching_paren,
-                        iter_placed_symbol_blocks, kicad_lock_path, sch_file_version)
+from kicad_sexp import (atomic_write_text, block_references, escape_kicad_string,
+                        find_matching_paren, iter_placed_symbol_blocks, kicad_lock_path,
+                        project_name_of, sch_file_version)
 
 # First schematic format whose effects block takes "(hide yes)"; KiCad 6/7 only accept bare "hide".
 _HIDE_YES_MIN_VERSION = 20231120
@@ -184,6 +185,7 @@ def apply_updates(
     text: str,
     updates: dict[str, dict[str, str]],
     dry_run: bool = False,
+    project_name: str | None = None,
 ) -> tuple[str, list[dict]]:
     """Apply property updates to schematic text.
 
@@ -191,6 +193,7 @@ def apply_updates(
         text: Full .kicad_sch file contents
         updates: {reference: {prop_name: value, ...}, ...}
         dry_run: If True, compute changes but don't modify text
+        project_name: Project whose instance references name the parts (default: any)
 
     Returns:
         (modified_text, change_log)
@@ -202,7 +205,7 @@ def apply_updates(
     # file Reference is stale or "R?" is still reached through that Reference.
     blocks = []  # (start, end, file reference, shown references)
     for start, end, ref in find_placed_symbols(text):
-        blocks.append((start, end, ref, block_references(text[start:end + 1])))
+        blocks.append((start, end, ref, block_references(text[start:end + 1], project_name)))
 
     targets = {}  # (start, end) -> {"keys": [...], "props": {name: [(key, value)]}, "refs": [...]}
     for key, props in updates.items():
@@ -224,6 +227,7 @@ def apply_updates(
     # for changes we haven't made yet
     all_edits = []  # (position, reference, prop_name, action, old_value, new_value)
 
+    reported = set()  # conflicting (keys, property) already named in an error
     for (sym_start, sym_end), t in targets.items():
         if len(t["refs"]) > 1:
             for key in t["keys"]:
@@ -238,6 +242,10 @@ def apply_updates(
         for prop_name, wanted in t["props"].items():
             ref, new_value = wanted[0]
             if len({v for _k, v in wanted}) > 1:
+                conflict = (frozenset(k for k, _v in wanted), prop_name)
+                if conflict in reported:
+                    continue
+                reported.add(conflict)
                 change_log.append({
                     "reference": ref,
                     "property": prop_name,
@@ -407,7 +415,8 @@ def main():
     text = args.schematic.read_text(encoding="utf-8")
 
     # Apply updates
-    modified_text, change_log = apply_updates(text, updates, dry_run=args.dry_run)
+    modified_text, change_log = apply_updates(text, updates, dry_run=args.dry_run,
+                                              project_name=project_name_of(args.schematic))
 
     # Report changes
     actions = {}

@@ -1,12 +1,17 @@
 """BOM tools read private fields and escaped quoted text the way KiCad does."""
-import sys, tempfile, unittest
+import sys
+import tempfile
+import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "skills" / "bom" / "scripts"))
 sys.path.insert(0, str(ROOT / "skills" / "kicad" / "scripts"))
 
-import bom_manager, edit_properties, kicad_sexp, sync_datasheet_urls
+import bom_manager
+import edit_properties
+import kicad_sexp
+import sync_datasheet_urls
 
 
 def sheet(props):

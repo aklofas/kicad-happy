@@ -188,11 +188,25 @@ def symbol_instances_of(symbol_block: str, tilde_empty: bool = True) -> list[dic
     return inline_instances(["symbol", parse(node)], tilde_empty)
 
 
-def block_references(symbol_block: str) -> list[str]:
-    """The references KiCad shows for a placed symbol: its instance references (all projects,
-    file order, deduplicated), else the Reference property when it has no instances."""
-    refs = list(dict.fromkeys(i["reference"] for i in symbol_instances_of(symbol_block)
-                              if i["reference"]))
+def project_name_of(sch: Path) -> str:
+    """The project KiCad opens *sch* in: the stem of the .kicad_pro beside it (the one named
+    like the sheet, else the only one), else the sheet's own stem."""
+    pros = sorted(sch.parent.glob("*.kicad_pro")) if sch.parent.is_dir() else []
+    for pro in pros:
+        if pro.stem == sch.stem:
+            return pro.stem
+    return pros[0].stem if len(pros) == 1 else sch.stem
+
+
+def block_references(symbol_block: str, project_name: str | None = None) -> list[str]:
+    """The references KiCad shows for a placed symbol: its instance references (file order,
+    deduplicated), else the Reference property when it has no instances.
+
+    A copied sheet keeps other projects' instance entries, so with *project_name* only that
+    project's entries count, unless it has none."""
+    entries = [i for i in symbol_instances_of(symbol_block) if i["reference"]]
+    mine = [i for i in entries if i["project"] == project_name]
+    refs = list(dict.fromkeys(i["reference"] for i in (mine or entries)))
     if refs:
         return refs
     m = re.search(r'\(property\s+"Reference"\s+"((?:[^"\\]|\\.)*)"', symbol_block)

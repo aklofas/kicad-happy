@@ -11,8 +11,6 @@ from kicad_core.fields import (MPN_FIELD_ALIASES, MPN_FIELD_ALIASES_PRIMARY,
                                normalize_field_name)
 
 
-# Values of a population column (POPULATE, Populate, Fitted) that mean the part
-# is not fitted, compared lower-case against the whole stripped cell.
 # A Value that is exactly one of these marks the part not fitted; BOM tools and the
 # pick-and-place translator share the list.
 DNP_VALUE_MARKERS = frozenset({"dnp", "dnf", "dni", "dnm", "nopop", "no pop", "nostuff",
@@ -22,6 +20,8 @@ DNP_VALUE_MARKERS = frozenset({"dnp", "dnf", "dni", "dnm", "nopop", "no pop", "n
 # Cell values of a DNP-named field (DNP, DNM, DONOTPLACE, ...) that mean not fitted.
 DNP_FIELD_SET = frozenset({"yes", "true", "1", "dnp", "y", "x", "*"})
 
+# Values of a population column (POPULATE, Populate, Fitted) that mean the part
+# is not fitted, compared lower-case against the whole stripped cell.
 POPULATE_UNFITTED = frozenset({"0", "no", "false", "n", "dnp", "dnf", "do not fit",
                                "do not populate", "not fitted", "unfitted"})
 

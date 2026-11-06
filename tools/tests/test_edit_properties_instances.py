@@ -1,12 +1,18 @@
 """BOM write-back tools find a part by the reference KiCad shows, and write a repeated sheet once."""
-import contextlib, io, json, sys, tempfile, unittest
+import contextlib
+import io
+import json
+import sys
+import tempfile
+import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "skills" / "bom" / "scripts"))
 sys.path.insert(0, str(ROOT / "skills" / "kicad" / "scripts"))
 
-import edit_properties, sync_datasheet_urls
+import edit_properties
+import sync_datasheet_urls
 from kicad_core import sexp
 
 SHARED = ('(project "p" (path "/root-uuid/s1" (reference "C4") (unit 1)) '
@@ -89,6 +95,50 @@ class OverReachTest(unittest.TestCase):
 
     def test_unknown_reference_still_an_error(self):
         _, log = edit_properties.apply_updates(sch(sym("C4")), {"C9": {"MPN": "X"}})
+        self.assertEqual(len(actions(log, "error")), 1)
+
+
+def foreign_entry_sheet():
+    x = sym("R1", "x", '(project "old" (path "/o" (reference "R3") (unit 1))) '
+                       '(project "new" (path "/root-uuid" (reference "R1") (unit 1)))')
+    y = sym("R3", "y", '(project "new" (path "/root-uuid" (reference "R3") (unit 1)))')
+    return sch(x, y)
+
+
+class ForeignProjectTest(unittest.TestCase):
+    def test_other_projects_entries_do_not_name_a_part(self):
+        t = foreign_entry_sheet()
+        out, log = edit_properties.apply_updates(t, {"R3": {"MPN": "Z"}}, project_name="new")
+        self.assertEqual(out.count('"MPN" "Z"'), 1)
+        self.assertGreater(out.index('"MPN" "Z"'), out.index('(uuid "y")'))
+        self.assertEqual(actions(log, "warning"), [])
+
+    def test_sync_keys_follow_the_current_project(self):
+        got = sync_datasheet_urls.extract_symbols(foreign_entry_sheet(), "new")
+        self.assertEqual(sorted(got), ["R1", "R3"])
+
+    def test_no_entry_for_the_project_uses_all_entries(self):
+        out, _ = edit_properties.apply_updates(foreign_entry_sheet(), {"R3": {"MPN": "Z"}},
+                                               project_name="elsewhere")
+        self.assertEqual(out.count('"MPN" "Z"'), 2)
+
+
+class ProjectNameTest(unittest.TestCase):
+    def test_project_name_comes_from_the_kicad_pro_beside_the_sheet(self):
+        import kicad_sexp
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td)
+            self.assertEqual(kicad_sexp.project_name_of(d / "sub.kicad_sch"), "sub")
+            (d / "board.kicad_pro").write_text("{}", encoding="utf-8")
+            self.assertEqual(kicad_sexp.project_name_of(d / "sub.kicad_sch"), "board")
+
+
+class ConflictTest(unittest.TestCase):
+    def test_conflict_on_two_unit_blocks_is_one_error(self):
+        inst = ('(project "p" (path "/root-uuid/s1" (reference "U1") (unit {u})) '
+                '(path "/root-uuid/s2" (reference "U2") (unit {u})))')
+        t = sch(sym("U1", "a", inst.format(u=1), unit=1), sym("U1", "b", inst.format(u=2), unit=2))
+        _, log = edit_properties.apply_updates(t, {"U1": {"MPN": "A"}, "U2": {"MPN": "B"}})
         self.assertEqual(len(actions(log, "error")), 1)
 
 

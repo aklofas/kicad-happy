@@ -41,7 +41,7 @@ from distributor_core.manifest import load_index
 from edit_properties import apply_updates
 from kicad_core.sexp import unescape_quoted
 from kicad_sexp import (atomic_write_text, block_references, collect_schematic_files,
-                        iter_placed_symbol_blocks, kicad_lock_path)
+                        iter_placed_symbol_blocks, kicad_lock_path, project_name_of)
 
 
 # ---------------------------------------------------------------------------
@@ -88,7 +88,7 @@ def extract_ref_datasheets(text: str) -> dict[str, str]:
     return {ref: sym["datasheet"] for ref, sym in extract_symbols(text).items()}
 
 
-def extract_symbols(text: str) -> dict[str, dict]:
+def extract_symbols(text: str, project_name: str | None = None) -> dict[str, dict]:
     """Extract {reference: {"datasheet": url, "keys": [manifest keys]}} from placed symbols.
 
     Keys are the symbol's own part identities in match order: MPN values, then
@@ -102,7 +102,7 @@ def extract_symbols(text: str) -> dict[str, dict]:
         ref = props.get("Reference")
         if ref is None or ref.startswith("#"):
             continue
-        ref = (block_references(block) or [ref])[0]
+        ref = (block_references(block, project_name) or [ref])[0]
 
         keys: list[str] = []
 
@@ -220,9 +220,10 @@ def sync_datasheet_urls(
     files_modified = 0
 
     write_root = schematic_path.parent
+    project = project_name_of(schematic_path)
     for sch_file in sch_files:
         text = sch_file.read_text(encoding="utf-8")
-        current = extract_symbols(text)
+        current = extract_symbols(text, project)
         ref_url_map = {}
 
         updates = {}
@@ -276,7 +277,7 @@ def sync_datasheet_urls(
                 print(f"Warning: {sch_file} is outside {write_root}; not written",
                       file=sys.stderr)
                 continue
-            modified_text, change_log = apply_updates(text, updates)
+            modified_text, change_log = apply_updates(text, updates, project_name=project)
 
             # Backup if requested
             if backup:
