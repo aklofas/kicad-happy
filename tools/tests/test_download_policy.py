@@ -1,7 +1,7 @@
 """Datasheet downloads go only to http(s) URLs on public addresses, every redirect is
 checked, and a download stops at a size and wall-clock limit. No network: the resolver
 and every transport are local fakes."""
-import argparse, http.client, http.server, io, json, os, socket, sys, tempfile, threading, time, unittest
+import argparse, contextlib, http.client, http.server, io, json, os, socket, sys, tempfile, threading, time, unittest
 import urllib.request, urllib.response
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
@@ -545,9 +545,11 @@ class _FakeRoute:
         self._log.append(("fulfill", self.request.url))
 
 
-def _fake_playwright(urls, chain, log):
+def _fake_playwright(urls, chain, log, response=None, on_download=None):
     """A ``sync_playwright`` stand-in: its page records ``route`` registrations and, on
-    ``goto``, drives the registered handler with a fake route for each of ``urls``."""
+    ``goto``, drives the registered handler with a fake route for each of ``urls`` and
+    answers ``response``. ``log`` also records the context options, the WebSocket route and
+    each ``goto``."""
     registered = []
 
     class Page:
@@ -555,19 +557,33 @@ def _fake_playwright(urls, chain, log):
             registered.append(pattern)
             self.handler = handler
 
+        def route_web_socket(self, pattern, handler):
+            log.append(("route_web_socket", pattern))
+
         def expect_download(self, timeout=None):
+            if on_download is not None:
+                on_download()
             raise RuntimeError("no download event")
 
         def goto(self, url, **kw):
             assert registered, "route must be installed before navigation"
+            log.append(("goto", url))
             for u in urls:
                 self.handler(_FakeRoute(u, log, chain))
-            return None
+            return response
+
+    class Context:
+        def new_page(self):
+            return Page()
 
         def close(self):
-            pass
+            log.append(("context.close",))
 
     class Browser:
+        def new_context(self, **kw):
+            log.append(("new_context", kw))
+            return Context()
+
         def new_page(self):
             return Page()
 
@@ -584,6 +600,10 @@ def _fake_playwright(urls, chain, log):
             return False
 
     return (lambda: P()), registered
+
+
+def _route_log(log):
+    return [e for e in log if e[0] in ("fetch", "fulfill", "abort", "continue")]
 
 
 class PlaywrightRouteTest(unittest.TestCase):
@@ -612,6 +632,7 @@ class PlaywrightRouteTest(unittest.TestCase):
             self.assertFalse(download.download_pdf("https://example.com/x.pdf",
                                                    os.path.join(d, "x.pdf")))
         self.assertEqual(registered, ["**/*"])
+        log = _route_log(log)
         loop = [("fetch", "https://loop.example/a", 0), ("fetch", "https://loop.example/b", 0)] * 3
         self.assertEqual(log, [
             ("fetch", "https://example.com/x.pdf", 0),
@@ -631,6 +652,91 @@ class PlaywrightRouteTest(unittest.TestCase):
             ("fetch", "https://broken.example/x", 0),
             ("abort", "https://broken.example/x"),
         ])
+
+
+    def _run(self, fake, *, timeout=None):
+        stderr = io.StringIO()
+        patches = [mock.patch.object(download, "_resolve", return_value=PUBLIC),
+                   mock.patch.object(download, "_allow_private_hosts", return_value=False),
+                   mock.patch.object(download, "_requests", None),
+                   mock.patch.object(download, "_download_urllib", lambda u, p: False),
+                   mock.patch.object(download, "_sync_playwright", fake)]
+        if timeout is not None:
+            patches.append(mock.patch.object(download, "DOWNLOAD_TIMEOUT_S", timeout))
+        with tempfile.TemporaryDirectory() as d, contextlib.ExitStack() as stack:
+            for p in patches:
+                stack.enter_context(p)
+            with redirect_stdout(io.StringIO()), redirect_stderr(stderr):
+                ok = download.download_pdf("https://example.com/x.pdf", os.path.join(d, "x.pdf"))
+            self.assertEqual(os.listdir(d), [])
+        return ok, stderr.getvalue()
+
+    def test_browser_context_blocks_service_workers_and_websockets(self):
+        log = []
+        fake, _ = _fake_playwright([], {}, log)
+        self.assertFalse(self._run(fake)[0])
+        self.assertEqual(log[0], ("new_context", {"service_workers": "block"}))
+        self.assertLess(log.index(("route_web_socket", "**/*")),
+                        log.index(("goto", "https://example.com/x.pdf")))
+        self.assertEqual(log[-1], ("context.close",))
+
+    def test_oversized_body_not_buffered(self):
+        log = []
+        response = mock.Mock(headers={"content-length": str(download.MAX_DOWNLOAD_BYTES + 1)},
+                             body=lambda: log.append(("body",)) or PDF)
+        fake, _ = _fake_playwright([], {}, log, response=response)
+        self.assertFalse(self._run(fake)[0])
+        self.assertIn(("goto", "https://example.com/x.pdf"), log)
+        self.assertNotIn(("body",), log)
+
+    def test_deadline_stops_the_browser_between_steps(self):
+        clock = [1000.0]
+        log = []
+
+        def slow_download_attempt():
+            clock[0] += 61.0
+        fake, _ = _fake_playwright([], {}, log, response=mock.Mock(headers={}, body=lambda: PDF),
+                                   on_download=slow_download_attempt)
+        with mock.patch.object(download.time, "monotonic", lambda: clock[0]):
+            ok, stderr = self._run(fake, timeout=60.0)
+        self.assertFalse(ok)
+        self.assertIn("download stopped", stderr)
+        self.assertNotIn(("goto", "https://example.com/x.pdf"), log)
+        self.assertEqual(log[-1], ("context.close",))
+
+
+@unittest.skipIf(download._sync_playwright is None, "playwright is not installed")
+class RealPlaywrightTest(unittest.TestCase):
+    def test_browser_fallback_downloads_a_pdf(self):
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header("Content-Type", "application/pdf")
+                self.send_header("Content-Length", str(len(PDF)))
+                self.end_headers()
+                self.wfile.write(PDF)
+
+            def log_message(self, *a):
+                pass
+        srv = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+        t = threading.Thread(target=srv.serve_forever, daemon=True)
+        t.start()
+        self.addCleanup(lambda: (srv.shutdown(), srv.server_close(), t.join(5)))
+        try:
+            with download._sync_playwright() as p:
+                p.chromium.launch(headless=True).close()
+        except Exception as exc:
+            self.skipTest(f"no headless Chromium: {exc}")
+        with tempfile.TemporaryDirectory() as d, \
+             mock.patch.object(download, "_allow_private_hosts", return_value=True), \
+             mock.patch.multiple(download, _requests=None, _download_urllib=lambda u, p: False), \
+             mock.patch.dict(os.environ, {"no_proxy": "*", "NO_PROXY": "*"}), \
+             redirect_stderr(io.StringIO()):
+            out = os.path.join(d, "x.pdf")
+            self.assertTrue(download.download_pdf(
+                f"http://127.0.0.1:{srv.server_address[1]}/x.pdf", out))
+            with open(out, "rb") as f:
+                self.assertEqual(f.read(), PDF)
 
 
 class UrllibOpenerTest(unittest.TestCase):

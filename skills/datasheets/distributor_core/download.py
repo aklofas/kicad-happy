@@ -696,6 +696,11 @@ def _policy_route(allow_private: bool, deadline: float):
     return handle
 
 
+def _check_deadline(deadline: float) -> None:
+    if time.monotonic() >= deadline:
+        raise DownloadLimitExceeded(f"took longer than {DOWNLOAD_TIMEOUT_S:g} s")
+
+
 def _download_playwright(url: str, output_path: str) -> bool:
     """Download using Playwright headless browser.
 
@@ -703,12 +708,18 @@ def _download_playwright(url: str, output_path: str) -> bool:
     (Broadcom doc viewer, Espressif, etc.). Handles two patterns:
     1. Page triggers a file download (intercepted via expect_download)
     2. Page navigates directly to a PDF (read from response body)
+
+    ``page.route`` does not see service-worker requests or WebSockets, so service workers
+    are blocked and every WebSocket is closed.
     """
     with _sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
+        context = browser.new_context(service_workers="block")
         try:
+            page = context.new_page()
             deadline = _deadline()
+            if hasattr(page, "route_web_socket"):  # Playwright 1.48+
+                page.route_web_socket("**/*", lambda ws: ws.close())
             page.route("**/*", _policy_route(_allow_private_now(), deadline))
             # First try: expect a download event (some sites trigger JS downloads)
             try:
@@ -725,8 +736,13 @@ def _download_playwright(url: str, output_path: str) -> bool:
                 pass
 
             # Second try: navigate and read the response body directly
+            _check_deadline(deadline)
             resp = page.goto(url, timeout=_ms_left(deadline, 20000), wait_until="domcontentloaded")
             if resp is None:
+                return False
+            _check_deadline(deadline)
+            length = resp.headers.get("content-length", "")
+            if length.isdigit() and int(length) > MAX_DOWNLOAD_BYTES:
                 return False
             body = resp.body()
             if body and len(body) <= MAX_DOWNLOAD_BYTES and body[:4] == b"%PDF":
@@ -735,7 +751,7 @@ def _download_playwright(url: str, output_path: str) -> bool:
                 return True
             return False
         finally:
-            page.close()
+            context.close()
             browser.close()
 
 
