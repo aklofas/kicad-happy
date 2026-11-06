@@ -274,10 +274,6 @@ class ValidateSanityVectorHelp(unittest.TestCase):
         self.assertIn("usage", r.stdout)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class PipelineReadersRefuseBadCacheFiles(unittest.TestCase):
     def _plan_main(self, cache, pdf):
         import plan_extraction
@@ -340,3 +336,7 @@ class PipelineReadersRefuseBadCacheFiles(unittest.TestCase):
             rc, err = _merge(cache)
             self.assertEqual(rc, 1)
             self.assertIn("failed: base: result file is not a readable JSON object", err)
+
+
+if __name__ == "__main__":
+    unittest.main()

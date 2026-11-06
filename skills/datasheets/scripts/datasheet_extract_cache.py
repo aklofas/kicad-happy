@@ -296,8 +296,9 @@ def find_extraction(extract_dir, mpn):
     or whose recorded ``mpn`` is this MPN, ignoring case, and whose file
     exists. Then the files named after the part, ``<stem>.json``.
 
-    Returns ``(extraction, path)``: ``(None, path)`` when a file was found but is
-    not a readable JSON object, ``(None, None)`` when nothing was found.
+    A manifest file that is unreadable or empty does not hide a readable file
+    named after the part. Returns ``(extraction, path)``: ``(None, path)`` when
+    only unreadable files were found, ``(None, None)`` when nothing was found.
     """
     if extract_dir is None or not mpn or not str(mpn).strip():
         return None, None
@@ -307,6 +308,7 @@ def find_extraction(extract_dir, mpn):
     names = [_sanitize_mpn(mpn), plain, underscored]
     wanted = {n.upper() for n in names}
 
+    bad = None
     extractions = _load_index(extract_dir).get("extractions")
     for key, entry in (extractions.items() if isinstance(extractions, dict) else ()):
         if not isinstance(entry, dict):
@@ -316,13 +318,19 @@ def find_extraction(extract_dir, mpn):
             continue
         path = manifest_file_path(extract_dir, entry.get("file"))
         if path is not None and path.is_file():
-            return read_json_object(path), path
+            ext = read_json_object(path)
+            if ext:
+                return ext, path
+            bad = bad or path
 
     for name in dict.fromkeys(names[1:]):
         path = extract_dir / f"{name}.json"
         if path.is_file():
-            return read_json_object(path), path
-    return None, None
+            ext = read_json_object(path)
+            if ext is not None:
+                return ext, path
+            bad = bad or path
+    return None, bad
 
 
 def cache_extraction(extract_dir, mpn, extraction, source_pdf=None):

@@ -16,7 +16,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from datasheet_types.cache_reader import MAX_CACHE_BYTES, read_json_object, safe_extract_dir  # noqa: E402
+from datasheet_types.cache_reader import MAX_CACHE_BYTES, safe_extract_dir  # noqa: E402
 from datasheet_extract_cache import find_extraction  # noqa: E402
 
 
@@ -43,12 +43,6 @@ def _load_extraction(extract_dir: str, mpn: str) -> dict:
         return {}
 
     return find_extraction(extract_dir, mpn)[0] or {}
-
-
-def _read_extraction_file(path: str) -> dict:
-    """Read one extraction file; {} when unreadable, undecodable, symlinked,
-    oversized or not an object."""
-    return read_json_object(path) or {}
 
 
 def _is_sectioned_format(extraction: dict) -> bool:

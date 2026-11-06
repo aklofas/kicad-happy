@@ -327,6 +327,19 @@ class SharedLookupOrder(unittest.TestCase):
                             {"extractions": {"abc": {"file": "abc.json", "mpn": "p1"}}})
             self.assertEqual(self._read_all(d, ext), {"verify": -40, "features": -40, "lifecycle": -40})
 
+    def _hashed_entry_to(self, d, body):
+        ext = self._ext(d, {"P1.json": (-40, 85)}, {"extractions": {
+            cache._sanitize_mpn("P1"): {"file": "bad.json", "mpn": "P1"}}})
+        (ext / "bad.json").write_text(body, encoding="utf-8")
+        return ext
+
+    def test_unreadable_manifest_file_does_not_hide_the_direct_file(self):
+        for body in ("{bad", "{}"):
+            with tempfile.TemporaryDirectory() as d:
+                ext = self._hashed_entry_to(d, body)
+                self.assertEqual(self._read_all(d, ext),
+                                 {"verify": -40, "features": -40, "lifecycle": -40}, body)
+
 
 if __name__ == "__main__":
     unittest.main()
