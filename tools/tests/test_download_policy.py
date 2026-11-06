@@ -573,6 +573,50 @@ class TrickleDeadlineTest(unittest.TestCase):
         self.assertLess(time.monotonic() - start, 3.0)
         self.assertIn("download stopped", stderr.getvalue())
 
+    def _abandon(self, pinned):
+        srv = socket.socket()
+        srv.bind(("127.0.0.1", 0))
+        srv.listen(1)
+        stop = threading.Event()
+        closed_at = []
+
+        def serve():
+            conn, _ = srv.accept()
+            with conn:
+                conn.sendall(b"HTTP/1.1 200 OK\r\nX-Slow: ")
+                end = time.monotonic() + 4
+                while not stop.is_set() and time.monotonic() < end:
+                    try:
+                        conn.sendall(b"0")
+                    except OSError:
+                        closed_at.append(time.monotonic())
+                        return
+                    time.sleep(0.05)
+        t = threading.Thread(target=serve, daemon=True)
+        t.start()
+        self.addCleanup(lambda: (stop.set(), t.join(), srv.close()))
+        port = srv.getsockname()[1]
+        url = (f"http://pinned.example:{port}/x.pdf" if pinned else f"http://127.0.0.1:{port}/x.pdf")
+        start = time.monotonic()
+        # a pinned host is checked at a public address, then connected at the local server
+        with mock.patch.object(download, "_allow_private_hosts", return_value=not pinned), \
+             mock.patch.dict(os.environ, {"NO_PROXY": "127.0.0.1", "no_proxy": "127.0.0.1"}), \
+             mock.patch.multiple(download, _sync_playwright=None, _download_urllib=_fail), \
+             mock.patch.object(download, "_resolve", return_value=["127.0.0.1"]), \
+             mock.patch.object(download, "_address_problem", return_value=None), \
+             redirect_stderr(io.StringIO()):
+            download.download_pdf(url, os.path.join(self.dir.name, "x.pdf"))
+        t.join(3)
+        self.assertTrue(closed_at, "the server was still being fed after the download gave up")
+        self.assertLess(closed_at[0] - start, 2.0)
+
+    @unittest.skipIf(download._requests is None, "requests is not installed")
+    def test_abandoned_header_trickle_releases_its_connection(self):
+        self._abandon(pinned=False)
+
+    @unittest.skipIf(download._PinnedAdapter is None, "requests cannot pin addresses")
+    def test_abandoned_header_trickle_releases_a_pinned_connection(self):
+        self._abandon(pinned=True)
 
 class _FakeRoute:
     """A Playwright route for ``url``; ``chain`` answers each fetched URL with

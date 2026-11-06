@@ -64,6 +64,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - DigiKey datasheet sync: a run longer than the API token's ten-minute life fetches a new token instead of failing every later part as an access error.
 - `search_lcsc.py`: `--in-stock` no longer drops an exact LCSC-code hit whose stock only the LCSC lookup reports. A code search whose LCSC lookup is unreachable exits 2, and the error names both services when both fail.
 - Mouser datasheet sync: the product page it reads for a datasheet link is fetched under the same address, redirect and size limits as datasheet downloads.
+- Datasheet downloads: a server that stalls while sending headers no longer keeps its connection and a thread open after the download gives up.
 - `datasheet_verify.py` now exits 0 when an extraction has only warnings (exit 1 is kept for errors). It reports one warning per unresolved `power_domain` value instead of one per pin, and reports a null or malformed pin entry instead of crashing.
 - Datasheet downloads refuse NAT64, 6to4 and IPv4-compatible IPv6 addresses that embed a private or loopback IPv4 address.
 - A datasheet download connects to the address the URL check approved, on every redirect, so a host cannot switch to a private address between the check and the connect (through a proxy, the proxy resolves the host). With `requests` older than 2.32.2, and in the browser fallback, the host is still resolved again when connecting.

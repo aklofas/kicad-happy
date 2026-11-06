@@ -527,19 +527,53 @@ def download_pdf(url: str, output_path: str, *, resolve_redirects: bool = True) 
 # Download methods
 # ---------------------------------------------------------------------------
 
+def _watched_session(on_connect, pins=None):
+    """A ``requests`` session whose connections hand their socket to ``on_connect`` once connected,
+    so a caller that gives up can shut the socket down; closing the session does not end a read
+    that is blocked on a server's headers. A session without a pool manager is returned as is."""
+    session = _requests.Session()
+    if pins and _PinnedAdapter is not None:
+        session.mount("http://", _PinnedAdapter(pins))
+        session.mount("https://", _PinnedAdapter(pins))
+    for scheme in ("http://", "https://"):
+        try:
+            manager = session.get_adapter(scheme).poolmanager
+            pools = dict(manager.pool_classes_by_scheme)
+        except AttributeError:
+            continue
+        key = scheme[:-3]
+
+        class Conn(pools[key].ConnectionCls):
+            def connect(self):
+                super().connect()
+                on_connect(self.sock)
+
+        class Pool(pools[key]):
+            ConnectionCls = Conn
+
+        pools[key] = Pool
+        # an instance attribute: the manager's default table is shared by every session
+        manager.pool_classes_by_scheme = pools
+    return session
+
+
 def _get_before_deadline(url: str, deadline: float, **kwargs):
     """A ``requests`` GET on a worker thread, so the deadline also holds while a server sends the
     status line and headers, before there is a response whose socket can be watched. At the
     deadline the call is abandoned; a response that still arrives is closed by the worker."""
-    box, lock = {}, threading.Lock()
+    box, lock, socks = {}, threading.Lock(), []
     pins = dict(getattr(_call, "pins", {}))  # _call is per thread
+
+    def on_connect(sock):
+        with lock:
+            if box.get("abandoned"):
+                _shutdown(sock)
+            else:
+                socks.append(sock)
 
     def run():
         try:
-            with _requests.Session() as session:
-                if pins and _PinnedAdapter is not None:
-                    session.mount("http://", _PinnedAdapter(pins))
-                    session.mount("https://", _PinnedAdapter(pins))
+            with _watched_session(on_connect, pins) as session:
                 # Session.send reads a whole 3xx body even with allow_redirects=False;
                 # _download_requests follows each hop itself.
                 session.get_redirect_target = lambda resp: None
@@ -560,6 +594,8 @@ def _get_before_deadline(url: str, deadline: float, **kwargs):
     with lock:
         if not box:
             box["abandoned"] = True
+            for sock in socks:
+                _shutdown(sock)
             raise DownloadLimitExceeded(f"took longer than {DOWNLOAD_TIMEOUT_S:g} s")
     if "exc" in box:
         raise box["exc"]
