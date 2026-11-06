@@ -317,30 +317,47 @@ def _bbox_clearance(fp: dict, bx_min: float, by_min: float,
     return min_edge, is_off_board
 
 
+def _courtyard_sides(fp: dict) -> dict:
+    """Courtyard layer -> {"box", "polys", "rounded"} of a footprint. A footprint without
+    per-layer data has its merged courtyard on the side it is mounted on."""
+    sides = fp.get("_courtyard_sides")
+    if sides is not None:
+        return sides
+    box = fp.get("courtyard")
+    if not box:
+        return {}
+    side = "B.CrtYd" if str(fp.get("layer", "")).startswith("B.") else "F.CrtYd"
+    return {side: {"box": box, "polys": fp.get("_courtyard_poly") or fp.get("courtyard_poly"),
+                   "rounded": fp.get("courtyard_poly")}}
+
+
 def analyze_placement(footprints: list[dict], outline: dict, *,
                       check_overlaps: bool = True) -> dict:
     """Component placement analysis — courtyard overlaps and edge clearance.
 
     Reports:
-    - Courtyard overlaps: pairs of components on the same side whose courtyard
-      bounding boxes overlap (potential physical collision or assembly issue)
+    - Courtyard overlaps: pairs of components whose courtyards on the same courtyard
+      layer overlap (potential physical collision or assembly issue)
     - Edge clearance: components closest to board edges (flagged if <0.5mm)
     - Placement density per board side
 
     ``check_overlaps`` False skips the overlaps (the project ignores KiCad's
     ``courtyards_overlap`` check).
     """
-    # Courtyard overlap detection (AABB intersection, same side only)
+    # Courtyard overlap detection. One entry per footprint and courtyard layer: KiCad tests
+    # F.CrtYd against F.CrtYd and B.CrtYd against B.CrtYd, whichever side each part is
+    # mounted on. A pair colliding on both layers is reported once.
     overlaps = []
-    fp_with_cy = [(fp, fp["courtyard"]) for fp in footprints
-                  if check_overlaps and fp.get("courtyard")]
+    fp_with_cy = [(fp, sd["box"], sd["polys"], sd["rounded"], side) for fp in footprints
+                  if check_overlaps
+                  for side, sd in _courtyard_sides(fp).items()]
+    reported: set = set()
 
     for i in range(len(fp_with_cy)):
-        fp_a, cy_a = fp_with_cy[i]
+        fp_a, cy_a, _raw_a, _polys_a, side_a = fp_with_cy[i]
         for j in range(i + 1, len(fp_with_cy)):
-            fp_b, cy_b = fp_with_cy[j]
-            # Only check components on the same side
-            if fp_a["layer"] != fp_b["layer"]:
+            fp_b, cy_b, _raw_b, _polys_b, side_b = fp_with_cy[j]
+            if side_a != side_b or fp_a is fp_b or (id(fp_a), id(fp_b)) in reported:
                 continue
             # AABB overlap check; KiCad shrinks each courtyard by 0.005 mm, so
             # courtyards that touch or overlap by less than 0.01 mm do not collide
@@ -353,14 +370,11 @@ def analyze_placement(footprints: list[dict], outline: dict, *,
                 # (QFP cross shapes) fill their corners in bbox space. With
                 # chained polygons on both parts, test the real shapes; the
                 # area is measured on the unshrunk shapes.
-                _polys_a = fp_a.get("courtyard_poly")
-                _polys_b = fp_b.get("courtyard_poly")
                 if not (_polys_a and _polys_b):
                     if ox < 0.01 - 1e-7 or oy < 0.01 - 1e-7:
                         continue
                 else:
-                    if not courtyards_collide(fp_a.get("_courtyard_poly") or _polys_a,
-                                              fp_b.get("_courtyard_poly") or _polys_b):
+                    if not courtyards_collide(_raw_a or _polys_a, _raw_b or _polys_b):
                         continue
                     _refined = _refined_overlap_mm2(
                         _polys_a, _polys_b,
@@ -377,6 +391,8 @@ def analyze_placement(footprints: list[dict], outline: dict, *,
                             min(cy_a["max_x"], cy_b["max_x"]),
                             min(cy_a["max_y"], cy_b["max_y"]))
                     overlap_mm2 = round(_refined, 3)
+                reported.add((id(fp_a), id(fp_b)))
+                layer = "B.Cu" if side_a == "B.CrtYd" else "F.Cu"
                 is_rf_overlap = _is_rf_module(fp_a) or _is_rf_module(fp_b)
                 # RF module courtyards deliberately encode the antenna RF
                 # keepout (e.g., ESP32-S3-WROOM-1 extends ~7mm past the body
@@ -395,7 +411,7 @@ def analyze_placement(footprints: list[dict], outline: dict, *,
                 overlaps.append({
                     "component_a": fp_a["reference"],
                     "component_b": fp_b["reference"],
-                    "layer": fp_a["layer"],
+                    "layer": layer,
                     "overlap_mm2": overlap_mm2,
                     "detector": "analyze_placement",
                     "rule_id": "PM-001",
@@ -404,7 +420,7 @@ def analyze_placement(footprints: list[dict], outline: dict, *,
                     "confidence": "deterministic",
                     "evidence_source": "topology",
                     "summary": f"Courtyard overlap between {fp_a['reference']} and {fp_b['reference']} ({overlap_mm2}mm\u00b2){rf_note}",
-                    "description": f"Components {fp_a['reference']} and {fp_b['reference']} have overlapping courtyards on {fp_a['layer']} ({overlap_mm2}mm\u00b2 overlap area). Threshold: \u22651.0mm\u00b2 = error, else warning; RF-module overlaps demote to info (courtyard encodes RF keepout).",
+                    "description": f"Components {fp_a['reference']} and {fp_b['reference']} have overlapping courtyards on {layer} ({overlap_mm2}mm\u00b2 overlap area). Threshold: \u22651.0mm\u00b2 = error, else warning; RF-module overlaps demote to info (courtyard encodes RF keepout).",
                     "components": [fp_a["reference"], fp_b["reference"]],
                     "nets": [],
                     "pins": [],

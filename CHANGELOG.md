@@ -108,6 +108,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - RP-002 and PS-002 plane-gap crossings are `heuristic`: a crossing is a track overlapping the rectangle between two copper islands' bounding boxes, not a copper-geometry check. RP-002 reports a crossing only on a net whose measured reference-plane coverage is below 95 %, so a board without zone fills, or one where every signal net measured clean, no longer gets crossings from the rectangle alone. A PS-002 that reports only the island count stays `deterministic`.
 - EMC stackup (SU-), PDN impedance (PD-001..004) and emission-estimate (EE-) findings belong to the layout stage, so `--stage layout` keeps an SU-001 error and stage readiness reports it under layout instead of schematic.
 - SPICE inrush and snubber results report `info` instead of `pass`: the inrush peak restates the assumed soft-start and the snubber time constant is R times C from the schematic, so neither is a measured check. A snubber time constant outside 1 ns–100 µs still warns. `summary.pass` falls and `summary.info` rises by the same count; findings are unchanged.
+- Courtyard overlaps (PM-001) are tested per courtyard layer, as KiCad's DRC does: a front part's B.CrtYd now collides with a back-mounted part's B.CrtYd, and two parts whose courtyards are on different layers no longer collide because their outlines overlap. A pair that collides on both layers is reported once, and its `layer` is the courtyard layer (`F.Cu` for F.CrtYd, `B.Cu` for B.CrtYd).
 
 ### Added
 

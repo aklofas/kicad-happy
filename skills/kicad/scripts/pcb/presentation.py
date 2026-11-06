@@ -203,7 +203,7 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
     # Compact footprint output — include pad-to-net mapping but omit pad geometry
     footprint_summary = []
     for fp in footprints:
-        fp_summary = {k: v for k, v in fp.items() if k not in ("pads", "_courtyard_poly", "_duplicate_pad_jumpers", "_jumper_pad_groups")}
+        fp_summary = {k: v for k, v in fp.items() if k not in ("pads", "_courtyard_poly", "_courtyard_sides", "_duplicate_pad_jumpers", "_jumper_pad_groups")}
         # Alias: 'footprint' mirrors 'library' for cross-analyzer consistency
         # (schematic analyzer uses 'footprint', PCB uses 'library' for same data)
         if "library" in fp_summary and "footprint" not in fp_summary:

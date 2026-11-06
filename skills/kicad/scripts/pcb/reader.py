@@ -568,6 +568,8 @@ def extract_footprints(root: list, diagnostics: list | None = None) -> list[dict
         # KiCad keeps F.CrtYd and B.CrtYd as two separate courtyards
         crtyd_segs: dict[str, list[tuple[tuple[float, float], tuple[float, float]]]] = {}
         crtyd_polys: list[list[tuple[float, float]]] = []
+        side_pts: dict[str, list] = {}  # the same points and outlines, per courtyard layer
+        side_polys: dict[str, list] = {}
         crtyd_unchainable = False  # an unparseable arc/circle leaves the polygon set incomplete
 
         def _fp_to_abs(lx: float, ly: float) -> tuple[float, float]:
@@ -591,7 +593,9 @@ def extract_footprints(root: list, diagnostics: list | None = None) -> list[dict
                         poly = [_fp_to_abs(x, y) for x, y in pts_coords(pts)]
                         if len(poly) >= 3:
                             crtyd_polys.append(poly)
+                            side_polys.setdefault(item_layer, []).append(poly)
                         crtyd_pts.extend(poly)
+                        side_pts.setdefault(item_layer, []).extend(poly)
                     continue
                 if gtype == "fp_line":
                     p1 = find_first(item, "start")
@@ -601,6 +605,7 @@ def extract_footprints(root: list, diagnostics: list | None = None) -> list[dict
                         seg_b = _fp_to_abs(float(p2[1]), float(p2[2]))
                         side_segs.append((seg_a, seg_b))
                         crtyd_pts.extend((seg_a, seg_b))
+                        side_pts.setdefault(item_layer, []).extend((seg_a, seg_b))
                     continue
                 if gtype == "fp_rect":
                     p1 = find_first(item, "start")
@@ -611,7 +616,9 @@ def extract_footprints(root: list, diagnostics: list | None = None) -> list[dict
                         corners = [_fp_to_abs(cx_, cy_) for cx_, cy_ in
                                    ((sx, sy), (ex, sy), (ex, ey), (sx, ey))]
                         crtyd_polys.append(corners)
+                        side_polys.setdefault(item_layer, []).append(corners)
                         crtyd_pts.extend(corners)
+                        side_pts.setdefault(item_layer, []).extend(corners)
                     continue
                 try:
                     if gtype == "fp_circle":
@@ -625,7 +632,9 @@ def extract_footprints(root: list, diagnostics: list | None = None) -> list[dict
                                            cy_ + r * math.sin(2 * math.pi * k / _CIRCLE_SIDES))
                                 for k in range(_CIRCLE_SIDES)]
                         crtyd_polys.append(ring)
+                        side_polys.setdefault(item_layer, []).append(ring)
                         crtyd_pts.extend(ring)
+                        side_pts.setdefault(item_layer, []).extend(ring)
                         continue
                     s_ = find_first(item, "start")
                     e = find_first(item, "end")
@@ -646,9 +655,11 @@ def extract_footprints(root: list, diagnostics: list | None = None) -> list[dict
                         node = find_first(item, key)
                         if node and len(node) >= 3:
                             crtyd_pts.append(_fp_to_abs(float(node[1]), float(node[2])))
+                            side_pts.setdefault(item_layer, []).append(crtyd_pts[-1])
                     continue
                 side_segs.extend(zip(line, line[1:]))
                 crtyd_pts.extend(line)
+                side_pts.setdefault(item_layer, []).extend(line)
 
         if any(crtyd_segs.values()) and not crtyd_unchainable:
             # KiCad rejects a courtyard that draws a segment twice on one side
@@ -684,17 +695,20 @@ def extract_footprints(root: list, diagnostics: list | None = None) -> list[dict
                            "courtyard not used for placement checks")
                     break
                 crtyd_polys.extend(_chained)
+                side_polys.setdefault(_side, []).extend(_chained)
 
-        if len(crtyd_polys) > 1:
-            # The same outline on both sides would cancel itself in the even-odd overlap test
+        def _distinct_polys(polys: list) -> list:
+            # The same outline twice would cancel itself in the even-odd overlap test
             _poly_keys: set = set()
             _distinct = []
-            for poly in crtyd_polys:
+            for poly in polys:
                 _pk = tuple(sorted((round(px, 3), round(py, 3)) for px, py in poly))
                 if _pk not in _poly_keys:
                     _poly_keys.add(_pk)
                     _distinct.append(poly)
-            crtyd_polys = _distinct
+            return _distinct
+
+        crtyd_polys = _distinct_polys(crtyd_polys)
 
         fp_entry: dict = {
             "library": fp_lib,
@@ -762,6 +776,21 @@ def extract_footprints(root: list, diagnostics: list | None = None) -> list[dict
                 ]
                 # unrounded for the collision test, whose tolerance is 0.005 mm
                 fp_entry["_courtyard_poly"] = crtyd_polys
+            # KiCad tests F.CrtYd against F.CrtYd and B.CrtYd against B.CrtYd only
+            fp_entry["_courtyard_sides"] = {}
+            for _side, _pts in side_pts.items():
+                if not _pts:
+                    continue
+                _polys = (_distinct_polys(side_polys[_side])
+                          if side_polys.get(_side) and not crtyd_unchainable else None)
+                fp_entry["_courtyard_sides"][_side] = {
+                    "box": {"min_x": round(min(p[0] for p in _pts), 3),
+                            "min_y": round(min(p[1] for p in _pts), 3),
+                            "max_x": round(max(p[0] for p in _pts), 3),
+                            "max_y": round(max(p[1] for p in _pts), 3)},
+                    "polys": _polys,
+                    "rounded": ([[[round(vx_, 3), round(vy_, 3)] for vx_, vy_ in poly]
+                                 for poly in _polys] if _polys else None)}
 
         footprints.append(fp_entry)
 
