@@ -1512,9 +1512,13 @@ def check_via_stitching(pcb: Dict, schematic: Optional[Dict] = None) -> List[Dic
                 net_name = ''
             if is_emc_ground_name(net_name):
                 gnd_via_count += 1
-        via_count = gnd_via_count if gnd_via_count > 0 else len(via_list)
+        if not gnd_via_count and not _ground_fill_layers(pcb):
+            return findings  # no ground via and no ground fill: nothing to stitch
+        via_count = gnd_via_count
+        via_noun = 'ground vias'
     else:
         via_count = vias.get('count', stats.get('via_count', 0))
+        via_noun = 'vias'
     bbox = board_outline.get('bounding_box', None) or {}
     board_w = bbox.get('width', stats.get('board_width_mm', 50)) or 50
     board_h = bbox.get('height', stats.get('board_height_mm', 50)) or 50
@@ -1531,12 +1535,12 @@ def check_via_stitching(pcb: Dict, schematic: Optional[Dict] = None) -> List[Dic
 
     if avg_spacing is None or avg_spacing > required_spacing_mm * 2:
         spacing_note = (f'~{avg_spacing:.0f}mm avg spacing'
-                       if avg_spacing is not None else 'no vias detected')
+                       if avg_spacing is not None else f'no {via_noun} detected')
         findings.append(_make_finding(
             'via_stitching', 'MEDIUM', 'VS-001',
             title='Via stitching may be insufficient',
             description=(
-                f'Board has {via_count} vias across {board_area:.0f} mm² '
+                f'Board has {via_count} {via_noun} across {board_area:.0f} mm² '
                 f'({spacing_note}). For the highest frequency '
                 f'on this board ({highest_freq/1e6:.0f} MHz), λ/20 stitching '
                 f'requires ≤{required_spacing_mm:.0f}mm spacing.'
@@ -4147,6 +4151,20 @@ def _ground_via_positions(pcb: Dict) -> List[tuple]:
     return positions
 
 
+def _ground_fill_layers(pcb: Dict) -> set:
+    """Copper layers carrying filled copper of a ground-net zone."""
+    layers = set()
+    for zone in pcb.get('zones') or []:
+        if not isinstance(zone, dict) or zone.get('is_keepout'):
+            continue
+        if not is_emc_ground_name(zone.get('net_name') or ''):
+            continue
+        for layer in zone.get('layers') or []:
+            if layer.endswith('.Cu') and _zone_layer_area_mm2(zone, layer) > 0:
+                layers.add(layer)
+    return layers
+
+
 def _stitch_radius_mm(pcb: Dict) -> float:
     """How near a ground via must be to stitch a layer change: 2x the first dielectric, at least 1 mm."""
     default_h = 0.2  # mm
@@ -4193,8 +4211,10 @@ def check_layer_transition_stitching(pcb: Dict,
         return findings  # Can't check without individual via positions
 
     gnd_via_positions = _ground_via_positions(pcb)
-    if not gnd_via_positions:
-        return findings  # Can't determine which vias are ground
+    if not gnd_via_positions and len(_ground_fill_layers(pcb)) < 2:
+        # No ground via and fewer than two ground-filled layers: no pair of
+        # ground planes for a transition's return current to move between
+        return findings
 
     search_radius = _stitch_radius_mm(pcb)
 
