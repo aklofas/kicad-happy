@@ -317,8 +317,12 @@ def check_esd_coverage_gaps(schematic: dict, pcb: dict | None, recorder=None) ->
     components = schematic.get('components', [])
     connectors = [c for c in components if c.get('type') == 'connector']
     comp_type = {c.get('reference'): c.get('type') for c in components}
-    pin_signals = {n for n, info in (schematic.get('nets') or {}).items()
-                   if is_pin_guarded_signal(n, [(p.get('pin_type'), comp_type.get(p.get('component')) == 'ic')
+    all_nets = schematic.get('nets') or {}
+    rails = {n for n, info in all_nets.items()
+             if any(str(p.get('component', '')).startswith(('#PWR', '#FLG'))
+                    for p in info.get('pins', []))}
+    pin_signals = {n for n, info in all_nets.items()
+                   if n not in rails and is_pin_guarded_signal(n, [(p.get('pin_type'), comp_type.get(p.get('component')) == 'ic')
                                                 for p in info.get('pins', [])])}
 
     for conn in connectors:

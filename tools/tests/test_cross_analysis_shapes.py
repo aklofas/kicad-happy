@@ -158,5 +158,25 @@ class Shapes(unittest.TestCase):
             self.assertIn("ran", entry)
 
 
+class EsdGapPowerSymbolRail(unittest.TestCase):
+    @staticmethod
+    def _sch(extra_pins):
+        pins = extra_pins + [{"component": "U1", "pin_type": "input"},
+                             {"component": "J1", "pin_type": "passive"}]
+        return {"components": [
+                    {"reference": "J1", "type": "connector", "value": "USB_C",
+                     "lib_id": "Connector:USB_C_Receptacle", "pin_nets": {"1": "VPP"}},
+                    {"reference": "U1", "type": "ic"}],
+                "nets": {"VPP": {"pins": pins}}, "findings": []}
+
+    def test_vpp_net_marked_as_rail_by_a_power_symbol_is_not_a_gap(self):
+        sch = self._sch([{"component": "#PWR01", "pin_type": None}])
+        self.assertEqual(ca.check_esd_coverage_gaps(sch, None), [])
+
+    def test_vpp_signal_without_a_power_symbol_is_still_a_gap(self):
+        eg = ca.check_esd_coverage_gaps(self._sch([]), None)
+        self.assertEqual([f["nets"] for f in eg], [["VPP"]])
+
+
 if __name__ == "__main__":
     unittest.main()
