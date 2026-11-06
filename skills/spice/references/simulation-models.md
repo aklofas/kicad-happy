@@ -238,7 +238,7 @@ KiCad net names are translated to ngspice-safe names:
 |-----------|-------------|------|
 | `GND`, `gnd`, `earth`, `VSS` | `0` | Ground nets → node 0 |
 | `3V3` | `n3V3` | Leading digit → prefix with `n` |
-| `Net-(U3-pin7)` | `Net-_U3-pin7_` | Parentheses → underscores, `-` kept |
+| `Net-(U3-pin7)` | `Net-_U3-pin7_` | Parentheses and other special characters (spaces, `/`, `+`, …) → `_`; `-` and `.` kept |
 | `__unnamed_0` | `__unnamed_0` | Internal nets pass through |
 
 The `_sanitize_net()` function in `spice_models.py` handles this translation. When debugging a `.cir` file, KiCad net names in the comment header map to the sanitized names in the netlist.

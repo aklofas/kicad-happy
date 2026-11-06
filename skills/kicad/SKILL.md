@@ -58,7 +58,7 @@ For a full design review, explicitly account for each item below in the report:
 
 - `datasheets/` present, synced, or verification gap stated
 - `analyze_schematic.py`
-- `analyze_pcb.py --full`
+- `analyze_pcb.py --full --schematic`
 - `cross_analysis.py`
 - `analyze_emc.py`
 - SPICE simulation when any simulator is installed

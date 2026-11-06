@@ -128,7 +128,7 @@ Valid concern. Here's how this system is different from "paste your schematic in
 
 3. **The review is verifiable.** Every finding includes the path to verify it — which components, which nets, which datasheet page. If the agent says your thermal vias are insufficient, it tells you the via count, the pad area, and the IPC recommendation. You can check.
 
-4. **Hallucination risk is bounded by the data.** The agent can misinterpret analyzer data or draw wrong conclusions from datasheets — the same mistakes a human reviewer can make. The findings come from the analysis JSON, and the agent can still write a part or net that is not in it, so check findings against the JSON. Only Deep Review findings are checked automatically: the gate quarantines one that cites a component, net or pin missing from the analyzer JSON. The rest of the review report is not checked.
+4. **Hallucination risk is bounded by the data.** The agent can misinterpret analyzer data or draw wrong conclusions from datasheets — the same mistakes a human reviewer can make. The findings should come from the analysis JSON, and the agent can still write a part or net that is not in it, so check findings against the JSON. Only Deep Review findings are checked automatically: the gate quarantines one that cites a component, net or pin missing from the analyzer JSON. The rest of the review report is not checked.
 
 Is it perfect? No. That's why step 4 is "you review the review." But it's a lot better than skipping the review entirely — which is what happens on most projects when time runs out before tapeout.
 
@@ -138,7 +138,7 @@ No. This replaces *not doing a design review* with doing one.
 
 Most hardware teams don't have a formal peer review process for every board revision. The senior engineer is busy, the deadline is Thursday, and the board goes to fab with a quick eyeball check. Two weeks later it comes back and the regulator output is wrong because nobody noticed the feedback resistor values were swapped during a late-night edit.
 
-This tool does the tedious, systematic part — trace every net, check every value, verify every pin mapping, cross-reference every datasheet. It produces a structured report that a human engineer reviews. The human makes the engineering decisions. The tool covers what its detectors recognise. A circuit they do not recognise is a gap in the analysis, and the human reviewer has to cover it.
+This tool does the tedious, systematic part — trace the nets, check the values, verify the pin mappings and cross-reference the datasheets it recognises. It produces a structured report that a human engineer reviews. The human makes the engineering decisions. The tool covers what its detectors recognise. A circuit they do not recognise is a gap in the analysis, and the human reviewer has to cover it.
 
 If you're a senior EE who already does thorough design reviews, this saves you time. If you're a solo engineer or a small team without a dedicated reviewer, this gives you a second pair of eyes you didn't have before.
 

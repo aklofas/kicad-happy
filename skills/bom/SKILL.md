@@ -361,6 +361,7 @@ rm -f *.bak
 ```gitignore
 # BOM skill working files
 datasheets/*.pdf
+datasheets/manifest.json
 bom/orders/
 *.bak
 ```

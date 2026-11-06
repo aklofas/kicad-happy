@@ -32,7 +32,7 @@ For each `task` in `plan.tasks` with `status: "pending"` and `depends_on: []`, d
 
 For each task:
 
-1. Read the prompt template from `task.prompt_template`. The plan stores repo-relative strings that start with `skills/datasheets/`; read the file at the same path under `<datasheets-skill-path>` (the skill's install directory) instead, and do the same for `task.schema`.
+1. Read the prompt template from `task.prompt_template`. The plan stores repo-relative strings that start with `skills/datasheets/`; replace the leading `skills/datasheets/` with `<datasheets-skill-path>/` (the skill's install directory) and read that file instead, and do the same for `task.schema`.
 2. Substitute placeholders:
    - `{{MPN}}` ← `plan.mpn`
    - `{{PDF_PATH}}` ← `plan.pdf_path`

@@ -30,13 +30,13 @@ Automated EMC risk analysis for KiCad PCB designs. Identifies the most common ca
 | `kicad` (thermal) | Thermal hotspot analysis — MLCC derating and ferrite/inductor overheating findings can amplify EMC decoupling and filter issues (an over-stressed MLCC degrades; a hot ferrite drifts impedance). Worth cross-checking when EMC flags DC-001/DC-002 or EF-001/EF-002. |
 | `spice` | SPICE simulation — provides simulator backend for SPICE-enhanced PDN/filter checks |
 
-**Handoff guidance:** Run the `kicad` skill's `analyze_schematic.py` and `analyze_pcb.py` first — this skill consumes their JSON output. Use `--full` on the PCB analyzer for best results (enables per-track coordinates for ground plane crossing, edge proximity, and return path checks). During a design review, run EMC analysis after the schematic/PCB analyzers, SPICE simulation, and thermal analysis, then incorporate EMC findings into the report.
+**Handoff guidance:** Run the `kicad` skill's `analyze_schematic.py` and `analyze_pcb.py --schematic` first — this skill consumes their JSON output. Use `--full` on the PCB analyzer for best results (enables per-track coordinates for ground plane crossing, edge proximity, and return path checks). During a design review, run EMC analysis after the schematic/PCB analyzers, SPICE simulation, and thermal analysis, then incorporate EMC findings into the report.
 
 ## Requirements
 
 - **Python 3.10+** — stdlib only, no pip dependencies
 - **Schematic analyzer JSON** — from `analyze_schematic.py --output`
-- **PCB analyzer JSON** — from `analyze_pcb.py --full --output` (recommended with `--full`)
+- **PCB analyzer JSON** — from `analyze_pcb.py --full --schematic <sch> --output` (recommended with `--full`)
 - **SPICE simulator** *(optional)* — ngspice, LTspice, or Xyce for SPICE-enhanced PDN/filter checks. Auto-detected. Without one, analytical models run unchanged.
 
 ## Workflow
