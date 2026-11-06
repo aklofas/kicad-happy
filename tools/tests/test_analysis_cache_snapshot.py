@@ -1,6 +1,6 @@
-"""An --analysis-dir run is a snapshot: a derived output (thermal, EMC, cross-analysis, SPICE)
-stays in a run only while every output it was built from is unchanged, on both the new-run
-and the overwrite path, and the run's source_hashes keep every source's hash."""
+"""An --analysis-dir run is a snapshot: a derived output (thermal, EMC, cross-analysis, SPICE,
+lifecycle) stays in a run only while every output it was built from is unchanged, on both the
+new-run and the overwrite path, and the run's source_hashes keep every source's hash."""
 import hashlib, io, json, os, shutil, subprocess, sys, tempfile, unittest
 from contextlib import redirect_stderr
 from pathlib import Path
@@ -255,6 +255,73 @@ class OverwriteTest(unittest.TestCase):
         self.assertFalse(os.path.lexists(os.path.join(self.cur, "thermal.json")))
         self.assertNotIn("thermal", run["outputs"])
         self.assertEqual(Path(outside).read_text(encoding="utf-8"), '{"precious": true}')
+
+class LifecycleTest(unittest.TestCase):
+    """lifecycle.json lists the schematic's parts, so it leaves a run whose schematic.json
+    changes and stays when only pcb.json does."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.ad = os.path.join(self.tmp, "analysis")
+        self.cur = os.path.join(self.ad, "cur")
+        os.makedirs(self.cur)
+        _write_json(os.path.join(self.cur, "schematic.json"), {"analyzer_type": "schematic", "a": 1})
+        _write_json(os.path.join(self.cur, "pcb.json"), {"analyzer_type": "pcb", "a": 1})
+        _write_json(os.path.join(self.cur, "lifecycle.json"), {"findings": []})
+        _write_json(os.path.join(self.ad, "manifest.json"), {
+            "version": 1, "project": "", "current": "cur", "runs": {"cur": {
+                "source_hashes": {"a.kicad_sch": "sha256:aa", "a.kicad_pcb": "sha256:bb"},
+                "outputs": {"schematic": "schematic.json", "pcb": "pcb.json",
+                            "lifecycle": "lifecycle.json"},
+                "scripts": {}, "generated": "2026-10-30T00:00:00+00:00", "pinned": False}}})
+        self.out = os.path.join(self.tmp, "out")
+        os.makedirs(self.out)
+
+    def _create(self, source_hashes):
+        with redirect_stderr(io.StringIO()) as err:
+            analysis_cache.create_run(self.ad, self.out, source_hashes=source_hashes,
+                                      scripts={}, run_id="new")
+        return os.path.join(self.ad, "new"), err.getvalue(), _manifest(self.ad)["runs"]["new"]
+
+    def _overwrite(self, source_hashes):
+        with redirect_stderr(io.StringIO()) as err:
+            self.assertTrue(analysis_cache.overwrite_current(self.ad, self.out,
+                                                             source_hashes=source_hashes))
+        return self.cur, err.getvalue(), _manifest(self.ad)["runs"]["cur"]
+
+    def _assert_dropped(self, result):
+        run_dir, err, run = result
+        self.assertFalse(os.path.lexists(os.path.join(run_dir, "lifecycle.json")))
+        self.assertNotIn("lifecycle", run["outputs"])
+        self.assertIn("Note: lifecycle.json dropped", err)
+
+    def _assert_kept(self, result):
+        run_dir, err, run = result
+        self.assertEqual(_sha(os.path.join(run_dir, "lifecycle.json")),
+                         _sha(os.path.join(self.cur, "lifecycle.json")))
+        self.assertEqual(run["outputs"]["lifecycle"], "lifecycle.json")
+        self.assertNotIn("dropped", err)
+
+    def test_new_run_after_a_schematic_change_drops_lifecycle(self):
+        _write_json(os.path.join(self.out, "schematic.json"), {"analyzer_type": "schematic", "a": 2})
+        self._assert_dropped(self._create({"a.kicad_sch": "sha256:cc"}))
+
+    def test_overwrite_after_a_schematic_change_drops_lifecycle(self):
+        _write_json(os.path.join(self.out, "schematic.json"), {"analyzer_type": "schematic", "a": 2})
+        self._assert_dropped(self._overwrite({"a.kicad_sch": "sha256:cc"}))
+
+    def test_new_run_after_a_pcb_change_keeps_lifecycle(self):
+        _write_json(os.path.join(self.out, "pcb.json"), {"analyzer_type": "pcb", "a": 2})
+        self._assert_kept(self._create({"a.kicad_pcb": "sha256:dd"}))
+
+    def test_overwrite_after_a_pcb_change_keeps_lifecycle(self):
+        _write_json(os.path.join(self.out, "pcb.json"), {"analyzer_type": "pcb", "a": 2})
+        self._assert_kept(self._overwrite({"a.kicad_pcb": "sha256:dd"}))
+
+    def test_byte_identical_schematic_keeps_lifecycle(self):
+        shutil.copy(os.path.join(self.cur, "schematic.json"), self.out)
+        self._assert_kept(self._create({"a.kicad_sch": "sha256:aa"}))
 
 
 if __name__ == "__main__":

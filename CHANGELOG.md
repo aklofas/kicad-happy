@@ -45,6 +45,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Every CLI's `--output` replaces a symlink at the path instead of writing through it.
 - Given both `--output` and `--analysis-dir`, the schematic, PCB, EMC and SPICE CLIs write only `--output`, like the other analyzers.
 - Analyzers run in parallel into one `--analysis-dir` no longer lose each other's manifest entries; they share the current run folder.
+- After a schematic change, `--analysis-dir` drops the previous run's `lifecycle.json` instead of carrying the old parts' lifecycle forward.
 
 ### Documentation
 

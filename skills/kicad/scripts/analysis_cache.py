@@ -62,9 +62,11 @@ _CANONICAL_NAMES = frozenset(CANONICAL_OUTPUTS.values())
 
 # Outputs built from other outputs of the run. One stays in a run only while every
 # output it was built from (inputs.upstream_artifacts) is unchanged; one without that
-# record counts as built from the run's schematic and pcb outputs.
-_DERIVED_OUTPUTS = ('thermal.json', 'emc.json', 'cross_analysis.json', 'spice.json')
+# record counts as built from the run's schematic and pcb outputs, or from those named in
+# _DERIVED_UPSTREAMS.
+_DERIVED_OUTPUTS = ('thermal.json', 'emc.json', 'cross_analysis.json', 'spice.json', 'lifecycle.json')
 _UPSTREAM_OUTPUTS = ('schematic.json', 'pcb.json')
+_DERIVED_UPSTREAMS = {'lifecycle.json': ('schematic.json',)}
 
 GITIGNORE_CONTENT = """\
 # Analysis output -- regenerable from source files
@@ -449,7 +451,7 @@ def _built_from(run_dir: str, filename: str) -> Dict[str, Optional[str]]:
                 sha = art.get('sha256') if isinstance(art, dict) else None
                 built[name] = sha if isinstance(sha, str) else None
         return built
-    return {name: None for name in _UPSTREAM_OUTPUTS
+    return {name: None for name in _DERIVED_UPSTREAMS.get(filename, _UPSTREAM_OUTPUTS)
             if os.path.lexists(os.path.join(run_dir, name))}
 
 
