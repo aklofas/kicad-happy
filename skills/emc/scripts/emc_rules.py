@@ -3760,14 +3760,15 @@ def check_pdn_impedance(pcb: Optional[Dict],
         if not cap_models:
             continue
 
-        # Estimate transient current: config override > power-budget-derived
+        # Estimate transient current: config override > twice the regulator's
+        # estimated output current (sized from its output capacitance)
         # > 0.5A default (the default is used as-is, not doubled).
         pdiss = reg.get('power_dissipation', {})
         i_out = pdiss.get('estimated_iout_A')
         if pdn_transient_a:
             i_transient, transient_source = pdn_transient_a, 'config'
         elif i_out and i_out > 0:
-            i_transient, transient_source = min(i_out * 2, 5.0), 'power_budget'
+            i_transient, transient_source = min(i_out * 2, 5.0), 'output_cap_proxy'
         else:
             i_transient, transient_source = 0.5, 'default'
 

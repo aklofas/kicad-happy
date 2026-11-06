@@ -216,6 +216,28 @@ class Pd004(unittest.TestCase):
         self.assertEqual(found[0]["components"], ["U1", "U4"])
 
 
+class Pd001TransientSource(unittest.TestCase):
+    """The transient current derived from the regulator's estimated output current names that
+    estimate (sized from the output capacitance), not the power budget."""
+
+    def _pd001(self, **kw):
+        reg = _reg("U1", "+5V", 5.0, topo="ldo", caps=[("C1", 10e-6)])
+        reg.update(kw)
+        peak = [{"freq_hz": 1e6, "freq_mhz": 1.0, "impedance_ohm": 10.0, "exceeds_target": True}]
+        with mock.patch.object(er, "find_anti_resonances", side_effect=lambda sweep, z_target=None: peak):
+            found = er.check_pdn_impedance(None, {"findings": [reg]}, spice_backend=None)
+        (pd001,) = [f for f in found if f["rule_id"] == "PD-001"]
+        return pd001
+
+    def test_derived_current_says_output_cap_proxy(self):
+        f = self._pd001(power_dissipation={"estimated_iout_A": 0.1})
+        self.assertEqual((f["transient_a"], f["transient_source"]), (0.2, "output_cap_proxy"))
+
+    def test_no_estimate_keeps_the_default(self):
+        f = self._pd001()
+        self.assertEqual((f["transient_a"], f["transient_source"]), (0.5, "default"))
+
+
 class Pd003Held(unittest.TestCase):
     """The rail's trace parasitics are not read from the PCB yet: a rail with routed copper
     still gets no PD-003 (a whole-net trace sum is not the regulator-to-IC path)."""

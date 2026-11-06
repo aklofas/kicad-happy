@@ -302,6 +302,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - PCB DFM judges annular rings against the IPC class the design intent resolves (project config, fab notes or title block) instead of always Class 2.
 - Negative regulator outputs use their magnitude where the physics does: the PDN target impedance (a −5 V rail no longer gets PD-001 errors from a negative target), a switching regulator's loss in the power-dissipation estimate and the thermal report, an LDO's dropout in the power budget and the dissipation estimate (−25 V to −15 V drops 10 V, not 40 V), what-if's recomputed dissipation, and capacitor DC-bias derating (including TH-001).
 - A fixed-output regulator (voltage in its part number) whose output pin sits on a ground net no longer gets that ground as its output rail, so ground is no longer given the regulator's voltage in `rail_voltages` and its output capacitors are no longer looked for on ground.
+- EMC PD-001 labels a transient current taken from the regulator's estimated output current `transient_source: "output_cap_proxy"` instead of `power_budget`: that estimate is sized from the output capacitance, not read from the power budget. The current and the finding are unchanged.
 
 ### Documentation
 
