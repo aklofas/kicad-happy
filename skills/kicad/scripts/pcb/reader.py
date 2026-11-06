@@ -354,6 +354,11 @@ def extract_footprints(root: list, diagnostics: list | None = None) -> list[dict
     fp_nodes = find_all(root, "footprint") or find_all(root, "module")
 
     for fp in fp_nodes:
+        # KiCad keeps the largest version it has parsed, footprint-level ones included.
+        try:
+            file_version = max(file_version, int(get_value(fp, "version")))
+        except (TypeError, ValueError):
+            pass
         fp_lib = fp[1] if len(fp) > 1 else ""
         at = get_at(fp)
         x, y, angle = at if at else (0, 0, 0)
@@ -495,10 +500,17 @@ def extract_footprints(root: list, diagnostics: list | None = None) -> list[dict
             if pad_type == "np_thru_hole":
                 pad_info.update(_npth_copper_props(pad, pad_drill))
 
-            # Fabrication property (fiducial, test point, ...); the last token wins
-            prop_node = find_first(pad, "property")
-            prop = prop_node[-1] if prop_node and len(prop_node) > 1 else None
-            if isinstance(prop, str) and prop in _PAD_PROPERTIES:
+            # Fabrication property (fiducial, test point, ...): KiCad reads every token of
+            # every property node; the last known one wins and `none` clears it.
+            prop = None
+            for pn in pad:
+                if isinstance(pn, list) and pn[:1] == ["property"]:
+                    for t in pn[1:]:
+                        if t in _PAD_PROPERTIES:
+                            prop = t
+                        elif t == "none":
+                            prop = None
+            if prop:
                 pad_info["_property"] = prop
 
             if pad_net and len(pad_net) >= 3:

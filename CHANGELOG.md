@@ -16,6 +16,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `analyze_pcb.py --schematic` given a JSON file that is not an object, or not UTF-8, now warns and continues without schematic cross-reference instead of stopping with a traceback.
 - DFM no longer carries net-class track-width and via-diameter checks: KiCad treats those class values as routing defaults, not minima, and the checks never ran.
 - The connector ESD-gap check no longer reports a VPP or VM net that a power symbol marks as a rail.
+- A footprint pad with several fabrication-property tokens, or a footprint that declares its own newer file version, is read as KiCad reads it.
 
 ### Documentation
 

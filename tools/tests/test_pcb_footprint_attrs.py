@@ -115,5 +115,33 @@ class PadMarkers(unittest.TestCase):
         self.assertEqual((cov["nets_with_test_points"], cov["total_signal_nets"]), (1, 2))
 
 
+class PadPropertyAndFootprintVersion(unittest.TestCase):
+    def _pad_prop(self, extra):
+        fp = extract_footprints(board([modern_fp("J1", "(attr smd)", SMD_PAD.format(extra=extra))]))[0]
+        return fp["pads"][0].get("_property")
+
+    def test_unknown_token_after_a_known_one_keeps_the_known_one(self):
+        self.assertEqual(self._pad_prop(" (property pad_prop_bga foo)"), "pad_prop_bga")
+
+    def test_last_property_node_wins(self):
+        self.assertEqual(self._pad_prop(" (property pad_prop_bga) (property pad_prop_testpoint)"),
+                         "pad_prop_testpoint")
+
+    def test_none_clears_the_property(self):
+        self.assertIsNone(self._pad_prop(" (property pad_prop_bga none)"))
+
+    def test_single_property_is_read(self):
+        self.assertEqual(self._pad_prop(" (property pad_prop_fiducial_loc)"), "pad_prop_fiducial_loc")
+
+    def test_footprint_version_newer_than_board_ends_the_legacy_technology_rule(self):
+        fp = modern_fp("U1", "(version 20221018) (attr)")
+        fps = extract_footprints(board([fp], "(version 20200101)"))
+        self.assertEqual(fps[0]["type"], "unspecified")
+
+    def test_old_board_without_footprint_version_keeps_the_legacy_rule(self):
+        fps = extract_footprints(board([modern_fp("U1", "(attr)")], "(version 20200101)"))
+        self.assertEqual(fps[0]["type"], "through_hole")
+
+
 if __name__ == "__main__":
     unittest.main()
