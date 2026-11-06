@@ -244,16 +244,21 @@ def _mpn_alternatives(field: str) -> list[str]:
     """The part numbers an MPN field lists as alternatives ("1012, 1012C",
     "LM358 / LM2904"), or [field] when it names one part. A slash inside a part
     number ("BAV99/215") is not a separator."""
-    alts = []
+    pieces = []
     for piece in re.split(r"\s*[,;]\s*|\s+/\s+", field):
         piece = piece.strip()
-        # A bare number ("1012") is a part number when a lettered sibling shares the field.
-        if piece and piece not in alts and (
-                _is_real_mpn(piece) or (piece.isdigit() and len(piece) >= 3)):
-            alts.append(piece)
-    if len(alts) < 2 or not any(_is_real_mpn(a) for a in alts):
-        return [field]
-    return alts
+        if piece and piece not in pieces:
+            pieces.append(piece)
+    # A bare number ("1012") is a part number only when a sibling extends it ("1012C").
+    # A field with any other piece that is no part number is a list of values.
+    for piece in pieces:
+        if piece.isdigit() and len(piece) >= 3:
+            ok = any(a != piece and a.upper().startswith(piece.upper()) for a in pieces)
+        else:
+            ok = _is_real_mpn(piece)
+        if not ok:
+            return [field]
+    return pieces if len(pieces) >= 2 else [field]
 
 
 def _audit_mpn_field(field: str, alts: list[str], sources, project_dir, delay,

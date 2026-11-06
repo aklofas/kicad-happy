@@ -183,6 +183,8 @@ class MpnFieldAlternativesTest(unittest.TestCase):
     def test_generic_values_are_not_alternatives(self):
         self.assertEqual(lifecycle_engine._mpn_alternatives("10k, 1%"), ["10k, 1%"])
         self.assertEqual(lifecycle_engine._mpn_alternatives("LM358, 10k"), ["LM358, 10k"])
+        for field in ("1206, 50V", "0603, X7R", "100, 16V", "1206, 50V, X7R"):
+            self.assertEqual(lifecycle_engine._mpn_alternatives(field), [field], field)
 
 
 if __name__ == "__main__":
