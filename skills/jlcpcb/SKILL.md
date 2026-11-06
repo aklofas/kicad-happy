@@ -174,7 +174,9 @@ don't match JLCPCB's expected columns, the `bom` skill ships
 ```bash
 # BOM: KiCad/Altium CSV → JLCPCB BOM CSV (Comment, Designator, Footprint,
 #                                         LCSC Part #, MPN, Manufacturer,
-#                                         Quantity, Notes), DNP rows left out, R1-R4 expanded
+#                                         Quantity, Notes), DNP rows left out, R1-R4 expanded.
+#                                         LCSC Part # is written empty even if the input has one:
+#                                         fill it before upload.
 python3 <bom-skill-path>/scripts/translate_bom_pnp.py bom input_bom.csv -o jlc_bom.csv
 
 # CPL: input CPL → JLCPCB Pick-and-Place CSV (Designator, Mid X, Mid Y,
