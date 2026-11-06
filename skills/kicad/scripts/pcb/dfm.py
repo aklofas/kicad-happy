@@ -1094,8 +1094,9 @@ def analyze_design_rule_compliance(
                 rules_by_type.setdefault(constraint['type'], []).append((ri, ci, rule, constraint))
 
     # Each item is judged by the bounds KiCad resolves for it; per (rule, bound) the worst item
-    # is kept: worst[(origin, bound)] = (actual, source, definite bound value); the worst is the
-    # largest shortfall, which is the lowest actual unless the bound differs per item.
+    # is kept: worst[(origin, bound)] = (actual, source, definite bound value, that value's
+    # minimum source); the worst is the largest shortfall, which is the lowest actual unless
+    # the bound differs per item (a micro via's net class).
     worst: dict[tuple, tuple] = {}
     present: set[tuple] = set()
     custom_applies: set[tuple] = set()
@@ -1124,21 +1125,23 @@ def analyze_design_rule_compliance(
             definite = candidates[0][0]
             if prev is None or (definite - actual > prev[2] - prev[0] if bound == 'min'
                                 else actual - definite > prev[0] - prev[2]):
-                worst[key] = (actual, src, definite)
+                bound_source = (item_minima.get(key[0], (None, None))[1]
+                                if isinstance(key[0], str) else None)
+                worst[key] = (actual, src, definite, bound_source)
 
     # --- Check the board minima ---
     for rule_name, kinds in _BOARD_MINIMUM_ITEMS:
         required, source = minima.get(rule_name, (None, None))
         hit = worst.get((rule_name, 'min'))
         if hit is not None:
-            required = hit[2]
+            required, source = hit[2], hit[3] or source
         if (required is None and hit is None) or not any(k in present for k in kinds):
             continue
         rules_checked += 1
         if hit is None:
             continue
         source = source or 'project'
-        actual, src, _ = hit
+        actual, src = hit[:2]
         from_pad = rule_name == 'min_via_drill' and src.startswith('pad ')
         message = (f"{rule_name.replace('_', ' ').title()} "
                    f"{actual:.3f}mm violates {_MINIMUM_LABEL[source]} minimum "
@@ -1275,7 +1278,7 @@ def analyze_design_rule_compliance(
                 hit = worst.get(((ri, ci), bound))
                 if hit is None:
                     continue
-                actual, src, _ = hit
+                actual, src = hit[:2]
                 required = constraint[bound]
                 v = {
                     'rule': f"custom:{rule.get('name', ctype)}",

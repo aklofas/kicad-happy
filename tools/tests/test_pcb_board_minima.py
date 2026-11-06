@@ -202,6 +202,17 @@ class MicroViaNetClassTest(unittest.TestCase):
         self.assertEqual(micro_required("LONG_FINE", pro_text), 0.35)
         self.assertEqual(micro_required("XLONG", pro_text), 0.3)
 
+    def test_class_bound_names_its_own_source(self):
+        # No board micro-via minimum in the project: the board bound is KiCad's default, but
+        # the 0.35 the via fails is the project's net class value.
+        settings = json.loads(class_pro({"Coarse": (1, 0.35)}, (("COARSE", "Coarse"),)))
+        settings["board"]["design_settings"]["rules"] = {}
+        del settings["net_settings"]["classes"][0]["microvia_diameter"]
+        v = by_rule(compliance(micro_via_board("COARSE"), json.dumps(settings)))
+        self.assertEqual(v["min_microvia_diameter"]["required_mm"], 0.35)
+        self.assertEqual(v["min_microvia_diameter"]["source"], "project")
+        self.assertIn("violates project minimum (0.350mm)", v["min_microvia_diameter"]["message"])
+
     def test_legacy_board_class_sets_the_net_bound(self):
         text = LEGACY.replace("(add_net A))", ")").replace(
             "{items})", '  (net_class Wide "" (clearance 0.2) (trace_width 0.25) (via_dia 0.8)'
