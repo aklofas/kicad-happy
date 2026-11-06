@@ -1,6 +1,6 @@
-"""A project's cached SPICE models are pasted into netlists only when they hold no
-simulator control commands and include nothing outside the models folder, unless the
-user opts in from ~/.kicad-happy.json. Manifest `file` names stay inside the cache
+"""A project's cached SPICE models are pasted into netlists only when they hold
+model-library cards alone and include no file, unless the user opts in from
+~/.kicad-happy.json. Manifest `file` names stay inside the cache
 and model files are never written through a symlink."""
 import contextlib, io, json, os, sys, tempfile, unittest
 from pathlib import Path
@@ -78,6 +78,16 @@ class ModelTrustTest(_CacheCase):
                 self.assertEqual(source, "lookup:LM358")
                 self.assertEqual(len(sink), 1, sink)
 
+    def test_simulator_output_card_model_skipped(self):
+        text = ".subckt LM358 1 2 3 4 5\n.print tran v(1)\n.ends\n"
+        self.plant(text)
+        (subckt, source, _), sink = self.resolve()
+        self.assertEqual(source, "lookup:LM358")
+        self.assertNotIn(".print", subckt)
+        self.assertEqual(len(sink), 1, sink)
+        self.assertEqual(sink[0]["effect"], "project model skipped")
+        self.assertEqual((self.models / "LM358.sub").read_text(encoding="utf-8"), text)
+
     def test_element_names_like_control_words_used(self):
         text = ".subckt LM358 1 2 3 4 5\nSOURCE1 1 2 3 4 SW1\nshellcap 1 2 1p\n.ends\n"
         self.plant(text)
@@ -125,6 +135,40 @@ class ModelTextProblemTest(unittest.TestCase):
                     "  .endc  \n", ".controlx\n", ".LIBRARY x\n", ".inc ~/x.lib\n",
                     ".include helper.lib\n", ".incx a\n", ".lib\n", "  .Inc\n+ x.lib\n"):
             self.assertIsNotNone(smc.model_text_problem(bad), bad)
+
+
+    def test_only_model_library_cards_pass(self):
+        for bad in (".print tran v(1)\n", ".MEASURE TRAN t1 FIND v(1) AT=1u\n",
+                    ".meas ac x max vdb(1)\n", ".save all\n", ".options reltol=1e-4\n",
+                    ".temp 85\n", ".end\n", ".tran 1n 1u\n", ".op\n", ".backanno\n",
+                    ".wave out.wav 16 44100 v(1)\n", ".subcktx A 1 2\n", ".endl\n",
+                    ".ic v(1)=0\n"):
+            self.assertIsNotNone(smc.model_text_problem(bad), bad)
+        for ok in (".SUBCKT X 1 2\n.ENDS X\n", ".model D1 D(IS=1e-14)\n", ".param rload=1k\n",
+                   ".func f(x) {x*2}\n", ".global vdd\n", ".param profile=1\n",
+                   "* .print in a comment\n", "R1 1 2 {rload}\n"):
+            self.assertIsNone(smc.model_text_problem(ok), ok)
+
+    def test_file_reading_code_model_refused(self):
+        for bad in ('.model src filesource(file="/etc/passwd" amploffset=[0])\n',
+                    '.model s d_state(state_file="x.in")\n',
+                    '.model t table2d(file="t.tbl")\n',
+                    '.model d d_source(input_file = "x")\n',
+                    '.model src filesource\n+ (file="/etc/passwd")\n'):
+            self.assertIsNotNone(smc.model_text_problem(bad), bad)
+
+    def test_generated_models_pass(self):
+        import spice_part_library as lib
+        seen = 0
+        for table, ctype in ((lib.OPAMP_SPECS, "opamp"), (lib.LDO_SPECS, "ldo"),
+                             (lib.COMPARATOR_SPECS, "comparator"), (lib.VREF_SPECS, "vref")):
+            for mpn in table:
+                specs, resolved = lib.lookup_part_specs(mpn, ctype)
+                self.assertEqual(resolved, ctype, mpn)
+                text = smc._GENERATORS[ctype](mpn, specs)
+                self.assertIsNone(smc.model_text_problem(text), (mpn, text))
+                seen += 1
+        self.assertGreater(seen, 50)
 
 
 class ManifestFileTest(_CacheCase):

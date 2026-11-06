@@ -27,6 +27,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `"analysis": null` or a non-string entry in `power_rails.ignore` / `flag` is now warned and ignored instead of dropping every power-rail setting.
 - A `voltage_overrides` entry now also sets the output voltage used for an LDO's dropout and dissipation, and counts when deciding whether two ICs' I/O rails need a level shifter.
 - An LVDS serializer or deserializer identified only by its MPN field is now detected.
+- A cached project SPICE model is pasted into a testbench only when it holds model-library cards alone (`.subckt`, `.ends`, `.model`, `.param`, `.func`, `.global`); output, analysis and option cards, and XSPICE models that read files, make it fall back to the built-in model with a diagnostic (`spice.trust_project_models` still overrides).
 - A SPICE run without `--workdir` no longer leaves its temporary `spice_sim_*` folder (or the per-process model-cache folder) behind; pass `--workdir` to keep the testbenches.
 - A SPICE run whose analysis names its schematic by a relative path that does not exist from the current directory caches part models in the run's own folder instead of a `spice/models/` folder in the current directory.
 - An unreadable SPICE model manifest (`spice/models/manifest.json`) is left as it is, with a "model not cached" diagnostic, instead of being replaced by a manifest holding only the newest model.

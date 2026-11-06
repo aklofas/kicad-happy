@@ -28,6 +28,7 @@ Offline mode skips tiers 2-4.
 import atexit
 import json
 import os
+import re
 import shutil
 import stat
 import tempfile
@@ -180,6 +181,11 @@ def _lookup_cached_model(cache_dir, mpn, diagnostics=None):
 _CONTROL_CARD_PREFIXES = (".control", ".endc")
 _INCLUDE_CARD_PREFIXES = (".inc", ".lib")
 _CONTROL_WORDS = ("shell", "source")
+# The cards a model library loaded by .include/.lib may hold; anything else (.print,
+# .option, .end, an analysis) would act on the whole netlist.
+_MODEL_LIBRARY_CARDS = frozenset({".subckt", ".ends", ".model", ".param", ".func", ".global"})
+# XSPICE code models such as filesource, d_source and d_state read the file they name
+_FILE_PARAMETER = re.compile(r"(?i)(?<!\w)(?:file|input_file|state_file)\s*=")
 
 
 def _logical_lines(text):
@@ -196,9 +202,11 @@ def _logical_lines(text):
 def model_text_problem(text):
     """Why a cached model is unsafe to paste into a netlist, or None.
 
-    Unsafe: a line that opens or closes a simulator control block, runs ``shell`` or
-    ``source``, or includes any file (``.inc``/``.include``/``.lib``). Included files
-    resolve from the simulation directory and are never scanned, so none is allowed.
+    Only model-library cards (``.subckt``, ``.ends``, ``.model``, ``.param``, ``.func``,
+    ``.global``), element lines and comments are safe. Unsafe: a line that includes any
+    file (``.inc``/``.include``/``.lib``; included files resolve from the simulation
+    directory and are never scanned), opens or closes a simulator control block, runs
+    ``shell`` or ``source``, is any other dot-card, or gives a code model a file to read.
     """
     for line in _logical_lines(text):
         card = line.lower().split(None, 1)[0] if line else ""
@@ -206,6 +214,10 @@ def model_text_problem(text):
             return f"model includes a file: {line[:60]}"
         if card.startswith(_CONTROL_CARD_PREFIXES) or card in _CONTROL_WORDS:
             return f"model contains a simulator control command: {line[:60]}"
+        if card.startswith(".") and card not in _MODEL_LIBRARY_CARDS:
+            return f"model contains a simulator command card: {line[:60]}"
+        if card and not card.startswith("*") and _FILE_PARAMETER.search(line):
+            return f"model reads a file: {line[:60]}"
     return None
 
 
@@ -332,8 +344,8 @@ class ModelOptions:
                (default: beside the first source file the analysis JSON names,
                "file" or "inputs.source_files[0]", when that file can be found)
     offline:   never query distributor APIs or datasheets; cache + lookup table only
-    trust_project_models: paste cached models verbatim, even ones with simulator
-               control commands or includes outside the models folder
+    trust_project_models: paste cached models verbatim, even ones holding anything
+               but model-library cards (.subckt/.ends/.model/.param/.func/.global)
     """
     cache_dir: str | None = None
     offline: bool = False
