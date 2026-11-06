@@ -60,6 +60,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `plan_extraction.py --use-cached-scout` with no saved scout, or an unreadable plan or scout, stops with a one-line message and exit 2 instead of a traceback; the extraction pipeline no longer follows a symlinked cache file or waits on a named pipe.
 - Datasheet verification after a download no longer fails with an import error when the distributor scripts are used from another tool.
 - `datasheet_verify`, the datasheet feature helpers and the lifecycle audit now find a part's extraction the same way (extraction manifest first, then the file named after the part), so they no longer read different extractions for the same part.
+- `capability_mode.json` reports `datasheet_coverage_pct`: the share of the parts in `datasheets/manifest.json` that have an extraction (it was always 0).
 
 ### Documentation
 

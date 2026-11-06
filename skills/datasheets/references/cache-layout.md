@@ -54,7 +54,7 @@ resolved.
 
 ### Manifest (`datasheets/manifest.json`)
 
-The distributor download manifest, written by the sync scripts: `{schematic, last_sync, parts}`, one entry per MPN downloaded. The extraction cache does not read it.
+The distributor download manifest, written by the sync scripts: `{schematic, last_sync, parts}`, one entry per MPN downloaded. The extraction cache does not read it; only `capability_mode.json`'s `datasheet_coverage_pct` does, as the part list.
 
 `schemas/manifest.schema.json` also defines a `pdfs` section (keyed by `sha256:<hex>`, values `{path, mpns[], source_url, is_family}`) for PDF SHA dedup. It is defined but not populated by the current scripts. The legacy v1.3 cache keeps its own index at `datasheets/extracted/manifest.json` (`{version, last_updated, extractions}`), written by `datasheet_extract_cache.py`; v1.4 extractions don't write to it.
 
