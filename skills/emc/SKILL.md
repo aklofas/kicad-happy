@@ -180,7 +180,7 @@ Read the JSON report and incorporate findings into the design review. Each findi
 | **warning** | May cause issues depending on specifics | Review and assess |
 | **info** | Informational — frequencies, estimates, good practice | Useful for lab prep |
 
-`--severity` takes the older five-level names as the threshold: `critical` and `high` keep `error` findings, `medium` keeps `error` and `warning`, `low` and `all` keep everything.
+`--severity` takes `error`, `warning` or `info`, or the older five-level names: `critical` and `high` keep `error` findings, `medium` keeps `error` and `warning`, `low` and `all` keep everything.
 
 ### Risk Score
 

@@ -4779,7 +4779,8 @@ def check_inductor_leakage(pcb: Dict, schematic: Dict) -> List[Dict]:
 def filter_by_severity(findings: List[Dict], threshold: str) -> List[Dict]:
     """Keep the findings at or above `threshold`.
 
-    The threshold may be 'all' or a legacy name (critical/high/medium/low).
+    The threshold may be 'all', error/warning/info, or a legacy name
+    (critical/high/medium/low).
     """
     if threshold.lower() == 'all':
         return findings

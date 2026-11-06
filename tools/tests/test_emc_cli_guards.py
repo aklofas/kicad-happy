@@ -27,7 +27,7 @@ class SeverityFilterTest(unittest.TestCase):
         r = _run(PCB, str(FX / "kh412" / "pad_drill_min.kicad_pcb"), "--output", cls.pcb)
         assert r.returncode == 0, r.stderr
         cls.counts = {}
-        for sev in ("all", "critical", "high", "medium", "low"):
+        for sev in ("all", "critical", "high", "medium", "low", "error", "warning", "info"):
             out = os.path.join(cls.tmp, f"emc_{sev}.json")
             r = _run(EMC, "-p", cls.pcb, "--severity", sev, "-o", out)
             assert r.returncode == 0, r.stderr
@@ -58,6 +58,14 @@ class SeverityFilterTest(unittest.TestCase):
 
     def test_low_keeps_everything(self):
         self.assertEqual(self.counts["low"][0], self.counts["all"][0])
+
+    def test_output_names_are_accepted_and_match_the_legacy_names(self):
+        for new, old in (("error", "high"), ("warning", "medium"), ("info", "low")):
+            self.assertEqual(self.counts[new], self.counts[old], new)
+
+    def test_unknown_severity_is_still_a_usage_error(self):
+        r = _run(EMC, "-p", self.pcb, "--severity", "bogus")
+        self.assertEqual(r.returncode, 2)
 
 
 class InputGuardTest(unittest.TestCase):

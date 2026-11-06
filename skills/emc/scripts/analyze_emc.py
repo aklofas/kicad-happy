@@ -318,7 +318,8 @@ def main(argv: list[str] | None = None) -> int:
                         help='PCB analyzer JSON. Auto-resolved from --analysis-dir current run when omitted.')
     add_output_arg(parser, help='Output JSON file path')
     parser.add_argument('--severity', default='all',
-                        choices=['all', 'low', 'medium', 'high', 'critical'],
+                        choices=['all', 'low', 'medium', 'high', 'critical',
+                                 'info', 'warning', 'error'],
                         help='Minimum severity to report (default: all)')
     parser.add_argument('--standard', default='fcc-class-b',
                         choices=list(STANDARDS.keys()),

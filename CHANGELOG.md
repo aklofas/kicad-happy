@@ -32,6 +32,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A SPICE run without `--workdir` no longer leaves its temporary `spice_sim_*` folder (or the per-process model-cache folder) behind; pass `--workdir` to keep the testbenches.
 - A SPICE run whose analysis names its schematic by a relative path that does not exist from the current directory caches part models in the run's own folder instead of a `spice/models/` folder in the current directory.
 - An unreadable SPICE model manifest (`spice/models/manifest.json`) is left as it is, with a "model not cached" diagnostic, instead of being replaced by a manifest holding only the newest model.
+- `analyze_emc.py --severity` accepts `error`, `warning` and `info`, the names its output uses, as well as the older five-level names.
 
 ### Documentation
 

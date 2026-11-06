@@ -113,7 +113,7 @@ confidence_weight: deterministic and datasheet-backed 1.0, heuristic 0.5
 - **warning:** May cause issues depending on specifics. Decoupling distance, clock on outer layer, via stitching gaps.
 - **info:** Informational or minor risk. Internal header filtering, signal layer spacing, interplane capacitance, cavity resonance frequencies, harmonic spectrum data, and the SU-001 note on two-layer boards.
 
-The analyzer output uses only these three names. `--severity` still takes the older five-level names as its threshold: `critical` and `high` keep error findings, `medium` keeps error and warning, `low` and `all` keep everything.
+The analyzer output uses only these three names. `--severity` takes `error`, `warning` or `info`, or the older five-level names: `critical` and `high` keep error findings, `medium` keeps error and warning, `low` and `all` keep everything.
 
 ## Limitations
 
