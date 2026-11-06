@@ -43,7 +43,7 @@ def v2(recommended=None, absolute=None):
 
 class ProjectDirHelperTest(unittest.TestCase):
     def test_source_files_and_file(self):
-        f = kproject.project_dir_from_analysis
+        f = kproject.extraction_project_dir
         self.assertEqual(f({"inputs": {"source_files": ["/x/proj/board.kicad_sch"]}}), Path("/x/proj"))
         self.assertEqual(f({"file": "/p/a.kicad_sch",
                             "inputs": {"source_files": ["/x/proj/b.kicad_sch"]}}), Path("/p"))
@@ -52,7 +52,7 @@ class ProjectDirHelperTest(unittest.TestCase):
 
     def test_spice_cache_uses_the_same_helper(self):
         import spice_model_cache
-        self.assertIs(spice_model_cache.project_dir_from_analysis, kproject.project_dir_from_analysis)
+        self.assertIs(spice_model_cache.extraction_project_dir, kproject.extraction_project_dir)
 
 
 class ExtractionTemperatureTest(unittest.TestCase):

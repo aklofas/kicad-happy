@@ -22,13 +22,6 @@ def _recorded_source_file(analysis_json):
     return source_file if isinstance(source_file, str) and source_file else None
 
 
-def project_dir_from_analysis(analysis_json):
-    """Return the directory of the first source file the analysis JSON names
-    ("file", else inputs.source_files[0]), or None when it names none."""
-    source_file = _recorded_source_file(analysis_json)
-    return Path(source_file).parent if source_file else None
-
-
 def existing_source_dir(source_file):
     """Absolute directory of a recorded source path, or None. A relative path
     counts only when that file exists from the cwd: otherwise the cwd (maybe a
@@ -42,8 +35,9 @@ def existing_source_dir(source_file):
 
 
 def extraction_project_dir(analysis_json):
-    """Project directory for datasheet-extraction reads: like
-    project_dir_from_analysis, but a relative source path must exist."""
+    """Project directory of the first source file the analysis JSON names
+    ("file", else inputs.source_files[0]), or None. Used by the datasheet
+    extraction and SPICE model caches; a relative source path must exist."""
     return existing_source_dir(_recorded_source_file(analysis_json))
 
 

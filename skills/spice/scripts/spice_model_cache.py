@@ -27,6 +27,7 @@ Offline mode skips tiers 2-4.
 
 import json
 import os
+import stat
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -35,7 +36,7 @@ import _core_path  # noqa: F401
 from datasheet_types.cache_reader import read_json_object, read_regular_bytes
 from distributor_core.manifest import DEFAULT_FILE_MODE, manifest_file_path
 from kicad_core.diagnostics import record
-from kicad_core.project import extraction_project_dir, project_dir_from_analysis  # noqa: F401  (re-exported)
+from kicad_core.project import extraction_project_dir
 from spice_part_library import lookup_part_specs
 from spice_spec_fetcher import _read_spice_specs
 from spice_model_generator import (
@@ -56,12 +57,14 @@ def resolve_cache_dir(analysis_json, override_dir=None):
     Resolution, first match wins:
         1. override_dir, when given
         2. beside the first source file the analysis JSON names
-           ("file", or "inputs.source_files[0]")
+           ("file", or "inputs.source_files[0]"); a relative path counts only
+           when that file exists from the current directory
         3. one per-process temp directory, created on first use, so two
            processes never share a manifest and no model leaks across projects
 
     simulate_subcircuits passes its workdir as override_dir when the analysis
-    names no source file, so step 3 is reached only by other callers.
+    names no source file, or a relative one not found from the current
+    directory, so step 3 is reached only by other callers.
 
     Args:
         analysis_json: Parsed analyzer JSON dict ("file" / "inputs" optional)
@@ -74,7 +77,7 @@ def resolve_cache_dir(analysis_json, override_dir=None):
     if override_dir:
         return Path(override_dir) / "spice" / "models"
 
-    project_dir = project_dir_from_analysis(analysis_json)
+    project_dir = extraction_project_dir(analysis_json)
     if project_dir is not None:
         return project_dir / "spice" / "models"
 
@@ -216,6 +219,16 @@ def cache_model(cache_dir, mpn, subckt, specs, source, component_type):
     cache_dir = Path(cache_dir)
     cache_dir.mkdir(parents=True, exist_ok=True)
 
+    # Rewriting a manifest that cannot be read would drop every entry it holds;
+    # an empty regular file has none to lose.
+    read_path = _cache_manifest_path(cache_dir)
+    if os.path.lexists(read_path) and not _is_empty_regular_file(read_path):
+        index = read_json_object(read_path)
+        if index is None:
+            raise OSError(f"{read_path.name} is unreadable; model not cached")
+    else:
+        index = {}
+
     key = sanitize_mpn(mpn)
     filename = f"{key}.sub"
     model_path = cache_dir / filename
@@ -236,9 +249,6 @@ def cache_model(cache_dir, mpn, subckt, specs, source, component_type):
         raise
 
     # Update manifest (prefer existing file; always write to manifest.json)
-    read_path = _cache_manifest_path(cache_dir)
-    index = read_json_object(read_path) or {}
-
     import datetime
     index[key] = {
         "file": filename,
@@ -277,6 +287,14 @@ def cache_model(cache_dir, mpn, subckt, specs, source, component_type):
     _index_cache.pop(str(cache_dir), None)
 
 
+def _is_empty_regular_file(path):
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return False
+    return stat.S_ISREG(st.st_mode) and st.st_size == 0
+
+
 def _serialize_specs(specs):
     """Make specs dict JSON-serializable (handle any non-standard types)."""
     result = {}
@@ -308,7 +326,7 @@ class ModelOptions:
 
     cache_dir: directory under which spice/models/ is read and written
                (default: beside the first source file the analysis JSON names,
-               "file" or "inputs.source_files[0]")
+               "file" or "inputs.source_files[0]", when that file can be found)
     offline:   never query distributor APIs or datasheets; cache + lookup table only
     trust_project_models: paste cached models verbatim, even ones with simulator
                control commands or includes outside the models folder

@@ -303,7 +303,7 @@ For detailed information about the behavioral models used, their accuracy envelo
 | `scripts/spice_simulator.py` | Simulator backends — ngspice, LTspice, Xyce auto-detection and batch execution |
 | `scripts/spice_part_library.py` | Lookup table of electrical specs for 103 op-amps, LDOs, comparators and references, plus 24 crystal-driver and 10 MOSFET entries |
 | `scripts/spice_model_generator.py` | Parameterized behavioral .subckt generation from specs dicts |
-| `scripts/spice_model_cache.py` | Project-local model cache in `spice/models/` beside the schematic the analysis JSON names (`file` or `inputs.source_files[0]`); only an analysis that names no source file caches under the run's workdir (`--model-cache-dir` to share one cache) |
+| `scripts/spice_model_cache.py` | Project-local model cache in `spice/models/` beside the schematic the analysis JSON names (`file` or `inputs.source_files[0]`); an analysis that names no source file, or a relative one not found from the current directory, caches under the run's workdir (`--model-cache-dir` to share one cache) |
 | `scripts/spice_spec_fetcher.py` | Queries distributor APIs (LCSC, DigiKey, element14, Mouser), structured datasheet extractions, and PDF regex for parametric specs |
 | `scripts/extract_parasitics.py` | Compute trace R, via L, coupling C from PCB analysis JSON |
 
@@ -324,7 +324,7 @@ Model resolution cascade:
 
 The `model_note` field in the report indicates which model was used: `"LM358 behavioral (lookup:LM358, GBW=1.0MHz)"` vs `"ideal opamp (Aol=1e6, GBW~10MHz)"`.
 
-Models are cached project-locally in a `spice/` directory beside the schematic the analysis JSON names (`file` or `inputs.source_files[0]`), the same pattern as `datasheets/`. Only an analysis that names no source file caches under the run's workdir. This keeps models co-located with the design and handles board revisions and subprojects naturally.
+Models are cached project-locally in a `spice/` directory beside the schematic the analysis JSON names (`file` or `inputs.source_files[0]`), the same pattern as `datasheets/`. An analysis that names no source file, or a relative one not found from the current directory, caches under the run's workdir. This keeps models co-located with the design and handles board revisions and subprojects naturally.
 
 ## Known Limitations
 

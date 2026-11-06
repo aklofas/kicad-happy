@@ -177,12 +177,12 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
 
     sim_diagnostics: list = []  # Monte Carlo trials add only records the nominal runs lack
 
-    # An analysis that names no source file caches its models under this run's folder,
-    # and so does a project whose spice/ or spice/models/ is a symlink, which would
-    # send cache writes to the link's target.
-    from spice_model_cache import project_dir_from_analysis
+    # An analysis that names no source file, or a relative one not found from the cwd,
+    # caches its models under this run's folder, and so does a project whose spice/ or
+    # spice/models/ is a symlink, which would send cache writes to the link's target.
+    from kicad_core.project import extraction_project_dir
     if model_options is None or model_options.cache_dir is None:
-        project_dir = project_dir_from_analysis(analysis_json)
+        project_dir = extraction_project_dir(analysis_json)
         linked = None
         if project_dir is not None:
             linked = next((p for p in (project_dir / "spice", project_dir / "spice" / "models")

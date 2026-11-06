@@ -41,7 +41,7 @@ class FallbackDirTest(unittest.TestCase):
         a = {"inputs": {"source_files": ["/x/proj/board.kicad_sch"]}}
         self.assertEqual(spice_model_cache.resolve_cache_dir(a),
                          Path("/x/proj") / "spice" / "models")
-        self.assertEqual(spice_model_cache.project_dir_from_analysis(a), Path("/x/proj"))
+        self.assertEqual(spice_model_cache.extraction_project_dir(a), Path("/x/proj"))
 
     def test_file_wins_over_source_files(self):
         a = {"file": "/p/a.kicad_sch", "inputs": {"source_files": ["/x/proj/board.kicad_sch"]}}
@@ -49,7 +49,7 @@ class FallbackDirTest(unittest.TestCase):
 
     def test_no_source_file_uses_the_process_fallback(self):
         for a in ({}, {"file": None, "inputs": {"source_files": []}}, {"inputs": None}):
-            self.assertIsNone(spice_model_cache.project_dir_from_analysis(a))
+            self.assertIsNone(spice_model_cache.extraction_project_dir(a))
         with tempfile.TemporaryDirectory() as root, \
                 mock.patch.object(spice_model_cache, "_PROCESS_CACHE_DIR", None, create=True), \
                 mock.patch("tempfile.tempdir", root):
@@ -236,11 +236,13 @@ class ManifestReadTest(unittest.TestCase):
                                  text=True, timeout=20, check=True).stdout
             self.assertEqual(out.strip(), "(None, None)")
 
-    def test_list_manifest_is_replaced_on_write(self):
+    def test_list_manifest_is_kept_on_write(self):
         with tempfile.TemporaryDirectory() as tmp:
             Path(tmp, "manifest.json").write_text("[]", encoding="utf-8")
-            spice_model_cache.cache_model(tmp, "LM358", ".subckt LM358 1 2\n.ends\n", {}, "lookup", "opamp")
-            self.assertEqual(spice_model_cache.get_cached_model(tmp, "LM358")[0], ".subckt LM358 1 2\n.ends\n")
+            with self.assertRaises(OSError):
+                spice_model_cache.cache_model(tmp, "LM358", ".subckt LM358 1 2\n.ends\n", {}, "lookup", "opamp")
+            self.assertEqual(Path(tmp, "manifest.json").read_text(encoding="utf-8"), "[]")
+            self.assertEqual(spice_model_cache.get_cached_model(tmp, "LM358"), (None, None))
 
     def _plant(self, tmp):
         Path(tmp, "LM358.sub").write_text(".subckt LM358 1 2\n.ends\n", encoding="utf-8")
@@ -319,6 +321,125 @@ class ManifestReadTest(unittest.TestCase):
                 self.assertEqual(spice_model_cache.get_cached_model(tmp, "LM358", sink), (None, None))
             self.assertEqual(len(sink), 1, sink)
             self.assertIn("project model skipped", err.getvalue())
+
+
+class RelativeSourceCacheTest(unittest.TestCase):
+    """A relative source path names the project only when that file exists from the cwd."""
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp())
+        self.addCleanup(__import__("shutil").rmtree, self.root, True)
+        old = os.getcwd()
+        self.addCleanup(os.chdir, old)
+
+    def test_missing_relative_source_does_not_cache_in_cwd(self):
+        shared = self.root / "shared"
+        shared.mkdir()
+        os.chdir(shared)
+        with mock.patch.object(spice_model_cache, "_PROCESS_CACHE_DIR", None, create=True), \
+                mock.patch("tempfile.tempdir", str(self.root)):
+            got = spice_model_cache.resolve_cache_dir({"inputs": {"source_files": ["board.kicad_sch"]}})
+        self.assertNotEqual(got, Path("spice/models"))
+        self.assertTrue(Path(got).resolve().is_relative_to(self.root.resolve()), got)
+        self.assertFalse(Path(got).resolve().is_relative_to(shared.resolve()), got)
+
+    def test_simulate_with_missing_relative_source_caches_in_run_folder(self):
+        import simulate_subcircuits as ss
+        shared = self.root / "shared"
+        shared.mkdir()
+        os.chdir(shared)
+
+        def fake(cmd, **kw):
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        with mock.patch("spice_simulator.subprocess.run", side_effect=fake), \
+                mock.patch("spice_simulator.NgspiceBackend.find", return_value="/fake/bin/ngspice"):
+            ss.simulate_subcircuits({"inputs": {"source_files": ["board.kicad_sch"]},
+                                     "findings": [dict(OPAMP)]},
+                                    workdir=str(self.root / "w"),
+                                    model_options=ModelOptions(offline=True))
+        self.assertFalse((shared / "spice").exists())
+        self.assertTrue(list((self.root / "w").glob("spice_sim_*/spice/models/manifest.json")))
+
+    def test_existing_relative_source_caches_beside_it(self):
+        proj = self.root / "proj"
+        proj.mkdir()
+        (proj / "board.kicad_sch").write_text("", encoding="utf-8")
+        os.chdir(proj)
+        got = spice_model_cache.resolve_cache_dir({"inputs": {"source_files": ["board.kicad_sch"]}})
+        self.assertEqual(Path(got).resolve(), (Path(os.getcwd()) / "spice" / "models").resolve())
+
+
+class RefusedManifestTest(unittest.TestCase):
+    """A manifest that cannot be read is left alone and nothing is cached beside it."""
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp())
+        self.addCleanup(__import__("shutil").rmtree, self.root, True)
+        patcher = mock.patch.object(spice_model_cache, "_index_cache", {})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _models(self, name):
+        d = self.root / name / "models"
+        d.mkdir(parents=True)
+        (d / "OTHER.sub").write_text(".subckt OTHER 1 2\n.ends\n", encoding="utf-8")
+        return d
+
+    def _assert_kept(self, d, snapshot):
+        with self.assertRaises(OSError):
+            spice_model_cache.cache_model(d, "LM358", ".subckt X\n.ends\n", {}, "lookup", "opamp")
+        self.assertEqual(snapshot(), snapshot.before)
+        self.assertFalse((d / "LM358.sub").exists())
+        self.assertEqual(list(d.glob("*.tmp")), [])
+
+    def test_unreadable_manifest_is_kept(self):
+        for i, raw in enumerate((b"not json{", b"[1]", b"\xff\xfe")):
+            with self.subTest(raw=raw):
+                d = self._models(f"c{i}")
+                (d / "manifest.json").write_bytes(raw)
+
+                def snapshot(d=d):
+                    return (d / "manifest.json").read_bytes()
+                snapshot.before = snapshot()
+                self._assert_kept(d, snapshot)
+
+    @unittest.skipIf(os.name == "nt", "needs symlinks")
+    def test_linked_manifest_is_kept(self):
+        d = self._models("link")
+        outside = self.root / "outside.json"
+        outside.write_text(json.dumps({"OTHER": {"file": "OTHER.sub", "mpn": "OTHER"}}),
+                           encoding="utf-8")
+        os.symlink(outside, d / "manifest.json")
+
+        def snapshot():
+            return (os.readlink(d / "manifest.json"), outside.read_bytes())
+        snapshot.before = snapshot()
+        self._assert_kept(d, snapshot)
+
+    def test_get_model_records_model_not_cached(self):
+        d = self.root / "spice" / "models"
+        d.mkdir(parents=True)
+        (d / "manifest.json").write_bytes(b"not json{")
+        sink = []
+        with contextlib.redirect_stderr(io.StringIO()):
+            _, source, _ = spice_model_cache.get_model_for_part(
+                "LM358", "opamp", None, options=ModelOptions(cache_dir=str(self.root), offline=True),
+                diagnostics=sink)
+        self.assertEqual(source, "lookup:LM358")
+        self.assertEqual(len(sink), 1, sink)
+        self.assertEqual(sink[0]["source"], "spice_model_cache.cache_model")
+        self.assertEqual(sink[0]["effect"], "model not cached")
+        self.assertEqual((d / "manifest.json").read_bytes(), b"not json{")
+
+    def test_empty_or_absent_manifest_still_written(self):
+        for name, plant in (("empty", True), ("absent", False)):
+            with self.subTest(name=name):
+                d = self._models(name)
+                if plant:
+                    (d / "manifest.json").write_bytes(b"")
+                spice_model_cache.cache_model(d, "LM358", ".subckt X\n.ends\n", {}, "lookup", "opamp")
+                with open(d / "manifest.json", encoding="utf-8") as f:
+                    self.assertEqual(json.load(f)["LM358"]["mpn"], "LM358")
 
 
 if __name__ == "__main__":

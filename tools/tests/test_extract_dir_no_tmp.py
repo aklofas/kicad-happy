@@ -102,9 +102,12 @@ class RelativeSourceTest(unittest.TestCase):
         self.assertIsNone(df.get_mcu_features(MPN, analysis_json=a))
         pair = {"shared_ics": ["U1"], "positive": "USB_DP", "negative": "USB_DN"}
         self.assertIsNone(emc_rules._resolve_usb_speed(pair, schematic_json(["board.kicad_sch"])))
-        # The SPICE model cache keeps reading the recorded path as given.
-        from kicad_core.project import project_dir_from_analysis
-        self.assertEqual(project_dir_from_analysis(a), Path("."))
+        # The SPICE model cache follows the same rule.
+        sys.path.insert(0, str(ROOT / "skills" / "spice" / "scripts"))
+        import spice_model_cache
+        with mock.patch.object(spice_model_cache, "_PROCESS_CACHE_DIR", None), \
+             mock.patch("tempfile.tempdir", str(self.tmp)):
+            self.assertNotEqual(spice_model_cache.resolve_cache_dir(a), Path("spice/models"))
 
     def test_relative_source_from_the_project_cwd_reads_its_cache(self):
         self.chdir(self.proj)
