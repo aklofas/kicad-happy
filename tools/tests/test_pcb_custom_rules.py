@@ -86,7 +86,23 @@ class DruLengthTest(unittest.TestCase):
         self.assertEqual(rules[0]["constraints"], [{"type": "track_width", "min": 0.127,
                                                     "max": 0.1524}])
         self.assertEqual(rules[1]["severity"], "ignore")
-        self.assertEqual(rules[1]["constraints"][0]["min"], "2*0.1mm")
+        self.assertEqual(rules[1]["constraints"][0]["min"], 0.2)
+
+    def test_expression_bounds(self):
+        # kicad-cli applies each of these as the value given (0.5 mm reports the 0.2 mm track as
+        # "min width 0.5000 mm"; 0.25mm+10mil as 0.5040 mm). A length times a length is not a
+        # length this reader judges, so it stays text.
+        cases = (("(0.5mm)", 0.5), ("((0.5mm))", 0.5), ("2*0.25mm", 0.5), ('"2*0.25mm"', 0.5),
+                 ("2 * 0.25 mm", 0.5), ("1mm/2", 0.5), ("(0.2mm+0.05mm)*2", 0.5),
+                 ("-0.1mm+0.6mm", 0.5), ("0.25mm+10mil", 0.504), ("0.5mm * 1mm", "0.5mm * 1mm"))
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, "b.kicad_dru"), "w", encoding="utf-8") as f:
+                f.write("(version 1)\n" + "".join(
+                    f"(rule r{i} (constraint track_width (min {bound})))\n"
+                    for i, (bound, _) in enumerate(cases)))
+            rules, error = load_kicad_dru_checked(os.path.join(tmp, "b.kicad_pcb"))
+        self.assertIsNone(error)
+        self.assertEqual([r["constraints"][0]["min"] for r in rules], [v for _, v in cases])
 
     def test_unparseable_file_sets_an_error_and_applies_no_rules(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -234,9 +250,16 @@ class RefusedFileTest(unittest.TestCase):
                  + "\n(rule a (condition \"A.NetName == '(x'\") (constraint clearance (min 0.01mm)))\n"),
                 ("paren in a comment line",
                  "(version 1)\n# a comment with ( unbalanced\n" + TRACK_RULE + "\n"),
-                ("CRLF line ends", ("(version 1)\n" + TRACK_RULE + "\n").replace("\n", "\r\n"))):
+                ("CRLF line ends", ("(version 1)\n" + TRACK_RULE + "\n").replace("\n", "\r\n")),
+                ("nested bound", "(version 1)\n(rule w (constraint track_width (min (0.5mm))))\n"),
+                ("arithmetic bound", "(version 1)\n(rule w (constraint track_width (min 2*0.25mm)))\n"),
+                ("time bound kept", "(version 1)\n" + TRACK_RULE
+                 + "\n(rule a (constraint length (max 10ps)))\n")):
             with self.subTest(name):
                 self.assertEqual(refused(text), (self.APPLIED, None))
+        # 2*0.05mm is 0.1 mm: the rule applies and the 0.2 mm track passes
+        self.assertEqual(refused("(version 1)\n(rule w (constraint track_width (min 2*0.05mm)))\n"),
+                         ([], None))
 
     def test_refused(self):
         for name, text, message in (
@@ -261,7 +284,19 @@ class RefusedFileTest(unittest.TestCase):
                  + "\n(rule x (constraint clearance (min 0.01mm))\n", "Missing ')'."),
                 ("missing close in the only rule",
                  "(version 1)\n(rule w (constraint track_width (min 0.5mm))\n", "Missing ')'."),
-                ("stray close paren", "(version 1)\n" + TRACK_RULE + ")\n", "Missing '('.")):
+                ("stray close paren", "(version 1)\n" + TRACK_RULE + ")\n", "Missing '('."),
+                ("two values in a bound",
+                 "(version 1)\n(rule w (constraint track_width (min (0.5mm) (0.6mm))))\n",
+                 "Syntax error"),
+                ("value then a list",
+                 "(version 1)\n(rule w (constraint track_width (min 0.5mm (0.6mm))))\n",
+                 "Syntax error"),
+                ("two atoms", "(version 1)\n(rule w (constraint track_width (min 0.5mm 0.6mm)))\n",
+                 "Syntax error"),
+                ("trailing operator", "(version 1)\n(rule w (constraint track_width (min 0.5mm+)))\n",
+                 "Syntax error"),
+                ("unitless expression",
+                 "(version 1)\n(rule w (constraint track_width (min 2*0.25)))\n", "Missing units.")):
             with self.subTest(name):
                 self.assertEqual(refused(text), ([], message))
 

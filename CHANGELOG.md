@@ -11,6 +11,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 ### Fixed
 
 - A `.kicad_dru` with unbalanced parentheses is now refused as KiCad refuses it: none of its rules apply and `custom_rules_error` says why.
+- A `.kicad_dru` bound written in parentheses or as arithmetic, such as `(min (0.5mm))` or `2*0.1mm`, is now evaluated as KiCad evaluates it, so the rule is checked; a bound KiCad cannot read refuses the file.
 
 ### Documentation
 

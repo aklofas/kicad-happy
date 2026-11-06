@@ -670,7 +670,7 @@ def extract_pro_text_variables(pro: dict) -> dict:
 
 
 # A .kicad_dru length: a number with one of KiCad's length units (pcbexpr_evaluator.cpp). A bare
-# number is a "Missing units" error; arithmetic is an expression. Neither is read here.
+# number is a "Missing units" error; arithmetic is an expression (`_dru_eval`).
 _DRU_LENGTH = re.compile(r'\s*([-+]?(?:\d+\.?\d*|\.\d+))\s*(mm|mil|in)\s*')
 _DRU_UNIT_MM = {'mm': 1.0, 'mil': 0.0254, 'in': 25.4}
 
@@ -685,27 +685,129 @@ _DRU_SEVERITIES = frozenset(('ignore', 'warning', 'error', 'exclusion'))
 # Constraint types whose values take no unit (drc_rule_parser.cpp parseConstraint).
 _DRU_UNITLESS_CONSTRAINTS = frozenset(('via_count', 'min_resolved_spokes', 'track_angle',
                                        'via_dangling', 'bridged_mask'))
-_DRU_BARE_NUMBER = re.compile(r'\s*[-+]?(?:\d+\.?\d*|\.\d+)\s*')
+_DRU_EXPR_TOKEN = re.compile(r'\s*(?:(\d+\.?\d*|\.\d+)|([a-z]+)|([-+*/()]))')
+_DRU_OTHER_UNITS = frozenset(('deg', 'fs', 'ps'))
 
 
-def _dru_bare_length(constraint: list) -> bool:
-    """True when a length bound of *constraint* is a bare number (KiCad's "Missing units")."""
+def _dru_bound_text(node: list) -> str:
+    """The text of a bound as KiCad reads it: every token after the keyword, a nested list
+    in its parentheses (drc_rule_parser.cpp parseExpression)."""
+    return ' '.join('( ' + _dru_bound_text([None] + t) + ' )' if isinstance(t, list) else str(t)
+                    for t in node[1:])
+
+
+def _dru_eval(text: str) -> tuple[str, float | None]:
+    """A bound expression evaluated as KiCad's libeval does: ``('length', mm)``, ``('number', v)``,
+    ``('other', None)`` for a result this reader does not judge (angle or time units, a mixed or
+    squared dimension, division by zero, a character outside the expression grammar), or
+    ``('error', None)`` for text KiCad cannot parse."""
+    if re.search(r'[^0-9.+\-*/()a-z\s]', text):
+        return 'other', None
+    tokens = []
+    pos = 0
+    while pos < len(text):
+        m = _DRU_EXPR_TOKEN.match(text, pos)
+        if not m:
+            if text[pos:].strip():
+                return 'error', None
+            break
+        tokens.append(m.groups())
+        pos = m.end()
+    i = 0
+
+    def peek(kind):
+        return tokens[i][kind] if i < len(tokens) else None
+
+    def combine(op, a, b):
+        (ka, va), (kb, vb) = a, b
+        if 'other' in (ka, kb):
+            return 'other', None
+        if op in '+-':
+            return (ka, va + vb if op == '+' else va - vb) if ka == kb else ('other', None)
+        if op == '*':
+            return ('other', None) if ka == kb == 'length' else (
+                'length' if 'length' in (ka, kb) else 'number', va * vb)
+        if vb == 0 or kb == 'length':
+            return 'other', None
+        return ka, va / vb
+
+    def unary():
+        nonlocal i
+        op = peek(2)
+        if op in ('+', '-'):
+            i += 1
+            k, v = unary()
+            return (k, -v if op == '-' and v is not None else v)
+        if op == '(':
+            i += 1
+            r = expr()
+            if peek(2) != ')':
+                raise ValueError
+            i += 1
+            return r
+        num = peek(0)
+        if num is None:
+            raise ValueError
+        i += 1
+        unit = peek(1)
+        if unit is None:
+            return 'number', float(num)
+        i += 1
+        if unit in _DRU_UNIT_MM:
+            return 'length', float(num) * _DRU_UNIT_MM[unit]
+        if unit in _DRU_OTHER_UNITS:
+            return 'other', None
+        raise ValueError
+
+    def binary(sub, ops):
+        nonlocal i
+        r = sub()
+        while peek(2) in ops:
+            op = peek(2)
+            i += 1
+            r = combine(op, r, sub())
+        return r
+
+    def term():
+        return binary(unary, ('*', '/'))
+
+    def expr():
+        return binary(term, ('+', '-'))
+
+    try:
+        kind, value = expr()
+    except ValueError:
+        return 'error', None
+    if i != len(tokens):
+        return 'error', None
+    return kind, (round(value, 6) if value is not None else None)
+
+
+def _dru_bound_error(constraint: list) -> str | None:
+    """KiCad's message for a length bound of *constraint* it cannot read, or None: "Missing
+    units." for a unitless result, "Syntax error" for text that is not an expression."""
     if (len(constraint) < 2 or not isinstance(constraint[1], str)
             or constraint[1] in _DRU_UNITLESS_CONSTRAINTS):
-        return False
+        return None
     for bound in constraint[2:]:
-        if isinstance(bound, list) and bound[:1] in (['min'], ['max'], ['opt']):
-            text = ' '.join(str(t) for t in bound[1:] if not isinstance(t, list))
-            if _DRU_BARE_NUMBER.fullmatch(text):
-                return True
-    return False
+        if isinstance(bound, list) and len(bound) > 1 and bound[:1] in (['min'], ['max'], ['opt']):
+            text = _dru_bound_text(bound)
+            if parse_dru_length(text) is not None:
+                continue
+            kind = _dru_eval(text)[0]
+            if kind == 'number':
+                return "Missing units."
+            if kind == 'error':
+                return "Syntax error"
+    return None
 
 
 def _dru_parse_error(tree: list) -> str | None:
     """KiCad's message for a .kicad_dru it refuses to load, or None. A parse error drops every
     custom rule of the file (drc_rule_parser.cpp Parse, drc_engine.cpp InitEngine). Checked:
     the leading version statement, the top-level forms, rule names, severity names, a
-    nested list where a constraint type or layer name belongs, and length bounds without a unit."""
+    nested list where a constraint type or layer name belongs, and length bounds that are not
+    a length expression."""
     if any(not isinstance(f, list) for f in tree[1:]):
         return "Missing '('."
     forms = tree[1:]
@@ -728,8 +830,8 @@ def _dru_parse_error(tree: list) -> str | None:
                     return "Unrecognized constraint type."
                 if item[:1] == ['layer'] and len(item) > 1 and not isinstance(item[1], str):
                     return "Unrecognized layer."
-                if item[:1] == ['constraint'] and _dru_bare_length(item):
-                    return "Missing units."
+                if item[:1] == ['constraint'] and (bound_error := _dru_bound_error(item)):
+                    return bound_error
         else:
             return "Expected rule or version."
     return None
@@ -765,7 +867,8 @@ def load_kicad_dru_checked(file_path: str) -> tuple[list[dict] | None, str | Non
          "condition": "A.Type == 'track'",
          "constraints": [{"type": "track_width", "min": 0.127}]}
 
-    Bounds are mm (`parse_dru_length`); a bound that is not a plain length stays its text.
+    Bounds are mm (`parse_dru_length`, or `_dru_eval` for an expression); a bound that does not
+    evaluate to a length stays its text.
     Conditions are kept as raw strings — not evaluated. ``severity`` is kept when set.
     Returns (None, None) if no ``.kicad_dru`` found. The second item is KiCad's parse error
     when KiCad would refuse the file (`_dru_parse_error`); the rules are still returned.
@@ -811,8 +914,11 @@ def load_kicad_dru_checked(file_path: str) -> tuple[list[dict] | None, str | Non
                 node = find_first(c, key)
                 if node is None or len(node) < 2:
                     continue
-                text = ' '.join(str(t) for t in node[1:] if not isinstance(t, list))
+                text = _dru_bound_text(node)
                 value = parse_dru_length(text)
+                if value is None and isinstance(ctype, str) and ctype not in _DRU_UNITLESS_CONSTRAINTS:
+                    kind, mm = _dru_eval(text)
+                    value = mm if kind == 'length' else None
                 entry[key] = value if value is not None else text
             constraints.append(entry)
 
