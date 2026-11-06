@@ -24,7 +24,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from kicad_core.diagnostics import record
-from kicad_core.fileio import atomic_write_text
+from kicad_core.fileio import atomic_write_text, json_load, json_loads
 from finding_schema import strip_llm_overlays
 
 
@@ -128,10 +128,10 @@ def reviewed_overlay(path: str) -> Optional[str]:
     try:
         if os.path.isfile(overlay):
             with open(overlay, encoding="utf-8") as f:
-                merged = json.load(f)
+                merged = json_load(f)
             try:
                 with open(path, encoding="utf-8") as f:
-                    raw = json.load(f)
+                    raw = json_load(f)
             except (ValueError, OSError):
                 print(f"Note: cannot read {path}; ignoring the reviewed copy {overlay}",
                       file=sys.stderr)
@@ -180,17 +180,46 @@ def resolve_analysis_dir(path: str) -> str:
 # Manifest I/O
 # ---------------------------------------------------------------------------
 
+def _read_manifest_bytes(manifest_path: str) -> Optional[bytes]:
+    """The bytes of manifest.json. None (after a diagnostic) when it is a link or not a regular
+    file: a link could point at any file, and a named pipe would block the reader."""
+    flags = (os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0)
+             | getattr(os, "O_NONBLOCK", 0))
+    try:
+        fd = os.open(manifest_path, flags)
+    except OSError:
+        if os.path.islink(manifest_path):
+            record(None, "analysis_cache.load_manifest",
+                   ValueError(f"{manifest_path} is not a regular file"), "manifest ignored")
+            return None
+        raise
+    with os.fdopen(fd, "rb") as f:
+        st = os.fstat(f.fileno())
+        if not stat.S_ISREG(st.st_mode) or (
+                not hasattr(os, "O_NOFOLLOW") and not os.path.samestat(st, os.lstat(manifest_path))):
+            record(None, "analysis_cache.load_manifest",
+                   ValueError(f"{manifest_path} is not a regular file"), "manifest ignored")
+            return None
+        return f.read()
+
+
 def load_manifest(analysis_dir: str) -> Dict[str, Any]:
     """Read manifest.json from analysis directory.
 
-    Returns empty manifest structure if file is missing or corrupt.
+    Returns empty manifest structure if the file is missing, a link or not a regular file,
+    or corrupt (unparsable, nested too deeply, or not an object holding a ``runs`` object).
+    A run entry that is not an object is dropped with a diagnostic.
     """
     manifest_path = os.path.join(analysis_dir, MANIFEST_FILENAME)
-    if not os.path.isfile(manifest_path):
+    if not os.path.lexists(manifest_path):
         return _empty_manifest()
     try:
-        with open(manifest_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
+        raw = _read_manifest_bytes(manifest_path)
+        if raw is None:
+            return _empty_manifest()
+        manifest = json_loads(raw.decode('utf-8'))
+        if not isinstance(manifest, dict) or not isinstance(manifest.get('runs', {}), dict):
+            raise ValueError("manifest is not an object with a runs object")
     except (ValueError, OSError):
         # Corrupt manifest -- back up and return empty
         backup = manifest_path + '.bak'
@@ -205,6 +234,13 @@ def load_manifest(analysis_dir: str) -> Dict[str, Any]:
             print(f'Warning: corrupt manifest at {manifest_path}; '
                   f'no backup made ({backup} is not a regular file)', file=sys.stderr)
         return _empty_manifest()
+    runs = manifest.get('runs')
+    if runs:
+        for rid in [r for r, meta in runs.items() if not isinstance(meta, dict)]:
+            record(None, "analysis_cache.load_manifest",
+                   ValueError(f"manifest run {rid!r} is not an object"), "run entry ignored")
+            del runs[rid]
+    return manifest
 
 
 def save_manifest(analysis_dir: str, manifest: Dict[str, Any]) -> None:
@@ -216,6 +252,11 @@ def save_manifest(analysis_dir: str, manifest: Dict[str, Any]) -> None:
     try:
         st = os.lstat(manifest_path)
         owner_only = stat.S_ISREG(st.st_mode) and stat.S_IMODE(st.st_mode) == 0o600
+        if not stat.S_ISREG(st.st_mode) and not stat.S_ISLNK(st.st_mode) and not stat.S_ISDIR(st.st_mode):
+            # a named pipe or device would take the write and block on it
+            record(None, "analysis_cache.save_manifest",
+                   ValueError(f"{manifest_path} is not a regular file"), "replaced")
+            os.unlink(manifest_path)
     except OSError:
         owner_only = False
     atomic_write_text(manifest_path, json.dumps(manifest, indent=2) + '\n',
@@ -343,7 +384,7 @@ def _built_from(run_dir: str, filename: str) -> Dict[str, Optional[str]]:
     if not _is_symlink_or_irregular(path):
         try:
             with open(path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
+                data = json_load(f)
         except (OSError, ValueError):
             data = None
     inputs = data.get('inputs') if isinstance(data, dict) else None
@@ -689,7 +730,9 @@ def prune_runs(analysis_dir: str, retention: int = 5) -> List[str]:
         rid, _meta = unpinned.pop(0)  # oldest first
         # Delete folder
         run_dir = os.path.join(analysis_dir, rid)
-        if os.path.isdir(run_dir):
+        if os.path.islink(run_dir):
+            os.unlink(run_dir)
+        elif os.path.isdir(run_dir):
             shutil.rmtree(run_dir)
         # Remove from manifest
         del manifest['runs'][rid]
@@ -813,9 +856,9 @@ def should_create_new_run(analysis_dir: str,
 
         try:
             with open(current_path, encoding="utf-8") as f:
-                base_data = json.load(f)
+                base_data = json_load(f)
             with open(new_path, encoding="utf-8") as f:
-                head_data = json.load(f)
+                head_data = json_load(f)
         except (ValueError, OSError):
             return True  # Can't compare -- treat as changed
 

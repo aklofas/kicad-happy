@@ -150,7 +150,7 @@ The twelve analyzer and consumer CLIs (`analyze_schematic`, `analyze_pcb`, `anal
 | `executables.py` | `find_executable`: absolute path of an external program (Windows: absolute `PATH` entries only, never the current directory) | stdlib |
 | `cli.py` | shared argparse declarations: `STAGES`, `AUDIENCES`, `add_stage_audience_args`, `add_only_deterministic_arg`, `add_schema_arg`, `add_output_arg`, `add_compact_arg`, `add_text_arg`, `add_config_arg` | stdlib |
 | `coords.py` | schematic coordinate identity in KiCad internal units: `to_iu` and the segment-distance helper used to join connection points | stdlib |
-| `fileio.py` | `atomic_write_text`: atomic text writes shared by the scripts that rewrite user files | stdlib |
+| `fileio.py` | `atomic_write_text`: atomic text writes shared by the scripts that rewrite user files; `json_load`, `json_loads`, `read_json`: JSON decode that reports too-deep nesting as malformed (`json.JSONDecodeError`) | stdlib |
 | `hotloop.py` | switching-regulator hot-loop area proxies shared by the PCB analyzer and EMC SW-003: `polygon_loop_area`, `triangle_loop_area` | stdlib |
 | `instances.py` | which instance data KiCad 10 uses for a placed symbol on one sheet path: `resolve_instance`, `inline_instances`, variant overrides | `fields`, `sexp` |
 | `pairing.py` | schematic part to PCB footprint pairing as KiCad's Update PCB pairs them: `pair_by_path` | stdlib |

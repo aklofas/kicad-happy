@@ -1,12 +1,38 @@
-"""Atomic text writes shared by the scripts that rewrite user files."""
+"""Atomic text writes and JSON reads shared by the scripts that rewrite or read user files."""
 
 from __future__ import annotations
 
+import json
 import os
 import secrets
 import shutil
 import stat
 from pathlib import Path
+from typing import Any
+
+
+def json_loads(text: str | bytes) -> Any:
+    """json.loads, except that nesting deeper than the interpreter can parse raises
+    json.JSONDecodeError (a ValueError) instead of RecursionError, so callers that treat a
+    malformed file as unreadable treat a too-deep one the same way."""
+    try:
+        return json.loads(text)
+    except RecursionError:
+        if isinstance(text, (bytes, bytearray)):
+            text = text.decode("utf-8", "replace")
+        raise json.JSONDecodeError("JSON nested too deeply", text, 0) from None
+
+
+def json_load(fp) -> Any:
+    """json.load with the json_loads nesting behaviour."""
+    return json_loads(fp.read())
+
+
+def read_json(path, *, encoding: str = "utf-8") -> Any:
+    """Parse the JSON file at *path*. OSError and UnicodeDecodeError propagate as from open()
+    and read(); malformed or too-deeply nested JSON raises json.JSONDecodeError."""
+    with open(path, "r", encoding=encoding) as f:
+        return json_load(f)
 
 
 def atomic_write_text(path, text: str, newline: str | None = "\n", *,

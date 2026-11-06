@@ -622,5 +622,111 @@ class CorruptManifestBackupTest(unittest.TestCase):
             self.assertEqual(Path(ad, "manifest.json.bak").read_text(encoding="utf-8"), "{not json")
 
 
+class HostileManifestTest(unittest.TestCase):
+    def _err(self, fn, *a):
+        err = io.StringIO()
+        with redirect_stderr(err):
+            result = fn(*a)
+        return result, err.getvalue()
+
+    def test_prune_unlinks_symlinked_sibling_run(self):
+        if os.name == "nt":
+            self.skipTest("symlinks")
+        with tempfile.TemporaryDirectory() as ad:
+            os.makedirs(os.path.join(ad, "B"))
+            os.makedirs(os.path.join(ad, "C"))
+            Path(ad, "B", "keep.txt").write_text("x", encoding="utf-8")
+            os.symlink("B", os.path.join(ad, "A"))
+            _write(os.path.join(ad, "manifest.json"), {"current": "C", "runs": {
+                "A": {"generated": "1", "outputs": {}},
+                "B": {"generated": "2", "outputs": {}, "pinned": True},
+                "C": {"generated": "3", "outputs": {}}}})
+            pruned, _ = self._err(analysis_cache.prune_runs, ad, 1)
+            self.assertEqual(pruned, ["A"])
+            self.assertFalse(os.path.lexists(os.path.join(ad, "A")))
+            self.assertTrue(os.path.isfile(os.path.join(ad, "B", "keep.txt")))
+
+    def test_non_dict_run_value_skipped(self):
+        with tempfile.TemporaryDirectory() as ad:
+            os.makedirs(os.path.join(ad, "C"))
+            _write(os.path.join(ad, "manifest.json"), {"current": "C", "runs": {
+                "X": "oops", "C": {"generated": "3", "outputs": {}}}})
+            pruned, err = self._err(analysis_cache.prune_runs, ad, 1)
+            self.assertEqual(pruned, [])
+            self.assertIn("X", err)
+            self.assertIsNotNone(analysis_cache.get_current_run(ad))
+
+    def test_list_manifest_is_corrupt(self):
+        with tempfile.TemporaryDirectory() as ad:
+            _write(os.path.join(ad, "manifest.json"), [])
+            result, err = self._err(analysis_cache.get_current_run, ad)
+            self.assertIsNone(result)
+            self.assertIn("corrupt manifest", err)
+            self.assertTrue(os.path.isfile(os.path.join(ad, "manifest.json.bak")))
+
+    def test_symlinked_manifest_not_followed(self):
+        if os.name == "nt":
+            self.skipTest("symlinks")
+        with tempfile.TemporaryDirectory() as tmp:
+            ad = os.path.join(tmp, "analysis")
+            os.makedirs(ad)
+            outside = os.path.join(tmp, "outside.json")
+            _write(outside, {"project": "STOLEN"})
+            os.symlink(outside, os.path.join(ad, "manifest.json"))
+            manifest, err = self._err(analysis_cache.load_manifest, ad)
+            self.assertEqual(manifest["project"], "")
+            self.assertIn("not a regular file", err)
+            self.assertEqual(json.loads(Path(outside).read_text(encoding="utf-8")), {"project": "STOLEN"})
+
+    def test_fifo_manifest_does_not_hang(self):
+        if os.name == "nt":
+            self.skipTest("fifo")
+        with tempfile.TemporaryDirectory() as tmp:
+            ad = os.path.join(tmp, "analysis")
+            os.makedirs(ad)
+            os.mkfifo(os.path.join(ad, "manifest.json"))
+            out = _outputs(tmp)
+            code = ("import sys; sys.path.insert(0, %r); import analysis_cache; "
+                    "print(analysis_cache.create_run(%r, %r, {}, {}))" % (str(SCRIPTS), ad, out))
+            r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                               timeout=20)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertTrue(stat_isreg(os.path.join(ad, "manifest.json")))
+            m = json.loads(Path(ad, "manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(m["current"], r.stdout.strip())
+
+    def test_deep_manifest_is_corrupt(self):
+        with tempfile.TemporaryDirectory() as ad:
+            deep = "[" * 100000
+            Path(ad, "manifest.json").write_text(deep, encoding="utf-8")
+            manifest, err = self._err(analysis_cache.load_manifest, ad)
+            self.assertEqual(manifest["runs"], {})
+            self.assertIn("corrupt manifest", err)
+            self.assertEqual(Path(ad, "manifest.json.bak").read_text(encoding="utf-8"), deep)
+
+    def test_deep_run_output_counts_as_changed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ad = os.path.join(tmp, "analysis")
+            out = _outputs(tmp)
+            rid = analysis_cache.create_run(ad, out, {}, {})
+            Path(ad, rid, "schematic.json").write_text("[" * 100000, encoding="utf-8")
+            self.assertTrue(analysis_cache.should_create_new_run(ad, out))
+
+    def test_deep_overlay_ignored(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run = os.path.join(tmp, "r1")
+            os.makedirs(run)
+            os.makedirs(os.path.join(tmp, "merged", "r1"))
+            _write(os.path.join(run, "schematic.json"), {"a": 1})
+            Path(tmp, "merged", "r1", "schematic.json").write_text("[" * 100000, encoding="utf-8")
+            result, _ = self._err(analysis_cache.reviewed_overlay, os.path.join(run, "schematic.json"))
+            self.assertIsNone(result)
+
+
+def stat_isreg(path):
+    import stat
+    return stat.S_ISREG(os.lstat(path).st_mode)
+
+
 if __name__ == "__main__":
     unittest.main()
