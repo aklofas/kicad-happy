@@ -108,7 +108,7 @@ The twelve analyzer and consumer CLIs (`analyze_schematic`, `analyze_pcb`, `anal
 | `analyze_emc.py` | EMC CLI, risk scoring, test plan | `emc_rules`, `emc_formulas`, `emc_spice`, `emc_envelope`; core `kicad_core`, `finding_schema`, `output_filters`, `output_io`, `analysis_cache`, `project_config`, `inputs_builder`, `capability_mode`, `schema_codec` |
 | `emc_rules.py` | the EMC rule checks (findings have `make_finding`'s key shape), `is_emc_ground_name` | `emc_formulas`, `emc_spice` (lazy); core `kicad_core`, `pcb`, `finding_schema`, `datasheet_features` (optional: a module-level `try` import with a stub fallback) |
 | `emc_formulas.py` | radiation, harmonics, cavity resonance, PDN impedance formulas | core `kicad_core` |
-| `emc_spice.py` | SPICE-enhanced PDN and filter analysis | `emc_formulas` (lazy); core `kicad_core`; `spice_models`, `spice_simulator`, `spice_templates` from the spice skill (`optional-to-optional` baseline entries) |
+| `emc_spice.py` | SPICE-enhanced PDN and switching-harmonic analysis | `emc_formulas` (lazy); core `kicad_core`; `spice_models`, `spice_simulator`, `spice_templates` from the spice skill (`optional-to-optional` baseline entries) |
 | `emc_envelope.py` | EMC envelope dataclass | core `analyzer_envelope` |
 
 ### `skills/spice/scripts/` (optional skill; imports the core only, through `_core_path`)

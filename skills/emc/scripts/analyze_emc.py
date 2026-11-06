@@ -330,7 +330,7 @@ def main(argv: list[str] | None = None) -> int:
                         choices=list(MARKET_STANDARDS.keys()),
                         help='Target market — sets applicable standards (us, eu, automotive, medical, military)')
     parser.add_argument('--spice-enhanced', action='store_true',
-                        help='Use SPICE simulation for improved PDN/filter analysis (requires ngspice/LTspice/Xyce)')
+                        help='Use SPICE simulation for improved PDN and switching-harmonic analysis (requires ngspice/LTspice/Xyce)')
     add_config_arg(parser)
     parser.add_argument('--analysis-dir', default=None,
                         help='Write output into analysis cache directory '

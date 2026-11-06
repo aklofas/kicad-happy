@@ -4771,7 +4771,7 @@ def run_all_checks(schematic: Optional[Dict], pcb: Optional[Dict],
         standard: Target EMC standard.
         severity_threshold: Minimum severity to include.
         spice_backend: SimulatorBackend instance for SPICE-enhanced
-                       PDN/filter analysis (optional, None = analytical only).
+                       PDN and switching-harmonic analysis (optional, None = analytical only).
         pdn_transient_a: Transient current override (Amps) for PD-001,
                        typically from project.pdn_transient_current_a.
         diagnostics: Optional list sink for guarded SPICE-enhancement failures.

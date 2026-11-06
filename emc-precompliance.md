@@ -17,7 +17,7 @@ Both JSONs
   -> analyze_emc.py -> emc.json (findings, risk score, test plan, regulatory coverage)
 ```
 
-No external tools required — all checks work with analytical formulas alone. When ngspice, LTspice, or Xyce is available, the `--spice-enhanced` flag enables SPICE-verified PDN impedance and EMI filter insertion loss analysis for higher accuracy. Without a simulator, the analytical path runs unchanged.
+No external tools required — all checks work with analytical formulas alone. When ngspice, LTspice, or Xyce is available, the `--spice-enhanced` flag enables SPICE-verified PDN impedance and switching-harmonic analysis for higher accuracy. Without a simulator, the analytical path runs unchanged.
 
 ## Check Categories
 
@@ -179,13 +179,11 @@ The analyzer generates a test plan to help you prepare for lab testing:
 
 ## SPICE-Enhanced Mode
 
-When a SPICE simulator is available (ngspice, LTspice, or Xyce), the `--spice-enhanced` flag improves four areas:
+When a SPICE simulator is available (ngspice, LTspice, or Xyce), the `--spice-enhanced` flag improves three areas:
 
 **PDN impedance (PD-001, PD-002)** — The analytical model sums the complex admittances of the capacitor branches (ESR, ESL and capacitance each), so it already includes the phase between branches. With `--spice-enhanced`, SPICE runs an AC sweep of the same RLC network using the same package-estimated ESR and ESL. PD-001 and PD-002 stay `heuristic` confidence either way, because the ESR and ESL are package estimates.
 
 **SPICE-verified cap suggestions** — When PD-001 flags an anti-resonance peak, the tool computes a specific cap value whose SRF fills the gap (rounded to E12 standard values), then re-runs the SPICE sweep with the suggested cap added to verify the peak is resolved. The recommendation includes the exact component value and verification result: "Add 220pF 0603 MLCC (SPICE-verified: peak reduced from 33.5 ohm to 8.9 ohm)."
-
-**EMI filter insertion loss (EF-001, EF-002)** — Instead of just checking cutoff frequency vs switching frequency, SPICE simulates the actual insertion loss including capacitor parasitics. Reports attenuation in dB at the switching frequency and its 3rd harmonic.
 
 **Switching harmonic FFT (EE-002)** — Instead of the analytical trapezoidal envelope approximation, runs a transient SPICE simulation of the switching waveform and extracts actual harmonic amplitudes using the Goertzel algorithm. EE-002 findings show SPICE FFT results alongside the analytical envelope for comparison.
 
@@ -229,7 +227,7 @@ python3 skills/emc/scripts/analyze_emc.py \
 python3 skills/emc/scripts/analyze_emc.py \
   --schematic schematic.json --pcb pcb.json --market eu
 
-# SPICE-enhanced mode (improved PDN and filter accuracy)
+# SPICE-enhanced mode (improved PDN accuracy)
 python3 skills/emc/scripts/analyze_emc.py \
   --schematic schematic.json --pcb pcb.json --spice-enhanced
 

@@ -66,7 +66,7 @@ Each skill has a `SKILL.md` with YAML frontmatter (name, description, triggers) 
 | `kicad/scripts/analyzer_envelope.py` | ~295 | Typed envelope dataclasses (Finding, Assessment, TrustSummary, InputsBlock, CompatBlock) — single source of truth for analyzer output shape |
 | `emc/scripts/emc_rules.py` | ~4,530 | 44 EMC rule implementations |
 | `emc/scripts/emc_formulas.py` | ~1,390 | Radiation formulas, harmonic analysis, PDN impedance |
-| `emc/scripts/emc_spice.py` | ~710 | SPICE-enhanced PDN, filter insertion loss, harmonic FFT |
+| `emc/scripts/emc_spice.py` | ~710 | SPICE-enhanced PDN impedance, harmonic FFT |
 | `datasheets/scripts/datasheet_extract_cache.py` | ~540 | Per-MPN extraction cache manager |
 | `datasheets/scripts/datasheet_features.py` | ~420 | Consumer API for analyzers (get_regulator_features, get_mcu_features, etc.) — v1.4 dual-cache-read path |
 | `datasheets/datasheet_types/` | — | v1.4 typed access layer (DatasheetFacts, SpecValue, Pin, Pinout, trust_gating helpers) |
