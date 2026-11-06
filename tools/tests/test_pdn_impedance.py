@@ -54,6 +54,13 @@ class ComplexCombination(unittest.TestCase):
         self.assertEqual(tree["+3V3"]["output_caps"][0]["esr_ohm"], ef.estimate_esr("0603"))
 
 
+class TargetImpedance(unittest.TestCase):
+    def test_negative_rail_uses_its_magnitude(self):
+        # Z = |V| x 5 % / I: 5 x 0.05 / 0.5 = 0.5 ohm at either sign.
+        self.assertAlmostEqual(ef.pdn_target_impedance(-5.0, 5.0, 0.5), 0.5)
+        self.assertEqual(ef.pdn_target_impedance(-5.0, 5.0, 0.5), ef.pdn_target_impedance(5.0, 5.0, 0.5))
+
+
 class DistributedSweep(unittest.TestCase):
     """Z_IC = Z_local ∥ (Z_reg + R + jωL), all complex."""
 

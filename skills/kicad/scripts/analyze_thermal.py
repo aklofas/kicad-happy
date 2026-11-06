@@ -280,7 +280,7 @@ def _estimate_all_power_dissipation(schematic: dict) -> tuple:
             continue
 
         eta = SWITCHING_EFFICIENCY.get(topology, 0.85)
-        p_out = vout * iout_a
+        p_out = abs(vout) * iout_a  # a negative (inverting) output delivers |Vout| x Iout
         p_in = p_out / eta
         p_loss = p_in - p_out
 

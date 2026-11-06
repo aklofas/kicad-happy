@@ -3365,8 +3365,9 @@ def check_thermal_emc(pcb: Optional[Dict],
     regulators = get_findings(schematic, Det.POWER_REGULATORS)
     for reg in regulators:
         vout = reg.get('vout_estimated') or reg.get('estimated_vout')
-        if not vout or vout <= 0:
+        if not isinstance(vout, (int, float)) or not vout:
             continue
+        v_bias = abs(vout)  # DC bias derating follows the magnitude
 
         output_caps = reg.get('output_capacitors', [])
         ref_reg = reg.get('ref', reg.get('reference', ''))
@@ -3393,15 +3394,15 @@ def check_thermal_emc(pcb: Optional[Dict],
                 rated_v = cap.get('rated_voltage_V')
                 if rated_v is None:
                     rated_v = 10.0
-                    if vout <= 1.8:
+                    if v_bias <= 1.8:
                         rated_v = 6.3
-                    elif vout <= 3.3:
+                    elif v_bias <= 3.3:
                         rated_v = 6.3
-                    elif vout <= 5.0:
+                    elif v_bias <= 5.0:
                         rated_v = 10.0
-                    elif vout <= 12.0:
+                    elif v_bias <= 12.0:
                         rated_v = 25.0
-                remaining = _estimate_dc_bias_derating(dielectric, package, vout / rated_v)
+                remaining = _estimate_dc_bias_derating(dielectric, package, v_bias / rated_v)
 
             effective_uf = farads * remaining * 1e6
             nominal_uf = farads * 1e6

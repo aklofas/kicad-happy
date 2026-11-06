@@ -653,8 +653,9 @@ def apply_capacitor_derating(results_dict):
     rail_voltage = {}
     for reg in results_dict.get("power_regulators", []):
         vout = reg.get("vout_estimated") or reg.get("estimated_vout")
+        vout = abs(vout) if isinstance(vout, (int, float)) else None  # DC bias is |V|
         rail = reg.get("output_rail", "")
-        if vout and vout > 0 and rail:
+        if vout and rail:
             # Use the highest voltage seen for a rail (conservative)
             if rail not in rail_voltage or vout > rail_voltage[rail]:
                 rail_voltage[rail] = vout
@@ -692,8 +693,9 @@ def apply_capacitor_derating(results_dict):
     # Derate output and input capacitors on power regulators
     for reg in results_dict.get("power_regulators", []):
         vout = reg.get("vout_estimated") or reg.get("estimated_vout")
-        if not vout or vout <= 0:
+        if not isinstance(vout, (int, float)) or not vout:
             continue
+        vout = abs(vout)
         for cap in reg.get("output_capacitors", []):
             _derate_cap(cap, vout)
 

@@ -154,11 +154,11 @@ def _recalc_regulator_dissipation(det: dict) -> None:
         if not isinstance(eff, (int, float)) or eff <= 0:
             return
         pd["vout_V"] = round(vout, 3)
-        pd["estimated_pdiss_W"] = round(vout * iout / eff - vout * iout, 3)
-    elif 0 < vout < vin:
+        pd["estimated_pdiss_W"] = round(abs(vout) * iout / eff - abs(vout) * iout, 3)
+    elif vin * vout > 0 and abs(vout) < abs(vin):
         pd["vout_V"] = vout
-        pd["dropout_V"] = round(vin - vout, 3)
-        pd["estimated_pdiss_W"] = round((vin - vout) * iout, 3)
+        pd["dropout_V"] = round(abs(vin) - abs(vout), 3)
+        pd["estimated_pdiss_W"] = round((abs(vin) - abs(vout)) * iout, 3)
     else:
         del det["power_dissipation"]
 

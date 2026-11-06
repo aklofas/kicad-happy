@@ -595,7 +595,7 @@ def pdn_target_impedance(v_rail: float, ripple_pct: float = 5.0,
     Ref: Smith, "Decoupling Capacitor Calculations for ASICs."
 
     Args:
-        v_rail: Rail voltage in Volts.
+        v_rail: Rail voltage in Volts (a negative rail uses its magnitude).
         ripple_pct: Allowable voltage ripple as percentage (default 5%).
         i_transient_a: Transient current demand in Amps.
 
@@ -604,7 +604,7 @@ def pdn_target_impedance(v_rail: float, ripple_pct: float = 5.0,
     """
     if i_transient_a <= 0:
         return float('inf')
-    return v_rail * (ripple_pct / 100) / i_transient_a
+    return abs(v_rail) * (ripple_pct / 100) / i_transient_a
 
 
 def parallel_cap_impedance(freq_hz: float,

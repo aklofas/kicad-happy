@@ -2318,16 +2318,18 @@ def _attach_regulator_capacitors(ctx: AnalysisContext, power_regulators: list[di
 
 
 def _estimate_regulator_dissipation(ctx: AnalysisContext, power_regulators: list[dict]) -> None:
-    """Add a power_dissipation estimate to each LDO whose input rail voltage exceeds its Vout, in place."""
+    """Add a power_dissipation estimate to each regulator, in place: an LDO whose input rail
+    exceeds its Vout in magnitude (both of one sign), and a switching regulator."""
     # Estimate power dissipation for LDO regulators
     for reg in power_regulators:
         topology = reg.get("topology", "")
         vin_rail = reg.get("input_rail")
         vout = reg.get("estimated_vout")
-        if topology == "LDO" and vin_rail and vout and vout > 0:
+        if topology == "LDO" and vin_rail and vout:
             vin = ctx.rail_voltage_or(vin_rail, _infer_rail_voltage)
-            if vin and vin > vout:
-                dropout = vin - vout
+            # A negative LDO (-12 V in, -5 V out) drops |Vin| - |Vout|; both rails share a sign.
+            if vin and vin * vout > 0 and abs(vin) > abs(vout):
+                dropout = abs(vin) - abs(vout)
                 # Estimate load current from output cap total (heuristic:
                 # ~100mA per 10µF of output capacitance is a rough proxy)
                 output_caps = reg.get("output_capacitors", [])
@@ -2346,7 +2348,7 @@ def _estimate_regulator_dissipation(ctx: AnalysisContext, power_regulators: list
                         "basis": f"total_cout_{total_cout*1e6:.0f}uF",
                     },
                 }
-        elif topology == "switching" and vout and vout > 0:
+        elif topology == "switching" and vout:
             vin = ctx.rail_voltage_or(vin_rail, _infer_rail_voltage)
             if vin and vin > 0:
                 # Estimate load current from output cap total (same heuristic as LDO,
@@ -2371,7 +2373,10 @@ def _estimate_regulator_dissipation(ctx: AnalysisContext, power_regulators: list
                     efficiency = 0.85
                 else:
                     # Fall back to vin/vout relationship
-                    if vin > vout:
+                    if vout < 0:
+                        sw_type = "buck-boost"  # inverting
+                        efficiency = 0.78
+                    elif vin > vout:
                         sw_type = "buck"
                         efficiency = 0.85
                     elif vin < vout:
@@ -2381,7 +2386,7 @@ def _estimate_regulator_dissipation(ctx: AnalysisContext, power_regulators: list
                         sw_type = "buck-boost"
                         efficiency = 0.78
 
-                pout = vout * estimated_iout_a
+                pout = abs(vout) * estimated_iout_a
                 pin = pout / efficiency
                 pdiss = pin - pout
 
