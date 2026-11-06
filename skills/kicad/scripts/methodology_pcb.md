@@ -162,7 +162,7 @@ Enables differential pair matching, bus length matching, and routing completenes
 
 ## 5. Power Net Analysis
 
-For nets classified as power/ground (by `is_power_net_name()` and `is_ground_name()`, with the explicit `--power-rails` set when given, or else the schematic's `statistics.power_rails` when `--schematic` is given; a VPP or VM net whose pads say signal is excluded; rails the schematic knows only by their pins are not included):
+For nets classified as power/ground (by `is_power_net_name()` and `is_ground_name()`, with the explicit `--power-rails` set when given, or else the schematic's `statistics.power_rails` when `--schematic` is given; a VPP or VM net whose pads say signal is excluded unless the rail set names it, and only on boards that carry pad pin types (KiCad 7 and later); rails the schematic knows only by their pins are not included):
 - Track widths used (min, max, all widths)
 - Total track length
 - Track count
