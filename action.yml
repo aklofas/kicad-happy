@@ -17,7 +17,8 @@ inputs:
     required: false
     default: 'all'
   derating-profile:
-    description: 'Voltage derating profile: commercial, military, automotive'
+    description: 'Deprecated, no effect (see deprecationMessage)'
+    deprecationMessage: 'Has no effect: the schematic analysis always uses the commercial derating profile. The input will be removed in a later release.'
     required: false
     default: 'commercial'
   spice:

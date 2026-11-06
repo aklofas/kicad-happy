@@ -71,5 +71,12 @@ class PrNumberStepTest(unittest.TestCase):
         self.assertRegex(text, r"if: steps\.pr-number\.outputs\.number != ''\n\s+uses: thollander/")
 
 
+class ActionInputsTest(unittest.TestCase):
+    def test_derating_profile_input_is_deprecated(self):
+        text = (ROOT / "action.yml").read_text(encoding="utf-8")
+        block = re.search(r"^  derating-profile:\n((?:    .*\n)+)", text, re.M).group(1)
+        self.assertIn("deprecationMessage:", block)
+
+
 if __name__ == "__main__":
     unittest.main()
