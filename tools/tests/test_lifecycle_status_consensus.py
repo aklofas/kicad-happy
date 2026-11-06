@@ -98,5 +98,36 @@ class UnknownSourceTest(unittest.TestCase):
         self.assertNotIn("element14", finding["description"].split("while")[1])
 
 
+class UnknownStatusWordingTest(unittest.TestCase):
+    def bom_audit(self, replies, mpn="RC0603FR-07330RL"):
+        fns = {n: (lambda m, r=replies.get(n): dict(r) if r is not None else None)
+               for n in NAMES}
+        with mock.patch.object(lifecycle_engine, "query_lifecycle_lcsc", fns["lcsc"]), \
+                mock.patch.object(lifecycle_engine, "query_lifecycle_digikey", fns["digikey"]), \
+                mock.patch.object(lifecycle_engine, "query_lifecycle_element14", fns["element14"]), \
+                mock.patch.object(lifecycle_engine, "query_lifecycle_mouser", fns["mouser"]):
+            out = lifecycle_engine.audit_bom(
+                {"bom": [{"mpn": mpn, "references": ["R1"]}]}, delay=0)
+        return next(f for f in out["findings"] if f.get("rule_id", "").startswith("LC-0"))
+
+    def test_no_source_answer_is_not_a_replace_order(self):
+        f = self.bom_audit({})
+        self.assertEqual(f["rule_id"], "LC-004")
+        self.assertFalse(f["recommendation"].startswith("Replace"))
+        self.assertIn("No distributor returned RC0603FR-07330RL", f["recommendation"])
+        self.assertIn("credentials", f["recommendation"])
+
+    def test_unknown_with_an_unmapped_answer(self):
+        f = self.bom_audit({"digikey": {"status": None}})
+        self.assertEqual(f["rule_id"], "LC-004")
+        self.assertIn("No distributor returned RC0603FR-07330RL", f["recommendation"])
+        self.assertNotIn("credentials", f["recommendation"])
+
+    def test_obsolete_is_still_a_replace_order(self):
+        f = self.bom_audit({"digikey": {"status": "Obsolete"}})
+        self.assertEqual(f["rule_id"], "LC-001")
+        self.assertEqual(f["recommendation"], "Replace RC0603FR-07330RL — part is obsolete.")
+
+
 if __name__ == "__main__":
     unittest.main()

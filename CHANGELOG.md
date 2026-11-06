@@ -94,6 +94,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Datasheet sync `--force-all`: a refreshed datasheet that looks like a different part, saved under another name, no longer replaces a datasheet already on file and deletes it.
 - Mouser datasheet sync: the product page it reads for a datasheet link is fetched under the same address, redirect and size limits as datasheet downloads.
 - Datasheet downloads: a server that stalls while sending headers no longer keeps its connection and a thread open after the download gives up.
+- The lifecycle audit no longer tells you to replace a part that no distributor returned (LC-004); it says to check the part number, and the credentials when no distributor answered at all.
 
 ### Documentation
 

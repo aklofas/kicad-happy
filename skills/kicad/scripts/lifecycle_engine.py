@@ -884,6 +884,13 @@ def audit_bom(analysis_json: dict, project_dir: str | None = None,
                 else f"Verify current availability before committing to {mpn}; "
                      f"consider locking to the active distributor or finding an "
                      f"alternate.")
+            if status == 'unknown':
+                # No distributor answered for this part: nothing says it should go.
+                finding['description'] = (f"Lifecycle status of {mpn} could not be "
+                                          f"determined: no distributor matched it.")
+                creds = '' if data.get('sources') else ' and the distributor credentials'
+                finding['recommendation'] = (f"No distributor returned {mpn}; check the "
+                                             f"part number{creds} before replacing it.")
             finding['report_context'] = {'section': 'Lifecycle', 'impact': 'Supply chain risk', 'standard_ref': ''}
         else:
             finding['detector'] = 'audit_bom'
