@@ -334,6 +334,22 @@ class CliOutputLink(_Tmp):
         run_id = re.compile(rb'"run_id": "[^"]*"')
         self.assertEqual(run_id.sub(b"R", out.read_bytes()) + b"\n", run_id.sub(b"R", b.stdout))
 
+    def test_analyze_schematic_output_relative_dash_and_other_filesystem(self):
+        sch = self.d / "t.kicad_sch"
+        sch.write_text(SHEET, encoding="utf-8")
+        targets = ["rel.json", "-"]
+        if os.path.isdir("/dev/shm"):
+            shm = "/dev/shm/kh_%s.json" % secrets.token_hex(6)
+            self.addCleanup(lambda: os.path.lexists(shm) and os.unlink(shm))
+            targets.append(shm)
+        for t in targets:
+            r = self._run_in(str(SCRIPTS / "analyze_schematic.py"), str(sch), "--output", t)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            path = Path(t) if os.path.isabs(t) else self.d / t
+            self.assertTrue(path.is_file(), t)
+            json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual([n for n in os.listdir(self.d) if n.endswith(".tmp")], [])
+
     def test_fab_release_gate_output_replaces_link(self):
         sch = self.d / "s.json"
         sch.write_text(json.dumps({"statistics": {"total_components": 1, "total_nets": 2,
