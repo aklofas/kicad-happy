@@ -1,7 +1,7 @@
 """Datasheet downloads go only to http(s) URLs on public addresses, every redirect is
 checked, and a download stops at a size and wall-clock limit. No network: the resolver
 and every transport are local fakes."""
-import argparse, contextlib, http.client, http.server, io, json, os, socket, sys, tempfile, threading, time, unittest
+import argparse, contextlib, http.client, http.server, io, json, os, socket, subprocess, sys, tempfile, threading, time, unittest
 import urllib.request, urllib.response
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
@@ -115,6 +115,23 @@ class UrlProblemTest(unittest.TestCase):
         for address in ("64:ff9b::5db8:d822", "::93.184.216.34"):
             with mock.patch.object(download, "_resolve", return_value=[address]):
                 self.assertIsNone(download.url_problem(url, allow_private=False), address)
+
+    def test_each_address_is_checked_once(self):
+        calls = []
+
+        def getaddrinfo(host, port, *a, **k):
+            calls.append(k)
+            return [(socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("2606:2800::1", 0, 0, 0)),
+                    (socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("2606:2800::1", 0, 0, 0)),
+                    (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0)),
+                    (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
+        with mock.patch.object(socket, "getaddrinfo", getaddrinfo):
+            self.assertEqual(download._resolve("example.com"), ["2606:2800::1", "93.184.216.34"])
+        self.assertEqual(calls, [{"type": socket.SOCK_STREAM}])
+        with mock.patch.object(download, "_resolve",
+                               return_value=["93.184.216.34", "93.184.216.34", "93.184.216.35"]):
+            self.assertEqual(download._checked("https://example.com/a.pdf", False),
+                             (None, ["93.184.216.34", "93.184.216.35"]))
 
     def test_credentials_backslashes_and_blanks_refused(self):
         # Parsers disagree on where the host ends in these URLs (urlsplit reads
@@ -520,7 +537,7 @@ class _FakeRoute:
         self._log.append(("fulfill", self.request.url))
 
 
-def _fake_playwright(urls, chain, log, response=None, on_download=None):
+def _fake_playwright(urls, chain, log, response=None, on_download=None, context_error=None):
     """A ``sync_playwright`` stand-in: its page records ``route`` registrations and, on
     ``goto``, drives the registered handler with a fake route for each of ``urls`` and
     answers ``response``. ``log`` also records the context options, the WebSocket route and
@@ -557,13 +574,15 @@ def _fake_playwright(urls, chain, log, response=None, on_download=None):
     class Browser:
         def new_context(self, **kw):
             log.append(("new_context", kw))
+            if context_error is not None:
+                raise context_error
             return Context()
 
         def new_page(self):
             return Page()
 
         def close(self):
-            pass
+            log.append(("browser.close",))
 
     class P:
         chromium = mock.Mock(launch=lambda headless: Browser())
@@ -653,7 +672,13 @@ class PlaywrightRouteTest(unittest.TestCase):
         self.assertEqual(log[0], ("new_context", {"service_workers": "block"}))
         self.assertLess(log.index(("route_web_socket", "**/*")),
                         log.index(("goto", "https://example.com/x.pdf")))
-        self.assertEqual(log[-1], ("context.close",))
+        self.assertEqual(log[-2:], [("context.close",), ("browser.close",)])
+
+    def test_browser_closed_when_the_context_fails(self):
+        log = []
+        fake, _ = _fake_playwright([], {}, log, context_error=RuntimeError("no context"))
+        self.assertFalse(self._run(fake)[0])
+        self.assertEqual(log[-1], ("browser.close",))
 
     def test_oversized_body_not_buffered(self):
         log = []
@@ -677,7 +702,7 @@ class PlaywrightRouteTest(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("download stopped", stderr)
         self.assertNotIn(("goto", "https://example.com/x.pdf"), log)
-        self.assertEqual(log[-1], ("context.close",))
+        self.assertEqual(log[-2:], [("context.close",), ("browser.close",)])
 
 
 @unittest.skipIf(download._sync_playwright is None, "playwright is not installed")
@@ -761,6 +786,24 @@ class PinnedConnectTest(unittest.TestCase):
     def test_connect_uses_the_checked_address_and_keeps_sni(self):
         self.assertEqual(self._connect({"example.com": ["93.184.216.34"]}),
                          ([("93.184.216.34", 443)], ["example.com"]))
+
+    def test_urllib_tries_each_checked_address_once(self):
+        attempts = []
+
+        def create_connection(address, *a, **k):
+            attempts.append(address)
+            raise ConnectionRefusedError(111, "Connection refused")
+        with tempfile.TemporaryDirectory() as d, \
+             mock.patch.object(download, "_resolve",
+                               return_value=["93.184.216.34", "93.184.216.34", "93.184.216.35"]), \
+             mock.patch.object(download, "_allow_private_hosts", return_value=False), \
+             mock.patch.multiple(download, _requests=None, _sync_playwright=None), \
+             mock.patch.object(socket, "create_connection", create_connection), \
+             mock.patch.dict(os.environ, {"no_proxy": "*", "NO_PROXY": "*"}), \
+             redirect_stderr(io.StringIO()):
+            self.assertFalse(download.download_pdf("https://example.com/x.pdf",
+                                                   os.path.join(d, "x.pdf")))
+        self.assertEqual(attempts, [("93.184.216.34", 443), ("93.184.216.35", 443)])
 
     def test_unpinned_host_connects_by_name(self):
         self.assertEqual(self._connect({}), ([("example.com", 443)], ["example.com"]))
@@ -876,6 +919,16 @@ class PinnedRequestsTest(unittest.TestCase):
             ok = download.download_pdf("https://example.com/x.pdf", os.path.join(d, "x.pdf"))
         return ok, connected, server_names, sent
 
+    def test_requests_without_the_connect_error_name_stays_unpinned(self):
+        code = ("import sys, requests.adapters\n"
+                "del requests.adapters.ConnectTimeoutError\n"
+                f"sys.path.insert(0, {str(ROOT / 'skills' / 'datasheets')!r})\n"
+                "from distributor_core import download\n"
+                "print(download._PinnedAdapter, download._requests is not None)\n")
+        out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                             timeout=60)
+        self.assertEqual((out.returncode, out.stdout.strip()), (0, "None True"), out.stderr)
+
     def test_requests_connects_to_the_checked_address_and_checks_the_host_name(self):
         ok, connected, server_names, sent = self._download(["example.com"])
         self.assertTrue(ok)
@@ -892,7 +945,8 @@ class PinnedRequestsTest(unittest.TestCase):
 
     def test_next_checked_address_after_a_refused_connect(self):
         ok, connected, _, _ = self._download(
-            ["example.com"], addresses=["93.184.216.34", "93.184.216.35"], refused={"93.184.216.34"})
+            ["example.com"], addresses=["93.184.216.34", "93.184.216.34", "93.184.216.35"],
+            refused={"93.184.216.34"})
         self.assertTrue(ok)
         self.assertEqual(connected, [("93.184.216.34", 443), ("93.184.216.35", 443)])
 

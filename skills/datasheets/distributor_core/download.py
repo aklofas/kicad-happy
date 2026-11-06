@@ -119,8 +119,10 @@ class DownloadLimitExceeded(OSError):
 
 
 def _resolve(host: str) -> list[str]:
-    """The addresses ``host`` resolves to. The only DNS lookup in this module."""
-    return [info[4][0] for info in socket.getaddrinfo(host, None)]
+    """The addresses ``host`` resolves to, each once, in resolver order. The only DNS lookup
+    in this module."""
+    return list(dict.fromkeys(
+        info[4][0] for info in socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)))
 
 
 _NAT64 = ipaddress.ip_network("64:ff9b::/96")
@@ -190,7 +192,8 @@ def _checked(url: str, allow_private: bool) -> tuple[str | None, list[str]]:
         addresses = [str(ipaddress.ip_address(host))]
     except ValueError:
         try:
-            addresses = _resolve(host)
+            # Each pinned address is one connect attempt with the full socket timeout.
+            addresses = list(dict.fromkeys(_resolve(host)))
         except (OSError, UnicodeError) as exc:
             return f"{host} does not resolve ({type(exc).__name__})", []
         if not addresses:
@@ -594,12 +597,14 @@ def _download_requests(url: str, output_path: str) -> bool:
 
 
 _PinnedAdapter = None
-if _requests is not None and hasattr(_requests.adapters.HTTPAdapter,
-                                     "build_connection_pool_key_attributes"):
+# urllib3's connect error, as requests itself imports it (urllib3 is not imported here).
+# Without it or the pool-key hook (requests before 2.32.2), requests connects unpinned.
+_ConnectTimeoutError = (getattr(_requests.adapters, "ConnectTimeoutError", None)
+                        if _requests is not None else None)
+if _ConnectTimeoutError is not None and hasattr(_requests.adapters.HTTPAdapter,
+                                                "build_connection_pool_key_attributes"):
     from requests.exceptions import ConnectionError as _RequestsConnectionError
     from requests.utils import select_proxy as _select_proxy
-    # urllib3's connect error, as requests itself imports it (urllib3 is not imported here).
-    _ConnectTimeoutError = _requests.adapters.ConnectTimeoutError
 
     class _PinnedAdapter(_requests.adapters.HTTPAdapter):
         """An adapter that connects a pinned host only to its checked addresses, each tried
@@ -773,8 +778,9 @@ def _download_playwright(url: str, output_path: str) -> bool:
     """
     with _sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        context = browser.new_context(service_workers="block")
+        context = None
         try:
+            context = browser.new_context(service_workers="block")
             page = context.new_page()
             deadline = _deadline()
             if hasattr(page, "route_web_socket"):  # Playwright 1.48+
@@ -810,7 +816,8 @@ def _download_playwright(url: str, output_path: str) -> bool:
                 return True
             return False
         finally:
-            context.close()
+            if context is not None:
+                context.close()
             browser.close()
 
 
