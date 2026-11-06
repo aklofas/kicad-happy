@@ -155,6 +155,7 @@ echo "::endgroup::"
 RAN=0
 FAILED=()
 SCH_JSON=""
+PCB_SCH_USED=false
 if [ -n "$SCHEMATIC" ] && [ ! -f "$SCHEMATIC" ]; then
     echo "::error::Schematic not found: $SCHEMATIC"
     RAN=$((RAN + 1))
@@ -198,7 +199,10 @@ if [ -n "$PCB" ] && [ -f "$PCB" ]; then
     echo "Analyzing: $PCB"
     PCB_CMD=("$SCRIPTS/analyze_pcb.py" "$PCB" -o "$PCB_JSON")
     [ -n "$CONFIG_PATH" ] && PCB_CMD+=(--config "$CONFIG_PATH")
-    [ -n "$SCH_JSON" ] && [ -f "$SCH_JSON" ] && PCB_CMD+=(--schematic "$SCH_JSON")
+    if [ -n "$SCH_JSON" ] && [ -f "$SCH_JSON" ]; then
+        PCB_CMD+=(--schematic "$SCH_JSON")
+        PCB_SCH_USED=true
+    fi
     if python3 "${PCB_CMD[@]}" 2>"$OUTDIR/pcb.err"; then
         echo "pcb-json=$PCB_JSON" >> "$GITHUB_OUTPUT"
     else
@@ -331,8 +335,16 @@ if [ "${INPUT_DIFF_BASE:-false}" = "true" ] && [ -n "${GITHUB_BASE_REF:-}" ]; th
             python3 "$SCRIPTS/analyze_schematic.py" "$BASE_SCH" -o "$OUTDIR/base/schematic.json" \
                 ${BASE_CFG_ARGS[@]+"${BASE_CFG_ARGS[@]}"} 2>/dev/null || true
         fi
+        # Both PCB runs resolve power nets the same way, or the diff shows differences that are not design changes
         BASE_SCH_ARGS=()
-        [ -f "$OUTDIR/base/schematic.json" ] && BASE_SCH_ARGS=(--schematic "$OUTDIR/base/schematic.json")
+        SKIP_PCB_DIFF=false
+        if [ "$PCB_SCH_USED" = "true" ]; then
+            if [ -f "$OUTDIR/base/schematic.json" ]; then
+                BASE_SCH_ARGS=(--schematic "$OUTDIR/base/schematic.json")
+            else
+                SKIP_PCB_DIFF=true
+            fi
+        fi
         if [ -n "$BASE_PCB" ] && [ -f "$BASE_PCB" ]; then
             python3 "$SCRIPTS/analyze_pcb.py" "$BASE_PCB" -o "$OUTDIR/base/pcb.json" \
                 ${BASE_CFG_ARGS[@]+"${BASE_CFG_ARGS[@]}"} \
@@ -342,6 +354,10 @@ if [ "${INPUT_DIFF_BASE:-false}" = "true" ] && [ -n "${GITHUB_BASE_REF:-}" ]; th
         # Diff each analyzer pair that exists on both sides; the comment carries every diff
         # (base EMC and SPICE are never re-run, so only schematic and PCB pair up)
         for dtype in schematic pcb; do
+            if [ "$dtype" = "pcb" ] && [ "$SKIP_PCB_DIFF" = "true" ]; then
+                echo "::notice::PCB diff skipped: the base schematic analysis is unavailable, so the base PCB run could not use it as the head run did"
+                continue
+            fi
             if [ -f "$OUTDIR/base/$dtype.json" ] && [ -f "$OUTDIR/head/$dtype.json" ]; then
                 python3 "$SCRIPTS/diff_analysis.py" \
                     "$OUTDIR/base/$dtype.json" "$OUTDIR/head/$dtype.json" \

@@ -159,6 +159,42 @@ class EntrypointPcbSchematicTest(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stderr)
             pcb = json.loads(Path(out["pcb-json"]).read_text(encoding="utf-8"))
             self.assertEqual(pcb["power_net_resolution"]["source"], "heuristic")
+            self.assertNotIn("PCB analysis failed", Path(out["report-path"]).read_text(encoding="utf-8"))
+
+    def _base_repo(self, tmp, base_files, head_files):
+        git = ["git", "-c", "user.name=t", "-c", "user.email=t"]
+        origin = tmp / "origin.git"
+        subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(origin)], check=True)
+        ws = tmp / "ws"
+        ws.mkdir()
+        for n, text in base_files.items():
+            (ws / n).write_text(text, encoding="utf-8")
+        for cmd in (["init", "-q", "-b", "main"], ["add", "."], ["commit", "-q", "-m", "base"],
+                    ["remote", "add", "origin", str(origin)], ["push", "-q", "origin", "main"]):
+            subprocess.run(git + cmd, cwd=ws, check=True, capture_output=True)
+        return run_entrypoint(tmp, head_files, INPUT_DIFF_BASE="true", GITHUB_BASE_REF="main")
+
+    def test_pcb_diff_is_skipped_when_only_the_head_schematic_analyzed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            head = _simple_files()
+            base = {**head, "simple.kicad_sch": ""}
+            r, out = self._base_repo(tmp, base, head)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            outdir = Path(out["pcb-json"]).parent
+            self.assertFalse((outdir / "diff_pcb.json").exists())
+            self.assertIn("::notice::PCB diff skipped", r.stdout)
+
+    def test_base_pcb_ignores_its_schematic_when_the_head_had_none(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            base = _simple_files()
+            head = {**base, "simple.kicad_sch": ""}
+            r, out = self._base_repo(tmp, base, head)
+            outdir = Path(out["pcb-json"]).parent
+            pcb = json.loads((outdir / "base" / "pcb.json").read_text(encoding="utf-8"))
+            self.assertEqual(pcb["power_net_resolution"]["source"], "heuristic")
+            self.assertNotIn("PCB diff skipped", r.stdout)
 
 
 class EntrypointStaticTest(unittest.TestCase):
