@@ -50,5 +50,25 @@ class Manifest(unittest.TestCase):
             self.assertFalse((Path(d) / "index.json").exists())
 
 
+class VerifyImportPath(unittest.TestCase):
+    def test_extract_pdf_text_imports_without_kicad_scripts_on_path(self):
+        import subprocess
+        ds = Path(__file__).resolve().parents[2] / "skills" / "datasheets"
+        with tempfile.TemporaryDirectory() as d:
+            pdf = Path(d) / "x.pdf"
+            pdf.write_bytes(b"%PDF-1.4 Hello datasheet text")
+            code = ("import sys; sys.path.insert(0, %r); from distributor_core import verify; "
+                    "print('Hello' in verify._extract_pdf_text(%r))" % (str(ds), str(pdf)))
+            r = subprocess.run([sys.executable, "-I", "-c", code], capture_output=True, text=True, timeout=60)
+        self.assertEqual((r.returncode, r.stdout.strip()), (0, "True"), r.stderr)
+
+    def test_extract_pdf_text_reads_raw_pdf_text(self):
+        from distributor_core import verify
+        with tempfile.TemporaryDirectory() as d:
+            pdf = Path(d) / "x.pdf"
+            pdf.write_bytes(b"%PDF-1.4 Hello datasheet text")
+            self.assertIn("Hello", verify._extract_pdf_text(str(pdf)))
+
+
 if __name__ == "__main__":
     unittest.main()
