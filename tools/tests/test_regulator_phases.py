@@ -1,6 +1,6 @@
 # tools/tests/test_regulator_phases.py
 """Pins detect_power_regulators behaviour across its screen/build phases and post-loop passes."""
-import copy, hashlib, json, sys, tempfile, unittest
+import contextlib, copy, hashlib, io, json, sys, tempfile, unittest
 from pathlib import Path
 SCRIPTS = Path(__file__).resolve().parents[2] / "skills" / "kicad" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
@@ -10,6 +10,7 @@ from kicad_types import build_analysis_context  # noqa: E402
 from schematic.pipeline import build_rail_map  # noqa: E402
 from signal_detectors import detect_power_regulators  # noqa: E402
 from what_if import _scan_fixable  # noqa: E402
+from lookup_helpers import get_facts  # noqa: E402
 from detection_schema import _recalc_regulator_feedback  # noqa: E402
 
 EXAMPLE_EXTRACTION = SCRIPTS.parents[1] / "datasheets" / "examples" / "lm2596-adj.json"
@@ -183,6 +184,27 @@ class RegulatorPhases(unittest.TestCase):
         self.assertEqual(r["vref_source"], "datasheet")
         self.assertEqual(r["estimated_vout"], 1.53)
         self.assertEqual(ctx.diagnostics, [])
+
+    def test_stale_extraction_is_named_once_in_diagnostics(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = _extraction_cache(tmp, "TPS54040", 0.765, with_pdf=False)
+            ctx = _ctx([_adj_ldo("BUCK", "VOUT_ADJ")], mpn="TPS54040", cache_dir=cache)
+            with contextlib.redirect_stderr(io.StringIO()):
+                detect_power_regulators(ctx, [_fb_divider("VOUT_ADJ", 10000.0, 10000.0)])
+                get_facts("TPS54040", cache_dir=cache, diagnostics=ctx.diagnostics)
+        entries = [d for d in ctx.diagnostics if d["source"] == "lookup_helpers.get_facts"]
+        self.assertEqual(len(entries), 1, ctx.diagnostics)
+        self.assertEqual(entries[0]["exception"], "StaleExtraction")
+        self.assertIn("TPS54040", entries[0]["message"])
+        self.assertIn("pdf_missing", entries[0]["message"])
+
+    def test_trusted_or_absent_cache_adds_no_diagnostic(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = _extraction_cache(tmp, "TPS54040", 0.765, with_pdf=True)
+            sink = []
+            self.assertIsNotNone(get_facts("TPS54040", cache_dir=cache, diagnostics=sink))
+            self.assertIsNone(get_facts("TPS54040", cache_dir=None, diagnostics=sink))
+        self.assertEqual(sink, [])
 
     def test_untrusted_extraction_falls_back_to_table(self):
         with tempfile.TemporaryDirectory() as tmp:
