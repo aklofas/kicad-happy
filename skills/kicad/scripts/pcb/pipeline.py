@@ -58,7 +58,8 @@ from pcb.copper import (
     analyze_via_in_pad,
     analyze_board_edge_via_clearance,
 )
-from pcb.dfm import analyze_dfm, effective_board_minima, has_legacy_design_settings
+from pcb.dfm import (analyze_dfm, effective_board_minima, has_legacy_design_settings,
+                     microvia_class_minima)
 from pcb.assembly import (
     analyze_decoupling_placement,
     analyze_placement,
@@ -238,6 +239,7 @@ class PcbFacts:
     net_classes: Any
     project_settings: Any
     board_minima: Any
+    microvia_minima: Any
     ref_layer_map: Any
     return_path: Any
     gp001_samples: Any
@@ -384,6 +386,7 @@ def run_facts(board: BoardData, *, include_trace_segments: bool, return_path_rad
     else:
         net_classes = extract_net_classes(root)
     board_minima = effective_board_minima(root, pro)
+    microvia_minima = microvia_class_minima(root, pro, vias, net_names)
     ignored = ignored_drc_checks(None if has_legacy_design_settings(root) else pro)
     if ignored:
         project_settings['_ignored_drc_checks'] = ignored
@@ -443,6 +446,7 @@ def run_facts(board: BoardData, *, include_trace_segments: bool, return_path_rad
         net_classes=net_classes,
         project_settings=project_settings,
         board_minima=board_minima,
+        microvia_minima=microvia_minima,
         ref_layer_map=ref_layer_map,
         return_path=return_path,
         gp001_samples=gp001_samples,

@@ -130,5 +130,87 @@ class BoardMinimaTest(unittest.TestCase):
         self.assertEqual(v["min_microvia_diameter"]["source"], "board_setup")
 
 
+def class_pro(classes, patterns=(), assignments=None):
+    """A project with the Default class (micro-via diameter 0.3) plus *classes*
+    {name: (priority, microvia_diameter or None)}, name patterns and net assignments."""
+    out = [{"name": "Default", "microvia_diameter": 0.3, "microvia_drill": 0.1,
+            "priority": 2147483647}]
+    for name, (priority, size) in classes.items():
+        c = {"name": name, "priority": priority}
+        if size is not None:
+            c.update(microvia_diameter=size, microvia_drill=0.1)
+        out.append(c)
+    return json.dumps({"board": {"design_settings": {"rules": {"min_microvia_diameter": 0.2}}},
+                       "net_settings": {"classes": out, "netclass_assignments": assignments,
+                                        "netclass_patterns": [{"netclass": c, "pattern": p}
+                                                              for p, c in patterns]}})
+
+
+def micro_via_board(net):
+    return (MODERN.replace('(net 1 "A")', f'(net 1 "{net}")')
+            .format(items=via(0.25, 0.1, micro=True)))
+
+
+def micro_required(net, pro_text):
+    """The micro-via diameter minimum a 0.25 mm micro via on *net* is held to, None if met."""
+    v = by_rule(compliance(micro_via_board(net), pro_text)).get("min_microvia_diameter")
+    return v["required_mm"] if v else None
+
+
+class MicroViaNetClassTest(unittest.TestCase):
+    """kicad-cli 10 DRC: a micro via is judged by its own net's class; a class without the key
+    falls back to Default's, and a net in several classes takes the first by priority."""
+
+    CLASSES = {"Fine": (1, 0.2), "Coarse": (1, 0.35)}
+    PATTERNS = (("FINE", "Fine"), ("COARSE", "Coarse"))
+
+    def test_each_net_is_held_to_its_class(self):
+        pro_text = class_pro(self.CLASSES, self.PATTERNS)
+        self.assertIsNone(micro_required("FINE", pro_text))
+        self.assertEqual(micro_required("COARSE", pro_text), 0.35)
+        self.assertEqual(micro_required("PLAIN", pro_text), 0.3)
+
+    def test_worst_shortfall_is_reported_across_nets(self):
+        board = (MODERN.replace('(net 1 "A")', '(net 1 "FINE") (net 2 "COARSE") (net 3 "PLAIN")')
+                 .format(items=via(0.25, 0.1, micro=True)
+                         + via(0.25, 0.1, micro=True).replace("net 1", "net 2")
+                         + via(0.25, 0.1, micro=True).replace("net 1", "net 3")))
+        v = by_rule(compliance(board, class_pro(self.CLASSES, self.PATTERNS)))
+        self.assertEqual(v["min_microvia_diameter"]["required_mm"], 0.35)
+
+    def test_class_without_the_key_falls_back_to_default(self):
+        pro_text = class_pro({"Power": (0, None)}, (("PWR", "Power"),))
+        self.assertEqual(micro_required("PWR", pro_text), 0.3)
+
+    def test_net_in_two_classes_takes_the_first_by_priority(self):
+        pro_text = class_pro({"Fine": (1, 0.2), "Coarse": (2, 0.35)},
+                             assignments={"COMP": ["Fine", "Coarse"], "REV": ["Coarse", "Fine"]})
+        self.assertIsNone(micro_required("COMP", pro_text))
+        self.assertIsNone(micro_required("REV", pro_text))
+        self.assertEqual(micro_required("ASG", class_pro(
+            {"Fine": (1, 0.2), "Coarse": (2, 0.35)}, assignments={"ASG": "Coarse"})), 0.35)
+
+    def test_assignment_and_pattern_compose_by_priority(self):
+        pro_text = class_pro({"Fine": (1, 0.2), "Coarse": (5, 0.35)},
+                             patterns=(("TWO*", "Coarse"), ("*PAT*", "Fine")),
+                             assignments={"ASGPAT": "Coarse"})
+        self.assertIsNone(micro_required("TWOPAT", pro_text))
+        self.assertIsNone(micro_required("ASGPAT", pro_text))
+
+    def test_pattern_wildcards_match_whole_names_only(self):
+        pro_text = class_pro({"Coarse": (1, 0.35)}, patterns=(("LONG*", "Coarse"),))
+        self.assertEqual(micro_required("LONG_FINE", pro_text), 0.35)
+        self.assertEqual(micro_required("XLONG", pro_text), 0.3)
+
+    def test_legacy_board_class_sets_the_net_bound(self):
+        text = LEGACY.replace("(add_net A))", ")").replace(
+            "{items})", '  (net_class Wide "" (clearance 0.2) (trace_width 0.25) (via_dia 0.8)'
+            ' (via_drill 0.4) (uvia_dia 0.35) (uvia_drill 0.1) (add_net A))\n{items})')
+        v = by_rule(compliance(text.format(setup="(trace_min 0.2) (uvia_min_size 0.2)",
+                                           items=via(0.25, 0.1, micro=True))))
+        self.assertEqual(v["min_microvia_diameter"]["required_mm"], 0.35)
+        self.assertEqual(v["min_microvia_diameter"]["source"], "board_setup")
+
+
 if __name__ == "__main__":
     unittest.main()

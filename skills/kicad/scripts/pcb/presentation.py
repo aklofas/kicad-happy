@@ -328,7 +328,7 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
     design_compliance = analyze_design_rule_compliance(
         tracks, vias, project_settings or {}, footprints=footprints,
         minima=facts.board_minima, board_layers=[l["name"] for l in layers or []],
-        ignored_checks=ignored_checks)
+        ignored_checks=ignored_checks, microvia_minima=facts.microvia_minima)
     result["design_rule_compliance"] = design_compliance or {}
 
     # Manufacturing and assembly analysis
