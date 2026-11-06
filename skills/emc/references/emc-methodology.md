@@ -15,9 +15,9 @@ The EMC analyzer is a **consumer** of the kicad skill's analysis output. It does
 ## Data Flow
 
 ### From schematic JSON
-- `findings[] (detector: power_regulators)` → switching frequencies, topologies
-- `findings[] (detector: crystal_circuits)` → clock frequencies
-- `findings[] (detector: protection_devices)` → ESD/TVS inventory
+- `findings[] (detector: detect_power_regulators)` → switching frequencies, topologies
+- `findings[] (detector: detect_crystal_circuits)` → clock frequencies
+- `findings[] (detector: detect_protection_devices)` → ESD/TVS inventory
 - `design_analysis.buses` → bus topology (I2C, SPI, UART, CAN)
 
 ### From PCB JSON
@@ -78,7 +78,7 @@ Identifies parallel trace pairs violating the 3H spacing rule (spacing ≥ 3× d
 Validates that input LC filters on switching regulators have cutoff frequencies sufficiently below the switching frequency (ratio ≥5). Uses SPICE insertion loss analysis when available for improved accuracy.
 
 ### Category 15: ESD Protection Path (rules ES-xxx)
-Checks TVS/ESD device proximity to protected connectors and ground via density near TVS ground pads. Based on IEC 61000-4-2 ESD path inductance requirements.
+Checks TVS/ESD device proximity to protected connectors and ground via density near TVS devices. Based on IEC 61000-4-2 ESD path inductance requirements.
 
 ### Category 16: Thermal-EMC Interaction (rules TH-xxx)
 Detects MLCC capacitors with significant DC bias derating (which shifts SRF, affecting PDN coverage) and ferrite beads near heat sources (which lose impedance at elevated temperatures).
@@ -125,9 +125,9 @@ The analyzer output uses only these three names. `--severity` still takes the ol
 
 4. **No cable radiation prediction.** Cannot determine external cable routing or length. Connector filtering checks assume cables may be attached.
 
-5. **Switching frequency estimation.** Based on part number lookup table. Unknown regulators are skipped. User can extend the lookup in `emc_rules._estimate_switching_freq()`.
+5. **Switching frequency estimation.** Taken from the detector's `switching_frequency_hz`, else the part-number table `lookup_switching_freq()`, else a topology default (`default_switching_freq()`: 500 kHz for buck and boost, 300 kHz for buck-boost, inverting and SEPIC). A regulator is skipped only when none of the three gives a frequency. The table to extend is in `kicad_core/parts.py`.
 
-6. **2-layer board limitations.** The adjacent signal layer check (SU-001) always fires on 2-layer boards, at info severity with a next-revision recommendation. This is technically correct (2-layer boards inherently have worse EMC than multi-layer) but may generate noise for simple designs where EMC compliance isn't a goal.
+6. **2-layer board limitations.** The adjacent signal layer check (SU-001) needs a stackup in the PCB JSON and fires only when neither copper layer is a reference plane; on a board with 2 copper layers it is reported at info severity with a next-revision recommendation. This is technically correct (2-layer boards inherently have worse EMC than multi-layer) but may generate noise for simple designs where EMC compliance isn't a goal.
 
 ## SPICE-Enhanced Mode
 

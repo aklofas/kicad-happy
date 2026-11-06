@@ -7,7 +7,7 @@ Quantitative design rules used by the EMC analyzer. Each rule has a threshold, r
 ### GP-001: Signal crossing ground plane void
 - **Severity:** error below 80 % reference-plane coverage, or below 95 % on a high-speed or clock net; warning from 80 % to 95 % on other nets. info when return-path data is missing
 - **Threshold:** Reference plane coverage <95% for any signal net
-- **Plane split crossing:** Separately, a high-speed or clock net whose reference plane changes from one plane net to another (for example `+3V3` to `+5V`) is reported at error severity. A plane net counts only where it holds over about 2 mm of trace, so a pad-sized island is not a split. No finding when a capacitor joining the two plane nets sits within 5 mm of either plane sample bounding the change. The high-speed test matches the net's own name, not its sheet path. Data source: the PCB analyzer's `reference_plane_changes` key (`--full`).
+- **Plane split crossing:** Separately, a high-speed or clock net whose reference plane changes from one plane net to another (for example `+3V3` to `+5V`) is reported at error severity. A plane net counts only where it holds over about 2 mm of trace, so a pad-sized island is not a split. No finding when a populated capacitor (not DNP) joining the two plane nets sits within 5 mm of either plane sample bounding the change. The high-speed test matches the net's own name, not its sheet path. Data source: the PCB analyzer's `reference_plane_changes` key (`--full`).
 - **Rationale:** Return current must detour around the gap, creating a large loop antenna. Even "slow" signals have fast edge rates (SPI at 10 MHz has ~10 ns edges = 35 MHz bandwidth).
 - **Source:** Hubing, T.H. "Common PCB Layout Mistakes that Cause EMC Compliance Failures." AltiumLive 2022 Keynote. Identified as the #1 PCB layout cause of EMC failures.
 - **Fix:** Route signal around the gap, or fill the void. If a split is intentional, bridge it with a capacitor.
@@ -15,7 +15,7 @@ Quantitative design rules used by the EMC analyzer. Each rule has a threshold, r
 
 ### GP-002: No ground plane zones
 - **Severity:** error
-- **Threshold:** Board has ≥4 copper layers but no ground zone
+- **Threshold:** Board has 2 or more copper layers but no ground zone (the recommendation differs below 4 layers: a B.Cu pour instead of an inner-layer plane)
 - **Source:** Ott, H.W. *EMC Engineering*, Ch. 16 — "A ground plane is the single most important factor in achieving electromagnetic compatibility."
 
 ### GP-003: Fragmented ground plane
@@ -44,12 +44,12 @@ Quantitative design rules used by the EMC analyzer. Each rule has a threshold, r
 
 ### DC-002: Missing decoupling
 - **Severity:** error
-- **Threshold:** IC (U/IC prefix) with no capacitor within 10mm
+- **Threshold:** IC (U/IC prefix) with no capacitor (`C` prefix) within 10mm, measured from the IC's power and ground-net pads to the capacitor's pads (footprint centres if no such pad exists), that shares a non-ground net with the IC other than the IC's own signal-pin nets. Skipped: ICs the schematic analyzer lists as protection devices other than fuses, values containing `esd`, `tvs`, `test` or `net_tie`, `tpd<n>` values, a `tp` value token, and values starting with a common ESD/TVS part prefix
 - **Source:** Every major IC manufacturer's application notes recommend decoupling on all power pins. TI SLUA383, Analog Devices MT-101.
 
 ### DC-003: Decoupling cap far from via
 - **Severity:** warning
-- **Threshold:** Decoupling cap pad >3mm from nearest via to power/ground plane
+- **Threshold:** Decoupling cap footprint centre >3mm from the nearest via of any net. Skipped when the cap sits inside a same-layer pour of one of its own nets, on 2-layer boards, and when the PCB has no vias
 - **Rationale:** Connection inductance is dominated by via transitions rather than cap-to-IC distance. Long traces between cap pad and via add ~0.5–0.8 nH/mm, degrading high-frequency decoupling.
 - **Source:** LearnEMC, "Estimating the Connection Inductance of Decoupling Capacitors."
 - **Fix:** Minimize trace between cap pad and its via. Use short fat traces or co-planar via layout.
@@ -83,7 +83,7 @@ Quantitative design rules used by the EMC analyzer. Each rule has a threshold, r
 
 ### SW-002: Large switching node copper area
 - **Severity:** error (>100 mm²), warning (25–100 mm²)
-- **Threshold:** Total copper area on SW/PH/LX net >25 mm² (zone fill, or the outline of an unfilled zone, plus traces)
+- **Threshold:** Total copper area on SW/PH/LX net ≥25 mm² (zone fill, or the outline of an unfilled zone, plus traces)
 - **Rationale:** Large copper on the switching node acts as an antenna for switching noise. Only minimal copper should connect IC pin to inductor pad.
 - **Source:** TI SLVA477, "Layout Tips for Switching Regulators."
 - **Fix:** Remove unnecessary zones or copper pours on SW node. Use minimal-area traces from IC to inductor only.
@@ -334,16 +334,16 @@ Source: Goldfarb, E. & Pucha, R. "Modeling Via Grounds in Microstrip." IEEE Micr
 
 ### ES-001: ESD device far from connector
 - **Severity:** warning
-- **Threshold:** TVS/ESD protection device (discrete TVS diode, ESD array or varistor) >15mm from protected connector
+- **Threshold:** TVS/ESD protection device (discrete TVS diode, ESD array or varistor) >15mm (footprint centre to centre) from the nearest detected connector; not checked when no connector is within 50mm
 - **Rationale:** During 8kV IEC 61000-4-2 ESD strike (dI/dt = 37.5 GA/s), each nH of inductance in the path creates ~37.5V of overshoot. Trace inductance is ~0.5–0.8 nH/mm, so every extra mm degrades clamping performance.
 - **Source:** TI SLVA680 "ESD Protection Layout Guide"; ST AN5686 "PCB Layout Tips for ESD Protection."
 - **Fix:** Move TVS within 10mm of connector. Keep ESD current path as short as possible.
 
 ### ES-002: Insufficient ground vias near ESD device
 - **Severity:** error (no ground via within 3mm), info (single ground via); a discrete TVS diode whose clamp net is not a ground is not checked
-- **Threshold:** <2 ground stitching vias within 3mm of TVS ground pad
+- **Threshold:** <2 ground stitching vias within 3mm of the TVS footprint centre
 - **Rationale:** TVS ground path inductance is the most critical parasitic in ESD protection. Two parallel vias halve the inductance (~0.5 nH → ~0.25 nH), improving clamping by ~9V at 37.5 GA/s.
-- **Fix:** Add ≥2 ground vias directly adjacent to TVS ground pad. Use short, wide traces to ground plane.
+- **Fix:** Add ≥2 ground vias directly adjacent to the TVS. Use short, wide traces to ground plane.
 
 ## Thermal-EMC Interaction
 
