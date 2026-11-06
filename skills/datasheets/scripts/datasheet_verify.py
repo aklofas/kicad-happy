@@ -899,7 +899,9 @@ def _spec_max_voltage(sv_list):
 
 def _all_pin_numbers(pinout):
     nums = set()
-    for pin in pinout or []:
+    for pin in pinout if isinstance(pinout, list) else []:
+        if not isinstance(pin, dict):
+            continue
         for n in pin.get("numbers", []) or []:
             nums.add(str(n))
     return nums
@@ -929,14 +931,40 @@ def verify_v14_extraction(extraction: dict) -> list[dict]:
 
     # 1. power_domain references resolve to recommended_operating keys
     rec_keys = set(rec_op.keys())
+    if not isinstance(pinout, list):
+        issues.append({
+            "path": "base.pinout",
+            "severity": "error",
+            "description": "base.pinout is not a list",
+        })
+        pinout = []
+    unresolved: dict = {}  # domain label -> [(pin index, raw value)]
     for i, pin in enumerate(pinout):
-        pd = pin.get("power_domain")
-        if pd is not None and pd not in rec_keys:
+        if not isinstance(pin, dict):
             issues.append({
-                "path": f"base.pinout[{i}].power_domain",
-                "severity": "warning",
-                "description": f"power_domain {pd!r} does not resolve to a key in base.recommended_operating ({sorted(rec_keys)})",
+                "path": f"base.pinout[{i}]",
+                "severity": "error",
+                "description": "pin entry is not an object",
             })
+            continue
+        pd = pin.get("power_domain")
+        if pd is None:
+            continue
+        if not isinstance(pd, str):
+            pd = repr(pd)
+        if pd not in rec_keys:
+            unresolved.setdefault(pd, []).append(i)
+    for pd, idxs in unresolved.items():
+        desc = (f"power_domain {pd!r} does not resolve to a key in "
+                f"base.recommended_operating ({sorted(rec_keys)})")
+        if len(idxs) > 1:
+            others = ", ".join(f"base.pinout[{j}]" for j in idxs[1:])
+            desc += f"; {len(idxs)} pins affected, also {others}"
+        issues.append({
+            "path": f"base.pinout[{idxs[0]}].power_domain",
+            "severity": "warning",
+            "description": desc,
+        })
 
     # 2. min/max sanity within each SpecValue
     for block_name, block in (("recommended_operating", rec_op), ("absolute_max", abs_max)):
@@ -1084,8 +1112,8 @@ def _cli_v14(argv: list[str] | None = None) -> int:
         flag-based with --json → {"violations": [...], "count": N, "mpn": ..., "extract_dir": ...}
 
     Exit codes:
-        0  no issues
-        1  ≥1 issue
+        0  no issues, or warnings only
+        1  at least one error
         2  CLI / I/O error (missing file, bad JSON, missing required flags)
     """
     import argparse, json as _json, re as _re, sys as _sys
@@ -1184,7 +1212,7 @@ def _cli_v14(argv: list[str] | None = None) -> int:
             print(f"  [{i['severity']}] {i['path']}: {i['description']}")
     if args.emit_json or positional_mode:
         _sys.stdout.write("\n")
-    return 0 if not issues else 1
+    return 1 if any(i.get("severity") == "error" for i in issues) else 0
 
 
 if __name__ == "__main__":

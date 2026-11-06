@@ -51,6 +51,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `edit_properties.py` and `sync_datasheet_urls.py` find a part by the reference KiCad shows on each sheet. An edit through one instance of a repeated sheet writes that sheet once and warns that every instance changes, two instances given different values for one field are refused, and two parts sharing a stale reference no longer receive each other's datasheet URL.
 - A `Supplier N Part Number` on a symbol without its own `Supplier N` name is filed under the distributor the rest of the project names for that slot.
 - BOM tools and the pick-and-place translator read a part as DNP when its Value is `DNF`, `NoPop`, `nostuff` or `Do Not Place`, or when a DNP field holds `Y`, `x` or `*`; both share one marker list.
+- `datasheet_verify.py` now exits 0 when an extraction has only warnings (exit 1 is kept for errors). It reports one warning per unresolved `power_domain` value instead of one per pin, and reports a null or malformed pin entry instead of crashing.
 
 ### Documentation
 
