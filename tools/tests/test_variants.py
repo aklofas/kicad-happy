@@ -135,6 +135,29 @@ class _Project(unittest.TestCase):
         return {ref: e for e in report["bom"] for ref in e["references"]}
 
 
+class VariantFieldNameCaseTest(unittest.TestCase):
+    def _mpn(self, variant_name):
+        uid = _Ids()
+        rp = "/" + ROOT_UUID
+        sym = _sym(uid, "R1", "10k", rp, (10, 10), extra=(("MPN", "BASE-1"),),
+                   variant=f'(field (name "{variant_name}") (value "VAR-2"))')
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "vt.kicad_sch")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(_doc(ROOT_UUID, 20260306, [sym]))
+            with open(os.path.join(tmp, "vt.kicad_pro"), "w", encoding="utf-8") as f:
+                json.dump({"meta": {"filename": "vt.kicad_pro", "version": 3},
+                           "schematic": {"variants": [{"name": "A", "description": "a"}]}}, f)
+            result = _quiet(analyze_schematic, path, variant="A")
+        return result["components"][0]["mpn"]
+
+    def test_variant_field_with_the_same_case_overrides(self):
+        self.assertEqual(self._mpn("MPN"), "VAR-2")
+
+    def test_variant_field_differing_in_case_does_not_override(self):
+        self.assertEqual(self._mpn("mpn"), "BASE-1")
+
+
 class AnalyzerVariantTest(_Project):
     def test_default_variant_is_the_symbols_own_attributes(self):
         comps, result = self.comps()

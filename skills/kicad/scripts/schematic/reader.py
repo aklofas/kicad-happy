@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 
 from kicad_core.sexp import (find_all, find_first, find_deep, get_value, get_property,
-                             get_properties, get_at, has_flag, is_keyword, net_name_escape,
+                             get_properties, _iter_properties, get_at, has_flag, is_keyword, net_name_escape,
                              parse_file, raw_text, unescape_string)
 from kicad_core.classify import classify_component, classify_connector, classify_ic_function
 from kicad_core.fields import DIGIKEY_FIELD_ALIASES, MANDATORY_STRIP, pick_field, pick_mpn
@@ -901,9 +901,10 @@ def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
             footprint = var_fields.get("Footprint", footprint)
             datasheet = var_fields.get("Datasheet", datasheet)
             description = var_fields.get("Description", description)
-            # _props keys are lower-cased; a variant names its fields as the symbol does
-            var_props = {k.lower(): v for k, v in var_fields.items()}
-            _props = {k: var_props.get(k, v) for k, v in _props.items()}
+            # _props keys are lower-cased; KiCad matches a variant's field name exactly
+            exact = {n.lower(): n for n, _v in _iter_properties(sym)}
+            _props = {k: var_fields[exact[k]] if exact.get(k) in var_fields else v
+                      for k, v in _props.items()}
         in_bom = overrides.get("in_bom", get_value(sym, "in_bom") != "no")
         dnp_token = get_value(sym, "dnp")
         if "dnp" in overrides:
