@@ -1,6 +1,6 @@
 """Manifest run ids are folder names inside the analysis dir: an absolute, dotted or nested id
 is never deleted by pruning and never written into."""
-import io, json, os, subprocess, sys, tempfile, unittest
+import io, json, os, subprocess, sys, tempfile, time, unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
@@ -828,6 +828,109 @@ class ParallelRunTest(unittest.TestCase):
             self.assertEqual(entered, [True])
             self.assertTrue(os.path.isfile(path))
             self.assertFalse(os.path.lexists(os.path.join(ad, ".manifest.lock")))
+
+class ManifestLockTest(unittest.TestCase):
+    def _holders(self, ad, holds, gap=0.01):
+        """Run one thread per hold time through manifest_lock; return (most holders at once, stderr)."""
+        import threading
+        inside, most, guard = [0], [0], threading.Lock()
+
+        def worker(hold):
+            with analysis_cache.manifest_lock(ad):
+                with guard:
+                    inside[0] += 1
+                    most[0] = max(most[0], inside[0])
+                time.sleep(hold)
+                with guard:
+                    inside[0] -= 1
+
+        err = io.StringIO()
+        threads = [threading.Thread(target=worker, args=(h,)) for h in holds]
+        with mock.patch.object(analysis_cache, "_LOCK_STALE_S", 0.3), redirect_stderr(err):
+            for t in threads:
+                t.start()
+                time.sleep(gap)
+            for t in threads:
+                t.join()
+        return most[0], err.getvalue()
+
+    def test_two_waiters_on_a_stale_lock_never_hold_at_once(self):
+        for _ in range(3):
+            with tempfile.TemporaryDirectory() as ad:
+                Path(ad, ".manifest.lock").write_text("", encoding="utf-8")
+                most, err = self._holders(ad, (0.1, 0.1))
+                self.assertEqual(most, 1)
+                self.assertEqual(err.count("stale lock"), 1)
+                self.assertEqual(sorted(os.listdir(ad)), [])
+
+    def test_a_chain_of_live_holders_is_not_broken(self):
+        for _ in range(3):
+            with tempfile.TemporaryDirectory() as ad:
+                most, err = self._holders(ad, (0.2, 0.2, 0.2))
+                self.assertEqual(most, 1)
+                self.assertNotIn("stale lock", err)
+                self.assertEqual(sorted(os.listdir(ad)), [])
+
+    def test_release_keeps_a_lock_that_is_not_ours(self):
+        with tempfile.TemporaryDirectory() as ad:
+            lock = os.path.join(ad, ".manifest.lock")
+            with analysis_cache.manifest_lock(ad):
+                os.unlink(lock)
+                Path(lock).write_text("someone-else", encoding="utf-8")
+            self.assertEqual(Path(lock).read_text(encoding="utf-8"), "someone-else")
+
+    def test_windows_lock_being_deleted_is_waited_for(self):
+        real_open = os.open
+        refusals = [2]
+
+        def fake_open(path, flags, *a):
+            if str(path).endswith(".manifest.lock") and flags & os.O_EXCL and refusals[0]:
+                refusals[0] -= 1
+                raise PermissionError(13, "Access is denied", path)
+            return real_open(path, flags, *a)
+
+        with tempfile.TemporaryDirectory() as ad:
+            err = io.StringIO()
+            with mock.patch.object(analysis_cache, "_WINDOWS", True), \
+                    mock.patch.object(analysis_cache.os, "open", fake_open), redirect_stderr(err):
+                with analysis_cache.manifest_lock(ad):
+                    held = os.path.isfile(os.path.join(ad, ".manifest.lock"))
+            self.assertTrue(held)
+            self.assertEqual(refusals, [0])
+            self.assertEqual(err.getvalue(), "")
+            self.assertEqual(os.listdir(ad), [])
+
+    def test_windows_lock_busy_for_good_gives_up_with_a_warning(self):
+        real_open = os.open
+
+        def fake_open(path, flags, *a):
+            if str(path).endswith(".manifest.lock"):
+                raise PermissionError(13, "Access is denied", path)
+            return real_open(path, flags, *a)
+
+        with tempfile.TemporaryDirectory() as ad:
+            err = io.StringIO()
+            start = time.monotonic()
+            with mock.patch.object(analysis_cache, "_WINDOWS", True), \
+                    mock.patch.object(analysis_cache, "_LOCK_STALE_S", 0.1), \
+                    mock.patch.object(analysis_cache.os, "open", fake_open), redirect_stderr(err):
+                with analysis_cache.manifest_lock(ad):
+                    pass
+            self.assertLess(time.monotonic() - start, 5)
+            self.assertIn("not taken in 0.4 s", err.getvalue())
+            self.assertIn("manifest written without the lock", err.getvalue())
+
+    def test_unusable_lock_path_writes_without_the_lock(self):
+        with tempfile.TemporaryDirectory() as ad:
+            os.makedirs(os.path.join(ad, ".manifest.lock.break"))
+            Path(ad, ".manifest.lock").write_text("", encoding="utf-8")
+            err = io.StringIO()
+            start = time.monotonic()
+            with mock.patch.object(analysis_cache, "_LOCK_STALE_S", 0.1), redirect_stderr(err):
+                with analysis_cache.manifest_lock(ad):
+                    pass
+            self.assertLess(time.monotonic() - start, 5)
+            self.assertIn("manifest written without the lock", err.getvalue())
 
 
 def stat_isreg(path):

@@ -16,6 +16,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import secrets
 import shutil
 import stat
 import sys
@@ -270,51 +271,150 @@ def save_manifest(analysis_dir: str, manifest: Dict[str, Any]) -> None:
 _LOCK_FILENAME = '.manifest.lock'
 _LOCK_POLL_S = 0.05
 _LOCK_STALE_S = 30.0
+_LOCK_RELEASE_S = 1.0
+_WINDOWS = os.name == 'nt'
+_O_BINARY = getattr(os, 'O_BINARY', 0)
+
+
+def _lock_busy(exc: OSError) -> bool:
+    """The error Windows gives for a lock file that another process has open or is deleting."""
+    return _WINDOWS and isinstance(exc, PermissionError)
+
+
+def _create_lock(path: str, token: bytes) -> bool:
+    """Create the lock file at *path* holding *token*; False when one is already there."""
+    try:
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY | _O_BINARY)
+    except FileExistsError:
+        return False
+    except PermissionError as exc:
+        if _lock_busy(exc):
+            return False
+        raise
+    try:
+        try:
+            os.write(fd, token)
+        finally:
+            os.close(fd)
+    except OSError:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+        raise
+    return True
+
+
+def _lock_identity(path: str) -> Optional[Tuple[int, int, bytes]]:
+    """(inode, mtime_ns, token) of the lock file at *path*, or None when there is none."""
+    try:
+        fd = os.open(path, os.O_RDONLY | _O_BINARY)
+    except FileNotFoundError:
+        return None
+    try:
+        st = os.fstat(fd)
+        data = os.read(fd, 64)
+    finally:
+        os.close(fd)
+    return st.st_ino, st.st_mtime_ns, data
+
+
+def _remove_lock(path: str, *, token: Optional[bytes] = None,
+                 ident: Optional[Tuple[int, int, bytes]] = None) -> bool:
+    """Unlink the lock file at *path* only while it holds *token* (or has identity *ident*)."""
+    deadline = time.monotonic() + _LOCK_RELEASE_S
+    while True:
+        try:
+            cur = _lock_identity(path)
+            if cur is None or (cur[2] != token if token is not None else cur != ident):
+                return False
+            os.unlink(path)
+            return True
+        except FileNotFoundError:
+            return False
+        except OSError as exc:
+            if _lock_busy(exc) and time.monotonic() < deadline:
+                time.sleep(_LOCK_POLL_S)
+                continue
+            return False
+
+
+def _unchanged_for_stale(path: str, seen: list) -> bool:
+    """Track the lock file at *path* in *seen* ([identity, first seen]); True once the same
+    file has stayed there for _LOCK_STALE_S."""
+    try:
+        ident = _lock_identity(path)
+    except OSError as exc:
+        if _lock_busy(exc):
+            return False
+        raise
+    now = time.monotonic()
+    if ident != seen[0]:
+        seen[0], seen[1] = ident, now
+        return False
+    return ident is not None and now - seen[1] >= _LOCK_STALE_S
+
+
+def _break_stale(path: str, breaker: str, ident: Tuple[int, int, bytes], token: bytes) -> bool:
+    """Replace the stale lock *ident* at *path* by this run's; True when this run now holds it.
+
+    Only the holder of the *breaker* file breaks a lock, and only while the lock file is still
+    *ident*, so two waiters never both break one lock or break the lock the other took."""
+    if not _create_lock(breaker, token):
+        return False
+    try:
+        if not _remove_lock(path, ident=ident):
+            return False
+        record(None, "analysis_cache.manifest_lock",
+               TimeoutError(f"stale lock {path} unchanged for over {_LOCK_STALE_S:g} s"),
+               "lock removed")
+        return _create_lock(path, token)
+    finally:
+        _remove_lock(breaker, token=token)
 
 
 @contextmanager
 def manifest_lock(analysis_dir: str):
     """Hold analysis/.manifest.lock for one read-decide-write of the manifest.
 
-    The lock is the file's existence (created with O_EXCL and closed at once, so Windows can
-    remove it). A lock still there after _LOCK_STALE_S is taken as left by a crashed run: it
-    is removed with a warning and taken over. Not reentrant: create_run and overwrite_current
-    do not take it, their callers do.
+    The lock is a file created with O_EXCL that holds a random token and is closed at once,
+    so Windows can remove it. A lock file that stays the same (inode, mtime and token) for
+    _LOCK_STALE_S is taken as left by a crashed run: it is removed with a warning and taken
+    over. A waiter's own wait time does not count, so a chain of live holders is never broken.
+    Release removes the file only while it still holds this run's token. A lock that cannot
+    be taken in 4 x _LOCK_STALE_S, or a lock path that cannot be used, gives a warning and
+    the manifest is written without it. Not reentrant: create_run and overwrite_current do
+    not take it, their callers do.
     """
     os.makedirs(analysis_dir, exist_ok=True)
     path = os.path.join(analysis_dir, _LOCK_FILENAME)
-    deadline = time.monotonic() + _LOCK_STALE_S
+    breaker = path + '.break'
+    token = secrets.token_hex(16).encode('ascii')
+    give_up = time.monotonic() + 4 * _LOCK_STALE_S
+    seen_lock, seen_breaker = [None, 0.0], [None, 0.0]
     held = False
-    while True:
-        try:
-            os.close(os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
-            held = True
-            break
-        except FileExistsError:
-            if time.monotonic() < deadline:
-                time.sleep(_LOCK_POLL_S)
-                continue
-        except OSError as exc:
-            record(None, "analysis_cache.manifest_lock", exc, "manifest written without the lock")
-            break
-        try:
-            os.unlink(path)
-        except FileNotFoundError:
-            pass
-        except OSError as exc:
-            record(None, "analysis_cache.manifest_lock", exc, "manifest written without the lock")
-            break
-        record(None, "analysis_cache.manifest_lock",
-               TimeoutError(f"stale lock {path} held for over {_LOCK_STALE_S:g} s"), "lock removed")
-        deadline = time.monotonic() + _LOCK_STALE_S
+    try:
+        while True:
+            if _create_lock(path, token):
+                held = True
+                break
+            if _unchanged_for_stale(path, seen_lock):
+                if _break_stale(path, breaker, seen_lock[0], token):
+                    held = True
+                    break
+                # a breaker file left by a run that crashed while breaking
+                if _unchanged_for_stale(breaker, seen_breaker):
+                    _remove_lock(breaker, ident=seen_breaker[0])
+            if time.monotonic() >= give_up:
+                raise TimeoutError(f"{path} not taken in {4 * _LOCK_STALE_S:g} s")
+            time.sleep(_LOCK_POLL_S)
+    except OSError as exc:
+        record(None, "analysis_cache.manifest_lock", exc, "manifest written without the lock")
     try:
         yield
     finally:
         if held:
-            try:
-                os.unlink(path)
-            except OSError:
-                pass
+            _remove_lock(path, token=token)
 
 
 # ---------------------------------------------------------------------------
