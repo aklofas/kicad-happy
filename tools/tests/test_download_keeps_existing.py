@@ -533,12 +533,15 @@ class SyncDownloadFailureTest(unittest.TestCase):
                 self.assertEqual((Path(d) / "out" / "LM358DR.pdf").read_bytes(), GOOD + b"new")
 
     @staticmethod
-    def _ok_as(d, name):
+    def _ok_as(d, name, verification=None):
         def outcome(p, *a):
             (Path(d) / "out" / name).write_bytes(GOOD + b"new")
-            return {"manufacturer": "", "description": "", "value": p["value"],
-                    "references": p["references"], "status": "ok", "file": name,
-                    "size_bytes": len(GOOD) + 3, "datasheet_url": "https://x/new.pdf"}
+            entry = {"manufacturer": "", "description": "", "value": p["value"],
+                     "references": p["references"], "status": "ok", "file": name,
+                     "size_bytes": len(GOOD) + 3, "datasheet_url": "https://x/new.pdf"}
+            if verification:
+                entry["verification"] = verification
+            return entry
         return outcome
 
     def test_force_all_ok_with_another_name_removes_the_old_file(self):
@@ -547,6 +550,42 @@ class SyncDownloadFailureTest(unittest.TestCase):
             self.assertEqual(entry["file"], "LM358DR_new.pdf")
             self.assertFalse((out / "LM358DR.pdf").exists())
             self.assertEqual((out / "LM358DR_new.pdf").read_bytes(), GOOD + b"new")
+
+    def test_force_all_wrong_part_with_another_name_keeps_the_ok_entry(self):
+        with tempfile.TemporaryDirectory() as d:
+            out, r, entry = self._force_all(d, self._ok_as(d, "LM358DR_new.pdf", "wrong"))
+            self.assertEqual(entry, self.OK)
+            self.assertEqual((out / "LM358DR.pdf").read_bytes(), GOOD)
+            self.assertFalse((out / "LM358DR_new.pdf").exists())
+            self.assertEqual(r["failed"], 1)
+            self.assertIn("kept LM358DR.pdf", self.stderr.getvalue())
+
+    def test_force_all_likely_part_with_another_name_still_replaces(self):
+        with tempfile.TemporaryDirectory() as d:
+            out, _, entry = self._force_all(d, self._ok_as(d, "LM358DR_new.pdf", "likely"))
+            self.assertEqual(entry["file"], "LM358DR_new.pdf")
+            self.assertFalse((out / "LM358DR.pdf").exists())
+
+    def test_force_all_wrong_part_with_the_same_name_stores_the_new_entry(self):
+        with tempfile.TemporaryDirectory() as d:
+            out, _, entry = self._force_all(d, self._ok_as(d, "LM358DR.pdf", "wrong"))
+            self.assertEqual(entry["verification"], "wrong")
+            self.assertEqual((out / "LM358DR.pdf").read_bytes(), GOOD + b"new")
+
+    def test_force_all_wrong_part_replaces_an_entry_that_was_already_wrong(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.OK = {**SyncDownloadFailureTest.OK, "verification": "wrong"}
+            out, _, entry = self._force_all(d, self._ok_as(d, "LM358DR_new.pdf", "wrong"))
+            self.assertEqual(entry["file"], "LM358DR_new.pdf")
+            self.assertFalse((out / "LM358DR.pdf").exists())
+
+    def test_force_all_wrong_part_file_another_entry_names_is_not_deleted(self):
+        other = {"file": "LM358DR_new.pdf", "status": "ok", "references": ["U2"]}
+        with tempfile.TemporaryDirectory() as d:
+            out, _, entry = self._force_all(d, self._ok_as(d, "LM358DR_new.pdf", "wrong"),
+                                            extra={"OTHER": other})
+            self.assertEqual(entry, self.OK)
+            self.assertTrue((out / "LM358DR_new.pdf").exists())
 
     def test_force_all_ok_with_the_same_name_keeps_the_new_file(self):
         with tempfile.TemporaryDirectory() as d:

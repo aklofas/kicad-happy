@@ -75,6 +75,9 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Deep Review: a datasheet quote whose exponent the PDF text splits with a space or a line break (`1e- 3`) matches again, and a quote that drops such an exponent's sign no longer passes.
 - DigiKey datasheet sync: a run longer than the API token's ten-minute life fetches a new token instead of failing every later part as an access error.
 - `search_lcsc.py`: `--in-stock` no longer drops an exact LCSC-code hit whose stock only the LCSC lookup reports. A code search whose LCSC lookup is unreachable exits 2, and the error names both services when both fail.
+- Mouser datasheet sync: the product page it reads for a datasheet link is fetched under the same address, redirect and size limits as datasheet downloads.
+- Datasheet downloads: a server that stalls while sending headers no longer keeps its connection and a thread open after the download gives up.
+- Datasheet sync `--force-all`: a refreshed datasheet that looks like a different part, saved under another name, no longer replaces a datasheet already on file and deletes it.
 
 ### Documentation
 
