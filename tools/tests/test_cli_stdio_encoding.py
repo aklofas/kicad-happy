@@ -57,6 +57,28 @@ class Cp1252Pipe(unittest.TestCase):
                                 rel)
 
 
+class InlineStdoutSetup(unittest.TestCase):
+    def test_inline_copies_write_lf(self):
+        for rel in entry_points():
+            text = (REPO / rel).read_text(encoding="utf-8")
+            block = text[MAIN.search(text).end():]
+            if "utf8_stdio()" in block:
+                continue
+            with self.subTest(script=rel):
+                self.assertIn('{"newline": "\\n"}', block)
+
+    def test_inline_copy_reconfigures_crlf_stream(self):
+        src = (REPO / "skills/datasheets/scripts/merge_results.py").read_text(encoding="utf-8")
+        block = src[MAIN.search(src).end():].split("\n    sys.exit", 1)[0]
+        buf = io.BytesIO()
+        w = io.TextIOWrapper(buf, encoding="utf-8", newline="\r\n")
+        with mock.patch.object(sys, "stdout", w), mock.patch.object(sys, "stderr", io.StringIO()):
+            exec(block.replace("\n    ", "\n").lstrip(), {"sys": sys})
+            print("a")
+            w.flush()
+        self.assertEqual(buf.getvalue(), b"a\n")
+
+
 class StdoutLineEndings(unittest.TestCase):
     def _run(self, helper, encoding, text, newline="\r\n"):
         sys.path.insert(0, str(REPO / "skills" / "kicad" / "scripts"))
