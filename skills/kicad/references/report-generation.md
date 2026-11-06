@@ -416,7 +416,7 @@ This verification must happen at the PCB pad level, not just the schematic pin l
 [MPN coverage %, missing MPNs list, missing distributor part numbers. Do not recommend or prefer any specific distributor by name — keep sourcing observations neutral.]
 
 ### Component Lifecycle Status
-[**Include when `--lifecycle` flag was used on the schematic analyzer.** Report any NRND (not recommended for new designs), EOL (end of life), or obsolete components from the `lifecycle_audit` output. For each flagged part: MPN, current status, last-buy date if known, and suggested action (find alternate, stock up, redesign). If lifecycle audit was not run, note: "Lifecycle audit not performed — [reason: no API keys / no network / no MPNs]."]
+[**Include when the run has lifecycle results:** the schematic analyzer's `lifecycle_audit` section (`--lifecycle`) or a standalone `lifecycle_audit.py` envelope in the same run (`analyzer_type: "lifecycle"`, usually `lifecycle.json`). With either present, leave out the schematic's LC-007 "lifecycle audit not run" finding; it only says that run did not query distributors. Report any NRND (not recommended for new designs), EOL (end of life), or obsolete components from the `lifecycle_audit` output. For each flagged part: MPN, current status, last-buy date if known, and suggested action (find alternate, stock up, redesign). If neither is present, note: "Lifecycle audit not performed — [reason: no API keys / no network / no MPNs]."]
 
 ### BOM Optimization
 [Unique passive value counts per type, total unique footprints, single-use passive values, consolidation opportunities]

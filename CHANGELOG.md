@@ -31,6 +31,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 ### Documentation
 
 - The kicad skill no longer tells the agent that SPICE and EMC runs are mandatory proof. It reports a SPICE pass as a check, an `info` or generic-model bench as a measurement, and heuristic EMC findings as screening. A board with no datasheet evidence may still state KiCad-file facts (nets, pads, tracks, DRC/ERC) as verified.
+- Review reports no longer list "lifecycle audit not run" next to a lifecycle section produced by a standalone `lifecycle_audit.py` run.
 
 
 ## v3.0.1 — 2026-11-06
