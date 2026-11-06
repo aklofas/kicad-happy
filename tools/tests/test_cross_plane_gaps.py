@@ -63,6 +63,19 @@ class ReturnPathCrossings(unittest.TestCase):
         self.assertEqual(ca.check_return_path_enhanced(SCH, _pcb(clean)), [])
 
 
+class ReturnPathAvailability(unittest.TestCase):
+    def test_absent_coverage_records_not_run(self):
+        rec = Rec()
+        self.assertEqual(ca.check_return_path_enhanced(SCH, _pcb(), recorder=rec), [])
+        self.assertEqual(rec.rows["RP-002"],
+                         (False, "no return-path coverage in PCB analysis (zone fills unavailable)", 0, 0))
+
+    def test_measured_clean_coverage_records_run(self):
+        rec = Rec()
+        ca.check_return_path_enhanced(SCH, _pcb([]), recorder=rec)
+        self.assertEqual(rec.rows["RP-002"], (True, None, 1, 0))
+
+
 class PlaneSplitCrossings(unittest.TestCase):
     def test_split_with_crossing_is_heuristic(self):
         ps = _rule(ca.check_plane_splits(SCH, _pcb(FLAGGED)), "PS-002")

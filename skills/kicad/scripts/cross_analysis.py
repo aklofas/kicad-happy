@@ -809,6 +809,9 @@ def check_return_path_enhanced(schematic, pcb, recorder=None):
     conn_graph = pcb.get('connectivity_graph') or {}
     net_id_map = _build_net_id_map(pcb)
     rpc_flagged = _flagged_return_path_entries(pcb, threshold_pct=95.0)
+    # [] means coverage was measured and no net is short; an absent key means
+    # zone fills were unavailable, so no crossing can be confirmed.
+    has_rpc_data = isinstance(pcb.get('return_path_continuity'), list)
     plane_gaps = []
     for net_name, graph in conn_graph.items():
         if not (is_cross_analysis_ground_name(net_name) or _is_power_net(net_name)):
@@ -835,6 +838,10 @@ def check_return_path_enhanced(schematic, pcb, recorder=None):
 
                         source=ANALYZER_SOURCE, schema_era="v3.0",))
         _record(recorder, 'RP-002', True, None, len(segments), findings)
+        return findings
+    if not has_rpc_data:
+        _record(recorder, 'RP-002', False,
+                'no return-path coverage in PCB analysis (zone fills unavailable)', 0, findings)
         return findings
     flagged = set()
     for seg in segments:
