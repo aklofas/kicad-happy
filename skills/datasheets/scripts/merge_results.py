@@ -32,7 +32,7 @@ _SKILL_PARENT = str(Path(__file__).resolve().parents[1])
 if _SKILL_PARENT not in sys.path:
     sys.path.insert(0, _SKILL_PARENT)
 
-from datasheet_types.cache_reader import sanitize_mpn  # noqa: E402
+from datasheet_types.cache_reader import read_json_object, sanitize_mpn  # noqa: E402
 from distributor_core.manifest import write_json_atomic  # noqa: E402
 
 
@@ -83,15 +83,15 @@ def _read_result(cache: Path, mpn: str, task_id: str) -> "dict | None":
     p = cache / f"{sanitize_mpn(mpn)}.{task_id}.result.json"
     if not p.exists():
         return None
-    try:
-        return json.loads(p.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, RecursionError) as exc:
+    result = read_json_object(p)
+    if result is None:
         return {
             "task_id": task_id,
             "status": "failed",
-            "error": f"result file is not valid JSON: {exc}",
+            "error": "result file is not a readable JSON object",
             "data": None,
         }
+    return result
 
 
 def _classify(result: "dict | None", schema: dict,
@@ -183,12 +183,8 @@ def _initial_extraction(plan: dict, cache: Path) -> dict:
 
 def _enrich_source_from_scout(extraction: dict, cache: Path, mpn: str) -> None:
     """Overlay scout metadata onto the source block. Silent on missing file."""
-    p = cache / f"{sanitize_mpn(mpn)}.scout.json"
-    if not p.exists():
-        return
-    try:
-        scout = json.loads(p.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, RecursionError):
+    scout = read_json_object(cache / f"{sanitize_mpn(mpn)}.scout.json")
+    if scout is None:
         return
     md = scout.get("metadata", {}) or {}
     src = extraction["source"]
@@ -233,7 +229,10 @@ def merge(cache: Path, mpn: str, *, retry_failed: bool = False) -> int:
     if not plan_path.exists():
         print(f"error: plan not found at {plan_path}", file=sys.stderr)
         return 2
-    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    plan = read_json_object(plan_path)
+    if plan is None:
+        print(f"error: plan at {plan_path} is not a readable JSON object", file=sys.stderr)
+        return 2
     if plan["execution"]["started_at"] is None:
         plan["execution"]["started_at"] = _now_iso()
 

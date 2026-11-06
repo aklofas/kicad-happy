@@ -276,3 +276,67 @@ class ValidateSanityVectorHelp(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PipelineReadersRefuseBadCacheFiles(unittest.TestCase):
+    def _plan_main(self, cache, pdf):
+        import plan_extraction
+        err = io.StringIO()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+            rc = plan_extraction.main(["X1", str(pdf), "--cache-dir", str(cache), "--use-cached-scout"])
+        return rc, err.getvalue()
+
+    def _setup(self, d):
+        root = Path(d)
+        pdf = root / "x.pdf"; pdf.write_bytes(b"%PDF-1.4")
+        cache = root / "cache"; cache.mkdir()
+        return root, pdf, cache
+
+    def test_missing_cached_scout_is_a_usage_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            _, pdf, cache = self._setup(d)
+            rc, err = self._plan_main(cache, pdf)
+            self.assertEqual(rc, 2)
+            self.assertIn(str(cache / "X1.scout.json"), err)
+            self.assertNotIn("Traceback", err)
+
+    def test_malformed_scout_is_a_usage_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            _, pdf, cache = self._setup(d)
+            (cache / "X1.scout.json").write_text("{not json", encoding="utf-8")
+            self.assertEqual(self._plan_main(cache, pdf)[0], 2)
+
+    @unittest.skipIf(os.name == "nt", "symlinks")
+    def test_symlinked_scout_is_not_followed(self):
+        with tempfile.TemporaryDirectory() as d:
+            root, pdf, cache = self._setup(d)
+            other = root / "outside"; other.mkdir()
+            _scout(other, pdf)
+            os.symlink(other / "X1.scout.json", cache / "X1.scout.json")
+            self.assertEqual(self._plan_main(cache, pdf)[0], 2)
+
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "mkfifo")
+    def test_fifo_extraction_does_not_block(self):
+        with tempfile.TemporaryDirectory() as d:
+            _, pdf, cache = self._setup(d)
+            os.mkfifo(cache / "X1.json")
+            code = ("import sys; sys.path[:0] = [%r, %r]; import plan_extraction as p; "
+                    "print(p._load_existing_extraction(__import__('pathlib').Path(%r), 'X1'))"
+                    % (str(DS), str(DS / "scripts"), str(cache)))
+            r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=20)
+            self.assertEqual(r.stdout.strip(), "None", r.stderr)
+
+    def test_malformed_plan_is_a_usage_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            cache = Path(d)
+            (cache / "X1.plan.json").write_text("[]", encoding="utf-8")
+            self.assertEqual(_merge(cache)[0], 2)
+
+    def test_list_result_file_is_a_failed_task(self):
+        with tempfile.TemporaryDirectory() as d:
+            cache = Path(d)
+            _plan(cache, SHA_A, ("base",))
+            (cache / "X1.base.result.json").write_text("[]", encoding="utf-8")
+            rc, err = _merge(cache)
+            self.assertEqual(rc, 1)
+            self.assertIn("failed: base: result file is not a readable JSON object", err)

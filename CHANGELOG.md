@@ -57,6 +57,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The browser fallback for datasheet downloads blocks service workers and WebSockets, checks the declared size before reading a response into memory, and stops at the download deadline.
 - A project copied or moved to another folder keeps trusting its datasheet extractions: the PDF is found in `datasheets/` by name when the recorded path no longer exists, and new extractions record the path relative to `datasheets/`.
 - A project copied or moved to another folder keeps trusting its datasheet extractions: the PDF is found in `datasheets/` by name when the recorded path no longer exists, and new extractions record the path relative to `datasheets/`. An extraction that is still not trusted is named in the schematic analysis `diagnostics`.
+- `plan_extraction.py --use-cached-scout` with no saved scout, or an unreadable plan or scout, stops with a one-line message and exit 2 instead of a traceback; the extraction pipeline no longer follows a symlinked cache file or waits on a named pipe.
 
 ### Documentation
 
