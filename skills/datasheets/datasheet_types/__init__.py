@@ -60,8 +60,6 @@ __all__ = [
     "lookup",
     "best",
     "trusted",
-    "facts_trusted",
-    "FACTS_MIN_SCORE",
     "has_data",
 ]
 
