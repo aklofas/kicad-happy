@@ -38,6 +38,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `analyze_emc.py --severity` accepts `error`, `warning` and `info`, the names its output uses, as well as the older five-level names.
 - LTspice and Xyce measurement output with a signed exponent (`1.58e+04`) is read as a number instead of crashing the simulation; ngspice parsing is unchanged.
 - The SPICE model resolver now reads `spice_specs` from extractions the `datasheets` skill caches (`datasheets/extracted/`), when the analysis names its project and the run is not `--offline`.
+- The SPICE LCSC spec lookup matches parts by the top-level `mfr` field jlcsearch now returns.
 
 ### Documentation
 

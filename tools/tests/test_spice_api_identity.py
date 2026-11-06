@@ -65,6 +65,27 @@ class ApiIdentityTest(unittest.TestCase):
     def test_lcsc(self):
         self.check("lcsc", _lcsc, {})
 
+    def _lcsc_hit(self, hit):
+        return self.fetch("lcsc", {"components": [hit]}, {})
+
+    def test_lcsc_top_level_mfr(self):
+        specs = self._lcsc_hit({"lcsc": 434570, "mfr": WANT, "package": "SOIC-8",
+                                "attributes": {"Gain Bandwidth Product": "350kHz"}})
+        self.assertTrue(specs and specs.get("gbw_hz"))
+        self.assertEqual(specs["_source"], "api:lcsc")
+
+    def test_lcsc_top_level_sibling_rejected(self):
+        self.assertIsNone(self._lcsc_hit({"lcsc": 1, "mfr": SIBLING,
+                                          "attributes": {"Gain Bandwidth Product": "350kHz"}}))
+
+    def test_lcsc_recorded_live_hit_gives_no_specs(self):
+        # Shape jlcsearch returns today: the parameters exist only as free text.
+        self.assertIsNone(self._lcsc_hit({
+            "lcsc": 434570, "mfr": WANT, "package": "DIP-8", "is_basic": False,
+            "is_preferred": False,
+            "description": "-18V~18V 0\u2103~+70\u2103 1.2MHz 2 250nA 30mA 36V 3V~36V 5nA 7mV 800uA 80dB DIP-8 Operational Amplifier ROHS",
+            "stock": 4077, "price": 0.0933}))
+
     def test_digikey(self):
         self.check("digikey", _digikey, {"DIGIKEY_CLIENT_ID": "id"})
 

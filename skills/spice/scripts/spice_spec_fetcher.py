@@ -212,12 +212,12 @@ def fetch_specs_lcsc(mpn):
             data = json.loads(resp.read())
 
         for comp in data.get("components", []):
-            extra = comp.get("extra", {})
-            comp_mpn = extra.get("mpn", "")
+            extra = comp.get("extra") if isinstance(comp.get("extra"), dict) else {}
+            comp_mpn = comp.get("mfr") if isinstance(comp.get("mfr"), str) else extra.get("mpn", "")
             if not _is_requested(mpn, comp_mpn):
                 continue
 
-            attrs = extra.get("attributes", {})
+            attrs = comp.get("attributes") if isinstance(comp.get("attributes"), dict) else extra.get("attributes", {})
             if not attrs:
                 continue
 
