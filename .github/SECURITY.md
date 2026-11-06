@@ -1,5 +1,12 @@
 # Security Policy
 
+## Supported Versions
+
+| Version | Supported |
+| ------- | --------- |
+| 3.0.x   | Yes       |
+| Earlier | No        |
+
 ## Reporting a Vulnerability
 
 If you discover a security vulnerability in kicad-happy, please report it privately via [GitHub Security Advisories](https://github.com/aklofas/kicad-happy/security/advisories/new).

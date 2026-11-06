@@ -285,7 +285,7 @@ KICAD_HAPPY_DIR=<path to this repo> python3 -m pytest -m "unit or offline_contra
 KICAD_HAPPY_DIR=<path to this repo> python3 -m pytest tests/contract/
 ```
 
-The first pytest line is what CI's harness-smoke job runs, followed by a determinism guard that analyses the harness's simple project twice. CI's refactor-check job runs `tools.tests.test_check_refactor`, `imports`, `tags` and `install-smoke`. The second line runs the whole schema contract suite.
+The first pytest line is what CI's harness-smoke job runs, followed by a determinism guard that analyses the harness's simple project twice. CI's refactor-check job installs ngspice, runs every test under `tools/tests` against the pinned harness fixtures, then runs `imports`, `tags` and `install-smoke` (the isolated-install smoke). The windows job byte-compiles the scripts, runs the CLI `--help` smoke and the in-skill unit tests, and runs the same `tools/tests` suite without ngspice, so its SPICE tests skip. The second line runs the whole schema contract suite.
 
 **3. The maintainer's corpus gate.** Before merge the maintainer runs the corpus gate: 5,857 real KiCad projects and 2.7M assertions. You do not need the corpus. Describe the expected corpus movement in the PR instead: which detectors or rules change, in which direction, and why.
 
