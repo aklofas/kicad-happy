@@ -26,7 +26,7 @@ from pathlib import Path
 _HERE = str(Path(__file__).resolve().parent)
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
-from bom_fields import DNP_VALUE_MARKERS, POPULATE_UNFITTED  # noqa: E402
+from bom_fields import DNP_VALUE_MARKERS, POPULATE_UNFITTED, _canonical_for  # noqa: E402
 from kicad_core.fileio import atomic_write_text  # noqa: E402
 
 
@@ -408,6 +408,7 @@ def translate_bom(input_path: str, output_path: str) -> dict:
     col_qty = _find_col(header, BOM_QTY_FIELDS)
     col_dnp = _exact_col(header, DNP_COL_FIELDS)
     col_pop = _exact_col(header, POP_COL_FIELDS)
+    col_lcsc = next((i for i, c in enumerate(header) if _canonical_for(c or "") == "lcsc"), None)
 
     if col_des is None or col_val is None:
         raise ValueError(
@@ -471,6 +472,7 @@ def translate_bom(input_path: str, output_path: str) -> dict:
             "designator": des,
             "value": val,
             "footprint": _cell(raw, col_foot),
+            "lcsc": "" if _cell(raw, col_lcsc) == "~" else _cell(raw, col_lcsc),
             "mpn": mpn,
             "manufacturer": mfg,
             "quantity": _cell(raw, col_qty),
@@ -502,7 +504,7 @@ def translate_bom(input_path: str, output_path: str) -> dict:
                 r["value"],
                 r["designator"],
                 r["footprint"],
-                "",  # LCSC Part # — user populates separately
+                r["lcsc"],
                 r["mpn"],
                 r["manufacturer"],
                 r["quantity"],

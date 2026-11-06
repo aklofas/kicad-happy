@@ -57,6 +57,37 @@ class BomTranslation(Case):
         self.assertEqual([r["Designator"] for r in rows], ["R1,R2,R3,R4,R7"])
         self.assertEqual(stats["skipped_dnp"], 1)
 
+    def _lcsc(self, header, cell, extra=""):
+        src = self.write("bom.csv", f'"Reference","Value","Footprint","Qty","{header}"\n"R1","10k","R_0603","1","{cell}"\n{extra}')
+        out = self.d / "jlc.csv"
+        tb.translate_bom(str(src), str(out))
+        return read_rows(out)
+
+    def test_lcsc_column_carried(self):
+        self.assertEqual(self._lcsc("LCSC Part #", "C25804")[0]["LCSC Part #"], "C25804")
+
+    def test_lcsc_alias_headers(self):
+        for h in ("LCSC", "JLCPCB Part", "lcsc_pn"):
+            with self.subTest(h):
+                self.assertEqual(self._lcsc(h, "C25804")[0]["LCSC Part #"], "C25804")
+
+    def test_kicad_tilde_is_blank(self):
+        self.assertEqual(self._lcsc("LCSC", "~")[0]["LCSC Part #"], "")
+
+    def test_no_lcsc_column_stays_blank(self):
+        out = self.d / "jlc.csv"
+        tb.translate_bom(str(self.write("bom.csv", KICAD_BOM)), str(out))
+        self.assertEqual([r["LCSC Part #"] for r in read_rows(out)], [""])
+
+    def test_non_alias_header_not_carried(self):
+        self.assertEqual(self._lcsc("LCSC Price", "0.01")[0]["LCSC Part #"], "")
+
+    def test_continuation_row_does_not_overwrite_lcsc(self):
+        src = self.write("bom.csv", 'Reference,Value,Footprint,Qty,MPN,LCSC\nR1,10k,R_0603,1,A,C1\n,,,,B,C2\n')
+        out = self.d / "jlc.csv"
+        tb.translate_bom(str(src), str(out))
+        self.assertEqual(read_rows(out)[0]["LCSC Part #"], "C1")
+
     def test_population_column(self):
         for header, cell, fitted in (("Populate", "0", False), ("Populate", "1", True),
                                      ("Fitted", "Not Fitted", False), ("Fitted", "Fitted", True),

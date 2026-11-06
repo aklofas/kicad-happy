@@ -98,6 +98,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The lifecycle audit looks up each part of an MPN field that lists alternatives (`1012, 1012C`, `LM358 / LM2904`) instead of searching for the whole field; part numbers that contain a slash (`BAV99/215`) are unchanged.
 - The lifecycle audit looks a part up by its DigiKey or Mouser part number from the schematic first, so a short MPN that the keyword search buries (BSS138) gets its real status instead of "unknown"; a part number that names a different part is ignored with a warning.
 - On Windows, JSON and text that the analyzers and the other CLIs (including `export_issues`, `deep_review_gate`, `translate_bom_pnp`, `datasheet_verify` and `edit_properties`) print to stdout end their lines with LF, as their `--output` files already do.
+- `translate_bom_pnp.py bom` carries the source BOM's LCSC part number into JLCPCB's `LCSC Part #` column instead of leaving it empty.
 
 ### Documentation
 
