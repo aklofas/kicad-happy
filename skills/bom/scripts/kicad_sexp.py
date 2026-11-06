@@ -188,6 +188,17 @@ def symbol_instances_of(symbol_block: str, tilde_empty: bool = True) -> list[dic
     return inline_instances(["symbol", parse(node)], tilde_empty)
 
 
+def block_references(symbol_block: str) -> list[str]:
+    """The references KiCad shows for a placed symbol: its instance references (all projects,
+    file order, deduplicated), else the Reference property when it has no instances."""
+    refs = list(dict.fromkeys(i["reference"] for i in symbol_instances_of(symbol_block)
+                              if i["reference"]))
+    if refs:
+        return refs
+    m = re.search(r'\(property\s+"Reference"\s+"((?:[^"\\]|\\.)*)"', symbol_block)
+    return [unescape_quoted(m.group(1))] if m else []
+
+
 def resolved_instance(symbol_block: str, sheet_path: str, *, project_name: str = "",
                       candidates: list[dict] | None = None) -> dict | None:
     """The instance KiCad uses for the placed symbol on *sheet_path* (the full KIID path, root

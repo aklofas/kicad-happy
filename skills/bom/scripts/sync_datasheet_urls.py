@@ -40,7 +40,7 @@ from bom_fields import _canonical_for, _pick_mpn_from_props, _symbol_slots
 from distributor_core.manifest import load_index
 from edit_properties import apply_updates
 from kicad_core.sexp import unescape_quoted
-from kicad_sexp import (atomic_write_text, collect_schematic_files,
+from kicad_sexp import (atomic_write_text, block_references, collect_schematic_files,
                         iter_placed_symbol_blocks, kicad_lock_path)
 
 
@@ -102,6 +102,7 @@ def extract_symbols(text: str) -> dict[str, dict]:
         ref = props.get("Reference")
         if ref is None or ref.startswith("#"):
             continue
+        ref = (block_references(block) or [ref])[0]
 
         keys: list[str] = []
 

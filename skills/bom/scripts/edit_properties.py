@@ -49,7 +49,7 @@ from pathlib import Path
 
 import _core_path  # noqa: F401
 from kicad_core.sexp import unescape_quoted
-from kicad_sexp import (atomic_write_text, escape_kicad_string, find_matching_paren,
+from kicad_sexp import (atomic_write_text, block_references, escape_kicad_string, find_matching_paren,
                         iter_placed_symbol_blocks, kicad_lock_path, sch_file_version)
 
 # First schematic format whose effects block takes "(hide yes)"; KiCad 6/7 only accept bare "hide".
@@ -198,80 +198,99 @@ def apply_updates(
     file_version = sch_file_version(text)
     change_log = []
 
-    # Find all placed symbols
-    symbols = find_placed_symbols(text)
-    ref_to_symbols = {}
-    for start, end, ref in symbols:
-        ref_to_symbols.setdefault(ref, []).append((start, end))
+    # A key names a part by the reference KiCad shows (an instance reference); a block whose
+    # file Reference is stale or "R?" is still reached through that Reference.
+    blocks = []  # (start, end, file reference, shown references)
+    for start, end, ref in find_placed_symbols(text):
+        blocks.append((start, end, ref, block_references(text[start:end + 1])))
 
-    # Check for missing references
-    for ref in updates:
-        if ref not in ref_to_symbols:
+    targets = {}  # (start, end) -> {"keys": [...], "props": {name: [(key, value)]}, "refs": [...]}
+    for key, props in updates.items():
+        hits = [b for b in blocks if key in b[3]] or [b for b in blocks if b[2] == key]
+        if not hits:
             change_log.append({
-                "reference": ref,
+                "reference": key,
                 "action": "error",
-                "message": f"Reference '{ref}' not found in schematic",
+                "message": f"Reference '{key}' not found in schematic",
             })
+            continue
+        for start, end, _ref, shown in hits:
+            t = targets.setdefault((start, end), {"keys": [], "props": {}, "refs": shown})
+            t["keys"].append(key)
+            for prop_name, new_value in props.items():
+                t["props"].setdefault(prop_name, []).append((key, new_value))
 
     # Apply updates in reverse file order so positions don't shift
     # for changes we haven't made yet
     all_edits = []  # (position, reference, prop_name, action, old_value, new_value)
 
-    for ref, props in updates.items():
-        if ref not in ref_to_symbols:
-            continue
+    for (sym_start, sym_end), t in targets.items():
+        if len(t["refs"]) > 1:
+            for key in t["keys"]:
+                change_log.append({
+                    "reference": key,
+                    "action": "warning",
+                    "message": f"{key} is one symbol on a repeated sheet; the edit applies to "
+                               f"every instance: {', '.join(t['refs'])}",
+                })
+        indent = detect_indentation(text, sym_start, sym_end)
 
-        # A reference can appear multiple times (multi-unit symbols).
-        # Update all instances.
-        for sym_start, sym_end in ref_to_symbols[ref]:
-            indent = detect_indentation(text, sym_start, sym_end)
+        for prop_name, wanted in t["props"].items():
+            ref, new_value = wanted[0]
+            if len({v for _k, v in wanted}) > 1:
+                change_log.append({
+                    "reference": ref,
+                    "property": prop_name,
+                    "action": "error",
+                    "message": f"{' and '.join(dict.fromkeys(k for k, _v in wanted))} are one "
+                               f"symbol with different {prop_name} values; not written",
+                })
+                continue
+            existing = find_property_in_block(text, sym_start, sym_end, prop_name)
 
-            for prop_name, new_value in props.items():
-                existing = find_property_in_block(text, sym_start, sym_end, prop_name)
+            if existing:
+                prop_start, prop_end = existing
+                # Extract current value
+                old_block = text[prop_start:prop_end + 1]
+                old_match = re.search(
+                    rf'\(property\s+(?:private\s+)?"{re.escape(escape_kicad_string(prop_name))}"\s+"((?:[^"\\]|\\.)*)"',
+                    old_block,
+                )
+                old_value = unescape_quoted(old_match.group(1)) if old_match else ""
 
-                if existing:
-                    prop_start, prop_end = existing
-                    # Extract current value
-                    old_block = text[prop_start:prop_end + 1]
-                    old_match = re.search(
-                        rf'\(property\s+(?:private\s+)?"{re.escape(escape_kicad_string(prop_name))}"\s+"((?:[^"\\]|\\.)*)"',
-                        old_block,
-                    )
-                    old_value = unescape_quoted(old_match.group(1)) if old_match else ""
-
-                    if old_value == new_value:
-                        change_log.append({
-                            "reference": ref,
-                            "property": prop_name,
-                            "action": "unchanged",
-                            "value": new_value,
-                        })
-                        continue
-
-                    all_edits.append({
-                        "type": "update",
-                        "position": prop_start,
-                        "sym_start": sym_start,
-                        "sym_end": sym_end,
-                        "prop_start": prop_start,
-                        "prop_end": prop_end,
-                        "prop_name": prop_name,
-                        "old_value": old_value,
-                        "new_value": new_value,
+                if old_value == new_value:
+                    change_log.append({
                         "reference": ref,
+                        "property": prop_name,
+                        "action": "unchanged",
+                        "value": new_value,
                     })
-                else:
-                    # New property — insert after last existing property
-                    insert_pos = find_last_property_end(text, sym_start, sym_end)
-                    all_edits.append({
-                        "type": "insert",
-                        "position": insert_pos,
-                        "insert_after": insert_pos,
-                        "prop_name": prop_name,
-                        "new_value": new_value,
-                        "reference": ref,
-                        "indent": indent,
-                    })
+                    continue
+
+                all_edits.append({
+                    "type": "update",
+                    "position": prop_start,
+                    "sym_start": sym_start,
+                    "sym_end": sym_end,
+                    "prop_start": prop_start,
+                    "prop_end": prop_end,
+                    "prop_name": prop_name,
+                    "old_value": old_value,
+                    "new_value": new_value,
+                    "reference": ref,
+                })
+            else:
+                # New property — insert after last existing property
+                insert_pos = find_last_property_end(text, sym_start, sym_end)
+                all_edits.append({
+                    "type": "insert",
+                    "position": insert_pos,
+                    "insert_after": insert_pos,
+                    "prop_name": prop_name,
+                    "new_value": new_value,
+                    "reference": ref,
+                    "indent": indent,
+                })
 
     if dry_run:
         for edit in all_edits:
@@ -397,6 +416,8 @@ def main():
         actions[action] = actions.get(action, 0) + 1
         if action == "error":
             print(f"  ERROR: {entry['message']}", file=sys.stderr)
+        elif action == "warning":
+            print(f"  WARNING: {entry['message']}", file=sys.stderr)
         elif action in ("updated", "would_update"):
             print(
                 f"  {entry['reference']}.{entry['property']}: "
