@@ -232,6 +232,40 @@ def _is_real_mpn(mpn: str) -> bool:
     return has_letter and has_digit
 
 
+def _mpn_alternatives(field: str) -> list[str]:
+    """The part numbers an MPN field lists as alternatives ("1012, 1012C",
+    "LM358 / LM2904"), or [field] when it names one part. A slash inside a part
+    number ("BAV99/215") is not a separator."""
+    alts = []
+    for piece in re.split(r"\s*[,;]\s*|\s+/\s+", field):
+        piece = piece.strip()
+        # A bare number ("1012") is a part number when a lettered sibling shares the field.
+        if piece and piece not in alts and (
+                _is_real_mpn(piece) or (piece.isdigit() and len(piece) >= 3)):
+            alts.append(piece)
+    if len(alts) < 2 or not any(_is_real_mpn(a) for a in alts):
+        return [field]
+    return alts
+
+
+def _audit_mpn_field(field: str, alts: list[str], sources, project_dir, delay) -> dict:
+    """audit_component for an MPN field: one lookup per alternative, reporting the
+    worst status among those that resolved (an end-of-life alternative is not
+    hidden by an active one). Unknown only when none resolved."""
+    if len(alts) < 2:
+        return audit_component(field, sources, project_dir, delay)
+    chosen = None
+    for alt in alts:
+        data = audit_component(alt, sources, project_dir, delay)
+        if chosen is None:
+            chosen = data
+        elif data["status"] != "unknown" and (
+                chosen["status"] == "unknown"
+                or _worse_status(data["status"], chosen["status"]) != chosen["status"]):
+            chosen = data
+    return chosen
+
+
 # ---------------------------------------------------------------------------
 # DigiKey API (OAuth 2.0)
 # ---------------------------------------------------------------------------
@@ -812,7 +846,8 @@ def audit_bom(analysis_json: dict, project_dir: str | None = None,
     total = len(mpn_map)
     for i, (mpn, refs) in enumerate(sorted(mpn_map.items())):
         print(f"[{i+1}/{total}] {mpn}", file=sys.stderr)
-        data = audit_component(mpn, sources or [], project_dir, delay)
+        alts = _mpn_alternatives(mpn)
+        data = _audit_mpn_field(mpn, alts, sources or [], project_dir, delay)
 
         # Lifecycle
         status = data.get("status", "unknown")
@@ -876,6 +911,8 @@ def audit_bom(analysis_json: dict, project_dir: str | None = None,
                 finding['consensus_split'] = True
             finding['description'] = (finding.get('alert', f'Component {mpn} is {status}.')
                                       + split_note)
+            if len(alts) > 1:
+                finding['description'] += f" (checked as {', '.join(alts)})"
             finding['components'] = sorted(refs)
             finding['nets'] = []
             finding['pins'] = []
@@ -888,6 +925,8 @@ def audit_bom(analysis_json: dict, project_dir: str | None = None,
                 # No distributor answered for this part: nothing says it should go.
                 finding['description'] = (f"Lifecycle status of {mpn} could not be "
                                           f"determined: no distributor matched it.")
+                if len(alts) > 1:
+                    finding['description'] += f" (checked as {', '.join(alts)})"
                 creds = '' if data.get('sources') else ' and the distributor credentials'
                 finding['recommendation'] = (f"No distributor returned {mpn}; check the "
                                              f"part number{creds} before replacing it.")

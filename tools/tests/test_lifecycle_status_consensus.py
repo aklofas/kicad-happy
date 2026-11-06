@@ -129,5 +129,61 @@ class UnknownStatusWordingTest(unittest.TestCase):
         self.assertEqual(f["recommendation"], "Replace RC0603FR-07330RL — part is obsolete.")
 
 
+class MpnFieldAlternativesTest(unittest.TestCase):
+    def run_field(self, field, answers, sources=("digikey",)):
+        calls = []
+
+        def digikey(mpn):
+            calls.append(mpn)
+            return answers.get(mpn)
+        none = lambda mpn: None
+        with mock.patch.object(lifecycle_engine, "query_lifecycle_lcsc", none), \
+                mock.patch.object(lifecycle_engine, "query_lifecycle_digikey", digikey), \
+                mock.patch.object(lifecycle_engine, "query_lifecycle_element14", none), \
+                mock.patch.object(lifecycle_engine, "query_lifecycle_mouser", none):
+            out = lifecycle_engine.audit_bom(
+                {"bom": [{"mpn": field, "references": ["U1"]}]}, delay=0)
+        return calls, out["findings"]
+
+    def test_comma_field_is_looked_up_per_part(self):
+        calls, _ = self.run_field("1012, 1012C", {})
+        self.assertEqual(calls, ["1012", "1012C"])
+
+    def test_one_alternative_found_is_no_lc004(self):
+        _, findings = self.run_field("1012, 1012C", {"1012": {"status": "Active"}})
+        self.assertFalse([f for f in findings if f["rule_id"] == "LC-004"])
+        act = next(f for f in findings if f["rule_id"] == "LC-ACT")
+        self.assertEqual(act["summary"], "1012, 1012C: active (1 ref(s))")
+
+    def test_all_alternatives_missing_is_one_lc004(self):
+        _, findings = self.run_field("1012, 1012C", {})
+        lc4 = [f for f in findings if f["rule_id"] == "LC-004"]
+        self.assertEqual(len(lc4), 1)
+        self.assertIn("(checked as 1012, 1012C)", lc4[0]["description"])
+
+    def test_end_of_life_alternative_is_not_hidden_by_an_active_one(self):
+        _, findings = self.run_field(
+            "1012, 1012C", {"1012": {"status": "Active"}, "1012C": {"status": "Obsolete"}})
+        f = next(f for f in findings if f["rule_id"] == "LC-001")
+        self.assertEqual(f["mpn"], "1012, 1012C")
+        self.assertIn("(checked as 1012, 1012C)", f["description"])
+
+    def test_slash_inside_a_part_number_is_not_split(self):
+        calls, _ = self.run_field("BAV99/215", {})
+        self.assertEqual(calls, ["BAV99/215"])
+
+    def test_spaced_slash_and_semicolon_split(self):
+        calls, _ = self.run_field("LM358 / LM2904; TL072", {})
+        self.assertEqual(calls, ["LM358", "LM2904", "TL072"])
+
+    def test_single_mpn_gets_one_call(self):
+        calls, _ = self.run_field("RC0603FR-07330RL", {})
+        self.assertEqual(calls, ["RC0603FR-07330RL"])
+
+    def test_generic_values_are_not_alternatives(self):
+        self.assertEqual(lifecycle_engine._mpn_alternatives("10k, 1%"), ["10k, 1%"])
+        self.assertEqual(lifecycle_engine._mpn_alternatives("LM358, 10k"), ["LM358, 10k"])
+
+
 if __name__ == "__main__":
     unittest.main()
