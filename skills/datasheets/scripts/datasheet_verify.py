@@ -1158,7 +1158,7 @@ def _cli_v14(argv: list[str] | None = None) -> int:
         return 2
     try:
         extraction = _json.loads(path.read_text(encoding="utf-8"))
-    except _json.JSONDecodeError as exc:
+    except (_json.JSONDecodeError, RecursionError) as exc:
         print(f"error: extraction file is not valid JSON: {exc}", file=_sys.stderr)
         return 2
 

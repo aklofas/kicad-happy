@@ -24,6 +24,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from finding_schema import make_finding, compute_trust_summary, assign_finding_ids, show_decoded_names
+from kicad_core.fileio import json_load
 from kicad_core.fields import merge_unit_fields
 from kicad_core.netnames import is_ground_name, is_pin_guarded_signal, is_power_net_name
 from kicad_core.netquery import build_net_id_map as _build_net_id_map
@@ -1299,7 +1300,7 @@ def main(argv: list[str] | None = None) -> int:
                          f'{writer} writes (--output)')
         try:
             with open(path, 'r', encoding="utf-8") as f:
-                data = json.load(f)
+                data = json_load(f)
         except json.JSONDecodeError as e:
             parser.error(f'{flag} {path}: not JSON ({e}); expected the JSON '
                          f'file {writer} writes (--output)')

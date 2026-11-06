@@ -7,6 +7,7 @@ import re
 from pathlib import (
     Path,
 )
+from kicad_core.fileio import json_loads
 from kicad_core.classify import NON_COMPONENT_TYPES
 from kicad_core.sexp import unescape_string
 from kicad_core.netnames import (
@@ -693,7 +694,7 @@ def check_generic_transistor_symbols(components: list[dict],
             idx_path = ds_dir / "index.json"
         if idx_path.is_file():
             try:
-                ds_index = json.loads(idx_path.read_text(encoding="utf-8"))
+                ds_index = json_loads(idx_path.read_text(encoding="utf-8"))
             except (ValueError, OSError):
                 pass
 

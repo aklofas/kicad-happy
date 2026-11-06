@@ -23,7 +23,7 @@ import sys
 
 from analysis_cache import reviewed_overlay
 from finding_schema import group_findings_by_detection_type
-from kicad_core.fileio import atomic_write_text
+from kicad_core.fileio import atomic_write_text, json_load
 from kicad_core.render import fmt_g4, fmt_signed, summary_or_title
 from kicad_core.cli import add_only_deterministic_arg, add_output_arg, add_text_arg, utf8_text_stdout
 from diff_engine import (
@@ -287,7 +287,7 @@ def _extract_trends(analysis_dir, output_type, n_runs):
             continue
         try:
             with open(path, encoding="utf-8") as f:
-                data = json.load(f)
+                data = json_load(f)
         except (ValueError, OSError):
             continue
 
@@ -465,7 +465,7 @@ def main(argv: list[str] | None = None) -> int:
                 p = Path(overlay)
         try:
             with open(p, encoding="utf-8") as f:
-                return json.load(f)
+                return json_load(f)
         except (json.JSONDecodeError, OSError) as e:
             print(f"Error reading {label} file {path}: {e}", file=sys.stderr)
             sys.exit(1)

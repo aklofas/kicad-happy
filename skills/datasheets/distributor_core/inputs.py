@@ -54,7 +54,7 @@ def get_analyzer_output(input_path: Path) -> dict | None:
         try:
             with open(input_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-        except (OSError, ValueError) as e:
+        except (OSError, ValueError, RecursionError) as e:
             print(f"Error: cannot read {input_path}: {e}", file=sys.stderr)
             return None
         if not isinstance(data, dict):

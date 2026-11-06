@@ -66,7 +66,7 @@ def _load_existing_extraction(cache_dir: Path, mpn: str) -> dict | None:
         return None
     try:
         return json.loads(p.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, RecursionError):
         return None
 
 

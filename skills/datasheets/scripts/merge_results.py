@@ -85,7 +85,7 @@ def _read_result(cache: Path, mpn: str, task_id: str) -> "dict | None":
         return None
     try:
         return json.loads(p.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
+    except (json.JSONDecodeError, RecursionError) as exc:
         return {
             "task_id": task_id,
             "status": "failed",
@@ -178,7 +178,7 @@ def _enrich_source_from_scout(extraction: dict, cache: Path, mpn: str) -> None:
         return
     try:
         scout = json.loads(p.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, RecursionError):
         return
     md = scout.get("metadata", {}) or {}
     src = extraction["source"]

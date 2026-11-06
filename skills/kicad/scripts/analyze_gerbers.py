@@ -34,6 +34,7 @@ from envelopes.gerber import GerberEnvelope  # noqa: E402
 from schema_codec import emit_schema  # noqa: E402
 from inputs_builder import build_inputs, build_compat  # noqa: E402
 from capability_mode import get_capability_mode_ref  # noqa: E402
+from kicad_core.fileio import json_load  # noqa: E402
 from kicad_core.diagnostics import record as record_diagnostic  # noqa: E402
 from kicad_core.cli import (add_compact_arg, add_only_deterministic_arg, add_output_arg,  # noqa: E402
                             add_schema_arg, add_stage_audience_args, add_text_arg, utf8_text_stdout)
@@ -923,7 +924,7 @@ def parse_job_file(path: str, diagnostics: list | None = None) -> dict | None:
     """
     try:
         with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
+            data = json_load(f)
         if not isinstance(data, dict):
             raise ValueError(f"job file holds a JSON {type(data).__name__}, not an object")
     except (ValueError, OSError) as e:

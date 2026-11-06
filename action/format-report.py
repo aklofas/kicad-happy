@@ -19,6 +19,7 @@ if os.path.isdir(_kicad_scripts):
     sys.path.insert(0, os.path.abspath(_kicad_scripts))
 
 from finding_schema import Det, group_findings
+from kicad_core.fileio import json_load
 from kicad_core.render import normalize_severity, summary_or_title
 
 
@@ -148,7 +149,7 @@ def _load_json(path):
         return None
     try:
         with open(path, encoding="utf-8") as f:
-            return json.load(f)
+            return json_load(f)
     except (json.JSONDecodeError, UnicodeDecodeError, OSError):
         return None
 

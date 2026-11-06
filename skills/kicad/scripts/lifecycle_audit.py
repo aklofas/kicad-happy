@@ -29,6 +29,7 @@ import sys
 from pathlib import Path
 
 from analysis_cache import reviewed_overlay
+from kicad_core.fileio import json_load
 from kicad_core.project import extraction_project_dir
 from kicad_core.cli import add_only_deterministic_arg, add_output_arg
 from lifecycle_engine import _TEMP_PRESETS, audit_bom
@@ -87,7 +88,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(f"input {input_path}: {what}; {expected}")
     try:
         with open(input_path, encoding="utf-8") as f:
-            analysis = json.load(f)
+            analysis = json_load(f)
     except ValueError as e:
         parser.error(f"input {input_path}: not JSON ({e}); {expected}")
     except OSError as e:

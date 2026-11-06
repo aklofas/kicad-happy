@@ -21,6 +21,7 @@ import math
 import sys
 
 import _core_path  # noqa: F401
+from kicad_core.fileio import json_load
 from kicad_core.cli import add_output_arg
 
 
@@ -279,7 +280,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         with open(args.input, encoding="utf-8") as f:
-            pcb_json = json.load(f)
+            pcb_json = json_load(f)
     except (json.JSONDecodeError, OSError) as e:
         print(f"Error reading {args.input}: {e}", file=sys.stderr)
         return 1

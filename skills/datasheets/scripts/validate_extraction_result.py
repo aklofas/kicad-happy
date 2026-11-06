@@ -48,7 +48,7 @@ def validate_result(result_file: Path, task_type: str) -> "tuple[int, str]":
 
     try:
         wrapper = json.loads(result_file.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
+    except (json.JSONDecodeError, RecursionError) as exc:
         return 2, f"result file is not valid JSON: {exc}"
 
     status = wrapper.get("status")

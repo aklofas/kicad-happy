@@ -22,6 +22,7 @@ import sys
 import time
 from typing import Any, Dict, List, Optional
 
+from kicad_core.fileio import json_load
 from kicad_core.cli import envelope_type_error
 from kicad_core.render import normalize_severity
 
@@ -663,7 +664,7 @@ def main(argv=None) -> int:
                          f'{writer} writes (--output)')
         try:
             with open(path, "r", encoding="utf-8") as f:
-                data = json.load(f)
+                data = json_load(f)
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
             parser.error(f'{flag} {path}: not JSON ({e}); expected the JSON '
                          f'file {writer} writes (--output)')

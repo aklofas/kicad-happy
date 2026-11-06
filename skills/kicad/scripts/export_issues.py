@@ -27,6 +27,7 @@ import subprocess
 import sys
 
 from diff_engine import _canonical, _fid_stem, finding_key
+from kicad_core.fileio import json_loads
 from kicad_core.executables import find_executable
 
 # ---------------------------------------------------------------------------
@@ -406,7 +407,7 @@ def list_open_issues(repo: str) -> "list[dict]":
         )
         data = None
         if result.returncode == 0:
-            data = json.loads(result.stdout) if result.stdout.strip() else []
+            data = json_loads(result.stdout) if result.stdout.strip() else []
     except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError):
         data = None
     if not isinstance(data, list):

@@ -28,6 +28,7 @@ from emc_rules import (run_all_checks, filter_by_severity, generate_test_plan,
                        analyze_regulatory_coverage)
 from emc_formulas import STANDARDS, MARKET_STANDARDS
 from finding_schema import compute_trust_summary, show_decoded_names
+from kicad_core.fileio import json_load
 from kicad_core.render import summary_or_title
 from emc_envelope import EMCEnvelope
 from schema_codec import emit_schema
@@ -376,7 +377,7 @@ def main(argv: list[str] | None = None) -> int:
                          f'{writer} writes (--output)')
         try:
             with open(path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
+                data = json_load(f)
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
             parser.error(f'{flag} {path}: not JSON ({e}); expected the JSON '
                          f'file {writer} writes (--output)')

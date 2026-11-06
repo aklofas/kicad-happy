@@ -18,6 +18,7 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
+from kicad_core.fileio import json_loads
 from kicad_core import token_cache
 
 
@@ -257,7 +258,7 @@ def _get_digikey_token() -> tuple[str, str] | None:
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
-            token_data = json.loads(resp.read())
+            token_data = json_loads(resp.read())
         token = token_data["access_token"]
         token_cache.store_token("digikey_token", client_id, token, 540)
         return token, client_id
@@ -284,7 +285,7 @@ def query_lifecycle_digikey(mpn: str) -> dict | None:
             },
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read())
+            data = json_loads(resp.read())
     except (urllib.error.URLError, OSError, json.JSONDecodeError):
         return None
 
@@ -337,7 +338,7 @@ def query_lifecycle_mouser(mpn: str) -> dict | None:
         url = f"https://api.mouser.com/api/v1/search/partnumber?apiKey={api_key}"
         req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read())
+            data = json_loads(resp.read())
     except (urllib.error.URLError, OSError, json.JSONDecodeError):
         return None
 
@@ -374,7 +375,7 @@ def query_lifecycle_lcsc(mpn: str) -> dict | None:
         url = f"https://jlcsearch.tscircuit.com/api/search?q={urllib.parse.quote(mpn)}&limit=3&full=true"
         req = urllib.request.Request(url, headers={"User-Agent": "kicad-happy-lifecycle/1.0"})
         with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read())
+            data = json_loads(resp.read())
     except (urllib.error.URLError, OSError, json.JSONDecodeError):
         return None
 
@@ -422,7 +423,7 @@ def query_lifecycle_element14(mpn: str) -> dict | None:
         url = f"https://api.element14.com/catalog/products?{params}"
         req = urllib.request.Request(url, headers={"Accept": "application/json"})
         with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read())
+            data = json_loads(resp.read())
     except (urllib.error.URLError, OSError, json.JSONDecodeError):
         return None
 
@@ -699,7 +700,7 @@ def find_alternatives(mpn: str,
                 req = urllib.request.Request(url, data=body,
                                             headers={"Content-Type": "application/json"})
                 with urllib.request.urlopen(req, timeout=10) as resp:
-                    data = json.loads(resp.read())
+                    data = json_loads(resp.read())
                 for part in data.get("SearchResults", {}).get("Parts", []):
                     repl = part.get("SuggestedReplacement")
                     if repl and repl.upper() not in seen_mpns:
@@ -734,7 +735,7 @@ def find_alternatives(mpn: str,
                         },
                     )
                     with urllib.request.urlopen(req, timeout=10) as resp:
-                        data = json.loads(resp.read())
+                        data = json_loads(resp.read())
                     for product in data.get("Products", []):
                         prod_mpn = product.get("ManufacturerProductNumber", "")
                         if not prod_mpn or prod_mpn.upper() in seen_mpns:
@@ -764,7 +765,7 @@ def find_alternatives(mpn: str,
                 url = f"https://jlcsearch.tscircuit.com/api/search?q={urllib.parse.quote(base_mpn)}&limit=5&full=true"
                 req = urllib.request.Request(url, headers={"User-Agent": "kicad-happy-lifecycle/1.0"})
                 with urllib.request.urlopen(req, timeout=10) as resp:
-                    data = json.loads(resp.read())
+                    data = json_loads(resp.read())
                 for comp in data.get("components", []):
                     extra = comp.get("extra", {})
                     comp_mpn = extra.get("mpn", "")

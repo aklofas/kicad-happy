@@ -29,6 +29,7 @@ import os
 import re
 import sys
 
+from kicad_core.fileio import json_load
 from kicad_core.diagnostics import record
 
 # Optional schematic keys -> required report section. Section is required only
@@ -107,7 +108,7 @@ def _load_envelopes(run_dir: str) -> dict:
         if os.path.isfile(path):
             try:
                 with open(path, encoding="utf-8") as f:
-                    env = json.load(f)
+                    env = json_load(f)
                 if not isinstance(env, dict):
                     raise ValueError(f"top level is {type(env).__name__}, not an object")
             except (ValueError, OSError) as exc:

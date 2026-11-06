@@ -36,6 +36,7 @@ import time
 # Allow imports from same directory
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _core_path  # noqa: F401
+from kicad_core.fileio import json_load
 from kicad_core.cli import add_compact_arg, add_output_arg, add_text_arg, utf8_text_stdout
 from kicad_core.diagnostics import OnceSink, record
 
@@ -618,7 +619,7 @@ def main(argv: list[str] | None = None) -> int:
     # Read analysis JSON
     try:
         with open(input_path, "r", encoding="utf-8") as f:
-            analysis = json.load(f)
+            analysis = json_load(f)
     except (json.JSONDecodeError, UnicodeDecodeError, OSError) as e:
         print(f"Error reading {input_path}: {e}", file=sys.stderr)
         return 1
@@ -639,7 +640,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.parasitics:
         try:
             with open(args.parasitics, "r", encoding="utf-8") as f:
-                parasitics_data = json.load(f)
+                parasitics_data = json_load(f)
             n_nets = len(parasitics_data.get("nets", {}))
             print(f"Loaded parasitics for {n_nets} nets from {args.parasitics}",
                   file=sys.stderr)

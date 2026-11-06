@@ -27,6 +27,7 @@ import time
 from envelopes.thermal import ThermalEnvelope
 from schema_codec import emit_schema
 from inputs_builder import build_inputs, build_upstream_artifact, build_compat
+from kicad_core.fileio import json_load
 from kicad_core.render import summary_or_title, wrap_lines
 from capability_mode import get_capability_mode_ref
 from kicad_core.cli import (add_config_arg, add_only_deterministic_arg, add_output_arg, add_schema_arg,
@@ -951,7 +952,7 @@ def main(argv: list[str] | None = None) -> int:
     # Load inputs
     try:
         with open(args.schematic, encoding="utf-8") as f:
-            schematic = json.load(f)
+            schematic = json_load(f)
     except (json.JSONDecodeError, OSError) as e:
         print(f"Error reading schematic: {e}", file=sys.stderr)
         return 1
@@ -969,7 +970,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         with open(args.pcb, encoding="utf-8") as f:
-            pcb = json.load(f)
+            pcb = json_load(f)
     except (json.JSONDecodeError, OSError) as e:
         print(f"Error reading PCB: {e}", file=sys.stderr)
         return 1

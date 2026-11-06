@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Optional
 
 from run_id import generate_run_id
+from kicad_core.fileio import json_loads
 from kicad_core.diagnostics import record as record_diagnostic
 
 _SCHEMAS_DIR = Path(__file__).resolve().parent.parent.parent / "datasheets" / "schemas"
@@ -47,7 +48,7 @@ def _read_capability_mode(path: Path) -> Optional[dict]:
     """
     for _ in range(5):
         try:
-            return json.loads(path.read_text(encoding="utf-8"))
+            return json_loads(path.read_text(encoding="utf-8"))
         except (ValueError, FileNotFoundError, OSError):
             time.sleep(0.005)
     return None

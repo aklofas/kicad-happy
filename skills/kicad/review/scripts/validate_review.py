@@ -35,7 +35,7 @@ def main():
         else:
             print(msg, file=sys.stderr)
         return 2
-    except json.JSONDecodeError as e:
+    except (json.JSONDecodeError, RecursionError) as e:
         msg = f"review JSON malformed: {e}"
         if args.emit_json:
             print(json.dumps({"valid": False, "errors": [msg],

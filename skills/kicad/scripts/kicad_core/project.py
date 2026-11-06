@@ -6,6 +6,7 @@ from collections.abc import Iterable
 from fnmatch import fnmatchcase
 from pathlib import Path
 
+from kicad_core.fileio import json_loads
 from kicad_core.textvars import expand_text_vars
 from kicad_core import sexp as _sexp
 from kicad_core.sexp import parse as _sexp_parse, parse_file as _sexp_parse_file, find_all, find_first, get_value
@@ -120,7 +121,7 @@ def load_jsonc(path: str) -> dict:
     """Load a JSONC file, returning parsed dict."""
     with open(path, 'r', encoding='utf-8-sig') as f:
         raw = f.read()
-    return json.loads(_strip_jsonc(raw))
+    return json_loads(_strip_jsonc(raw))
 
 
 def load_user_config() -> dict:

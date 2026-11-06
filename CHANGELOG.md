@@ -40,6 +40,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The SPICE model resolver now reads `spice_specs` from extractions the `datasheets` skill caches (`datasheets/extracted/`), when the analysis names its project and the run is not `--offline`.
 - The SPICE LCSC spec lookup matches parts by the top-level `mfr` field jlcsearch now returns.
 - `--analysis-dir` no longer fails on a symlinked or malformed run entry, a manifest that is a link, a FIFO or a deeply nested file, and no longer hangs on a FIFO named `manifest.json`.
+- Every analyzer and tool reports a JSON input nested deeper than Python can parse as malformed, with its usual error and exit code, instead of a traceback.
 
 ### Documentation
 

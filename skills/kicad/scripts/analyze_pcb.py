@@ -13,7 +13,7 @@ from envelopes.pcb import PCBEnvelope
 from schema_codec import emit_schema
 from inputs_builder import build_inputs, build_compat
 from capability_mode import get_capability_mode_ref
-from kicad_core.fileio import atomic_write_text
+from kicad_core.fileio import atomic_write_text, json_load
 from kicad_core.cli import (add_compact_arg, add_config_arg, add_only_deterministic_arg,
                             add_output_arg, add_schema_arg, add_stage_audience_args, add_text_arg,
                             utf8_text_stdout)
@@ -105,7 +105,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.schematic:
         try:
             with open(args.schematic, encoding="utf-8") as f:
-                schematic_data = json.load(f)
+                schematic_data = json_load(f)
         except (ValueError, OSError) as e:
             print(f"Warning: cannot load schematic analysis: {e}", file=sys.stderr)
         if schematic_data is not None and not isinstance(schematic_data, dict):

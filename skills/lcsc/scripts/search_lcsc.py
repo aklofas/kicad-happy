@@ -88,7 +88,7 @@ def _parse_attributes(c: dict) -> dict:
     if isinstance(attrs, str):
         try:
             attrs = json.loads(attrs)
-        except (json.JSONDecodeError, TypeError):
+        except (json.JSONDecodeError, TypeError, RecursionError):
             return {}
     return attrs if isinstance(attrs, dict) else {}
 

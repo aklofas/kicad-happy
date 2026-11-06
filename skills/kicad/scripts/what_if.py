@@ -31,7 +31,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
 
 from kicad_core.values import parse_value
 from kicad_core.render import fmt_g4, fmt_signed, severity_bucket
-from kicad_core.fileio import atomic_write_text
+from kicad_core.fileio import atomic_write_text, json_load
 from kicad_core.cli import add_only_deterministic_arg, add_output_arg, add_text_arg, utf8_text_stdout
 from analysis_cache import reviewed_overlay
 from finding_schema import group_findings_by_detection_type, is_old_schema
@@ -1465,7 +1465,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         with open(_resolve_input_path(args.input), encoding="utf-8") as f:
-            analysis = json.load(f)
+            analysis = json_load(f)
     except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
         print(f"Error reading {args.input}: {e}", file=sys.stderr)
         return 1
@@ -1487,7 +1487,7 @@ def main(argv: list[str] | None = None) -> int:
     if pcb_path:
         try:
             with open(pcb_path, encoding="utf-8") as f:
-                pcb_analysis = json.load(f)
+                pcb_analysis = json_load(f)
         except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
             print(f"Warning: cannot load PCB analysis: {e}", file=sys.stderr)
     else:
@@ -1495,7 +1495,7 @@ def main(argv: list[str] | None = None) -> int:
         if auto_pcb:
             try:
                 with open(auto_pcb, encoding="utf-8") as f:
-                    pcb_analysis = json.load(f)
+                    pcb_analysis = json_load(f)
             except (json.JSONDecodeError, OSError, UnicodeDecodeError):
                 pass
 

@@ -20,6 +20,7 @@ import urllib.error
 import urllib.parse
 
 import _core_path  # noqa: F401
+from kicad_core.fileio import json_loads
 from kicad_core import token_cache
 from kicad_core.diagnostics import record
 from kicad_core.executables import find_executable
@@ -209,7 +210,7 @@ def fetch_specs_lcsc(mpn):
         url = f"https://jlcsearch.tscircuit.com/api/search?q={urllib.parse.quote(mpn)}&limit=5&full=true"
         req = urllib.request.Request(url, headers={"User-Agent": "kicad-happy-spice/1.0"})
         with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read())
+            data = json_loads(resp.read())
 
         for comp in data.get("components", []):
             extra = comp.get("extra") if isinstance(comp.get("extra"), dict) else {}
@@ -271,7 +272,7 @@ def _get_digikey_token():
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
-            token_data = json.loads(resp.read())
+            token_data = json_loads(resp.read())
 
         access_token = token_data["access_token"]
         # Cache with 9-minute TTL (token valid for 10 min)
@@ -305,7 +306,7 @@ def fetch_specs_digikey(mpn):
             },
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read())
+            data = json_loads(resp.read())
 
         for product in data.get("Products", []):
             prod_mpn = product.get("ManufacturerProductNumber", "")
@@ -359,7 +360,7 @@ def fetch_specs_element14(mpn):
         url = f"https://api.element14.com/catalog/products?{params}"
         req = urllib.request.Request(url, headers={"Accept": "application/json"})
         with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read())
+            data = json_loads(resp.read())
 
         products = data.get("manufacturerPartNumberSearchReturn", {}).get("products", [])
         for product in products:
@@ -407,7 +408,7 @@ def fetch_specs_mouser(mpn):
             headers={"Content-Type": "application/json"},
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read())
+            data = json_loads(resp.read())
 
         for part in data.get("SearchResults", {}).get("Parts", []):
             if not _is_requested(mpn, part.get("ManufacturerPartNumber")):
