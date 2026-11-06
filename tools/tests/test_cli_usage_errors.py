@@ -161,5 +161,35 @@ class NoHardLinkTest(unittest.TestCase):
             self.assertEqual(os.listdir(tmp), [])
 
 
+class PcbSchematicInputTest(unittest.TestCase):
+    BOARD = FX / "simple.kicad_pcb"
+
+    def _analyze(self, payload):
+        with tempfile.TemporaryDirectory() as tmp:
+            sch = os.path.join(tmp, "sch.json")
+            out = os.path.join(tmp, "out.json")
+            with open(sch, "wb") as f:
+                f.write(payload)
+            r = _run("analyze_pcb.py", str(self.BOARD), "--schematic", sch, "-o", out)
+            return r, os.path.exists(out)
+
+    @unittest.skipUnless(have(FX), "KH_FIXTURES not set")
+    def test_non_object_or_non_utf8_schematic_json_warns_and_continues(self):
+        for payload in (b'[{}]', b'"text"', b'{"a":"\xe9"}'):
+            with self.subTest(payload=payload):
+                r, written = self._analyze(payload)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertIn("Warning: cannot load schematic analysis", r.stderr)
+                self.assertNotIn("Traceback", r.stderr)
+                self.assertTrue(written)
+
+    @unittest.skipUnless(have(FX), "KH_FIXTURES not set")
+    def test_schematic_json_object_gives_no_warning(self):
+        r, written = self._analyze(b'{"findings": []}')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("Warning", r.stderr)
+        self.assertTrue(written)
+
+
 if __name__ == "__main__":
     unittest.main()

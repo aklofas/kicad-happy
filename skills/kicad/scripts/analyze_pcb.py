@@ -106,8 +106,12 @@ def main(argv: list[str] | None = None) -> int:
         try:
             with open(args.schematic, encoding="utf-8") as f:
                 schematic_data = json.load(f)
-        except (json.JSONDecodeError, OSError) as e:
+        except (ValueError, OSError) as e:
             print(f"Warning: cannot load schematic analysis: {e}", file=sys.stderr)
+        if schematic_data is not None and not isinstance(schematic_data, dict):
+            print(f"Warning: cannot load schematic analysis: {args.schematic} "
+                  f"is not a JSON object", file=sys.stderr)
+            schematic_data = None
         if (schematic_data and 'signal_analysis' in schematic_data
                 and 'findings' not in schematic_data):
             print(f'Warning: {args.schematic} uses the pre-v1.3 '
