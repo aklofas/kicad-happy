@@ -726,7 +726,7 @@ Detailed methodology and format documentation lives in reference files. Read the
 
 | Reference | Lines | When to Read |
 |-----------|-------|-------------|
-| `deep-review.md` | 185 | Deep Review pass: per-part-class comparison heuristics, pair checks, helper-script conventions, fan-out |
+| `deep-review.md` | 192 | Deep Review pass: per-part-class comparison heuristics, pair checks, helper-script conventions, fan-out |
 | `schematic-analysis.md` | 1167 | Deep schematic review: datasheet validation, design patterns, error taxonomy, tolerance stacking, GPIO audit, motor control, battery life, supply chain |
 | `pcb-layout-analysis.md` | 447 | Advanced PCB: impedance calculations, differential pairs, return paths, copper balance, edge clearance, copper-sensitive components (capacitive touch, antennas), custom analysis scripts |
 | `output-schema.md` | 347 | Full analyzer JSON schema with field names, types, and common extraction patterns |
@@ -736,8 +736,8 @@ Detailed methodology and format documentation lives in reference files. Read the
 | `supplementary-data-sources.md` | 288 | Legacy KiCad 5 data recovery: netlist parsing, cache library, PCB cross-reference |
 | `net-tracing.md` | 181 | Manual net tracing: coordinate math, Y-axis inversion, rotation transforms |
 | `manual-schematic-parsing.md` | 291 | Fallback when schematic script fails |
-| `manual-pcb-parsing.md` | 434 | Fallback when PCB script fails |
-| `manual-gerber-parsing.md` | 639 | Fallback when Gerber script fails |
+| `manual-pcb-parsing.md` | 459 | Fallback when PCB script fails |
+| `manual-gerber-parsing.md` | 648 | Fallback when Gerber script fails |
 | `report-generation.md` | 700 | Report template (critical findings at top), analyzer output field reference (schematic/PCB/gerber), severity definitions, writing principles, domain-specific focus areas, known analyzer limitations |
 | `standards-compliance.md` | 638 | IPC/IEC standards tables: conductor spacing (IPC-2221A Table 6-1), current capacity (IPC-2221A/IPC-2152), annular rings, hole sizes, impedance, via protection (IPC-4761), creepage/clearance (ECMA-287/IEC 60664-1). Consider for all boards; auto-trigger for professional/industrial designs, high voltage, mains input, or safety isolation. |
 | `oshwa-certification.md` | 89 | OSHWA open-source hardware certification readiness: editable KiCad sources, public documentation, licensing, version registration, certification-mark use. Read when the user asks about OSHWA certification or an open-source hardware release — a documentation/licensing audit with explicit approval gates, not an electrical check |
