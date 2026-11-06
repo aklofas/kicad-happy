@@ -22,7 +22,7 @@ import sys
 import time
 from typing import Any, Dict, List, Optional
 
-from kicad_core.fileio import json_load
+from kicad_core.fileio import atomic_write_text, json_load
 from kicad_core.cli import envelope_type_error
 from kicad_core.render import normalize_severity
 
@@ -695,8 +695,7 @@ def main(argv=None) -> int:
         print(format_text_report(result))
     elif args.output:
         indent = None if args.compact else 2
-        with open(args.output, "w", encoding="utf-8", newline="\n") as f:
-            json.dump(result, f, indent=indent)
+        atomic_write_text(args.output, json.dumps(result, indent=indent), follow_symlinks=False)
         overall = result["overall_status"]
         total = result["summary"]["total_checks"]
         print(f"Gate: {overall} — {total} checks → {args.output}",

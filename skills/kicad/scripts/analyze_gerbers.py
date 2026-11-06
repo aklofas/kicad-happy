@@ -34,7 +34,7 @@ from envelopes.gerber import GerberEnvelope  # noqa: E402
 from schema_codec import emit_schema  # noqa: E402
 from inputs_builder import build_inputs, build_compat  # noqa: E402
 from capability_mode import get_capability_mode_ref  # noqa: E402
-from kicad_core.fileio import json_load  # noqa: E402
+from kicad_core.fileio import atomic_write_text, json_load  # noqa: E402
 from kicad_core.diagnostics import record as record_diagnostic  # noqa: E402
 from kicad_core.cli import (add_compact_arg, add_only_deterministic_arg, add_output_arg,  # noqa: E402
                             add_schema_arg, add_stage_audience_args, add_text_arg, utf8_text_stdout)
@@ -2191,7 +2191,7 @@ def main(argv: list[str] | None = None) -> int:
         if out_path:
             print(f"Written to {out_path}", file=sys.stderr)
     elif output_path:
-        Path(output_path).write_text(output_json, encoding="utf-8", newline="\n")
+        atomic_write_text(output_path, output_json, follow_symlinks=False)
         print(f"Written to {output_path}", file=sys.stderr)
     elif args.text:
         from output_filters import format_text

@@ -28,7 +28,7 @@ from emc_rules import (run_all_checks, filter_by_severity, generate_test_plan,
                        analyze_regulatory_coverage)
 from emc_formulas import STANDARDS, MARKET_STANDARDS
 from finding_schema import compute_trust_summary, show_decoded_names
-from kicad_core.fileio import json_load
+from kicad_core.fileio import atomic_write_text, json_load
 from kicad_core.render import summary_or_title
 from emc_envelope import EMCEnvelope
 from schema_codec import emit_schema
@@ -628,8 +628,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # Output
     if args.output:
-        with open(args.output, 'w', encoding="utf-8", newline="\n") as f:
-            json.dump(result, f, indent=2)
+        atomic_write_text(args.output, json.dumps(result, indent=2), follow_symlinks=False)
         print(f'EMC analysis complete: {len(findings)} findings '
               f'(score {risk_score}/100) → {args.output}', file=sys.stderr)
     elif args.text:

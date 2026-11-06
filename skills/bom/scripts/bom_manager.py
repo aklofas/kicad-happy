@@ -1066,7 +1066,7 @@ def export_csv(report: dict, output_path: Path, extra_distributors: list[str] | 
     writer = csv.DictWriter(buf, fieldnames=csv_columns, extrasaction="ignore")
     writer.writeheader()
     writer.writerows(rows)
-    atomic_write_text(output_path, buf.getvalue(), newline="")
+    atomic_write_text(output_path, buf.getvalue(), newline="", follow_symlinks=False)
 
     active_rows = [r for r in rows if r.get("DNP") != "yes"]
     return {

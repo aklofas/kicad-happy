@@ -19,7 +19,7 @@ if os.path.isdir(_kicad_scripts):
     sys.path.insert(0, os.path.abspath(_kicad_scripts))
 
 from finding_schema import Det, group_findings
-from kicad_core.fileio import json_load
+from kicad_core.fileio import atomic_write_text, json_load
 from kicad_core.render import normalize_severity, summary_or_title
 
 
@@ -1459,19 +1459,17 @@ def main():
         failed=args.failed,
     )
 
-    with open(args.output, "w", encoding="utf-8") as f:
-        f.write(report)
+    atomic_write_text(args.output, report, newline=None, follow_symlinks=False)
 
     if args.output_full:
         full = format_full_report(args.schematic, args.pcb, args.spice, args.emc,
                                    args.derating_profile, thermal_path=args.thermal, failed=args.failed)
-        with open(args.output_full, "w", encoding="utf-8") as f:
-            f.write(full)
+        atomic_write_text(args.output_full, full, newline=None, follow_symlinks=False)
         print(f"Full report: {args.output_full} ({len(full)} chars)", file=sys.stderr)
 
     if args.output_summary:
-        with open(args.output_summary, "w", encoding="utf-8") as f:
-            json.dump(summary, f, indent=2)
+        atomic_write_text(args.output_summary, json.dumps(summary, indent=2), newline=None,
+                          follow_symlinks=False)
 
     print(f"Report: {args.output} ({len(report)} chars)", file=sys.stderr)
     print(f"Findings: {summary['critical_count']} critical, "

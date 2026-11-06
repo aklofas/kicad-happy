@@ -24,7 +24,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from finding_schema import make_finding, compute_trust_summary, assign_finding_ids, show_decoded_names
-from kicad_core.fileio import json_load
+from kicad_core.fileio import atomic_write_text, json_load
 from kicad_core.fields import merge_unit_fields
 from kicad_core.netnames import is_ground_name, is_pin_guarded_signal, is_power_net_name
 from kicad_core.netquery import build_net_id_map as _build_net_id_map
@@ -1393,8 +1393,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.output:
-        with open(args.output, 'w', encoding="utf-8", newline="\n") as f:
-            json.dump(result, f, indent=2)
+        atomic_write_text(args.output, json.dumps(result, indent=2), follow_symlinks=False)
         print(f'Cross-analysis: {len(findings)} findings -> {args.output}', file=sys.stderr)
     elif args.analysis_dir:
         from output_io import write_derived_output

@@ -141,7 +141,8 @@ def main(argv: list[str] | None = None) -> int:
                           diff_threshold=analysis_cfg.get("diff_threshold", "major"),
                           retention=int(analysis_cfg.get("retention", 0) or 0))
     elif args.output:
-        Path(args.output).write_text(output, encoding="utf-8", newline="\n")
+        from kicad_core.fileio import atomic_write_text
+        atomic_write_text(args.output, output, follow_symlinks=False)
         print(f"Written to {args.output}", file=sys.stderr)
     else:
         print(output)

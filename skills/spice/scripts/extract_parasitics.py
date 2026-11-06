@@ -21,7 +21,7 @@ import math
 import sys
 
 import _core_path  # noqa: F401
-from kicad_core.fileio import json_load
+from kicad_core.fileio import atomic_write_text, json_load
 from kicad_core.cli import add_output_arg
 
 
@@ -310,8 +310,7 @@ def main(argv: list[str] | None = None) -> int:
 
     output = json.dumps(result, indent=2)
     if args.output:
-        with open(args.output, "w", encoding="utf-8", newline="\n") as f:
-            f.write(output)
+        atomic_write_text(args.output, output, follow_symlinks=False)
     else:
         print(output)
     return 0

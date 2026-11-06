@@ -3,8 +3,15 @@ import json, os, secrets, subprocess, sys, tempfile, unittest
 from unittest import mock
 from pathlib import Path
 
+from tools.tests._fixtures import fixture_path, have
+
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "skills" / "kicad" / "scripts"
+SIMPLE = fixture_path("simple-project")
+SHEET = ('(kicad_sch (version 20231120) (generator "eeschema")\n'
+         '\t(symbol (lib_id "Device:R") (at 10 10 0)\n'
+         '\t\t(property "Reference" "R1" (at 0 0 0))\n'
+         '\t)\n)\n')
 sys.path.insert(0, str(SCRIPTS))
 
 from kicad_core import fileio  # noqa: E402
@@ -263,6 +270,11 @@ class CliOutputLink(_Tmp):
         env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
         return subprocess.run([sys.executable, *argv], capture_output=True, text=True, env=env)
 
+    def _run_in(self, *argv, text=True):
+        env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+        return subprocess.run([sys.executable, *argv], capture_output=True, text=text, env=env,
+                              cwd=self.d)
+
     def test_diff_analysis_output_replaces_link(self):
         a = self.d / "a.json"
         a.write_text(json.dumps({"analyzer_type": "schematic", "findings": []}), encoding="utf-8")
@@ -290,6 +302,139 @@ class CliOutputLink(_Tmp):
         self.assertEqual(victim.read_text(encoding="utf-8"), "keep")
         json.loads(out.read_text(encoding="utf-8"))
 
+    def _victim_link(self, name="out.json"):
+        victim = self.d / "victim"
+        victim.write_text("keep", encoding="utf-8")
+        out = self.d / name
+        os.symlink(victim, out)
+        return victim, out
+
+    def _assert_replaced(self, r, victim, out):
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertFalse(out.is_symlink())
+        self.assertEqual(victim.read_text(encoding="utf-8"), "keep")
+
+    def test_analyze_schematic_output_replaces_link(self):
+        sch = self.d / "t.kicad_sch"
+        sch.write_text(SHEET, encoding="utf-8")
+        victim, out = self._victim_link()
+        r = self._run_in(str(SCRIPTS / "analyze_schematic.py"), str(sch), "--output", str(out))
+        self._assert_replaced(r, victim, out)
+        json.loads(out.read_text(encoding="utf-8"))
+
+    def test_analyze_schematic_output_bytes_match_stdout(self):
+        import re
+        sch = self.d / "t.kicad_sch"
+        sch.write_text(SHEET, encoding="utf-8")
+        out = self.d / "o.json"
+        argv = [str(SCRIPTS / "analyze_schematic.py"), str(sch)]
+        a = self._run_in(*argv, "--output", str(out), text=False)
+        b = self._run_in(*argv, text=False)
+        self.assertEqual((a.returncode, b.returncode), (0, 0), a.stderr + b.stderr)
+        run_id = re.compile(rb'"run_id": "[^"]*"')
+        self.assertEqual(run_id.sub(b"R", out.read_bytes()) + b"\n", run_id.sub(b"R", b.stdout))
+
+    def test_fab_release_gate_output_replaces_link(self):
+        sch = self.d / "s.json"
+        sch.write_text(json.dumps({"statistics": {"total_components": 1, "total_nets": 2,
+                                                  "dnp_parts": 0}}), encoding="utf-8")
+        pcb = self.d / "p.json"
+        pcb.write_text(json.dumps({"connectivity": {"total_nets_with_pads": 2, "unrouted_count": 0,
+                                                    "routing_complete": True},
+                                   "dfm_summary": {"dfm_tier": "standard"},
+                                   "statistics": {"footprint_count": 1, "net_count": 2},
+                                   "silkscreen": {"documentation_warnings": []}}),
+                       encoding="utf-8")
+        victim, out = self._victim_link()
+        r = self._run_in(str(SCRIPTS / "fab_release_gate.py"), "--schematic", str(sch),
+                      "--pcb", str(pcb), "--output", str(out))
+        self.assertFalse(out.is_symlink(), r.stderr)
+        self.assertEqual(victim.read_text(encoding="utf-8"), "keep")
+        json.loads(out.read_text(encoding="utf-8"))
+
+    def test_translate_bom_output_replaces_link(self):
+        bom = self.d / "bom.csv"
+        bom.write_text("Reference,Value,Footprint,Manufacturer,Manufacturer Part Number\n"
+                       "R1,10k,Resistor_SMD:R_0402_1005Metric,Yageo,RC0402FR-0710KL\n",
+                       encoding="utf-8")
+        victim, out = self._victim_link("out.csv")
+        r = self._run_in(str(ROOT / "skills" / "bom" / "scripts" / "translate_bom_pnp.py"), "bom",
+                      str(bom), "-o", str(out))
+        self._assert_replaced(r, victim, out)
+        raw = out.read_bytes()
+        self.assertTrue(raw.startswith(b"Comment,Designator,Footprint,"), raw)
+        self.assertIn(b"\r\n", raw)
+        import csv
+        rows = list(csv.reader(out.read_text(encoding="utf-8").splitlines()))
+        self.assertEqual(rows[1][1], "R1")
+
+    def _simple_jsons(self):
+        sch, pcb = self.d / "sch.json", self.d / "pcb.json"
+        for script, src, dst in (("analyze_schematic.py", "simple.kicad_sch", sch),
+                                 ("analyze_pcb.py", "simple.kicad_pcb", pcb)):
+            r = self._run_in(str(SCRIPTS / script), str(SIMPLE / src), "--output", str(dst))
+            self.assertEqual(r.returncode, 0, r.stderr)
+        return sch, pcb
+
+    @unittest.skipUnless(have(SIMPLE / "simple.kicad_sch"), "frozen fixtures not present")
+    def test_cross_verify_output_replaces_link(self):
+        sch, pcb = self._simple_jsons()
+        victim, out = self._victim_link()
+        r = self._run_in(str(SCRIPTS / "cross_verify.py"), "--schematic", str(sch), "--pcb", str(pcb),
+                      "--output", str(out))
+        self._assert_replaced(r, victim, out)
+        self.assertTrue(out.read_text(encoding="utf-8").endswith("}\n"))
+        json.loads(out.read_text(encoding="utf-8"))
+
+    @unittest.skipUnless(have(SIMPLE / "simple.kicad_sch"), "frozen fixtures not present")
+    def test_analyze_emc_output_replaces_link(self):
+        sch, pcb = self._simple_jsons()
+        victim, out = self._victim_link()
+        r = self._run_in(str(ROOT / "skills" / "emc" / "scripts" / "analyze_emc.py"),
+                      "--schematic", str(sch), "--pcb", str(pcb), "--output", str(out))
+        self._assert_replaced(r, victim, out)
+        json.loads(out.read_text(encoding="utf-8"))
+
+
+_OUTPUT_WRITERS = [
+    "skills/kicad/scripts/analyze_schematic.py", "skills/kicad/scripts/analyze_gerbers.py",
+    "skills/kicad/scripts/analyze_thermal.py", "skills/kicad/scripts/cross_analysis.py",
+    "skills/emc/scripts/analyze_emc.py", "skills/kicad/scripts/lifecycle_audit.py",
+    "skills/kicad/scripts/fab_release_gate.py", "skills/kicad/scripts/cross_verify.py",
+    "skills/spice/scripts/simulate_subcircuits.py", "skills/spice/scripts/extract_parasitics.py",
+    "skills/bom/scripts/translate_bom_pnp.py", "action/format-report.py",
+    "skills/kicad/scripts/what_if.py", "skills/kicad/scripts/analyze_pcb.py",
+    "skills/kicad/scripts/diff_analysis.py", "skills/bom/scripts/bom_manager.py",
+]
+
+
+def _calls(src, name):
+    """The argument text of every call to *name* in *src* (parentheses balanced)."""
+    out, i = [], src.find(name + "(")
+    while i != -1:
+        j = start = i + len(name) + 1
+        depth = 1
+        while depth:
+            depth += {"(": 1, ")": -1}.get(src[j], 0)
+            j += 1
+        out.append(src[start:j - 1])
+        i = src.find(name + "(", j)
+    return out
+
+
+class OutputWritersSource(unittest.TestCase):
+    def test_no_plain_output_writes(self):
+        import re
+        plain = re.compile(r"open\((?:args\.output\w*|output_path), ['\"]w['\"]"
+                           r"|Path\([^)]*output[^)]*\)\.write_text\(")
+        target = re.compile(r"\s*(?:args\.output\w*|output_path)\s*,")
+        for rel in _OUTPUT_WRITERS:
+            src = (ROOT / rel).read_text(encoding="utf-8")
+            self.assertIsNone(plain.search(src), f"{rel}: {plain.search(src)}")
+            calls = [c for c in _calls(src, "atomic_write_text") if target.match(c)]
+            self.assertTrue(calls, rel)
+            for c in calls:
+                self.assertIn("follow_symlinks=False", c, f"{rel}: {c}")
 
 if __name__ == "__main__":
     unittest.main()

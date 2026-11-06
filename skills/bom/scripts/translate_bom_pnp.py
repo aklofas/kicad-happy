@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import io
 import json
 import re
 import sys
@@ -26,6 +27,7 @@ _HERE = str(Path(__file__).resolve().parent)
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 from bom_fields import POPULATE_UNFITTED  # noqa: E402
+from kicad_core.fileio import atomic_write_text  # noqa: E402
 
 
 # --- Header field synonyms (loose-match dictionaries) -----------------------
@@ -477,37 +479,38 @@ def translate_bom(input_path: str, output_path: str) -> dict:
         }
         output_rows.append(current)
 
-    with open(output_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
+    buf = io.StringIO(newline="")
+    writer = csv.writer(buf)
+    writer.writerow(
+        [
+            "Comment",
+            "Designator",
+            "Footprint",
+            "LCSC Part #",
+            "MPN",
+            "Manufacturer",
+            "Quantity",
+            "Notes",
+        ]
+    )
+    for r in output_rows:
+        notes = ""
+        if r["alt_mpns"]:
+            notes = "alt MPN: " + ", ".join(r["alt_mpns"])
         writer.writerow(
             [
-                "Comment",
-                "Designator",
-                "Footprint",
-                "LCSC Part #",
-                "MPN",
-                "Manufacturer",
-                "Quantity",
-                "Notes",
+                r["value"],
+                r["designator"],
+                r["footprint"],
+                "",  # LCSC Part # — user populates separately
+                r["mpn"],
+                r["manufacturer"],
+                r["quantity"],
+                notes,
             ]
         )
-        for r in output_rows:
-            notes = ""
-            if r["alt_mpns"]:
-                notes = "alt MPN: " + ", ".join(r["alt_mpns"])
-            writer.writerow(
-                [
-                    r["value"],
-                    r["designator"],
-                    r["footprint"],
-                    "",  # LCSC Part # — user populates separately
-                    r["mpn"],
-                    r["manufacturer"],
-                    r["quantity"],
-                    notes,
-                ]
-            )
-            stats["rows_out"] += 1
+        stats["rows_out"] += 1
+    atomic_write_text(output_path, buf.getvalue(), newline="", follow_symlinks=False)
 
     return stats
 
@@ -687,10 +690,11 @@ def translate_pnp(
         stats["rows_out"] += 1
 
     # Written only after every row parsed, so a usage error leaves no file.
-    with open(output_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(["Designator", "Mid X", "Mid Y", "Layer", "Rotation"])
-        writer.writerows(out_rows)
+    buf = io.StringIO(newline="")
+    writer = csv.writer(buf)
+    writer.writerow(["Designator", "Mid X", "Mid Y", "Layer", "Rotation"])
+    writer.writerows(out_rows)
+    atomic_write_text(output_path, buf.getvalue(), newline="", follow_symlinks=False)
 
     return stats
 

@@ -36,7 +36,7 @@ import time
 # Allow imports from same directory
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _core_path  # noqa: F401
-from kicad_core.fileio import json_load
+from kicad_core.fileio import atomic_write_text, json_load
 from kicad_core.cli import add_compact_arg, add_output_arg, add_text_arg, utf8_text_stdout
 from kicad_core.diagnostics import OnceSink, record
 
@@ -708,11 +708,9 @@ def main(argv: list[str] | None = None) -> int:
         from output_filters import format_text
         print(format_text(report.get("findings", []), "designer"))
         if args.output:
-            with open(args.output, "w", encoding="utf-8", newline="\n") as f:
-                f.write(output_json)
+            atomic_write_text(args.output, output_json, follow_symlinks=False)
     elif args.output:
-        with open(args.output, "w", encoding="utf-8", newline="\n") as f:
-            f.write(output_json)
+        atomic_write_text(args.output, output_json, follow_symlinks=False)
         # Print summary to stderr
         print(_summary_line(report), file=sys.stderr)
     elif not args.analysis_dir:

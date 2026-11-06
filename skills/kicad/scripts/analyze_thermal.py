@@ -27,7 +27,7 @@ import time
 from envelopes.thermal import ThermalEnvelope
 from schema_codec import emit_schema
 from inputs_builder import build_inputs, build_upstream_artifact, build_compat
-from kicad_core.fileio import json_load
+from kicad_core.fileio import atomic_write_text, json_load
 from kicad_core.render import summary_or_title, wrap_lines
 from capability_mode import get_capability_mode_ref
 from kicad_core.cli import (add_config_arg, add_only_deterministic_arg, add_output_arg, add_schema_arg,
@@ -1170,8 +1170,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Thermal analysis complete: {len(findings)} findings "
                   f"(score {score_str}) -> {out_path}", file=sys.stderr)
     elif output_path:
-        with open(output_path, "w", encoding="utf-8", newline="\n") as f:
-            json.dump(result, f, indent=2)
+        atomic_write_text(output_path, json.dumps(result, indent=2), follow_symlinks=False)
         score_str = "SKIPPED" if score is None else f"{score}/100"
         print(f"Thermal analysis complete: {len(findings)} findings "
               f"(score {score_str}) -> {output_path}", file=sys.stderr)

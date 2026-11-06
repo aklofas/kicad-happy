@@ -1619,7 +1619,7 @@ def main(argv: list[str] | None = None) -> int:
               file=sys.stderr)
         if args.output:
             try:
-                atomic_write_text(args.output, json.dumps(analysis, indent=2))
+                atomic_write_text(args.output, json.dumps(analysis, indent=2), follow_symlinks=False)
             except OSError as e:
                 print(f"Error: cannot write {args.output}: {e}", file=sys.stderr)
                 return 1
@@ -1714,7 +1714,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.output:
         patched_json = _patch_full_json(analysis, affected, patched_dets, changes_legacy)
         try:
-            atomic_write_text(args.output, json.dumps(patched_json, indent=2))
+            atomic_write_text(args.output, json.dumps(patched_json, indent=2), follow_symlinks=False)
         except OSError as e:
             print(f"Error: cannot write {args.output}: {e}", file=sys.stderr)
             return 1
