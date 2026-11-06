@@ -74,6 +74,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Deep Review: a pin cited by name on a part where some pins carry no name is graded partial instead of quarantined, and `RESET` matches a `~{RESET}` pin.
 - Deep Review: a datasheet quote whose exponent the PDF text splits with a space or a line break (`1e- 3`) matches again, and a quote that drops such an exponent's sign no longer passes.
 - DigiKey datasheet sync: a run longer than the API token's ten-minute life fetches a new token instead of failing every later part as an access error.
+- `search_lcsc.py`: `--in-stock` no longer drops an exact LCSC-code hit whose stock only the LCSC lookup reports. A code search whose LCSC lookup is unreachable exits 2, and the error names both services when both fail.
 
 ### Documentation
 

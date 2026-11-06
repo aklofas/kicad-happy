@@ -317,12 +317,25 @@ def main():
         direct = lookup_direct(query)
         if direct:
             raw_components = [direct]
-        elif jlcsearch_error is not None and take_transport_failure():
-            print(f"Error connecting to jlcsearch API: {jlcsearch_error}", file=sys.stderr)
-            sys.exit(2)
+        else:
+            failure = take_transport_failure()
+            if failure:
+                if jlcsearch_error is not None:
+                    print(f"Error connecting to jlcsearch API: {jlcsearch_error}", file=sys.stderr)
+                print(f"Error connecting to the LCSC direct lookup: {failure}", file=sys.stderr)
+                sys.exit(2)
 
     # Normalize components
     normalized = [normalize_component(c) for c in raw_components]
+
+    # jlcsearch's missing stock is unknown, not zero: the exact-code row takes LCSC's
+    # figure before --in-stock / --min-stock judge it.
+    enriched = set()
+    if is_lcsc_code:
+        for item in normalized:
+            if item["stock"] is None and item["lcsc_code"] == query.upper():
+                enrich_from_wmsc(item)
+                enriched.add(id(item))
 
     # Apply filters
     filtered = []
@@ -353,7 +366,8 @@ def main():
         for idx, item in enumerate(results):
             if idx:
                 time.sleep(_ENRICH_DELAY_S)
-            enrich_from_wmsc(item)
+            if id(item) not in enriched:
+                enrich_from_wmsc(item)
 
     for item in results:
         if item["stock"] is None:
