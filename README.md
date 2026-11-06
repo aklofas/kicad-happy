@@ -469,7 +469,7 @@ Everything above was run against a [corpus of 5,800+ open-source KiCad projects]
 | SPICE simulation runs        | 36,544                                        |
 | Components parsed            | 1,300,475                                     |
 | Nets traced                  | 2,047,212                                     |
-| Regression assertions        | 2,714,167 at 100.0% pass rate                 |
+| Regression assertions        | 2,717,836 at 100.0% pass rate                 |
 | Bugfix regression guards     | 175 (100% pass — no fixed bugs have returned) |
 | Closed analyzer issues       | 543                                           |
 

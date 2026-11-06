@@ -2,7 +2,7 @@
 
 This document describes how kicad-happy is tested and validated. Every change to the analysis engine is verified against a corpus of real-world KiCad projects before release.
 
-*Auto-generated on 2026-11-03 by `generate_validation_md.py`.*
+*Auto-generated on 2026-11-06 by `generate_validation_md.py`.*
 
 ## Why this matters
 
@@ -79,35 +79,35 @@ The counts are output files present in the corpus tree. A new unhandled exceptio
 
 Hard assertions on known-good output values. If a previously correct result changes, the assertion fails and the change must be investigated.
 
-*Measured via `regression/run_checks.py --json` at the v3.0.1 corpus regen (`9885287`): 2,716,880 passed / 7 failed / 2 errors out of 2,716,889 (100.0%).*
+*Measured via `regression/run_checks.py --json` at the v3.0.1 corpus regen (`4c2a0d6`): 2,717,827 passed / 7 failed / 2 errors out of 2,717,836 (100.0%).*
 
 | Category | Assertion count | Pass rate |
 |----------|----------------|-----------|
-| STRUCT | 1,393,379 | 100.0% |
-| SEED | 1,320,589 | 100.0% |
-| FND | 2,685 | 99.7% |
+| STRUCT | 1,394,613 | 100.0% |
+| SEED | 1,320,300 | 100.0% |
+| FND | 2,687 | 99.7% |
 | BUGFIX | 236 | 100.0% |
-| **Total** | **2,716,889** | **100.0%** |
+| **Total** | **2,717,836** | **100.0%** |
 
 Assertions are seeded from validated output and checked on every run. When analyzer logic changes intentionally (new fields, corrected calculations), affected assertions are re-seeded after manual verification.
 
 ### Layer 1 regression gate (pre-tag requirement)
 
-Before any release is tagged, the harness runs the candidate over the full corpus and diffs every analyzer envelope unit by unit against a baseline: the previous release, or, for a release built in gated waves, the previous accepted candidate of each wave. Every unit that moves (FAIL, Disappeared, NewUnknown) must be attributed to a budget class pre-registered in the change's review record, and no finding may be silently downgraded; unexplained movement fails the gate. The run below is the v3.0.1 release gate. The release range is `07b7fb1` (v3.0.0 release base) → `9885287`, built in fourteen waves (0, 1, 2, 3, 3b-A, 3b-B, 4-A, 4-B, 5, 6, 7, 8a, 8c + 8b), each gated against the previous accepted candidate and accepted before the next began, over a gap-free chain `07b7fb1` → `63f6a20` → `004bba5` → `d2b9e72` → `6c488c2` → `0683d01` → `b31d4ff` (pushed as `d5c500e`: one docstring line and the CI pin) → `40b8ff3` → `698116c` → `c0a8a62` → `988d576` (pushed as `ceb2c5a`: CI pin only) → `647bc85` → `0efc012`. Wave 0 (gate readiness) and Wave 1 (security) changed no analyzer output and were gated together on the quick_200 cross-section (strict-field identical); Waves 6, 7 and 8a were structural (FULL standard + full-chain strict-field identical); Waves 2, 3, 3b-A, 3b-B, 4-A, 4-B, 5 and 8c + 8b were output-changing, and every moved unit was either attributed to a pre-registered budget class or filed as a finding (FULL standard + full-chain; the six Wave 3b-A finding units became KH-699 / KH-700 and the one Wave 3 SPICE candidate failure KH-676, all resolved in later waves). Records: harness `results/v30x_w*_gate{,_fc}/rollup_*.json` (Wave 1: standard quick_200 only) and the per-wave verdict entries in the coordination log. The final step is the pre-tag gate `0efc012` → `9885287` below: the candidate's analyzer tree is byte-identical to `0efc012` (it adds CI, docs and a product test only), and the gate ran every lane with a zero budget (harness `results/v301_pretag_gate{,_fc,_aux,_do}/`).
+Before any release is tagged, the harness runs the candidate over the full corpus and diffs every analyzer envelope unit by unit against a baseline: the previous release, or, for a release built in gated waves, the previous accepted candidate of each wave. Every unit that moves (FAIL, Disappeared, NewUnknown) must be attributed to a budget class pre-registered in the change's review record, and no finding may be silently downgraded; unexplained movement fails the gate. The run below is the last step of the v3.0.1 release gate. The release range is `07b7fb1` (v3.0.0 release base) → `4c2a0d6`, built in waves (0, 1, 2, 3, 3b-A, 3b-B, 4-A, 4-B, 5, 6, 7, 8a, 8c + 8b, 9a + 9e, 9d, 9b + 9c, 9f, 9g, 10a, 10b, 10c), each gated against the previous accepted candidate and accepted before the next began, over a gap-free chain `07b7fb1` → `63f6a20` → `004bba5` → `d2b9e72` → `6c488c2` → `0683d01` → `b31d4ff` (pushed as `d5c500e`: one docstring line and the CI pin) → `40b8ff3` → `698116c` → `c0a8a62` → `988d576` (pushed as `ceb2c5a`: CI pin only) → `647bc85` → `0efc012` → `9885287` (CI, docs, VALIDATION.md and one product test; zero delta) → `6009004` → `389fbd5` → `8c42799` → `246ee5a` → `003950b` → `e60d03b` → `2abc849` → `4c2a0d6`. Waves 0, 1, 6, 7, 8a, 9a + 9e, 9d, 9g, 10a and 10c changed no analyzer output (strict-field identical; Wave 1 on quick_200, the rest on the FULL standard and full-chain profiles); Waves 2, 3, 3b-A, 3b-B, 4-A, 4-B, 5, 8c + 8b, 9b + 9c, 9f and 10b were output-changing, and every moved unit was attributed to a pre-registered budget class or filed as a finding (FULL standard + full-chain). Audit round 3 (Waves 10a, 10b, 10c and a one-commit correction of 10b) was gated once more as a whole, `ab3494a0` → `4c2a0d6` against `003950b`, below. Records: harness `results/v30x_w*_gate{,_fc}/` and `results/v301_*_gate{,_fc,_aux}/` and the per-wave verdict entries in the coordination log.
 
-Latest run: section `v301_pretag_standard`, 170,022 analyzer-runs. Verdict: **CLEAN, ZERO DELTA on every lane — FULL standard 149,633 unit pairs and full-chain 21,411 unit pairs strict-field identical, 0 candidate failures, every skip a ledgered baseline debt; spice-offline 8,830 / 8,830 identical; product text oracle 1,056 artefacts identical both ways; `--schema` identical for all six analyzers; distributor-offline 310 / 310 artefacts identical; harness unit + offline-contract tiers green**.
+Latest run: section `v301_w10_range_standard`, 170,022 analyzer-runs. Verdict: **CLEAN UNDER BUDGET — FULL standard 149,633 unit pairs: 15,162 moved (EMC 14,386: SU-/PD-00x/EE- findings staged at layout, CK-001 / DP-004 by outer-layer length, PD-001 on negative rails; PCB 214: PM-001 per courtyard layer; schematic 555: pin-only supplies leave `rail_voltages`, enables on ground read `tied_to_ground` / `always_on`, negative-rail magnitudes; Gerber 6; thermal 1), 154,868 field deltas, 0 unexplained; full-chain 21,411 unit pairs: 2,896 moved (adds RP-001 / VS-001 on boards with no ground via, RP-002 without return-path coverage), 0 unexplained; 0 candidate failures; SPICE-offline 1,479 / 8,830 reports moved, all attributed (inrush and snubber benches `pass` → `info`, SP-FAIL / SP-WARN text); text oracle exactly the declared deltas; `--schema` identical**.
 
 | Outcome | Count |
 |---------|------:|
-| PASS | 149,633 |
-| FAIL | 0 |
-| Disappeared | 0 |
-| Downgrades | 0 |
-| Upgrades | 0 |
-| NewKnown | 0 |
+| PASS | 149,398 |
+| FAIL | 220 |
+| Disappeared | 2,994 |
+| Downgrades | 2 |
+| Upgrades | 3 |
+| NewKnown | 606 |
 | NewUpgraded | 0 |
-| NewUnknown | 0 |
-| WARN | 0 |
+| NewUnknown | 6 |
+| WARN | 15 |
 | SKIP | 20,389 |
 
 *A gate is CLEAN when `Downgrades == 0` and every `FAIL`, `Disappeared` and `NewUnknown` unit is attributed to a pre-registered budget class in the adjudication record (a zero-delta gate has none to attribute). `NewKnown`/`NewUpgraded` are intentional new findings; `SKIP` units have no comparable baseline.*
@@ -217,8 +217,8 @@ The harness requires Python 3.10+ and a checkout of the corpus repos. ngspice is
 
 All analyzer bugs found during validation are tracked with sequential IDs:
 
-- `KH-001` through `KH-903`: analyzer issues (857 filed, 534 closed, 323 open)
-- `TH-001` through `TH-105`: harness infrastructure issues (100 filed, 77 closed, 23 open)
+- `KH-001` through `KH-967`: analyzer issues (921 filed, 543 closed, 378 open)
+- `TH-001` through `TH-106`: harness infrastructure issues (101 filed, 77 closed, 24 open)
 
 Each closed analyzer issue has a corresponding bugfix regression guard assertion that prevents the bug from returning.
 
@@ -234,8 +234,8 @@ Each closed analyzer issue has a corresponding bugfix regression guard assertion
 | SPICE analyzer runs | 36,544 |
 | Components parsed | 1,300,475 |
 | Nets traced | 2,047,212 |
-| Regression assertions | 2,716,889 at 100.0% |
+| Regression assertions | 2,717,836 at 100.0% |
 | Bugfix guards | 175 |
-| Closed issues | 534 analyzer + 77 harness |
-| Open issues | 323 analyzer + 23 harness |
+| Closed issues | 543 analyzer + 77 harness |
+| Open issues | 378 analyzer + 24 harness |
 | Schematic detectors | 71 |
