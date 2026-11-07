@@ -11,7 +11,7 @@ from kicad_types import build_analysis_context  # noqa: E402
 from detector_helpers import match_family  # noqa: E402
 from domain_detectors import (  # noqa: E402
     detect_lvds_interfaces, detect_reset_supervisors, detect_rf_chains,
-    detect_sensor_interfaces, detect_wireless_modules)
+    detect_sensor_interfaces, detect_wireless_modules, suggest_certifications)
 
 
 def _comp(ref, value, lib_id, mpn="", ctype="ic"):
@@ -39,6 +39,9 @@ class MatchFamily(unittest.TestCase):
 
     def test_no_hit_is_none(self):
         self.assertIsNone(match_family({"value": "Q", "lib_id": "R"}, self.FAMS))
+
+    def test_library_nickname_is_not_read(self):
+        self.assertIsNone(match_family({"value": "Q", "lib_id": "ab_parts:R"}, self.FAMS))
 
 
 class DetectorFamilies(unittest.TestCase):
@@ -80,6 +83,25 @@ class DetectorFamilies(unittest.TestCase):
     def test_deserializer_word_names_the_role(self):
         out = detect_lvds_interfaces(_ctx([_comp("U1", "DS90UB924 deserializer", "Interface:LVDS")]))
         self.assertEqual([(r["reference"], r["role"]) for r in out], [("U1", "deserializer")])
+
+    def test_part_in_a_radio_named_library_is_not_a_radio(self):
+        out = detect_wireless_modules(_ctx([_comp("U1", "CH340C", "ESP32-DevKitC:CH340C"),
+                                            _comp("U2", "AP2112K-3.3", "Seeed_nRF52840:AP2112K-3.3")]))
+        self.assertEqual(out, [])
+
+    def test_radio_modules_named_only_by_module_name_keep_their_family(self):
+        out = detect_wireless_modules(_ctx([_comp("U1", "ESP-12F", "ESP8266:ESP-12F"),
+                                            _comp("U2", "ESP-01", "ESP8266:ESP-01"),
+                                            _comp("U3", "WT32-ETH01", "WT32:WT32-ETH01"),
+                                            _comp("U4", "MAX-M8Q", "u-blox_GPS:MAX-M8Q")]))
+        self.assertEqual([(w["reference"], w["wireless_type"]) for w in out],
+                         [("U1", "wifi_ble"), ("U2", "wifi_ble"), ("U3", "wifi_ble"), ("U4", "gps")])
+
+    def test_certification_names_the_radio_not_a_part_in_its_library(self):
+        ctx = _ctx([_comp("R12", "0E", "ESP32-S3_DB:R_Small_US", ctype="resistor"),
+                    _comp("U1", "ESP32-S3FH4R2", "ESP32-S3_DB:ESP32-S3")])
+        reasons = [s["reason"] for s in suggest_certifications(ctx, {}) if s["standard"] == "FCC Part 15"]
+        self.assertEqual(reasons, ["Wireless module detected: U1"])
 
     def test_esp32_keeps_both_rf_transceiver_and_wifi_ble(self):
         esp = _comp("U1", "ESP32-WROOM-32", "RF_Module:ESP32-WROOM-32")

@@ -103,6 +103,21 @@ class FeedbackCompensation(unittest.TestCase):
                                              [regulator("U1", ("R1", 10000), ("R2", 2500))])
         self.assertEqual(rule(got, "FS-001"), [])
 
+    def test_uc3845_comp_network_behind_a_bridged_solder_jumper_is_found(self):
+        comps = [ic("U1", "UC3845"), res("R1", "10k"), res("R2", "2.5k"),
+                 {"reference": "JP1", "type": "jumper", "value": "SolderJumper_2_Bridged",
+                  "lib_id": "Jumper:SolderJumper_2_Bridged"},
+                 {"reference": "C1", "type": "capacitor", "value": "470p"}]
+        nets = {"VOUT": [("R1", "1", "~", "passive")],
+                "FB": [("U1", "2", "VFB", "input"), ("R1", "2", "~", "passive"), ("R2", "1", "~", "passive"),
+                       ("C1", "2", "~", "passive")],
+                "__unnamed_2": [("U1", "1", "COMP", "output"), ("JP1", "1", "A", "passive")],
+                "__unnamed_3": [("JP1", "2", "B", "passive"), ("C1", "1", "~", "passive")],
+                "GND": [("U1", "5", "GND", "power_in"), ("R2", "2", "~", "passive")]}
+        got = vd.validate_feedback_stability(ctx_of(comps, nets, {"VOUT", "GND"}),
+                                             [regulator("U1", ("R1", 10000), ("R2", 2500))])
+        self.assertEqual(rule(got, "FS-001"), [])
+
 
 class FeedbackImpedance(unittest.TestCase):
     def _run(self, value, reference=None):

@@ -4614,17 +4614,23 @@ def audit_rail_sources(ctx: AnalysisContext,
                    and any(k in (c.get("lib_id", "") + " " + c.get("value", "")).lower()
                            for k in LOAD_SWITCH_KEYWORDS)}
     if switch_refs:
-        by_ref: dict[str, dict[str, set[str]]] = {}
+        # (net, channel): a dual switch numbers its channels (VIN1 -> VOUT1, VIN2 -> VOUT2);
+        # an unnumbered side pairs with every channel.
+        by_ref: dict[str, dict[str, set[tuple[str, str]]]] = {}
         for net_name, net_info in nets.items():
             for p in net_info.get("pins", []):
                 if p.get("component") in switch_refs:
-                    base = (p.get("pin_name") or "").upper().rstrip("0123456789_")
+                    name = (p.get("pin_name") or "").upper()
+                    base = name.rstrip("0123456789_")
+                    channel = name[len(base):].lstrip("_")
                     side = ("in" if base in _SWITCH_INPUT_PINS
                             else "out" if base in _SWITCH_OUTPUT_PINS else None)
                     if side:
-                        by_ref.setdefault(p["component"], {"in": set(), "out": set()})[side].add(net_name)
+                        by_ref.setdefault(p["component"], {"in": set(), "out": set()})[side].add(
+                            (net_name, channel))
         for sides in by_ref.values():
-            switch_pins += [(i, o) for i in sorted(sides["in"]) for o in sorted(sides["out"])]
+            switch_pins += sorted({(i, o) for i, ci in sides["in"] for o, co in sides["out"]
+                                   if not (ci and co and ci != co)})
     switch_output_nets: set[str] = set()
 
     def _input_sourced(in_net: str) -> bool:

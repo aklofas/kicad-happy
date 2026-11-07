@@ -93,5 +93,30 @@ class SwitchBehindJumper(unittest.TestCase):
                          [("RS-001", "+5V_SW"), ("RS-002", "+5V_IN")])
 
 
+
+def _dual_switch_sources(vin2_pin_type):
+    """RS-001 nets for a TPS22966 whose VIN1 is fed from a sourced 3V3 and VIN2 from 1V8."""
+    comps = [{"reference": "U1", "type": "ic", "value": "TPS22966", "lib_id": "Power_Management:TPS22966"},
+             {"reference": "J1", "type": "connector", "value": "Conn"},
+             {"reference": "U2", "type": "ic", "value": "MCU"}]
+    pins = {"+3V3": [("J1", "1", "J1", "power_out"), ("U1", "1", "VIN1", "power_in")],
+            "+1V8": [("J1", "2", "J2", vin2_pin_type), ("U1", "9", "VIN2", "power_in")],
+            "+3V3_SW": [("U1", "13", "VOUT1", "output"), ("U2", "1", "VDD", "power_in")],
+            "+1V8_SW": [("U1", "7", "VOUT2", "output"), ("U2", "2", "VDDIO", "power_in")],
+            "GND": [("U1", "11", "GND", "power_in")]}
+    nets = {n: {"name": n, "point_count": 0, "no_connect": False, "has_pwr_flag": False, "labels": [],
+                "pins": [dict(component=r, pin_number=num, pin_name=name, pin_type=t) for r, num, name, t in ps]}
+            for n, ps in pins.items()}
+    ctx = build_analysis_context(comps, nets, {})
+    return sorted(f["nets"][0] for f in audit_rail_sources(ctx) if f["rule_id"] == "RS-001")
+
+
+class DualSwitchChannels(unittest.TestCase):
+    def test_each_output_is_sourced_from_its_own_channel_input(self):
+        self.assertEqual(_dual_switch_sources("passive"), ["+1V8", "+1V8_SW"])
+
+    def test_both_channels_sourced_report_nothing(self):
+        self.assertEqual(_dual_switch_sources("power_out"), [])
+
 if __name__ == "__main__":
     unittest.main()

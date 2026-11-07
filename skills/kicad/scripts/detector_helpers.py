@@ -106,12 +106,16 @@ def match_family(comp: dict, families: dict[str, Iterable[str]]) -> str | None:
     """Return the family of a part's longest keyword, or None.
 
     Reads the first of ``mpn``, ``value``, ``lib_id`` that contains any keyword
-    (case-insensitive substring). A tie in length between two families is None.
+    (case-insensitive substring); of ``lib_id`` only the symbol name counts, since the
+    library nickname names a library, not the part. A tie in length between two
+    families is None.
     ``families`` holds one detector's own tables; never pool families across
     detectors, since a part can belong to one family in each.
     """
     for field in ("mpn", "value", "lib_id"):
         text = (comp.get(field) or "").lower()
+        if field == "lib_id":
+            text = text.split(":", 1)[-1]
         if not text:
             continue
         best: dict[str, int] = {}

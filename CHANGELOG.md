@@ -33,6 +33,11 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The schematic PDN leaves out DNP and off-board capacitors, and a low-frequency anti-resonance points at bulk capacitance or the regulator, not at a cap's SRF.
 - Net ties and jumpers count as simulatable in the simulation-readiness summary.
 - ESD audits leave out connector pins typed no-connect.
+- A UC3845-class COMP pin behind a bridged solder jumper finds its network.
+- Part families match the symbol name, not the library nickname.
+- The FCC Part 15 suggestion for a wireless module names the module itself, not another part from its library, and a sheet whose only radio match was a library name no longer gets it.
+- An SPI MISO net or a lone `_B` rail no longer reports an isolation barrier.
+- A dual load switch sources each output from its own channel.
 - Opening a sub-sheet now finds the project root through intermediate sheets, and no longer mistakes a sheet whose file name is contained in another sheet's name (`adc` in `my_adc`) for a child of that root.
 - Bus labels with quoted member or prefix names (`{"A B" C}`), as KiCad 10 allows, now expand to their members, and a group member containing a space is named with the space escaped (`A\ B`), as KiCad names it.
 - Each sheet file is now read once, however many times the design uses it; designs that repeat a large sheet many times analyze several times faster.

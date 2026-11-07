@@ -264,9 +264,11 @@ def detect_key_matrices(ctx: AnalysisContext) -> list[dict]:
     return key_matrices
 
 
-# ISO anywhere, or a whole _B / _SEC token (3.3V_B, VCC_B2, 5V_SEC_OUT); V_BAT,
-# MIC_BIAS and VCCA_BR are not secondary-side rails.
-_ISOLATED_RAIL = re.compile(r'ISO|_(?:B|SEC)\d*(?=[_/]|$)')
+# ISO anywhere but in MISO (+5VISO, V_ISOOUT), or a whole _B / _SEC token (3.3V_B,
+# VCC_B2, 5V_SEC_OUT); V_BAT, MIC_BIAS and VCCA_BR are not secondary-side rails.
+_ISOLATED_RAIL = re.compile(r'(?<!M)ISO|_(?:B|SEC)\d*(?=[_/]|$)')
+# A _B rail alone (USB_B, bank B, channel B) does not show isolation; ISO and _SEC do.
+_ISOLATION_RAIL_EVIDENCE = re.compile(r'(?<!M)ISO|_SEC\d*(?=[_/]|$)')
 
 
 def _is_isolated_rail_name(net: str) -> bool:
@@ -325,7 +327,7 @@ def detect_isolation_barriers(ctx: AnalysisContext) -> list[dict]:
 
             has_iso_evidence = (
                 isolation_components
-                or isolated_power_rails
+                or any(_ISOLATION_RAIL_EVIDENCE.search(n.upper()) for n in isolated_power_rails)
                 or any("ISO" in d.upper() for d in ground_domains if d != "main")
             )
             if has_iso_evidence:
@@ -5619,11 +5621,12 @@ def suggest_certifications(ctx: AnalysisContext, signal_analysis: dict) -> list[
             "reason": "RF transceiver detected",
         })
 
-    # WiFi/BT modules
+    # WiFi/BT modules, by value or symbol name (the library nickname names a library)
     for comp in ctx.components:
-        val_lib = (comp.get("value", "") + " " + comp.get("lib_id", "")).lower()
+        val_lib = (comp.get("value", "") + " " + comp.get("lib_id", "").split(":", 1)[-1]).lower()
         if any(k in val_lib for k in ("esp32", "esp8266", "nrf52", "cc254",
-                                       "wl18", "cyw43", "ap621", "bcm43")):
+                                       "wl18", "cyw43", "ap621", "bcm43",
+                                       "esp-wroom", "esp-01", "esp-12", "esp-32", "wt32", "ttgo")):
             if not any(s["standard"] == "FCC Part 15" for s in suggestions):
                 suggestions.append({
                     "standard": "FCC Part 15",
@@ -5718,6 +5721,7 @@ def suggest_certifications(ctx: AnalysisContext, signal_analysis: dict) -> list[
 
 _WIFI_BLE_KEYWORDS = (
     'esp32', 'esp8266', 'esp32s', 'esp32c', 'esp32h',
+    'esp-wroom', 'esp-01', 'esp-12', 'esp-32', 'wt32', 'ttgo',
     'nrf52', 'nrf53', 'nrf91', 'nrf7002',
     'cc2640', 'cc2652', 'cc1352', 'cc3220',
     'cyw43', 'cyw20',
@@ -5748,7 +5752,7 @@ _CELLULAR_KEYWORDS = (
 _GPS_KEYWORDS = (
     'neo6m', 'neo7m', 'neo8m', 'neom8', 'neom9', 'zed',
     'l76', 'l86', 'l96',
-    'sam_m8q', 'sam_m10',
+    'sam_m8q', 'sam_m10', 'max-m8', 'max-m10',
     'gps', 'gnss',
     'pa1010', 'pa1616',
 )

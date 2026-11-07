@@ -1464,7 +1464,10 @@ def validate_feedback_stability(
                 and not match_ic_keywords(comp, _INTERNALLY_COMPENSATED_KEYWORDS)):
             check_net = get_pin_net(ctx, ref, ('COMP', 'CC', 'RC'))
             if check_net:
-                caps_on_fb = [p['component'] for p in ctx.nets.get(check_net, {}).get('pins', [])
+                # The network may sit behind a bridged-by-default solder jumper.
+                comp_nets = [check_net] + _bridged_jumper_neighbor_nets(ctx, check_net)
+                caps_on_fb = [p['component'] for n in comp_nets
+                              for p in ctx.nets.get(n, {}).get('pins', [])
                               if ctx.comp_lookup.get(p['component'], {}).get('type') == 'capacitor']
                 if not caps_on_fb:
                     findings.append(make_finding(
