@@ -57,6 +57,18 @@ class SweepSpec:
 # Parse change specifications
 # ---------------------------------------------------------------------------
 
+_SI_PREFIXES = ((1e9, "G"), (1e6, "M"), (1e3, "k"), (1.0, ""), (1e-3, "m"),
+                (1e-6, "u"), (1e-9, "n"), (1e-12, "p"))
+
+
+def _sweep_label(v: float) -> str:
+    """Format a swept value with four significant figures and an SI prefix (12.92k, 3.162n)."""
+    for scale, prefix in _SI_PREFIXES:
+        if abs(v) >= scale * 0.9995:
+            return f"{v / scale:.4g}{prefix}"
+    return f"{v / 1e-12:.4g}p"
+
+
 def _parse_changes(change_args: list) -> tuple:
     """Parse REF=VALUE pairs, detecting sweep syntax.
 
@@ -120,7 +132,7 @@ def _parse_changes(change_args: list) -> tuple:
                 sys.exit(2)
             n = min(n, 50)
             values = [start * (stop / start) ** (i / (n - 1)) for i in range(n)]
-            strs = [start_str] + [f"{v:.4g}" for v in values[1:-1]] + [stop_str]
+            strs = [start_str] + [_sweep_label(v) for v in values[1:-1]] + [stop_str]
             sweep = SweepSpec(ref=ref, values=values, value_strs=strs, tolerance=tolerance)
 
         elif "," in val_str:
