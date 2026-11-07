@@ -101,6 +101,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `translate_bom_pnp.py bom` carries the source BOM's LCSC part number into JLCPCB's `LCSC Part #` column instead of leaving it empty.
 - `what_if --output` with a change that affects no subcircuit no longer also prints the result JSON to stdout, matching a change that does.
 - `export_issues --create` works on a repository with 1,000 or more open kicad-happy issues; it lists them all instead of refusing.
+- `export_issues` labels and dry-run output say `error` where they said `high`, the same severity names every analyzer uses; `critical`/`high`/`medium` are still accepted for `--severity`. A GitHub filter on the `severity:high` label no longer matches newly created issues.
 
 ### Documentation
 

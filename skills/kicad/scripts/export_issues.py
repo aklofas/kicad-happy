@@ -50,10 +50,10 @@ _SEV_RANK: dict[str, int] = {
 # ---------------------------------------------------------------------------
 
 def _norm_severity(s: str) -> str:
-    """Normalize a severity string to one of: high / warning / info."""
+    """Normalize a severity string to one of: error / warning / info."""
     s = (s or "").lower().strip()
     if s in ("critical", "high", "error"):
-        return "high"
+        return "error"
     if s in ("warning", "medium", "warn"):
         return "warning"
     return "info"
@@ -626,7 +626,7 @@ def main(argv: "list[str] | None" = None) -> int:  # noqa: C901 (intentionally l
     )
     ap.add_argument(
         "--severity",
-        help="Minimum severity filter (high/warning/info)",
+        help="Minimum severity filter (error/warning/info)",
     )
     ap.add_argument(
         "--rule-id",
@@ -662,7 +662,7 @@ def main(argv: "list[str] | None" = None) -> int:  # noqa: C901 (intentionally l
         if args.severity.lower() not in known:
             ap.error(
                 f"unknown --severity {args.severity!r} — "
-                "accepted: high/critical/error, warning/medium/warn, info/low"
+                "accepted: error/critical/high, warning/medium/warn, info/low"
             )
 
     rule_ids: "list[str] | None" = None
