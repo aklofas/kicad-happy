@@ -694,7 +694,7 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
     for reg in sig.get(Det.POWER_REGULATORS, []):
         vout = reg.get("estimated_vout")
         if vout and isinstance(vout, (int, float)):
-            verified.append(f"{_md(reg['ref'])} → {_md(reg.get('output_rail',''))} at {vout:.2f}V")
+            verified.append(f"{_lead(_md(reg['ref']))} → {_md(reg.get('output_rail',''))} at {vout:.2f}V")
 
     for finding in pc.get("findings", []):
         checks = finding.get("checks", {})
@@ -911,9 +911,9 @@ def format_report(schematic_path, pcb_path, spice_path, emc_path,
         L.append("### Op-Amp Checks")
         L.append("")
         for ref, warning in opamp_warnings:
-            L.append(f"- {_md(ref)}: {_md(warning)}")
+            L.append(f"- {_lead(_md(ref))}: {_md(warning)}")
         for ref, channels in unused_channels:
-            L.append(f"- {_md(ref)}: unused channel(s) {_md(channels)}")
+            L.append(f"- {_lead(_md(ref))}: unused channel(s) {_md(channels)}")
         L.append("")
 
     # === PCB (dense one-liner) ===
@@ -1152,7 +1152,7 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
                 vout = d.get('vout_V')
                 ratio_str = f"{float(ratio):.3f}" if isinstance(ratio, (int, float)) else str(ratio)
                 vout_str = f", Vout={float(vout):.2f}V" if isinstance(vout, (int, float)) else ""
-                a(f"- {_md(_ref(d.get('r_top')))} / {_md(_ref(d.get('r_bottom')))}: "
+                a(f"- {_lead(_md(_ref(d.get('r_top'))))} / {_md(_ref(d.get('r_bottom')))}: "
                   f"ratio={ratio_str}{vout_str}")
             a("")
 
@@ -1173,7 +1173,7 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
                     else:
                         fc_str = "—"
                     kind = f" ({_md(f['type'])})" if f.get("type") else ""
-                    a(f"- {comps}: fc = {fc_str}{kind}")
+                    a(f"- {_lead(comps)}: fc = {fc_str}{kind}")
                 a("")
 
         # Opamps
@@ -1192,7 +1192,7 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
                     gain_str = ""
                 a(f"- **{_md(oa['reference'])}** ({_md(oa.get('value',''))}) — {_md(oa['configuration'])} {_md(gain_str)}")
                 for w in oa.get("warnings", []):
-                    a(f"  - {_md(w)}")
+                    a(f"  - {_lead(_md(w))}")
                 if oa.get("unused_channels"):
                     a(f"  - Unused channels: {_md(oa['unused_channels'])} ({_md(oa.get('unused_channel_status',''))})")
             a("")
@@ -1226,7 +1226,7 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
             for c in crystals:
                 caps = c.get("load_caps", [])
                 cap_str = ", ".join(f"{_md(lc.get('ref',''))}={_md(lc.get('value',''))}" for lc in caps) if caps else "none detected"
-                a(f"- {_md(c.get('reference',''))} ({_md(c.get('value',''))}) — load caps: {cap_str}")
+                a(f"- {_lead(_md(c.get('reference','')))} ({_md(c.get('value',''))}) — load caps: {cap_str}")
             a("")
 
         # Decoupling
@@ -1289,7 +1289,7 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
         if high_risk:
             a("**Pre-compliance focus bands:**")
             for b in high_risk[:3]:
-                a(f"- {_md(b['band'])}: {b['source_count']} emission source(s) ({_md(b['risk_level'])} risk)")
+                a(f"- {_lead(_md(b['band']))}: {b['source_count']} emission source(s) ({_md(b['risk_level'])} risk)")
             a("")
 
     # === Power Analysis ===
@@ -1386,9 +1386,9 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
                 a(f"**{_md(proto)}**{dev_str}")
                 for check_name, check_data in checks.items():
                     if isinstance(check_data, dict) and "status" in check_data:
-                        a(f"- {_md(check_name)}: **{_md(check_data['status'])}**")
+                        a(f"- {_lead(_md(check_name))}: **{_md(check_data['status'])}**")
                 for issue in issues:
-                    a(f"- {_md(issue)}")
+                    a(f"- {_lead(_md(issue))}")
                 a("")
 
         # Cross-domain
@@ -1401,7 +1401,7 @@ def format_full_report(schematic_path, pcb_path, spice_path, emc_path,
             a("### Cross-Domain Signals")
             a("")
             for s in xd[:10]:
-                a(f"- {_md(s.get('net',''))} crosses {_md(', '.join(s.get('power_domains', [])))}")
+                a(f"- {_lead(_md(s.get('net','')))} crosses {_md(', '.join(s.get('power_domains', [])))}")
             if len(xd) > 10:
                 a(f"- ... and {len(xd) - 10} more")
             a("")

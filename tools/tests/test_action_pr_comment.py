@@ -73,6 +73,41 @@ class MarkdownEscapeTest(unittest.TestCase):
         self.assertNotIn("\n# Forged", full)
         self.assertIn("\\# Forged, R1", full)
 
+    def test_list_items_led_by_analyzer_text_cannot_open_a_heading(self):
+        h = "# Forged"
+        sch = {"statistics": {"total_components": 6}, "findings": [
+            regulator(ref=h),
+            {"detector": "detect_opamp_circuits", "reference": h, "value": "LM358",
+             "configuration": "buffer", "warnings": [h], "unused_channels": ["B"]},
+            {"detector": "detect_voltage_dividers", "r_top": {"ref": h}, "r_bottom": {"ref": "R2"},
+             "ratio": 0.5},
+            {"detector": "detect_rc_filters", "resistor": {"ref": h}, "capacitor": {"ref": "C1"},
+             "cutoff_hz": 100},
+            {"detector": "detect_crystal_circuits", "reference": h, "value": "8MHz",
+             "load_caps": []}],
+            "protocol_compliance": {"findings": [
+                {"protocol": "i2c", "issues": [h], "checks": {h: {"status": "pass"}}}]},
+            "design_analysis": {"cross_domain_signals": [{"net": h, "power_domains": ["+3V3", "+5V"]}]}}
+        emc = {"findings": [], "summary": {"total_checks": 1},
+               "test_plan": {"frequency_bands": [{"band": h, "source_count": 2, "risk_level": "high"}]}}
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            (d / "sch.json").write_text(json.dumps(sch), encoding="utf-8")
+            (d / "emc.json").write_text(json.dumps(emc), encoding="utf-8")
+            subprocess.run([sys.executable, str(FORMATTER), "--schematic", str(d / "sch.json"),
+                            "--emc", str(d / "emc.json"), "--output", str(d / "pr.md"),
+                            "--output-full", str(d / "full.md")], check=True, capture_output=True)
+            reports = [(d / n).read_text(encoding="utf-8") for n in ("pr.md", "full.md")]
+        for md in reports:
+            self.assertIn(h, md)
+            for line in md.splitlines():
+                self.assertNotRegex(line, r"^\s*- #", line)
+        full = reports[1]
+        for text in ("- \\# Forged crosses", "- \\# Forged: **pass**", "  - \\# Forged",
+                     "- \\# Forged / R2", "- \\# Forged + C1", "- \\# Forged (8MHz)",
+                     "- \\# Forged: 2 emission"):
+            self.assertIn(text, full)
+
 
 class ActionPrComment(unittest.TestCase):
     def test_schematic_and_pcb_diffs_both_reach_the_comment(self):
