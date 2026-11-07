@@ -20,6 +20,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 ### Fixed
 
 - `voltage_overrides` rejects `true`/`false`, NaN and infinity.
+- `search_lcsc.py --details` fetches LCSC stock for keyword hits that jlcsearch returned without a figure before `--in-stock`, `--min-stock` or `--sort stock` judges them.
 - A `.kicad_dru` with unbalanced parentheses is now refused as KiCad refuses it: none of its rules apply and `custom_rules_error` says why.
 - A `.kicad_dru` bound written in parentheses or as arithmetic, such as `(min (0.5mm))` or `2*0.1mm`, is now evaluated as KiCad evaluates it, so the rule is checked; a bound KiCad cannot read refuses the file.
 - More `.kicad_dru` files that KiCad refuses are now refused too (an unknown constraint type, item or layer name, a malformed condition, the same constraint twice in one rule), so their rules no longer apply where KiCad applies none.

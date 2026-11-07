@@ -127,7 +127,8 @@ def normalize_component(c: dict) -> dict:
         # the next best one-line summary.
         desc = " ".join(str(v) for v in attrs.values() if v not in (None, "", "-"))
 
-    # None = no stock figure; the filter and sort read it as 0 and the output prints 0
+    # None = no stock figure; unless --details fetched one, the filter and sort read it as 0
+    # and the output prints 0
     stock = c.get("stock")
 
     # Basic part check (category rows may lack it; older shapes used 'basic')
@@ -328,14 +329,18 @@ def main():
     # Normalize components
     normalized = [normalize_component(c) for c in raw_components]
 
-    # jlcsearch's missing stock is unknown, not zero: the exact-code row takes LCSC's
-    # figure before --in-stock / --min-stock judge it.
+    # jlcsearch's missing stock is unknown, not zero: the exact-code row, and with --details
+    # every row a stock filter or sort will judge, takes LCSC's figure first.
     enriched = set()
-    if is_lcsc_code:
-        for item in normalized:
-            if item["stock"] is None and item["lcsc_code"] == query.upper():
-                enrich_from_wmsc(item)
-                enriched.add(id(item))
+    stock_judged = args.in_stock or args.min_stock > 0 or args.sort == "stock"
+    for item in normalized:
+        if item["stock"] is not None:
+            continue
+        if item["lcsc_code"] == query.upper() if is_lcsc_code else (args.details and stock_judged):
+            if enriched:
+                time.sleep(_ENRICH_DELAY_S)
+            enrich_from_wmsc(item)
+            enriched.add(id(item))
 
     # Apply filters
     filtered = []

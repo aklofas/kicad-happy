@@ -463,6 +463,23 @@ class TestMainCli(unittest.TestCase):
         code, _ = self._run(["nonexistent_part"])
         self.assertEqual(code, 1)
 
+    @patch("search_lcsc._ENRICH_DELAY_S", 0)
+    @patch("search_lcsc.search_lcsc_direct")
+    @patch("search_lcsc.search_jlcsearch")
+    def test_cli_keyword_details_in_stock_judges_lcsc_stock(self, mock_search, mock_direct):
+        row = dict(SEARCH_HIT)
+        del row["stock"]
+        mock_search.return_value = [row]
+        mock_direct.return_value = dict(json.loads(json.dumps(WMSC_DIRECT)), stock=1234)
+        code, output = self._run(["tactile", "--details", "--in-stock", "--json"])
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(output)["components"][0]["stock"], 1234)
+        self.assertEqual(mock_direct.call_count, 1)
+        mock_direct.reset_mock()
+        code, _ = self._run(["tactile", "--in-stock", "--json"])
+        self.assertEqual(code, 1)
+        mock_direct.assert_not_called()
+
     @patch("search_lcsc.search_lcsc_direct")
     @patch("search_lcsc.search_jlcsearch")
     def test_cli_keyword_search_does_not_hit_wmsc(self, mock_search, mock_direct):
