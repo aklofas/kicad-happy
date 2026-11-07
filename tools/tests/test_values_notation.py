@@ -124,6 +124,13 @@ class CrystalFrequency(unittest.TestCase):
             self.assertAlmostEqual(got / want, 1.0, places=9, msg=text)
         self.assertIsNone(_parse_crystal_frequency("X7R, 50V"))
 
+    def test_package_code_before_a_comma_is_not_the_integer_part(self):
+        from signal_detectors import _parse_crystal_frequency
+        for text, want in (("HC49,16MHz", 16e6), ("3225,16MHz", 16e6), ("HC-49S,16MHz", 16e6)):
+            got = _parse_crystal_frequency(text)
+            self.assertIsNotNone(got, msg=text)
+            self.assertAlmostEqual(got / want, 1.0, places=9, msg=text)
+
 
 def _ctx(components):
     with contextlib.redirect_stderr(io.StringIO()):

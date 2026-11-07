@@ -94,13 +94,15 @@ def _parse_crystal_frequency(value_str: str) -> float | None:
         return result
     if not value_str:
         return None
-    # Explicit MHz/kHz in value; a comma between digits is a decimal mark ("9,84375 MHz")
-    m = re.search(r'(\d+(?:[.,]\d+)?)\.?\s*[Mm][Hh][Zz]', value_str)
-    if m:
-        return float(m.group(1).replace(",", ".")) * 1e6
-    m = re.search(r'(\d+(?:[.,]\d+)?)\.?\s*[Kk][Hh][Zz]', value_str)
-    if m:
-        return float(m.group(1).replace(",", ".")) * 1e3
+    # Explicit MHz/kHz in value. A comma between digits is a decimal mark ("9,84375 MHz")
+    # only in a number that stands alone with at most three integer digits; in
+    # "HC49,16MHz" and "3225,16MHz" the digits before the comma are a package code.
+    for unit, scale in (('[Mm][Hh][Zz]', 1e6), ('[Kk][Hh][Zz]', 1e3)):
+        m = re.search(r'(?<![A-Za-z0-9.,])(\d{1,3},\d+)\.?\s*' + unit, value_str)
+        if not m:
+            m = re.search(r'(\d+\.?\d*)\s*' + unit, value_str)
+        if m:
+            return float(m.group(1).replace(",", ".")) * scale
     # MPN patterns: "YIC-12M20P2" → 12MHz, "-25M000" → 25MHz
     m = re.search(r'[-_](\d+)[Mm]\d', value_str)
     if m:
