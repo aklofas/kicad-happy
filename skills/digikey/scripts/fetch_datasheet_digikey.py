@@ -18,7 +18,7 @@ environment variables.
 
 Dependencies:
     - requests (pip install requests) — preferred, handles all manufacturer sites
-    - Falls back to urllib if requests is not installed (some sites may fail)
+    - Falls back to urllib if requests is not installed or is older than 2.32.2 (some sites may fail)
 
 Exit codes:
     0 = success (PDF downloaded)

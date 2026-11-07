@@ -1,7 +1,7 @@
 """Datasheet downloads go only to http(s) URLs on public addresses, every redirect is
 checked, and a download stops at a size and wall-clock limit. No network: the resolver
 and every transport are local fakes."""
-import argparse, contextlib, http.client, http.server, io, json, os, socket, ssl, subprocess, sys, tempfile, threading, time, unittest
+import argparse, contextlib, http.client, http.server, io, json, os, socket, ssl, subprocess, sys, tempfile, textwrap, threading, time, unittest
 import urllib.request, urllib.response
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
@@ -51,6 +51,18 @@ class _FakeRequests:
 
     def Session(self):
         return fake_requests(self.get).Session()
+
+
+class _StandInAdapter:
+    """Stands in for the pinned adapter, so a fake ``requests`` is used whether or not a
+    ``requests`` that can pin is installed."""
+
+    def __init__(self, pins):
+        pass
+
+
+def _pinnable():
+    return mock.patch.object(download, "_PinnedAdapter", _StandInAdapter)
 
 
 def _urllib_handler(answers, seen):
@@ -162,14 +174,20 @@ class DownloadPolicyTest(unittest.TestCase):
         self.addCleanup(self.dir.cleanup)
         self.out = os.path.join(self.dir.name, "x.pdf")
         self.stderr = io.StringIO()
+        p = mock.patch.object(download, "_noted", set())
+        p.start()
+        self.addCleanup(p.stop)
 
     @staticmethod
     def _resolve(host):
         return {"intranet.example": ["10.1.2.3"]}.get(host, PUBLIC)
 
-    def _download(self, url, *, requests=None, urllib_fn=None, playwright=None, handlers=None):
+    def _download(self, url, *, requests=None, urllib_fn=None, playwright=None, handlers=None,
+                  pinnable=True):
         patches = [mock.patch.object(download, "_requests", requests),
                    mock.patch.object(download, "_sync_playwright", playwright)]
+        if pinnable:
+            patches.append(_pinnable())
         if urllib_fn is not None:
             patches.append(mock.patch.object(download, "_download_urllib", urllib_fn))
         if handlers is not None:
@@ -325,6 +343,21 @@ class DownloadPolicyTest(unittest.TestCase):
         self.assertEqual(os.listdir(self.dir.name), [])
         self.assertEqual(fake.calls[0][1]["timeout"], 20)
 
+    def test_requests_that_cannot_pin_is_not_used_while_addresses_are_checked(self):
+        pdf = lambda: _FakeRequestsResponse(200, chunks=[PDF])
+        old = _FakeRequests({"https://example.com/x.pdf": pdf})
+        seen = []
+        handlers = _with_fake_urllib_handler(_urllib_handler(
+            {"https://example.com/x.pdf": (200, None, PDF)}, seen))
+        with mock.patch.object(download, "_PinnedAdapter", None):
+            self.assertTrue(self._download("https://example.com/x.pdf", requests=old,
+                                           handlers=handlers, pinnable=False))
+            self.assertEqual((old.calls, seen), ([], ["https://example.com/x.pdf"]))
+            with mock.patch.object(download, "_allow_private_hosts", return_value=True):
+                self.assertTrue(self._download("https://example.com/x.pdf", requests=old,
+                                               urllib_fn=_fail, pinnable=False))
+            self.assertEqual([u for u, _ in old.calls], ["https://example.com/x.pdf"])
+
     def test_playwright_gated(self):
         broken = _FakeRequests({})
         self.assertFalse(self._download("http://127.0.0.1/x.pdf", requests=broken,
@@ -393,7 +426,7 @@ class MouserScrapePolicyTest(unittest.TestCase):
         self.requests = _FakeRequests({})
         for patch in (mock.patch.object(download, "_resolve", return_value=PUBLIC),
                       mock.patch.object(download, "_allow_private_hosts", return_value=False),
-                      mock.patch.object(download, "_requests", self.requests)):
+                      mock.patch.object(download, "_requests", self.requests), _pinnable()):
             patch.start()
             self.addCleanup(patch.stop)
 
@@ -462,6 +495,8 @@ class TrickleDeadlineTest(unittest.TestCase):
     def _run(self, **patches):
         stderr = io.StringIO()
         start = time.monotonic()
+        if patches.get("_requests") is not None:
+            patches.setdefault("_PinnedAdapter", _StandInAdapter)
         with mock.patch.multiple(download, _sync_playwright=None, **patches), \
              redirect_stderr(stderr), redirect_stdout(io.StringIO()):
             ok = download.download_pdf(self.URL, os.path.join(self.dir.name, "x.pdf"))
@@ -751,18 +786,12 @@ class PlaywrightRouteTest(unittest.TestCase):
                 "https://cdn.example.org/app.js", "https://example.com/moved",
                 "file:///etc/passwd", "https://loop.example/a", "https://broken.example/x"]
         log = []
-        fake, registered = _fake_playwright(urls, chain, log)
-        with tempfile.TemporaryDirectory() as d, \
-             mock.patch.object(download, "_resolve", return_value=PUBLIC), \
-             mock.patch.object(download, "_allow_private_hosts", return_value=False), \
-             mock.patch.object(download, "_requests", None), \
-             mock.patch.object(download, "_download_urllib", lambda u, p: False), \
-             mock.patch.object(download, "_sync_playwright", fake), \
-             redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
-            self.assertFalse(download.download_pdf("https://example.com/x.pdf",
-                                                   os.path.join(d, "x.pdf")))
-        self.assertEqual(registered, ["**/*"])
-        log = _route_log(log)
+        # The browser runs only with private hosts allowed; the handler still checks every
+        # request against the default policy when it is given one.
+        handler = download._policy_route(False, time.monotonic() + 60)
+        with mock.patch.object(download, "_resolve", return_value=PUBLIC):
+            for u in urls:
+                handler(_FakeRoute(u, log, chain))
         loop = [("fetch", "https://loop.example/a", 0), ("fetch", "https://loop.example/b", 0)] * 3
         self.assertEqual(log, [
             ("fetch", "https://example.com/x.pdf", 0),
@@ -786,8 +815,8 @@ class PlaywrightRouteTest(unittest.TestCase):
 
     def _run(self, fake, *, timeout=None, keep=False):
         stderr = io.StringIO()
-        patches = [mock.patch.object(download, "_resolve", return_value=PUBLIC),
-                   mock.patch.object(download, "_allow_private_hosts", return_value=False),
+        patches = [mock.patch.object(download, "_resolve", side_effect=_fail),
+                   mock.patch.object(download, "_allow_private_hosts", return_value=True),
                    mock.patch.object(download, "_requests", None),
                    mock.patch.object(download, "_download_urllib", lambda u, p: False),
                    mock.patch.object(download, "_sync_playwright", fake)]
@@ -807,8 +836,9 @@ class PlaywrightRouteTest(unittest.TestCase):
 
     def test_browser_context_blocks_service_workers_and_websockets(self):
         log = []
-        fake, _ = _fake_playwright([], {}, log)
+        fake, registered = _fake_playwright([], {}, log)
         self.assertFalse(self._run(fake)[0])
+        self.assertEqual(registered, ["**/*"])
         self.assertEqual(log[0], ("new_context", {"service_workers": "block"}))
         self.assertLess(log.index(("route_web_socket", "**/*")),
                         log.index(("goto", "https://example.com/x.pdf")))
@@ -855,6 +885,49 @@ class PlaywrightRouteTest(unittest.TestCase):
         self.assertTrue(ok)
         self.assertEqual(self._saved, PDF)
         self.assertEqual([e for e in log if e[0] == "goto"], [("goto", "https://example.com/x.pdf")])
+
+    def test_browser_not_started_while_addresses_are_checked(self):
+        started = []
+        with tempfile.TemporaryDirectory() as d, \
+             mock.patch.object(download, "_resolve", return_value=PUBLIC), \
+             mock.patch.object(download, "_allow_private_hosts", return_value=False), \
+             mock.patch.multiple(download, _requests=None, _download_urllib=lambda u, p: False,
+                                 _sync_playwright=lambda: started.append(1), _noted=set()), \
+             redirect_stderr(io.StringIO()):
+            self.assertFalse(download.download_pdf("https://example.com/x.pdf",
+                                                   os.path.join(d, "x.pdf")))
+        self.assertEqual(started, [])
+
+    def test_installed_browser_is_skipped_with_one_note(self):
+        # A sync of several parts, Playwright installed, private hosts not allowed: the
+        # parts urllib cannot fetch fail without starting the browser, and the user is told
+        # once why the browser was not tried.
+        started, stderr = [], io.StringIO()
+        fetched = {"https://example.com/ok.pdf"}
+
+        def urllib_fn(url, path):
+            if url not in fetched:
+                return False
+            Path(path).write_bytes(PDF)
+            return True
+        with tempfile.TemporaryDirectory() as d, \
+             mock.patch.object(download, "_resolve", return_value=PUBLIC), \
+             mock.patch.object(download, "_allow_private_hosts", return_value=False), \
+             mock.patch.multiple(download, _requests=None, _download_urllib=urllib_fn,
+                                 _sync_playwright=lambda: started.append(1), _noted=set()), \
+             redirect_stdout(io.StringIO()), redirect_stderr(stderr):
+            download.take_transport_failure()
+            self.assertTrue(download.download_pdf("https://example.com/ok.pdf",
+                                                  os.path.join(d, "ok.pdf")))
+            self.assertNotIn("allow_private_hosts", stderr.getvalue())
+            for name in ("a", "b", "c"):
+                self.assertFalse(download.download_pdf(f"https://example.com/{name}.pdf",
+                                                       os.path.join(d, f"{name}.pdf")))
+            self.assertIsNone(download.take_transport_failure())
+        self.assertEqual(started, [])
+        notes = [line for line in stderr.getvalue().splitlines() if "browser" in line]
+        self.assertEqual(len(notes), 1, stderr.getvalue())
+        self.assertIn("datasheets.allow_private_hosts", notes[0])
 
 
 @unittest.skipIf(download._sync_playwright is None, "playwright is not installed")
@@ -1112,6 +1185,75 @@ class PinnedRequestsTest(unittest.TestCase):
         self.assertEqual(server_names, ["example.com", "cdn.example.org"])
         self.assertIn(b"\r\nHost: example.com\r\n", sent[0])
         self.assertIn(b"\r\nHost: cdn.example.org\r\n", sent[1])
+
+
+@unittest.skipIf(download._requests is None, "requests is not installed")
+class OldRequestsTest(unittest.TestCase):
+    def test_requests_older_than_2_32_2_never_connects_and_says_so_once(self):
+        # Real requests made to work like 2.31: no pool-key hook, and the adapter opens its
+        # connection through get_connection, which connects to the host by name. Two downloads
+        # and a product page go through urllib, requests opens no connection, one note says why.
+        code = textwrap.dedent(f"""
+            import io, json, os, sys, tempfile, urllib.request, urllib.response, http.client
+            import warnings
+            from contextlib import redirect_stderr
+            from unittest import mock
+            import requests, requests.adapters, urllib3.util.connection
+            warnings.simplefilter("ignore", DeprecationWarning)
+            requests.__version__ = "2.31.0"
+            adapter = requests.adapters.HTTPAdapter
+            if hasattr(adapter, "build_connection_pool_key_attributes"):
+                del adapter.build_connection_pool_key_attributes
+            adapter.get_connection_with_tls_context = (
+                lambda self, request, verify, proxies=None, cert=None:
+                    self.get_connection(request.url, proxies))
+            sys.path.insert(0, {str(ROOT / 'skills' / 'datasheets')!r})
+            from distributor_core import download
+
+            connects, seen = [], []
+            def create_connection(address, *a, **k):
+                connects.append(list(address))
+                raise OSError("no network in the test")
+
+            class Fake(urllib.request.BaseHandler):
+                def http_open(self, req):
+                    seen.append(req.full_url)
+                    body = b"%PDF-1.4 x" if req.full_url.endswith(".pdf") else b"<html>page</html>"
+                    resp = urllib.response.addinfourl(io.BytesIO(body), http.client.HTTPMessage(),
+                                                      req.full_url, 200)
+                    resp.msg = "OK"
+                    return resp
+                https_open = http_open
+            handlers = [Fake if issubclass(h, urllib.request.AbstractHTTPHandler) else h
+                        for h in download._URLLIB_HANDLERS]
+            err = io.StringIO()
+            with tempfile.TemporaryDirectory() as d, \\
+                 mock.patch.object(download, "_resolve", return_value=["93.184.216.34"]), \\
+                 mock.patch.object(download, "_allow_private_hosts", return_value=False), \\
+                 mock.patch.object(download, "_sync_playwright", None), \\
+                 mock.patch.object(download, "_URLLIB_HANDLERS", handlers), \\
+                 mock.patch.object(urllib3.util.connection, "create_connection", create_connection), \\
+                 mock.patch.dict(os.environ, {{"no_proxy": "*", "NO_PROXY": "*"}}), \\
+                 redirect_stderr(err):
+                ok = [download.download_pdf("https://example.com/" + n + ".pdf",
+                                            os.path.join(d, n + ".pdf")) for n in ("a", "b")]
+                page = download.fetch_page_text("https://example.com/product")
+            print(json.dumps({{"pinned": download._PinnedAdapter is not None, "ok": ok,
+                               "page": page, "connects": connects, "seen": seen,
+                               "stderr": err.getvalue()}}))
+        """)
+        out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                             timeout=60)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        r = json.loads(out.stdout)
+        self.assertEqual((r["pinned"], r["ok"], r["page"], r["connects"]),
+                         (False, [True, True], "<html>page</html>", []))
+        self.assertEqual(r["seen"], ["https://example.com/a.pdf", "https://example.com/b.pdf",
+                                     "https://example.com/product"])
+        notes = [line for line in r["stderr"].splitlines() if "requests" in line]
+        self.assertEqual(len(notes), 1, r["stderr"])
+        self.assertIn("2.31.0", notes[0])
+        self.assertIn("2.32.2", notes[0])
 
 
 class AllowPrivateTest(unittest.TestCase):

@@ -434,8 +434,10 @@ def download_pdf(url: str, output_path: str, *, resolve_redirects: bool = True) 
     2. Fall back to Python urllib (some sites may timeout)
     3. Fall back to a headless browser (playwright) when installed
 
-    requests and urllib connect only to the addresses the check approved (requests from
-    2.32.2), except through a proxy, which resolves the host itself.
+    requests and urllib connect only to the addresses the check approved, except through a
+    proxy, which resolves the host itself. A ``requests`` older than 2.32.2 cannot be held
+    to those addresses and the browser resolves every host again, so while addresses are
+    checked (the default) neither is used; a note says so once per run.
 
     A URL the policy refuses (``url_problem``) is never fetched. A refused redirect or
     an exceeded limit ends the whole call: no other method is tried.
@@ -461,10 +463,10 @@ def download_pdf(url: str, output_path: str, *, resolve_redirects: bool = True) 
     os.close(fd)
 
     methods = []
-    if _requests is not None:
+    if _requests_usable(addresses):
         methods.append(("requests", _download_requests))
     methods.append(("urllib", _download_urllib))
-    if _sync_playwright is not None:
+    if _sync_playwright is not None and not addresses:
         methods.append(("playwright", _download_playwright))
 
     # A refusal or an exceeded limit ends the call as permanent: it drops a transport failure an
@@ -512,6 +514,10 @@ def download_pdf(url: str, output_path: str, *, resolve_redirects: bool = True) 
                     pass
             if os.path.exists(part_path):
                 os.truncate(part_path, 0)
+        if _sync_playwright is not None and addresses:
+            _note_once("playwright", "Note: the headless-browser fallback was not tried: the "
+                       "browser resolves each host itself, so it runs only when "
+                       "datasheets.allow_private_hosts is set in ~/.kicad-happy.json")
         return False
     finally:
         _call.deadline = None
@@ -521,6 +527,32 @@ def download_pdf(url: str, output_path: str, *, resolve_redirects: bool = True) 
             os.remove(part_path)
         except FileNotFoundError:
             pass
+
+
+_noted = set()
+
+
+def _note_once(key: str, text: str) -> None:
+    """Print ``text`` to stderr the first time ``key`` is noted in this process."""
+    if key in _noted:
+        return
+    _noted.add(key)
+    try:
+        print(text, file=sys.stderr)
+    except (OSError, UnicodeError, ValueError):
+        pass
+
+
+def _requests_usable(addresses: list[str]) -> bool:
+    """Whether ``requests`` may fetch a URL whose host was checked to ``addresses``: only when
+    it can be held to them, or nothing was checked (private hosts allowed)."""
+    if _requests is None:
+        return False
+    if _PinnedAdapter is not None or not addresses:
+        return True
+    _note_once("requests", f"Note: requests {getattr(_requests, '__version__', '?')} cannot be "
+               "held to the checked address (2.32.2 or newer can), so downloads use urllib")
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -640,7 +672,8 @@ def _download_requests(url: str, output_path: str, *, sink=None, headers=None,
 
 _PinnedAdapter = None
 # urllib3's connect error, as requests itself imports it (urllib3 is not imported here).
-# Without it or the pool-key hook (requests before 2.32.2), requests connects unpinned.
+# Without it or the pool-key hook (requests before 2.32.2), requests cannot be pinned and is
+# not used while addresses are checked.
 _ConnectTimeoutError = (getattr(_requests.adapters, "ConnectTimeoutError", None)
                         if _requests is not None else None)
 if _ConnectTimeoutError is not None and hasattr(_requests.adapters.HTTPAdapter,
@@ -787,7 +820,7 @@ def fetch_page_text(url: str, *, max_bytes: int = 4 * 2**20, timeout_s: float = 
     _pin(url, addresses)
     buf = io.BytesIO()
     try:
-        for fn in ((_download_requests,) if _requests is not None else ()) + (_download_urllib,):
+        for fn in ((_download_requests,) if _requests_usable(addresses) else ()) + (_download_urllib,):
             buf.seek(0)
             buf.truncate()
             try:

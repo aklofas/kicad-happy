@@ -14,6 +14,8 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Microcontrollers with port H pins (PH0, PH1) are no longer reported as switching regulators; the regulator and sequencing findings built on them go away, and a rail only they appeared to supply now reports no source.
 - TPS62161-63 and TPS63001/2 use their datasheet switching frequency (2.25 MHz, 1.5 MHz); EMC harmonic findings for them move accordingly.
 - LED forward voltage comes from one cited colour table for the resistor check and the LED audit; red is 2.0 V, and an `ir` hint must start a word (`IR204A`, `XYC-IRA3212`, not `kira`). A green LED with no other hint now reads 3.2 V instead of 2.2 V in the resistor check, so some green over-current warnings go away, and yellow reads 2.1 V instead of 2.0 V in the LED audit.
+- A datasheet download connects to the address the URL check approved, on every redirect, so a host cannot switch to a private address between the check and the connect. With `requests` older than 2.32.2, downloads use urllib (requests cannot be held to the checked address), and the run notes it once; through a proxy, the proxy resolves the host.
+- The headless-browser fallback for datasheet downloads runs only when `datasheets.allow_private_hosts` is set: the browser resolves each host itself, so its connection could not be held to the checked address. Datasheets that need JavaScript (Broadcom, Espressif) are reported with their URL instead, and the run notes once why the browser was not tried.
 
 ### Fixed
 
@@ -90,7 +92,6 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Datasheet downloads: a server that stalls while sending headers no longer keeps its connection and a thread open after the download gives up.
 - `datasheet_verify.py` now exits 0 when an extraction has only warnings (exit 1 is kept for errors). It reports one warning per unresolved `power_domain` value instead of one per pin, and reports a null or malformed pin entry instead of crashing.
 - Datasheet downloads refuse NAT64, 6to4 and IPv4-compatible IPv6 addresses that embed a private or loopback IPv4 address.
-- A datasheet download connects to the address the URL check approved, on every redirect, so a host cannot switch to a private address between the check and the connect (through a proxy, the proxy resolves the host). With `requests` older than 2.32.2, and in the browser fallback, the host is still resolved again when connecting.
 - The browser fallback for datasheet downloads blocks service workers and WebSockets, checks the declared size before reading a response into memory, and stops at the download deadline.
 - A project copied or moved to another folder keeps trusting its datasheet extractions: the PDF is found in `datasheets/` by name when the recorded path no longer exists, and new extractions record the path relative to `datasheets/`. An extraction that is still not trusted is named in the schematic analysis `diagnostics`.
 - `plan_extraction.py --use-cached-scout` with no saved scout, or an unreadable plan or scout, stops with a one-line message and exit 2 instead of a traceback; the extraction pipeline no longer follows a symlinked cache file or waits on a named pipe.

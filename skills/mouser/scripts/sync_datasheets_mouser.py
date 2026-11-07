@@ -17,7 +17,7 @@ Download strategy per part:
 Download methods (per URL, tried in order):
   - requests library (redirects, anti-bot headers; some sites time out over urllib)
   - Python urllib (HTTP/1.1 fallback)
-  - Playwright headless browser (JS-rendered pages, last resort)
+  - Playwright headless browser (JS-rendered pages, last resort; only with datasheets.allow_private_hosts)
 
 Usage:
     python3 sync_datasheets_mouser.py <file.kicad_sch>
@@ -31,7 +31,7 @@ Requires MOUSER_SEARCH_API_KEY environment variable.
 
 Dependencies:
     - requests (pip install requests) — strongly recommended
-    - playwright (pip install playwright && playwright install chromium) — optional
+    - playwright (pip install playwright && playwright install chromium) — optional, only with datasheets.allow_private_hosts
 """
 
 import sys

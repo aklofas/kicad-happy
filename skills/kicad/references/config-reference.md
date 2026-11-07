@@ -239,7 +239,7 @@ Read only from `~/.kicad-happy.json`. A project or workspace `.kicad-happy.json`
 |-------|------|---------|-------------|
 | `allow_private_hosts` | bool | `false` | Let the datasheet sync and fetch scripts download from loopback, private, link-local and other non-public addresses. Only the JSON value `true` turns it on. |
 
-Without it, a datasheet download accepts only `http` and `https` URLs whose host resolves to public addresses, and every redirect is checked the same way. Each connection goes to the address the check approved, so a host cannot switch to a private address after the check; with `requests` older than 2.32.2, through a proxy, or in the browser fallback, the host is resolved again when connecting. The browser fallback (playwright) runs only for URLs that pass this check.
+Without it, a datasheet download accepts only `http` and `https` URLs whose host resolves to public addresses, and every redirect is checked the same way. Each connection goes to the address the check approved, so a host cannot switch to a private address after the check; through a proxy, the proxy resolves the host. A `requests` older than 2.32.2 cannot be held to that address, so downloads use urllib instead. The browser fallback (playwright) resolves each host itself, so it runs only when this option is set; the run notes once when it was skipped.
 
 ```jsonc
 // ~/.kicad-happy.json
