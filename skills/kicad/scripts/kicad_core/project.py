@@ -297,26 +297,13 @@ def expand_sheet_file(name: str, sch_path: str, pro: dict | None = None) -> str:
     return expand_text_vars(name, resolve)
 
 
-def _expanded_sheet_refs(sch_path: str, content: str) -> set[str]:
-    """Absolute paths of the sheet files *sch_path* names through project text variables."""
-    refs = set()
-    for m in _SHEETFILE_VAR.finditer(content):
-        expanded = expand_sheet_file(m.group(1), sch_path)
-        if "${" not in expanded:
-            refs.add(os.path.normcase(os.path.abspath(
-                os.path.join(os.path.dirname(os.path.abspath(sch_path)), expanded))))
-    return refs
-
-
-_SHEETFILE_VAR = re.compile(r'\(property\s+"Sheet ?file"\s+"([^"]*\$\{[^"]*)"', re.IGNORECASE)
-
-
 def is_referenced_as_child(file_path: str) -> bool:
     """Check if a .kicad_sch is referenced as a child sheet by a sibling.
 
-    Scans sibling .kicad_sch files in the same directory for Sheetfile
-    properties containing this file's basename.  Used by detect_sub_sheet()
-    to distinguish intermediate hierarchy nodes from the root.
+    Scans sibling .kicad_sch files in the same directory for a Sheetfile
+    property that names this file (whole path, project text variables expanded).
+    Used by detect_sub_sheet() to distinguish intermediate hierarchy nodes from
+    the root.
 
     Reads the full file because sheet blocks can appear after large
     lib_symbols sections (e.g. 680KB root with sheets at byte 681K).
@@ -324,6 +311,7 @@ def is_referenced_as_child(file_path: str) -> bool:
     abs_path = os.path.abspath(file_path)
     basename = os.path.basename(abs_path)
     parent_dir = os.path.dirname(abs_path)
+    wanted = os.path.normcase(abs_path)
 
     try:
         for fname in os.listdir(parent_dir):
@@ -333,7 +321,7 @@ def is_referenced_as_child(file_path: str) -> bool:
                     with open(sibling, 'r', encoding='utf-8',
                               errors='replace') as f:
                         content = f.read()
-                    if basename in content or os.path.normcase(abs_path) in _expanded_sheet_refs(sibling, content):
+                    if wanted in _sheet_file_refs(sibling, content):
                         return True
                 except OSError:
                     continue

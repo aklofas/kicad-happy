@@ -26,6 +26,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Each sheet file is now read once, however many times the design uses it; designs that repeat a large sheet many times analyze several times faster.
 - A schematic or board file that is cut short, holds a merge conflict, nests lists more than 200 deep, or is not a KiCad file at all (a Git LFS pointer, a copied `(lib_symbols …)` fragment) now gets one `diagnostics` record; whatever parses is still analyzed and the exit code is unchanged. Very deep nesting no longer crashes the analyzer.
 - A sub-sheet whose file does not exist now leaves one `diagnostics` record (missing sheet skipped) instead of disappearing silently. Sheet file names written with backslashes (`COMPONENT_SHEETS\MCU.kicad_sch`) are now found, as KiCad finds them; those sheets were left out.
+- A schematic is taken for an intermediate sub-sheet only when a sibling sheet names its file by whole path: `earth.kicad_sch` is no longer read as a child of a root that names `largeregearth.kicad_sch`.
 - A `.kicad-happy.json` or `.kicad_pro` saved with a UTF-8 byte-order mark (common Windows editors) is now read instead of skipped.
 - `"analysis": null` or a non-string entry in `power_rails.ignore` / `flag` is now warned and ignored instead of dropping every power-rail setting.
 - A `voltage_overrides` entry now also sets the output voltage used for a regulator's dropout and dissipation, and counts when deciding whether two ICs' I/O rails need a level shifter.

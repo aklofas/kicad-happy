@@ -129,6 +129,45 @@ class SheetFileTextVarsDiscoveryTest(unittest.TestCase):
                 os.path.abspath(root))
 
 
+class SubSheetByWholeNameTest(unittest.TestCase):
+    """A sheet is a sub-sheet only when a sibling names its file by whole path."""
+
+    def _child(self, tmp, sheetfile, target="adc.kicad_sch", variables=None):
+        pro = {"meta": {"version": 1}}
+        if variables:
+            pro["text_variables"] = variables
+        files = {"p.kicad_pro": json.dumps(pro),
+                 "p.kicad_sch": root_sch("p", sheetfile),
+                 target: sub_sch("p")}
+        for rel, text in files.items():
+            with open(os.path.join(tmp, rel), "w", encoding="utf-8") as f:
+                f.write(text)
+        return is_referenced_as_child(os.path.join(tmp, target))
+
+    def test_name_inside_a_sibling_file_name_is_not_a_reference(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertFalse(self._child(tmp, "my_adc.kicad_sch"))
+
+    def test_same_name_in_another_directory_is_not_a_reference(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertFalse(self._child(tmp, "../subs/adc.kicad_sch"))
+
+    def test_whole_name_is_a_reference(self):
+        for sheetfile in ("adc.kicad_sch", "./adc.kicad_sch"):
+            with self.subTest(sheetfile=sheetfile), tempfile.TemporaryDirectory() as tmp:
+                self.assertTrue(self._child(tmp, sheetfile))
+
+    def test_backslash_path_is_a_reference(self):
+        # the file holds .\\adc.kicad_sch, the s-expression escape of one backslash
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertTrue(self._child(tmp, ".\\\\adc.kicad_sch"))
+
+    def test_variable_holding_a_backslash_path_is_a_reference(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertTrue(self._child(tmp, "${DIR}${NAME}.kicad_sch",
+                                        variables={"DIR": ".\\", "NAME": "adc"}))
+
+
 class RootDiscoveryByWholePathTest(unittest.TestCase):
     def _write(self, tmp, files):
         for rel, text in files.items():
