@@ -122,6 +122,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A connector's ground pins count when an unlabelled wire joins them to another part.
 - DS-003 counts PDF datasheets only; JSON files and links to the same PDF no longer count.
 - A V-prefixed jumper or connector (a `Jumper_2_Bridged`, a `Header_1x2`, a VGA socket) is typed jumper or connector, not varistor.
+- ES-002 no longer asks for ground vias at a varistor that clamps to a supply rail or another line rather than to ground.
 
 ### Documentation
 

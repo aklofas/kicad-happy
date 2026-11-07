@@ -3247,10 +3247,11 @@ def check_esd_protection_path(pcb: Dict,
                 schema_era="v3.0",
             ))
 
-        # ES-002: Check ground via count near TVS. A discrete TVS diode clamping to a
-        # supply rail has no ground return to count.
+        # ES-002: Check ground via count near TVS. A discrete TVS diode or a varistor
+        # clamping to a supply rail or another line has no ground return to count.
         clamp_net = pd.get('clamp_net')
-        if all_vias and not (ptype == 'diode' and clamp_net and not is_emc_ground_name(clamp_net)):
+        if all_vias and not (ptype in ('diode', 'varistor') and clamp_net
+                             and not is_emc_ground_name(clamp_net)):
             gnd_vias_near = 0
             for via in all_vias:
                 vx = via.get('x', 0)

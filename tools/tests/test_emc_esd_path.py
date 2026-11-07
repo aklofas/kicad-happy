@@ -1,4 +1,5 @@
-"""ES-001 and ES-002 check discrete TVS diodes, which the protection detector types 'diode'."""
+"""ES-001 and ES-002 check discrete TVS diodes, which the protection detector types 'diode'.
+ES-002 counts ground vias only for a diode or varistor that clamps to ground."""
 import sys, unittest
 from pathlib import Path
 
@@ -35,5 +36,13 @@ class EsdPathDiodeType(unittest.TestCase):
         self.assertEqual(_rules("diode", 20, "/Power/GNDPWR"), ["ES-001", "ES-002"])
         self.assertEqual(_rules("diode", 20, "+9v"), ["ES-001"])
 
+    def test_varistor_ground_return_check_needs_a_ground_clamp_net(self):
+        self.assertEqual(_rules("varistor", 20, "GND"), ["ES-001", "ES-002"])
+        self.assertEqual(_rules("varistor", 20, "+9V"), ["ES-001"])
+        self.assertEqual(_rules("varistor", 20, "/AC/L2"), ["ES-001"])
+
+    def test_varistor_without_a_clamp_net_keeps_the_ground_via_check(self):
+        self.assertEqual(_rules("varistor", 20), ["ES-001", "ES-002"])
+
     def test_other_types_keep_the_ground_via_check_whatever_the_clamp_net(self):
-        self.assertEqual(_rules("varistor", 20, "+9V"), ["ES-001", "ES-002"])
+        self.assertEqual(_rules("tvs", 20, "+9V"), ["ES-001", "ES-002"])

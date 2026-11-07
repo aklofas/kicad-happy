@@ -340,7 +340,7 @@ Source: Goldfarb, E. & Pucha, R. "Modeling Via Grounds in Microstrip." IEEE Micr
 - **Fix:** Move TVS within 10mm of connector. Keep ESD current path as short as possible.
 
 ### ES-002: Insufficient ground vias near ESD device
-- **Severity:** error (no ground via within 3mm), info (single ground via); a discrete TVS diode whose clamp net is not a ground is not checked
+- **Severity:** error (no ground via within 3mm), info (single ground via); a discrete TVS diode or a varistor whose clamp net is not a ground is not checked
 - **Threshold:** <2 ground stitching vias within 3mm of the TVS footprint centre; checked only for a device within 50mm of a detected connector, and only when the PCB JSON has vias
 - **Rationale:** TVS ground path inductance is the most critical parasitic in ESD protection. Two parallel vias halve the inductance (~0.5 nH → ~0.25 nH), improving clamping by ~9V at 37.5 GA/s.
 - **Fix:** Add ≥2 ground vias directly adjacent to the TVS. Use short, wide traces to ground plane.
