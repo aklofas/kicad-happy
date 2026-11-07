@@ -106,6 +106,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - LM79xx fixed regulators read as negative (−5 V for an LM7905), and negative LDOs get a dissipation estimate, and inrush estimates cover negative regulators.
 - A regulator whose input and output rails have opposite signs no longer gets an LDO dissipation estimate.
 - Fixed-output suffixes `-10/-12/-15/-05` read from the data sheet for LM2596, LM2576, LM2940, TL780, NCP1117, XL1509 and AP7361C. TPS61030 uses its 0.5 V feedback reference and LTC3558 its 0.8 V reference.
+- Power sequencing links a regulator's power-good output to the enable it drives whichever regulator the schematic lists first.
 
 ### Documentation
 

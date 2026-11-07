@@ -1745,13 +1745,17 @@ def analyze_power_sequencing(ctx: AnalysisContext,
                     ]
                     if pg_targets:
                         pg_entry["connected_to"] = pg_targets
-                        # Check if PG drives another regulator's EN
-                        for dep in dependencies:
-                            if dep.get("en_net") == net:
-                                dep["sequenced_after"] = ref
-                                dep["sequence_signal"] = "power_good"
                 pg_connections.append(pg_entry)
                 break
+
+    # Joined after the loop so the edge does not depend on which regulator is listed first
+    for pg_entry in pg_connections:
+        if not pg_entry.get("connected_to"):
+            continue
+        for dep in dependencies:
+            if dep.get("en_net") == pg_entry["pg_net"]:
+                dep["sequenced_after"] = pg_entry["regulator"]
+                dep["sequence_signal"] = "power_good"
 
     if not dependencies and not floating_en and not pg_connections:
         return {}
