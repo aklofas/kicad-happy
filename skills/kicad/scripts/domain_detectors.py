@@ -5621,8 +5621,12 @@ def suggest_certifications(ctx: AnalysisContext, signal_analysis: dict) -> list[
             "reason": "RF transceiver detected",
         })
 
-    # WiFi/BT modules, by value or symbol name (the library nickname names a library)
+    # WiFi/BT modules, by value or symbol name (the library nickname names a library).
+    # Only an IC can be the module; a rescue power symbol or connector carries the
+    # board's name in its symbol name.
     for comp in ctx.components:
+        if comp["reference"].startswith("#") or comp.get("type") != "ic":
+            continue
         val_lib = (comp.get("value", "") + " " + comp.get("lib_id", "").split(":", 1)[-1]).lower()
         if any(k in val_lib for k in ("esp32", "esp8266", "nrf52", "cc254",
                                        "wl18", "cyw43", "ap621", "bcm43",
