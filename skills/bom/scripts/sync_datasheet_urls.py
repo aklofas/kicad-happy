@@ -220,9 +220,15 @@ def sync_datasheet_urls(
     files_modified = 0
 
     write_root = schematic_path.parent
+    root_project = resolve_project(schematic_path, schematic_path.read_text(encoding="utf-8"))[0]
+    if root_project is None and schematic_path.with_suffix(".kicad_pro").is_file():
+        root_project = schematic_path.stem    # a root sheet that places no symbol itself
     for sch_file in sch_files:
         text = sch_file.read_text(encoding="utf-8")
         project, projects = resolve_project(sch_file, text)
+        if root_project in projects:
+            # a sheet of the root's project, even with another project's file beside it
+            project = root_project
         if project is None and len(projects) > 1:
             print(f"Warning: {sch_file.name} holds instances of several projects "
                   f"({', '.join(projects)}) and none has a .kicad_pro above it; skipped. "

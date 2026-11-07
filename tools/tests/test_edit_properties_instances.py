@@ -206,6 +206,24 @@ class ProjectResolutionTest(unittest.TestCase):
         self.sync(self.child)
         self.assertEqual(self.datasheets(), ["https://e.com/A.pdf", "https://e.com/B.pdf"])
 
+    def test_recursive_sync_uses_the_root_project_past_a_stray_project_file(self):
+        (self.d / "new.kicad_pro").write_text("{}", encoding="utf-8")
+        (self.d / "sub" / "old.kicad_pro").write_text("{}", encoding="utf-8")
+        self.two_parts()
+        (self.d / "datasheets").mkdir()
+        (self.d / "sub" / "datasheets" / "manifest.json").replace(
+            self.d / "datasheets" / "manifest.json")
+        root = self.d / "new.kicad_sch"
+        root.write_text(
+            '(kicad_sch (version 20231120) (generator "eeschema")\n\t(uuid "root-uuid")\n'
+            '\t(sheet (at 0 0) (size 10 10) (uuid "s1")\n'
+            '\t\t(property "Sheetname" "child" (at 0 0 0))\n'
+            '\t\t(property "Sheetfile" "sub/child.kicad_sch" (at 0 0 0))\n\t)\n)\n',
+            encoding="utf-8")
+        with contextlib.redirect_stderr(io.StringIO()):
+            sync_datasheet_urls.sync_datasheet_urls(str(root), recursive=True)
+        self.assertEqual(self.datasheets(), ["https://e.com/A.pdf", "https://e.com/B.pdf"])
+
     def test_sync_skips_a_sheet_with_ambiguous_projects(self):
         self.two_parts()
         before = self.child.read_text(encoding="utf-8")
