@@ -247,7 +247,8 @@ class RoutingTest(unittest.TestCase):
                                 "routing_complete": False}, "findings": []}
         c = gate.check_routing(pcb)[0]
         self.assertEqual(c["status"], "warn")
-        self.assertIn("DRC", c["message"])
+        self.assertIn("without an RT-001 finding; does the board's DRC ignore unconnected items?",
+                      c["message"])
         self.assertEqual(c["details"]["unrouted_count"], 3)
 
     def test_suppressed_rt001_still_fails(self):

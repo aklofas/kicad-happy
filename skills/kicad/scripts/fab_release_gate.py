@@ -72,8 +72,8 @@ def check_routing(pcb: Dict) -> List[Dict]:
                            | {u.get("net_name", "?") for u in conn.get("unrouted", [])})
     if not unrouted_list:
         return [_check("routing", "routing_completeness", "warn",
-                        f"{unrouted} net(s) have no copper but are not listed: "
-                        "the board's DRC ignores unconnected items",
+                        f"{unrouted} unrouted net(s) are counted without an RT-001 "
+                        "finding; does the board's DRC ignore unconnected items?",
                         {"unrouted_count": unrouted, "unrouted_nets": []})]
     return [_check("routing", "routing_completeness", "fail",
                     f"{unrouted} unrouted net(s) out of {total}",
