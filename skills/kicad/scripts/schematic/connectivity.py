@@ -617,6 +617,12 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
     tie-break as KiCad does (see the driver loop).  Without it the sheet index
     stands in for the path.
     """
+    def is_root_sheet(sheet):
+        """A top-level sheet: "/" in sheet_paths (a multi-root project has several), else index 0."""
+        if sheet_paths and 0 <= sheet < len(sheet_paths):
+            return sheet_paths[sheet] == "/"
+        return sheet == 0
+
     # Collect all electrical points
     # Each point: (sheet, x, y, source_info)
     # The sheet index keeps each sheet's coordinate space separate so that
@@ -834,7 +840,11 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
             label_keys.setdefault((lbl_name, sheet), []).append(k)
         elif lbl["type"] == "hierarchical_label":
             # Cross-sheet by (namespaced) name — the pre-existing hier union.
-            label_keys.setdefault(lbl_name, []).append(k)
+            # A hierarchical label on a top-level sheet has no parent sheet pin and keeps its
+            # bare name; KiCad scopes it to that sheet, so it must not meet a global label
+            # or power net of that name elsewhere (it still joins on its own sheet).
+            if lbl.get("_is_sheet_pin") or not is_root_sheet(sheet):
+                label_keys.setdefault(lbl_name, []).append(k)
             # AND same-name LOCAL labels on this sheet: KiCad joins a real
             # hierarchical label to same-name local labels within its own sheet
             # (openmd's root V_{ANA}, where a hier V_{ANA} and a local V_{ANA}
@@ -1197,7 +1207,11 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
                     p = _NET_NAME_PRIORITY.get(
                         "sheet_pin" if info.get("is_sheet_pin") else lbl_type, 2)
                     cand_name = lbl_name
-                    is_local = lbl_type in ("label", "directive_label")
+                    # a top-level sheet's own hierarchical label is local to that sheet
+                    is_local = (lbl_type in ("label", "directive_label")
+                                or (lbl_type == "hierarchical_label"
+                                    and not info.get("is_sheet_pin")
+                                    and is_root_sheet(m_sheet)))
                     sheet_scoped = lbl_type != "global_label"
                     tie_name = info.get("bare_name") or lbl_name
                     key_tuple = (lbl_name, lbl_type)

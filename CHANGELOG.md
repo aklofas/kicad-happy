@@ -32,6 +32,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A sub-sheet whose file does not exist now leaves one `diagnostics` record (missing sheet skipped) instead of disappearing silently. Sheet file names written with backslashes (`COMPONENT_SHEETS\MCU.kicad_sch`) are now found, as KiCad finds them; those sheets were left out.
 - A schematic is taken for an intermediate sub-sheet only when a sibling sheet names its file by whole path: `earth.kicad_sch` is no longer read as a child of a root that names `largeregearth.kicad_sch`.
 - A port pin used through a placed alternate (I2C3_SCL on PA8) keeps the single-pin-net exemption.
+- A hierarchical label on the top sheet no longer joins a global label or power net of the same name on another sheet.
 - A `.kicad-happy.json` or `.kicad_pro` saved with a UTF-8 byte-order mark (common Windows editors) is now read instead of skipped.
 - `"analysis": null` or a non-string entry in `power_rails.ignore` / `flag` is now warned and ignored instead of dropping every power-rail setting.
 - A `voltage_overrides` entry now also sets the output voltage used for a regulator's dropout and dissipation, and counts when deciding whether two ICs' I/O rails need a level shifter.
