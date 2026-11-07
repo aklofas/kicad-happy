@@ -1633,7 +1633,7 @@ def main(argv: list[str] | None = None) -> int:
         }
         if args.text:
             print(format_text(result))
-        else:
+        elif not args.output:
             json.dump(result, sys.stdout, indent=2)
             print()
         return 0

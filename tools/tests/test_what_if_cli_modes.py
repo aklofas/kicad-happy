@@ -59,7 +59,18 @@ class NoAffectedOutput(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(exported, _amp())
         self.assertIn("No subcircuit changed; wrote the unchanged analysis to", r.stderr)
+        self.assertEqual(r.stdout, "")
+
+    def test_no_affected_without_output_prints_result(self):
+        r, exported = _run(_amp(), "R999=1k")
+        self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(json.loads(r.stdout)["affected_subcircuits"], [])
+        self.assertIsNone(exported)
+
+    def test_no_affected_text_with_output_still_prints_text(self):
+        r, _ = _run(_amp(), "R999=1k", "--output", "{OUT}", "--text")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("No subcircuits reference", r.stdout)
 
 
 if __name__ == "__main__":
