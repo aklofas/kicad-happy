@@ -1,0 +1,176 @@
+(kicad_sch
+	(version 20260306)
+	(generator "eeschema")
+	(generator_version "10.0")
+	(uuid "d3718e8d-b789-5e34-8c1f-1ef8cc5d7010")
+	(paper "A4")
+	(lib_symbols
+	(symbol "Device:R"
+		(pin_numbers
+			(hide yes)
+		)
+		(pin_names
+			(offset 0)
+		)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(duplicate_pin_numbers_are_jumpers no)
+		(property "Reference" "R"
+			(at 2.032 0 90)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "R"
+			(at 0 0 90)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at -1.778 0 90)
+			(show_name no)
+			(do_not_autoplace no)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 0 0 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Resistor"
+			(at 0 0 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "ki_keywords" "R res resistor"
+			(at 0 0 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "ki_fp_filters" "R_*"
+			(at 0 0 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(symbol "R_0_1"
+			(rectangle
+				(start -1.016 -2.54)
+				(end 1.016 2.54)
+				(stroke
+					(width 0.254)
+					(type default)
+				)
+				(fill
+					(type none)
+				)
+			)
+		)
+		(symbol "R_1_1"
+			(pin passive line
+				(at 0 3.81 270)
+				(length 1.27)
+				(name ""
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(number "1"
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+			)
+			(pin passive line
+				(at 0 -3.81 90)
+				(length 1.27)
+				(name ""
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(number "2"
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+			)
+		)
+		(embedded_fonts no)
+	)
+	)
+	(hierarchical_label "CTRL{A,B}" (shape input) (at 50.8 50.8 180) (effects (font (size 1.27 1.27))) (uuid "3815b6e6-7862-5041-b2a0-d1463ae00e63"))
+	(bus (pts (xy 50.8 50.8) (xy 50.8 76.2)) (stroke (width 0) (type default)) (uuid "60479e1a-709f-5495-9ffe-74a496ce74f2"))
+	(bus_entry (at 50.8 55.88) (size 2.54 2.54) (stroke (width 0) (type default)) (uuid "7c42730c-e93d-5c35-8f1f-64e8ce7743da"))
+	(label "CTRL.A" (at 53.34 58.42 0) (effects (font (size 1.27 1.27))) (uuid "07490dcb-83dc-52e7-b421-14d40a67fe93"))
+	(symbol (lib_id "Device:R") (at 53.34 62.23 0) (unit 1) (body_style 1)
+		(exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+		(uuid "283f947c-69cf-599b-91bb-15e87032093b")
+		(property "Reference" "R1" (at 55.88 62.23 0) (effects (font (size 1.27 1.27))))
+		(property "Value" "10k" (at 55.88 64.77 0) (effects (font (size 1.27 1.27))))
+		(property "Footprint" "Resistor_SMD:R_0402_1005Metric" (at 53.34 62.23 0) (hide yes) (effects (font (size 1.27 1.27))))
+		(property "Datasheet" "" (at 53.34 62.23 0) (hide yes) (effects (font (size 1.27 1.27))))
+		(pin "1" (uuid "1298c987-68d7-5f27-b7f6-0ca399ed564e")) (pin "2" (uuid "bffff757-622b-5ed8-8436-821192cdc0e8"))
+		(instances (project "repro" (path "/f70a4f83-62da-50ea-8672-a08dc569fa88/3961796b-cda3-52f2-91b2-b572037cf8c9" (reference "R1") (unit 1))))
+	)
+	(bus_entry (at 50.8 71.12) (size 2.54 2.54) (stroke (width 0) (type default)) (uuid "7971c456-1d05-5aea-9a2b-d7c403940f08"))
+	(label "CTRL.B" (at 53.34 73.66 0) (effects (font (size 1.27 1.27))) (uuid "8c5b799d-fd25-5fcd-a90d-28bf09bc6269"))
+	(symbol (lib_id "Device:R") (at 53.34 77.47 0) (unit 1) (body_style 1)
+		(exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+		(uuid "8e1b102f-25a5-59fe-84fe-502b32719b60")
+		(property "Reference" "R2" (at 55.88 77.47 0) (effects (font (size 1.27 1.27))))
+		(property "Value" "10k" (at 55.88 80.01 0) (effects (font (size 1.27 1.27))))
+		(property "Footprint" "Resistor_SMD:R_0402_1005Metric" (at 53.34 77.47 0) (hide yes) (effects (font (size 1.27 1.27))))
+		(property "Datasheet" "" (at 53.34 77.47 0) (hide yes) (effects (font (size 1.27 1.27))))
+		(pin "1" (uuid "d59cc333-f043-539b-9ea5-be660c399bd6")) (pin "2" (uuid "ffd2e9ae-36bc-58ea-89da-b0232e7dc8ec"))
+		(instances (project "repro" (path "/f70a4f83-62da-50ea-8672-a08dc569fa88/3961796b-cda3-52f2-91b2-b572037cf8c9" (reference "R2") (unit 1))))
+	)
+	(embedded_fonts no)
+)
