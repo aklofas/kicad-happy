@@ -10,6 +10,7 @@ sys.path.insert(0, str(ROOT / "skills" / "kicad" / "scripts"))
 from kicad_types import build_analysis_context  # noqa: E402
 from schematic.pipeline import apply_capacitor_derating  # noqa: E402
 from schematic.system_analyses import analyze_voltage_derating  # noqa: E402
+from signal_detectors import _merged_caps  # noqa: E402
 
 
 def _net_ctx(pins):
@@ -59,6 +60,20 @@ class LcFilterDerating(unittest.TestCase):
         par = self._cap("C7", parallel_refs=["C7", "C9"])
         apply_capacitor_derating(_lc_results(par), _net_ctx(self.PINS))
         self.assertNotIn("applied_voltage_V", par)
+
+    def _merged(self, refs):
+        ctx = _net_ctx(self.PINS)
+        cap = _merged_caps(ctx, refs, 22e-6 * len(refs))
+        cap.update(package="0603", dielectric="X5R")
+        apply_capacitor_derating(_lc_results(cap), ctx)
+        return cap
+
+    def test_merged_group_with_a_feedforward_cap_is_not_derated_in_either_order(self):
+        self.assertNotIn("applied_voltage_V", self._merged(["C7", "C9"]))
+        self.assertNotIn("applied_voltage_V", self._merged(["C9", "C7"]))
+
+    def test_merged_group_of_ground_returning_caps_is_derated(self):
+        self.assertEqual(self._merged(["C7", "C8"])["applied_voltage_V"], 3.3)
 
     def test_lc_capacitor_on_an_unknown_net_is_left_alone(self):
         cap = self._cap("C7")

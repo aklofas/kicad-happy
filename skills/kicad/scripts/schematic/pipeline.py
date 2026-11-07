@@ -727,7 +727,7 @@ def apply_capacitor_derating(results_dict, ctx: AnalysisContext | None = None):
 
     def _returns_to_ground(cap, node):
         # A feedforward, sense or bootstrap cap on the node does not see the rail voltage
-        for ref in cap.get("parallel_refs") or [cap.get("ref")]:
+        for ref in cap.get("parallel_caps") or cap.get("parallel_refs") or [cap.get("ref")]:
             n1, n2 = ctx.get_two_pin_nets(ref)
             if node not in (n1, n2) or not ctx.is_ground(n2 if n1 == node else n1):
                 return False
