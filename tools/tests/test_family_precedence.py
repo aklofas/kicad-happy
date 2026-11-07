@@ -121,6 +121,19 @@ class DetectorFamilies(unittest.TestCase):
         reasons = [s["reason"] for s in suggest_certifications(ctx, {}) if s["standard"] == "FCC Part 15"]
         self.assertEqual(reasons, ["Wireless module detected: ESP32_QT_PY1"])
 
+    def test_certification_names_a_bare_soc_typed_other(self):
+        ctx = _ctx([_comp("U1", "ESP32-S3", "MCU_Espressif:ESP32-S3", ctype="other")])
+        reasons = [s["reason"] for s in suggest_certifications(ctx, {}) if s["standard"] == "FCC Part 15"]
+        self.assertEqual(reasons, ["Wireless module detected: U1"])
+
+    def test_certification_names_the_module_wl001_found(self):
+        # The radio word is only on the antenna connector; the cellular module is the radio.
+        ctx = _ctx([_comp("ANT1", "U.FL-R-SMT-1", "NB-IoT-DevKit_Rev_D:WIFI_ANT_ESP8266", ctype="connector"),
+                    _comp("U6", "Quectel_NB-IoT_BC66_Module", "OLIMEX_RF:BC66")])
+        reasons = [s["reason"] for s in suggest_certifications(ctx, {"wireless_modules": [{"reference": "U6"}]})
+                   if s["standard"] == "FCC Part 15"]
+        self.assertEqual(reasons, ["Wireless module detected: U6"])
+
     def test_esp32_keeps_both_rf_transceiver_and_wifi_ble(self):
         esp = _comp("U1", "ESP32-WROOM-32", "RF_Module:ESP32-WROOM-32")
         rf = detect_rf_chains(_ctx([esp, _comp("U2", "SKY13350", "RF_Switch:SKY13350")]))
