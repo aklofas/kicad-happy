@@ -878,13 +878,16 @@ def analyze_voltage_derating(ctx: AnalysisContext, signal_analysis: dict,
             ))
 
     # ---- IC absolute max voltage check ----
+    abs_max_by_mpn: dict = {}   # read once per part, so a bad file is reported once
     for comp in components:
         if comp["type"] != "ic":
             continue
         mpn = comp.get("mpn", "").strip()
         if not mpn or len(mpn) < 3:
             continue
-        abs_max = _read_ic_abs_max(mpn)
+        if mpn not in abs_max_by_mpn:
+            abs_max_by_mpn[mpn] = _read_ic_abs_max(mpn)
+        abs_max = abs_max_by_mpn[mpn]
         if not abs_max:
             continue
         ref = comp["reference"]

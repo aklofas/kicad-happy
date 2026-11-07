@@ -45,11 +45,11 @@ def _write_cache(ex):
         {"extractions": {"XA100": {"file": "XA100.json"}}}), encoding="utf-8")
 
 
-def _derating_ctx():
+def _derating_ctx(refs=("U1",)):
     return SimpleNamespace(
-        components=[{"type": "ic", "reference": "U1", "value": "XA100", "mpn": "XA100",
-                     "pins": [{"number": "1"}]}],
-        nets={}, pin_net={("U1", "1"): ("+12V", None)},
+        components=[{"type": "ic", "reference": r, "value": "XA100", "mpn": "XA100",
+                     "pins": [{"number": "1"}]} for r in refs],
+        nets={}, pin_net={(r, "1"): ("+12V", None) for r in refs},
         is_power_net=lambda n: n == "+12V", is_ground=lambda n: False,
         rail_by_net={}, rail_voltage_or=lambda n, f: 12.0,
         rail_source_fields=lambda *a: {}, diagnostics=[])
@@ -128,14 +128,14 @@ class SymlinkedProjectCacheTest(unittest.TestCase):
 
 
 class UnreadableExtractionTest(unittest.TestCase):
-    def _run(self, text):
+    def _run(self, text, refs=("U1",)):
         from schematic.system_analyses import analyze_voltage_derating
         with tempfile.TemporaryDirectory() as tmp:
             ex = Path(tmp) / "datasheets" / "extracted"
             _write_cache(ex)
             if text is not None:
                 (ex / "XA100.json").write_text(text, encoding="utf-8")
-            ctx = _derating_ctx()
+            ctx = _derating_ctx(refs)
             with contextlib.redirect_stderr(io.StringIO()):
                 out = analyze_voltage_derating(ctx, {}, project_dir=tmp)
         return [f for f in out if f.get("rule_id") == "VD-002"], ctx.diagnostics
@@ -146,6 +146,16 @@ class UnreadableExtractionTest(unittest.TestCase):
         self.assertEqual(len(diags), 1)
         self.assertEqual(diags[0]["source"], "schematic.system_analyses.analyze_voltage_derating")
         self.assertIn("XA100", diags[0]["effect"])
+
+    def test_malformed_extraction_used_by_several_ics_records_one_diagnostic(self):
+        findings, diags = self._run("{not json", refs=("U1", "U2", "U3"))
+        self.assertEqual(findings, [])
+        self.assertEqual(len(diags), 1)
+
+    def test_readable_extraction_used_by_several_ics_checks_each(self):
+        findings, diags = self._run(None, refs=("U1", "U2"))
+        self.assertEqual(sorted(f["components"][0] for f in findings), ["U1", "U2"])
+        self.assertEqual(diags, [])
 
     def test_readable_extraction_records_nothing(self):
         findings, diags = self._run(None)
