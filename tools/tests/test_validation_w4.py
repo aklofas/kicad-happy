@@ -6,6 +6,10 @@ Expected values come from the datasheets and the arithmetic:
 - LM317 needs >= 3.5-10 mA minimum load, so its datasheet divider is R1 = 240 ohm (OUT-ADJ);
   240 || 720 = 180 ohm is the intended value, not a wasteful divider.
 - 100 || 100 = 50 ohm < 1 kohm on a part without that requirement is still worth an info.
+- LM2596 places R1 (FB to ground) at 240 ohm to 1.5 kohm, "approximately 1 kohm" (SNVS124);
+  LM2576 at 1 kohm to 5 kohm (SNVS107). 3k / 1k (750 ohm) is the datasheet divider; R1 = 220 ohm
+  sits below the LM2596 range and keeps the info.
+- The compensation warning names no part value: a 10 nF FB/COMP-to-ground cap is not a safe default.
 - VM-001 threshold table (validation_detectors._VOLTAGE_THRESHOLDS): a 3.3 V-class input has a
   3.6 V absolute maximum, a 1.8 V-class input 2.0 V, so 5.0 V into 3.3 V and 3.3 V into 1.8 V are errors.
 """
@@ -77,6 +81,17 @@ class FeedbackCompensation(unittest.TestCase):
         self.assertEqual(f["summary"], "Regulator U1: missing compensation capacitor")
         self.assertEqual(f["nets"], ["COMP"])
 
+    def test_uc3842_compensation_warning_prescribes_no_component(self):
+        comps = [ic("U1", "UC3842"), res("R1", "10k"), res("R2", "2.5k")]
+        nets = {"VOUT": [("R1", "1", "~", "passive")],
+                "FB": [("U1", "2", "VFB", "input"), ("R1", "2", "~", "passive"), ("R2", "1", "~", "passive")],
+                "COMP": [("U1", "1", "COMP", "output")],
+                "GND": [("U1", "5", "GND", "power_in"), ("R2", "2", "~", "passive")]}
+        (f,) = rule(vd.validate_feedback_stability(ctx_of(comps, nets, {"VOUT", "GND"}),
+                                                   [regulator("U1", ("R1", 10000), ("R2", 2500))]), "FS-001")
+        self.assertEqual(f["summary"], "Regulator U1: missing compensation capacitor")
+        self.assertNotIn("fix_params", f)
+
     def test_uc3843_comp_with_capacitor_is_silent(self):
         comps = [ic("U1", "UC3843"), res("R1", "10k"), res("R2", "2.5k"),
                  {"reference": "C1", "type": "capacitor", "value": "100n"}]
@@ -116,6 +131,24 @@ class FeedbackImpedance(unittest.TestCase):
         (f,) = rule(vd.validate_feedback_stability(ctx_of(comps, nets, {"VOUT", "GND"}),
                                                    [regulator("U1", ("R1", 100), ("R2", 100))]), "FS-001")
         self.assertEqual(f["summary"], "Regulator U1: feedback divider impedance too low (50R)")
+
+    def _simple_switcher(self, value, r_top, r_bottom):
+        comps = [ic("U1", value), res("R1", str(r_top)), res("R2", str(r_bottom))]
+        nets = {"VOUT": [("U1", "2", "OUTPUT", "output"), ("R1", "1", "~", "passive")],
+                "FB": [("U1", "4", "FB", "input"), ("R1", "2", "~", "passive"), ("R2", "1", "~", "passive")],
+                "GND": [("U1", "3", "GND", "power_in"), ("R2", "2", "~", "passive")]}
+        return rule(vd.validate_feedback_stability(ctx_of(comps, nets, {"VOUT", "GND"}),
+                                                   [regulator("U1", ("R1", r_top), ("R2", r_bottom))]), "FS-001")
+
+    def test_lm2596_datasheet_divider_gets_no_low_impedance_info(self):
+        self.assertEqual(self._simple_switcher("LM2596S-ADJ", 3000, 1000), [])
+
+    def test_lm2576_datasheet_divider_gets_no_low_impedance_info(self):
+        self.assertEqual(self._simple_switcher("LM2576HVS-ADJ", 3300, 1000), [])
+
+    def test_lm2596_r1_below_datasheet_range_still_gets_info(self):
+        (f,) = self._simple_switcher("LM2596S-ADJ", 680, 220)
+        self.assertEqual(f["summary"], "Regulator U1: feedback divider impedance too low (166R)")
 
 
 VM_NETS_POWER = {"+5V": [("U5", "1", "VDD", "power_in")],

@@ -1367,12 +1367,9 @@ def validate_crystal_load_caps(
 # FS-001: Feedback network stability pre-check
 # ---------------------------------------------------------------------------
 
+# Parts with a compensation pin (COMP) that takes an external network.
 _REQUIRES_COMPENSATION_KEYWORDS = (
-    'lm2596', 'lm2576',
-    'tps5430', 'tps5450', 'tps54', 'tps40',
-    'lm259', 'lm317', 'lm337', 'lm350',
-    'lt308', 'lt108',
-    'mc34', 'mc33',
+    'tps54', 'tps40',
     'uc384', 'uc282',
 )
 
@@ -1392,6 +1389,11 @@ _MIN_LOAD_ADJ_KEYWORDS = ('lm317', 'lm337', 'lm338', 'lm350', 'lm1117', 'ams1117
                           'lm1086', 'lt1083', 'lt1084', 'lt1085', 'lt1086', 'az1117', 'ap1117',
                           'ncp1117', 'spx1117', 'tlv1117', 'lm1084', 'lm1085', 'lt1117',
                           'lt317a', 'lm117', 'lm217', 'ld1085', 'ld1086')
+
+# Simple Switcher bucks whose datasheet R1 (FB to ground) range puts the divider below
+# _FB_IMPEDANCE_MIN: LM2596 240 ohm to 1.5 kohm, R1 about 1 kohm (SNVS124); LM2576 1 kohm
+# to 5 kohm (SNVS107).
+_LOW_DIVIDER_R1_RANGE = (('lm2596', 240, 1500), ('lm2576', 1000, 5000))
 
 _FB_IMPEDANCE_MIN = 1000
 _FB_IMPEDANCE_MAX = 1000000
@@ -1430,7 +1432,9 @@ def validate_feedback_stability(
 
         comp = ctx.comp_lookup.get(ref)
         min_load_adj = (fb_div.get('reference') == 'out_adj'
-                        or bool(comp and match_ic_keywords(comp, _MIN_LOAD_ADJ_KEYWORDS)))
+                        or bool(comp and match_ic_keywords(comp, _MIN_LOAD_ADJ_KEYWORDS))
+                        or bool(comp and any(match_ic_keywords(comp, (kw,)) and lo <= r_bottom <= hi
+                                             for kw, lo, hi in _LOW_DIVIDER_R1_RANGE)))
         if parallel_impedance < _FB_IMPEDANCE_MIN and not min_load_adj:
             findings.append(make_finding(
                 detector='validate_feedback_stability', rule_id='FS-001', category='power_integrity',
@@ -1471,7 +1475,6 @@ def validate_feedback_stability(
                         severity='warning', confidence='heuristic', evidence_source='heuristic_rule',
                         components=[ref], nets=[check_net],
                         recommendation=f'Add a compensation network per {comp.get("value", "")} datasheet.',
-                        fix_params={'type': 'add_component', 'components': [{'type': 'capacitor', 'value': '10n', 'net_from': check_net, 'net_to': 'GND'}], 'basis': f'{comp.get("value", "")} requires external compensation'},
                         impact='Regulator may oscillate or have poor transient response',
                         provenance=make_provenance('fs_stability_check', 'heuristic'),
                         schema_era='v1.4',
