@@ -541,7 +541,7 @@ Count D01 (draw), D02 (move), D03 (flash), G36/G37 (regions) per layer:
 - `B_Cu flashes ≈ PTH drill via count` — back via pads should match via drills
 - Region count (G36/G37 pairs) on copper = number of zone fill polygons
 
-**Flashes or regions:** Mask and paste layers may draw pad openings as **regions (G36/G37)** instead of flashes (D03), so D03 flash counts can be 0 on mask/paste layers even when pads exist. This is common in KiCad 5 files (about half of them use regions) and rare in KiCad 6+. On any version, count flashes plus regions:
+**Flashes or regions:** Mask and paste layers may draw pad openings as **regions (G36/G37)** instead of flashes (D03), so D03 flash counts can be 0 on mask/paste layers even when pads exist. This is common in KiCad 5 files (about half of mask layers and about a quarter of paste layers use regions) and rare in KiCad 6+. On any version, count flashes plus regions:
 - F_Mask openings ≈ total front pad + via count
 - F_Paste openings ≈ SMD pad count (no via openings)
 - A layer may mix flashes AND regions
@@ -625,7 +625,7 @@ The generating KiCad version is in the software string (`TF.GenerationSoftware,K
 | Software string | `Pcbnew,5.x.x` | `Pcbnew,6.x.x` / `7.x.x` / `8.x.x` / `9.x.x` |
 | Silkscreen suffix | `_SilkS` by default | `_Silkscreen` by default |
 | Job file | `.gbrjob` from 5.1 | `.gbrjob` present |
-| Mask/paste pad openings | Flashes or regions (about half each) | Flashes (D03); regions are rare |
+| Mask/paste pad openings | Flashes or regions (mask: about half regions; paste: about a quarter) | Flashes (D03); regions are rare |
 
 The attribute syntax depends on the X2 output setting (KiCad 5.1+), not the version:
 
