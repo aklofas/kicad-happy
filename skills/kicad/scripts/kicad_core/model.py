@@ -21,6 +21,7 @@ class _PinRequired(TypedDict):
 class Pin(_PinRequired, total=False):
     """A placed-symbol pin as ``compute_pin_positions`` emits it (``Component['pins']``)."""
     hidden: bool
+    base_name: str  # the library pin name when a placed alternate replaced it
 
 
 class NetPin(TypedDict):

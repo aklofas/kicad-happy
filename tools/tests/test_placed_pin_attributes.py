@@ -4,7 +4,7 @@ symbols (jumper_pin_groups, duplicate_pin_numbers_are_jumpers) join their pins.
 
 Expected values are kicad-cli 10.0.6 `sch export netlist` output for these same files
 (pinfunction = <name>_<number>, pintype) and the KiCad ExpandStackedPinNotation rule."""
-import os, sys, tempfile, unittest
+import json, os, sys, tempfile, unittest
 from contextlib import redirect_stderr
 from io import StringIO
 from pathlib import Path
@@ -90,6 +90,55 @@ class PinAlternateTest(unittest.TestCase):
                for net in r["nets"].values() for p in net["pins"] if p["component"] == "U1"}
         self.assertIn(("32", "TIM1_CH4", "output"), got)
         self.assertNotIn("_pin_alternates", r["components"][0])
+
+
+def _single_pin_sch():
+    lib = ('(lib_symbols (symbol "t:MCU" (in_bom yes) (on_board yes)'
+           f' (property "Reference" "U" (at 0 0 0) {F}) (property "Value" "MCU" (at 0 0 0) {F})'
+           ' (symbol "MCU_1_1" '
+           + _apin("bidirectional", "41", "PA8", -10, 0, '(alternate "I2C3_SCL" bidirectional line)')
+           + _apin("input", "7", "NRST", -10, 5, '')
+           + ')))')
+    sym = ('(symbol (lib_id "t:MCU") (at 100 100 0) (unit 1) (in_bom yes) (on_board yes) (dnp no)'
+           ' (uuid "00000000-0000-0000-0000-000000000001")'
+           f' (property "Reference" "U1" (at 0 0 0) {F}) (property "Value" "MCU" (at 0 0 0) {F})'
+           ' (pin "41" (alternate "I2C3_SCL") (uuid "00000000-0000-0000-0000-0000000000c1"))'
+           ' (pin "7" (uuid "00000000-0000-0000-0000-0000000000c2"))'
+           f' (instances (project "t" (path "/{U}" (reference "U1") (unit 1)))))')
+    labels = (f'(label "SCL" (at 90 100 0) {F} (uuid "00000000-0000-0000-0000-0000000000d1"))'
+              f' (label "RESET" (at 90 95 0) {F} (uuid "00000000-0000-0000-0000-0000000000d2"))')
+    return (f'(kicad_sch (version 20251028) (generator "eeschema") (uuid "{U}") (paper "A4")'
+            f' {lib} {sym} {labels} (sheet_instances (path "/" (page "1"))))')
+
+
+def _single_pin_count(r):
+    (f,) = [f for f in r["findings"] if f.get("rule_id") == "DO-DET"
+            and f.get("category") == "single_pin_nets"]
+    return f["count"]
+
+
+class AlternateSinglePinNetTest(unittest.TestCase):
+    """U1 has PA8 placed as I2C3_SCL alone on SCL and NRST alone on RESET: only RESET counts."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.r = _analyze(_single_pin_sch())
+
+    def test_port_pin_under_placed_alternate_keeps_the_exemption(self):
+        self.assertEqual(_single_pin_count(self.r), 1)
+
+    def test_non_port_pin_alone_on_a_net_is_still_reported(self):
+        r = _analyze(_single_pin_sch().replace(' (alternate "I2C3_SCL") (uuid', ' (uuid'))
+        self.assertEqual([p["pin_name"] for p in r["nets"]["SCL"]["pins"]], ["PA8"])
+        self.assertEqual(_single_pin_count(r), 1)
+        r = _analyze(_single_pin_sch().replace('"PA8"', '"SCL_IN"'))
+        self.assertEqual(_single_pin_count(r), 2)
+
+    def test_net_pin_shows_the_alternate_name(self):
+        self.assertEqual([p["pin_name"] for p in self.r["nets"]["SCL"]["pins"]], ["I2C3_SCL"])
+
+    def test_library_pin_name_stays_out_of_the_output(self):
+        self.assertNotIn("base_name", json.dumps(self.r))
 
 
 # --- stacked pin numbers ---------------------------------------------------------------------

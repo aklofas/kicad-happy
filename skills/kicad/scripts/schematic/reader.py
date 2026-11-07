@@ -342,7 +342,9 @@ def compute_pin_positions(component: dict, lib_symbols: dict) -> list[Pin]:
         # KiCad's SetAlt: a placed alternate applies when it is not the base name and the
         # library pin defines it; the alternate's name and type replace the pin's.
         alt = (component.get("_pin_alternates") or {}).get(pin_num)
+        base_name = None
         if alt and "_alternates" in pin and alt != pin["_alt_base"] and alt in pin["_alternates"]:
+            base_name = pin_name
             pin_name, pin_type = alt, pin["_alternates"][alt] or pin_type
 
         for number in _expand_stacked(pin_num):
@@ -355,6 +357,8 @@ def compute_pin_positions(component: dict, lib_symbols: dict) -> list[Pin]:
             }
             if pin.get("hidden"):
                 entry["hidden"] = True
+            if base_name is not None:
+                entry["base_name"] = base_name
             pin_positions.append(entry)
 
     return pin_positions

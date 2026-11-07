@@ -3779,6 +3779,9 @@ def detect_design_observations(ctx: AnalysisContext, results: dict) -> list[dict
             })
 
     # 3. Single-pin signal nets
+    # A port pin placed under an alternate (I2C3_SCL on PA8) is still a port pin.
+    base_pin_names = {(c["reference"], cp["number"]): cp["base_name"]
+                      for c in ctx.components for cp in c.get("pins", []) if "base_name" in cp}
     single_pin_nets = []
     for net_name, net_info in ctx.nets.items():
         if net_name.startswith("__unnamed_"):
@@ -3795,8 +3798,9 @@ def detect_design_observations(ctx: AnalysisContext, results: dict) -> list[dict
             comp = ctx.comp_lookup.get(p["component"])
             if comp and comp["type"] == "ic":
                 pin_name = p.get("pin_name", p["pin_number"])
-                pn_upper = pin_name.upper()
-                if re.match(r'^P[A-K]\d', pn_upper) or re.match(r'^GPIO', pn_upper):
+                base_name = base_pin_names.get((p["component"], p["pin_number"]))
+                if any(re.match(r'^P[A-K]\d', n.upper()) or re.match(r'^GPIO', n.upper())
+                       for n in (pin_name, base_name) if n):
                     continue
                 single_pin_nets.append({
                     "component": p["component"],
