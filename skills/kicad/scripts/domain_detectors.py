@@ -5622,10 +5622,11 @@ def suggest_certifications(ctx: AnalysisContext, signal_analysis: dict) -> list[
         })
 
     # WiFi/BT modules, by value or symbol name (the library nickname names a library).
-    # Only an IC can be the module; a rescue power symbol or connector carries the
-    # board's name in its symbol name.
+    # A rescue power symbol or a connector carries the board's name in its symbol
+    # name; neither it nor a passive is the module.
     for comp in ctx.components:
-        if comp["reference"].startswith("#") or comp.get("type") != "ic":
+        if comp["reference"].startswith("#") or comp.get("type") in (
+                "connector", "power_symbol", "resistor", "capacitor"):
             continue
         val_lib = (comp.get("value", "") + " " + comp.get("lib_id", "").split(":", 1)[-1]).lower()
         if any(k in val_lib for k in ("esp32", "esp8266", "nrf52", "cc254",

@@ -116,6 +116,11 @@ class DetectorFamilies(unittest.TestCase):
                           "USB_A-Connector-KXKM_ESP32_battery_management_board-rescue", ctype="connector")])
         self.assertEqual([s for s in suggest_certifications(ctx, {}) if s["standard"] == "FCC Part 15"], [])
 
+    def test_certification_names_a_radio_board_typed_other(self):
+        ctx = _ctx([_comp("ESP32_QT_PY1", "microcontroller", "!RCMhardware:ESP32_QT_PY", ctype="other")])
+        reasons = [s["reason"] for s in suggest_certifications(ctx, {}) if s["standard"] == "FCC Part 15"]
+        self.assertEqual(reasons, ["Wireless module detected: ESP32_QT_PY1"])
+
     def test_esp32_keeps_both_rf_transceiver_and_wifi_ble(self):
         esp = _comp("U1", "ESP32-WROOM-32", "RF_Module:ESP32-WROOM-32")
         rf = detect_rf_chains(_ctx([esp, _comp("U2", "SKY13350", "RF_Switch:SKY13350")]))
