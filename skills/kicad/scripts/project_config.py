@@ -21,9 +21,10 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 from fnmatch import fnmatch
 import sys
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any, Dict, List, Optional
 
 # standalone load by file path (harness spec_from_file_location, docs)
@@ -368,6 +369,11 @@ def _load_and_validate(path: str) -> Optional[Dict[str, Any]]:
         if output_dir is not None and (not isinstance(output_dir, str) or not output_dir):
             print(f'Warning: {path}: analysis.output_dir must be a non-empty '
                   f'string, ignoring', file=sys.stderr)
+            del raw_analysis['output_dir']
+        elif output_dir is not None and (
+                PureWindowsPath(output_dir).anchor or '..' in re.split(r'[\\/]', output_dir)):
+            print(f'Warning: {path}: analysis.output_dir must be a relative path '
+                  f'without "..", ignoring', file=sys.stderr)
             del raw_analysis['output_dir']
 
     # Validate design_intent types (values outside the vocabularies already fall back to auto)

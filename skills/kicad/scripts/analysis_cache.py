@@ -185,9 +185,14 @@ def resolve_analysis_dir(path: str) -> str:
 # Manifest I/O
 # ---------------------------------------------------------------------------
 
+# A manifest holds about a kilobyte per kept run; a larger file is not one this code wrote.
+MAX_MANIFEST_BYTES = 10 * 1024 * 1024
+
+
 def _read_manifest_bytes(manifest_path: str) -> Optional[bytes]:
     """The bytes of manifest.json. None (after a diagnostic) when it is a link or not a regular
-    file: a link could point at any file, and a named pipe would block the reader."""
+    file: a link could point at any file, and a named pipe would block the reader. A file
+    larger than ``MAX_MANIFEST_BYTES`` raises ``ValueError`` and is handled as corrupt."""
     flags = (os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0)
              | getattr(os, "O_NONBLOCK", 0))
     try:
@@ -205,7 +210,10 @@ def _read_manifest_bytes(manifest_path: str) -> Optional[bytes]:
             record(None, "analysis_cache.load_manifest",
                    ValueError(f"{manifest_path} is not a regular file"), "manifest ignored")
             return None
-        return f.read()
+        raw = f.read(MAX_MANIFEST_BYTES + 1)
+        if len(raw) > MAX_MANIFEST_BYTES:
+            raise ValueError(f"{manifest_path} is larger than {MAX_MANIFEST_BYTES} bytes")
+        return raw
 
 
 def load_manifest(analysis_dir: str) -> Dict[str, Any]:

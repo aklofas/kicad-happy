@@ -411,6 +411,16 @@ class ReadBytesTest(unittest.TestCase):
             with redirect_stderr(io.StringIO()):
                 self.assertEqual(analysis_cache.load_manifest(ad)["runs"], {})
 
+    def test_oversized_manifest_is_corrupt_and_not_read_whole(self):
+        with tempfile.TemporaryDirectory() as ad:
+            Path(ad, "manifest.json").write_text('{"runs": {}, "pad": "' + "x" * 64 + '"}')
+            err = io.StringIO()
+            with mock.patch.object(analysis_cache, "MAX_MANIFEST_BYTES", 32), \
+                 redirect_stderr(err):
+                self.assertEqual(analysis_cache.load_manifest(ad)["runs"], {})
+            self.assertIn("corrupt manifest", err.getvalue())
+            self.assertTrue(Path(ad, "manifest.json.bak").is_file())
+
     def test_summarize_skips_a_non_utf8_output(self):
         import summarize_findings
         with tempfile.TemporaryDirectory() as ad:

@@ -2,6 +2,7 @@
 pattern list given as one string is one pattern."""
 import io, json, os, subprocess, sys, tempfile, unittest
 from contextlib import redirect_stderr
+from unittest import mock
 from pathlib import Path
 from tools.tests._fixtures import fixture_path, have
 
@@ -129,6 +130,27 @@ class ConfigShapeTest(unittest.TestCase):
                 self.assertEqual(cfg["analysis"]["output_dir"], "analysis")
                 from project_config import apply_power_rails_config
                 apply_power_rails_config({"VBAT": 3.7}, [], cfg)
+
+    def test_output_dir_outside_the_working_directory_is_dropped(self):
+        for bad in ("../../escape", "/tmp/x", "C:\\x", "C:x", "\\\\srv\\share", "a/../b", "a\\..\\b"):
+            with self.subTest(bad=bad):
+                out, err = _load({"analysis": {"output_dir": bad}})
+                self.assertNotIn("output_dir", out["analysis"])
+                self.assertIn("analysis.output_dir must be a relative path", err)
+        for good in ("build/analysis", "~/x", "a..b"):
+            with self.subTest(good=good):
+                out, err = _load({"analysis": {"output_dir": good}})
+                self.assertEqual((out["analysis"]["output_dir"], err), (good, ""))
+
+    def test_home_config_output_dir_outside_the_working_directory_falls_back_to_default(self):
+        with tempfile.TemporaryDirectory() as home, tempfile.TemporaryDirectory() as proj:
+            with open(os.path.join(home, ".kicad-happy.json"), "w", encoding="utf-8") as f:
+                json.dump({"analysis": {"output_dir": "/elsewhere"}}, f)
+            err = io.StringIO()
+            with mock.patch("os.path.expanduser", return_value=home), redirect_stderr(err):
+                cfg = load_config(proj)
+            self.assertEqual(cfg["analysis"]["output_dir"], "analysis")
+            self.assertIn("analysis.output_dir must be a relative path", err.getvalue())
 
     def test_non_string_ignore_item_is_dropped(self):
         out, err = _load({"analysis": {"power_rails": {"ignore": ["VBAT", 5], "flag": [None, "V*"]}}})

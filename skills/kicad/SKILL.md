@@ -357,7 +357,7 @@ The `analysis` section in `.kicad-happy.json` controls the shared analysis outpu
 
 | Field | Default | Description |
 |-------|---------|-------------|
-| `output_dir` | `"analysis"` | Analysis directory; relative paths resolve against the working directory |
+| `output_dir` | `"analysis"` | Analysis directory; a relative path without `..`, resolved against the working directory |
 | `retention` | `0` | Max unpinned runs to keep. `0` = keep all (default) |
 | `auto_diff` | `true` | Auto-include delta section in design reviews |
 | `track_in_git` | `false` | When false, JSONs gitignored but manifest tracked |

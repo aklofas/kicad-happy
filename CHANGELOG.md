@@ -16,11 +16,13 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - LED forward voltage comes from one cited colour table for the resistor check and the LED audit; red is 2.0 V, and an `ir` hint must start a word (`IR204A`, `XYC-IRA3212`, not `kira`). A green LED with no other hint now reads 3.2 V instead of 2.2 V in the resistor check, so some green over-current warnings go away, and yellow reads 2.1 V instead of 2.0 V in the LED audit.
 - A datasheet download connects to the address the URL check approved, on every redirect, so a host cannot switch to a private address between the check and the connect. With `requests` older than 2.32.2, downloads use urllib (requests cannot be held to the checked address), and the run notes it once; through a proxy, the proxy resolves the host.
 - The headless-browser fallback for datasheet downloads runs only when `datasheets.allow_private_hosts` is set: the browser resolves each host itself, so its connection could not be held to the checked address. Datasheets that need JavaScript (Broadcom, Espressif) are reported with their URL instead, and the run notes once why the browser was not tried.
+- `analysis.output_dir` in `.kicad-happy.json` must be a relative path without `..`; an absolute or escaping value is ignored with a warning and `analysis` is used.
 
 ### Fixed
 
 - `voltage_overrides` rejects `true`/`false`, NaN and infinity.
 - `search_lcsc.py --details` fetches LCSC stock for keyword hits that jlcsearch returned without a figure before `--in-stock`, `--min-stock` or `--sort stock` judges them.
+- An `analysis/manifest.json` larger than 10 MB is backed up and treated as corrupt instead of read whole.
 - A `.kicad_dru` with unbalanced parentheses is now refused as KiCad refuses it: none of its rules apply and `custom_rules_error` says why.
 - A `.kicad_dru` bound written in parentheses or as arithmetic, such as `(min (0.5mm))` or `2*0.1mm`, is now evaluated as KiCad evaluates it, so the rule is checked; a bound KiCad cannot read refuses the file.
 - More `.kicad_dru` files that KiCad refuses are now refused too (an unknown constraint type, item or layer name, a malformed condition, the same constraint twice in one rule), so their rules no longer apply where KiCad applies none.
