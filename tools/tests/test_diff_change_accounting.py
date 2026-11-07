@@ -2,7 +2,7 @@
 an EMC risk-score fall is the regression, totals count listed items and scalar paths are
 listed in summary.metric_changes, and --text -o writes UTF-8 whatever the locale."""
 import copy, io, json, os, subprocess, sys, tempfile, unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -53,7 +53,7 @@ def _run(base, head, *extra):
                 json.dump(doc, fh)
             paths.append(p)
         buf = io.StringIO()
-        with redirect_stdout(buf):
+        with redirect_stdout(buf), redirect_stderr(io.StringIO()):
             rc = diff_analysis.main(paths + list(extra) + ["--only-deterministic"])
         assert rc == 0, rc
         out = buf.getvalue()
@@ -173,6 +173,46 @@ class FalseOutput(unittest.TestCase):
         self.assertFalse(out["has_changes"])
         self.assertEqual(out["diff"], {})
         self.assertEqual((out["summary"]["total_changes"], out["summary"]["metric_changes"]), (0, []))
+
+
+def _hashed(doc, path, digest, config_hash=None):
+    return dict(doc, inputs={"source_hashes": {path: digest}, "config_hash": config_hash})
+
+
+class IdenticalDesignFiles(unittest.TestCase):
+    NOTE = "Design files are unchanged"
+
+    def _pair(self, head_hash="h1", head_config=None, with_inputs=True):
+        rt = _f("analyze_connectivity", "RT-001", [], ["/SDA"], "Net /SDA is not fully routed", "warning")
+        base = _pcb(True, 0, findings=[rt])
+        head = _pcb(True, 0)
+        if with_inputs:
+            base = _hashed(base, "/a/x.kicad_pcb", "h1")
+            head = _hashed(head, "/b/x.kicad_pcb", head_hash, head_config)
+        return base, head
+
+    def test_identical_design_files_are_labelled_an_analyzer_change(self):
+        text = _run(*self._pair(), "--text")
+        self.assertIn(self.NOTE, text.splitlines()[1])
+        plain = _run(*self._pair(with_inputs=False))
+        out = _run(*self._pair())
+        self.assertEqual(out["summary"]["severity"], plain["summary"]["severity"])
+        self.assertEqual(set(out), set(plain))
+
+    def test_different_hash_values_get_no_label(self):
+        self.assertNotIn(self.NOTE, _run(*self._pair(head_hash="h2"), "--text"))
+
+    def test_missing_inputs_get_no_label(self):
+        self.assertNotIn(self.NOTE, _run(*self._pair(with_inputs=False), "--text"))
+
+    def test_different_config_hash_gets_no_label(self):
+        self.assertNotIn(self.NOTE, _run(*self._pair(head_config="c2"), "--text"))
+
+    def test_self_diff_with_no_changes_is_unchanged(self):
+        doc = _hashed(_pcb(True, 0), "/a/x.kicad_pcb", "h1")
+        text = _run(doc, doc, "--text")
+        self.assertEqual(len(text.splitlines()), 2)
+        self.assertIn("No changes detected.", text)
 
 
 class TextOutput(unittest.TestCase):
