@@ -62,7 +62,8 @@ _PIN_NAME_TO_FUNCTION: dict[str, str] = {
 
 
 def _load(mpn, extract_dir=None, analysis_json=None, project_dir=None):
-    """Resolve extract dir and load the cached extraction for mpn.
+    """Resolve extract dir and load the cached v1.3 extraction for mpn (the
+    v1.4 file is read first, through cache_reader.lookup, by each helper).
 
     Returns the extraction dict on any cache hit (quality is described by
     `_quality_v13`, never gated here). Returns None on a
@@ -74,7 +75,7 @@ def _load(mpn, extract_dir=None, analysis_json=None, project_dir=None):
         )
         if extract_dir is None:
             return None
-    ext = find_extraction(extract_dir, mpn)[0]
+    ext = find_extraction(extract_dir, mpn, v14_first=False)[0]
     return ext if ext is not None and _legacy_shape_ok(ext) else None
 
 

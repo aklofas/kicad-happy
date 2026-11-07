@@ -32,7 +32,8 @@ def _load_extraction(extract_dir: str, mpn: str) -> dict:
     `_quality_finding` instead.
 
     Lookup order (shared with the feature helpers and the lifecycle audit):
-    the extraction manifest, then the file named after the part.
+    a v1.4 file named after the part, then the extraction manifest, then any
+    file named after the part.
 
     Two cache shapes supported:
     - v1.4: extraction.quality_score on 0-100 scale.

@@ -288,10 +288,15 @@ def get_cached_extraction(extract_dir, mpn):
     return read_json_object(json_file) if json_file else None
 
 
-def find_extraction(extract_dir, mpn):
+def find_extraction(extract_dir, mpn, *, v14_first=True):
     """Find the extraction for an MPN the way every reader does.
 
-    The extraction manifest comes first: the first entry whose key is the
+    A v1.4 extraction (top-level ``base`` block) in ``<stem>.json``, the file
+    ``datasheet_types.cache_reader.lookup`` reads, comes first, so a cache
+    that also holds an older v1.3 entry for the part reads the newer one
+    (``v14_first=False`` skips this step: the feature helpers' v1.3 fallback,
+    which runs after ``lookup``, wants the v1.3 entry).
+    Then the extraction manifest: the first entry whose key is the
     MPN's cache key, its file-name stem (with or without dots and hyphens)
     or whose recorded ``mpn`` is this MPN, ignoring case, and whose file
     exists. Then the files named after the part, ``<stem>.json``.
@@ -307,6 +312,12 @@ def find_extraction(extract_dir, mpn):
     underscored = re.sub(r'[^A-Za-z0-9_]', '_', mpn.strip())
     names = [_sanitize_mpn(mpn), plain, underscored]
     wanted = {n.upper() for n in names}
+
+    v14_path = extract_dir / f"{plain}.json"
+    if v14_first and v14_path.is_file():
+        ext = read_json_object(v14_path)
+        if ext is not None and isinstance(ext.get("base"), dict):
+            return ext, v14_path
 
     bad = None
     extractions = _load_index(extract_dir).get("extractions")

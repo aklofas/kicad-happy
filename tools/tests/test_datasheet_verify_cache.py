@@ -341,5 +341,45 @@ class SharedLookupOrder(unittest.TestCase):
                                  {"verify": -40, "features": -40, "lifecycle": -40}, body)
 
 
+class MixedV13V14Cache(unittest.TestCase):
+    """A cache holding a v1.4 extraction of a part and an older v1.3 manifest entry for it:
+    every reader takes the v1.4 file."""
+    MPN = "LM2596-ADJ"
+
+    def _cache(self, root, v13):
+        ext = Path(root) / "datasheets" / "extracted"
+        ext.mkdir(parents=True)
+        shutil.copy(ROOT / "skills" / "datasheets" / "examples" / "lm2596-adj.json",
+                    ext / f"{self.MPN}.json")
+        (ext / "old_v13.json").write_text(json.dumps(v13), encoding="utf-8")
+        (ext / "manifest.json").write_text(json.dumps({"extractions": {
+            cache._sanitize_mpn(self.MPN): {"file": "old_v13.json", "mpn": self.MPN}}}),
+            encoding="utf-8")
+        return ext
+
+    def test_all_readers_take_the_v14_file(self):
+        import datasheet_features as df
+        import lifecycle_engine
+        v13 = {"mpn": self.MPN, "topology": "ldo", "pins": [],
+               "extraction_metadata": {"extraction_score": 9.0, "extraction_version": 2},
+               "recommended_operating_conditions": {"temp_min_c": 0, "temp_max_c": 70}}
+        with tempfile.TemporaryDirectory() as d:
+            ext = self._cache(d, v13)
+            self.assertIsInstance(dv._load_extraction(str(ext), self.MPN).get("base"), dict)
+            self.assertEqual(df.get_regulator_features(self.MPN, extract_dir=str(ext))["topology"],
+                             "buck")
+            got = lifecycle_engine.read_extraction_temperature(self.MPN, d)
+            self.assertEqual((got["temp_min_c"], got["temp_max_c"]), (-40, 125))
+
+    def test_feature_helpers_still_fall_back_to_v13_for_facts_v14_lacks(self):
+        import datasheet_features as df
+        v13 = {"mpn": self.MPN, "topology": "mcu", "pins": [],
+               "extraction_metadata": {"extraction_score": 9.0, "extraction_version": 2},
+               "peripherals": {"usb": {"speed": "FS", "native_phy": True}}}
+        with tempfile.TemporaryDirectory() as d:
+            ext = self._cache(d, v13)
+            self.assertEqual(df.get_mcu_features(self.MPN, extract_dir=str(ext))["usb_speed"], "FS")
+
+
 if __name__ == "__main__":
     unittest.main()
