@@ -19,6 +19,14 @@ class IssueBodyMarkdownTest(unittest.TestCase):
         self.assertIn("`R1`", body)
         self.assertNotIn("[l](u)", body)
 
+    def test_raw_html_link_in_summary_is_inert(self):
+        body = export_issues.format_issue_body({
+            "rule_id": "X-1", "summary": 'Value <a href="https://evil.example">click</a>',
+            "components": [{"ref": "R1", "value": "<b>10k</b>"}]})
+        self.assertNotIn("<a ", body)
+        self.assertNotIn("<b>", body)
+        self.assertIn('&lt;a href="https://evil.example">click&lt;/a>', body)
+
     def test_ordinary_title_and_text_are_unchanged(self):
         finding = {"rule_id": "PU-001", "summary": "R4.7k pull-up on SDA_NET", "components": ["R1"]}
         self.assertEqual(export_issues.format_issue_title(finding), "[PU-001] R4.7k pull-up on SDA_NET (R1)")

@@ -84,10 +84,10 @@ def _inert(text: str) -> str:
 
 
 def _md_inline(text: str) -> str:
-    """Escape the characters that open a link, emphasis or code span."""
+    """Escape the characters that open a link, emphasis, code span or raw HTML."""
     for ch in ("\\", "`", "*", "[", "]"):
         text = text.replace(ch, "\\" + ch)
-    return text
+    return text.replace("<", "&lt;")
 
 
 def _md_cell(text: str) -> str:
