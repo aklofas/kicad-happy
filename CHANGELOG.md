@@ -73,6 +73,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `capability_mode.json` reports `datasheet_coverage_pct`: the share of the parts in `datasheets/manifest.json` that have an extraction (it was always 0).
 - Deep Review: a pin cited by name on a part where some pins carry no name is graded partial instead of quarantined, and `RESET` matches a `~{RESET}` pin (not the other way round).
 - Deep Review: a datasheet quote whose exponent the PDF text splits with a space or a line break (`1e- 3`) matches again, and a quote that drops such an exponent's sign, or reads its negative exponent as a negative value, no longer passes. A datasheet the sync marked as the wrong part is not used to check quotes.
+- Deep Review: a datasheet whose text `pdftotext` cannot extract within 30 s leaves the quote graded partial instead of stalling the gate.
 - Datasheet sync `--force-all`: a refreshed datasheet that looks like a different part, saved under another name, no longer replaces a datasheet already on file and deletes it.
 - The lifecycle audit no longer tells you to replace a part that no distributor returned (LC-004); it says to check the part number, and the credentials when no distributor answered at all.
 - The lifecycle audit looks up each part of an MPN field that lists alternatives (`1012, 1012C`, `LM358 / LM2904`) instead of searching for the whole field; part numbers that contain a slash (`BAV99/215`) are unchanged.

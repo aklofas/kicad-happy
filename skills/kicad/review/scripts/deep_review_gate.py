@@ -466,6 +466,9 @@ def _nearest_match(quote, text, window=80, stride=40):
     return best
 
 
+PDFTOTEXT_TIMEOUT_S = 30    # a PDF that stalls pdftotext leaves the quote unchecked
+
+
 def check_datasheet(cites, datasheets_dir):
     """Returns (failures, partial). Missing tool/PDF -> partial, not failure."""
     fails, partial = [], False
@@ -491,8 +494,8 @@ def check_datasheet(cites, datasheets_dir):
         cmd += [str(pdf), "-"]
         try:
             proc = subprocess.run(cmd, capture_output=True, encoding="utf-8",
-                                  errors="replace")
-        except OSError:
+                                  errors="replace", timeout=PDFTOTEXT_TIMEOUT_S)
+        except (OSError, subprocess.TimeoutExpired):
             partial = True
             continue
         # Past the last page poppler's pdftotext exits 99 ("Wrong page range given"); xpdf's

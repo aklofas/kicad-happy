@@ -363,6 +363,16 @@ class PdftotextFormsTest(unittest.TestCase):
     def test_xpdf_empty_output(self):
         self.assertEqual(self._check(0, ""), (["page 3 is past the end of TPS1.pdf"], False))
 
+    def test_pdftotext_timeout_is_partial(self):
+        with mock.patch.object(deep_review_gate, "find_executable", return_value="/fake/pdftotext"), \
+                mock.patch.object(deep_review_gate, "find_pdf", return_value=Path("TPS1.pdf")), \
+                mock.patch.object(deep_review_gate.subprocess, "run",
+                                  side_effect=subprocess.TimeoutExpired("pdftotext", 30)) as run:
+            result = deep_review_gate.check_datasheet(
+                [{"mpn": "TPS1", "page": 3, "quote": "Maximum input voltage 5.5 V"}], ".")
+        self.assertEqual(result, ([], True))
+        self.assertEqual(run.call_args.kwargs["timeout"], deep_review_gate.PDFTOTEXT_TIMEOUT_S)
+
     def test_blank_page_is_a_page(self):
         fails, _ = self._check(0, "\f")
         self.assertEqual(len(fails), 1)
