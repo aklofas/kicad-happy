@@ -42,6 +42,17 @@ class VPrefixConnectorsAndJumpers(unittest.TestCase):
             "V2", "MyLib:Varistor", "CG0603MLC",
             footprint="MyConnectors:0603"), "varistor")
 
+    def test_potentiometer_on_a_wire_or_header_footprint_stays_a_resistor(self):
+        self.assertEqual(classify_component(
+            "VOL1", "Device:R_Potentiometer", "10k",
+            footprint="Connector_Wire:SolderWire-0.5sqmm_1x03_P4.6mm_D0.9mm_OD2.1mm"), "resistor")
+        self.assertEqual(classify_component(
+            "VR1", "Device:R_Potentiometer_Dual_Separate", "B10k",
+            footprint="Connector_PinHeader_2.54mm:PinHeader_2x03_P2.54mm_Vertical"), "resistor")
+        self.assertEqual(classify_component(
+            "VR2", "Device:R_Potentiometer", "B50k",
+            footprint="Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical"), "resistor")
+
     def test_v_reference_without_connector_or_jumper_evidence_is_unchanged(self):
         self.assertEqual(classify_component("V3", "MyLib:MOV", "JMV0805"), "varistor")
 

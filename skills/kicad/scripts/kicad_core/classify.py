@@ -429,6 +429,8 @@ def classify_component(ref: str, lib_id: str, value: str, is_power: bool = False
                 if "standoff" in lib_lower or "smtso" in val_lower:
                     return "mounting_hole"
             if result == "varistor":
+                if "pot" in lib_lower or "potentiometer" in lib_lower:
+                    return "resistor"
                 not_varistor = _v_prefix_jumper_or_connector(val_lower, lib_lower, fp_lower)
                 if not_varistor:
                     return not_varistor
@@ -436,8 +438,6 @@ def classify_component(ref: str, lib_id: str, value: str, is_power: bool = False
                         or any(x in val_lower for x in ("ams1117", "lm78", "lm317",
                                                          "ld1117", "lm1117", "ap1117"))):
                     return "ic"
-                if "pot" in lib_lower or "potentiometer" in lib_lower:
-                    return "resistor"
             if result == "ic":
                 if "bjt" in lib_lower or "transistor" in lib_lower:
                     return "transistor"
