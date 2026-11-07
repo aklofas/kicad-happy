@@ -43,7 +43,22 @@ _TPS63070 = {"1": ("FB2", "GND"), "2": ("VIN", "+12V"), "3": ("L1", "SW1"), "4":
              "5": ("VOUT", "+5V"), "6": ("FB", "FB_NET"), "7": ("GND", "GND"), "8": ("EN", "+12V")}
 
 
+# Dual part on channel 2's rail: ADJ2 senses the output directly, ADJ1 carries the other channel's divider
+_DUAL_ONE_FIXED = {"1": ("IN", "+5V"), "2": ("OUT", "+3V3"), "3": ("ADJ1", "ADJ1_NET"),
+                   "4": ("ADJ2", "+3V3"), "5": ("GND", "GND")}
+
+
 class MultiFeedbackPick(unittest.TestCase):
+    def test_feedback_pin_tied_to_the_output_rail_takes_no_other_channels_divider(self):
+        for reverse in (False, True):
+            with self.subTest(reverse=reverse):
+                reg = _regulator("DUAL_LDO_ADJ", "Regulator_Linear:DUAL_LDO_ADJ", _DUAL_ONE_FIXED,
+                                 [("+1V2", "ADJ1_NET", "10k", "10k")], reverse=reverse)
+                self.assertEqual(reg.get("output_rail"), "+3V3")
+                self.assertEqual(reg.get("fb_net"), "+3V3")
+                self.assertNotIn("feedback_divider", reg)
+                self.assertIsNone(reg.get("estimated_vout"))
+
     def test_divider_on_second_adjust_pin_is_used_under_either_pin_order(self):
         for reverse in (False, True):
             with self.subTest(reverse=reverse):

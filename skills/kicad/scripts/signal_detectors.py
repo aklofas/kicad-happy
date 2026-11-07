@@ -2101,13 +2101,16 @@ def _build_regulator_record(ctx: AnalysisContext, cand: _RegulatorCandidate,
             reg_info["output_rail"] = vout_pin[1]
 
     # A multi-channel part has several FB pins: estimate the channel whose divider tops out on
-    # the output rail, else the first with a divider, else the first by name
+    # the output rail; an FB pin tied straight to the output rail makes that channel fixed, so
+    # no other channel's divider applies; else the first with a divider, else the first by name
+    out_rail = reg_info.get("output_rail")
     fb_divided = [c for c in cand.fb_candidates
                   if any(vd["mid_net"] == c[1] and vd["ratio"] > 0 for vd in voltage_dividers)]
     fb_pin = next((c for c in fb_divided
-                   if any(vd["mid_net"] == c[1] and vd["top_net"] == reg_info.get("output_rail")
+                   if any(vd["mid_net"] == c[1] and vd["top_net"] == out_rail
                           for vd in voltage_dividers)),
-                  fb_divided[0] if fb_divided else fb_pin)
+                  None) or next((c for c in cand.fb_candidates if out_rail and c[1] == out_rail),
+                                fb_divided[0] if fb_divided else fb_pin)
 
     # Check feedback divider for output voltage estimation
     if fb_pin:
