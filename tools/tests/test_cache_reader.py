@@ -514,6 +514,7 @@ class CacheReadLinksAndPipes(unittest.TestCase):
 
     @unittest.skipIf(os.name == "nt", "symlinks")
     def test_explicit_extract_dir_that_is_a_symlink_is_followed(self):
+        sys.path.insert(0, str(DS / "scripts"))
         import datasheet_extract_cache as dec
         from datasheet_types.cache_reader import lookup
         real = self.d / "shared"
