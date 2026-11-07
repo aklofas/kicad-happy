@@ -291,6 +291,30 @@ class OpenDrainEndpoints(unittest.TestCase):
         self.assertEqual(f["severity"], "error")
 
 
+def _into_1v8(driver, supply, pin, pin_type, reader, reader_pin):
+    """*driver* (supplied from *supply*) drives SIG through *pin*, pulled up to +3V3 by R1, into
+    *reader_pin* of *reader*, which is supplied from +1V8."""
+    comps = [ic("U1", driver), ic("U2", reader), res("R1", "100k")]
+    nets = {"+5V": [], "+3V3": [("R1", "2", "~", "passive")],
+            "+1V8": [("U2", "1", "VIN", "power_in")],
+            "GND": [("U1", "2", "GND", "power_in"), ("U2", "2", "GND", "power_in")],
+            "SIG": [("U1", "3", pin, pin_type), ("U2", "3", reader_pin, "input"),
+                    ("R1", "1", "~", "passive")]}
+    nets[supply].append(("U1", "1", "VIN", "power_in"))
+    return vm001(ctx_of(comps, nets, {"+5V", "+3V3", "+1V8", "GND"}))
+
+
+class LoadSwitchEnable(unittest.TestCase):
+    # TPS2297x: the ON pin is a logic input rated independently of VIN, so a 3.3 V pull-up
+    # into ON on a 1.8 V switch is its intended use.
+    def test_power_good_pulled_to_3v3_into_a_load_switch_on_pin_is_silent(self):
+        self.assertEqual(_into_1v8("TPS53355", "+5V", "PGOOD", "open_collector", "TPS22971", "ON"), [])
+
+    def test_push_pull_3v3_output_into_a_plain_1v8_input_still_fires(self):
+        (f,) = _into_1v8("MCU3V3", "+3V3", "PA0", "output", "MCU1V8", "PB0")
+        self.assertEqual(f["severity"], "error")
+
+
 class SupplyPinEndpoints(unittest.TestCase):
     def test_regulator_cascade_net_is_silent(self):
         # L7809 OUT feeds L7805 IN: the net between them is a rail, not a logic level.

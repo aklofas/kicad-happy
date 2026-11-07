@@ -15,6 +15,7 @@ import re
 
 from kicad_types import AnalysisContext
 from kicad_core.netnames import is_usb_data_net_name, is_usb_signal_net_name, parse_voltage_from_net_name
+from kicad_core.parts import LOAD_SWITCH_KEYWORDS
 
 try:
     import os as _os, sys as _sys
@@ -525,14 +526,17 @@ _PG_PIN_PATTERNS = ('PG', 'PGOOD', 'PWRGD', 'NPG')
 
 
 def _is_regulator_like(ctx: AnalysisContext, ref: str) -> bool:
-    """A regulator-family part by its value or MPN, or typed power_regulator."""
+    """A regulator-family part by its value or MPN, or typed power_regulator. A load switch
+    counts too: its enable is a logic input rated independently of its VIN."""
     comp = ctx.comp_lookup.get(ref, {})
     val_mpn = ((comp.get('mpn') or '') + ' ' + (comp.get('value') or '')).upper()
-    return comp.get('type') == 'power_regulator' or any(pfx in val_mpn for pfx in (
-        'TPS6', 'TPS5', 'LM25', 'LM33', 'LM317', 'AP21', 'AMS11',
-        'MP23', 'MP15', 'XL40', 'RT8', 'SY8', 'MIC29', 'NCP',
-        'LDO', 'BOOST', 'BUCK', 'REG',
-    ))
+    if comp.get('type') == 'power_regulator' or any(pfx in val_mpn for pfx in (
+            'TPS6', 'TPS5', 'LM25', 'LM33', 'LM317', 'AP21', 'AMS11',
+            'MP23', 'MP15', 'XL40', 'RT8', 'SY8', 'MIC29', 'NCP',
+            'LDO', 'BOOST', 'BUCK', 'REG')):
+        return True
+    text = (val_mpn + ' ' + (comp.get('lib_id') or '')).lower()
+    return any(k in text for k in LOAD_SWITCH_KEYWORDS)
 
 
 def _en_endpoint_compatible(ctx: AnalysisContext, p: dict, net_name: str, v_min: float) -> bool:
