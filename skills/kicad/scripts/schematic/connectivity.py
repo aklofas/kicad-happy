@@ -768,6 +768,7 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
     bus_aliases: dict = {}
     bus_label_idx: set[int] = set()
     bus_named_labels: list[tuple] = []  # (sheet, bare, x, y, role), local/global/hier
+    cluster_prio: dict[tuple, int] = {}  # (sheet, cluster) -> naming priority of its bus label
     if bus_active:
         bus_aliases = {a["name"]: a["members"]
                        for a in bus_elements.get("bus_aliases", [])}
@@ -985,6 +986,10 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
             expansion = expand_bus_name(bare, bus_aliases)
             if not expansion:
                 continue
+            if role in ("local", "global"):
+                pr = 0 if role == "global" else 2  # global_label / label naming priority
+                if pr < cluster_prio.get((s, cid), 9):
+                    cluster_prio[(s, cid)] = pr
             for member in expansion:
                 slot = bus_slot(s, cid, member)
                 lk = label_keys.get((member, s))
@@ -1191,15 +1196,31 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
         best = None
         net_labels_seen: set[tuple[str, str]] = set()
         net_labels: list[dict] = []
+        # A bus member names a net that has pins, and only from a sheet where no
+        # label or power symbol on the net sits: there the wire's own label drives it.
+        has_pins = any(i["source"] == "pin" for i in all_info)
+        label_sheets = {m[0] for m in members if m[0] != "bus" and any(
+            i["source"] in ("label", "power_symbol") for i in point_info.get(m, ()))}
         for m in members:
             m_sheet = m[0]
-            for info in point_info.get(m, []):
+            slot_info = ()
+            if (has_pins and m[0] == "bus" and (m[1], m[2]) in cluster_prio
+                    and m[1] not in label_sheets):
+                m_sheet = m[1]
+                slot_info = ({"source": "bus_member", "name": m[3],
+                              "prio": cluster_prio[(m[1], m[2])]},)
+            for info in (*point_info.get(m, ()), *slot_info):
                 src = info["source"]
                 if src == "power_symbol":
                     p = _NET_NAME_PRIORITY["power_symbol"]
                     cand_name = info["net_name"]
                     is_local = info.get("power_scope") == "local"
                     sheet_scoped = is_local
+                    tie_name = cand_name
+                elif src == "bus_member":
+                    p = info["prio"]
+                    cand_name = info["name"]
+                    is_local = sheet_scoped = p == _NET_NAME_PRIORITY["label"]
                     tie_name = cand_name
                 elif src == "label":
                     lbl_name = info.get("name") or ""
@@ -1250,7 +1271,6 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
 
         if net_name is None:
             # Only create unnamed nets if they have component pins
-            has_pins = any(i["source"] == "pin" for i in all_info)
             if not has_pins:
                 continue
             net_name = f"__unnamed_{net_id}"

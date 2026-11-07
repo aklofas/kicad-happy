@@ -209,6 +209,8 @@ After union-find, connected groups are named by priority:
 
 Names of equal rank resolve to the shallower sheet, then the lower full name, as KiCad does.
 
+A net that reaches a sheet through a bus also takes the bus member's name there, at the rank of the bus's global or local label, when the net has pins and no label or power symbol of its own on that sheet.
+
 When multiple disconnected wire groups share the same name (e.g., two separate `GND` networks), their pins are merged into a single net entry. This matches KiCad's behavior where same-named labels create global connectivity.
 
 ### Output
