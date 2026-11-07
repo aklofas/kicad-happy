@@ -102,6 +102,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `what_if --output` with a change that affects no subcircuit no longer also prints the result JSON to stdout, matching a change that does.
 - `export_issues --create` works on a repository with 1,000 or more open kicad-happy issues; it lists them all instead of refusing.
 - `export_issues` labels and dry-run output say `error` where they said `high`, the same severity names every analyzer uses; `critical`/`high`/`medium` are still accepted for `--severity`. A GitHub filter on the `severity:high` label no longer matches newly created issues.
+- `simulate_subcircuits.py` given a JSON file whose top level is not an object (analysis or `--parasitics`) reports a named error or warning instead of a traceback.
 
 ### Documentation
 

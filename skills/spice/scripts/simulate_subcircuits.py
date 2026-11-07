@@ -623,6 +623,10 @@ def main(argv: list[str] | None = None) -> int:
     except (json.JSONDecodeError, UnicodeDecodeError, OSError) as e:
         print(f"Error reading {input_path}: {e}", file=sys.stderr)
         return 1
+    if not isinstance(analysis, dict):
+        print(f"Error reading {input_path}: top level is "
+              f"{type(analysis).__name__}, not an object", file=sys.stderr)
+        return 1
 
     # Parse types filter
     types = None
@@ -641,10 +645,13 @@ def main(argv: list[str] | None = None) -> int:
         try:
             with open(args.parasitics, "r", encoding="utf-8") as f:
                 parasitics_data = json_load(f)
+            if not isinstance(parasitics_data, dict):
+                parasitics_data = None
+                raise ValueError("top level is not an object")
             n_nets = len(parasitics_data.get("nets", {}))
             print(f"Loaded parasitics for {n_nets} nets from {args.parasitics}",
                   file=sys.stderr)
-        except (json.JSONDecodeError, OSError) as e:
+        except (json.JSONDecodeError, OSError, ValueError) as e:
             print(f"Warning: could not load parasitics: {e}", file=sys.stderr)
 
     from kicad_core.project import load_user_config
