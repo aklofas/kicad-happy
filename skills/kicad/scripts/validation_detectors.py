@@ -1127,11 +1127,6 @@ def validate_power_sequencing(
 # LR-001: LED resistor sizing validation
 # ---------------------------------------------------------------------------
 
-_LED_VF_BY_COLOR = {
-    'red': 1.8, 'orange': 2.0, 'amber': 2.0, 'yellow': 2.1,
-    'green': 2.2, 'blue': 3.2, 'white': 3.2, 'uv': 3.3, 'ir': 1.2,
-}
-_LED_VF_DEFAULT = 2.0
 _LED_IF_MAX_DEFAULT_MA = 20
 _LED_IF_RECOMMENDED_MA = 10
 
@@ -1242,10 +1237,9 @@ def validate_led_resistors(ctx: AnalysisContext) -> list[dict]:
         if ds_vf is not None and ds_vf.typ is not None:
             vf = ds_vf.typ
         else:
-            vf = led_forward_voltage(led, _LED_VF_BY_COLOR, _LED_VF_DEFAULT)
+            vf = led_forward_voltage(led)
         # A string drops every LED's forward voltage.
-        vf += sum(led_forward_voltage(ctx.comp_lookup[r], _LED_VF_BY_COLOR, _LED_VF_DEFAULT)
-                  for r in string if r != ref)
+        vf += sum(led_forward_voltage(ctx.comp_lookup[r]) for r in string if r != ref)
         # Use datasheet If_max (max, else typ) if available; fall back to constant.
         if ds_if is not None and ds_if.max is not None:
             if_max_ma = ds_if.max * 1000  # SpecValue in amps → mA

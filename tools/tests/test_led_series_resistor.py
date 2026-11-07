@@ -46,9 +46,9 @@ class LR001(unittest.TestCase):
                    {"+5V": [_p("D1", "2")], "N1": [_p("D1", "1"), _p("R10", "1")],
                     "GND": [_p("R10", "2")]}, {"+5V", "GND"})
         lr = _lr(ctx)
-        # (5 V - 1.8 V red) / 47 Ohm = 68.1 mA, over 2 x 20 mA
+        # (5 V - 2.0 V red) / 47 Ohm = 63.8 mA, over 2 x 20 mA
         self.assertEqual([f["summary"] for f in lr if f["severity"] == "warning"],
-                         ["LED D1: current too high (68mA via R10)"])
+                         ["LED D1: current too high (64mA via R10)"])
         self.assertNotIn("error", [f["severity"] for f in lr])
 
     def test_high_side_330r_is_quiet(self):
@@ -86,9 +86,9 @@ class LR001(unittest.TestCase):
         ctx = _ctx([_led("D1"), _r("R1", "47")],
                    {"+5V": [_p("R1", "1")], "VBUS_LED_A": [_p("R1", "2"), _p("D1", "2")],
                     "GND": [_p("D1", "1")]}, {"+5V", "GND"})
-        # (5 - 1.8) / 47 = 68.1 mA through the resistor on the LED's own node
+        # (5 - 2.0) / 47 = 63.8 mA through the resistor on the LED's own node
         self.assertEqual([f["summary"] for f in _lr(ctx) if f["severity"] == "warning"],
-                         ["LED D1: current too high (68mA via R1)"])
+                         ["LED D1: current too high (64mA via R1)"])
 
     def test_dangling_led_keeps_its_missing_resistor_error(self):
         # Anode net holds nothing but D1; a 10k from GND to a rail is not its resistor.
@@ -206,12 +206,12 @@ class LedStrings(unittest.TestCase):
     def test_string_current_in_lr001(self):
         for top_r in (True, False):
             lr = _lr(_string(top_r, r="100"))
-            # (12 V - 3 x 1.8 V red) / 100 Ohm = 66 mA, over 2 x 20 mA, for each LED
+            # (12 V - 3 x 2.0 V red) / 100 Ohm = 60 mA, over 2 x 20 mA, for each LED
             self.assertEqual(sorted(f["summary"] for f in lr if f["severity"] == "warning"),
-                             [f"LED D{i}: current too high (66mA via R1)" for i in (1, 2, 3)], top_r)
-            # P = 0.066^2 x 100 = 436 mW, reported once for the string
+                             [f"LED D{i}: current too high (60mA via R1)" for i in (1, 2, 3)], top_r)
+            # P = 0.060^2 x 100 = 360 mW, reported once for the string
             self.assertEqual([f["summary"] for f in lr if f["severity"] == "info"],
-                             ["LED resistor R1: power dissipation 436mW"], top_r)
+                             ["LED resistor R1: power dissipation 360mW"], top_r)
 
 
     def test_dissipation_once_when_string_leds_number_pins_differently(self):
@@ -219,9 +219,9 @@ class LedStrings(unittest.TestCase):
         ctx = _ctx([_led("D1"), _led("D2"), _r("R1", "100")],
                    {"+12V": [_p("R1", "1")], "N0": [_p("R1", "2"), _p("D1", "2")],
                     "N1": [_p("D1", "1"), _p("D2", "1")], "GND": [_p("D2", "2")]}, {"+12V", "GND"})
-        # (12 V - 2 x 1.8 V) / 100 Ohm = 84 mA; P = 0.084^2 x 100 = 706 mW
+        # (12 V - 2 x 2.0 V) / 100 Ohm = 80 mA; P = 0.080^2 x 100 = 640 mW
         self.assertEqual([f["summary"] for f in _lr(ctx) if f["severity"] == "info"],
-                         ["LED resistor R1: power dissipation 706mW"])
+                         ["LED resistor R1: power dissipation 640mW"])
 
 
 class SharedLedNode(unittest.TestCase):
@@ -254,6 +254,55 @@ class DriveMethod(unittest.TestCase):
                     "N1": [_p("D1", "1"), _p("R1", "1")],
                     "GND": [_p("R1", "2"), _p("U2", "8", "power_in")]})
         self.assertEqual(_audit(ctx, "D1").get("driver_source"), "U1")
+
+
+def _low_side(value, rail="+5V", ohms="47"):
+    return _ctx([_led("D1", value), _r("R1", ohms)],
+                {rail: [_p("D1", "2")], "N1": [_p("D1", "1"), _p("R1", "1")],
+                 "GND": [_p("R1", "2")]}, {rail, "GND"})
+
+
+class LedForwardVoltage(unittest.TestCase):
+    def test_resistor_check_and_led_audit_read_the_same_vf(self):
+        ctx = _low_side("LED_RED")
+        # (5 V - 2.0 V red) / 47 Ohm = 63.8 mA in both checks
+        self.assertEqual(_audit(ctx, "D1")["estimated_current_mA"], 63.8)
+        self.assertEqual([f["summary"] for f in _lr(ctx) if f["severity"] == "warning"],
+                         ["LED D1: current too high (64mA via R1)"])
+
+    def test_bare_green_is_the_ingan_nominal(self):
+        ctx = _low_side("LED_GREEN")
+        # (5 V - 3.2 V) / 47 Ohm = 38.3 mA: under 2 x 20 mA, no over-current warning
+        self.assertEqual(_audit(ctx, "D1")["estimated_current_mA"], 38.3)
+        self.assertEqual([f for f in _lr(ctx) if f["severity"] == "warning"], [])
+
+    def test_bare_green_keeps_the_gap_floor(self):
+        from domain_detectors import audit_led_circuits
+        la004 = [f for f in audit_led_circuits(_low_side("LED_GREEN", rail="+1V8"), [])
+                 if f.get("rule_id") == "LA-004"]
+        self.assertEqual([(f["color"], f["color_vf_floor"]) for f in la004], [("green", 2.1)])
+
+    def test_ir_starts_a_word(self):
+        from detector_helpers import led_forward_voltage
+        from kicad_core.parts import led_color
+        cases = [({"value": "LED_IR", "lib_id": "Device:LED"}, "ir"),
+                 ({"value": "IR204A", "lib_id": "LED:IR204A"}, "ir"),
+                 ({"value": "IR LED", "lib_id": "Device:LED"}, "ir"),
+                 ({"value": "LED", "lib_id": "easyEDA:XYC-IRA3212A25-X4_smaller"}, "ir"),
+                 ({"value": "SFH 4556", "lib_id": "LED:IRL81A"}, "ir"),
+                 ({"value": "rgbled kira", "lib_id": "Device:LED"}, None),
+                 ({"value": "wiring", "lib_id": "Device:LED"}, None),
+                 ({"value": "IRQ", "lib_id": "Device:LED"}, None),
+                 ({"value": "LED Diode",
+                   "lib_id": "test-altium-import:ROOT_0_LED Diode_IRNAS_MPPT LT3652.SchLib"}, None),
+                 ({"value": "LED_bidirectional", "lib_id": "Device:LED"}, None),
+                 # a library nickname is not part of the part's name
+                 ({"value": "SK6812MINI-E", "lib_id": "irex_led:SK6805MINI-E"}, None)]
+        for comp, want in cases:
+            self.assertEqual(led_color(comp), want, comp["value"])
+        self.assertEqual(led_forward_voltage({"value": "LED_IR", "lib_id": "Device:LED"}), 1.2)
+        self.assertEqual(led_forward_voltage({"value": "SFH 4556", "lib_id": "LED:IRL81A"}), 1.2)
+        self.assertEqual(led_forward_voltage({"value": "rgbled kira", "lib_id": "Device:LED"}), 2.0)
 
 
 class RescueDiodes(unittest.TestCase):

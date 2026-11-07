@@ -16,7 +16,7 @@ from collections import Counter
 
 from kicad_types import AnalysisContext
 from kicad_core.classify import is_active_low_enable
-from kicad_core.parts import LOAD_SWITCH_KEYWORDS, lookup_regulator_vref
+from kicad_core.parts import LED_VF_BY_COLOR, LOAD_SWITCH_KEYWORDS, led_color, lookup_regulator_vref
 from kicad_core.values import format_frequency, parse_value
 from kicad_core.netnames import is_vss_name, parse_voltage_from_net_name
 from detector_helpers import (is_led_rail, led_forward_voltage, led_string, match_family,
@@ -4791,31 +4791,6 @@ def detect_rtc_circuits(ctx: AnalysisContext,
 # LED Lighting Audit
 # ---------------------------------------------------------------------------
 
-# Forward voltage estimates by LED color (for current calculation)
-_LED_VF = {
-    "red": 2.0, "orange": 2.0, "yellow": 2.0, "amber": 2.0,
-    "green": 3.2, "blue": 3.2, "white": 3.2, "uv": 3.5,
-}
-
-# Per-color Vf floor — the MINIMUM forward voltage below which an LED of
-# this color will not light at all. Used by LA-004 to flag LEDs on rails
-# that are below their color's floor.
-_LED_VF_FLOOR = {
-    "red": 1.85, "orange": 2.0, "yellow": 2.0, "amber": 2.0,
-    "green": 2.1, "blue": 3.0, "white": 3.0, "uv": 3.2,
-}
-
-
-def _detect_led_color(comp: dict) -> str | None:
-    """Return the lowercase color string for an LED, or None if no color
-    hint is present in value/lib_id."""
-    combined = (comp.get("value", "") + " " + comp.get("lib_id", "")).lower()
-    for color in _LED_VF.keys():
-        if color in combined:
-            return color
-    return None
-
-
 def audit_led_circuits(ctx: AnalysisContext,
                        transistor_circuits: list[dict]) -> list[dict]:
     """Audit all LEDs for proper current limiting.
@@ -5042,7 +5017,7 @@ def audit_led_circuits(ctx: AnalysisContext,
             v_supply = ctx.rail_voltage_or(supply_net, parse_voltage_from_net_name)
             if v_supply:
                 v_supply = abs(v_supply)
-                vf = sum(led_forward_voltage(c, _LED_VF) for c in string_leds)
+                vf = sum(led_forward_voltage(c) for c in string_leds)
                 if v_supply > vf:
                     i_ma = (v_supply - vf) / series_resistor["ohms"] * 1000
                     entry["estimated_current_mA"] = round(i_ma, 1)
@@ -5060,8 +5035,8 @@ def audit_led_circuits(ctx: AnalysisContext,
         # color floor, the LED can't forward-bias at all.
         if supply_net:
             v_supply = ctx.rail_voltage_or(supply_net, parse_voltage_from_net_name)
-            color = _detect_led_color(comp)
-            floor = _LED_VF_FLOOR.get(color) if color else None
+            color = led_color(comp)
+            floor = LED_VF_BY_COLOR[color][1] if color else None
             if v_supply is not None and v_supply >= 0 and floor is not None and v_supply < floor:
                 results.append({
                     "ref": ref,

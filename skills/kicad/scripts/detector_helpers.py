@@ -10,6 +10,7 @@ from collections.abc import Iterable
 
 from kicad_core.classify import classify_ic_function
 from kicad_core.netnames import net_leaf
+from kicad_core.parts import LED_VF_BY_COLOR, LED_VF_DEFAULT, led_color
 from kicad_types import AnalysisContext
 
 
@@ -355,10 +356,7 @@ def led_string(ctx: AnalysisContext, ref: str) -> tuple[list[str], str | None, s
     return list(reversed(up)) + [ref] + down, end1, end2
 
 
-def led_forward_voltage(comp: dict, table: dict[str, float], default: float = 2.0) -> float:
-    """Forward voltage of the first colour in *table* named by the LED's value or lib_id."""
-    combined = (comp.get("value", "") + " " + comp.get("lib_id", "")).lower()
-    for color, vf in table.items():
-        if color in combined:
-            return vf
-    return default
+def led_forward_voltage(comp: dict) -> float:
+    """Nominal forward voltage for the LED's colour word, else LED_VF_DEFAULT."""
+    color = led_color(comp)
+    return LED_VF_BY_COLOR[color][0] if color else LED_VF_DEFAULT

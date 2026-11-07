@@ -13,6 +13,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Value, Footprint, Datasheet and Description are read in any case and a later duplicate replaces the earlier one, as KiCad 10 does; a KiCad 6 instance value of only spaces sets an empty value.
 - Microcontrollers with port H pins (PH0, PH1) are no longer reported as switching regulators; the regulator and sequencing findings built on them go away, and a rail only they appeared to supply now reports no source.
 - TPS62161-63 and TPS63001/2 use their datasheet switching frequency (2.25 MHz, 1.5 MHz); EMC harmonic findings for them move accordingly.
+- LED forward voltage comes from one cited colour table for the resistor check and the LED audit; red is 2.0 V, and an `ir` hint must start a word (`IR204A`, `XYC-IRA3212`, not `kira`). A green LED with no other hint now reads 3.2 V instead of 2.2 V in the resistor check, so some green over-current warnings go away, and yellow reads 2.1 V instead of 2.0 V in the LED audit.
 
 ### Fixed
 

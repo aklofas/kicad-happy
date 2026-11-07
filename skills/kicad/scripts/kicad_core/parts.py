@@ -1,4 +1,4 @@
-"""Known-part knowledge tables: regulator Vref and switching frequencies (kicad_core). Sources and verification dates are in the table comments. Also holds typical MLCC ESL/ESR by package."""
+"""Known-part knowledge tables: regulator Vref and switching frequencies (kicad_core). Sources and verification dates are in the table comments. Also holds typical MLCC ESL/ESR by package and LED forward voltage by colour."""
 import re
 
 
@@ -510,3 +510,33 @@ MLCC_ESR = {
     '1812': 0.02,
     '2220': 0.015,
 }
+
+
+# LED forward voltage by colour word in the value or lib_id: (nominal V, floor V).
+# Nominal is the datasheet typical at the rated current; floor is the lowest datasheet
+# minimum sampled, below which the LED does not light (None: no floor check).
+# Sources: Wurth 150060/150080, Kingbright APT2012, Lite-On LTST-C170/C190/C191/C193,
+# Vishay VLMO1300/VLMTG1500, Broadcom HSMW-C170, Cree CLV1A-FKB, SunLED XZM2, OSRAM LY P47F.
+# A bare "green" is two technologies (GaP/AlInGaP about 2.1 V, InGaN about 3.2 V): the
+# nominal is the InGaN part most current green LEDs are, the floor the GaP minimum.
+LED_VF_BY_COLOR: dict[str, tuple[float, float | None]] = {
+    "red": (2.0, 1.5), "orange": (2.0, 1.8), "yellow": (2.1, 2.0), "amber": (2.0, 1.8),
+    "green": (3.2, 2.1), "blue": (3.2, 2.5), "white": (3.2, 2.7), "uv": (3.5, 3.2),
+    "ir": (1.2, None),
+}
+LED_VF_DEFAULT = 2.0
+# "ir" where a word starts ("LED_IR", "IR204A", "XYC-IRA3212", "IRL81A"), not inside "wiring"
+# or "kira", nor "IRQ" (interrupt indicator) or "IRNAS" (vendor name); searched in the value
+# and the lib_id's symbol name, not its library nickname.
+_LED_IR_WORD = re.compile(r"(?<![a-z])ir(?!q|nas)")
+
+
+def led_color(comp: dict) -> str | None:
+    """First colour of LED_VF_BY_COLOR named by the LED's value or lib_id, or None."""
+    value, lib_id = comp.get("value", ""), comp.get("lib_id", "")
+    combined = (value + " " + lib_id).lower()
+    part_name = (value + " " + lib_id.rpartition(":")[2]).lower()
+    for color in LED_VF_BY_COLOR:
+        if (_LED_IR_WORD.search(part_name) if color == "ir" else color in combined):
+            return color
+    return None
