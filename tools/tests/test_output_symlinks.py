@@ -171,7 +171,7 @@ class WindowsOpenTarget(_Tmp):
                 mock.patch.object(fileio.os, "replace", side_effect=PermissionError(13, "denied")):
             with self.assertRaises(SystemExit) as cm:
                 atomic_write_text(out, "new", follow_symlinks=False)
-        self.assertIn("open in another program", str(cm.exception.code))
+        self.assertIn("open in another program or read-only", str(cm.exception.code))
         self.assertIn(str(out), str(cm.exception.code))
         self.assertEqual(sorted(os.listdir(self.d)), ["out.json"])
         self.assertEqual(out.read_text(encoding="utf-8"), "old")

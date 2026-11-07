@@ -62,8 +62,8 @@ def atomic_write_text(path, text: str, newline: str | None = "\n", *,
     /dev/fd/N and /proc/self/fd/N, and a FIFO or device named directly, are written in place,
     as a plain write would. Any other link, under /dev or not, is followed or replaced
     (including a link to a FIFO or device when not following).
-    On Windows a target another program holds open cannot be replaced: that exits with a
-    one-line error, the temp file removed.
+    On Windows a target another program holds open, or a read-only one, cannot be replaced:
+    that exits with a one-line error, the temp file removed.
     *newline* is passed to the file object: "\n" (the default) writes LF on every platform,
     "" keeps the text's line endings as given."""
     if _is_stream_node(path):
@@ -123,8 +123,8 @@ def atomic_write_text(path, text: str, newline: str | None = "\n", *,
         except PermissionError as exc:
             if not _is_windows():
                 raise
-            raise SystemExit(f"Error: cannot write {path}: the file is open in another program; "
-                             f"close it and run again") from exc
+            raise SystemExit(f"Error: cannot write {path}: the file is open in another program "
+                             f"or read-only; close it or make it writable and run again") from exc
     except BaseException:
         try:
             os.unlink(tmp)

@@ -42,7 +42,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `--analysis-dir` no longer fails on a symlinked or malformed run entry, a manifest that is a link, a FIFO or a deeply nested file, and no longer hangs on a FIFO named `manifest.json`.
 - Every analyzer and tool reports a JSON input nested deeper than Python can parse as malformed, with its usual error and exit code, instead of a traceback.
 - A symlink under `/dev` (for example in `/dev/shm`) is no longer written through; on Windows an `--output` file held open by another program gives a one-line error.
-- Every CLI's `--output` replaces a symlink at the path instead of writing through it.
+- Every CLI's `--output` replaces a symlink at the path instead of writing through it. The file is written to a temporary name beside it and renamed, so the folder must be writable.
 - Given both `--output` and `--analysis-dir`, the schematic, PCB, EMC and SPICE CLIs write only `--output`, like the other analyzers.
 - Analyzers run in parallel into one `--analysis-dir` no longer lose each other's manifest entries; they share the current run folder.
 - After a schematic change, `--analysis-dir` drops the previous run's `lifecycle.json` instead of carrying the old parts' lifecycle forward.
