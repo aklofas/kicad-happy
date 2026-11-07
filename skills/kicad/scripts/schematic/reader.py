@@ -1316,6 +1316,7 @@ def parse_single_sheet(path: str, instance_uuid: str = "",
     # connecting the parent sheet's wires to the child sheet's matching
     # hierarchical_label via the label name union in build_net_map().
     sub_sheet_paths = []
+    missing_sheets = []
     sheet_fields = {}
     base_dir = Path(path).parent
     for sheet in sorted(find_all(root, "sheet"), key=_sheet_order_key):
@@ -1330,10 +1331,13 @@ def parse_single_sheet(path: str, instance_uuid: str = "",
         # KiCad 7+: (property "Sheet file" "filename.kicad_sch")
         sheet_file = sheet_property(sheet, "SHEETFILE")
         if sheet_file:
-            sub_path = base_dir / expand_sheet_file(sheet_file, path)
+            # KiCad reads a backslash in a sheet file name as a path separator
+            sub_path = base_dir / expand_sheet_file(sheet_file, path).replace("\\", "/")
             if sub_path.exists():
                 sheet_uuid = get_value(sheet, "uuid") or ""
                 sub_sheet_paths.append((str(sub_path), sheet_uuid))
+            else:
+                missing_sheets.append(str(sub_path))
 
         # Extract sheet pin stubs as hierarchical labels so parent-sheet wires
         # connecting to the sheet symbol get unioned with the child sheet's nets.
@@ -1357,7 +1361,7 @@ def parse_single_sheet(path: str, instance_uuid: str = "",
 
     return SheetData(root, components, wires, labels, junctions, no_connects,
                      sub_sheet_paths, lib_symbols, text_annotations, bus_elements, title_block,
-                     sheet_fields)
+                     sheet_fields, missing_sheets)
 
 
 def _sheet_order_key(sheet: list) -> tuple:

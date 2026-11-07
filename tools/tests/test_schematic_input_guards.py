@@ -1,6 +1,7 @@
-"""Recursive and empty inputs: a sheet that includes its own ancestor or an empty sub-sheet is
-skipped with a diagnostic; an empty top-level input is a usage error (exit 2); a KiCad 5 .pro
-resolves to its sibling schematic."""
+"""Recursive, empty and missing inputs: a sheet that includes its own ancestor, or an empty or
+missing sub-sheet, is skipped with a diagnostic; a sheet file named with backslashes loads; an
+empty top-level input is a usage error (exit 2); a KiCad 5 .pro resolves to its sibling
+schematic."""
 import json, os, subprocess, sys, tempfile, time, unittest
 from pathlib import Path
 from tools.tests._fixtures import fixture_path, have
@@ -106,6 +107,49 @@ class SheetGuardTest(unittest.TestCase):
         self.assertEqual(d["diagnostics"], [])
         self.assertEqual(len(d["sheets"]), 3)
         self.assertEqual(len(d["components"]), 3 * len(child["components"]))
+
+    def test_missing_sub_sheet_is_reported_once(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = os.path.join(tmp, "missing_sub.kicad_sch")
+            text = _with_sheet(self.base, "absent.kicad_sch")
+            text = _with_sheet(text, "absent.kicad_sch", uuid="99999999-0000-0000-0000-000000000002")
+            Path(root).write_text(text, encoding="utf-8")
+            d = self._analyze(tmp, root)
+        self.assertEqual(d["diagnostics"], [{
+            "source": "schematic.hierarchy.parse_all_sheets", "exception": "FileNotFoundError",
+            "message": "sheet file absent.kicad_sch named in missing_sub.kicad_sch does not exist",
+            "effect": "missing sheet skipped"}])
+        self.assertGreater(len(d["components"]), 0)
+
+    def test_missing_sheet_below_a_sheet_instanced_twice_is_reported_once(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = os.path.join(tmp, "twice.kicad_sch")
+            text = _with_sheet(self.base, "child.kicad_sch")
+            text = _with_sheet(text, "child.kicad_sch", uuid="99999999-0000-0000-0000-000000000002")
+            Path(root).write_text(text, encoding="utf-8")
+            Path(tmp, "child.kicad_sch").write_text(
+                _with_sheet(self.base, "absent.kicad_sch", uuid="99999999-0000-0000-0000-000000000003"),
+                encoding="utf-8")
+            d = self._analyze(tmp, root)
+        self.assertEqual([(x["effect"], x["message"]) for x in d["diagnostics"]],
+                         [("missing sheet skipped",
+                           "sheet file absent.kicad_sch named in child.kicad_sch does not exist")])
+        self.assertEqual(len(d["sheets"]), 3)
+
+    def test_sheet_file_written_with_backslashes_loads(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            single = os.path.join(tmp, "single.kicad_sch")
+            Path(single).write_text(self.base, encoding="utf-8")
+            child = self._analyze(tmp, single)
+            os.mkdir(os.path.join(tmp, "sub"))
+            Path(tmp, "sub", "child.kicad_sch").write_text(self.base, encoding="utf-8")
+            root = os.path.join(tmp, "backslash.kicad_sch")
+            # the file holds sub\\child.kicad_sch, the s-expression escape of one backslash
+            Path(root).write_text(_with_sheet(self.base, "sub\\\\child.kicad_sch"), encoding="utf-8")
+            d = self._analyze(tmp, root)
+        self.assertEqual(d["diagnostics"], [])
+        self.assertEqual(len(d["components"]), 2 * len(child["components"]))
+        self.assertEqual(len(d["sheets"]), 2)
 
     def test_acyclic_fixture_has_no_diagnostics(self):
         with tempfile.TemporaryDirectory() as tmp:

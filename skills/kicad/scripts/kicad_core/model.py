@@ -124,6 +124,8 @@ class SheetData:
     # sheet uuid -> {"fields": [(name, text)], "in_bom", "on_board", "dnp", "exclude_from_sim"}
     # for each (sheet ...) block; the sheet name and file fields are named SHEETNAME / SHEETFILE
     sheet_fields: dict = field(default_factory=dict)
+    # sheet files a (sheet ...) block names that do not exist, as resolved paths
+    missing_sheets: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

@@ -25,6 +25,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Bus labels with quoted member or prefix names (`{"A B" C}`), as KiCad 10 allows, now expand to their members, and a group member containing a space is named with the space escaped (`A\ B`), as KiCad names it.
 - Each sheet file is now read once, however many times the design uses it; designs that repeat a large sheet many times analyze several times faster.
 - A schematic or board file that is cut short, holds a merge conflict, nests lists more than 200 deep, or is not a KiCad file at all (a Git LFS pointer, a copied `(lib_symbols …)` fragment) now gets one `diagnostics` record; whatever parses is still analyzed and the exit code is unchanged. Very deep nesting no longer crashes the analyzer.
+- A sub-sheet whose file does not exist now leaves one `diagnostics` record (missing sheet skipped) instead of disappearing silently. Sheet file names written with backslashes (`COMPONENT_SHEETS\MCU.kicad_sch`) are now found, as KiCad finds them; those sheets were left out.
 - A `.kicad-happy.json` or `.kicad_pro` saved with a UTF-8 byte-order mark (common Windows editors) is now read instead of skipped.
 - `"analysis": null` or a non-string entry in `power_rails.ignore` / `flag` is now warned and ignored instead of dropping every power-rail setting.
 - A `voltage_overrides` entry now also sets the output voltage used for a regulator's dropout and dissipation, and counts when deciding whether two ICs' I/O rails need a level shifter.

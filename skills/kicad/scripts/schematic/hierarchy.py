@@ -67,7 +67,8 @@ def _sheet_list(root_path: str, root_tree: list) -> dict:
         for _x, _y, suuid, fname in sorted(kids, key=lambda k: k[:3]):
             if not fname:
                 continue
-            sub = str((Path(file_path).parent / expand_sheet_file(fname, file_path)).resolve())
+            sub = str((Path(file_path).parent
+                       / expand_sheet_file(fname, file_path).replace("\\", "/")).resolve())
             if sub in ancestors or not os.path.isfile(sub):
                 continue
             if sub not in trees:
@@ -198,7 +199,7 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
             sub-sheet that lacks (symbol_instances) — pass the root's
             symbol_instances collected during the peer-sheet traversal.
         diagnostics: list sink for skipped sheets (a sheet that includes one of
-            its own ancestors, or an empty sub-sheet file) and for sheet files that do
+            its own ancestors, an empty or missing sub-sheet file) and for sheet files that do
             not parse whole (root_tree, when given, is the caller's to check).
         project_path: the schematic whose project this sheet belongs to (names the
             project and finds its .kicad_pro); defaults to root_path.  Set when
@@ -334,6 +335,15 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
         # each escaped as a net name (B/C is B{slash}C), between plain separators
         sheet_paths.append("/" + "".join(net_name_escape(node["name"]) + "/"
                                          for node in reversed(text_chain[:-1])))
+
+        for missing in sd.missing_sheets:
+            missing = str(Path(missing).resolve())
+            if missing not in skipped:
+                skipped.add(missing)
+                record(diagnostics, "schematic.hierarchy.parse_all_sheets",
+                       FileNotFoundError(f"sheet file {os.path.basename(missing)} named in "
+                                         f"{os.path.basename(sheet_path)} does not exist"),
+                       "missing sheet skipped")
 
         chain = ancestors + (sheet_path,)
         for sub_path, sub_uuid in sub_sheets:
