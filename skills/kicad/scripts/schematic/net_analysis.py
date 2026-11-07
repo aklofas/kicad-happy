@@ -10,6 +10,7 @@ from kicad_core.coords import to_iu
 from detector_helpers import is_protection_part
 from kicad_core.sexp import unescape_string
 from schematic import erc_pins
+from validation_detectors import _en_endpoint_compatible
 from kicad_core.parts import (
     _OUTPUT_DRIVE_KEYWORDS,
 )
@@ -559,6 +560,24 @@ def _rails_voltage_compatible(rails_a: set, rails_b: set,
     return bool(va & vb)
 
 
+def _en_tolerant_ref(ctx: AnalysisContext, ref: str, net_name: str, net_info: dict,
+                     power_domains: dict) -> bool:
+    """True when every pin of *ref* on the net is a regulator enable or power-good pin
+    that the voltage-level check (VM-001) accepts as a compatible endpoint."""
+    pins = [p for p in net_info["pins"] if p["component"] == ref]
+    if not pins:
+        return False
+    refs = {p["component"] for p in net_info["pins"] if p["component"] in power_domains}
+    volts = [ctx.rail_voltage_or(r, _parse_voltage_from_net_name)
+             for r in _get_io_domains_for_refs(refs, power_domains, ctx.is_ground)]
+    volts = [v for v in volts if v is not None]
+    # No parsed rail: 0.0 keeps the datasheet-threshold test conservative.
+    v_min = min(volts) if volts else 0.0
+    return all(_en_endpoint_compatible(ctx, {"ref": ref, "pin": p.get("pin_name", "")},
+                                       net_name, v_min)
+               for p in pins)
+
+
 def _detect_cross_domain_signals(ctx: AnalysisContext, power_domains: dict,
                                  results_in: dict | None = None) -> list:
     """Find signals crossing between different power domains."""
@@ -639,6 +658,8 @@ def _detect_cross_domain_signals(ctx: AnalysisContext, power_domains: dict,
                     # +3V3 and VCC_3V3 are both 3.3V).
                     functional_refs = non_esd_refs - level_translator_refs
                     ic_list = sorted(functional_refs) if functional_refs else sorted(non_esd_refs)
+                    ic_list = [r for r in ic_list
+                               if not _en_tolerant_ref(ctx, r, net_name, net_info, power_domains)]
                     needs_shifter = False
                     for i_idx in range(len(ic_list)):
                         for j_idx in range(i_idx + 1, len(ic_list)):

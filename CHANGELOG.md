@@ -118,6 +118,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - FS-001 no longer calls the LM2596/LM2576 datasheet divider too low and no longer prescribes a 10 nF compensation cap.
 - The Ethernet check no longer warns about missing magnetics when the jack has them built in (Amphenol RJMG, Würth 7499010/7499111, Abracon ARJC, Link-PP LPJG, Bel SI-46 and similar), and such a jack is listed as the interface's connector.
 - PU-001 no longer asks for a pull-up on SPI MISO pins.
+- `cross_domain_signals` no longer asks for a level shifter on a regulator enable or power-good pin that VM-001 accepts.
 
 ### Documentation
 
