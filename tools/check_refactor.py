@@ -929,6 +929,8 @@ TEXT_SCRIPTS = {
 }
 NEG_MODES = {"noargs": [], "missing": ["./does-not-exist.kicad_sch"], "badflag": ["--no-such-flag"],
              "schema-noinput": ["--schema"]}
+# Negative cases that would reach the network (search_lcsc treats the path as a query).
+_NETWORK_NEG = {("search_lcsc", "missing")}
 TEXT_BASE_SCH = "determinism__usb_dual_esd.kicad_sch"
 LEGACY_A = TOOLS_DIR / "tests" / "fixtures" / "text" / "legacy_severity_a.json"
 LEGACY_B = TOOLS_DIR / "tests" / "fixtures" / "text" / "legacy_severity_b.json"
@@ -959,7 +961,9 @@ def text_artefact_names(sch: list[str], pcb: list[str], gerber: list[str], chain
             names.append(f"{scope}__{mode}")
     names += [f"help__{c}" for c in _cli_names()]
     for rel in (r for rels in SKILL_CLIS.values() for r in rels):
-        names += [f"neg__{_cli_stem(rel)}__{m}" for m in NEG_MODES if m != "schema-noinput" or rel in SCHEMA_CLIS]
+        names += [f"neg__{_cli_stem(rel)}__{m}" for m in NEG_MODES
+                  if (m != "schema-noinput" or rel in SCHEMA_CLIS)
+                  and (_cli_stem(rel), m) not in _NETWORK_NEG]
     return names
 
 
@@ -1099,6 +1103,8 @@ def run_text_snapshot(fixtures_root: Path, snap_dir: Path, txt_out: Path, produc
             emit(f"help__{cli}", rc, out)
             for mode, args in NEG_MODES.items():
                 if mode == "schema-noinput" and rel not in SCHEMA_CLIS:
+                    continue
+                if (cli, mode) in _NETWORK_NEG:
                     continue
                 if cli == "format-report" and mode == "missing":
                     args = ["--schematic", *args]

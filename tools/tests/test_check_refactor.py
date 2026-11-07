@@ -794,6 +794,10 @@ class TextOracle(unittest.TestCase):
         self.assertIn("help__format-report", names)
         self.assertIn("neg__analyze_pcb__schema-noinput", names)
         self.assertNotIn("neg__diff_analysis__schema-noinput", names)
+        self.assertNotIn("neg__search_lcsc__missing", names)
+        self.assertIn("neg__search_lcsc__noargs", names)
+        self.assertIn("neg__fetch_datasheet_lcsc__missing", names)
+        self.assertIn("neg__sync_datasheets_lcsc__missing", names)
 
 
 class SkillLocalResources(unittest.TestCase):
