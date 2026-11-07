@@ -651,7 +651,8 @@ def finalize_for_cli(result: dict, config: dict, *, pcb_path: str, analysis_dir_
             }, indent=2), follow_symlinks=False)
             print(f"GP-001 debug: {len(gp001_debug_data)} samples written to {debug_path}",
                   file=sys.stderr)
-        except OSError as e:
+        except (OSError, SystemExit) as e:
+            # SystemExit: a held-open target on Windows; this file is best-effort
             print(f"GP-001 debug write failed: {e}", file=sys.stderr)
 
     # Attach project config summary to output for downstream consumers

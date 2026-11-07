@@ -1,8 +1,9 @@
 # tools/tests/test_pcb_gp001_debug_path.py
 """--gp001-debug writes its file into --analysis-dir when given, else beside --output,
 else beside the board."""
-import os, subprocess, sys, tempfile, unittest
+import contextlib, io, os, subprocess, sys, tempfile, unittest
 from pathlib import Path
+from unittest import mock
 
 SCRIPT = Path(__file__).resolve().parents[2] / "skills" / "kicad" / "scripts" / "analyze_pcb.py"
 
@@ -74,6 +75,25 @@ class TestGp001DebugPath(unittest.TestCase):
         with open(victim, encoding="utf-8") as f:
             self.assertEqual(f.read(), "keep")
         self.assertIn("GP-001 debug write failed", r.stderr)
+
+
+class TestGp001DebugWindowsHeldOpen(unittest.TestCase):
+    def test_held_open_file_on_windows_warns_and_continues(self):
+        sys.path.insert(0, str(SCRIPT.parent))
+        from kicad_core import fileio
+        from pcb.pipeline import finalize_for_cli
+        with tempfile.TemporaryDirectory() as d:
+            result = {"_gp001_debug_samples": [{"hit": True}]}
+            err = io.StringIO()
+            with mock.patch.object(fileio, "_is_windows", return_value=True), \
+                    mock.patch.object(fileio.os, "replace",
+                                      side_effect=PermissionError(13, "denied")), \
+                    contextlib.redirect_stderr(err):
+                finalize_for_cli(result, {}, pcb_path=os.path.join(d, "b.kicad_pcb"),
+                                 analysis_dir_arg=d, return_path_radius_mm=1.0, stage=None)
+            self.assertIn("GP-001 debug write failed", err.getvalue())
+            self.assertNotIn("_gp001_debug_samples", result)
+            self.assertEqual(os.listdir(d), [])
 
 
 if __name__ == "__main__":
