@@ -22,6 +22,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - DFM no longer carries net-class track-width and via-diameter checks: KiCad treats those class values as routing defaults, not minima, and the checks never ran.
 - The connector ESD-gap check no longer reports a VPP or VM net that a power symbol marks as a rail.
 - A footprint pad with several fabrication-property tokens, or a footprint that declares its own newer file version, is read as KiCad reads it.
+- RS-001 on a rail whose only power_in pins are bootstrap pins is reported as name-based (heuristic).
 - An `ipc_class` of `true` passed straight to the PCB analyzer no longer reads as IPC Class 1.
 - A design variant overrides a symbol field only when it names the field with the same case, as KiCad does.
 - A corrupt or unreadable datasheet extraction file is now reported once in the schematic output's diagnostics instead of silently disabling the IC absolute-maximum voltage check.
