@@ -26,7 +26,8 @@ LOAD_SWITCH_KEYWORDS = (
 _REGULATOR_VREF: dict[str, float] = {
     # TI switching regulators — verified against TI datasheets + DigiKey 2026-04-12
     "TPS6100": 0.5,                                               # TPS61000/01 FB = 0.5V
-    "TPS6102": 0.595,  "TPS6103": 0.595,                          # TPS61020/23/30 FB = 0.595V
+    "TPS6102": 0.595,                                             # TPS61023 VREF = 595 mV (SLVSF14B)
+    "TPS6103": 0.5,                                               # TPS61030 VFB = 500 mV (SLUS534G); TPS61031/32 are fixed 3.3/5 V
     "TPS5430": 1.221,  "TPS5450": 1.221,  "TPS5410": 1.221,     # TPS5430/50/10 Vref = 1.221V
     "TPS54160": 0.8,   "TPS54260": 0.8,   "TPS54360": 0.8,      # TPS541x0/542x0/543x0 FB = 0.8V
     "TPS54040": 0.8,   "TPS54060": 0.8,                          # TPS54040/60 Vref = 0.8V
@@ -77,6 +78,7 @@ _REGULATOR_VREF: dict[str, float] = {
     "LT860": 0.97,     "LT862": 0.97,                            # LT8640/8620 VFB = 0.970V
     "LT871": 1.213,                                               # LT8710 FBX = 1.213V
     "LTM46": 0.6,                                                 # LTM4600 VFB = 0.6V
+    "LTC3558": 0.8,                                               # LTC3558 VFB1/VFB2 = 800 mV (3558f)
     # Richtek
     "RT5": 0.6,         "RT6": 0.6,                              # family default (RT5785 VFB = 0.6V)
     "RT6150": 0.5,                                                # RT6150A/B VFB = 0.5V (DS6150A/B-06)
@@ -201,11 +203,22 @@ def lookup_regulator_vref(value: str, lib_id: str, mpn: str = "") -> tuple[float
 _PACKAGE_TOKEN = re.compile(
     r'[-_]?(?:SOT|SOD|SC|TO|DFN|QFN|SON|SOIC|SOP|MSOP|SSOP|TSSOP|HTSSOP|VSSOP|TSOT|'
     r'WSON|VSON|USON|UDFN|WDFN|XDFN|TDFN|VQFN|WQFN|LGA|BGA|DIP|PDIP|SIP|LQFP|TQFP|QFP|'
-    r'DPAK|D2PAK)[-_]?\d+(?:[-_]\d+)?')
+    r'DPAK|D2PAK)[-_]?\d+(?:[-_]\d+)?'
+    r'|[-_](?:MLP|WLCSP|POWERPAD|SO|LFCSP|TSOP|HSOP|ESOP|DSBGA|UQFN|QSOP|PQFN|DDPAK)[-_]?\d{1,3}(?!\d)(?:[-_]\d{1,3}(?!\d))?')
 # A two-digit suffix that is also a common supply voltage is read both ways in
 # KiCad's library (AP7361C-12E is 1.2 V, LM1085-12 is 12 V; AP1117-15 is 1.5 V,
 # LM3480-15 is 15 V; LM341T-05 is 5 V; NID30S48-24 is 24 V), so it gives no value.
 _AMBIGUOUS_SUFFIXES = frozenset({"05", "09", "10", "12", "15", "24", "48"})
+# Families whose data sheet gives the voltage of such a suffix (part-number prefix -> {suffix: V}).
+_FIXED_SUFFIX_FAMILIES: dict[str, dict[str, float]] = {
+    "LM2596": {"12": 12.0},                          # SNVS124E: 3.3-V, 5-V, 12-V and adjustable versions
+    "LM2576": {"12": 12.0, "15": 15.0},              # SNVS107G: 3.3-V, 5-V, 12-V, 15-V and adjustable
+    "LM2940": {"10": 10.0, "12": 12.0, "15": 15.0},  # SNVS769J ordering table: -5.0, -8.0, -9.0, -10, -12, -15
+    "TL780": {"05": 5.0, "12": 12.0, "15": 15.0},    # SLVS055M: TL780-05, -12, -15
+    "NCP1117": {"12": 12.0, "15": 1.5},              # onsemi NCP1117 ordering table: ST12T3G 12 V, ST15T3G 1.5 V
+    "XL1509": {"12": 12.0},                          # XLSEMI XL1509: 3.3 V, 5 V, 12 V and adjustable versions
+    "AP7361": {"10": 1.0, "12": 1.2, "15": 1.5},     # DS37274: AP7361C-10 1.0 V, -12 1.2 V, -15 1.5 V
+}
 
 
 def _lookup_vref(candidates: list[str]) -> tuple[float | None, str]:
@@ -221,7 +234,9 @@ def _lookup_vref(candidates: list[str]) -> tuple[float | None, str]:
                 return (-float(v) if m.group(1) == "9" else float(v)), "fixed_suffix"
     # Check for fixed-output voltage suffix (e.g., AMS1117-3.3, TLV1117LV-33,
     # RT9013-18GV — patterns: -3.3, -33, -3V3, -1V8)
+    ambiguous = set()
     for candidate in candidates:
+        raw = candidate
         candidate = _PACKAGE_TOKEN.sub("", candidate)
         m = re.search(r'[-_](\d+)V(\d+)', candidate)
         if m:
@@ -232,7 +247,15 @@ def _lookup_vref(candidates: list[str]) -> tuple[float | None, str]:
             if 0.5 <= fixed_v <= 60:
                 return fixed_v, "fixed_suffix"
         m = re.search(r'[-_](\d{2})(?=[^0-9.]|$)', candidate)
-        if m and m.group(1) not in _AMBIGUOUS_SUFFIXES:
+        if m and m.group(1) in _AMBIGUOUS_SUFFIXES:
+            family = next((f for f in _FIXED_SUFFIX_FAMILIES if candidate.startswith(f)), None)
+            if family and m.group(1) in _FIXED_SUFFIX_FAMILIES[family]:
+                return _FIXED_SUFFIX_FAMILIES[family][m.group(1)], "fixed_suffix"
+            # A fixed part of unknown voltage has no adjustable Vref either; a
+            # suffix after a space is part of a description (LM317 (7-12V)).
+            if " " not in candidate[:m.start()]:
+                ambiguous.add(raw)
+        elif m:
             # A two-digit suffix is an implied decimal, as in KiCad's library:
             # AP1117-33 is 3.3 V, LDK130-08 is 0.8 V. No fixed part is below
             # 0.5 V, so LC78_03-05 (a 3.3 V module) gives no value.
@@ -240,6 +263,8 @@ def _lookup_vref(candidates: list[str]) -> tuple[float | None, str]:
             if fixed_v >= 0.5:
                 return fixed_v, "fixed_suffix"
     for candidate in candidates:
+        if candidate in ambiguous:
+            continue
         key = _longest_vref_key(candidate)
         if key is not None:
             return _REGULATOR_VREF[key], "lookup"
@@ -263,12 +288,21 @@ def part_number_core(part: str) -> str:
     return m.group(0) if m else ""
 
 
+# A key that is itself a fixed-output part name (LD33 is a 3.3 V part) names no part's Vref.
+_FIXED_PART_KEYS = frozenset({"LD33"})
+
+
 def vref_key_covers_part(key: str, part: str) -> bool:
     """True when a _REGULATOR_VREF key names the whole part number of *part*
     (its value for that part), not a shorter family prefix: 'TPS61023' covers
-    TPS61023DRLR, 'TPS6102' does not cover TPS61025."""
+    TPS61023DRLR, 'TPS6102' does not cover TPS61025. A fixed-voltage code after
+    the key (NCP1117ST33T3G, LD1117AV33) names another part."""
     core = part_number_core(part)
-    return bool(core) and part.upper().startswith(key.upper()) and len(key) >= len(core)
+    if not (core and part.upper().startswith(key.upper()) and len(key) >= len(core)):
+        return False
+    if key.upper() in _FIXED_PART_KEYS:
+        return False
+    return not re.match(r"[A-Za-z]{1,2}\d{2}(?!\d)", part[len(key):])
 
 
 def regulator_vref_key(value: str, lib_id: str, mpn: str = "") -> tuple[str, str] | None:
