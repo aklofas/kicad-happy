@@ -166,7 +166,6 @@ _PULLUP_PIN_NAMES = (
     'INT', 'IRQ', 'ALERT', 'DRDY', 'BUSY', 'RDY',
     'INT1', 'INT2', 'IRQ1', 'IRQ2', 'ALERT1', 'ALERT2',
     'SDA', 'SCL', 'I2C_SDA', 'I2C_SCL',
-    'MISO',  # SPI open-drain mode
     'OD', 'OPEN_DRAIN',
     'PG', 'PGOOD', 'POWER_GOOD', 'nPG',
     'FAULT', 'nFAULT', 'FLAG', 'nFLAG',
