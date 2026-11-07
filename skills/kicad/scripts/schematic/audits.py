@@ -1035,8 +1035,8 @@ def check_simulation_readiness(components: list[dict], lib_symbols: dict) -> dic
         desc = (sym.get("description", "") + " " + sym.get("keywords", "")).lower()
         ctype = c["type"]
 
-        # Passives (R, C, L) have built-in SPICE models
-        if ctype in ("resistor", "capacitor", "inductor"):
+        # Passives (R, C, L) have built-in SPICE models; a net tie or a jumper needs no part model
+        if ctype in ("resistor", "capacitor", "inductor", "net_tie", "jumper"):
             has_model_hint.append(c["reference"])
         elif "spice" in desc or "simulation" in desc or "sim_" in desc:
             has_model_hint.append(c["reference"])
