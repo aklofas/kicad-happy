@@ -113,7 +113,7 @@ def detect_absolute_max_violations(ctx, rail_voltages: dict) -> list[dict]:
             continue
         am_block = getattr(base, "absolute_max", None)
         pinout = getattr(base, "pinout", None)
-        if not am_block or pinout is None:
+        if pinout is None:
             continue
 
         for pin in pinout:
@@ -130,21 +130,20 @@ def detect_absolute_max_violations(ctx, rail_voltages: dict) -> list[dict]:
             # The base schema keys abs-max ratings "<domain>_max" (VIN_max), as
             # datasheet_verify._domain_absolute_voltage_max reads them.
             synonyms = (f"{domain}_max",) + _candidate_synonyms(domain, VDD_SYNONYMS)
-            specs = _resolve_key(am_block, synonyms)
-            if not has_data(specs):
-                continue
-            sv = best(specs, min_confidence="medium")
-            if sv is None or sv.max is None:
-                continue
-            absolute_max_v = sv.max
+            specs = _resolve_key(am_block, synonyms) if am_block else None
+            sv = best(specs, min_confidence="medium") if has_data(specs) else None
+            limits = [sv.max] if sv is not None and sv.max is not None else []
 
-            # Per-pin override: tighten the rail-level limit if pin publishes
-            # a stricter per-pin absolute_max.
+            # A per-pin absolute_max applies with or without a domain limit; the
+            # stricter of the two wins.
             pin_specs = getattr(pin, "absolute_max", None)
             if has_data(pin_specs):
                 pin_sv = best(pin_specs, min_confidence="medium")
-                if pin_sv is not None and pin_sv.max is not None and pin_sv.max < absolute_max_v:
-                    absolute_max_v = pin_sv.max
+                if pin_sv is not None and pin_sv.max is not None:
+                    limits.append(pin_sv.max)
+            if not limits:
+                continue
+            absolute_max_v = min(limits)
 
             if rail_v <= absolute_max_v:
                 continue

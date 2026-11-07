@@ -667,9 +667,9 @@ def _v1_operating_temperature(ext: dict, path) -> tuple | None:
 def read_extraction_temperature(mpn: str, project_dir: str) -> dict | None:
     """Operating temperature range from the project's datasheet extraction cache.
 
-    Looks the MPN up in <project_dir>/datasheets/extracted the way the
-    datasheet consumers do (manifest, then <mpn>.json, then the older
-    underscore-only file name). A file that is not a readable JSON object is
+    Looks the MPN up in <project_dir>/datasheets/extracted with the shared
+    ``find_extraction`` (a v1.4 <mpn>.json first, then the manifest, then the
+    files named after the part). A file that is not a readable JSON object is
     skipped with one warning.
     """
     if not project_dir:

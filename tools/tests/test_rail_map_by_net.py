@@ -86,6 +86,22 @@ class RailMapByNet(unittest.TestCase):
         self.assertEqual([(f["components"], f["nets"], f["rail_voltage"]) for f in found],
                          [(["U3"], [VOUT1], 5.0)])
 
+    def test_am001_reads_a_per_pin_limit_without_a_domain_limit(self):
+        vin_max = SpecValue(unit="V", evidence=Evidence(page=1, confidence="high", method="table"),
+                            max=4.0)
+
+        def facts(mpn, **_kw):
+            if mpn != "FAKE-LOAD":
+                return None
+            pin = SimpleNamespace(numbers=["1"], name="VIN", power_domain="VIN",
+                                  absolute_max=[vin_max])
+            return SimpleNamespace(base=SimpleNamespace(absolute_max={}, pinout=[pin]))
+        ctx = _ctx()
+        topo = detect_topologies(ctx)
+        with patch.object(lookup_detectors, "get_facts", side_effect=facts):
+            found = run_domain_detectors(ctx, topo)["am_001_findings"]
+        self.assertEqual([(f["components"], f["absolute_max_v"]) for f in found], [(["U3"], 4.0)])
+
     def test_domain_detectors_rebuild_a_missing_map(self):
         ctx = _ctx()
         topo = detect_topologies(ctx)
