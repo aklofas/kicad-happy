@@ -1622,6 +1622,11 @@ def detect_power_regulators(ctx: AnalysisContext, voltage_dividers: list[dict]) 
     return power_regulators
 
 
+# A GPIO on a port other than H (PA0, PB12). On a part with such pins, PH0/PH1 are port H GPIOs,
+# not switch pins. H is left out because a multi-phase regulator's PH1/PH2 would match it.
+_GPIO_PORT_PIN = re.compile(r"^P[A-GI-K]\d{1,2}$")
+
+
 def _screen_regulator_candidate(ctx: AnalysisContext, ic: dict) -> _RegulatorCandidate | dict | None:
     """Reject non-regulators; return the keyword-only PMIC record finished, else the candidate."""
     ref = ic["reference"]
@@ -1663,9 +1668,12 @@ def _screen_regulator_candidate(ctx: AnalysisContext, ic: dict) -> _RegulatorCan
     vout_pin = None
     boot_pin = None
 
+    has_gpio_ports = any(_GPIO_PORT_PIN.match(n) for n in ic_pins)
     for pname, (net, pnum) in ic_pins.items():
         # Use startswith for pins that may have numeric suffixes (FB1, SW2, etc.)
         pn_base = pname.rstrip("0123456789").rstrip("_")  # Strip trailing digits and underscores (FB_1→FB)
+        if pn_base == "PH" and pname != "PH" and has_gpio_ports:
+            pn_base = pname
         # Split composite pin names like "FB/VOUT" into parts
         pn_parts = {p.strip() for p in pname.split("/")} | {pn_base}
         if pn_parts & {"FB", "VFB", "ADJ", "VADJ"}:

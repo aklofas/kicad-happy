@@ -11,6 +11,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 ### Changed
 
 - Value, Footprint, Datasheet and Description are read in any case and a later duplicate replaces the earlier one, as KiCad 10 does; a KiCad 6 instance value of only spaces sets an empty value.
+- Microcontrollers with port H pins (PH0, PH1) are no longer reported as switching regulators; the regulator and sequencing findings built on them go away, and a rail only they appeared to supply now reports no source.
 
 ### Fixed
 
