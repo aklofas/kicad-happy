@@ -1599,6 +1599,7 @@ class _RegulatorCandidate:
     desc_lower: str
     lib_val_lower: str
     has_reg_keyword: bool
+    fb_candidates: tuple = ()  # every FB/ADJ pin as (name, net), in natural name order
 
 
 def detect_power_regulators(ctx: AnalysisContext, voltage_dividers: list[dict]) -> list[dict]:
@@ -1667,6 +1668,7 @@ def _screen_regulator_candidate(ctx: AnalysisContext, ic: dict) -> _RegulatorCan
     vin_pin = None
     vout_pin = None
     boot_pin = None
+    fb_candidates = []
 
     has_gpio_ports = any(_GPIO_PORT_PIN.match(n) for n in ic_pins)
     for pname, (net, pnum) in ic_pins.items():
@@ -1677,8 +1679,7 @@ def _screen_regulator_candidate(ctx: AnalysisContext, ic: dict) -> _RegulatorCan
         # Split composite pin names like "FB/VOUT" into parts
         pn_parts = {p.strip() for p in pname.split("/")} | {pn_base}
         if pn_parts & {"FB", "VFB", "ADJ", "VADJ"}:
-            if not fb_pin:
-                fb_pin = (pname, net)
+            fb_candidates.append((pname, net))
             # Composite names like "FB/VOUT" also set vout_pin
             if not vout_pin and pn_parts & _VOUT_PIN_NAMES:
                 vout_pin = (pname, net)
@@ -1694,6 +1695,11 @@ def _screen_regulator_candidate(ctx: AnalysisContext, ic: dict) -> _RegulatorCan
             vout_pin = (pname, net)
         elif pn_parts & _BOOTSTRAP_PIN_TOKENS:
             boot_pin = (pname, net)
+
+    # Order several FB pins by name (ADJ1 before ADJ2), not by net enumeration order
+    fb_candidates.sort(key=lambda c: [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", c[0])])
+    if fb_candidates:
+        fb_pin = fb_candidates[0]
 
     if not fb_pin and not sw_pin and not vout_pin:
         # For pin-less ICs (legacy format), check keywords before
@@ -1812,6 +1818,7 @@ def _screen_regulator_candidate(ctx: AnalysisContext, ic: dict) -> _RegulatorCan
         ic=ic, ref=ref, ic_pins=ic_pins, fb_pin=fb_pin, sw_pin=sw_pin, vin_pin=vin_pin,
         vout_pin=vout_pin, boot_pin=boot_pin, lib_part_name=lib_part_name,
         desc_lower=desc_lower, lib_val_lower=lib_val_lower, has_reg_keyword=has_reg_keyword,
+        fb_candidates=tuple(fb_candidates),
     )
 
 
@@ -2032,6 +2039,15 @@ def _build_regulator_record(ctx: AnalysisContext, cand: _RegulatorCandidate,
         }
         if vout_pin and not ctx.is_ground(vout_pin[1]):
             reg_info["output_rail"] = vout_pin[1]
+
+    # A multi-channel part has several FB pins: estimate the channel whose divider tops out on
+    # the output rail, else the first with a divider, else the first by name
+    fb_divided = [c for c in cand.fb_candidates
+                  if any(vd["mid_net"] == c[1] and vd["ratio"] > 0 for vd in voltage_dividers)]
+    fb_pin = next((c for c in fb_divided
+                   if any(vd["mid_net"] == c[1] and vd["top_net"] == reg_info.get("output_rail")
+                          for vd in voltage_dividers)),
+                  fb_divided[0] if fb_divided else fb_pin)
 
     # Check feedback divider for output voltage estimation
     if fb_pin:

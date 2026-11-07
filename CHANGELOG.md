@@ -99,6 +99,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `check_report_sections.py --report` counts each report header toward one required section only, so a "Gerber Verification" header no longer also satisfies "Analyzer Verification".
 - `diff_analysis` says when both sides were produced from byte-identical design files, so changes that come from a newer analyzer are not read as design changes.
 - `what_if` log-sweep columns read `12.92k` and `3.162n` instead of `1.292e+04` and `3.162e-09`; a script that reads `value_strs` as plain numbers should use `values`.
+- On regulators with several feedback pins the Vout estimate uses the pin whose divider feeds the reported output rail, independent of net order.
 
 ### Documentation
 
