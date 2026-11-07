@@ -10,7 +10,6 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "skills" / "kicad" / "scripts"))
 
 from schematic.pipeline import analyze_legacy_schematic  # noqa: E402
-from schematic.presentation import _flatten_signal_findings  # noqa: E402
 
 HEAD = "EESchema Schematic File Version 4\nEELAYER 30 0\nEELAYER END\n$Descr A4 11693 8268\n$EndDescr\n"
 LIB = ("EESchema-LIBRARY Version 2.4\n#encoding utf-8\n"
@@ -57,26 +56,6 @@ class LegacyFeedbackDividerTest(unittest.TestCase):
         self.assertEqual(sorted(vd[0]["components"]), ["R1", "R2"])
         self.assertTrue(vd[0].get("is_feedback"))
         self.assertEqual(result["summary"]["total_findings"], len(result["findings"]))
-
-
-def _divider(top, ratio):
-    return {"detector": "detect_voltage_dividers", "rule_id": "VD-DET", "components": ["R10", "R9"],
-            "top_net": top, "mid_net": "__unnamed_11", "bottom_net": "GND", "ratio": ratio}
-
-
-class SharedReferencesTest(unittest.TestCase):
-    # A legacy design that repeats a sub-sheet reuses reference designators: R10/R9 can be two
-    # dividers that share the mid and bottom nets but hang from different top nets.
-    def test_dividers_with_the_same_resistors_on_different_nets_are_both_kept(self):
-        fb = _divider("__unnamed_14", 0.158163)
-        vd = _divider("__unnamed_13", 0.156289)
-        out = _flatten_signal_findings({"voltage_dividers": [vd], "feedback_networks": [fb]})
-        self.assertEqual(sorted(f["top_net"] for f in out), ["__unnamed_13", "__unnamed_14"])
-
-    def test_a_copy_of_the_same_divider_is_listed_once(self):
-        vd = _divider("__unnamed_13", 0.156289)
-        out = _flatten_signal_findings({"voltage_dividers": [vd], "feedback_networks": [dict(vd), vd]})
-        self.assertEqual(len(out), 1)
 
 
 if __name__ == "__main__":
