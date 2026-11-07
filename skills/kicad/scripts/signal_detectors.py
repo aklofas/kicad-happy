@@ -1302,6 +1302,47 @@ def detect_decoupling(ctx: AnalysisContext) -> list[dict]:
     return decoupling_analysis
 
 
+# Input pins of current-sense amplifiers (INA219 IN+/IN-, INA180 VIN+/VIN-, MAX4080 RS+/RS-).
+# Op-amps share these names, so they count only on a known sense IC.
+_SENSE_AMP_INPUT_PINS = frozenset({"IN+", "IN-", "VIN+", "VIN-", "RS+", "RS-"})
+
+
+def _sense_ics_across(ctx: AnalysisContext, net_a: str, net_b: str,
+                      keywords: frozenset, exclude: frozenset) -> set[str]:
+    """Known sense-amplifier ICs with a pin on both nets."""
+    def ics_on(net):
+        return {p["component"] for p in ctx.nets.get(net, {}).get("pins", [])}
+    found = set()
+    for ref in ics_on(net_a) & ics_on(net_b):
+        comp = ctx.comp_lookup.get(ref)
+        if not comp or comp["type"] != "ic":
+            continue
+        val = (comp.get("value", "") + " " + comp.get("lib_id", "")).lower()
+        if any(kw in val for kw in keywords) and not any(kw in val for kw in exclude):
+            found.add(ref)
+    return found
+
+
+def _sense_pin_key(pin_name: str) -> str:
+    return pin_name.upper().rstrip("0123456789").rstrip("_")
+
+
+def _opposite_input_reaches(ctx: AnalysisContext, ref: str, pin_key: str,
+                            net: str, shunt_refs: list) -> bool:
+    """True when ``ref``'s opposite input (IN+ for IN-) is on ``net``, directly or
+    through one resistor (an input filter), so the shunt sits between its inputs."""
+    want = pin_key[:-1] + ("-" if pin_key.endswith("+") else "+")
+    reach = {net}
+    for p in ctx.nets.get(net, {}).get("pins", []):
+        r_comp = ctx.comp_lookup.get(p["component"])
+        if r_comp and r_comp["type"] == "resistor" and p["component"] not in shunt_refs:
+            a, b = ctx.get_two_pin_nets(p["component"])
+            if a and b:
+                reach.add(b if a == net else a)
+    return any(p["component"] == ref and _sense_pin_key(p.get("pin_name", "")) == want
+               for n in reach for p in ctx.nets.get(n, {}).get("pins", []))
+
+
 def detect_current_sense(ctx: AnalysisContext) -> list[dict]:
     """Detect current sense circuits."""
     current_sense: list[dict] = []
@@ -1359,7 +1400,13 @@ def detect_current_sense(ctx: AnalysisContext) -> list[dict]:
         s1_pwr_or_gnd = ctx.is_ground(s_n1) or ctx.is_power_net(s_n1, by_pins=False)
         s2_pwr_or_gnd = ctx.is_ground(s_n2) or ctx.is_power_net(s_n2, by_pins=False)
         if s1_pwr_or_gnd and s2_pwr_or_gnd:
-            continue
+            # Between two rails (VBAT -> VBAT_LOAD) it is a shunt only when a known
+            # sense amplifier has pins on both of them.
+            if ctx.is_ground(s_n1) or ctx.is_ground(s_n2):
+                continue
+            rail_sense_ics = _sense_ics_across(ctx, s_n1, s_n2, _SENSE_IC_KEYWORDS, _SENSE_IC_EXCLUDE)
+            if not rail_sense_ics:
+                continue
 
         shunt_ohms = group_value(ctx, shunt["reference"])
 
@@ -1395,7 +1442,9 @@ def detect_current_sense(ctx: AnalysisContext) -> list[dict]:
                         if p["component"] not in shunt_refs:
                             comps_on_n2.add(p["component"])
 
-        if has_pwr_side:
+        if s1_pwr_or_gnd and s2_pwr_or_gnd:
+            sense_ics = rail_sense_ics
+        elif has_pwr_side:
             # One side is a power/GND rail: use only the non-power side's
             # components.  Filter to ICs that are plausible current sense
             # monitors: either by part name or by having sense-related pin
@@ -1523,8 +1572,13 @@ def detect_current_sense(ctx: AnalysisContext) -> list[dict]:
                 _val_lower2 = (ic_comp.get("value", "") + " " + ic_comp.get("lib_id", "")).lower()
                 if any(kw in _val_lower2 for kw in _SENSE_IC_EXCLUDE):
                     continue
-                pn = p.get("pin_name", "").upper().rstrip("0123456789").rstrip("_")
-                if pn in _integrated_csa_pins:
+                pn = _sense_pin_key(p.get("pin_name", ""))
+                if pn in _integrated_csa_pins or (
+                        pn in _SENSE_AMP_INPUT_PINS
+                        and any(kw in _val_lower2 for kw in _SENSE_IC_KEYWORDS)
+                        and _opposite_input_reaches(
+                            ctx, p["component"], pn, s_n2 if net_name == s_n1 else s_n1,
+                            group_members(ctx, shunt["reference"]))):
                     current_sense.append({
                         "shunt": group_part(ctx, shunt["reference"], "ohms"),
                         "sense_ic": {
