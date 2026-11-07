@@ -113,6 +113,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The kicad skill no longer tells the agent that SPICE and EMC runs are mandatory proof. It reports a SPICE pass as a check, an `info` or generic-model bench as a measurement, and heuristic EMC findings as screening. A board with no datasheet evidence may still state KiCad-file facts (nets, pads, tracks, DRC/ERC) as verified.
 - Review reports no longer list "lifecycle audit not run" next to a lifecycle section produced by a standalone `lifecycle_audit.py` run.
 
+- The Gerber guides no longer call `_SilkS` names and region-drawn mask openings KiCad 5 markers; both appear in either version, and the software string identifies the version. `analyze_gerbers` documents that its component analysis needs X2 object attributes from KiCad 5.1 on, not 6+.
 
 ### Removed
 

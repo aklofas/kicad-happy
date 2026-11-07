@@ -1261,7 +1261,7 @@ def compute_board_dimensions(gerbers: list[dict], job_info: dict | None) -> dict
 def build_component_analysis(gerbers: list[dict], drills: list[dict]) -> dict | None:
     """Merge component/net/pin data across all gerber layers.
 
-    Only produces output when X2 TO attributes are present (KiCad 6+).
+    Only produces output when X2 TO attributes are present (KiCad 5.1+, native `%TO` or the `G04 #@!` comment form).
     """
     all_refs = set()
     front_refs = set()
