@@ -410,7 +410,8 @@ def _classify_nets(ctx: AnalysisContext) -> dict:
         elif is_power_net(net_name):
             net_classes[net_name] = "power"
         else:
-            cls = _keyword_class(net_name)
+            # A sheet path names the sheet, not the net
+            cls = _keyword_class(net_leaf(net_name))
             if cls == "signal" and _is_ic_supply_input_net(net_info, ctx.comp_lookup, ctx.ref_pins):
                 cls = "power"
             net_classes[net_name] = cls

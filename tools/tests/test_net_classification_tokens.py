@@ -129,5 +129,19 @@ class PowerInputNets(unittest.TestCase):
         self.assertEqual(_classes(PARTS, {"SCL": pins})["SCL"], "clock")
 
 
+class SheetPathNets(unittest.TestCase):
+    def test_sheet_path_does_not_classify_the_net(self):
+        want = {"/USB/CC1": "signal", "/SPI_CS/NODE7": "signal", "/ADC/NODE7": "signal",
+                "/SPI_CS/LED1": "output_drive"}
+        got = _classes(PARTS, {n: _signal_pin("PA5") for n in want})
+        self.assertEqual({n: got[n] for n in want}, want)
+
+    def test_leaf_name_keeps_its_class_under_a_path(self):
+        want = {"/USB/USB_DP": "high_speed", "/MCU/SPI_CS": "chip_select", "CE": "chip_select",
+                "/radio/CE": "chip_select"}
+        got = _classes(PARTS, {n: _signal_pin("PA6") for n in want})
+        self.assertEqual({n: got[n] for n in want}, want)
+
+
 if __name__ == "__main__":
     unittest.main()
