@@ -6,6 +6,21 @@ import re
 NON_COMPONENT_TYPES = frozenset({"power_symbol", "power_flag", "flag", "test_point",
                                  "mounting_hole", "fiducial", "graphic"})
 
+_CONNECTOR_WORDS = re.compile(r"header|conn(?:ector)?(?:_|\b|s?-)|pin_?socket")
+
+
+def _v_prefix_jumper_or_connector(val: str, lib: str, fp: str) -> str | None:
+    """A V-prefixed part from a jumper or connector library ("V1" as Jumper_2_Bridged, a
+    Header_1x2 or a VGA socket) is that part, not a varistor. A varistor word always wins."""
+    if "varistor" in lib or "varistor" in val:
+        return None
+    if "jumper" in lib or "jumper" in val:
+        return "jumper"
+    if any(_CONNECTOR_WORDS.search(x) for x in (val, lib, fp)):
+        return "connector"
+    return None
+
+
 _TOUCH_MARKERS = ("touch", "capacitive", "captouch", "cap_touch")
 
 
@@ -182,6 +197,9 @@ def classify_component(ref: str, lib_id: str, value: str, is_power: bool = False
             if ("r_pot" in lib_low or "pot" in lib_low or "potentiometer" in lib_low
                     or "potentiometer" in val_low):
                 return "resistor"
+            not_varistor = _v_prefix_jumper_or_connector(val_low, lib_low, fp_low)
+            if not_varistor:
+                return not_varistor
             if ("regulator" in lib_low or "regulator" in fp_low
                     or any(x in val_low for x in ("ams1117", "lm78", "lm317",
                                                    "ld1117", "lm1117", "ap1117"))):
@@ -411,6 +429,9 @@ def classify_component(ref: str, lib_id: str, value: str, is_power: bool = False
                 if "standoff" in lib_lower or "smtso" in val_lower:
                     return "mounting_hole"
             if result == "varistor":
+                not_varistor = _v_prefix_jumper_or_connector(val_lower, lib_lower, fp_lower)
+                if not_varistor:
+                    return not_varistor
                 if ("regulator" in lib_lower or "regulator" in fp_lower
                         or any(x in val_lower for x in ("ams1117", "lm78", "lm317",
                                                          "ld1117", "lm1117", "ap1117"))):

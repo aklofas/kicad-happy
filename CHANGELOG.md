@@ -121,6 +121,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `cross_domain_signals` no longer asks for a level shifter on a regulator enable or power-good pin that VM-001 accepts.
 - A connector's ground pins count when an unlabelled wire joins them to another part.
 - DS-003 counts PDF datasheets only; JSON files and links to the same PDF no longer count.
+- A V-prefixed jumper or connector (a `Jumper_2_Bridged`, a `Header_1x2`, a VGA socket) is typed jumper or connector, not varistor.
 
 ### Documentation
 
