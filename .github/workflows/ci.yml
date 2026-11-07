@@ -109,7 +109,7 @@ jobs:
         run: |
           git clone https://github.com/aklofas/kicad-happy-testharness.git /tmp/harness
           cd /tmp/harness
-          git checkout 6ab5ee29a29
+          git checkout 9af98dd6b77
 
       - name: Install harness dev deps (pytest, jsonschema, referencing, pyyaml)
         run: python -m pip install --disable-pip-version-check -r /tmp/harness/requirements-dev.txt
@@ -183,7 +183,7 @@ jobs:
         run: |
           git clone https://github.com/aklofas/kicad-happy-testharness.git /tmp/harness
           cd /tmp/harness
-          git checkout 6ab5ee29a29
+          git checkout 9af98dd6b77
       - name: Install harness dev deps (jsonschema, referencing)
         run: python3 -m pip install --disable-pip-version-check -r /tmp/harness/requirements-dev.txt
       - name: Install ngspice (SPICE tools tests)
@@ -223,7 +223,7 @@ jobs:
           # LF fixtures, as on Linux: Git for Windows would check them out CRLF.
           git config core.autocrlf false
           git sparse-checkout set tests/fixtures
-          git checkout 6ab5ee29a29
+          git checkout 9af98dd6b77
       - name: Install harness dev deps (jsonschema, referencing)
         shell: bash
         run: python -m pip install --disable-pip-version-check -r "$RUNNER_TEMP/harness/requirements-dev.txt"
