@@ -43,7 +43,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - ESD audits leave out connector pins typed no-connect.
 - A UC3845-class COMP pin behind a bridged solder jumper finds its network.
 - Part families match the symbol name, not the library nickname.
-- The FCC Part 15 suggestion for a wireless module names the module itself, not a power symbol, connector or other part from its library, and a sheet whose only radio match was a library name no longer gets it.
+- The FCC Part 15 suggestion for a wireless module names the module the wireless-module check (WL-001) found, else the part that carries the radio name, never a power symbol, connector or passive; a sheet whose only radio match was a library name no longer gets it.
 - An SPI MISO net or a lone `_B` rail no longer reports an isolation barrier.
 - A dual load switch sources each output from its own channel.
 - Opening a sub-sheet now finds the project root through intermediate sheets, and a sheet counts as another sheet's child only when that sheet names its file by whole path, so a name contained in another (`adc` in `my_adc`, `earth` in `largeregearth`) no longer makes it one.
@@ -53,12 +53,12 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A sub-sheet whose file does not exist now leaves one `diagnostics` record (missing sheet skipped) instead of disappearing silently. Sheet file names written with backslashes (`COMPONENT_SHEETS\MCU.kicad_sch`) are now found, as KiCad finds them; those sheets were left out.
 - A port pin used through a placed alternate (I2C3_SCL on PA8) keeps the single-pin-net exemption.
 - A hierarchical label on the top sheet no longer joins a global label or power net of the same name on another sheet.
-- Legacy `.sch` results no longer list a feedback-divider finding twice.
+- Legacy `.sch` results no longer list a feedback-divider finding twice, and two dividers that share resistor references but not nets (a repeated sub-sheet) are both listed.
 - A `.kicad-happy.json` or `.kicad_pro` saved with a UTF-8 byte-order mark (common Windows editors) is now read instead of skipped.
 - `"analysis": null` or a non-string entry in `power_rails.ignore` / `flag` is now warned and ignored instead of dropping every power-rail setting.
 - A `voltage_overrides` entry now also sets the output voltage used for a regulator's dropout and dissipation, and counts when deciding whether two ICs' I/O rails need a level shifter.
 - An LVDS serializer or deserializer identified only by its MPN field is now detected.
-- VM-001 no longer reports a regulator's input or output rail as a logic crossing, and an open-drain output (open-collector pin, charger status, regulator power-good) is judged at its pull-up rail.
+- VM-001 no longer reports a regulator's input or output rail as a logic crossing, and an open-drain output (open-collector pin, charger status, regulator power-good) is judged at its pull-up rail. A load switch's enable (the TPS2297x ON pin) is accepted as a regulator enable is.
 - With `--spice-enhanced`, the switching-harmonic estimate in EE-002 resamples the simulated waveform evenly before the harmonic analysis, so the amplitudes no longer drift with the simulator's time steps.
 - SW-003 no longer appends a radiated-field estimate under `--spice-enhanced`; it could only appear for a switching frequency above 30 MHz.
 - A cached project SPICE model is pasted into a testbench only when it holds model-library cards alone (`.subckt`, `.ends`, `.model`, `.param`, `.func`, `.global`, and a final `.end`, which is dropped); output, analysis and option cards, and XSPICE models that read files, make it fall back to the built-in model with a diagnostic (`spice.trust_project_models` still overrides).
@@ -135,7 +135,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - PU-001 no longer asks for a pull-up on SPI MISO pins.
 - `cross_domain_signals` no longer asks for a level shifter on a regulator enable or power-good pin that VM-001 accepts.
 - A connector's ground pins count when an unlabelled wire joins them to another part.
-- A V-prefixed jumper or connector (a `Jumper_2_Bridged`, a `Header_1x2`, a VGA socket) is typed jumper or connector, not varistor.
+- A V-prefixed jumper or connector (a `Jumper_2_Bridged`, a `Header_1x2`, a VGA socket) is typed jumper or connector, not varistor; a V-prefixed potentiometer stays a resistor.
 - ES-002 no longer asks for ground vias at a varistor that clamps to a supply rail or another line rather than to ground.
 - Net classification reads the net's own name, not its sheet path.
 - The headless-browser fallback now saves a datasheet whose URL is served as a PDF download; before, the browser's aborted navigation hid the download and the fallback always failed.
