@@ -118,7 +118,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `check_report_sections.py --report` counts each report header toward one required section only, so a "Gerber Verification" header no longer also satisfies "Analyzer Verification".
 - `diff_analysis` says when both sides were produced from byte-identical design files, so changes that come from a newer analyzer are not read as design changes.
 - `what_if` log-sweep columns read `12.92k` and `3.162n` instead of `1.292e+04` and `3.162e-09`; a script that reads `value_strs` as plain numbers should use `values`.
-- On regulators with several feedback pins the Vout estimate uses the pin whose divider feeds the reported output rail, independent of net order; a feedback pin tied straight to the output rail marks that channel fixed, so no other channel's divider gives it an estimate.
+- On regulators with several feedback pins the Vout estimate uses the pin whose divider feeds the reported output rail, independent of net order; when a feedback pin is tied straight to the output rail and no divider feeds that rail, another channel's divider no longer gives it an estimate.
 - LM79xx fixed regulators read as negative (−5 V for an LM7905); negative LDOs get a dissipation estimate, and negative regulators an inrush estimate.
 - A regulator whose input and output rails have opposite signs no longer gets an LDO dissipation estimate.
 - Fixed-output suffixes `-10/-12/-15/-05` read from the data sheet for LM2596, LM2576, LM2940, TL780, NCP1117, XL1509 and AP7361C. TPS61030 uses its 0.5 V feedback reference and LTC3558 its 0.8 V reference; a fixed-output part of unknown voltage no longer gets an adjustable regulator's reference.
