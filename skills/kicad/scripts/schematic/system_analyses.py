@@ -96,6 +96,8 @@ def analyze_pdn_impedance(ctx: AnalysisContext, signal_analysis: dict | None = N
             comp = comp_lookup.get(p["component"])
             if not comp or comp["type"] != "capacitor":
                 continue
+            if comp.get("dnp") or comp.get("on_board") is False:
+                continue
             # Use pre-computed parsed_values (has component_type context)
             cap_val = ctx.parsed_values.get(comp["reference"])
             if not cap_val or cap_val <= 0:
@@ -217,9 +219,14 @@ def analyze_pdn_impedance(ctx: AnalysisContext, signal_analysis: dict | None = N
             rail_result["anti_resonances"] = anti_resonances
             for ar in anti_resonances:
                 if ar["impedance_ohm"] > 1.0:
+                    # Below about 2 MHz the peak is the regulator's inductive output against the
+                    # bulk capacitance; a ceramic's self-resonance sits far above it.
+                    remedy = ("consider adding cap with SRF near this frequency" if ar["freq_hz"] >= 2e6
+                              else "add bulk capacitance or damping (ESR), or check the regulator's "
+                                   "output impedance at this frequency")
                     observations.append(
                         f"{rail_name}: anti-resonance at {ar['freq_formatted']} "
-                        f"({ar['impedance_ohm']:.3f} ohm) — consider adding cap with SRF near this frequency"
+                        f"({ar['impedance_ohm']:.3f} ohm) — {remedy}"
                     )
 
         # Check for frequency gaps: if all cap SRFs are below 100 MHz,

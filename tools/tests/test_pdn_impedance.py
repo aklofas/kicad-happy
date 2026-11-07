@@ -159,9 +159,10 @@ class TraceInductance(unittest.TestCase):
         self.assertAlmostEqual(ef.trace_inductance_nh_per_mm(0.3, 0.2), 0.348, places=3)
 
 
-def _ctx(caps, rail="+3V3"):
-    comps = [{"reference": r, "type": "capacitor", "value": v, "lib_id": "Device:C", "pins": [],
-              "footprint": ""} for r, v in caps]
+def _ctx(caps, rail="+3V3", flags=None):
+    flags = flags or {}
+    comps = [dict({"reference": r, "type": "capacitor", "value": v, "lib_id": "Device:C", "pins": [],
+                   "footprint": ""}, **flags.get(r, {})) for r, v in caps]
     nets = {rail: [(r, "1") for r, _ in caps], "GND": [(r, "2") for r, _ in caps]}
     full = {n: {"name": n, "pins": [dict(component=r, pin_number=p, pin_name="~", pin_type="passive")
                                     for r, p in pins],
@@ -194,6 +195,33 @@ class SchematicPdn(unittest.TestCase):
         want = abs(1 / (1 / z_vrm + 1 / z_cap))
         self.assertAlmostEqual(want, 0.897, places=3)
         self.assertAlmostEqual(prof[f], want, delta=want * 0.01)
+
+
+    def test_unfitted_capacitor_is_left_out(self):
+        res = analyze_pdn_impedance(_ctx([("C1", "10u"), ("C2", "100n")], flags={"C2": {"dnp": True}}))
+        self.assertEqual([c["ref"] for c in res["rails"]["+3V3"]["capacitors"]], ["C1"])
+
+    def test_off_board_capacitor_is_left_out(self):
+        res = analyze_pdn_impedance(_ctx([("C1", "10u"), ("C2", "100n")], flags={"C2": {"on_board": False}}))
+        self.assertEqual([c["ref"] for c in res["rails"]["+3V3"]["capacitors"]], ["C1"])
+
+    def test_rail_with_only_unfitted_capacitors_has_no_estimate(self):
+        res = analyze_pdn_impedance(_ctx([("C1", "10u")], flags={"C1": {"dnp": True}}))
+        self.assertEqual(res, {})
+
+    def test_low_frequency_peak_points_at_bulk_capacitance_or_the_regulator(self):
+        # A buck's 100 mΩ / 50 kHz output (318 nH) against 2 x 100 nF peaks at 631 kHz, far below
+        # either cap's SRF: another cap with an SRF there is not the remedy.
+        res = analyze_pdn_impedance(_ctx([("C1", "100n"), ("C2", "100n")]),
+                                    {"power_regulators": [{"output_rail": "+3V3", "topology": "buck"}]})
+        obs = [o for o in res["observations"] if "anti-resonance" in o]
+        self.assertEqual(obs, ["+3V3: anti-resonance at 630.96 kHz (13.412 ohm) — add bulk capacitance "
+                               "or damping (ESR), or check the regulator's output impedance at this frequency"])
+
+    def test_high_frequency_peak_keeps_the_srf_remedy(self):
+        res = analyze_pdn_impedance(_ctx([("C1", "10u"), ("C2", "100p")]))
+        self.assertEqual(res["observations"], ["+3V3: anti-resonance at 501.19 MHz (6.722 ohm) — "
+                                               "consider adding cap with SRF near this frequency"])
 
 
 def _reg(ref, out, vout, in_rail="", topo="buck", caps=()):
