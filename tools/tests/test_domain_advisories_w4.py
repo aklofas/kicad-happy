@@ -140,6 +140,25 @@ class EthernetIntegratedMagnetics(unittest.TestCase):
         self.assertEqual(eth["impedance_advisory"]["detail"],
                          "Magnetics present for impedance matching and isolation")
 
+    def test_vendor_magjack_part_numbers_count_as_magnetics(self):
+        for value, lib in (("RJMG1BD3B8K1ANR", "Connector:RJ45_Amphenol_RJMG1BD3B8K1ANR"),
+                           ("7499010121A", "Connector:RJ45_Wuerth_7499010121A"),
+                           ("RJ45", "custom:RJ45+MAG"),
+                           ("RJ45-TRANSFO", "custom:RJ45-TRANSFO"),
+                           ("SI-46001", "Connector:RJ45_Bel_SI-46001")):
+            with self.subTest(value=value):
+                (eth,) = dd.detect_ethernet_interfaces(eth_board(value, lib))
+                self.assertEqual(eth["impedance_advisory"],
+                                 {"status": "pass", "detail": "Magnetics integrated in connector J9"})
+
+    def test_magjack_named_only_by_part_number_is_the_ethernet_connector(self):
+        for value in ("LPJG0926HENL", "ARJC02-111008D", "TM211Q01FM22", "J1B1211CCD"):
+            with self.subTest(value=value):
+                (eth,) = dd.detect_ethernet_interfaces(eth_board(value, "custom:" + value))
+                self.assertEqual(eth["impedance_advisory"],
+                                 {"status": "pass", "detail": "Magnetics integrated in connector J9"})
+                self.assertEqual([c["reference"] for c in eth["connectors"]], ["J9"])
+
 
 def driver_board(vb_pin):
     comps = [ic("U1", "IR2104"), {"reference": "C1", "type": "capacitor", "value": "100n"}]

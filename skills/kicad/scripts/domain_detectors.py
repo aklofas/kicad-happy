@@ -410,12 +410,16 @@ def detect_isolation_barriers(ctx: AnalysisContext) -> list[dict]:
     return isolation_barriers
 
 
-# Jacks with the 1:1 Ethernet transformers built in (HanRun HR911/HY911, Bel MagJack/SI-60/08B0,
-# Pulse J0011D/J1011F/JXD, Amphenol ARJP/ARJM, Wurth RJLBC, ... per the vendor datasheets).
+# Jacks with the 1:1 Ethernet transformers built in (HanRun HR911/HY911, Bel MagJack/SI-60/
+# SI-46/08B0, Pulse J0011D/J1011F/JXD, Amphenol ARJP/ARJM/RJMG, Abracon ARJC, Wurth RJLBC and
+# 7499010/7499111 LAN transformer jacks, Link-PP LPJ/LPJG, TM211, UDE J1B1, ... per the vendor
+# datasheets).
 _INTEGRATED_MAG_KEYWORDS = (
-    "magjack", "mag_jack", "hr911", "hr961", "hy911", "hfj11", "lpj0", "lpj1", "lpj4",
-    "arjp", "arjm", "rjlbc", "j0011d", "j1011f", "jxd0", "jxd1", "08b0", "rb1-1", "si-60",
-    "with_magnetics", "integrated_magnetics", "rj45_magnetic",
+    "magjack", "mag_jack", "hr911", "hr961", "hy911", "hfj11", "lpj0", "lpj1", "lpj4", "lpjg",
+    "arjp", "arjm", "arjc", "rjmg", "rjlbc", "7499010", "7499111", "tm211", "j1b1",
+    "j0011d", "j1011f", "jxd0", "jxd1", "08b0", "rb1-1", "si-60", "si-46",
+    "with_magnetics", "withmagnetics", "integrated_magnetics", "rj45_magnetic",
+    "rj45+mag", "rj45-mag", "rj45-transfo",
 )
 
 
@@ -451,9 +455,8 @@ def detect_ethernet_interfaces(ctx: AnalysisContext) -> list[dict]:
             seen_eth_refs.add(c["reference"])
         elif c["type"] == "connector":
             # Also detect by LAN reference prefix or integrated magnetics RJ45 part numbers
-            if (any(k in val_lib for k in ("rj45", "8p8c", "ethernet", "magjack",
-                                            "lpj4", "lpj0", "hr911", "hfj11",
-                                            "arjp", "rjlbc"))
+            if (any(k in val_lib for k in ("rj45", "8p8c", "ethernet"))
+                    or any(k in val_lib for k in _INTEGRATED_MAG_KEYWORDS)
                     or c["reference"].upper().startswith("LAN")):
                 eth_connectors.append(c)
                 seen_eth_refs.add(c["reference"])
