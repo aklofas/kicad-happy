@@ -11,9 +11,10 @@ import sys
 from pathlib import Path
 
 from kicad_core.diagnostics import record
-from kicad_core.sexp import find_all, get_at, get_value, net_name_escape, parse_file
+from kicad_core.sexp import (find_all, get_at, get_value, net_name_escape, parse_file,
+                             parse_file_checked)
 from kicad_core.project import (declared_top_level_sheets, empty_input_error, expand_sheet_file,
-                                 find_project_settings_file, load_kicad_pro)
+                                 find_project_settings_file, load_kicad_pro, parse_input_problem)
 from schematic.reader import (
     TextVarRegistry,
     extract_components,
@@ -197,7 +198,8 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
             sub-sheet that lacks (symbol_instances) — pass the root's
             symbol_instances collected during the peer-sheet traversal.
         diagnostics: list sink for skipped sheets (a sheet that includes one of
-            its own ancestors, or an empty sub-sheet file).
+            its own ancestors, or an empty sub-sheet file) and for sheet files that do
+            not parse whole (root_tree, when given, is the caller's to check).
         project_path: the schematic whose project this sheet belongs to (names the
             project and finds its .kicad_pro); defaults to root_path.  Set when
             root_path is another top-level sheet of that project.
@@ -213,7 +215,7 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
             file_version
     """
     if root_tree is None:
-        root_tree = parse_file(root_path)
+        root_tree = _read_sheet(root_path, diagnostics)
     # A sheet file is parsed once, however many instances it has.
     trees = {str(Path(root_path).resolve()): root_tree}
 
@@ -288,7 +290,7 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
                             instance_path=root_kiid + inst_path, root_kiid=root_kiid,
                             project_name=project_name, text_ctx=text_ctx, variant=variant)
         if sheet_path not in trees:
-            trees[sheet_path] = parse_file(sheet_path)
+            trees[sheet_path] = _read_sheet(sheet_path, diagnostics)
         sd = parse_single_sheet(sheet_path, root=trees[sheet_path], **sheet_kwargs)
         (root, components, wires, labels, junctions, no_connects,
          sub_sheets, lib_symbols, text_annotations, bus_elements, title_block) = (
@@ -387,6 +389,16 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
         "generator_version": generator_version,
         "file_version": file_version,
     }
+
+
+def _read_sheet(path: str, diagnostics: list | None) -> list:
+    """The parsed tree of one sheet file, with one diagnostic when it does not parse whole."""
+    tree, problem = parse_file_checked(path)
+    unread = parse_input_problem(path, tree, problem, "kicad_sch")
+    if unread:
+        record(diagnostics, "schematic.hierarchy.parse_all_sheets", ValueError(unread[0]),
+               unread[1])
+    return tree
 
 
 def multi_root_sheets(path: str, pro: dict | None) -> list[dict]:

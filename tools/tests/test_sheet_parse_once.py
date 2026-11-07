@@ -1,5 +1,7 @@
-"""A sheet file used by several sheet instances is parsed once per run, and reusing its
-parsed tree gives the same output as reading the file again for every instance."""
+"""A sheet file used by several sheet instances is parsed once per run, reusing its
+parsed tree gives the same output as reading the file again for every instance, and a
+sheet file that does not parse whole gets one diagnostics record however many instances
+it has."""
 import json, os, sys, tempfile, unittest
 from collections import Counter
 from contextlib import ExitStack, redirect_stderr
@@ -72,17 +74,21 @@ def stable(result, tmp):
 class SheetParsedOnceTest(unittest.TestCase):
     def test_each_sheet_file_is_parsed_once(self):
         counts = Counter()
-        real = sexp.parse_file
 
-        def counting(path, *args, **kwargs):
-            counts[os.path.basename(str(path))] += 1
-            return real(path, *args, **kwargs)
+        def counting(real):
+            def parse(path, *args, **kwargs):
+                counts[os.path.basename(str(path))] += 1
+                return real(path, *args, **kwargs)
+            return parse
 
         with tempfile.TemporaryDirectory() as tmp, ExitStack() as stack:
             path = write(project(), tmp)
+            names = [n for n in ("parse_file", "parse_file_checked") if hasattr(sexp, n)]
+            fakes = {n: counting(getattr(sexp, n)) for n in names}
             for module in (sexp, hierarchy, pipeline, reader):
-                if hasattr(module, "parse_file"):
-                    stack.enter_context(mock.patch.object(module, "parse_file", counting))
+                for name in names:
+                    if hasattr(module, name):
+                        stack.enter_context(mock.patch.object(module, name, fakes[name]))
             with redirect_stderr(StringIO()):
                 result = analyze_schematic(path)
         self.assertEqual(len(result["sheets"]), 7)
@@ -103,6 +109,21 @@ class SheetParsedOnceTest(unittest.TestCase):
                     reread = stable(analyze_schematic(path), tmp)
         self.assertIn('"R13"', cached)
         self.assertEqual(cached, reread)
+
+
+class PartialSheetReportedOnceTest(unittest.TestCase):
+    def test_cut_short_sheet_used_three_times_gets_one_record(self):
+        files = project()
+        files["amp.kicad_sch"] = files["amp.kicad_sch"].rstrip()[:-1]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = write(files, tmp)
+            with redirect_stderr(StringIO()):
+                result = analyze_schematic(path)
+        self.assertEqual(result["diagnostics"], [{
+            "source": "schematic.hierarchy.parse_all_sheets", "exception": "ValueError",
+            "message": "amp.kicad_sch: the file ends inside an open list",
+            "effect": "partial sheet analyzed"}])
+        self.assertEqual(len(result["sheets"]), 7)
 
 
 if __name__ == "__main__":

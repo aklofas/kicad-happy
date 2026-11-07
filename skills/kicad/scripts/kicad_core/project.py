@@ -575,6 +575,26 @@ def empty_input_error(path: str, expected: str) -> str | None:
                 return None
 
 
+# (effect when the file is not a KiCad file at all, effect when it parses only in part)
+_INPUT_EFFECTS = {'kicad_sch': ('file not read as a schematic', 'partial sheet analyzed'),
+                  'kicad_pcb': ('file not read as a board', 'partial board analyzed')}
+
+
+def parse_input_problem(path: str, tree, problem: str | None,
+                        expected: str) -> tuple[str, str] | None:
+    """(message, effect) when a parsed file is not a whole KiCad schematic or board: its
+    root is not (``expected`` ...), or the parser's *problem* (see sexp.parse_checked);
+    None when it is.  *expected* is 'kicad_sch' or 'kicad_pcb'."""
+    name = os.path.basename(path)
+    not_kicad, partial = _INPUT_EFFECTS[expected]
+    head = tree[0] if isinstance(tree, list) and tree else tree
+    if head != expected:
+        return f"{name} is not {_INPUT_KIND[expected]}: it starts with {str(head)[:40]!r}", not_kicad
+    if problem:
+        return f"{name}: {problem}", partial
+    return None
+
+
 def extract_pro_net_classes(pro: dict) -> list[dict]:
     """Extract net classes from .kicad_pro ``net_settings``.
 

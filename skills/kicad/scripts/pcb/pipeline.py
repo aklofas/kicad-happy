@@ -20,11 +20,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from kicad_core.sexp import get_value, parse_file
+from kicad_core.sexp import get_value, parse_file_checked
 from kicad_core.project import (load_kicad_pro, extract_pro_net_classes,
                                 extract_pro_design_rules, extract_pro_text_variables,
                                 load_kicad_dru_checked, load_lib_tables,
-                                find_project_settings_file, ignored_drc_checks)
+                                find_project_settings_file, ignored_drc_checks,
+                                parse_input_problem)
 from kicad_core.diagnostics import record
 from kicad_core.model import PcbReaderState
 from pcb import reader
@@ -167,7 +168,7 @@ def read_board(path: str, *, state: PcbReaderState | None = None) -> BoardData:
     """Phase 1: parse + extract + the KiCad-10 synthetic net map (via *state*)."""
     state = state if state is not None else PcbReaderState()
 
-    root = parse_file(path)
+    root, parse_problem = parse_file_checked(path)
     reader.canonicalize_copper_layers(root)
 
     # module attribute on purpose: the harness patches pcb.reader.<name> (ARCHITECTURE.md facade register)
@@ -177,6 +178,9 @@ def read_board(path: str, *, state: PcbReaderState | None = None) -> BoardData:
         setup["stackup_source"] = "inferred"
     net_names = reader.extract_nets(root)
     diagnostics: list = []
+    unread = parse_input_problem(path, root, parse_problem, "kicad_pcb")
+    if unread:
+        record(diagnostics, "pcb.pipeline.read_board", ValueError(unread[0]), unread[1])
     footprints = reader.extract_footprints(root, diagnostics)
     tracks = reader.extract_tracks(root)
     vias = reader.extract_vias(root)

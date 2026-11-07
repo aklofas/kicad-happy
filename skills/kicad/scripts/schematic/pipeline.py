@@ -24,7 +24,8 @@ from pathlib import Path
 from typing import Any
 
 from kicad_core.diagnostics import merge, record
-from kicad_core.sexp import parse_file
+from kicad_core.sexp import parse_file_checked
+from kicad_core.project import parse_input_problem
 from kicad_core.values import snap_to_mil_grid as _snap_mil
 from kicad_core.netnames import _clean_hierarchical_name, parse_voltage_from_net_name
 from kicad_core.netquery import (
@@ -1313,7 +1314,7 @@ def analyze_schematic(path: str, project_root: str | None = None,
                                         power_rails_config=power_rails_config)
 
     # Parse root sheet and all sub-sheets recursively via parse_all_sheets().
-    root_tree = parse_file(path)
+    root_tree, parse_problem = parse_file_checked(path)
 
     is_sub = detect_sub_sheet(root_tree, file_path=path)
     hierarchy_warning = None
@@ -1362,6 +1363,10 @@ def analyze_schematic(path: str, project_root: str | None = None,
         )
 
     pipeline_diagnostics: list = []
+    unread = parse_input_problem(path, root_tree, parse_problem, "kicad_sch")
+    if unread:
+        record(pipeline_diagnostics, "schematic.pipeline.analyze_schematic",
+               ValueError(unread[0]), unread[1])
     parsed = parse_all_sheets(path, root_tree=root_tree, diagnostics=pipeline_diagnostics,
                               variant=variant)
 
