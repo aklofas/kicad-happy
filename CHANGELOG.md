@@ -32,6 +32,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - With a datasheet extraction in hand, a regulator whose only output-side capacitor is a feedforward cap (rail to FB) is now reported as missing its output capacitor.
 - The schematic PDN leaves out DNP and off-board capacitors, and a low-frequency anti-resonance points at bulk capacitance or the regulator, not at a cap's SRF.
 - Net ties and jumpers count as simulatable in the simulation-readiness summary.
+- ESD audits leave out connector pins typed no-connect.
 - Opening a sub-sheet now finds the project root through intermediate sheets, and no longer mistakes a sheet whose file name is contained in another sheet's name (`adc` in `my_adc`) for a child of that root.
 - Bus labels with quoted member or prefix names (`{"A B" C}`), as KiCad 10 allows, now expand to their members, and a group member containing a space is named with the space escaped (`A\ B`), as KiCad names it.
 - Each sheet file is now read once, however many times the design uses it; designs that repeat a large sheet many times analyze several times faster.

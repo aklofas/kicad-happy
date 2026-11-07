@@ -2455,6 +2455,12 @@ def _classify_connector_interface(comp: dict) -> tuple[str, str]:
     return "generic", "medium_risk"
 
 
+def _nc_pins_only(net_info: dict | None) -> bool:
+    """True when every pin on the net is typed no-connect (an unused connector pin)."""
+    pins = (net_info or {}).get("pins") or []
+    return bool(pins) and all(p.get("pin_type") == "no_connect" for p in pins)
+
+
 def audit_esd_protection(ctx: AnalysisContext,
                          protection_devices: list[dict]) -> list[dict]:
     """Audit ESD protection coverage on external connectors.
@@ -2493,6 +2499,8 @@ def audit_esd_protection(ctx: AnalysisContext,
             if not net_name:
                 continue
             if ctx.is_ground(net_name) or ctx.is_power_net(net_name):
+                continue
+            if _nc_pins_only(ctx.nets.get(net_name)):
                 continue
             if net_name not in signal_nets:
                 signal_nets.append(net_name)

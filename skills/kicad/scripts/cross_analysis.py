@@ -338,6 +338,9 @@ def check_esd_coverage_gaps(schematic: dict, pcb: dict | None, recorder=None) ->
             if (not net or _is_power_net(net) or is_cross_analysis_ground_name(net)
                     or is_ground_name(net) or (is_power_net_name(net) and net not in pin_signals)):
                 continue
+            nc_pins = (all_nets.get(net) or {}).get('pins') or []
+            if nc_pins and all(p.get('pin_type') == 'no_connect' for p in nc_pins):
+                continue  # an unused pin typed no-connect, alone on its net
             if net not in protected_nets:
                 unprotected_nets.append(net)
 
