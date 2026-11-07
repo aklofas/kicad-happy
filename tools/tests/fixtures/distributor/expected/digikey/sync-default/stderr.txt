@@ -61,4 +61,4 @@ Datasheet sync complete:
 
   Next: extract structured specs for IC-aware analyzer checks
         (VM-001, PS-001, PR-004, DP-002). The `datasheets` skill
-        reads PDFs and writes <WORK>/datasheets/extracted/<MPN>.json.
+        reads PDFs and writes <WORK>/datasheets/extracted/<sanitized_mpn>.json.

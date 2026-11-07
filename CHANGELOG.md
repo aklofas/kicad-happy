@@ -145,6 +145,8 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - SPICE spec lookup reads the datasheet extraction cache through the same reader as the other datasheet consumers and skips a non-finite quality score.
 - Deep Review's datasheet quote check no longer takes another listed part's PDF (`LM317_NOPB_….pdf`) as the datasheet for `LM317`.
 - AM-001 checks a pin's own absolute maximum even when the datasheet gives no limit for its power domain.
+- PR comments escape analyzer text that starts with `1.` or `1)`, so it no longer renders as a numbered list.
+- The DigiKey sync's closing hint names the extraction cache file `<sanitized_mpn>.json`.
 
 ### Documentation
 

@@ -1,9 +1,12 @@
 """The Action PR comment renders every diff it is given, one row per added/removed/changed item."""
-import json, re, subprocess, sys, tempfile, unittest
+import importlib.util, json, re, subprocess, sys, tempfile, unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 FORMATTER = ROOT / "action" / "format-report.py"
+_spec = importlib.util.spec_from_file_location("format_report_under_test", FORMATTER)
+FORMAT = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(FORMAT)
 
 
 def diff_doc(diff, total, added=0, removed=0, modified=0, metrics=(), severity="major", has_changes=True):
@@ -72,6 +75,25 @@ class MarkdownEscapeTest(unittest.TestCase):
             full = (d / "full.md").read_text(encoding="utf-8")
         self.assertNotIn("\n# Forged", full)
         self.assertIn("\\# Forged, R1", full)
+
+    def test_analyzer_text_cannot_open_an_ordered_list(self):
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            doc = {"statistics": {"total_components": 2, "missing_mpn": ["1. R1", "1.8V"]}}
+            (d / "sch.json").write_text(json.dumps(doc), encoding="utf-8")
+            subprocess.run([sys.executable, str(FORMATTER), "--schematic", str(d / "sch.json"),
+                            "--output", str(d / "pr.md"), "--output-full", str(d / "full.md")],
+                           check=True, capture_output=True)
+            full = (d / "full.md").read_text(encoding="utf-8")
+        self.assertIn("\n1\\. R1, 1.8V", full)
+
+    def test_ordered_list_escape_leaves_numeric_values_alone(self):
+        lead = FORMAT._lead
+        self.assertEqual(lead("1. R1"), "1\\. R1")
+        self.assertEqual(lead("12) R1"), "12\\) R1")
+        self.assertEqual(lead("3."), "3\\.")
+        for text in ("1.8V", "3V3", "12.5k", "1234567890. x", "R1. x"):
+            self.assertEqual(lead(text), text)
 
     def test_list_items_led_by_analyzer_text_cannot_open_a_heading(self):
         h = "# Forged"

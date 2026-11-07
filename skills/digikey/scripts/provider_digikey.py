@@ -52,7 +52,7 @@ def report_tail(out_dir, downloaded, already_present, failed):
               file=sys.stderr)
         print(f"        (VM-001, PS-001, PR-004, DP-002). The `datasheets` skill",
               file=sys.stderr)
-        print(f"        reads PDFs and writes {out_dir}/extracted/<MPN>.json.",
+        print(f"        reads PDFs and writes {out_dir}/extracted/<sanitized_mpn>.json.",
               file=sys.stderr)
 
 

@@ -9,6 +9,7 @@ Produces two outputs:
 import argparse
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -513,6 +514,9 @@ def _lead(text):
     """A line that starts with analyzer text, with a heading, quote, rule or list marker made literal."""
     if text[:1] in ("#", ">", "-", "+", "="):
         return "\\" + text
+    ordered = re.match(r"\d{1,9}(?=[.)](?:\s|$))", text)
+    if ordered:
+        return text[:ordered.end()] + "\\" + text[ordered.end():]
     return text
 
 
