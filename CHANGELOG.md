@@ -143,6 +143,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A datasheet extraction file named after a different MPN (`BAV99_215.json` recorded for `BAV99/215`) is no longer used for `BAV99-215` or `BAV99.215`.
 - A datasheet extraction whose quality score is NaN, infinite or a boolean is reported as untrusted by the datasheet feature helpers, which report its score as none, and its regulator reference voltage is not used.
 - SPICE spec lookup reads the datasheet extraction cache through the same reader as the other datasheet consumers and skips a non-finite quality score.
+- Deep Review's datasheet quote check no longer takes another listed part's PDF (`LM317_NOPB_….pdf`) as the datasheet for `LM317`.
 
 ### Documentation
 

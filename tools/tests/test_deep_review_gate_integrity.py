@@ -650,6 +650,15 @@ class FindPdfTest(unittest.TestCase):
         self._manifest({"X3": {"status": "ok", "verification": "wrong", "file": "X3_Part.pdf"}})
         self.assertIsNone(self._find("X3"))
 
+    def test_prefix_file_of_another_listed_part_is_not_used(self):
+        self._touch("LM317_NOPB_Linear_Regulator.pdf")
+        self._manifest({"LM317": {"status": "not_found"},
+                        "LM317/NOPB": {"status": "ok", "file": "LM317_NOPB_Linear_Regulator.pdf"}})
+        self.assertIsNone(self._find("LM317"))
+        self.assertEqual(self._find("LM317/NOPB"), self.tmp / "LM317_NOPB_Linear_Regulator.pdf")
+        self._touch("LM317_TI.pdf")
+        self.assertEqual(self._find("LM317"), self.tmp / "LM317_TI.pdf")
+
     def test_prefix_needs_the_separator(self):
         self._touch("LM3580_Op.pdf")
         self.assertIsNone(self._find("LM358"))

@@ -260,9 +260,9 @@ def _datasheets_pkg():
 
 
 def _manifest_pdf(d, mpn):
-    """(path, stop): the PDF datasheets/manifest.json (or legacy index.json) lists for
-    `mpn`, and True when the entry marks the download as the wrong part, so no other
-    file may stand in for it."""
+    """(path, stop, others): the PDF datasheets/manifest.json (or legacy index.json) lists
+    for `mpn`; True when the entry marks the download as the wrong part, so no other file
+    may stand in for it; and the lower-cased file names the manifest lists for other parts."""
     _datasheets_pkg()
     from datasheet_types.cache_reader import read_json_object
     from distributor_core.manifest import manifest_file_path
@@ -272,29 +272,33 @@ def _manifest_pdf(d, mpn):
             continue
         parts = data.get("parts")
         if not isinstance(parts, dict):
-            return None, False
+            return None, False, set()
+        want = mpn.strip().lower()
         entry = parts.get(mpn)
         if entry is None:
-            want = mpn.strip().lower()
             entry = next((v for k, v in parts.items()
                           if isinstance(k, str) and k.strip().lower() == want), None)
+        others = {v["file"].lower() for k, v in parts.items()
+                  if isinstance(k, str) and k.strip().lower() != want
+                  and isinstance(v, dict) and isinstance(v.get("file"), str)}
         if isinstance(entry, dict) and entry.get("status") == "ok":
             if entry.get("verification") == "wrong":
-                return None, True
+                return None, True, others
             path = manifest_file_path(d, entry.get("file"))
             if path is not None and path.is_file():
-                return path, False
-        return None, False
-    return None, False
+                return path, False, others
+        return None, False, others
+    return None, False, set()
 
 
 def find_pdf(datasheets_dir, mpn):
     """The datasheet PDF for `mpn`: the manifest's file, else `<MPN>.pdf`, else the one
-    `<MPN>_*.pdf` the datasheet sync writes."""
+    `<MPN>_*.pdf` the datasheet sync writes that the manifest does not list for another
+    part (`LM317_NOPB_….pdf` is LM317/NOPB's, not LM317's)."""
     d = Path(datasheets_dir)
     if not d.is_dir():
         return None
-    listed, stop = _manifest_pdf(d, mpn)
+    listed, stop, others = _manifest_pdf(d, mpn)
     if stop:
         return None
     if listed is not None:
@@ -311,7 +315,8 @@ def find_pdf(datasheets_dir, mpn):
     _datasheets_pkg()
     from distributor_core.manifest import sanitize_filename
     bases = {lowered + "_", sanitize_filename(mpn.strip()).lower() + "_"} - {"_"}
-    hits = {p for p in pdfs if any(p.stem.lower().startswith(b) for b in bases)}
+    hits = {p for p in pdfs if any(p.stem.lower().startswith(b) for b in bases)
+            and p.name.lower() not in others}
     return hits.pop() if len(hits) == 1 else None
 
 
