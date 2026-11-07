@@ -109,6 +109,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Fixed-output suffixes `-10/-12/-15/-05` read from the data sheet for LM2596, LM2576, LM2940, TL780, NCP1117, XL1509 and AP7361C. TPS61030 uses its 0.5 V feedback reference and LTC3558 its 0.8 V reference.
 - Power sequencing links a regulator's power-good output to the enable it drives whichever regulator the schematic lists first.
 - LC-filter capacitors from a regulator output to ground now carry DC-bias derating, and a capacitor between two rails of known voltage is judged at their difference (a cap between +12V and +5V sees 7 V), with the finding naming both nets.
+- Crystal values with a decimal comma (`9,84375 MHz`) read their frequency; a ferrite written `600 Ohm @ 100MHz` has no resistance value; `0R/2A` reads 0 Ω.
 
 ### Documentation
 

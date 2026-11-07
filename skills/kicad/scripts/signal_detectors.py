@@ -94,13 +94,13 @@ def _parse_crystal_frequency(value_str: str) -> float | None:
         return result
     if not value_str:
         return None
-    # Explicit MHz/kHz in value
-    m = re.search(r'(\d+\.?\d*)\s*[Mm][Hh][Zz]', value_str)
+    # Explicit MHz/kHz in value; a comma between digits is a decimal mark ("9,84375 MHz")
+    m = re.search(r'(\d+(?:[.,]\d+)?)\.?\s*[Mm][Hh][Zz]', value_str)
     if m:
-        return float(m.group(1)) * 1e6
-    m = re.search(r'(\d+\.?\d*)\s*[Kk][Hh][Zz]', value_str)
+        return float(m.group(1).replace(",", ".")) * 1e6
+    m = re.search(r'(\d+(?:[.,]\d+)?)\.?\s*[Kk][Hh][Zz]', value_str)
     if m:
-        return float(m.group(1)) * 1e3
+        return float(m.group(1).replace(",", ".")) * 1e3
     # MPN patterns: "YIC-12M20P2" → 12MHz, "-25M000" → 25MHz
     m = re.search(r'[-_](\d+)[Mm]\d', value_str)
     if m:

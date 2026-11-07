@@ -78,6 +78,24 @@ class ValueNotation(unittest.TestCase):
                     ("0R1/2W", "resistor", 0.1), ("4.7uH/0R900", "inductor", 4.7e-6),
                     ("1k/0.1A", "resistor", 1e3)])
 
+    def test_impedance_at_a_test_frequency_is_not_a_value(self):
+        for text in ("600 Ohm @ 100MHz", "330 OHM@100MHZ", "600 R @ 100 MHz", "220\u03a9 @ 100MHz"):
+            self.assertIsNone(parse_value(text, component_type="inductor"), msg=text)
+
+    def test_at_without_a_frequency_keeps_the_value(self):
+        self.check([("10R @ 1%", "resistor", 10.0)])
+
+    def test_link_below_one_ohm_with_a_current_rating_keeps_its_value(self):
+        self.assertEqual(parse_value("0R/2A", component_type="resistor"), 0.0)
+        self.check([("0.1R/3A", "resistor", 0.1), ("0R1/3A", "resistor", 0.1), (".05R/1A", "resistor", 0.05)])
+        for text in ("1R/2A", "120R/2A"):
+            self.assertIsNone(parse_value(text), msg=text)
+
+    def test_a_comma_between_fields_is_not_a_decimal_mark(self):
+        for text in ("100nF,50V", "10k,1%", "X7R, 50V"):
+            self.assertIsNone(parse_value(text, component_type="capacitor"), msg=text)
+        self.check([("4.7uF 10%", "capacitor", 4.7e-6)])
+
     def test_inductor_with_impedance_value_makes_no_lc_filter(self):
         from signal_detectors import detect_lc_filters
         comps = [{"reference": "L2", "type": "inductor", "value": "120Ohm / 100Mhz", "lib_id": "Device:L"},
@@ -93,6 +111,18 @@ class ValueNotation(unittest.TestCase):
         with contextlib.redirect_stderr(io.StringIO()):
             ctx = build_analysis_context(comps, nets, {})
         self.assertEqual(len(detect_lc_filters(ctx)), 1)
+
+
+class CrystalFrequency(unittest.TestCase):
+    def test_decimal_comma_and_trailing_dot(self):
+        from signal_detectors import _parse_crystal_frequency
+        for text, want in (("9,84375 MHz", 9.84375e6), ("32,768kHz", 32768.0), ("25.MHz", 25e6),
+                           ("12,000MHz", 12e6), ("13,5600 MHz", 13.56e6), ("ABM8-25.000MHZ", 25e6),
+                           ("YIC-12M20P2", 12e6), ("16MHz,20pF", 16e6), ("20pF,16MHz", 16e6)):
+            got = _parse_crystal_frequency(text)
+            self.assertIsNotNone(got, msg=text)
+            self.assertAlmostEqual(got / want, 1.0, places=9, msg=text)
+        self.assertIsNone(_parse_crystal_frequency("X7R, 50V"))
 
 
 def _ctx(components):
