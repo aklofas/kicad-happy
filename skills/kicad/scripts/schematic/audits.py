@@ -275,8 +275,7 @@ def audit_datasheet_coverage(components: list[dict],
     mpn_pct = (mpn_count / total * 100) if total else 0.0
 
     # Look for datasheets in conventional locations relative to the
-    # project directory. extracted/ holds structured extractions from the
-    # datasheet_extract_cache; its presence implies datasheets exist.
+    # project directory. Only PDF files count as datasheets.
     import os as _os
     pd = project_dir or "."
     # Widened search — walk up 1–2 parent dirs and match the case-
@@ -302,12 +301,19 @@ def audit_datasheet_coverage(components: list[dict],
         (c for c in candidates if _os.path.isdir(c)), None)
     ds_file_count = 0
     if ds_dir_found:
+        # Each PDF once: a symlinked copy, and the JSON beside the PDFs
+        # (extractions, the sync index), are not more datasheets.
+        _pdfs: set[str] = set()
         try:
             for _root, _dirs, _files in _os.walk(ds_dir_found):
-                ds_file_count += sum(1 for f in _files
-                                     if f.lower().endswith((".pdf", ".json")))
+                _dirs[:] = [d for d in _dirs if d != "extracted"]
+                for f in _files:
+                    _p = _os.path.join(_root, f)
+                    if f.lower().endswith(".pdf") and _os.path.isfile(_p):
+                        _pdfs.add(_os.path.realpath(_p))
         except OSError:
             pass
+        ds_file_count = len(_pdfs)
 
     # Build finding.
     if ds_dir_found and ds_file_count > 0:
