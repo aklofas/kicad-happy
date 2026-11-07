@@ -47,6 +47,11 @@ def _led_lib_evidence(lib_low: str, val_low: str) -> bool:
     return bool(_LED_WORD.search(nick))
 
 
+_DEVICE_PASSIVE_SYMBOL = re.compile(
+    r'^device:(c|cp|c_small|cp_small|c_polarized|c_polarized_small|c_us|cp_us|'
+    r'r|r_small|r_us|l|l_small|l_us)$')
+
+
 def classify_component(ref: str, lib_id: str, value: str, is_power: bool = False,
                        footprint: str = "", in_bom: bool = False,
                        description: str = "", pins: list | None = None) -> str:
@@ -372,6 +377,12 @@ def classify_component(ref: str, lib_id: str, value: str, is_power: bool = False
         result = type_map.get(prefix[0])
         if result:
             fp_lower = footprint.lower() if footprint else ""
+            # A stock Device R/C/L symbol outranks an R or L first letter (RF-C10 on
+            # Device:C is a capacitor). A C first letter stays: C-prefixed parts on a
+            # resistor symbol carry capacitor values.
+            device_passive = _DEVICE_PASSIVE_SYMBOL.match(lib_lower)
+            if device_passive and result in ("resistor", "inductor"):
+                return {"c": "capacitor", "r": "resistor", "l": "inductor"}[device_passive.group(1)[0]]
             if result == "transformer":
                 if "tvs" in lib_lower or "tvs" in val_lower:
                     return "diode"

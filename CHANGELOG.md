@@ -114,6 +114,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A zener or TVS clamp, or a diode with its anode on the supply, no longer counts as a MOSFET's flyback diode.
 - Single-row connectors (`Conn_01xNN`) report `connector_layout: single`.
 - An inductor whose footprint, value or MPN says non-shielded or semi-shielded no longer reads as shielded.
+- A part on a stock Device R, C or L symbol is typed by the symbol when its reference prefix is unknown (RF-C10 is a capacitor).
 
 ### Documentation
 
