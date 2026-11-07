@@ -300,6 +300,8 @@ def find_extraction(extract_dir, mpn, *, v14_first=True):
     MPN's cache key, its file-name stem (with or without dots and hyphens)
     or whose recorded ``mpn`` is this MPN, ignoring case, and whose file
     exists. Then the files named after the part, ``<stem>.json``.
+    A file reached by a stem other than the MPN itself (several MPNs share
+    one stem) is used only when it records this MPN or none.
 
     A manifest file that is unreadable or empty does not hide a readable file
     named after the part. Returns ``(extraction, path)``: ``(None, path)`` when
@@ -316,7 +318,8 @@ def find_extraction(extract_dir, mpn, *, v14_first=True):
     v14_path = extract_dir / f"{plain}.json"
     if v14_first and v14_path.is_file():
         ext = read_json_object(v14_path)
-        if ext is not None and isinstance(ext.get("base"), dict):
+        if ext is not None and isinstance(ext.get("base"), dict) \
+                and _records_mpn(ext, mpn, plain):
             return ext, v14_path
 
     bad = None
@@ -338,10 +341,28 @@ def find_extraction(extract_dir, mpn, *, v14_first=True):
         path = extract_dir / f"{name}.json"
         if path.is_file():
             ext = read_json_object(path)
+            if ext is not None and not _records_mpn(ext, mpn, name):
+                continue
             if ext is not None:
                 return ext, path
             bad = bad or path
     return None, bad
+
+
+def _records_mpn(ext, mpn, name):
+    """False when ``<name>.json`` belongs to another part: ``name`` is not the MPN
+    itself (BAV99-215, BAV99.215, BAV99/215 and BAV99 215 all reach ``BAV99_215``)
+    and the extraction records a different MPN (``source.mpn``, else ``mpn``;
+    case and blanks aside). A file that records no MPN is taken by its name."""
+    if name == mpn.strip():
+        return True
+    source = ext.get("source")
+    recorded = source.get("mpn") if isinstance(source, dict) else None
+    if not isinstance(recorded, str):
+        recorded = ext.get("mpn")
+    if not isinstance(recorded, str) or not recorded.strip():
+        return True
+    return "".join(recorded.split()).upper() == "".join(mpn.split()).upper()
 
 
 def cache_extraction(extract_dir, mpn, extraction, source_pdf=None):

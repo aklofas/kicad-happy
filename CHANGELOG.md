@@ -140,6 +140,8 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - ES-002 no longer asks for ground vias at a varistor that clamps to a supply rail or another line rather than to ground.
 - Net classification reads the net's own name, not its sheet path.
 - The headless-browser fallback now saves a datasheet whose URL is served as a PDF download; before, the browser's aborted navigation hid the download and the fallback always failed.
+- A datasheet extraction file named after a different MPN (`BAV99_215.json` recorded for `BAV99/215`) is no longer used for `BAV99-215` or `BAV99.215`.
+- A datasheet extraction whose quality score is NaN, infinite or a boolean is reported as untrusted by the datasheet feature helpers, which report its score as none, and its regulator reference voltage is not used.
 
 ### Documentation
 

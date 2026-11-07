@@ -34,7 +34,7 @@ if _TYPES_PARENT not in sys.path:
     sys.path.insert(0, _TYPES_PARENT)
 
 from datasheet_types.extraction import DatasheetFacts  # noqa: E402
-from datasheet_types.trust_gating import FACTS_MIN_SCORE  # noqa: E402
+from datasheet_types.trust_gating import FACTS_MIN_SCORE, finite_score  # noqa: E402
 
 
 _REGULATOR_TOPOLOGIES = ('boost', 'buck', 'ldo')
@@ -116,15 +116,15 @@ def _legacy_shape_ok(ext):
 def _quality_v13(ext):
     """Quality flag for a v1.3-format extraction. Describes — never gates."""
     meta = (ext or {}).get('extraction_metadata') or {}
-    score = meta.get('extraction_score')
+    score = finite_score(meta.get('extraction_score'))
     version = meta.get('extraction_version') or 0
     reasons = []
     if version < EXTRACTION_VERSION:
         reasons.append(f'stale_version ({version} < {EXTRACTION_VERSION})')
-    if not isinstance(score, (int, float)) or score < MIN_SCORE:
+    if score is None or score < MIN_SCORE:
         reasons.append(f'low_score ({score} < {MIN_SCORE})')
     return {
-        'score': score if isinstance(score, (int, float)) else None,
+        'score': score,
         'scale': '0-10',
         'trusted': not reasons,
         'reasons': reasons,
@@ -133,14 +133,14 @@ def _quality_v13(ext):
 
 def _quality_v14(facts):
     """Quality flag for a v1.4 DatasheetFacts. Describes — never gates."""
-    score = facts.quality
+    score = finite_score(facts.quality)
     reasons = []
-    if not isinstance(score, (int, float)) or score < FACTS_MIN_SCORE:
+    if score is None or score < FACTS_MIN_SCORE:
         reasons.append(f'low_score ({score} < {FACTS_MIN_SCORE})')
     if getattr(facts, 'stale', False):
         reasons.append('stale_pdf')
     return {
-        'score': score if isinstance(score, (int, float)) else None,
+        'score': score,
         'scale': '0-100',
         'trusted': not reasons,
         'reasons': reasons,

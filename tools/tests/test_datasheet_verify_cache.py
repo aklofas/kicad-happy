@@ -79,6 +79,30 @@ def ic_analysis(mpn="LM358"):
             "nets": {}, "rail_voltages": {}}
 
 
+class FileNameCollision(unittest.TestCase):
+    def test_file_named_after_another_mpn_is_not_returned(self):
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, "BAV99_215.json").write_text(json.dumps(
+                {"schema_version": "1.4", "source": {"mpn": "BAV99/215"}, "base": {}}))
+            Path(d, "X1_A.json").write_text(json.dumps({"mpn": "X1.A"}))
+            for mpn in ("BAV99-215", "BAV99.215", "BAV99 215", "X1-A", "X1/A"):
+                self.assertEqual(cache.find_extraction(d, mpn), (None, None), mpn)
+            self.assertEqual(cache.find_extraction(d, "BAV99/215")[1], Path(d, "BAV99_215.json"))
+            self.assertEqual(cache.find_extraction(d, "X1.A")[1], Path(d, "X1_A.json"))
+
+    def test_file_that_records_no_mpn_is_taken_by_its_name(self):
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, "LM1117.json").write_text(json.dumps({"category": "regulator"}))
+            self.assertEqual(cache.find_extraction(d, "LM1117")[1], Path(d, "LM1117.json"))
+
+    def test_cached_extraction_is_still_found_for_its_own_mpn(self):
+        with tempfile.TemporaryDirectory() as d:
+            cache.cache_extraction(d, "LM1117-3.3", {"mpn": "LM1117-3.3", "pins": []})
+            ext, path = cache.find_extraction(d, "LM1117-3.3")
+            self.assertEqual(ext["mpn"], "LM1117-3.3")
+            self.assertEqual(cache.find_extraction(d, "LM1117_3.3"), (None, None))
+
+
 class ExtractDirResolution(unittest.TestCase):
     def test_shared_sticky_parent_cache_is_not_read(self):
         with tempfile.TemporaryDirectory() as t:
