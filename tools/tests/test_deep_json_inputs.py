@@ -76,8 +76,61 @@ class CliDeepJsonTest(unittest.TestCase):
             self.assertNotIn("Traceback", r_deep.stderr)
             self.assertEqual(r_deep.returncode, r_bad.returncode)
 
+    def test_edit_properties_updates_deep_or_malformed_is_one_line_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            sch = Path(tmp, "a.kicad_sch")
+            sch.write_text('(kicad_sch (version 20231120) (generator "eeschema"))\n', encoding="utf-8")
+            for text in (DEEP, "{"):
+                upd = Path(tmp, "u.json")
+                upd.write_text(text, encoding="utf-8")
+                r = _run([ROOT / "skills/bom/scripts/edit_properties.py", sch, "--updates", upd,
+                          "--dry-run"])
+                with self.subTest(text[:2]):
+                    self.assertNotIn("Traceback", r.stderr, r.stderr[-400:])
+                    self.assertEqual(r.returncode, 1)
+                    self.assertIn("updates are not valid JSON", r.stderr)
+
+    def test_cross_verify_deep_fails_as_malformed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            deep, bad = Path(tmp, "deep.json"), Path(tmp, "bad.json")
+            deep.write_text(DEEP, encoding="utf-8")
+            bad.write_text("{", encoding="utf-8")
+            r_deep = _run([K / "cross_verify.py", "-s", deep, "-p", deep])
+            r_bad = _run([K / "cross_verify.py", "-s", bad, "-p", bad])
+            self.assertNotIn("RecursionError", r_deep.stderr)
+            self.assertIn("JSONDecodeError", r_deep.stderr)
+            self.assertEqual(r_deep.returncode, r_bad.returncode)
+
+    def test_validate_sanity_vector_deep_extraction_is_one_line_error(self):
+        try:
+            import yaml  # noqa: F401
+        except ImportError:
+            self.skipTest("needs PyYAML")
+        with tempfile.TemporaryDirectory() as tmp:
+            vec, deep = Path(tmp, "v.yaml"), Path(tmp, "deep.json")
+            vec.write_text("checks: []\n", encoding="utf-8")
+            deep.write_text(DEEP, encoding="utf-8")
+            r = _run([ROOT / "skills/datasheets/scripts/validate_sanity_vector.py", vec, deep])
+            self.assertNotIn("Traceback", r.stderr, r.stderr[-400:])
+            self.assertEqual(r.returncode, 1)
+
 
 class DeepJsonHelpersTest(unittest.TestCase):
+    def test_merge_annotations_deep_review_is_malformed_json(self):
+        import json
+        sys.path.insert(0, str(ROOT / "skills" / "kicad" / "review" / "scripts"))
+        import merge_annotations
+        with tempfile.TemporaryDirectory() as tmp:
+            raw = Path(tmp, "raw")
+            raw.mkdir()
+            review = Path(tmp, "review.json")
+            review.write_text(DEEP, encoding="utf-8")
+            with self.assertRaises(json.JSONDecodeError):
+                merge_annotations.merge(raw, review, Path(tmp, "merged"))
+            Path(raw, merge_annotations.ANALYZER_FILES[0]).write_text(DEEP, encoding="utf-8")
+            with self.assertRaises(json.JSONDecodeError):
+                merge_annotations._load_raw_envelopes(raw)
+
     def test_load_jsonc_deep_is_value_error(self):
         from kicad_core.project import load_jsonc
         with tempfile.TemporaryDirectory() as tmp:

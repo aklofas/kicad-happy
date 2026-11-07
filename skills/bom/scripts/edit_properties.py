@@ -48,6 +48,7 @@ from datetime import datetime
 from pathlib import Path
 
 import _core_path  # noqa: F401
+from kicad_core.fileio import json_load, json_loads
 from kicad_core.sexp import unescape_quoted
 from kicad_sexp import (atomic_write_text, block_references, escape_kicad_string,
                         find_matching_paren, iter_placed_symbol_blocks, kicad_lock_path,
@@ -399,12 +400,16 @@ def main():
         )
 
     # Read updates
-    if args.updates:
-        updates = json.loads(args.updates.read_text(encoding="utf-8"))
-    elif not sys.stdin.isatty():
-        updates = json.load(sys.stdin)
-    else:
-        print("Error: provide updates via --updates file or stdin", file=sys.stderr)
+    try:
+        if args.updates:
+            updates = json_loads(args.updates.read_text(encoding="utf-8"))
+        elif not sys.stdin.isatty():
+            updates = json_load(sys.stdin)
+        else:
+            print("Error: provide updates via --updates file or stdin", file=sys.stderr)
+            sys.exit(1)
+    except ValueError as e:
+        print(f"Error: updates are not valid JSON: {e}", file=sys.stderr)
         sys.exit(1)
 
     if not isinstance(updates, dict):

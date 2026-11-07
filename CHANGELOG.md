@@ -40,7 +40,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The SPICE LCSC spec lookup matches parts by the top-level `mfr` field jlcsearch now returns.
 - `fab_release_gate.py` leaves board-only graphics (logos) out of the component count and reports DNP footprints separately. It warns instead of failing when the board's DRC ignores unconnected items. It says what a routing pass without `--full` proves. It no longer prints `None` for an unknown drill size.
 - `--analysis-dir` no longer fails on a symlinked or malformed run entry, a manifest that is a link, a FIFO or a deeply nested file, and no longer hangs on a FIFO named `manifest.json`.
-- Every analyzer and tool reports a JSON input nested deeper than Python can parse as malformed, with its usual error and exit code, instead of a traceback.
+- A JSON input nested deeper than Python can parse is read as malformed JSON: the analyzers and tools that report a malformed file give it the same error and exit code instead of a traceback. `edit_properties.py` reports malformed `--updates` JSON with a one-line error (exit 1) instead of a traceback, and `validate_sanity_vector.py` does the same for its extraction file.
 - A symlink under `/dev` (for example in `/dev/shm`) is no longer written through; on Windows an `--output` file held open by another program gives a one-line error.
 - Every CLI's `--output` replaces a symlink at the path instead of writing through it. The file is written to a temporary name beside it and renamed, so the folder must be writable.
 - Given both `--output` and `--analysis-dir`, the schematic, PCB, EMC and SPICE CLIs write only `--output`, like the other analyzers.

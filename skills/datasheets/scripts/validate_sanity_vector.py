@@ -146,7 +146,11 @@ def main(argv: list[str] | None = None) -> int:
 
     import yaml
     vector = yaml.safe_load(args.vector_path.read_text(encoding="utf-8"))
-    extraction = json.loads(args.extraction_path.read_text(encoding="utf-8"))
+    try:
+        extraction = json.loads(args.extraction_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, RecursionError) as exc:
+        print(f"error: extraction file is not valid JSON: {exc}", file=sys.stderr)
+        return 1
     report = diff(vector, extraction)
     print(json.dumps(report, indent=2, default=str))
     return 0 if report["summary"]["failed"] == 0 else 1
