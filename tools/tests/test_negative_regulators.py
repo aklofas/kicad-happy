@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "skills" / "kicad" 
 
 from kicad_core.parts import lookup_regulator_vref  # noqa: E402
 from kicad_types import build_analysis_context  # noqa: E402
-from schematic.system_analyses import analyze_inrush_current  # noqa: E402
+from schematic.system_analyses import analyze_inrush_current, analyze_power_budget  # noqa: E402
 from signal_detectors import _infer_rail_voltage, detect_power_regulators  # noqa: E402
 
 _TYPES = {"U": "ic", "L": "inductor", "R": "resistor", "C": "capacitor"}
@@ -107,3 +107,24 @@ class BoostDividerTop(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LdoDissipationSign(unittest.TestCase):
+    def _rail(self, v_in_net, v_out_net, vout):
+        ctx = _ctx([("U1", "Regulator_Linear:LM337_TO220", "LM337",
+                     {"1": ("ADJ", "ADJ"), "2": ("VI", v_in_net), "3": ("VO", v_out_net)}),
+                    ("U2", "MCU:Part", "MCU", {"1": ("VDD", v_out_net), "2": ("GND", "GND")}),
+                    ("C1", "Device:C", "10u", {"1": ("1", v_out_net), "2": ("2", "GND")})])
+        reg = {"ref": "U1", "value": "LM337", "topology": "LDO", "estimated_vout": vout,
+               "input_rail": v_in_net, "output_rail": v_out_net}
+        return analyze_power_budget(ctx, {"power_regulators": [reg]})["rails"][v_out_net]
+
+    def test_negative_ldo_on_a_negative_input_has_a_dissipation(self):
+        rail = self._rail("-12V", "-5V", -5.0)
+        self.assertEqual(rail["ldo_dissipation"]["dropout"], 7.0)
+
+    def test_positive_input_to_a_negative_output_has_no_dissipation(self):
+        self.assertNotIn("ldo_dissipation", self._rail("+15V", "-5V", -5.0))
+
+    def test_positive_ldo_keeps_its_dissipation(self):
+        self.assertEqual(self._rail("+12V", "+5V", 5.0)["ldo_dissipation"]["dropout"], 7.0)

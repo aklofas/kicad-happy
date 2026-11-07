@@ -1590,9 +1590,10 @@ def analyze_power_budget(ctx: AnalysisContext,
             if v_ldo_out is None:
                 v_ldo_out = v_out
             if reg.get("topology") == "LDO" and v_in_rail and v_ldo_out:
-                v_in = abs(ctx.rail_voltage_or(v_in_rail, _estimate_rail_voltage) or 0)
-                v_out = abs(v_ldo_out)  # a negative LDO drops |Vin| - |Vout|
-                if v_in and v_in > v_out:
+                v_in_signed = ctx.rail_voltage_or(v_in_rail, _estimate_rail_voltage) or 0
+                v_in = abs(v_in_signed)
+                v_out = abs(v_ldo_out)  # a negative LDO drops |Vin| - |Vout|; both rails share a sign
+                if v_in and v_in_signed * v_ldo_out > 0 and v_in > v_out:
                     total_load_mA = rail_info["estimated_load_mA"]
                     v_drop = v_in - v_out
                     power_w = v_drop * (total_load_mA / 1000.0)

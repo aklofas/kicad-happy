@@ -104,6 +104,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `what_if` log-sweep columns read `12.92k` and `3.162n` instead of `1.292e+04` and `3.162e-09`; a script that reads `value_strs` as plain numbers should use `values`.
 - On regulators with several feedback pins the Vout estimate uses the pin whose divider feeds the reported output rail, independent of net order.
 - LM79xx fixed regulators read as negative (−5 V for an LM7905), and negative LDOs get a dissipation estimate, and inrush estimates cover negative regulators.
+- A regulator whose input and output rails have opposite signs no longer gets an LDO dissipation estimate.
 - Fixed-output suffixes `-10/-12/-15/-05` read from the data sheet for LM2596, LM2576, LM2940, TL780, NCP1117, XL1509 and AP7361C. TPS61030 uses its 0.5 V feedback reference and LTC3558 its 0.8 V reference.
 
 ### Documentation
