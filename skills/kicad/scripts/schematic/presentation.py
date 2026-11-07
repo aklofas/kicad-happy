@@ -70,11 +70,13 @@ def _flatten_signal_findings(signal_analysis):
     # findings[] output. id()-based dedup is safe for ANY detector (a
     # dict appearing twice in the SAME analysis output is always the same
     # aliasing quirk noted in finding_schema.py's assign_finding_ids). The
-    # (detector, components) key belt is scoped to detect_voltage_dividers
+    # (detector, components, nets) key belt is scoped to detect_voltage_dividers
     # only — other detectors (e.g. VM-001) legitimately emit multiple
     # distinct findings for the same component pair on different nets, so
-    # a components-only key would wrongly collapse those. Order-preserving
-    # (first occurrence wins).
+    # a components-only key would wrongly collapse those. The nets are in the
+    # key because a legacy design that repeats a sub-sheet reuses reference
+    # designators, so two dividers can share R1/R2. Order-preserving (first
+    # occurrence wins).
     findings = []
     _flatten_seen_ids = set()
     _flatten_seen_vd_keys = set()
@@ -91,7 +93,8 @@ def _flatten_signal_findings(signal_analysis):
                         continue
                     _flatten_seen_ids.add(_iid)
                     if _item.get("detector") == "detect_voltage_dividers":
-                        _vkey = (_item.get("detector"), tuple(_item.get("components") or []))
+                        _vkey = (_item.get("detector"), tuple(_item.get("components") or []),
+                                 _item.get("top_net"), _item.get("mid_net"), _item.get("bottom_net"))
                         if _vkey in _flatten_seen_vd_keys:
                             continue
                         _flatten_seen_vd_keys.add(_vkey)
