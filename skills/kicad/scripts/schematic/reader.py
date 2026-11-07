@@ -166,10 +166,10 @@ def extract_lib_symbols(root: list) -> dict:
             all_pins = [_parse_single_pin(pin) for pin in find_deep(sym, "pin") if len(pin) >= 3]
 
         # Get symbol properties
-        desc = mandatory_field(get_property(sym, "Description"), tilde_empty)
+        desc = mandatory_field(mandatory_property(sym, "Description"), tilde_empty)
         ki_keywords = _field(get_property(sym, "ki_keywords"), tilde_empty)
         ki_fp_filters = _field(get_property(sym, "ki_fp_filters"), tilde_empty)
-        lib_value = mandatory_field(get_property(sym, "Value"), tilde_empty)
+        lib_value = mandatory_field(mandatory_property(sym, "Value"), tilde_empty)
 
         # Check for (power) flag — marks this as a power symbol regardless of lib name
         # KiCad 8+ writes (power global) or (power local); pre-8.0 writes bare (power)
@@ -363,7 +363,8 @@ def compute_pin_positions(component: dict, lib_symbols: dict) -> list[Pin]:
 def extract_symbol_instances(root: list) -> dict:
     """Extract (symbol_instances ...) from root schematic.
 
-    Returns a dict mapping path string -> {reference, unit, value, footprint}.
+    Returns a dict mapping path string -> {reference, unit, value, footprint, value_set,
+    footprint_set}.
     Path format: "/sheet_uuid/symbol_uuid" or "/sheet_uuid/child_uuid/symbol_uuid".
     """
     result = {}
@@ -388,6 +389,10 @@ def extract_symbol_instances(root: list) -> dict:
             "unit": unit,
             "value": mandatory_field(get_value(path_node, "value"), tilde_empty),
             "footprint": mandatory_field(get_value(path_node, "footprint"), tilde_empty),
+            # KiCad applies an instance value or footprint whose text is not empty before
+            # trimming, so (value " ") sets an empty value.
+            "value_set": _field(get_value(path_node, "value"), tilde_empty) != "",
+            "footprint_set": _field(get_value(path_node, "footprint"), tilde_empty) != "",
         }
     return result
 
@@ -407,6 +412,17 @@ _SHEET_NAME_FIELDS = {"sheetname": "SHEETNAME", "sheet name": "SHEETNAME",
 
 def _has_text_vars(text: str) -> bool:
     return "${" in text or "@{" in text
+
+
+def mandatory_property(node: list, name: str) -> str | None:
+    """A mandatory field's text as KiCad 10 reads it: the name matches in any case and a
+    later duplicate replaces an earlier one.  None when the field is absent."""
+    key = name.casefold()
+    text = None
+    for prop, value in _iter_properties(node):
+        if str(prop).casefold() == key:
+            text = str(value)
+    return text
 
 
 def _raw_fields(node: list) -> list[tuple[str, str]]:
@@ -731,9 +747,14 @@ def mandatory_field(text, tilde_empty: bool) -> str:
 def _symbol_fields(sym: list, value: str, footprint: str, tilde_empty: bool) -> list[tuple[str, str]]:
     """A placed symbol's fields in KiCad's order: the five mandatory fields (Value and
     Footprint as resolved from the instance), then the others as written."""
-    raw = [(name, mandatory_field(text, tilde_empty) if name in _MANDATORY_FIELDS
-            else _field(text, tilde_empty)) for name, text in _raw_fields(sym)]
-    given = dict(reversed(raw))
+    # Value, Footprint, Datasheet and Description match in any case, a later duplicate
+    # replacing an earlier one; Reference keeps its exact name and first entry.
+    mandatory = {m.casefold(): m for m in _MANDATORY_FIELDS if m != "Reference"}
+    raw = [(mandatory.get(name.casefold(), name), mandatory_field(text, tilde_empty)
+            if name.casefold() in mandatory or name == "Reference" else _field(text, tilde_empty))
+           for name, text in _raw_fields(sym)]
+    given = dict(raw)
+    given["Reference"] = next((text for name, text in raw if name == "Reference"), "")
     fields = [(name, value if name == "Value" else footprint if name == "Footprint"
                else given.get(name, "")) for name in _MANDATORY_FIELDS]
     seen = set(_MANDATORY_FIELDS)
@@ -756,9 +777,10 @@ def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
     kicad_core.instances.resolve_instance); candidates are the root's KiCad 6
     *symbol_instances* entries for the symbol (keyed without the root uuid, so *root_kiid* is
     prefixed) and its inline (instances).  The KiCad 6 entry for this exact path also sets the
-    symbol's value and footprint when non-empty; an inline instance's value / footprint sets
-    them whichever path carries it.  The caller passes *symbol_instances* only for roots older
-    than 20221002, already settled across repeated sheets (schematic.hierarchy).
+    symbol's value and footprint when their text is not empty before trimming; an inline
+    instance's value / footprint sets them whichever path carries it.  The caller passes
+    *symbol_instances* only for roots older than 20221002, already settled across repeated
+    sheets (schematic.hierarchy).
 
     Without *instance_path*, *instance_uuid* remaps references from the inline instance whose
     path contains it, falling back to *symbol_instances*.
@@ -813,7 +835,7 @@ def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
             body_style = 1
 
         ref = mandatory_field(get_property(sym, "Reference"), tilde_empty)
-        value = get_property(sym, "Value")
+        value = mandatory_property(sym, "Value")
         if tilde_empty and value == "~":
             value = ""
         # Eagle-imported schematics often have NO instance Value property.
@@ -824,9 +846,9 @@ def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
             value = sym_def_val.get("value", "") or ""
         else:
             value = (value or "").strip(MANDATORY_STRIP)
-        footprint = mandatory_field(get_property(sym, "Footprint"), tilde_empty)
-        datasheet = mandatory_field(get_property(sym, "Datasheet"), tilde_empty)
-        description = mandatory_field(get_property(sym, "Description"), tilde_empty)
+        footprint = mandatory_field(mandatory_property(sym, "Footprint"), tilde_empty)
+        datasheet = mandatory_field(mandatory_property(sym, "Datasheet"), tilde_empty)
+        description = mandatory_field(mandatory_property(sym, "Description"), tilde_empty)
         uuid_val = get_value(sym, "uuid") or ""
         overrides = {}
 
@@ -837,9 +859,9 @@ def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
                 candidates.append({"path": root_kiid + sheet_path, "project": "",
                                    "reference": entry["reference"], "unit": entry["unit"]})
                 if (root_kiid + sheet_path).rstrip("/").lower() == here:
-                    if entry["value"]:
+                    if entry["value_set"]:
                         value = entry["value"]
-                    if entry["footprint"]:
+                    if entry["footprint_set"]:
                         footprint = entry["footprint"]
             for entry in inline_instances(sym, tilde_empty):
                 candidates.append(entry)

@@ -84,11 +84,11 @@ def _sheet_list(root_path: str, root_tree: list) -> dict:
 
 
 def _settle_kicad6_values(symbol_instances: dict, root_path: str, root_tree: list) -> dict:
-    """KiCad 6 entries as KiCad applies them.  Each entry's non-empty value / footprint
-    overwrites the field of the one symbol it names, sheet by sheet in sheet-list order, so a
-    symbol on a repeated sheet shows the last sheet's value on every sheet: entries are put in
-    that order and each takes the last non-empty value / footprint of its (sheet file, uuid)
-    group."""
+    """KiCad 6 entries as KiCad applies them.  Each entry's value / footprint whose text is not
+    empty before trimming (so " " sets an empty field) overwrites the field of the one symbol
+    it names, sheet by sheet in sheet-list order, so a symbol on a repeated sheet shows the
+    last sheet's value on every sheet: entries are put in that order and each takes the last
+    such value / footprint of its (sheet file, uuid) group."""
     sheets = _sheet_list(root_path, root_tree)
     last = (len(sheets), None)
     ordered = sorted(symbol_instances.items(),
@@ -97,10 +97,12 @@ def _settle_kicad6_values(symbol_instances: dict, root_path: str, root_tree: lis
     for si_path, entry in ordered:
         sheet_path, _, sym_uuid = si_path.rpartition("/")
         win = winners.setdefault((sheets.get(sheet_path.lower(), last)[1], sym_uuid.lower()),
-                                 {"value": "", "footprint": ""})
+                                 {"value": "", "footprint": "",
+                                  "value_set": False, "footprint_set": False})
         for key in ("value", "footprint"):
-            if entry.get(key):
+            if entry.get(key + "_set"):
                 win[key] = entry[key]
+                win[key + "_set"] = True
     settled = {}
     for si_path, entry in ordered:
         sheet_path, _, sym_uuid = si_path.rpartition("/")

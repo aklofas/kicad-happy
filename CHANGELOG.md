@@ -8,6 +8,10 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ## v3.0.2 — unreleased
 
+### Changed
+
+- Value, Footprint, Datasheet and Description are read in any case and a later duplicate replaces the earlier one, as KiCad 10 does; a KiCad 6 instance value of only spaces sets an empty value.
+
 ### Fixed
 
 - A `.kicad_dru` with unbalanced parentheses is now refused as KiCad refuses it: none of its rules apply and `custom_rules_error` says why.
