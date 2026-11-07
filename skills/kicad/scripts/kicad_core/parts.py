@@ -210,14 +210,15 @@ _AMBIGUOUS_SUFFIXES = frozenset({"05", "09", "10", "12", "15", "24", "48"})
 
 def _lookup_vref(candidates: list[str]) -> tuple[float | None, str]:
     # LM78xx/LM79xx fixed-output convention: voltage digits embedded without
-    # separator. LM7805=5V, LM78L12=12V, LM78M05CT=5V, LM7805_TO220=5V.
+    # separator. LM7805=5V, LM78L12=12V, LM78M05CT=5V, LM7805_TO220=5V; the
+    # LM79xx parts are negative regulators (LM7905=-5V).
     # These families ONLY exist as fixed-output — no adjustable variant.
     for candidate in candidates:
-        m = re.match(r'LM7[89][A-Z]?(\d{2})', candidate)
+        m = re.match(r'LM7([89])[A-Z]?(\d{2})', candidate)
         if m:
-            v = int(m.group(1))
+            v = int(m.group(2))
             if v in (5, 6, 8, 9, 10, 12, 15, 18, 24):
-                return float(v), "fixed_suffix"
+                return (-float(v) if m.group(1) == "9" else float(v)), "fixed_suffix"
     # Check for fixed-output voltage suffix (e.g., AMS1117-3.3, TLV1117LV-33,
     # RT9013-18GV — patterns: -3.3, -33, -3V3, -1V8)
     for candidate in candidates:

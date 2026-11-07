@@ -103,6 +103,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `diff_analysis` says when both sides were produced from byte-identical design files, so changes that come from a newer analyzer are not read as design changes.
 - `what_if` log-sweep columns read `12.92k` and `3.162n` instead of `1.292e+04` and `3.162e-09`; a script that reads `value_strs` as plain numbers should use `values`.
 - On regulators with several feedback pins the Vout estimate uses the pin whose divider feeds the reported output rail, independent of net order.
+- LM79xx fixed regulators read as negative (−5 V for an LM7905), and negative LDOs get a dissipation estimate, and inrush estimates cover negative regulators.
 
 ### Documentation
 

@@ -2813,7 +2813,7 @@ def analyze_inrush_current(ctx: AnalysisContext,
 
         v_cfg = ctx.config_rail_voltage(out_rail)
         v_out = (abs(v_cfg) if v_cfg is not None
-                 else reg.get("estimated_vout")
+                 else abs(reg.get("estimated_vout") or 0)
                  or abs(ctx.rail_by_net.get(out_rail) or _estimate_rail_voltage(out_rail) or 0))
         if not v_out or v_out <= 0:
             continue

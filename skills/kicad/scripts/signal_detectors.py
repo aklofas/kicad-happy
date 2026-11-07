@@ -1564,6 +1564,10 @@ def _infer_rail_voltage(net_name):
     if not net_name:
         return None
     name = net_leaf(net_name).upper().strip()
+    # A leading minus is a negative rail (-5V, -VBAT)
+    if name.startswith("-"):
+        v = _infer_rail_voltage(name[1:])
+        return -v if v else v
     # VxPy notation: V3P3 → 3.3, V1P8 → 1.8
     m = re.match(r'V(\d+)P(\d+)', name)
     if m:
@@ -2114,9 +2118,9 @@ def _build_regulator_record(ctx: AnalysisContext, cand: _RegulatorCandidate,
         for vd in voltage_dividers:
             if fb_pin and vd["mid_net"] == fb_pin[1] and not ctx.is_ground(vd["top_net"]):
                 reg_info["output_rail"] = vd["top_net"]
-                # only a leading minus or NEG: a boost's VCC-5V is positive
+                # only a leading minus, V-, VEE or NEG: a boost's VCC-5V is positive
                 top_leaf = net_leaf(vd["top_net"]).upper()
-                if top_leaf.startswith("-") or "NEG" in top_leaf:
+                if top_leaf.startswith(("-", "V-", "VEE")) or "NEG" in top_leaf:
                     reg_info["inverting"] = True
                 break
         else:
