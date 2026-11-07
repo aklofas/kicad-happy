@@ -113,6 +113,10 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Review reports no longer list "lifecycle audit not run" next to a lifecycle section produced by a standalone `lifecycle_audit.py` run.
 
 
+### Removed
+
+- Removed `skills/kicad/review/scripts/run_phase4_exercise.py`, a development exercise that needed a fixture outside the product and called no review consumer.
+
 ## v3.0.1 — 2026-11-06
 
 ### Security
