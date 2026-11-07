@@ -730,7 +730,7 @@ Detailed methodology and format documentation lives in reference files. Read the
 | `schematic-analysis.md` | 1167 | Deep schematic review: datasheet validation, design patterns, error taxonomy, tolerance stacking, GPIO audit, motor control, battery life, supply chain |
 | `pcb-layout-analysis.md` | 447 | Advanced PCB: impedance calculations, differential pairs, return paths, copper balance, edge clearance, copper-sensitive components (capacitive touch, antennas), custom analysis scripts |
 | `output-schema.md` | 347 | Full analyzer JSON schema with field names, types, and common extraction patterns |
-| `file-formats.md` | 382 | Manual file inspection: S-expression structure, field-by-field docs for all KiCad file types, version detection |
+| `file-formats.md` | 388 | Manual file inspection: S-expression structure, field-by-field docs for all KiCad file types, version detection |
 | `gerber-parsing.md` | 761 | Gerber/Excellon format details, X2 attributes, analysis techniques |
 | `pdf-schematic-extraction.md` | 315 | PDF schematic analysis: extraction workflow, notation conventions, KiCad translation |
 | `supplementary-data-sources.md` | 288 | Legacy KiCad 5 data recovery: netlist parsing, cache library, PCB cross-reference |
