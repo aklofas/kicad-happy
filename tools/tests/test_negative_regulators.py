@@ -105,10 +105,6 @@ class BoostDividerTop(unittest.TestCase):
             self.assertNotIn("inverting", self._boost(top), top)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class LdoDissipationSign(unittest.TestCase):
     def _rail(self, v_in_net, v_out_net, vout):
         ctx = _ctx([("U1", "Regulator_Linear:LM337_TO220", "LM337",
@@ -128,3 +124,7 @@ class LdoDissipationSign(unittest.TestCase):
 
     def test_positive_ldo_keeps_its_dissipation(self):
         self.assertEqual(self._rail("+12V", "+5V", 5.0)["ldo_dissipation"]["dropout"], 7.0)
+
+
+if __name__ == "__main__":
+    unittest.main()
