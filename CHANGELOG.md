@@ -25,10 +25,9 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Bus labels with quoted member or prefix names (`{"A B" C}`), as KiCad 10 allows, now expand to their members, and a group member containing a space is named with the space escaped (`A\ B`), as KiCad names it.
 - A `.kicad-happy.json` or `.kicad_pro` saved with a UTF-8 byte-order mark (common Windows editors) is now read instead of skipped.
 - `"analysis": null` or a non-string entry in `power_rails.ignore` / `flag` is now warned and ignored instead of dropping every power-rail setting.
-- A `voltage_overrides` entry now also sets the output voltage used for an LDO's dropout and dissipation, and counts when deciding whether two ICs' I/O rails need a level shifter.
+- A `voltage_overrides` entry now also sets the output voltage used for a regulator's dropout and dissipation, and counts when deciding whether two ICs' I/O rails need a level shifter.
 - An LVDS serializer or deserializer identified only by its MPN field is now detected.
 - With `--spice-enhanced`, the switching-harmonic estimate in EE-002 resamples the simulated waveform evenly before the harmonic analysis, so the amplitudes no longer drift with the simulator's time steps.
-- The EMC docs no longer say the EMI-filter checks (EF-001/EF-002) run a SPICE sweep with `--spice-enhanced`; they are analytical, and only the PDN and switching-harmonic checks use the simulator.
 - SW-003 no longer appends a radiated-field estimate under `--spice-enhanced`; it could only appear for a switching frequency above 30 MHz.
 - A cached project SPICE model is pasted into a testbench only when it holds model-library cards alone (`.subckt`, `.ends`, `.model`, `.param`, `.func`, `.global`, and a final `.end`, which is dropped); output, analysis and option cards, and XSPICE models that read files, make it fall back to the built-in model with a diagnostic (`spice.trust_project_models` still overrides).
 - A SPICE run without `--workdir` no longer leaves its temporary `spice_sim_*` folder (or the per-process model-cache folder) behind; pass `--workdir` to keep the testbenches.
@@ -41,8 +40,8 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `fab_release_gate.py` leaves board-only graphics (logos) out of the component count and reports DNP footprints separately. When nets are unrouted but the PCB analysis lists no RT-001 finding for them (as when the board's DRC ignores unconnected items), the routing check warns instead of failing, so on its own it no longer makes the gate exit 1 (with `--strict` it still does). It says what a routing pass without `--full` proves. It no longer prints `None` for an unknown drill size.
 - `--analysis-dir` no longer fails on a symlinked or malformed run entry, a manifest that is a link, a FIFO or a deeply nested file, and no longer hangs on a FIFO named `manifest.json`.
 - A JSON input nested deeper than Python can parse is read as malformed JSON: the analyzers and tools that report a malformed file give it the same error and exit code instead of a traceback. `edit_properties.py` reports malformed `--updates` JSON with a one-line error (exit 1) instead of a traceback, and `validate_sanity_vector.py` does the same for its extraction file.
-- A symlink under `/dev` (for example in `/dev/shm`) is no longer written through; on Windows an `--output` file held open by another program gives a one-line error.
-- Every CLI's `--output` replaces a symlink at the path instead of writing through it. The file is written to a temporary name beside it and renamed, so the folder must be writable.
+- Every CLI's `--output` replaces a symlink at the path instead of writing through it, including a symlink under `/dev` (for example in `/dev/shm`); `/dev/stdout`, `/dev/null` and other stream names are still written in place. The file is written to a temporary name beside it and renamed, so the folder must be writable.
+- On Windows, an `--output` file that another program holds open, or that is read-only, gives a one-line error (exit 1).
 - Given both `--output` and `--analysis-dir`, the schematic, PCB, EMC and SPICE CLIs write only `--output`, like the other analyzers.
 - Analyzers run in parallel into one `--analysis-dir` no longer lose each other's manifest entries; they share the current run folder.
 - After a schematic change, `--analysis-dir` drops the previous run's `lifecycle.json` instead of carrying the old parts' lifecycle forward.
@@ -60,7 +59,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Deep Review quotes against a datasheet saved by the datasheet sync (`<MPN>_<description>.pdf`, or listed in `datasheets/manifest.json`) are now checked; they were graded partial because the gate looked only for `<MPN>.pdf`.
 - DigiKey datasheet sync: a run longer than the API token's ten-minute life fetches a new token instead of failing every later part as an access error.
 - `search_lcsc.py`: `--in-stock` no longer drops an exact LCSC-code hit whose stock only the LCSC lookup reports. A code search whose LCSC lookup is unreachable now exits 2, the script's API-error code, instead of 1, and the error names both services when both fail.
-- Mouser datasheet sync: the product page it reads for a datasheet link is fetched under the same address, redirect and size limits as datasheet downloads.
+- Mouser datasheet sync: the product page it reads for a datasheet link is fetched under the same address and redirect checks as datasheet downloads, and stops at 4 MB or 30 s.
 - Datasheet downloads: a server that stalls while sending headers no longer keeps its connection and a thread open after the download gives up.
 - `datasheet_verify.py` now exits 0 when an extraction has only warnings (exit 1 is kept for errors). It reports one warning per unresolved `power_domain` value instead of one per pin, and reports a null or malformed pin entry instead of crashing.
 - Datasheet downloads refuse NAT64, 6to4 and IPv4-compatible IPv6 addresses that embed a private or loopback IPv4 address.
@@ -94,9 +93,9 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The datasheets skill names PyYAML as the sanity-vector helper's dependency and says that extraction files carry no capability mode.
 - The kicad skill no longer tells the agent that SPICE and EMC runs are mandatory proof. It reports a SPICE pass as a check, an `info` or generic-model bench as a measurement, and heuristic EMC findings as screening. A board with no datasheet evidence may still state KiCad-file facts (nets, pads, tracks, DRC/ERC) as verified.
 - Review reports no longer list "lifecycle audit not run" next to a lifecycle section produced by a standalone `lifecycle_audit.py` run.
-
 - The Gerber guides no longer call `_SilkS` names and region-drawn mask openings KiCad 5 markers; both appear in either version, and the software string identifies the version. `analyze_gerbers` documents that its component analysis needs X2 object attributes from KiCad 5.1 on, not 6+.
 - The file-format guide says why kicad-cli DRC/ERC on a copied project reports library warnings, and where the 2.x script modules (`sexp_parser`, `kicad_utils`) went.
+- The EMC docs no longer say the EMI-filter checks (EF-001/EF-002) run a SPICE sweep with `--spice-enhanced`; they are analytical, and only the PDN and switching-harmonic checks use the simulator.
 
 ### Removed
 

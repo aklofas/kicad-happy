@@ -726,7 +726,7 @@ Detailed methodology and format documentation lives in reference files. Read the
 
 | Reference | Lines | When to Read |
 |-----------|-------|-------------|
-| `deep-review.md` | 192 | Deep Review pass: per-part-class comparison heuristics, pair checks, helper-script conventions, fan-out |
+| `deep-review.md` | 195 | Deep Review pass: per-part-class comparison heuristics, pair checks, helper-script conventions, fan-out |
 | `schematic-analysis.md` | 1167 | Deep schematic review: datasheet validation, design patterns, error taxonomy, tolerance stacking, GPIO audit, motor control, battery life, supply chain |
 | `pcb-layout-analysis.md` | 447 | Advanced PCB: impedance calculations, differential pairs, return paths, copper balance, edge clearance, copper-sensitive components (capacitive touch, antennas), custom analysis scripts |
 | `output-schema.md` | 347 | Full analyzer JSON schema with field names, types, and common extraction patterns |
