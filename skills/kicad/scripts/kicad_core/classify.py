@@ -522,6 +522,18 @@ def classify_ic_function(lib_id: str, value: str, description: str = "") -> str:
     return "other_ic"
 
 
+def _row_layout(text: str) -> str | None:
+    """'single' or 'dual' when the text names a pin-row layout. Single is tested first:
+    the dual pattern also matches Conn_01xNN."""
+    if re.search(r'(?:conn_01x\d+|conn_1x\d+|_1x\d+|\d+x1_)', text) or \
+       re.search(r'pin_header.*1x\d+|pin_socket.*1x\d+', text):
+        return "single"
+    if re.search(r'(?:conn_\d+x\d+|_2x\d+|\d+x2_)', text) or \
+       re.search(r'pin_header.*2x\d+|pin_socket.*2x\d+', text):
+        return "dual"
+    return None
+
+
 def classify_connector(lib_id: str, value: str, pin_count: int = 0) -> tuple[bool, str]:
     """Classify a connector's external status and layout type.
 
@@ -544,14 +556,9 @@ def classify_connector(lib_id: str, value: str, pin_count: int = 0) -> tuple[boo
     elif any(k in combined for k in ("screw_terminal", "screw terminal", "phoenix",
                                       "pluggable_terminal", "terminal_block")):
         layout = "screw_terminal"
-    elif re.search(r'(?:conn_\d+x\d+|_2x\d+|\d+x2_)', combined) or \
-         re.search(r'pin_header.*2x\d+|pin_socket.*2x\d+', combined):
-        layout = "dual"
-    elif re.search(r'(?:conn_01x\d+|conn_1x\d+|_1x\d+|\d+x1_)', combined) or \
-         re.search(r'pin_header.*1x\d+|pin_socket.*1x\d+', combined):
-        layout = "single"
     else:
-        layout = "other"
+        # The symbol name outranks the value (a Conn_02x02 symbol valued Conn_01x02_Pin is dual).
+        layout = _row_layout(lib_id.lower()) or _row_layout(value.lower()) or "other"
 
     # External classification
     # Explicitly external connectors

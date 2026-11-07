@@ -112,6 +112,8 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Crystal values with a decimal comma (`9,84375 MHz`) read their frequency; a ferrite written `600 Ohm @ 100MHz` has no resistance value; `0R/2A` reads 0 Ω.
 - A low-value shunt between two named rails (`VBAT` to `VBAT_LOAD`) is now found as a current sense when a current-sense amplifier such as an INA219 reads across it; an op-amp across such a shunt still is not.
 - A zener or TVS clamp, or a diode with its anode on the supply, no longer counts as a MOSFET's flyback diode.
+- Single-row connectors (`Conn_01xNN`) report `connector_layout: single`.
+- An inductor whose footprint, value or MPN says non-shielded or semi-shielded no longer reads as shielded.
 
 ### Documentation
 
