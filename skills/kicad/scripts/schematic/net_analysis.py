@@ -10,7 +10,7 @@ from kicad_core.coords import to_iu
 from detector_helpers import is_protection_part
 from kicad_core.sexp import unescape_string
 from schematic import erc_pins
-from validation_detectors import _en_endpoint_compatible
+from validation_detectors import _PG_PIN_PATTERNS, _en_endpoint_compatible, _is_regulator_like
 from kicad_core.parts import (
     _OUTPUT_DRIVE_KEYWORDS,
 )
@@ -563,8 +563,9 @@ def _rails_voltage_compatible(rails_a: set, rails_b: set,
 
 def _en_tolerant_ref(ctx: AnalysisContext, ref: str, net_name: str, net_info: dict,
                      power_domains: dict) -> bool:
-    """True when every pin of *ref* on the net is a regulator enable or power-good pin
-    that the voltage-level check (VM-001) accepts as a compatible endpoint."""
+    """True when every pin of *ref* on the net is a regulator enable pin that the
+    voltage-level check (VM-001) accepts as a compatible endpoint, or a regulator
+    power-good pin (an open-drain output, whose level its pull-up sets)."""
     pins = [p for p in net_info["pins"] if p["component"] == ref]
     if not pins:
         return False
@@ -574,8 +575,10 @@ def _en_tolerant_ref(ctx: AnalysisContext, ref: str, net_name: str, net_info: di
     volts = [v for v in volts if v is not None]
     # No parsed rail: 0.0 keeps the datasheet-threshold test conservative.
     v_min = min(volts) if volts else 0.0
+    pg_ok = _is_regulator_like(ctx, ref)
     return all(_en_endpoint_compatible(ctx, {"ref": ref, "pin": p.get("pin_name", "")},
                                        net_name, v_min)
+               or (pg_ok and (p.get("pin_name") or "").upper().strip() in _PG_PIN_PATTERNS)
                for p in pins)
 
 

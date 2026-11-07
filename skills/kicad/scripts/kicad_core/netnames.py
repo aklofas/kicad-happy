@@ -107,6 +107,17 @@ _RAIL_SIGNAL_SUFFIXES = _VOLTAGE_SIGNAL_SUFFIXES | frozenset({
 _USB_D_SUFFIX = re.compile(r"(?:^|[^A-Z0-9]|USB\d*)D[+-]$")
 
 
+# USB_DTR, USB_DET: a USB_D marker followed by a letter that spells none of DP/DM/DN/DATA;
+# USB_DP_PU, USB_DM_EN: a GPIO that controls a data line, not the line itself.
+_USB_SIGNAL_NAME = re.compile(r"USB_D[B-LOQ-Z]|USB_D[PMN]_?(?:PU|PULLUP|PULL_UP|EN|CTRL)\b")
+
+
+def is_usb_signal_net_name(name_upper: str) -> bool:
+    """True if an upper-cased net name carries a USB marker but names a control or
+    detect signal (USB_DTR, USB_DET, USB_DP_PU), neither a data line nor VBUS."""
+    return bool(_USB_SIGNAL_NAME.search(name_upper))
+
+
 def is_usb_data_net_name(name_upper: str) -> bool:
     """True if an upper-cased net name looks like a USB data line."""
     if any(m in name_upper for m in USB_DATA_NET_MARKERS):

@@ -12,6 +12,8 @@ Expected values come from the datasheets and the arithmetic:
 - The compensation warning names no part value: a 10 nF FB/COMP-to-ground cap is not a safe default.
 - VM-001 threshold table (validation_detectors._VOLTAGE_THRESHOLDS): a 3.3 V-class input has a
   3.6 V absolute maximum, a 1.8 V-class input 2.0 V, so 5.0 V into 3.3 V and 3.3 V into 1.8 V are errors.
+- Open-drain outputs: BQ25185 STAT1/STAT2 (SLUSF65A) and BQ24075 PGOOD/CHG are open-drain, so their
+  level is the pull-up rail; MCP73831 STAT is a tri-state output that drives high to its supply.
 """
 import sys
 import unittest
@@ -211,10 +213,10 @@ class EnableEndpoints(unittest.TestCase):
 class RegulatorStatusPins(unittest.TestCase):
     # A 5 V-supplied regulator's open-drain power-good output and its active-low shutdown input
     # on a 3.3 V MCU net: the pull-up sets PG's level, and nSHDN is an enable input.
-    def _vm(self, reg_value, pin):
+    def _vm(self, reg_value, pin, pin_type="open_collector"):
         comps = [ic("U7", reg_value), ic("U6", "MCU3V3")]
         nets = {"+5V": [("U7", "1", "VIN", "power_in")], "+3V3": [("U6", "1", "VDD", "power_in")],
-                "SIG": [("U7", "3", pin, "open_collector"), ("U6", "3", "PB0", "input")]}
+                "SIG": [("U7", "3", pin, pin_type), ("U6", "3", "PB0", "input")]}
         return vm001(ctx_of(comps, nets, {"+5V", "+3V3"}))
 
     def test_power_good_pin_is_a_compatible_endpoint(self):
@@ -225,8 +227,79 @@ class RegulatorStatusPins(unittest.TestCase):
         self.assertEqual(self._vm("TPS62130", "nSHDN"), [])
 
     def test_pg_named_pin_on_a_non_regulator_is_still_checked(self):
-        (f,) = self._vm("MCU5V", "PG")
+        (f,) = self._vm("MCU5V", "PG", "output")
         self.assertEqual(f["severity"], "error")
+
+
+def _pulled(pin, pin_type, supply, pull_up, value="TPS2051", reader="MCU3V3"):
+    """U1 (*value*, supplied from *supply*) drives SIG through *pin* into a 3.3 V reader;
+    R1 pulls SIG up to *pull_up* (None: no pull-up)."""
+    comps = [ic("U1", value), ic("U2", reader), res("R1", "10k")]
+    nets = {"+5V": [], "+3V3": [], "GND": [("U1", "2", "GND", "power_in"),
+                                           ("U2", "2", "GND", "power_in")]}
+    nets[supply].append(("U1", "1", "VIN", "power_in"))
+    nets["+3V3"].append(("U2", "1", "VDD", "power_in"))
+    nets["SIG"] = [("U1", "3", pin, pin_type), ("U2", "3", "PB0", "input"),
+                   ("R1", "1", "~", "passive")]
+    nets[pull_up or "GND"].append(("R1", "2", "~", "passive"))
+    return vm001(ctx_of(comps, nets, {"+5V", "+3V3", "GND"}))
+
+
+class OpenDrainEndpoints(unittest.TestCase):
+    # An open-drain output swings to its pull-up rail, not to its IC's supply.
+    def test_open_collector_pulled_to_5v_into_3v3_input_is_an_error(self):
+        (f,) = _pulled("FLG", "open_collector", "+3V3", "+5V")
+        self.assertEqual(f["summary"], "Net SIG: 5.0V / 3.3V domain crossing without level shifter")
+        self.assertEqual(f["severity"], "error")
+
+    def test_open_collector_pulled_to_3v3_is_silent(self):
+        self.assertEqual(_pulled("FLG", "open_collector", "+5V", "+3V3"), [])
+
+    def test_open_collector_with_no_pull_up_is_silent(self):
+        self.assertEqual(_pulled("FLG", "open_collector", "+5V", None), [])
+
+    def test_open_collector_pulled_below_the_readers_rail_is_not_an_overdriven_input(self):
+        # A 3.3 V part's open-drain flag pulled to +3V3 into a 5 V part's input: the flag only
+        # pulls low, so the 5 V domain does not overdrive it.
+        comps = [ic("U1", "TPS2051"), ic("U2", "MCU5V"), res("R1", "10k")]
+        nets = {"+3V3": [("U1", "1", "VIN", "power_in"), ("R1", "2", "~", "passive")],
+                "+5V": [("U2", "1", "VDD", "power_in")],
+                "GND": [("U1", "2", "GND", "power_in"), ("U2", "2", "GND", "power_in")],
+                "SIG": [("U1", "3", "FLG", "open_collector"), ("U2", "3", "PB0", "input"),
+                        ("R1", "1", "~", "passive")]}
+        self.assertEqual(vm001(ctx_of(comps, nets, {"+5V", "+3V3", "GND"})), [])
+
+    def test_regulator_power_good_pulled_to_lower_rail_is_silent(self):
+        self.assertEqual(_pulled("PG", "output", "+5V", "+3V3", value="TPS62130"), [])
+
+    def test_regulator_power_good_pulled_to_5v_into_3v3_input_is_an_error(self):
+        (f,) = _pulled("PG", "output", "+5V", "+5V", value="TPS62130")
+        self.assertEqual(f["severity"], "error")
+
+    def test_push_pull_output_into_lower_rail_input_still_fires(self):
+        (f,) = _pulled("PA0", "output", "+5V", "+3V3", value="MCU5V")
+        self.assertEqual(f["severity"], "error")
+
+    def test_charger_status_output_is_judged_at_its_pull_up(self):
+        for pin in ("STAT", "STAT1", "~{CHG}", "CHRG", "nSTAT2"):
+            self.assertEqual(_pulled(pin, "output", "+5V", "+3V3", value="BQ25185"), [], pin)
+            self.assertEqual(_pulled(pin, "output", "+5V", None, value="BQ25185"), [], pin)
+
+    def test_tri_state_charger_status_is_still_checked(self):
+        # MCP73831 STAT is a tri-state output that drives high to its supply.
+        (f,) = _pulled("STAT", "tri_state", "+5V", "+3V3", value="MCP73831")
+        self.assertEqual(f["severity"], "error")
+
+
+class SupplyPinEndpoints(unittest.TestCase):
+    def test_regulator_cascade_net_is_silent(self):
+        # L7809 OUT feeds L7805 IN: the net between them is a rail, not a logic level.
+        comps = [ic("U1", "L7809"), ic("U2", "L7805")]
+        nets = {"+12V": [("U1", "1", "IN", "power_in")],
+                "+5V": [("U2", "3", "OUT", "power_out")],
+                "GND": [("U1", "2", "GND", "power_in"), ("U2", "2", "GND", "power_in")],
+                "Net-(U1-OUT)": [("U1", "3", "OUT", "power_out"), ("U2", "1", "IN", "power_in")]}
+        self.assertEqual(vm001(ctx_of(comps, nets, {"+12V", "+5V", "GND"})), [])
 
 
 class MinLoadAdjustable(unittest.TestCase):
@@ -254,7 +327,7 @@ class UsbDataNets(unittest.TestCase):
     def test_non_usb_net_between_the_same_ics_is_still_an_error(self):
         # USB_DTR (a UART modem line, cheyao icepi-zero FT231X DTR) and USB_DET are not D+/D-
         comps = [ic("U5", "MCU5V"), ic("U6", "MCU3V3")]
-        for name in ("DATA", "~{USB_DTR}", "USB_DET"):
+        for name in ("DATA", "~{USB_DTR}", "USB_DET", "USB_DP_PU", "USB_DM_EN"):
             (f,) = vm001(ctx_of(comps, self._nets(name), {"+5V", "+3V3", "GND"}))
             self.assertEqual(f["severity"], "error", name)
 

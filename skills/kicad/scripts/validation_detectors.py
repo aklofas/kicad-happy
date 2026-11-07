@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 
 from kicad_types import AnalysisContext
-from kicad_core.netnames import is_usb_data_net_name, parse_voltage_from_net_name
+from kicad_core.netnames import is_usb_data_net_name, is_usb_signal_net_name, parse_voltage_from_net_name
 
 try:
     import os as _os, sys as _sys
@@ -524,10 +524,21 @@ _EN_PIN_PATTERNS = ('EN', 'ENABLE', 'CE', 'SHDN', 'NSHDN', 'ON', 'ON_OFF', 'RUN'
 _PG_PIN_PATTERNS = ('PG', 'PGOOD', 'PWRGD', 'NPG')
 
 
+def _is_regulator_like(ctx: AnalysisContext, ref: str) -> bool:
+    """A regulator-family part by its value or MPN, or typed power_regulator."""
+    comp = ctx.comp_lookup.get(ref, {})
+    val_mpn = ((comp.get('mpn') or '') + ' ' + (comp.get('value') or '')).upper()
+    return comp.get('type') == 'power_regulator' or any(pfx in val_mpn for pfx in (
+        'TPS6', 'TPS5', 'LM25', 'LM33', 'LM317', 'AP21', 'AMS11',
+        'MP23', 'MP15', 'XL40', 'RT8', 'SY8', 'MIC29', 'NCP',
+        'LDO', 'BOOST', 'BUCK', 'REG',
+    ))
+
+
 def _en_endpoint_compatible(ctx: AnalysisContext, p: dict, net_name: str, v_min: float) -> bool:
     """True when pin *p* on *net_name* is a regulator enable input that tolerates a net
     whose lowest domain is *v_min*: by the datasheet EN threshold when one is extracted,
-    else by an EN- or power-good-named pin on a regulator-family part."""
+    else by an EN-named pin on a regulator-family part."""
     comp = ctx.comp_lookup.get(p['ref'], {})
     p_mpn = comp.get('mpn') or comp.get('value', '')
     ds_feat = get_regulator_features(p_mpn, project_dir=ctx.project_dir) if p_mpn else None
@@ -540,20 +551,10 @@ def _en_endpoint_compatible(ctx: AnalysisContext, p: dict, net_name: str, v_min:
                 if en_ih is not None:
                     return v_min >= 2 * en_ih
                 break
-    val_mpn = ((comp.get('mpn') or '') + ' ' + (comp.get('value') or '')).upper()
-    is_regulator_like = any(pfx in val_mpn for pfx in (
-        'TPS6', 'TPS5', 'LM25', 'LM33', 'LM317', 'AP21', 'AMS11',
-        'MP23', 'MP15', 'XL40', 'RT8', 'SY8', 'MIC29', 'NCP',
-        'LDO', 'BOOST', 'BUCK', 'REG',
-    ))
-    if is_regulator_like or comp.get('type') == 'power_regulator':
+    if _is_regulator_like(ctx, p['ref']):
         name = (p.get('pin') or '').upper().strip()
-        return name in _EN_PIN_PATTERNS or name in _PG_PIN_PATTERNS
+        return name in _EN_PIN_PATTERNS
     return False
-
-
-# USB_DTR, USB_DET: a USB_D marker followed by a letter that spells none of DP/DM/DN/DATA
-_USB_D_NOT_DATA = re.compile(r"USB_D[B-LOQ-Z]")
 
 
 # Data-pair prefixes seen on USB and Ethernet pairs (LsD+, TD+, RD+, UD+, U1D+, XUD+, DBGD+);
@@ -564,12 +565,55 @@ _DATA_PAIR_NAME = re.compile(r"(?:^|[^A-Z0-9])(?:LS|[TRQIDU]|U\d|XU|IU|UC|DBG)?D
 def _is_usb_dp_dm(net_name: str, nets) -> bool:
     name = net_name.upper()
     if is_usb_data_net_name(name):
-        return not _USB_D_NOT_DATA.search(name)
+        return not is_usb_signal_net_name(name)
     # A D+ / D- pair under another name (LsD+ / LsD-, TD+ / TD-) is differential data too;
     # a lone HOLD- or SPEED- is a logic signal.
     if _DATA_PAIR_NAME.search(name):
         return (net_name[:-1] + ("-" if net_name.endswith("+") else "+")) in nets
     return False
+
+
+# Charger status outputs are open-drain by convention (STAT, CHG, CHRG); a power-good pin
+# is when the part is a regulator.
+_OD_STATUS_NAMES = frozenset({'STAT', 'STAT1', 'STAT2', 'CHG', 'CHRG'})
+
+
+def _bare_pin_name(name: str) -> str:
+    """Upper-cased pin name without an active-low marker (~{PG}, nPG, NSTAT)."""
+    n = re.sub(r'^~\{(.*)\}$', r'\1', (name or '').upper().strip()).lstrip('~/')
+    if n.startswith('N') and (n[1:] in _OD_STATUS_NAMES or n[1:] in _PG_PIN_PATTERNS):
+        return n[1:]
+    return n
+
+
+def _is_open_drain_endpoint(ctx: AnalysisContext, p: dict) -> bool:
+    """An open-collector / open-drain output: by pin type, a charger status pin by name,
+    or a power-good pin on a regulator."""
+    if p.get('pin_type') == 'open_collector':
+        return True
+    if p.get('pin_type') == 'tri_state':
+        return False   # MCP73831 STAT drives high to its supply
+    name = _bare_pin_name(p.get('pin'))
+    if name in _OD_STATUS_NAMES:
+        return True
+    return name in _PG_PIN_PATTERNS and _is_regulator_like(ctx, p['ref'])
+
+
+def _pull_up_voltage(ctx: AnalysisContext, net_name: str) -> float | None:
+    """The highest rail a resistor on *net_name* ties it to, or None."""
+    best = None
+    for q in ctx.nets.get(net_name, {}).get('pins', []):
+        comp = ctx.comp_lookup.get(q['component'], {})
+        if comp.get('type') != 'resistor':
+            continue
+        n1, n2 = ctx.get_two_pin_nets(q['component'])
+        other = n2 if n1 == net_name else n1
+        if not other or other == net_name or not ctx.is_power_net(other) or ctx.is_ground(other):
+            continue
+        v = ctx.rail_voltage_or(other, parse_voltage_from_net_name)
+        if v is not None and v > 0 and (best is None or v > best):
+            best = v
+    return best
 
 
 def validate_voltage_levels(ctx: AnalysisContext, level_shifters: list[dict] | None = None) -> list[dict]:
@@ -616,10 +660,25 @@ def validate_voltage_levels(ctx: AnalysisContext, level_shifters: list[dict] | N
         for p in net_info.get('pins', []):
             ref = p['component']
             if ref in ic_voltages:
+                # A supply pin on a non-power net is a rail feeding a regulator or a
+                # regulator output (L7809 OUT -> L7805 IN), not a logic level.
+                if p.get('pin_type') in ('power_in', 'power_out'):
+                    continue
                 ic_pins_on_net.append({
                     'ref': ref, 'pin': p.get('pin_name', ''),
                     'pin_number': p['pin_number'], 'voltage': ic_voltages[ref],
+                    'pin_type': p.get('pin_type'),
                 })
+        # An open-drain output swings to its pull-up, not to its IC's supply; with no
+        # pull-up on the net it drives nothing high.
+        od = [q for q in ic_pins_on_net if _is_open_drain_endpoint(ctx, q)]
+        if od and len(ic_pins_on_net) >= 2:
+            v_pu = _pull_up_voltage(ctx, net_name)
+            for q in od:
+                if v_pu is None:
+                    ic_pins_on_net.remove(q)
+                else:
+                    q['voltage'] = v_pu
 
         if len(ic_pins_on_net) < 2:
             continue
@@ -642,6 +701,13 @@ def validate_voltage_levels(ctx: AnalysisContext, level_shifters: list[dict] | N
                 continue
             v_max = max(voltages)
             v_min = min(voltages)
+
+        # An open-drain output only pulls the net low: it is never the input that a
+        # higher domain overdrives.
+        readers = [p['voltage'] for p in ic_pins_on_net if p not in od]
+        if not readers or min(readers) >= v_max:
+            continue
+        v_min = min(readers)
 
         low_thresh = _closest_threshold(v_min)
         if low_thresh is None:

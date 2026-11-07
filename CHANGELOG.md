@@ -53,6 +53,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `"analysis": null` or a non-string entry in `power_rails.ignore` / `flag` is now warned and ignored instead of dropping every power-rail setting.
 - A `voltage_overrides` entry now also sets the output voltage used for a regulator's dropout and dissipation, and counts when deciding whether two ICs' I/O rails need a level shifter.
 - An LVDS serializer or deserializer identified only by its MPN field is now detected.
+- VM-001 no longer reports a regulator's input or output rail as a logic crossing, and an open-drain output (open-collector pin, charger status, regulator power-good) is judged at its pull-up rail.
 - With `--spice-enhanced`, the switching-harmonic estimate in EE-002 resamples the simulated waveform evenly before the harmonic analysis, so the amplitudes no longer drift with the simulator's time steps.
 - SW-003 no longer appends a radiated-field estimate under `--spice-enhanced`; it could only appear for a switching frequency above 30 MHz.
 - A cached project SPICE model is pasted into a testbench only when it holds model-library cards alone (`.subckt`, `.ends`, `.model`, `.param`, `.func`, `.global`, and a final `.end`, which is dropped); output, analysis and option cards, and XSPICE models that read files, make it fall back to the built-in model with a diagnostic (`spice.trust_project_models` still overrides).
