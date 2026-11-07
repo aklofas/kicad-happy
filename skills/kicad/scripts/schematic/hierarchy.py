@@ -214,6 +214,8 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
     """
     if root_tree is None:
         root_tree = parse_file(root_path)
+    # A sheet file is parsed once, however many instances it has.
+    trees = {str(Path(root_path).resolve()): root_tree}
 
     if symbol_instances_override is not None:
         root_symbol_instances = symbol_instances_override
@@ -285,7 +287,9 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
         sheet_kwargs = dict(instance_uuid=inst_path, symbol_instances=root_symbol_instances,
                             instance_path=root_kiid + inst_path, root_kiid=root_kiid,
                             project_name=project_name, text_ctx=text_ctx, variant=variant)
-        sd = parse_single_sheet(sheet_path, **sheet_kwargs)
+        if sheet_path not in trees:
+            trees[sheet_path] = parse_file(sheet_path)
+        sd = parse_single_sheet(sheet_path, root=trees[sheet_path], **sheet_kwargs)
         (root, components, wires, labels, junctions, no_connects,
          sub_sheets, lib_symbols, text_annotations, bus_elements, title_block) = (
             sd.root, sd.components, sd.wires, sd.labels, sd.junctions, sd.no_connects,

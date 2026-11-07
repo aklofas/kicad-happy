@@ -1272,7 +1272,7 @@ def parse_single_sheet(path: str, instance_uuid: str = "",
                        symbol_instances: dict | None = None, *,
                        instance_path: str | None = None, root_kiid: str = "",
                        project_name: str = "", text_ctx: dict | None = None,
-                       variant: str | None = None) -> SheetData:
+                       variant: str | None = None, root: list | None = None) -> SheetData:
     """Parse a single .kicad_sch file and return raw extracted data.
 
     If instance_uuid is provided, remap component references from the
@@ -1283,12 +1283,14 @@ def parse_single_sheet(path: str, instance_uuid: str = "",
 
     instance_path / root_kiid / project_name / text_ctx / variant: see extract_components;
     this file's title block becomes the first sheet of text_ctx's chain.  A sub-sheet's
-    variant block is the one of its instance on *instance_path*.
+    variant block is the one of its instance on *instance_path*.  *root* is the file's
+    parsed tree when the caller has it.
 
     Returns: a SheetData (root, components, wires, labels, junctions, no_connects,
               sub_sheet_paths, lib_symbols, text_annotations, bus_elements, title_block)
     """
-    root = parse_file(path)
+    if root is None:
+        root = parse_file(path)
     lib_symbols = extract_lib_symbols(root)
     title_block = extract_title_block(root)
     if text_ctx is not None:
