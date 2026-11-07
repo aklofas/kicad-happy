@@ -103,6 +103,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `export_issues --create` works on a repository with 1,000 or more open kicad-happy issues; it lists them all instead of refusing.
 - `export_issues` labels and dry-run output say `error` where they said `high`, the same severity names every analyzer uses; `critical`/`high`/`medium` are still accepted for `--severity`. A GitHub filter on the `severity:high` label no longer matches newly created issues.
 - `simulate_subcircuits.py` given a JSON file whose top level is not an object (analysis or `--parasitics`) reports a named error or warning instead of a traceback.
+- `check_report_sections.py --report` counts each report header toward one required section only, so a "Gerber Verification" header no longer also satisfies "Analyzer Verification".
 
 ### Documentation
 
