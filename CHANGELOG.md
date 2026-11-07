@@ -89,6 +89,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Documentation
 
+- SECURITY.md lists, for each kind of input (your files, a downloaded repository, project config, datasheets, SPICE models, local programs, distributor responses), what the tools do and do not trust.
 - The datasheets skill names PyYAML as the sanity-vector helper's dependency and says that extraction files carry no capability mode.
 - The kicad skill no longer tells the agent that SPICE and EMC runs are mandatory proof. It reports a SPICE pass as a check, an `info` or generic-model bench as a measurement, and heuristic EMC findings as screening. A board with no datasheet evidence may still state KiCad-file facts (nets, pads, tracks, DRC/ERC) as verified.
 - Review reports no longer list "lifecycle audit not run" next to a lifecycle section produced by a standalone `lifecycle_audit.py` run.
