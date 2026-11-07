@@ -3033,27 +3033,42 @@ _SPI_PIN_NAMES = {"SCLK", "SCK", "CLK", "MOSI", "SDI", "DIN", "MISO",
                   "SDO", "DOUT", "CS", "CSN", "SS", "NSS"}
 _I2C_PIN_NAMES = {"SDA", "SCL"}
 
-# ADC resolution inference from part number prefix
+# ADC resolution in bits by part-number stem, longest stem first. A stem stands for
+# every part that contains it, so a stem is listed only where that whole family shares
+# one resolution (manufacturer datasheets; MCP3301/02/04 13-bit, MCP3550/51/53 22-bit,
+# MAX1192 dual 8-bit, AD7705..AD7709 16-bit, ADS1262/63 32-bit). Families that split
+# without a resolution suffix (LTC23xx, LTC24xx, ADS126x) get no stem of their own.
 _ADC_RESOLUTION_MAP = {
-    "ads111": 16, "ads101": 12, "ads131": 24, "ads126": 24,
-    "ads861": 16, "ads868": 16,
-    "mcp320": 12, "mcp330": 10, "mcp340": 10, "mcp342": 18,
-    "mcp346": 16, "mcp356": 24, "mcp355": 24,
-    "max1161": 12, "max1163": 12, "max1194": 10, "max1198": 8,
-    "max1192": 10, "max1141": 14,
-    "ltc24": 24, "ltc23": 16,
-    "ad760": 16, "ad770": 14, "ad799": 8,
+    "ads111": 16, "ads101": 12, "ads131": 24, "ads868": 16,
+    "ads1260": 24, "ads1261": 24, "ads1262": 32, "ads1263": 32,
+    "mcp320": 12, "mcp3301": 13, "mcp3302": 13, "mcp3304": 13,
+    "mcp3421": 18, "mcp3422": 18, "mcp3423": 18, "mcp3424": 18,
+    "mcp3425": 16, "mcp3426": 16, "mcp3427": 16, "mcp3428": 16,
+    "mcp346": 16, "mcp356": 24, "mcp355": 22,
+    "max1161": 12, "max11632": 12, "max11633": 12, "max11634": 12, "max11635": 12,
+    "max11638": 8, "max11639": 8,
+    "max1198": 8, "max1192": 8,
+    "ltc2440": 24, "ltc2485": 24, "ltc2451": 16, "ltc2308": 12, "ltc2309": 12,
+    "ad7605": 16, "ad7606": 16, "ad7607": 14, "ad7608": 18, "ad7609": 18,
+    "ad7705": 16, "ad7706": 16, "ad7707": 16, "ad7708": 16, "ad7709": 16,
+    "ad7991": 12, "ad7995": 10, "ad7999": 8,
     "adc081": 8, "adc082": 8, "adc121": 12, "adc122": 12,
     "nau780": 24,
 }
+_ADC_RESOLUTION_STEMS = sorted(_ADC_RESOLUTION_MAP, key=len, reverse=True)
+# LTC23xx parts carry the resolution as a suffix (LTC2320-16, LTC2378-20, LTC2380-24).
+_LTC23_RESOLUTION_SUFFIX = re.compile(r"ltc23\d\d[a-z0-9.]*?-(1[2-8]|20|24)(?!\d)")
 
 
 def _infer_adc_resolution(value: str, lib_id: str) -> int | None:
-    """Infer ADC resolution in bits from part number."""
-    combined = (value + " " + lib_id).lower()
-    for prefix, bits in _ADC_RESOLUTION_MAP.items():
-        if prefix in combined:
-            return bits
+    """Infer ADC resolution in bits from part number, the value before the lib_id."""
+    for text in (value.lower(), lib_id.lower()):
+        m = _LTC23_RESOLUTION_SUFFIX.search(text)
+        if m:
+            return int(m.group(1))
+        for stem in _ADC_RESOLUTION_STEMS:
+            if stem in text:
+                return _ADC_RESOLUTION_MAP[stem]
     return None
 
 

@@ -12,6 +12,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 - Value, Footprint, Datasheet and Description are read in any case and a later duplicate replaces the earlier one, as KiCad 10 does; a KiCad 6 instance value of only spaces sets an empty value.
 - Microcontrollers with port H pins (PH0, PH1) are no longer reported as switching regulators; the regulator and sequencing findings built on them go away, and a rail only they appeared to supply now reports no source.
+- TPS62161-63 and TPS63001/2 use their datasheet switching frequency (2.25 MHz, 1.5 MHz); EMC harmonic findings for them move accordingly.
 
 ### Fixed
 
@@ -23,6 +24,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The connector ESD-gap check no longer reports a VPP or VM net that a power symbol marks as a rail.
 - A footprint pad with several fabrication-property tokens, or a footprint that declares its own newer file version, is read as KiCad reads it.
 - RS-001 on a rail whose only power_in pins are bootstrap pins is reported as name-based (heuristic).
+- An ADC's resolution is read from its own part family, the value before the library name, and an LTC23xx-NN part number gives NN bits (MCP3301-04 are 13-bit, MCP3425-28 16-bit, MCP355x 22-bit; LTC2323 and LTC2486 without a suffix get none).
 - An `ipc_class` of `true` passed straight to the PCB analyzer no longer reads as IPC Class 1.
 - A design variant overrides a symbol field only when it names the field with the same case, as KiCad does.
 - A corrupt or unreadable datasheet extraction file is now reported once in the schematic output's diagnostics instead of silently disabling the IC absolute-maximum voltage check.
