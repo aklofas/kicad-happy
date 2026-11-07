@@ -82,6 +82,25 @@ class CacheManagerExtractionTest(unittest.TestCase):
             {"extractions": {"LM358": {"file": "LM358.json"}}}), encoding="utf-8")
         self.assertEqual(ssf.fetch_specs_from_extraction("LM358", str(self.tmp))["gbw_hz"], 1e6)
 
+    def test_manifest_entry_found_by_its_recorded_mpn(self):
+        ext = self.tmp / "datasheets" / "extracted"
+        ext.mkdir(parents=True)
+        (ext / "opamp-a.json").write_text(json.dumps(
+            {"meta": {"extraction_score": 8.0}, "spice_specs": {"gbw_hz": 1e6}}), encoding="utf-8")
+        (ext / "manifest.json").write_text(json.dumps(
+            {"extractions": {"opamp-a": {"file": "opamp-a.json", "mpn": "LM358"}}}), encoding="utf-8")
+        self.assertEqual(ssf.fetch_specs_from_extraction("LM358", str(self.tmp)),
+                         {"gbw_hz": 1e6, "_source": "extraction:LM358"})
+
+    def test_nan_score_is_a_miss(self):
+        ext = self.tmp / "datasheets" / "extracted"
+        ext.mkdir(parents=True)
+        (ext / "LM358.json").write_text(
+            '{"meta": {"extraction_score": NaN}, "spice_specs": {"gbw_hz": 1e6}}', encoding="utf-8")
+        (ext / "manifest.json").write_text(json.dumps(
+            {"extractions": {"LM358": {"file": "LM358.json"}}}), encoding="utf-8")
+        self.assertIsNone(ssf.fetch_specs_from_extraction("LM358", str(self.tmp)))
+
 
 class PdfManifestTest(unittest.TestCase):
     def setUp(self):
