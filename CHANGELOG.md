@@ -43,7 +43,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - ESD audits leave out connector pins typed no-connect.
 - A UC3845-class COMP pin behind a bridged solder jumper finds its network.
 - Part families match the symbol name, not the library nickname.
-- The FCC Part 15 suggestion for a wireless module names the module the wireless-module check (WL-001) found, else the part that carries the radio name, never a power symbol, connector or passive; a sheet whose only radio match was a library name no longer gets it.
+- The FCC Part 15 suggestion for a wireless module names the part whose value names the radio, else the module the wireless-module check (WL-001) found, never a power symbol, connector or passive; a sheet whose only radio match was a library name no longer gets it.
 - An SPI MISO net or a lone `_B` rail no longer reports an isolation barrier.
 - A dual load switch sources each output from its own channel.
 - Opening a sub-sheet now finds the project root through intermediate sheets, and a sheet counts as another sheet's child only when that sheet names its file by whole path, so a name contained in another (`adc` in `my_adc`, `earth` in `largeregearth`) no longer makes it one.
@@ -53,7 +53,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A sub-sheet whose file does not exist now leaves one `diagnostics` record (missing sheet skipped) instead of disappearing silently. Sheet file names written with backslashes (`COMPONENT_SHEETS\MCU.kicad_sch`) are now found, as KiCad finds them; those sheets were left out.
 - A port pin used through a placed alternate (I2C3_SCL on PA8) keeps the single-pin-net exemption.
 - A hierarchical label on the top sheet no longer joins a global label or power net of the same name on another sheet.
-- Legacy `.sch` results no longer list a feedback-divider finding twice, and two dividers that share resistor references but not nets (a repeated sub-sheet) are both listed.
+- Legacy `.sch` results no longer list a feedback-divider finding twice.
 - A `.kicad-happy.json` or `.kicad_pro` saved with a UTF-8 byte-order mark (common Windows editors) is now read instead of skipped.
 - `"analysis": null` or a non-string entry in `power_rails.ignore` / `flag` is now warned and ignored instead of dropping every power-rail setting.
 - A `voltage_overrides` entry now also sets the output voltage used for a regulator's dropout and dissipation, and counts when deciding whether two ICs' I/O rails need a level shifter.
