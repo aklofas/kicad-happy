@@ -14,9 +14,11 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Microcontrollers with port H pins (PH0, PH1) are no longer reported as switching regulators; the regulator and sequencing findings built on them go away, and a rail only they appeared to supply now reports no source.
 - TPS62161-63 and TPS63001/2 use their datasheet switching frequency (2.25 MHz, 1.5 MHz); EMC harmonic findings for them move accordingly.
 - LED forward voltage comes from one cited colour table for the resistor check and the LED audit; red is 2.0 V, and an `ir` hint must start a word (`IR204A`, `XYC-IRA3212`, not `kira`). A green LED with no other hint now reads 3.2 V instead of 2.2 V in the resistor check, so some green over-current warnings go away, and yellow reads 2.1 V instead of 2.0 V in the LED audit.
-- A datasheet download connects to the address the URL check approved, on every redirect, so a host cannot switch to a private address between the check and the connect. With `requests` older than 2.32.2, downloads use urllib (requests cannot be held to the checked address), and the run notes it once; through a proxy, the proxy resolves the host.
+- A datasheet download connects to the address the URL check approved, on every redirect, so a host cannot switch to a private address between the check and the connect. With `requests` older than 2.32.2 and `datasheets.allow_private_hosts` not set, downloads use urllib (requests cannot be held to the checked address), and the run notes it once; through a proxy, the proxy resolves the host.
 - The headless-browser fallback for datasheet downloads runs only when `datasheets.allow_private_hosts` is set: the browser resolves each host itself, so its connection could not be held to the checked address. Datasheets that need JavaScript (Broadcom, Espressif) are reported with their URL instead, and the run notes once why the browser was not tried.
-- `analysis.output_dir` in `.kicad-happy.json` must be a relative path without `..`; an absolute or escaping value is ignored with a warning and `analysis` is used.
+- `analysis.output_dir` in `.kicad-happy.json` must be a relative path without `..`; an absolute or escaping value is ignored with a warning, and the value from a parent config, or `analysis`, is used.
+- Nets that cross a sheet through a bus are named after the bus member, as KiCad names them; scripts or config keyed to the old net name need the new one.
+- Datasheet coverage counts PDF datasheets only: JSON files (extractions, the sync index) and links to the same PDF no longer count, so a `datasheets/` folder that holds no PDF now gets DS-001 or DS-002 instead of passing.
 
 ### Fixed
 
@@ -41,18 +43,16 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - ESD audits leave out connector pins typed no-connect.
 - A UC3845-class COMP pin behind a bridged solder jumper finds its network.
 - Part families match the symbol name, not the library nickname.
-- The FCC Part 15 suggestion for a wireless module names the module itself, not another part from its library, and a sheet whose only radio match was a library name no longer gets it.
+- The FCC Part 15 suggestion for a wireless module names the module itself, not a power symbol, connector or other part from its library, and a sheet whose only radio match was a library name no longer gets it.
 - An SPI MISO net or a lone `_B` rail no longer reports an isolation barrier.
 - A dual load switch sources each output from its own channel.
-- Opening a sub-sheet now finds the project root through intermediate sheets, and no longer mistakes a sheet whose file name is contained in another sheet's name (`adc` in `my_adc`) for a child of that root.
+- Opening a sub-sheet now finds the project root through intermediate sheets, and a sheet counts as another sheet's child only when that sheet names its file by whole path, so a name contained in another (`adc` in `my_adc`, `earth` in `largeregearth`) no longer makes it one.
 - Bus labels with quoted member or prefix names (`{"A B" C}`), as KiCad 10 allows, now expand to their members, and a group member containing a space is named with the space escaped (`A\ B`), as KiCad names it.
 - Each sheet file is now read once, however many times the design uses it; designs that repeat a large sheet many times analyze several times faster.
-- A schematic or board file that is cut short, holds a merge conflict, nests lists more than 200 deep, or is not a KiCad file at all (a Git LFS pointer, a copied `(lib_symbols …)` fragment) now gets one `diagnostics` record; whatever parses is still analyzed and the exit code is unchanged. Very deep nesting no longer crashes the analyzer.
+- A schematic or board file that is cut short, holds a merge conflict, nests lists more than 200 deep, or is not a KiCad file at all (a Git LFS pointer, a copied `(lib_symbols …)` fragment) now gets one `diagnostics` record; whatever parses is still analyzed, and no exit code changes except that very deep nesting no longer crashes the analyzer.
 - A sub-sheet whose file does not exist now leaves one `diagnostics` record (missing sheet skipped) instead of disappearing silently. Sheet file names written with backslashes (`COMPONENT_SHEETS\MCU.kicad_sch`) are now found, as KiCad finds them; those sheets were left out.
-- A schematic is taken for an intermediate sub-sheet only when a sibling sheet names its file by whole path: `earth.kicad_sch` is no longer read as a child of a root that names `largeregearth.kicad_sch`.
 - A port pin used through a placed alternate (I2C3_SCL on PA8) keeps the single-pin-net exemption.
 - A hierarchical label on the top sheet no longer joins a global label or power net of the same name on another sheet.
-- Nets that cross a sheet through a bus are named after the bus member, as KiCad names them.
 - Legacy `.sch` results no longer list a feedback-divider finding twice.
 - A `.kicad-happy.json` or `.kicad_pro` saved with a UTF-8 byte-order mark (common Windows editors) is now read instead of skipped.
 - `"analysis": null` or a non-string entry in `power_rails.ignore` / `flag` is now warned and ignored instead of dropping every power-rail setting.
@@ -118,10 +118,10 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `check_report_sections.py --report` counts each report header toward one required section only, so a "Gerber Verification" header no longer also satisfies "Analyzer Verification".
 - `diff_analysis` says when both sides were produced from byte-identical design files, so changes that come from a newer analyzer are not read as design changes.
 - `what_if` log-sweep columns read `12.92k` and `3.162n` instead of `1.292e+04` and `3.162e-09`; a script that reads `value_strs` as plain numbers should use `values`.
-- On regulators with several feedback pins the Vout estimate uses the pin whose divider feeds the reported output rail, independent of net order.
-- LM79xx fixed regulators read as negative (−5 V for an LM7905), and negative LDOs get a dissipation estimate, and inrush estimates cover negative regulators.
+- On regulators with several feedback pins the Vout estimate uses the pin whose divider feeds the reported output rail, independent of net order; a feedback pin tied straight to the output rail marks that channel fixed, so no other channel's divider gives it an estimate.
+- LM79xx fixed regulators read as negative (−5 V for an LM7905); negative LDOs get a dissipation estimate, and negative regulators an inrush estimate.
 - A regulator whose input and output rails have opposite signs no longer gets an LDO dissipation estimate.
-- Fixed-output suffixes `-10/-12/-15/-05` read from the data sheet for LM2596, LM2576, LM2940, TL780, NCP1117, XL1509 and AP7361C. TPS61030 uses its 0.5 V feedback reference and LTC3558 its 0.8 V reference.
+- Fixed-output suffixes `-10/-12/-15/-05` read from the data sheet for LM2596, LM2576, LM2940, TL780, NCP1117, XL1509 and AP7361C. TPS61030 uses its 0.5 V feedback reference and LTC3558 its 0.8 V reference; a fixed-output part of unknown voltage no longer gets an adjustable regulator's reference.
 - Power sequencing links a regulator's power-good output to the enable it drives whichever regulator the schematic lists first.
 - LC-filter capacitors from a regulator output to ground now carry DC-bias derating, and a capacitor between two rails of known voltage is judged at their difference (a cap between +12V and +5V sees 7 V), with the finding naming both nets.
 - Crystal values with a decimal comma (`9,84375 MHz`) read their frequency; a ferrite written `600 Ohm @ 100MHz` has no resistance value; `0R/2A` reads 0 Ω.
@@ -135,7 +135,6 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - PU-001 no longer asks for a pull-up on SPI MISO pins.
 - `cross_domain_signals` no longer asks for a level shifter on a regulator enable or power-good pin that VM-001 accepts.
 - A connector's ground pins count when an unlabelled wire joins them to another part.
-- DS-003 counts PDF datasheets only; JSON files and links to the same PDF no longer count.
 - A V-prefixed jumper or connector (a `Jumper_2_Bridged`, a `Header_1x2`, a VGA socket) is typed jumper or connector, not varistor.
 - ES-002 no longer asks for ground vias at a varistor that clamps to a supply rail or another line rather than to ground.
 - Net classification reads the net's own name, not its sheet path.
