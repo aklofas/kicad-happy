@@ -1,7 +1,7 @@
 """Datasheet downloads go only to http(s) URLs on public addresses, every redirect is
 checked, and a download stops at a size and wall-clock limit. No network: the resolver
 and every transport are local fakes."""
-import argparse, contextlib, http.client, http.server, io, json, os, socket, subprocess, sys, tempfile, threading, time, unittest
+import argparse, contextlib, http.client, http.server, io, json, os, socket, ssl, subprocess, sys, tempfile, threading, time, unittest
 import urllib.request, urllib.response
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
@@ -865,6 +865,8 @@ class UrllibOpenerTest(unittest.TestCase):
 class _FakeSSLContext:
     """Records the name each socket is wrapped for (the SNI and certificate host)."""
     post_handshake_auth = None
+    verify_mode = ssl.CERT_REQUIRED  # read by HTTPSConnection.__init__ on Python 3.10/3.11
+    check_hostname = True
 
     def __init__(self):
         self.server_hostnames = []

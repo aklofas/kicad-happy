@@ -1,4 +1,4 @@
-import json, os, subprocess, sys, tempfile, unittest
+import json, os, shutil, subprocess, sys, tempfile, unittest
 from pathlib import Path
 from tools.tests._fixtures import fixture_path, have
 SCRIPTS = Path(__file__).resolve().parents[2] / "skills" / "kicad" / "scripts"
@@ -69,6 +69,7 @@ class AnalysisDirRoundTrips(unittest.TestCase):
             json.loads((Path(d) / "emc.json").read_text(encoding="utf-8"))
             self._assert_no_run(Path(d) / "adir")
 
+    @unittest.skipUnless(shutil.which("ngspice"), "ngspice not installed")
     def test_spice_output_wins_over_analysis_dir(self):
         with tempfile.TemporaryDirectory() as d:
             self.assertEqual(run("analyze_schematic.py", str(FX / "simple.kicad_sch"),
