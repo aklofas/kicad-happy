@@ -142,6 +142,14 @@ class DetectorFamilies(unittest.TestCase):
         reasons = [s["reason"] for s in suggest_certifications(ctx, found) if s["standard"] == "FCC Part 15"]
         self.assertEqual(reasons, ["Wireless module detected: U5"])
 
+    def test_certification_prefers_a_radio_value_over_a_rescue_symbol_name(self):
+        # A KiCad 5 rescue symbol carries the board's name; the charger is not the radio.
+        ctx = _ctx([_comp("U1", "MCP73833(MSOP10)", "ESP32-EVB_Rev_C-rescue:MCP73833(MSOP10)-RESCUE-ESP32-EVB_Rev_B"),
+                    _comp("U3", "ESP-WROOM-32", "ESP32-EVB_Rev_C:ESP-WROOM-32")])
+        found = {"wireless_modules": [{"reference": "U1"}, {"reference": "U3"}]}
+        reasons = [s["reason"] for s in suggest_certifications(ctx, found) if s["standard"] == "FCC Part 15"]
+        self.assertEqual(reasons, ["Wireless module detected: U3"])
+
     def test_esp32_keeps_both_rf_transceiver_and_wifi_ble(self):
         esp = _comp("U1", "ESP32-WROOM-32", "RF_Module:ESP32-WROOM-32")
         rf = detect_rf_chains(_ctx([esp, _comp("U2", "SKY13350", "RF_Switch:SKY13350")]))
