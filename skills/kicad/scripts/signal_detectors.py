@@ -3346,6 +3346,44 @@ def detect_bridge_circuits(ctx: AnalysisContext) -> tuple[list[dict], set, dict]
     return bridge_circuits, matched, fet_pins
 
 
+_CLAMP_DIODE_WORDS = ("zener", "tvs", "smaj", "smbj", "smcj", "p6ke", "p4ke", "1.5ke",
+                      "bzx", "bzt", "mmsz", "1n47", "1n52")
+# 1N5333-1N5388 are zeners; 1N5391-1N5399 next to them are rectifiers.
+_ZENER_1N53 = re.compile(r"1n53[3-8]\d")
+
+
+def _is_clamp_diode(comp: dict) -> bool:
+    """A zener or TVS by its value or lib_id."""
+    text = (comp.get("value", "") + " " + comp.get("lib_id", "")).lower()
+    return any(w in text for w in _CLAMP_DIODE_WORDS) or bool(_ZENER_1N53.search(text))
+
+
+def _diode_terminal_nets(ctx: AnalysisContext, ref: str) -> tuple[str | None, str | None]:
+    """(anode net, cathode net) of a two-pin diode whose pins are named A and K, else (None, None).
+
+    Pins from the built-in fallback symbol (snapped to a wire or not) are not the drawn
+    part's, so their names do not count.
+    """
+    pins = ctx.ref_pins.get(ref, {})
+    pin_source = (ctx.comp_lookup.get(ref) or {}).get("_pin_source")
+    if len(pins) != 2 or pin_source in ("builtin", "snapped_to_wire"):
+        return None, None
+    anode = cathode = None
+    for pin_num, (net, _) in pins.items():
+        name = ""
+        for p in ctx.nets.get(net, {}).get("pins", []):
+            if p["component"] == ref and p["pin_number"] == pin_num:
+                name = (p.get("pin_name") or "").upper()
+                break
+        if name in ("A", "ANODE"):
+            anode = net
+        elif name in ("K", "CATHODE"):
+            cathode = net
+    if anode is None or cathode is None:
+        return None, None
+    return anode, cathode
+
+
 def detect_transistor_circuits(ctx: AnalysisContext, matched_fets: set, fet_pins: dict) -> list[dict]:
     """Detect transistor circuit configurations (MOSFETs and BJTs)."""
     transistor_circuits: list[dict] = []
@@ -3460,6 +3498,14 @@ def detect_transistor_circuits(ctx: AnalysisContext, matched_fets: set, fet_pins
                 # Drain-to-supply topology (low-side switch flyback)
                 d_other = d_n2 if d_n1 == drain_net else (d_n1 if d_n2 == drain_net else None)
                 if d_other and ctx.is_power_net(d_other) and not ctx.is_ground(d_other):
+                    if not is_pchannel:
+                        # A zener/TVS clamp is not a flyback diode, and a flyback diode
+                        # has its cathode on the supply and its anode on the drain.
+                        if _is_clamp_diode(ctx.comp_lookup.get(dc["reference"]) or dc):
+                            continue
+                        anode, cathode = _diode_terminal_nets(ctx, dc["reference"])
+                        if anode is not None and (anode, cathode) != (drain_net, d_other):
+                            continue
                     has_flyback = True
                     flyback_ref = dc["reference"]
                     break

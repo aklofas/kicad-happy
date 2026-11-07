@@ -111,6 +111,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - LC-filter capacitors from a regulator output to ground now carry DC-bias derating, and a capacitor between two rails of known voltage is judged at their difference (a cap between +12V and +5V sees 7 V), with the finding naming both nets.
 - Crystal values with a decimal comma (`9,84375 MHz`) read their frequency; a ferrite written `600 Ohm @ 100MHz` has no resistance value; `0R/2A` reads 0 Ω.
 - A low-value shunt between two named rails (`VBAT` to `VBAT_LOAD`) is now found as a current sense when a current-sense amplifier such as an INA219 reads across it; an op-amp across such a shunt still is not.
+- A zener or TVS clamp, or a diode with its anode on the supply, no longer counts as a MOSFET's flyback diode.
 
 ### Documentation
 
