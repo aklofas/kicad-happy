@@ -134,6 +134,14 @@ class DetectorFamilies(unittest.TestCase):
                    if s["standard"] == "FCC Part 15"]
         self.assertEqual(reasons, ["Wireless module detected: U6"])
 
+    def test_certification_prefers_the_radio_named_module_among_wl001_finds(self):
+        ctx = _ctx([_comp("ANT1", "WIFI_ANT", "ESP32-PRO_Rev_B1:WIFI_ANT_ESP8266", ctype="connector"),
+                    _comp("U5", "ESP32-D0WDQ6", "ESP32-PRO_Rev_B1:ESP32-D0WDQ6"),
+                    _comp("U6", "ATECC508A-SSHDA-T", "ESP32-PRO_Rev_B1:ATECC508A")])
+        found = {"wireless_modules": [{"reference": "U6"}, {"reference": "U5"}]}
+        reasons = [s["reason"] for s in suggest_certifications(ctx, found) if s["standard"] == "FCC Part 15"]
+        self.assertEqual(reasons, ["Wireless module detected: U5"])
+
     def test_esp32_keeps_both_rf_transceiver_and_wifi_ble(self):
         esp = _comp("U1", "ESP32-WROOM-32", "RF_Module:ESP32-WROOM-32")
         rf = detect_rf_chains(_ctx([esp, _comp("U2", "SKY13350", "RF_Switch:SKY13350")]))

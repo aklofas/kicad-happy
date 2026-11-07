@@ -5623,19 +5623,20 @@ def suggest_certifications(ctx: AnalysisContext, signal_analysis: dict) -> list[
 
     # WiFi/BT modules, by value or symbol name (the library nickname names a library).
     # A rescue power symbol, connector or passive can carry the radio word in its symbol
-    # name: it marks the sheet but is never named as the module. A module WL-001 found
-    # is named first.
+    # name: it marks the sheet but is never named as the module. A radio-named part that
+    # WL-001 also found is named first, then WL-001's module, then the radio-named part.
     radio_words = ("esp32", "esp8266", "nrf52", "cc254", "wl18", "cyw43", "ap621", "bcm43",
                    "esp-wroom", "esp-01", "esp-12", "esp-32", "wt32", "ttgo")
     matches = [c for c in ctx.components
                if any(k in (c.get("value", "") + " " + c.get("lib_id", "").split(":", 1)[-1]).lower()
                       for k in radio_words)]
     if matches and not any(s["standard"] == "FCC Part 15" for s in suggestions):
-        named = next((w["reference"] for w in signal_analysis.get("wireless_modules", [])
-                      if w.get("reference")), None) or next(
-            (c["reference"] for c in matches if not c["reference"].startswith("#")
-             and c.get("type") not in ("connector", "power_symbol", "resistor", "capacitor",
-                                       "inductor", "jumper", "net_tie")), None)
+        found = [w["reference"] for w in signal_analysis.get("wireless_modules", []) if w.get("reference")]
+        radios = [c["reference"] for c in matches if not c["reference"].startswith("#")
+                  and c.get("type") not in ("connector", "power_symbol", "resistor", "capacitor",
+                                            "inductor", "jumper", "net_tie")]
+        named = (next((r for r in radios if r in found), None)
+                 or next(iter(found), None) or next(iter(radios), None))
         if named:
             suggestions.append({
                 "standard": "FCC Part 15",
