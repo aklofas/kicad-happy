@@ -5486,6 +5486,20 @@ def build_power_sequencing_graph(ctx: AnalysisContext,
 # Connector Ground Pin Distribution Audit
 # ---------------------------------------------------------------------------
 
+def _ground_pin_on_wired_unnamed_net(ctx: AnalysisContext, ref: str, pin_num: str,
+                                     net: str) -> bool:
+    """A ground-named pin on an unnamed net that reaches another part is a ground pin
+    (ground wired in without a ground symbol or label); wired to nothing else, it is
+    left unconnected and does not count."""
+    if not net.startswith("__unnamed_"):
+        return False
+    pins = ctx.nets.get(net, {}).get("pins", [])
+    if not any(p["component"] != ref and not p["component"].startswith("#") for p in pins):
+        return False
+    return any(p["component"] == ref and p["pin_number"] == pin_num
+               and ctx.is_ground(p.get("pin_name")) for p in pins)
+
+
 def audit_connector_ground_distribution(ctx: AnalysisContext) -> list[dict]:
     """Check ground pin distribution on multi-pin connectors.
 
@@ -5512,7 +5526,7 @@ def audit_connector_ground_distribution(ctx: AnalysisContext) -> list[dict]:
                 net = net[0]  # handle (net_name, pin_info) tuples
             if not net:
                 continue
-            if ctx.is_ground(net):
+            if ctx.is_ground(net) or _ground_pin_on_wired_unnamed_net(ctx, ref, pin_num, net):
                 gnd_count += 1
             elif not ctx.is_power_net(net):
                 signal_count += 1
