@@ -59,8 +59,10 @@ def _norm_severity(s: str) -> str:
     return "info"
 
 
-# One page of `gh issue list`; a full page may be truncated, which is refused.
+# First page size of `gh issue list`; a full page is retried with a larger
+# limit, up to LIST_CAP, beyond which the listing is refused as truncated.
 LIST_LIMIT = 1000
+LIST_CAP = 100_000
 
 _MARKER_RE = re.compile(
     r"^<!-- kicad-happy:finding_id=(.*?)(?: key=([0-9a-f]{16}))? -->$"
@@ -417,38 +419,43 @@ def check_gh_available() -> bool:
 def list_open_issues(repo: str) -> "list[dict]":
     """Return the open issues carrying the ``kicad-happy`` label.
 
-    Each item has ``number``, ``title`` and ``body``. Raises IssueListError
-    when the listing fails or fills the page, so nothing is exported against
-    an unknown or truncated state.
+    Each item has ``number``, ``title`` and ``body``. A full page is retried
+    with a ten times larger limit until it is no longer full. Raises
+    IssueListError when the listing fails or still fills the page at
+    LIST_CAP, so nothing is exported against an unknown or truncated state.
     """
-    try:
-        result = subprocess.run(
-            [
-                _gh(), "issue", "list",
-                f"--repo={repo}",
-                "--label=kicad-happy",
-                "--state=open",
-                f"--limit={LIST_LIMIT}",
-                "--json=number,title,body",
-            ],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            timeout=60,
-        )
-        data = None
-        if result.returncode == 0:
-            data = json_loads(result.stdout) if result.stdout.strip() else []
-    except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError):
-        data = None
-    if not isinstance(data, list):
-        raise IssueListError(f"cannot list open issues in {repo!r}; nothing exported.")
-    if len(data) >= LIST_LIMIT:
-        raise IssueListError(
-            f"{repo!r} has at least {LIST_LIMIT} open kicad-happy issues; the listing "
-            "may be truncated, so nothing was exported."
-        )
-    return data
+    limit = LIST_LIMIT
+    while True:
+        try:
+            result = subprocess.run(
+                [
+                    _gh(), "issue", "list",
+                    f"--repo={repo}",
+                    "--label=kicad-happy",
+                    "--state=open",
+                    f"--limit={limit}",
+                    "--json=number,title,body",
+                ],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=60,
+            )
+            data = None
+            if result.returncode == 0:
+                data = json_loads(result.stdout) if result.stdout.strip() else []
+        except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError):
+            data = None
+        if not isinstance(data, list):
+            raise IssueListError(f"cannot list open issues in {repo!r}; nothing exported.")
+        if len(data) < limit:
+            return data
+        if limit >= LIST_CAP:
+            raise IssueListError(
+                f"{repo!r} has at least {limit} open kicad-happy issues; the listing "
+                "may be truncated, so nothing was exported."
+            )
+        limit = min(limit * 10, LIST_CAP)
 
 
 class IssueIndex:

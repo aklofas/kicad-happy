@@ -16,7 +16,8 @@ with open(state_path, encoding="utf-8") as fh:
 args = sys.argv[1:]
 state["calls"].append(args)
 if args[:2] == ["issue", "list"]:
-    print(json.dumps(state["issues"]))
+    limit = next((int(a.split("=", 1)[1]) for a in args if a.startswith("--limit=")), None)
+    print(json.dumps(state["issues"][:limit]))
 elif args[:2] == ["issue", "create"]:
     kv = {{}}
     for i, a in enumerate(args):
@@ -99,6 +100,7 @@ class ExportDedupTest(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(creates, [])
         self.assertIn("0 created, 2 skipped", r.stdout)
+        self.assertEqual(len(self.lists), 1)
 
     def test_same_id_twice_in_one_run_is_created_once(self):
         r, creates = self.run_export(
@@ -168,7 +170,7 @@ class ExportDedupTest(unittest.TestCase):
         self.assertIn("@\u200boctocat", self.kv(creates[0], "title"))
         self.assertIn("@\u200boctocat", self.kv(creates[0], "body"))
 
-    def test_full_listing_page_is_refused(self):
+    def test_full_listing_page_is_listed_again_with_a_larger_limit(self):
         issues = [{"number": i, "title": "t", "body": ""} for i in range(3)]
         sys.path.insert(0, str(SCRIPTS))
         try:
@@ -191,6 +193,39 @@ class ExportDedupTest(unittest.TestCase):
             err = io.StringIO()
             with mock.patch.dict(os.environ, env), \
                     mock.patch.object(export_issues, "LIST_LIMIT", 3), \
+                    contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+                rc = export_issues.main([str(data), "--repo", "o/r", "--create"])
+            calls = json.loads(state.read_text(encoding="utf-8"))["calls"]
+        self.assertEqual(rc, 0, err.getvalue())
+        lists = [c for c in calls if c[:2] == ["issue", "list"]]
+        self.assertEqual([a for c in lists for a in c if a.startswith("--limit=")],
+                         ["--limit=3", "--limit=30"])
+        self.assertEqual(len([c for c in calls if c[:2] == ["issue", "create"]]), 1)
+
+    def test_listing_at_the_cap_is_refused(self):
+        issues = [{"number": i, "title": "t", "body": ""} for i in range(40)]
+        sys.path.insert(0, str(SCRIPTS))
+        try:
+            import export_issues
+        finally:
+            sys.path.pop(0)
+        with tempfile.TemporaryDirectory() as tmp:
+            gh = Path(tmp) / "bin" / "gh"
+            gh.parent.mkdir()
+            gh.write_text(FAKE_GH.format(py=sys.executable), encoding="utf-8")
+            gh.chmod(gh.stat().st_mode | stat.S_IXUSR)
+            state = Path(tmp) / "state.json"
+            state.write_text(json.dumps({"issues": issues, "calls": [], "created": []}),
+                             encoding="utf-8")
+            data = Path(tmp) / "a.json"
+            data.write_text(json.dumps({"findings": [finding("RG-001:aaa", "Rail X")]}),
+                            encoding="utf-8")
+            env = {"PATH": f"{gh.parent}{os.pathsep}{os.environ['PATH']}",
+                   "FAKE_GH_STATE": str(state)}
+            err = io.StringIO()
+            with mock.patch.dict(os.environ, env), \
+                    mock.patch.object(export_issues, "LIST_LIMIT", 3), \
+                    mock.patch.object(export_issues, "LIST_CAP", 30), \
                     contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
                 rc = export_issues.main([str(data), "--repo", "o/r", "--create"])
             calls = json.loads(state.read_text(encoding="utf-8"))["calls"]

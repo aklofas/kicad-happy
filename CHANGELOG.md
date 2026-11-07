@@ -100,6 +100,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - On Windows, JSON and text that the analyzers and the other CLIs (including `export_issues`, `deep_review_gate`, `translate_bom_pnp`, `datasheet_verify` and `edit_properties`) print to stdout end their lines with LF, as their `--output` files already do.
 - `translate_bom_pnp.py bom` carries the source BOM's LCSC part number into JLCPCB's `LCSC Part #` column instead of leaving it empty.
 - `what_if --output` with a change that affects no subcircuit no longer also prints the result JSON to stdout, matching a change that does.
+- `export_issues --create` works on a repository with 1,000 or more open kicad-happy issues; it lists them all instead of refusing.
 
 ### Documentation
 
