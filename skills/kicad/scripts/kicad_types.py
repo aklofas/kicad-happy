@@ -8,6 +8,7 @@ construction.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -243,7 +244,7 @@ def build_analysis_context(components: list[dict], nets: dict[str, dict], lib_sy
     if power_rails_config:
         ctx.rail_overrides = {
             k: v for k, v in (power_rails_config.get("voltage_overrides") or {}).items()
-            if isinstance(v, (int, float)) and not isinstance(v, bool)}
+            if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)}
         ctx.rail_ignore = tuple(
             p for p in (power_rails_config.get("ignore") or ()) if isinstance(p, str))
     from schematic.net_analysis import topology_rail_nets  # local: net_analysis imports this module

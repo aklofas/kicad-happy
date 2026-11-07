@@ -222,5 +222,23 @@ class CliTest(unittest.TestCase):
                 self.assertIn("project ignored, default used", r.stderr)
 
 
+class VoltageOverridesValueTest(unittest.TestCase):
+    def test_bool_nan_and_infinity_are_dropped_with_a_warning(self):
+        cfg = {"analysis": {"power_rails": {"voltage_overrides": {
+            "+5V": float("nan"), "+3V3": True, "+12V": 12, "+1V8": float("inf"),
+            "-5V": float("-inf"), "VDD": 1.8, "OFF": False}}}}
+        out, err = _load(cfg)
+        self.assertEqual(out["analysis"]["power_rails"]["voltage_overrides"],
+                         {"+12V": 12, "VDD": 1.8})
+        for net in ("+5V", "+3V3", "+1V8", "-5V", "OFF"):
+            self.assertIn(f"voltage_overrides.{net} must be a finite number", err)
+
+    def test_context_drops_non_finite_override(self):
+        from kicad_types import build_analysis_context
+        ctx = build_analysis_context([], {}, {}, power_rails_config={"voltage_overrides": {
+            "A": float("nan"), "B": float("inf"), "C": True, "D": 0, "E": 3.3}})
+        self.assertEqual(ctx.rail_overrides, {"D": 0, "E": 3.3})
+
+
 if __name__ == "__main__":
     unittest.main()

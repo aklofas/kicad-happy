@@ -19,6 +19,7 @@ Zero external dependencies — stdlib only.
 from __future__ import annotations
 
 import json
+import math
 import os
 from fnmatch import fnmatch
 import sys
@@ -342,10 +343,11 @@ def _load_and_validate(path: str) -> Optional[Dict[str, Any]]:
                         del raw_pr['voltage_overrides']
                     else:
                         bad = [k for k, v in overrides.items()
-                               if not isinstance(v, (int, float))]
+                               if isinstance(v, bool) or not isinstance(v, (int, float))
+                               or not math.isfinite(v)]
                         for k in bad:
                             print(f'Warning: {path}: analysis.power_rails.'
-                                  f'voltage_overrides.{k} must be numeric, '
+                                  f'voltage_overrides.{k} must be a finite number, '
                                   f'ignoring', file=sys.stderr)
                             del overrides[k]
 
