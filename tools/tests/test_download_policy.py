@@ -646,7 +646,30 @@ class _FakeRoute:
         self._log.append(("fulfill", self.request.url))
 
 
-def _fake_playwright(urls, chain, log, response=None, on_download=None, context_error=None):
+class _FakeDownloadWait:
+    """``page.expect_download()``: like Playwright's, an exception that leaves the block
+    cancels the wait and ``value`` then raises."""
+
+    def __init__(self, body):
+        self._body, self._cancelled = body, False
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, *a):
+        self._cancelled = exc_type is not None
+        return False
+
+    @property
+    def value(self):
+        if self._cancelled:
+            raise RuntimeError("wait cancelled")
+        body = self._body
+        return mock.Mock(save_as=lambda path: Path(path).write_bytes(body))
+
+
+def _fake_playwright(urls, chain, log, response=None, on_download=None, context_error=None,
+                     download=None, goto_error=None):
     """A ``sync_playwright`` stand-in: its page records ``route`` registrations and, on
     ``goto``, drives the registered handler with a fake route for each of ``urls`` and
     answers ``response``. ``log`` also records the context options, the WebSocket route and
@@ -664,13 +687,17 @@ def _fake_playwright(urls, chain, log, response=None, on_download=None, context_
         def expect_download(self, timeout=None):
             if on_download is not None:
                 on_download()
-            raise RuntimeError("no download event")
+            if download is None:
+                raise RuntimeError("no download event")
+            return _FakeDownloadWait(download)
 
         def goto(self, url, **kw):
             assert registered, "route must be installed before navigation"
             log.append(("goto", url))
             for u in urls:
                 self.handler(_FakeRoute(u, log, chain))
+            if goto_error is not None:
+                raise goto_error
             return response
 
     class Context:
@@ -757,7 +784,7 @@ class PlaywrightRouteTest(unittest.TestCase):
         ])
 
 
-    def _run(self, fake, *, timeout=None):
+    def _run(self, fake, *, timeout=None, keep=False):
         stderr = io.StringIO()
         patches = [mock.patch.object(download, "_resolve", return_value=PUBLIC),
                    mock.patch.object(download, "_allow_private_hosts", return_value=False),
@@ -771,7 +798,11 @@ class PlaywrightRouteTest(unittest.TestCase):
                 stack.enter_context(p)
             with redirect_stdout(io.StringIO()), redirect_stderr(stderr):
                 ok = download.download_pdf("https://example.com/x.pdf", os.path.join(d, "x.pdf"))
-            self.assertEqual(os.listdir(d), [])
+            if keep:
+                with open(os.path.join(d, "x.pdf"), "rb") as f:
+                    self._saved = f.read()
+            else:
+                self.assertEqual(os.listdir(d), [])
         return ok, stderr.getvalue()
 
     def test_browser_context_blocks_service_workers_and_websockets(self):
@@ -812,6 +843,18 @@ class PlaywrightRouteTest(unittest.TestCase):
         self.assertIn("download stopped", stderr)
         self.assertNotIn(("goto", "https://example.com/x.pdf"), log)
         self.assertEqual(log[-2:], [("context.close",), ("browser.close",)])
+
+    def test_direct_pdf_is_saved_when_the_navigation_aborts(self):
+        # Playwright raises from goto when the URL becomes a download ("Download is
+        # starting" in 1.64, net::ERR_ABORTED in 1.48); an exception leaving the
+        # expect_download block cancels the wait, so dl_info.value then raises.
+        log = []
+        fake, _ = _fake_playwright([], {}, log, download=PDF,
+                                   goto_error=RuntimeError("Page.goto: Download is starting"))
+        ok, _ = self._run(fake, keep=True)
+        self.assertTrue(ok)
+        self.assertEqual(self._saved, PDF)
+        self.assertEqual([e for e in log if e[0] == "goto"], [("goto", "https://example.com/x.pdf")])
 
 
 @unittest.skipIf(download._sync_playwright is None, "playwright is not installed")

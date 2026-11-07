@@ -134,6 +134,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A V-prefixed jumper or connector (a `Jumper_2_Bridged`, a `Header_1x2`, a VGA socket) is typed jumper or connector, not varistor.
 - ES-002 no longer asks for ground vias at a varistor that clamps to a supply rail or another line rather than to ground.
 - Net classification reads the net's own name, not its sheet path.
+- The headless-browser fallback now saves a datasheet whose URL is served as a PDF download; before, the browser's aborted navigation hid the download and the fallback always failed.
 
 ### Documentation
 

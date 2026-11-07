@@ -868,8 +868,11 @@ def _download_playwright(url: str, output_path: str) -> bool:
             # First try: expect a download event (some sites trigger JS downloads)
             try:
                 with page.expect_download(timeout=_ms_left(deadline, 15000)) as dl_info:
-                    page.goto(url, timeout=_ms_left(deadline, 15000),
-                              wait_until="domcontentloaded")
+                    try:
+                        page.goto(url, timeout=_ms_left(deadline, 15000),
+                                  wait_until="domcontentloaded")
+                    except Exception:
+                        pass  # a URL that starts a download aborts its own navigation
                 download = dl_info.value
                 download.save_as(output_path)
                 if os.path.exists(output_path) and os.path.getsize(output_path) > MAX_DOWNLOAD_BYTES:
