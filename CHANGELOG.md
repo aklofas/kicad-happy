@@ -108,6 +108,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The lifecycle audit no longer tells you to replace a part that no distributor returned (LC-004); it says to check the part number, and the credentials when no distributor answered at all.
 - The lifecycle audit looks up each part of an MPN field that lists alternatives (`1012, 1012C`, `LM358 / LM2904`) instead of searching for the whole field; part numbers that contain a slash (`BAV99/215`) are unchanged.
 - The lifecycle audit looks a part up by its DigiKey or Mouser part number from the schematic first, so a short MPN that the keyword search buries (BSS138) gets its real status instead of "unknown"; a part number that names a different part is ignored with a warning.
+- Lifecycle and datasheet sync no longer read a dielectric (`X7R`, `C0G`) or a bare voltage (`50V`) as a part number, so a value field such as `X7R, 50V` is not split into two searches.
 - On Windows, JSON and text that the analyzers and the other CLIs (including `export_issues`, `deep_review_gate`, `translate_bom_pnp`, `datasheet_verify` and `edit_properties`) print to stdout end their lines with LF, as their `--output` files already do.
 - `translate_bom_pnp.py bom` carries the source BOM's LCSC part number into JLCPCB's `LCSC Part #` column instead of leaving it empty.
 - `what_if --output` with a change that affects no subcircuit no longer also prints the result JSON to stdout, matching a change that does.

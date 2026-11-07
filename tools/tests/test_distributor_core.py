@@ -13,7 +13,9 @@ class Inputs(unittest.TestCase):
 
     def test_is_real_mpn_truth_table(self):
         from distributor_core.inputs import is_real_mpn
-        for s, ok in (("LM358DR", True), ("10k", False), ("1234", False), ("ABCD", False), ("", False), ("DNP", False), ("C14663", True)):
+        for s, ok in (("LM358DR", True), ("10k", False), ("1234", False), ("ABCD", False), ("", False), ("DNP", False), ("C14663", True),
+                      ("X7R", False), ("C0G", False), ("50V", False), ("1kV", False),
+                      ("X5R-0402", True), ("NP0402", True)):
             self.assertEqual(is_real_mpn(s), ok, s)
 
 

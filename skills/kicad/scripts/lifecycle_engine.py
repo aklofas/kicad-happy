@@ -185,6 +185,8 @@ _GENERIC_VALUE_RE = re.compile(
     r"|^[\d.]+\s*[pnuμm]?[Ff]$"
     r"|^[\d.]+\s*[pnuμm]?[Hh]$"
     r"|^[\d.]+%$"
+    r"|^[\d.]+\s*[kK]?V(?:DC|AC)?$"
+    r"|^(?:X[5-8][PRSTUV]|Y5V|Z5U|C0G|COG|NP0|NPO)$"
     r"|^DNP$|^NC$|^N/?A$",
     re.IGNORECASE,
 )

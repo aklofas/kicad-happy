@@ -183,8 +183,20 @@ class MpnFieldAlternativesTest(unittest.TestCase):
     def test_generic_values_are_not_alternatives(self):
         self.assertEqual(lifecycle_engine._mpn_alternatives("10k, 1%"), ["10k, 1%"])
         self.assertEqual(lifecycle_engine._mpn_alternatives("LM358, 10k"), ["LM358, 10k"])
-        for field in ("1206, 50V", "0603, X7R", "100, 16V", "1206, 50V, X7R"):
+        for field in ("1206, 50V", "0603, X7R", "100, 16V", "1206, 50V, X7R",
+                      "X7R, 50V", "C0G, 25V", "LM358, X7R", "NP0, 1kV",
+                      "100nF,50V", "10k,1%"):
             self.assertEqual(lifecycle_engine._mpn_alternatives(field), [field], field)
+
+    def test_dielectric_and_voltage_field_is_one_lookup(self):
+        calls, _ = self.run_field("X7R, 50V", {})
+        self.assertEqual(calls, ["X7R, 50V"])
+
+    def test_dielectric_and_voltage_tokens_are_not_part_numbers(self):
+        for s, ok in (("X7R", False), ("C0G", False), ("NP0", False), ("50V", False),
+                      ("6.3V", False), ("1kV", False), ("X5R-0402", True),
+                      ("NP0402", True), ("LM358", True)):
+            self.assertEqual(lifecycle_engine._is_real_mpn(s), ok, s)
 
 
 if __name__ == "__main__":
