@@ -645,12 +645,14 @@ def enrich_capacitor_records(results_dict, context):
     _enrich(results_dict)
 
 
-def apply_capacitor_derating(results_dict):
+def apply_capacitor_derating(results_dict, ctx: AnalysisContext | None = None):
     """Apply DC bias derating to capacitor entries where applied voltage is known.
 
-    Cross-references regulator output voltages with output_capacitors and
-    decoupling_analysis to compute effective_farads after DC bias derating.
-    Only adds derating fields when both package and applied voltage are known.
+    Cross-references regulator output voltages with output_capacitors,
+    decoupling_analysis and LC filters (on a regulator output) to compute
+    effective_farads after DC bias derating. Only adds derating fields when both
+    package and applied voltage are known. LC filter capacitors need *ctx*: they
+    are derated only when every capacitor of the entry returns to ground.
     """
     from kicad_core.passives import estimate_dc_bias_derating
 
@@ -723,14 +725,21 @@ def apply_capacitor_derating(results_dict):
             )
             rail_entry["total_effective_capacitance_uF"] = round(total_eff * 1e6, 3)
 
-    # Derate LC filter capacitors where rail voltage is known
-    for filt in results_dict.get("lc_filters", []):
-        rail = filt.get("rail", "")
-        v = rail_voltage.get(rail)
-        if v and "capacitor" in filt:
-            cap = filt["capacitor"]
-            if isinstance(cap, dict) and "farads" in cap:
-                _derate_cap(cap, v)
+    def _returns_to_ground(cap, node):
+        # A feedforward, sense or bootstrap cap on the node does not see the rail voltage
+        for ref in cap.get("parallel_refs") or [cap.get("ref")]:
+            n1, n2 = ctx.get_two_pin_nets(ref)
+            if node not in (n1, n2) or not ctx.is_ground(n2 if n1 == node else n1):
+                return False
+        return True
+
+    # Derate LC filter capacitors on a regulator output where rail voltage is known
+    for filt in results_dict.get("lc_filters", []) if ctx is not None else ():
+        node = filt.get("shared_net", "")
+        v = rail_voltage.get(node)
+        cap = filt.get("capacitor")
+        if v and isinstance(cap, dict) and "farads" in cap and _returns_to_ground(cap, node):
+            _derate_cap(cap, v)
 
 
 def assemble_signal_results(ctx: AnalysisContext, topo: dict, domain: dict) -> dict:
@@ -846,7 +855,7 @@ def assemble_signal_results(ctx: AnalysisContext, topo: dict, domain: dict) -> d
 
     # Post-process: enrich capacitor entries with package size and estimated ESR
     enrich_capacitor_records(results, ctx)
-    apply_capacitor_derating(results)
+    apply_capacitor_derating(results, ctx)
 
     return results
 

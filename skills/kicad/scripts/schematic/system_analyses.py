@@ -825,9 +825,19 @@ def analyze_voltage_derating(ctx: AnalysisContext, signal_analysis: dict,
         if not pwr_net:
             continue
         v_rail = _get_rail_voltage(pwr_net)
+        # A cap between two rails of known voltage sees their difference
+        other_rail = n2 if pwr_net == n1 else n1
+        v_other = (_get_rail_voltage(other_rail)
+                   if v_rail is not None and not gnd_net and other_rail
+                   and other_rail != pwr_net and is_power_net(other_rail) else None)
+        if v_other is None:
+            other_rail = None
+        else:
+            v_rail = round(v_rail - v_other, 6)
         v_rail = abs(v_rail) if v_rail is not None else None  # stress is the magnitude
         if v_rail is None or v_rail <= 0:
             continue
+        where = f"across {pwr_net} and {other_rail}" if other_rail else f"on {pwr_net}"
         dielectric = _classify_cap_dielectric(comp)
         derating_factor = _CAP_DERATING.get(dielectric, 0.50)
         max_working_v = rated_v * derating_factor
@@ -842,8 +852,8 @@ def analyze_voltage_derating(ctx: AnalysisContext, signal_analysis: dict,
                 detector="analyze_voltage_derating", rule_id="VD-001",
                 category="component_derating",
                 summary=(f"{ref} ({comp['value']}) {'exceeds' if severity == 'critical' else 'has marginal'} "
-                         f"voltage derating on {pwr_net} ({v_rail:.1f}V on {rated_v:.0f}V {dielectric} cap)"),
-                description=(f"Applied {v_rail:.1f}V on {pwr_net}; {rated_v:.0f}V-rated {dielectric} capacitor. "
+                         f"voltage derating {where} ({v_rail:.1f}V on {rated_v:.0f}V {dielectric} cap)"),
+                description=(f"Applied {v_rail:.1f}V {where}; {rated_v:.0f}V-rated {dielectric} capacitor. "
                              f"Derating rule: {derating_rule}. Margin {round(margin_pct, 1)}%."),
                 severity="error" if severity == "critical" else "warning",
                 confidence="heuristic", evidence_source="topology",
@@ -854,7 +864,7 @@ def analyze_voltage_derating(ctx: AnalysisContext, signal_analysis: dict,
                 derating_rule=derating_rule, rail=pwr_net, rail_voltage=v_rail,
                 rated_voltage=rated_v, margin_pct=round(margin_pct, 1), dielectric=dielectric,
             schema_era="v3.0",
-                **ctx.rail_source_fields(pwr_net),
+                **ctx.rail_source_fields(pwr_net, other_rail),
             ))
         elif margin_pct > profile["over_designed_cap_margin"] * 100:
             suggested_v = v_rail * 2.5
@@ -866,15 +876,19 @@ def analyze_voltage_derating(ctx: AnalysisContext, signal_analysis: dict,
             findings.append(make_finding(
                 detector="analyze_voltage_derating", rule_id="VD-004",
                 category="component_derating",
-                summary=f"{ref} ({comp['value']}) is over-designed for {pwr_net} ({rated_v:.0f}V on {v_rail:.1f}V rail)",
-                description=f"{rated_v:.0f}V-rated capacitor on a {v_rail:.1f}V rail — margin {round(margin_pct, 1)}%.",
+                summary=(f"{ref} ({comp['value']}) is over-designed across {pwr_net} and {other_rail} "
+                         f"({rated_v:.0f}V on {v_rail:.1f}V)" if other_rail else
+                         f"{ref} ({comp['value']}) is over-designed for {pwr_net} ({rated_v:.0f}V on {v_rail:.1f}V rail)"),
+                description=(f"{rated_v:.0f}V-rated capacitor with {v_rail:.1f}V {where} — margin {round(margin_pct, 1)}%."
+                             if other_rail else
+                             f"{rated_v:.0f}V-rated capacitor on a {v_rail:.1f}V rail — margin {round(margin_pct, 1)}%."),
                 severity="info", confidence="heuristic", evidence_source="topology",
                 components=[ref], nets=[pwr_net],
                 recommendation=suggestion or "Consider a lower voltage rating to reduce cost/size.",
                 derating_rule="over_designed", rail=pwr_net, rail_voltage=v_rail,
                 rated_voltage=rated_v, margin_pct=round(margin_pct, 1),
             schema_era="v3.0",
-                **ctx.rail_source_fields(pwr_net),
+                **ctx.rail_source_fields(pwr_net, other_rail),
             ))
 
     # ---- IC absolute max voltage check ----
