@@ -367,8 +367,9 @@ class ModelOptions:
                (default: beside the first source file the analysis JSON names,
                "file" or "inputs.source_files[0]", when that file can be found)
     offline:   never query distributor APIs or datasheets; cache + lookup table only
-    trust_project_models: paste cached models verbatim, even ones holding anything
-               but model-library cards (.subckt/.ends/.model/.param/.func/.global)
+    trust_project_models: paste cached models verbatim apart from a trailing `.end`, even
+               ones holding anything but model-library cards (.subckt/.ends/.model/.param/
+               .func/.global)
     """
     cache_dir: str | None = None
     offline: bool = False

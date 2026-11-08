@@ -21,7 +21,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `design_intent.ipc_class` no longer turns to 3 from an inferred medical or aerospace market. That inference is reported as a suggestion, and the class matches the one DFM judges.
 - Datasheet coverage counts PDF datasheets only: JSON files (extractions, the sync index) and links to the same PDF no longer count, so a `datasheets/` folder that holds no PDF now gets DS-001 or DS-002 instead of passing.
 - A symbol with a second Value field whose text differs (Eagle imports wrote a hidden empty copy) gets a `duplicate_value_field` entry in `property_issues`, naming the value KiCad 10 shows and the text it ignores; a KiCad 6 symbol whose instance value decides what is shown gets none.
-- `statistics.board_area_mm2` and the placement density of a board file that holds several boards on Edge.Cuts now use the summed area of the boards, as KiCad's board statistics report it, instead of the box around all of them. Width and height still give that box.
+- `statistics.board_area_mm2` and the placement density of a board file that holds several boards on Edge.Cuts now use the summed area of the boards, as KiCad's board statistics report it, instead of the box around all of them; the design-intent large-board signal and the via-spacing area of EMC VS-001 follow the summed area. Width and height still give that box.
 - EMC connector checks (IO-001, IO-002, CK-003, BE-003, SH-001 and the test plan) skip DNP connectors, an ESD device whose nearest connector is DNP is not paired with another one, and IO-001 counts a protection device on the connector's schematic net name.
 
 ### Fixed
@@ -70,12 +70,12 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A SPICE run whose analysis names its schematic by a relative path that does not exist from the current directory caches part models in the run's own folder instead of a `spice/models/` folder in the current directory.
 - An unreadable SPICE model manifest (`spice/models/manifest.json`) is left as it is, with a "model not cached" diagnostic, instead of being replaced by a manifest holding only the newest model.
 - `analyze_emc.py --severity` accepts `error`, `warning` and `info`, the names its output uses, as well as the older five-level names.
-- Cross-analysis no longer reports the return-path check (RP-002) as run when the PCB analysis carries no return-path coverage, or the connector-current check (CC-001) as run when the PCB has no track segments.
+- Cross-analysis no longer reports the return-path check (RP-002) as run when the PCB analysis carries no return-path coverage, or the connector current check (CC-001) as run when the PCB has no track segments.
 - The decoupling-adequacy check (DA-001) no longer counts ICs marked DNP or excluded from the board.
 - The connector current check (CC-001) measures the track between the connector and the regulators it feeds, not the narrowest track anywhere on the net, and the trace-width checks (CC-001, TW-001) load a regulator's input rail with its estimated input current; both summaries mark the current as an estimate.
 - The connector ESD-gap check (EG-001) now checks enable, sense and detect lines named after a rail (VBUS_DET, +5V_EN) instead of skipping them as power.
 - The connector ESD-gap check (EG-001) credits a TVS or ESD array reached through one series resistor or ferrite bead, as in the usual USB data-line layout.
-- The MPN parity check (XV-004) reports how many paired parts it skipped because one side has no MPN.
+- The MPN parity check (XV-004) reports on stderr how many paired parts it skipped because one side has no MPN.
 - LTspice and Xyce measurement output with a signed exponent (`1.58e+04`) is read as a number instead of crashing the simulation; ngspice parsing is unchanged.
 - The SPICE model resolver now reads `spice_specs` from extractions the `datasheets` skill caches (`datasheets/extracted/`), when the analysis names its project and the run is not `--offline`.
 - The SPICE LCSC spec lookup matches parts by the top-level `mfr` field jlcsearch now returns.
@@ -178,7 +178,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - On a power or mixed inner layer that carries ground or power fill, pours on other named nets (such as a split-plane island KiCad named after a pad, `Net-(3V3_2-Pad1)`) count toward its plane fill, so SU-001, SU-002, CK-001 and DP-004 see the plane.
 - BE-001 (`--full`) measures a trace's distance to a polygon or curve board outline from the outline itself; it measured from the drawing origin.
 - A ground-plane split crossing (GP-001) counts a bridging capacitor near the crossing itself, not only near the two samples around it, and a J or P part on a capacitor footprint no longer counts as a bridging capacitor.
-- SPICE `--parasitics` trace resistance takes each segment's own layer copper thickness from the stackup, not the first copper layer's (35 µm outer / 70 µm inner: 24 mΩ, not 48 mΩ, on an inner trace).
+- SPICE `--parasitics` trace resistance and the EMC power-tree trace resistance take each segment's own layer copper thickness from the stackup, not the first copper layer's (35 µm outer / 70 µm inner: 24 mΩ, not 48 mΩ, on an inner trace).
 - Thermal reads SOT-23 and SOT-223 footprint names written without a hyphen (`SOT23-5`, `SOT223`, `SOT23_Transistor_RevA_03Aug2010`) by their package, not as an unknown package or a 2010 resistor; the IPC name `SOT230P696X180-4N` is not taken for a SOT-23.
 - Thermal finds a datasheet extraction the way the other datasheet readers do (the extraction manifest, then the files named after the part), so a junction or operating temperature limit saved by the extraction cache is used; an extraction below the trust gate (v1.4 quality score 60, else v1.3 score 6) or with no score is ignored.
 - SPICE op-amp benches measure the gain below a feedback capacitor's pole, read `(-)5V` and `_P`/`_N` split rails, report a bench whose output never moved as not measured, and use TL072/TL074's 4.5 V minimum supply.
