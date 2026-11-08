@@ -201,12 +201,28 @@ class ConnectorPadNets(unittest.TestCase):
         sch = {"components": [], "findings": [_prot("U2", "esd_ic", "UART_TX")]}
         self.assertEqual(_io001(self._pcb(_usb_c(USB_PADS)), sch), [(["J1"], "error")])
 
-    def test_dnp_connector_pad_nets_add_no_io001(self):
-        # The pad-net fallback only clears an IO-001: a DNP connector is judged like a fitted one.
+    def test_dnp_connector_draws_no_io001(self):
+        # No cable attaches to a connector that is not fitted.
         for findings in ([], [_prot("U2", "esd_ic", "USB_D+")], [_prot("F1", "fuse", "VBUS")]):
             sch = {"components": [], "findings": findings}
-            self.assertEqual(_io001(self._pcb(_usb_c(USB_PADS, dnp=True)), sch),
-                             _io001(self._pcb(_usb_c(USB_PADS)), sch))
+            self.assertEqual(_io001(self._pcb(_usb_c(USB_PADS, dnp=True)), sch), [])
+
+    def test_protection_on_the_connector_schematic_net_name_clears_io001(self):
+        # The board names the line /USB_D+; the schematic and its protection device name it USB_D+.
+        pads = dict(USB_PADS, A6="/USB_D+", A7="/USB_D-")
+        sch = {"components": [], "findings": [_prot("D3", "diode", "USB_D+")]}
+        self.assertEqual(_io001(self._pcb(_usb_c(pads)), sch), [(["J1"], "error")])
+        sch["components"] = [{"reference": "J1", "type": "connector",
+                              "pin_nets": {"A1": "GND", "A4": "VBUS", "A6": "USB_D+", "A7": "USB_D-"}}]
+        self.assertEqual(_io001(self._pcb(_usb_c(pads)), sch), [])
+
+    def test_tvs_on_a_rail_the_emc_prefix_rule_knows_clears_nothing(self):
+        # PWR, 5V PCIE and VMOT are rails to the EMC power-or-ground rule, on the board and in the schematic.
+        for rail in ("PWR", "5V PCIE", "VMOT"):
+            pads = dict(USB_PADS, A4=rail)
+            sch = {"components": [{"reference": "J1", "type": "connector", "pin_nets": {"A4": rail}}],
+                   "findings": [_prot("D1", "diode", rail)]}
+            self.assertEqual(_io001(self._pcb(_usb_c(pads)), sch), [(["J1"], "error")], rail)
 
 
 class TestPlanPadNets(unittest.TestCase):

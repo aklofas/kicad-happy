@@ -310,9 +310,11 @@ def _suggest_pdn_cap(peak, cap_models, plane_cap_f, z_target, spice_backend,
 
 
 def _connector_refs(footprints: list) -> list:
-    """Find footprints that are likely external connectors."""
+    """Find fitted footprints that are likely external connectors."""
     connectors = []
     for fp in footprints:
+        if fp.get('dnp'):
+            continue  # not fitted: no cable attaches to it
         ref = fp.get('reference', '')
         raw_val = fp.get('value', '')
         val = (raw_val if isinstance(raw_val, str) else str(raw_val)).lower()
@@ -977,8 +979,13 @@ def check_connector_filtering(pcb: Dict, schematic: Optional[Dict] = None) -> Li
 
         # Also check schematic-detected protection
         if not has_nearby_filter and schematic:
-            conn_nets = {n for n in _connector_net_names(conn)
-                         if not (is_ground_name(n) or is_power_net_name(n))}
+            # The board and the schematic can name one net differently, and a protection
+            # device names the schematic's, so the connector's schematic pin nets count too.
+            sch_pin_nets = {n for c in schematic.get('components', [])
+                            if c.get('reference') == conn_ref
+                            for n in (c.get('pin_nets') or {}).values()}
+            conn_nets = {n for n in set(_connector_net_names(conn)) | sch_pin_nets
+                         if n and not _is_power_or_ground(n)}
             dnp = {c.get('reference') for c in schematic.get('components', []) if c.get('dnp')}
             if conn_nets:
                 for pd in get_findings(schematic, Det.PROTECTION_DEVICES):

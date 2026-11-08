@@ -58,7 +58,7 @@ Quantitative design rules used by the EMC analyzer. Each rule has a threshold, r
 
 ### IO-001: No EMC filtering near connector
 - **Severity:** error (external connectors like USB, Ethernet), info (internal headers and power-only connectors)
-- **Threshold:** No ferrite bead, CM choke, or ESD/TVS device within 25mm, and no schematic protection device (fuses, reverse-polarity diodes and DNP parts excluded) on one of the connector's signal pad nets (any net an ESD array lists)
+- **Threshold:** No ferrite bead, CM choke, or ESD/TVS device within 25mm, and no schematic protection device (fuses, reverse-polarity diodes and DNP parts excluded) on one of the connector's signal nets, as named on its PCB pads or its schematic pins (any net an ESD array lists). DNP connectors are not checked
 - **Rationale:** Common-mode currents on cables dominate radiated emissions at 30–300 MHz. Even microamps of CM current can exceed emission limits (5 µA on a 1m cable at 100 MHz = 46.4 dBµV/m, exceeding FCC Class B by ~3 dB).
 - **Source:** Ott, *EMC Engineering*, Ch. 19 — common-mode cable radiation is the dominant emission mechanism. The 25mm threshold is a heuristic for geometric proximity checking. TI ESD layout guides (SLVA680, SLVAEX9) recommend placement "as close to the connector as PCB design rules allow" but do not specify a numeric distance.
 
