@@ -159,6 +159,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A via inside both a pin pad and an exposed-pad aperture is attributed to the pad on its own net.
 - The silkscreen revision check reads marks such as `rev2`, `Rev1.0` and `board_v1.1`, so boards that carry them no longer report a missing revision.
 - The fiducial check no longer counts capacitive touch electrodes as SMD parts to place.
+- With `--full`, an unrouted-net finding on a net whose zones are not filled in the saved file says to refill zones before trusting it.
 
 ### Documentation
 

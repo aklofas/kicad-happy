@@ -108,11 +108,14 @@ def compute_statistics(footprints: list[dict], tracks: dict, vias: dict,
 
 
 def _routing_from_graph(connectivity: dict, graph: dict, *,
-                        net_ids: dict[str, int] | None = None) -> dict:
+                        net_ids: dict[str, int] | None = None,
+                        unfilled_zone_nets: frozenset | None = None) -> dict:
     """A copy of *connectivity* whose unrouted nets are those with pads on more than one
     copper island of *graph*. A net without copper keeps its entry; pads the graph joins
     (overlapping copper, KiCad jumper pads) do not make a net unrouted. `routed_nets`
-    counts the multi-pad nets that are not unrouted."""
+    counts the multi-pad nets that are not unrouted. A net in *unfilled_zone_nets* owns a zone
+    saved without its fill, so the description says to refill zones before trusting the count."""
+    unfilled_zone_nets = unfilled_zone_nets or frozenset()
     kept = {u["net_name"]: u for u in connectivity.get("unrouted", [])}
     unrouted = [u for name, u in kept.items() if name not in graph]
     multi_pad = len(unrouted)
@@ -141,7 +144,9 @@ def _routing_from_graph(connectivity: dict, graph: dict, *,
             "confidence": "deterministic",
             "evidence_source": "topology",
             "summary": f"Incompletely routed net {net} ({islands} copper islands hold its {len(pads)} pads)",
-            "description": f"Net {net} has {len(pads)} pads on {islands} separate copper islands.",
+            "description": (f"Net {net} has {len(pads)} pads on {islands} separate copper islands."
+                            + (" Its zones are not filled in the saved file: refill zones before "
+                               "trusting this count." if net in unfilled_zone_nets else "")),
             "components": sorted({n.split(".", 1)[0] for n in names}),
             "nets": [net],
             "pins": [],
@@ -405,8 +410,12 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
                 f"connectivity graph unavailable: {type(e).__name__}: {err_str}")
             record(diagnostics, "pcb.presentation.assemble_result", e, "connectivity_graph omitted")
         if conn_graph is not None:
+            unfilled = frozenset(z.get("net_name") for z in zones
+                                 if z.get("net_name") and not z.get("is_keepout")
+                                 and not z.get("is_filled"))
             routing = _routing_from_graph(connectivity, conn_graph,
-                                          net_ids=result["net_name_to_id"])
+                                          net_ids=result["net_name_to_id"],
+                                          unfilled_zone_nets=unfilled)
             result["connectivity"] = routing
             result["statistics"] = {**stats, "routing_complete": routing["routing_complete"],
                                     "unrouted_net_count": routing["unrouted_count"]}
