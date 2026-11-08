@@ -341,6 +341,13 @@ def _file_version(root: list) -> int:
         return 20201115
 
 
+def _footprint_nodes(root: list) -> list[list]:
+    """Top-level (footprint ...) and KiCad 5 (module ...) nodes in file order; KiCad loads both
+    forms from one file."""
+    return [child for child in root if isinstance(child, list) and child
+            and child[0] in ("footprint", "module")]
+
+
 def extract_footprints(root: list, diagnostics: list | None = None) -> list[dict]:
     """Extract all placed footprints with pad details.
 
@@ -350,8 +357,7 @@ def extract_footprints(root: list, diagnostics: list | None = None) -> list[dict
     footprints = []
     file_version = _file_version(root)
 
-    # KiCad 6+: (footprint ...), KiCad 5: (module ...)
-    fp_nodes = find_all(root, "footprint") or find_all(root, "module")
+    fp_nodes = _footprint_nodes(root)
 
     for fp in fp_nodes:
         # KiCad keeps the largest version it has parsed, footprint-level ones included.
@@ -1702,7 +1708,7 @@ def extract_silkscreen(root: list, footprints: list[dict]) -> dict:
 
     # ---- Per-footprint silkscreen text analysis ----
     # Parse raw footprint nodes for fp_text / property visibility on silk layers
-    fp_nodes = find_all(root, "footprint") or find_all(root, "module")
+    fp_nodes = _footprint_nodes(root)
 
     refs_visible = 0
     refs_hidden = 0
