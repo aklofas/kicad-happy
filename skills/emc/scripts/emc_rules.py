@@ -47,7 +47,7 @@ from kicad_core.project import existing_source_dir
 from kicad_core.render import normalize_severity
 from kicad_core.sexp import unescape_string
 from finding_schema import Det, get_findings
-from pcb.geometry import outline_loops, point_in_outline
+from pcb.geometry import outline_edge_distance, outline_loops, point_in_outline
 
 try:
     import _core_path  # noqa: F401
@@ -2629,6 +2629,11 @@ def _point_to_edges_min_distance(px: float, py: float,
             cx, cy = edge['center'][0], edge['center'][1]
             r = math.hypot(end[0] - cx, end[1] - cy)
             d = abs(math.hypot(px - cx, py - cy) - r)
+        elif etype in ('polygon', 'curve'):
+            # these carry their outline as points, not start and end
+            d = outline_edge_distance(px, py, [edge])
+            if d is None:
+                continue
         else:
             d = point_to_segment_distance(px, py, start[0], start[1],
                                           end[0], end[1])
