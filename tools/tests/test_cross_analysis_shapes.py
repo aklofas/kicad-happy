@@ -142,15 +142,71 @@ class Shapes(unittest.TestCase):
         self.assertEqual([f["rule_id"] for f in fired], ["TW-001"])
         self.assertEqual(ca.check_trace_width_power(sch, self._pcb(0.4, "+3V3")), [])
 
+    _CONN = {"reference": "J1", "courtyard": {"min_x": 0, "min_y": 0, "max_x": 5, "max_y": 5},
+             "pad_nets": {"1": {"net": "+24V"}, "2": {"net": "+24V"},
+                          "3": {"net": "+24V"}, "4": {"net": "GND"}}}
+
     def test_cc001_reads_pad_nets(self):
         sch = self._sch(2.1, "+24V", "+5V", connector="J1")
-        fp = {"reference": "J1", "pad_nets": {"1": {"net": "+24V"}, "2": {"net": "+24V"},
-                                              "3": {"net": "+24V"}, "4": {"net": "GND"}}}
-        out = ca.check_connector_current(sch, self._pcb(0.25, "+24V", [fp]))
+        pcb = self._pcb(0.25, "+24V", [self._CONN])
+        pcb["tracks"]["segments"][0].update(x1=1, y1=1, x2=30, y2=1)
+        out = ca.check_connector_current(sch, pcb)
         self.assertEqual([f["rule_id"] for f in out], ["CC-001"])
         self.assertEqual(out[0]["nets"], ["+24V"])
+        self.assertIn("~2.1A (est.)", out[0]["summary"])
         self.assertIn("output capacitance", out[0]["description"])
-        self.assertIn("J1 carries 2.1A (estimated from the regulator output", out[0]["description"])
+        self.assertIn("narrowest trace leaving the connector is 0.25mm", out[0]["description"])
+
+    def test_cc001_measures_the_connector_to_regulator_path(self):
+        # A thin stub elsewhere on the net does not fire when the path to the regulator is wide.
+        sch = self._sch(2.1, "+24V", "+5V", connector="J1")
+        sch["findings"][0]["ref"] = "U1"
+        pcb = self._pcb(0.25, "+24V", [self._CONN])
+        pcb["pad_to_pad_distances"] = {
+            "J1.1-U1.3": {"net": "+24V", "min_width_mm": 1.5},
+            "J1.1-C4.1": {"net": "+24V", "min_width_mm": 0.25}}
+        self.assertEqual(ca.check_connector_current(sch, pcb), [])
+        pcb["pad_to_pad_distances"]["J1.1-U1.3"]["min_width_mm"] = 0.3
+        out = ca.check_connector_current(sch, pcb)
+        self.assertIn("between the connector and those regulators is 0.30mm", out[0]["description"])
+
+    def test_cc001_falls_back_to_the_track_leaving_the_connector(self):
+        # No routed path was measured: the wide track leaving the connector counts, not a
+        # thin track elsewhere on the net.
+        sch = self._sch(2.1, "+24V", "+5V", connector="J1")
+        pcb = self._pcb(0.25, "+24V", [self._CONN])
+        pcb["tracks"]["segments"][0].update(x1=20, y1=20, x2=30, y2=20)
+        pcb["tracks"]["segments"].append(
+            {"net": 1, "width": 1.5, "x1": 2, "y1": 2, "x2": 20, "y2": 2})
+        self.assertEqual(ca.check_connector_current(sch, pcb), [])
+
+    def test_cc001_without_a_measured_track_does_not_fire(self):
+        sch = self._sch(2.1, "+24V", "+5V", connector="J1")
+        pcb = self._pcb(0.25, "+24V", [self._CONN])
+        pcb["tracks"]["segments"][0].update(x1=10, y1=10, x2=30, y2=10)
+        self.assertEqual(ca.check_connector_current(sch, pcb), [])
+
+    def test_regulator_input_current(self):
+        ldo = {"output_rail": "+3V3", "power_dissipation": {
+            "estimated_iout_A": 1.0, "vin_estimated_V": 5.0, "vout_V": 3.3}}
+        self.assertEqual(ca._reg_iin(ldo), 1.0)
+        # 2.0 A out at +5V from 24 V at 85 %: 2 * 5 / (24 * 0.85) = 0.49 A in.
+        buck = {"output_rail": "+5V", "power_dissipation": {
+            "estimated_iout_A": 2.0, "vin_estimated_V": 24.0, "vout_V": 2.0,
+            "efficiency_assumed": 0.85}}
+        self.assertAlmostEqual(ca._reg_iin(buck), 2.0 * 5 / (24 * 0.85))   # Vout from the rail name
+        self.assertEqual(round(ca._reg_iin(buck), 2), 0.49)
+        buck["output_rail"] = "VOUT"
+        self.assertAlmostEqual(ca._reg_iin(buck), 2.0 * 2.0 / (24 * 0.85))
+
+    def test_tw001_input_rail_carries_input_current(self):
+        sch = self._sch(2.0, "+24V", "+5V")
+        sch["findings"][0]["power_dissipation"].update(
+            vin_estimated_V=24.0, vout_V=5.0, efficiency_assumed=0.85)
+        self.assertEqual(ca.check_trace_width_power(sch, self._pcb(0.25, "+24V")), [])
+        out = ca.check_trace_width_power(sch, self._pcb(0.25, "+5V"))
+        self.assertEqual([f["summary"] for f in out],
+                         ["Power net +5V: trace 0.25mm too narrow for ~2.0A (est.)"])
 
     def test_cc001_without_tracks_records_not_run(self):
         rec = []
@@ -165,7 +221,9 @@ class Shapes(unittest.TestCase):
         self.assertEqual(rec, [("CC-001", False, "no PCB track segments present", 0, 0)])
 
         rec.clear()
-        ca.check_connector_current(sch, self._pcb(0.25, "+24V", [fp]), recorder=R())
+        pcb = self._pcb(0.25, "+24V", [self._CONN])
+        pcb["tracks"]["segments"][0].update(x1=1, y1=1, x2=30, y2=1)
+        ca.check_connector_current(sch, pcb, recorder=R())
         self.assertEqual(rec, [("CC-001", True, None, 1, 1)])
 
     def test_dp005_dp_dm_pairs(self):

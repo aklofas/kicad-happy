@@ -122,6 +122,53 @@ def _reg_iout(reg: dict) -> float:
             or 0)
 
 
+def _reg_iin(reg: dict) -> float:
+    """Estimated input current of a regulator: its output current for a linear regulator,
+    Iout * |Vout| / (Vin * efficiency) for a switcher whose estimate carries them. Vout is
+    read from the output rail's name when the name carries a voltage."""
+    iout = _reg_iout(reg)
+    pd = reg.get('power_dissipation') or {}
+    vin, vout, eff = pd.get('vin_estimated_V'), pd.get('vout_V'), pd.get('efficiency_assumed')
+    vout = _parse_voltage_from_name(reg.get('output_rail', '')) or vout
+    if iout and all(isinstance(v, (int, float)) for v in (vin, vout, eff)) and vin > 0 and eff > 0:
+        return iout * abs(vout) / (vin * eff)
+    return iout
+
+
+def _path_min_width(pad_paths: dict, net_name: str, conn_ref: str, reg_refs: set) -> float | None:
+    """Narrowest track on the routed paths between a connector's pads and the pads of the
+    regulators it feeds on one net (pad_to_pad_distances, keyed "REF.pad-REF.pad");
+    None when no such path was measured."""
+    widths = []
+    for key, entry in pad_paths.items():
+        w = entry.get('min_width_mm')
+        if entry.get('net') != net_name or not isinstance(w, (int, float)) or w <= 0:
+            continue
+        if any((key.startswith(conn_ref + '.') and f'-{r}.' in key)
+               or (key.startswith(r + '.') and f'-{conn_ref}.' in key) for r in reg_refs):
+            widths.append(w)
+    return min(widths) if widths else None
+
+
+def _attached_min_width(segments: list, net_id_map: dict, net_name: str, fp: dict) -> float | None:
+    """Narrowest track of net_name with an end inside the footprint's courtyard (the track
+    leaving the connector); None without a courtyard or such a track."""
+    cy = fp.get('courtyard') or {}
+    if not all(isinstance(cy.get(k), (int, float)) for k in ('min_x', 'min_y', 'max_x', 'max_y')):
+        return None
+    widths = []
+    for seg in segments:
+        net_id = seg.get('net', 0)
+        if (net_id_map.get(net_id, '') if isinstance(net_id, int) else str(net_id)) != net_name:
+            continue
+        w = seg.get('width', 0) or 0
+        if w > 0 and any(cy['min_x'] <= x <= cy['max_x'] and cy['min_y'] <= y <= cy['max_y']
+                         for x, y in ((seg.get('x1'), seg.get('y1')), (seg.get('x2'), seg.get('y2')))
+                         if isinstance(x, (int, float)) and isinstance(y, (int, float))):
+            widths.append(w)
+    return min(widths) if widths else None
+
+
 def _min_trace_width_for_current(current_a: float) -> float:
     prev_i, prev_w = 0.0, 0.0
     for i, w in sorted(_IPC2152_1OZ_10C.items()):
@@ -228,21 +275,13 @@ def check_connector_current(schematic: dict, pcb: dict | None, recorder=None) ->
 
     footprints = pcb.get('footprints', [])
     fp_map = {fp.get('reference', ''): fp for fp in footprints}
+    pad_paths = pcb.get('pad_to_pad_distances') or {}
 
     segments = (pcb.get('tracks') or {}).get('segments') or []
     if not segments:
         _record(recorder, 'CC-001', False, 'no PCB track segments present', 0, findings)
         return findings
     net_id_map = _build_net_id_map(pcb)
-
-    net_min_width: dict[str, float] = {}
-    for seg in segments:
-        net_id = seg.get('net', 0)
-        net_name = net_id_map.get(net_id, '') if isinstance(net_id, int) else str(net_id)
-        w = seg.get('width', 0) or 0
-        if net_name and w > 0:
-            if net_name not in net_min_width or w < net_min_width[net_name]:
-                net_min_width[net_name] = w
 
     components = schematic.get('components', [])
     connectors = [c for c in components if c.get('type') == 'connector']
@@ -261,14 +300,18 @@ def check_connector_current(schematic: dict, pcb: dict | None, recorder=None) ->
             voltage = _parse_voltage_from_name(net_name)
             if voltage is None:
                 continue
-            total_current = sum(
-                _reg_iout(reg)
-                for reg in regulators
-                if reg.get('input_rail') == net_name
-            )
+            fed = [reg for reg in regulators if reg.get('input_rail') == net_name]
+            total_current = sum(_reg_iin(reg) for reg in fed)
             if total_current <= 0:
                 continue
-            trace_w = net_min_width.get(net_name)
+            # The routed connector-to-regulator path when it was measured, else the
+            # track leaving the connector.
+            trace_w = _path_min_width(pad_paths, net_name, ref,
+                                      {reg.get('ref') for reg in fed if reg.get('ref')})
+            where = 'between the connector and those regulators'
+            if trace_w is None:
+                trace_w = _attached_min_width(segments, net_id_map, net_name, fp)
+                where = 'leaving the connector'
             if trace_w is None:
                 continue
             min_w = _min_trace_width_for_current(total_current)
@@ -276,11 +319,11 @@ def check_connector_current(schematic: dict, pcb: dict | None, recorder=None) ->
                 findings.append(make_finding(
                     detector='check_connector_current', rule_id='CC-001',
                     category='current_capacity',
-                    summary=f'Connector {ref}: trace on {net_name} too narrow for ~{total_current:.1f}A',
+                    summary=f'Connector {ref}: trace on {net_name} too narrow for ~{total_current:.1f}A (est.)',
                     description=(
-                        f'Power net {net_name} at connector {ref} carries '
-                        f'{total_current:.1f}A (estimated from the regulator output '
-                        f'capacitance) but narrowest trace is {trace_w:.2f}mm. '
+                        f'Power net {net_name} at connector {ref} carries an estimated '
+                        f'{total_current:.1f}A into the regulators it feeds (from their '
+                        f'output capacitance), but the narrowest trace {where} is {trace_w:.2f}mm. '
                         f'IPC-2152 recommends >= {min_w:.2f}mm (1oz Cu, 10C rise).'
                     ),
                     severity='warning', confidence='heuristic', evidence_source='topology',
@@ -921,8 +964,9 @@ def check_trace_width_power(schematic, pcb, recorder=None):
         if output_rail and iout > 0:
             net_current[output_rail] = max(net_current.get(output_rail, 0), iout)
         input_rail = reg.get('input_rail', '')
-        if input_rail and iout > 0:
-            net_current[input_rail] = net_current.get(input_rail, 0) + iout
+        iin = _reg_iin(reg)
+        if input_rail and iin > 0:
+            net_current[input_rail] = net_current.get(input_rail, 0) + iin
     if not net_current:
         _record(recorder, 'TW-001', False, 'no power regulator current estimates in schematic analysis', 0, findings)
         return findings
@@ -943,7 +987,7 @@ def check_trace_width_power(schematic, pcb, recorder=None):
             findings.append(make_finding(
                 detector='check_trace_width_power', rule_id='TW-001',
                 category='current_capacity',
-                summary=f'Power net {net_name}: trace {trace_w:.2f}mm too narrow for ~{current:.1f}A',
+                summary=f'Power net {net_name}: trace {trace_w:.2f}mm too narrow for ~{current:.1f}A (est.)',
                 description=f'Power net {net_name} carries ~{current:.1f}A (estimated from regulator output capacitance) but narrowest trace is {trace_w:.2f}mm. IPC-2152 recommends >= {min_w:.2f}mm.',
                 severity='warning', confidence='heuristic', evidence_source='topology',
                 nets=[net_name],
