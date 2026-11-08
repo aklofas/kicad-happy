@@ -37,6 +37,22 @@ class MissingDecoupling(unittest.TestCase):
         sch = {"findings": [{"detector": Det.PROTECTION_DEVICES, "ref": "U1", "type": "fuse"}]}
         self.assertEqual(_flagged([("U1", "USBLC6-2SC6")], sch), ["U1"])
 
+    def test_u_refs_the_schematic_types_as_passive_or_mechanical_are_skipped(self):
+        # A crystal, connector, test point or motor on a U reference has no supply pins.
+        sch = {"components": [{"reference": "U1", "type": "crystal"},
+                              {"reference": "U2", "type": "connector"},
+                              {"reference": "U3", "type": "test_point"},
+                              {"reference": "U4", "type": "motor"},
+                              {"reference": "U5", "type": "ic"},
+                              {"reference": "U6", "type": "oscillator"}],
+               "findings": []}
+        parts = [("U1", "16MHz"), ("U2", "USB_C_Receptacle"), ("U3", "Electrode"),
+                 ("U4", "N20"), ("U5", "STM32F103"), ("U6", "SG-8002"), ("U7", "LM358")]
+        self.assertEqual(_flagged(parts, sch), ["U5", "U6", "U7"])
+
+    def test_without_a_schematic_u_refs_keep_the_reference_test(self):
+        self.assertEqual(_flagged([("U1", "16MHz"), ("U2", "USB_C_Receptacle")]), ["U1", "U2"])
+
 
 if __name__ == "__main__":
     unittest.main()

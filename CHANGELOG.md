@@ -168,6 +168,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Gerber folders no longer list gerbv projects, CAM logs or G-code as unreadable layers.
 - KiCad 5 job files (`-job.gbj`, the Gerber-attribute form, and JSON with a trailing comma) are read.
 - Nightly KiCad 8.99/9.99 job files with the 9.0.0-9.0.4 inner-layer numbering are corrected.
+- DC-002 no longer asks for decoupling on connectors, test points, crystals or motors with a U/IC reference.
 
 ### Documentation
 

@@ -769,11 +769,16 @@ def check_missing_decoupling(pcb: Dict, schematic: Optional[Dict] = None) -> Lis
     # ESD/TVS arrays the schematic identified need no decoupling capacitor
     protection_refs = {pd.get('ref') for pd in get_findings(schematic or {}, Det.PROTECTION_DEVICES)
                        if pd.get('type') != 'fuse'}
+    # A U/IC reference on a part the schematic types as something other than an IC or
+    # oscillator (connector, test point, crystal, motor) has no supply pins to decouple
+    sch_types = {c.get('reference'): c.get('type') for c in (schematic or {}).get('components', [])}
 
     # All IC-like footprints
     for fp in footprints:
         ref = fp.get('reference', '')
         if not re.match(r'^(U|IC)\d', ref):
+            continue
+        if sch_types.get(ref) not in (None, 'ic', 'oscillator'):
             continue
         # Skip known non-ICs (ESD, TVS, etc.)
         raw_val = fp.get('value', '')
