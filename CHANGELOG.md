@@ -75,6 +75,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The connector current check (CC-001) measures the track between the connector and the regulators it feeds, not the narrowest track anywhere on the net, and the trace-width checks (CC-001, TW-001) load a regulator's input rail with its estimated input current; both summaries mark the current as an estimate.
 - The connector ESD-gap check (EG-001) now checks enable, sense and detect lines named after a rail (VBUS_DET, +5V_EN) instead of skipping them as power.
 - The connector ESD-gap check (EG-001) credits a TVS or ESD array reached through one series resistor or ferrite bead, as in the usual USB data-line layout.
+- The MPN parity check (XV-004) reports how many paired parts it skipped because one side has no MPN.
 - LTspice and Xyce measurement output with a signed exponent (`1.58e+04`) is read as a number instead of crashing the simulation; ngspice parsing is unchanged.
 - The SPICE model resolver now reads `spice_specs` from extractions the `datasheets` skill caches (`datasheets/extracted/`), when the analysis names its project and the run is not `--offline`.
 - The SPICE LCSC spec lookup matches parts by the top-level `mfr` field jlcsearch now returns.

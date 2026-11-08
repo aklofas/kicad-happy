@@ -1,5 +1,7 @@
 """Cross-analysis rules read the keys the schematic and PCB analyzers write."""
+import contextlib
 import copy
+import io
 import json
 import os
 import subprocess
@@ -268,6 +270,47 @@ class Shapes(unittest.TestCase):
         pcb["tracks"]["segments"][0].update(x1=1, y1=1, x2=30, y2=1)
         ca.check_connector_current(sch, pcb, recorder=R())
         self.assertEqual(rec, [("CC-001", True, None, 1, 1)])
+
+    def test_xv004_skipped_parts_counted_on_stderr(self):
+        def part(ref, path, mpn):
+            return ({"reference": ref, "type": "resistor", "value": "10k", "unit": 1, "mpn": mpn,
+                     "footprint": "Resistor_SMD:R_0603_1608Metric", "instance_path": path,
+                     "uuid": path.rsplit("/", 1)[-1], "pin_nets": {}},
+                    {"reference": ref, "value": "10k", "library": "Resistor_SMD:R_0603_1608Metric",
+                     "footprint": "Resistor_SMD:R_0603_1608Metric", "sch_path": path})
+        t = Path(self.tmp.name)
+
+        def run(mpns):
+            comps, fps = [], []
+            for i, (sch_mpn, pcb_mpn) in enumerate(mpns, 1):
+                c, fp = part(f"R{i}", f"/U{i}", sch_mpn)
+                fp["mpn"] = pcb_mpn
+                comps.append(c)
+                fps.append(fp)
+            (t / "xv_sch.json").write_text(json.dumps({"components": comps, "findings": []}),
+                                           encoding="utf-8")
+            (t / "xv_pcb.json").write_text(json.dumps({"footprints": fps}), encoding="utf-8")
+            r = _run("cross_analysis.py", "--schematic", str(t / "xv_sch.json"),
+                     "--pcb", str(t / "xv_pcb.json"), "--output", str(t / "xv_out.json"))
+            self.assertEqual(r.returncode, 0, r.stderr)
+            return r.stderr
+
+        err = run([("RC0603", "RC0603"), ("", "RC0603"), ("RC0603", ""), ("", "")])
+        self.assertIn("XV-004: 3 paired part(s) not compared (MPN blank on the schematic or the PCB)",
+                      err.splitlines())
+        self.assertNotIn("XV-004", run([("RC0603", "RC0603")]))
+
+        # In process, the count goes to a caller's notes list and nothing reaches stderr.
+        sch = json.loads((t / "xv_sch.json").read_text(encoding="utf-8"))
+        pcb = json.loads((t / "xv_pcb.json").read_text(encoding="utf-8"))
+        sch["components"][0]["mpn"] = ""
+        buf = io.StringIO()
+        with contextlib.redirect_stderr(buf):
+            ca.run_all_checks(sch, pcb)
+            notes = []
+            ca.run_all_checks(sch, pcb, notes=notes)
+        self.assertEqual(buf.getvalue(), "")
+        self.assertEqual(notes, ["XV-004: 1 paired part(s) not compared (MPN blank on the schematic or the PCB)"])
 
     def test_dp005_dp_dm_pairs(self):
         def cls(*names):

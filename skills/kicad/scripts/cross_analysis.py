@@ -737,21 +737,24 @@ def check_cross_validation(schematic: dict, pcb: dict | None, recorder=None) -> 
     return findings
 
 
-def check_mpn_parity(schematic: dict, pcb: dict | None, recorder=None) -> list[dict]:
+def check_mpn_parity(schematic: dict, pcb: dict | None, recorder=None, notes=None) -> list[dict]:
     """XV-004: a footprint's MPN differs from its symbol's (both non-blank; Update PCB
-    copies symbol fields to the footprint exactly)."""
+    copies symbol fields to the footprint exactly). With a *notes* list, a line counting the
+    pairs not compared is appended to it."""
     findings: list[dict] = []
     if not pcb:
         _record(recorder, 'XV-004', False, 'no PCB data provided', 0, findings)
         return findings
     pairs, _, _ = pair_by_path(schematic, pcb)
     compared = 0
+    skipped = 0
     reported = set()
     for ref, pcb_fp, fields in _pair_fields(schematic, pairs):
         sch_mpn = fields['mpn'].strip()
         pcb_mpn = pcb_fp.get('mpn')
         pcb_mpn = pcb_mpn.strip() if isinstance(pcb_mpn, str) else ''
         if not sch_mpn or not pcb_mpn:
+            skipped += 1
             continue
         compared += 1
         if sch_mpn == pcb_mpn or (ref, sch_mpn, pcb_mpn) in reported:
@@ -766,6 +769,8 @@ def check_mpn_parity(schematic: dict, pcb: dict | None, recorder=None) -> list[d
             recommendation='Update PCB from schematic so the footprint fields match the symbol.',
             impact='Assembly may source a different part than the schematic specifies',
             source=ANALYZER_SOURCE, schema_era="v3.0",))
+    if skipped and notes is not None:
+        notes.append(f'XV-004: {skipped} paired part(s) not compared (MPN blank on the schematic or the PCB)')
     _record(recorder, 'XV-004', True, None, compared, findings)
     return findings
 
@@ -1307,12 +1312,12 @@ def check_diff_pair_quality(schematic, pcb, recorder=None):
 # Main
 # ---------------------------------------------------------------------------
 
-def run_all_checks(schematic: dict, pcb: dict | None) -> tuple[list[dict], list[dict]]:
+def run_all_checks(schematic: dict, pcb: dict | None, notes=None) -> tuple[list[dict], list[dict]]:
     """Run every cross-domain check in a fixed order.
 
     Returns (findings, checks_run) — checks_run is the manifest
     recording whether each check executed, in call order (see
-    _CheckRecorder).
+    _CheckRecorder). A *notes* list collects the run's stderr notes.
     """
     findings: list[dict] = []
     recorder = _CheckRecorder()
@@ -1320,7 +1325,7 @@ def run_all_checks(schematic: dict, pcb: dict | None) -> tuple[list[dict], list[
     findings.extend(check_esd_coverage_gaps(schematic, pcb, recorder=recorder))
     findings.extend(check_decoupling_adequacy(schematic, pcb, recorder=recorder))
     findings.extend(check_cross_validation(schematic, pcb, recorder=recorder))
-    findings.extend(check_mpn_parity(schematic, pcb, recorder=recorder))
+    findings.extend(check_mpn_parity(schematic, pcb, recorder=recorder, notes=notes))
     # PCB intelligence checks
     findings.extend(check_critical_net_routing(schematic, pcb, recorder=recorder))
     findings.extend(check_return_path_enhanced(schematic, pcb, recorder=recorder))
@@ -1432,7 +1437,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     compat = build_compat()
 
-    findings, checks_run = run_all_checks(schematic, pcb)
+    notes: list[str] = []
+    findings, checks_run = run_all_checks(schematic, pcb, notes=notes)
+    for note in notes:
+        print(note, file=sys.stderr)
     show_decoded_names(findings)
     elapsed = time.time() - t0
 
