@@ -410,7 +410,9 @@ def check_decoupling_adequacy(schematic: dict, pcb: dict | None, recorder=None) 
         _record(recorder, 'DA-001', False, 'no decoupling detector findings in schematic analysis', 0, findings)
         return findings
 
-    ics = [c for c in schematic.get('components', []) if c.get('type') == 'ic']
+    # A DNP or excluded-from-board IC is not fitted, so it needs no decoupling.
+    ics = [c for c in schematic.get('components', [])
+           if c.get('type') == 'ic' and not c.get('dnp') and c.get('on_board') is not False]
     by_ref = _units_by_ref(schematic)
     for rail in rails:
         rail_name = rail.get('rail', '')

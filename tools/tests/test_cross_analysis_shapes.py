@@ -105,6 +105,21 @@ class Shapes(unittest.TestCase):
         self.assertEqual(out[0]["nets"], ["+3V3"])
         self.assertIn("1 caps for 3 ICs", out[0]["summary"])
 
+    def test_da001_skips_unfitted_ics(self):
+        def ic(ref, **flags):
+            return {"reference": ref, "type": "ic", "pin_nets": {"1": "+3V3", "2": "GND"}, **flags}
+        sch = {"components": [ic("U1", dnp=False, on_board=True), ic("U2", dnp=True, on_board=True),
+                              ic("U3", dnp=False, on_board=False)],
+               "findings": [{"detector": "detect_decoupling", "rail": "+3V3",
+                             "capacitors": [{"ref": "C1"}]}]}
+        self.assertEqual(ca.check_decoupling_adequacy(sch, None), [])
+
+        sch["components"].append(ic("U4", dnp=False, on_board=True))
+        out = ca.check_decoupling_adequacy(sch, None)
+        self.assertEqual(len(out), 1)
+        self.assertIn("1 caps for 2 ICs", out[0]["summary"])
+        self.assertEqual(out[0]["recommendation"], "Add 1 more 100nF caps on +3V3.")
+
     @staticmethod
     def _sch(iout, in_rail, out_rail, connector=None):
         comps = [{"reference": connector, "type": "connector"}] if connector else []
