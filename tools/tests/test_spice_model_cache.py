@@ -235,7 +235,10 @@ class SimulateSymlinkedProjectCacheTest(unittest.TestCase):
             report = self._run(str(tmp / "ws"), {"file": str(tmp / "proj" / "board.kicad_sch")},
                                ModelOptions(cache_dir=str(chosen)))
             self.assertTrue((outside / "models" / "manifest.json").is_file())
-            self.assertEqual(report["diagnostics"], [])
+            # a run without a simulator installed records the skipped simulation; that is not
+            # about the cache
+            self.assertEqual([d for d in report["diagnostics"]
+                              if d["source"] != "simulate_subcircuits.run"], [])
 
 
 class ManifestReadTest(unittest.TestCase):
