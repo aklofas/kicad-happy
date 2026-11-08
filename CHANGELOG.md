@@ -22,7 +22,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Datasheet coverage counts PDF datasheets only: JSON files (extractions, the sync index) and links to the same PDF no longer count, so a `datasheets/` folder that holds no PDF now gets DS-001 or DS-002 instead of passing.
 - A symbol with a second Value field whose text differs (Eagle imports wrote a hidden empty copy) gets a `duplicate_value_field` entry in `property_issues`, naming the value KiCad 10 shows and the text it ignores; a KiCad 6 symbol whose instance value decides what is shown gets none.
 - `statistics.board_area_mm2` and the placement density of a board file that holds several boards on Edge.Cuts now use the summed area of the boards, as KiCad's board statistics report it, instead of the box around all of them. Width and height still give that box.
-- EMC connector checks (IO-001, IO-002, ESD and clock-near-connector, test plan) skip DNP connectors, and a protection device counts when it sits on the connector's schematic net name.
+- EMC connector checks (IO-001, IO-002, CK-003, BE-003, SH-001 and the test plan) skip DNP connectors, an ESD device whose nearest connector is DNP is not paired with another one, and IO-001 counts a protection device on the connector's schematic net name.
 
 ### Fixed
 

@@ -334,7 +334,7 @@ Source: Goldfarb, E. & Pucha, R. "Modeling Via Grounds in Microstrip." IEEE Micr
 
 ### ES-001: ESD device far from connector
 - **Severity:** warning
-- **Threshold:** TVS/ESD protection device (discrete TVS diode, ESD array or varistor) >15mm (footprint centre to centre) from the nearest detected connector; not checked when no connector is within 50mm
+- **Threshold:** TVS/ESD protection device (discrete TVS diode, ESD array or varistor) >15mm (footprint centre to centre) from the nearest detected connector; not checked when no connector is within 50mm or when the nearest one is DNP
 - **Rationale:** During 8kV IEC 61000-4-2 ESD strike (dI/dt = 37.5 GA/s), each nH of inductance in the path creates ~37.5V of overshoot. Trace inductance is ~0.5–0.8 nH/mm, so every extra mm degrades clamping performance.
 - **Source:** TI SLVA680 "ESD Protection Layout Guide"; ST AN5686 "PCB Layout Tips for ESD Protection."
 - **Fix:** Move TVS within 10mm of connector. Keep ESD current path as short as possible.

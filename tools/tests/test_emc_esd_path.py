@@ -46,3 +46,29 @@ class EsdPathDiodeType(unittest.TestCase):
 
     def test_other_types_keep_the_ground_via_check_whatever_the_clamp_net(self):
         self.assertEqual(_rules("tvs", 20, "+9V"), ["ES-001", "ES-002"])
+
+
+def _findings(connectors, tvs_x=20):
+    pcb = {"footprints": connectors + [{"reference": "D1", "value": "SMAJ5.0A", "x": tvs_x, "y": 0}],
+           "nets": {"1": {"name": "GND"}},
+           "vias": {"vias": [{"x": 90, "y": 90, "net": 1}]}}
+    schematic = {"findings": [{"detector": Det.PROTECTION_DEVICES, "reference": "D1", "type": "tvs"}]}
+    return sorted((f["rule_id"], tuple(f.get("components") or []))
+                  for f in check_esd_protection_path(pcb, schematic))
+
+
+class EsdPathDnpConnector(unittest.TestCase):
+    def test_nearest_connector_dnp_pairs_with_no_farther_fitted_one(self):
+        conns = [{"reference": "J1", "value": "USB_C", "x": 0, "y": 0, "dnp": True},
+                 {"reference": "J2", "value": "USB_C", "x": -20, "y": 0}]
+        self.assertEqual(_findings(conns), [("ES-002", ("D1",))])
+
+    def test_nearest_connector_fitted_is_unchanged(self):
+        conns = [{"reference": "J1", "value": "USB_C", "x": 0, "y": 0},
+                 {"reference": "J2", "value": "USB_C", "x": -20, "y": 0, "dnp": True}]
+        self.assertEqual(_findings(conns), [("ES-001", ("D1", "J1")), ("ES-002", ("D1",))])
+
+    def test_ground_via_check_still_runs_near_a_dnp_only_connector(self):
+        conns = [{"reference": "J1", "value": "USB_C", "x": 0, "y": 0, "dnp": True}]
+        self.assertEqual(_findings(conns, tvs_x=40), [("ES-002", ("D1",))])
+        self.assertEqual(_findings(conns, tvs_x=60), [])

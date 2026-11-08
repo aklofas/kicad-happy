@@ -309,11 +309,11 @@ def _suggest_pdn_cap(peak, cap_models, plane_cap_f, z_target, spice_backend,
     return suggestion
 
 
-def _connector_refs(footprints: list) -> list:
-    """Find fitted footprints that are likely external connectors."""
+def _connector_refs(footprints: list, include_dnp: bool = False) -> list:
+    """Find fitted footprints (and DNP ones when asked) that are likely external connectors."""
     connectors = []
     for fp in footprints:
-        if fp.get('dnp'):
+        if fp.get('dnp') and not include_dnp:
             continue  # not fitted: no cable attaches to it
         ref = fp.get('reference', '')
         raw_val = fp.get('value', '')
@@ -3219,7 +3219,9 @@ def check_esd_protection_path(pcb: Dict,
 
     net_id_map = build_net_id_map(pcb)
     footprints = pcb.get('footprints', [])
-    connectors = _connector_refs(footprints)
+    # DNP connectors stay in the proximity search: a device placed for an
+    # unfitted connector must not be paired with a farther, fitted one.
+    connectors = _connector_refs(footprints, include_dnp=True)
     if not connectors:
         return findings
 
@@ -3247,6 +3249,7 @@ def check_esd_protection_path(pcb: Dict,
         # Check distance from nearest external connector
         min_conn_dist = float('inf')
         nearest_conn = ''
+        nearest_dnp = False
         for conn in connectors:
             cx = conn.get('x') or 0
             cy = conn.get('y') or 0
@@ -3254,12 +3257,13 @@ def check_esd_protection_path(pcb: Dict,
             if d < min_conn_dist:
                 min_conn_dist = d
                 nearest_conn = conn.get('reference', '')
+                nearest_dnp = bool(conn.get('dnp'))
 
         if min_conn_dist > 50:
             continue  # Not near any connector
 
         # ES-001: Check distance (trace length proxy)
-        if min_conn_dist > 15:
+        if min_conn_dist > 15 and not nearest_dnp:
             # Estimate trace inductance from distance
             est_inductance_nh = min_conn_dist * 0.7  # ~0.7 nH/mm for microstrip
             est_overshoot_v = est_inductance_nh * 1e-9 * 37.5e9  # V = L × dI/dt
