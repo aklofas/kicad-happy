@@ -152,6 +152,8 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - VM-001 no longer reports a domain crossing on a net that only one part's pins share (an MC34063's switch collectors tied to its own current-sense input).
 - VM-001 and the cross-domain signal list treat the enable of a load switch as a logic input when its description says load, power or power-distribution switch, or its part number is a SiP32, TPS205x, AP2280x, AP2261x, AP2265x, AP255x, MIC20xx or FPF part.
 - A board file that mixes KiCad 5 `module` and newer `footprint` entries (ergogen output) reads all of its parts.
+- A stackup that lists the board's layers twice is read as KiCad reads it, up to the first repeated layer, so stackup and reference-plane checks no longer judge the copy.
+- A board with no stackup and copper on B.Cu only gets an inferred dielectric above that copper, as an F.Cu-only board gets one below it.
 
 ### Documentation
 

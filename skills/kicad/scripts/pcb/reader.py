@@ -141,8 +141,16 @@ def extract_setup(root: list) -> dict:
     if stackup:
         stack_layers = []
         _NUMERIC_STACKUP_KEYS = {"thickness", "epsilon_r", "loss_tangent"}
+        seen_board_layers: set = set()
         for layer in find_all(stackup, "layer"):
             layer_info = {"name": layer[1] if len(layer) > 1 else ""}
+            # KiCad stops reading the stackup at the first board layer listed twice
+            # (dielectric names may repeat)
+            if get_value(layer, "type") not in ("core", "prepreg") and \
+                    not str(layer_info["name"]).startswith("dielectric"):
+                if layer_info["name"] in seen_board_layers:
+                    break
+                seen_board_layers.add(layer_info["name"])
             for item in layer[2:]:
                 if isinstance(item, list) and len(item) >= 2:
                     key, val = item[0], item[1]

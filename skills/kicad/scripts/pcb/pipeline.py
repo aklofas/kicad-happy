@@ -126,6 +126,12 @@ def _infer_stackup(copper_layers: list[str], board_thickness_mm: float | None,
     thickness_nm = round((board_thickness_mm if board_thickness_mm is not None else 1.6) * 1e6)
     diel_nm = int((thickness_nm - 35000 * len(order) - 10000 * mask_layers)
                   / max(1, len(order) - 1))
+    if len(order) == 1:
+        # one copper layer: the substrate lies on its inner side
+        diel = {"name": "dielectric 1", "type": "core", "thickness": diel_nm / 1e6,
+                "epsilon_r": 4.5, "material": "FR4"}
+        cu = {"name": order[0], "type": "copper", "thickness": 0.035}
+        return [cu, diel] if order[0] == "F.Cu" else [diel, cu]
     stackup = []
     for i, name in enumerate(order):
         stackup.append({"name": name, "type": "copper", "thickness": 0.035})
