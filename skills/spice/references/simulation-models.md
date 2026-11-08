@@ -355,7 +355,7 @@ The gain measurement frequency adapts to each circuit's expected bandwidth:
 f_measure = GBW / (100 × |gain|)
 ```
 
-Clamped to [1, 1000] Hz. This ensures the measurement is in the passband even for high-gain circuits with low-GBW parts, preventing false failures from measuring above the bandwidth.
+With a feedback capacitor across Rf, f_measure is also kept at or under 0.1 / (2π·Rf·Cf), a decade below the feedback pole, so the stage's resistive gain is measured. Clamped to [1, 1000] Hz. This ensures the measurement is in the passband even for high-gain circuits with low-GBW parts, preventing false failures from measuring above the bandwidth.
 
 ### Behavioral Model Gain Warnings
 

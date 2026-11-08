@@ -467,7 +467,8 @@ def generate_opamp_circuit(det, output_file, context=None, parasitics=None,
             # Input resistor is actually the ground-leg resistor
             # Already placed above from sig_in to neg_net — need to fix:
             # it should be from neg_net to ground
-            netlist_lines = [l for l in netlist_lines if not l.startswith(spice_passive_name(ri["ref"], "R"))]
+            ri_name = spice_passive_name(ri["ref"], "R")
+            netlist_lines = [l for l in netlist_lines if l.split(maxsplit=1)[0] != ri_name]
             netlist_lines.append(
                 spice_element_for_passive(ri["ref"], ri["ohms"], neg_net, ref_node, "R")
             )
@@ -533,6 +534,10 @@ def generate_opamp_circuit(det, output_file, context=None, parasitics=None,
         f_meas = model_specs["gbw_hz"] / (100 * abs_gain)
     else:
         f_meas = 10e6 / (100 * abs_gain)  # Ideal model: 10MHz GBW
+    # A capacitor across Rf rolls the gain off from 1/(2 pi Rf Cf): measure a decade
+    # below that pole, where the stage still has its resistive gain
+    if rf and rf.get("ohms") and fc and 0 < fc["farads"] < 1.0:
+        f_meas = min(f_meas, 0.1 / (2 * math.pi * rf["ohms"] * fc["farads"]))
     f_meas = max(1, min(f_meas, 1000))  # Clamp to [1, 1000] Hz
     f_meas_str = _format_eng(f_meas)
 
@@ -776,6 +781,10 @@ def _infer_opamp_rails(det, context, info=None):
     vcc_named = False
     vee_named = False
 
+    # a split rail named by suffix ('4V5_P' / '4V5_N'): the _N half is the negative
+    # rail only when its _P twin is in the design too (alone, '1V5_N' is just a name)
+    leaves = {n.rsplit("/", 1)[-1].upper().lstrip("+") for n in nets}
+
     for net_name, net_data in nets.items():
         pins = net_data.get("pins", [])
         # A voltage written in the rail's own leaf (VCC_1V8, /Analog/+1V8, A+2V5,
@@ -786,6 +795,9 @@ def _infer_opamp_rails(det, context, info=None):
         leaf = _PLUS_MINUS_SLASH.sub("\u00b1", net_name).rsplit("/", 1)[-1].replace("+-", "\u00b1")
         named_pos = _leaf_voltage(leaf.replace("\u00b1", "+"))
         named_neg = _leaf_voltage(leaf.replace("\u00b1", "-"))
+        split = re.fullmatch(r"\+?(\d+V\d+)_N", leaf.upper())
+        if split and named_neg and named_neg > 0 and f"{split.group(1)}_P" in leaves:
+            named_neg = -named_neg
         for pin in pins:
             if pin.get("component") != ref:
                 continue
@@ -862,11 +874,12 @@ _NAMED_NEGATIVE_RAILS = ("VEE", "V-", "-V", "-VCC", "-VDD", "-VS", "VS-", "VSS-"
 
 def _infer_negative_rail(net_name):
     """Negative supply from a net name: '-12V' -> -12.0, 'NEG15V' -> -15.0,
-    '-3V3' -> -3.3; a negative rail named without a voltage ('VEE', 'V-',
-    '-VCC', 'VNEG') -> _MIRROR_VCC; anything else -> None."""
+    '-3V3' -> -3.3, '(-)5V' -> -5.0; a negative rail named without a voltage
+    ('VEE', 'V-', '-VCC', 'VNEG') -> _MIRROR_VCC; anything else -> None."""
     if not net_name:
         return None
     name = net_name.upper().strip().replace("\u2212", "-")
+    name = re.sub(r'^\(([+-])\)', r'\1', name)  # '(-)5V' writes the sign in parentheses
     m = re.match(r'^(?:-|NEG|VNEG|V-)_?(\d+)V(\d+)', name)
     if m:
         return -float(f"{m.group(1)}.{m.group(2)}")

@@ -175,6 +175,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - SPICE `--parasitics` trace resistance takes each segment's own layer copper thickness from the stackup, not the first copper layer's (35 µm outer / 70 µm inner: 24 mΩ, not 48 mΩ, on an inner trace).
 - Thermal reads SOT-23 and SOT-223 footprint names written without a hyphen (`SOT23-5`, `SOT223`, `SOT23_Transistor_RevA_03Aug2010`) by their package, not as an unknown package or a 2010 resistor; the IPC name `SOT230P696X180-4N` is not taken for a SOT-23.
 - Thermal finds a datasheet extraction the way the other datasheet readers do (the extraction manifest, then the files named after the part), so a junction or operating temperature limit saved by the extraction cache is used; an extraction below the trust gate (v1.4 quality score 60, else v1.3 score 6) or with no score is ignored.
+- SPICE op-amp benches measure the gain below a feedback capacitor's pole, read `(-)5V` and `_P`/`_N` split rails, report a bench whose output never moved as not measured, and use TL072/TL074's 4.5 V minimum supply.
 
 ### Documentation
 

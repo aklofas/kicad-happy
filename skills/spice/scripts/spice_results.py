@@ -233,6 +233,9 @@ def evaluate_voltage_divider(det, sim_results):
     return result
 
 
+_DEAD_OUTPUT_DB = -300  # below any real stage gain: the bench output never moved
+
+
 def evaluate_opamp_circuit(det, sim_results):
     """Evaluate opamp circuit simulation results."""
     config = det.get("configuration", "unknown")
@@ -298,8 +301,11 @@ def evaluate_opamp_circuit(det, sim_results):
     if sim_bw is not None:
         result["simulated"]["bandwidth_hz"] = sim_bw
 
+    if gain_db is not None and gain_db < _DEAD_OUTPUT_DB:
+        result["status"] = "info"
+        result["note"] = "Output not driven in the bench; no gain measured"
     # Compare gain
-    if expected_gain_db is not None and gain_db is not None:
+    elif expected_gain_db is not None and gain_db is not None:
         gain_error = abs(gain_db - expected_gain_db)
         result["delta"]["gain_error_dB"] = round(gain_error, 2)
 

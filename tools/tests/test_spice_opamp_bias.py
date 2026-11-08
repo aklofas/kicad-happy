@@ -195,6 +195,30 @@ class NegativeRailTest(unittest.TestCase):
                 T._infer_opamp_rails({"reference": "U1"}, _rails("+12V", vee), info)
                 self.assertTrue(info["rails_named"])
 
+    def test_parenthesised_sign_reads_a_negative_rail(self):
+        self.assertEqual(T._infer_negative_rail("(-)5V"), -5.0)
+        self.assertEqual(T._infer_negative_rail("(-)12V"), -12.0)
+        info = {}
+        self.assertEqual(T._infer_opamp_rails({"reference": "U1"}, _rails("+5V", "(-)5V"), info), (5, -5))
+        self.assertTrue(info["rails_named"])
+        self.assertNotIn("vee_repaired", info)
+
+    def test_n_suffix_rail_with_its_p_twin_is_negative(self):
+        for vcc, vee, want in (("4V5_P", "4V5_N", (4.5, -4.5)), ("/PSU/6V0_P", "/PSU/6V0_N", (6, -6)),
+                               ("+4V5_P", "+4V5_N", (4.5, -4.5))):
+            with self.subTest(vee=vee):
+                info = {}
+                self.assertEqual(T._infer_opamp_rails({"reference": "U1"}, _rails(vcc, vee), info), want)
+                self.assertTrue(info["rails_named"])
+                self.assertNotIn("vee_repaired", info)
+
+    def test_n_suffix_rail_without_a_p_twin_keeps_its_positive_reading(self):
+        # a '1V5_N' made by a positive buck is just a name: no '_P' half, no sign
+        ctx = _rails("+5V", "1V5_N")
+        self.assertEqual(T._infer_opamp_rails({"reference": "U1"}, ctx), (5, 1.5))
+        ctx["nets"]["3V3_P"] = {"pins": []}
+        self.assertEqual(T._infer_opamp_rails({"reference": "U1"}, ctx), (5, 1.5))
+
     def test_mirrored_rail_is_named_in_model_note(self):
         with tempfile.TemporaryDirectory() as tmp:
             from spice_model_cache import ModelOptions
@@ -211,12 +235,12 @@ class NegativeRailTest(unittest.TestCase):
 @unittest.skipUnless(shutil.which("ngspice"), "ngspice not installed")
 class SupplyBelowMinimumTest(unittest.TestCase):
     """A part run below its minimum supply is not a pass: library minimums
-    TL074 7 V, NE5532 8 V, LM358 3 V."""
+    TL074 4.5 V, NE5532 8 V, LM358 3 V."""
 
     def test_named_rails_below_minimum_warn(self):
-        r = _opamp(dict(_INVERTING, value="TL074"), _rails("+6V", "GND"))
+        r = _opamp(dict(_INVERTING, value="NE5532"), _rails("+6V", "GND"))
         self.assertEqual(r["status"], "warn")
-        self.assertIn("supply 6 V below the part's minimum 7 V", r["model_note"])
+        self.assertIn("supply 6 V below the part's minimum 8 V", r["model_note"])
 
     def test_defaulted_rails_below_minimum_are_info(self):
         # VAA carries no voltage: the bench assumes 5 V
@@ -225,15 +249,26 @@ class SupplyBelowMinimumTest(unittest.TestCase):
         self.assertIn("supply 5 V below the part's minimum 8 V", r["model_note"])
 
     def test_named_ground_on_negative_pin_warns(self):
-        r = _opamp(dict(_INVERTING, value="TL074"), _rails("+6V", "AGND"))
+        r = _opamp(dict(_INVERTING, value="NE5532"), _rails("+6V", "AGND"))
         self.assertEqual(r["status"], "warn")
-        self.assertIn("supply 6 V below the part's minimum 7 V", r["model_note"])
+        self.assertIn("supply 6 V below the part's minimum 8 V", r["model_note"])
 
     def test_guessed_negative_rail_is_info(self):
         # VBAT carries no voltage in its name (3.7 V guess): supply 6 - 3.7 = 2.3 V
-        r = _opamp(dict(_INVERTING, value="TL074"), _rails("+6V", "VBAT"))
+        r = _opamp(dict(_INVERTING, value="NE5532"), _rails("+6V", "VBAT"))
         self.assertEqual(r["status"], "info")
-        self.assertIn("supply 2.3 V below the part's minimum 7 V", r["model_note"])
+        self.assertIn("supply 2.3 V below the part's minimum 8 V", r["model_note"])
+
+    def test_tl07x_runs_from_its_datasheet_minimum(self):
+        # TI SLOS080: VS 4.5 V minimum, so 6 V is in range and 4 V is below it
+        for part in ("TL072", "TL074"):
+            with self.subTest(part=part):
+                r = _opamp(dict(_INVERTING, value=part), _rails("+6V", "GND"))
+                self.assertEqual(r["status"], "pass")
+                self.assertNotIn("minimum", r["model_note"])
+                r = _opamp(dict(_INVERTING, value=part), _rails("+4V", "GND"))
+                self.assertEqual(r["status"], "warn")
+                self.assertIn("supply 4 V below the part's minimum 4.5 V", r["model_note"])
 
     def test_part_within_its_supply_range_passes(self):
         r = _opamp(_INVERTING, _SINGLE_5V)
@@ -251,6 +286,81 @@ class SupplyNoteTest(unittest.TestCase):
         self.assertEqual(r["status"], "warn")
         self.assertIn("Gain varies 5.0 dB across frequency", r["note"])
         self.assertIn("supply 6 V below the part's minimum 7 V", r["note"])
+
+
+class DeadOutputTest(unittest.TestCase):
+    _SIM = {"bw_3db": 9.0e4, "model_source": "lookup:NE5532", "model_gbw": "10000000"}
+
+    def test_output_hundreds_of_db_down_is_not_a_gain(self):
+        r = R.evaluate_opamp_circuit(dict(_INVERTING, value="NE5532"), dict(self._SIM, gain_1k=-853.2))
+        self.assertEqual(r["status"], "info")
+        self.assertEqual(r["note"], "Output not driven in the bench; no gain measured")
+        self.assertNotIn("gain_error_dB", r["delta"])
+        self.assertEqual(r["simulated"]["gain_dB"], -853.2)
+
+    def test_dead_output_below_the_minimum_supply_stays_info(self):
+        sim = dict(self._SIM, gain_1k=-853.2, supply_v="3.3", supply_min="8", rails_named="1")
+        r = R.evaluate_opamp_circuit(dict(_INVERTING, value="NE5532"), sim)
+        self.assertEqual(r["status"], "info")
+        self.assertNotIn("gain_error_dB", r["delta"])
+        self.assertIn("supply 3.3 V below the part's minimum 8 V", r["model_note"])
+
+    def test_a_large_but_real_gain_error_is_still_compared(self):
+        r = R.evaluate_opamp_circuit(_INVERTING, dict(gain_1k=-40.0, bw_3db=9.0e4))
+        self.assertEqual(r["status"], "fail")
+        self.assertEqual(r["delta"]["gain_error_dB"], 60.0)
+
+
+# Fjol U10 (MCP6004, +3.3 V single supply): -66.5k/200k = -0.3325 = -9.56 dB, with
+# C40 1 nF across Rf: pole 1/(2 pi 66.5k 1n) = 2.39 kHz, under the 1 kHz GBW point's decade
+_FEEDBACK_CAP = {"reference": "U10", "value": "MCP6004", "configuration": "inverting",
+                 "output_net": "ATTACK_F", "inverting_input_net": "INN", "non_inverting_input_net": "GND",
+                 "gain": -0.333, "gain_dB": -9.6,
+                 "feedback_resistor": {"ref": "R32", "ohms": 66500.0},
+                 "feedback_capacitor": {"ref": "C40", "farads": 1e-09},
+                 "input_resistor": {"ref": "R25", "ohms": 200000.0}}
+_FJOL_RAILS = {"nets": {"+3.3VA_F": {"pins": [{"component": "U10", "pin_name": "V+", "pin_type": "power_in"}]},
+                        "GND": {"pins": [{"component": "U10", "pin_name": "V-", "pin_type": "power_in"}]}},
+               "components": []}
+
+
+def _gain_point(det, ctx):
+    from spice_model_cache import ModelOptions
+    with tempfile.TemporaryDirectory() as tmp:
+        tb = T.generate_opamp_circuit(det, "b.out", context=ctx,
+                                      model_options=ModelOptions(cache_dir=tmp, offline=True))
+    return next(m[3] for m in tb.measurements if m[0] == "gain_1k")
+
+
+class FeedbackCapacitorPoleTest(unittest.TestCase):
+    def test_gain_is_measured_a_decade_below_the_feedback_pole(self):
+        # 0.1 / (2 pi 66.5k 1n) = 239.3 Hz
+        self.assertEqual(_gain_point(_FEEDBACK_CAP, _FJOL_RAILS), "at=239.3")
+
+    def test_measurement_point_keeps_the_1_hz_floor(self):
+        det = dict(_FEEDBACK_CAP, feedback_capacitor={"ref": "C40", "farads": 100e-6})
+        self.assertEqual(_gain_point(det, _FJOL_RAILS), "at=1")
+
+    def test_stage_without_a_feedback_capacitor_keeps_its_gain_point(self):
+        # MCP6004 GBW 1 MHz / (100 x 10) = 1 kHz
+        det = {k: v for k, v in _FEEDBACK_CAP.items() if k != "feedback_capacitor"}
+        self.assertEqual(_gain_point(det, _FJOL_RAILS), "at=1k")
+
+    @unittest.skipUnless(shutil.which("ngspice"), "ngspice not installed")
+    def test_feedback_capacitor_stage_measures_its_resistive_gain(self):
+        r = _opamp(_FEEDBACK_CAP, _FJOL_RAILS)
+        self.assertEqual(r["status"], "pass")
+        self.assertAlmostEqual(r["simulated"]["gain_dB"], -9.6, delta=0.1)
+
+
+class GroundLegElementTest(unittest.TestCase):
+    def test_ground_leg_move_keeps_a_resistor_whose_ref_extends_it(self):
+        # Ri R1 must not take Rf R10's line with it
+        det = dict(_NON_INVERTING, feedback_resistor={"ref": "R10", "ohms": 90e3})
+        cir = _circuit(det, _SINGLE_5V)
+        self.assertIn("R10 OUT INN 90k", cir)
+        self.assertIn("R1 INN vmid_ref 10k", cir)
+        self.assertNotIn("R1 sig_in", cir)
 
 
 class GroundReferenceNoteTest(unittest.TestCase):

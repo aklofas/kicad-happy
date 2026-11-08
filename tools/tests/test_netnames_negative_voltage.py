@@ -17,7 +17,8 @@ def _ctx(components, nets, rails=()):
 class ParseSign(unittest.TestCase):
     def test_negative_rails_keep_their_sign(self):
         for name, want in [("-5V", -5.0), ("NEG5V", -5.0), ("-12V", -12.0), ("Neg6v", -6.0),
-                           ("-3V3", -3.3), ("+5V", 5.0), ("5V", 5.0), ("+3V3", 3.3)]:
+                           ("-3V3", -3.3), ("+5V", 5.0), ("5V", 5.0), ("+3V3", 3.3),
+                           ("(-)5V", -5.0), ("/Analog/(-)12V", -12.0)]:
             self.assertEqual(parse_voltage_from_net_name(name), want, name)
 
     def test_names_without_a_number_stay_none(self):
