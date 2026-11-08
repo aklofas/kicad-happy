@@ -73,6 +73,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Cross-analysis no longer reports the return-path check (RP-002) as run when the PCB analysis carries no return-path coverage, or the connector-current check (CC-001) as run when the PCB has no track segments.
 - The decoupling-adequacy check (DA-001) no longer counts ICs marked DNP or excluded from the board.
 - The connector current check (CC-001) measures the track between the connector and the regulators it feeds, not the narrowest track anywhere on the net, and the trace-width checks (CC-001, TW-001) load a regulator's input rail with its estimated input current; both summaries mark the current as an estimate.
+- The connector ESD-gap check (EG-001) now checks enable, sense and detect lines named after a rail (VBUS_DET, +5V_EN) instead of skipping them as power.
 - LTspice and Xyce measurement output with a signed exponent (`1.58e+04`) is read as a number instead of crashing the simulation; ngspice parsing is unchanged.
 - The SPICE model resolver now reads `spice_specs` from extractions the `datasheets` skill caches (`datasheets/extracted/`), when the analysis names its project and the run is not `--offline`.
 - The SPICE LCSC spec lookup matches parts by the top-level `mfr` field jlcsearch now returns.

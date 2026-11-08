@@ -86,6 +86,11 @@ class Shapes(unittest.TestCase):
         self.assertEqual([f["nets"] for f in eg], [["/USB/CC1"]])
         self.assertIn("1 unprotected", eg[0]["summary"])
 
+    def test_eg001_rail_signal_names_are_checked(self):
+        sch = self._usb_conn({"1": "VBUS", "2": "VBUS_DET", "3": "+5V_EN", "4": "5VEN"})
+        eg = ca.check_esd_coverage_gaps(sch, None)
+        self.assertEqual([sorted(f["nets"]) for f in eg], [["+5V_EN", "5VEN", "VBUS_DET"]])
+
     def test_da001_usb_dual_esd(self):
         rec = []
 
