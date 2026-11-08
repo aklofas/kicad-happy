@@ -372,6 +372,27 @@ def check_esd_coverage_gaps(schematic: dict, pcb: dict | None, recorder=None) ->
     connectors = [c for c in components if c.get('type') == 'connector']
     comp_type = {c.get('reference'): c.get('type') for c in components}
     all_nets = schematic.get('nets') or {}
+    # A clamp behind one series resistor, ferrite or inductor still protects the pin; the
+    # far side must be a clamped signal (a pull-up to a clamped rail protects nothing, and a
+    # fuse or a reverse-polarity diode is no ESD clamp).
+    clamped = {n for pd in protection if pd.get('type') in ('esd_ic', 'diode', 'varistor', 'surge_arrester')
+               for n in [pd.get('protected_net', '')] + list(pd.get('protected_nets') or []) if n}
+    # The pin's own net must reach no IC, or that IC sits in front of the clamp.
+    via_series: set[str] = set()
+    for c in components:
+        if (c.get('type') not in ('resistor', 'ferrite_bead', 'inductor')
+                or c.get('dnp') or c.get('on_board') is False):
+            continue
+        ends = {n for n in (c.get('pin_nets') or {}).values() if n}
+        if len(ends) != 2:
+            continue
+        a, b = sorted(ends)
+        for near, far in ((a, b), (b, a)):
+            if (far in clamped and not _is_power_net(far)
+                    and not is_ground_name(far) and not is_power_net_name(far)
+                    and not any(comp_type.get(p.get('component')) == 'ic'
+                                for p in (all_nets.get(near) or {}).get('pins', []))):
+                via_series.add(near)
     rails = {n for n, info in all_nets.items()
              if any(str(p.get('component', '')).startswith(('#PWR', '#FLG'))
                     for p in info.get('pins', []))}
@@ -394,7 +415,7 @@ def check_esd_coverage_gaps(schematic: dict, pcb: dict | None, recorder=None) ->
             nc_pins = (all_nets.get(net) or {}).get('pins') or []
             if nc_pins and all(p.get('pin_type') == 'no_connect' for p in nc_pins):
                 continue  # an unused pin typed no-connect, alone on its net
-            if net not in protected_nets:
+            if net not in protected_nets and net not in via_series:
                 unprotected_nets.append(net)
 
         # Deduplicate

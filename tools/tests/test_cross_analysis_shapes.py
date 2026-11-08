@@ -91,6 +91,44 @@ class Shapes(unittest.TestCase):
         eg = ca.check_esd_coverage_gaps(sch, None)
         self.assertEqual([sorted(f["nets"]) for f in eg], [["+5V_EN", "5VEN", "VBUS_DET"]])
 
+    def _series_clamp(self, clamp_type="esd_ic"):
+        # USB D line: connector -> 22R -> USBLC6 clamp -> MCU.
+        sch = self._usb_conn({"1": "D_CONN"})
+        sch["components"].append({"reference": "R1", "type": "resistor", "value": "22",
+                                  "pin_nets": {"1": "D_CONN", "2": "D_MCU"}})
+        sch["findings"] = [{"detector": "detect_protection_devices", "type": clamp_type,
+                            "ref": "U2", "value": "USBLC6-2SC6",
+                            "protected_net": "D_MCU", "protected_nets": ["D_MCU"]}]
+        sch["nets"] = {"D_CONN": {"pins": [{"component": "J9"}, {"component": "R1"}]}}
+        return sch
+
+    def test_eg001_clamp_behind_a_series_resistor(self):
+        self.assertEqual(ca.check_esd_coverage_gaps(self._series_clamp(), None), [])
+
+    def test_eg001_pull_up_to_a_clamped_rail_is_no_protection(self):
+        sch = self._series_clamp()
+        sch["components"][1]["pin_nets"]["2"] = "+3V3"
+        sch["findings"][0]["protected_nets"] = ["+3V3"]
+        eg = ca.check_esd_coverage_gaps(sch, None)
+        self.assertEqual([f["nets"] for f in eg], [["D_CONN"]])
+
+    def test_eg001_fuse_behind_a_series_resistor_is_no_protection(self):
+        eg = ca.check_esd_coverage_gaps(self._series_clamp("fuse"), None)
+        self.assertEqual([f["nets"] for f in eg], [["D_CONN"]])
+
+    def test_eg001_dnp_series_part_is_no_protection(self):
+        sch = self._series_clamp()
+        sch["components"][1]["dnp"] = True
+        eg = ca.check_esd_coverage_gaps(sch, None)
+        self.assertEqual([f["nets"] for f in eg], [["D_CONN"]])
+
+    def test_eg001_ic_before_the_series_part_is_unprotected(self):
+        sch = self._series_clamp()
+        sch["components"].append({"reference": "U1", "type": "ic", "pin_nets": {"1": "D_CONN"}})
+        sch["nets"]["D_CONN"]["pins"].append({"component": "U1"})
+        eg = ca.check_esd_coverage_gaps(sch, None)
+        self.assertEqual([f["nets"] for f in eg], [["D_CONN"]])
+
     def test_da001_usb_dual_esd(self):
         rec = []
 
