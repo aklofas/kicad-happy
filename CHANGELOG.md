@@ -157,6 +157,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A thermal pad whose vias meet the count only before drill weighting is graded adequate, not good.
 - Thermal-pad via counts include only vias that reach the pad's copper layer, directly or through a stacked via chain.
 - A via inside both a pin pad and an exposed-pad aperture is attributed to the pad on its own net.
+- The silkscreen revision check reads marks such as `rev2`, `Rev1.0` and `board_v1.1`, so boards that carry them no longer report a missing revision.
 
 ### Documentation
 

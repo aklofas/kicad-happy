@@ -1831,7 +1831,11 @@ def extract_silkscreen(root: list, footprints: list[dict]) -> dict:
     has_revision = bool(tb_rev)
 
     if not has_revision:
-        rev_pattern = re.compile(r'\b(?:REV|VER|VERSION)\b|(?<!\w)[RV]\d', re.IGNORECASE)
+        # 'rev2', 'Ver1.0', 'board_v1.1': a digit right after the word or a dotted V-number;
+        # the lookbehind keeps rail text such as 3V3 / 5V0 out
+        rev_pattern = re.compile(r'\b(?:REV|VER|VERSION)\b|(?<!\w)[RV]\d'
+                                 r'|(?<![A-Z0-9])(?:REV|VER|VERSION)\s*[-_.]?\s*\d'
+                                 r'|(?<![A-Z0-9])V\d+\.\d', re.IGNORECASE)
         has_revision = any(rev_pattern.search(t) for t in all_silk_text)
 
     if not has_revision:
