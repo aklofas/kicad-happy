@@ -137,6 +137,22 @@ class Shapes(unittest.TestCase):
         self.assertIn("output capacitance", out[0]["description"])
         self.assertIn("J1 carries 2.1A (estimated from the regulator output", out[0]["description"])
 
+    def test_cc001_without_tracks_records_not_run(self):
+        rec = []
+
+        class R:
+            def record(self, check, ran, reason, items, n):
+                rec.append((check, ran, reason, items, n))
+        sch = self._sch(2.1, "+24V", "+5V", connector="J1")
+        fp = {"reference": "J1", "pad_nets": {"1": {"net": "+24V"}}}
+        pcb = {"nets": {"1": "+24V"}, "footprints": [fp], "tracks": {}}
+        self.assertEqual(ca.check_connector_current(sch, pcb, recorder=R()), [])
+        self.assertEqual(rec, [("CC-001", False, "no PCB track segments present", 0, 0)])
+
+        rec.clear()
+        ca.check_connector_current(sch, self._pcb(0.25, "+24V", [fp]), recorder=R())
+        self.assertEqual(rec, [("CC-001", True, None, 1, 1)])
+
     def test_dp005_dp_dm_pairs(self):
         def cls(*names):
             return {"net_classifications": {n: {"differential": True} for n in names}}

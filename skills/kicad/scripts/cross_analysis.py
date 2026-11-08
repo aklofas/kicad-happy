@@ -230,6 +230,9 @@ def check_connector_current(schematic: dict, pcb: dict | None, recorder=None) ->
     fp_map = {fp.get('reference', ''): fp for fp in footprints}
 
     segments = (pcb.get('tracks') or {}).get('segments') or []
+    if not segments:
+        _record(recorder, 'CC-001', False, 'no PCB track segments present', 0, findings)
+        return findings
     net_id_map = _build_net_id_map(pcb)
 
     net_min_width: dict[str, float] = {}
@@ -826,9 +829,12 @@ def check_return_path_enhanced(schematic, pcb, recorder=None):
             continue
         for gap in graph.get('gaps', []):
             plane_gaps.append({**gap, 'net': net_name})
+    if not has_rpc_data:
+        _record(recorder, 'RP-002', False,
+                'no return-path coverage in PCB analysis (zone fills unavailable)', 0, findings)
+        return findings
     if not plane_gaps:
-        rpc = pcb.get('return_path_continuity', [])
-        for entry in rpc:
+        for entry in pcb['return_path_continuity']:
             coverage = entry.get('reference_plane_coverage_pct', 100)
             if coverage < 90:
                 net_name = entry.get('net', '')
@@ -846,10 +852,6 @@ def check_return_path_enhanced(schematic, pcb, recorder=None):
 
                         source=ANALYZER_SOURCE, schema_era="v3.0",))
         _record(recorder, 'RP-002', True, None, len(segments), findings)
-        return findings
-    if not has_rpc_data:
-        _record(recorder, 'RP-002', False,
-                'no return-path coverage in PCB analysis (zone fills unavailable)', 0, findings)
         return findings
     flagged = set()
     for seg in segments:
