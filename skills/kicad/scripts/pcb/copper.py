@@ -458,22 +458,23 @@ def analyze_vias(vias: dict, footprints: list[dict],
         vx, vy = v["x"], v["y"]
         v_net = v.get("net", 0)
         v_layers = v.get("layers", ["F.Cu", "B.Cu"])
-        for pb in pad_boxes:
-            # Via must be on the same copper layer as the pad
-            if pb["layer"] not in v_layers:
-                continue
-            if _point_in_pad(vx, vy, pb["cx"], pb["cy"], pb["hw"] * 2, pb["hh"] * 2, pb["shape"], pb["angle"]):
-                same_net = v_net == pb["net"]
-                via_in_pad.append({
-                    "component": pb["ref"],
-                    "pad": pb["pad"],
-                    "via_x": round(vx, 3),
-                    "via_y": round(vy, 3),
-                    "via_drill": v.get("drill", 0),
-                    "same_net": same_net,
-                    "via_type": v["type"],
-                })
-                break  # Each via counted once
+        # Each via counted once. When several pads hold it (a rotated pin pad and the exposed
+        # pad's rectangle), take the pad on the via's net, then a numbered pad, then the smallest.
+        holders = [pb for pb in pad_boxes
+                   if pb["layer"] in v_layers
+                   and _point_in_pad(vx, vy, pb["cx"], pb["cy"], pb["hw"] * 2, pb["hh"] * 2,
+                                     pb["shape"], pb["angle"])]
+        if holders:
+            pb = min(holders, key=lambda b: (b["net"] != v_net, b["pad"] == "", b["hw"] * b["hh"]))
+            via_in_pad.append({
+                "component": pb["ref"],
+                "pad": pb["pad"],
+                "via_x": round(vx, 3),
+                "via_y": round(vy, 3),
+                "via_drill": v.get("drill", 0),
+                "same_net": v_net == pb["net"],
+                "via_type": v["type"],
+            })
 
     # --- Fanout pattern detection ---
     # BGA/QFN packages with many pads often have fanout vias —

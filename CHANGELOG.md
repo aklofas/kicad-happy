@@ -156,6 +156,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A board with no stackup and copper on B.Cu only gets an inferred dielectric above that copper, as an F.Cu-only board gets one below it.
 - A thermal pad whose vias meet the count only before drill weighting is graded adequate, not good.
 - Thermal-pad via counts include only vias that reach the pad's copper layer, directly or through a stacked via chain.
+- A via inside both a pin pad and an exposed-pad aperture is attributed to the pad on its own net.
 
 ### Documentation
 
