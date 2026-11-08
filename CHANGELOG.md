@@ -164,6 +164,9 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - On a KiCad 5 board the project file's net classes and design rules are no longer reported as the rules in use.
 - A custom rule naming a layer by its other KiCad name (`F.Silkscreen` / `F.SilkS`) applies.
 - A `.kicad_dru` rule with two `layer` items is refused as KiCad refuses it, the deprecated `hole` and `mechanical_*` constraint names are read as their current names, and a bound written with a decimal comma is evaluated.
+- Gerber folders no longer list gerbv projects, CAM logs or G-code as unreadable layers.
+- KiCad 5 job files (`-job.gbj`, the Gerber-attribute form, and JSON with a trailing comma) are read.
+- Nightly KiCad 8.99/9.99 job files with the 9.0.0-9.0.4 inner-layer numbering are corrected.
 
 ### Documentation
 
