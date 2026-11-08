@@ -996,6 +996,7 @@ def analyze_design_rule_compliance(
     board_layers: list[str] | None = None,
     ignored_checks: frozenset[str] = frozenset(),
     microvia_minima: dict[int, tuple[float, str]] | None = None,
+    board_rules: bool = False,
 ) -> dict | None:
     """Check layout against project-defined design rules.
 
@@ -1181,7 +1182,8 @@ def analyze_design_rule_compliance(
         'compliant': len(violations) == 0,
         'rules_checked': rules_checked,
     }
-    if project_settings.get('source'):
+    if project_settings.get('source') and not board_rules:
+        # a KiCad 5 board judges by its own settings, not the project file's
         result['rules_source'] = project_settings['source']
     if violations:
         result['violations'] = violations

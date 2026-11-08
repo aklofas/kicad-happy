@@ -160,6 +160,9 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The silkscreen revision check reads marks such as `rev2`, `Rev1.0` and `board_v1.1`, so boards that carry them no longer report a missing revision.
 - The fiducial check no longer counts capacitive touch electrodes as SMD parts to place.
 - With `--full`, an unrouted-net finding on a net whose zones are not filled in the saved file says to refill zones before trusting it.
+- On a KiCad 5 board the project file's net classes and design rules are no longer reported as the rules in use.
+- A custom rule naming a layer by its other KiCad name (`F.Silkscreen` / `F.SilkS`) applies.
+- A `.kicad_dru` rule with two `layer` items is refused as KiCad refuses it, the deprecated `hole` and `mechanical_*` constraint names are read as their current names, and a bound written with a decimal comma is evaluated.
 
 ### Documentation
 

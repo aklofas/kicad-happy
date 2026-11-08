@@ -831,6 +831,9 @@ _DRU_CONSTRAINT_TYPES = frozenset((
     'via_count', 'diff_pair_gap', 'diff_pair_uncoupled', 'physical_clearance',
     'physical_hole_clearance', 'bridged_mask',
     'hole', 'mechanical_clearance', 'mechanical_hole_clearance'))
+# Deprecated constraint names KiCad still reads (drc_rule_parser.cpp parseConstraint).
+_DRU_CONSTRAINT_ALIASES = {'hole': 'hole_size', 'mechanical_clearance': 'physical_clearance',
+                           'mechanical_hole_clearance': 'physical_hole_clearance'}
 _DRU_RULE_ITEMS = frozenset(('constraint', 'condition', 'layer', 'severity'))
 _DRU_BOUND_ITEMS = frozenset(('min', 'max', 'opt', 'within_diff_pairs'))
 # Constraint types that take bare argument tokens instead of bounds.
@@ -875,6 +878,7 @@ def _dru_parse_error(tree: list, layer_names: frozenset[str] | None = None) -> s
             if len(form) < 2 or not isinstance(form[1], str):
                 return "Missing rule name."
             constraint_types = set()
+            has_layer = False
             for item in form[2:]:
                 if not isinstance(item, list):
                     continue
@@ -901,6 +905,10 @@ def _dru_parse_error(tree: list, layer_names: frozenset[str] | None = None) -> s
                     if ctype not in _DRU_ARGUMENT_CONSTRAINTS and (
                             bound_error := _dru_bound_error(item)):
                         return bound_error
+                if item[0] == 'layer':
+                    if has_layer:
+                        return "'layer' keyword already present."
+                    has_layer = True
                 if item[0] == 'layer' and len(item) > 1:
                     if not isinstance(item[1], str) or (
                             layer_names is not None
@@ -985,16 +993,18 @@ def load_kicad_dru_checked(file_path: str, *, layer_names: Iterable[str] | None 
         for c in find_all(r, 'constraint'):
             if len(c) < 2:
                 continue
-            ctype = c[1]
+            ctype = _DRU_CONSTRAINT_ALIASES.get(c[1], c[1]) if isinstance(c[1], str) else c[1]
             entry: dict = {'type': ctype}
             for key in ('min', 'max', 'opt'):
                 node = find_first(c, key)
                 if node is None or len(node) < 2:
                     continue
                 text = _dru_bound_text(node)
-                value = parse_dru_length(text)
+                # KiCad reads a comma between digits as the decimal point ('0,1mm')
+                number = re.sub(r'(?<=\d),(?=\d)', '.', text)
+                value = parse_dru_length(number)
                 if value is None and isinstance(ctype, str) and ctype not in _DRU_UNITLESS_CONSTRAINTS:
-                    kind, mm = _dru_eval(text)
+                    kind, mm = _dru_eval(number)
                     value = mm if kind == 'length' else None
                 entry[key] = value if value is not None else text
             constraints.append(entry)

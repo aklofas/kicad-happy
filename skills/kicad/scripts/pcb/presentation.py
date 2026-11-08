@@ -161,6 +161,28 @@ def _routing_from_graph(connectivity: dict, graph: dict, *,
     return out
 
 
+# KiCad 6 renamed these layers; a rule may name a layer by either form (LSET::Name, LayerName)
+_LEGACY_LAYER_NAMES = {"F.SilkS": "F.Silkscreen", "B.SilkS": "B.Silkscreen",
+                       "F.Adhes": "F.Adhesive", "B.Adhes": "B.Adhesive",
+                       "F.CrtYd": "F.Courtyard", "B.CrtYd": "B.Courtyard",
+                       "Dwgs.User": "User.Drawings", "Cmts.User": "User.Comments",
+                       "Eco1.User": "User.Eco1", "Eco2.User": "User.Eco2"}
+_STANDARD_LAYER_NAMES = {v: k for k, v in _LEGACY_LAYER_NAMES.items()}
+
+
+def _rule_layer_names(layers: list[dict] | None) -> list[str]:
+    """Every name a custom rule's (layer ...) can use for the board's layers: the file name,
+    the user name and the other KiCad name of a renamed layer."""
+    names: list[str] = []
+    for layer in layers or []:
+        name = layer.get("name")
+        for n in (name, layer.get("alias"), _LEGACY_LAYER_NAMES.get(name),
+                  _STANDARD_LAYER_NAMES.get(name)):
+            if n and n not in names:
+                names.append(n)
+    return names
+
+
 def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: bool,
                     include_trace_segments: bool, schematic_data: dict | None,
                     resolved_power_rails: set[str] | None,
@@ -168,10 +190,10 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
     """Phase 4: build the PCB analyzer result dict (stable output key order).
 
     Mutates nothing caller-owned except two late writes to the facts (it pops `unrouted`
-    out of `connectivity` and `_ignored_drc_checks` out of `project_settings`) and the
-    sections it pops back out of `result`; the late checks run in pcb.pipeline.run_checks
-    and only their result writes happen here. *board* is a pcb.pipeline.BoardData and
-    *analyses* a pcb.pipeline.PcbAnalyses.
+    out of `connectivity`, and `_ignored_drc_checks` and `_board_rules` out of
+    `project_settings`) and the sections it pops back out of `result`; the late checks run
+    in pcb.pipeline.run_checks and only their result writes happen here. *board* is a
+    pcb.pipeline.BoardData and *analyses* a pcb.pipeline.PcbAnalyses.
     """
     facts, checks = analyses.facts, analyses.checks
     diagnostics: list = list(board.diagnostics)
@@ -336,6 +358,7 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
     if net_classes:
         result["net_classes"] = net_classes
     ignored_checks = (project_settings or {}).pop('_ignored_drc_checks', frozenset())
+    board_rules = (project_settings or {}).pop('_board_rules', False)
     if project_settings:
         result["project_settings"] = project_settings
 
@@ -343,8 +366,9 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
     # has minima, so the schema-required key always carries a result.
     design_compliance = analyze_design_rule_compliance(
         tracks, vias, project_settings or {}, footprints=footprints,
-        minima=facts.board_minima, board_layers=[l["name"] for l in layers or []],
-        ignored_checks=ignored_checks, microvia_minima=facts.microvia_minima)
+        minima=facts.board_minima, board_layers=_rule_layer_names(layers),
+        ignored_checks=ignored_checks, microvia_minima=facts.microvia_minima,
+        board_rules=board_rules)
     result["design_rule_compliance"] = design_compliance or {}
 
     # Manufacturing and assembly analysis

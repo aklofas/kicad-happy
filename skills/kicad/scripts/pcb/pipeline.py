@@ -395,7 +395,12 @@ def run_facts(board: BoardData, *, include_trace_segments: bool, return_path_rad
             net_classes = pro_net_classes
         else:
             net_classes = extract_net_classes(root)
-        pro_rules = extract_pro_design_rules(pro)
+        # a KiCad 5 board keeps its own design settings and net classes (board.cpp SetProject):
+        # the project's are not reported as the rules in use
+        board_rules = has_legacy_design_settings(root)
+        if board_rules:
+            pro_net_classes = None
+        pro_rules = None if board_rules else extract_pro_design_rules(pro)
         pro_text_vars = extract_pro_text_variables(pro)
         # Name the file that was actually loaded above, not an
         # independent rescan.
@@ -409,6 +414,8 @@ def run_facts(board: BoardData, *, include_trace_segments: bool, return_path_rad
             project_settings['design_rules'] = pro_rules
         if pro_text_vars:
             project_settings['text_variables'] = pro_text_vars
+        if board_rules:
+            project_settings['_board_rules'] = True
     else:
         net_classes = extract_net_classes(root)
     board_minima = effective_board_minima(root, pro)
