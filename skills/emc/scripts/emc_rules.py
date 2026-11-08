@@ -1620,22 +1620,36 @@ def _reference_plane_layers(pcb: Dict) -> set:
     KiCad gives a new inner layer the type 'signal' whatever it carries, so an inner
     layer with ground or power zone fill is judged by that fill: a plane when the fill of
     its ground and power nets together covers at least _PLANE_MIN_FILL_FRACTION of the
-    board area (_plane_fill_board_area). An outer layer, or an inner layer with no such
-    fill, is a plane when KiCad types it 'power' or 'mixed' (a 'jumper' layer carries
-    wire jumpers, not a plane).
+    board area (_plane_fill_board_area). On a layer KiCad types 'power' or 'mixed' that
+    has such fill, a pour on any other named net adds to it: an island of a split plane
+    can carry a name KiCad made from a pad. An outer layer, or an inner layer with no
+    ground or power fill, is a plane when KiCad types it 'power' or 'mixed' (a 'jumper'
+    layer carries wire jumpers, not a plane).
     """
     fill: Dict[str, float] = {}
+    island: Dict[str, float] = {}
+    power_typed = {l.get('name') for l in pcb.get('layers') or []
+                   if l.get('type') in ('power', 'mixed')}
     for zone in pcb.get('zones') or []:
         if not isinstance(zone, dict) or zone.get('is_keepout'):
             continue
         net = zone.get('net_name') or ''
-        if not _is_power_or_ground(net):
+        if not net:
             continue
+        is_rail = _is_power_or_ground(net)
         for layer in zone.get('layers') or []:
             area = _zone_layer_area_mm2(zone, layer)
-            if area > 0:
+            if area <= 0:
+                continue
+            if is_rail:
                 fill[layer] = fill.get(layer, 0.0) + area
+            elif layer in power_typed:
+                island[layer] = island.get(layer, 0.0) + area
+    # island fill stays out of the board area, which never drops below the largest fill
     board = _plane_fill_board_area(pcb, fill)
+    for layer, area in island.items():
+        if layer in fill:
+            fill[layer] += area
     planes = set()
     for layer in pcb.get('layers') or []:
         name = layer.get('name') or ''

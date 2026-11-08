@@ -135,6 +135,37 @@ class LayerTypeFallback(unittest.TestCase):
         self.assertEqual(_rules(check_stackup(pcb)), [("SU-001", "info")])
 
 
+class SplitPlaneIslandsOnPowerLayers(unittest.TestCase):
+    """A split power plane can carry an island whose net KiCad named after a pad."""
+
+    ISLAND = "Net-(3V3_2-Pad1)"
+
+    def _pcb(self, in1_type):
+        pcb = _board(dict(FOUR, **{"In1.Cu": in1_type}),
+                     {"In1.Cu": ("+1V8", 0.15), "In2.Cu": ("GND", 0.9)})
+        pcb["zones"].append({"net_name": self.ISLAND, "layers": ["In1.Cu"],
+                             "filled_area_mm2": 0.15 * BOARD_AREA})
+        return pcb
+
+    def test_island_on_a_power_layer_adds_to_its_rail_fill(self):
+        pcb = self._pcb("power")
+        self.assertNotIn("SU-001", [f["rule_id"] for f in check_stackup(pcb)])
+        self.assertEqual(check_clock_routing(pcb), [])
+
+    def test_island_on_a_signal_layer_does_not_count(self):
+        pcb = self._pcb("signal")
+        self.assertIn(("SU-001", "error"), _rules(check_stackup(pcb)))
+        self.assertEqual(len(check_clock_routing(pcb)), 1)
+
+    def test_island_alone_is_not_rail_fill(self):
+        # A power layer with no rail fill goes by its KiCad type; the island does not
+        # turn it into a fill-judged layer that then falls short.
+        pcb = _board(dict(FOUR, **{"In1.Cu": "power"}), {"In2.Cu": ("GND", 0.9)})
+        pcb["zones"].append({"net_name": "Net-(U3-Pad4)", "layers": ["In1.Cu"],
+                             "filled_area_mm2": 0.05 * BOARD_AREA})
+        self.assertNotIn("SU-001", [f["rule_id"] for f in check_stackup(pcb)])
+
+
 def _square(x0, y0, side):
     pts = [(x0, y0), (x0 + side, y0), (x0 + side, y0 + side), (x0, y0 + side)]
     return [{"type": "line", "start": list(a), "end": list(b)}
@@ -155,6 +186,19 @@ class SeveralBoardsInOneFile(unittest.TestCase):
 
     def test_planes_on_one_of_two_boards_count(self):
         pcb = self._pcb(_square(0, 0, 40) + _square(60, 0, 40))
+        self.assertNotIn("SU-001", [f["rule_id"] for f in check_stackup(pcb)])
+        self.assertEqual(check_clock_routing(pcb), [])
+
+    def test_island_fill_does_not_raise_the_summed_board_area(self):
+        # Summed area 3,200 mm2 (bounding box 4,000). In1 holds 27 % of it. In2's rail and
+        # island fill (3,900 mm2) would lift the area to 3,900 and drop In1 below 25 %.
+        pcb = _board(dict(FOUR, **{"In2.Cu": "power"}), {"In1.Cu": ("GND", 0.0), "In2.Cu": ("+3V3", 0.0)})
+        pcb["statistics"]["board_area_mm2"] = 4000.0
+        pcb["zones"][0]["filled_area_mm2"] = 0.27 * 3200
+        pcb["zones"][1]["filled_area_mm2"] = 900.0
+        pcb["zones"].append({"net_name": "Net-(3V3_2-Pad1)", "layers": ["In2.Cu"],
+                             "filled_area_mm2": 3000.0})
+        pcb["board_outline"] = {"edges": _square(0, 0, 40) + _square(60, 0, 40)}
         self.assertNotIn("SU-001", [f["rule_id"] for f in check_stackup(pcb)])
         self.assertEqual(check_clock_routing(pcb), [])
 

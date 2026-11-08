@@ -169,6 +169,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - KiCad 5 job files (`-job.gbj`, the Gerber-attribute form, and JSON with a trailing comma) are read.
 - Nightly KiCad 8.99/9.99 job files with the 9.0.0-9.0.4 inner-layer numbering are corrected.
 - DC-002 no longer asks for decoupling on connectors, test points, crystals or motors with a U/IC reference.
+- On a power or mixed inner layer that carries ground or power fill, pours on other named nets (such as a split-plane island KiCad named after a pad, `Net-(3V3_2-Pad1)`) count toward its plane fill, so SU-001, SU-002, CK-001 and DP-004 see the plane.
 
 ### Documentation
 
