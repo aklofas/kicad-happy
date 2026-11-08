@@ -8,8 +8,8 @@ from kicad_types import build_analysis_context  # noqa: E402
 from signal_detectors import audit_rail_sources, detect_power_regulators  # noqa: E402
 
 
-def _regulators(value, lib_id, pins):
-    comp = {"reference": "U1", "lib_id": lib_id, "value": value, "type": "ic",
+def _regulators(value, lib_id, pins, description=""):
+    comp = {"reference": "U1", "lib_id": lib_id, "value": value, "type": "ic", "description": description,
             "pins": [{"number": n, "name": name} for n, (name, _) in pins.items()]}
     nets = {}
     for num, (name, net) in pins.items():
@@ -38,6 +38,32 @@ class LoadSwitchesAreNotRegulators(unittest.TestCase):
         for value in ("BQ25170", "BQ24074"):
             regs = _regulators(value, "Battery_Management:" + value, pins)
             self.assertEqual([r["ref"] for r in regs], ["U1"], value)
+
+
+_BUCK_PINS = {"1": ("VIN", "+5V"), "2": ("EN", "+3V3"), "3": ("SW", "SW"), "4": ("SNS", "+3V3"),
+              "5": ("GND", "GND")}
+
+
+class LoadSwitchWordsInDescription(unittest.TestCase):
+    def _refs(self, description):
+        return [r["ref"] for r in _regulators("XYZ2305", "Custom:XYZ2305", _BUCK_PINS, description)]
+
+    def test_a_buck_describing_light_load_switching_is_a_regulator(self):
+        self.assertEqual(self._refs("4MHz PWM Buck Regulator with HyperLight Load Switching Scheme, "
+                                    "3.3V Fixed Output Voltage"), ["U1"])
+
+    def test_a_part_described_as_a_load_or_power_switch_is_not(self):
+        for description in ("Current-limited load switch", "USB Power Switches",
+                            "Single-channel power distribution switch"):
+            self.assertEqual(self._refs(description), [], description)
+
+    def test_names_load_switch_matches_whole_words(self):
+        from kicad_core.parts import names_load_switch
+        self.assertTrue(names_load_switch("Power Distribution Switch, 2 channel"))
+        self.assertTrue(names_load_switch("dual LOAD SWITCHES"))
+        self.assertFalse(names_load_switch("HyperLight Load Switching Scheme"))
+        self.assertFalse(names_load_switch("overload switch"))
+        self.assertFalse(names_load_switch(""))
 
 
 def _switch_sources(value, vin_pin_type, vin_net="+5V"):

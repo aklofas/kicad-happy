@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from kicad_core.parts import (
     _LOAD_TYPE_KEYWORDS,
     LOAD_SWITCH_KEYWORDS,
+    names_load_switch,
     lookup_regulator_vref as _lookup_regulator_vref,
     lookup_switching_freq,
     default_switching_freq,
@@ -1837,7 +1838,7 @@ def _screen_regulator_candidate(ctx: AnalysisContext, ic: dict) -> _RegulatorCan
     if any(k in lib_val_lower for k in _power_mux_exclude + LOAD_SWITCH_KEYWORDS):
         return None
     # Exclude components with load/power switch descriptions
-    if any(k in desc_lower for k in ("load switch", "power switch", "power distribution switch")):
+    if names_load_switch(desc_lower):
         return None
 
     # Exclude op-amps, instrumentation amps, and ADCs with FB-like pins

@@ -16,6 +16,14 @@ LOAD_SWITCH_KEYWORDS = (
     "mic205", "mic209",
 )
 
+# "load switching" (a buck's light-load mode) does not name a load switch.
+_LOAD_SWITCH_WORDS = re.compile(r"\b(?:load|power|power distribution) switch(?:es)?\b", re.I)
+
+
+def names_load_switch(text: str) -> bool:
+    """True when *text* calls the part a load, power or power-distribution switch."""
+    return bool(_LOAD_SWITCH_WORDS.search(text or ""))
+
 
 # Regulator Vref lookup table — maps part number prefixes to their internal
 # reference voltage.  Used by the feedback divider Vout estimator instead of

@@ -146,6 +146,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - AM-001 checks a pin's own absolute maximum even when the datasheet gives no limit for its power domain.
 - PR comments escape analyzer text that starts with `1.` or `1)`, so it no longer renders as a numbered list.
 - The DigiKey sync's closing hint names the extraction cache file `<sanitized_mpn>.json`.
+- A buck whose description mentions light-load switching (MIC2305x) is detected as a regulator again; a part is treated as a load switch only when its description says load switch, power switch or power distribution switch as whole words.
 
 ### Documentation
 
