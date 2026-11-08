@@ -1,6 +1,7 @@
 """Thermal reads the keys the analyzers write and does not invent shunt currents."""
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -9,9 +10,11 @@ from tools.tests._fixtures import fixture
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "skills" / "kicad" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
+sys.path.insert(0, str(ROOT / "skills" / "datasheets" / "scripts"))
 
 import analyze_thermal as at  # noqa: E402
 import cross_verify as cv  # noqa: E402
+from datasheet_extract_cache import cache_extraction  # noqa: E402
 from finding_schema import make_finding  # noqa: E402
 
 
@@ -44,6 +47,57 @@ class Packages(unittest.TestCase):
         for name, theta in table.items():
             with self.subTest(name=name):
                 self.assertEqual(at._classify_package("Package_SO:" + name)[1], theta)
+
+    def test_sot_names_without_a_hyphen(self):
+        for name, theta in (("SOT23-5", 250), ("SOT-23-5", 250), ("SOT223", 60),
+                            ("SOT-223-3_TabPin2", 60),
+                            ("SOT23_Transistor_RevA_03Aug2010", 250),
+                            ("SOT23_Diode_Handsoldering_RevA_03Aug2010", 250)):
+            with self.subTest(name=name):
+                self.assertEqual(at._classify_package("Lib:" + name)[1], theta)
+
+    def test_ipc_sot223_body_is_not_a_sot23(self):
+        # SOT230P696X180-4N is the IPC-7351 name of a SOT-223 body, not a SOT-23.
+        self.assertEqual(at._classify_package("Package_TO_SOT_SMD:SOT230P696X180-4N")[0], "unknown")
+
+
+V13_THERMAL = {"absolute_maximum_ratings": {"junction_temp_max_c": 150},
+               "recommended_operating_conditions": {"temp_max_c": 125}}
+FOUND = {"tj_max_c": 150.0, "temp_max_c": 125.0}
+
+
+class DatasheetThermalLookup(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.ex = Path(self._tmp.name) / "datasheets" / "extracted"
+        self.ex.mkdir(parents=True)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _write(self, name, data):
+        (self.ex / name).write_text(json.dumps(data), encoding="utf-8")
+
+    def test_extraction_saved_by_the_cache_manager_is_found(self):
+        # The cache manager names the file after a hashed key (LM1117_3_3_<md5>.json).
+        cache_extraction(self.ex, "LM1117-3.3",
+                         dict(V13_THERMAL, extraction_metadata={"extraction_score": 8.0}))
+        self.assertFalse((self.ex / "LM1117-3.3.json").exists())
+        self.assertEqual(at._get_datasheet_thermal("LM1117-3.3", str(self.ex)), FOUND)
+
+    def test_v14_quality_score_below_60_is_rejected(self):
+        for quality, expected in ((55, {}), (80, FOUND)):
+            with self.subTest(quality=quality):
+                self._write("XA100.json", dict(V13_THERMAL, extraction={"quality_score": quality},
+                                               meta={"extraction_score": 9.0}))
+                self.assertEqual(at._get_datasheet_thermal("XA100", str(self.ex)), expected)
+
+    def test_v13_score_gate_and_no_score(self):
+        for meta, expected in (({"extraction_score": 6.0}, FOUND), ({"extraction_score": 5.9}, {}),
+                               ({"extraction_score": float("nan")}, {}), ({}, {})):
+            with self.subTest(meta=meta):
+                self._write("XA100.json", dict(V13_THERMAL, extraction_metadata=meta))
+                self.assertEqual(at._get_datasheet_thermal("XA100", str(self.ex)), expected)
 
 
 class TextReport(unittest.TestCase):

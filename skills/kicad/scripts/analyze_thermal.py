@@ -35,7 +35,8 @@ from kicad_core.cli import (add_config_arg, add_only_deterministic_arg, add_outp
                             utf8_text_stdout)
 from lookup_detectors import detect_tj_exceeds_max
 from kicad_core.project import extraction_project_dir
-from datasheet_types.cache_reader import read_json_object, safe_extract_dir
+from datasheet_types.cache_reader import safe_extract_dir
+from datasheet_types.trust_gating import finite_score
 
 ANALYZER_SOURCE = "thermal"
 
@@ -75,9 +76,9 @@ PACKAGE_THERMAL_RESISTANCE = [
     (r"TO-252|DPAK", 40.0),
     (r"TO-220", 25.0),
     (r"TO-92", 200.0),
-    (r"SOT-223", 60.0),
+    (r"SOT-?223(?!\d)", 60.0),
     (r"SOT-89", 100.0),
-    (r"SOT-23", 250.0),  # SOT-23-3, SOT-23-5, SOT-23-6
+    (r"SOT-?23(?!\d)", 250.0),  # SOT-23-3, SOT-23-5, SOT23-5; not the IPC SOT230P... (a SOT-223)
     (r"SOT-363|SC-70", 300.0),
     # QFN/DFN — size matters
     (r"(?:QFN|DFN).*7[xX×]7", 20.0),
@@ -151,31 +152,42 @@ def _classify_package(library_str: str) -> tuple:
 # Datasheet thermal data lookup
 # ---------------------------------------------------------------------------
 
-def _sanitize_mpn(mpn: str) -> str:
-    """Sanitize MPN for filesystem lookup."""
-    return re.sub(r'[^\w\-.]', '_', mpn.strip())
+def _extraction_trusted(data: dict) -> bool:
+    """The datasheet readers' trust gate: a v1.4 ``extraction.quality_score`` of at least
+    60, else a v1.3 ``extraction_metadata`` (or hand-made ``meta``) ``extraction_score``
+    of at least 6.0. An extraction with no usable score is not trusted."""
+    block = data.get("extraction")
+    v14 = block.get("quality_score") if isinstance(block, dict) else None
+    if isinstance(v14, (int, float)):
+        score = finite_score(v14)
+        return score is not None and score >= 60
+    for name in ("extraction_metadata", "meta"):
+        meta = data.get(name)
+        v13 = meta.get("extraction_score") if isinstance(meta, dict) else None
+        if isinstance(v13, (int, float)):
+            score = finite_score(v13)
+            return score is not None and score >= 6.0
+    return False
 
 
 def _get_datasheet_thermal(mpn: str, extract_dir: str) -> dict:
     """Look up thermal data from datasheet extraction cache.
 
-    Returns dict with optional keys: tj_max_c, temp_max_c.
-    Rejects extractions with quality score < 6.0 (matches the trust
-    gate used by datasheet_verify.py and spice_spec_fetcher.py).
+    Finds the extraction as the other datasheet readers do (find_extraction: the
+    manifest, then the files named after the part), taking the v1.3 entry whose
+    fields this reads. Returns dict with optional keys: tj_max_c, temp_max_c.
+    Rejects extractions below the trust gate (_extraction_trusted).
     """
     if not mpn or not extract_dir:
         return {}
 
-    safe = _sanitize_mpn(mpn)
-    data = read_json_object(os.path.join(extract_dir, f"{safe}.json"))
-    if data is None:
-        return {}
-
-    # Trust gate: reject low-quality extractions (matches
-    # datasheet_verify.py and spice_spec_fetcher.py threshold)
-    meta = data.get("meta", {})
-    score = meta.get("extraction_score", 0) if isinstance(meta, dict) else None
-    if not isinstance(score, (int, float)) or isinstance(score, bool) or score < 6.0:
+    ds_scripts = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                               "..", "..", "datasheets", "scripts"))
+    if ds_scripts not in sys.path:
+        sys.path.insert(0, ds_scripts)
+    from datasheet_extract_cache import find_extraction
+    data = find_extraction(extract_dir, mpn, v14_first=False)[0]
+    if not isinstance(data, dict) or not _extraction_trusted(data):
         return {}
 
     result = {}
