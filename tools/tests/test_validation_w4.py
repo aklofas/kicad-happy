@@ -315,6 +315,55 @@ class LoadSwitchEnable(unittest.TestCase):
         self.assertEqual(f["severity"], "error")
 
 
+def _gpio_into_en(value, description="", en_pin="EN"):
+    """A 3.3 V MCU output drives *en_pin* of U2 (*value*, supplied from +5V)."""
+    comps = [ic("U1", "MCU3V3"), dict(ic("U2", value), description=description)]
+    nets = {"+3V3": [("U1", "1", "VDD", "power_in")], "+5V": [("U2", "1", "VIN", "power_in")],
+            "GND": [("U1", "2", "GND", "power_in"), ("U2", "2", "GND", "power_in")],
+            "SIG": [("U1", "3", "PA0", "output"), ("U2", "3", en_pin, "input")]}
+    return vm001(ctx_of(comps, nets, {"+5V", "+3V3", "GND"}))
+
+
+class LoadSwitchFamilyEnable(unittest.TestCase):
+    # SiP32510 and similar load switches: EN is a logic input rated independently of VIN.
+    def test_gpio_into_a_sip32510_enable_is_silent(self):
+        self.assertEqual(_gpio_into_en("SIP32510DT-T1-GE3"), [])
+
+    def test_gpio_into_a_part_described_as_a_load_switch_is_silent(self):
+        for description in ("Current-limited load switch", "USB power distribution switch"):
+            self.assertEqual(_gpio_into_en("XYZ123", description), [], description)
+
+    def test_gpio_into_an_mcu_enable_is_still_checked(self):
+        (f,) = _gpio_into_en("MCU5V")
+        self.assertEqual(f["severity"], "error")
+
+    def test_a_buck_describing_light_load_switching_is_not_a_load_switch(self):
+        (f,) = _gpio_into_en("XYZ2305", "Buck Regulator with HyperLight Load Switching Scheme")
+        self.assertEqual(f["severity"], "error")
+
+
+class OnePartNet(unittest.TestCase):
+    # MC34063A: the switch and driver collectors (open-collector) tie to the part's own Ipk
+    # sense input, pulled to +5V through the sense resistor.
+    def _net(self, with_reader):
+        comps = [ic("U1", "MC34063AP"), ic("U2", "MCU3V3"), res("R1", "1")]
+        nets = {"+3V3": [("U1", "6", "VCC", "power_in"), ("U2", "1", "VDD", "power_in")],
+                "+5V": [("R1", "2", "~", "passive")],
+                "GND": [("U1", "4", "GND", "power_in"), ("U2", "2", "GND", "power_in")],
+                "SW": [("U1", "1", "SwC", "open_collector"), ("U1", "8", "DC", "open_collector"),
+                       ("U1", "7", "Ipk", "input"), ("R1", "1", "~", "passive")]}
+        if with_reader:
+            nets["SW"].append(("U2", "3", "PB0", "input"))
+        return vm001(ctx_of(comps, nets, {"+5V", "+3V3", "GND"}))
+
+    def test_one_parts_own_pins_are_not_a_domain_crossing(self):
+        self.assertEqual(self._net(with_reader=False), [])
+
+    def test_a_second_part_on_the_net_is_still_checked(self):
+        (f,) = self._net(with_reader=True)
+        self.assertEqual(f["components"], ["U1", "U2"])
+
+
 class SupplyPinEndpoints(unittest.TestCase):
     def test_regulator_cascade_net_is_silent(self):
         # L7809 OUT feeds L7805 IN: the net between them is a rail, not a logic level.

@@ -15,7 +15,7 @@ import re
 
 from kicad_types import AnalysisContext
 from kicad_core.netnames import is_usb_data_net_name, is_usb_signal_net_name, parse_voltage_from_net_name
-from kicad_core.parts import LOAD_SWITCH_KEYWORDS
+from kicad_core.parts import LOAD_SWITCH_KEYWORDS, names_load_switch
 
 try:
     import os as _os, sys as _sys
@@ -523,11 +523,15 @@ def _closest_threshold(voltage: float) -> tuple:
 # (the pull-up, not the regulator's supply, sets the power-good level).
 _EN_PIN_PATTERNS = ('EN', 'ENABLE', 'CE', 'SHDN', 'NSHDN', 'ON', 'ON_OFF', 'RUN')
 _PG_PIN_PATTERNS = ('PG', 'PGOOD', 'PWRGD', 'NPG')
+# Load-switch families whose symbols often carry no description (Vishay SiP32xxx, TI TPS205x,
+# Diodes AP2280x / AP2261x / AP2265x / AP255x, Microchip MIC20xx, onsemi FPFxxxx).
+_LOAD_SWITCH_FAMILIES = ('sip32', 'tps205', 'ap2280', 'ap2261', 'ap2265', 'ap255', 'mic20', 'fpf')
 
 
 def _is_regulator_like(ctx: AnalysisContext, ref: str) -> bool:
     """A regulator-family part by its value or MPN, or typed power_regulator. A load switch
-    counts too: its enable is a logic input rated independently of its VIN."""
+    counts too (by family or by its text): its enable is a logic input rated independently
+    of its VIN."""
     comp = ctx.comp_lookup.get(ref, {})
     val_mpn = ((comp.get('mpn') or '') + ' ' + (comp.get('value') or '')).upper()
     if comp.get('type') == 'power_regulator' or any(pfx in val_mpn for pfx in (
@@ -536,7 +540,8 @@ def _is_regulator_like(ctx: AnalysisContext, ref: str) -> bool:
             'LDO', 'BOOST', 'BUCK', 'REG')):
         return True
     text = (val_mpn + ' ' + (comp.get('lib_id') or '')).lower()
-    return any(k in text for k in LOAD_SWITCH_KEYWORDS)
+    return (any(k in text for k in LOAD_SWITCH_KEYWORDS + _LOAD_SWITCH_FAMILIES)
+            or names_load_switch(text + ' ' + (comp.get('description') or '')))
 
 
 def _en_endpoint_compatible(ctx: AnalysisContext, p: dict, net_name: str, v_min: float) -> bool:
@@ -684,7 +689,9 @@ def validate_voltage_levels(ctx: AnalysisContext, level_shifters: list[dict] | N
                 else:
                     q['voltage'] = v_pu
 
-        if len(ic_pins_on_net) < 2:
+        # One part's own pins are not a domain crossing (MC34063 switch collectors tied to
+        # its current-sense input).
+        if len({p['ref'] for p in ic_pins_on_net}) < 2:
             continue
 
         voltages = set(p['voltage'] for p in ic_pins_on_net)
@@ -701,7 +708,7 @@ def validate_voltage_levels(ctx: AnalysisContext, level_shifters: list[dict] | N
         if en_ok:
             ic_pins_on_net = [p for p in ic_pins_on_net if p not in en_ok]
             voltages = set(p['voltage'] for p in ic_pins_on_net)
-            if len(ic_pins_on_net) < 2 or len(voltages) <= 1:
+            if len({p['ref'] for p in ic_pins_on_net}) < 2 or len(voltages) <= 1:
                 continue
             v_max = max(voltages)
             v_min = min(voltages)

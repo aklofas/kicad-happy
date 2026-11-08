@@ -147,6 +147,8 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - PR comments escape analyzer text that starts with `1.` or `1)`, so it no longer renders as a numbered list.
 - The DigiKey sync's closing hint names the extraction cache file `<sanitized_mpn>.json`.
 - A buck whose description mentions light-load switching (MIC2305x) is detected as a regulator again; a part is treated as a load switch only when its description says load switch, power switch or power distribution switch as whole words.
+- VM-001 no longer reports a domain crossing on a net that only one part's pins share (an MC34063's switch collectors tied to its own current-sense input).
+- VM-001 and the cross-domain signal list treat the enable of a load switch as a logic input when its description says load, power or power-distribution switch, or its part number is a SiP32, TPS205x, AP2280x, AP2261x, AP2265x, AP255x, MIC20xx or FPF part.
 
 ### Documentation
 

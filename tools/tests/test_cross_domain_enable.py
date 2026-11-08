@@ -20,7 +20,10 @@ _PARTS = {
     "MCU5": ("ATMEGA328P", "+5V"),
     "BUCK": ("TPS62824", "+5V"),
     "LDO": ("AMS1117-3.3", "+3V3"),
+    "SIP32": ("SIP32510DT-T1-GE3", "+5V"),
+    "DESC_SW": ("XYZ123", "+5V"),
 }
+_DESCRIPTIONS = {"DESC_SW": "Current-limited load switch"}
 
 
 def _signals(signal_pins):
@@ -29,7 +32,7 @@ def _signals(signal_pins):
     for ref, key, _ in signal_pins:
         value, rail = _PARTS[key]
         comps.append({"reference": ref, "type": "ic", "value": value, "lib_id": "",
-                      "pins": [], "footprint": ""})
+                      "pins": [], "footprint": "", "description": _DESCRIPTIONS.get(key, "")})
         nets[rail].append((ref, "1", "VIN", "power_in"))
         nets["GND"].append((ref, "2", "GND", "power_in"))
         domains[ref] = {"value": value, "power_rails": [rail], "io_rails": None}
@@ -58,6 +61,13 @@ class CrossDomainRegulatorEnable(unittest.TestCase):
     def test_other_ics_on_an_enable_net_still_pair_up(self):
         self.assertTrue(_signals([("U1", "MCU33", "PA0"), ("U2", "BUCK", "EN"),
                                   ("U4", "MCU5", "PD2")]))
+
+    def test_gpio_into_a_load_switch_enable_needs_no_shifter(self):
+        self.assertFalse(_signals([("U1", "MCU33", "PA0"), ("U2", "SIP32", "EN")]))
+        self.assertFalse(_signals([("U1", "MCU33", "PA0"), ("U2", "DESC_SW", "EN")]))
+
+    def test_gpio_into_an_mcu_enable_across_domains_needs_a_shifter(self):
+        self.assertTrue(_signals([("U1", "MCU33", "PA0"), ("U4", "MCU5", "EN")]))
 
     def test_regulator_signal_pin_that_is_not_enable_still_counts(self):
         self.assertTrue(_signals([("U1", "MCU33", "PA0"), ("U2", "BUCK", "MODE")]))
