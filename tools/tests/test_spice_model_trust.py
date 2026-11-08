@@ -110,6 +110,14 @@ class ModelTrustTest(_CacheCase):
         self.assertEqual(subckt, CONTROL)
         self.assertEqual(sink, [])
 
+    def test_trusted_model_loses_its_trailing_end(self):
+        # trust skips the content check, not the strip: a pasted '.end' ends the bench early
+        self.plant(CONTROL + ".end\n")
+        (subckt, source, _), sink = self.resolve(trust=True)
+        self.assertEqual(source, "cache:LM358")
+        self.assertEqual(subckt, CONTROL)
+        self.assertEqual(sink, [])
+
     def test_poisoned_cached_specs_are_dropped(self):
         self.plant(CLEAN, specs={"gbw_hz": 1000000.0, "swing_v": "1\n.control",
                                  "rro": "yes", "vos_mv": 2})
@@ -262,6 +270,46 @@ class TrustFlagSourceTest(unittest.TestCase):
             Path(home, ".kicad-happy.json").write_text(cfg, encoding="utf-8")
             opts = self._main_options(home, proj)
             self.assertEqual(opts, ModelOptions(trust_project_models=True))
+
+
+@unittest.skipIf(os.name == "nt", "uses a POSIX shell script as the fake simulator")
+class TrustedModelBenchTest(unittest.TestCase):
+    def test_trusted_model_from_user_config_leaves_one_end_in_the_bench(self):
+        import stat, subprocess
+        det = {"detector": "detect_opamp_circuits", "reference": "U1", "value": "LM358",
+               "configuration": "inverting", "output_net": "OUT", "inverting_input_net": "INN",
+               "non_inverting_input_net": "REF", "gain": -10.0, "gain_dB": 20.0,
+               "feedback_resistor": {"ref": "R2", "ohms": 100e3},
+               "input_resistor": {"ref": "R1", "ohms": 10e3}}
+        with tempfile.TemporaryDirectory() as home, tempfile.TemporaryDirectory() as tmp:
+            Path(home, ".kicad-happy.json").write_text(
+                json.dumps({"spice": {"trust_project_models": True}}), encoding="utf-8")
+            models = Path(tmp, "cache", "spice", "models")
+            models.mkdir(parents=True)
+            (models / "LM358.sub").write_text(CLEAN + ".end\n", encoding="utf-8", newline="\n")
+            (models / "manifest.json").write_text(json.dumps({"LM358": {
+                "file": "LM358.sub", "mpn": "LM358", "type": "opamp", "source": "lookup",
+                "specs": {"gbw_hz": 1000000.0}}}), encoding="utf-8")
+            analysis = Path(tmp, "analysis.json")
+            analysis.write_text(json.dumps({"findings": [det]}), encoding="utf-8")
+            fake = Path(tmp, "ngspice")
+            fake.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            fake.chmod(fake.stat().st_mode | stat.S_IXUSR)
+            env = dict(os.environ, HOME=home, USERPROFILE=home, NGSPICE_PATH=str(fake))
+            out = Path(tmp, "report.json")
+            r = subprocess.run([sys.executable, str(SPICE / "simulate_subcircuits.py"), str(analysis),
+                                "--offline", "--types", "opamp_circuits", "--model-cache-dir",
+                                str(Path(tmp, "cache")), "--workdir", str(Path(tmp, "wd")), "-o", str(out)],
+                               capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            run_dir = json.loads(out.read_text(encoding="utf-8"))["workdir"]
+            cirs = [n for n in os.listdir(run_dir) if n.endswith(".cir")]
+            self.assertEqual(len(cirs), 1)
+            bench = Path(run_dir, cirs[0]).read_text(encoding="utf-8")
+        self.assertIn(".subckt OPAMP_LM358", bench)
+        ends = [ln for ln in bench.splitlines() if ln.strip().lower() == ".end"]
+        self.assertEqual(ends, [".end"])
+        self.assertEqual(bench.rstrip().splitlines()[-1], ".end")
 
 
 class SimulateKeepsTrustTest(unittest.TestCase):

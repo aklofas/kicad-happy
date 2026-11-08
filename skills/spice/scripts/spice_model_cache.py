@@ -426,9 +426,8 @@ def get_model_for_part(mpn, component_type=None, context=None, options=None, *, 
                 # The fallback model is used but never replaces the user's file
                 use_cache = False
         if cached_subckt and not problem:
-            if not opts.trust_project_models:
-                cached_subckt = model_for_bench(cached_subckt)
-            return cached_subckt, f"cache:{mpn}", cached_specs
+            # trusting a project model skips the content check, not the .end strip
+            return model_for_bench(cached_subckt), f"cache:{mpn}", cached_specs
 
     # --- Tier 1: Distributor API parametric specs ---
     if not opts.offline:

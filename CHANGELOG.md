@@ -177,6 +177,9 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Thermal finds a datasheet extraction the way the other datasheet readers do (the extraction manifest, then the files named after the part), so a junction or operating temperature limit saved by the extraction cache is used; an extraction below the trust gate (v1.4 quality score 60, else v1.3 score 6) or with no score is ignored.
 - SPICE op-amp benches measure the gain below a feedback capacitor's pole, read `(-)5V` and `_P`/`_N` split rails, report a bench whose output never moved as not measured, and use TL072/TL074's 4.5 V minimum supply.
 - SPICE transistor benches: PNP parts are swept in their own polarity and report VBE(on), P-channel thresholds report VGS (negative), and diode-connected transistors, and PNP or P-channel parts whose collector or drain is on ground, are skipped.
+- A failed SPICE simulation leaves a diagnostics record with the simulator's error.
+- With `spice.trust_project_models` set, a cached project model's trailing `.end` is dropped like an untrusted one's, so it no longer ends the SPICE bench early.
+- A regulator Value written as a label (`LDO1`, `BUCK5V`, `DCDC24V/5V NUM`) no longer stops the SPICE regulator bench from judging the divider against the symbol's reference voltage.
 
 ### Documentation
 

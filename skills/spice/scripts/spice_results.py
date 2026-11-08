@@ -9,7 +9,7 @@ pass/warn/fail/skip/info status for each simulation.
 import math
 
 import _core_path  # noqa: F401
-from kicad_core.parts import part_number_core, regulator_vref_key, vref_key_covers_part
+from kicad_core.parts import is_label_like_value, part_number_core, regulator_vref_key, vref_key_covers_part
 
 # Measurements taken with ngspice vp(), which returns radians. The other
 # backends' parsers pass their values through unconverted.
@@ -831,7 +831,7 @@ def evaluate_regulator_feedback(det, sim_results):
     lib_part = (det.get("lib_id") or "").split(":")[-1].upper()
     # the key came from the symbol name while the value names a part of its own
     symbol_only = bool(vref_match and lib_part and vref_match[1] == lib_part and vref_match[1] != value
-                       and part_number_core(value)
+                       and part_number_core(value) and not is_label_like_value(value)
                        and part_number_core(value) != part_number_core(lib_part))
     if vref_source not in ("lookup", "datasheet") or not vref:
         why = "Vref is not from the part"

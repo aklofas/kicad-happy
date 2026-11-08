@@ -1,5 +1,5 @@
 """SPICE testbenches are written as UTF-8 whatever the locale, and a simulator run that fails
-is a skip with exit code 0 and no diagnostics record."""
+is a skip with exit code 0 and one diagnostics record carrying the simulator's first error lines."""
 import json, os, stat, subprocess, sys, tempfile, unittest
 from pathlib import Path
 
@@ -56,15 +56,33 @@ class SpiceFailureTest(unittest.TestCase):
             with open(os.path.join(run_dir, cirs[0]), encoding="utf-8") as f:
                 self.assertIn(VALUE, f.read())
 
-    def test_failed_run_is_a_skip_without_a_diagnostic(self):
+    def _failed(self, body):
         with tempfile.TemporaryDirectory() as tmp:
-            r, report, _ = _simulate(tmp, 'echo "fatal: boom" >&2\nexit 3\n')
+            r, report, _ = _simulate(tmp, body)
+            cirs = sorted(n for n in os.listdir(report["workdir"]) if n.endswith(".cir"))
+            self.assertNotIn(tmp, json.dumps(report["diagnostics"]))
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual([x["status"] for x in report["simulation_results"]], ["skip"])
         self.assertEqual(report["simulation_results"][0]["note"], "Simulation failed")
-        self.assertEqual([d for d in report["diagnostics"]
-                          if d["source"] == "simulate_subcircuits.run"], [])
-        self.assertNotIn("fatal: boom", r.stderr)
+        runs = [d for d in report["diagnostics"] if d["source"] == "simulate_subcircuits.run"]
+        self.assertEqual(len(cirs), 1)
+        return runs, cirs[0]
+
+    def test_failed_run_is_a_skip_with_the_simulators_error(self):
+        runs, cir = self._failed('echo "fatal: boom" >&2\nexit 3\n')
+        self.assertEqual(runs, [{"source": "simulate_subcircuits.run", "exception": "RuntimeError",
+                                 "message": f"{cir}: fatal: boom", "effect": "simulation skipped"}])
+
+    def test_failed_run_keeps_the_first_three_error_lines(self):
+        # the first line alone ("Error on line 8 or its substitute:") does not say what failed
+        runs, cir = self._failed('printf "Error on line 8:\\n\\n  r_esr_c1 a b 10m\\n'
+                                 'device already exists\\nfourth\\n" >&2\nexit 1\n')
+        self.assertEqual([d["message"] for d in runs],
+                         [f"{cir}: Error on line 8: r_esr_c1 a b 10m device already exists"])
+
+    def test_failed_run_without_stderr_still_records(self):
+        runs, cir = self._failed("exit 2\n")
+        self.assertEqual([d["message"] for d in runs], [f"{cir}: simulator exited with an error"])
 
     def test_successful_run_records_nothing(self):
         with tempfile.TemporaryDirectory() as tmp:

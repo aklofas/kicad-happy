@@ -296,6 +296,23 @@ def part_number_core(part: str) -> str:
     return m.group(0) if m else ""
 
 
+# function words a designer writes in a Value field as a label ('LDO1', 'BUCK5V', 'U3V3')
+_LABEL_WORDS = ("LDO", "BUCK", "BOOST", "DCDC", "PSU", "SMPS", "U")
+
+
+def is_label_like_value(value: str) -> bool:
+    """True when a Value reads as a label rather than a part number: it holds a
+    space or '/' ('DCDC24V/5V NUM'), or its part-number core is a function word
+    plus digits ('LDO1', 'BUCK5V', 'U3V3'). 'TPS61023DRLR', 'LM338_TO220' -> False."""
+    v = (value or "").strip().upper()
+    if not v:
+        return False
+    if re.search(r"[\s/]", v):
+        return True
+    m = re.match(r"([A-Z]+)\d", part_number_core(v))
+    return bool(m) and m.group(1) in _LABEL_WORDS
+
+
 # A key that is itself a fixed-output part name (LD33 is a 3.3 V part) names no part's Vref.
 _FIXED_PART_KEYS = frozenset({"LD33"})
 

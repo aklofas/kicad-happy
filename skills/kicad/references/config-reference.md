@@ -262,7 +262,7 @@ Read only from `~/.kicad-happy.json`. A project or workspace `.kicad-happy.json`
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `trust_project_models` | bool | `false` | Paste a project's cached part models (`spice/models/*.sub`) into the netlist verbatim. Only the JSON value `true` turns it on. |
+| `trust_project_models` | bool | `false` | Paste a project's cached part models (`spice/models/*.sub`) into the netlist verbatim, apart from a trailing `.end` line, which is dropped. Only the JSON value `true` turns it on. |
 
 Without it, `simulate_subcircuits.py` uses a cached model only when its dot-cards are model-library cards (`.subckt`, `.ends`, `.model`, `.param`, `.func`, `.global`), plus a final `.end`, which is dropped. It skips a model with any other dot-card (a control block, an output, analysis or option card such as `.print`, `.tran` or `.option`, or an `.end` before the last line), a `shell` or `source` line, an include of any file (`.include`, `.inc`, `.lib`), or an XSPICE code model that reads a file (`file=`, `input_file=`, `state_file=`). The part falls back to the next model source (distributor data, the built-in table, or the ideal model) and the report's `diagnostics` gets one `project model skipped` record. The skipped file and its manifest entry are left as they are; the fallback model is not cached over them.
 
