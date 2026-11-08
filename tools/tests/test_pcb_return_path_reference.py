@@ -307,6 +307,19 @@ class SplitCrossingFinding(unittest.TestCase):
         self.assertEqual(len(out["reference_plane_changes"]), 1)
         self.assertEqual(split_findings(out), [])
 
+    def test_bridging_distance_counts_the_crossing_point(self):
+        # The split is crossed at (10, 10), between the samples x=8 and x=12. A cap at
+        # (10, 14.8) is 4.8 mm from the crossing and 5.2 mm from either sample.
+        out = analyze(renamed(board(SPLIT_3V3_5V + cap("C1", 10, 14.8)), "CLK"))
+        self.assertEqual(split_findings(out), [])
+
+    def test_connector_reference_on_a_capacitor_footprint_does_not_bridge(self):
+        # Only an X reference, which the classifier cannot place, falls back to the library.
+        for ref in ("J1", "P1"):
+            out = analyze(renamed(board(SPLIT_3V3_5V + cap(ref, 10, 13, lib="Capacitor_SMD:C_0603")),
+                                  "CLK"))
+            self.assertEqual(len(split_findings(out)), 1, ref)
+
     def test_description_names_every_reference_layer(self):
         out = analyze(renamed(board(SPLIT_3V3_5V), "CLK"))
         out["reference_plane_changes"].append(

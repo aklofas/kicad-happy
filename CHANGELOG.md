@@ -171,6 +171,8 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - DC-002 no longer asks for decoupling on connectors, test points, crystals or motors with a U/IC reference.
 - On a power or mixed inner layer that carries ground or power fill, pours on other named nets (such as a split-plane island KiCad named after a pad, `Net-(3V3_2-Pad1)`) count toward its plane fill, so SU-001, SU-002, CK-001 and DP-004 see the plane.
 - BE-001 (`--full`) measures a trace's distance to a polygon or curve board outline from the outline itself; it measured from the drawing origin.
+- A ground-plane split crossing (GP-001) counts a bridging capacitor near the crossing itself, not only near the two samples around it, and a J or P part on a capacitor footprint no longer counts as a bridging capacitor.
+- SPICE `--parasitics` trace resistance takes each segment's own layer copper thickness from the stackup, not the first copper layer's (35 µm outer / 70 µm inner: 24 mΩ, not 48 mΩ, on an inner trace).
 
 ### Documentation
 

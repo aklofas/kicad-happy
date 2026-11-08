@@ -157,6 +157,11 @@ def extract_parasitics(pcb_json, net_filter=None):
         if layer.get("type") == "copper" and layer.get("thickness"):
             copper_thickness = layer["thickness"]
             break
+    # a segment takes its own layer's thickness, else the first copper layer's
+    copper_by_layer = {}
+    for layer in stackup:
+        if layer.get("type") == "copper" and layer.get("thickness"):
+            copper_by_layer.setdefault(layer.get("name"), layer["thickness"])
     for layer in stackup:
         if layer.get("type") in ("core", "prepreg") and layer.get("epsilon_r"):
             dielectric_er = layer["epsilon_r"]
@@ -189,7 +194,8 @@ def extract_parasitics(pcb_json, net_filter=None):
         total_trace_r = 0.0
         segment_parasitics = []
         for seg in trace_segments:
-            r = trace_resistance(seg["length_mm"], seg["width_mm"], copper_thickness)
+            r = trace_resistance(seg["length_mm"], seg["width_mm"],
+                                 copper_by_layer.get(seg.get("layer"), copper_thickness))
             total_trace_r += r
             if r > 0:
                 segment_parasitics.append({

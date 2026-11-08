@@ -548,11 +548,11 @@ def _split_crossing_findings(pcb: Dict, touch: set) -> List[Dict]:
     Where the plane under a trace changes from one net to another (a split between,
     say, +3V3 and +5V), the return current has to cross the split through whatever
     couples the two nets, so the loop grows (Ott, EMC Engineering ch. 16). A crossing
-    with a capacitor joining the two plane nets within SPLIT_BRIDGE_CAP_MM of either
-    sample point bounding it is bridged and not reported. A capacitor is a part the
+    with a capacitor joining the two plane nets within SPLIT_BRIDGE_CAP_MM of the
+    crossing or of either sample point bounding it is bridged and not reported. A capacitor is a part the
     reference designator classifies as one, or a part on a capacitor footprint library
-    whose reference names no passive or active part (classified 'other', or
-    'connector', the classifier's fallback for an X reference); a ferrite, inductor or
+    whose reference names no passive or active part (classified 'other', or an X
+    reference, which the classifier types 'connector'); a J or P reference, ferrite, inductor or
     resistor on a capacitor footprint is not one. The high-speed test reads the net's own name, not its
     sheet path.
     """
@@ -562,7 +562,9 @@ def _split_crossing_findings(pcb: Dict, touch: set) -> List[Dict]:
         lib = fp.get('library') or ''
         kind = classify_component(fp.get('reference') or '', lib, fp.get('value') or '',
                                   footprint=fp.get('footprint') or '')
-        is_cap = kind == 'capacitor' or (kind in ('other', 'connector')
+        # the classifier types an X reference 'connector'; a J/P reference is one
+        x_ref = kind == 'connector' and (fp.get('reference') or '')[:1].upper() == 'X'
+        is_cap = kind == 'capacitor' or ((kind == 'other' or x_ref)
                                          and lib.lower().startswith('capacitor'))
         if (is_cap and not fp.get('dnp') and len(nets) == 2
                 and fp.get('x') is not None and fp.get('y') is not None):
@@ -571,8 +573,10 @@ def _split_crossing_findings(pcb: Dict, touch: set) -> List[Dict]:
     by_net: Dict[str, List[Dict]] = {}
     for ch in pcb.get('reference_plane_changes') or []:
         pair = {ch.get('net_a'), ch.get('net_b')}
-        points = ch.get('sample_points') or [[ch.get('x', 0), ch.get('y', 0)]]
-        if any(nets == pair and min(math.hypot(x - px, y - py) for px, py in points)
+        points = list(ch.get('sample_points') or [])
+        if ch.get('x') is not None and ch.get('y') is not None:
+            points.append([ch['x'], ch['y']])  # the crossing itself
+        if points and any(nets == pair and min(math.hypot(x - px, y - py) for px, py in points)
                <= SPLIT_BRIDGE_CAP_MM for nets, x, y in caps):
             continue
         by_net.setdefault(ch.get('net', ''), []).append(ch)
