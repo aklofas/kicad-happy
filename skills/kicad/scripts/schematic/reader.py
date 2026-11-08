@@ -1034,6 +1034,15 @@ def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
             comp["is_external_connector"] = is_ext
             comp["connector_layout"] = conn_layout
 
+        # More than one Value property: KiCad 10 keeps the last; the earlier texts it drops
+        # are kept for the property audit.  An instance or variant value that replaced it
+        # (KiCad 6 symbol_instances) decides what KiCad shows, so the duplicates do not matter.
+        value_texts = [mandatory_field(str(text), tilde_empty) for name, text in _iter_properties(sym)
+                       if str(name).casefold() == "value"]
+        dropped = [t for t in value_texts[:-1] if t != value_texts[-1]]
+        if dropped and comp["value"] == value_texts[-1]:
+            comp["_dropped_values"] = dropped
+
         if sym_def.get("_jumper_groups") or sym_def.get("_dup_pin_jumpers"):
             comp["_jumper_groups"] = (sym_def.get("_jumper_groups", []),
                                       sym_def.get("_dup_pin_jumpers", False))

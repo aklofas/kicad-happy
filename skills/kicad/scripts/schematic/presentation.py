@@ -54,6 +54,7 @@ def _annotate_pin_nets(all_components, nets):
         _comp.pop("_pin_alternates", None)
         _comp.pop("_unit_count", None)
         _comp.pop("_jumper_groups", None)
+        _comp.pop("_dropped_values", None)
 
 
 def _flatten_signal_findings(signal_analysis):

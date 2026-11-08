@@ -84,8 +84,9 @@ class Component(_ComponentRequired, total=False):
     legacy ``.sch`` reader) always set; everything else is optional. ``pins`` is stripped and
     ``category``/``parsed_value``/``pin_nets`` are added by result assembly; ``_sheet`` and
     ``instance_path`` (the board footprint path of the placed unit) are set by multi-sheet
-    assembly; ``_unit_pins`` (a set) and ``_body_style`` (the placed De Morgan body,
-    default 1) are popped before output."""
+    assembly; ``_unit_pins`` (a set), ``_body_style`` (the placed De Morgan body,
+    default 1) and ``_dropped_values`` (earlier Value texts a later duplicate replaced, for
+    the property audit) are popped before output."""
     lib_name: str
     pins: list[Pin]
     keywords: str
@@ -102,6 +103,7 @@ class Component(_ComponentRequired, total=False):
     _sheet: int
     _power_scope: str
     _pin_source: str
+    _dropped_values: list[str]
 
 
 PinNetEntry = tuple[str, Net]

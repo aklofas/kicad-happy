@@ -1102,6 +1102,23 @@ def audit_property_patterns(components: list[dict]) -> dict:
                 "message": f"{ref}: value '{val}' looks like a footprint, not a component value",
             })
 
+    # A symbol holding more than one Value property (Eagle imports write a hidden empty copy).
+    # One entry per reference (a multi-unit symbol is placed once per unit).
+    seen_dup = set()
+    for c in real:
+        ref = c["reference"]
+        if "_dropped_values" not in c or ref in seen_dup:
+            continue
+        seen_dup.add(ref)
+        shown = f"'{c['value']}'" if c.get("value") else "no value"
+        ignored = ", ".join(f"'{t}'" for t in c["_dropped_values"])
+        issues.append({
+            "component": ref,
+            "issue": "duplicate_value_field",
+            "message": (f"{ref}: the symbol has more than one Value field; KiCad 10 reads the last "
+                        f"and shows {shown}, ignoring {ignored}"),
+        })
+
     # Check for MPN/value inconsistency within same BOM group
     # (same value + footprint should have same MPN)
     bom_groups: dict[tuple, list] = {}
