@@ -213,8 +213,7 @@ Explicit design intent overrides. When absent, each field is **auto-detected** f
 2. PCB fab/user/comments layer text (looks for "IPC-6012 Class N", "IPC Class N", "IPC-6012EM/ES")
 3. PCB title block fields
 4. Schematic title block fields
-5. Inferred from `target_market` (medical/aerospace → Class 3)
-6. Default: Class 2
+5. Default: Class 2 (a medical or aerospace `target_market` adds a "Class 3 suggested" signal but does not set the class)
 
 ```jsonc
 "design_intent": {

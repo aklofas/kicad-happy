@@ -281,19 +281,20 @@ def resolve_design_intent(config: Dict[str, Any],
 
     source['target_market'] = market_source
 
-    # --- IPC class fallback from market (if not detected from text) ---
+    # --- IPC class suggested by the market (if not detected from text) ---
+    # Only a suggestion: DFM judges the class the config, fab notes or title block name, and
+    # ipc_class reports that same class.
     if ipc_source == 'auto':
         if target_market in ('aerospace',):
-            ipc_class = 3
             confidence = max(0, confidence - 0.1)
             signals.append(
-                f'IPC Class 3 inferred from {target_market} market')
+                f'IPC Class 3 suggested by {target_market} market (not applied; '
+                f'set design_intent.ipc_class to use it)')
         elif target_market == 'medical':
-            ipc_class = 3
             confidence = max(0, confidence - 0.15)
             signals.append(
-                'IPC Class 3 inferred from medical market '
-                '(not all medical is Class 3)')
+                'IPC Class 3 suggested by medical market (not all medical is Class 3; '
+                'not applied; set design_intent.ipc_class to use it)')
 
     # --- Resolve remaining fields from config or defaults ---
     defaults = {
