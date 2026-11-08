@@ -973,9 +973,11 @@ def analyze_fiducials(footprints: list[dict]) -> dict:
                 or _has_pad_property(fp, "pad_prop_fiducial_glob")):
             fiducials_by_side[side].append(ref)
 
-        # Count SMD components per side
+        # Count SMD components per side. A touch electrode footprint is copper, not a placed
+        # part; only the footprint decides, since a connector valued "Touch" is still placed.
         pads = fp.get("pads", [])
-        if any(p.get("type") == "smd" for p in pads):
+        if any(p.get("type") == "smd" for p in pads) and not is_touch_pad(
+                "", "", fp.get("library", "")):
             smd_by_side[side] = smd_by_side.get(side, 0) + 1
 
     findings: list[dict] = []
