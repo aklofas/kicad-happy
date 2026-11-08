@@ -98,6 +98,8 @@ def _json_job(version, layer_number, files, trailing_comma=False):
                             "BoardThickness": 1.6},
            "FilesAttributes": [{"Path": n, "FileFunction": ff, "FilePolarity": "Positive"}
                                for n, ff in files]}
+    if layer_number is None:
+        del job["GeneralSpecs"]["LayerNumber"]
     text = json.dumps(job, indent=2)
     if trailing_comma:
         text = text.replace('"Positive"\n    }', '"Positive",\n    }').replace("}\n  ]", "},\n  ]")
@@ -126,10 +128,10 @@ INNER_PRESENT = [(n, "Copper,L4,Bot" if n == "x-B_Cu.gbr" else ff) for n, ff in 
 
 
 class NightlyInnerNumbering(unittest.TestCase):
-    def _completeness(self, version, listed_inner):
+    def _completeness(self, version, listed_inner, layer_number=4):
         listed = [(n, ff) for n, ff in INNER_PRESENT if "In" not in n] + listed_inner
         present = [p for p in INNER_PRESENT if p[0] != "x-In1_Cu.gbr"]
-        r = _run([("x-job.gbrjob", _json_job(version, 4, listed))], layers=present)
+        r = _run([("x-job.gbrjob", _json_job(version, layer_number, listed))], layers=present)
         return r["completeness"]
 
     def test_nightly_with_9_0_0_numbering_is_remapped(self):
@@ -141,6 +143,12 @@ class NightlyInnerNumbering(unittest.TestCase):
     def test_nightly_with_current_numbering_is_not_remapped(self):
         c = self._completeness("8.99.0-500-gabcdef",
                                [("x-In1_Cu.gbr", "Copper,L2,Inr"), ("x-In2_Cu.gbr", "Copper,L3,Inr")])
+        self.assertEqual(c["missing"], ["In1.Cu"])
+
+    def test_nightly_without_a_layer_count_is_not_remapped(self):
+        c = self._completeness("9.99.0-1234-g0123456789",
+                               [("x-In1_Cu.gbr", "Copper,L2,Inr"), ("x-In2_Cu.gbr", "Copper,L3,Inr")],
+                               layer_number=None)
         self.assertEqual(c["missing"], ["In1.Cu"])
 
 

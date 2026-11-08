@@ -262,7 +262,7 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
             f.write(f"=== stdout ===\n{stdout}\n=== stderr ===\n{stderr}\n")
 
         if not success:
-            # the simulator's own first error lines (no paths: it runs on bare file names)
+            # the simulator's first error lines (bare deck name; an include error names the include as written)
             err_lines = [line.strip() for line in (stderr or "").splitlines() if line.strip()]
             reason = " ".join(err_lines[:3]) or "simulator exited with an error"
             record(diagnostics, "simulate_subcircuits.run",

@@ -304,8 +304,8 @@ def evaluate_opamp_circuit(det, sim_results):
     if gain_db is not None and gain_db < _DEAD_OUTPUT_DB:
         result["status"] = "info"
         result["note"] = "Output not driven in the bench; no gain measured"
-    # Compare gain
     elif expected_gain_db is not None and gain_db is not None:
+        # Compare gain
         gain_error = abs(gain_db - expected_gain_db)
         result["delta"]["gain_error_dB"] = round(gain_error, 2)
 

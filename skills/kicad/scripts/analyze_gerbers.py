@@ -1143,9 +1143,9 @@ def _job_inner_numbering_bug(job_info: dict) -> bool:
     if not _KICAD_NIGHTLY.match(generator):
         return False
     count = job_info.get("layer_count") or 0
-    return any(int(m.group(1)) >= count
-               for ef in job_info.get("expected_files", [])
-               if (m := re.match(r"Copper,L(\d+),Inr", ef.get("function", ""))))
+    return count > 0 and any(int(m.group(1)) >= count
+                             for ef in job_info.get("expected_files", [])
+                             if (m := re.match(r"Copper,L(\d+),Inr", ef.get("function", ""))))
 
 
 def _implied_inner_absent(gerbers: list[dict], covered: set,

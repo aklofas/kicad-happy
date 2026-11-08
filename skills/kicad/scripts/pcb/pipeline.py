@@ -715,7 +715,8 @@ def finalize_for_cli(result: dict, config: dict, *, pcb_path: str, analysis_dir_
         bbox = result.get('board_outline', {}).get('bounding_box')
         if bbox:
             board_area = bbox.get('width', 0) * bbox.get('height', 0)
-            # a file with several boards: their summed area, not the box around them
+            # a file with several boards: their summed area, not the box around them. The
+            # statistic is rounded to 0.1, so a single board keeps the unrounded box.
             summed = (result.get('statistics') or {}).get('board_area_mm2')
             if summed and summed != round(board_area, 1):
                 board_area = summed
