@@ -1043,6 +1043,14 @@ def _generate_mosfet_testbench(det, output_file, context=None, parasitics=None):
     if load_type == "high_side_switch":
         return None  # High-side switches need load context to simulate
 
+    # a diode-connected FET (gate on drain) carries the load current at every gate
+    # voltage the bench applies, so a sweep would measure the load, not the part.
+    # Compared by design net name: two ground aliases both bench as node 0
+    if det.get("gate_net") and det.get("gate_net") == det.get("drain_net"):
+        raise ValueError("gate tied to drain (diode-connected): no switching bench")
+    # the P-channel load runs from drain to ground; a drain on ground shorts it out
+    if is_p and drain == "0":
+        raise ValueError("drain on ground (load on ground): no switching bench")
     model = "PMOS_GENERIC" if is_p else "NMOS_GENERIC"
     ch_type = "P-channel" if is_p else "N-channel"
     has_snubber = det.get("has_snubber", False)
@@ -1065,7 +1073,7 @@ def _generate_mosfet_testbench(det, output_file, context=None, parasitics=None):
 
     # Build a simple switching testbench
     # N-channel: VDD → R_load → drain, source → GND, gate swept 0→VDD
-    # P-channel: VDD → source, drain → R_load → GND, gate swept VDD→0
+    # P-channel: VDD → source, drain → R_load → GND, VGS swept 0→-VDD
 
     # Gate resistor (if present, use its value for the drive path)
     gate_res = det.get("gate_resistors", [])
@@ -1097,17 +1105,17 @@ VDD vdd 0 DC {vdd}
 M{spice_ident(ref)} {drain} {gate} vdd vdd {model} L=1u W=100u
 RLOAD {drain} 0 1k
 
-* Gate drive: sweep from VDD (off) to 0V (on)
-Vgate {gate} 0 DC {vdd}
+* Gate drive: VGS swept from 0 V (off) to -VDD (on), so the threshold reads as VGS
+VGS {gate} vdd DC 0
 """
 
-        analyses = [("dc", f"Vgate 0 {vdd} {vdd/100}")]
+        analyses = [("dc", f"VGS 0 {-vdd} {-vdd/100}")]
+        # i(VDD) is negative while sourcing; ngspice's meas takes a vector, not an
+        # expression, so the magnitude gets a vector of its own
         measurements = [
-            ("id", "let", "i(VDD)"),
-            ("vg", "let", f"v({gate})"),
-            ("vth", "when", "abs(id)", "1m"),
-            # i(VDD) is negative while sourcing, so take the largest magnitude
-            ("i_on", "let", "vecmax(abs(id))", True),
+            ("id", "let", "abs(i(VDD))"),
+            ("vth", "when", "id", "1m"),
+            ("i_on", "let", "vecmax(id)", True),
         ]
         extra = {"vdd": str(vdd)}
 
@@ -1156,10 +1164,16 @@ def _generate_bjt_testbench(det, output_file, context=None, parasitics=None):
     lib_id = det.get("lib_id", "")
     is_pnp = "PNP" in lib_id.upper() or "pnp" in lib_id.lower()
     model = "PNP_GENERIC" if is_pnp else "NPN_GENERIC"
+    # a diode-connected BJT (base on collector): the sweep would measure the load
+    if det.get("base_net") and det.get("base_net") == det.get("collector_net"):
+        raise ValueError("base tied to collector (diode-connected): no switching bench")
+    # the PNP load runs from collector to ground; a collector on ground shorts it out
+    if is_pnp and collector == "0":
+        raise ValueError("collector on ground (load on ground): no switching bench")
     polarity = "PNP" if is_pnp else "NPN"
 
     vcc = _infer_voltage(det.get("collector_net") if not is_pnp else det.get("emitter_net"), default=3.3)
-    # the PNP base sweep spans vcc/2..vcc; a 0 V supply makes it zero-span
+    # the PNP emitter sits on the supply; a 0 V supply leaves the collector no headroom
     if is_pnp and vcc <= 0:
         raise ValueError(f"emitter supply {vcc} V from net '{det.get('emitter_net')}' leaves no base sweep")
 
@@ -1189,11 +1203,12 @@ VCC vcc 0 DC {vcc}
 Q{spice_ident(ref)} {collector} {base} vcc {model}
 RLOAD {collector} 0 1k
 
-* Base drive: sweep from VCC (off) to VCC-0.8V (on)
-Vbase {base} 0 DC {vcc}
+* Base drive: VBE swept from 0 V (off) to -1 V (on); the base current returns
+* through VBE, so i(VCC) is the collector current
+VBE {base} vcc DC 0
 """
 
-        analyses = [("dc", f"Vbase {vcc * 0.5} {vcc} {vcc * 0.005}")]
+        analyses = [("dc", "VBE 0 -1 -0.01")]
         measurements = [
             ("ic", "let", "abs(i(VCC))"),
             ("vbe_on", "when", "ic", "1m"),

@@ -140,7 +140,7 @@ The script selects subcircuits from the analyzer's `findings[]` array (grouped b
 | `feedback_networks` | DC operating point | FB pin voltage, regulator Vout | Exact (ideal passives) | High — cross-refs power_regulators |
 | `opamp_circuits` | AC sweep | Gain, -3dB bandwidth | Per-part or ideal | High with behavioral model, medium with ideal |
 | `crystal_circuits` | AC sweep | Series and load resonance, pulling, Rm (`info`); calculated CL range | Approximate (generic BVD) | Medium |
-| `transistor_circuits` | DC sweep | Threshold voltage, on-state current (`info`: generic model's values; a PNP bench `warn`s, not measured) | Approximate (generic FET/BJT) | Low |
+| `transistor_circuits` | DC sweep | Threshold voltage, on-state current (`info`: generic model's values; PNP VBE(on) and P-channel VGS(th) are negative; a diode-connected part, or a PNP/P-channel part whose collector/drain is on ground, is skipped) | Approximate (generic FET/BJT) | Low |
 | `current_sense` | DC operating point | Current at 50mV/100mV drop (`info` without an expected current) | Exact (ideal resistor) | High |
 | `protection_devices` | DC sweep | Diode presence, clamping onset | Approximate (generic diode) | Low |
 | `decoupling_analysis` | AC impedance | PDN impedance profile | Exact + ESR estimates | High for passives |

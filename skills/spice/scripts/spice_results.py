@@ -557,6 +557,9 @@ def evaluate_transistor_circuit(det, sim_results):
     }
 
     if ttype in ("mosfet", "jfet"):
+        # no current vector means the sweep never ran; a threshold printed then is not one
+        if i_on is None:
+            vth = None
         if vth is not None:
             result["simulated"]["vth_V"] = round(vth, 3)
         if i_on is not None:
@@ -577,11 +580,8 @@ def evaluate_transistor_circuit(det, sim_results):
             result["note"] = "FET turns on in the generic model; not compared against the part"
     else:
         # BJT
-        if is_pnp and (vbe_on is not None or i_on is not None):
-            # the PNP bench's sweep never biases the part on, so its numbers are not a measurement
-            result["status"] = "warn"
-            result["note"] = "not measured: the PNP bench does not reach a valid on-state"
-            return result
+        if i_on is None:
+            vbe_on = None
         if vbe_on is not None:
             result["simulated"]["vbe_on_V"] = round(vbe_on, 3)
         if i_on is not None:
@@ -594,9 +594,9 @@ def evaluate_transistor_circuit(det, sim_results):
 
         result["status"] = "info"
         result["note"] = "BJT turns on in the generic model; not compared against the part"
-        # VBE should be ~0.6-0.7V for silicon BJT
+        # |VBE| should be ~0.6-0.7V for silicon BJT (a PNP's VBE is negative)
         if vbe_on is not None:
-            if vbe_on < 0.4 or vbe_on > 0.9:
+            if abs(vbe_on) < 0.4 or abs(vbe_on) > 0.9:
                 result["status"] = "warn"
                 result["note"] = f"VBE(on)={vbe_on:.3f}V — outside typical 0.5-0.8V range"
 

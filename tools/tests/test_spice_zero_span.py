@@ -61,11 +61,13 @@ class ZeroSpanSweepTest(unittest.TestCase):
         self.assertEqual(len(res), 1)
         self.assertNotEqual(res[0]["status"], "skip")
         self.assertGreater(res[0]["elapsed_s"], 0)
-        # the bench ran; its PNP numbers are not a measurement, so none is reported
-        self.assertEqual(res[0]["note"], "not measured: the PNP bench does not reach a valid on-state")
+        # the bench ran: the generic PNP turns on at a negative VBE
+        self.assertEqual(res[0]["status"], "info")
+        self.assertEqual(res[0]["note"], "BJT turns on in the generic model; not compared against the part")
+        self.assertLess(res[0]["simulated"]["vbe_on_V"], 0)
 
     def test_pnp_on_a_positive_rail_simulates(self):
-        # +5V: the base sweep runs 2.5-5 V
+        # +5V on the emitter: VBE sweeps 0 to -1 V
         self._assert_simulated(_simulate(_pnp("+5V"))[0])
 
     def test_pnp_on_a_negative_rail_is_not_skipped(self):

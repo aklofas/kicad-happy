@@ -293,18 +293,29 @@ class TransistorGenericModelTest(unittest.TestCase):
 
 
 class PnpBenchTest(unittest.TestCase):
-    # dvhx smd-soldering-exercise Q11: the PNP bench measures VBE(on) 2.647 V and IC 2.54e16 mA,
-    # values no silicon PNP reaches (VBE ~0.65 V), so the bench did not reach an on-state
-    _SIM = {"vbe_on": 2.647, "ic_on": 2.54e13}
+    _DET = {"reference": "Q11", "type": "bjt", "value": "MMBT3906", "lib_id": "Device:Q_PNP_BEC",
+            "base_net": "B", "collector_net": "C", "emitter_net": "+5V", "load_type": "unknown"}
 
-    def test_pnp_bench_is_not_measured(self):
-        det = {"reference": "Q11", "type": "bjt", "value": "MMBT3906", "lib_id": "Device:Q_PNP_BEC",
-               "base_net": "B", "collector_net": "C", "emitter_net": "+5V"}
-        r = R.evaluate_transistor_circuit(det, dict(self._SIM))
-        self.assertEqual(r["status"], "warn")
-        self.assertEqual(r["note"], "not measured: the PNP bench does not reach a valid on-state")
-        self.assertEqual(r["simulated"], {})
+    def test_pnp_values_are_the_generic_models(self):
+        # VBE is negative for a PNP; its magnitude is in the silicon window
+        r = R.evaluate_transistor_circuit(self._DET, {"vbe_on": -0.654, "ic_on": 4.98e-3})
+        self.assertEqual(r["status"], "info")
+        self.assertEqual(r["note"], "BJT turns on in the generic model; not compared against the part")
+        self.assertEqual(r["simulated"], {"vbe_on_V": -0.654, "ic_on_mA": 4.98})
         self.assertIn("generic PNP model", r["model_note"])
+
+    def test_pnp_vbe_outside_the_silicon_window_warns(self):
+        r = R.evaluate_transistor_circuit(self._DET, {"vbe_on": -0.2, "ic_on": 4.98e-3})
+        self.assertEqual(r["status"], "warn")
+
+    @unittest.skipUnless(shutil.which("ngspice"), "ngspice not installed")
+    def test_pnp_bench_sweeps_vbe_from_the_emitter_supply(self):
+        # generic PNP IS 1e-14: VBE(1 mA) = -0.0259 ln(1e-3/1e-14) = -0.656 V; fully on, the
+        # 1 k load takes (5 V - VCE(sat)) / 1 k, just under 5 mA
+        r = _run(T.generate_transistor_circuit, R.evaluate_transistor_circuit, self._DET)
+        self.assertEqual(r["status"], "info")
+        self.assertAlmostEqual(r["simulated"]["vbe_on_V"], -0.654, delta=0.01)
+        self.assertAlmostEqual(r["simulated"]["ic_on_mA"], 4.98, delta=0.05)
 
     def test_npn_label_and_values_unchanged(self):
         det = {"reference": "Q2", "type": "bjt", "value": "MMBT3904", "lib_id": "Device:Q_NPN_BEC",
@@ -313,6 +324,97 @@ class PnpBenchTest(unittest.TestCase):
         self.assertEqual(r["status"], "info")
         self.assertIn("generic NPN model", r["model_note"])
         self.assertEqual(r["simulated"], {"vbe_on_V": 0.65, "ic_on_mA": 3.3})
+
+
+_NMOS = {"reference": "Q3", "type": "mosfet", "value": "2N7002", "is_pchannel": False,
+         "gate_net": "G", "drain_net": "D", "source_net": "GND", "load_type": "unknown"}
+_PMOS = {"reference": "Q4", "type": "mosfet", "value": "AO3401", "is_pchannel": True,
+         "gate_net": "G", "drain_net": "D", "source_net": "+3V3", "load_type": "unknown"}
+_NPN = {"reference": "Q5", "type": "bjt", "value": "MMBT3904", "lib_id": "Device:Q_NPN_BEC",
+        "base_net": "B", "collector_net": "C", "emitter_net": "GND", "load_type": "unknown"}
+_PNP = {"reference": "Q6", "type": "bjt", "value": "MMBT3906", "lib_id": "Device:Q_PNP_BEC",
+        "base_net": "B", "collector_net": "C", "emitter_net": "+5V", "load_type": "unknown"}
+
+
+class DiodeConnectedTransistorTest(unittest.TestCase):
+    # gate on drain (base on collector): the part conducts the load current at every drive
+    # voltage, so a switching sweep would measure the load resistor, not the transistor
+    _CASES = ((_NMOS, {"drain_net": "G"}, "gate tied to drain"), (_PMOS, {"drain_net": "G"}, "gate tied to drain"),
+              (_NPN, {"collector_net": "B"}, "base tied to collector"),
+              (_PNP, {"collector_net": "B"}, "base tied to collector"))
+
+    def test_every_polarity_has_no_switching_bench(self):
+        for det, tie, why in self._CASES:
+            with self.subTest(ref=det["reference"]):
+                with self.assertRaisesRegex(ValueError, f"^{why} \\(diode-connected\\): no switching bench$"):
+                    T.generate_transistor_circuit(dict(det, **tie), "b.out")
+
+    def test_the_skip_names_the_reason(self):
+        res = _simulate([dict(_PNP, collector_net="B", detector="detect_transistor_circuits")],
+                        ["transistor_circuits"])
+        self.assertEqual([r["status"] for r in res], ["skip"])
+        self.assertEqual(res[0]["note"], "testbench generation failed: ValueError: "
+                                         "base tied to collector (diode-connected): no switching bench")
+
+
+    def test_nets_that_only_bench_as_ground_are_not_diode_connected(self):
+        # GND and VSS (or two missing nets) are both node 0 in the bench but not one net
+        T.generate_transistor_circuit(dict(_NPN, base_net="GND", collector_net="VSS"), "b.out")
+        T.generate_transistor_circuit(dict(_NMOS, gate_net=None, drain_net=None), "b.out")
+
+
+class LoadOnGroundTest(unittest.TestCase):
+    # a P-type bench's load runs from the collector (drain) to ground: a part whose
+    # collector (drain) is on ground has its load shorted, and the sweep reads amps
+    _CASES = ((_PNP, "collector_net", "collector on ground"), (_PMOS, "drain_net", "drain on ground"))
+
+    def test_p_type_with_its_load_node_on_ground_has_no_bench(self):
+        for det, pin, why in self._CASES:
+            for gnd in ("GND", "VSS"):
+                with self.subTest(ref=det["reference"], net=gnd):
+                    with self.assertRaisesRegex(ValueError, f"^{why} \\(load on ground\\): no switching bench$"):
+                        T.generate_transistor_circuit(dict(det, **{pin: gnd}), "b.out")
+
+    def test_the_skip_names_the_reason(self):
+        for det, pin, why in self._CASES:
+            with self.subTest(ref=det["reference"]):
+                res = _simulate([dict(det, **{pin: "GND"}, detector="detect_transistor_circuits")],
+                                ["transistor_circuits"])
+                self.assertEqual([r["status"] for r in res], ["skip"])
+                self.assertEqual(res[0]["note"], "testbench generation failed: ValueError: "
+                                                 f"{why} (load on ground): no switching bench")
+
+
+class TransistorSweepWithoutCurrentTest(unittest.TestCase):
+    # with no current vector the sweep never ran, so a printed threshold is not one
+    def test_fet_threshold_without_a_current_is_dropped(self):
+        r = R.evaluate_transistor_circuit(_PMOS, {"vth": 0.0})
+        self.assertEqual(r["status"], "skip")
+        self.assertNotIn("vth_V", r["simulated"])
+
+    def test_bjt_vbe_without_a_current_is_dropped(self):
+        r = R.evaluate_transistor_circuit(_NPN, {"vbe_on": 0.0})
+        self.assertEqual(r["status"], "skip")
+        self.assertNotIn("vbe_on_V", r["simulated"])
+
+    @unittest.skipUnless(shutil.which("ngspice"), "ngspice not installed")
+    def test_p_channel_gate_on_ground_reports_no_threshold(self):
+        res = _simulate([dict(_PMOS, gate_net="GND", detector="detect_transistor_circuits")],
+                        ["transistor_circuits"])
+        self.assertEqual(len(res), 1)
+        self.assertNotIn("vth_V", res[0].get("simulated", {}))
+        self.assertNotEqual(res[0]["status"], "info")
+
+
+@unittest.skipUnless(shutil.which("ngspice"), "ngspice not installed")
+class PChannelThresholdTest(unittest.TestCase):
+    def test_p_channel_threshold_is_vgs(self):
+        # generic PMOS VTO -1.5 V, KP 5e-3, W/L 100: Id = 0.25 (VGS - VTO)^2 = 1 mA at
+        # |VGS| = 1.5 + 0.063 = 1.563 V (LAMBDA 0.01 at |VDS| 2.3 V trims it to ~1.561)
+        r = _run(T.generate_transistor_circuit, R.evaluate_transistor_circuit, _PMOS)
+        self.assertEqual(r["status"], "info")
+        self.assertAlmostEqual(r["simulated"]["vth_V"], -1.561, delta=0.01)
+        self.assertAlmostEqual(r["simulated"]["i_on_mA"], 3.3, delta=0.05)
 
 
 @unittest.skipUnless(shutil.which("ngspice"), "ngspice not installed")
