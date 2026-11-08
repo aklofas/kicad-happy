@@ -332,7 +332,8 @@ def _courtyard_sides(fp: dict) -> dict:
 
 
 def analyze_placement(footprints: list[dict], outline: dict, *,
-                      check_overlaps: bool = True) -> dict:
+                      check_overlaps: bool = True,
+                      board_area_mm2: float | None = None) -> dict:
     """Component placement analysis — courtyard overlaps and edge clearance.
 
     Reports:
@@ -342,7 +343,8 @@ def analyze_placement(footprints: list[dict], outline: dict, *,
     - Placement density per board side
 
     ``check_overlaps`` False skips the overlaps (the project ignores KiCad's
-    ``courtyards_overlap`` check).
+    ``courtyards_overlap`` check). ``board_area_mm2`` is the area the density is taken over (the
+    summed board area of a file with several boards); None uses the outline's bounding box.
     """
     # Courtyard overlap detection. One entry per footprint and courtyard layer: KiCad tests
     # F.CrtYd against F.CrtYd and B.CrtYd against B.CrtYd, whichever side each part is
@@ -529,8 +531,8 @@ def analyze_placement(footprints: list[dict], outline: dict, *,
     edge_close.sort(key=lambda e: e["edge_clearance_mm"])
 
     # Placement density
-    board_area = None
-    if bbox:
+    board_area = board_area_mm2
+    if board_area is None and bbox:
         board_area = bbox["width"] * bbox["height"]
 
     front_count = sum(1 for fp in footprints if fp["layer"] == "F.Cu")

@@ -20,6 +20,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Nets that cross a sheet through a bus are named after the bus member, as KiCad names them; scripts or config keyed to the old net name need the new one.
 - Datasheet coverage counts PDF datasheets only: JSON files (extractions, the sync index) and links to the same PDF no longer count, so a `datasheets/` folder that holds no PDF now gets DS-001 or DS-002 instead of passing.
 - A symbol with a second Value field whose text differs (Eagle imports wrote a hidden empty copy) gets a `duplicate_value_field` entry in `property_issues`, naming the value KiCad 10 shows and the text it ignores; a KiCad 6 symbol whose instance value decides what is shown gets none.
+- `statistics.board_area_mm2` and the placement density of a board file that holds several boards on Edge.Cuts now use the summed area of the boards, as KiCad's board statistics report it, instead of the box around all of them. Width and height still give that box.
 
 ### Fixed
 

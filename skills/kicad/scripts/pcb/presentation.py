@@ -38,8 +38,13 @@ def group_components(footprints: list[dict]) -> dict:
 def compute_statistics(footprints: list[dict], tracks: dict, vias: dict,
                        zones: list[dict], outline: dict, connectivity: dict,
                        net_names: dict[int, str] | None = None,
-                       layers: list[dict] | None = None) -> dict:
-    """Compute summary statistics."""
+                       layers: list[dict] | None = None,
+                       board_area_mm2: float | None = None) -> dict:
+    """Compute summary statistics.
+
+    ``board_area_mm2``: the board area from read_board (summed over the outer outlines of a
+    file with several boards); None uses the outline's bounding box.
+    """
     # EQ-059: d = √(w²+h²) (board diagonal)
     # Resolve copper layer names from declarations
     if layers:
@@ -93,7 +98,9 @@ def compute_statistics(footprints: list[dict], tracks: dict, vias: dict,
         "total_track_length_mm": round(total_length, 2),
         "board_width_mm": outline["bounding_box"]["width"] if outline.get("bounding_box") else None,
         "board_height_mm": outline["bounding_box"]["height"] if outline.get("bounding_box") else None,
-        "board_area_mm2": round(outline["bounding_box"]["width"] * outline["bounding_box"]["height"], 1) if outline.get("bounding_box") else None,
+        "board_area_mm2": (round(board_area_mm2, 1) if board_area_mm2 is not None
+                           else round(outline["bounding_box"]["width"] * outline["bounding_box"]["height"], 1)
+                           if outline.get("bounding_box") else None),
         "net_count": sum(1 for v in (net_names or {}).values() if v),
         "routing_complete": connectivity.get("routing_complete", False),
         "unrouted_net_count": connectivity.get("unrouted_count", 0),

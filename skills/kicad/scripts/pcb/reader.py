@@ -1490,6 +1490,15 @@ def _extract_keepout_zones(zones: list[dict],
     return keepouts
 
 
+def has_footprint_edge_cuts(root: list) -> bool:
+    """True when a footprint draws on Edge.Cuts (the board outline reads gr_* items only)."""
+    for fp in _footprint_nodes(root):
+        for item_type in ("fp_line", "fp_arc", "fp_circle", "fp_rect", "fp_poly", "fp_curve"):
+            if any(get_value(item, "layer") == "Edge.Cuts" for item in find_all(fp, item_type)):
+                return True
+    return False
+
+
 def extract_board_outline(root: list) -> dict:
     """Extract board outline from Edge.Cuts layer."""
     edges = []

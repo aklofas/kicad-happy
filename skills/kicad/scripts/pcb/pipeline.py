@@ -29,7 +29,7 @@ from kicad_core.project import (load_kicad_pro, extract_pro_net_classes,
 from kicad_core.diagnostics import record
 from kicad_core.model import PcbReaderState
 from pcb import reader
-from pcb.geometry import ZoneFills, outline_loops
+from pcb.geometry import ZoneFills, outline_board_area, outline_loops
 from pcb.reader import (
     _extract_keepout_zones,
     extract_silkscreen,
@@ -162,6 +162,20 @@ class BoardData:
     state: PcbReaderState
     diagnostics: list = field(default_factory=list)
     graphics: list = field(default_factory=list)
+    board_area_mm2: float | None = None
+
+
+def _board_area(root: list, outline: dict) -> float | None:
+    """The outline's bounding-box area, or the summed area of the outer outlines when Edge.Cuts
+    holds several boards (a footprint drawing on Edge.Cuts keeps the bounding box: that part of
+    the outline is not read)."""
+    bbox = outline.get("bounding_box")
+    if not bbox:
+        return None
+    area = None
+    if not reader.has_footprint_edge_cuts(root):
+        area = outline_board_area(outline.get("edges") or [])
+    return area if area is not None else bbox["width"] * bbox["height"]
 
 
 def read_board(path: str, *, state: PcbReaderState | None = None) -> BoardData:
@@ -218,7 +232,8 @@ def read_board(path: str, *, state: PcbReaderState | None = None) -> BoardData:
     return BoardData(path=path, root=root, layers=layers, setup=setup, net_names=net_names,
                      footprints=footprints, tracks=tracks, vias=vias, zones=zones,
                      zone_fills=zone_fills, outline=outline, state=state,
-                     diagnostics=diagnostics, graphics=graphics)
+                     diagnostics=diagnostics, graphics=graphics,
+                     board_area_mm2=_board_area(root, outline))
 
 
 @dataclass
@@ -304,7 +319,8 @@ def run_facts(board: BoardData, *, include_trace_segments: bool, return_path_rad
     connectivity = analyze_connectivity(footprints, tracks, vias, net_names, zones,
                                         graphics=board.graphics)
 
-    stats = compute_statistics(footprints, tracks, vias, zones, outline, connectivity, net_names, layers=layers)
+    stats = compute_statistics(footprints, tracks, vias, zones, outline, connectivity, net_names, layers=layers,
+                               board_area_mm2=board.board_area_mm2)
 
     version = get_value(root, "version") or "unknown"
     generator_version = get_value(root, "generator_version") or "unknown"
@@ -505,7 +521,8 @@ def run_checks(board: BoardData, facts: PcbFacts, *, include_trace_segments: boo
     # Placement analysis (courtyard overlaps, edge clearance, density)
     ignored_checks = project_settings.get('_ignored_drc_checks', frozenset())
     placement = analyze_placement(footprints, outline,
-                                  check_overlaps='courtyards_overlap' not in ignored_checks)
+                                  check_overlaps='courtyards_overlap' not in ignored_checks,
+                                  board_area_mm2=board.board_area_mm2)
 
     # DFM (Design for Manufacturing) scoring
     design_rules = (project_settings.get('design_rules')
@@ -684,8 +701,12 @@ def finalize_for_cli(result: dict, config: dict, *, pcb_path: str, analysis_dir_
         pcb_data_for_intent['net_names'] = net_names_dict
         bbox = result.get('board_outline', {}).get('bounding_box')
         if bbox:
-            pcb_data_for_intent['board_area_mm2'] = (
-                bbox.get('width', 0) * bbox.get('height', 0))
+            board_area = bbox.get('width', 0) * bbox.get('height', 0)
+            # a file with several boards: their summed area, not the box around them
+            summed = (result.get('statistics') or {}).get('board_area_mm2')
+            if summed and summed != round(board_area, 1):
+                board_area = summed
+            pcb_data_for_intent['board_area_mm2'] = board_area
         intent = resolve_design_intent(config, pcb_data=pcb_data_for_intent)
         result['design_intent'] = intent
     except ImportError:

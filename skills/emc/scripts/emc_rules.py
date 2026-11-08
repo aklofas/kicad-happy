@@ -1529,6 +1529,10 @@ def check_via_stitching(pcb: Dict, schematic: Optional[Dict] = None) -> List[Dic
     board_w = bbox.get('width', stats.get('board_width_mm', 50)) or 50
     board_h = bbox.get('height', stats.get('board_height_mm', 50)) or 50
     board_area = board_w * board_h  # mm²
+    # a file with several boards: the summed board area, not the box around them
+    summed = _safe_float(stats.get('board_area_mm2'))
+    if 0 < summed < round(board_area, 1):
+        board_area = summed
 
     if board_area <= 0:
         return findings
