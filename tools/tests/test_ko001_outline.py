@@ -74,7 +74,7 @@ _FP_LAYERS = ('(0 "F.Cu" signal) (1 "In1.Cu" signal) (2 "In2.Cu" signal) (31 "B.
               '(37 "F.SilkS" user) (44 "Edge.Cuts" user) (46 "B.CrtYd" user) (47 "F.CrtYd" user)')
 
 
-def _fp(ref, x, y, side="F", crt=(-1, -1, 1, 1), tht=False):
+def _fp(ref, x, y, side="F", crt=(-1, -1, 1, 1), tht=False, extra=""):
     if tht:
         pad = '(pad "1" thru_hole circle (at 0 0) (size 1.2 1.2) (drill 0.6) (layers "*.Cu" "*.Mask"))'
     else:
@@ -83,7 +83,7 @@ def _fp(ref, x, y, side="F", crt=(-1, -1, 1, 1), tht=False):
                                     f'(stroke (width 0.05) (type solid)) (fill none) (layer "{side}.CrtYd"))')
     return (f'  (footprint "test:fp" (layer "{side}.Cu") (at {x} {y})\n'
             f'    (property "Reference" "{ref}" (at 0 -2 0) (layer "{side}.SilkS"))\n'
-            f'    {court}\n    {pad})\n')
+            f'    {court}\n    {extra}\n    {pad})\n')
 
 
 def _fp_area(layers, ring, name="ko"):
@@ -194,6 +194,11 @@ class TestFootprintByCourtyard(unittest.TestCase):
     def test_footprint_without_a_courtyard_is_not_reported(self):
         fps = [_fp("U6", 95, 102, crt=None)]
         self.assertEqual(_fp_flagged([_fp_area(["F.Cu"], L_SHAPE)], fps), [])
+
+    def test_footprint_whose_courtyard_cannot_be_read_is_not_reported(self):
+        broken_arc = '(fp_arc (start 0 -1) (end 1 0) (stroke (width 0.05) (type solid)) (layer "F.CrtYd"))'
+        fps = [_fp("U9", 100, 100, extra=broken_arc)]
+        self.assertEqual(_fp_flagged([_fp_area(["F.Cu"], BOX)], fps), [])
 
     def test_description_names_the_courtyard(self):
         found = _ko001(_analyze(_fp_board([_fp_area(["F.Cu"], BOX)], [_fp("U2", 100, 100)])))

@@ -1228,20 +1228,20 @@ def _area_courtyard_layers(layers: list[str]) -> list[str]:
 
 def _courtyard_meets_area(fp: dict, crtyd_layers: list[str], bbox: list, polys: list) -> bool:
     """True when the footprint's courtyard on one of ``crtyd_layers`` overlaps the area.
-    A footprint without a courtyard there is not judged, as in KiCad."""
+    A footprint without a courtyard there, or with one that cannot be read, is not judged,
+    as in KiCad."""
     kx1, ky1, kx2, ky2 = bbox[0], bbox[1], bbox[2], bbox[3]
     sides = _courtyard_sides(fp)
     for layer in crtyd_layers:
         side = sides.get(layer)
-        if not side:
+        if not side or not side.get("polys"):
             continue
         box = side["box"]
         if box["min_x"] > kx2 or box["max_x"] < kx1 or box["min_y"] > ky2 or box["max_y"] < ky1:
             continue
-        crtyd = side.get("polys") or [[(box["min_x"], box["min_y"]), (box["max_x"], box["min_y"]),
-                                       (box["max_x"], box["max_y"]), (box["min_x"], box["max_y"])]]
-        # KiCad shrinks the courtyard by 0.005 mm before the test, as for courtyard overlaps
-        if courtyards_collide(polys, crtyd):
+        # shrinks both shapes by 0.005 mm; KiCad shrinks the area by only 0.0005 mm, a
+        # 0.0045 mm difference below anything measured
+        if courtyards_collide(polys, side["polys"]):
             return True
     return False
 
