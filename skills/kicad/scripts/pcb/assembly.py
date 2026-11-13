@@ -1259,7 +1259,7 @@ def analyze_keepout_violations(footprints: list[dict], vias: dict,
                                 keepout_zones: list[dict]) -> list[dict]:
     """KO-001: Check for components or through vias inside keepout zones.
 
-    As KiCad does, the test uses the area outline (holes excluded): a through via is inside
+    As KiCad does, the test uses the area outline (cut-outs left out): a through via is inside
     when its copper disc overlaps the area, a footprint when its courtyard on the side the
     area covers does.
     A rule area's "vias" restriction prohibits through vias only (KiCad's DRC_DISALLOW_VIAS);

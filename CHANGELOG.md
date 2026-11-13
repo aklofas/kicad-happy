@@ -24,16 +24,11 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `statistics.board_area_mm2` and the placement density of a board file that holds several boards on Edge.Cuts now use the summed area of the boards, as KiCad's board statistics report it, instead of the box around all of them; the design-intent large-board signal and the via-spacing area of EMC VS-001 follow the summed area. Width and height still give that box.
 - EMC connector checks (IO-001, IO-002, CK-003, BE-003, SH-001 and the test plan) skip DNP connectors, an ESD device whose nearest connector is DNP is not paired with another one, and IO-001 counts a protection device on the connector's schematic net name.
 - Nets named `V-` or `VMOT` are read as power rails by their name, as the EMC checks already did. They now get rail-source, decoupling and trace-width checks; expect new rail-source warnings on such nets that have no regulator or power symbol.
-- A virtual ground (`VGND`, `HP_VGND`, `VGND1`) is not read as ground, and the PCB ground-domain list leaves it out.
+- A virtual ground (`VGND`, `HP_VGND`, `VGND1`) is not read as ground by the schematic, cross-analysis and PCB checks (EMC still treats a name ending in GND as ground), and the PCB ground-domain list leaves it out.
 - RS-001 no longer reports a reference node (VREF, 2V5_REF) as a rail without a source unless an IC takes its supply from it, and the missing-decoupling observation leaves out reference inputs that nothing drives.
 
 ### Fixed
 
-- Cross-analysis reads ground names with the schematic's rule plus EARTH and CHASSIS, so GNDPWR, GND1, VSSA and a sheet-pathed /Power/GND count as ground.
-- The plane-split check skips a ground or power net that has no copper zone on the board, so an unrouted or track-only net is no longer reported as a split plane with signals crossing it.
-- A voltage divider continues through a node named like a rail (12V_FBM) when only local labels name it and two resistors are its only parts, so a regulator's feedback divider reads its full top resistance.
-- `rail_voltages` carries the voltage in the name of a regulator output that the name rules do not call a rail (`3V3_OFF`), unless its sign disagrees with the regulator.
-- A rail named `<n>V<n>_N` beside its `_P` twin (4V5_N / 4V5_P) reads as negative in rail_voltages, statistics.power_rails and its regulator's estimated output.
 - `voltage_overrides` rejects `true`/`false`, NaN and infinity.
 - `search_lcsc.py --details` fetches LCSC stock for keyword hits that jlcsearch returned without a figure before `--in-stock`, `--min-stock` or `--sort stock` judges them.
 - An `analysis/manifest.json` larger than 10 MB is backed up and treated as corrupt instead of read whole.
@@ -200,8 +195,13 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `AVSS`, `DVSS`, `GROUND` and names that carry a ground word as one part (`AGND_CODEC`, `PGND_3V3`, `HEATER_GND_1`, `ESP_GND2`) read as ground; a 0-10 V interface net such as `0V_10V` does not.
 - Every ground-named net except a VSS-family name other than `VSS` (which can be a negative supply) gets 0 V in `rail_voltages`, not only `GND`, `VSS`, `AGND` and `DGND`.
 - A VSS-named net that a regulator output drives (a negative LDO, an isolated converter's -Vout) keeps the regulator's output rail and gets no 0 V in `rail_voltages`.
-- KO-001 tests a via against the rule area's outline, holes included, and reports one whose copper crosses the edge, as KiCad does; vias in the corners or cut-outs of a round, ring or L-shaped area are no longer reported.
-- KO-001 judges a footprint by its courtyard on the side the rule area covers, as KiCad does, so a part whose courtyard reaches into the area is reported and one whose centre only lies in the area's bounding box is not; an `F&B.Cu` area now covers parts on both sides, and a footprint without a courtyard is not judged.
+- KO-001 tests a via against the rule area's outline, cut-outs left out, and reports one whose copper crosses the edge, as KiCad does; vias in the corners or cut-outs of a round, ring or L-shaped area are no longer reported.
+- KO-001 judges a footprint by its courtyard on the side the rule area covers, as KiCad does, so a part whose courtyard reaches into the area is reported and one whose centre only lies in the area's bounding box is not; an `F&B.Cu` area covers parts on both sides, an inner-layer-only area judges none, and a footprint with no readable courtyard on a covered side is not judged.
+- Cross-analysis reads ground names with the schematic's rule plus EARTH and CHASSIS, so GNDPWR, GND1, VSSA and a sheet-pathed /Power/GND count as ground.
+- The plane-split check skips a ground or power net that has no copper zone on the board, so an unrouted or track-only net is no longer reported as a split plane with signals crossing it.
+- A voltage divider continues through a node named like a rail (12V_FBM) when only local labels name it and two resistors are its only parts, so a regulator's feedback divider reads its full top resistance.
+- `rail_voltages` carries the voltage in the name of a regulator output that the name rules do not call a rail (`3V3_OFF`), unless its sign disagrees with the regulator.
+- A rail named `<n>V<n>_N` beside its `_P` twin (4V5_N / 4V5_P) reads as negative in rail_voltages, statistics.power_rails and its regulator's estimated output.
 
 ### Documentation
 

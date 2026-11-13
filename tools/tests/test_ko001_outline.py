@@ -1,5 +1,5 @@
 # tools/tests/test_ko001_outline.py
-"""KO-001 judges an item against the rule area's outline, holes included, as KiCad does.
+"""KO-001 judges an item against the rule area's outline, cut-outs left out, as KiCad does.
 
 Expected items are kicad-cli 10.0.8 DRC ("Items not allowed") on the same boards.
 """
@@ -109,7 +109,7 @@ RING = [_square(90, 90, 110, 110), _square(95, 95, 105, 105)]
 
 
 class TestViaAgainstRoundArea(unittest.TestCase):
-    # GitHub #70: a round area of radius 4.4 mm; vias of 0.6 mm (copper radius 0.3)
+    # A round area of radius 4.4 mm; vias of 0.6 mm (copper radius 0.3)
 
     def test_via_inside_the_circle_is_reported(self):
         v = (103.0, 100.0)
