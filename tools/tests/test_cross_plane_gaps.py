@@ -12,12 +12,13 @@ SCH = {"net_classifications": {"CLK": {"type": "clock"}}}
 _ABSENT = object()
 
 
-def _pcb(rpc=_ABSENT, crossing=True):
+def _pcb(rpc=_ABSENT, crossing=True, zone=True):
     # GND has two two-pad islands with a gap rectangle between them; CLK
     # runs across that rectangle (or well clear of it).
     y = 5 if crossing else 50
     pcb = {
         "nets": {"1": "GND", "2": "CLK"},
+        "zones": [{"net": 1, "net_name": "GND", "layers": ["B.Cu"]}] if zone else [],
         "tracks": {"segments": [{"net": 2, "x1": 0, "y1": y, "x2": 20, "y2": y,
                                  "layer": "F.Cu", "width": 0.2}]},
         "connectivity_graph": {"GND": {
@@ -104,6 +105,20 @@ class PlaneSplitCrossings(unittest.TestCase):
         self.assertEqual(len(ps), 1)
         self.assertEqual(ps[0]["severity"], "info")
         self.assertEqual(ps[0]["confidence"], "deterministic")
+
+    def test_net_without_zone_is_not_a_split_plane(self):
+        rec = Rec()
+        ps = _rule(ca.check_plane_splits(SCH, _pcb(FLAGGED, zone=False), recorder=rec), "PS-002")
+        self.assertEqual(ps, [])
+        self.assertEqual(rec.rows["PS-002"], (True, None, 1, 0))
+
+    def test_net_with_zone_keeps_split_and_crossings(self):
+        rec = Rec()
+        ps = _rule(ca.check_plane_splits(SCH, _pcb(FLAGGED), recorder=rec), "PS-002")
+        self.assertEqual(len(ps), 1)
+        self.assertEqual(ps[0]["summary"], "GND plane split: 2 islands, 1 signals crossing")
+        self.assertEqual(ps[0]["nets"], ["GND", "CLK"])
+        self.assertEqual(rec.rows["PS-002"], (True, None, 1, 1))
 
 
 if __name__ == "__main__":

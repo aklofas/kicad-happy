@@ -1039,8 +1039,13 @@ def check_plane_splits(schematic, pcb, recorder=None):
     segments = (pcb.get('tracks') or {}).get('segments') or []
     net_id_map = _build_net_id_map(pcb)
     rpc_flagged = _flagged_return_path_entries(pcb, threshold_pct=95.0)
+    # A net without a copper zone has no plane to split: its islands are
+    # unrouted connections, not plane gaps.
+    zone_nets = {z.get('net_name') for z in pcb.get('zones') or []}
     for plane_net, graph in conn_graph.items():
         if not (is_cross_analysis_ground_name(plane_net) or _is_power_net(plane_net)):
+            continue
+        if plane_net not in zone_nets:
             continue
         if graph.get('islands', 1) <= 1:
             continue
