@@ -1217,6 +1217,35 @@ def _area_copper_layers(layers: list[str]) -> bool:
     return any(layer.endswith(".Cu") for layer in layers)
 
 
+def _area_courtyard_layers(layers: list[str]) -> list[str]:
+    """Courtyard layers a rule area judges footprints on: F.CrtYd when it covers F.Cu, B.CrtYd
+    when it covers B.Cu (F&B.Cu and *.Cu cover both). KiCad reports no footprint under an
+    inner-layer-only or a non-copper area."""
+    front = any(layer in ("F.Cu", "F&B.Cu", "*.Cu") for layer in layers)
+    back = any(layer in ("B.Cu", "F&B.Cu", "*.Cu") for layer in layers)
+    return (["F.CrtYd"] if front else []) + (["B.CrtYd"] if back else [])
+
+
+def _courtyard_meets_area(fp: dict, crtyd_layers: list[str], bbox: list, polys: list) -> bool:
+    """True when the footprint's courtyard on one of ``crtyd_layers`` overlaps the area.
+    A footprint without a courtyard there is not judged, as in KiCad."""
+    kx1, ky1, kx2, ky2 = bbox[0], bbox[1], bbox[2], bbox[3]
+    sides = _courtyard_sides(fp)
+    for layer in crtyd_layers:
+        side = sides.get(layer)
+        if not side:
+            continue
+        box = side["box"]
+        if box["min_x"] > kx2 or box["max_x"] < kx1 or box["min_y"] > ky2 or box["max_y"] < ky1:
+            continue
+        crtyd = side.get("polys") or [[(box["min_x"], box["min_y"]), (box["max_x"], box["min_y"]),
+                                       (box["max_x"], box["max_y"]), (box["min_x"], box["max_y"])]]
+        # KiCad shrinks the courtyard by 0.005 mm before the test, as for courtyard overlaps
+        if courtyards_collide(polys, crtyd):
+            return True
+    return False
+
+
 # KiCad shrinks a rule area by its DRC epsilon before the keepout test, so touching is legal
 _AREA_EPSILON_MM = 0.0005
 
@@ -1230,8 +1259,9 @@ def analyze_keepout_violations(footprints: list[dict], vias: dict,
                                 keepout_zones: list[dict]) -> list[dict]:
     """KO-001: Check for components or through vias inside keepout zones.
 
-    A through via is judged as KiCad does, by its copper disc against the area outline
-    (holes excluded); a component by its centre in the area's bounding box.
+    As KiCad does, the test uses the area outline (holes excluded): a through via is inside
+    when its copper disc overlaps the area, a footprint when its courtyard on the side the
+    area covers does.
     A rule area's "vias" restriction prohibits through vias only (KiCad's DRC_DISALLOW_VIAS);
     a through via spans every copper layer, so it meets any area on a copper layer.
     """
@@ -1243,23 +1273,21 @@ def analyze_keepout_violations(footprints: list[dict], vias: dict,
 
     for kz in keepout_zones:
         bbox = kz.get("bounding_box")
-        if not bbox or len(bbox) < 4:
+        polys = kz.get("_outline_polys")
+        if not bbox or len(bbox) < 4 or not polys:
             continue
         kx1, ky1, kx2, ky2 = bbox[0], bbox[1], bbox[2], bbox[3]
         restrictions = kz.get("restrictions", {})
         kz_name = kz.get("name", "unnamed")
+        kz_label = kz_name or "unnamed"
         kz_layers = kz.get("layers", [])
 
         # Check footprints
-        if _prohibits(restrictions, "footprints"):
+        crtyd_layers = _area_courtyard_layers(kz_layers)
+        if _prohibits(restrictions, "footprints") and crtyd_layers:
             for fp in footprints:
                 ref = fp.get("reference", "")
-                fx = fp.get("x", 0)
-                fy = fp.get("y", 0)
-                fp_layer = fp.get("layer", "")
-                if not any(l in kz_layers or l == "*" or "*.Cu" in kz_layers for l in [fp_layer]):
-                    continue
-                if kx1 <= fx <= kx2 and ky1 <= fy <= ky2:
+                if _courtyard_meets_area(fp, crtyd_layers, bbox, polys):
                     findings.append({
                         "component": ref,
                         "keepout_name": kz_name,
@@ -1270,8 +1298,8 @@ def analyze_keepout_violations(footprints: list[dict], vias: dict,
                         "severity": "error",
                         "confidence": "heuristic",
                         "evidence_source": "topology",
-                        "summary": f"Keepout violation: {ref} inside keepout zone{' ' + kz_name if kz_name != 'unnamed' else ''}",
-                        "description": f"Component {ref} center is inside keepout zone {kz_name} (bbox check).",
+                        "summary": f"Keepout violation: {ref} inside keepout zone{' ' + kz_label if kz_label != 'unnamed' else ''}",
+                        "description": f"Component {ref} courtyard overlaps keepout zone {kz_label}.",
                         "components": [ref],
                         "nets": [],
                         "pins": [],
@@ -1280,8 +1308,7 @@ def analyze_keepout_violations(footprints: list[dict], vias: dict,
                     })
 
         # Check vias
-        polys = kz.get("_outline_polys")
-        if polys and _prohibits(restrictions, "vias") and _area_copper_layers(kz_layers):
+        if _prohibits(restrictions, "vias") and _area_copper_layers(kz_layers):
             for via in via_list:
                 if via.get("type", "through") != "through":
                     continue
@@ -1302,8 +1329,8 @@ def analyze_keepout_violations(footprints: list[dict], vias: dict,
                         "severity": "error",
                         "confidence": "heuristic",
                         "evidence_source": "topology",
-                        "summary": f"Keepout violation: via at ({round(vx, 1)}, {round(vy, 1)}) inside keepout{' ' + kz_name if kz_name != 'unnamed' else ''}",
-                        "description": f"Via at ({round(vx, 2)}, {round(vy, 2)}) is inside keepout zone {kz_name}.",
+                        "summary": f"Keepout violation: via at ({round(vx, 1)}, {round(vy, 1)}) inside keepout{' ' + kz_label if kz_label != 'unnamed' else ''}",
+                        "description": f"Via at ({round(vx, 2)}, {round(vy, 2)}) is inside keepout zone {kz_label}.",
                         "components": [],
                         "nets": [],
                         "pins": [],

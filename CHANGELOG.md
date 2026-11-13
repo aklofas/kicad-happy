@@ -201,6 +201,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Every ground-named net gets 0 V in `rail_voltages`, not only `GND`, `VSS`, `AGND` and `DGND`.
 - A VSS-named net that a regulator output drives (a negative LDO, an isolated converter's -Vout) keeps the regulator's output rail and gets no 0 V in `rail_voltages`.
 - KO-001 tests a via against the rule area's outline, holes included, and reports one whose copper crosses the edge, as KiCad does; vias in the corners or cut-outs of a round, ring or L-shaped area are no longer reported.
+- KO-001 judges a footprint by its courtyard on the side the rule area covers, as KiCad does, so a part whose courtyard reaches into the area is reported and one whose centre only lies in the area's bounding box is not; an `F&B.Cu` area now covers parts on both sides, and a footprint without a courtyard is not judged.
 
 ### Documentation
 
