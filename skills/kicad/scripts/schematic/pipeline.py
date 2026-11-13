@@ -27,7 +27,8 @@ from kicad_core.diagnostics import merge, record
 from kicad_core.sexp import parse_file_checked
 from kicad_core.project import parse_input_problem
 from kicad_core.values import snap_to_mil_grid as _snap_mil
-from kicad_core.netnames import _clean_hierarchical_name, parse_voltage_from_net_name
+from kicad_core.netnames import (_clean_hierarchical_name, negative_split_rails,
+                                  parse_voltage_from_net_name)
 from kicad_core.netquery import (
     build_bridge_facts,
     build_ref_pins,
@@ -326,7 +327,8 @@ def build_rail_map(ctx: AnalysisContext, power_regulators: list[dict]) -> dict[s
     its output net (the last regulator on a net wins), then, for a regulator with
     no estimate, the voltage in the name of the sheet holding its output net (the
     regulator records it as ``_output_rail_voltage_provenance``), then
-    the voltage in the name of a power or ground net or of a regulator output (another
+    the voltage in the name of a power or ground net (negative on the ``4V5_N`` half of a
+    split supply, ``negative_split_rails``) or of a regulator output (another
     net that is a supply only by its pins gets none from its name, and a VSS net a regulator drives, ``vss_supply_rails``,
     gets none from its name and no positive estimate). The project config has the
     last word: an ignored rail is dropped and an override is set on every net it names.
@@ -357,11 +359,14 @@ def build_rail_map(ctx: AnalysisContext, power_regulators: list[dict]) -> dict[s
         if reg.get("output_rail"):
             inverting_out[reg["output_rail"]] = (inverting_out.get(reg["output_rail"], False)
                                                  or bool(reg.get("inverting")))
+    split_negative = negative_split_rails(ctx.nets)
     for net_name in sorted(ctx.nets):
         if net_name in by_net or net_name in ctx.vss_supply_rails:
             continue
         if ctx.is_power_net(net_name, by_pins=False) or ctx.is_ground(net_name):
             v = _estimate_rail_voltage(net_name)
+            if v is not None and net_name in split_negative:
+                v = -abs(v)
         elif net_name in inverting_out and not re.search(r"\d,\d", net_name):
             # The name parser takes only a dot as the decimal point: 3,3V would read 3.0.
             v = parse_voltage_from_net_name(net_name)

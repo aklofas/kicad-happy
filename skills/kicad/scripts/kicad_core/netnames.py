@@ -1,5 +1,6 @@
 """Net-name heuristics: rail/ground/USB recognition and voltage-from-name (kicad_core). Each predicate is one named policy; do not union them with other skills' lists (see product review U2)."""
 import re
+from collections.abc import Iterable
 from fnmatch import fnmatch
 
 from kicad_core.sexp import unescape_string
@@ -372,6 +373,23 @@ def is_vss_name(net_name: str | None) -> bool:
     if not net_name:
         return False
     return unescape_string(net_name.rsplit("/", 1)[-1]).upper().startswith(("VSS", "AVSS", "DVSS"))
+
+
+_SPLIT_RAIL_N_LEAF = re.compile(r"(\d+V\d+)_N")
+
+
+def negative_split_rails(net_names: Iterable[str]) -> set[str]:
+    """The nets of *net_names* whose leaf is ``<n>V<n>_N`` (4V5_N) beside a ``<n>V<n>_P``
+    twin: the negative half of a split supply. Alone, ``1V5_N`` is only a name."""
+    by_leaf: dict[str, list[str]] = {}
+    for name in net_names:
+        by_leaf.setdefault(unescape_string(net_leaf(name)).upper().lstrip("+"), []).append(name)
+    found: set[str] = set()
+    for leaf, names in by_leaf.items():
+        m = _SPLIT_RAIL_N_LEAF.fullmatch(leaf)
+        if m and f"{m.group(1)}_P" in by_leaf:
+            found.update(names)
+    return found
 
 
 _UUID_RE = re.compile(

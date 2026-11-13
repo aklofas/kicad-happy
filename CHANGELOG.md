@@ -33,6 +33,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The plane-split check skips a ground or power net that has no copper zone on the board, so an unrouted or track-only net is no longer reported as a split plane with signals crossing it.
 - A voltage divider continues through a node named like a rail (12V_FBM) when only local labels name it and two resistors are its only parts, so a regulator's feedback divider reads its full top resistance.
 - `rail_voltages` carries the voltage in the name of a regulator output that the name rules do not call a rail (`3V3_OFF`), unless its sign disagrees with the regulator.
+- A rail named `<n>V<n>_N` beside its `_P` twin (4V5_N / 4V5_P) reads as negative in rail_voltages, statistics.power_rails and its regulator's estimated output.
 - `voltage_overrides` rejects `true`/`false`, NaN and infinity.
 - `search_lcsc.py --details` fetches LCSC stock for keyword hits that jlcsearch returned without a figure before `--in-stock`, `--min-stock` or `--sort stock` judges them.
 - An `analysis/manifest.json` larger than 10 MB is backed up and treated as corrupt instead of read whole.

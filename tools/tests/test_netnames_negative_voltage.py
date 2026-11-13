@@ -124,5 +124,111 @@ class Callers(unittest.TestCase):
         self.assertEqual([i for i in out.get("issues", []) if i["type"] == "supervisor_threshold_above_nominal"], [])
 
 
+def _pin(ref, num, name, pin_type):
+    return dict(component=ref, pin_number=num, pin_name=name, pin_type=pin_type)
+
+
+def _part(ref, typ, value, lib_id, pin_names):
+    return {"reference": ref, "type": typ, "value": value, "lib_id": lib_id, "footprint": "",
+            "properties": {}, "mpn": "", "dnp": False, "in_bom": True,
+            "pins": [{"number": n, "name": nm} for n, nm in pin_names]}
+
+
+def _split_supply(twin=True, divider=True):
+    """An inverting charge pump (LM27761) from 5V5 onto 4V5_N, set by a feedback divider,
+    beside a 4V5_P rail (the split supply's positive half) when *twin*."""
+    comps = [_part("U1", "ic", "LM27761", "power-azonenberg:LM27761",
+                   [("1", "VIN"), ("2", "GND"), ("3", "CPOUT"), ("4", "VOUT"), ("5", "VFB"),
+                    ("6", "EN"), ("7", "C1-"), ("8", "C1+")]),
+             _part("R1", "resistor", "255K", "device:R", [("1", "~"), ("2", "~")]),
+             _part("R2", "resistor", "95.3K", "device:R", [("1", "~"), ("2", "~")]),
+             _part("C5", "capacitor", "4.7u", "device:C", [("1", "~"), ("2", "~")]),
+             _part("C6", "capacitor", "4.7u", "device:C", [("1", "~"), ("2", "~")])]
+    nets = {
+        "GND": [_pin("U1", "2", "GND", "power_in"), _pin("C5", "2", "~", "passive"),
+                _pin("C6", "2", "~", "passive")],
+        "5V5": [_pin("U1", "1", "VIN", "power_in"), _pin("U1", "6", "EN", "input")],
+        "CP": [_pin("U1", "3", "CPOUT", "power_out")],
+        "4V5_N": [_pin("U1", "4", "VOUT", "power_out"), _pin("C5", "1", "~", "passive")],
+        "4V5_N_FB": [_pin("U1", "5", "VFB", "input")],
+    }
+    if divider:
+        nets["4V5_N"].append(_pin("R1", "1", "~", "passive"))
+        nets["4V5_N_FB"] += [_pin("R1", "2", "~", "passive"), _pin("R2", "1", "~", "passive")]
+        nets["GND"].append(_pin("R2", "2", "~", "passive"))
+    rails = {"GND", "5V5", "4V5_N"}
+    if twin:
+        nets["4V5_P"] = [_pin("C6", "1", "~", "passive")]
+        rails.add("4V5_P")
+    full = {n: {"name": n, "pins": ps, "point_count": 0, "no_connect": False,
+                "has_pwr_flag": False, "labels": []} for n, ps in nets.items()}
+    return comps, full, build_analysis_context(comps, full, {}, known_power_rails=rails)
+
+
+def _regulators(ctx):
+    from signal_detectors import detect_power_regulators, detect_voltage_dividers
+    regs = detect_power_regulators(ctx, detect_voltage_dividers(ctx)["voltage_dividers"])
+    return [r for r in regs if r["ref"] == "U1"]
+
+
+def _rails(ctx, regs):
+    from schematic.pipeline import build_rail_map, public_rail_voltages
+    return public_rail_voltages(ctx, regs, build_rail_map(ctx, regs))
+
+
+def _stats_rails(comps, nets):
+    from schematic.bom_stats import compute_statistics
+    stats = compute_statistics(comps, nets, [], [], [])
+    return {r["name"]: r["voltage"] for r in stats["power_rails"]}
+
+
+class SplitSupplyNegativeHalf(unittest.TestCase):
+    def test_only_an_n_leaf_with_its_p_twin_is_the_negative_half(self):
+        from kicad_core.netnames import negative_split_rails
+        self.assertEqual(negative_split_rails(["4V5_N", "/psu/4V5_P", "GND"]), {"4V5_N"})
+        self.assertEqual(negative_split_rails(["/afe/+5V0_N", "5V0_P"]), {"/afe/+5V0_N"})
+        self.assertEqual(negative_split_rails(["4V5_P", "1V5_N", "7V0_N_1", "7V0_P", "V5N", "V5P"]),
+                         set())
+
+    def test_regulator_on_the_negative_half_is_inverting_with_no_ldo_drop(self):
+        _, _, ctx = _split_supply()
+        [reg] = _regulators(ctx)
+        self.assertTrue(reg.get("inverting"))
+        self.assertLess(reg["estimated_vout"], 0)
+        self.assertNotIn("power_dissipation", reg)
+
+    def test_negative_half_reads_negative_in_rail_voltages_and_statistics(self):
+        comps, nets, ctx = _split_supply()
+        rails = _rails(ctx, _regulators(ctx))
+        self.assertLess(rails["4V5_N"], 0)
+        self.assertEqual(rails["4V5_P"], 4.5)
+        stats = _stats_rails(comps, nets)
+        self.assertEqual(stats["4V5_N"], -4.5)
+        self.assertEqual(stats["4V5_P"], 4.5)
+
+    def test_name_pass_reads_the_negative_half_without_a_regulator(self):
+        _, _, ctx = _split_supply()
+        self.assertEqual(_rails(ctx, [])["4V5_N"], -4.5)
+
+    def test_inverting_regulator_without_an_estimate_gets_the_negative_name_voltage(self):
+        _, _, ctx = _split_supply(divider=False)
+        regs = _regulators(ctx)
+        self.assertEqual([(r.get("inverting"), r.get("estimated_vout")) for r in regs], [(True, None)])
+        self.assertEqual(_rails(ctx, regs)["4V5_N"], -4.5)
+
+    def test_n_leaf_without_its_twin_stays_positive(self):
+        comps, nets, ctx = _split_supply(twin=False)
+        [reg] = _regulators(ctx)
+        self.assertNotIn("inverting", reg)
+        self.assertGreater(reg["estimated_vout"], 0)
+        self.assertEqual(_stats_rails(comps, nets)["4V5_N"], 4.5)
+        alone = {"1V5_N": [], "GND": []}
+        full = {n: {"name": n, "pins": ps, "point_count": 0, "no_connect": False,
+                    "has_pwr_flag": False, "labels": []} for n, ps in alone.items()}
+        ctx = build_analysis_context([], full, {}, known_power_rails={"1V5_N", "GND"})
+        self.assertEqual(_rails(ctx, [])["1V5_N"], 1.5)
+        self.assertEqual(_stats_rails([], full)["1V5_N"], 1.5)
+
+
 if __name__ == "__main__":
     unittest.main()

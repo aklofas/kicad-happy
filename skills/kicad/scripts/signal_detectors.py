@@ -23,6 +23,7 @@ from kicad_core.values import format_frequency as _format_frequency, parse_value
 from kicad_core.netnames import (
     is_power_net_name,
     is_usb_data_net_name,
+    negative_split_rails,
     net_leaf,
     parse_voltage_from_net_name as _parse_voltage_from_net_name,
 )
@@ -2063,11 +2064,12 @@ def _build_regulator_record(ctx: AnalysisContext, cand: _RegulatorCandidate,
         reg_info["input_rail"] = vin_pin[1]
     if vout_pin:
         reg_info["output_rail"] = vout_pin[1]
-        # Also check if the output rail's own name suggests a negative voltage (-5V, NEG12, V-);
-        # a sheet path is not part of it (a UUID path holds "-<digit>")
+        # Also check if the output rail's own name suggests a negative voltage (-5V, NEG12, V-,
+        # the 4V5_N half of a 4V5_P / 4V5_N split supply); a sheet path is not part of it
+        # (a UUID path holds "-<digit>")
         out_net_u = net_leaf(vout_pin[1]).upper()
         if re.search(r'[-](\d)', out_net_u) or "NEG" in out_net_u or out_net_u.startswith("-") \
-                or out_net_u.endswith("-"):
+                or out_net_u.endswith("-") or vout_pin[1] in negative_split_rails(ctx.nets):
             is_inverting = True
     if is_inverting:
         reg_info["inverting"] = True
