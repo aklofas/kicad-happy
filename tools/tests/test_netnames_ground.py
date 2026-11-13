@@ -137,6 +137,15 @@ class ComNamedByAnyPowerSymbol(unittest.TestCase):
         ctx = _scanned_ctx({"COM": [("K1", "1", "COM", "passive")]}, comps)
         self.assertFalse(ctx.is_ground("COM"))
 
+    def test_zero_named_only_by_a_non_pwr_power_symbol_is_not_ground(self):
+        comps = [{"reference": "#GND01", "type": "power_symbol", "value": "0"},
+                 {"reference": "R1", "type": "resistor", "value": "1k"}]
+        ctx = _scanned_ctx({"0": [("#GND01", "1", "0", "power_in"), ("R1", "2", "~", "passive")],
+                            "COM": [("#U$01", "1", "COM", "power_in"), ("R1", "1", "~", "passive")]},
+                           comps + self.COMPS[:1])
+        self.assertFalse(ctx.is_ground("0"))
+        self.assertTrue(ctx.is_ground("COM"))
+
     def test_schematic_ground_domains_read_the_same_rail_set(self):
         nets = {"COM": [("#U$01", "1", "COM", "power_in"), ("C1", "2", "~", "passive")]}
         ctx = _scanned_ctx(nets, self.COMPS)

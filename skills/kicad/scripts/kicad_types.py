@@ -17,7 +17,7 @@ from kicad_core.model import PinNetEntry
 from kicad_core.netquery import build_pin_to_net_map
 from kicad_core.netnames import (
     configured_rail_voltage, is_ground_name, is_pin_guarded_signal, is_power_net_name, is_vss_name,
-    rail_matches,
+    net_leaf, rail_matches,
 )
 from kicad_core.diagnostics import record
 from kicad_core.values import AmbiguousValueSeparator, ambiguous_separator, parse_value
@@ -64,12 +64,13 @@ def scan_power_rails(nets: dict[str, dict]) -> set[str]:
     return rails
 
 
-def power_symbol_nets(nets: dict[str, dict], comp_lookup: dict[str, dict]) -> set[str]:
-    """Nets a ``power_symbol``-typed part sits on, whatever its reference (an imported
-    symbol can keep ``#U$01``)."""
+def power_symbol_com_nets(nets: dict[str, dict], comp_lookup: dict[str, dict]) -> set[str]:
+    """``COM`` nets a ``power_symbol``-typed part sits on, whatever its reference (an
+    imported symbol can keep ``#U$01``)."""
     return {name for name, info in nets.items()
-            if any((comp_lookup.get(p["component"]) or {}).get("type") == "power_symbol"
-                   for p in info.get("pins", []))}
+            if net_leaf(name).upper() == "COM"
+            and any((comp_lookup.get(p["component"]) or {}).get("type") == "power_symbol"
+                    for p in info.get("pins", []))}
 
 
 def index_ref_pins(pin_net: dict) -> dict[str, dict[str, PinNetEntry]]:
@@ -105,8 +106,8 @@ class AnalysisContext:
         known_power_rails: Net names connected to power symbols (``#PWR``, ``#FLG``).
             Used by ``is_power_net()`` to distinguish power rails from signal nets.
         ground_name_rails: The rail set ``is_ground()`` reads (it decides ``COM`` and
-            ``0``): ``known_power_rails`` plus every net a ``power_symbol``-typed part
-            names, whatever its reference. Built by ``build_analysis_context``.
+            ``0``): ``known_power_rails`` plus every ``COM`` net a ``power_symbol``-typed
+            part names, whatever its reference. Built by ``build_analysis_context``.
         ref_pins: Per-component pin map.  ``{ref: {pin_number: (net_name, net_record)}}``.
             Derived from *pin_net* for quick per-component pin enumeration.
         no_connects: List of no-connect markers from the schematic.
@@ -270,7 +271,7 @@ def build_analysis_context(components: list[dict], nets: dict[str, dict], lib_sy
     comp_lookup, parsed_values = index_components(components, diagnostics)
     rails = scan_power_rails(nets) if known_power_rails is None else known_power_rails
     ground_rails = frozenset(rails if known_power_rails is not None
-                             else rails | power_symbol_nets(nets, comp_lookup))
+                             else rails | power_symbol_com_nets(nets, comp_lookup))
     ctx = AnalysisContext(
         components=components, nets=nets, lib_symbols=lib_symbols, pin_net=pin_net,
         comp_lookup=comp_lookup, parsed_values=parsed_values, known_power_rails=rails,
