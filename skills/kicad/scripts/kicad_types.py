@@ -228,15 +228,15 @@ def pin_guarded_signal_nets(nets: dict[str, dict], comp_lookup: dict[str, dict],
 
 
 def vss_supply_rail_nets(ctx: AnalysisContext) -> frozenset[str]:
-    """VSS-named nets that a regulator output drives: a supply below ground, though the
-    parts on it still read it as their ground.
+    """Ground-named VSS nets that a regulator output drives: a supply below ground, though
+    the parts on it still read it as their ground.
 
     A power output pin not itself named ground or VSS sits on the net, and its part has a
     pin on another, ground-named net (its own reference): a negative LDO's OUT on VSS, an
     isolated converter's -Vout on VSSA."""
     found = set()
     for name, info in ctx.nets.items():
-        if not is_vss_name(name):
+        if not (is_vss_name(name) and ctx.is_ground(name)):
             continue
         for p in info.get("pins", []):
             pin_name = p.get("pin_name") or ""

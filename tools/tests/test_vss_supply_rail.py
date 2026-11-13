@@ -124,5 +124,24 @@ class GroundVss(unittest.TestCase):
         self.assertEqual(_ctx(comps, nets, {"VSS", "+5V"}).vss_supply_rails, frozenset())
 
 
+class NotAVssSupply(unittest.TestCase):
+    def test_regulator_output_on_a_vss_named_rail_that_is_not_ground(self):
+        # DVSS_1V8 is a VSS-family name but no ground: a positive supply rail.
+        ctx = _negative_ldo("DVSS_1V8")
+        self.assertFalse(ctx.is_ground("DVSS_1V8"))
+        self.assertEqual(ctx.vss_supply_rails, frozenset())
+
+
+class SheetNameOnAVssSupply(unittest.TestCase):
+    def test_no_positive_voltage_from_a_5v_sheet_name(self):
+        # An adjustable part (no estimate) on a sheet named "5V": the sheet's voltage is
+        # not the VSS supply's.
+        ctx = _negative_ldo("/5V/VSS", value="LT3094")
+        regs = detect_power_regulators(ctx, [])
+        self.assertEqual(ctx.vss_supply_rails, {"/5V/VSS"})
+        self.assertIsNone(regs[0].get("estimated_vout"))
+        self.assertNotIn("/5V/VSS", build_rail_map(ctx, regs))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -349,7 +349,8 @@ def build_rail_map(ctx: AnalysisContext, power_regulators: list[dict]) -> dict[s
         if (out_rail and reg.get("estimated_vout") is None and out_rail not in not_outputs
                 and reg.get("topology") != "ic_with_internal_regulator"):
             v = _sheet_stem_voltage(out_rail)
-            if v is not None and out_rail not in by_net:
+            if (v is not None and out_rail not in by_net
+                    and not (out_rail in ctx.vss_supply_rails and v > 0)):
                 by_net[out_rail] = v
                 reg["_output_rail_voltage_provenance"] = {"source": "sheet name", "voltage": v}
     # A regulator output is a rail whatever its name says (3V3_OFF). Its name voltage
