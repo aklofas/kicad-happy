@@ -1212,7 +1212,7 @@ def run_analyses(ctx: AnalysisContext, parsed: dict, path: str, nets: dict) -> S
     sourcing_gate_findings = audit_sourcing_gate(all_components)
     dnp_rate_findings = audit_dnp_rate(all_components)
     alternate_pins = summarize_alternate_pins(all_lib_symbols)
-    ground_domains = classify_ground_domains(nets, all_components)
+    ground_domains = classify_ground_domains(nets, all_components, power_rails=known_power_rails)
     bus_topology = analyze_bus_topology(merged_bus, all_labels, nets)
     wire_geometry = analyze_wire_geometry(all_wires)
     sim_readiness = check_simulation_readiness(all_components, all_lib_symbols)

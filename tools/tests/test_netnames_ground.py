@@ -9,6 +9,7 @@ from kicad_core.netnames import is_ground_name, is_virtual_ground_name, is_vss_n
 from pcb.routing import analyze_ground_domains, analyze_trace_proximity  # noqa: E402
 from kicad_types import build_analysis_context  # noqa: E402
 from signal_detectors import audit_rail_sources, detect_label_aliases, detect_solder_jumpers  # noqa: E402
+from schematic.audits import classify_ground_domains  # noqa: E402
 
 GROUNDS = ["AVSS", "DVSS", "GROUND", "ground", "AGND_CODEC", "PGND_3V3", "HEATER_GND_1",
            "ESP_GND2", "AGND1", "V+_GND_CH1", "0VA", "0V_A", "/Codec/AGND_CODEC"]
@@ -92,6 +93,15 @@ class PowerSymbolComIsGroundToItsCallers(unittest.TestCase):
                 "SENSE": {"pins": [("JP1", "2", "B", "passive")]}}
         got = [f for f in detect_solder_jumpers(_ctx(nets, comps)) if f.get("reference") == "JP1"]
         self.assertEqual(got[0]["ground_nets"], ["COM"])
+
+    def test_schematic_ground_domains_count_a_power_symbol_com(self):
+        nets = {"COM": {"pins": [{"component": "#PWR1", "pin_type": "power_in"},
+                                 {"component": "K1", "pin_type": "passive"}]},
+                "GND": {"pins": [{"component": "U1", "pin_type": "power_in"}]}}
+        def nets_in_domains(**kw):
+            return sorted(classify_ground_domains(nets, [], **kw)["ground_nets"])
+        self.assertEqual(nets_in_domains(power_rails={"COM"}), ["COM", "GND"])
+        self.assertEqual(nets_in_domains(), ["GND"])
 
     def test_trace_proximity_leaves_out_a_power_symbol_com(self):
         tracks = {"segments": [dict(x1=0, y1=0, x2=10, y2=0, layer="F.Cu", net=1),

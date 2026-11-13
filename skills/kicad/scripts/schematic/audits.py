@@ -836,7 +836,8 @@ def summarize_alternate_pins(lib_symbols: dict) -> list[dict]:
     return results
 
 
-def classify_ground_domains(nets: dict, components: list[dict]) -> dict:
+def classify_ground_domains(nets: dict, components: list[dict],
+                            power_rails: set[str] | None = None) -> dict:
     """Classify ground nets into domains: signal, analog, digital, earth, chassis, power.
 
     Multiple ground domains in a design need careful management — star grounding,
@@ -844,7 +845,7 @@ def classify_ground_domains(nets: dict, components: list[dict]) -> dict:
     """
     ground_nets = {}
     for net_name, net_info in nets.items():
-        if not _is_ground_name(net_name):
+        if not _is_ground_name(net_name, power_rails):
             continue
 
         nu = net_name.upper()
