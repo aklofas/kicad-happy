@@ -111,5 +111,38 @@ class PowerSymbolComIsGroundToItsCallers(unittest.TestCase):
         self.assertEqual(analyze_trace_proximity(tracks, names)["total_pairs_found"], 1)
 
 
+def _scanned_ctx(nets, comps):
+    """A context whose power rails come from the schematic's own power symbols."""
+    full = {n: {"name": n, "pins": [dict(component=r, pin_number=p, pin_name=pn, pin_type=t)
+                                    for r, p, pn, t in ps],
+                "point_count": 0, "no_connect": False, "has_pwr_flag": False, "labels": []}
+            for n, ps in nets.items()}
+    return build_analysis_context(list(comps), full, {})
+
+
+class ComNamedByAnyPowerSymbol(unittest.TestCase):
+    """An imported power symbol keeps its own reference (#U$01, not #PWR)."""
+
+    COMPS = [{"reference": "#U$01", "type": "power_symbol", "value": "COM"},
+             {"reference": "C1", "type": "capacitor", "value": "100n"}]
+
+    def test_com_named_by_a_power_symbol_of_any_reference_is_ground(self):
+        ctx = _scanned_ctx({"COM": [("#U$01", "1", "COM", "power_in"), ("C1", "2", "~", "passive")],
+                            "+5V": [("C1", "1", "~", "passive")]}, self.COMPS)
+        self.assertNotIn("COM", ctx.known_power_rails)
+        self.assertTrue(ctx.is_ground("COM"))
+
+    def test_com_with_no_power_symbol_is_not_ground(self):
+        comps = [{"reference": "K1", "type": "relay", "value": "G5V"}]
+        ctx = _scanned_ctx({"COM": [("K1", "1", "COM", "passive")]}, comps)
+        self.assertFalse(ctx.is_ground("COM"))
+
+    def test_schematic_ground_domains_read_the_same_rail_set(self):
+        nets = {"COM": [("#U$01", "1", "COM", "power_in"), ("C1", "2", "~", "passive")]}
+        ctx = _scanned_ctx(nets, self.COMPS)
+        domains = classify_ground_domains(ctx.nets, ctx.components, power_rails=ctx.ground_name_rails)
+        self.assertEqual(list(domains["ground_nets"]), ["COM"])
+
+
 if __name__ == "__main__":
     unittest.main()

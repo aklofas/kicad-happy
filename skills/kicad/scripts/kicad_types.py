@@ -64,6 +64,14 @@ def scan_power_rails(nets: dict[str, dict]) -> set[str]:
     return rails
 
 
+def power_symbol_nets(nets: dict[str, dict], comp_lookup: dict[str, dict]) -> set[str]:
+    """Nets a ``power_symbol``-typed part sits on, whatever its reference (an imported
+    symbol can keep ``#U$01``)."""
+    return {name for name, info in nets.items()
+            if any((comp_lookup.get(p["component"]) or {}).get("type") == "power_symbol"
+                   for p in info.get("pins", []))}
+
+
 def index_ref_pins(pin_net: dict) -> dict[str, dict[str, PinNetEntry]]:
     rp: dict[str, dict[str, PinNetEntry]] = {}
     for (comp_ref, pin_num), val in pin_net.items():
@@ -96,6 +104,9 @@ class AnalysisContext:
             successfully are included.  Built by ``build_analysis_context``.
         known_power_rails: Net names connected to power symbols (``#PWR``, ``#FLG``).
             Used by ``is_power_net()`` to distinguish power rails from signal nets.
+        ground_name_rails: The rail set ``is_ground()`` reads (it decides ``COM`` and
+            ``0``): ``known_power_rails`` plus every net a ``power_symbol``-typed part
+            names, whatever its reference. Built by ``build_analysis_context``.
         ref_pins: Per-component pin map.  ``{ref: {pin_number: (net_name, net_record)}}``.
             Derived from *pin_net* for quick per-component pin enumeration.
         no_connects: List of no-connect markers from the schematic.
@@ -134,6 +145,7 @@ class AnalysisContext:
     comp_lookup: dict[str, dict] = field(default_factory=dict)
     parsed_values: dict[str, float] = field(default_factory=dict)
     known_power_rails: set[str] = field(default_factory=set)
+    ground_name_rails: frozenset = field(default_factory=frozenset, repr=False)
     ref_pins: dict[str, dict[str, PinNetEntry]] = field(default_factory=dict)
     no_connects: list[dict] = field(default_factory=list)
     source: str = "unknown"
@@ -156,7 +168,7 @@ class AnalysisContext:
             or (by_pins and name in self.topology_rails))
 
     def is_ground(self, name: str | None) -> bool:
-        return is_ground_name(name, self.known_power_rails)
+        return is_ground_name(name, self.ground_name_rails)
 
     def rail_voltage(self, net: str | None) -> float | None:
         """Voltage of the exact net *net* (full hierarchical name) from the rail map.
@@ -257,9 +269,12 @@ def build_analysis_context(components: list[dict], nets: dict[str, dict], lib_sy
     diagnostics: list = []
     comp_lookup, parsed_values = index_components(components, diagnostics)
     rails = scan_power_rails(nets) if known_power_rails is None else known_power_rails
+    ground_rails = frozenset(rails if known_power_rails is not None
+                             else rails | power_symbol_nets(nets, comp_lookup))
     ctx = AnalysisContext(
         components=components, nets=nets, lib_symbols=lib_symbols, pin_net=pin_net,
         comp_lookup=comp_lookup, parsed_values=parsed_values, known_power_rails=rails,
+        ground_name_rails=ground_rails,
         ref_pins=index_ref_pins(pin_net),
         no_connects=no_connects if no_connects is not None else [],
         source=source,
