@@ -567,7 +567,7 @@ def _power_pin_roles(pin: dict) -> tuple:
 
 def _ic_ground_nets(pin_nets: dict, ext_pins: dict) -> set:
     """Nets on the IC's own ground pins (type ground, or function GND on a
-    pin typed power): a PGND2 or AVSS that the ground-name rules miss."""
+    pin typed power): a ground under a name the ground-name rules miss (Masse, Net-(U1-PGND))."""
     out = set()
     for pin_num, net_name in pin_nets.items():
         ep = ext_pins.get(pin_num) or {}

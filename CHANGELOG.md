@@ -24,6 +24,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `statistics.board_area_mm2` and the placement density of a board file that holds several boards on Edge.Cuts now use the summed area of the boards, as KiCad's board statistics report it, instead of the box around all of them; the design-intent large-board signal and the via-spacing area of EMC VS-001 follow the summed area. Width and height still give that box.
 - EMC connector checks (IO-001, IO-002, CK-003, BE-003, SH-001 and the test plan) skip DNP connectors, an ESD device whose nearest connector is DNP is not paired with another one, and IO-001 counts a protection device on the connector's schematic net name.
 - Nets named `V-` or `VMOT` are read as power rails by their name, as the EMC checks already did. They now get rail-source, decoupling and trace-width checks; expect new rail-source warnings on such nets that have no regulator or power symbol.
+- A virtual ground (`VGND`, `HP_VGND`, `VGND1`) is not read as ground, and the PCB ground-domain list leaves it out.
 
 ### Fixed
 
@@ -189,6 +190,8 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A regulator Value written as a label (`LDO1`, `BUCK5V`, `DCDC24V/5V NUM`) no longer stops the SPICE regulator bench from judging the divider against the symbol's reference voltage.
 - Net names such as `V24.RX`, `V1_CLK1` or `V2OUT`, labels joined with an escaped slash such as `SDIO_CMD{slash}3V3`, and enable lines such as `EN_VCC` are no longer read as power rails by their name: a `V<number>` name counts as a rail only when a voltage or a rail word follows the number, a slash inside a label is part of the label, and an enable or sense prefix keeps a `_VCC` / `_VDD` name a signal. Rail-source, decoupling and trace-width checks stop firing on these signals, and EMC return-path checks now cover them.
 - A net KiCad names after a pin with an escaped slash, such as `Net-(VR1-ADJ{slash}GND)`, is not read as ground or VSS.
+- A net named `COM` is ground only when a power symbol names it; analog-switch, relay, optocoupler and transformer commons are signals.
+- `AVSS`, `DVSS`, `GROUND` and names that carry a ground word as one part (`AGND_CODEC`, `PGND_3V3`, `HEATER_GND_1`, `ESP_GND2`) read as ground; a 0-10 V interface net such as `0V_10V` does not.
 
 ### Documentation
 

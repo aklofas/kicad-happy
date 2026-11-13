@@ -341,8 +341,9 @@ A net is considered a power net if **any** of the three methods matches, except 
 ### Ground Net Identification
 
 `is_ground_name()` checks:
-- **Exact matches**: `GND`, `VSS`, `AGND`, `DGND`, `PGND`, `GNDPWR`, `GNDA`, `GNDD`
-- **Patterns**: Starts or ends with `GND`, starts with `VSS`
+- **Exact matches**: `GND`, `VSS`, `AGND`, `DGND`, `PGND`, `GNDPWR`, `GNDA`, `GNDD`, `SGND`, `0V`, `AVSS`, `DVSS`, `GROUND` (any case)
+- **Patterns**: Starts or ends with `GND`, starts with `VSS`, a zero-volt name (`0VA`, `0V_A`; not `0V5` or `0V_10V`), a battery negative (`BATT-`, `VBAT_N`), or a ground word as one part of the name (`AGND_CODEC`, `PGND_3V3`, `HEATER_GND_1`; not a pin-named `Net-(U1-GND)`)
+- **Not ground**: `COM` unless a power symbol names it (a switch, relay or transformer common), and a virtual ground (`VGND`, `HP_VGND`, `Virtual_Ground`), which sits at mid-rail
 
 ---
 

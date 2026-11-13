@@ -53,7 +53,7 @@ class SharedTables(unittest.TestCase):
         from cross_analysis import is_cross_analysis_ground_name
         self.assertTrue(is_emc_ground_name("VEE"))
         self.assertFalse(is_ground_name("VEE"))
-        self.assertTrue(is_ground_name("COM"))
+        self.assertTrue(is_ground_name("COM", {"COM"}))
         self.assertFalse(is_emc_ground_name("COM"))
         self.assertTrue(is_cross_analysis_ground_name("CHASSIS"))
         self.assertFalse(is_cross_analysis_ground_name("/Power/GND"))   # today's behaviour, preserved

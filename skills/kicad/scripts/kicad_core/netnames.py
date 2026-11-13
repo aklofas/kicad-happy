@@ -298,11 +298,32 @@ def is_pin_guarded_signal(net_name: str | None, pins) -> bool:
     return any(t in IC_SIGNAL_PIN_TYPES and on_ic is not False for t, on_ic in kinds)
 
 
+# A ground word as one token of a longer name: a domain ground (AGND_CODEC, PGND_3V3,
+# CAN_GND_ISO) or a switched return (HEATER_GND_1, ESP_GND2). A VSS token is left out:
+# DAC_VSS or SENSOR_VSS can name a negative supply or the signal that sets one.
+_GROUND_TOKEN = re.compile(r'^[ADPSF]?GND[A-Z0-9]*$|^GROUND$')
+# A virtual ground (VGND, HP_VGND, VIRTUAL_GND) sits at mid-rail, not at 0 V.
+_VIRTUAL_GROUND_TOKEN = re.compile(r'^(?:VGND|VIRT)')
+
+
+def _name_tokens(leaf_upper: str) -> list[str]:
+    return [t for t in re.split(r'[_.\s]+', leaf_upper) if t]
+
+
+def is_virtual_ground_name(net_name: str | None) -> bool:
+    """True for a virtual ground (VGND, VGND1, HP_VGND, Virtual_Ground): a mid-rail node."""
+    if not net_name:
+        return False
+    leaf = unescape_string(net_name.rsplit("/", 1)[-1]).upper()
+    return any(_VIRTUAL_GROUND_TOKEN.match(t) for t in _name_tokens(leaf))
+
+
 def is_ground_name(net_name: str | None, power_rails: set[str] | None = None) -> bool:
     """Check if a net name looks like a ground rail.
 
-    A net named ``0`` is ground only when a power symbol names it (the SPICE ground
-    symbol); a connector pin labelled ``0`` is a signal.
+    A net named ``0`` or ``COM`` is ground only when a power symbol names it (``0`` is
+    the SPICE ground symbol); a connector pin labelled ``0`` is a signal and ``COM`` is
+    often a switch or transformer common. A virtual ground (VGND) is not ground.
     """
     if not net_name:
         return False
@@ -312,15 +333,21 @@ def is_ground_name(net_name: str | None, power_rails: set[str] | None = None) ->
     # only: an escaped {slash} is part of the label (Net-(VR1-ADJ{slash}GND) is a pin net).
     net_name = unescape_string(net_name.rsplit("/", 1)[-1])
     nu = net_name.upper()
+    if nu == "COM":
+        return bool(power_rails) and net_name in power_rails
+    if is_virtual_ground_name(net_name):
+        return False
     # Exact matches
     if nu in ("GND", "VSS", "AGND", "DGND", "PGND", "GNDPWR", "GNDA", "GNDD",
-              "SGND", "COM", "0V"):
+              "SGND", "0V", "AVSS", "DVSS", "GROUND"):
         return True
     # Any zero-volt spelling (0VA, 0Vo, 0VANA, 0VCC, 0V_A, +0V, ...) is
     # ground, not just the literal "0V" — but 0V<digit> (0V9, 0V85, 0V95,
-    # 0V5) is a sub-1V rail under the nnVn convention, not ground.
-    if re.match(r'^\+?0+V(?!\d)([A-Z_][A-Z0-9_]*)?$', nu):
-        return True
+    # 0V5) is a sub-1V rail under the nnVn convention, not ground, and a
+    # second voltage (0V_10V, 0V_32V) names a 0-10 V interface signal.
+    m = re.match(r'^\+?0+V(?!\d)([A-Z_][A-Z0-9_]*)?$', nu)
+    if m:
+        return not re.search(r'\d(?:\.\d+)?V', m.group(1) or "")
     # Battery-negative rails used as circuit ground in single-supply designs.
     # Narrow exact-match set — deliberately excludes V-/VEE which are
     # legitimate bipolar negative supply rails, not ground.
@@ -333,15 +360,16 @@ def is_ground_name(net_name: str | None, power_rails: set[str] | None = None) ->
     # VSS variants
     if nu.startswith("VSS"):
         return True
-    return False
-
+    # A pin-named net (Net-(U1-GND), unconnected-(U1-GND-Pad3)) is not a ground.
+    return "(" not in nu and any(_GROUND_TOKEN.match(t) for t in _name_tokens(nu))
 
 
 def is_vss_name(net_name: str | None) -> bool:
-    """True for a VSS-prefixed net name (sheet path stripped); VSS can be a negative supply."""
+    """True for a VSS-family net name (VSS*, AVSS, DVSS; sheet path stripped); VSS can be a
+    negative supply."""
     if not net_name:
         return False
-    return unescape_string(net_name.rsplit("/", 1)[-1]).upper().startswith("VSS")
+    return unescape_string(net_name.rsplit("/", 1)[-1]).upper().startswith(("VSS", "AVSS", "DVSS"))
 
 
 _UUID_RE = re.compile(

@@ -122,7 +122,7 @@ class PowerInputNets(unittest.TestCase):
 
     def test_ground_pin_on_an_odd_named_net_is_not_power(self):
         pins = [("U5", "3", "GND", "power_in")]
-        self.assertEqual(_classes(PARTS, {"Ground": pins})["Ground"], "signal")
+        self.assertEqual(_classes(PARTS, {"Masse": pins})["Masse"], "signal")
 
     def test_mistyped_scl_pin_stays_clock(self):
         pins = [("U7", "9", "SCL", "power_in")]

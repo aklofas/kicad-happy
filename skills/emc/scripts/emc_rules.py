@@ -111,9 +111,11 @@ def _is_power_or_ground(name: str) -> bool:
 def is_emc_ground_name(name: str) -> bool:
     """Check if a net name is specifically a ground net (the EMC rules' policy).
 
-    Differs from kicad_core.netnames.is_ground_name: also accepts EARTH and
-    VEE; does not accept COM, the 0V<suffix> family (0VA, 0V_A, +0V; only the
-    literal 0V), or battery-negative names (BATT-, VBAT_N, ...).
+    Differs from kicad_core.netnames.is_ground_name: also accepts EARTH, VEE
+    and a virtual ground ending in GND (VGND, HP_VGND); does not accept COM,
+    AVSS, DVSS, GROUND, a ground word inside a longer name (AGND_CODEC,
+    ESP_GND2), the 0V<suffix> family (0VA, 0V_A, +0V; only the literal 0V),
+    or battery-negative names (BATT-, VBAT_N, ...).
     """
     if not name:
         return False
