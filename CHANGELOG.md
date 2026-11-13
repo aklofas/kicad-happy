@@ -25,6 +25,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - EMC connector checks (IO-001, IO-002, CK-003, BE-003, SH-001 and the test plan) skip DNP connectors, an ESD device whose nearest connector is DNP is not paired with another one, and IO-001 counts a protection device on the connector's schematic net name.
 - Nets named `V-` or `VMOT` are read as power rails by their name, as the EMC checks already did. They now get rail-source, decoupling and trace-width checks; expect new rail-source warnings on such nets that have no regulator or power symbol.
 - A virtual ground (`VGND`, `HP_VGND`, `VGND1`) is not read as ground, and the PCB ground-domain list leaves it out.
+- RS-001 no longer reports a reference node (VREF, 2V5_REF) as a rail without a source unless an IC takes its supply from it, and the missing-decoupling observation leaves out reference inputs that nothing drives.
 
 ### Fixed
 

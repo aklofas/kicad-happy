@@ -3851,6 +3851,31 @@ def enrich_transistor_led_drivers(ctx: AnalysisContext, transistor_circuits: lis
                 break
 
 
+def _is_reference_net_name(net_name: str) -> bool:
+    """A reference or bias node by its own name: a token ending in REF or starting with
+    VREF (VREF, 2V5_REF, AREF, DDR_VREFCA), not REFCLK or REFRIG."""
+    return any(t.endswith("REF") or t.startswith("VREF")
+               for t in re.findall(r"[A-Z]+|[0-9]+", net_leaf(net_name).upper()))
+
+
+def _ic_supply_pin(pin: dict) -> bool:
+    """A power input named as a supply (VCC, VDDA, VS, V+), not a reference input (VREF)."""
+    name = re.sub(r"[^0-9A-Z+]", "", str(pin.get("pin_name") or "").upper())
+    return (pin.get("pin_type") == "power_in" and "REF" not in name
+            and ("VCC" in name or "VDD" in name or name in ("VS", "V+", "VIN")))
+
+
+def _reference_net(ctx: AnalysisContext, net_name: str, regulator_outputs: set) -> bool:
+    """A reference-named node that nothing makes a rail: no regulator, reference or other
+    active output drives it and no IC takes its supply from it (a divider tap, a REF input)."""
+    if not _is_reference_net_name(net_name) or net_name in regulator_outputs:
+        return False
+    return not any((p.get("pin_type") in ("power_out", "output")
+                    and (ctx.comp_lookup.get(p.get("component")) or {}).get("type") in ("ic", "diode"))
+                   or _ic_supply_pin(p)
+                   for p in (ctx.nets.get(net_name) or {}).get("pins", []))
+
+
 def detect_design_observations(ctx: AnalysisContext, results: dict) -> list[dict]:
     """Generate structured design observations for higher-level analysis."""
     # EQ-070: Threshold comparisons for design quality metrics
@@ -3870,11 +3895,13 @@ def detect_design_observations(ctx: AnalysisContext, results: dict) -> list[dict
     # Deduplicate multi-unit ICs (same ref, different units)
     unique_ics = get_unique_ics(ctx)
 
-    # 1. IC power pin decoupling status
+    # 1. IC power pin decoupling status (a reference node nothing drives is not a rail)
+    regulator_outputs = {r.get("output_rail") for r in results.get("power_regulators", [])}
     for ic in unique_ics:
         ref = ic["reference"]
         ic_power_nets = {net for net, _ in ctx.ref_pins.get(ref, {}).values()
-                         if net and ctx.is_power_net(net) and not ctx.is_ground(net)}
+                         if net and ctx.is_power_net(net) and not ctx.is_ground(net)
+                         and not _reference_net(ctx, net, regulator_outputs)}
         undecoupled = sorted([r for r in ic_power_nets if r not in decoupled_rails])
         if undecoupled:
             design_observations.append({
@@ -4680,7 +4707,12 @@ def audit_rail_sources(ctx: AnalysisContext,
     def _power_rail(net_name: str, net_info: dict) -> bool:
         # "Power rail" = named like a rail OR has a power_in pin on it that is
         # not a bootstrap pin (a BST net is fed by its capacitor, never a source).
-        if net_name.startswith("__unnamed_"):
+        # A reference node (VREF, 2V5_REF) is a rail only when an output drives it, and
+        # then it is sourced: either way it has nothing to report, unless an IC takes
+        # its supply from it.
+        if net_name.startswith("__unnamed_") or (
+                _is_reference_net_name(net_name)
+                and not any(_ic_supply_pin(p) for p in net_info.get("pins", []))):
             return False
         if is_power_net_name(net_name, None) and net_name not in ctx.pin_guarded_signals:
             return True
