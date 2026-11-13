@@ -1432,6 +1432,15 @@ def extract_zones(root: list) -> tuple[list[dict], ZoneFills]:
         if keepout_restrictions:
             zone_info["is_keepout"] = True
             zone_info["keepout"] = keepout_restrictions
+            # KiCad reads the first (polygon) as the outline and every later one as a hole
+            outline_polys = []
+            for poly_node in find_all(zone, "polygon"):
+                pts = find_first(poly_node, "pts")
+                ring = _extract_polygon_coords(pts) if pts else []
+                if len(ring) >= 3:
+                    outline_polys.append(ring)
+            if outline_polys:
+                zone_info["_outline_polys"] = outline_polys
         if priority is not None:
             zone_info["priority"] = int(priority)
         if zone_name:
@@ -1481,6 +1490,8 @@ def _extract_keepout_zones(zones: list[dict],
             'net': z.get('net', 0),
             'net_name': z.get('net_name', ''),
         }
+        if z.get('_outline_polys'):
+            entry['_outline_polys'] = z['_outline_polys']
         # Find footprints near this keepout zone
         if bbox and len(bbox) == 4:
             margin = 5.0  # mm

@@ -200,6 +200,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `AVSS`, `DVSS`, `GROUND` and names that carry a ground word as one part (`AGND_CODEC`, `PGND_3V3`, `HEATER_GND_1`, `ESP_GND2`) read as ground; a 0-10 V interface net such as `0V_10V` does not.
 - Every ground-named net gets 0 V in `rail_voltages`, not only `GND`, `VSS`, `AGND` and `DGND`.
 - A VSS-named net that a regulator output drives (a negative LDO, an isolated converter's -Vout) keeps the regulator's output rail and gets no 0 V in `rail_voltages`.
+- KO-001 tests a via against the rule area's outline, holes included, and reports one whose copper crosses the edge, as KiCad does; vias in the corners or cut-outs of a round, ring or L-shaped area are no longer reported.
 
 ### Documentation
 

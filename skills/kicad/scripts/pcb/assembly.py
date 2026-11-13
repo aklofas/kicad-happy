@@ -7,9 +7,9 @@ import re
 from kicad_core.classify import is_touch_pad
 from kicad_core.hotloop import polygon_loop_area
 from kicad_core.netnames import IC_SIGNAL_PIN_TYPES, is_ground_name, is_power_net_name
-from pcb.geometry import (_outline_shape_points, _refined_overlap_mm2, courtyards_collide,
-                          outline_edge_distance, outline_loops, overlap_area_mm2,
-                          point_in_outline)
+from pcb.geometry import (_outline_shape_points, _refined_overlap_mm2, _signed_depth,
+                          courtyards_collide, outline_edge_distance, outline_loops,
+                          overlap_area_mm2, point_in_outline)
 
 
 # Whole-name match: VIN+/VINA/VBAT_OK/VREF/VCOUT and op-amp "+" pins are signals.
@@ -1217,10 +1217,21 @@ def _area_copper_layers(layers: list[str]) -> bool:
     return any(layer.endswith(".Cu") for layer in layers)
 
 
+# KiCad shrinks a rule area by its DRC epsilon before the keepout test, so touching is legal
+_AREA_EPSILON_MM = 0.0005
+
+
+def _via_meets_area(vx: float, vy: float, radius: float, polys: list) -> bool:
+    """True when a via's copper disc (radius = half its size) overlaps the area."""
+    return _signed_depth(vx, vy, polys) > _AREA_EPSILON_MM - radius
+
+
 def analyze_keepout_violations(footprints: list[dict], vias: dict,
                                 keepout_zones: list[dict]) -> list[dict]:
-    """KO-001: Check for components or through vias inside keepout zones (bbox check).
+    """KO-001: Check for components or through vias inside keepout zones.
 
+    A through via is judged as KiCad does, by its copper disc against the area outline
+    (holes excluded); a component by its centre in the area's bounding box.
     A rule area's "vias" restriction prohibits through vias only (KiCad's DRC_DISALLOW_VIAS);
     a through via spans every copper layer, so it meets any area on a copper layer.
     """
@@ -1269,7 +1280,8 @@ def analyze_keepout_violations(footprints: list[dict], vias: dict,
                     })
 
         # Check vias
-        if _prohibits(restrictions, "vias") and _area_copper_layers(kz_layers):
+        polys = kz.get("_outline_polys")
+        if polys and _prohibits(restrictions, "vias") and _area_copper_layers(kz_layers):
             for via in via_list:
                 if via.get("type", "through") != "through":
                     continue
@@ -1277,7 +1289,9 @@ def analyze_keepout_violations(footprints: list[dict], vias: dict,
                 vy = via.get("y")
                 if vx is None or vy is None:
                     continue
-                if kx1 <= vx <= kx2 and ky1 <= vy <= ky2:
+                radius = (via.get("size") or 0) / 2.0
+                if (kx1 - radius <= vx <= kx2 + radius and ky1 - radius <= vy <= ky2 + radius
+                        and _via_meets_area(vx, vy, radius, polys)):
                     findings.append({
                         "via_x": round(vx, 2),
                         "via_y": round(vy, 2),
@@ -1289,7 +1303,7 @@ def analyze_keepout_violations(footprints: list[dict], vias: dict,
                         "confidence": "heuristic",
                         "evidence_source": "topology",
                         "summary": f"Keepout violation: via at ({round(vx, 1)}, {round(vy, 1)}) inside keepout{' ' + kz_name if kz_name != 'unnamed' else ''}",
-                        "description": f"Via at ({round(vx, 2)}, {round(vy, 2)}) is inside keepout zone {kz_name} (bbox check).",
+                        "description": f"Via at ({round(vx, 2)}, {round(vy, 2)}) is inside keepout zone {kz_name}.",
                         "components": [],
                         "nets": [],
                         "pins": [],

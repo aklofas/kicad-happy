@@ -287,8 +287,9 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
             "size_distribution": vias["size_distribution"],
             **({"via_analysis": via_analysis} if via_analysis else {}),
         },
-        "zones": zones,
-        "keepout_zones": facts.keepout_zones,
+        "zones": [{k: v for k, v in z.items() if k != "_outline_polys"} for z in zones],
+        "keepout_zones": [{k: v for k, v in kz.items() if k != "_outline_polys"}
+                          for kz in facts.keepout_zones],
         "connectivity": connectivity,
         "net_lengths": net_lengths,
     }
