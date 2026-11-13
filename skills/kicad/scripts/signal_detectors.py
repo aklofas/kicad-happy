@@ -399,10 +399,26 @@ def _merge_series_dividers(voltage_dividers: list[dict], ctx: AnalysisContext) -
     all_resistors = group_reps(ctx, get_components_by_type(ctx, "resistor", with_parsed_values=True))
     resistor_nets, net_to_resistors = index_two_pin_components(ctx, all_resistors)
 
+    # An IC placed without its pins (an unresolved legacy symbol) may sit on any net.
+    all_ic_pins_known = all(ctx.ref_pins.get(c["reference"]) for c in ctx.components
+                            if c.get("type") == "ic")
+
+    def _local_label_only(net_name):
+        """Named only by local labels (no power symbol, no global or hierarchical label),
+        so every pin of the net is on this sheet."""
+        info = ctx.nets.get(net_name)
+        if (not info or not all_ic_pins_known or net_name in ctx.known_power_rails
+                or net_name in ctx.topology_rails):
+            return False
+        return {lbl.get("type") for lbl in info.get("labels") or []} == {"label"}
+
     def _is_passthrough(net_name):
         """A pass-through node connects exactly 2 resistors (a parallel group counts once)
-        and no active components."""
-        if ctx.is_power_net(net_name) or ctx.is_ground(net_name):
+        and no active components. A node named like a rail (12V_FBM) passes only when local
+        labels alone name it."""
+        if ctx.is_ground(net_name):
+            return False
+        if ctx.is_power_net(net_name) and not _local_label_only(net_name):
             return False
         r_at_net = net_to_resistors.get(net_name, [])
         if len(r_at_net) != 2:
