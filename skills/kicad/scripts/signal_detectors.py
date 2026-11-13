@@ -21,7 +21,6 @@ from kicad_core.parts import (
 from kicad_core.classify import classify_jumper_default_state
 from kicad_core.values import format_frequency as _format_frequency, parse_value
 from kicad_core.netnames import (
-    is_ground_name,
     is_power_net_name,
     is_usb_data_net_name,
     net_leaf,
@@ -4464,7 +4463,7 @@ def detect_solder_jumpers(ctx: AnalysisContext) -> list[dict]:
                 net_list.append(net)
 
         power_nets = [n for n in net_list if is_power_net_name(n, None) and n not in ctx.pin_guarded_signals]
-        ground_nets = [n for n in net_list if is_ground_name(n)]
+        ground_nets = [n for n in net_list if ctx.is_ground(n)]
 
         if state == "bridged":
             severity = "info"
@@ -4673,7 +4672,7 @@ def audit_rail_sources(ctx: AnalysisContext,
     for net_name, net_info in nets.items():
         if not _power_rail(net_name, net_info):
             continue
-        if is_ground_name(net_name):
+        if ctx.is_ground(net_name):
             continue  # ground handled elsewhere
         conductor = conductor_of(ties, net_name)
         if any(_has_direct_source(nets.get(n, {}), n) for n in conductor):
@@ -4870,7 +4869,7 @@ def detect_label_aliases(ctx: AnalysisContext) -> list[dict]:
         # power-net label entropy, a separate rule (LB-002) could be
         # added later; for now we treat this as noise.
         if ((is_power_net_name(net_name, None) and net_name not in ctx.pin_guarded_signals)
-                or is_ground_name(net_name)):
+                or ctx.is_ground(net_name)):
             continue
         findings.append({
             "detector": "detect_label_aliases",

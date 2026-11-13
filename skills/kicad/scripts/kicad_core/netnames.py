@@ -329,13 +329,15 @@ def is_ground_name(net_name: str | None, power_rails: set[str] | None = None) ->
         return False
     if net_name == "0":
         return bool(power_rails) and "0" in power_rails
+    full_name = net_name
     # Strip hierarchical sheet path prefix (e.g., "/Power Supply/GND" → "GND") on a real '/'
     # only: an escaped {slash} is part of the label (Net-(VR1-ADJ{slash}GND) is a pin net).
     net_name = unescape_string(net_name.rsplit("/", 1)[-1])
     nu = net_name.upper()
     if nu == "COM":
-        return bool(power_rails) and net_name in power_rails
-    if is_virtual_ground_name(net_name):
+        return bool(power_rails) and full_name in power_rails
+    tokens = _name_tokens(nu)
+    if any(_VIRTUAL_GROUND_TOKEN.match(t) for t in tokens):
         return False
     # Exact matches
     if nu in ("GND", "VSS", "AGND", "DGND", "PGND", "GNDPWR", "GNDA", "GNDD",
@@ -361,7 +363,7 @@ def is_ground_name(net_name: str | None, power_rails: set[str] | None = None) ->
     if nu.startswith("VSS"):
         return True
     # A pin-named net (Net-(U1-GND), unconnected-(U1-GND-Pad3)) is not a ground.
-    return "(" not in nu and any(_GROUND_TOKEN.match(t) for t in _name_tokens(nu))
+    return "(" not in nu and any(_GROUND_TOKEN.match(t) for t in tokens)
 
 
 def is_vss_name(net_name: str | None) -> bool:

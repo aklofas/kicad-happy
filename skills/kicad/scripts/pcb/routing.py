@@ -1070,7 +1070,7 @@ def analyze_trace_proximity(tracks: dict, net_names: dict[int, str],
     for (_layer, _gx, _gy), nets in grid.items():
         signal = sorted(n for n in nets
                         if not ((net_names.get(n, "") not in pin_signals and is_power_net_name(net_names.get(n, ""), power_rails))
-                                or is_ground_name(net_names.get(n, ""))))
+                                or is_ground_name(net_names.get(n, ""), power_rails)))
         if len(signal) < 2:
             continue
         for i in range(len(signal)):
