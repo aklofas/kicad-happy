@@ -40,6 +40,17 @@ class VoltageFromTheNetsOwnName(unittest.TestCase):
         self.assertEqual(_estimate_rail_voltage("/USB/VBUS"), 5.0)
         self.assertEqual(_estimate_rail_voltage("/x/GND"), 0)
 
+    def test_only_exact_vss_gets_zero_from_its_name(self):
+        # Another VSS-family name can be a negative supply (an ADC's AVSS at -2.5 V).
+        for name in ("VSS", "/x/VSS"):
+            self.assertEqual(_estimate_rail_voltage(name), 0, name)
+        for name in ("AVSS", "VSSA", "VSS_EXT"):
+            self.assertIsNone(_estimate_rail_voltage(name), name)
+
+    def test_other_ground_names_keep_zero(self):
+        for name in ("PGND", "GND_3V3", "12VGND"):
+            self.assertEqual(_estimate_rail_voltage(name), 0, name)
+
     def test_infer(self):
         self.assertIsNone(_infer_rail_voltage("/5v_buck/FB"))
         self.assertEqual(_infer_rail_voltage("/Power/+3V3"), 3.3)
