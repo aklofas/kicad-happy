@@ -327,14 +327,17 @@ def build_rail_map(ctx: AnalysisContext, power_regulators: list[dict]) -> dict[s
     no estimate, the voltage in the name of the sheet holding its output net (the
     regulator records it as ``_output_rail_voltage_provenance``), then
     the voltage in the name of a power or ground net (a net that is a supply only by
-    its pins gets none from its name). The project config has the
+    its pins gets none from its name, and a VSS net a regulator drives, ``vss_supply_rails``,
+    gets none from its name and no positive estimate). The project config has the
     last word: an ignored rail is dropped and an override is set on every net it names.
     """
     by_net: dict[str, float] = {}
     for reg in power_regulators:
         out_rail = reg.get("output_rail")
         v_out = reg.get("estimated_vout")
-        if out_rail and v_out is not None:
+        # A VSS-named supply sits below ground: a positive estimate (a part-number voltage
+        # without its sign) is not its voltage.
+        if out_rail and v_out is not None and not (out_rail in ctx.vss_supply_rails and v_out > 0):
             by_net[out_rail] = v_out
     # A switch node or an input is never an output, and an IC's internal regulator
     # output (a core-voltage pin) has nothing to do with its sheet's name.
@@ -348,7 +351,8 @@ def build_rail_map(ctx: AnalysisContext, power_regulators: list[dict]) -> dict[s
                 by_net[out_rail] = v
                 reg["_output_rail_voltage_provenance"] = {"source": "sheet name", "voltage": v}
     for net_name in sorted(ctx.nets):
-        if net_name not in by_net and (ctx.is_power_net(net_name, by_pins=False) or ctx.is_ground(net_name)):
+        if (net_name not in by_net and net_name not in ctx.vss_supply_rails
+                and (ctx.is_power_net(net_name, by_pins=False) or ctx.is_ground(net_name))):
             v = _estimate_rail_voltage(net_name)
             if v is not None:
                 by_net[net_name] = v

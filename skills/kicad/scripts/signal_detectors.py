@@ -2059,7 +2059,8 @@ def _build_regulator_record(ctx: AnalysisContext, cand: _RegulatorCandidate,
     # Sanity check — power rails should never be GND
     if reg_info.get("input_rail") and ctx.is_ground(reg_info["input_rail"]):
         reg_info["input_rail"] = None
-    if reg_info.get("output_rail") and ctx.is_ground(reg_info["output_rail"]):
+    if (reg_info.get("output_rail") and ctx.is_ground(reg_info["output_rail"])
+            and reg_info["output_rail"] not in ctx.vss_supply_rails):
         reg_info["output_rail"] = None
 
     # Trace output rail through inductor (retry after sanitization)
@@ -2097,7 +2098,7 @@ def _build_regulator_record(ctx: AnalysisContext, cand: _RegulatorCandidate,
             "source": "fixed_suffix",
             "confidence": "deterministic",
         }
-        if vout_pin and not ctx.is_ground(vout_pin[1]):
+        if vout_pin and (not ctx.is_ground(vout_pin[1]) or vout_pin[1] in ctx.vss_supply_rails):
             reg_info["output_rail"] = vout_pin[1]
 
     # A multi-channel part has several FB pins: estimate the channel whose divider tops out on
@@ -3888,7 +3889,9 @@ def detect_design_observations(ctx: AnalysisContext, results: dict) -> list[dict
         missing = {}
         if in_rail and in_rail not in decoupled_rails:
             missing["input"] = in_rail
-        if out_rail and out_rail not in decoupled_rails:
+        # The decoupling detector reads a VSS-named supply as ground and counts none of its
+        # capacitors, so it is never reported as missing them.
+        if out_rail and out_rail not in decoupled_rails and out_rail not in ctx.vss_supply_rails:
             missing["output"] = out_rail
         if missing:
             design_observations.append({

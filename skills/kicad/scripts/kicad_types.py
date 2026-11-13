@@ -16,7 +16,8 @@ from typing import TYPE_CHECKING
 from kicad_core.model import PinNetEntry
 from kicad_core.netquery import build_pin_to_net_map
 from kicad_core.netnames import (
-    configured_rail_voltage, is_ground_name, is_pin_guarded_signal, is_power_net_name, rail_matches,
+    configured_rail_voltage, is_ground_name, is_pin_guarded_signal, is_power_net_name, is_vss_name,
+    rail_matches,
 )
 from kicad_core.diagnostics import record
 from kicad_core.values import AmbiguousValueSeparator, ambiguous_separator, parse_value
@@ -142,6 +143,7 @@ class AnalysisContext:
     diagnostics: list = field(default_factory=list, repr=False)
     pin_guarded_signals: frozenset = field(default_factory=frozenset, repr=False)
     topology_rails: frozenset = field(default_factory=frozenset, repr=False)
+    vss_supply_rails: frozenset = field(default_factory=frozenset, repr=False)
     rail_by_net: dict[str, float] = field(default_factory=dict, repr=False)
     rail_overrides: dict[str, float] = field(default_factory=dict, repr=False)
     rail_ignore: tuple[str, ...] = field(default=(), repr=False)
@@ -213,6 +215,29 @@ def pin_guarded_signal_nets(nets: dict[str, dict], comp_lookup: dict[str, dict],
             for p in info.get("pins", [])]))
 
 
+def vss_supply_rail_nets(ctx: AnalysisContext) -> frozenset[str]:
+    """VSS-named nets that a regulator output drives: a supply below ground, though the
+    parts on it still read it as their ground.
+
+    A power output pin not itself named ground or VSS sits on the net, and its part has a
+    pin on another, ground-named net (its own reference): a negative LDO's OUT on VSS, an
+    isolated converter's -Vout on VSSA."""
+    found = set()
+    for name, info in ctx.nets.items():
+        if not is_vss_name(name):
+            continue
+        for p in info.get("pins", []):
+            pin_name = p.get("pin_name") or ""
+            if (str(p.get("pin_type") or "").split("+")[0] != "power_out"
+                    or is_ground_name(pin_name) or is_vss_name(pin_name)):
+                continue
+            if any(n != name and ctx.is_ground(n) and not is_vss_name(n)
+                   for n, _ in ctx.ref_pins.get(p.get("component"), {}).values()):
+                found.add(name)
+                break
+    return frozenset(found)
+
+
 def build_analysis_context(components: list[dict], nets: dict[str, dict], lib_symbols: dict, *,
                            no_connects: list[dict] | None = None,
                            source: str = "unknown",
@@ -241,6 +266,7 @@ def build_analysis_context(components: list[dict], nets: dict[str, dict], lib_sy
         cache_dir=cache_dir, project_dir=project_dir, diagnostics=diagnostics,
         pin_guarded_signals=pin_guarded_signal_nets(nets, comp_lookup, rails),
     )
+    ctx.vss_supply_rails = vss_supply_rail_nets(ctx)
     if power_rails_config:
         ctx.rail_overrides = {
             k: v for k, v in (power_rails_config.get("voltage_overrides") or {}).items()
