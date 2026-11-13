@@ -51,7 +51,14 @@ class RailMapOnlyOnPowerAndGround(unittest.TestCase):
         return detect_topologies(_ctx(nets, rails))["rail_voltages"]
 
     def test_sheet_name_puts_no_voltage_on_its_nets(self):
-        self.assertEqual(self._rails(["/3v3_buck/SW", "/3v3_buck/PGND"]), {})
+        self.assertEqual(self._rails(["/3v3_buck/SW", "/3v3_buck/PGND"]), {"/3v3_buck/PGND": 0})
+
+    def test_every_ground_named_net_is_zero_volts(self):
+        names = ["PGND", "GNDA", "GND_3V3", "12VGND", "PGND_3V3"]
+        self.assertEqual(self._rails(names), {n: 0 for n in names})
+
+    def test_virtual_ground_gets_no_voltage(self):
+        self.assertEqual(self._rails(["VGND"]), {})
 
     def test_signals_named_after_a_rail_are_not_rails(self):
         self.assertEqual(self._rails(["USB_FS_DM", "EN_5V", "SX1250.VREG"]), {})

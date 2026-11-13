@@ -192,6 +192,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A net KiCad names after a pin with an escaped slash, such as `Net-(VR1-ADJ{slash}GND)`, is not read as ground or VSS.
 - A net named `COM` is ground only when a power symbol names it; analog-switch, relay, optocoupler and transformer commons are signals.
 - `AVSS`, `DVSS`, `GROUND` and names that carry a ground word as one part (`AGND_CODEC`, `PGND_3V3`, `HEATER_GND_1`, `ESP_GND2`) read as ground; a 0-10 V interface net such as `0V_10V` does not.
+- Every ground-named net gets 0 V in `rail_voltages`, not only `GND`, `VSS`, `AGND` and `DGND`.
 
 ### Documentation
 

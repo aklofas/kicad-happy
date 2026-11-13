@@ -16,6 +16,7 @@ from kicad_core.parts import (
 )
 from kicad_core.netnames import (
     parse_voltage_from_net_name as _parse_voltage_from_net_name,
+    is_ground_name,
     is_usb_data_net_name,
     net_leaf,
 )
@@ -1714,7 +1715,7 @@ def _estimate_rail_voltage(net_name: str) -> float | None:
     if not net_name:
         return None
     nu = net_leaf(net_name).upper()
-    if nu in ("GND", "VSS", "AGND", "DGND"):
+    if is_ground_name(net_name):
         return 0
     v = _parse_voltage_from_net_name(net_name)
     if v is not None:
