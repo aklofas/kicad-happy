@@ -9,7 +9,7 @@ from kicad_core.netnames import (is_ground_name, is_pin_guarded_signal,  # noqa:
                                  is_power_net_name, is_vss_name)
 
 RAILS = ["V12", "V33", "V3V3", "V1P8", "V3.3", "V3_3", "V33IO", "V3P3D", "V36_PROTECTED",
-         "V1P8_SW", "V7.5V", "V5reg_1", "V16", "V128", "5V{slash}3V3",
+         "V1P8_SW", "V3V3_OUT", "V1P8_OUT", "V7.5V", "V5reg_1", "V16", "V128", "5V{slash}3V3",
          "ADC_AVDD", "DAC_VDD", "SWD_VCC"]
 SIGNALS = ["/V1AMP1", "V24.rx", "V24:TX", "V2FREQ", "V1OUT", "V1a", "V1_CLK1", "V4_OUT",
            "V2V_0", "V16F", "V1", "V2+", "SDIO_CMD{slash}3V3", "+E{slash}A", "+5V{slash}4",

@@ -128,8 +128,9 @@ def _is_v_number_rail(nu: str) -> bool:
         if word.isdigit():
             return not volt and len(digits) == 1   # V3_3 is 3.3 V; V2V_0 is an index
         word = word.rstrip("0123456789")
+        # After a voltage part (V3V3_OUT) the number is a voltage, not a channel (V4_OUT).
         return (bool(word) and word not in RAIL_SIGNAL_SUFFIXES and word not in _SIGNAL_PREFIXES
-                and word not in ("OUT", "MEAS", "MEASURE"))
+                and (bool(volt) or word not in ("OUT", "MEAS", "MEASURE")))
     letters = re.match(r'[A-Z]+', rest)
     if letters:
         tail = letters.group(0)
