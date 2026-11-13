@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from finding_schema import make_finding, compute_trust_summary, assign_finding_ids, show_decoded_names
 from kicad_core.fileio import atomic_write_text, json_load
 from kicad_core.fields import merge_unit_fields
-from kicad_core.netnames import (_RAIL_SIGNAL_SUFFIXES, _VOLTAGE_SIGNAL_SUFFIXES, is_ground_name,
+from kicad_core.netnames import (RAIL_SIGNAL_SUFFIXES, _VOLTAGE_SIGNAL_SUFFIXES, is_ground_name,
                                  is_pin_guarded_signal, is_power_net_name)
 from kicad_core.netquery import build_net_id_map as _build_net_id_map
 from kicad_core.pairing import pair_by_path
@@ -69,7 +69,7 @@ def _is_power_net(name: str) -> bool:
     if is_cross_analysis_ground_name(name):
         return True
     # A signal about a rail (VBUS_DET, VIN_EN, +5V_SENSE, 5VEN) is not the rail.
-    if '_' in n and n.rsplit('_', 1)[-1] in _RAIL_SIGNAL_SUFFIXES:
+    if '_' in n and n.rsplit('_', 1)[-1] in RAIL_SIGNAL_SUFFIXES:
         return False
     m = re.match(r'^\+?\d+V\d*([A-Z]+)$', n)
     if m and m.group(1) in _VOLTAGE_SIGNAL_SUFFIXES:

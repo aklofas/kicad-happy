@@ -97,9 +97,47 @@ _VOLTAGE_SIGNAL_SUFFIXES = frozenset({"EN", "ENABLE", "ON", "OFF", "FB", "PG",
                                       "OK", "DET", "SENSE"})
 # A rail name followed by one of these after an underscore (VCC_EN, 3V3_PG,
 # VBUS_SENSE) is a signal about the rail. INT is left out: 5V_INT is a rail.
-_RAIL_SIGNAL_SUFFIXES = _VOLTAGE_SIGNAL_SUFFIXES | frozenset({
+RAIL_SIGNAL_SUFFIXES = _VOLTAGE_SIGNAL_SUFFIXES | frozenset({
     "PGOOD", "PWRGD", "PGD", "GOOD", "SNS", "MON", "DETECT", "CTRL", "CTL",
     "SHDN", "RESET", "RST", "NEN"})
+# <control>_..._<supply-tail> (EN_VCC, EN_EXT_VDD) drives or senses the supply; it is not the supply.
+_SUPPLY_TAIL_CONTROL_PREFIXES = frozenset({"EN", "ENA", "ENABLE", "PWM", "CTRL", "SENSE",
+                                           "SNS", "VSNS"})
+# V<number> followed directly by one of these is a rail (V5REG, V12SW, V7.5V) ...
+_V_NUMBER_RAIL_WORDS = frozenset({"V", "REG", "SW", "USB", "BAT", "SB", "AUX"})
+# ... and by one of these only after a voltage or two digits (V3P3D, V33IO, V36IN):
+# V1A, V2OUT are channels.
+_V_NUMBER_VOLTAGE_SUFFIXES = frozenset({"IO", "IN", "OUT", "O", "A", "D", "N", "P"})
+_V_NUMBER = re.compile(r'^V(\d+)([VP]\d*|\.\d+)?')
+
+
+def _is_v_number_rail(nu: str) -> bool:
+    """V<number> rails: V12, V33, V3V3, V1P8, V3.3, V33IO, V3P3D, V1P8_SW, V3_3.
+
+    A word that follows the number directly (V1AMP1, V2FREQ, V1OUT, V16F) or after
+    '.' or ':' (V24.RX, V24:TX) names a signal, as does a signal word after a
+    separator (V1_CLK1, V4_OUT, V36_MEASURE) or a bare index after a voltage (V2V_0)."""
+    m = _V_NUMBER.match(nu)
+    if not m:
+        return False
+    digits, volt, rest = m.group(1), m.group(2) or "", nu[m.end():]
+    if not rest:
+        return bool(volt) or len(digits) >= 2   # V1, V2 are node names
+    if rest[0] in "_-":
+        word = re.split(r'[_\-]', rest[1:])[0]
+        if word.isdigit():
+            return not volt and len(digits) == 1   # V3_3 is 3.3 V; V2V_0 is an index
+        word = word.rstrip("0123456789")
+        return (bool(word) and word not in RAIL_SIGNAL_SUFFIXES and word not in _SIGNAL_PREFIXES
+                and word not in ("OUT", "MEAS", "MEASURE"))
+    letters = re.match(r'[A-Z]+', rest)
+    if letters:
+        tail = letters.group(0)
+        if len(tail) < len(rest) and rest[len(tail)] not in "_-":
+            return False
+        return tail in _V_NUMBER_RAIL_WORDS or (
+            (bool(volt) or len(digits) >= 2) and tail in _V_NUMBER_VOLTAGE_SUFFIXES)
+    return False
 
 
 # D+ / D- as the whole name or after a separator (USB_D+, MCU-D-, /USB/D+), or after USB<n>
@@ -138,14 +176,17 @@ def is_power_net_name(net_name: str | None, power_rails: set[str] | None = None)
         return False
     if power_rails and net_name in power_rails:
         return True
-    # Name heuristics read the shown name: an escaped {slash} is not a sheet separator
-    # to KiCad, but the rules below were written against the decoded name.
-    net_name = unescape_string(net_name)
     # Strip hierarchical sheet path prefix (e.g., "/Power Supply/VCC" → "VCC")
     # The rail set matches only by full name: a sheet-local label is its own net even
     # when its leaf names a power symbol elsewhere (KiCad joins local labels per sheet).
+    # Split on a real '/' only, then read the shown name: an escaped {slash} is part of
+    # the label (SDIO_CMD{slash}3V3).
+    net_name = unescape_string(net_name.rsplit("/", 1)[-1])
     if "/" in net_name:
-        net_name = net_name.rsplit("/", 1)[-1]
+        # A label that pairs names with an escaped slash is a rail only when every part
+        # is one (5V{slash}3V3); SDIO_CMD{slash}3V3 is a signal at 3.3 V.
+        parts = [p for p in net_name.split("/") if p]
+        return bool(parts) and all(is_power_net_name(p) for p in parts)
     nu = net_name.upper()
     # Zero-volt ground spellings (0V, 0VA, 0VANA, 0VCC, 0V_A, +0V, ...) are
     # never rails, no matter what pattern rule below would otherwise match.
@@ -153,7 +194,7 @@ def is_power_net_name(net_name: str | None, power_rails: set[str] | None = None)
     # sub-1V rails under the nnVn convention, not ground.
     if re.match(r'^\+?0+(\.0+)?V(?!\d)', nu):
         return False
-    if "_" in nu and nu.rsplit("_", 1)[-1] in _RAIL_SIGNAL_SUFFIXES:
+    if "_" in nu and nu.rsplit("_", 1)[-1] in RAIL_SIGNAL_SUFFIXES:
         return False
     # Negative rails (-12V, -2V5, -5V_F, -BATT, -VIN). A leading '-' also marks an
     # active-low signal (-RESET, -CS), so the rest must be a voltage or a supply name.
@@ -174,8 +215,8 @@ def is_power_net_name(net_name: str | None, power_rails: set[str] | None = None)
     # Pattern-based detection
     if nu.startswith("+") or nu.startswith("V+"):
         return True
-    # Vnn, VnnV patterns (V3V3, V1V8, V5V0)
-    if len(nu) >= 3 and nu[0] == "V" and nu[1].isdigit():
+    # Vnn, VnnV patterns (V3V3, V1V8, V5V0, V33IO)
+    if _is_v_number_rail(nu):
         return True
     # nnVn patterns (3V3, 5V0, 12V0, 1V8) — industry-standard voltage naming
     if re.match(r'^\d+V\d', nu):
@@ -189,7 +230,7 @@ def is_power_net_name(net_name: str | None, power_rails: set[str] | None = None)
     # Decimal voltages (3.3V, 5.5V, 3.3V_OUT, 1.25V_REF). 3.3VPG and 3.3V_SDA are
     # signals at or about the rail.
     m = re.match(r'^\d+\.\d+V([A-Z][0-9A-Z]*)?(_.*)?$', nu)
-    if m and (m.group(1) or "") not in _RAIL_SIGNAL_SUFFIXES and not (
+    if m and (m.group(1) or "") not in RAIL_SIGNAL_SUFFIXES and not (
             m.group(2) and any(seg in _SIGNAL_PREFIXES for seg in m.group(2).split("_"))):
         return True
     # Negative voltage rails (Neg6v, NEG12V)
@@ -205,7 +246,7 @@ def is_power_net_name(net_name: str | None, power_rails: set[str] | None = None)
     # prefix (PWM3V3, EN1V8, PWRGD1V2, SWDIO1V8, TX+5V) names a signal at or about the rail.
     m = (re.match(r'^([A-Z]{2,5})\d+V\d+$', nu.split("_")[0])
          or re.match(r'^([A-Z]{1,4})\+\d+(\.\d+)?V\d*$', nu))
-    if m and m.group(1) not in _SIGNAL_PREFIXES and m.group(1) not in _RAIL_SIGNAL_SUFFIXES:
+    if m and m.group(1) not in _SIGNAL_PREFIXES and m.group(1) not in RAIL_SIGNAL_SUFFIXES:
         return True
     # PWRnVn patterns (PWR3V3, PWR1V8, PWR5V0)
     if re.match(r'^PWR\d', nu):
@@ -226,7 +267,7 @@ def is_power_net_name(net_name: str | None, power_rails: set[str] | None = None)
     # are op-amp / sensor outputs (OPAMP1_VOUT, MIC_VOUT, CURRENTSENSE_VOUT).
     if first_seg:
         last_seg = nu.rsplit("_", 1)[-1]
-        if last_seg in _SUPPLY_TAILS:
+        if last_seg in _SUPPLY_TAILS and first_seg not in _SUPPLY_TAIL_CONTROL_PREFIXES:
             return True
         if first_seg not in _SIGNAL_PREFIXES:
             if last_seg in _RAIL_TAILS_GATED:
@@ -248,7 +289,7 @@ def is_pin_guarded_signal(net_name: str | None, pins) -> bool:
     signal: an IC signal pin on it and no power_in/power_out pin. *pins* holds
     ``(pin_type, on_ic)`` per pin, ``on_ic`` None where the part kind is unknown (a board
     pad; KiCad 7+ pads carry the pin type). Callers skip nets in the rail set first."""
-    if not net_name or unescape_string(net_name).rsplit("/", 1)[-1].upper() not in PIN_GUARDED_RAIL_NAMES:
+    if not net_name or unescape_string(net_name.rsplit("/", 1)[-1]).upper() not in PIN_GUARDED_RAIL_NAMES:
         return False
     kinds = [(str(t or "").split("+")[0], on_ic) for t, on_ic in pins]
     if any(t in ("power_in", "power_out") for t, _ in kinds):
@@ -266,10 +307,9 @@ def is_ground_name(net_name: str | None, power_rails: set[str] | None = None) ->
         return False
     if net_name == "0":
         return bool(power_rails) and "0" in power_rails
-    net_name = unescape_string(net_name)
-    # Strip hierarchical sheet path prefix (e.g., "/Power Supply/GND" → "GND")
-    if "/" in net_name:
-        net_name = net_name.rsplit("/", 1)[-1]
+    # Strip hierarchical sheet path prefix (e.g., "/Power Supply/GND" → "GND") on a real '/'
+    # only: an escaped {slash} is part of the label (Net-(VR1-ADJ{slash}GND) is a pin net).
+    net_name = unescape_string(net_name.rsplit("/", 1)[-1])
     nu = net_name.upper()
     # Exact matches
     if nu in ("GND", "VSS", "AGND", "DGND", "PGND", "GNDPWR", "GNDA", "GNDD",
@@ -300,7 +340,7 @@ def is_vss_name(net_name: str | None) -> bool:
     """True for a VSS-prefixed net name (sheet path stripped); VSS can be a negative supply."""
     if not net_name:
         return False
-    return unescape_string(net_name).rsplit("/", 1)[-1].upper().startswith("VSS")
+    return unescape_string(net_name.rsplit("/", 1)[-1]).upper().startswith("VSS")
 
 
 _UUID_RE = re.compile(

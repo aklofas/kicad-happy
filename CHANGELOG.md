@@ -186,6 +186,8 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A failed SPICE simulation leaves a diagnostics record with the simulator's error.
 - With `spice.trust_project_models` set, a cached project model's trailing `.end` is dropped like an untrusted one's, so it no longer ends the SPICE bench early.
 - A regulator Value written as a label (`LDO1`, `BUCK5V`, `DCDC24V/5V NUM`) no longer stops the SPICE regulator bench from judging the divider against the symbol's reference voltage.
+- Net names such as `V24.RX`, `V1_CLK1` or `V2OUT`, labels joined with an escaped slash such as `SDIO_CMD{slash}3V3`, and enable lines such as `EN_VCC` are no longer read as power rails by their name: a `V<number>` name counts as a rail only when a voltage or a rail word follows the number, a slash inside a label is part of the label, and an enable or sense prefix keeps a `_VCC` / `_VDD` name a signal. Rail-source, decoupling and trace-width checks stop firing on these signals, and EMC return-path checks now cover them.
+- A net KiCad names after a pin with an escaped slash, such as `Net-(VR1-ADJ{slash}GND)`, is not read as ground or VSS.
 
 ### Documentation
 

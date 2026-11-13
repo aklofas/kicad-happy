@@ -39,7 +39,7 @@ from kicad_core.parts import (
 )
 from kicad_core.classify import classify_component
 from kicad_core.netnames import (is_ground_name, is_power_net_name, net_leaf,
-                                 _RAIL_SIGNAL_SUFFIXES)
+                                 RAIL_SIGNAL_SUFFIXES)
 from kicad_core.netquery import build_net_id_map
 from kicad_core.diagnostics import record
 from kicad_core.hotloop import triangle_loop_area
@@ -103,7 +103,7 @@ def _is_power_or_ground(name: str) -> bool:
     if is_ground_name(name) or is_emc_ground_name(name) or is_power_net_name(name):
         return True
     leaf = net_leaf(unescape_string(name)).upper()
-    if leaf.rsplit('_', 1)[-1] in _RAIL_SIGNAL_SUFFIXES:
+    if leaf.rsplit('_', 1)[-1] in RAIL_SIGNAL_SUFFIXES:
         return False
     return _is_power_or_ground_prefix(name)
 
