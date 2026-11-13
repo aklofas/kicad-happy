@@ -27,7 +27,7 @@ from finding_schema import make_finding, compute_trust_summary, assign_finding_i
 from kicad_core.fileio import atomic_write_text, json_load
 from kicad_core.fields import merge_unit_fields
 from kicad_core.netnames import (RAIL_SIGNAL_SUFFIXES, _VOLTAGE_SIGNAL_SUFFIXES, is_ground_name,
-                                 is_pin_guarded_signal, is_power_net_name)
+                                 is_pin_guarded_signal, is_power_net_name, net_leaf)
 from kicad_core.netquery import build_net_id_map as _build_net_id_map
 from kicad_core.pairing import pair_by_path
 from envelopes.cross_analysis import CrossAnalysisEnvelope
@@ -45,21 +45,10 @@ ANALYZER_SOURCE = "cross"
 # ---------------------------------------------------------------------------
 
 def is_cross_analysis_ground_name(name: str) -> bool:
-    """Check if a net name is a ground net (the cross-analysis policy).
-
-    Removes every '/', '-' and '_' and then matches an exact set, so it
-    differs from kicad_core.netnames.is_ground_name: also accepts EARTH and
-    CHASSIS; has no GND-prefix/suffix or VSS-prefix patterns (SGND, GNDPWR,
-    GND_ISO, VSSA are not ground), no COM, no 0V<suffix> family, no
-    battery-negative names; a sheet path is concatenated, not stripped
-    ("/Power/GND" is not ground, "/GND" is). The GND_D / GND_A entries are
-    unreachable after stripping (they match as GNDD / GNDA).
-    """
+    """Ground net: the shared schematic rule (kicad_core.netnames.is_ground_name) plus EARTH and CHASSIS."""
     if not name:
         return False
-    n = name.upper().replace('/', '').replace('-', '').replace('_', '')
-    return n in ('GND', 'VSS', 'DGND', 'AGND', 'PGND', 'GNDD', 'GNDA',
-                 'GND_D', 'GND_A', 'EARTH', 'CHASSIS', '0V')
+    return is_ground_name(name) or net_leaf(name).upper() in ('EARTH', 'CHASSIS')
 
 
 def _is_power_net(name: str) -> bool:

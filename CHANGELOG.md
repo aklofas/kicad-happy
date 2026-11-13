@@ -28,6 +28,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Fixed
 
+- Cross-analysis reads ground names with the schematic's rule plus EARTH and CHASSIS, so GNDPWR, GND1, VSSA and a sheet-pathed /Power/GND count as ground.
 - `voltage_overrides` rejects `true`/`false`, NaN and infinity.
 - `search_lcsc.py --details` fetches LCSC stock for keyword hits that jlcsearch returned without a figure before `--in-stock`, `--min-stock` or `--sort stock` judges them.
 - An `analysis/manifest.json` larger than 10 MB is backed up and treated as corrupt instead of read whole.

@@ -56,7 +56,10 @@ class SharedTables(unittest.TestCase):
         self.assertTrue(is_ground_name("COM", {"COM"}))
         self.assertFalse(is_emc_ground_name("COM"))
         self.assertTrue(is_cross_analysis_ground_name("CHASSIS"))
-        self.assertFalse(is_cross_analysis_ground_name("/Power/GND"))   # today's behaviour, preserved
+        self.assertTrue(is_cross_analysis_ground_name("EARTH"))
+        for name in ("/Power/GND", "GNDPWR", "GND1", "VSSA"):
+            self.assertTrue(is_cross_analysis_ground_name(name), name)
+        self.assertFalse(is_cross_analysis_ground_name("VGND"))
 
     def test_mlcc_parasitic_tables_live_in_kicad_core(self):
         import emc_formulas
