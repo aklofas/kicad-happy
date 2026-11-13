@@ -326,8 +326,8 @@ def build_rail_map(ctx: AnalysisContext, power_regulators: list[dict]) -> dict[s
     its output net (the last regulator on a net wins), then, for a regulator with
     no estimate, the voltage in the name of the sheet holding its output net (the
     regulator records it as ``_output_rail_voltage_provenance``), then
-    the voltage in the name of a power or ground net (a net that is a supply only by
-    its pins gets none from its name, and a VSS net a regulator drives, ``vss_supply_rails``,
+    the voltage in the name of a power or ground net or of a regulator output (another
+    net that is a supply only by its pins gets none from its name, and a VSS net a regulator drives, ``vss_supply_rails``,
     gets none from its name and no positive estimate). The project config has the
     last word: an ignored rail is dropped and an override is set on every net it names.
     """
@@ -350,12 +350,27 @@ def build_rail_map(ctx: AnalysisContext, power_regulators: list[dict]) -> dict[s
             if v is not None and out_rail not in by_net:
                 by_net[out_rail] = v
                 reg["_output_rail_voltage_provenance"] = {"source": "sheet name", "voltage": v}
+    # A regulator output is a rail whatever its name says (3V3_OFF). Its name voltage
+    # counts when the sign agrees with the regulator: an inverting one makes a negative rail.
+    inverting_out: dict[str, bool] = {}
+    for reg in power_regulators:
+        if reg.get("output_rail"):
+            inverting_out[reg["output_rail"]] = (inverting_out.get(reg["output_rail"], False)
+                                                 or bool(reg.get("inverting")))
     for net_name in sorted(ctx.nets):
-        if (net_name not in by_net and net_name not in ctx.vss_supply_rails
-                and (ctx.is_power_net(net_name, by_pins=False) or ctx.is_ground(net_name))):
+        if net_name in by_net or net_name in ctx.vss_supply_rails:
+            continue
+        if ctx.is_power_net(net_name, by_pins=False) or ctx.is_ground(net_name):
             v = _estimate_rail_voltage(net_name)
-            if v is not None:
-                by_net[net_name] = v
+        elif net_name in inverting_out and not re.search(r"\d,\d", net_name):
+            # The name parser takes only a dot as the decimal point: 3,3V would read 3.0.
+            v = parse_voltage_from_net_name(net_name)
+            if v is not None and (v < 0) != inverting_out[net_name]:
+                v = None
+        else:
+            v = None
+        if v is not None:
+            by_net[net_name] = v
     if ctx.rail_overrides or ctx.rail_ignore:
         for net_name in sorted(ctx.nets):
             if ctx.rail_ignored(net_name):
