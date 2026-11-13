@@ -23,6 +23,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A symbol with a second Value field whose text differs (Eagle imports wrote a hidden empty copy) gets a `duplicate_value_field` entry in `property_issues`, naming the value KiCad 10 shows and the text it ignores; a KiCad 6 symbol whose instance value decides what is shown gets none.
 - `statistics.board_area_mm2` and the placement density of a board file that holds several boards on Edge.Cuts now use the summed area of the boards, as KiCad's board statistics report it, instead of the box around all of them; the design-intent large-board signal and the via-spacing area of EMC VS-001 follow the summed area. Width and height still give that box.
 - EMC connector checks (IO-001, IO-002, CK-003, BE-003, SH-001 and the test plan) skip DNP connectors, an ESD device whose nearest connector is DNP is not paired with another one, and IO-001 counts a protection device on the connector's schematic net name.
+- Nets named `V-` or `VMOT` are read as power rails by their name, as the EMC checks already did. They now get rail-source, decoupling and trace-width checks; expect new rail-source warnings on such nets that have no regulator or power symbol.
 
 ### Fixed
 

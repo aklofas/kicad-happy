@@ -33,6 +33,18 @@ class PowerNetName(unittest.TestCase):
         self.assertIn("EN", RAIL_SIGNAL_SUFFIXES)
 
 
+class NegativeAndMotorRails(unittest.TestCase):
+    def test_v_minus_and_vmot_are_rails(self):
+        for name in ["V-", "/x/V-", "VMOT"]:
+            with self.subTest(name=name):
+                self.assertTrue(is_power_net_name(name))
+
+    def test_near_misses_keep_their_answer(self):
+        for name in ["PWR", "POWER", "Power", "VMOTOR"]:
+            with self.subTest(name=name):
+                self.assertFalse(is_power_net_name(name))
+
+
 class EscapedSlashOnTheGroundSide(unittest.TestCase):
     PIN_NETS = ["Net-(VR1-ADJ{slash}GND)", "unconnected-(IC2-DNU{slash}VSSQ_1-Pad25)"]
 

@@ -211,7 +211,7 @@ def is_power_net_name(net_name: str | None, power_rails: set[str] | None = None)
               "VIN", "VOUT", "VREG", "VBATT",
               "V3P3", "V1P8", "V1P2", "V2P5", "V5P0", "V12P0",
               "VCCA", "VCCD", "VCCIO", "VDDA", "VDDD", "VDDIO",
-              "VEE", "VPP", "VM", "VNEG"):
+              "VEE", "VPP", "VM", "VNEG", "V-", "VMOT"):
         return True
     # Pattern-based detection
     if nu.startswith("+") or nu.startswith("V+"):
