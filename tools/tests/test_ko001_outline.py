@@ -200,20 +200,21 @@ class TestFootprintByCourtyard(unittest.TestCase):
         self.assertEqual(len(found), 1)
         self.assertEqual(found[0]["description"], "Component U2 courtyard overlaps keepout zone ko.")
 
-    def test_unnamed_area_reads_unnamed(self):
+    def test_unnamed_area_is_named_in_the_description_only(self):
         found = _ko001(_analyze(_fp_board([_fp_area(["F.Cu"], BOX, name="")], [_fp("U2", 100, 100)])))
         self.assertEqual(len(found), 1)
         self.assertEqual(found[0]["description"], "Component U2 courtyard overlaps keepout zone unnamed.")
-        self.assertEqual(found[0]["summary"], "Keepout violation: U2 inside keepout zone")
+        self.assertEqual(found[0]["summary"], "Keepout violation: U2 inside keepout zone ")
 
-    def test_unnamed_area_reads_unnamed_for_a_via(self):
+    def test_unnamed_area_is_named_in_a_via_description_only(self):
+        # the summary feeds a via's finding_id, so it keeps its form
         kz = {"name": "", "layers": ["F.Cu", "B.Cu"], "restrictions": {"vias": "not_allowed"},
               "bounding_box": [90, 90, 110, 110], "_outline_polys": [_square(90, 90, 110, 110)]}
         vias = {"vias": [{"x": 100.0, "y": 100.0, "size": 0.6, "type": "through"}]}
         found = analyze_keepout_violations([], vias, [kz])
         self.assertEqual(len(found), 1)
         self.assertEqual(found[0]["description"], "Via at (100.0, 100.0) is inside keepout zone unnamed.")
-        self.assertEqual(found[0]["summary"], "Keepout violation: via at (100.0, 100.0) inside keepout")
+        self.assertEqual(found[0]["summary"], "Keepout violation: via at (100.0, 100.0) inside keepout ")
 
 
 if __name__ == "__main__":
