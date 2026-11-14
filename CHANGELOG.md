@@ -200,6 +200,9 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Cross-analysis reads ground names with the schematic's rule plus EARTH and CHASSIS, so GNDPWR, GND1, VSSA and a sheet-pathed /Power/GND count as ground.
 - The plane-split check (PS-002) skips a ground or power net that has no copper zone on the board, so an unrouted or track-only net is no longer reported as a split plane with signals crossing it.
 - A voltage divider continues through a node named like a rail (12V_FBM) when only local labels name it and two resistors are its only parts, so a regulator's feedback divider reads its full top resistance.
+- A voltage divider names the two resistors on its own nets: a pair checked after one whose ends were swapped to put ground at the bottom no longer takes that pair's resistor as an arm, which gave the divider a resistor off its bottom net, a wrong ratio, and could hide a regulator's real feedback divider.
+- A divider resistor whose other end holds only capacitors and IC inputs, at a node where another resistor shares its resistor to ground (a DAC output's series resistor after its attenuator, into an op-amp input), forms an RC filter with a capacitor on that end; feedback dividers, an end with another resistor on it, and a capacitor on the shared node stay excluded.
+- RC filters add capacitors together only when they sit on the same node of the resistor; a capacitor on the resistor's other end, such as a differential capacitor across two inputs, is reported as a filter of its own instead of lowering the cutoff.
 - `rail_voltages` carries the voltage in the name of a regulator output that the name rules do not call a rail (`3V3_OFF`), unless its sign disagrees with the regulator.
 - A rail named `<n>V<n>_N` beside its `_P` twin (4V5_N / 4V5_P) reads as negative in rail_voltages, statistics.power_rails and its regulator's estimated output.
 

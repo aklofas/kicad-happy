@@ -222,7 +222,6 @@ def detect_voltage_dividers(ctx: AnalysisContext) -> dict:
             continue
         for i, r1_ref in enumerate(refs):
             r1_n1, r1_n2 = resistor_nets[r1_ref]
-            r1 = ctx.comp_lookup[r1_ref]
             for r2_ref in refs[i + 1:]:
                 pair_key = (min(r1_ref, r2_ref), max(r1_ref, r2_ref))
                 if pair_key in vd_seen:
@@ -230,6 +229,8 @@ def detect_voltage_dividers(ctx: AnalysisContext) -> dict:
                 vd_seen.add(pair_key)
 
                 r2_n1, r2_n2 = resistor_nets[r2_ref]
+                # Looked up per pair: the orientation swap below must not carry into the next pair
+                r1 = ctx.comp_lookup[r1_ref]
                 r2 = ctx.comp_lookup[r2_ref]
 
                 # Find shared net (mid-point)
@@ -523,6 +524,24 @@ def _merged_caps(ctx: AnalysisContext, cap_refs: list[str], farads: float) -> di
     return part
 
 
+def _feeds_inputs_only(ctx: AnalysisContext, net_name: str, ref: str) -> bool:
+    """Besides *ref* and capacitors, the net holds only IC input pins, at least one.
+
+    A second resistor (an op-amp feedback leg, a bias resistor) means the node is not
+    a plain filtered input."""
+    found = False
+    for p in ctx.nets.get(net_name, {}).get("pins", []):
+        if p["component"].startswith("#") or p["component"] == ref:
+            continue
+        comp_type = (ctx.comp_lookup.get(p["component"]) or {}).get("type")
+        if comp_type == "capacitor":
+            continue
+        if comp_type != "ic" or str(p.get("pin_type") or "").split("+")[0] != "input":
+            return False
+        found = True
+    return found
+
+
 def detect_rc_filters(ctx: AnalysisContext, voltage_dividers: list[dict],
                       crystal_circuits: list[dict] | None = None,
                       opamp_circuits: list[dict] | None = None) -> list[dict]:
@@ -544,11 +563,28 @@ def detect_rc_filters(ctx: AnalysisContext, voltage_dividers: list[dict],
     # If they only share GND, every R and C in the circuit would match.
     # Exclude resistors that are part of voltage dividers — pairing a feedback
     # divider resistor with an output decoupling cap is a common false positive.
-    vd_resistor_refs = set()
+    # Several top resistors that share one bottom resistor meet at a junction, and only one
+    # of them feeds the divider. A top resistor whose far end holds nothing but caps and IC
+    # inputs is a load on the junction, not the feed, so a cap on that far end still forms a filter
+    # with it. A cap on the junction itself sees every resistor there and stays excluded.
+    bottom_uses: dict[tuple[str, str], int] = {}
     for vd in voltage_dividers:
+        key = (vd["mid_net"], vd["r_bottom"]["ref"])
+        bottom_uses[key] = bottom_uses.get(key, 0) + 1
+    vd_resistor_refs = set()
+    junction_nets: dict[str, set[str]] = {}  # junction load resistor -> its junction nets
+    for vd in voltage_dividers:
+        load = (bottom_uses[(vd["mid_net"], vd["r_bottom"]["ref"])] > 1
+                and not vd.get("is_feedback")
+                and "chain_resistors" not in vd["r_top"]
+                and _feeds_inputs_only(ctx, vd["top_net"], vd["r_top"]["ref"]))
         for arm in ("r_top", "r_bottom"):
-            vd_resistor_refs.add(vd[arm]["ref"])
-            vd_resistor_refs.update(vd[arm].get("parallel_refs", ()))
+            refs = [vd[arm]["ref"], *vd[arm].get("parallel_refs", ())]
+            if arm == "r_top" and load:
+                for ref in refs:
+                    junction_nets.setdefault(ref, set()).add(vd["mid_net"])
+            else:
+                vd_resistor_refs.update(refs)
 
     # Exclude opamp feedback resistors, capacitors, and input resistors
     opamp_exclude_refs = set()
@@ -584,6 +620,7 @@ def detect_rc_filters(ctx: AnalysisContext, voltage_dividers: list[dict],
 
     # Track seen R-C pairs to prevent bidirectional duplicates
     seen_rc_pairs: set[frozenset[str]] = set()
+    rc_shared_nets: list[str] = []  # the R-C node of each results_rc entry
 
     for res in resistors:
         if _in(vd_resistor_refs, res["reference"]):
@@ -623,6 +660,8 @@ def detect_rc_filters(ctx: AnalysisContext, voltage_dividers: list[dict],
                 continue
 
             shared_net = shared.pop()
+            if shared_net in junction_nets.get(res["reference"], ()):
+                continue
 
             # The shared net must NOT be a power/ground rail — those create
             # false matches between every R and C on the board.
@@ -719,12 +758,13 @@ def detect_rc_filters(ctx: AnalysisContext, voltage_dividers: list[dict],
 
                 seen_rc_pairs.add(rc_pair)
                 results_rc.append(rc_entry)
+                rc_shared_nets.append(shared_net)
 
     # Merge RC filters where the same resistor pairs with multiple caps on
     # the same shared net (parallel caps = one effective filter, not N filters).
-    _rc_groups: dict[tuple[str, str, str], list[dict]] = {}
-    for rc in results_rc:
-        key = (rc["resistor"]["ref"], rc.get("input_net", ""), rc.get("output_net", ""))
+    _rc_groups: dict[tuple[str, str, str, str], list[dict]] = {}
+    for rc, shared_net in zip(results_rc, rc_shared_nets):
+        key = (rc["resistor"]["ref"], rc.get("input_net", ""), rc.get("output_net", ""), shared_net)
         _rc_groups.setdefault(key, []).append(rc)
     merged_rc: list[dict] = []
     for key, entries in _rc_groups.items():
