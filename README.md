@@ -463,17 +463,17 @@ Everything above was run against a [corpus of 5,800+ open-source KiCad projects]
 
 | Metric                       | Value                                         |
 | ---------------------------- | --------------------------------------------- |
-| Repos in corpus              | 5,857                                         |
+| Repos in corpus              | 5,858                                         |
 | Schematic files analyzed     | 36,463                                        |
-| PCB files analyzed           | 18,751                                        |
-| Gerber directories analyzed  | 5,512                                         |
+| PCB files analyzed           | 18,722                                        |
+| Gerber directories analyzed  | 5,505                                         |
 | EMC pre-compliance analyses  | 36,544                                        |
 | SPICE simulation runs        | 36,544                                        |
-| Components parsed            | 1,300,475                                     |
-| Nets traced                  | 2,047,212                                     |
-| Regression assertions        | 2,717,836 at 100.0% pass rate                 |
+| Components parsed            | 1,304,449                                     |
+| Nets traced                  | 1,882,743                                     |
+| Regression assertions        | 2,714,810 at 100.0% pass rate                 |
 | Bugfix regression guards     | 175 (100% pass — no fixed bugs have returned) |
-| Closed analyzer issues       | 543                                           |
+| Closed analyzer issues       | 758                                           |
 
 Three-layer regression testing catches drift at every level:
 
