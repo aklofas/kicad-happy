@@ -6,7 +6,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ---
 
-## v3.0.2 — 2026-11-14
+## v3.0.2 — 2026-11-15
 
 ### Changed
 
