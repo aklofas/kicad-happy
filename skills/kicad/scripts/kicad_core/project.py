@@ -6,7 +6,7 @@ from fnmatch import fnmatchcase
 from pathlib import Path
 
 from kicad_core.fileio import json_loads
-from kicad_core.textvars import expand_text_vars
+from kicad_core.textvars import expand_text_vars, resolve_text_vars
 from kicad_core import sexp as _sexp
 from kicad_core.sexp import COORD_PROBLEM, parse as _sexp_parse, parse_file as _sexp_parse_file, find_all, find_first, get_value
 
@@ -937,6 +937,8 @@ def _dru_bound_kind(text: str) -> tuple[str, int, bool]:
         kind = expr()
     except ValueError:
         return 'error', 0, False
+    except RecursionError:
+        return 'other', 0, False
     if i != len(tokens):
         return 'error', 0, False
     return kind, numbers, has_unit
@@ -988,6 +990,119 @@ def _dru_bound_error(constraint: list) -> str | None:
     return None
 
 
+# libeval's binary operators (grammar.lemon): precedence (a later declaration binds tighter)
+# and whether the operator is non-associative, so it cannot be chained (a == b == c).
+_DRU_BINARY_OPS = {',': (1, False), '&&': (2, False), '||': (3, False),
+                   **{op: (5, True) for op in ('<', '>', '<=', '>=', '==', '!=')},
+                   '+': (7, False), '-': (7, False), '*': (8, False), '/': (8, False),
+                   '.': (9, False)}
+_DRU_PREFIX_OPS = {'!': 6, '+': 7, '-': 7}
+
+
+def _dru_condition_error(text: str) -> str | None:
+    """"Could not parse expression." for a rule condition KiCad's expression parser rejects
+    (libeval grammar.lemon and its lexer), or None: a character outside the lexer, a missing
+    or extra operand, operator or parenthesis, a chained comparison, a unit word as an
+    operand, or an expression that is one number without a unit. Property and function names
+    are not judged."""
+    tokens = _dru_lex(text)
+    if tokens is None:
+        return "Could not parse expression."
+    i = 0
+    numbers = unitless = 0
+
+    def peek():
+        return tokens[i] if i < len(tokens) else (None, None)
+
+    def close():
+        nonlocal i
+        if peek() != ('op', ')'):
+            raise ValueError
+        i += 1
+
+    def operand():
+        nonlocal i, numbers, unitless
+        kind, value = peek()
+        i += 1
+        if kind == 'num':
+            numbers += 1
+            if peek()[0] == 'unit':
+                i += 1
+            else:
+                unitless += 1
+        elif kind == 'id':
+            if peek() == ('op', '('):
+                i += 1
+                if peek() != ('op', ')'):
+                    expr(0)
+                close()
+        elif (kind, value) == ('op', '('):
+            expr(0)
+            close()
+        elif kind == 'op' and value in _DRU_PREFIX_OPS:
+            numbers += value == '-'     # -x is parsed as 0 - x
+            expr(_DRU_PREFIX_OPS[value])
+        elif kind != 'str':
+            raise ValueError
+
+    def expr(floor):
+        nonlocal i
+        operand()
+        last = None
+        while peek()[0] == 'op' and peek()[1] in _DRU_BINARY_OPS:
+            precedence, nonassoc = _DRU_BINARY_OPS[peek()[1]]
+            if precedence <= floor:
+                return
+            if nonassoc and last == precedence:
+                raise ValueError
+            i += 1
+            expr(precedence)
+            last = precedence
+
+    if not tokens:
+        return None
+    try:
+        expr(0)
+    except ValueError:
+        return "Could not parse expression."
+    except RecursionError:
+        return None
+    if i != len(tokens) or (numbers == 1 and unitless == 1):
+        return "Could not parse expression."
+    return None
+
+
+# Text variables KiCad 10 resolves in a .kicad_dru without a definition in the project or the
+# board (BOARD::ResolveTextVar, the title block, PROJECT::TextVarResolver); names are
+# case-sensitive. A `X:Y` reference also resolves.
+_DRU_BUILTIN_TEXT_VARS = frozenset((
+    'FILENAME', 'FILEPATH', 'VARIANT', 'VARIANT_DESC', 'PROJECTNAME', 'CURRENT_DATE',
+    'CURRENT_TIME_HH_MM_SS', 'CURRENT_TIME_LOCALE', 'VCSHASH', 'VCSSHORTHASH', 'ISSUE_DATE',
+    'REVISION', 'TITLE', 'COMPANY', *(f'COMMENT{i}' for i in range(1, 10))))
+
+
+def _dru_unresolved_text_var(tree: list, text_vars: frozenset[str] | None) -> str | None:
+    """"Unresolved text variable." when a token of the file keeps a ``${...}`` after KiCad's
+    expansion with the project's and board's *text_vars* (drc_engine.cpp expands the file
+    before parsing it), or None; None also when *text_vars* is None (not known)."""
+    if text_vars is None:
+        return None
+    known = _DRU_BUILTIN_TEXT_VARS | text_vars
+
+    def resolve(token, _depth):
+        # a placeholder no name can equal, so a nested ${${FOO}} stays unresolved
+        return '\0' if ':' in token or token in known else None
+
+    stack = list(tree[1:])
+    while stack:
+        node = stack.pop()
+        if isinstance(node, list):
+            stack.extend(node)
+        elif isinstance(node, str) and '${' in node and '${' in resolve_text_vars(node, resolve):
+            return "Unresolved text variable."
+    return None
+
+
 # drc_rule_parser.cpp parseConstraint: the constraint types, plus the deprecated names it maps.
 _DRU_CONSTRAINT_TYPES = frozenset((
     'assertion', 'clearance', 'creepage', 'hole_clearance', 'edge_clearance', 'hole_size',
@@ -1027,12 +1142,14 @@ def _dru_layer_known(pattern: str, layer_names: frozenset[str]) -> bool:
     return any(fnmatchcase(name, pattern) for name in layer_names)
 
 
-def _dru_parse_error(tree: list, layer_names: frozenset[str] | None = None) -> str | None:
+def _dru_parse_error(tree: list, layer_names: frozenset[str] | None = None,
+                     text_vars: frozenset[str] | None = None) -> str | None:
     """KiCad's message for a .kicad_dru it refuses to load, or None. A parse error drops every
     custom rule of the file (drc_rule_parser.cpp Parse, drc_engine.cpp InitEngine). Checked:
     the leading version statement, the top-level forms, rule names and items, severity names,
-    conditions, constraint types and items (once per rule), length bounds that are not a
-    length expression, and, given the board's *layer_names*, the rule's layer."""
+    conditions (`_dru_condition_error`), constraint types and items (once per rule), bounds
+    (`_dru_bound_error`), given the board's *layer_names* the rule's layer, and given the
+    project's and board's *text_vars* any text variable left unresolved."""
     if any(not isinstance(f, list) for f in tree[1:]):
         return "Missing '('."
     forms = tree[1:]
@@ -1062,6 +1179,11 @@ def _dru_parse_error(tree: list, layer_names: frozenset[str] | None = None) -> s
                         return "Unrecognized item."
                     if len(item) > 2:
                         return "Missing ')'."
+                    # a text variable's value is not known here; an unresolved one is refused
+                    # below
+                    if '${' not in item[1] and '@{' not in item[1] and (
+                            condition_error := _dru_condition_error(item[1])):
+                        return condition_error
                 if item[0] == 'constraint' and len(item) > 1:
                     ctype = item[1]
                     if not isinstance(ctype, str) or (ctype not in _DRU_CONSTRAINT_TYPES
@@ -1085,7 +1207,7 @@ def _dru_parse_error(tree: list, layer_names: frozenset[str] | None = None) -> s
                         return "Unrecognized layer."
         else:
             return "Expected rule or version."
-    return None
+    return _dru_unresolved_text_var(tree, text_vars)
 
 
 def _dru_unbalanced(content: str) -> str | None:
@@ -1166,7 +1288,8 @@ def load_kicad_dru(file_path: str) -> list[dict] | None:
     return load_kicad_dru_checked(file_path)[0]
 
 
-def load_kicad_dru_checked(file_path: str, *, layer_names: Iterable[str] | None = None
+def load_kicad_dru_checked(file_path: str, *, layer_names: Iterable[str] | None = None,
+                           text_vars: Iterable[str] | None = None
                            ) -> tuple[list[dict] | None, str | None]:
     """Load custom design rules from ``.kicad_dru`` adjacent to a KiCad file.
 
@@ -1183,7 +1306,8 @@ def load_kicad_dru_checked(file_path: str, *, layer_names: Iterable[str] | None 
     Returns (None, None) if no ``.kicad_dru`` found. The second item is KiCad's parse error
     when KiCad would refuse the file (`_dru_parse_error`); the rules are still returned.
     The rule layers are checked only when the board's *layer_names* (names and user names)
-    are given.
+    are given, and text variables only when the names the project and board define
+    (*text_vars*) are given.
 
     Only the board reads rules, and KiCad takes the file named like the board,
     so discovery is exact-stem via `find_project_settings_file`.
@@ -1252,7 +1376,8 @@ def load_kicad_dru_checked(file_path: str, *, layer_names: Iterable[str] | None 
         return None, None
     known_layers = (None if layer_names is None
                     else _KICAD_LAYER_NAMES | frozenset(layer_names))
-    return rules, (_dru_parse_error(tree, known_layers) or _dru_unbalanced(content)
+    known_vars = None if text_vars is None else frozenset(text_vars)
+    return rules, (_dru_parse_error(tree, known_layers, known_vars) or _dru_unbalanced(content)
                    or _dru_bound_separator_error(content))
 
 

@@ -11,10 +11,20 @@
   the expression holds one number and it has no unit (a unary minus adds a number, so `-0.1`
   and `2 * 0.1` load and `+0.1` and `(0.1)` do not), units in another case or on `via_count`,
   time units outside `length` and `skew`, bounds in different units, and a tab or line break
-  between two tokens of a bound (not after the keyword or before the `)`);
+  between two tokens of a bound (not after the keyword or before the `)`:
+  in a CRLF file `(min 0.1mm\r\n)` loads and `(min 0.1mm\r\n+ 0.1mm)` is refused);
 - a unit on `track_angle` (`45deg`, `45 deg`, `(max 90deg)`) is refused by kicad-cli 10.0.8
   ("Unexpected units.") but read as an angle by KiCad master since the KiCad 11 line
   (drc_rule_parser.cpp impliedDegrees), so such a file is read, as it was before;
+- a condition KiCad's expression parser rejects is refused ("Could not parse expression."): a
+  missing operand or parenthesis, a character outside its lexer (tab, CR, `@`, `"`, `;`, a
+  single `=`), a unit word as an operand, a chained comparison, or one number without a unit;
+  an unterminated `'` string, a tab inside one, `,` arguments and `!!` load;
+- a `${VAR}` left unresolved anywhere in a rule refuses the file ("Unresolved text
+  variable."): KiCad resolves its own names (`${VCSHASH}` and `${VCSSHORTHASH}` too, empty
+  outside a git repository; case-sensitive: `${title}` and `${projectname}` are refused), `X:Y` references, the .kicad_pro's text variables in the case they are
+  defined in (`${foo}` loads when the project defines `foo`, and is refused when it defines
+  `FOO`) and the board's properties, and ignores comment lines and an escaped `\${FOO}`;
 - a rule naming a layer by its other KiCad name (`F.Silkscreen` on a board whose file says
   `F.SilkS`) applies, with or without a user name.
 A KiCad 5 board keeps its own design settings and net classes: with a .kicad_pro beside it the
@@ -26,6 +36,7 @@ from pathlib import Path
 SCRIPTS = Path(__file__).resolve().parents[2] / "skills" / "kicad" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
+from kicad_core.project import load_kicad_dru_checked  # noqa: E402
 from pcb.pipeline import analyze_pcb  # noqa: E402
 
 BOARD = """(kicad_pcb (version 20221018) (generator pcbnew)
@@ -55,9 +66,14 @@ def _run(board, files):
             os.chdir(cwd)
 
 
-def dru(rules, board=BOARD):
-    """(custom_rules_error, rule names with a violation, constraint types loaded)."""
-    res = _run(board, {"b.kicad_dru": rules})
+def dru(rules, board=BOARD, pro=None):
+    """(custom_rules_error, rule names with a violation, constraint types loaded); *pro* is the
+    .kicad_pro's text variables."""
+    files = {"b.kicad_dru": rules}
+    if pro is not None:
+        files["b.kicad_pro"] = json.dumps({"text_variables": pro,
+                                           "meta": {"filename": "b.kicad_pro", "version": 1}})
+    res = _run(board, files)
     ps = res.get("project_settings") or {}
     drc = res.get("design_rule_compliance") or {}
     hit = sorted({v.get("rule") for v in drc.get("violations", [])})
@@ -171,6 +187,77 @@ class DruAsKiCadReadsIt(unittest.TestCase):
                       "track_angle (min 45) (max 90deg)"):
             with self.subTest(bound=bound):
                 self.assertEqual(dru(W + f'(rule a (constraint {bound}))')[:2], (None, ["custom:w"]))
+
+    def test_condition_kicad_cannot_parse_refuses_the_file(self):
+        for cond in ("A.Type == ", "A.Type == 'track' &&", "&& A.isPlated()",
+                     "(A.Type == 'track'", "A.Type == 'track')", "()",
+                     "A.Type ==\t'track'", "A.Type == 'track'\r", "A.Type == 'track' @",
+                     "A.Type == == 'track'", "A.Type == 'track' || || A.Type == 'via'",
+                     "1", "A.Width > 0.2", "A.Width > 0.2MM", "A.Width > 1e3mm", "A.Width > .1mm",
+                     "A.Type = 'track'", "A.Type == 'track' & A.Type == 'via'",
+                     "A.Type == 'track' ^ A.Type == 'via'", "A.Type == 'track';", "A.Type == 'track' in",
+                     "mm", "A.Type == 'track' == 'x'", "A.Width < 1mm < 2mm",
+                     "A.insideArea('x')('y')", "(A.isPlated())(A.isPlated())", "A.insideArea(", "A.",
+                     'A.NetName == \\"x\\"'):
+            with self.subTest(cond=cond):
+                rule = W + f'(rule a (condition "{cond}") (constraint clearance (min 0.01mm)))'
+                self.assertEqual(dru(rule)[:2], ("Could not parse expression.", []))
+
+    def test_condition_kicad_parses_loads(self):
+        for cond in ("A.Type == 'track'", "A.Type  ==  'track'", "  A.Type == 'track'  ",
+                     "", "   ", "A", "'x'", "1mm", "'a', 'b'",
+                     "!A.isPlated()", "!!A.isPlated()", "!(A.Type == 'track')", "(A.Type == 'track') == 'x'",
+                     "A.insideArea('X')", "A.fromTo('U1-1', 'U2-1')",
+                     "A.Width > 0.2mm", "A.Width > 0,1mm", "A.Width > -0.1mm", "A.Width > (0.1mm)",
+                     "A.Width > 1 && A.Width < 2",
+                     "A.Type == 'track", "A.NetName == 'a\tb'",
+                     "A.Type == 'track' && B.Type == 'via'", "L == 'F.Cu'"):
+            with self.subTest(cond=cond):
+                rule = W + f'(rule a (condition "{cond}") (constraint clearance (min 0.01mm)))'
+                self.assertEqual(dru(rule)[:2], (None, ["custom:w"]))
+
+    def test_unresolved_text_variable_refuses_the_file(self):
+        cond = W + '(rule a (condition "A.NetClass == \'{}\'") (constraint clearance (min 0.01mm)))'
+        for rules, pro in (
+                *((cond.format(v), None) for v in ("${FOO}", "${LAYER}", "${KIPRJMOD}", "${FOO",
+                                                   "${title}", "${projectname}")),
+                (W + '(rule a (constraint clearance (min ${FOO})))', None),
+                (W + '(rule a (constraint ${FOO} (min 0.01mm)))', None),
+                (W + '(rule a (layer "${FOO}") (constraint clearance (min 0.01mm)))', None),
+                (W + '(rule "${FOO}" (constraint clearance (min 0.01mm)))', None),
+                (W + '(rule a (constraint disallow ${FOO}))', None),
+                (cond.format("${foo}"), {"FOO": "Default"}),
+                (cond.format("${FOO}"), {"foo": "Default"}),
+                (cond.format("${${FOO}}"), {"FOO": "Default"})):
+            with self.subTest(rules=rules, pro=pro):
+                self.assertEqual(dru(rules, pro=pro)[:2], ("Unresolved text variable.", []))
+
+    def test_resolved_text_variable_loads(self):
+        cond = W + '(rule a (condition "A.NetClass == \'{}\'") (constraint clearance (min 0.01mm)))'
+        prop = BOARD.replace("(setup (pad_to_mask_clearance 0))",
+                             '(setup (pad_to_mask_clearance 0))\n  (property "BPROP" "Default")')
+        for rules, board, pro in (
+                (cond.format("${FOO}"), BOARD, {"FOO": "Default"}),
+                (cond.format("${foo}"), BOARD, {"foo": "Default"}),
+                (cond.format("${Foo}"), BOARD, {"Foo": "Default"}),
+                (W + '(rule a (constraint clearance (min ${FOO})))', BOARD, {"FOO": "0.01mm"}),
+                *((cond.format(v), BOARD, None)
+                  for v in ("${PROJECTNAME}", "${CURRENT_DATE}", "${TITLE}", "${COMMENT9}", "${FILENAME}",
+                            "${VARIANT}", "${VCSHASH}", "${VCSSHORTHASH}", "${U1:VALUE}", "${DRC_ERROR}",
+                            "${}", "\\\\${FOO}")),
+                (cond.format("${BPROP}"), prop, None),
+                (W + "# ${FOO}\n", BOARD, None)):
+            with self.subTest(rules=rules, pro=pro):
+                self.assertEqual(dru(rules, board, pro)[:2], (None, ["custom:w"]))
+
+    def test_text_variables_unchecked_without_names(self):
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, "b.kicad_dru").write_text(
+                W + "(rule a (condition \"A.NetClass == '${FOO}'\") (constraint clearance (min 0.01mm)))\n",
+                encoding="utf-8")
+            rules, err = load_kicad_dru_checked(str(Path(d, "b.kicad_pcb")))
+        self.assertEqual(len(rules), 2)
+        self.assertIsNone(err)
 
     def test_decimal_comma_bound_is_a_length(self):
         err, hit, _ = dru('(version 1)\n(rule w (constraint track_width (min 0,5mm)))\n')

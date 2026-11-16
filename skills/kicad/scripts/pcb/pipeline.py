@@ -389,6 +389,7 @@ def run_facts(board: BoardData, *, include_trace_segments: bool, return_path_rad
     # Net classes — try .kicad_pro first (KiCad 6+), fall back to PCB file (KiCad 5)
     pro = load_kicad_pro(str(path), exact=True)
     project_settings = {}
+    pro_text_vars = {}
     if pro:
         pro_net_classes = extract_pro_net_classes(pro)
         if pro_net_classes:
@@ -426,7 +427,8 @@ def run_facts(board: BoardData, *, include_trace_segments: bool, return_path_rad
 
     # Custom design rules (.kicad_dru)
     custom_rules, dru_error = load_kicad_dru_checked(
-        str(path), layer_names=[n for layer in layers for n in (layer.get('name'), layer.get('alias')) if n])
+        str(path), layer_names=[n for layer in layers for n in (layer.get('name'), layer.get('alias')) if n],
+        text_vars=[*pro_text_vars, *metadata.get('properties', {})])
     if custom_rules:
         project_settings['custom_rules'] = custom_rules
     if dru_error:
