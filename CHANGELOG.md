@@ -43,6 +43,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `capability_mode.json` records `platform: unknown` outside Claude Code instead of always `claude-code`, and its `datasheet_coverage_pct` reads a legacy `datasheets/index.json` download manifest instead of reporting 0 %.
 - `analysis/capability_mode.json` reports the datasheet extractions of the analysed project, not of the folder the command was run from.
 - On Windows file systems where a file's identity reads differently through the open handle, datasheet extraction reads are refused with a one-time warning instead of silently.
+- `cross_verify.py` no longer reports board-only footprints (logos, graphics) as orphans or parts excluded from the board as missing; it reports a DNP setting that differs between a symbol and its footprint instead of warning on every DNP part that has a footprint (boards older than KiCad 8 carry no footprint DNP flag and are not compared); and it measures each fitted decoupling capacitor against the nearest fitted IC on its rail instead of reporting every capacitor as not found. A capacitor further than 5 mm warns only when the PCB analysis measured that distance between pads; bulk capacitors (1 µF or more) and distances taken between footprint centres are reported as info.
 
 ### Documentation
 

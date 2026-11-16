@@ -112,10 +112,14 @@ def check_component_matching(sch: dict, pcb: dict) -> dict:
     Pairs footprints with schematic parts by schematic path, as KiCad's Update PCB does
     (kicad_core.pairing.pair_by_path). Detects orphans, missing components, value
     mismatches, references that differ between the paired parts, and DNP conflicts.
+    Like KiCad's schematic parity check, board-only footprints are not orphans, parts
+    excluded from the board are not missing, and DNP is compared with the footprint's
+    DNP attribute.
     """
     # Build schematic ref lookup (exclude power symbols and flags)
     sch_comps = {}
     dnp_refs = set()
+    on_board_refs = set()
     for c in sch.get("components", []):
         ref = c.get("reference", "")
         if not ref or ref.startswith("#"):
@@ -127,6 +131,8 @@ def check_component_matching(sch: dict, pcb: dict) -> dict:
         }
         if c.get("dnp"):
             dnp_refs.add(ref)
+        if c.get("on_board") is not False:
+            on_board_refs.add(ref)
 
     pairs, sch_only, pcb_only = pair_by_path(sch, pcb)
     pcb_by_ref = {}
@@ -137,6 +143,9 @@ def check_component_matching(sch: dict, pcb: dict) -> dict:
     matched = {}
     for ref, fp in pairs:
         matched[ref] = fp
+    paired_ids = {id(fp) for _, fp in pairs}
+    placed_unpaired = {fp.get("reference", "") for fp in pcb.get("footprints", [])
+                       if id(fp) not in paired_ids and not fp.get("board_only")}
 
     orphans = []  # in PCB but not schematic
     missing = []  # in schematic but not PCB
@@ -146,6 +155,8 @@ def check_component_matching(sch: dict, pcb: dict) -> dict:
 
     # Orphans: in PCB but not in schematic
     for ref in sorted(pcb_only):
+        if ref not in placed_unpaired:
+            continue  # board-only footprints (logos, graphics) have no symbol
         orphans.append({
             "ref": ref,
             "pcb_value": pcb_by_ref[ref].get("value", ""),
@@ -158,6 +169,8 @@ def check_component_matching(sch: dict, pcb: dict) -> dict:
     for ref in sorted(sch_only):
         if ref in dnp_refs:
             continue  # DNP components are expected to be absent from PCB
+        if ref not in on_board_refs:
+            continue  # excluded from the board, so not in the board netlist
         sc = sch_comps[ref]
         missing.append({
             "ref": ref,
@@ -191,13 +204,25 @@ def check_component_matching(sch: dict, pcb: dict) -> dict:
                 "message": f"{ref} is {pcb_ref} on the PCB (annotation not synchronised)",
             })
 
-    # DNP conflicts: marked DNP but placed in PCB
-    for ref in sorted(dnp_refs & set(matched)):
-        dnp_conflicts.append({
-            "ref": ref,
-            "status": "warning",
-            "message": f"{ref} marked DNP in schematic but placed in PCB",
-        })
+    # DNP conflicts: the symbol's DNP differs from the footprint's DNP attribute.
+    # Boards before file version 20230410 (KiCad 8) cannot carry the attribute.
+    try:
+        has_dnp_attr = int(pcb.get("file_version")) >= 20230410
+    except (TypeError, ValueError):
+        has_dnp_attr = False
+    if has_dnp_attr:
+        seen = set()
+        for ref, fp in pairs:
+            sch_dnp, pcb_dnp = ref in dnp_refs, bool(fp.get("dnp"))
+            if sch_dnp == pcb_dnp or ref in seen:
+                continue
+            seen.add(ref)
+            dnp_conflicts.append({
+                "ref": ref,
+                "status": "warning",
+                "message": (f"{ref} is DNP in the schematic but not on the PCB footprint" if sch_dnp
+                            else f"{ref} footprint is DNP on the PCB but not in the schematic"),
+            })
 
     return {
         "schematic_count": len(sch_comps),
@@ -406,9 +431,12 @@ def check_power_traces(sch: dict, pcb: dict) -> list[dict]:
 def check_decoupling_placement(sch: dict, pcb: dict) -> list[dict]:
     """Check 4: Decoupling cap placement cross-check.
 
-    Matches schematic decoupling analysis (which caps serve which ICs)
-    against PCB footprint positions. Uses PCB decoupling_placement data
-    when available, otherwise computes distances from footprint coordinates.
+    Reads each decoupling rail as DA-001 does: the rail's ICs are the fitted ICs with a
+    pin on it. Each fitted cap is measured against the nearest of them, by the PCB
+    decoupling_placement pad distance where the PCB analysis has one, otherwise by
+    footprint centres. Only a pad distance over 5 mm warns; a centre distance cannot show
+    which load the cap serves, and a bulk cap (1 uF or more) need not sit at the pins, so
+    both are info.
     """
     sch_decoupling = [f for f in sch.get("findings", [])
                       if f.get("detector") == "detect_decoupling"]
@@ -430,23 +458,41 @@ def check_decoupling_placement(sch: dict, pcb: dict) -> list[dict]:
         if ref:
             fp_positions[ref] = (fp.get("x", 0), fp.get("y", 0))
 
+    comps = [c for c in sch.get("components", []) if isinstance(c, dict)]
+    unfitted = {c.get("reference", "") for c in comps
+                if c.get("dnp") or c.get("on_board") is False}
+    ics = [c for c in comps if c.get("type") == "ic"
+           and not c.get("dnp") and c.get("on_board") is not False]
+
     results = []
     for group in sch_decoupling:
         if not isinstance(group, dict):
             continue
-        ic_ref = group.get("ic_ref") or group.get("ic") or group.get("rail", "")
+        rail = group.get("rail", "")
         caps = group.get("capacitors", [])
-        if not ic_ref or not caps:
+        rail_ics = sorted({c.get("reference", "") for c in ics
+                           if rail in set((c.get("pin_nets") or {}).values())} - {""})
+        if not rail_ics or not caps:
             continue
-
-        ic_pos = fp_positions.get(ic_ref)
 
         for cap in caps:
             if not isinstance(cap, dict):
                 continue
             cap_ref = cap.get("ref", "")
-            if not cap_ref:
+            if not cap_ref or cap_ref in unfitted:
                 continue
+
+            # The PCB analysis measures pads only for U/IC refs within 10 mm, so a cap next
+            # to another fitted IC (a flash or sensor ref) is judged by that IC's centres.
+            nearest = None
+            for ic in rail_ics:
+                d, pads = pcb_decoup_lookup.get((ic, cap_ref)), True
+                if d is None and ic in fp_positions and cap_ref in fp_positions:
+                    d, pads = math.dist(fp_positions[ic], fp_positions[cap_ref]), False
+                if d is not None and (nearest is None or d < nearest[0]):
+                    nearest = (d, ic, pads)
+            ic_ref = nearest[1] if nearest else rail_ics[0]
+            measured = bool(nearest and nearest[2])
 
             entry = {
                 "ic_ref": ic_ref,
@@ -454,20 +500,18 @@ def check_decoupling_placement(sch: dict, pcb: dict) -> list[dict]:
                 "cap_value": cap.get("value", ""),
             }
 
-            # Try pre-computed distance first
-            dist = pcb_decoup_lookup.get((ic_ref, cap_ref))
-
-            # Fall back to footprint position calculation
-            if dist is None and ic_pos:
-                cap_pos = fp_positions.get(cap_ref)
-                if cap_pos:
-                    dist = math.sqrt(
-                        (ic_pos[0] - cap_pos[0]) ** 2 +
-                        (ic_pos[1] - cap_pos[1]) ** 2)
-
-            if dist is not None:
+            if nearest is not None:
+                dist = nearest[0]
                 entry["distance_mm"] = round(dist, 2)
-                if dist > 5.0:
+                if dist > 5.0 and (cap.get("farads") or 0) >= 1e-6:
+                    entry["status"] = "info"
+                    entry["message"] = (f"{cap_ref} is {dist:.1f}mm from {ic_ref} "
+                                        f"— bulk capacitance, distance is less critical")
+                elif dist > 5.0 and not measured:
+                    entry["status"] = "info"
+                    entry["message"] = (f"{cap_ref} is {dist:.1f}mm from {ic_ref}, "
+                                        f"measured between footprint centres")
+                elif dist > 5.0:
                     entry["status"] = "warning"
                     entry["message"] = (f"{cap_ref} is {dist:.1f}mm from {ic_ref} "
                                         f"— should be within 5mm for effective decoupling")
