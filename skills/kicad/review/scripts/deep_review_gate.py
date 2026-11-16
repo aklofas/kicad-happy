@@ -261,7 +261,8 @@ def _datasheets_pkg():
 
 def _manifest_pdf(d, mpn):
     """(path, stop, others): the PDF datasheets/manifest.json (or legacy index.json) lists
-    for `mpn`; True when the entry marks the download as the wrong part, so no other file
+    for `mpn`; True when the entry marks the download as the wrong part or as not
+    obtained, so no other file
     may stand in for it; and the lower-cased file names the manifest lists for other parts."""
     _datasheets_pkg()
     from datasheet_types.cache_reader import read_json_object
@@ -281,6 +282,8 @@ def _manifest_pdf(d, mpn):
         others = {v["file"].lower() for k, v in parts.items()
                   if isinstance(k, str) and k.strip().lower() != want
                   and isinstance(v, dict) and isinstance(v.get("file"), str)}
+        if isinstance(entry, dict) and entry.get("status", "ok") != "ok":
+            return None, True, others
         if isinstance(entry, dict) and entry.get("status") == "ok":
             if entry.get("verification") == "wrong":
                 return None, True, others

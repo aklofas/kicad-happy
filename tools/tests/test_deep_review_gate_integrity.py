@@ -642,8 +642,8 @@ class FindPdfTest(unittest.TestCase):
         self.assertIsNone(self._find("X1"))
         self._touch("X1.pdf")
         self.assertEqual(self._find("X1"), self.tmp / "X1.pdf")
-        # a failed entry is not used; the folder lookup still finds the file
-        self.assertEqual(self._find("X2"), self.tmp / "X2_Part.pdf")
+        # a failed entry stops the lookup: the folder's file is not its datasheet
+        self.assertIsNone(self._find("X2"))
 
     def test_wrong_part_entry_stops_the_lookup(self):
         self._touch("X3_Part.pdf", "X3.pdf")
@@ -657,7 +657,22 @@ class FindPdfTest(unittest.TestCase):
         self.assertIsNone(self._find("LM317"))
         self.assertEqual(self._find("LM317/NOPB"), self.tmp / "LM317_NOPB_Linear_Regulator.pdf")
         self._touch("LM317_TI.pdf")
-        self.assertEqual(self._find("LM317"), self.tmp / "LM317_TI.pdf")
+        self.assertIsNone(self._find("LM317"))
+
+    def test_not_found_entry_stops_the_lookup(self):
+        self._touch("LM317_TI.pdf", "LM317.pdf")
+        self._manifest({"LM317": {"status": "not_found"}})
+        self.assertIsNone(self._find("LM317"))
+
+    def test_unlisted_part_still_falls_back(self):
+        self._touch("TPS1_Boost.pdf")
+        self._manifest({"OTHER": {"status": "ok", "file": "OTHER.pdf"}})
+        self.assertEqual(self._find("TPS1"), self.tmp / "TPS1_Boost.pdf")
+
+    def test_entry_without_a_status_keeps_the_folder_lookup(self):
+        self._touch("TPS2_Boost.pdf")
+        self._manifest({"TPS2": {"file": "gone.pdf"}})
+        self.assertEqual(self._find("TPS2"), self.tmp / "TPS2_Boost.pdf")
 
     def test_prefix_needs_the_separator(self):
         self._touch("LM3580_Op.pdf")
