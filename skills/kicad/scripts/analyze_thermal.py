@@ -29,7 +29,7 @@ from schema_codec import emit_schema
 from inputs_builder import build_inputs, build_upstream_artifact, build_compat
 from kicad_core.fileio import atomic_write_text, json_load, json_output
 from kicad_core.render import summary_or_title, wrap_lines
-from capability_mode import get_capability_mode_ref
+from capability_mode import get_capability_mode_ref, analysis_cache_dir
 from kicad_core.cli import (add_config_arg, add_only_deterministic_arg, add_output_arg, add_schema_arg,
                             add_stage_audience_args, add_text_arg, envelope_type_error,
                             utf8_text_stdout)
@@ -1043,7 +1043,9 @@ def main(argv: list[str] | None = None) -> int:
 
     # Resolve capability_mode_ref BEFORE build_inputs so inputs.run_id ==
     # capability_mode_ref.run_id.
-    _capability_mode_ref = get_capability_mode_ref(_analysis_dir)
+    _capability_mode_ref = get_capability_mode_ref(
+        _analysis_dir,
+        cache_dir=_Path(extract_dir) if extract_dir else analysis_cache_dir(schematic, pcb))
 
     inputs = build_inputs(
         source_files=[_sch_path, _pcb_path],

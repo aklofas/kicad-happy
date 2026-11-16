@@ -12,7 +12,7 @@ from schematic.pipeline import analyze_schematic, finalize_for_cli
 from envelopes.schematic import SchematicEnvelope
 from schema_codec import emit_schema
 from inputs_builder import build_inputs, build_compat
-from capability_mode import get_capability_mode_ref
+from capability_mode import get_capability_mode_ref, project_cache_dir
 from kicad_core.cli import (add_compact_arg, add_config_arg, add_only_deterministic_arg,
                             add_output_arg, add_schema_arg, add_stage_audience_args, add_text_arg,
                             utf8_text_stdout)
@@ -94,7 +94,8 @@ def main(argv: list[str] | None = None) -> int:
     # Resolve capability_mode_ref BEFORE build_inputs so inputs.run_id ==
     # capability_mode_ref.run_id.
     # First-writer-wins side effect: creates capability_mode.json if absent.
-    _capability_mode_ref = get_capability_mode_ref(_analysis_dir_for_ctx)
+    _capability_mode_ref = get_capability_mode_ref(
+        _analysis_dir_for_ctx, cache_dir=project_cache_dir(args.schematic))
 
     # Build inputs provenance block.
     _sch_path = Path(args.schematic)

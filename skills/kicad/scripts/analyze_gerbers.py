@@ -33,7 +33,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from envelopes.gerber import GerberEnvelope  # noqa: E402
 from schema_codec import emit_schema  # noqa: E402
 from inputs_builder import build_inputs, build_compat  # noqa: E402
-from capability_mode import get_capability_mode_ref  # noqa: E402
+from capability_mode import get_capability_mode_ref, project_cache_dir  # noqa: E402
 from kicad_core.fileio import atomic_write_text, json_loads  # noqa: E402
 from kicad_core.diagnostics import record as record_diagnostic  # noqa: E402
 from kicad_core.cli import (add_compact_arg, add_only_deterministic_arg, add_output_arg,  # noqa: E402
@@ -2234,7 +2234,7 @@ def main(argv: list[str] | None = None) -> int:
         _analysis_dir = Path("analysis")
 
     # Resolve capability_mode_ref BEFORE build_inputs.
-    _capability_mode_ref = get_capability_mode_ref(_analysis_dir)
+    _capability_mode_ref = get_capability_mode_ref(_analysis_dir, cache_dir=project_cache_dir(args.directory))
 
     inputs = build_inputs(
         source_files=_gerber_files,

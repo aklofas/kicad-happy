@@ -33,7 +33,7 @@ from kicad_core.render import summary_or_title
 from emc_envelope import EMCEnvelope
 from schema_codec import emit_schema
 from inputs_builder import build_inputs, build_upstream_artifact, build_compat
-from capability_mode import get_capability_mode_ref
+from capability_mode import get_capability_mode_ref, analysis_cache_dir
 from kicad_core.cli import (add_compact_arg, add_config_arg, add_only_deterministic_arg, add_output_arg,
                             add_schema_arg, add_stage_audience_args, add_text_arg, envelope_type_error,
                             utf8_text_stdout)
@@ -472,7 +472,7 @@ def main(argv: list[str] | None = None) -> int:
         _analysis_dir = _Path(analysis_cfg.get('output_dir') or 'analysis')
 
     # Resolve capability_mode_ref before build_inputs.
-    _capability_mode_ref = get_capability_mode_ref(_analysis_dir)
+    _capability_mode_ref = get_capability_mode_ref(_analysis_dir, cache_dir=analysis_cache_dir(schematic, pcb))
 
     inputs = build_inputs(
         source_files=_source_files,

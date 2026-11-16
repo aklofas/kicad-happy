@@ -71,11 +71,34 @@ def _warn_malformed(path: Path, rec) -> None:
           file=sys.stderr)
 
 
+def project_cache_dir(source) -> Optional[Path]:
+    """The ``datasheets/extracted`` folder beside an analysed file (or beside an
+    analysed folder), or None when ``source`` is empty. The folder need not
+    exist: a project without one reads ``unavailable`` rather than falling
+    back to the working directory."""
+    if not source:
+        return None
+    return Path(source).resolve().parent / "datasheets" / "extracted"
+
+
+def analysis_cache_dir(*analyses) -> Optional[Path]:
+    """``datasheets/extracted`` beside the first analyzer JSON's source file
+    that exists, or None when none names one."""
+    from kicad_core.project import extraction_project_dir
+    for analysis in analyses:
+        if isinstance(analysis, dict):
+            folder = extraction_project_dir(analysis)
+            if folder is not None:
+                return Path(folder) / "datasheets" / "extracted"
+    return None
+
+
 def _detect_datasheet_status(cache_dir: Optional[Path] = None) -> str:
     """Return one of 'verified' | 'partial' | 'heuristic_fallback' | 'unavailable'.
 
     A minimal check: it looks only at whether extractions are present, not at
-    their schema_version.
+    their schema_version. Without a ``cache_dir`` (no analysed project) it
+    reads the working directory's ``datasheets/extracted``.
     """
     if cache_dir is None:
         cache_dir = Path("datasheets/extracted")
@@ -136,10 +159,27 @@ def _read_schema_versions() -> dict:
 
 
 def _fresh_record(datasheet_extraction, cache_dir, llm_review_status, schema_versions) -> dict:
+    if cache_dir is not None:
+        ds_scripts = str(Path(__file__).resolve().parents[2] / "datasheets" / "scripts")
+        if ds_scripts not in sys.path:
+            sys.path.insert(0, ds_scripts)
+        try:
+            from datasheet_extract_cache import safe_extract_dir
+            linked = safe_extract_dir(cache_dir) is None
+        except ImportError:
+            linked = False
+        if linked:
+            # A link in the project must not send the read to another tree.
+            datasheet_extraction = datasheet_extraction or "unavailable"
+            coverage = 0
+        else:
+            coverage = _compute_coverage_pct(cache_dir)
+    else:
+        coverage = _compute_coverage_pct(cache_dir)
     return {
         "run_id": generate_run_id(),
         "datasheet_extraction": datasheet_extraction or _detect_datasheet_status(cache_dir),
-        "datasheet_coverage_pct": _compute_coverage_pct(cache_dir),
+        "datasheet_coverage_pct": coverage,
         "llm_review": llm_review_status,
         "insertion_points_active": [],
         "schema_versions": schema_versions or _read_schema_versions(),

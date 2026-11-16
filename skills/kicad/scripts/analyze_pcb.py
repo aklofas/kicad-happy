@@ -12,7 +12,7 @@ from pcb.pipeline import analyze_pcb, finalize_for_cli
 from envelopes.pcb import PCBEnvelope
 from schema_codec import emit_schema
 from inputs_builder import build_inputs, build_compat
-from capability_mode import get_capability_mode_ref
+from capability_mode import get_capability_mode_ref, project_cache_dir
 from kicad_core.fileio import atomic_write_text, json_load, json_output
 from kicad_core.cli import (add_compact_arg, add_config_arg, add_only_deterministic_arg,
                             add_output_arg, add_schema_arg, add_stage_audience_args, add_text_arg,
@@ -90,7 +90,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # Resolve capability_mode_ref BEFORE build_inputs so inputs.run_id ==
     # capability_mode_ref.run_id.
-    _capability_mode_ref = get_capability_mode_ref(_analysis_dir)
+    _capability_mode_ref = get_capability_mode_ref(_analysis_dir, cache_dir=project_cache_dir(args.pcb))
 
     _pcb_path = Path(args.pcb)
     inputs = build_inputs(

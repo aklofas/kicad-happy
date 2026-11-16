@@ -97,5 +97,98 @@ class Platform(unittest.TestCase):
         self.assertEqual(self._platform(CLAUDECODE="0"), "unknown")
 
 
+class CacheDirFromSource(unittest.TestCase):
+    ROOT = Path(__file__).resolve().parents[2]
+    SCH = Path(__file__).resolve().parent / "fixtures" / "datasheet_cache" / "opamp.kicad_sch"
+    PCB = '(kicad_pcb (version 20240108) (generator "pcbnew") (generator_version "8.0"))\n'
+
+    def _run(self, cwd, script, *args):
+        env = dict(os.environ, CLAUDECODE="1")
+        return subprocess.run([sys.executable, str(self.ROOT / script), *map(str, args)],
+                              cwd=cwd, capture_output=True, text=True, env=env)
+
+    def _project(self, root, extractions=True):
+        proj = Path(root) / "proj"
+        proj.mkdir()
+        (proj / "board.kicad_sch").write_text(self.SCH.read_text(encoding="utf-8"), encoding="utf-8")
+        (proj / "board.kicad_pcb").write_text(self.PCB, encoding="utf-8")
+        if extractions:
+            ext = proj / "datasheets" / "extracted"
+            ext.mkdir(parents=True)
+            (ext / "LM358.json").write_text("{}", encoding="utf-8")
+        return proj
+
+    def _status(self, out_dir):
+        return json.loads((Path(out_dir) / "capability_mode.json").read_text(encoding="utf-8"))["datasheet_extraction"]
+
+    def test_schematic_sidecar_counts_the_projects_extractions(self):
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as cwd:
+            proj = self._project(d)
+            r = self._run(cwd, "skills/kicad/scripts/analyze_schematic.py", proj / "board.kicad_sch",
+                          "-o", Path(d) / "out" / "s.json")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(self._status(Path(d) / "out"), "partial")
+
+    def test_cwd_cache_is_not_the_projects(self):
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as cwd:
+            proj = self._project(d, extractions=False)
+            (Path(cwd) / "datasheets" / "extracted").mkdir(parents=True)
+            (Path(cwd) / "datasheets" / "extracted" / "X.json").write_text("{}", encoding="utf-8")
+            r = self._run(cwd, "skills/kicad/scripts/analyze_schematic.py", proj / "board.kicad_sch",
+                          "-o", Path(d) / "out" / "s.json")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(self._status(Path(d) / "out"), "unavailable")
+
+    def test_pcb_and_chained_analyzers_follow_the_source(self):
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as cwd:
+            proj = self._project(d)
+            out = Path(d) / "out"
+            out2 = Path(d) / "out2"
+            out3 = Path(d) / "out3"
+            self.assertEqual(self._run(cwd, "skills/kicad/scripts/analyze_schematic.py",
+                                       proj / "board.kicad_sch", "-o", out / "s.json").returncode, 0)
+            r = self._run(cwd, "skills/kicad/scripts/analyze_pcb.py", proj / "board.kicad_pcb",
+                          "-o", out / "p.json")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            (out / "capability_mode.json").unlink()
+            r = self._run(cwd, "skills/kicad/scripts/analyze_pcb.py", proj / "board.kicad_pcb",
+                          "-o", out / "p.json")
+            self.assertEqual(self._status(out), "partial")
+            r = self._run(cwd, "skills/kicad/scripts/analyze_thermal.py", "--schematic", out / "s.json",
+                          "--pcb", out / "p.json", "-o", out2 / "t.json")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(self._status(out2), "partial")
+            r = self._run(cwd, "skills/emc/scripts/analyze_emc.py", "--schematic", out / "s.json",
+                          "--pcb", out / "p.json", "-o", out3 / "e.json")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(self._status(out3), "partial")
+
+    def test_no_cache_dir_still_reads_the_cwd(self):
+        sys.path.insert(0, str(SCRIPTS))
+        import capability_mode
+        with tempfile.TemporaryDirectory() as cwd:
+            (Path(cwd) / "datasheets" / "extracted").mkdir(parents=True)
+            (Path(cwd) / "datasheets" / "extracted" / "X.json").write_text("{}", encoding="utf-8")
+            old = os.getcwd()
+            os.chdir(cwd)
+            try:
+                rec = capability_mode.get_or_create_capability_mode(Path(cwd) / "a")
+            finally:
+                os.chdir(old)
+        self.assertEqual(rec["datasheet_extraction"], "partial")
+
+    @unittest.skipIf(os.name == "nt", "symlinks")
+    def test_linked_datasheets_folder_is_unavailable(self):
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as other:
+            proj = self._project(d, extractions=False)
+            (Path(other) / "extracted").mkdir()
+            (Path(other) / "extracted" / "X.json").write_text("{}", encoding="utf-8")
+            os.symlink(other, proj / "datasheets")
+            r = self._run(d, "skills/kicad/scripts/analyze_schematic.py", proj / "board.kicad_sch",
+                          "-o", Path(d) / "out" / "s.json")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(self._status(Path(d) / "out"), "unavailable")
+
+
 if __name__ == "__main__":
     unittest.main()
