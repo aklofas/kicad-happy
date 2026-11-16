@@ -256,17 +256,39 @@ def format_text(output, same_design=False):
 # Deep review text formatter
 # ---------------------------------------------------------------------------
 
+def _reworded_pairs(reworded):
+    """One-to-one (base_id, head_id, category) pairs from the reworded candidates.
+
+    The engine pairs by category and component set, so one finding can sit in
+    several candidates; each id is taken once, in list order."""
+    used_base, used_head, pairs = set(), set(), []
+    for r in reworded:
+        b, h = r.get("base_finding_id"), r.get("head_finding_id")
+        if b in used_base or h in used_head:
+            continue
+        used_base.add(b)
+        used_head.add(h)
+        pairs.append((b, h, r.get("category", "?")))
+    return pairs
+
+
 def _format_deep_review_text(output):
     """Compact text block for a deep_review diff output."""
     dr = output.get("deep_review", {})
-    fixed = dr.get("fixed", [])
-    new = dr.get("new", [])
     still_open = dr.get("still_open", [])
-    reworded = dr.get("reworded_candidates", [])
     quarantined_head = dr.get("quarantined_head", 0)
+
+    pairs = _reworded_pairs(dr.get("reworded_candidates", []))
+    paired_base = {b for b, _, _ in pairs}
+    paired_head = {h for _, h, _ in pairs}
+    all_fixed = dr.get("fixed", [])
+    all_new = dr.get("new", [])
+    fixed = [f for f in all_fixed if f.get("finding_id") not in paired_base]
+    new = [f for f in all_new if f.get("finding_id") not in paired_head]
 
     lines = [
         f"Deep Review Changes: {len(fixed)} fixed, {len(new)} new, "
+        f"{len(pairs)} likely reworded, "
         f"{len(still_open)} still open, {quarantined_head} quarantined in head",
     ]
     if fixed:
@@ -282,14 +304,14 @@ def _format_deep_review_text(output):
     if still_open:
         lines.append("")
         lines.append(f"Still open: {len(still_open)} finding(s) unchanged")
-    if reworded:
+    if pairs:
+        base_summary = {f.get("finding_id"): f.get("summary", "") for f in all_fixed}
+        head_summary = {f.get("finding_id"): f.get("summary", "") for f in all_new}
         lines.append("")
-        lines.append("Reworded candidates (advisory):")
-        for r in reworded:
-            lines.append(
-                f"  ~ {r.get('base_finding_id', '?')} → {r.get('head_finding_id', '?')}"
-                f" [{r.get('category', '?')}]"
-            )
+        lines.append("Likely reworded (advisory):")
+        for b, h, cat in pairs:
+            lines.append(f"  ~ {b} → {h} [{cat}]: "
+                         f"{base_summary.get(b, '')} → {head_summary.get(h, '')}")
     return "\n".join(lines)
 
 

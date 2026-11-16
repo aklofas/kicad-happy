@@ -47,6 +47,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `bom_manager.py` follows sub-sheet file names written with backslashes or project text variables such as `${PROJECTNAME}`, so those sheets' parts are no longer missing from the BOM.
 - `bom_manager.py` reads Value, Footprint, Datasheet and Description in any letter case (the last duplicate wins; Reference keeps the first), as the schematic analyzer reads field names and duplicate fields, so BOM lines no longer split or lose those fields over case.
 - `diff_analysis --text` on two runs of unchanged design files says `analyzer change only` in its first line and lists the analyzer's regressions as analyzer changes instead of design regressions. JSON output and exit codes are unchanged; gerber and cross-analysis outputs still exit 1, with a message naming the outputs it can compare.
+- `diff_analysis --text` on two Deep Review files counts a finding that only changed its wording once, as likely reworded, instead of as one fixed and one new.
 
 ### Documentation
 

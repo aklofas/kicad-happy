@@ -260,6 +260,39 @@ class UnsupportedTypes(unittest.TestCase):
             self.assertIn("schematic", err.getvalue())
 
 
+class DeepReviewText(unittest.TestCase):
+    @staticmethod
+    def _dr(*findings):
+        return {"findings": [dict(finding_id=i, category=c, components=comp, summary="s " + i,
+                                  severity="warning")
+                             for i, c, comp in findings], "quarantined": []}
+
+    def _pair(self, head_category="decoupling"):
+        base = self._dr(("A", "power", ["U1"]), ("B", "decoupling", ["C1", "U2"]))
+        head = self._dr(("A", "power", ["U1"]), ("C", head_category, ["U2", "C1"]),
+                        ("D", "decoupling", ["C1", "U2"]))
+        return base, head
+
+    def test_reworded_pair_leaves_fixed_and_new_counts(self):
+        text = _run(*self._pair(), "--text")
+        self.assertEqual(text.splitlines()[0], "Deep Review Changes: 0 fixed, 1 new, "
+                         "1 likely reworded, 1 still open, 0 quarantined in head")
+        self.assertIn("+ D", text)
+        self.assertNotIn("+ C", text.split("New:")[1].split("Still open")[0])
+        self.assertIn("B \u2192 C", text)
+
+    def test_different_category_is_not_paired(self):
+        base = self._dr(("B", "decoupling", ["C1", "U2"]))
+        head = self._dr(("C", "power", ["C1", "U2"]))
+        text = _run(base, head, "--text")
+        self.assertEqual(text.splitlines()[0], "Deep Review Changes: 1 fixed, 1 new, "
+                         "0 likely reworded, 0 still open, 0 quarantined in head")
+        dr = _run(base, head)["deep_review"]
+        self.assertEqual([f["finding_id"] for f in dr["fixed"]], ["B"])
+        self.assertEqual([f["finding_id"] for f in dr["new"]], ["C"])
+        self.assertEqual(dr["reworded_candidates"], [])
+
+
 class TextOutput(unittest.TestCase):
     def test_text_output_file_is_utf8_under_an_ascii_locale(self):
         base = _doc([], "schematic", components=[{"reference": "R1", "value": "10k"}])
