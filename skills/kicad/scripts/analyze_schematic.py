@@ -30,7 +30,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--project-root", default=None,
                         help="Root .kicad_sch for hierarchy context (auto-discovered if omitted)")
     parser.add_argument("--no-hierarchy", action="store_true",
-                        help="Disable hierarchy auto-discovery (treat file as standalone root)")
+                        help="Analyze the file as given: a sub-sheet is not redirected to its "
+                             "project root (its own sub-sheets, and a KiCad 10 project's other "
+                             "top-level sheets, are still read)")
     parser.add_argument("--lifecycle", action="store_true",
                         help="Run lifecycle/obsolescence audit (requires network + API keys)")
     parser.add_argument("--analysis-dir", default=None,

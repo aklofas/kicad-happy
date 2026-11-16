@@ -46,6 +46,14 @@ class CliHelperTests(unittest.TestCase):
             self.assertIn(f"Write {name} into the current run", text, mod.__name__)
             self.assertNotIn("gerbers.json", text)
 
+    def test_no_hierarchy_help_names_what_it_skips(self):
+        out = io.StringIO()
+        with redirect_stdout(out), self.assertRaises(SystemExit):
+            analyze_schematic.main(["--help"])
+        text = " ".join(out.getvalue().split())
+        self.assertIn("a sub-sheet is not redirected to its project root", text)
+        self.assertNotIn("standalone root", text)
+
     def test_every_cli_main_takes_argv_and_returns_int(self):
         for mod in (analyze_schematic, analyze_pcb, analyze_gerbers, analyze_thermal, cross_analysis, diff_analysis, what_if, lifecycle_audit, summarize_findings, analyze_emc, simulate_subcircuits, extract_parasitics):
             sig = inspect.signature(mod.main)

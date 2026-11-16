@@ -16,6 +16,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Writing a large analysis with `--output` needs much less memory (a 470 MB schematic result peaked at 3 GB, now under 1 GB); the file is unchanged.
 - A schematic or board with a coordinate that is not a finite number (`nan`, `inf`, or text) is analyzed with that point read as 0 and one diagnostics entry. Before, the schematic stopped with a traceback and the board wrote `NaN` into its JSON.
 - `--text` together with `--output` or `--analysis-dir` prints the text report and also writes the JSON, on every analyzer. Before, one of the two was silently skipped.
+- The `--no-hierarchy` help says what the flag does: a sub-sheet is analyzed as given instead of from its project root.
 
 ### Documentation
 
