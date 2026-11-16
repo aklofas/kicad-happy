@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Cross-run finding summary.
 
-Reads every analyzer output JSON in the current run (resolved from the
+Reads the analyzer outputs (`schematic.json`, `pcb.json`, ...) in the current run (resolved from the
 analysis/manifest.json), groups findings by rule_id, and prints the top
 N lines sorted by (severity rank, count).
 
@@ -25,7 +25,7 @@ from collections import defaultdict
 
 from kicad_core.fileio import json_load
 from kicad_core.cli import add_only_deterministic_arg
-from analysis_cache import get_run, reviewed_overlay
+from analysis_cache import get_run, reviewed_overlay, CANONICAL_OUTPUTS
 from finding_schema import VALID_CONFIDENCES, VALID_EVIDENCE_SOURCES
 
 _SEV_RANK = {"error": 0, "high": 0, "critical": 0,
@@ -88,8 +88,13 @@ def _collect(run_dir: str, only_deterministic: bool = True) -> tuple[list[dict],
     from collections import Counter
     findings: list[dict] = []
     counter: Counter = Counter()
+    known = set(CANONICAL_OUTPUTS.values())
     for name in sorted(os.listdir(run_dir)):
         if not name.endswith(".json"):
+            continue
+        if name not in known:
+            print(f"Warning: skipping {name}: not an output the analysis cache writes "
+                  f"(expected one of {sorted(known)})", file=sys.stderr)
             continue
         full = _resolve_analyzer_json(run_dir, name, only_deterministic)
         try:
