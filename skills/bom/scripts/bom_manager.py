@@ -44,7 +44,7 @@ from bom_fields import (DNP_FIELD_SET, DNP_VALUE_MARKERS, FIELD_ALIASES, POPULAT
                         _canonical_for, _first_nonblank_stripped, _pick_mpn_from_props, _slot_pn_number,
                         _symbol_slots)
 from kicad_core.diagnostics import record
-from kicad_core.fields import (merge_unit_fields, MPN_FIELD_ALIASES, MPN_FIELD_ALIASES_PRIMARY,
+from kicad_core.fields import (merge_unit_fields, symbol_field_map, MPN_FIELD_ALIASES, MPN_FIELD_ALIASES_PRIMARY,
                                MPN_FIELD_ALIASES_GENERIC, DIGIKEY_FIELD_ALIASES,
                                normalize_field_name)
 from kicad_core.instances import tilde_is_empty, variant_overrides
@@ -111,15 +111,12 @@ def extract_placed_symbols(text: str) -> list[tuple[int, int, str]]:
 
 def extract_properties(symbol_block: str) -> dict[str, str]:
     """Extract all (property "name" "value" ...) from a symbol block."""
-    props = {}
-    for match in re.finditer(
-        r'\(property\s+(?:private\s+)?"((?:[^"\\]|\\.)*)"\s+"((?:[^"\\]|\\.)*)"',
-        symbol_block,
-    ):
-        name = unescape_quoted(match.group(1))
-        value = unescape_quoted(match.group(2))
-        props[name] = value
-    return props
+    return symbol_field_map(
+        (unescape_quoted(match.group(1)), unescape_quoted(match.group(2)))
+        for match in re.finditer(
+            r'\(property\s+(?:private\s+)?"((?:[^"\\]|\\.)*)"\s+"((?:[^"\\]|\\.)*)"',
+            symbol_block,
+        ))
 
 
 def is_in_bom(symbol_block: str) -> bool:

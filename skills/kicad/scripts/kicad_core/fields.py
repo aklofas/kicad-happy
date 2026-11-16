@@ -125,6 +125,24 @@ def get_mpn_property(node: list):
 _MANDATORY_FIELDS = frozenset({"Value", "Footprint", "Datasheet", "Description"})
 
 
+def symbol_field_map(fields: Iterable[tuple[str, str]]) -> dict[str, str]:
+    """A symbol's fields keyed by name, with field names and duplicates handled as the
+    schematic analyzer handles them (the text itself is kept as written: no trimming).
+
+    *fields* yields (name, text) in file order. Value, Footprint, Datasheet and Description
+    match in any case, are keyed by the canonical name and a later duplicate replaces an
+    earlier one; Reference matches its exact name only and the first entry wins; any other
+    name is keyed as written, the last entry winning.
+    """
+    canonical = {name.casefold(): name for name in _MANDATORY_FIELDS}
+    out: dict[str, str] = {}
+    for name, text in fields:
+        if name == "Reference" and name in out:
+            continue
+        out[canonical.get(name.casefold(), name)] = text
+    return out
+
+
 def merge_unit_fields(units: Iterable[tuple[int, Mapping[str, str]]]) -> dict[str, str]:
     """One field set for a multi-unit part, as KiCad's netlist builds it.
 
