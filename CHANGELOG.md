@@ -35,6 +35,8 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Documentation
 
+- The SPICE report section is called Simulation Results, and passing benches are described as within tolerance or measured rather than confirmed.
+
 ## v3.0.2 — 2026-11-15
 
 ### Changed

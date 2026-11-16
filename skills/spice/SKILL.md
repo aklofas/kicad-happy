@@ -280,8 +280,8 @@ Active oscillator module — no external load caps to validate.
 ### Summary line for the simulation section
 
 ```
-## Simulation Verification (4 pass, 1 warn, 0 fail, 1 skip)
-Verified 5 subcircuits in 0.03s. All passive circuits confirmed.
+## Simulation Results (4 pass, 1 warn, 0 fail, 1 skip)
+Measured 5 subcircuits in 0.03s. All passive circuits within tolerance.
 One opamp result requires interpretation (see U4A above).
 ```
 

@@ -197,14 +197,14 @@ was skipped or degraded (no datasheets), state the per-IC gaps here.
 ### Current Sense
 [Shunt values, sense amplifier, measurement range]
 
-### Simulation Verification
+### Simulation Results
 [**Include when ngspice is available.** Run `simulate_subcircuits.py` on the analyzer JSON output (from the `spice` skill). The output JSON has top-level key `simulation_results` (list). Each entry has `reference` (e.g. "R5/C3"), `components` (list), `subcircuit_type`, `status`, `expected` (dict of metric values like `cutoff_hz`), `simulated` (dict of measured values), and `delta` (dict of error percentages). Use `summary` for totals. Present results as a summary table grouped by status:]
 
 [Summary line: "ngspice ran N subcircuit benches in X.Xs. N pass, N warn, N fail, N skip, N info." `info` is a bench with nothing to compare against (e.g. an op-amp stage with no expected gain): report its measured values without a verdict.]
 
-[**Pass** — one line each, grouped: "RC filter R5/C3 (fc=15.9kHz): confirmed, <0.3% error." Build this from `result['reference']`, `result['expected']['cutoff_hz']`, and `result['delta']`.]
+[**Pass** — one line each, grouped: "RC filter R5/C3 (fc=15.9kHz): within tolerance, <0.3% error." Build this from `result['reference']`, `result['expected']['cutoff_hz']`, and `result['delta']`.]
 
-[**Warn** — explain context: "Opamp U4A (inverting, gain=-10): gain confirmed at 20.0dB. Bandwidth 98.8kHz (ideal model). Note: LM358 GBW is ~1MHz — actual bandwidth ~100kHz." Opamp and transistor results always carry model fidelity caveats.]
+[**Warn** — explain context: "Opamp U4A (inverting, gain=-10): gain measured at 20.0dB. Bandwidth 98.8kHz (ideal model). Note: LM358 GBW is ~1MHz — actual bandwidth ~100kHz." Opamp and transistor results always carry model fidelity caveats.]
 
 [**Fail** — investigate and explain: "RC filter R12/C8: simulated fc=3.2kHz vs expected 15.9kHz (80% deviation). Likely topology misdetection — verify R12's role in the circuit." Failures in passive circuits indicate analyzer bugs; in active circuits they may indicate real design issues.]
 
