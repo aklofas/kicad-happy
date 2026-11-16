@@ -12,6 +12,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 - `inputs.config_hash` covers every `.kicad-happy.json` that applied (parent folders and `~/.kicad-happy.json` too), so editing any of them changes it. EMC and thermal now report it for a discovered config as well. The hash is of the merged settings, so it no longer equals the file's `sha256sum`.
 - SPICE simulation of detected subcircuits runs on ngspice only: with LTspice or Xyce selected, or found when ngspice is missing, `simulate_subcircuits.py` stops with an error that says so instead of reporting every subcircuit as skipped (their measurement output was never read correctly). `run_external_deck.py` still runs a complete deck on LTspice or Xyce.
+- Datasheet pin-voltage checks read a limit that lists several conditions from its 25 °C DC entry; a transient or pulse rating is no longer taken as the DC limit, and when no entry fits the lowest one is used.
 
 ### Fixed
 

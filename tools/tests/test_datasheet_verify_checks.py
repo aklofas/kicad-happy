@@ -197,5 +197,67 @@ class PinAdapter(unittest.TestCase):
         self.assertEqual(got, [("pin_voltage_operating_exceeded", "warning", 3.0, 4.0)])
 
 
+def _sv(mx, condition=None, unit="V"):
+    return {"max": mx, "unit": unit, "condition": condition}
+
+
+class MultiConditionSpecs(unittest.TestCase):
+    HOT_AND_ROOM = [_sv(4.0, "TA = 125\u00b0C"), _sv(5.0, "TA = 25\u00b0C")]
+
+    def test_domain_limit_uses_the_25c_entry(self):
+        base = {"absolute_max": {"VIN_max": self.HOT_AND_ROOM}}
+        self.assertEqual(dv._domain_absolute_voltage_max(base, "VIN"), 5.0)
+
+    def test_transient_entry_is_not_the_dc_limit(self):
+        self.assertEqual(dv._spec_max_voltage(
+            [_sv(7, "pulse, tp < 10 \u00b5s"), _sv(6)]), 6)
+
+    def test_no_matching_condition_takes_worst_case(self):
+        self.assertEqual(dv._spec_max_voltage(
+            [_sv(5.5, "TA = 85\u00b0C"), _sv(5.0, "TA = 125\u00b0C")]), 5.0)
+
+    def test_full_range_condition_matches(self):
+        self.assertEqual(dv._spec_max_voltage(
+            [_sv(4.0, "TA = 125\u00b0C"), _sv(6.0, "TA = -40\u00b0C to 85\u00b0C")]), 6.0)
+
+    def test_range_with_one_unit_matches(self):
+        self.assertEqual(dv._spec_max_voltage(
+            [_sv(4.0, "TA = 125\u00b0C"), _sv(6.0, "TA = -40 to 85 \u00b0C")]), 6.0)
+
+    def test_signed_and_dashed_ranges_match(self):
+        for cond in ("TA = \u221240 to +85\u00b0C", "TA = \u221240\u00b0C to 125\u00b0C",
+                     "TA = \u201340\u00b0C to 85\u00b0C", "TA = 0 to +70\u00b0C",
+                     "TA = 25\u201385\u00b0C", "TA = 25-85\u00b0C"):
+            self.assertTrue(dv._condition_matches(cond), cond)
+        self.assertFalse(dv._condition_matches("TA = 85\u00b0C"))
+        self.assertFalse(dv._condition_matches("TA = \u221240\u00b0C"))
+
+    def test_unicode_range_entries_keep_the_room_entry(self):
+        self.assertEqual(dv._spec_max_voltage(
+            [_sv(6.0, "TA = \u221240 to +85\u00b0C"),
+             _sv(5.5, "TA = \u221240 to +125\u00b0C")]), 6.0)
+
+    def test_end_to_end_no_false_abs_max(self):
+        ext = {"extraction": {"quality_score": 80}, "base": {
+            "absolute_max": {"VIN_max": self.HOT_AND_ROOM},
+            "pinout": [_pin(["1"], "VIN", "power_in", power_domain="VIN")]}}
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, "REG1.json"), "w", encoding="utf-8") as fh:
+                json.dump(ext, fh)
+            comps = [{"reference": "U1", "type": "ic", "mpn": "REG1", "pin_nets": {"1": "+4V5"}}]
+            got = [f for f in dv.verify_pin_voltages(comps, {}, tmp, {"+4V5": 4.5})
+                   if f["type"] == "pin_voltage_abs_max_exceeded"]
+        self.assertEqual(got, [])
+
+    def test_ordinary_lists_are_unchanged(self):
+        self.assertEqual(dv._spec_max_voltage([{"max": 36}]), 36)
+        self.assertEqual(dv._spec_max_voltage(
+            [_sv(6, None), _sv(7, "transient")]), 6)
+        self.assertEqual(dv._spec_max_voltage(
+            [{"max": 0.025, "unit": "A"}, {"max": 5.5, "unit": "V"}]), 5.5)
+        self.assertIsNone(dv._spec_max_voltage([{"max": 0.025, "unit": "A"}]))
+        self.assertIsNone(dv._spec_max_voltage(None))
+
+
 if __name__ == "__main__":
     unittest.main()

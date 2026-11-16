@@ -52,35 +52,70 @@ def _is_sectioned_format(extraction: dict) -> bool:
     return isinstance(extraction.get("base"), dict)
 
 
+_TRANSIENT = re.compile(
+    r"transient|pulse|surge|non-?repetitive|\bpeak\b|\bESD\b|\bHBM\b|\bCDM\b"
+    r"|\bt[pw]?\s*[<\u2264]|\d\s*(?:ms|\u00b5s|\u03bcs|us|ns)\b", re.I)
+_NUM = r"([-\u2212\u2013]?\+?\d+(?:\.\d+)?)"
+_TEMP = re.compile(
+    _NUM + r"\s*(?:\u00b0?\s*C)?"
+    r"(?:\s*(?:to|~|-|\u2013|\u2014)\s*" + _NUM + r")?\s*\u00b0?\s*C\b")
+
+
+def _condition_matches(condition) -> bool:
+    """True when a SpecValue condition describes a DC limit at room temperature:
+    it is empty or names no transient, and every temperature it gives is 25 C
+    or a range containing it."""
+    if not isinstance(condition, str) or not condition.strip():
+        return True
+    if _TRANSIENT.search(condition):
+        return False
+    temps = [float(t.replace("\u2212", "-").replace("\u2013", "-"))
+             for pair in _TEMP.findall(condition) for t in pair if t]
+    if not temps:
+        return True
+    if len(temps) == 1:
+        return temps[0] == 25
+    return min(temps) <= 25 <= max(temps)
+
+
+def _pick_spec_max(sv_list, *, voltage_only=False):
+    """The `max` of the entry for a 25 C DC condition (the first such entry in
+    list order), else the lowest `max` listed. Entries without a numeric `max`
+    are skipped; with `voltage_only` so are entries in a unit other than volts."""
+    if not isinstance(sv_list, list):
+        return None
+    entries = [sv for sv in sv_list
+               if isinstance(sv, dict)
+               and isinstance(sv.get("max"), (int, float))
+               and not isinstance(sv.get("max"), bool)
+               and (not voltage_only or sv.get("unit") in (None, "", "V"))]
+    if not entries:
+        return None
+    for sv in entries:
+        if _condition_matches(sv.get("condition")):
+            return sv["max"]
+    return min(sv["max"] for sv in entries)
+
+
 def _domain_absolute_voltage_max(base: dict, domain: str) -> float | None:
     """Resolve a per-domain abs-max voltage from base.absolute_max.
 
     Tries key patterns: "<domain>_max", "<domain>".  Returns the SpecValue
-    `max` field (first entry) or None if unavailable.
+    `max` of the entry for a 25 C DC condition (else the lowest), or None if
+    unavailable.
     """
     abs_max = base.get("absolute_max") or {}
     for key in (f"{domain}_max", domain):
-        sv_list = abs_max.get(key)
-        if isinstance(sv_list, list) and sv_list:
-            sv = sv_list[0]
-            if isinstance(sv, dict):
-                v = sv.get("max")
-                if isinstance(v, (int, float)):
-                    return v
+        v = _pick_spec_max(abs_max.get(key))
+        if v is not None:
+            return v
     return None
 
 
 def _domain_operating_voltage_max(base: dict, domain: str) -> float | None:
     """Resolve a per-domain operating-max voltage from base.recommended_operating."""
     rec_op = base.get("recommended_operating") or {}
-    sv_list = rec_op.get(domain)
-    if isinstance(sv_list, list) and sv_list:
-        sv = sv_list[0]
-        if isinstance(sv, dict):
-            v = sv.get("max")
-            if isinstance(v, (int, float)):
-                return v
-    return None
+    return _pick_spec_max(rec_op.get(domain))
 
 
 def _legacy_verifier_view(extraction: dict) -> dict:
@@ -862,18 +897,14 @@ def _spec_max(sv_list):
 
 
 def _spec_max_voltage(sv_list):
-    """First SpecValue max with a voltage (or unspecified) unit.
+    """The voltage (or unspecified unit) SpecValue max for a 25 C DC condition,
+    else the lowest.
 
     Per-pin absolute_max lists may mix voltage and current entries
     (pinout.schema.json) — comparing a current rating against net volts
     would fabricate false CRITICALs.
     """
-    if not isinstance(sv_list, list):
-        return None
-    for sv in sv_list:
-        if isinstance(sv, dict) and sv.get("unit") in (None, "", "V"):
-            return sv.get("max")
-    return None
+    return _pick_spec_max(sv_list, voltage_only=True)
 
 
 def _all_pin_numbers(pinout):
