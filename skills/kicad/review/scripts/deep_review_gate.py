@@ -261,9 +261,10 @@ def _datasheets_pkg():
 
 def _manifest_pdf(d, mpn):
     """(path, stop, others): the PDF datasheets/manifest.json (or legacy index.json) lists
-    for `mpn`; True when the entry marks the download as the wrong part or as not
-    obtained, so no other file
-    may stand in for it; and the lower-cased file names the manifest lists for other parts."""
+    for `mpn`; how far the folder lookup may go: True when the entry marks the download
+    as the wrong part, so no other file may stand in for it, "prefix" when it records
+    the datasheet as not obtained, so only a file under the part's own name may, else
+    False; and the lower-cased file names the manifest lists for other parts."""
     _datasheets_pkg()
     from datasheet_types.cache_reader import read_json_object
     from distributor_core.manifest import manifest_file_path
@@ -283,7 +284,7 @@ def _manifest_pdf(d, mpn):
                   if isinstance(k, str) and k.strip().lower() != want
                   and isinstance(v, dict) and isinstance(v.get("file"), str)}
         if isinstance(entry, dict) and entry.get("status", "ok") != "ok":
-            return None, True, others
+            return None, "prefix", others
         if isinstance(entry, dict) and entry.get("status") == "ok":
             if entry.get("verification") == "wrong":
                 return None, True, others
@@ -297,12 +298,13 @@ def _manifest_pdf(d, mpn):
 def find_pdf(datasheets_dir, mpn):
     """The datasheet PDF for `mpn`: the manifest's file, else `<MPN>.pdf`, else the one
     `<MPN>_*.pdf` the datasheet sync writes that the manifest does not list for another
-    part (`LM317_NOPB_….pdf` is LM317/NOPB's, not LM317's)."""
+    part (`LM317_NOPB_….pdf` is LM317/NOPB's, not LM317's), unless the manifest records
+    this part's datasheet as not obtained. A `<MPN>.pdf` placed by hand is still used."""
     d = Path(datasheets_dir)
     if not d.is_dir():
         return None
     listed, stop, others = _manifest_pdf(d, mpn)
-    if stop:
+    if stop is True:
         return None
     if listed is not None:
         return listed
@@ -315,6 +317,8 @@ def find_pdf(datasheets_dir, mpn):
     for p in pdfs:
         if p.stem.lower() == lowered:
             return p
+    if stop:
+        return None
     _datasheets_pkg()
     from distributor_core.manifest import sanitize_filename
     bases = {lowered + "_", sanitize_filename(mpn.strip()).lower() + "_"} - {"_"}

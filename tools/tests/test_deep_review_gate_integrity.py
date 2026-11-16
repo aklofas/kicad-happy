@@ -659,10 +659,20 @@ class FindPdfTest(unittest.TestCase):
         self._touch("LM317_TI.pdf")
         self.assertIsNone(self._find("LM317"))
 
-    def test_not_found_entry_stops_the_lookup(self):
-        self._touch("LM317_TI.pdf", "LM317.pdf")
+    def test_not_found_entry_stops_only_the_prefix_fallback(self):
+        self._touch("LM317_TI.pdf")
         self._manifest({"LM317": {"status": "not_found"}})
         self.assertIsNone(self._find("LM317"))
+        # a datasheet placed by hand under the part's own name is still used
+        self._touch("LM317.pdf")
+        self.assertEqual(self._find("LM317"), self.tmp / "LM317.pdf")
+
+    def test_hand_placed_pdf_is_used_after_a_failed_sync(self):
+        self._manifest({"TPS54302": {"status": "error"}})
+        self._touch("TPS54302_Buck.pdf")
+        self.assertIsNone(self._find("TPS54302"))
+        self._touch("TPS54302.pdf")
+        self.assertEqual(self._find("TPS54302"), self.tmp / "TPS54302.pdf")
 
     def test_unlisted_part_still_falls_back(self):
         self._touch("TPS1_Boost.pdf")
