@@ -2266,6 +2266,10 @@ def main(argv: list[str] | None = None) -> int:
     indent = None if args.compact else 2
     output_json = json.dumps(result, indent=indent, default=str)
 
+    if args.text:
+        from output_filters import format_text
+        print(format_text(result.get('findings', []), args.audience or 'designer', args.stage),
+              flush=True)
     if not output_path and args.analysis_dir:
         from output_io import write_derived_output
         out_path = write_derived_output(args.analysis_dir, output_json, analyzer='gerber')
@@ -2274,10 +2278,7 @@ def main(argv: list[str] | None = None) -> int:
     elif output_path:
         atomic_write_text(output_path, output_json, follow_symlinks=False)
         print(f"Written to {output_path}", file=sys.stderr)
-    elif args.text:
-        from output_filters import format_text
-        print(format_text(result.get('findings', []), args.audience or 'designer', args.stage))
-    else:
+    elif not args.text:
         print(output_json)
     return 0
 

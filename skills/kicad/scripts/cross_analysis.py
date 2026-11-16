@@ -1470,8 +1470,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.text:
         from output_filters import format_text
-        print(format_text(result.get('findings', []), args.audience or 'designer', args.stage))
-        return 0
+        print(format_text(result.get('findings', []), args.audience or 'designer', args.stage),
+              flush=True)
 
     if args.output:
         atomic_write_text(args.output, json.dumps(result, indent=2), follow_symlinks=False)
@@ -1481,7 +1481,7 @@ def main(argv: list[str] | None = None) -> int:
         out_path = write_derived_output(args.analysis_dir, json.dumps(result, indent=2), analyzer='cross_analysis')
         if out_path:
             print(f'Cross-analysis: {len(findings)} findings -> {out_path}', file=sys.stderr)
-    else:
+    elif not args.text:
         print(json.dumps(result, indent=2))
 
     return 0

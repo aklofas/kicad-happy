@@ -82,14 +82,16 @@ def atomic_write_text(path, text: str | Callable[[TextIO], Any], newline: str | 
     An existing file's mode is kept unless *keep_mode* is false (the new file then gets the
     umask mode). In both modes the stream names /dev/stdout, /dev/stderr, /dev/null,
     /dev/fd/N and /proc/self/fd/N, and a FIFO or device named directly, are written in place,
-    as a plain write would. Any other link, under /dev or not, is followed or replaced
+    as a plain write would; a stream name is opened for append, so a redirect target that
+    stream already wrote to (stdout sent to a file with > or >>) is not truncated. Any other
+    link, under /dev or not, is followed or replaced
     (including a link to a FIFO or device when not following).
     On Windows a target another program holds open, or a read-only one, cannot be replaced:
     that exits with a one-line error, the temp file removed.
     *newline* is passed to the file object: "\n" (the default) writes LF on every platform,
     "" keeps the text's line endings as given."""
     if _is_stream_node(path):
-        with open(path, "w", encoding="utf-8", newline=newline) as f:
+        with open(path, "a", encoding="utf-8", newline=newline) as f:
             _put(f, text)
         return
     if follow_symlinks:

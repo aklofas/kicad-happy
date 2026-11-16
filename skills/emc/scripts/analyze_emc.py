@@ -626,19 +626,19 @@ def main(argv: list[str] | None = None) -> int:
                           diff_threshold=analysis_cfg.get('diff_threshold', 'major'),
                           retention=int(analysis_cfg.get('retention', 0) or 0))
 
-    # Output
+    # Output: --text prints the report; a JSON destination given with it is still written
+    if args.text:
+        if args.audience:
+            from output_filters import format_text
+            print(format_text(result.get('findings', []), args.audience, args.stage), flush=True)
+        else:
+            print(format_text_report(result), flush=True)
     if args.output:
         atomic_write_text(args.output, json_output(result, 2), follow_symlinks=False)
         print(f'EMC analysis complete: {len(findings)} findings '
               f'(score {risk_score}/100) → {args.output}', file=sys.stderr)
-    elif args.text:
-        if args.audience:
-            from output_filters import format_text
-            print(format_text(result.get('findings', []), args.audience, args.stage))
-        else:
-            print(format_text_report(result))
-    elif args.analysis_dir:
-        # Already cached above (one-line confirmation printed to stderr). Don't
+    elif args.text or args.analysis_dir:
+        # --analysis-dir was cached above (one-line confirmation printed to stderr). Don't
         # also dump the full JSON to stdout — match the core analyzers, whose
         # --analysis-dir mode is quiet.
         pass

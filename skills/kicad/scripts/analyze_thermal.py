@@ -1173,7 +1173,13 @@ def main(argv: list[str] | None = None) -> int:
                          and hasattr(args, "analysis_dir")
                          and args.analysis_dir)
 
-    # Output
+    # Output: --text prints the report; a JSON destination given with it is still written
+    if args.text:
+        if args.audience:
+            from output_filters import format_text
+            print(format_text(result.get('findings', []), args.audience, args.stage), flush=True)
+        else:
+            print(format_text_report(result), flush=True)
     if analysis_dir_mode:
         from output_io import write_derived_output
         out_path = write_derived_output(args.analysis_dir, json.dumps(result, indent=2), analyzer="thermal")
@@ -1186,13 +1192,7 @@ def main(argv: list[str] | None = None) -> int:
         score_str = "SKIPPED" if score is None else f"{score}/100"
         print(f"Thermal analysis complete: {len(findings)} findings "
               f"(score {score_str}) -> {output_path}", file=sys.stderr)
-    elif args.text:
-        if args.audience:
-            from output_filters import format_text
-            print(format_text(result.get('findings', []), args.audience, args.stage))
-        else:
-            print(format_text_report(result))
-    else:
+    elif not args.text:
         json.dump(result, sys.stdout, indent=2)
         print(file=sys.stdout)
     return 0

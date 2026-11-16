@@ -123,8 +123,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.text:
         from output_filters import format_text
-        print(format_text(result.get('findings', []), args.audience or 'designer', args.stage))
-        return 0
+        print(format_text(result.get('findings', []), args.audience or 'designer', args.stage),
+              flush=True)
+        if not (args.output or args.analysis_dir):
+            return 0
 
     # Wire capability_mode_ref. Already resolved early
     # so inputs.run_id and capability_mode_ref.run_id match.

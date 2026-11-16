@@ -300,7 +300,7 @@ All analyzers produce a uniform output envelope:
 
 The `findings` list is the single authoritative source for all findings. Use `finding_schema.get_findings()` or `finding_schema.group_findings()` to filter by detector, rule prefix, or category. Detector names are available as constants in `finding_schema.Det`. Severities are `error`, `warning`, or `info`; confidence is `deterministic`, `heuristic`, or `datasheet-backed`.
 
-All analyzers support `--text` (human-readable report), `--analysis-dir`
+All analyzers support `--text` (report on stdout; a JSON destination given with it is still written), `--analysis-dir`
 (run-folder output, preferred) and `--output` (one JSON file). Pass only one
 JSON destination: given both, every analyzer writes only `--output` (the
 `capability_mode.json` sidecar still goes to `--analysis-dir`).

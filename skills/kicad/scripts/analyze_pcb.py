@@ -144,8 +144,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.text:
         from output_filters import format_text
-        print(format_text(result.get('findings', []), args.audience or 'designer', args.stage))
-        return 0
+        print(format_text(result.get('findings', []), args.audience or 'designer', args.stage),
+              flush=True)
+        if not (args.output or args.analysis_dir):
+            return 0
 
     # Wire capability_mode_ref.
     # capability_mode_ref already resolved early — reuse to keep run_id stable.
