@@ -4,6 +4,7 @@ new-run and the overwrite path, and the run's source_hashes keep every source's 
 import hashlib, io, json, os, shutil, subprocess, sys, tempfile, unittest
 from contextlib import redirect_stderr
 from pathlib import Path
+from unittest import mock
 from tools.tests._fixtures import fixture_path, have
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -111,6 +112,18 @@ class CliSnapshotTest(unittest.TestCase):
         self.assertEqual(m["runs"][new]["source_hashes"],
                          {"simple.kicad_sch": "sha256:" + _sha(self.sch),
                           "simple.kicad_pcb": "sha256:" + _sha(self.pcb)})
+
+    @unittest.skipIf(os.name == "nt" or (hasattr(os, "geteuid") and os.geteuid() == 0),
+                     "needs a file the user cannot read")
+    def test_unreadable_gerber_does_not_stop_a_later_run(self):
+        proj, ad, rid = self._base()
+        self._run("analyze_gerbers.py", os.path.join(proj, "gerbers"), "--analysis-dir", ad)
+        gtl = os.path.join(proj, "gerbers", "simple-F_Cu.gtl")
+        os.chmod(gtl, 0)
+        self.addCleanup(os.chmod, gtl, 0o644)
+        self._run("analyze_pcb.py", self.pcb, "--analysis-dir", ad)
+        rid = _manifest(ad)["current"]
+        self.assertIn("gerber.json", os.listdir(os.path.join(ad, rid)))
 
     def test_unchanged_reruns_keep_thermal(self):
         _proj, ad, base = self._base()
@@ -403,6 +416,13 @@ class GerberTest(unittest.TestCase):
         os.unlink(self.gtl)
         self._new_schematic()
         self._assert_kept(self._create())
+
+    def test_unreadable_gerber_file_keeps_gerber(self):
+        self._new_schematic()
+        with mock.patch.object(analysis_cache, "hash_source_file",
+                               side_effect=PermissionError(13, "Permission denied")):
+            self._assert_kept(self._create())
+            self._assert_kept(self._overwrite())
 
     def test_gerber_json_without_inputs_kept(self):
         self._write_gerber_json({})

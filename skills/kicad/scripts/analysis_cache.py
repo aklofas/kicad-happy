@@ -583,7 +583,8 @@ def _derived_stale(run_dir: str, filename: str,
 
 def _gerber_inputs_changed(run_dir: str) -> bool:
     """True when a Gerber file the run's gerber.json was built from now differs from the
-    hash recorded there. A file that is gone or unreadable counts as unknown, not changed."""
+    hash recorded there. A file that is gone or cannot be read counts as unknown, not
+    changed, so gerber.json stays in the run."""
     path = os.path.join(run_dir, 'gerber.json')
     if _is_symlink_or_irregular(path):
         return False
@@ -597,7 +598,10 @@ def _gerber_inputs_changed(run_dir: str) -> bool:
     if not isinstance(hashes, dict):
         return False
     for source, recorded in hashes.items():
-        now = _sha256_hex(source) if isinstance(source, str) else None
+        try:
+            now = _sha256_hex(source) if isinstance(source, str) else None
+        except OSError:
+            now = None
         if now is not None and now != recorded:
             return True
     return False

@@ -40,7 +40,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A datasheet extraction with an infinite, NaN or true/false quality score is treated as untrusted and reported with no score (the verification JSON stays valid), and the cache re-queues it.
 - Typed datasheet lookups no longer return the extraction of a different part whose number differs only in punctuation (BAV99/215 vs BAV99 215).
 - The voltage-derating check (VD-002) finds extractions written by the datasheet cache manager and no longer reads another part's file whose number differs only in punctuation.
-- With `--analysis-dir`, a new or updated run drops the previous `gerber.json` when the Gerber files it was built from have changed, instead of carrying it forward.
+- With `--analysis-dir`, a new or updated run drops the previous `gerber.json` when the Gerber files it was built from have changed, instead of carrying it forward; a Gerber file that is missing or cannot be read leaves it in place.
 - `capability_mode.json` records `platform: unknown` outside Claude Code instead of always `claude-code`, and its `datasheet_coverage_pct` reads a legacy `datasheets/index.json` download manifest instead of reporting 0 %.
 - `analysis/capability_mode.json` reports the datasheet extractions of the analysed project, not of the folder the command was run from.
 - On Windows file systems where a file's identity reads differently through the open handle, datasheet extraction reads are refused with a one-time warning instead of silently.
