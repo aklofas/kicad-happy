@@ -15,6 +15,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Datasheet pin-voltage checks read a limit that lists several conditions from its 25 °C DC entry; a transient or pulse rating is no longer taken as the DC limit, and when no entry fits the lowest one is used.
 - The datasheet-backed checks AM-001, OV-001, TJ-001, FT-001, EX-001 and PM-001 skip an extraction whose PDF changed or is missing, or whose quality score is missing or below 60, as the regulator checks already did; a supply domain no longer takes another named domain's limit (VDDIO's for VDDA), only the part's VDD/VCC rating.
 - Datasheet extraction quality scores no longer give free credit: MCU, op-amp, transistor, diode and crystal extractions are scored on their own required fields, the reserved 30 points are gone (an extraction with no part category is scored on its pinout and base alone), and an unnamed pin counts against a legacy extraction.
+- Existing datasheet extraction caches are re-scored with the current rubric when read; a score can only go down.
 
 ### Fixed
 

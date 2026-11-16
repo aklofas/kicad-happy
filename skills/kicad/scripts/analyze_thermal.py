@@ -36,6 +36,7 @@ from kicad_core.cli import (add_config_arg, add_only_deterministic_arg, add_outp
 from lookup_detectors import detect_tj_exceeds_max
 from kicad_core.project import extraction_project_dir
 from datasheet_types.cache_reader import safe_extract_dir
+from datasheet_types.quality import current_quality
 from datasheet_types.trust_gating import finite_score
 
 ANALYZER_SOURCE = "thermal"
@@ -154,12 +155,13 @@ def _classify_package(library_str: str) -> tuple:
 
 def _extraction_trusted(data: dict) -> bool:
     """The datasheet readers' trust gate: a v1.4 ``extraction.quality_score`` of at least
-    60, else a v1.3 ``extraction_metadata`` (or hand-made ``meta``) ``extraction_score``
-    of at least 6.0. An extraction with no usable score is not trusted."""
+    60 (re-scored with the current rubric, never raised: ``current_quality``), else a
+    v1.3 ``extraction_metadata`` (or hand-made ``meta``) ``extraction_score`` of at
+    least 6.0. An extraction with no usable score is not trusted."""
     block = data.get("extraction")
     v14 = block.get("quality_score") if isinstance(block, dict) else None
     if isinstance(v14, (int, float)):
-        score = finite_score(v14)
+        score = current_quality(data)
         return score is not None and score >= 60
     for name in ("extraction_metadata", "meta"):
         meta = data.get(name)

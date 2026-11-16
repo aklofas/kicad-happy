@@ -107,7 +107,7 @@ else:
 
 **Staleness detection:** `lookup()` hashes the source PDF and compares to `source.sha256`. Three outcomes surface on `DatasheetFacts._cache_context`: fresh, `pdf_hash_mismatch`, `pdf_missing`. Read via `facts.stale` and `facts._cache_context.stale_reason`.
 
-**Quality scoring (v1.4):** three dimensions — pinout completeness, base completeness, category-extension completeness, weighted 20 / 25 / 25 % and scaled to 0–100 (no reserved credit; an extraction with no category is scored on pinout and base alone). Each category is scored on its own required and optional fields. Score lives at `facts.extraction.quality_score` (0–100, not the v1.3 0.0–10.0 scale).
+**Quality scoring (v1.4):** three dimensions — pinout completeness, base completeness, category-extension completeness, weighted 20 / 25 / 25 % and scaled to 0–100 (no reserved credit; an extraction with no category is scored on pinout and base alone). Each category is scored on its own required and optional fields. Score lives at `facts.extraction.quality_score` (0–100, not the v1.3 0.0–10.0 scale); `lookup()` re-scores it with the current rubric and keeps the lower of the stored and current score.
 
 For the canonical schemas, see `skills/datasheets/schemas/{base,pinout,spec_value,regulator,extraction,manifest}.schema.json`. For the cache directory convention, see `skills/datasheets/references/cache-layout.md`.
 

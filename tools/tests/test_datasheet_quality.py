@@ -1,16 +1,24 @@
 """Datasheet extraction quality scores: the v1.4 rubric and the legacy pin scorer."""
 import json
+import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
 from tools.tests._fixtures import fixture
 
 DS = Path(__file__).resolve().parents[2] / "skills" / "datasheets"
+sys.path.insert(0, str(DS))
 sys.path.insert(0, str(DS / "scripts"))
+sys.path.insert(0, str(DS.parent / "kicad" / "scripts"))
 
+import analyze_thermal  # noqa: E402
 import datasheet_score  # noqa: E402
+import datasheet_verify as dv  # noqa: E402
 from datasheet_score import score_v14_extraction  # noqa: E402
+from datasheet_types.cache_reader import lookup  # noqa: E402
+from datasheet_types.quality import current_quality  # noqa: E402
 
 
 def _pin(n, **fields):
@@ -175,6 +183,71 @@ class V14Rubric(unittest.TestCase):
             path = fixture("datasheets-extracted", f"{mpn}.json")
             got[mpn] = score_v14_extraction(json.loads(path.read_text(encoding="utf-8")))["score"]
         self.assertEqual(got, expected)
+
+
+class RescoreOnRead(unittest.TestCase):
+    def _lm2596(self, **extraction):
+        data = json.loads(fixture("datasheets-extracted", "LM2596-ADJ.json").read_text(encoding="utf-8"))
+        data["extraction"].update(extraction)
+        return data
+
+    def _lookup(self, data):
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "LM2596-ADJ.json").write_text(json.dumps(data), encoding="utf-8")
+            return lookup("LM2596-ADJ", cache_dir=Path(d))
+
+    def test_lookup_rescores_on_read(self):
+        data = self._lm2596()
+        self.assertEqual(data["extraction"]["quality_score"], 98)
+        self.assertEqual(self._lookup(data).quality, 97)
+
+    def test_lookup_rescores_without_the_scripts_dir_on_path(self):
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "LM2596-ADJ.json").write_text(json.dumps(self._lm2596()), encoding="utf-8")
+            code = ("import sys; from pathlib import Path; sys.path[:] = [p for p in sys.path if "
+                    "not p.endswith('scripts')]; sys.path.insert(0, sys.argv[1]); "
+                    "from datasheet_types import lookup; "
+                    "print(lookup('LM2596-ADJ', cache_dir=Path(sys.argv[2])).quality)")
+            out = subprocess.run([sys.executable, "-I", "-c", code, str(DS), d],
+                                 capture_output=True, text=True, timeout=60)
+        self.assertEqual((out.returncode, out.stdout.strip()), (0, "97"), out.stderr)
+
+    def test_hand_lowered_score_stays_low(self):
+        self.assertEqual(self._lookup(self._lm2596(quality_score=30)).quality, 30)
+
+    def test_unscored_extraction_stays_unscored(self):
+        self.assertIsNone(self._lookup(self._lm2596(quality_score=None)).quality)
+
+    def test_verifier_rescores_v14(self):
+        self.assertEqual(dv._v14_score(self._lm2596()), 97)
+        sparse = dict(_sparse("mcu", {"core_family": "Cortex-M3"}), extraction={"quality_score": 80})
+        self.assertEqual(dv._v14_score(sparse), 29)
+        self.assertFalse(dv._passes_trust_gate(sparse))
+        self.assertEqual(dv._quality_finding("U1", sparse)["quality_score"], 29)
+
+    def test_verifier_still_refuses_non_finite(self):
+        e = {"extraction": {"quality_score": float("inf")}, "base": {}}
+        self.assertFalse(dv._passes_trust_gate(e))
+        self.assertIsNone(dv._quality_finding("X", e)["quality_score"])
+
+    def test_thermal_rescores_v14(self):
+        sparse = dict(_sparse("mcu", {"core_family": "Cortex-M3"}), extraction={"quality_score": 80})
+        self.assertFalse(analyze_thermal._extraction_trusted(sparse))
+        self.assertTrue(analyze_thermal._extraction_trusted(self._lm2596()))
+
+    def test_v13_shaped_dict_keeps_its_score(self):
+        e = {"extraction": {"quality_score": 80}, "meta": {"extraction_score": 9.0},
+             "absolute_maximum_ratings": {"junction_temp_max_c": 150}}
+        self.assertEqual(current_quality(e), 80)
+        self.assertEqual(dv._v14_score(e), 80)
+        self.assertTrue(analyze_thermal._extraction_trusted(e))
+
+    def test_current_quality_never_raises_a_score(self):
+        self.assertEqual(current_quality(self._lm2596(quality_score=99.5)), 97)
+        self.assertEqual(current_quality(self._lm2596(quality_score=12.5)), 12.5)
+        for bad in (None, float("nan"), True, "90"):
+            self.assertIsNone(current_quality(self._lm2596(quality_score=bad)), bad)
+        self.assertIsNone(current_quality({"extraction": None, "base": {}}))
 
 
 class LegacyPinCoverage(unittest.TestCase):

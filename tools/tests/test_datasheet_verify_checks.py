@@ -178,7 +178,8 @@ class PinAdapter(unittest.TestCase):
             comps = [{"reference": "U1", "type": "ic", "mpn": "MCU1",
                       "pin_nets": {"1": "+3V3", "2": "+5V", "30": "+5V", "31": "+5V", "32": "+5V"}}]
             got = sorted((f["type"], f["severity"], f["pin_number"])
-                         for f in dv.verify_pin_voltages(comps, {}, tmp, {}))
+                         for f in dv.verify_pin_voltages(comps, {}, tmp, {})
+                         if f["type"].startswith("pin_voltage"))
         self.assertEqual(got, [("pin_voltage_abs_max_exceeded", "error", "2"),
                                ("pin_voltage_abs_max_exceeded", "error", "32")])
 
@@ -193,7 +194,8 @@ class PinAdapter(unittest.TestCase):
                 json.dump(ext, fh)
             comps = [{"reference": "U1", "type": "ic", "mpn": "MCU2", "pin_nets": {"7": "+3V3"}}]
             got = [(f["type"], f["severity"], f["operating_max_V"], f["abs_max_V"])
-                   for f in dv.verify_pin_voltages(comps, {}, tmp, {})]
+                   for f in dv.verify_pin_voltages(comps, {}, tmp, {})
+                   if f["type"].startswith("pin_voltage")]
         self.assertEqual(got, [("pin_voltage_operating_exceeded", "warning", 3.0, 4.0)])
 
 

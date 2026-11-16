@@ -31,6 +31,7 @@ from typing import Optional
 
 from .codec import from_dict
 from .extraction import DatasheetFacts
+from .quality import current_quality
 
 
 # ---------------------------------------------------------------------------
@@ -264,7 +265,8 @@ def lookup(mpn: str, *, cache_dir: Path) -> Optional[DatasheetFacts]:
     typed DatasheetFacts via the codec, verifies PDF staleness
     by comparing sha256 of the on-disk PDF against cached source.sha256,
     attaches a CacheContext carrying (cache_path, pdf_path, is_stale,
-    stale_reason), and returns the instance.
+    stale_reason), and returns the instance. The quality score is re-scored
+    with the current rubric and never raised (``quality.current_quality``).
 
     Returns None when:
         - cache_dir does not exist
@@ -306,6 +308,10 @@ def lookup(mpn: str, *, cache_dir: Path) -> Optional[DatasheetFacts]:
     except (KeyError, TypeError, ValueError):
         # Missing required fields, wrong shape, invalid unit string, etc.
         return None
+
+    quality = current_quality(data)
+    if quality is not None:
+        facts.extraction.quality_score = quality
 
     # Attach cache context with staleness detection.
     pdf_path = _resolve_pdf_path(cache_dir, facts.source.local_path)

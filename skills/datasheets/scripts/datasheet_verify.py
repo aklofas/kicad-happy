@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from datasheet_types.cache_reader import MAX_CACHE_BYTES, safe_extract_dir  # noqa: E402
+from datasheet_types.quality import current_quality  # noqa: E402
 from datasheet_types.trust_gating import finite_score  # noqa: E402
 from datasheet_extract_cache import find_extraction  # noqa: E402
 
@@ -219,10 +220,15 @@ def _v13_score(extraction: dict):
 
 
 def _v14_score(extraction: dict):
-    """v1.4 0-100 score from the `extraction` block, or None."""
+    """v1.4 0-100 score from the `extraction` block, or None. A finite score is
+    re-scored with the current rubric, never raised (current_quality); any other
+    number is returned as stored for the trust gate to refuse."""
     block = extraction.get("extraction")
     score = block.get("quality_score") if isinstance(block, dict) else None
-    return score if isinstance(score, (int, float)) else None
+    if not isinstance(score, (int, float)):
+        return None
+    current = current_quality(extraction)
+    return score if current is None else current
 
 
 def _passes_trust_gate(extraction: dict) -> bool:

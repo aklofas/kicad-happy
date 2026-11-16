@@ -131,9 +131,9 @@ class DatasheetFacts:
 
     @property
     def quality(self) -> Optional[int]:
-        """Overall extraction quality score (0–100). Passthrough to
-        extraction.quality_score — returns whatever the cached extraction
-        stored there. None when the extraction wasn't scored.
+        """Overall extraction quality score (0–100): extraction.quality_score,
+        which lookup() sets to the stored score re-scored with the current
+        rubric when read, never raised. None when the extraction wasn't scored.
 
         This property works identically regardless of whether _cache_context
         is populated — it does not read cache context at all.
