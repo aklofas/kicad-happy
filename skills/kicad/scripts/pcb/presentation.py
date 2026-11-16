@@ -183,6 +183,19 @@ def _rule_layer_names(layers: list[dict] | None) -> list[str]:
     return names
 
 
+def _rule_layer_aliases(layers: list[dict] | None) -> dict[str, tuple[str, ...]]:
+    """The other names a custom rule's (layer ...) can use for each board layer, keyed by the
+    name items carry: the board's user name and the other KiCad name of a renamed layer."""
+    aliases: dict[str, tuple[str, ...]] = {}
+    for layer in layers or []:
+        name = layer.get("name")
+        others = tuple(n for n in (layer.get("alias"), _LEGACY_LAYER_NAMES.get(name),
+                                   _STANDARD_LAYER_NAMES.get(name)) if n and n != name)
+        if name and others:
+            aliases[name] = others
+    return aliases
+
+
 def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: bool,
                     include_trace_segments: bool, schematic_data: dict | None,
                     resolved_power_rails: set[str] | None,
@@ -369,7 +382,7 @@ def assemble_result(board: "BoardData", analyses: "PcbAnalyses", *, proximity: b
         tracks, vias, project_settings or {}, footprints=footprints,
         minima=facts.board_minima, board_layers=_rule_layer_names(layers),
         ignored_checks=ignored_checks, microvia_minima=facts.microvia_minima,
-        board_rules=board_rules)
+        board_rules=board_rules, layer_aliases=_rule_layer_aliases(layers))
     result["design_rule_compliance"] = design_compliance or {}
 
     # Manufacturing and assembly analysis

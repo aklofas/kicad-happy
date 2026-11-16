@@ -26,7 +26,13 @@
   defined in (`${foo}` loads when the project defines `foo`, and is refused when it defines
   `FOO`) and the board's properties, and ignores comment lines and an escaped `\${FOO}`;
 - a rule naming a layer by its other KiCad name (`F.Silkscreen` on a board whose file says
-  `F.SilkS`) applies, with or without a user name.
+  `F.SilkS`) applies, with or without a user name;
+- a rule layer matches a copper layer by its canonical name or the board's name for it
+  (`TopCopper`, `Top*`, `GND`, `G?D`, and `*.Cu`, `In*`, `*` on a board that renames F.Cu and
+  In1.Cu), for tracks, and for vias and annular rings judged on F.Cu (a `GND` rule does not
+  reach the F.Cu–B.Cu via); a board name equal to another layer's name (In1.Cu called `B.Cu`)
+  matches that layer too, but not for `outer`/`inner`, which are layer sets (no track_width
+  violation on In1 for an `outer` rule there).
 A KiCad 5 board keeps its own design settings and net classes: with a .kicad_pro beside it the
 project's classes and rules are not reported as the rules in use (kicad-cli reports no
 clearance violation for a 0.3 mm gap when the board's class says 0.2 mm and the project's
@@ -50,6 +56,10 @@ BOARD = """(kicad_pcb (version 20221018) (generator pcbnew)
 )
 """
 W = '(version 1)\n(rule w (constraint track_width (min 0.5mm)))\n'
+# F.Cu and In1.Cu renamed by the board, with a 0.2 mm track on each
+RENAMED = (BOARD.replace('(0 "F.Cu" signal)', '(0 "F.Cu" signal "TopCopper")')
+           .replace('(1 "In1.Cu" signal)', '(1 "In1.Cu" signal "GND")')
+           .replace('  (via ', '  (segment (start 0 3) (end 5 3) (width 0.2) (layer "In1.Cu") (net 1))\n  (via '))
 
 
 def _run(board, files):
@@ -271,6 +281,45 @@ class DruAsKiCadReadsIt(unittest.TestCase):
                              ("F.Silkscreen", no_alias)):
             with self.subTest(layer=layer, alias=board is BOARD):
                 self.assertEqual(dru(W + hole.format(layer), board)[1], ["custom:h", "custom:w"])
+
+    def test_rule_layer_matches_the_board_name_of_a_copper_layer(self):
+        rule = '(version 1)\n(rule s (layer "{}") (constraint {} (min 5mm)))\n'
+        for layer, ctype, hit in (
+                *((layer, "track_width", ["custom:s"])
+                  for layer in ("TopCopper", "Top*", "*Copper", "GND", "G?D", "*.Cu", "In*", "*")),
+                ("TopCopper", "via_diameter", ["custom:s"]), ("TopCopper", "annular_width", ["custom:s"]),
+                ("GND", "via_diameter", []), ("GND", "annular_width", []),
+                ("B.Cu", "track_width", [])):
+            with self.subTest(layer=layer, ctype=ctype):
+                self.assertEqual(dru(rule.format(layer, ctype), RENAMED)[:2], (None, hit))
+
+    def test_wildcard_rule_layer_judges_only_the_layers_it_names(self):
+        wide = RENAMED.replace('(width 0.2) (layer "In1.Cu")', '(width 0.3) (layer "In1.Cu")')
+        rule = '(version 1)\n(rule s (layer "{}") (constraint track_width (min 5mm)))\n'
+        for layer, actual in (("*.Cu", 0.2), ("In*", 0.3), ("Top*", 0.2), ("G?D", 0.3)):
+            with self.subTest(layer=layer):
+                res = _run(wide, {"b.kicad_dru": rule.format(layer)})
+                self.assertNotIn("custom_rules_error", res["project_settings"])
+                violations = res["design_rule_compliance"].get("violations", [])
+                self.assertEqual([(v["rule"], v["actual_mm"]) for v in violations if v.get("rule") == "custom:s"],
+                                 [("custom:s", actual)])
+
+    def test_board_name_equal_to_another_layers_name(self):
+        clash = RENAMED.replace('"In1.Cu" signal "GND"', '"In1.Cu" signal "B.Cu"')
+        rule = '(version 1)\n(rule s (layer "B.Cu") (constraint track_width (min 5mm)))\n'
+        self.assertEqual(dru(rule, clash)[:2], (None, ["custom:s"]))
+
+    def test_outer_and_inner_ignore_board_names(self):
+        # In1.Cu called B.Cu; the F.Cu track passes an outer rule, so only In1 could break it
+        clash = (RENAMED.replace('"In1.Cu" signal "GND"', '"In1.Cu" signal "B.Cu"')
+                 .replace('(width 0.2) (layer "F.Cu")', '(width 6) (layer "F.Cu")'))
+        rule = '(version 1)\n(rule s (layer {}) (constraint track_width (min 5mm)))\n'
+        self.assertEqual(dru(rule.format("outer"), clash)[:2], (None, []))
+        self.assertEqual(dru(rule.format("inner"), clash)[:2], (None, ["custom:s"]))
+
+    def test_board_name_of_another_board_is_not_a_layer(self):
+        err, hit, _ = dru(W + '(rule s (layer "TopCopper") (constraint track_width (min 5mm)))')
+        self.assertEqual((err, hit), ("Unrecognized layer.", []))
 
     def test_rule_on_a_layer_the_board_lacks_does_not_apply(self):
         self.assertEqual(dru(W + '(rule h (layer F.Mask) (constraint hole_size (min 0.5mm)))')[1],

@@ -951,12 +951,15 @@ def _rule_items(tracks: dict, all_vias: list[dict], footprints: list[dict] | Non
 
 def _resolve_bounds(ctype: str, kind: str, layer: str | None,
                     minima: dict[str, tuple[float, str]], rules, board_layers: list[str] | None,
-                    custom_applies: set[tuple]):
+                    custom_applies: set[tuple],
+                    layer_aliases: dict[str, tuple[str, ...]] | None = None):
     """The bounds KiCad's EvalRules gives one item: the board minimum, then every applicable
     rule of the type in file order, each replacing the earlier value of a bound it sets. A
     conditional rule may or may not apply, so each bound is a candidate list: the definite
     (value, origin) first, then conditional ones; a None value (unset, or not a length) means
-    the bound cannot be judged. Returns (mins, maxs, possible ignore severities)."""
+    the bound cannot be judged. A rule's layer matches the item's layer by its name or any of
+    its *layer_aliases* (the board's name for it); ``outer``/``inner`` by the name only. Returns (mins, maxs, possible ignore
+    severities)."""
     board = _BOARD_MINIMUM_FOR.get((ctype, kind))
     required = minima.get(board) if board else None
     mins = [(required[0], board)] if required else [(None, None)]
@@ -965,7 +968,10 @@ def _resolve_bounds(ctype: str, kind: str, layer: str | None,
     for ri, ci, rule, constraint in rules:
         pattern = rule.get('layer')
         if pattern is not None:
-            if layer is not None and not _dru_layer_match(pattern, layer):
+            # outer and inner are layer sets, not names: a board name does not join them
+            names = (layer,) if pattern in ('outer', 'inner') else (
+                layer, *(layer_aliases or {}).get(layer, ()))
+            if layer is not None and not any(_dru_layer_match(pattern, name) for name in names):
                 continue
             # A hole has no layer: the rule applies when the board has a layer it names.
             if layer is None and board_layers is not None and not any(
@@ -997,6 +1003,7 @@ def analyze_design_rule_compliance(
     ignored_checks: frozenset[str] = frozenset(),
     microvia_minima: dict[int, tuple[float, str]] | None = None,
     board_rules: bool = False,
+    layer_aliases: dict[str, tuple[str, ...]] | None = None,
 ) -> dict | None:
     """Check layout against project-defined design rules.
 
@@ -1018,8 +1025,9 @@ def analyze_design_rule_compliance(
 
     Custom rules apply as KiCad's DRC applies them (drc_engine.cpp EvalRules): for each item and
     bound the last applicable rule wins, any custom rule outranks the board minimum, a rule
-    applies to the items on its ``layer`` (holes: when the board has that layer, its names in
-    ``board_layers``), and ``(severity ignore)`` silences the type for the items it covers.
+    applies to the items on its ``layer`` (by the layer's name or its ``layer_aliases``, the
+    board's own names; holes: when the board has that layer, its names in ``board_layers``),
+    and ``(severity ignore)`` silences the type for the items it covers.
 
     ``microvia_minima`` is `microvia_class_minima`: a micro via on one of its nets is held to
     that net class's diameter instead of the board minimum.
@@ -1064,7 +1072,7 @@ def analyze_design_rule_compliance(
             item_minima = {**minima, 'min_microvia_diameter': microvia_minima[net]}
         mins, maxs, severities = _resolve_bounds(ctype, kind, layer, item_minima,
                                                  rules_by_type.get(ctype, ()), board_layers,
-                                                 custom_applies)
+                                                 custom_applies, layer_aliases)
         if severities != {False}:
             continue
         for bound, candidates, actual in (('min', mins, low), ('max', maxs, high)):
