@@ -1086,7 +1086,9 @@ def audit_bom(analysis_json: dict, project_dir: str | None = None,
                                           f"{'matched' if answered else 'answered'} it.")
                 if len(alts) > 1:
                     finding['description'] += f" (checked as {', '.join(alts)})"
-                creds = '' if answered else ' and the distributor credentials'
+                # The hint stays while any source that was asked never answered.
+                heard_all = answered and set(data.get('attempted', [])) <= set(answered)
+                creds = '' if heard_all else ' and the distributor credentials'
                 finding['recommendation'] = (f"No distributor returned {mpn}; check the "
                                              f"part number{creds} before replacing it.")
             finding['report_context'] = {'section': 'Lifecycle', 'impact': 'Supply chain risk', 'standard_ref': ''}

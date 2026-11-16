@@ -118,7 +118,8 @@ class UnknownStatusWordingTest(unittest.TestCase):
         self.assertIn("credentials", f["recommendation"])
 
     def test_unknown_with_an_unmapped_answer(self):
-        f = self.bom_audit({"digikey": {"status": None}})
+        # Every source answered, none with a status it maps: no credentials hint.
+        f = self.bom_audit({n: {"status": None} for n in NAMES})
         self.assertEqual(f["rule_id"], "LC-004")
         self.assertIn("No distributor returned RC0603FR-07330RL", f["recommendation"])
         self.assertNotIn("credentials", f["recommendation"])

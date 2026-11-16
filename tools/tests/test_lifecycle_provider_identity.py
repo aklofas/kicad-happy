@@ -411,6 +411,18 @@ class NoAnswerTest(ProviderIdentityBase):
         self.assertEqual(out["summary"]["lifecycle_issues"], 1)
         self.assertNotIn("never answered", err)
 
+    def test_no_match_keeps_the_credentials_hint_when_a_source_was_not_heard(self):
+        # The default setup: no keys, every source asked, only LCSC replies (no match).
+        for k in ("MOUSER_SEARCH_API_KEY", "ELEMENT14_API_KEY"):
+            os.environ.pop(k, None)
+        self.bodies["jlcsearch"] = lcsc("LM358DT")
+        out, _ = self.run_bom(["LM358DR"], [])
+        f = out["findings"][0]
+        self.assertEqual(f["rule_id"], "LC-004")
+        self.assertIn("no distributor matched", f["description"])
+        self.assertIn("check the part number and the distributor credentials",
+                      f["recommendation"])
+
     def test_lcsc_only_answered_keeps_wording(self):
         self.bodies["jlcsearch"] = lcsc("LM358DT")
         out, _ = self.run_bom(["LM358DR"], ["lcsc"])
