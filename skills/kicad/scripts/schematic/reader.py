@@ -13,8 +13,8 @@ from kicad_core.sexp import (find_all, find_first, find_deep, get_value, get_pro
                              parse_file, raw_text, unescape_string)
 from kicad_core.classify import classify_component, classify_connector, classify_ic_function
 from kicad_core.fields import DIGIKEY_FIELD_ALIASES, MANDATORY_STRIP, pick_field, pick_mpn
-from kicad_core.instances import (inline_instances, instance_variants, resolve_instance,
-                                  tilde_is_empty, variant_overrides)
+from kicad_core.instances import (index_instances, inline_instances, instance_variants,
+                                  resolve_indexed, tilde_is_empty, variant_overrides)
 from kicad_core.project import expand_sheet_file
 from kicad_core.model import Component, Pin, SheetData
 from kicad_core.textvars import resolve_text_vars, unescape_text_vars
@@ -769,11 +769,39 @@ def _symbol_fields(sym: list, value: str, footprint: str, tilde_empty: bool) -> 
     return fields
 
 
+def _instance_record(sym: list, uuid_val: str, si_by_uuid: dict, root_kiid: str,
+                     tilde_empty: bool) -> tuple:
+    """One placed symbol's instance data for extract_components: (sym, its candidates'
+    index_instances index, {normalized KiCad 6 path: [(value,) | None, (footprint,) | None]}
+    with the last set entry of each path, the last inline (value,) | None, the last inline
+    (footprint,) | None)."""
+    candidates = []
+    si_vf: dict = {}
+    for sheet_path, entry in si_by_uuid.get(uuid_val.lower(), ()) if uuid_val else ():
+        full = root_kiid + sheet_path
+        candidates.append({"path": full, "project": "",
+                           "reference": entry["reference"], "unit": entry["unit"]})
+        vf = si_vf.setdefault(full.rstrip("/").lower(), [None, None])
+        if entry["value_set"]:
+            vf[0] = (entry["value"],)
+        if entry["footprint_set"]:
+            vf[1] = (entry["footprint"],)
+    inline_v = inline_f = None
+    for entry in inline_instances(sym, tilde_empty):
+        candidates.append(entry)
+        if "value" in entry:
+            inline_v = (entry["value"],)
+        if "footprint" in entry:
+            inline_f = (entry["footprint"],)
+    return (sym, index_instances(candidates), si_vf, inline_v, inline_f)
+
+
 def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
                        symbol_instances: dict | None = None, *,
                        instance_path: str | None = None, root_kiid: str = "",
                        project_name: str = "", text_ctx: dict | None = None,
-                       variant: str | None = None) -> list[Component]:
+                       variant: str | None = None,
+                       instance_cache: dict | None = None) -> list[Component]:
     """Extract all placed component instances.
 
     With *instance_path* (the sheet's full KIID path, root sheet uuid first) each symbol's
@@ -795,15 +823,23 @@ def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
 
     With *variant* (a KiCad 10 design variant name) the instance's variant block overrides
     the attributes and fields it names; None is the default variant.
+
+    *instance_cache* (a dict the caller keeps for one hierarchy walk, with the same
+    *symbol_instances*, *root_kiid* and *project_name* on every call) holds each symbol's
+    instance candidates so a sheet file placed many times reads them once.
     """
     components = []
     file_version = get_value(root, "version")
     tilde_empty = tilde_is_empty(file_version)
-    si_by_uuid: dict = {}
-    if instance_path is not None and symbol_instances:
-        for si_path, entry in symbol_instances.items():
-            sheet_path, _, sym_uuid = si_path.rpartition("/")
-            si_by_uuid.setdefault(sym_uuid.lower(), []).append((sheet_path, entry))
+    cache = {} if instance_cache is None else instance_cache
+    if instance_path is not None:
+        si_by_uuid = cache.get("si_by_uuid")
+        if si_by_uuid is None:
+            si_by_uuid = cache["si_by_uuid"] = {}
+            for si_path, entry in (symbol_instances or {}).items():
+                sheet_path, _, sym_uuid = si_path.rpartition("/")
+                si_by_uuid.setdefault(sym_uuid.lower(), []).append((sheet_path, entry))
+        sym_records = cache.setdefault("symbols", {})
 
     # Placed symbols are direct children of root with (symbol (lib_id ...))
     for sym in root:
@@ -857,23 +893,21 @@ def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
         overrides = {}
 
         if instance_path is not None:
-            candidates = []
-            here = instance_path.rstrip("/").lower()
-            for sheet_path, entry in si_by_uuid.get(uuid_val.lower(), ()) if uuid_val else ():
-                candidates.append({"path": root_kiid + sheet_path, "project": "",
-                                   "reference": entry["reference"], "unit": entry["unit"]})
-                if (root_kiid + sheet_path).rstrip("/").lower() == here:
-                    if entry["value_set"]:
-                        value = entry["value"]
-                    if entry["footprint_set"]:
-                        footprint = entry["footprint"]
-            for entry in inline_instances(sym, tilde_empty):
-                candidates.append(entry)
-                if "value" in entry:
-                    value = entry["value"]
-                if "footprint" in entry:
-                    footprint = entry["footprint"]
-            hit = resolve_instance(candidates, instance_path, project_name)
+            # Keyed by id() but holding the symbol itself, so a reused id never matches
+            rec = sym_records.get(id(sym))
+            if rec is None or rec[0] is not sym:
+                rec = sym_records[id(sym)] = _instance_record(
+                    sym, uuid_val, si_by_uuid, root_kiid, tilde_empty)
+            _sym, index, si_vf, inline_v, inline_f = rec
+            # The KiCad 6 entry for this path, then any inline value / footprint
+            si_v, si_f = si_vf.get(instance_path.rstrip("/").lower(), (None, None))
+            for got in (si_v, inline_v):
+                if got is not None:
+                    value = got[0]
+            for got in (si_f, inline_f):
+                if got is not None:
+                    footprint = got[0]
+            hit = resolve_indexed(index, instance_path, project_name)
             if hit is not None:
                 if hit["reference"]:
                     ref = hit["reference"]
@@ -1307,7 +1341,8 @@ def parse_single_sheet(path: str, instance_uuid: str = "",
                        symbol_instances: dict | None = None, *,
                        instance_path: str | None = None, root_kiid: str = "",
                        project_name: str = "", text_ctx: dict | None = None,
-                       variant: str | None = None, root: list | None = None) -> SheetData:
+                       variant: str | None = None, root: list | None = None,
+                       instance_cache: dict | None = None) -> SheetData:
     """Parse a single .kicad_sch file and return raw extracted data.
 
     If instance_uuid is provided, remap component references from the
@@ -1316,7 +1351,8 @@ def parse_single_sheet(path: str, instance_uuid: str = "",
     If symbol_instances is provided, use it as fallback for remapping when
     inline (instances) blocks are absent.
 
-    instance_path / root_kiid / project_name / text_ctx / variant: see extract_components;
+    instance_path / root_kiid / project_name / text_ctx / variant / instance_cache: see
+    extract_components;
     this file's title block becomes the first sheet of text_ctx's chain.  A sub-sheet's
     variant block is the one of its instance on *instance_path*.  *root* is the file's
     parsed tree when the caller has it.
@@ -1334,7 +1370,7 @@ def parse_single_sheet(path: str, instance_uuid: str = "",
                                     symbol_instances=symbol_instances,
                                     instance_path=instance_path, root_kiid=root_kiid,
                                     project_name=project_name, text_ctx=text_ctx,
-                                    variant=variant)
+                                    variant=variant, instance_cache=instance_cache)
     wires = extract_wires(root)
     labels = extract_labels(root)
     junctions = extract_junctions(root)

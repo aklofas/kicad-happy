@@ -33,17 +33,26 @@ def resolve_instance(candidates: list[dict], instance_path: str,
     ones; otherwise the first candidate of *project_name*, else the first candidate; None when
     there are no candidates (the caller keeps the Reference field).
     """
-    want = _norm_path(instance_path)
-    hit = None
+    return resolve_indexed(index_instances(candidates), instance_path, project_name)
+
+
+def index_instances(candidates: list[dict]) -> dict:
+    """The lookups resolve_instance makes over *candidates*, built once: the last candidate of
+    each normalized path, the first of each project, and the first candidate."""
+    by_path, by_project = {}, {}
     for cand in candidates:
-        if _norm_path(cand.get("path") or "") == want:
-            hit = cand
-    if hit is not None or not candidates:
+        by_path[_norm_path(cand.get("path") or "")] = cand
+        by_project.setdefault(cand.get("project"), cand)
+    return {"by_path": by_path, "by_project": by_project,
+            "first": candidates[0] if candidates else None}
+
+
+def resolve_indexed(index: dict, instance_path: str, project_name: str) -> dict | None:
+    """resolve_instance over an index_instances *index*."""
+    hit = index["by_path"].get(_norm_path(instance_path))
+    if hit is not None or index["first"] is None:
         return hit
-    for cand in candidates:
-        if cand.get("project") == project_name:
-            return cand
-    return candidates[0]
+    return index["by_project"].get(project_name, index["first"])
 
 
 def inline_instances(sym: list, tilde_empty: bool) -> list[dict]:

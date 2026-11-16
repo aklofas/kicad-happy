@@ -221,6 +221,8 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
         root_tree = _read_sheet(root_path, diagnostics)
     # A sheet file is parsed once, however many instances it has.
     trees = {str(Path(root_path).resolve()): root_tree}
+    # Each symbol's instance candidates, read once however many instances its sheet has.
+    instance_cache: dict = {}
 
     if symbol_instances_override is not None:
         root_symbol_instances = symbol_instances_override
@@ -291,7 +293,8 @@ def parse_all_sheets(root_path: str, root_tree: list | None = None,
         pending_before = registry.pending
         sheet_kwargs = dict(instance_uuid=inst_path, symbol_instances=root_symbol_instances,
                             instance_path=root_kiid + inst_path, root_kiid=root_kiid,
-                            project_name=project_name, text_ctx=text_ctx, variant=variant)
+                            project_name=project_name, text_ctx=text_ctx, variant=variant,
+                            instance_cache=instance_cache)
         if sheet_path not in trees:
             trees[sheet_path] = _read_sheet(sheet_path, diagnostics)
         sd = parse_single_sheet(sheet_path, root=trees[sheet_path], **sheet_kwargs)

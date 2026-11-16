@@ -12,6 +12,8 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Fixed
 
+- A schematic whose sheets are placed hundreds of times is read much faster: the time no longer grows with the square of the instance count. Results are unchanged.
+
 ### Documentation
 
 ## v3.0.2 — 2026-11-15
