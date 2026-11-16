@@ -44,7 +44,7 @@ python3 <skill-path>/scripts/search_lcsc.py "tactile switch"
 # Search for basic parts only (no JLCPCB extended loading fees)
 python3 <skill-path>/scripts/search_lcsc.py "0805 100R" --basic
 
-# Filter by package/footprint and stock
+# Filter by package/footprint and stock (a row with no stock figure counts as 0 unless --details fetches it)
 python3 <skill-path>/scripts/search_lcsc.py "red led" --package 0805 --in-stock
 
 # Inspect full component details (manufacturer, datasheet URL, price breaks, parametric attributes)
