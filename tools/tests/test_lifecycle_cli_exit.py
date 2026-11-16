@@ -26,7 +26,8 @@ class LifecycleCliExit(unittest.TestCase):
                 with mock.patch.object(sys, "argv", [SCRIPT]):
                     with self.assertRaises(SystemExit) as cm:
                         # runpy re-executes the file, so patch via a fresh module namespace
-                        src = open(SCRIPT, encoding="utf-8").read()
+                        with open(SCRIPT, encoding="utf-8") as f:
+                            src = f.read()
                         guard = src[src.index('if __name__ == "__main__":'):]
                         exec(compile(guard, SCRIPT, "exec"),
                              {"__name__": "__main__", "sys": sys,

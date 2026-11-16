@@ -43,7 +43,8 @@ class WorkdirTest(unittest.TestCase):
     def test_subprocess_gets_cwd_and_basename(self):
         import simulate_subcircuits as ss
         with tempfile.TemporaryDirectory() as tmp:
-            analysis = json.load(open(_analysis(tmp), encoding="utf-8"))
+            with open(_analysis(tmp), encoding="utf-8") as f:
+                analysis = json.load(f)
             wd = os.path.join(tmp, "ws a")
             calls = []
 
