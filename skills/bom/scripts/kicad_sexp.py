@@ -14,6 +14,7 @@ import _core_path  # noqa: F401
 from kicad_core.fileio import atomic_write_text  # noqa: F401  (bom scripts import it from here)
 from kicad_core.instances import (inline_instances, instance_variants, resolve_instance,
                                   variant_overrides)
+from kicad_core.project import expand_sheet_file
 from kicad_core.sexp import parse, unescape_quoted
 
 
@@ -145,8 +146,12 @@ class SubSheet(NamedTuple):
     block: str = ""
 
 
-def find_sub_sheet_entries(text: str, base_dir: Path) -> list[SubSheet]:
+def find_sub_sheet_entries(text: str, base_dir: Path,
+                           sch_path: Path | None = None) -> list[SubSheet]:
     """Each ``(sheet ...)`` of a .kicad_sch whose file exists, in file order.
+
+    File names are read as the schematic analyzer reads them: backslashes are separators and,
+    given *sch_path* (the sheet *text* came from), project text variables are expanded.
 
     ``in_bom`` / ``dnp`` are the sheet's own attributes (KiCad 9+; direct children only, so a
     variant's ``(dnp ...)`` inside the sheet's instances does not count).
@@ -159,7 +164,10 @@ def find_sub_sheet_entries(text: str, base_dir: Path) -> list[SubSheet]:
         file_match = _SHEET_FILE.search(block)
         if not file_match:
             continue
-        filepath = base_dir / unescape_quoted(file_match.group(1))
+        name = unescape_quoted(file_match.group(1))
+        if sch_path is not None:
+            name = expand_sheet_file(name, str(sch_path))
+        filepath = base_dir / name.replace("\\", "/")
         if not filepath.exists():
             continue
         at = _AT.match(direct_child(block, "at") or "")
@@ -174,9 +182,9 @@ def find_sub_sheet_entries(text: str, base_dir: Path) -> list[SubSheet]:
     return sheets
 
 
-def find_sub_sheets(text: str, base_dir: Path) -> list[Path]:
+def find_sub_sheets(text: str, base_dir: Path, sch_path: Path | None = None) -> list[Path]:
     """Find hierarchical sub-sheet files referenced in a .kicad_sch."""
-    return [entry.path for entry in find_sub_sheet_entries(text, base_dir)]
+    return [entry.path for entry in find_sub_sheet_entries(text, base_dir, sch_path)]
 
 
 def symbol_instances_of(symbol_block: str, tilde_empty: bool = True) -> list[dict]:
@@ -271,7 +279,7 @@ def collect_schematic_files(root: Path, recursive: bool) -> list[Path]:
     while queue:
         current = queue.pop(0)
         text = current.read_text(encoding="utf-8")
-        for sub in find_sub_sheets(text, current.parent):
+        for sub in find_sub_sheets(text, current.parent, current):
             sub = sub.resolve()
             if sub not in visited:
                 visited.add(sub)

@@ -562,7 +562,7 @@ def _sheet_instances(input_path: Path, recursive: bool, read, variant: str | Non
     while recursive and i < len(sheets):
         parent = sheets[i]
         text = read(parent["file"])
-        for sub in find_sub_sheet_entries(text, parent["file"].parent):
+        for sub in find_sub_sheet_entries(text, parent["file"].parent, parent["file"]):
             resolved = sub.path.resolve()
             path = parent["path"] + "/" + sub.uuid if sub.uuid else parent["path"]
             if resolved in parent["chain"] or (resolved, path.lower()) in seen:

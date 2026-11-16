@@ -72,6 +72,55 @@ class EscapedTextTest(unittest.TestCase):
             entries = kicad_sexp.find_sub_sheet_entries(root, Path(d))
             self.assertEqual(entries[0].path.name, 'my"sheet.kicad_sch')
 
+    def _sheet_root(self, name):
+        return ('(kicad_sch (sheet (at 0 0) (uuid "s1") '
+                '(property "Sheetfile" "%s")))' % name)
+
+    def test_sheetfile_backslash_followed(self):
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            (d / "sub").mkdir()
+            (d / "sub/power.kicad_sch").write_text("(kicad_sch)")
+            entries = kicad_sexp.find_sub_sheet_entries(
+                self._sheet_root("sub\\\\power.kicad_sch"), d, d / "root.kicad_sch")
+            self.assertEqual([e.path for e in entries], [d / "sub/power.kicad_sch"])
+
+    def test_sheetfile_projectname_expanded(self):
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            (d / "board.kicad_pro").write_text("{}")
+            (d / "board_power.kicad_sch").write_text("(kicad_sch)")
+            entries = kicad_sexp.find_sub_sheet_entries(
+                self._sheet_root("${PROJECTNAME}_power.kicad_sch"), d, d / "board.kicad_sch")
+            self.assertEqual([e.path for e in entries], [d / "board_power.kicad_sch"])
+
+    def test_plain_sheetfile_unchanged(self):
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            (d / "sub").mkdir()
+            (d / "sub/power.kicad_sch").write_text("(kicad_sch)")
+            root = self._sheet_root("sub/power.kicad_sch")
+            for sch in (None, d / "root.kicad_sch"):
+                entries = kicad_sexp.find_sub_sheet_entries(root, d, sch)
+                self.assertEqual([e.path for e in entries], [d / "sub/power.kicad_sch"])
+
+    def test_unknown_variable_left_as_written(self):
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            entries = kicad_sexp.find_sub_sheet_entries(
+                self._sheet_root("${NOPE}.kicad_sch"), d, d / "root.kicad_sch")
+            self.assertEqual(entries, [])
+
+    def test_self_including_sheet_terminates(self):
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            root = d / "root.kicad_sch"
+            root.write_text(self._sheet_root(".\\\\root.kicad_sch"))
+            files = kicad_sexp.collect_schematic_files(root, True)
+            self.assertEqual(files, [root.resolve()])
+            result = bom_manager.analyze(root, recursive=True)
+            self.assertEqual(result["bom"], [])
+
 
 if __name__ == "__main__":
     unittest.main()
