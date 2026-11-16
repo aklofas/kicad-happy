@@ -44,6 +44,15 @@ class Record(unittest.TestCase):
                                  "effect": "thing skipped"}])
         self.assertEqual(merge([1], None, [2, 3]), [1, 2, 3])
 
+    def test_newline_in_message_keeps_one_stderr_line(self):
+        from kicad_core.diagnostics import record
+        sink, err = [], io.StringIO()
+        with contextlib.redirect_stderr(err):
+            record(sink, "m.f", ValueError("first\nsecond\r\nthird"), "thing skipped")
+        self.assertEqual(err.getvalue().splitlines(),
+                         ["Warning: m.f: ValueError: first\\nsecond\\r\\nthird — thing skipped"])
+        self.assertEqual(sink[0]["message"], "first\nsecond\r\nthird")
+
 
 class EnvelopeSchemas(unittest.TestCase):
     def test_every_envelope_declares_optional_diagnostics(self):

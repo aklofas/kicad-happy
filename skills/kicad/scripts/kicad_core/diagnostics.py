@@ -27,7 +27,8 @@ class OnceSink(list):
 
 
 def record(sink, source: str, exc: BaseException, effect: str) -> None:
-    """Print one stderr line for *exc*; append a Diagnostic dict when *sink* is a list."""
+    """Print one stderr line for *exc* (line breaks in its message escaped); append a
+    Diagnostic dict when *sink* is a list."""
     message = str(exc)[:200]
     if isinstance(sink, list):
         entry = asdict(Diagnostic(source=source, exception=type(exc).__name__,
@@ -35,7 +36,8 @@ def record(sink, source: str, exc: BaseException, effect: str) -> None:
         if isinstance(sink, OnceSink) and entry in sink:
             return
         sink.append(entry)
-    print(f"Warning: {source}: {type(exc).__name__}: {message} — {effect}", file=sys.stderr)
+    one_line = message.replace("\r", "\\r").replace("\n", "\\n")
+    print(f"Warning: {source}: {type(exc).__name__}: {one_line} — {effect}", file=sys.stderr)
 
 
 def merge(*sinks) -> list:

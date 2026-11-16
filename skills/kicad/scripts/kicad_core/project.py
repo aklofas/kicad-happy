@@ -8,7 +8,7 @@ from pathlib import Path
 from kicad_core.fileio import json_loads
 from kicad_core.textvars import expand_text_vars
 from kicad_core import sexp as _sexp
-from kicad_core.sexp import parse as _sexp_parse, parse_file as _sexp_parse_file, find_all, find_first, get_value
+from kicad_core.sexp import COORD_PROBLEM, parse as _sexp_parse, parse_file as _sexp_parse_file, find_all, find_first, get_value
 
 
 def _recorded_source_file(analysis_json):
@@ -572,14 +572,16 @@ def parse_input_problem(path: str, tree, problem: str | None,
                         expected: str) -> tuple[str, str] | None:
     """(message, effect) when a parsed file is not a whole KiCad schematic or board: its
     root is not (``expected`` ...), or the parser's *problem* (see sexp.parse_checked);
-    None when it is.  *expected* is 'kicad_sch' or 'kicad_pcb'."""
+    None when it is.  *expected* is 'kicad_sch' or 'kicad_pcb'.  The effect is "points
+    read as 0" when the only problem is an invalid coordinate, else the partial effect."""
     name = os.path.basename(path)
     not_kicad, partial = _INPUT_EFFECTS[expected]
     head = tree[0] if isinstance(tree, list) and tree else tree
     if head != expected:
         return f"{name} is not {_INPUT_KIND[expected]}: it starts with {str(head)[:40]!r}", not_kicad
     if problem:
-        return f"{name}: {problem}", partial
+        effect = "points read as 0" if problem.startswith(COORD_PROBLEM) else partial
+        return f"{name}: {problem}", effect
     return None
 
 

@@ -6,7 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "skills" / "kicad" / "scripts"))
 
-from kicad_core.sexp import find_all, get_properties, get_property, has_flag, parse
+from kicad_core.sexp import find_all, get_properties, get_property, has_flag, parse, parse_checked
 
 
 class QuoteInsideAtomTest(unittest.TestCase):
@@ -70,6 +70,64 @@ class UnterminatedQuoteTest(unittest.TestCase):
         self.assertEqual(parse('(a "xyz'), ['a', 'xyz'])
         self.assertEqual(parse('(a (b "x\\'), ['a', ['b', 'x\\']])
         self.assertEqual(parse('(a "x\\"'), ['a', 'x"'])
+
+
+class PointCoercionTest(unittest.TestCase):
+    """A point item that is not a finite number is read as 0, as KiCad reads NaN."""
+
+    def test_nan_x_is_read_as_zero(self):
+        tree, problem = parse_checked('(kicad_sch (symbol (at nan 1 0)))')
+        self.assertEqual(tree, ['kicad_sch', ['symbol', ['at', '0', '1', '0']]])
+        self.assertTrue(problem.startswith("invalid coordinate (at nan 1 0)"), problem)
+        self.assertTrue(problem.endswith("read as 0 (1 point(s))"), problem)
+
+    def test_each_bad_form_is_read_as_zero(self):
+        cases = {
+            '(a (at inf 1 0))': ['a', ['at', '0', '1', '0']],
+            '(a (at -inf 1 0))': ['a', ['at', '0', '1', '0']],
+            '(a (at abc 1 0))': ['a', ['at', '0', '1', '0']],
+            '(a (pts (xy 1 nan)))': ['a', ['pts', ['xy', '1', '0']]],
+            '(a (start nan 2))': ['a', ['start', '0', '2']],
+            '(a (at 1 2 nan))': ['a', ['at', '1', '2', '0']],
+            '(a (end 1 Infinity) (mid NaN 2) (center 3 -nan))':
+                ['a', ['end', '1', '0'], ['mid', '0', '2'], ['center', '3', '0']],
+        }
+        for text, want in cases.items():
+            with self.subTest(text=text):
+                tree, problem = parse_checked(text)
+                self.assertEqual(tree, want)
+                self.assertTrue(problem.startswith("invalid coordinate ("), problem)
+
+    def test_count_names_the_first_point(self):
+        _tree, problem = parse_checked('(a (at 1 nan) (xy inf 2) (start 3 4))')
+        self.assertEqual(problem, "invalid coordinate (at 1 nan) read as 0 (2 point(s))")
+
+    def test_valid_points_are_left_alone(self):
+        for text in ('(a (at 1e3 -2. 90))',
+                     '(fp_text reference "R1" (at 0 -1.5 90 unlocked))',
+                     '(a (at 0 0 unlocked))',
+                     '(model "x.wrl" (at (xyz 0 0 0)))',
+                     '((a b) c)',
+                     '(a (xy 1e-3 2E5))',
+                     '(a (at +1 .5 -0))',
+                     '(a (start 1 2 ltcorner))'):
+            with self.subTest(text=text):
+                tree, problem = parse_checked(text)
+                self.assertIsNone(problem)
+                self.assertEqual(tree, parse(text))
+
+    def test_other_lists_keep_non_finite_text(self):
+        tree, problem = parse_checked('(a (width nan) (property "at" "nan") (at "x" 1))')
+        self.assertEqual(tree, ['a', ['width', 'nan'], ['property', 'at', 'nan'], ['at', '0', '1']])
+        self.assertTrue(problem.startswith('invalid coordinate (at x 1)'), problem)
+
+    def test_follows_a_nesting_problem(self):
+        _tree, problem = parse_checked('(a (at nan 1) ' + '(' * 300 + ')' * 300 + ')')
+        self.assertTrue(problem.startswith("lists nest deeper than"), problem)
+        self.assertIn("; invalid coordinate (at nan 1)", problem)
+
+    def test_truncation_wins(self):
+        self.assertEqual(parse_checked('(a (at nan 1) (b')[1], "the file ends inside an open list")
 
 
 if __name__ == "__main__":

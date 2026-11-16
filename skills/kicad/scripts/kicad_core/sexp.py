@@ -8,6 +8,7 @@ Usage:
     from kicad_core.sexp import parse_file, find_all, find_first, get_property
 """
 
+import math
 import re
 import sys
 from typing import Any
@@ -104,7 +105,9 @@ def parse(text: str) -> list:
 def parse_checked(text: str) -> tuple:
     """(tree, problem): *problem* is None, or why the tree is partial: the text ends inside
     an open list (a truncated file, an unterminated string), or lists nest deeper than
-    _MAX_NESTING (the deeper lists are left out)."""
+    _MAX_NESTING (the deeper lists are left out). A point whose coordinate is not a finite
+    number is read as 0 (see _coerce_point); *problem* then starts with COORD_PROBLEM, or
+    carries it after "; " behind a nesting problem."""
     result, _pos, problem = _parse_tokens(_tokenize(text), 0)
     return result, problem
 
@@ -218,6 +221,49 @@ def _tokenize(text: str) -> list:
     return tokens
 
 
+# Lists whose items 1-2 are a point (x y) in mm, with an optional angle third.
+_POINT_HEADS = frozenset({"at", "xy", "start", "end", "mid", "center"})
+COORD_PROBLEM = "invalid coordinate"
+_NUM_END = frozenset("0123456789.")
+
+
+def _finite(tok) -> bool:
+    try:
+        return math.isfinite(float(tok))
+    except ValueError:
+        return False
+
+
+def _coerce_point(node: list) -> bool:
+    """Replace a point's x or y that is not a finite number, and a third item that reads as
+    a number but is not finite, by "0" (KiCad reads NaN as 0; a third word such as
+    ``unlocked`` is kept). List items are never touched. True when anything was replaced."""
+    hit = False
+    for i in range(1, min(len(node), 4)):
+        tok = node[i]
+        if not isinstance(tok, str) or _finite(tok):
+            continue
+        if i == 3:
+            try:
+                float(tok)
+            except ValueError:
+                continue
+        node[i] = "0"
+        hit = True
+    return hit
+
+
+def _fix_point(node: list) -> str | None:
+    """Apply _coerce_point to a point list; the list as it read before the fix when anything
+    was replaced, else None. An item 1-3 must fail to end like a decimal to be looked at."""
+    if type(node[0]) is not str or node[0] not in _POINT_HEADS:
+        return None
+    if all(not isinstance(t, str) or t[-1:] in _NUM_END for t in node[1:4]):
+        return None
+    before = "(" + " ".join(str(t)[:20] if isinstance(t, str) else "(...)" for t in node[:4]) + ")"
+    return before if _coerce_point(node) else None
+
+
 # Far above any KiCad file (the corpus nests at most 37 deep) and below Python's recursion
 # limit, which the recursive tree walkers would otherwise hit.
 _MAX_NESTING = 200
@@ -237,6 +283,7 @@ def _parse_tokens(tokens: list, pos: int) -> tuple[Any, int, str | None]:
     stack = [root]
     skip = 0  # depth inside a list left out for nesting too deep
     problem = None
+    bad_points, first_bad = 0, None
     pos += 1
     while stack:
         if pos >= n:
@@ -254,9 +301,27 @@ def _parse_tokens(tokens: list, pos: int) -> tuple[Any, int, str | None]:
             stack[-1].append(child)
             stack.append(child)
         elif tok is _RPAREN:
-            stack.pop()
+            closed = stack.pop()
+            if len(closed) > 2:
+                # Fast path for the common (xy 1.5 2) and every non-point list; a list item
+                # or an empty quoted item raises and takes the full check.
+                try:
+                    plain = closed[0] not in _POINT_HEADS or (
+                        len(closed) == 3 and closed[1][-1] in _NUM_END
+                        and closed[2][-1] in _NUM_END)
+                except (TypeError, IndexError):
+                    plain = False
+                if not plain:
+                    before = _fix_point(closed)
+                    if before is not None:
+                        bad_points += 1
+                        if first_bad is None:
+                            first_bad = before
         else:
             stack[-1].append(tok)
+    if bad_points:
+        coord = f"{COORD_PROBLEM} {first_bad} read as 0 ({bad_points} point(s))"
+        problem = f"{problem}; {coord}" if problem else coord
     return root, pos, problem
 
 

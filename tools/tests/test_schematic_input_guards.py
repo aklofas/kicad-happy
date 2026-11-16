@@ -1,7 +1,7 @@
 """Recursive, empty and missing inputs: a sheet that includes its own ancestor, or an empty or
 missing sub-sheet, is skipped with a diagnostic; a sheet file named with backslashes loads; an
 empty top-level input is a usage error (exit 2); a KiCad 5 .pro resolves to its sibling
-schematic."""
+schematic; a coordinate that is not a finite number is read as 0 with one diagnostic."""
 import json, os, subprocess, sys, tempfile, time, unittest
 from pathlib import Path
 from tools.tests._fixtures import fixture_path, have
@@ -199,6 +199,50 @@ class RootInputTest(unittest.TestCase):
             pro = self._file(tmp, "lonely.pro", b"update=0\n")
             self._usage_error("analyze_schematic.py", pro, "lonely.sch")
             self._usage_error("analyze_pcb.py", pro, "lonely.kicad_pcb")
+
+
+def _strict_json(text):
+    def refuse(name):
+        raise ValueError(f"non-standard JSON constant {name}")
+    return json.loads(text, parse_constant=refuse)
+
+
+@unittest.skipUnless(have(FX), "harness fixtures not present")
+class NonFiniteCoordinateTest(unittest.TestCase):
+    def _run_one(self, script, name, text, source):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, name)
+            Path(path).write_text(text, encoding="utf-8")
+            out = os.path.join(tmp, "out.json")
+            r = _run(script, path, "-o", out, cwd=tmp)
+            self.assertEqual(r.returncode, 0, r.stderr[-2000:])
+            self.assertNotIn("Traceback", r.stderr)
+            d = _strict_json(Path(out).read_text(encoding="utf-8"))
+        hits = [x for x in d["diagnostics"] if x["effect"] == "points read as 0"]
+        self.assertEqual(len(hits), 1, d["diagnostics"])
+        self.assertEqual(hits[0]["source"], source)
+        return d, hits[0]
+
+    def test_nan_symbol_position_is_read_as_zero_with_one_diagnostic(self):
+        base = (FX / "simple.kicad_sch").read_text(encoding="utf-8")
+        at = '(lib_id "Device:R")\n\t\t(at 134.62 72.39 0)'
+        self.assertIn(at, base)
+        d, diag = self._run_one("analyze_schematic.py", "nan.kicad_sch",
+                                base.replace(at, at.replace("134.62", "nan")),
+                                "schematic.pipeline.analyze_schematic")
+        self.assertIn("invalid coordinate (at nan 72.39 0)", diag["message"])
+        r1 = [c for c in d["components"] if c["reference"] == "R1"]
+        self.assertEqual(len(r1), 1)
+        self.assertEqual(r1[0]["x"], 0)
+
+    def test_nan_segment_start_is_read_as_zero_with_one_diagnostic(self):
+        base = (FX / "simple.kicad_pcb").read_text(encoding="utf-8")
+        seg = "(segment\n\t\t(start 130 100)"
+        self.assertIn(seg, base)
+        _d, diag = self._run_one("analyze_pcb.py", "nan.kicad_pcb",
+                                 base.replace(seg, seg.replace("130", "nan")),
+                                 "pcb.pipeline.read_board")
+        self.assertIn("invalid coordinate (start nan 100)", diag["message"])
 
 
 if __name__ == "__main__":
