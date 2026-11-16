@@ -89,9 +89,9 @@ def _detect_datasheet_status(cache_dir: Optional[Path] = None) -> str:
 
 
 def _compute_coverage_pct(cache_dir: Optional[Path] = None) -> int:
-    """Percentage of the parts in the distributor manifest (``datasheets/manifest.json``,
-    the schematic's parts as the last sync recorded them) that have an extraction in
-    ``cache_dir``. 0 when the manifest, its parts or the folder are missing."""
+    """Percentage of the parts in the distributor manifest (``datasheets/manifest.json``, or the
+    legacy ``index.json`` when it is absent; the schematic's parts as the last sync recorded
+    them) that have an extraction in ``cache_dir``. 0 when the manifest, its parts or the folder are missing."""
     if cache_dir is None:
         cache_dir = Path("datasheets/extracted")
     ds_scripts = str(Path(__file__).resolve().parents[2] / "datasheets" / "scripts")
@@ -99,11 +99,13 @@ def _compute_coverage_pct(cache_dir: Optional[Path] = None) -> int:
         sys.path.insert(0, ds_scripts)
     try:
         from datasheet_extract_cache import find_extraction
-        from datasheet_types.cache_reader import read_json_object
+        from distributor_core.manifest import load_index
     except ImportError:
         return 0
-    manifest = read_json_object(Path(cache_dir).parent / "manifest.json")
-    parts = manifest.get("parts") if manifest else None
+    try:
+        parts = load_index(Path(cache_dir).parent / "manifest.json").get("parts")
+    except ValueError:
+        return 0
     if not isinstance(parts, dict) or not parts:
         return 0
     have = sum(1 for mpn in parts if isinstance(find_extraction(cache_dir, mpn)[0], dict))
@@ -141,7 +143,7 @@ def _fresh_record(datasheet_extraction, cache_dir, llm_review_status, schema_ver
         "llm_review": llm_review_status,
         "insertion_points_active": [],
         "schema_versions": schema_versions or _read_schema_versions(),
-        "platform": "claude-code",
+        "platform": "claude-code" if os.environ.get("CLAUDECODE") == "1" else "unknown",
         "tier_map": {},
     }
 

@@ -1,4 +1,5 @@
-import json, subprocess, sys, tempfile, unittest
+import json, os, subprocess, sys, tempfile, unittest
+from unittest import mock
 from pathlib import Path
 SCRIPTS = Path(__file__).resolve().parents[2] / "skills" / "kicad" / "scripts"
 
@@ -49,6 +50,51 @@ class CoveragePct(unittest.TestCase):
             ext = self._project(d, None, ["M%d" % i for i in range(25)])
             (ext / "index.json").write_text('{"extractions": {}}', encoding="utf-8")
             self.assertEqual(capability_mode._compute_coverage_pct(ext), 0)
+
+    def test_legacy_distributor_index_counts(self):
+        sys.path.insert(0, str(SCRIPTS))
+        import capability_mode
+        with tempfile.TemporaryDirectory() as d:
+            ext = self._project(d, None, ["A"])
+            (ext.parent / "index.json").write_text(
+                json.dumps({"parts": {p: {} for p in "ABCD"}}), encoding="utf-8")
+            self.assertEqual(capability_mode._compute_coverage_pct(ext), 25)
+
+    def test_manifest_wins_over_legacy_index(self):
+        sys.path.insert(0, str(SCRIPTS))
+        import capability_mode
+        with tempfile.TemporaryDirectory() as d:
+            ext = self._project(d, ["A", "B"], ["A"])
+            (ext.parent / "index.json").write_text(
+                json.dumps({"parts": {p: {} for p in "ABCD"}}), encoding="utf-8")
+            self.assertEqual(capability_mode._compute_coverage_pct(ext), 50)
+
+    def test_unreadable_manifest_is_zero(self):
+        sys.path.insert(0, str(SCRIPTS))
+        import capability_mode
+        with tempfile.TemporaryDirectory() as d:
+            ext = self._project(d, None, ["A"])
+            (ext.parent / "manifest.json").write_text('{"parts": {"A": "x"}}', encoding="utf-8")
+            self.assertEqual(capability_mode._compute_coverage_pct(ext), 0)
+
+
+class Platform(unittest.TestCase):
+    def _platform(self, **env):
+        sys.path.insert(0, str(SCRIPTS))
+        import capability_mode
+        with tempfile.TemporaryDirectory() as d, mock.patch.dict(os.environ, env):
+            if "CLAUDECODE" not in env:
+                os.environ.pop("CLAUDECODE", None)
+            return capability_mode.get_or_create_capability_mode(d)["platform"]
+
+    def test_unknown_outside_claude_code(self):
+        self.assertEqual(self._platform(), "unknown")
+
+    def test_claude_code_detected(self):
+        self.assertEqual(self._platform(CLAUDECODE="1"), "claude-code")
+
+    def test_other_value_is_unknown(self):
+        self.assertEqual(self._platform(CLAUDECODE="0"), "unknown")
 
 
 if __name__ == "__main__":

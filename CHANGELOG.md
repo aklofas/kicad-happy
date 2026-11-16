@@ -40,6 +40,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Typed datasheet lookups no longer return the extraction of a different part whose number differs only in punctuation (BAV99/215 vs BAV99 215).
 - The voltage-derating check (VD-002) finds extractions written by the datasheet cache manager and no longer reads another part's file whose number differs only in punctuation.
 - With `--analysis-dir`, a new or updated run drops the previous `gerber.json` when the Gerber files it was built from have changed, instead of carrying it forward.
+- `capability_mode.json` records `platform: unknown` outside Claude Code instead of always `claude-code`, and its `datasheet_coverage_pct` reads a legacy `datasheets/index.json` download manifest instead of reporting 0 %.
 
 ### Documentation
 
