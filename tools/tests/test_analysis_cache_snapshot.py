@@ -324,5 +324,100 @@ class LifecycleTest(unittest.TestCase):
         self._assert_kept(self._create({"a.kicad_sch": "sha256:aa"}))
 
 
+class GerberTest(unittest.TestCase):
+    """gerber.json lists the Gerber files it was built from, so it leaves a run once one of
+    them has changed, on both the new-run and the overwrite path."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.ad = os.path.join(self.tmp, "analysis")
+        self.cur = os.path.join(self.ad, "cur")
+        os.makedirs(self.cur)
+        os.makedirs(os.path.join(self.tmp, "g"))
+        self.gtl = os.path.join(self.tmp, "g", "b-F_Cu.gtl")
+        Path(self.gtl).write_text("G04 v1*", encoding="utf-8")
+        _write_json(os.path.join(self.cur, "schematic.json"), {"analyzer_type": "schematic", "a": 1})
+        self._write_gerber_json({"inputs": {"source_hashes": {self.gtl: _sha(self.gtl)}}})
+        _write_json(os.path.join(self.ad, "manifest.json"), {
+            "version": 1, "project": "", "current": "cur", "runs": {"cur": {
+                "source_hashes": {"a.kicad_sch": "sha256:aa"},
+                "outputs": {"schematic": "schematic.json", "gerber": "gerber.json"},
+                "scripts": {}, "generated": "2026-10-30T00:00:00+00:00", "pinned": False}}})
+        self.out = os.path.join(self.tmp, "out")
+        os.makedirs(self.out)
+
+    def _write_gerber_json(self, data):
+        _write_json(os.path.join(self.cur, "gerber.json"), data)
+
+    def _change_gerber(self):
+        Path(self.gtl).write_text("G04 v2*", encoding="utf-8")
+
+    def _new_schematic(self):
+        _write_json(os.path.join(self.out, "schematic.json"), {"analyzer_type": "schematic", "a": 2})
+
+    def _create(self):
+        with redirect_stderr(io.StringIO()) as err:
+            analysis_cache.create_run(self.ad, self.out, source_hashes={"a.kicad_sch": "sha256:cc"},
+                                      scripts={}, run_id="new")
+        return os.path.join(self.ad, "new"), err.getvalue(), _manifest(self.ad)["runs"]["new"]
+
+    def _overwrite(self):
+        with redirect_stderr(io.StringIO()) as err:
+            self.assertTrue(analysis_cache.overwrite_current(
+                self.ad, self.out, source_hashes={"a.kicad_sch": "sha256:cc"}))
+        return self.cur, err.getvalue(), _manifest(self.ad)["runs"]["cur"]
+
+    def _assert_dropped(self, result):
+        run_dir, err, run = result
+        self.assertFalse(os.path.lexists(os.path.join(run_dir, "gerber.json")))
+        self.assertNotIn("gerber", run["outputs"])
+        self.assertIn("Note: gerber.json dropped", err)
+
+    def _assert_kept(self, result):
+        run_dir, err, run = result
+        self.assertEqual(_sha(os.path.join(run_dir, "gerber.json")),
+                         _sha(os.path.join(self.cur, "gerber.json")))
+        self.assertEqual(run["outputs"]["gerber"], "gerber.json")
+        self.assertNotIn("dropped", err)
+
+    def test_new_run_after_a_gerber_change_drops_gerber(self):
+        self._change_gerber()
+        self._new_schematic()
+        self._assert_dropped(self._create())
+
+    def test_overwrite_after_a_gerber_change_drops_gerber(self):
+        self._change_gerber()
+        self._new_schematic()
+        self._assert_dropped(self._overwrite())
+
+    def test_unchanged_gerbers_keep_gerber(self):
+        self._new_schematic()
+        self._assert_kept(self._create())
+
+    def test_unchanged_gerbers_keep_gerber_on_overwrite(self):
+        self._new_schematic()
+        self._assert_kept(self._overwrite())
+
+    def test_missing_gerber_file_keeps_gerber(self):
+        os.unlink(self.gtl)
+        self._new_schematic()
+        self._assert_kept(self._create())
+
+    def test_gerber_json_without_inputs_kept(self):
+        self._write_gerber_json({})
+        self._new_schematic()
+        self._assert_kept(self._create())
+
+    def test_new_gerber_json_written_over_the_old(self):
+        self._change_gerber()
+        _write_json(os.path.join(self.out, "gerber.json"), {"fresh": True})
+        with redirect_stderr(io.StringIO()):
+            analysis_cache.overwrite_current(self.ad, self.out)
+        with open(os.path.join(self.cur, "gerber.json"), encoding="utf-8") as f:
+            self.assertEqual(json.load(f), {"fresh": True})
+        self.assertEqual(_manifest(self.ad)["runs"]["cur"]["outputs"]["gerber"], "gerber.json")
+
+
 if __name__ == "__main__":
     unittest.main()

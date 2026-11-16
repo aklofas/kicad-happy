@@ -39,6 +39,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A datasheet extraction with an infinite, NaN or true/false quality score is treated as untrusted and reported with no score (the verification JSON stays valid), and the cache re-queues it.
 - Typed datasheet lookups no longer return the extraction of a different part whose number differs only in punctuation (BAV99/215 vs BAV99 215).
 - The voltage-derating check (VD-002) finds extractions written by the datasheet cache manager and no longer reads another part's file whose number differs only in punctuation.
+- With `--analysis-dir`, a new or updated run drops the previous `gerber.json` when the Gerber files it was built from have changed, instead of carrying it forward.
 
 ### Documentation
 

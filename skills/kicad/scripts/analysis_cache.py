@@ -581,6 +581,28 @@ def _derived_stale(run_dir: str, filename: str,
     return stale
 
 
+def _gerber_inputs_changed(run_dir: str) -> bool:
+    """True when a Gerber file the run's gerber.json was built from now differs from the
+    hash recorded there. A file that is gone or unreadable counts as unknown, not changed."""
+    path = os.path.join(run_dir, 'gerber.json')
+    if _is_symlink_or_irregular(path):
+        return False
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            data = json_load(f)
+    except (OSError, ValueError):
+        return False
+    inputs = data.get('inputs') if isinstance(data, dict) else None
+    hashes = inputs.get('source_hashes') if isinstance(inputs, dict) else None
+    if not isinstance(hashes, dict):
+        return False
+    for source, recorded in hashes.items():
+        now = _sha256_hex(source) if isinstance(source, str) else None
+        if now is not None and now != recorded:
+            return True
+    return False
+
+
 def _prune_output_hashes(hashes: Dict[str, str], run_dir: str) -> None:
     """Drop the schematic.json/pcb.json hashes an EMC or SPICE write recorded unless such an
     output is still in *run_dir* and the run holds that same file."""
@@ -704,6 +726,10 @@ def create_run(analysis_dir: str,
                 if upstream:
                     _note_dropped(filename, upstream[0])
                     stale = True
+            if (not stale and filename == 'gerber.json' and filename not in incoming
+                    and _gerber_inputs_changed(prev_run_dir)):
+                _note_dropped(filename, 'Gerber set')
+                stale = True
             prev_file = os.path.join(prev_run_dir, filename)
             new_file = os.path.join(run_dir, filename)
             if not stale and os.path.lexists(prev_file):
@@ -807,6 +833,10 @@ def overwrite_current(analysis_dir: str,
             if upstream:
                 stale[filename] = upstream
 
+    gerber_stale = ('gerber.json' not in incoming
+                    and os.path.lexists(os.path.join(current_dir, 'gerber.json'))
+                    and _gerber_inputs_changed(current_dir))
+
     # Overwrite files
     refused = set()
     copied = set()
@@ -836,6 +866,17 @@ def overwrite_current(analysis_dir: str,
         if isinstance(outputs_map, dict):
             for atype in [t for t, fn in outputs_map.items() if fn == filename]:
                 del outputs_map[atype]
+    if gerber_stale:
+        try:
+            os.unlink(os.path.join(current_dir, 'gerber.json'))
+        except OSError as exc:
+            record(None, "analysis_cache.overwrite_current", exc, "stale output kept")
+        else:
+            _note_dropped('gerber.json', 'Gerber set')
+            outputs_map = run_entry.get('outputs')
+            if isinstance(outputs_map, dict):
+                for atype in [t for t, fn in outputs_map.items() if fn == 'gerber.json']:
+                    del outputs_map[atype]
     if dropped and isinstance(run_entry.get('source_hashes'), dict):
         _prune_output_hashes(run_entry['source_hashes'], current_dir)
     if source_hashes is not None and not refused:
