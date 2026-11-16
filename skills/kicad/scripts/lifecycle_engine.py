@@ -293,7 +293,6 @@ def _audit_mpn_field(field: str, alts: list[str], sources, project_dir, delay,
     worst status among those that resolved (an end-of-life alternative is not
     hidden by an active one). Unknown only when none resolved."""
     if len(alts) < 2:
-        # A distributor part number names one part, not a list of alternatives.
         if not part_numbers:
             return audit_component(field, sources, project_dir, delay)
         return audit_component(field, sources, project_dir, delay,
@@ -301,7 +300,10 @@ def _audit_mpn_field(field: str, alts: list[str], sources, project_dir, delay,
     chosen = None
     answered = set()
     for alt in alts:
-        data = audit_component(alt, sources, project_dir, delay)
+        # Each alternative is asked by the part number; a hit for another
+        # alternative, or with no MPN, is skipped.
+        data = (audit_component(alt, sources, project_dir, delay, part_numbers=part_numbers)
+                if part_numbers else audit_component(alt, sources, project_dir, delay))
         answered.update(data.get("answered", data.get("sources", {})))
         if chosen is None:
             chosen = data
@@ -411,19 +413,21 @@ def _pn_hit(label: str, pn: str, mpn: str, items, mpn_of, pns_of):
     """The item of a part-number search that is this part, or None. A hit that carries
     other part numbers, or another manufacturer part number, is a stale part number."""
     other_part, same_part = _verify_helpers()
+    skipped = []
     for item in items:
         hit_mpn = mpn_of(item)
         hit_mpn = hit_mpn if isinstance(hit_mpn, str) else ""
         other = other_part(pn, hit_mpn, pns_of(item), by_pn=True, part_mpn=mpn)
+        if not other and not same_part(mpn, hit_mpn, allow_family=False,
+                                       ordering_suffixes=False):
+            other = hit_mpn or "(no MPN)"
         if other:
-            print(f"  {label}: PN {pn} is {other}, not {mpn}; PN ignored", file=sys.stderr)
-            continue
-        if hit_mpn and not same_part(mpn, hit_mpn, allow_family=False,
-                                     ordering_suffixes=False):
-            print(f"  {label}: PN {pn} is {hit_mpn}, not {mpn}; PN ignored",
-                  file=sys.stderr)
+            skipped.append(other)
             continue
         return item
+    for other in skipped:
+        print(f"  {label}: search hit {other} for PN {pn} is not {mpn}; skipped",
+              file=sys.stderr)
     return None
 
 

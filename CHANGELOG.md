@@ -59,6 +59,8 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The lifecycle audit now tells a distributor that answered without a match from one that never answered. Rows that no distributor answered are marked heuristic, so the trust level drops. The credentials hint appears only for such rows. An LCSC-only run says when LCSC did not answer. stderr names each distributor that never answered, and why.
 - `summary.lifecycle_issues` counts only the lifecycle findings a distributor answered for that are not plain active rows.
 - A Mouser error reply, such as a rejected API key, no longer stops the lifecycle audit or its `--suggest-alternatives` search.
+- An MPN field that lists alternatives (`1012, 1012C`) is also looked up by its DigiKey or Mouser part number; that answer counts only for the alternative it names.
+- The lifecycle part-number lookup reports a skipped search hit only when no hit matched, and names it as the search hit.
 
 ### Documentation
 

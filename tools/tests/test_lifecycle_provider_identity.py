@@ -232,7 +232,8 @@ class DistributorPartNumberTest(ProviderIdentityBase):
             out = lifecycle_engine.audit_bom(self.bom(digikey="BSS138CT-ND"),
                                              sources=["digikey"], delay=0)
         self.assertEqual(out["findings"][0]["rule_id"], "LC-004")
-        self.assertIn("PN BSS138CT-ND is 2N7002, not BSS138; PN ignored", err.getvalue())
+        self.assertIn("digikey: search hit 2N7002 for PN BSS138CT-ND is not BSS138; skipped",
+                      err.getvalue())
 
     def test_pn_miss_falls_back_to_the_mpn_search(self):
         self.by_keyword = {"BSS138": dk("BSS138", status="Obsolete")}
@@ -242,12 +243,55 @@ class DistributorPartNumberTest(ProviderIdentityBase):
         self.assertEqual([json.loads(r.data)["Keywords"] for r in self.requests],
                          ["BSS138CT-ND", "BSS138"])
 
-    def test_pn_is_not_applied_to_a_field_of_alternatives(self):
+    def test_pn_reaches_the_alternative_it_names(self):
         self.by_keyword = {"BSS138CT-ND": self.dk_pn_product("BSS138", "BSS138CT-ND")}
-        lifecycle_engine.audit_bom(self.bom(mpn="BSS138, BSS84", digikey="BSS138CT-ND"),
-                                   sources=["digikey"], delay=0)
+        out = lifecycle_engine.audit_bom(self.bom(mpn="BSS138, BSS84", digikey="BSS138CT-ND"),
+                                         sources=["digikey"], delay=0)
         self.assertEqual([json.loads(r.data)["Keywords"] for r in self.requests],
-                         ["BSS138", "BSS84"])
+                         ["BSS138CT-ND", "BSS138CT-ND", "BSS84"])
+        self.assertEqual(out["findings"][0]["rule_id"], "LC-ACT")
+
+    def test_pn_answer_is_not_credited_to_the_other_alternative(self):
+        # BSS84 would read active through BSS138's part number and hide its end of life.
+        self.by_keyword = {"BSS138CT-ND": self.dk_pn_product("BSS138", "BSS138CT-ND"),
+                           "BSS84": dk("BSS84", status="Obsolete")}
+        out = lifecycle_engine.audit_bom(self.bom(mpn="BSS138, BSS84", digikey="BSS138CT-ND"),
+                                         sources=["digikey"], delay=0)
+        f = out["findings"][0]
+        self.assertEqual((f["rule_id"], f["status"]), ("LC-001", "obsolete"))
+
+    def test_pn_hit_without_an_mpn_is_no_answer(self):
+        no_mpn = {"Products": [{"DigiKeyProductNumber": "BSS138CT-ND",
+                                "ProductStatus": {"Status": "Active"}, "Discontinued": False,
+                                "Parameters": []}]}
+        self.by_keyword = {"BSS138CT-ND": no_mpn, "BSS84": dk("BSS84", status="Obsolete")}
+        out = lifecycle_engine.audit_bom(self.bom(mpn="BSS138, BSS84", digikey="BSS138CT-ND"),
+                                         sources=["digikey"], delay=0)
+        f = out["findings"][0]
+        self.assertEqual((f["rule_id"], f["status"]), ("LC-001", "obsolete"))
+
+    def _resistor_pn_search(self, *items):
+        self.by_keyword = {"311-820KCRCT-ND": {"Products": [
+            dict(self.dk_pn_product(m, pn)["Products"][0]) for m, pn in items]}}
+        err = io.StringIO()
+        with mock.patch.object(sys, "stderr", err):
+            lifecycle_engine.audit_bom(
+                {"bom": [{"references": ["R1"], "mpn": "RC0805FR-07820KL", "type": "resistor",
+                          "digikey": "311-820KCRCT-ND"}]}, sources=["digikey"], delay=0)
+        return err.getvalue()
+
+    def test_rejected_hit_before_the_match_prints_nothing(self):
+        err = self._resistor_pn_search(("RC0805FR-078R2L", "311-8.20KCRTR-ND"),
+                                       ("RC0805FR-07820KL", "311-820KCRCT-ND"))
+        self.assertNotIn("search hit", err)
+        self.assertNotIn("PN ignored", err)
+        self.assertIn("matched by DigiKey PN 311-820KCRCT-ND", err)
+
+    def test_no_match_names_the_search_hit(self):
+        err = self._resistor_pn_search(("RC0805FR-078R2L", "311-8.20KCRTR-ND"))
+        self.assertIn("digikey: search hit 311-8.20KCRTR-ND for PN 311-820KCRCT-ND is not "
+                      "RC0805FR-07820KL; skipped", err)
+        self.assertNotIn("PN ignored", err)
 
     def test_mouser_pn_search_and_identity(self):
         self.bodies["mouser"] = {"SearchResults": {"Parts": [
