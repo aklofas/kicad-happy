@@ -119,7 +119,7 @@ def sanitize_mpn(mpn: str) -> str:
     (crystals like `ABM8G-106-12.000MHZ-T`, hyphenated families like
     `LM2596-ADJ`). `plan_extraction.py` and `merge_results.py`
     name their files with this function too; stripping dots here would miss the cache for dot-containing MPNs. No
-    hash suffix — rare collisions are acceptable.
+    hash suffix; a file recording another MPN is not returned (``records_mpn``).
 
     Examples:
         sanitize_mpn("LM2596-ADJ")             -> "LM2596-ADJ"
@@ -128,6 +128,22 @@ def sanitize_mpn(mpn: str) -> str:
         sanitize_mpn(" ACME 1234 ")            -> "ACME_1234"
     """
     return _UNSAFE_CHAR.sub("_", mpn.strip())
+
+
+def records_mpn(ext, mpn, name):
+    """False when ``<name>.json`` belongs to another part: ``name`` is not the MPN
+    itself (BAV99-215, BAV99.215, BAV99/215 and BAV99 215 all reach ``BAV99_215``)
+    and the extraction records a different MPN (``source.mpn``, else ``mpn``;
+    case and blanks aside). A file that records no MPN is taken by its name."""
+    if name == mpn.strip():
+        return True
+    source = ext.get("source")
+    recorded = source.get("mpn") if isinstance(source, dict) else None
+    if not isinstance(recorded, str):
+        recorded = ext.get("mpn")
+    if not isinstance(recorded, str) or not recorded.strip():
+        return True
+    return "".join(recorded.split()).upper() == "".join(mpn.split()).upper()
 
 
 def cache_path_for(mpn: str, cache_dir: Path) -> Path:
@@ -282,7 +298,7 @@ def lookup(mpn: str, *, cache_dir: Path) -> Optional[DatasheetFacts]:
         return None
 
     data = read_json_object(cache_file)
-    if data is None:
+    if data is None or not records_mpn(data, mpn, sanitize_mpn(mpn)):
         return None
 
     try:

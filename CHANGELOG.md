@@ -32,6 +32,8 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A failed simulation's diagnostics entry no longer copies the run folder, model-cache or project path from the simulator's error text; those parts read `<workdir>`, `<model-cache>` and `<project>`, so the same input gives the same report on every machine.
 - `analyze_harmonic_limits.py` and `run_external_deck.py` accept `--output /dev/stdout`, `/dev/null` or another stream, which they write directly instead of failing on a temporary file under `/dev`.
 - On Windows, an `--output` that cannot replace a read-only file no longer leaves a temporary file beside it.
+- A datasheet extraction with an infinite, NaN or true/false quality score is treated as untrusted and reported with no score (the verification JSON stays valid), and the cache re-queues it.
+- Typed datasheet lookups no longer return the extraction of a different part whose number differs only in punctuation (BAV99/215 vs BAV99 215).
 
 ### Documentation
 

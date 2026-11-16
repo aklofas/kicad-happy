@@ -405,5 +405,68 @@ class MixedV13V14Cache(unittest.TestCase):
             self.assertEqual(df.get_mcu_features(self.MPN, extract_dir=str(ext))["usb_speed"], "FS")
 
 
+class NonFiniteScores(unittest.TestCase):
+    def test_infinite_v14_score_is_untrusted(self):
+        e = {"extraction": {"quality_score": float("inf")}, "base": {}}
+        self.assertIs(dv._passes_trust_gate(e), False)
+        finding = dv._quality_finding("X", e)
+        self.assertIsNone(finding["quality_score"])
+        json.dumps(finding, allow_nan=False)
+
+    def test_nan_and_bool_scores_report_none(self):
+        for e in ({"extraction": {"quality_score": float("nan")}},
+                  {"extraction": {"quality_score": True}},
+                  {"extraction_metadata": {"extraction_score": float("nan")}}):
+            finding = dv._quality_finding("X", e)
+            self.assertIsNotNone(finding, e)
+            self.assertIsNone(finding["quality_score"], e)
+            json.dumps(finding, allow_nan=False)
+
+    def test_nan_and_infinite_cache_metadata_is_stale(self):
+        for key, bad in (("extraction_score", float("nan")),
+                         ("extraction_version", float("inf"))):
+            meta = {"extraction_score": 8.0, "extraction_version": 2}
+            meta[key] = bad
+            with tempfile.TemporaryDirectory() as d:
+                cache.cache_extraction(d, "X1", {"extraction_metadata": meta})
+                stale, reason = cache.is_extraction_stale(d, "X1")
+                self.assertTrue(stale, key)
+                self.assertIn("malformed", reason)
+
+    def test_ordinary_scores_are_unchanged(self):
+        self.assertIs(dv._passes_trust_gate({"extraction": {"quality_score": 87}}), True)
+        self.assertIsNone(dv._quality_finding("X", {"extraction": {"quality_score": 87}}))
+        self.assertEqual(dv._quality_finding("X", {"extraction": {"quality_score": 59}})["quality_score"], 59)
+        self.assertIs(dv._passes_trust_gate({"base": {}}), True)
+        self.assertIs(dv._passes_trust_gate({"extraction_metadata": {"extraction_score": 7.5}}), True)
+        with tempfile.TemporaryDirectory() as d:
+            cache.cache_extraction(d, "X2", {"extraction_metadata": {
+                "extraction_score": 7.0, "extraction_version": cache.EXTRACTION_VERSION}})
+            self.assertEqual(cache.is_extraction_stale(d, "X2"), (False, ""))
+
+
+class V2ViewPinRoles(unittest.TestCase):
+    def _view_pins(self):
+        ext = {"extraction": {"quality_score": 80}, "base": {"pinout": [
+            {"numbers": ["1"], "name": "VIN", "type": "power_in", "power_domain": "VIN"},
+            {"numbers": ["2"], "name": "VOUT", "type": "power_out"},
+            {"numbers": ["3"], "name": "GND", "type": "power_in"}]}}
+        return {p["number"]: p for p in dv._legacy_verifier_view(ext)["pins"]}
+
+    def test_power_pins_map_to_legacy_roles(self):
+        pins = self._view_pins()
+        got = [(pins[n]["type"], pins[n].get("direction"), pins[n].get("function"))
+               for n in ("1", "2", "3")]
+        self.assertEqual(got, [("power", "input", None), ("power", "output", None),
+                               ("power", None, "GND")])
+
+    def test_other_pin_types_are_untouched(self):
+        ext = {"base": {"pinout": [{"numbers": ["5"], "name": "PA0", "type": "io"}]}}
+        pin = dv._legacy_verifier_view(ext)["pins"][0]
+        self.assertEqual(pin["type"], "io")
+        self.assertNotIn("direction", pin)
+        self.assertNotIn("function", pin)
+
+
 if __name__ == "__main__":
     unittest.main()

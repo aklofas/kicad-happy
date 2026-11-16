@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from datasheet_types.cache_reader import MAX_CACHE_BYTES, safe_extract_dir  # noqa: E402
+from datasheet_types.trust_gating import finite_score  # noqa: E402
 from datasheet_extract_cache import find_extraction  # noqa: E402
 
 
@@ -111,6 +112,7 @@ def _legacy_verifier_view(extraction: dict) -> dict:
     # sectioned: synthesise flat legacy pins from base.pinout
     if not _is_sectioned_format(extraction):
         return extraction
+    from kicad_core.netnames import is_ground_name
     base = extraction["base"]
     pinout = base.get("pinout") or []
     v1_pins = []
@@ -124,6 +126,15 @@ def _legacy_verifier_view(extraction: dict) -> dict:
         if not numbers:
             continue
         pin_type = pin.get("type") or ""
+        role = {}
+        # The v1 checks read type "power" with a direction, and a ground
+        # pin by function.
+        if pin_type in ("power_in", "power_out"):
+            if is_ground_name(pin.get("name") or ""):
+                role["function"] = "GND"
+            else:
+                role["direction"] = "input" if pin_type == "power_in" else "output"
+            pin_type = "power"
         domain = pin.get("power_domain")
         v_abs_max = _spec_max_voltage(pin.get("absolute_max"))
         if not isinstance(v_abs_max, (int, float)):
@@ -143,6 +154,7 @@ def _legacy_verifier_view(extraction: dict) -> dict:
                 "type": pin_type,
                 "voltage_abs_max": v_abs_max,
                 "voltage_operating_max": v_op_max,
+                **role,
                 # required_external intentionally absent — no v2 equivalent
             })
     # Build the minimal v1 view; no application_circuit (no v2 equivalent)
@@ -185,12 +197,14 @@ def _passes_trust_gate(extraction: dict) -> bool:
     v1.3: extraction_metadata (else meta).extraction_score 0-10, threshold 6.0.
     No quality metadata at all: pass (don't gate; let downstream decide).
     """
-    quality_v14 = _v14_score(extraction)
-    if quality_v14 is not None:
-        return quality_v14 >= 60
-    quality_v13 = _v13_score(extraction)
-    if isinstance(quality_v13, (int, float)):
-        return quality_v13 >= 6.0
+    v14 = _v14_score(extraction)
+    if v14 is not None:
+        quality_v14 = finite_score(v14)
+        return quality_v14 is not None and quality_v14 >= 60
+    v13 = _v13_score(extraction)
+    if v13 is not None:
+        quality_v13 = finite_score(v13)
+        return quality_v13 is not None and quality_v13 >= 6.0
     return True
 
 
@@ -204,15 +218,17 @@ def _quality_finding(mpn, extraction):
         return None
     q14 = _v14_score(extraction)
     q13 = _v13_score(extraction)
-    score = q14 if q14 is not None else q13
+    score = finite_score(q14 if q14 is not None else q13)
+    shown = f"score {score} is below the trust threshold" if score is not None \
+        else "has no valid quality score"
     return {
         "type": "extraction_quality_low",
         "severity": "info",
         "mpn": mpn,
         "quality_score": score,
-        "detail": (f"{mpn}: extraction quality score {score} is below the "
-                   f"trust threshold; verification findings for this part "
-                   f"are based on a low-quality extraction"),
+        "detail": (f"{mpn}: extraction quality {shown}; verification "
+                   f"findings for this part are based on a low-quality "
+                   f"extraction"),
     }
 
 

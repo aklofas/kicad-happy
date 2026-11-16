@@ -526,5 +526,24 @@ class CacheReadLinksAndPipes(unittest.TestCase):
         self.assertIsNotNone(lookup("LM2596-ADJ", cache_dir=link))
 
 
+class RecordedMpn(unittest.TestCase):
+    def _lookup(self, recorded, file_stem, query):
+        from datasheet_types.cache_reader import lookup
+        data = json.loads(fixture("datasheets-extracted", "LM2596-ADJ.json").read_text(encoding="utf-8"))
+        data["source"]["mpn"] = recorded
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / (file_stem + ".json")).write_text(json.dumps(data), encoding="utf-8")
+            return lookup(query, cache_dir=Path(d))
+
+    def test_lookup_refuses_another_parts_file(self):
+        self.assertIsNone(self._lookup("BAV99/215", "BAV99_215", "BAV99 215"))
+        self.assertIsNone(self._lookup("BAV99/215", "BAV99_215", "BAV99-215"))
+
+    def test_lookup_takes_the_part_it_records(self):
+        self.assertIsNotNone(self._lookup("BAV99/215", "BAV99_215", "BAV99/215"))
+        self.assertIsNotNone(self._lookup("bav99/215", "BAV99_215", "BAV99/215"))
+        self.assertIsNotNone(self._lookup("LM2596", "LM2596-ADJ", "LM2596-ADJ"))
+
+
 if __name__ == "__main__":
     unittest.main()

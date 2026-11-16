@@ -55,7 +55,8 @@ if _TYPES_PARENT not in sys.path:
     sys.path.insert(0, _TYPES_PARENT)
 
 from datasheet_types.cache_reader import (  # noqa: E402
-    _compute_pdf_sha256, read_json_object, safe_extract_dir)
+    _compute_pdf_sha256, read_json_object, records_mpn, safe_extract_dir)
+from datasheet_types.trust_gating import finite_score  # noqa: E402
 from distributor_core.manifest import manifest_file_path, write_json_atomic  # noqa: E402
 
 _KICAD_SCRIPTS = str(Path(__file__).resolve().parents[2] / "kicad" / "scripts")
@@ -349,20 +350,7 @@ def find_extraction(extract_dir, mpn, *, v14_first=True):
     return None, bad
 
 
-def _records_mpn(ext, mpn, name):
-    """False when ``<name>.json`` belongs to another part: ``name`` is not the MPN
-    itself (BAV99-215, BAV99.215, BAV99/215 and BAV99 215 all reach ``BAV99_215``)
-    and the extraction records a different MPN (``source.mpn``, else ``mpn``;
-    case and blanks aside). A file that records no MPN is taken by its name."""
-    if name == mpn.strip():
-        return True
-    source = ext.get("source")
-    recorded = source.get("mpn") if isinstance(source, dict) else None
-    if not isinstance(recorded, str):
-        recorded = ext.get("mpn")
-    if not isinstance(recorded, str) or not recorded.strip():
-        return True
-    return "".join(recorded.split()).upper() == "".join(mpn.split()).upper()
+_records_mpn = records_mpn
 
 
 def cache_extraction(extract_dir, mpn, extraction, source_pdf=None):
@@ -442,7 +430,7 @@ def is_extraction_stale(extract_dir, mpn, datasheets_dir=None):
 
     meta = extraction.get("extraction_metadata", {})
     if not isinstance(meta, dict) or any(
-            k in meta and (not isinstance(meta[k], (int, float)) or isinstance(meta[k], bool))
+            k in meta and finite_score(meta[k]) is None
             for k in ("extraction_version", "extraction_score", "retry_count")):
         return True, "malformed extraction_metadata"
 
