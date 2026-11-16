@@ -19,7 +19,7 @@ from distributor_core.verify import downloaded_entry, other_part, pick_requested
 from distributor_core.manifest import friendly_filename
 
 NAME = "mouser"
-DEFAULT_DELAY = 1.0
+DEFAULT_DELAY = 2.0  # Mouser Search API: 30 calls a minute
 ID_KEYS = ("mouser", "digikey", "lcsc", "element14")
 KEY_PRIORITY = ("mouser",)
 SEARCH_KEY = "mouser"  # the one distributor-specific number this provider can search with

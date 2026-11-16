@@ -61,8 +61,8 @@ def main():
         description=("Sync datasheets for a KiCad project via Mouser API. Parts with neither an MPN nor a part "
                      "number from this distributor are skipped."),
         vendor="Mouser",
-        delay=1.0,
-        delay_help="Seconds between API calls (default: 1.0)",
+        delay=2.0,
+        delay_help="Seconds between API calls (default: 2.0)",
     )
 
 

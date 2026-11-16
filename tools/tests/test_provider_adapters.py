@@ -31,6 +31,16 @@ class ProviderAdapters(unittest.TestCase):
             self.assertEqual(prov.SEARCH_KEY, p)
             self.assertEqual(set(prov.LABELS), {"found", "skipped_key", "total_key", "dry_skipped", "summary_skipped"})
 
+    def test_mouser_default_pacing_stays_under_its_published_limit(self):
+        # Mouser's Search API allows 30 calls a minute
+        import importlib
+        sys.path.insert(0, str(SKILLS / "mouser" / "scripts"))
+        try:
+            prov = importlib.import_module("provider_mouser")
+        finally:
+            sys.path.pop(0)
+        self.assertEqual(prov.DEFAULT_DELAY, 2.0)
+
     def test_lcsc_enrich_looks_up_search_direct_in_provider_module(self):
         import importlib
         from unittest import mock

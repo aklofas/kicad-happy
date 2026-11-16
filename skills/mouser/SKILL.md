@@ -213,10 +213,10 @@ inline) are skipped; generic values (`100nF`, `DNP`) are filtered via
 `is_real_mpn()` and de-duplicated. Output defaults to `./datasheets/` in
 the current working directory when `--output` is omitted.
 
-**Rate limiting** — the script waits `--delay` seconds (default 1.0) before
-each API call. One serial worker therefore makes up to about 60 calls a minute,
-and `--parallel N` multiplies that. Check your key's allowance and set
-`--delay` / `--parallel` to stay under it.
+**Rate limiting** — the script waits `--delay` seconds (default 2.0) before
+each API call, so one serial worker stays at Mouser's published 30 calls a
+minute; `--parallel N` multiplies that, and the 1,000-calls-a-day limit still
+applies. Set `--delay` / `--parallel` to stay under your key's allowance.
 
 ### Single Datasheet Download
 

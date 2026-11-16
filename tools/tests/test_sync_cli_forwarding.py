@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[2]
 PROVIDERS = ("digikey", "mouser", "lcsc", "element14")
 BASE = {"input_path": None, "output_dir": None, "force": False, "force_all": False, "parallel": 1,
         "dry_run": False, "as_json": False, "mpn_list": None}
-DELAY = {"digikey": 1.0, "mouser": 1.0, "lcsc": 0.5, "element14": 0.5}
+DELAY = {"digikey": 1.0, "mouser": 2.0, "lcsc": 0.5, "element14": 0.5}
 
 
 def _load(p):
