@@ -12,7 +12,7 @@ import math
 import random
 
 import _core_path  # noqa: F401
-from kicad_core.values import parse_tolerance
+from kicad_core.values import parse_tolerance, parse_value
 
 
 # Default tolerances when not specified in the component value string.
@@ -96,6 +96,52 @@ def find_toleranceable_components(det: dict) -> list:
     return results
 
 
+def _combine(values: list, component_type: str) -> float:
+    """Equivalent value of parallel parts: capacitors add, resistors and inductors as 1/sum(1/x)."""
+    if component_type == "capacitor":
+        return sum(values)
+    return 1.0 / sum(1.0 / v for v in values)
+
+
+def parallel_members(det: dict, components: list, analysis: dict | None) -> dict:
+    """Member values of each parallel arm in ``components``.
+
+    Returns ``{index: [(member_nominal, member_tolerance), ...]}`` for each entry of
+    ``components`` (from find_toleranceable_components) whose part lists more than one
+    ``parallel_refs``, every member is in ``analysis["components"]`` with a value that
+    parses, and the members recombine to the arm's value. Any other arm is left out and
+    samples as one part.
+    """
+    if not isinstance(analysis, dict):
+        return {}
+    by_ref: dict = {}
+    for comp in analysis.get("components") or []:
+        if isinstance(comp, dict) and comp.get("reference") is not None:
+            by_ref.setdefault(comp["reference"], comp)
+    members: dict = {}
+    for idx, (key_path, ctype, nominal, _tol) in enumerate(components):
+        try:
+            part = _get_nested(det, key_path[:-1])
+        except (KeyError, TypeError, IndexError):
+            continue
+        refs = part.get("parallel_refs") if isinstance(part, dict) else None
+        if not isinstance(refs, list) or len(refs) < 2:
+            continue
+        values = []
+        for ref in refs:
+            comp = by_ref.get(ref)
+            value_str = comp.get("value") if comp else None
+            value = parse_value(value_str, ctype) if isinstance(value_str, str) else None
+            if value is None or value <= 0:
+                break
+            values.append((value, resolve_tolerance({"value": value_str}, ctype)))
+        else:
+            combined = _combine([v for v, _ in values], ctype)
+            if abs(combined - nominal) <= 1e-6 * abs(nominal):
+                members[idx] = values
+    return members
+
+
 def _set_nested(d: dict, path: list, value: float):
     """Set a value in a nested dict/list by path."""
     obj = d
@@ -134,8 +180,19 @@ def _recalc_derived(det: dict, det_type: str = None) -> None:
                 seen.add(fn_id)
 
 
+def _draw(nominal: float, tol: float, rng: random.Random, distribution: str) -> float:
+    if distribution == "gaussian":
+        # 3-sigma = tolerance band (99.7% within spec)
+        factor = 1.0 + rng.gauss(0, tol / 3.0)
+    else:
+        factor = 1.0 + rng.uniform(-tol, tol)
+    # Clamp to positive values (component values can't go negative)
+    return max(nominal * factor, nominal * 1e-6)
+
+
 def sample_detection(det: dict, components: list, rng: random.Random,
-                     distribution: str = "gaussian", det_type: str = None) -> dict:
+                     distribution: str = "gaussian", det_type: str = None,
+                     members: dict | None = None) -> dict:
     """Create a deep copy of det with randomized component values.
 
     Args:
@@ -143,20 +200,21 @@ def sample_detection(det: dict, components: list, rng: random.Random,
         components: Output from find_toleranceable_components()
         rng: Seeded random.Random instance for reproducibility
         distribution: "gaussian" (3sigma = tolerance) or "uniform"
+        members: Output from parallel_members(); each listed arm draws one value
+            per member and takes their combination
 
     Returns:
         New dict with perturbed component values and recalculated derived fields
     """
     sampled = copy.deepcopy(det)
+    members = members or {}
 
-    for key_path, _ctype, nominal, tol in components:
-        if distribution == "gaussian":
-            # 3-sigma = tolerance band (99.7% within spec)
-            factor = 1.0 + rng.gauss(0, tol / 3.0)
+    for idx, (key_path, ctype, nominal, tol) in enumerate(components):
+        if idx in members:
+            new_val = _combine([_draw(m_nom, m_tol, rng, distribution)
+                                for m_nom, m_tol in members[idx]], ctype)
         else:
-            factor = 1.0 + rng.uniform(-tol, tol)
-        # Clamp to positive values (component values can't go negative)
-        new_val = max(nominal * factor, nominal * 1e-6)
+            new_val = _draw(nominal, tol, rng, distribution)
         _set_nested(sampled, key_path, new_val)
 
     _recalc_derived(sampled, det_type=det_type)

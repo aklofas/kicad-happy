@@ -346,10 +346,15 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
             # Monte Carlo tolerance analysis
             if monte_carlo_n > 0 and result.get("status") != "skip":
                 from spice_tolerance import (
-                    find_toleranceable_components, sample_detection,
+                    find_toleranceable_components, parallel_members, sample_detection,
                     aggregate_mc_results,
                 )
                 components = find_toleranceable_components(det)
+                members = parallel_members(det, components, analysis_json)
+                for idx, member_values in members.items():
+                    # the row states the widest member tolerance actually sampled
+                    kp, ct, nom, _tol = components[idx]
+                    components[idx] = (kp, ct, nom, max(t for _, t in member_values))
                 if components:
                     mc_results_list = []
                     sampled_values_list = []
@@ -362,7 +367,7 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
                     for _trial in range(monte_carlo_n):
                         sampled_det = sample_detection(
                             det, components, mc_rng, mc_distribution,
-                            det_type=det_type)
+                            det_type=det_type, members=members)
                         mc_result, _mc_elapsed = _run_single_sim(
                             sampled_det, det_type, generator, evaluator,
                             mc_cir, mc_out, mc_log, diagnostics=trial_sink)

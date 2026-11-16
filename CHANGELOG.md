@@ -26,6 +26,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - More `.kicad_dru` files are read as KiCad 10 reads them. A negated or arithmetic bound without a unit (`-0.1`, `2*0.25`, `solder_paste_rel_margin (opt -0.1)`) no longer refuses the file. A bound KiCad cannot read now does: a unit in the wrong case (`0.1MM`), a unit on `via_count`, time units outside `length` and `skew`, bounds in different units, a `min_resolved_spokes` bound, a value without its `(min …)`, a tab or line break inside an expression, a unitless decimal-comma bound such as `(min 0,1)`.
 - A `.kicad_dru` whose condition KiCad cannot parse (a missing operand, unbalanced parentheses, a lone number without a unit, a character outside the expression language), or that uses a text variable the board and project do not define, is refused as KiCad refuses it.
 - A custom rule whose `(layer …)` names a copper layer by the board's own name for it now applies to that layer's tracks, vias and annular rings, not only to holes.
+- Monte Carlo tolerance runs vary each part of a parallel resistor, capacitor or inductor group on its own, at the tolerance in its value, so the reported spread is no longer overstated for paralleled parts.
 
 ### Documentation
 
