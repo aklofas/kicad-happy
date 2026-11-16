@@ -214,6 +214,51 @@ class IdenticalDesignFiles(unittest.TestCase):
         self.assertEqual(len(text.splitlines()), 2)
         self.assertIn("No changes detected.", text)
 
+    def test_grade_line_says_analyzer_change_on_unchanged_design(self):
+        base = _hashed(_pcb(True, 0), "/a/x.kicad_pcb", "h1")
+        head = _hashed(_pcb(True, 0, tracks=12), "/b/x.kicad_pcb", "h1")
+        lines = _run(base, head, "--text").splitlines()
+        self.assertEqual(lines[0], "Design Changes: pcb (analyzer change only; graded minor) \u2014 0 changes")
+        self.assertIn(diff_analysis.ANALYZER_ONLY_NOTE, lines[1])
+
+    def test_regressions_on_unchanged_design_are_not_counted_as_design_regressions(self):
+        base = _hashed(_pcb(True, 0), "/a/x.kicad_pcb", "h1")
+        head = _hashed(_pcb(False, 2), "/b/x.kicad_pcb", "h1")
+        text = _run(base, head, "--text")
+        self.assertEqual(text.splitlines()[0],
+                         "Design Changes: pcb (analyzer change only; graded major) \u2014 0 changes")
+        self.assertNotIn("regression(s) detected", text)
+        self.assertIn("1 change(s) graded as regressions come from the analyzer, not the design:", text)
+        self.assertIn("[MAJOR] Unrouted nets increased: 0 \u2192 2", text)
+        out = _run(base, head)
+        self.assertEqual(out["summary"]["regressions"], 1)
+        self.assertEqual(out["regressions"][0]["category"], "routing")
+
+    def test_different_hash_keeps_the_regression_header(self):
+        base = _hashed(_pcb(True, 0), "/a/x.kicad_pcb", "h1")
+        head = _hashed(_pcb(False, 2), "/b/x.kicad_pcb", "h2")
+        text = _run(base, head, "--text")
+        self.assertIn("\u26a0 1 regression(s) detected:", text)
+        self.assertEqual(text.splitlines()[0], "Design Changes: pcb (major) \u2014 0 changes")
+
+
+class UnsupportedTypes(unittest.TestCase):
+    def test_gerber_and_cross_analysis_keep_exit_1(self):
+        for atype in ("gerber", "cross_analysis"):
+            with tempfile.TemporaryDirectory() as t:
+                paths = []
+                for name in ("b.json", "h.json"):
+                    p = os.path.join(t, name)
+                    with open(p, "w", encoding="utf-8") as fh:
+                        json.dump({"analyzer_type": atype, "findings": []}, fh)
+                    paths.append(p)
+                err = io.StringIO()
+                with redirect_stderr(err), redirect_stdout(io.StringIO()):
+                    rc = diff_analysis.main(paths)
+            self.assertEqual(rc, 1)
+            self.assertIn(atype, err.getvalue())
+            self.assertIn("schematic", err.getvalue())
+
 
 class TextOutput(unittest.TestCase):
     def test_text_output_file_is_utf8_under_an_ascii_locale(self):

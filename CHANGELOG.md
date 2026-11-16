@@ -46,6 +46,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `cross_verify.py` no longer reports board-only footprints (logos, graphics) as orphans or parts excluded from the board as missing; it reports a DNP setting that differs between a symbol and its footprint instead of warning on every DNP part that has a footprint (boards older than KiCad 8 carry no footprint DNP flag and are not compared); and it measures each fitted decoupling capacitor against the nearest fitted IC on its rail instead of reporting every capacitor as not found. A capacitor further than 5 mm warns only when the PCB analysis measured that distance between pads; bulk capacitors (1 µF or more) and distances taken between footprint centres are reported as info.
 - `bom_manager.py` follows sub-sheet file names written with backslashes or project text variables such as `${PROJECTNAME}`, so those sheets' parts are no longer missing from the BOM.
 - `bom_manager.py` reads Value, Footprint, Datasheet and Description in any letter case (the last duplicate wins; Reference keeps the first), as the schematic analyzer reads field names and duplicate fields, so BOM lines no longer split or lose those fields over case.
+- `diff_analysis --text` on two runs of unchanged design files says `analyzer change only` in its first line and lists the analyzer's regressions as analyzer changes instead of design regressions. JSON output and exit codes are unchanged; gerber and cross-analysis outputs still exit 1, with a message naming the outputs it can compare.
 
 ### Documentation
 

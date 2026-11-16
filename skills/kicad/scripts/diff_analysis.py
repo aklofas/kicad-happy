@@ -68,25 +68,32 @@ def format_text(output, same_design=False):
     severity = summary.get("severity", "none")
     total = summary.get("total_changes", 0)
 
-    lines.append(f"Design Changes: {atype} ({severity}) — {total} changes")
-
     regressions = output.get("regressions", [])
 
     # Dicts built without has_changes (older callers) fall back to the count.
     changed = output["has_changes"] if "has_changes" in output else total > 0
     if not changed and not regressions:
+        lines.append(f"Design Changes: {atype} ({severity}) — {total} changes")
         lines.append("  No changes detected.")
         return "\n".join(lines)
 
     if same_design:
+        lines.append(f"Design Changes: {atype} (analyzer change only; "
+                     f"graded {severity}) — {total} changes")
         lines.append(f"  {ANALYZER_ONLY_NOTE}")
+    else:
+        lines.append(f"Design Changes: {atype} ({severity}) — {total} changes")
 
     s = summary
     lines.append(f"  +{s['added']} added, -{s['removed']} removed, ~{s['modified']} modified")
 
     if regressions:
         lines.append("")
-        lines.append(f"\u26a0 {len(regressions)} regression(s) detected:")
+        if same_design:
+            lines.append(f"{len(regressions)} change(s) graded as regressions come "
+                         "from the analyzer, not the design:")
+        else:
+            lines.append(f"\u26a0 {len(regressions)} regression(s) detected:")
         for r in regressions:
             lines.append(f"  [{r['severity'].upper()}] {r['detail']}")
 
@@ -533,7 +540,8 @@ def main(argv: list[str] | None = None) -> int:
         "thermal": diff_thermal,
     }
     if base_type not in diff_funcs and base_type != "deep_review":
-        print(f"Error: no diff function for analyzer type '{base_type}'",
+        print(f"Error: diff_analysis cannot compare '{base_type}' outputs "
+              "(it compares schematic, pcb, emc, spice, thermal and deep_review)",
               file=sys.stderr)
         return 1
 
