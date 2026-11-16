@@ -4723,6 +4723,8 @@ def check_inductor_leakage(pcb: Dict, schematic: Dict) -> List[Dict]:
 
     for ind in sw_inductors:
         for sens in sensitive:
+            if sens['ref'] == ind['ref']:
+                continue
             # EQ-106: Proximity gate — emit ML-001 when d_mm <= 15mm.
             #   The H_field_A_per_m estimate (from EQ-105, assuming I_peak = 1A,
             #   package = 5mm) is reported in the finding, not gated on.

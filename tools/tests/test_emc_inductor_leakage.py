@@ -44,6 +44,11 @@ class RfChainComponentShapes(unittest.TestCase):
         sch, pcb = _inputs(["U2"])
         self.assertEqual(check_inductor_leakage(pcb, sch), [])
 
+    def test_inductor_in_the_chain_is_not_paired_with_itself(self):
+        sch, pcb = _inputs(["U1", "L2"])
+        self.assertEqual([f["components"] for f in check_inductor_leakage(pcb, sch)],
+                         [["L2", "U1"]])
+
     def test_full_rule_run_does_not_crash(self):
         sch, pcb = _inputs(["U1", "U2"])
         self.assertEqual([f["components"] for f in _ml001(run_all_checks(sch, pcb))],
