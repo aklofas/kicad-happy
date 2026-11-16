@@ -1,6 +1,6 @@
 # tools/tests/test_ov001_supply_pins.py
 """OV-001 compares a part's supply pins, not its signal pins, with the datasheet's supply minimum."""
-import shutil, sys, tempfile, unittest
+import hashlib, json, sys, tempfile, unittest
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -18,8 +18,13 @@ def _ov001(vin):
     with tempfile.TemporaryDirectory() as td:
         cache = Path(td) / "extracted"
         cache.mkdir()
-        shutil.copy(ROOT / "skills" / "datasheets" / "examples" / "lm2596-adj.json",
-                    cache / "LM2596S-ADJ.json")
+        # A current extraction: its PDF sits in the project and matches the recorded hash.
+        pdf = Path(td) / "LM2596-ADJ.pdf"
+        pdf.write_bytes(b"%PDF-1.4\n")
+        ext = json.loads((ROOT / "skills" / "datasheets" / "examples" / "lm2596-adj.json")
+                         .read_text(encoding="utf-8"))
+        ext["source"]["sha256"] = "sha256:" + hashlib.sha256(pdf.read_bytes()).hexdigest()
+        (cache / "LM2596S-ADJ.json").write_text(json.dumps(ext), encoding="utf-8")
         ctx = SimpleNamespace(
             components=[{"reference": "U1", "type": "ic", "value": "LM2596S-ADJ",
                          "mpn": "LM2596S-ADJ"}],

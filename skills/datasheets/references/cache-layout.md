@@ -130,8 +130,9 @@ The rest of the lifecycle is the caller's job:
 Staleness is an advisory signal exposed via `DatasheetFacts.stale`;
 consumers decide what to do:
 
-- Detectors: the regulator detector skips stale or low-score facts; the
-  lookup detectors do not read `stale` yet.
+- Detectors: the regulator detector and the lookup detectors
+  (AM/OV/TJ/FT/EX/PM) skip a stale extraction and one scored below 60 or
+  not scored.
 - Extraction: nothing re-extracts a stale entry automatically; refresh it
   by hand (Manual refresh, above).
 - Dict helpers (`datasheet_features.py`): return the dict either way, with

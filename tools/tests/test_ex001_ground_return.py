@@ -43,7 +43,8 @@ def _ctx(extra_ground_cap=False):
 
 
 def _run(ctx):
-    facts = SimpleNamespace(regulator=SimpleNamespace(cin_min=None, cout_min=["x"],
+    facts = SimpleNamespace(quality=90, stale=False,
+                            regulator=SimpleNamespace(cin_min=None, cout_min=["x"],
                                                       inductor_range=None))
     regs = [{"ref": "U1", "mpn": "TPS1", "output_rail": "+3V3", "input_rail": None}]
     with patch.object(lookup_detectors, "get_facts", lambda *a, **k: facts), \

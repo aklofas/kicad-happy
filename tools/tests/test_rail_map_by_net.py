@@ -57,7 +57,8 @@ def _load_facts(mpn, **_kw):
         return None
     vin_max = SpecValue(unit="V", evidence=Evidence(page=1, confidence="high", method="table"), max=4.0)
     pin = SimpleNamespace(numbers=["1"], name="VIN", power_domain="VIN", absolute_max=None)
-    return SimpleNamespace(base=SimpleNamespace(absolute_max={"VIN_max": [vin_max]}, pinout=[pin]))
+    return SimpleNamespace(quality=90, stale=False,
+                           base=SimpleNamespace(absolute_max={"VIN_max": [vin_max]}, pinout=[pin]))
 
 
 class RailMapByNet(unittest.TestCase):
@@ -95,7 +96,8 @@ class RailMapByNet(unittest.TestCase):
                 return None
             pin = SimpleNamespace(numbers=["1"], name="VIN", power_domain="VIN",
                                   absolute_max=[vin_max])
-            return SimpleNamespace(base=SimpleNamespace(absolute_max={}, pinout=[pin]))
+            return SimpleNamespace(quality=90, stale=False,
+                                   base=SimpleNamespace(absolute_max={}, pinout=[pin]))
         ctx = _ctx()
         topo = detect_topologies(ctx)
         with patch.object(lookup_detectors, "get_facts", side_effect=facts):

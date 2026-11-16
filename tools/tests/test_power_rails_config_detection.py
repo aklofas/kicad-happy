@@ -87,7 +87,8 @@ def _load_facts(mpn, **_kw):
     vin_max = SpecValue(unit="V", evidence=Evidence(page=1, confidence="high", method="table"), max=3.6)
     pin = SimpleNamespace(numbers=["1"], name="VIN", power_domain="VIN", absolute_max=None,
                           is_5v_tolerant=None)
-    return SimpleNamespace(base=SimpleNamespace(absolute_max={"VIN_max": [vin_max]}, pinout=[pin],
+    return SimpleNamespace(quality=90, stale=False,
+                           base=SimpleNamespace(absolute_max={"VIN_max": [vin_max]}, pinout=[pin],
                                                 recommended_operating=None))
 
 

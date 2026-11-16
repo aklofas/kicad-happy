@@ -28,13 +28,18 @@ import logging
 from typing import Optional
 
 from finding_schema import make_finding
-from lookup_helpers import get_facts, has_data, best
+from lookup_helpers import get_facts, has_data, best, facts_trusted
 
 
 log = logging.getLogger(__name__)
 
 
 # Synonym tables for rail-key resolution. Order matters: first match wins.
+# A named supply domain reads its own spellings, then the part-level VDD/VCC
+# rating; it never takes another named domain's limit (VDDIO's for VDDA).
+_SUPPLY_GROUPS = (("VDDA", "AVDD"), ("VDDIO",), ("VDDD", "DVDD"),
+                  ("VCC_single_supply", "VCC_dual_supply"))
+_GENERIC_SUPPLY = ("VDD", "VCC")
 VDD_SYNONYMS = ("VDD", "VCC", "VDDA", "VDDIO", "VCC_dual_supply",
                 "VCC_single_supply", "VDDD", "AVDD", "DVDD")
 TJ_SYNONYMS = ("TJ", "TJ_max", "TJmax", "Tj", "Tj_max")
@@ -57,14 +62,12 @@ def _resolve_key(block: Optional[dict], synonyms) -> Optional[list]:
 
 
 def _candidate_synonyms(domain: Optional[str], base_synonyms: tuple) -> tuple:
-    """Build a synonym tuple that prefers the pin's declared domain first,
-    then falls back to the base synonym set."""
+    """Build a synonym tuple for the pin's declared domain: the domain, its
+    other spellings, then the part-level VDD/VCC. No domain → base_synonyms."""
     if not domain:
         return base_synonyms
-    if domain in base_synonyms:
-        # Move declared domain to the front
-        return (domain,) + tuple(s for s in base_synonyms if s != domain)
-    return (domain,) + base_synonyms
+    same = next((g for g in _SUPPLY_GROUPS if domain in g), ())
+    return tuple(dict.fromkeys((domain,) + same + _GENERIC_SUPPLY))
 
 
 def _connected_net(ctx, ref: str, pin_numbers) -> Optional[str]:
@@ -106,7 +109,7 @@ def detect_absolute_max_violations(ctx, rail_voltages: dict) -> list[dict]:
         if not ref or not mpn:
             continue
         facts = get_facts(mpn, cache_dir=cache_dir, diagnostics=getattr(ctx, "diagnostics", None))
-        if facts is None:
+        if facts is None or not facts_trusted(facts):
             continue
         base = getattr(facts, "base", None)
         if base is None:
@@ -207,7 +210,7 @@ def detect_vcc_outside_recommended(ctx, rail_voltages: dict) -> list[dict]:
         if not ref or not mpn:
             continue
         facts = get_facts(mpn, cache_dir=cache_dir, diagnostics=getattr(ctx, "diagnostics", None))
-        if facts is None:
+        if facts is None or not facts_trusted(facts):
             continue
         base = getattr(facts, "base", None)
         if base is None:
@@ -322,7 +325,7 @@ def detect_tj_exceeds_max(assessments, *, source, cache_dir, diagnostics=None) -
         if not ref or not mpn:
             continue
         facts = get_facts(mpn, cache_dir=cache_dir, diagnostics=diagnostics)
-        if facts is None:
+        if facts is None or not facts_trusted(facts):
             continue
         base = getattr(facts, "base", None)
         if base is None:
@@ -413,7 +416,7 @@ def detect_5v_on_non_tolerant_pin(ctx, rail_voltages: dict) -> list[dict]:
         if not ref or not mpn:
             continue
         facts = get_facts(mpn, cache_dir=cache_dir, diagnostics=getattr(ctx, "diagnostics", None))
-        if facts is None:
+        if facts is None or not facts_trusted(facts):
             continue
         base = getattr(facts, "base", None)
         if base is None:
@@ -511,7 +514,7 @@ def detect_wrong_signal_type(ctx) -> list[dict]:
         if not ref or not mpn:
             continue
         facts = get_facts(mpn, cache_dir=cache_dir, diagnostics=getattr(ctx, "diagnostics", None))
-        if facts is None:
+        if facts is None or not facts_trusted(facts):
             continue
         base = getattr(facts, "base", None)
         if base is None:
@@ -620,7 +623,7 @@ def detect_missing_required_components(ctx, power_regulators: list) -> list[dict
         if not ref or not mpn:
             continue
         facts = get_facts(mpn, cache_dir=cache_dir, diagnostics=getattr(ctx, "diagnostics", None))
-        if facts is None:
+        if facts is None or not facts_trusted(facts):
             continue
         regulator = getattr(facts, "regulator", None)
         if regulator is None:
