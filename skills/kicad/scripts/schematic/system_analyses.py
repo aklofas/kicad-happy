@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import math
 import re
+import sys
 from kicad_core.diagnostics import record
 from kicad_core.classify import is_active_low_enable, is_touch_pad
 from kicad_types import (
@@ -778,31 +779,24 @@ def analyze_voltage_derating(ctx: AnalysisContext, signal_analysis: dict,
         if not project_dir or not mpn:
             return None
         try:
-            from datasheet_types.cache_reader import read_json_object, safe_extract_dir
-            from distributor_core.manifest import manifest_file_path
+            from datasheet_types.cache_reader import safe_extract_dir
         except ImportError:     # no datasheet_types, no extraction cache
             return None
         extracted_dir = safe_extract_dir(Path(project_dir) / "datasheets" / "extracted")
         if extracted_dir is None:
             return None
-        sanitized = re.sub(r'[^A-Za-z0-9_]', '_', mpn.strip())
-        extract_path = extracted_dir / f"{sanitized}.json"
-        if not extract_path.exists():
-            # Prefer manifest.json, fall back to legacy index.json
-            idx_path = extracted_dir / "manifest.json"
-            if not idx_path.exists():
-                idx_path = extracted_dir / "index.json"
-            if idx_path.exists():
-                idx = read_json_object(idx_path) or {}
-                exts = idx.get("extractions")
-                for k, v in (exts.items() if isinstance(exts, dict) else ()):
-                    if k.upper() == sanitized.upper():
-                        extract_path = manifest_file_path(
-                            extracted_dir, v.get("file") if isinstance(v, dict) else None)
-                        break
-            if extract_path is None or not extract_path.exists():
-                return None
-        data = read_json_object(extract_path)
+        ds_scripts = str(Path(__file__).resolve().parents[3] / "datasheets" / "scripts")
+        if ds_scripts not in sys.path:
+            sys.path.insert(0, ds_scripts)
+        try:
+            from datasheet_extract_cache import find_extraction
+        except ImportError:
+            return None
+        # v1.4 extractions keep abs-max ratings per supply domain (AM-001 reads them), not
+        # as the part-level absolute_maximum_ratings this check uses.
+        data, extract_path = find_extraction(extracted_dir, mpn, v14_first=False)
+        if extract_path is None:
+            return None
         if data is None:
             record(getattr(ctx, "diagnostics", None),
                    "schematic.system_analyses.analyze_voltage_derating",

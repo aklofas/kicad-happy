@@ -55,11 +55,11 @@ def _derating_ctx(refs=("U1",)):
         rail_source_fields=lambda *a: {}, diagnostics=[])
 
 
-def _derating_vin_max(project_dir):
-    """abs_max_vin of the VD-002 finding analyze_voltage_derating gives an XA100 on a 12 V rail."""
+def _derating_vin_max(project_dir, mpn="XA100"):
+    """abs_max_vin of the VD-002 finding analyze_voltage_derating gives an *mpn* on a 12 V rail."""
     from schematic.system_analyses import analyze_voltage_derating
     ctx = SimpleNamespace(
-        components=[{"type": "ic", "reference": "U1", "value": "XA100", "mpn": "XA100",
+        components=[{"type": "ic", "reference": "U1", "value": mpn, "mpn": mpn,
                      "pins": [{"number": "1"}]}],
         nets={}, pin_net={("U1", "1"): ("+12V", None)},
         is_power_net=lambda n: n == "+12V", is_ground=lambda n: False,
@@ -161,6 +161,42 @@ class UnreadableExtractionTest(unittest.TestCase):
         findings, diags = self._run(None)
         self.assertEqual([f["abs_max_vin"] for f in findings], [5])
         self.assertEqual(diags, [])
+
+
+class VoltageDeratingCacheLookupTest(unittest.TestCase):
+    """The voltage-derating abs-max reader finds an extraction the way the other readers do."""
+
+    def test_voltage_derating_reads_a_cache_manager_entry(self):
+        import datasheet_extract_cache as dec
+        with tempfile.TemporaryDirectory() as tmp:
+            dec.cache_extraction(Path(tmp) / "datasheets" / "extracted", "LM1117-3.3",
+                                 {"mpn": "LM1117-3.3", "absolute_maximum_ratings": {"vin_max_v": 5}})
+            self.assertEqual(_derating_vin_max(tmp, "LM1117-3.3"), [5])
+
+    def test_voltage_derating_refuses_another_parts_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ex = Path(tmp) / "datasheets" / "extracted"
+            ex.mkdir(parents=True)
+            (ex / "BAV99_215.json").write_text(json.dumps(
+                {"mpn": "BAV99/215", "absolute_maximum_ratings": {"vin_max_v": 5}}), encoding="utf-8")
+            self.assertEqual(_derating_vin_max(tmp, "BAV99-215"), [])
+            self.assertEqual(_derating_vin_max(tmp, "BAV99/215"), [5])
+
+    def test_voltage_derating_reads_a_file_named_after_the_part(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ex = Path(tmp) / "datasheets" / "extracted"
+            ex.mkdir(parents=True)
+            (ex / "LM1117_3_3.json").write_text(json.dumps(
+                {"absolute_maximum_ratings": {"vin_max_v": 5}}), encoding="utf-8")
+            self.assertEqual(_derating_vin_max(tmp, "LM1117-3.3"), [5])
+
+    def test_voltage_derating_does_not_read_a_v14_extraction(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ex = Path(tmp) / "datasheets" / "extracted"
+            ex.mkdir(parents=True)
+            (ex / "LM1117-3.3.json").write_text(json.dumps(
+                {"base": {"absolute_max": {"VIN_max": [{"max": 5}]}}}), encoding="utf-8")
+            self.assertEqual(_derating_vin_max(tmp, "LM1117-3.3"), [])
 
 
 class ManifestFileEscapeTest(unittest.TestCase):
