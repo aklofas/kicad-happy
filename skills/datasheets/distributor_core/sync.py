@@ -12,15 +12,18 @@ progress and errors go to stderr.
 A ``not_found`` or ``failed`` whose search or download failed in transport
 (``distributor_core.download`` records it) is stored as ``error`` so the next run retries it, and
 any result but ``ok`` keeps an ``ok`` entry whose file is still on disk, as does an ``ok``
-refresh that verifies as a different part and was saved under another name. A failure names
-the distributors that gave it (``failed_providers``); only those skip it on the next run.
+refresh that verifies as a different part: a refresh of such an entry downloads into a staging
+folder and replaces the old file only once the new one verifies. A failure names the
+distributors that gave it (``failed_providers``); only those skip it on the next run.
 
 Imports ``distributor_core.inputs``/``manifest``/``download`` and the stdlib only; never a provider.
 """
 
 import json
 import os
+import shutil
 import sys
+import tempfile
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -43,13 +46,14 @@ from distributor_core.manifest import (
 )
 
 
-def _outage_entry(result: dict, previous: dict, out_dir: Path) -> tuple[dict, dict]:
+def _outage_entry(result: dict, previous: dict, out_dir: Path, staged: bool = False) -> tuple[dict, dict]:
     """(entry to store, result to report) for one part. A ``not_found`` or ``failed`` caused by
     a network failure, a rate limit or refused access is not an answer: report it as ``error``
     (not a skipped previous failure, so the next run retries), with the distributor's own message
     after it. Any result but ``ok`` keeps a previous ``ok`` entry whose file is still on disk:
     one distributor not listing the part, or listing it without a datasheet, does not void the
-    datasheet already found."""
+    datasheet already found. With ``staged`` the new file is still in its staging folder, so a
+    refresh that looks like a different part keeps the old file even under the same name."""
     outage = take_transport_failure()
     if outage is not None and result.get("status") in ("not_found", "failed"):
         said = result.get("error")
@@ -60,8 +64,7 @@ def _outage_entry(result: dict, previous: dict, out_dir: Path) -> tuple[dict, di
         if (result.get("verification") == "wrong" and previous.get("status") == "ok"
                 and previous.get("verification") != "wrong"
                 and prev_file is not None and prev_file.is_file()
-                and not _same_file(out_dir, result.get("file"), previous.get("file"))):
-            # With the same name the old file is already overwritten, so only this case can keep it
+                and (staged or not _same_file(out_dir, result.get("file"), previous.get("file")))):
             return previous, {**result, "status": "failed",
                               "error": f"refreshed datasheet {result['file']} looks like a different "
                                        f"part; kept {previous['file']}"}
@@ -186,19 +189,41 @@ def _replaced_file(run, part_key: str, previous: dict, stored: dict) -> Path | N
     return old
 
 
-def _record(run, part, outcome) -> None:
+def _keeps_ok(out_dir: Path, previous: dict) -> bool:
+    """Whether a refresh must leave the entry's file alone until the new one verifies: a verified
+    ``ok`` entry whose file is on disk."""
+    prev_file = manifest_file_path(out_dir, previous.get("file", ""))
+    return (previous.get("status") == "ok" and previous.get("verification") != "wrong"
+            and prev_file is not None and prev_file.is_file())
+
+
+def _record(run, part, outcome, stage: Path | None = None) -> None:
     """Store one part's outcome in the manifest, count it, print its progress line and save the
     index. Callers hold ``run.lock`` when several workers run. It must run on the thread that
-    fetched the part: the transport failure it reads is recorded per thread."""
+    fetched the part: the transport failure it reads is recorded per thread. ``stage`` is the
+    folder the part was downloaded into, when not the output folder; a staged file that is
+    stored moves into the output folder."""
     part_key = part["_key"]
     previous = run.index.get("parts", {}).get(part_key, {})
-    stored, result = _outage_entry(outcome, previous, run.out_dir)
+    staged = None
+    if stage is not None and outcome.get("status") == "ok":
+        staged = manifest_file_path(stage, outcome.get("file"))
+        if staged is not None and not staged.is_file():
+            staged = None
+    stored, result = _outage_entry(outcome, previous, run.out_dir, staged=staged is not None)
+    if staged is not None and stored is result:
+        try:
+            os.replace(staged, run.out_dir / staged.name)
+        except OSError as exc:  # Windows: the old file is open in a viewer
+            stored, result = previous, {**result, "status": "failed",
+                                        "error": f"cannot save {staged.name}: {exc}; kept {previous['file']}"}
     if stored is result:
         stored = result = _attributed(result, previous, run.provider_name)
     run.index.setdefault("parts", {})[part_key] = stored
     if stored is not result:
         run.kept_errors[part_key] = result["error"]
-        replaced = _replaced_file(run, part_key, outcome, stored) if outcome.get("status") == "ok" else None
+        replaced = (_replaced_file(run, part_key, outcome, stored)
+                    if outcome.get("status") == "ok" and staged is None else None)
     else:
         replaced = (_replaced_file(run, part_key, previous, stored)
                     if previous.get("status") == "ok" else None)
@@ -391,10 +416,10 @@ def sync_datasheets(
     run = _Run(provider_name=provider.NAME, out_dir=out_dir, index=index, index_path=index_path,
                source=str(mpn_list or input_path), total=len(to_download))
 
-    def _fetch(part):
+    def _fetch(part, stage):
         take_transport_failure()
         try:
-            return provider.sync_one_part(part, out_dir, delay, ctx)
+            return provider.sync_one_part(part, stage or out_dir, delay, ctx)
         except Exception as exc:
             return {"manufacturer": part.get("manufacturer", ""),
                     "description": part.get("description", ""),
@@ -403,15 +428,26 @@ def sync_datasheets(
                     "error": f"{provider.NAME} sync failed: {type(exc).__name__}: {exc}",
                     "last_attempt": datetime.now(timezone.utc).isoformat()}
 
+    def _sync_part(part):
+        # A refresh of a verified datasheet downloads beside it, so a crash or a wrong part
+        # leaves the old file in place
+        previous = index.get("parts", {}).get(part["_key"], {})
+        stage = Path(tempfile.mkdtemp(prefix=".sync-", dir=out_dir)) if _keeps_ok(out_dir, previous) else None
+        try:
+            outcome = _fetch(part, stage)
+            with run.lock:
+                _record(run, part, outcome, stage)
+        finally:
+            if stage is not None:
+                shutil.rmtree(stage, ignore_errors=True)
+
     if parallel > 1:
         def _process_part(part):
             with run.lock:
                 run.counter += 1
                 n = run.counter
             print(f"[{n}/{run.total}] {part['_key']}", file=sys.stderr)
-            outcome = _fetch(part)
-            with run.lock:
-                _record(run, part, outcome)
+            _sync_part(part)
 
         with ThreadPoolExecutor(max_workers=parallel) as executor:
             for _ in executor.map(_process_part, to_download):
@@ -419,7 +455,7 @@ def sync_datasheets(
     else:
         for i, part in enumerate(to_download):
             print(f"[{i+1}/{run.total}] {part['_key']}", file=sys.stderr)
-            _record(run, part, _fetch(part))
+            _sync_part(part)
 
     downloaded, failed = run.downloaded, run.failed
     kept_errors, warnings = run.kept_errors, run.warnings

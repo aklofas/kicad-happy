@@ -489,13 +489,13 @@ class SyncDownloadFailureTest(unittest.TestCase):
     OK = {"file": "LM358DR.pdf", "status": "ok", "datasheet_url": "https://x/old.pdf",
           "references": ["U1"], "size_bytes": len(GOOD)}
 
-    def _force_all(self, d, outcome, *, extra=None):
+    def _force_all(self, d, outcome, *, extra=None, **kw):
         out = Path(d) / "out"
         out.mkdir(exist_ok=True)
         (out / "LM358DR.pdf").write_bytes(GOOD)
         parts = {"LM358DR": self.OK, **(extra or {})}
         (out / "manifest.json").write_text(json.dumps({"parts": parts}), encoding="utf-8")
-        r, m = self._sync(d, _provider(outcome), force_all=True)
+        r, m = self._sync(d, _provider(outcome), force_all=True, **kw)
         return out, r, m["parts"]["LM358DR"]
 
     def test_force_all_failed_refresh_keeps_a_present_ok_entry(self):
@@ -566,11 +566,112 @@ class SyncDownloadFailureTest(unittest.TestCase):
             self.assertEqual(entry["file"], "LM358DR_new.pdf")
             self.assertFalse((out / "LM358DR.pdf").exists())
 
-    def test_force_all_wrong_part_with_the_same_name_stores_the_new_entry(self):
+    @staticmethod
+    def _ok_into(name, verification=None, seen=None):
+        """A provider that downloads into the folder the sync hands it, as the real ones do."""
+        def outcome(p, out_dir, *a):
+            if seen is not None:
+                seen.append(Path(out_dir))
+            (Path(out_dir) / name).write_bytes(GOOD + b"new")
+            entry = {"manufacturer": "", "description": "", "value": p["value"],
+                     "references": p["references"], "status": "ok", "file": name,
+                     "size_bytes": len(GOOD) + 3, "datasheet_url": "https://x/new.pdf"}
+            if verification:
+                entry["verification"] = verification
+            return entry
+        return outcome
+
+    def test_force_all_wrong_part_with_the_same_name_keeps_the_ok_entry(self):
+        for parallel in (1, 2):
+            with self.subTest(parallel=parallel), tempfile.TemporaryDirectory() as d:
+                out, r, entry = self._force_all(d, self._ok_into("LM358DR.pdf", "wrong"), parallel=parallel)
+                self.assertEqual(entry, self.OK)
+                self.assertEqual((out / "LM358DR.pdf").read_bytes(), GOOD)
+                self.assertEqual(r["failed"], 1)
+                self.assertIn("kept LM358DR.pdf", self.stderr.getvalue())
+                self.assertEqual(sorted(p.name for p in out.iterdir()), ["LM358DR.pdf", "manifest.json"])
+
+    def test_force_all_verified_refresh_with_the_same_name_replaces_the_file(self):
+        for verification in ("likely", "verified"):
+            with self.subTest(verification=verification), tempfile.TemporaryDirectory() as d:
+                out, r, entry = self._force_all(d, self._ok_into("LM358DR.pdf", verification))
+                self.assertEqual(entry["verification"], verification)
+                self.assertEqual(entry["datasheet_url"], "https://x/new.pdf")
+                self.assertEqual((out / "LM358DR.pdf").read_bytes(), GOOD + b"new")
+                self.assertEqual(r["downloaded"], 1)
+                self.assertEqual(sorted(p.name for p in out.iterdir()), ["LM358DR.pdf", "manifest.json"])
+
+    def test_force_all_staged_refresh_with_another_name(self):
         with tempfile.TemporaryDirectory() as d:
-            out, _, entry = self._force_all(d, self._ok_as(d, "LM358DR.pdf", "wrong"))
-            self.assertEqual(entry["verification"], "wrong")
+            out, _, entry = self._force_all(d, self._ok_into("LM358DR_new.pdf", "wrong"))
+            self.assertEqual(entry, self.OK)
+            self.assertEqual(sorted(p.name for p in out.iterdir()), ["LM358DR.pdf", "manifest.json"])
+        with tempfile.TemporaryDirectory() as d:
+            out, _, entry = self._force_all(d, self._ok_into("LM358DR_new.pdf", "likely"))
+            self.assertEqual(entry["file"], "LM358DR_new.pdf")
+            self.assertEqual(sorted(p.name for p in out.iterdir()), ["LM358DR_new.pdf", "manifest.json"])
+
+    def test_force_all_verified_refresh_that_cannot_replace_the_file_keeps_it(self):
+        # Windows refuses to replace a PDF that a viewer holds open
+        from distributor_core import sync
+        real_replace = os.replace
+
+        def replace(src, dst):
+            if ".sync-" in str(src):
+                raise PermissionError(13, "The process cannot access the file")
+            return real_replace(src, dst)
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(sync.os, "replace", replace):
+            out, r, entry = self._force_all(d, self._ok_into("LM358DR.pdf", "likely"))
+            self.assertEqual(entry, self.OK)
+            self.assertEqual((out / "LM358DR.pdf").read_bytes(), GOOD)
+            self.assertEqual(r["failed"], 1)
+            self.assertIn("kept LM358DR.pdf", self.stderr.getvalue())
+            self.assertEqual(sorted(p.name for p in out.iterdir()), ["LM358DR.pdf", "manifest.json"])
+
+    def test_force_all_same_name_replaces_an_entry_that_was_already_wrong(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.OK = {**SyncDownloadFailureTest.OK, "verification": "wrong"}
+            out, _, entry = self._force_all(d, self._ok_into("LM358DR.pdf", "wrong"))
+            self.assertEqual(entry["datasheet_url"], "https://x/new.pdf")
             self.assertEqual((out / "LM358DR.pdf").read_bytes(), GOOD + b"new")
+
+    def test_download_without_a_verified_file_goes_straight_to_the_folder(self):
+        seen = []
+        with tempfile.TemporaryDirectory() as d:
+            _, m = self._sync(d, _provider(self._ok_into("LM358DR.pdf", seen=seen)))
+            self.assertEqual(seen, [Path(d) / "out"])
+            self.assertEqual(m["parts"]["LM358DR"]["status"], "ok")
+            ok = {"file": "LM358DR.pdf", "status": "ok", "references": ["U1"]}
+            (Path(d) / "out" / "LM358DR.pdf").unlink()
+            (Path(d) / "out" / "manifest.json").write_text(json.dumps({"parts": {"LM358DR": ok}}), encoding="utf-8")
+            self._sync(d, _provider(self._ok_into("LM358DR.pdf", seen=seen)), force_all=True)
+            self.assertEqual(seen, [Path(d) / "out"] * 2)
+
+    def test_force_all_refresh_of_two_parts_sharing_a_file_keeps_it(self):
+        # One PDF named by two entries: the part that moves to a new name leaves it to the other,
+        # which keeps it because its refresh looks like a different part.
+        def bom(d):
+            p = Path(d) / "bom.json"
+            p.write_text(json.dumps({"bom": [
+                {"mpn": "LM358DR", "references": ["U1"], "value": "LM358DR", "type": "ic"},
+                {"mpn": "LM358DT", "references": ["U2"], "value": "LM358DT", "type": "ic"}]}), encoding="utf-8")
+            return str(p)
+        ok_new, wrong_same = self._ok_into("LM358DR_new.pdf", "likely"), self._ok_into("shared.pdf", "wrong")
+
+        def outcome(p, *a):
+            return (ok_new if p["_key"] == "LM358DR" else wrong_same)(p, *a)
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(self, "_bom", bom):
+            out = Path(d) / "out"
+            out.mkdir()
+            (out / "shared.pdf").write_bytes(GOOD)
+            shared = {"file": "shared.pdf", "status": "ok", "references": ["U1"]}
+            (out / "manifest.json").write_text(json.dumps({"parts": {"LM358DR": shared, "LM358DT": shared}}),
+                                               encoding="utf-8")
+            r, m = self._sync(d, _provider(outcome), force_all=True, parallel=4)
+            self.assertEqual(m["parts"]["LM358DR"]["file"], "LM358DR_new.pdf")
+            self.assertEqual(m["parts"]["LM358DT"], shared)
+            self.assertEqual((out / "shared.pdf").read_bytes(), GOOD)
+            self.assertEqual(sorted(p.name for p in out.iterdir()), ["LM358DR_new.pdf", "manifest.json", "shared.pdf"])
 
     def test_force_all_wrong_part_replaces_an_entry_that_was_already_wrong(self):
         with tempfile.TemporaryDirectory() as d:
