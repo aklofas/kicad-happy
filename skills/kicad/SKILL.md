@@ -303,7 +303,7 @@ The `findings` list is the single authoritative source for all findings. Use `fi
 All analyzers support `--text` (report on stdout; a JSON destination given with it is still written), `--analysis-dir`
 (run-folder output, preferred) and `--output` (one JSON file). Pass only one
 JSON destination: given both, every analyzer writes only `--output` (the
-`capability_mode.json` sidecar still goes to `--analysis-dir`).
+`capability_mode.json` sidecar still goes to `--analysis-dir`). `fab_release_gate.py` is not an analyzer and takes no `--analysis-dir`: pass the JSON files with `--schematic` and `--pcb` (required), `--gerbers`, `--thermal`, `--emc`; `--text`, `--strict` (warnings fail), `--output`.
 
 ### Stage and Audience Filtering
 

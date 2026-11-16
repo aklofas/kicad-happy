@@ -55,6 +55,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 ### Documentation
 
 - The SPICE report section is called Simulation Results, and passing benches are described as within tolerance or measured rather than confirmed.
+- The kicad skill instructions list `fab_release_gate.py`'s own flags; it takes the analyzer JSON files, not `--analysis-dir`.
 
 ## v3.0.2 — 2026-11-15
 
