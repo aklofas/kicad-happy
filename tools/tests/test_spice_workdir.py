@@ -183,6 +183,42 @@ class WorkdirTest(unittest.TestCase):
             self.assertEqual(os.listdir(target), [])
 
 
+@unittest.skipIf(os.name == "nt", "needs symlinks")
+class WorkdirWithoutSimulatorTest(unittest.TestCase):
+    """The workdir is checked before the simulator is looked for."""
+
+    def _run(self, tmp, workdir):
+        empty_bin = os.path.join(tmp, "bin")
+        os.makedirs(empty_bin)
+        env = {k: v for k, v in os.environ.items()
+               if k not in ("NGSPICE_PATH", "LTSPICE_PATH", "XYCE_PATH", "SPICE_SIMULATOR")}
+        env["PATH"] = empty_bin
+        return subprocess.run(
+            [sys.executable, str(SPICE / "simulate_subcircuits.py"),
+             _analysis(tmp), "--workdir", workdir, "--compact"],
+            capture_output=True, text=True, env=env)
+
+    def test_symlinked_workdir_is_refused_without_a_simulator(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = os.path.join(tmp, "target")
+            os.makedirs(target)
+            link = os.path.join(tmp, "link")
+            os.symlink(target, link)
+            r = self._run(tmp, link)
+            self.assertEqual(r.returncode, 1, r.stderr)
+            self.assertIn("symlink", r.stderr)
+            self.assertNotIn("no SPICE simulator", r.stderr)
+            self.assertEqual(os.listdir(target), [])
+
+    def test_plain_workdir_without_a_simulator_still_says_so(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            new = os.path.join(tmp, "new")
+            r = self._run(tmp, new)
+            self.assertEqual(r.returncode, 1, r.stderr)
+            self.assertIn("no SPICE simulator found", r.stderr)
+            self.assertFalse(os.path.exists(new))
+
+
 class AutoWorkdirCleanupTest(unittest.TestCase):
     """The temp folder a run creates for itself is removed at exit; a --workdir is kept."""
 

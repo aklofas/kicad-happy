@@ -631,6 +631,11 @@ def main(argv: list[str] | None = None) -> int:
     if not input_path:
         parser.error("one of --schematic / positional input / --analysis-dir is required")
 
+    if workdir and os.path.islink(workdir):
+        print(f"Error: workdir {workdir} is a symlink; refusing to write SPICE files "
+              f"through it.", file=sys.stderr)
+        return 1
+
     # Detect simulator
     from spice_simulator import SimulatorBackend, detect_simulator
     simulator_backend = detect_simulator(args.simulator)
@@ -696,11 +701,6 @@ def main(argv: list[str] | None = None) -> int:
         from spice_model_cache import ModelOptions
         model_options = ModelOptions(cache_dir=args.model_cache_dir, offline=args.offline,
                                      trust_project_models=trust_project_models)
-
-    if workdir and os.path.islink(workdir):
-        print(f"Error: workdir {workdir} is a symlink; refusing to write SPICE files "
-              f"through it.", file=sys.stderr)
-        return 1
 
     # Run simulations
     report = simulate_subcircuits(

@@ -27,6 +27,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A `.kicad_dru` whose condition KiCad cannot parse (a missing operand, unbalanced parentheses, a lone number without a unit, a character outside the expression language), or that uses a text variable the board and project do not define, is refused as KiCad refuses it.
 - A custom rule whose `(layer …)` names a copper layer by the board's own name for it now applies to that layer's tracks, vias and annular rings, not only to holes.
 - Monte Carlo tolerance runs vary each part of a parallel resistor, capacitor or inductor group on its own, at the tolerance in its value, so the reported spread is no longer overstated for paralleled parts.
+- `simulate_subcircuits.py` refuses a symlinked `--workdir` even when no simulator is installed, instead of reporting the missing simulator first.
 
 ### Documentation
 
