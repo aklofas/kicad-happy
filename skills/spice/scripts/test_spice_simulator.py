@@ -421,25 +421,6 @@ class TestExternalDeckCli(unittest.TestCase):
         )
         self.assertEqual(code, 0, stderr)
 
-    def test_result_mode_honors_umask_or_keeps_existing_mode(self):
-        result_path = Path(self.tempdir.name) / "result.json"
-        real_chmod = os.chmod
-        modes = []
-
-        def record_chmod(path, mode):
-            modes.append(mode)
-            real_chmod(path, mode)
-
-        with (
-            patch("run_external_deck.os.umask", return_value=0o027),
-            patch("run_external_deck.os.chmod", side_effect=record_chmod),
-        ):
-            self._write_result(result_path)
-            existing_mode = stat.S_IMODE(result_path.stat().st_mode)
-            self._write_result(result_path)
-
-        self.assertEqual(modes, [0o640, existing_mode])
-
     @unittest.skipUnless(os.name == "posix", "POSIX file modes")
     def test_result_file_mode_on_posix(self):
         result_path = Path(self.tempdir.name) / "result.json"
@@ -452,6 +433,33 @@ class TestExternalDeckCli(unittest.TestCase):
         finally:
             os.umask(previous)
         self.assertEqual(stat.S_IMODE(result_path.stat().st_mode), 0o604)
+
+    @unittest.skipUnless(os.name == "posix", "POSIX stream names")
+    def test_output_to_a_stream_is_written_in_place(self):
+        backend = self._backend("pspice", (True, "", ""))
+        code, _, stderr = self._run(
+            [
+                str(self.deck),
+                "--simulator",
+                "pspice",
+                "--output",
+                "/dev/null",
+            ],
+            backend,
+        )
+        self.assertEqual(code, 0, stderr)
+        self.assertEqual(stderr, "")
+
+    @unittest.skipUnless(os.name == "posix", "needs symlinks")
+    def test_symlinked_output_is_replaced_not_followed(self):
+        victim = Path(self.tempdir.name) / "victim"
+        victim.write_text("keep", encoding="utf-8")
+        result_path = Path(self.tempdir.name) / "result.json"
+        result_path.symlink_to(victim)
+        self._write_result(result_path)
+        self.assertEqual(victim.read_text(encoding="utf-8"), "keep")
+        self.assertFalse(result_path.is_symlink())
+        self.assertTrue(json.loads(result_path.read_text(encoding="utf-8"))["success"])
 
     @unittest.skipUnless(os.name == "nt", "Windows read-only replace")
     def test_failed_replace_of_read_only_result_leaves_no_temp_file(self):
@@ -484,7 +492,7 @@ class TestExternalDeckCli(unittest.TestCase):
         for backend in (None, self._backend("pspice", (True, "", ""))):
             with self.subTest(simulator_available=backend is not None):
                 with patch(
-                    "run_external_deck.tempfile.mkstemp",
+                    "run_external_deck.atomic_write_text",
                     side_effect=PermissionError("access denied"),
                 ):
                     code, stdout, stderr = self._run(

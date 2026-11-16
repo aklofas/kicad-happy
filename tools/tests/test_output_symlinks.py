@@ -1,5 +1,5 @@
 """atomic_write_text with follow_symlinks=False, the --output writers and the manifest mode."""
-import json, os, secrets, subprocess, sys, tempfile, unittest
+import json, os, secrets, stat, subprocess, sys, tempfile, unittest
 from unittest import mock
 from pathlib import Path
 
@@ -176,6 +176,26 @@ class WindowsOpenTarget(_Tmp):
         self.assertEqual(sorted(os.listdir(self.d)), ["out.json"])
         self.assertEqual(out.read_text(encoding="utf-8"), "old")
 
+    def test_windows_read_only_target_leaves_no_temp_file(self):
+        # the temp copies the target's read-only mode, and Windows cannot delete a read-only file
+        out = self.d / "out.json"
+        out.write_text("old", encoding="utf-8")
+        out.chmod(0o444)
+        self.addCleanup(out.chmod, 0o644)
+        real_unlink = os.unlink
+
+        def windows_unlink(path, *args, **kwargs):
+            if not os.stat(path).st_mode & stat.S_IWRITE:
+                raise PermissionError(13, "access denied")
+            real_unlink(path, *args, **kwargs)
+        with mock.patch.object(fileio, "_is_windows", return_value=True), \
+                mock.patch.object(fileio.os, "replace", side_effect=PermissionError(13, "denied")), \
+                mock.patch.object(fileio.os, "unlink", side_effect=windows_unlink):
+            with self.assertRaises(SystemExit):
+                atomic_write_text(out, "new", follow_symlinks=False)
+        self.assertEqual(sorted(os.listdir(self.d)), ["out.json"])
+        self.assertEqual(out.read_text(encoding="utf-8"), "old")
+
     def test_permission_error_elsewhere_propagates(self):
         out = self.d / "out.json"
         with mock.patch.object(fileio, "_is_windows", return_value=False), \
@@ -183,6 +203,22 @@ class WindowsOpenTarget(_Tmp):
             with self.assertRaises(PermissionError):
                 atomic_write_text(out, "new", follow_symlinks=False)
         self.assertEqual(os.listdir(self.d), [])
+
+    @unittest.skipIf(os.name == "nt", "Windows cannot remove a read-only file")
+    def test_posix_failure_removes_the_temp_without_making_it_writable(self):
+        out = self.d / "out.json"
+        out.write_text("old", encoding="utf-8")
+        out.chmod(0o444)
+        self.addCleanup(out.chmod, 0o644)
+        with mock.patch.object(fileio, "_is_windows", return_value=False), \
+                mock.patch.object(fileio.os, "replace", side_effect=PermissionError(13, "denied")), \
+                mock.patch.object(fileio.os, "chmod", wraps=os.chmod) as chmod:
+            with self.assertRaises(PermissionError):
+                atomic_write_text(out, "new", follow_symlinks=False)
+        # copymode gives the temp the target's mode; nothing then makes it writable again
+        self.assertNotIn(stat.S_IREAD | stat.S_IWRITE, [c.args[1] for c in chmod.call_args_list])
+        self.assertEqual(sorted(os.listdir(self.d)), ["out.json"])
+        self.assertEqual(out.read_text(encoding="utf-8"), "old")
 
 
 @unittest.skipIf(os.name == "nt", "symlinks and POSIX modes")

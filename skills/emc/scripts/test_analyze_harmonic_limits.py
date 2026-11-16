@@ -6,6 +6,7 @@ from contextlib import redirect_stderr, redirect_stdout
 import io
 import json
 import math
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -978,7 +979,7 @@ class TestHarmonicLimitCli(unittest.TestCase):
         before = sorted(path.name for path in self.root.iterdir())
 
         with mock.patch.object(
-            harmonic.os, "replace", side_effect=OSError("simulated")
+            os, "replace", side_effect=OSError("simulated")
         ):
             code, stdout, stderr = self._run(("--output", str(output)))
 
@@ -999,6 +1000,59 @@ class TestHarmonicLimitCli(unittest.TestCase):
         )
         self.assertEqual(
             sorted(path.name for path in self.root.iterdir()), before
+        )
+
+    @unittest.skipUnless(os.name == "posix", "POSIX stream names")
+    def test_output_to_a_stream_is_written_in_place(self):
+        self.assertEqual(self._run(("--output", "/dev/null")), (0, "", ""))
+        script = SCRIPT_DIR / "analyze_harmonic_limits.py"
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(script),
+                "--spectrum",
+                str(self.spectrum_path),
+                "--limits",
+                str(self.profile_path),
+                "--limit-column",
+                "peak",
+                "--output",
+                "/dev/stdout",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            json.loads(result.stdout)["result_class"], "screening_only"
+        )
+
+    @unittest.skipUnless(os.name == "posix", "POSIX file modes")
+    def test_existing_output_mode_follows_the_umask(self):
+        output = self.root / "screen.json"
+        output.write_text("previous result\n", encoding="utf-8")
+        output.chmod(0o600)
+        previous = os.umask(0o022)
+        try:
+            code, _, stderr = self._run(("--output", str(output)))
+        finally:
+            os.umask(previous)
+        self.assertEqual((code, stderr), (0, ""))
+        self.assertEqual(output.stat().st_mode & 0o777, 0o644)
+
+    @unittest.skipUnless(os.name == "posix", "needs symlinks")
+    def test_symlinked_output_is_replaced_not_followed(self):
+        victim = self.root / "victim"
+        victim.write_text("keep", encoding="utf-8")
+        output = self.root / "screen.json"
+        output.symlink_to(victim)
+        code, _, stderr = self._run(("--output", str(output)))
+        self.assertEqual((code, stderr), (0, ""))
+        self.assertEqual(victim.read_text(encoding="utf-8"), "keep")
+        self.assertFalse(output.is_symlink())
+        self.assertEqual(
+            json.loads(output.read_text(encoding="utf-8"))["result_class"],
+            "screening_only",
         )
 
 

@@ -150,6 +150,12 @@ def atomic_write_text(path, text: str | Callable[[TextIO], Any], newline: str | 
             raise SystemExit(f"Error: cannot write {path}: the file is open in another program "
                              f"or read-only; close it or make it writable and run again") from exc
     except BaseException:
+        if existing and _is_windows():
+            # the temp copied the target's mode, and Windows cannot delete a read-only file
+            try:
+                os.chmod(tmp, stat.S_IREAD | stat.S_IWRITE)
+            except OSError:
+                pass
         try:
             os.unlink(tmp)
         except OSError:

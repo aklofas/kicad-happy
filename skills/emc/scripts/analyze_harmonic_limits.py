@@ -5,10 +5,11 @@ import argparse
 import io
 import json
 import math
-import os
 from pathlib import Path
-import secrets
 import sys
+
+import _core_path  # noqa: F401
+from kicad_core.fileio import atomic_write_text
 
 
 SPECTRUM_SCHEMA = "harmonic-lines/1"
@@ -429,25 +430,19 @@ def _write_json(payload: dict, output: Path | None):
         sys.stdout.write(text)
         return
     # Write beside the target, then rename, so a failure never leaves a
-    # truncated or partially written result at the requested path.
+    # truncated or partially written result at the requested path; a stream
+    # such as /dev/stdout is written in place.
     if not output.name:
         raise ValidationError(f"could not write {output}: not a file path")
-    temp = output.with_name(f".{output.name}.{secrets.token_hex(8)}.tmp")
-    created = False
     try:
-        descriptor = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
-        created = True
-        with os.fdopen(
-            descriptor, "w", encoding="utf-8", newline="\n"
-        ) as stream:
-            stream.write(text)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temp, output)
+        atomic_write_text(output, text, follow_symlinks=False, keep_mode=False)
     except OSError as exc:
-        if created:
-            temp.unlink(missing_ok=True)
         raise ValidationError(f"could not write {output}: {exc}") from exc
+    except SystemExit as exc:
+        raise ValidationError(
+            f"could not write {output}: the file is open in another program "
+            f"or read-only"
+        ) from exc
 
 
 def _build_parser():

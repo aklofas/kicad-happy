@@ -29,6 +29,8 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Monte Carlo tolerance runs vary each part of a parallel resistor, capacitor or inductor group on its own, at the tolerance in its value, so the reported spread is no longer overstated for paralleled parts.
 - `simulate_subcircuits.py` refuses a symlinked `--workdir` even when no simulator is installed, instead of reporting the missing simulator first.
 - A failed simulation's diagnostics entry no longer copies the run folder, model-cache or project path from the simulator's error text; those parts read `<workdir>`, `<model-cache>` and `<project>`, so the same input gives the same report on every machine.
+- `analyze_harmonic_limits.py` and `run_external_deck.py` accept `--output /dev/stdout`, `/dev/null` or another stream, which they write directly instead of failing on a temporary file under `/dev`.
+- On Windows, an `--output` that cannot replace a read-only file no longer leaves a temporary file beside it.
 
 ### Documentation
 

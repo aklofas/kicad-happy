@@ -2,15 +2,14 @@
 """Run a complete external SPICE deck with an explicitly selected simulator."""
 
 import argparse
-import contextlib
 import json
 import os
 from pathlib import Path
-import stat
 import sys
-import tempfile
 import time
 
+import _core_path  # noqa: F401
+from kicad_core.fileio import atomic_write_text
 from spice_simulator import PspiceBackend, detect_simulator
 
 
@@ -115,44 +114,29 @@ def _result(simulator, success, deck, native_output, elapsed_s, note):
     }
 
 
-def _result_mode(target):
-    """Keep an existing result file's mode; otherwise honor the umask."""
-    try:
-        return stat.S_IMODE(target.stat().st_mode)
-    except FileNotFoundError:
-        umask = os.umask(0)
-        os.umask(umask)
-        return 0o666 & ~umask
-
-
 def _write_json(payload, output_path):
-    """Write the result, returning False with a diagnostic on I/O failure."""
+    """Write the result, returning False with a diagnostic on I/O failure.
+
+    A result file is replaced atomically (an existing file keeps its mode, a new
+    one gets the umask's); a stream such as /dev/stdout is written in place."""
     try:
         if output_path:
-            target = Path(output_path)
-            descriptor, temp_name = tempfile.mkstemp(
-                dir=target.resolve().parent,
-                prefix=f".{target.name}.",
-                suffix=".tmp",
-            )
-            try:
-                with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
-                    json.dump(payload, stream, indent=2)
-                    stream.write("\n")
-                os.chmod(temp_name, _result_mode(target))
-                os.replace(temp_name, target)
-            except BaseException:
-                # A copied read-only mode would block unlink on Windows.
-                with contextlib.suppress(OSError):
-                    os.chmod(temp_name, stat.S_IREAD | stat.S_IWRITE)
-                Path(temp_name).unlink(missing_ok=True)
-                raise
+            # the link at --output is replaced, its target never written
+            atomic_write_text(output_path, json.dumps(payload, indent=2) + "\n",
+                              follow_symlinks=False)
         else:
             json.dump(payload, sys.stdout, indent=2)
             sys.stdout.write("\n")
     except OSError as exc:
         print(
             f"Error: could not write {output_path or 'stdout'}: {exc}",
+            file=sys.stderr,
+        )
+        return False
+    except SystemExit:
+        print(
+            f"Error: could not write {output_path}: the file is open in another "
+            f"program or read-only",
             file=sys.stderr,
         )
         return False
