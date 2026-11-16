@@ -50,6 +50,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `diff_analysis --text` on two Deep Review files counts a finding that only changed its wording once, as likely reworded, instead of as one fixed and one new.
 - `summarize_findings` counts only the analyzer outputs in a run folder (`schematic.json`, `pcb.json`, `lifecycle.json`, ...) and warns about any other JSON file there instead of adding its findings to the totals.
 - Issue bodies from `export_issues` escape `|` in summaries, descriptions and recommendations, and a component value starting with `#`, so analyzer text cannot form a table or a heading on GitHub.
+- `diff_analysis --analysis-dir` diffs the run the manifest marks current against the run before it, instead of the two newest folder names; the review instructions point at the project's own `analysis/` folder.
 
 ### Documentation
 

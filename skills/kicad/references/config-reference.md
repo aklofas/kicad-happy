@@ -145,7 +145,7 @@ Controls analysis script behavior and output.
 |-------|------|---------|-------------|
 | `output_dir` | string | `"analysis"` | Directory name (a relative path without `..`, resolved against the current directory) that receives the `capability_mode.json` sidecar when neither `--analysis-dir` nor `--output` is given; the analysis JSON itself then goes to stdout |
 | `retention` | integer | `0` | 0 = keep every run (default); N keeps the N newest unpinned runs |
-| `auto_diff` | boolean | `true` | Automatically diff against the previous run |
+| `auto_diff` | boolean | `true` | Tells the review to include a diff against the previous run (instructions only; no script reads it) |
 | `track_in_git` | boolean | `false` | Include analysis output in git tracking |
 | `diff_threshold` | string | `"major"` | Change level at which a new timestamped run folder is created instead of overwriting the current one: `"all"` or `"minor"` (any detected change), `"major"` (default), or `"breaking"` |
 | `power_rails` | object | `{}` | Power rail filtering and annotation (see below) |

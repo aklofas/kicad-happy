@@ -335,7 +335,7 @@ Analysis outputs are stored in `analysis/` with timestamped run folders managed 
 | Manifest | `analysis/manifest.json` | Yes | Always (tracked by default) |
 | Design review report | User-chosen path | Yes | Optional |
 
-When creating design reviews, check the manifest for prior runs. If `auto_diff` is enabled and prior runs exist, automatically diff current vs previous using `diff_analysis.py` and include the delta in the "Previous Review Delta" section.
+When creating design reviews, check the manifest for prior runs. If `auto_diff` is on and `analysis/manifest.json` lists a run before the current one, run `diff_analysis.py --analysis-dir analysis/` (it diffs that run against the current one) and include the delta in the "Previous Review Delta" section.
 
 See also the `bom` skill's cleanup section for datasheets, order CSVs, and backups.
 
@@ -419,7 +419,7 @@ drill_classification, pad_summary, board_dimensions, gerbers, drills
 7. **Run thermal analysis** — when both schematic and PCB analysis exist, run `analyze_thermal.py --schematic schematic.json --pcb pcb.json`. Estimates junction temperatures from package θJA and board thermal via correction. Include results in the Thermal Hotspot section of the report.
 8. **Run lifecycle audit** (when network access and MPNs are available) — invoke via `analyze_schematic.py --lifecycle` flag. Checks component obsolescence status via distributor APIs. Include results in the Component Lifecycle section of the report, or note "Lifecycle audit not performed — [reason: no API keys / no network / no MPNs]."
 9. **Read the `.kicad_pro`** project file directly (it's JSON) for design rules, net classes, and DRC/ERC settings.
-10. **Check for prior design reviews** — scan the project directory for existing review files (`*review*.md`, `*design-review*.md`). If found, read the most recent one. If `auto_diff` is enabled and prior runs exist, run `diff_analysis.py` on current vs previous run and include the delta in the "Previous Review Delta" section.
+10. **Check for prior design reviews** — use this project's `analysis/` folder only: read prior review files (`*review*.md`, `*design-review*.md`) from this project's directory, never a sibling project's, and read the most recent one. If `auto_diff` is on and `analysis/manifest.json` lists an earlier run, run `diff_analysis.py --analysis-dir analysis/` (the previous run in this project's `analysis/` folder against the current one) and include the delta in the "Previous Review Delta" section.
 11. **Verify each output** against the raw files and datasheets before using the data in your report.
 12. **Produce a unified report** covering schematic analysis, PCB layout analysis, cross-domain findings, EMC risk assessment, simulation results, thermal hotspots, and cross-reference findings. See `references/report-generation.md` for the report template.
 13. **Disclose all review gaps explicitly** — if thermal, lifecycle, gerber, datasheet extraction, or prior-review delta were not performed, add a short "Not performed / limits" section to the report instead of omitting them silently.

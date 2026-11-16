@@ -403,6 +403,18 @@ def _format_trends(trends, n_runs):
 # CLI
 # ---------------------------------------------------------------------------
 
+def _current_and_previous(analysis_dir: str, all_runs: list) -> tuple[str, str | None]:
+    """The run the manifest marks current and the run listed after it (older by
+    folder name). Falls back to the newest folder when the pointer is missing or
+    names no run."""
+    from analysis_cache import load_manifest
+    ids = [r[0] for r in all_runs]
+    pointer = load_manifest(analysis_dir).get("current")
+    current = pointer if pointer in ids else ids[0]
+    idx = ids.index(current)
+    return current, ids[idx + 1] if idx + 1 < len(ids) else None
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Compare two KiCad analysis JSON files and report changes"
@@ -452,15 +464,16 @@ def main(argv: list[str] | None = None) -> int:
             print("Error: no runs found in analysis directory", file=sys.stderr)
             return 1
 
+        current_id, previous_id = _current_and_previous(analysis_dir, all_runs)
         resolved = []
         for rid in run_ids:
             if rid == "current":
-                resolved.append(all_runs[0][0])
+                resolved.append(current_id)
             elif rid == "previous":
-                if len(all_runs) < 2:
-                    print("Error: only one run exists — nothing to diff", file=sys.stderr)
+                if previous_id is None:
+                    print("Error: no run before the current one — nothing to diff", file=sys.stderr)
                     return 1
-                resolved.append(all_runs[1][0])
+                resolved.append(previous_id)
             else:
                 # Exact run ID
                 found = False
