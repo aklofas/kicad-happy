@@ -38,6 +38,12 @@ PAIRS = (
     ("ESP32-C3FH4", "ESP32-C3FH4X", False, True),
     ("NE555P", "NE555", False, False),
     ("LM358", "LM358DR", False, True),
+    # A family name ending in three digits continues with output-voltage digits.
+    ("TLV755", "TLV75533PDBVR", False, True),
+    ("LP2985", "LP298533DBVR", False, True),
+    ("TPS799", "TPS79933DDCR", False, True),
+    ("MCP1700", "MCP17003302E", False, True),
+    ("LM1117", "LM1117-3.3", False, True),
 )
 
 
