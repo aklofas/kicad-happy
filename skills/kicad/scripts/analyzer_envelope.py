@@ -248,8 +248,8 @@ class InputsBlock:
     (schematic, pcb, gerber) emit an empty ``upstream_artifacts`` dict.
 
     ``run_id`` uniquely identifies this run (see ``run_id.py`` for
-    format). ``config_hash`` is sha256 of the resolved
-    ``.kicad-happy.json`` when one was loaded, otherwise null.
+    format). ``config_hash`` is sha256 of the merged ``.kicad-happy.json``
+    settings (every layer that applied) when a config file was found, otherwise null.
     """
     source_files: list[str] = field(metadata={
         "description": "Paths of every file read from disk during this run, "
@@ -265,8 +265,8 @@ class InputsBlock:
         "description": "Map: stage name ('schematic', 'pcb', ...) -> "
                        "UpstreamArtifact. Empty for raw-input analyzers."})
     config_hash: Optional[str] = field(default=None, metadata={
-        "description": "SHA-256 of the resolved .kicad-happy.json config file, "
-                       "or null when no project config was loaded."})
+        "description": "SHA-256 of the merged .kicad-happy.json settings (canonical JSON "
+                       "of every layer that applied), or null when no config file was found."})
 
 
 @dataclass

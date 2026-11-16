@@ -1002,18 +1002,17 @@ def main(argv: list[str] | None = None) -> int:
                 extract_dir = candidate
 
     # Load project config
+    config_hash = None
     try:
-        from project_config import load_config_from_path, load_config, apply_suppressions
-        if args.config:
-            config = load_config_from_path(args.config)
+        from project_config import resolve_config, apply_suppressions
+        input_path = args.schematic if hasattr(args, 'schematic') and args.schematic else None
+        if input_path:
+            search = os.path.dirname(os.path.abspath(input_path))
         else:
-            input_path = args.schematic if hasattr(args, 'schematic') and args.schematic else None
-            if input_path:
-                search = os.path.dirname(os.path.abspath(input_path))
-            else:
-                sch_file = schematic.get("file", "")
-                search = os.path.dirname(sch_file) if sch_file else "."
-            config = load_config(search)
+            sch_file = schematic.get("file", "")
+            search = os.path.dirname(sch_file) if sch_file else "."
+        resolved_cfg = resolve_config(args.config, search)
+        config, config_hash = resolved_cfg.effective, resolved_cfg.config_hash
     except ImportError:
         config = {"version": 1, "project": {}, "suppressions": []}
 
@@ -1030,10 +1029,6 @@ def main(argv: list[str] | None = None) -> int:
         "schematic": build_upstream_artifact(_sch_path, schematic),
         "pcb": build_upstream_artifact(_pcb_path, pcb),
     }
-    _cfg_path = _Path(args.config) if args.config else None
-    if _cfg_path and not _cfg_path.is_file():
-        _cfg_path = None
-
     # Resolve the canonical analysis_dir once, including the --analysis-dir
     # branch, so capability mode lands with the outputs, not in the
     # ./analysis fallback.
@@ -1051,7 +1046,7 @@ def main(argv: list[str] | None = None) -> int:
     inputs = build_inputs(
         source_files=[_sch_path, _pcb_path],
         upstream_artifacts=_upstream_artifacts,
-        config_path=_cfg_path,
+        config_hash=config_hash,
         run_id=_capability_mode_ref["run_id"],
     )
     compat = build_compat()

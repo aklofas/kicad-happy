@@ -135,13 +135,14 @@ class SheetData:
 class ResolvedConfig:
     """The one resolved project configuration. Built by ``project_config.resolve_config``.
 
-    effective:  the merged mapping consumers read (the ``config`` consumers read)
-    paths:      files that contributed, in merge order (lowest precedence first); () when none
-    hash_input: the single file ``inputs.config_hash`` is computed from, or None
+    effective:   the merged mapping consumers read (the ``config`` consumers read)
+    paths:       files that contributed, in merge order (lowest precedence first); () when none
+    config_hash: ``inputs.config_hash``: SHA-256 of *effective* as canonical JSON, or None
+                 when *paths* is ()
     """
     effective: dict
     paths: tuple[str, ...]
-    hash_input: str | None
+    config_hash: str | None
 
 
 @dataclass

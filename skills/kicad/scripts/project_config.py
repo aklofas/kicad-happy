@@ -18,6 +18,7 @@ Zero external dependencies — stdlib only.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
@@ -181,21 +182,27 @@ def load_config_from_path(path: str) -> Dict[str, Any]:
 
 
 def resolve_config(explicit_path: Optional[str], search_dir: str) -> ResolvedConfig:
-    """The one place that decides which config applies and which file is hashed.
+    """The one place that decides which config applies and what ``inputs.config_hash`` is.
 
     Explicit (``--config PATH``): that file only, no cascade -- ``load_config_from_path``.
-    Discovered: the cascade ``load_config`` performs from *search_dir*.
-    ``hash_input`` reproduces the CLIs' historical rule: the explicit file when it exists,
-    else ``<search_dir>/.kicad-happy.json`` when it exists, else None.
+    Discovered: the cascade ``load_config`` performs from *search_dir* (parent folders and
+    ``~/.kicad-happy.json`` included).
+    ``config_hash`` is the SHA-256 of the merged settings as canonical JSON (sorted keys,
+    no whitespace), so it covers every layer and ignores comments and key order; None when
+    no config file was found.
     """
     if explicit_path:
-        exists = os.path.isfile(explicit_path)
-        return ResolvedConfig(load_config_from_path(explicit_path),
-                              (explicit_path,) if exists else (), explicit_path if exists else None)
-    default = os.path.join(search_dir, CONFIG_FILENAME)
-    return ResolvedConfig(load_config(search_dir),
-                          tuple(_discover_config_paths(search_dir)),
-                          default if os.path.isfile(default) else None)
+        effective = load_config_from_path(explicit_path)
+        paths = (explicit_path,) if os.path.isfile(explicit_path) else ()
+    else:
+        effective = load_config(search_dir)
+        paths = tuple(_discover_config_paths(search_dir))
+    return ResolvedConfig(effective, paths, _settings_hash(effective) if paths else None)
+
+
+def _settings_hash(effective: Dict[str, Any]) -> str:
+    text = json.dumps(effective, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(text.encode("utf-8", "surrogatepass")).hexdigest()
 
 
 def _load_and_validate(path: str) -> Optional[Dict[str, Any]]:

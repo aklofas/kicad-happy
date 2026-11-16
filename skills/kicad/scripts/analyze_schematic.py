@@ -98,10 +98,9 @@ def main(argv: list[str] | None = None) -> int:
 
     # Build inputs provenance block.
     _sch_path = Path(args.schematic)
-    _cfg_path = Path(resolved_cfg.hash_input) if resolved_cfg.hash_input else None
     inputs = build_inputs(
         source_files=[_sch_path],
-        config_path=_cfg_path,
+        config_hash=resolved_cfg.config_hash,
         run_id=_capability_mode_ref["run_id"],
     )
     compat = build_compat()

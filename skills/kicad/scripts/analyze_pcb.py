@@ -93,10 +93,9 @@ def main(argv: list[str] | None = None) -> int:
     _capability_mode_ref = get_capability_mode_ref(_analysis_dir)
 
     _pcb_path = Path(args.pcb)
-    _cfg_path = Path(resolved_cfg.hash_input) if resolved_cfg.hash_input else None
     inputs = build_inputs(
         source_files=[_pcb_path],
-        config_path=_cfg_path,
+        config_hash=resolved_cfg.config_hash,
         run_id=_capability_mode_ref["run_id"],
     )
     compat = build_compat()

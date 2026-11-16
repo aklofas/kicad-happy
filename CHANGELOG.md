@@ -10,6 +10,8 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Changed
 
+- `inputs.config_hash` covers every `.kicad-happy.json` that applied (parent folders and `~/.kicad-happy.json` too), so editing any of them changes it. EMC and thermal now report it for a discovered config as well. The hash is of the merged settings, so it no longer equals the file's `sha256sum`.
+
 ### Fixed
 
 - A schematic whose sheets are placed hundreds of times is read much faster: the time no longer grows with the square of the instance count. Results are unchanged.

@@ -32,6 +32,7 @@ def build_inputs(
     config_path: Path | str | None = None,
     upstream_artifacts: dict | None = None,
     run_id: str | None = None,
+    config_hash: str | None = None,
 ) -> dict:
     """Build a dict matching the ``InputsBlock`` envelope shape.
 
@@ -41,7 +42,8 @@ def build_inputs(
         Paths of every file read from disk for this run. Hashed
         individually.
     config_path : Path | str | None, optional
-        Path to the resolved .kicad-happy.json config file, if any.
+        A config file whose bytes are hashed into ``config_hash`` (used when
+        *config_hash* is None).
     upstream_artifacts : dict | None, optional
         Pre-built mapping of stage name -> UpstreamArtifact dict. Passed
         through as-is; callers are responsible for correct shape.
@@ -56,10 +58,14 @@ def build_inputs(
         `tests/contract/test_inputs_builder.py::test_run_id_auto_generated_when_omitted`).
         Calling this without a run_id from product code would produce a
         non-canonical envelope that fails `validate_run_id.py` — don't.
+    config_hash : str | None, optional
+        ``config_hash`` as given (the analyzers pass
+        ``project_config.resolve_config(...).config_hash``).
     """
     paths = [Path(f) for f in source_files]
     source_hashes = {str(p): _sha256_file(p) for p in paths}
-    config_hash = _sha256_file(Path(config_path)) if config_path else None
+    if config_hash is None and config_path:
+        config_hash = _sha256_file(Path(config_path))
     return {
         "source_files": [str(p) for p in paths],
         "source_hashes": source_hashes,
