@@ -238,9 +238,27 @@ class DruAsKiCadReadsIt(unittest.TestCase):
                 (W + '(rule a (constraint disallow ${FOO}))', None),
                 (cond.format("${foo}"), {"FOO": "Default"}),
                 (cond.format("${FOO}"), {"foo": "Default"}),
-                (cond.format("${${FOO}}"), {"FOO": "Default"})):
+                (cond.format("${${FOO}}"), {"FOO": "Default"}),
+                (cond.format("${${FOO}}"), {"FOO": "BAR"})):
             with self.subTest(rules=rules, pro=pro):
                 self.assertEqual(dru(rules, pro=pro)[:2], ("Unresolved text variable.", []))
+
+    def test_nested_text_variable_names_the_variable_by_its_value(self):
+        """kicad-cli 10.0.8: ``${${FOO}}`` loads when FOO's value names a defined variable
+        (FOO=BAR with BAR defined, FOO=TITLE) and refuses otherwise; the project's value of
+        FOO is used before the board property's."""
+        cond = W + '(rule a (condition "A.NetClass == \'${${FOO}}\'") (constraint clearance (min 0.01mm)))'
+        prop = BOARD.replace("(setup (pad_to_mask_clearance 0))",
+                             '(setup (pad_to_mask_clearance 0))\n  (property "FOO" "{}")')
+        for board, pro, want in (
+                (BOARD, {"FOO": "BAR", "BAR": "x"}, (None, ["custom:w"])),
+                (BOARD, {"FOO": "TITLE"}, (None, ["custom:w"])),
+                (prop.format("BAR"), {"BAR": "x"}, (None, ["custom:w"])),
+                (prop.format("Default"), {"FOO": "BAR", "BAR": "x"}, (None, ["custom:w"])),
+                (prop.format("BAR"), {"FOO": "Default", "BAR": "x"},
+                 ("Unresolved text variable.", []))):
+            with self.subTest(board=board, pro=pro):
+                self.assertEqual(dru(cond, board, pro)[:2], want)
 
     def test_resolved_text_variable_loads(self):
         cond = W + '(rule a (condition "A.NetClass == \'{}\'") (constraint clearance (min 0.01mm)))'

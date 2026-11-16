@@ -1,7 +1,7 @@
 """KiCad project discovery and project-file readers (kicad_core): the project directory an analysis JSON names, .kicad_pro, .kicad_dru, lib tables, root-schematic resolution."""
 import os
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from fnmatch import fnmatchcase
 from pathlib import Path
 
@@ -1081,17 +1081,24 @@ _DRU_BUILTIN_TEXT_VARS = frozenset((
     'REVISION', 'TITLE', 'COMPANY', *(f'COMMENT{i}' for i in range(1, 10))))
 
 
-def _dru_unresolved_text_var(tree: list, text_vars: frozenset[str] | None) -> str | None:
+def _dru_unresolved_text_var(tree: list, text_vars: Mapping[str, str] | None) -> str | None:
     """"Unresolved text variable." when a token of the file keeps a ``${...}`` after KiCad's
-    expansion with the project's and board's *text_vars* (drc_engine.cpp expands the file
-    before parsing it), or None; None also when *text_vars* is None (not known)."""
+    expansion with the project's and board's *text_vars* (name -> value; drc_engine.cpp
+    expands the file before parsing it), or None; None also when *text_vars* is None (not
+    known). A nested ``${${FOO}}`` names the variable FOO's value names, as in KiCad."""
     if text_vars is None:
         return None
-    known = _DRU_BUILTIN_TEXT_VARS | text_vars
 
     def resolve(token, _depth):
-        # a placeholder no name can equal, so a nested ${${FOO}} stays unresolved
-        return '\0' if ':' in token or token in known else None
+        # '\0' stands for a value not known here (a built-in, a cross-reference, a value
+        # that itself holds a variable); no name equals it, and a token built from one
+        # counts as resolved.
+        if ':' in token or '\0' in token or token in _DRU_BUILTIN_TEXT_VARS:
+            return '\0'
+        if token not in text_vars:
+            return None
+        value = text_vars[token]
+        return value if isinstance(value, str) and '${' not in value and '@{' not in value else '\0'
 
     stack = list(tree[1:])
     while stack:
@@ -1143,7 +1150,7 @@ def _dru_layer_known(pattern: str, layer_names: frozenset[str]) -> bool:
 
 
 def _dru_parse_error(tree: list, layer_names: frozenset[str] | None = None,
-                     text_vars: frozenset[str] | None = None) -> str | None:
+                     text_vars: Mapping[str, str] | None = None) -> str | None:
     """KiCad's message for a .kicad_dru it refuses to load, or None. A parse error drops every
     custom rule of the file (drc_rule_parser.cpp Parse, drc_engine.cpp InitEngine). Checked:
     the leading version statement, the top-level forms, rule names and items, severity names,
@@ -1289,7 +1296,7 @@ def load_kicad_dru(file_path: str) -> list[dict] | None:
 
 
 def load_kicad_dru_checked(file_path: str, *, layer_names: Iterable[str] | None = None,
-                           text_vars: Iterable[str] | None = None
+                           text_vars: Mapping[str, str] | Iterable[str] | None = None
                            ) -> tuple[list[dict] | None, str | None]:
     """Load custom design rules from ``.kicad_dru`` adjacent to a KiCad file.
 
@@ -1306,8 +1313,8 @@ def load_kicad_dru_checked(file_path: str, *, layer_names: Iterable[str] | None 
     Returns (None, None) if no ``.kicad_dru`` found. The second item is KiCad's parse error
     when KiCad would refuse the file (`_dru_parse_error`); the rules are still returned.
     The rule layers are checked only when the board's *layer_names* (names and user names)
-    are given, and text variables only when the names the project and board define
-    (*text_vars*) are given.
+    are given, and text variables only when the variables the project and board define
+    (*text_vars*: name -> value, or the names alone when the values are not known) are given.
 
     Only the board reads rules, and KiCad takes the file named like the board,
     so discovery is exact-stem via `find_project_settings_file`.
@@ -1376,7 +1383,9 @@ def load_kicad_dru_checked(file_path: str, *, layer_names: Iterable[str] | None 
         return None, None
     known_layers = (None if layer_names is None
                     else _KICAD_LAYER_NAMES | frozenset(layer_names))
-    known_vars = None if text_vars is None else frozenset(text_vars)
+    known_vars = (None if text_vars is None
+                  else dict(text_vars) if isinstance(text_vars, Mapping)
+                  else dict.fromkeys(text_vars, '\0'))
     return rules, (_dru_parse_error(tree, known_layers, known_vars) or _dru_unbalanced(content)
                    or _dru_bound_separator_error(content))
 

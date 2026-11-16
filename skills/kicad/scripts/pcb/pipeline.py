@@ -428,7 +428,8 @@ def run_facts(board: BoardData, *, include_trace_segments: bool, return_path_rad
     # Custom design rules (.kicad_dru)
     custom_rules, dru_error = load_kicad_dru_checked(
         str(path), layer_names=[n for layer in layers for n in (layer.get('name'), layer.get('alias')) if n],
-        text_vars=[*pro_text_vars, *metadata.get('properties', {})])
+        text_vars={**metadata.get('properties', {}),
+                   **(pro_text_vars if isinstance(pro_text_vars, dict) else {})})
     if custom_rules:
         project_settings['custom_rules'] = custom_rules
     if dru_error:
