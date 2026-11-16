@@ -10,6 +10,7 @@ import math
 import os
 import re
 import sys
+import threading
 import time
 import unicodedata
 import urllib.error
@@ -200,6 +201,28 @@ _SKIP_TYPES = {
 
 _PN_LABEL = {"digikey": "DigiKey", "mouser": "Mouser"}
 
+# Set when a distributor's reply parsed, so a search that found nothing (an answer)
+# is told apart from one that never got a reply (no answer).
+_reply = threading.local()
+
+
+def _heard() -> None:
+    _reply.heard = True
+
+
+def _no_answer_reason(source: str) -> str:
+    if source == "lcsc":
+        return "every request failed (network error)"
+    env = {"digikey": ("DIGIKEY_CLIENT_ID", "DIGIKEY_CLIENT_SECRET"),
+           "mouser": ("MOUSER_SEARCH_API_KEY",),
+           "element14": ("ELEMENT14_API_KEY",)}.get(source, ())
+    if source == "mouser" and os.environ.get("MOUSER_PART_API_KEY"):
+        env = ()
+    missing = [k for k in env if not os.environ.get(k)]
+    if missing:
+        return f"{' and '.join(missing)} not set"
+    return "every request failed (network error or rejected credentials)"
+
 
 def _verify_helpers():
     ds_pkg = str(Path(__file__).resolve().parents[2] / "datasheets")
@@ -276,15 +299,17 @@ def _audit_mpn_field(field: str, alts: list[str], sources, project_dir, delay,
         return audit_component(field, sources, project_dir, delay,
                                part_numbers=part_numbers)
     chosen = None
+    answered = set()
     for alt in alts:
         data = audit_component(alt, sources, project_dir, delay)
+        answered.update(data.get("answered", data.get("sources", {})))
         if chosen is None:
             chosen = data
         elif data["status"] != "unknown" and (
                 chosen["status"] == "unknown"
                 or _worse_status(data["status"], chosen["status"]) != chosen["status"]):
             chosen = data
-    return chosen
+    return {**chosen, "answered": sorted(answered)}
 
 
 # ---------------------------------------------------------------------------
@@ -338,9 +363,11 @@ def _digikey_search(keywords: str) -> dict | None:
             },
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
-            return json_loads(resp.read())
+            data = json_loads(resp.read())
     except (urllib.error.URLError, OSError, json.JSONDecodeError):
         return None
+    _heard()
+    return data
 
 
 def _digikey_result(product: dict) -> dict:
@@ -435,9 +462,13 @@ def _mouser_search(query: str) -> dict | None:
         url = f"https://api.mouser.com/api/v1/search/partnumber?apiKey={api_key}"
         req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=10) as resp:
-            return json_loads(resp.read())
+            data = json_loads(resp.read())
     except (urllib.error.URLError, OSError, json.JSONDecodeError):
         return None
+    if not isinstance(data, dict) or data.get("Errors"):
+        return None  # a rejected key or request is no answer
+    _heard()
+    return data
 
 
 def _mouser_result(part: dict) -> dict:
@@ -466,7 +497,7 @@ def query_lifecycle_mouser(mpn: str) -> dict | None:
     data = _mouser_search(mpn)
     if data is None:
         return None
-    for part in _requested_results(mpn, data.get("SearchResults", {}).get("Parts", []),
+    for part in _requested_results(mpn, (data.get("SearchResults") or {}).get("Parts") or [],
                                    lambda p: p.get("ManufacturerPartNumber")):
         return _mouser_result(part)
     return None
@@ -477,7 +508,7 @@ def query_lifecycle_mouser_pn(pn: str, mpn: str) -> dict | None:
     data = _mouser_search(pn)
     if data is None:
         return None
-    part = _pn_hit("mouser", pn, mpn, data.get("SearchResults", {}).get("Parts", []),
+    part = _pn_hit("mouser", pn, mpn, (data.get("SearchResults") or {}).get("Parts") or [],
                    lambda p: p.get("ManufacturerPartNumber"),
                    lambda p: [p["MouserPartNumber"]]
                    if isinstance(p.get("MouserPartNumber"), str) else [])
@@ -497,6 +528,7 @@ def query_lifecycle_lcsc(mpn: str) -> dict | None:
             data = json_loads(resp.read())
     except (urllib.error.URLError, OSError, json.JSONDecodeError):
         return None
+    _heard()
 
     for comp in _requested_results(mpn, data.get("components", []), _lcsc_mpn):
         extra = comp.get("extra") if isinstance(comp.get("extra"), dict) else {}
@@ -545,6 +577,7 @@ def query_lifecycle_element14(mpn: str) -> dict | None:
             data = json_loads(resp.read())
     except (urllib.error.URLError, OSError, json.JSONDecodeError):
         return None
+    _heard()
 
     products = data.get("manufacturerPartNumberSearchReturn", {}).get("products", [])
     for product in _requested_results(mpn, products,
@@ -741,10 +774,12 @@ def audit_component(mpn: str, sources: list[str], project_dir: str | None = None
     }
 
     attempted = []
+    answered = []
     for source_name, fn in api_fns.items():
         if sources and source_name not in sources:
             continue
         attempted.append(source_name)
+        _reply.heard = False
         try:
             time.sleep(delay)
             data = None
@@ -757,6 +792,8 @@ def audit_component(mpn: str, sources: list[str], project_dir: str | None = None
                           file=sys.stderr)
             if not data:
                 data = fn(mpn)
+            if data or _reply.heard:
+                answered.append(source_name)
             if data:
                 result["sources"][source_name] = data
                 normalized = _source_status(data)
@@ -783,6 +820,7 @@ def audit_component(mpn: str, sources: list[str], project_dir: str | None = None
     result["consensus_split"] = has_active and has_non_active
     result["per_source_status"] = per_source_status
     result["attempted"] = sorted(attempted)
+    result["answered"] = sorted(answered)
     if temp_data:
         result["temperature"] = temp_data
     return result
@@ -818,7 +856,7 @@ def find_alternatives(mpn: str,
                                             headers={"Content-Type": "application/json"})
                 with urllib.request.urlopen(req, timeout=10) as resp:
                     data = json_loads(resp.read())
-                for part in data.get("SearchResults", {}).get("Parts", []):
+                for part in (data.get("SearchResults") or {}).get("Parts") or []:
                     repl = part.get("SuggestedReplacement")
                     if repl and repl.upper() not in seen_mpns:
                         seen_mpns.add(repl.upper())
@@ -952,11 +990,18 @@ def audit_bom(analysis_json: dict, project_dir: str | None = None,
     temp_fail = 0
 
     total = len(mpn_map)
+    issue_rows = 0
+    asked, heard = set(), set()
     for i, (mpn, refs) in enumerate(sorted(mpn_map.items())):
         print(f"[{i+1}/{total}] {mpn}", file=sys.stderr)
         alts = _mpn_alternatives(mpn)
         data = _audit_mpn_field(mpn, alts, sources or [], project_dir, delay,
                                   pn_map.get(mpn))
+        # A source answered when it replied, with a match or without one. A result
+        # without that record counts the sources that matched.
+        answered = data.get("answered", sorted(data.get("sources", {})))
+        asked.update(data.get("attempted", []))
+        heard.update(answered)
 
         # Lifecycle
         status = data.get("status", "unknown")
@@ -1031,12 +1076,13 @@ def audit_bom(analysis_json: dict, project_dir: str | None = None,
                      f"consider locking to the active distributor or finding an "
                      f"alternate.")
             if status == 'unknown':
-                # No distributor answered for this part: nothing says it should go.
+                # No distributor matched this part: nothing says it should go.
                 finding['description'] = (f"Lifecycle status of {mpn} could not be "
-                                          f"determined: no distributor matched it.")
+                                          f"determined: no distributor "
+                                          f"{'matched' if answered else 'answered'} it.")
                 if len(alts) > 1:
                     finding['description'] += f" (checked as {', '.join(alts)})"
-                creds = '' if data.get('sources') else ' and the distributor credentials'
+                creds = '' if answered else ' and the distributor credentials'
                 finding['recommendation'] = (f"No distributor returned {mpn}; check the "
                                              f"part number{creds} before replacing it.")
             finding['report_context'] = {'section': 'Lifecycle', 'impact': 'Supply chain risk', 'standard_ref': ''}
@@ -1050,11 +1096,12 @@ def audit_bom(analysis_json: dict, project_dir: str | None = None,
             if lcsc_only and status == 'unknown':
                 # LCSC (jlcsearch) carries no lifecycle status field at all —
                 # say so plainly instead of reusing the "active" wording.
-                finding['summary'] = (f"{mpn}: unknown ({len(refs)} ref(s)) — "
-                                      f"LCSC returns no lifecycle status")
+                why = ("LCSC returns no lifecycle status" if answered
+                       else "LCSC did not answer")
+                finding['summary'] = f"{mpn}: unknown ({len(refs)} ref(s)) — {why}"
                 finding['description'] = (
                     f"Lifecycle status for {mpn} could not be determined: "
-                    f"LCSC returns no lifecycle status. Use DigiKey, Mouser, "
+                    f"{why}. Use DigiKey, Mouser, "
                     f"or element14 credentials for a real lifecycle audit.")
             else:
                 finding['summary'] = f"{mpn}: active ({len(refs)} ref(s))"
@@ -1063,6 +1110,12 @@ def audit_bom(analysis_json: dict, project_dir: str | None = None,
             finding['pins'] = []
             finding['report_context'] = {'section': 'Lifecycle', 'impact': '', 'standard_ref': ''}
 
+        if not answered:
+            # No distributor replied for this part: the row rests on no distributor data.
+            finding['confidence'] = 'heuristic'
+            finding['evidence_source'] = 'heuristic_rule'
+        elif finding['rule_id'] != 'LC-ACT':
+            issue_rows += 1
         lifecycle_findings.append(finding)
 
         # LC-005: Single-source detection. Denominator is sources
@@ -1093,6 +1146,7 @@ def audit_bom(analysis_json: dict, project_dir: str | None = None,
                 if 'lcsc' in all_responded:
                     stock_note = (' LCSC also responded but is excluded as a '
                                   'stock-only source with no lifecycle status.')
+                issue_rows += 1
                 lifecycle_findings.append({
                     'mpn': mpn,
                     'references': sorted(refs),
@@ -1133,6 +1187,7 @@ def audit_bom(analysis_json: dict, project_dir: str | None = None,
 
         if max_lead_weeks > 12:
             severity = 'warning' if max_lead_weeks > 26 else 'info'
+            issue_rows += 1
             lifecycle_findings.append({
                 'mpn': mpn,
                 'references': sorted(refs),
@@ -1203,6 +1258,10 @@ def audit_bom(analysis_json: dict, project_dir: str | None = None,
         elif temp:
             comp_grade = _classify_temp_grade(temp["temp_min_c"], temp["temp_max_c"])
             grade_counts[comp_grade] = grade_counts.get(comp_grade, 0) + 1
+
+    for src in sorted(asked - heard):
+        print(f"Note: {src} never answered: {_no_answer_reason(src)}; "
+              f"its lifecycle data is missing", file=sys.stderr)
 
     # Build output
     result = {
@@ -1275,7 +1334,7 @@ def audit_bom(analysis_json: dict, project_dir: str | None = None,
         "total_findings": len(all_findings),
         "by_severity": sev_counts,
         "components_checked": total,
-        "lifecycle_issues": len(lifecycle_findings),
+        "lifecycle_issues": issue_rows,
         "temperature_issues": len(temperature_findings),
     }
     from finding_schema import compute_trust_summary

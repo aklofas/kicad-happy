@@ -283,5 +283,97 @@ class LcscCurrentShapeTest(ProviderIdentityBase):
         self.assertEqual((r["stock_qty"], r["temp_min_c"], r["temp_max_c"]), (3, -40.0, 85.0))
 
 
+MOUSER_ERROR = {"Errors": [{"Id": 0, "Code": "Invalid", "Message": "Invalid unique identifier.",
+                            "PropertyName": "API Key"}], "SearchResults": None}
+
+
+class NoAnswerTest(ProviderIdentityBase):
+    """A distributor that replied without a match is an answer; one that never replied
+    (offline, no credentials, rejected key) is not, and its rows rest on no data."""
+
+    def run_bom(self, mpns, sources, **kw):
+        err = io.StringIO()
+        with mock.patch.object(sys, "stderr", err):
+            out = lifecycle_engine.audit_bom(
+                {"bom": [{"references": [f"U{i}"], "mpn": m, "type": "ic"}
+                         for i, m in enumerate(mpns, 1)]},
+                sources=sources, delay=0, **kw)
+        return out, err.getvalue()
+
+    def test_offline_row_is_heuristic(self):
+        out, _ = self.run_bom(["LM358DR"], ["digikey"])
+        f = out["findings"][0]
+        self.assertEqual(f["rule_id"], "LC-004")
+        self.assertEqual((f["confidence"], f["evidence_source"]), ("heuristic", "heuristic_rule"))
+        self.assertIn("no distributor answered", f["description"])
+        self.assertIn("credentials", f["recommendation"])
+        self.assertEqual(out["trust_summary"]["trust_level"], "low")
+        self.assertEqual(out["summary"]["lifecycle_issues"], 0)
+
+    def test_lcsc_only_offline_says_lcsc_did_not_answer(self):
+        out, _ = self.run_bom(["LM358DR"], ["lcsc"])
+        f = out["findings"][0]
+        self.assertTrue(f["summary"].endswith("— LCSC did not answer"), f["summary"])
+        self.assertEqual(f["confidence"], "heuristic")
+        self.assertEqual(out["summary"]["lifecycle_issues"], 0)
+
+    def test_never_answered_source_is_named_on_stderr(self):
+        self.bodies["mouser"] = mo("LM358DR")
+        _, err = self.run_bom(["LM358DR"], ["mouser", "element14"])
+        self.assertIn("Note: element14 never answered: every request failed", err)
+        self.assertNotIn("Note: mouser", err)
+        with mock.patch.dict(os.environ):
+            del os.environ["ELEMENT14_API_KEY"]
+            _, err = self.run_bom(["LM358DR"], ["mouser", "element14"])
+        self.assertIn("Note: element14 never answered: ELEMENT14_API_KEY not set", err)
+
+    def test_lcsc_no_answer_reason_names_no_credentials(self):
+        _, err = self.run_bom(["LM358DR"], ["lcsc"])
+        self.assertIn("Note: lcsc never answered: every request failed (network error)", err)
+        self.assertNotIn("credentials", err)
+
+    def test_mouser_error_reply_is_no_answer(self):
+        self.bodies["mouser"] = MOUSER_ERROR
+        out, err = self.run_bom(["LM358DR"], ["mouser"])
+        f = out["findings"][0]
+        self.assertEqual((f["rule_id"], f["confidence"]), ("LC-004", "heuristic"))
+        self.assertIn("Note: mouser never answered", err)
+        self.assertIsNone(lifecycle_engine.query_lifecycle_mouser("LM358DR"))
+        self.assertIsNone(lifecycle_engine.query_lifecycle_mouser_pn("595-LM358DR", "LM358DR"))
+
+    def test_mouser_error_reply_does_not_stop_the_alternatives_search(self):
+        self.bodies.update(digikey=dk("LM358DR", status="Obsolete"), mouser=MOUSER_ERROR)
+        self.assertEqual(lifecycle_engine.find_alternatives("LM358DR", ["mouser"], delay=0), [])
+        out, err = self.run_bom(["LM358DR"], ["digikey", "mouser"], suggest_alternatives=True)
+        f = out["findings"][0]
+        self.assertEqual((f["rule_id"], f["confidence"]), ("LC-001", "deterministic"))
+        self.assertIn("Note: mouser never answered", err)
+
+    def test_issue_count_leaves_out_active_rows(self):
+        self.bodies["digikey"] = dk("LM358DR", "TPS54332DR")
+        out, _ = self.run_bom(["LM358DR", "TPS54331DR"], ["digikey"])
+        self.assertEqual(sorted(f["rule_id"] for f in out["findings"]), ["LC-004", "LC-ACT"])
+        self.assertEqual(out["summary"]["lifecycle_issues"], 1)
+
+    def test_answered_no_match_stays_deterministic(self):
+        self.bodies["digikey"] = dk("TPS54332DR")
+        out, err = self.run_bom(["TPS54331DR"], ["digikey"])
+        f = out["findings"][0]
+        self.assertEqual(f["rule_id"], "LC-004")
+        self.assertEqual((f["confidence"], f["evidence_source"]), ("deterministic", "api_lookup"))
+        self.assertIn("no distributor matched", f["description"])
+        self.assertNotIn("credentials", f["recommendation"])
+        self.assertNotEqual(out["trust_summary"]["trust_level"], "low")
+        self.assertEqual(out["summary"]["lifecycle_issues"], 1)
+        self.assertNotIn("never answered", err)
+
+    def test_lcsc_only_answered_keeps_wording(self):
+        self.bodies["jlcsearch"] = lcsc("LM358DT")
+        out, _ = self.run_bom(["LM358DR"], ["lcsc"])
+        f = out["findings"][0]
+        self.assertIn("LCSC returns no lifecycle status", f["summary"])
+        self.assertEqual(f["confidence"], "deterministic")
+
+
 if __name__ == "__main__":
     unittest.main()

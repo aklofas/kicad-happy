@@ -56,6 +56,9 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Datasheet sync no longer searches distributors for passive value codes and value combinations (`4k7`, `2u2`, `100nF 50V`, `10K 1%`, `1uF/16V`) in MPN or Value fields.
 - A `--force-all` refresh whose new datasheet looks like a different part keeps the previous datasheet even when both have the same file name: the new file is checked before it replaces the old one.
 - Mouser datasheet sync waits 2 seconds between API calls by default, Mouser's published 30 calls a minute.
+- The lifecycle audit now tells a distributor that answered without a match from one that never answered. Rows that no distributor answered are marked heuristic, so the trust level drops. The credentials hint appears only for such rows. An LCSC-only run says when LCSC did not answer. stderr names each distributor that never answered, and why.
+- `summary.lifecycle_issues` counts only the lifecycle findings a distributor answered for that are not plain active rows.
+- A Mouser error reply, such as a rejected API key, no longer stops the lifecycle audit or its `--suggest-alternatives` search.
 
 ### Documentation
 
