@@ -189,6 +189,48 @@ class CacheDirFromSource(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertEqual(self._status(Path(d) / "out"), "unavailable")
 
+    @unittest.skipIf(os.name == "nt", "symlinks")
+    def test_thermal_reads_a_linked_folder_named_with_datasheets(self):
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as other:
+            proj = self._project(d, extractions=False)
+            (Path(other) / "X.json").write_text("{}", encoding="utf-8")
+            link = Path(d) / "ext"
+            os.symlink(other, link)
+            out, out2 = Path(d) / "out", Path(d) / "out2"
+            for script, src, name in (("analyze_schematic.py", "board.kicad_sch", "s.json"),
+                                      ("analyze_pcb.py", "board.kicad_pcb", "p.json")):
+                r = self._run(d, "skills/kicad/scripts/" + script, proj / src, "-o", out / name)
+                self.assertEqual(r.returncode, 0, r.stderr)
+            r = self._run(d, "skills/kicad/scripts/analyze_thermal.py", "--schematic", out / "s.json",
+                          "--pcb", out / "p.json", "--datasheets", link, "-o", out2 / "t.json")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertNotIn("symlink", r.stderr)
+            self.assertEqual(self._status(out2), "partial")
+
+    def _gerber_status(self, proj, gerber_dir, cwd, arg):
+        (proj / "datasheets" / "extracted").mkdir(parents=True)
+        (proj / "datasheets" / "extracted" / "X.json").write_text("{}", encoding="utf-8")
+        gerber_dir.mkdir(exist_ok=True)
+        (gerber_dir / "b-F_Cu.gtl").write_text("G04 x*\n%FSLAX46Y46*%\n%MOMM*%\nM02*\n",
+                                               encoding="utf-8")
+        out = proj.parent / "out"
+        r = self._run(cwd, "skills/kicad/scripts/analyze_gerbers.py", arg, "-o", out / "g.json")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return self._status(out)
+
+    def test_gerbers_run_in_the_project_folder_read_its_cache(self):
+        with tempfile.TemporaryDirectory() as d:
+            proj = Path(d) / "proj"
+            proj.mkdir()
+            self.assertEqual(self._gerber_status(proj, proj, proj, "."), "partial")
+
+    def test_gerber_subfolder_reads_the_projects_cache(self):
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as cwd:
+            proj = Path(d) / "proj"
+            proj.mkdir()
+            self.assertEqual(self._gerber_status(proj, proj / "gerbers", cwd, proj / "gerbers"),
+                             "partial")
+
 
 if __name__ == "__main__":
     unittest.main()

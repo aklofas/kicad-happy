@@ -2234,7 +2234,12 @@ def main(argv: list[str] | None = None) -> int:
         _analysis_dir = Path("analysis")
 
     # Resolve capability_mode_ref BEFORE build_inputs.
-    _capability_mode_ref = get_capability_mode_ref(_analysis_dir, cache_dir=project_cache_dir(args.directory))
+    # Gerbers run from the project folder itself hold datasheets/ there, not one level up.
+    _source = Path(args.directory).resolve()
+    _cache_dir = (_source / "datasheets" / "extracted"
+                  if _source.is_dir() and (_source / "datasheets").is_dir()
+                  else project_cache_dir(args.directory))
+    _capability_mode_ref = get_capability_mode_ref(_analysis_dir, cache_dir=_cache_dir)
 
     inputs = build_inputs(
         source_files=_gerber_files,

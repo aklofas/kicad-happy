@@ -1045,7 +1045,8 @@ def main(argv: list[str] | None = None) -> int:
     # capability_mode_ref.run_id.
     _capability_mode_ref = get_capability_mode_ref(
         _analysis_dir,
-        cache_dir=_Path(extract_dir) if extract_dir else analysis_cache_dir(schematic, pcb))
+        cache_dir=_Path(extract_dir) if extract_dir else analysis_cache_dir(schematic, pcb),
+        named_cache_dir=bool(args.datasheets))
 
     inputs = build_inputs(
         source_files=[_sch_path, _pcb_path],

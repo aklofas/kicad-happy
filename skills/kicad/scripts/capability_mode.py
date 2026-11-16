@@ -158,8 +158,9 @@ def _read_schema_versions() -> dict:
     return versions
 
 
-def _fresh_record(datasheet_extraction, cache_dir, llm_review_status, schema_versions) -> dict:
-    if cache_dir is not None:
+def _fresh_record(datasheet_extraction, cache_dir, llm_review_status, schema_versions,
+                  named_cache_dir=False) -> dict:
+    if cache_dir is not None and not named_cache_dir:
         ds_scripts = str(Path(__file__).resolve().parents[2] / "datasheets" / "scripts")
         if ds_scripts not in sys.path:
             sys.path.insert(0, ds_scripts)
@@ -195,8 +196,12 @@ def get_or_create_capability_mode(
     datasheet_extraction: Optional[str] = None,
     schema_versions: Optional[dict] = None,
     cache_dir: Optional[Path] = None,
+    named_cache_dir: bool = False,
 ) -> dict:
     """Return the canonical capability_mode record for analysis_dir, creating it if absent.
+
+    ``named_cache_dir``: ``cache_dir`` is a folder the user named, read as given, so it
+    gets no symlink check (one derived from a project folder does).
 
     First-writer-wins: subsequent calls return the existing record verbatim,
     NOT updating fields. Updates require explicit refresh by the orchestrator
@@ -213,7 +218,7 @@ def get_or_create_capability_mode(
             # over a sidecar; do not overwrite someone else's file either.
             _warn_malformed(path, existing)
             return _fresh_record(datasheet_extraction, cache_dir,
-                                 llm_review_status, schema_versions)
+                                 llm_review_status, schema_versions, named_cache_dir)
         # exists() is True but the file isn't valid JSON yet — most likely
         # another process or external tool left a partial file (our own
         # writer never exposes one at this path). Fall through and try to write our own.
@@ -223,7 +228,8 @@ def get_or_create_capability_mode(
         # the original record stub if the file was externally corrupted
         # (no self-heal under os.link first-writer-wins; see
         # _read_capability_mode docstring for recovery).
-    record = _fresh_record(datasheet_extraction, cache_dir, llm_review_status, schema_versions)
+    record = _fresh_record(datasheet_extraction, cache_dir, llm_review_status, schema_versions,
+                           named_cache_dir)
     try:
         analysis_dir.mkdir(parents=True, exist_ok=True)
         fd, tmp_path = tempfile.mkstemp(dir=analysis_dir, prefix=".capmode-", suffix=".tmp")
