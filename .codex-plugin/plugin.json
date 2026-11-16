@@ -16,6 +16,8 @@
     "shortDescription": "AI-powered KiCad schematic analysis, PCB review, EMC pre-compliance, SPICE simulation, datasheet extraction, BOM management, and fab prep.",
     "longDescription": "Suite of skills for electronics design with KiCad 5–10. Structured Python analysis for schematics, PCB layouts, and Gerbers, plus EMC pre-compliance checks, SPICE simulation, schema-driven datasheet extraction with page-anchored evidence, component sourcing across DigiKey/Mouser/LCSC/element14, BOM management, and fab prep for JLCPCB and PCBWay. Catches real design bugs before you order boards.",
     "developerName": "aklofas",
+    "composerIcon": "./assets/kicad-happy-logo.png",
+    "logo": "./assets/kicad-happy-logo.png",
     "category": "Development & Code Tools",
     "capabilities": ["Read", "Write", "Shell"],
     "websiteURL": "https://github.com/aklofas/kicad-happy"
