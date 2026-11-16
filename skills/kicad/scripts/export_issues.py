@@ -110,7 +110,7 @@ def _paragraph(text: str) -> str:
         body = line.lstrip()
         if body[:1] in ("#", ">", "=", "-", "+"):
             line = line[:len(line) - len(body)] + "\\" + body
-        out.append(line)
+        out.append(line.replace("|", "\\|"))
     return "\n".join(out)
 
 
@@ -329,7 +329,10 @@ def format_issue_body(finding: dict) -> str:
                     parts.append(val)
                 if fp:
                     parts.append(f"({fp})")
-                lines.append(f"- {' '.join(p for p in parts if p)}")
+                item = " ".join(p for p in parts if p)
+                if item.startswith("#"):
+                    item = "\\" + item
+                lines.append(f"- {item}")
             elif isinstance(comp, str):
                 lines.append(f"- `{_code(esc(comp))}`")
         lines.append("")

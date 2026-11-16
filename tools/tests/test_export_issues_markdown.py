@@ -32,6 +32,23 @@ class IssueBodyMarkdownTest(unittest.TestCase):
         self.assertEqual(export_issues.format_issue_title(finding), "[PU-001] R4.7k pull-up on SDA_NET (R1)")
         self.assertIn("R4.7k pull-up on SDA_NET", export_issues.format_issue_body(finding))
 
+    def test_paragraph_pipes_cannot_form_a_table(self):
+        body = export_issues.format_issue_body({
+            "rule_id": "X-1", "summary": "| a | b |\n| --- | --- |\n| 1 | 2 |"})
+        summary = body.split("## Summary", 1)[1]
+        self.assertFalse(re.search(r"(?m)^\|", summary))
+        self.assertIn("\\| --- \\|", body)
+
+    def test_refless_value_cannot_start_a_heading(self):
+        body = export_issues.format_issue_body({"rule_id": "X-1", "components": [{"value": "# foo"}]})
+        self.assertIn("- \\# foo", body)
+        self.assertNotIn("\n- # foo", body)
+
+    def test_hash_after_a_ref_is_not_escaped(self):
+        body = export_issues.format_issue_body({
+            "rule_id": "X-1", "components": [{"ref": "R1", "value": "# bar"}]})
+        self.assertIn("- `R1` # bar", body)
+
 
 if __name__ == "__main__":
     unittest.main()
