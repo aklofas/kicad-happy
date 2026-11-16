@@ -28,6 +28,7 @@ import dataclasses
 import inspect
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -200,8 +201,8 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
     # caches its models under this run's folder, and so does a project whose spice/ or
     # spice/models/ is a symlink, which would send cache writes to the link's target.
     from kicad_core.project import extraction_project_dir
+    project_dir = extraction_project_dir(analysis_json)
     if model_options is None or model_options.cache_dir is None:
-        project_dir = extraction_project_dir(analysis_json)
         linked = None
         if project_dir is not None:
             linked = next((p for p in (project_dir / "spice", project_dir / "spice" / "models")
@@ -214,6 +215,10 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
             from spice_model_cache import ModelOptions
             model_options = dataclasses.replace(model_options or ModelOptions(),
                                                 cache_dir=run_dir)
+
+    # simulator error text is copied into diagnostics without this machine's folders
+    local_roots = _local_roots(run_dir, model_options.cache_dir if model_options else None,
+                               project_dir)
 
     results = []
     total_time = 0
@@ -278,7 +283,7 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
         if not success:
             # the simulator's first error lines (bare deck name; an include error names the include as written)
             err_lines = [line.strip() for line in (stderr or "").splitlines() if line.strip()]
-            reason = " ".join(err_lines[:3]) or "simulator exited with an error"
+            reason = _hide_roots(" ".join(err_lines[:3]), local_roots) or "simulator exited with an error"
             record(diagnostics, "simulate_subcircuits.run",
                    RuntimeError(f"{os.path.basename(cir_file)}: {reason}"), "simulation skipped")
             return None, elapsed
@@ -511,6 +516,30 @@ def _get_components(det):
             if isinstance(c, dict) and "ref" in c:
                 refs.append(c["ref"])
     return refs
+
+
+def _hide_roots(text: str, roots: list[tuple[str, str]]) -> str:
+    """``text`` with each root path (longest first) replaced by its placeholder, where the
+    root starts the text or follows whitespace, a quote, ``(``, ``=`` or ``:``, and is
+    followed by a path separator or the end of the text."""
+    for root, placeholder in sorted(roots, key=lambda r: len(r[0]), reverse=True):
+        text = re.sub(r"(?<![^\s'\"(=:])" + re.escape(root) + r"(?=[/\\]|$)",
+                      lambda _m, p=placeholder: p, text)
+    return text
+
+
+def _local_roots(run_dir: str, cache_dir, project_dir) -> list[tuple[str, str]]:
+    """Folders of this machine a simulator message may name, with their placeholders."""
+    roots = []
+    for path, placeholder in ((run_dir, "<workdir>"), (cache_dir, "<model-cache>"),
+                              (project_dir, "<project>")):
+        if path is None:
+            continue
+        for variant in (os.path.abspath(str(path)), os.path.realpath(str(path))):
+            # a filesystem root would turn every separator into a placeholder
+            if os.path.dirname(variant) != variant:
+                roots.append((variant, placeholder))
+    return roots
 
 
 def _summary_line(report: dict) -> str:

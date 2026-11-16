@@ -28,6 +28,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A custom rule whose `(layer …)` names a copper layer by the board's own name for it now applies to that layer's tracks, vias and annular rings, not only to holes.
 - Monte Carlo tolerance runs vary each part of a parallel resistor, capacitor or inductor group on its own, at the tolerance in its value, so the reported spread is no longer overstated for paralleled parts.
 - `simulate_subcircuits.py` refuses a symlinked `--workdir` even when no simulator is installed, instead of reporting the missing simulator first.
+- A failed simulation's diagnostics entry no longer copies the run folder, model-cache or project path from the simulator's error text; those parts read `<workdir>`, `<model-cache>` and `<project>`, so the same input gives the same report on every machine.
 
 ### Documentation
 

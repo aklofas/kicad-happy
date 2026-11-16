@@ -84,6 +84,19 @@ class SpiceFailureTest(unittest.TestCase):
         runs, cir = self._failed("exit 2\n")
         self.assertEqual([d["message"] for d in runs], [f"{cir}: simulator exited with an error"])
 
+    def test_failed_run_hides_the_workdir_path(self):
+        # the fake runs in the run folder, so $(pwd -P) is the resolved run folder
+        runs, cir = self._failed(
+            'echo "Error: Could not find include file $(pwd -P)/models/x.lib" >&2\nexit 1\n')
+        self.assertEqual([d["message"] for d in runs],
+                         [f"{cir}: Error: Could not find include file <workdir>/models/x.lib"])
+
+    def test_paths_outside_the_roots_are_kept(self):
+        runs, cir = self._failed(
+            'echo "Note: can\'t find init file /usr/share/ngspice/scripts/spinit" >&2\nexit 1\n')
+        self.assertEqual([d["message"] for d in runs],
+                         [f"{cir}: Note: can't find init file /usr/share/ngspice/scripts/spinit"])
+
     def test_successful_run_records_nothing(self):
         with tempfile.TemporaryDirectory() as tmp:
             r, report, _ = _simulate(tmp, "exit 0\n")
@@ -130,6 +143,40 @@ class ParseResultsEncodingTest(unittest.TestCase):
             with open(os.path.join(tmp, "y.log"), "w", encoding="utf-16") as f:
                 f.write("fc: v(out)=1 at 5\n")
             self.assertIsInstance(LtspiceBackend().parse_results(out, "", ""), dict)
+
+
+class HideRootsTest(unittest.TestCase):
+    """Only a whole root, followed by a separator or the end, becomes its placeholder."""
+    def setUp(self):
+        sys.path.insert(0, str(SIM.parent))
+        import simulate_subcircuits
+        self.hide = simulate_subcircuits._hide_roots
+
+    def test_a_root_must_end_at_a_separator(self):
+        self.assertEqual(self.hide("/a/spice_sim_abc/x", [("/a/spice_sim_ab", "<workdir>")]),
+                         "/a/spice_sim_abc/x")
+
+    def test_longest_root_wins(self):
+        roots = [("/p", "<project>"), ("/p/spice/models", "<model-cache>")]
+        self.assertEqual(self.hide("at /p/spice/models/x.lib and /p", roots),
+                         "at <model-cache>/x.lib and <project>")
+
+    def test_names_and_expressions_survive(self):
+        text = "abs(0.05 / r_eff) on /sheet/net"
+        self.assertEqual(self.hide(text, [("/tmp/run", "<workdir>")]), text)
+
+    def test_a_root_must_start_at_a_path_boundary(self):
+        root = [("/home/u/proj", "<project>")]
+        self.assertEqual(self.hide("/mnt/backup/home/u/proj/x", root), "/mnt/backup/home/u/proj/x")
+        for text, hidden in (("/home/u/proj/x", "<project>/x"),
+                             ("in /home/u/proj/x", "in <project>/x"),
+                             ("'/home/u/proj/x'", "'<project>/x'"),
+                             ('"/home/u/proj/x"', '"<project>/x"'),
+                             ("(/home/u/proj/x)", "(<project>/x)"),
+                             ("file=/home/u/proj/x", "file=<project>/x"),
+                             ("include:/home/u/proj/x", "include:<project>/x")):
+            with self.subTest(text=text):
+                self.assertEqual(self.hide(text, root), hidden)
 
 
 if __name__ == "__main__":
