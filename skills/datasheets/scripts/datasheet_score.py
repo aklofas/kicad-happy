@@ -90,6 +90,7 @@ def _score_pin_coverage(extraction, expected_pin_count=None):
     issues = []
     pins_with_specs = 0
     pins_with_name_only = 0
+    pins_unnamed = 0
 
     for pin in pins:
         has_name = bool(pin.get("name"))
@@ -110,6 +111,7 @@ def _score_pin_coverage(extraction, expected_pin_count=None):
             pins_with_name_only += 1
             issues.append(f"Pin {pin.get('number', '?')} ({pin.get('name', '?')}): name only, no specs")
         else:
+            pins_unnamed += 1
             issues.append(f"Pin {pin.get('number', '?')}: missing name")
 
     # Calculate score
@@ -120,6 +122,7 @@ def _score_pin_coverage(extraction, expected_pin_count=None):
     score = 10.0
     score -= missing * 2.0  # -2 per missing pin
     score -= pins_with_name_only * 1.0  # -1 per name-only pin
+    score -= pins_unnamed * 1.0  # -1 per pin without a name
 
     if missing > 0:
         issues.insert(0, f"{missing} pin(s) missing from extraction")
@@ -359,14 +362,64 @@ _BASE_FIELD_REFS = {
     "esd":                   ["HBM"],
 }
 
-# Per-category required+nice-to-have fields
+# Per-category required+nice-to-have fields. Transistor and diode depend on
+# the payload's type (_category_field_reqs).
 _CATEGORY_FIELD_REQS = {
     "regulator": {
         "required": ("topology", "vin_range", "vout_range", "iout_max"),
         "nice":     ("reference_voltage", "switching_freq", "cin_min", "cout_min", "enable_pin"),
     },
-    # 3b: mcu, opamp, transistor, diode, crystal
+    "mcu": {
+        "required": ("core_family", "flash_size", "ram_size", "vdd_range"),
+        "nice":     ("core_speed_max", "gpio_count", "peripheral_counts", "reset_pin",
+                     "debug_interface", "boot_pins"),
+    },
+    "opamp": {
+        "required": ("opamp_topology", "channels", "vsupply_range", "gbw"),
+        "nice":     ("slew_rate", "vos", "ib", "iq_per_amp", "vout_swing_high", "vout_swing_low"),
+    },
+    "crystal": {
+        "required": ("crystal_type", "frequency", "load_capacitance", "frequency_tolerance"),
+        "nice":     ("esr_max", "frequency_stability", "drive_level_max", "operating_temp_range",
+                     "mode", "aging"),
+    },
 }
+
+_TRANSISTOR_BJT = {
+    "required": ("transistor_type", "vceo_max", "ic_max", "hfe"),
+    "nice":     ("vcbo_max", "vebo_max", "vce_sat", "ft", "power_dissipation"),
+}
+_TRANSISTOR_IGBT = {
+    "required": ("transistor_type", "vceo_max", "ic_max", "vce_sat"),
+    "nice":     ("qg", "power_dissipation", "tj_max"),
+}
+_TRANSISTOR_FET = {
+    "required": ("transistor_type", "vds_max", "id_max", "rds_on"),
+    "nice":     ("vgs_max", "vgs_th", "qg", "ciss", "power_dissipation"),
+}
+
+_DIODE_REQUIRED = {
+    "zener":   ("diode_type", "vz", "power_dissipation"),
+    "tvs":     ("diode_type", "breakdown_voltage", "vr_max"),
+    "varicap": ("diode_type", "cd", "vr_max"),
+}
+_DIODE_REQUIRED_DEFAULT = ("diode_type", "vf", "if_max", "vr_max")
+_DIODE_NICE = ("ir", "ifsm", "trr", "cd", "tj_max")
+
+
+def _category_field_reqs(cat: str, payload: dict):
+    if cat == "transistor":
+        kind = payload.get("transistor_type")
+        kind = kind if isinstance(kind, str) else ""
+        if kind.startswith("bjt"):
+            return _TRANSISTOR_BJT
+        return _TRANSISTOR_IGBT if kind == "igbt" else _TRANSISTOR_FET
+    if cat == "diode":
+        kind = payload.get("diode_type")
+        required = _DIODE_REQUIRED.get(kind, _DIODE_REQUIRED_DEFAULT) \
+            if isinstance(kind, str) else _DIODE_REQUIRED_DEFAULT
+        return {"required": required, "nice": _DIODE_NICE}
+    return _CATEGORY_FIELD_REQS.get(cat)
 
 
 def _populated(value) -> bool:
@@ -377,8 +430,13 @@ def _populated(value) -> bool:
     return True
 
 
+def _base(extraction: dict) -> dict:
+    base = extraction.get("base")
+    return base if isinstance(base, dict) else {}
+
+
 def _pinout_completeness(extraction: dict) -> float:
-    pinout = ((extraction.get("base") or {}).get("pinout")) or []
+    pinout = _base(extraction).get("pinout") or []
     if not isinstance(pinout, list):
         return 0.0  # sentinel ({_extraction_failed: true}) or malformed pinout block
     if not pinout:
@@ -387,6 +445,8 @@ def _pinout_completeness(extraction: dict) -> float:
     earned = 0
     total = pts_per_pin * len(pinout)
     for p in pinout:
+        if not isinstance(p, dict):
+            continue
         for f in _PIN_FIELDS:
             if _populated(p.get(f)):
                 earned += 1
@@ -394,10 +454,10 @@ def _pinout_completeness(extraction: dict) -> float:
 
 
 def _base_completeness(extraction: dict) -> float:
-    base = extraction.get("base") or {}
+    base = _base(extraction)
     if not base:
         return 0.0
-    if isinstance(base, dict) and base.get("_extraction_failed"):
+    if base.get("_extraction_failed"):
         return 0.0  # base block extraction failed (post-retry sentinel)
     earned = 0
     total = sum(len(v) for v in _BASE_FIELD_REFS.values())
@@ -413,17 +473,17 @@ def _base_completeness(extraction: dict) -> float:
 
 def _category_extension_completeness(extraction: dict) -> float:
     cats = extraction.get("categories") or []
-    if not cats:
+    if not cats or not isinstance(cats, list):
         return 0.0
     fractions = []
     for cat in cats:
-        payload = extraction.get(cat)
+        payload = extraction.get(cat) if isinstance(cat, str) else None
         if not isinstance(payload, dict) or payload.get("_extraction_failed"):
             fractions.append(0.0)
             continue
-        spec = _CATEGORY_FIELD_REQS.get(cat)
+        spec = _category_field_reqs(cat, payload)
         if not spec:
-            fractions.append(1.0)  # unknown category — full credit (3b will populate)
+            fractions.append(0.0)  # no rubric for this category: no credit
             continue
         req = spec["required"]
         nice = spec["nice"]
@@ -436,24 +496,25 @@ def _category_extension_completeness(extraction: dict) -> float:
 def score_v14_extraction(extraction: dict) -> dict:
     """Quality score (0-100) for a v1.4 extraction JSON.
 
-    Weighted dimensions:
+    Weighted dimensions, scaled so full marks is 100:
       pinout_completeness            20%
       base_completeness              25%
       category_extension_completeness 25%
-      reserved                       30%   (always full credit)
+    An extraction with no category (``categories`` empty) is scored on pinout
+    and base alone; a listed category still counts, earned or not.
     """
     dims = {
         "pinout_completeness": _pinout_completeness(extraction),
         "base_completeness": _base_completeness(extraction),
         "category_extension_completeness": _category_extension_completeness(extraction),
-        "reserved_v15": 1.0,
     }
     weights = {
         "pinout_completeness": 0.20,
         "base_completeness": 0.25,
         "category_extension_completeness": 0.25,
-        "reserved_v15": 0.30,
     }
-    weighted = sum(dims[k] * weights[k] for k in dims)
+    scored = [k for k in dims
+              if k != "category_extension_completeness" or extraction.get("categories")]
+    weighted = sum(dims[k] * weights[k] for k in scored) / sum(weights[k] for k in scored)
     score = int(round(weighted * 100))
     return {"score": score, "dimensions": dims, "weights": weights}
