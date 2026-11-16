@@ -19,6 +19,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A schematic or board with a coordinate that is not a finite number (`nan`, `inf`, or text) is analyzed with that point read as 0 and one diagnostics entry. Before, the schematic stopped with a traceback and the board wrote `NaN` into its JSON.
 - `--text` together with `--output` or `--analysis-dir` prints the text report and also writes the JSON, on every analyzer. Before, one of the two was silently skipped.
 - The `--no-hierarchy` help says what the flag does: a sub-sheet is analyzed as given instead of from its project root.
+- An inductor marked `NON SHIELDED` or `SEMI SHIELDED` (with a space) is no longer treated as shielded by the EMC inductor-leakage check.
 
 ### Documentation
 

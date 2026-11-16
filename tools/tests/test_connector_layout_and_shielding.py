@@ -52,6 +52,24 @@ class InductorShielding(unittest.TestCase):
     def test_shielded_word(self):
         self.assertEqual(classify_inductor_shielding("Inductor_SMD:L_Shielded_4x4"), "shielded")
 
+    def test_spaced_words(self):
+        self.assertEqual(classify_inductor_shielding("", "NON SHIELDED", ""), "unshielded")
+        self.assertEqual(classify_inductor_shielding("", "Non  Shielded 10uH", ""), "unshielded")
+        self.assertEqual(classify_inductor_shielding("", "SEMI SHIELDED", ""), "semi-shielded")
+        self.assertEqual(classify_inductor_shielding("", "NON - SHIELDED", ""), "unshielded")
+        self.assertEqual(classify_inductor_shielding("", "", "Semi\tShielded"), "semi-shielded")
+
+    def test_words_do_not_join_across_fields(self):
+        self.assertEqual(classify_inductor_shielding("", "SHIELDED", ""), "shielded")
+        self.assertEqual(classify_inductor_shielding("Inductor_SMD:L_NON", "SHIELDED 4.7uH", ""),
+                         "shielded")
+        self.assertEqual(classify_inductor_shielding("Inductor_SMD:L_SEMI", "", "SHIELDED"), "shielded")
+
+    def test_empty_fields_are_unknown(self):
+        self.assertEqual(classify_inductor_shielding("", "", ""), "unknown")
+        self.assertEqual(classify_inductor_shielding(None, None, None), "unknown")
+        self.assertEqual(classify_inductor_shielding(" ", "", ""), "unknown")
+
 
 if __name__ == "__main__":
     unittest.main()

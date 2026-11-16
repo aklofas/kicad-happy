@@ -210,18 +210,19 @@ def classify_inductor_shielding(footprint_lib='', value_str='', mpn=''):
     Returns:
         One of: 'shielded', 'semi-shielded', 'unshielded', 'unknown'
     """
-    # Combine all available text for pattern matching.
+    # Combine all available text for pattern matching, joined by '|' so words in
+    # different fields never read as one ("L_NON" + "SHIELDED").
     # Normalize hyphens to underscores — KiCad footprint libraries use
     # underscores (WE_MAPI) while manufacturer names use hyphens (WE-MAPI).
-    text = ((footprint_lib or '') + ' ' + (value_str or '') + ' ' + (mpn or '')).upper().replace('-', '_')
-
-    if not text.strip():
+    fields = (footprint_lib or '', value_str or '', mpn or '')
+    if not ''.join(fields).strip():
         return 'unknown'
+    text = '|'.join(fields).upper().replace('-', '_')
 
     # Explicit keywords in footprint name
-    if re.search(r'NON_?SHIELDED', text) or 'UNSHIELDED' in text:
+    if re.search(r'NON[\s_]*SHIELDED', text) or 'UNSHIELDED' in text:
         return 'unshielded'
-    if re.search(r'SEMI_?SHIELDED', text):
+    if re.search(r'SEMI[\s_]*SHIELDED', text):
         return 'semi-shielded'
     if 'SHIELDED' in text:
         return 'shielded'
