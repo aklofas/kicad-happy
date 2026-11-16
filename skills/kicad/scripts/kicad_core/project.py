@@ -800,25 +800,191 @@ def _dru_eval(text: str) -> tuple[str, float | None]:
     return kind, (round(value, 6) if value is not None else None)
 
 
+# The units of KiCad's expression lexer, in its match order (pcbexpr_evaluator.cpp
+# PCBEXPR_UNIT_RESOLVER), and the kind of value each gives.
+_DRU_UNIT_KINDS = {'mil': 'length', 'mm': 'length', 'in': 'length', 'deg': 'angle',
+                   'fs': 'time', 'ps': 'time'}
+# Constraint types that take time units (drc_rule_parser.cpp allowsTimeDomain).
+_DRU_TIME_CONSTRAINTS = frozenset(('length', 'skew'))
+_DRU_TWO_CHAR_OPS = ('==', '!=', '<=', '>=', '&&', '||')
+# A min_resolved_spokes count: a DSN number (dsnlexer.cpp).
+_DRU_DSN_NUMBER = re.compile(r'[-+]?(?:\d+\.?\d*|\.\d+)')
+
+
+def _dru_lex(text: str) -> list[tuple[str, str | None]] | None:
+    """The tokens of KiCad's expression lexer (libeval lexDefault), or None at a character it
+    does not know: ``('num', text)`` (a digit, then digits with at most one ``.`` or ``,``),
+    ``('unit', u)`` (a unit not followed by a letter or digit), ``('str', None)`` (a ``'``
+    string; one left open runs to the end), ``('id', name)`` and ``('op', op)``. Only a space
+    separates tokens."""
+    tokens: list[tuple[str, str | None]] = []
+    i, n = 0, len(text)
+    while i < n:
+        c = text[i]
+        if c == ' ':
+            i += 1
+            continue
+        if c.isdigit():
+            j, separator = i, False
+            while j < n and (text[j].isdigit() or (text[j] in '.,' and not separator)):
+                separator = separator or text[j] in '.,'
+                j += 1
+            tokens.append(('num', text[i:j]))
+            i = j
+            continue
+        unit = next((u for u in _DRU_UNIT_KINDS if text.startswith(u, i)
+                     and not (i + len(u) < n and text[i + len(u)].isalnum())), None)
+        if unit:
+            tokens.append(('unit', unit))
+            i += len(unit)
+            continue
+        if c == "'":
+            j = text.find("'", i + 1)
+            i = n if j < 0 else j + 1
+            tokens.append(('str', None))
+            continue
+        if c.isalpha() or c == '_':
+            j = i
+            while j < n and (text[j].isalnum() or text[j] == '_'):
+                j += 1
+            tokens.append(('id', text[i:j]))
+            i = j
+            continue
+        if text[i:i + 2] in _DRU_TWO_CHAR_OPS:
+            tokens.append(('op', text[i:i + 2]))
+            i += 2
+            continue
+        if c in '+-*/!<>().,':
+            tokens.append(('op', c))
+            i += 1
+            continue
+        return None
+    return tokens
+
+
+def _dru_bound_kind(text: str) -> tuple[str, int, bool]:
+    """``(kind, numbers, has_unit)`` of a bound expression as KiCad's parser sees it. *kind* is
+    ``length``, ``number``, ``angle``, ``time``, ``other`` (a result not judged here: a text
+    variable, a string, a comparison, a comma outside a number, mixed or squared dimensions)
+    or ``error`` (text KiCad cannot parse). *numbers* counts the numeric literals, a unary
+    minus adding one (KiCad parses ``-x`` as ``0 - x``); *has_unit* is True when a number
+    carries a unit. Only used to judge the file; the bound's value comes from `_dru_eval`."""
+    if '${' in text or '@{' in text:
+        return 'other', 0, False
+    tokens = _dru_lex(text)
+    if tokens is None:
+        return 'error', 0, False
+    if any(k == 'str' or (k == 'op' and v == ',') for k, v in tokens):
+        return 'other', 0, False
+    if ('op', '.') in tokens:
+        return 'error', 0, False
+    if any(k == 'op' and v not in '+-*/()' for k, v in tokens):
+        return 'other', 0, False
+    i = 0
+    numbers = 0
+    has_unit = False
+
+    def peek():
+        return tokens[i] if i < len(tokens) else (None, None)
+
+    def combine(op, a, b):
+        if 'other' in (a, b):
+            return 'other'
+        if op in '+-':
+            return a if a == b else 'other'
+        if op == '*' and a == 'number':
+            return b
+        return a if b == 'number' else 'other'
+
+    def unary():
+        nonlocal i, numbers, has_unit
+        kind, value = peek()
+        if kind == 'op' and value in '+-':
+            i += 1
+            numbers += value == '-'
+            return unary()
+        if (kind, value) == ('op', '('):
+            i += 1
+            result = expr()
+            if peek() != ('op', ')'):
+                raise ValueError
+            i += 1
+            return result
+        if kind != 'num':
+            raise ValueError
+        i += 1
+        numbers += 1
+        if peek()[0] != 'unit':
+            return 'number'
+        has_unit = True
+        unit = peek()[1]
+        i += 1
+        return _DRU_UNIT_KINDS[unit]
+
+    def binary(sub, ops):
+        nonlocal i
+        result = sub()
+        while peek()[0] == 'op' and peek()[1] in ops:
+            op = peek()[1]
+            i += 1
+            result = combine(op, result, sub())
+        return result
+
+    def expr():
+        return binary(lambda: binary(unary, '*/'), '+-')
+
+    try:
+        kind = expr()
+    except ValueError:
+        return 'error', 0, False
+    if i != len(tokens):
+        return 'error', 0, False
+    return kind, numbers, has_unit
+
+
 def _dru_bound_error(constraint: list) -> str | None:
-    """KiCad's message for an item of *constraint* it cannot read, or None: "Unrecognized
-    item." for a list that is not a bound, "Missing units." for a unitless length, "Syntax
-    error" for a length that is not an expression."""
+    """KiCad's message for an item of *constraint* it cannot read, or None
+    (drc_rule_parser.cpp parseConstraint): a value that is not a ``(min|max|opt ...)`` bound,
+    an unknown or empty bound, ``within_diff_pairs`` off a ``skew``, an expression it cannot
+    parse, units on a unitless type other than ``track_angle``, "Missing units." when the
+    expression is one number without a unit (libeval's count rule), time units off
+    ``length``/``skew``, and bounds in different units. A ``min_resolved_spokes`` count is one
+    bare number."""
+    ctype = _DRU_CONSTRAINT_ALIASES.get(constraint[1], constraint[1])
+    if ctype == 'min_resolved_spokes':
+        if (len(constraint) < 3 or not isinstance(constraint[2], str)
+                or not _DRU_DSN_NUMBER.fullmatch(constraint[2])):
+            return "Unrecognized item."
+        return "Missing ')'." if len(constraint) > 3 else None
+    kinds = set()
     for bound in constraint[2:]:
         if not isinstance(bound, list):
-            continue
+            return "Missing '('."
         if not bound or not isinstance(bound[0], str) or bound[0] not in _DRU_BOUND_ITEMS:
             return "Unrecognized item."
-        if (len(bound) > 1 and bound[0] in ('min', 'max', 'opt')
-                and constraint[1] not in _DRU_UNITLESS_CONSTRAINTS):
-            text = _dru_bound_text(bound)
-            if parse_dru_length(text) is not None:
-                continue
-            kind = _dru_eval(text)[0]
-            if kind == 'number':
-                return "Missing units."
-            if kind == 'error':
-                return "Syntax error"
+        if bound[0] == 'within_diff_pairs':
+            if ctype != 'skew':
+                return "within_diff_pairs option invalid for constraint type."
+            continue
+        if len(bound) < 2:
+            return f"Missing {bound[0]} value."
+        kind, numbers, has_unit = _dru_bound_kind(_dru_bound_text(bound))
+        if kind == 'error':
+            return "Syntax error"
+        if ctype in _DRU_UNITLESS_CONSTRAINTS:
+            # KiCad 10 refuses units on a track_angle, KiCad 11 reads them as an angle
+            # (impliedDegrees); a file either one loads is read
+            if has_unit and ctype != 'track_angle':
+                return "Unexpected units."
+            continue
+        if kind == 'number' and numbers == 1:
+            return "Missing units."
+        if kind == 'time' and ctype not in _DRU_TIME_CONSTRAINTS:
+            return "Time based units not allowed for constraint type."
+        if kind != 'other':
+            kinds.add(kind)
+            if len(kinds) > 1:
+                return "Mixed units for constraint values."
     return None
 
 
@@ -905,7 +1071,7 @@ def _dru_parse_error(tree: list, layer_names: frozenset[str] | None = None) -> s
                     if _DRU_CONSTRAINT_ALIASES.get(ctype, ctype) in constraint_types:
                         return f"Rule already has a '{ctype}' constraint."
                     constraint_types.add(_DRU_CONSTRAINT_ALIASES.get(ctype, ctype))
-                    if ctype not in _DRU_ARGUMENT_CONSTRAINTS and (
+                    if ctype not in _DRU_ARGUMENT_CONSTRAINTS and '${' not in ctype and (
                             bound_error := _dru_bound_error(item)):
                         return bound_error
                 if item[0] == 'layer':
@@ -935,6 +1101,64 @@ def _dru_unbalanced(content: str) -> str | None:
             if depth < 0:
                 return "Missing '('."
     return "Missing ')'." if depth else None
+
+
+def _dru_bound_separator_error(content: str) -> str | None:
+    """"Unrecognized character." when a tab or line break separates two tokens of a
+    constraint's ``(min|max|opt ...)`` expression, or None. KiCad keeps the file's whitespace
+    between a bound's tokens and its expression lexer skips only spaces; whitespace after the
+    keyword or before the bound's ``)`` is not part of the expression. Quoted strings and
+    comment lines are read as the file parser reads them."""
+    keywords: list = []   # the first atom of each open list, None until it is read
+    bound_depth = None    # len(keywords) while inside a bound
+    started = False       # a token of the bound's expression was read
+    gap = ''
+    i, n = 0, len(content)
+    while i < n:
+        c = content[i]
+        if c in _sexp._SPACE:
+            j = i
+            while j < n and content[j] in _sexp._SPACE:
+                j += 1
+            gap = content[i:j]
+            i = j
+            continue
+        if c == '#' and not content[content.rfind('\n', 0, i) + 1:i].strip(' \t\r\0'):
+            while i < n and content[i] != '\n':
+                i += 1
+            continue
+        before, gap = gap, ''
+        if c == '"':
+            j = i + 1
+            while j < n and content[j] != '"':
+                j += 2 if content[j] == '\\' else 1
+            end = j + 1
+        elif c in '()':
+            end = i + 1
+        else:
+            end = i
+            while end < n and content[end] not in _sexp._ATOM_END:
+                end += 1
+        if bound_depth is not None:
+            if c == ')' and len(keywords) == bound_depth:
+                bound_depth = None
+            else:
+                if started and before.strip(' '):
+                    return "Unrecognized character."
+                started = True
+        if c == '(':
+            keywords.append(None)
+        elif c == ')':
+            if keywords:
+                keywords.pop()
+        elif keywords and keywords[-1] is None:
+            keywords[-1] = content[i:end]
+            if (bound_depth is None and keywords[-1] in ('min', 'max', 'opt')
+                    and len(keywords) > 1 and keywords[-2] == 'constraint'):
+                bound_depth = len(keywords)
+                started = False
+        i = end
+    return None
 
 
 def load_kicad_dru(file_path: str) -> list[dict] | None:
@@ -1028,7 +1252,8 @@ def load_kicad_dru_checked(file_path: str, *, layer_names: Iterable[str] | None 
         return None, None
     known_layers = (None if layer_names is None
                     else _KICAD_LAYER_NAMES | frozenset(layer_names))
-    return rules, _dru_parse_error(tree, known_layers) or _dru_unbalanced(content)
+    return rules, (_dru_parse_error(tree, known_layers) or _dru_unbalanced(content)
+                   or _dru_bound_separator_error(content))
 
 
 def load_lib_tables(file_path: str) -> dict:

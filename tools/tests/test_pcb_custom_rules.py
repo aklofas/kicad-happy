@@ -254,7 +254,9 @@ class RefusedFileTest(unittest.TestCase):
                 ("nested bound", "(version 1)\n(rule w (constraint track_width (min (0.5mm))))\n"),
                 ("arithmetic bound", "(version 1)\n(rule w (constraint track_width (min 2*0.25mm)))\n"),
                 ("time bound kept", "(version 1)\n" + TRACK_RULE
-                 + "\n(rule a (constraint length (max 10ps)))\n")):
+                 + "\n(rule a (constraint length (max 10ps)))\n"),
+                ("unitless expression", "(version 1)\n" + TRACK_RULE
+                 + "\n(rule a (constraint clearance (min 2*0.25)))\n")):
             with self.subTest(name):
                 self.assertEqual(refused(text), (self.APPLIED, None))
         for name, rule in (
@@ -317,8 +319,6 @@ class RefusedFileTest(unittest.TestCase):
                  "Syntax error"),
                 ("trailing operator", "(version 1)\n(rule w (constraint track_width (min 0.5mm+)))\n",
                  "Syntax error"),
-                ("unitless expression",
-                 "(version 1)\n(rule w (constraint track_width (min 2*0.25)))\n", "Missing units."),
                 ("byte order mark", "\ufeff(version 1)\n" + TRACK_RULE + "\n", "Missing '('."),
                 ("capitalised version", "(Version 1)\n" + TRACK_RULE + "\n",
                  "Missing version statement."),

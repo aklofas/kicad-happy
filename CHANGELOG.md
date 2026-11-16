@@ -21,6 +21,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The `--no-hierarchy` help says what the flag does: a sub-sheet is analyzed as given instead of from its project root.
 - An inductor marked `NON SHIELDED` or `SEMI SHIELDED` (with a space) is no longer treated as shielded by the EMC inductor-leakage check.
 - A `.kicad_dru` rule that sets one constraint under its old and new name (`hole` and `hole_size`, `mechanical_clearance` and `physical_clearance`) refuses the file, as in KiCad.
+- More `.kicad_dru` files are read as KiCad 10 reads them. A negated or arithmetic bound without a unit (`-0.1`, `2*0.25`, `solder_paste_rel_margin (opt -0.1)`) no longer refuses the file. A bound KiCad cannot read now does: a unit in the wrong case (`0.1MM`), a unit on `via_count`, time units outside `length` and `skew`, bounds in different units, a `min_resolved_spokes` bound, a value without its `(min …)`, a tab or line break inside an expression, a unitless decimal-comma bound such as `(min 0,1)`.
 
 ### Documentation
 

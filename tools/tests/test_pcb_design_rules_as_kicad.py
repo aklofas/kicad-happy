@@ -7,6 +7,14 @@
   `physical_hole_clearance`, so a rule giving one constraint under both names is refused
   ("Rule already has a 'hole_size' constraint.", naming the second as written);
 - a bound written with a decimal comma (`0,5mm`) is a length;
+- a bound KiCad cannot read refuses the file with KiCad's message: "Missing units." only when
+  the expression holds one number and it has no unit (a unary minus adds a number, so `-0.1`
+  and `2 * 0.1` load and `+0.1` and `(0.1)` do not), units in another case or on `via_count`,
+  time units outside `length` and `skew`, bounds in different units, and a tab or line break
+  between two tokens of a bound (not after the keyword or before the `)`);
+- a unit on `track_angle` (`45deg`, `45 deg`, `(max 90deg)`) is refused by kicad-cli 10.0.8
+  ("Unexpected units.") but read as an angle by KiCad master since the KiCad 11 line
+  (drc_rule_parser.cpp impliedDegrees), so such a file is read, as it was before;
 - a rule naming a layer by its other KiCad name (`F.Silkscreen` on a board whose file says
   `F.SilkS`) applies, with or without a user name.
 A KiCad 5 board keeps its own design settings and net classes: with a .kicad_pro beside it the
@@ -97,6 +105,72 @@ class DruAsKiCadReadsIt(unittest.TestCase):
                 err, hit, _ = dru(W + rules)
                 self.assertIsNone(err)
                 self.assertEqual(hit, ["custom:w"])
+
+    def test_bounds_kicad_applies(self):
+        for bound in (
+                "clearance (min -0.1)", "clearance (min - 0.1)", "clearance (min -0)",
+                "clearance (min 2 * 0.1)", "clearance (min 2*0.25)", "clearance (min 0.1 + 0.1)",
+                "clearance (min -0.1) (max -0.2)",
+                "solder_paste_rel_margin (opt -0.1)", "solder_paste_rel_margin (opt -10)",
+                "solder_paste_rel_margin (opt -0.1mm)", "solder_paste_rel_margin (opt 2 * 0.05)",
+                "solder_paste_abs_margin (opt -0.1)",
+                "min_resolved_spokes 2", "min_resolved_spokes -1", "min_resolved_spokes .5",
+                "track_angle (min 45)", "track_angle (min 45,5)", "track_angle (min -45)",
+                "via_count (max 1,5)", "via_count (max 1 + 1)",
+                "clearance (min 0,1mm)", "clearance (min 0,1 mm)", "clearance (min 0,1 + 0,1)",
+                "clearance (min 2 * 0,1)", "clearance (min 0,1,2mm)", "clearance (min 1,mm)",
+                "clearance (min 1,000mm)", "clearance (min -0,1)",
+                "clearance (min 45deg)", "clearance (min 10deg) (max 45deg)",
+                "length (min 1ps) (max 2fs)", "length (max 1ps * 2)", "length (max 1deg)",
+                "skew (max 1ps)", "skew (max 1mm) (within_diff_pairs)",
+                "clearance (min 0.1mm  +  0.1mm)", "clearance (min 6 mil)",
+                "clearance (min 0.1mm) (opt 4mil)", "clearance (min -0.1mm) (max 0.5mm)",
+                "clearance (min 0.1mm + 0.1) (max 0.5mm)",
+                "clearance (min (0.1mm)) (max 1mm)", "clearance (min +0.1mm)",
+                "clearance (min\t0.1mm)", "clearance (min 0.1mm\t)", "clearance\t(min 0.1mm)",
+                "clearance (min 0.1mm\r\n)"):
+            with self.subTest(bound=bound):
+                self.assertEqual(dru(W + f'(rule a (constraint {bound}))')[:2], (None, ["custom:w"]))
+
+    def test_bounds_kicad_refuses(self):
+        for message, bounds in (
+                ("Missing units.", ("clearance (min 0,1)", "clearance (min 1,5)", "clearance (min 1,)",
+                                    "clearance (min 0.1)", "solder_paste_rel_margin (opt 0.1)",
+                                    "solder_paste_rel_margin (opt 0)", "clearance (min +0.1)",
+                                    "clearance (min (0.1))")),
+                ("Syntax error", ("clearance (min 0.1MM)", "clearance (min 0.1Mm)", "clearance (min 5MIL)",
+                                  "clearance (min 0.01IN)", "clearance (min .1mm)", "clearance (min 5%)",
+                                  "clearance (min 1, 5mm)", "clearance (min 0.1.2mm)")),
+                ("Unexpected units.", ("via_count (max 2mm)", "via_count (max 2deg)", "via_count (max 2ps)",
+                                       "via_count (max 1mm + 1)")),
+                ("Unrecognized item.", ("min_resolved_spokes (min 2)", "min_resolved_spokes (opt 2)",
+                                        "min_resolved_spokes x", "min_resolved_spokes",
+                                        "min_resolved_spokes 2mm")),
+                ("Missing ')'.", ("min_resolved_spokes 2 3",)),
+                ("Time based units not allowed for constraint type.",
+                 ("clearance (min 1ps)", "diff_pair_gap (max 1ps)")),
+                ("Mixed units for constraint values.",
+                 ("clearance (min 0.1mm) (max 45deg)", "skew (min 0mm) (max 1ps)",
+                  "solder_paste_rel_margin (opt -0.1) (max 0.1mm)", "clearance (min 0.1mm) (max -0.1)",
+                  "length (min 0mm) (max -1)")),
+                ("Missing '('.", ("clearance 0.1mm", "track_angle 45")),
+                ("within_diff_pairs option invalid for constraint type.",
+                 ("clearance (min 0.1mm) (within_diff_pairs)",)),
+                ("Missing min value.", ("clearance (min)",)),
+                ("Missing max value.", ("clearance (max)",)),
+                ("Unrecognized character.", ("clearance (min 0.1mm\t+\t0.1mm)", "clearance (min 0.1\tmm)",
+                                             "clearance (min 0.1mm\n+ 0.1mm)",
+                                             "clearance (min 0.1mm\r\n+ 0.1mm)"))):
+            for bound in bounds:
+                with self.subTest(bound=bound):
+                    self.assertEqual(dru(W + f'(rule a (constraint {bound}))')[:2], (message, []))
+
+    def test_track_angle_with_units_loads(self):
+        # kicad-cli 10.0.8 refuses these; KiCad master reads them as degrees (KiCad 11)
+        for bound in ("track_angle (min 45deg)", "track_angle (min 45 deg)", "track_angle (max 90deg)",
+                      "track_angle (min 45) (max 90deg)"):
+            with self.subTest(bound=bound):
+                self.assertEqual(dru(W + f'(rule a (constraint {bound}))')[:2], (None, ["custom:w"]))
 
     def test_decimal_comma_bound_is_a_length(self):
         err, hit, _ = dru('(version 1)\n(rule w (constraint track_width (min 0,5mm)))\n')
