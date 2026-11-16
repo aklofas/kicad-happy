@@ -29,7 +29,7 @@ Generated testbenches run on ngspice only. `simulate_subcircuits.py` still detec
 
 The circuit netlists are standard SPICE (Berkeley SPICE3 syntax). Only the measurement layer differs: ngspice uses `.control` blocks, LTspice/Xyce use `.meas`/`.measure` in the netlist body. The testbench architecture (SpiceTestbench objects) separates the portable circuit from the simulator-specific measurement commands.
 
-The key insight: the schematic analyzer already detects 21+ subcircuit types (RC filters, voltage dividers, opamp circuits, etc.) with full component values and net topology. The SPICE skill turns these static detections into dynamic simulations — instead of "I found an RC filter with calculated fc=15.9kHz," it says "I simulated this RC filter and confirmed fc=15.9kHz."
+The key insight: the schematic analyzer already detects 21+ subcircuit types (RC filters, voltage dividers, opamp circuits, etc.) with full component values and net topology. The SPICE skill turns these static detections into dynamic simulations — instead of "I found an RC filter with calculated fc=15.9kHz," it says "I simulated this RC filter and measured fc=15.9kHz."
 
 ## External Decks and PSpice
 

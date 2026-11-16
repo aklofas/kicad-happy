@@ -30,7 +30,7 @@ description: >-
 | `element14` | Search Newark/Farnell/element14 (international sourcing, reliable datasheets) |
 | `jlcpcb` | PCB fabrication & assembly ordering |
 | `pcbway` | Alternative PCB fabrication & assembly |
-| `spice` | SPICE simulation verification of detected subcircuits |
+| `spice` | SPICE simulation results for detected subcircuits |
 | `emc` | EMC pre-compliance risk analysis — consumes schematic + PCB analyzer output |
 
 **Handoff guidance:** Use this skill to parse schematics/PCBs and extract structured data. Hand off to `bom` for BOM enrichment, pricing, and ordering. Hand off to `digikey`/`mouser`/`lcsc`/`element14` for part searches and datasheet fetching. Hand off to `jlcpcb`/`pcbway` for fabrication ordering and DFM rule validation. During design reviews, run `spice` when ngspice is installed (check with `which ngspice`) and `emc` when both schematic and PCB analysis are available. Report each result at its strength: a SPICE `pass` measured against a real criterion (expected cutoff, ratio, gain) is a check; an `info` bench, or one built on a generic part model, is a measurement, not verification; EMC findings with `confidence: heuristic` are pre-compliance screening, not a compliance result.

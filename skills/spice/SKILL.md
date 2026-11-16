@@ -245,7 +245,7 @@ When incorporating simulation results into a design review report, follow this p
 ### For passing simulations (confidence builders)
 
 ```
-### RC Filter R5/C3 (fc=15.9kHz lowpass) -- Confirmed
+### RC Filter R5/C3 (fc=15.9kHz lowpass) -- Within tolerance
 Simulated fc=15.9kHz, <0.3% from calculated. Phase=-45 deg at fc as expected.
 ```
 

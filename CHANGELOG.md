@@ -10,7 +10,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Changed
 
-- `inputs.config_hash` covers every `.kicad-happy.json` that applied (parent folders and `~/.kicad-happy.json` too), so editing any of them changes it. EMC and thermal now report it for a discovered config as well. The hash is of the merged settings, so it no longer equals the file's `sha256sum`.
+- `inputs.config_hash` covers every `.kicad-happy.json` that applied (parent folders and `~/.kicad-happy.json` too), so editing any of them changes it. EMC and thermal now report it for a discovered config as well. The hash is of the merged settings, so it no longer equals the file's `sha256sum`, and the first comparison with a run made by an earlier version sees the config as changed.
 - SPICE simulation of detected subcircuits runs on ngspice only: with LTspice or Xyce selected, or found when ngspice is missing, `simulate_subcircuits.py` stops with an error that says so instead of reporting every subcircuit as skipped (their measurement output was never read correctly). `run_external_deck.py` still runs a complete deck on LTspice or Xyce.
 - Datasheet pin-voltage checks read a limit that lists several conditions from its 25 °C DC entry (written °C, ºC or ℃); a transient or pulse rating is no longer taken as the DC limit, and when no entry fits the lowest one is used.
 - The datasheet-backed checks AM-001, OV-001, TJ-001, FT-001, EX-001 and PM-001 skip an extraction whose PDF changed or is missing, or whose quality score is missing or below 60, as the regulator checks already did; a supply domain no longer takes another named domain's limit (VDDIO's for VDDA), only the part's VDD/VCC rating.

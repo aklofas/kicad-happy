@@ -127,7 +127,9 @@ def _legacy_verifier_view(extraction: dict) -> dict:
     Sectioned (base/pinout, has 'base'): synthesize the flat legacy keys the
     verifiers READ:
       - 'pins': list of dicts with 'number', 'name', 'type', 'voltage_abs_max',
-        'voltage_operating_max'.  One entry per number of each base.pinout[]
+        'voltage_operating_max'; a power pin (power_in / power_out) gets type 'power'
+        and 'direction' input / output, or 'function': 'GND' when it is a ground
+        pin.  One entry per number of each base.pinout[]
         record, with voltage limits resolved per-domain from
         base.absolute_max / base.recommended_operating via power_domain.
         A pin's own absolute_max / recommended SpecValue lists

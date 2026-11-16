@@ -285,8 +285,8 @@ For op-amps it can resolve (49 in the built-in table, more through distributor A
 
 ```
 Simulation: 14 pass, 1 warn, 0 fail
-  RC filter R5/C3 (fc=15.9kHz): confirmed, <0.3% error
-  Opamp U4A (inverting, gain=-10): 20.0dB confirmed
+  RC filter R5/C3 (fc=15.9kHz): within tolerance, <0.3% error
+  Opamp U4A (inverting, gain=-10): 20.0dB, within tolerance
     Bandwidth 98.8kHz (LM324 behavioral, GBW=1.0MHz)
     Note: signal frequency should stay below 85kHz for <1dB gain error
 ```

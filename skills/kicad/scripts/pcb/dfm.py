@@ -958,8 +958,8 @@ def _resolve_bounds(ctype: str, kind: str, layer: str | None,
     conditional rule may or may not apply, so each bound is a candidate list: the definite
     (value, origin) first, then conditional ones; a None value (unset, or not a length) means
     the bound cannot be judged. A rule's layer matches the item's layer by its name or any of
-    its *layer_aliases* (the board's name for it); ``outer``/``inner`` by the name only. Returns (mins, maxs, possible ignore
-    severities)."""
+    its *layer_aliases* (the board's name for it); ``outer``/``inner`` by the name only.
+    Returns (mins, maxs, possible ignore severities)."""
     board = _BOARD_MINIMUM_FOR.get((ctype, kind))
     required = minima.get(board) if board else None
     mins = [(required[0], board)] if required else [(None, None)]

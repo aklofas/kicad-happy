@@ -365,7 +365,7 @@ Board cavity resonances at 543 MHz (1,0), 812 MHz (0,1), 977 MHz (1,1). These ar
 
 ---
 
-## 8. SPICE Simulation Verification
+## 8. SPICE Simulation Results
 
 **25 subcircuits simulated: 23 pass, 2 warn, 0 fail**
 

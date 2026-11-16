@@ -676,7 +676,7 @@ def analyze_thermal_pad_vias(footprints: list[dict], vias: dict,
     """
     # EQ-054: effective = Σ(drill/0.3)² (drill-weighted via count)
     all_vias = vias.get("vias", [])
-    reaching: dict[str, set[int]] = {}  # pad copper layer -> ids of the vias reaching it
+    reaching: dict[str, dict[int, float]] = {}  # pad copper layer -> id -> drill of the vias reaching it
     results: list[dict] = []
 
     for fp in footprints:
