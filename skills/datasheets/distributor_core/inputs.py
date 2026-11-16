@@ -34,12 +34,32 @@ _SKIP_TYPES = {
 }
 
 
+# RKM value codes (4k7, 2R2, 1M5, 4n7, 2u2); p/n/u are lower case only, so 4N25 stays a part
+_RKM_RE = re.compile(r"^\d{1,3}(?:[kKMRr]|[pnuμ])\d{1,2}$")
+_SIZE_RE = re.compile(r"^(?:0201|0402|0603|0805|1206|1210|1812|2010|2512)$")
+_COMBO_SPLIT_RE = re.compile(r"[\s/,]+")
+# A JEDEC prefix written apart from its number (1N 914, 2N 2222), not a nano value
+_JEDEC_PREFIX_RE = re.compile(r"^\dN$")
+# 78Mxx / 79Mxx regulators (78M05, 79M12), not RKM megohm codes
+_REGULATOR_78M_RE = re.compile(r"^7[89]M\d\d")
+
+
+def _is_value_token(t: str) -> bool:
+    if _JEDEC_PREFIX_RE.match(t) or _REGULATOR_78M_RE.match(t):
+        return False
+    return bool(_GENERIC_VALUE_RE.match(t) or _RKM_RE.match(t) or _SIZE_RE.match(t))
+
+
 def is_real_mpn(mpn: str) -> bool:
     """Return True if the string looks like a real manufacturer part number."""
     mpn = mpn.strip()
     if not mpn or len(mpn) < 3:
         return False
-    if _GENERIC_VALUE_RE.match(mpn):
+    if _GENERIC_VALUE_RE.match(mpn) or (_RKM_RE.match(mpn) and not _REGULATOR_78M_RE.match(mpn)):
+        return False
+    # A value with its rating, size or tolerance: 100nF 50V, 10K 1%, 1uF/16V
+    tokens = [t for t in _COMBO_SPLIT_RE.split(mpn) if t]
+    if len(tokens) >= 2 and all(_is_value_token(t) for t in tokens):
         return False
     has_letter = any(c.isalpha() for c in mpn)
     has_digit = any(c.isdigit() for c in mpn)

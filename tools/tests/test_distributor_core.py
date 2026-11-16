@@ -18,6 +18,32 @@ class Inputs(unittest.TestCase):
                       ("X5R-0402", True), ("NP0402", True)):
             self.assertEqual(is_real_mpn(s), ok, s)
 
+    def test_value_codes_and_value_combinations_are_not_mpns(self):
+        from distributor_core.inputs import is_real_mpn
+        for s in ("4k7", "4K7", "2u2", "4n7", "2R2", "1M5", "4K99", "100nF 50V", "4.7uF 0805",
+                  "10K 1%", "1uF/16V", "10uF,25V", "100nF X7R", "3K3 0603", "7M8", "4M7", "4M7 1%"):
+            self.assertFalse(is_real_mpn(s), s)
+
+    def test_parts_shaped_like_value_codes_stay_mpns(self):
+        from distributor_core.inputs import is_real_mpn
+        for s in ("4N25", "4N35", "6N137", "1N4148", "1N914", "2N2222", "SOT-23", "MH1", "Conn_01x02",
+                  "LM358 DR", "LM2596S-5.0/NOPB", "RC0603FR-0710KL", "BAT54S", "3V3", "1N 914", "2N 2222",
+                  "78M05", "78M09", "79M12", "78M05CDT", "L78M05ABDT-TR", "78M05 5V"):
+            self.assertTrue(is_real_mpn(s), s)
+
+    def test_mpn_list_skips_value_codes(self):
+        import contextlib, io
+        from distributor_core.inputs import load_mpn_list
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "mpns.txt"
+            p.write_text("4k7\n100nF 50V\nLM358DR\n", encoding="utf-8")
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err):
+                parts = load_mpn_list(p)
+        self.assertEqual([x["mpn"] for x in parts], ["LM358DR"])
+        self.assertIn("Skipping '4k7': doesn't look like a real MPN", err.getvalue())
+        self.assertIn("Skipping '100nF 50V': doesn't look like a real MPN", err.getvalue())
+
 
 class Download(unittest.TestCase):
     def test_normalize_url_redirect_flag(self):

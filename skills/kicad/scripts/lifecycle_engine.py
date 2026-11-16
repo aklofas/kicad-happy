@@ -176,7 +176,8 @@ def _lead_weeks(lead_time) -> int | None:
 
 # ---------------------------------------------------------------------------
 # MPN filtering (same pattern as sync_datasheets_digikey.py)
-# Twin of distributor_core.inputs (_GENERIC_VALUE_RE / _SKIP_TYPES).
+# Twin of distributor_core.inputs (_GENERIC_VALUE_RE / _SKIP_TYPES); the value-code and
+# value-combination filter (4k7, 100nF 50V) is in distributor_core only.
 # ---------------------------------------------------------------------------
 
 _GENERIC_VALUE_RE = re.compile(

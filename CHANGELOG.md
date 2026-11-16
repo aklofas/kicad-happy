@@ -53,6 +53,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `diff_analysis --analysis-dir` diffs the run the manifest marks current against the run before it, instead of the two newest folder names; the review instructions point at the project's own `analysis/` folder.
 - Deep Review's datasheet check no longer uses a stray `<MPN>_*.pdf` (or `<MPN>.pdf`) for a part the datasheet manifest records as not found or failed.
 - Datasheet search by a symbol's Value no longer takes a part whose number continues with a digit (`LM358` no longer matches `LM3580`); `LM358DR`, `LM1117-3.3` and the `STM32G4` series still match.
+- Datasheet sync no longer searches distributors for passive value codes and value combinations (`4k7`, `2u2`, `100nF 50V`, `10K 1%`, `1uF/16V`) in MPN or Value fields.
 
 ### Documentation
 
