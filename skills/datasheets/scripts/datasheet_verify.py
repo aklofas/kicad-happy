@@ -57,9 +57,10 @@ _TRANSIENT = re.compile(
     r"transient|pulse|surge|non-?repetitive|\bpeak\b|\bESD\b|\bHBM\b|\bCDM\b"
     r"|\bt[pw]?\s*[<\u2264]|\d\s*(?:ms|\u00b5s|\u03bcs|us|ns)\b", re.I)
 _NUM = r"([-\u2212\u2013]?\+?\d+(?:\.\d+)?)"
+# Degrees written as °C, ºC (ordinal sign) or ℃ (U+2103).
 _TEMP = re.compile(
-    _NUM + r"\s*(?:\u00b0?\s*C)?"
-    r"(?:\s*(?:to|~|-|\u2013|\u2014)\s*" + _NUM + r")?\s*\u00b0?\s*C\b")
+    _NUM + r"\s*(?:[\u00b0\u00ba]?\s*C|\u2103)?"
+    r"(?:\s*(?:to|~|-|\u2013|\u2014)\s*" + _NUM + r")?\s*(?:[\u00b0\u00ba]?\s*C\b|\u2103)")
 
 
 def _condition_matches(condition) -> bool:

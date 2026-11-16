@@ -234,6 +234,13 @@ class MultiConditionSpecs(unittest.TestCase):
         self.assertFalse(dv._condition_matches("TA = 85\u00b0C"))
         self.assertFalse(dv._condition_matches("TA = \u221240\u00b0C"))
 
+    def test_celsius_sign_and_ordinal_spellings_are_read(self):
+        for deg in ("\u2103", "\u00baC"):
+            self.assertEqual(dv._spec_max_voltage(
+                [_sv(3.6, "Ta=125" + deg), _sv(4.0, "Ta=25" + deg)]), 4.0, deg)
+        self.assertTrue(dv._condition_matches("Ta=-40\u2103~85\u2103"))
+        self.assertFalse(dv._condition_matches("Ta=85\u00baC"))
+
     def test_unicode_range_entries_keep_the_room_entry(self):
         self.assertEqual(dv._spec_max_voltage(
             [_sv(6.0, "TA = \u221240 to +85\u00b0C"),
