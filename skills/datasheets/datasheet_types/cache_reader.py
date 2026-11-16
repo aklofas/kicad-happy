@@ -55,6 +55,18 @@ STALE_PDF_HASH_MISMATCH = "pdf_hash_mismatch"
 MAX_CACHE_BYTES = 10 * 1024 * 1024
 
 
+_WARNED_IDENTITY = False
+
+
+def _note_identity_refusal(path) -> None:
+    global _WARNED_IDENTITY
+    if not _WARNED_IDENTITY:
+        _WARNED_IDENTITY = True
+        print(f"Warning: {path}: the opened datasheet cache file does not match its path "
+              f"(file identity differs on this file system); datasheet extractions here "
+              f"are not read", file=sys.stderr)
+
+
 def read_regular_bytes(path) -> Optional[bytes]:
     """The bytes of one cache file; None when it is missing, a symlink, not a regular file,
     oversized, or unreadable.
@@ -72,8 +84,12 @@ def read_regular_bytes(path) -> Optional[bytes]:
             st = os.fstat(f.fileno())
             if not stat.S_ISREG(st.st_mode) or st.st_size > MAX_CACHE_BYTES:
                 return None
-            if not hasattr(os, "O_NOFOLLOW") and not os.path.samestat(st, os.lstat(path)):
-                return None
+            if not hasattr(os, "O_NOFOLLOW"):
+                lst = os.lstat(path)
+                if not os.path.samestat(st, lst):
+                    if stat.S_ISREG(lst.st_mode):
+                        _note_identity_refusal(path)
+                    return None
             raw = f.read(MAX_CACHE_BYTES + 1)
             return None if len(raw) > MAX_CACHE_BYTES else raw
     except OSError:

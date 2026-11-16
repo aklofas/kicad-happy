@@ -481,6 +481,33 @@ class CacheReadLinksAndPipes(unittest.TestCase):
             self.assertIsNone(cache_reader.read_json_object(target))
         self.assertTrue(target.is_symlink())
 
+    def test_cached_extraction_reads_on_this_platform(self):
+        from datasheet_types import cache_reader
+        shutil.copy(fixture("datasheets-extracted", "LM2596-ADJ.json"), self.d / "LM2596-ADJ.json")
+        self.assertIsInstance(cache_reader.read_json_object(self.d / "LM2596-ADJ.json"), dict)
+        self.assertIsNotNone(cache_reader.lookup("LM2596-ADJ", cache_dir=self.d))
+
+    def test_identity_mismatch_on_a_regular_file_is_noted_once(self):
+        from datasheet_types import cache_reader
+        cache_reader._WARNED_IDENTITY = False
+        self.addCleanup(setattr, cache_reader, "_WARNED_IDENTITY", False)
+        with mock.patch.object(cache_reader, "os", _NoNofollowOs()), \
+                mock.patch.object(os.path, "samestat", return_value=False), \
+                contextlib.redirect_stderr(io.StringIO()) as err:
+            self.assertIsNone(cache_reader.read_json_object(self.d / "ok.json"))
+            self.assertIsNone(cache_reader.read_json_object(self.d / "ok.json"))
+        lines = err.getvalue().splitlines()
+        self.assertEqual(len(lines), 1)
+        self.assertIn("ok.json", lines[0])
+
+    def test_regular_file_with_matching_identity_reads_silently(self):
+        from datasheet_types import cache_reader
+        cache_reader._WARNED_IDENTITY = False
+        with mock.patch.object(cache_reader, "os", _NoNofollowOs()), \
+                contextlib.redirect_stderr(io.StringIO()) as err:
+            self.assertEqual(cache_reader.read_json_object(self.d / "ok.json"), {"a": 1})
+        self.assertEqual(err.getvalue(), "")
+
     def test_without_o_nofollow_a_regular_file_still_reads(self):
         from datasheet_types import cache_reader
         with mock.patch.object(cache_reader, "os", _NoNofollowOs()):
@@ -490,8 +517,11 @@ class CacheReadLinksAndPipes(unittest.TestCase):
     def test_without_o_nofollow_a_link_and_a_swap_are_refused(self):
         from datasheet_types import cache_reader
         os.symlink(self.d / "secret.json", self.d / "link.json")
-        with mock.patch.object(cache_reader, "os", _NoNofollowOs()):
+        cache_reader._WARNED_IDENTITY = False
+        with mock.patch.object(cache_reader, "os", _NoNofollowOs()), \
+                contextlib.redirect_stderr(io.StringIO()) as err:
             self.assertIsNone(cache_reader.read_json_object(self.d / "link.json"))
+        self.assertEqual(err.getvalue(), "")
         target = self.d / "ok.json"
         p1, p2 = self._swap_before_open(cache_reader, target)
         with p1, p2, mock.patch.object(cache_reader, "os", _NoNofollowOs()):
