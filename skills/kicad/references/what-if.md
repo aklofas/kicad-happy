@@ -54,7 +54,7 @@ python3 what_if.py <input> [changes...] [options]
 
 | Flag | Description |
 |------|-------------|
-| `--spice` | Re-run SPICE simulations on each affected subcircuit, original and patched (requires ngspice/LTspice/Xyce; not with a sweep) |
+| `--spice` | Re-run SPICE simulations on each affected subcircuit, original and patched (requires ngspice; not with a sweep) |
 | `--offline` | With `--spice`: part models from the project cache and the built-in table only, no distributor or datasheet lookup |
 | `--output FILE`, `-o FILE` | Write the patched analysis JSON to FILE (single changes only; for downstream EMC, thermal, or diff analysis) |
 | `--text` | Human-readable text output instead of JSON |

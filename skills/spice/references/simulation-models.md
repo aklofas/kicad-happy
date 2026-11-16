@@ -30,7 +30,7 @@ When the skill encounters an active component (opamp, LDO, comparator), it resol
 5. **Built-in lookup table** — `spice_part_library.py` has 103 op-amps, LDOs, comparators and references with datasheet-verified specs. Offline safety net.
 6. **Ideal model fallback** — generic model with fixed parameters (e.g., 10 MHz GBW for opamps)
 
-Real data from APIs and datasheets takes priority over the lookup table. The table serves as an offline fallback when no network or downloaded PDFs are available. Passive components (R, C, L) always use the simulator's exact built-in primitives (standard SPICE R/C/L elements) — no model resolution needed. All three supported simulators (ngspice, LTspice, Xyce) handle these identically.
+Real data from APIs and datasheets takes priority over the lookup table. The table serves as an offline fallback when no network or downloaded PDFs are available. Passive components (R, C, L) always use the simulator's exact built-in primitives (standard SPICE R/C/L elements) — no model resolution needed. All three simulators (ngspice for generated testbenches; LTspice and Xyce for complete decks through `run_external_deck.py`) handle these identically.
 
 The lookup table also includes crystal driver specs for 24 entries (22 MCU families plus two 32 kHz LSE variants: STM32, ESP32, nRF52, ATmega, RP2040) with oscillator transconductance values for startup margin analysis.
 
@@ -274,7 +274,7 @@ The ngspice backend uses `.control` blocks (ngspice scripting) rather than `.mea
 
 ### LTspice and Xyce Backends
 
-LTspice and Xyce use `.meas`/`.measure` statements directly in the netlist body (no `.control` block). Measurement results are parsed from the `.log` file (LTspice) or stdout (Xyce). The `SpiceTestbench` class abstracts the difference — generators define measurement intent (what to measure), and the backend renders the simulator-specific syntax.
+LTspice and Xyce use `.meas`/`.measure` statements directly in the netlist body (no `.control` block). The `SpiceTestbench` class abstracts the difference — generators define measurement intent (what to measure), and the backend renders the simulator-specific syntax. The LTspice and Xyce renderings exist, but `simulate_subcircuits.py` refuses both backends for generated testbenches until their native measurement output is read; `run_external_deck.py` runs a complete deck on either.
 
 ### Key ngspice Gotchas
 

@@ -61,6 +61,11 @@ _SINGULAR = {
 }
 
 
+_NGSPICE_ONLY = ("generated testbenches run on ngspice only; LTspice and Xyce measurement "
+                 "output is not read")
+_BACKEND_DISPLAY = {"ltspice": "LTspice", "xyce": "Xyce"}
+
+
 def _singular_type(det_type):
     """Convert a detector key to its singular subcircuit_type name."""
     if det_type in _SINGULAR:
@@ -116,6 +121,15 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
               'format. Re-run analyze_schematic.py to produce the current '
               'findings[] format.', file=_sys.stderr)
         return build_report([])
+
+    from spice_simulator import SimulatorBackend
+    if isinstance(simulator_backend, SimulatorBackend) and simulator_backend.name != "ngspice":
+        diags: list = []
+        record(diags, "simulate_subcircuits.simulate_subcircuits",
+               RuntimeError(_NGSPICE_ONLY), "simulation skipped")
+        report = build_report([])
+        report["diagnostics"] = diags + report["diagnostics"]
+        return report
 
     # Build detector-keyed lookup from flat findings[]
     # Map detector names to legacy keys used by TEMPLATE_REGISTRY
@@ -411,7 +425,9 @@ def simulate_subcircuits(analysis_json, workdir=None, timeout=5, types=None,
     report["diagnostics"] = sim_diagnostics + report["diagnostics"]
     report["workdir"] = run_dir
     report["total_elapsed_s"] = round(total_time, 3)
-    report["simulator"] = find_ngspice() or None
+    report["simulator"] = (simulator_backend.find()
+                           if isinstance(simulator_backend, SimulatorBackend)
+                           else find_ngspice()) or None
     report["ngspice"] = report["simulator"]  # backward compat alias
 
     return report
@@ -611,14 +627,21 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("one of --schematic / positional input / --analysis-dir is required")
 
     # Detect simulator
-    from spice_simulator import detect_simulator
+    from spice_simulator import SimulatorBackend, detect_simulator
     simulator_backend = detect_simulator(args.simulator)
     if not simulator_backend:
-        print("Error: no SPICE simulator found. Install one of:", file=sys.stderr)
-        print("  ngspice: apt install ngspice / brew install ngspice", file=sys.stderr)
-        print("  LTspice: download from analog.com/ltspice", file=sys.stderr)
-        print("  Xyce:    download from xyce.sandia.gov", file=sys.stderr)
+        print("Error: no SPICE simulator found. Install ngspice:", file=sys.stderr)
+        print("  apt install ngspice / brew install ngspice", file=sys.stderr)
         print("  Or set NGSPICE_PATH env var to the ngspice binary path.", file=sys.stderr)
+        print("  If ngspice is installed, select it with --simulator ngspice or "
+              "SPICE_SIMULATOR=ngspice.", file=sys.stderr)
+        return 1
+    if isinstance(simulator_backend, SimulatorBackend) and simulator_backend.name != "ngspice":
+        display = _BACKEND_DISPLAY.get(simulator_backend.name, simulator_backend.name)
+        print(f"Error: {display} selected, but {_NGSPICE_ONLY}. Select ngspice with "
+              f"--simulator ngspice or SPICE_SIMULATOR=ngspice, or install ngspice "
+              f"(apt install ngspice / brew install ngspice) or set NGSPICE_PATH. "
+              f"run_external_deck.py runs a complete deck on LTspice or Xyce.", file=sys.stderr)
         return 1
 
     # Read analysis JSON

@@ -3,8 +3,8 @@ name: spice
 description: >-
   Run automatic SPICE simulations on subcircuits detected from KiCad schematic
   analysis — validates filter frequencies, divider ratios, opamp gains, LC
-  resonance, and crystal load capacitance. Supports ngspice, LTspice, and Xyce
-  (auto-detected). Generates testbenches, runs batch mode, produces structured
+  resonance, and crystal load capacitance. Runs on ngspice. Generates
+  testbenches, runs batch mode, produces structured
   pass/warn/fail/info report. Use when the user asks to simulate, verify, or
   validate any analog subcircuit — RC filters, LC filters, voltage dividers,
   opamp circuits, crystal oscillators. Also for "simulate my circuit", "run
@@ -16,7 +16,7 @@ description: >-
 
 # SPICE Simulation Skill
 
-Automatically generates and runs SPICE testbenches for circuit subcircuits detected by the `kicad` skill's schematic analyzer. Supports ngspice, LTspice, and Xyce (auto-detected). Validates calculated values (filter frequencies, divider ratios, opamp gains) against actual simulation results and produces a structured report.
+Automatically generates and runs SPICE testbenches for circuit subcircuits detected by the `kicad` skill's schematic analyzer. Runs on ngspice. Validates calculated values (filter frequencies, divider ratios, opamp gains) against actual simulation results and produces a structured report.
 
 This skill inverts the typical simulation workflow: instead of requiring users to create simulation sources and configure analysis (which ~2.5% of KiCad users do), it generates targeted testbenches automatically from the analyzer's subcircuit detections.
 
@@ -31,19 +31,19 @@ This skill inverts the typical simulation workflow: instead of requiring users t
 | `element14` | Parametric specs (international), datasheet downloads |
 | `emc` | EMC pre-compliance — uses this skill's simulator infrastructure for SPICE-enhanced PDN impedance and switching-harmonic analysis |
 
-**Handoff guidance:** The `kicad` skill's `analyze_schematic.py` produces the analysis JSON with subcircuit detections in the flat `findings[]` array (filtered by `detector` field). This skill reads that JSON, generates SPICE testbenches for simulatable subcircuits, runs the detected simulator (ngspice/LTspice/Xyce), and produces a structured verification report. Always run the schematic analyzer first. During a design review, run simulation after the analyzer and before writing the final report — simulation results should appear as a verification section in the report. The `emc` skill reuses this skill's simulator backend for SPICE-enhanced PDN impedance and switching-harmonic checks — when ngspice is available, the EMC skill's `--spice-enhanced` flag activates these checks automatically.
+**Handoff guidance:** The `kicad` skill's `analyze_schematic.py` produces the analysis JSON with subcircuit detections in the flat `findings[]` array (filtered by `detector` field). This skill reads that JSON, generates SPICE testbenches for simulatable subcircuits, runs them on ngspice, and produces a structured verification report. Always run the schematic analyzer first. During a design review, run simulation after the analyzer and before writing the final report — simulation results should appear as a verification section in the report. The `emc` skill reuses this skill's simulator backend for SPICE-enhanced PDN impedance and switching-harmonic checks — when ngspice is available, the EMC skill's `--spice-enhanced` flag activates these checks automatically.
 
 ## Requirements
 
-- **A SPICE simulator** — one of the following (auto-detected, first available wins):
-  - **ngspice** — `sudo apt install ngspice` (Linux) / `brew install ngspice` (macOS) / ngspice.sourceforge.io (Windows). Most common choice.
-  - **LTspice** — free from analog.com/ltspice. Popular on Windows, works via wine on Linux.
-  - **Xyce** — from xyce.sandia.gov. Parallel SPICE for large circuits.
-  - Override with `--simulator ngspice|ltspice|xyce` or `SPICE_SIMULATOR` env var.
+- **A SPICE simulator** — generated testbenches run on ngspice only (found on PATH or through `NGSPICE_PATH`):
+  - **ngspice** — `sudo apt install ngspice` (Linux) / `brew install ngspice` (macOS) / ngspice.sourceforge.io (Windows).
+  - **LTspice** — not used for generated testbenches (its measurement output is not read); `run_external_deck.py` runs a complete LTspice deck.
+  - **Xyce** — not used for generated testbenches either; `run_external_deck.py` runs a complete Xyce deck.
+  - LTspice or Xyce selected (`--simulator`, `SPICE_SIMULATOR`, or found when ngspice is missing) stops with exit 1; pick ngspice with `--simulator ngspice`.
 - **Python 3.10+** — stdlib only, no pip dependencies
 - **Schematic analyzer JSON** — from `analyze_schematic.py --output`
 
-If no simulator is installed, skip simulation gracefully and note it in the report. Do not treat a missing simulator as an error — it's an optional enhancement.
+If ngspice is not installed, skip simulation gracefully and note it in the report. Do not treat a missing simulator as an error — it's an optional enhancement.
 
 ## Workflow
 
@@ -234,9 +234,9 @@ Check the `note` field first. Common causes:
 | "could not measure -3dB frequency" | AC sweep range doesn't include the -3dB point | Check if the filter fc is very low (<0.1 Hz) or very high (>100 MHz) |
 | "AC measurement failed" | Testbench topology error — the circuit doesn't converge | Check `.cir` file for floating nodes or missing connections |
 | "Testbench generation failed: KeyError" | Analyzer detection is missing expected fields | Check analyzer JSON — the detection may be incomplete |
-| "ngspice/ltspice/xyce failed: ..." | Simulator error | Check `.log` file for error messages |
+| "ngspice failed: ..." | Simulator error | Check `.log` file for error messages |
 
-When debugging, use `--workdir` to preserve simulation files (each run writes them into a new `spice_sim_*` folder inside it). The `.cir` file is a standard SPICE netlist that can be run manually (`ngspice -n -b file.cir`, or opened in LTspice/Xyce). The `.log` file contains simulator stdout/stderr.
+When debugging, use `--workdir` to preserve simulation files (each run writes them into a new `spice_sim_*` folder inside it). The `.cir` file is a standard SPICE netlist that can be run manually (`ngspice -n -b file.cir`). The `.log` file contains simulator stdout/stderr.
 
 ## Presenting Results to Users
 
@@ -300,7 +300,7 @@ For detailed information about the behavioral models used, their accuracy envelo
 | `scripts/spice_templates.py` | Testbench generators per detector type — one function per detector name |
 | `scripts/spice_models.py` | Behavioral model definitions (ideal opamp, generic semiconductors), net sanitization, engineering notation formatting |
 | `scripts/spice_results.py` | Simulation output parsing and per-type evaluation with pass/warn/fail/info/skip logic |
-| `scripts/spice_simulator.py` | Simulator backends — ngspice, LTspice, Xyce auto-detection and batch execution |
+| `scripts/spice_simulator.py` | Simulator backends — ngspice, LTspice, Xyce detection and batch execution; generated benches need ngspice |
 | `scripts/spice_part_library.py` | Lookup table of electrical specs for 103 op-amps, LDOs, comparators and references, plus 24 crystal-driver and 10 MOSFET entries |
 | `scripts/spice_model_generator.py` | Parameterized behavioral .subckt generation from specs dicts |
 | `scripts/spice_model_cache.py` | Project-local model cache in `spice/models/` beside the schematic the analysis JSON names (`file` or `inputs.source_files[0]`); an analysis that names no source file, or a relative one not found from the current directory, caches under the run's workdir (`--model-cache-dir` to share one cache) |
