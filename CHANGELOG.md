@@ -53,7 +53,6 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Issue bodies from `export_issues` escape `|` in summaries, descriptions and recommendations, and a component value starting with `#`, so analyzer text cannot form a table or a heading on GitHub.
 - `diff_analysis --analysis-dir` diffs the run the manifest marks current against the run before it, instead of the two newest folder names; the review instructions point at the project's own `analysis/` folder.
 - Deep Review's datasheet check no longer uses a stray `<MPN>_*.pdf` for a part the datasheet manifest records as not found or failed; a datasheet saved by hand as `<MPN>.pdf` is still used.
-- Datasheet search by a symbol's Value no longer takes a part whose number continues with a digit (`LM358` no longer matches `LM3580`); `LM358DR`, `LM1117-3.3` and the `STM32G4` series still match.
 - Datasheet sync no longer searches distributors for passive value codes and value combinations (`4k7`, `2u2`, `100nF 50V`, `10K 1%`, `1uF/16V`) in MPN or Value fields.
 - A `--force-all` refresh whose new datasheet looks like a different part keeps the previous datasheet even when both have the same file name: the new file is checked before it replaces the old one.
 - Mouser datasheet sync waits 2 seconds between API calls by default, Mouser's published 30 calls a minute.
