@@ -79,7 +79,27 @@ class ViaReachesThePad(unittest.TestCase):
                  via(x, y, ("In2.Cu", "B.Cu"), kind="micro")]
         staggered = [via(GRID[1][0], GRID[1][1], ("In1.Cu", "In2.Cu"), kind="blind")]
         e = tv001("B", stack + staggered)
-        self.assertEqual(e["via_count"], 3)
+        self.assertEqual(e["via_count"], 1)
+        self.assertEqual(e["vias_tented"] + e["vias_untented"], 1)
+
+    def test_stacked_column_weighted_by_its_narrowest_drill(self):
+        x, y = GRID[0]
+        stack = [via(x, y, ("F.Cu", "In1.Cu"), drill=0.3, kind="micro"),
+                 via(x, y, ("In1.Cu", "In2.Cu"), drill=0.2, kind="blind"),
+                 via(x, y, ("In2.Cu", "B.Cu"), drill=0.3, kind="micro")]
+        e = tv001("B", stack)
+        self.assertEqual(e["via_count"], 1)
+        self.assertEqual(e["effective_via_count"], round((0.2 / 0.3) ** 2, 1))
+
+    def test_same_point_duplicate_vias_still_count_each(self):
+        x, y = GRID[0]
+        self.assertEqual(tv001("F", [via(x, y), via(x, y)])["via_count"], 2)
+
+    def test_non_contiguous_same_point_pair_not_a_column(self):
+        x, y = GRID[0]
+        pair = [via(x, y, ("F.Cu", "In1.Cu"), kind="blind"),
+                via(x, y, ("In2.Cu", "B.Cu"), kind="blind")]
+        self.assertEqual(tv001("F", pair)["via_count"], 1)
 
 
 if __name__ == "__main__":

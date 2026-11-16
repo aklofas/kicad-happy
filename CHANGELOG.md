@@ -14,6 +14,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Fixed
 
+- TV-001 counts a stacked via column (vias at one point on one net, layer to layer) as one via, weighted by its narrowest drill, so an HDI thermal pad is no longer graded as if each layer pair were a separate via.
 - A schematic whose sheets are placed hundreds of times is read much faster: the time no longer grows with the square of the instance count. Results are unchanged.
 - Writing a large analysis with `--output` needs much less memory (a 470 MB schematic result peaked at 3 GB, now under 1 GB); the file is unchanged.
 - A schematic or board with a coordinate that is not a finite number (`nan`, `inf`, or text) is analyzed with that point read as 0 and one diagnostics entry. Before, the schematic stopped with a traceback and the board wrote `NaN` into its JSON.

@@ -45,18 +45,20 @@ def _via_span(via: dict) -> tuple[int, int] | None:
     return min(span), max(span)
 
 
-def _vias_reaching(vias: list[dict], layer: str) -> set[int]:
-    """ids of the vias whose copper reaches `layer`: their own span holds it, or they are
-    stacked at the same point on a chain of same-net vias that does."""
+def _vias_reaching(vias: list[dict], layer: str) -> dict[int, float]:
+    """id -> drill of the vias whose copper reaches `layer`: their own span holds it, or they
+    are stacked at the same point on a chain of same-net vias that does. A chain of vias with
+    differing spans is one column: it counts once, through the first via holding `layer`, at
+    its narrowest drill. Identical-span duplicates and unknown spans count each via."""
     target = _copper_rank(layer)
     stacks: dict[tuple, list[dict]] = {}
     for v in vias:
         stacks.setdefault((round(v["x"], 3), round(v["y"], 3), v.get("net")), []).append(v)
-    reach: set[int] = set()
+    reach: dict[int, float] = {}
     for stack in stacks.values():
         spans = {id(v): _via_span(v) for v in stack}
         if target is None or any(sp is None for sp in spans.values()):
-            reach.update(spans)
+            reach.update({id(v): v.get("drill", 0.3) for v in stack})
             continue
         lo = hi = None
         grown = True
@@ -73,7 +75,12 @@ def _vias_reaching(vias: list[dict], layer: str) -> set[int]:
                     lo = top if lo is None else min(lo, top)
                     hi = bottom if hi is None else max(hi, bottom)
                     grown = True
-        reach.update(joined)
+        chain = [v for v in stack if id(v) in joined]
+        if len({spans[id(v)] for v in chain}) > 1:
+            head = next(v for v in chain if spans[id(v)][0] <= target <= spans[id(v)][1])
+            reach[id(head)] = min(v.get("drill", 0.3) for v in chain)
+        else:
+            reach.update({id(v): v.get("drill", 0.3) for v in chain})
     return reach
 
 
@@ -752,7 +759,7 @@ def analyze_thermal_pad_vias(footprints: list[dict], vias: dict,
                         abs(dy) <= half_h * 1.5):
                     vias_in_pad += 1
                     # Weight by drill cross-section relative to 0.3mm standard
-                    drill = via.get("drill", 0.3)
+                    drill = reaching[pad_copper][id(via)]
                     drill_sum += drill
                     effective_vias_in_pad += (drill / 0.3) ** 2
                     # Solder reaches the via on the side the pad opens; tenting elsewhere
