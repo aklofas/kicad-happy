@@ -20,6 +20,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `--text` together with `--output` or `--analysis-dir` prints the text report and also writes the JSON, on every analyzer. Before, one of the two was silently skipped.
 - The `--no-hierarchy` help says what the flag does: a sub-sheet is analyzed as given instead of from its project root.
 - An inductor marked `NON SHIELDED` or `SEMI SHIELDED` (with a space) is no longer treated as shielded by the EMC inductor-leakage check.
+- A `.kicad_dru` rule that sets one constraint under its old and new name (`hole` and `hole_size`, `mechanical_clearance` and `physical_clearance`) refuses the file, as in KiCad.
 
 ### Documentation
 

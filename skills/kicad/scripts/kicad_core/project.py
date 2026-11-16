@@ -901,9 +901,10 @@ def _dru_parse_error(tree: list, layer_names: frozenset[str] | None = None) -> s
                     if not isinstance(ctype, str) or (ctype not in _DRU_CONSTRAINT_TYPES
                                                       and '${' not in ctype):
                         return "Unrecognized constraint type."
-                    if ctype in constraint_types:
+                    # a deprecated name and its current name are one constraint
+                    if _DRU_CONSTRAINT_ALIASES.get(ctype, ctype) in constraint_types:
                         return f"Rule already has a '{ctype}' constraint."
-                    constraint_types.add(ctype)
+                    constraint_types.add(_DRU_CONSTRAINT_ALIASES.get(ctype, ctype))
                     if ctype not in _DRU_ARGUMENT_CONSTRAINTS and (
                             bound_error := _dru_bound_error(item)):
                         return bound_error

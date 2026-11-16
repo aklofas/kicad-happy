@@ -4,7 +4,8 @@
   rule of the file applies;
 - the deprecated constraint names `hole`, `mechanical_clearance` and
   `mechanical_hole_clearance` are read as `hole_size`, `physical_clearance` and
-  `physical_hole_clearance`;
+  `physical_hole_clearance`, so a rule giving one constraint under both names is refused
+  ("Rule already has a 'hole_size' constraint.", naming the second as written);
 - a bound written with a decimal comma (`0,5mm`) is a length;
 - a rule naming a layer by its other KiCad name (`F.Silkscreen` on a board whose file says
   `F.SilkS`) applies, with or without a user name.
@@ -77,6 +78,25 @@ class DruAsKiCadReadsIt(unittest.TestCase):
                          ["track_width", "physical_clearance"])
         self.assertEqual(dru(W + '(rule m (constraint mechanical_hole_clearance (min 0.01mm)))')[2],
                          ["track_width", "physical_hole_clearance"])
+
+    def test_old_and_new_constraint_name_in_one_rule_refuses_the_file(self):
+        rule = W + '(rule d (constraint {}) (constraint {}))'
+        for first, second in (("hole", "hole_size"), ("hole_size", "hole"),
+                              ("mechanical_clearance", "physical_clearance"),
+                              ("mechanical_hole_clearance", "physical_hole_clearance")):
+            with self.subTest(first=first, second=second):
+                err, hit, _ = dru(rule.format(f"{first} (min 0.1mm)", f"{second} (min 0.1mm)"))
+                self.assertEqual(err, f"Rule already has a '{second}' constraint.")
+                self.assertEqual(hit, [])
+
+    def test_one_name_per_rule_loads(self):
+        for rules in ('(rule d (constraint hole (min 0.1mm)) (constraint hole_clearance (min 0.1mm)))',
+                      '(rule d (constraint hole (min 0.1mm)))\n'
+                      '(rule e (constraint hole_size (min 0.1mm)))'):
+            with self.subTest(rules=rules):
+                err, hit, _ = dru(W + rules)
+                self.assertIsNone(err)
+                self.assertEqual(hit, ["custom:w"])
 
     def test_decimal_comma_bound_is_a_length(self):
         err, hit, _ = dru('(version 1)\n(rule w (constraint track_width (min 0,5mm)))\n')
