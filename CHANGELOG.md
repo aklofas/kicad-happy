@@ -61,6 +61,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A Mouser error reply, such as a rejected API key, no longer stops the lifecycle audit or its `--suggest-alternatives` search.
 - An MPN field that lists alternatives (`1012, 1012C`) is also looked up by its DigiKey or Mouser part number; that answer counts only for the alternative it names.
 - The lifecycle part-number lookup reports a skipped search hit only when no hit matched, and names it as the search hit.
+- `lifecycle_audit --suggest-alternatives` no longer crashes on an end-of-life part with two or more suggested replacements, and a row for an MPN field that lists alternatives keeps naming the part numbers it checked.
 
 ### Documentation
 

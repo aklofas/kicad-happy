@@ -419,5 +419,43 @@ class NoAnswerTest(ProviderIdentityBase):
         self.assertEqual(f["confidence"], "deterministic")
 
 
+
+class SuggestedAlternativesTest(ProviderIdentityBase):
+    """--suggest-alternatives adds its suggestions to an end-of-life row without
+    replacing the alternatives the MPN field lists."""
+
+    SUGGESTED = [{"mpn": "BSS138K", "manufacturer": "onsemi", "source": "digikey",
+                  "status": "active"},
+                 {"mpn": "BSS138W", "manufacturer": "Diodes", "source": "digikey",
+                  "status": "active"}]
+
+    def run_field(self, mpn, suggested):
+        self.bodies["digikey"] = dk("BSS138", "BSS84", "LM358DR", status="Obsolete")
+        with mock.patch.object(lifecycle_engine, "find_alternatives",
+                               lambda *a, **k: list(suggested)), \
+                mock.patch.object(sys, "stderr", io.StringIO()):
+            out = lifecycle_engine.audit_bom(
+                {"bom": [{"references": ["Q1"], "mpn": mpn, "type": "transistor"}]},
+                sources=["digikey"], delay=0, suggest_alternatives=True)
+        return out["findings"][0]
+
+    def test_several_suggestions_keep_the_field_alternatives(self):
+        f = self.run_field("BSS138, BSS84", self.SUGGESTED)
+        self.assertEqual(f["rule_id"], "LC-001")
+        self.assertIn("(checked as BSS138, BSS84)", f["description"])
+        self.assertEqual(f["alternatives"], self.SUGGESTED)
+
+    def test_single_part_with_several_suggestions(self):
+        f = self.run_field("LM358DR", self.SUGGESTED)
+        self.assertEqual(f["rule_id"], "LC-001")
+        self.assertNotIn("checked as", f["description"])
+        self.assertEqual(f["alternatives"], self.SUGGESTED)
+
+    def test_one_or_no_suggestion_keeps_the_field_alternatives(self):
+        for suggested in ([], self.SUGGESTED[:1]):
+            f = self.run_field("BSS138, BSS84", suggested)
+            self.assertIn("(checked as BSS138, BSS84)", f["description"], suggested)
+            self.assertEqual(f.get("alternatives", []), suggested)
+
 if __name__ == "__main__":
     unittest.main()

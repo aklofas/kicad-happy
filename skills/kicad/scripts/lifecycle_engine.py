@@ -1036,9 +1036,9 @@ def audit_bom(analysis_json: dict, project_dir: str | None = None,
             # Search for alternatives if requested
             if suggest_alternatives:
                 print(f"  Searching for alternatives...", file=sys.stderr)
-                alts = find_alternatives(mpn, sources, delay)
-                if alts:
-                    finding["alternatives"] = alts
+                suggested = find_alternatives(mpn, sources, delay)
+                if suggested:
+                    finding["alternatives"] = suggested
 
         rule_info = _LIFECYCLE_STATUS_RULES.get(status)
         if rule_info and not (lcsc_only and status == "unknown"):
