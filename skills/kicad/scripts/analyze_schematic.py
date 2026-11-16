@@ -131,13 +131,15 @@ def main(argv: list[str] | None = None) -> int:
     result["capability_mode_ref"] = _capability_mode_ref
 
     indent = None if args.compact else 2
+    if args.output:
+        from kicad_core.fileio import atomic_write_text, json_output
+        atomic_write_text(args.output, json_output(result, indent, default=str),
+                          follow_symlinks=False)
+        print(f"Written to {args.output}", file=sys.stderr)
+        return 0
     output = json.dumps(result, indent=indent, default=str)
 
-    if args.output:
-        from kicad_core.fileio import atomic_write_text
-        atomic_write_text(args.output, output, follow_symlinks=False)
-        print(f"Written to {args.output}", file=sys.stderr)
-    elif args.analysis_dir:
+    if args.analysis_dir:
         from output_io import write_primary_run
         write_primary_run(args.analysis_dir, output, analyzer="schematic", source_path=args.schematic,
                           script_name="analyze_schematic.py",

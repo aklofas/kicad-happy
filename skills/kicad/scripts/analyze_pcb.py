@@ -13,7 +13,7 @@ from envelopes.pcb import PCBEnvelope
 from schema_codec import emit_schema
 from inputs_builder import build_inputs, build_compat
 from capability_mode import get_capability_mode_ref
-from kicad_core.fileio import atomic_write_text, json_load
+from kicad_core.fileio import atomic_write_text, json_load, json_output
 from kicad_core.cli import (add_compact_arg, add_config_arg, add_only_deterministic_arg,
                             add_output_arg, add_schema_arg, add_stage_audience_args, add_text_arg,
                             utf8_text_stdout)
@@ -152,12 +152,14 @@ def main(argv: list[str] | None = None) -> int:
     result["capability_mode_ref"] = _capability_mode_ref
 
     indent = None if args.compact else 2
+    if args.output:
+        atomic_write_text(args.output, json_output(result, indent, default=str),
+                          follow_symlinks=False)
+        print(f"Written to {args.output}", file=sys.stderr)
+        return 0
     output = json.dumps(result, indent=indent, default=str)
 
-    if args.output:
-        atomic_write_text(args.output, output, follow_symlinks=False)
-        print(f"Written to {args.output}", file=sys.stderr)
-    elif args.analysis_dir:
+    if args.analysis_dir:
         from output_io import write_primary_run
         write_primary_run(args.analysis_dir, output, analyzer="pcb", source_path=args.pcb,
                           script_name="analyze_pcb.py", track_in_git=False,

@@ -9,7 +9,7 @@ import secrets
 import shutil
 import stat
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, TextIO
 
 
 def json_loads(text: str | bytes) -> Any:
@@ -27,6 +27,16 @@ def json_loads(text: str | bytes) -> Any:
 def json_load(fp) -> Any:
     """json.load with the json_loads nesting behaviour."""
     return json_loads(fp.read())
+
+
+def json_output(obj, indent: int | None, *, default=None) -> str | Callable[[TextIO], Any]:
+    """What atomic_write_text writes for ``json.dumps(obj, indent=indent, default=default)``:
+    that text when *indent* is None, else a callable that streams the same text with
+    json.dump (json.dumps of an indented document holds all its pieces at once, several
+    times the size of the text)."""
+    if indent is None:
+        return json.dumps(obj, default=default)
+    return lambda f: json.dump(obj, f, indent=indent, default=default)
 
 
 def read_json(path, *, encoding: str = "utf-8") -> Any:
@@ -51,9 +61,21 @@ def _is_stream_node(path) -> bool:
     return p in _STREAM_NODES or bool(_STREAM_FD.match(p))
 
 
-def atomic_write_text(path, text: str, newline: str | None = "\n", *,
+def _put(f: TextIO, text) -> None:
+    if callable(text):
+        text(f)
+    else:
+        f.write(text)
+
+
+def atomic_write_text(path, text: str | Callable[[TextIO], Any], newline: str | None = "\n", *,
                       follow_symlinks: bool = True, keep_mode: bool = True) -> None:
     """Write UTF-8 text to path via a temp file and os.replace.
+
+    *text* is the text, or a callable that writes it to the open file object (so a large
+    document can be streamed, e.g. ``lambda f: json.dump(obj, f, indent=2)``). When it
+    raises, a replaced file is left as it was and the temp file removed; a stream is left
+    with what was written.
 
     A symlink at *path* is resolved and its target rewritten, unless *follow_symlinks* is
     false: then the link itself is replaced by a regular file and its target is never touched.
@@ -68,7 +90,7 @@ def atomic_write_text(path, text: str, newline: str | None = "\n", *,
     "" keeps the text's line endings as given."""
     if _is_stream_node(path):
         with open(path, "w", encoding="utf-8", newline=newline) as f:
-            f.write(text)
+            _put(f, text)
         return
     if follow_symlinks:
         try:
@@ -78,7 +100,7 @@ def atomic_write_text(path, text: str, newline: str | None = "\n", *,
         if st_mode is not None and not stat.S_ISREG(st_mode):
             # a FIFO or a link to one: replacing it would be wrong, so write into it
             with open(path, "w", encoding="utf-8", newline=newline) as f:
-                f.write(text)
+                _put(f, text)
             return
         target = Path(path).resolve()
     else:
@@ -96,7 +118,7 @@ def atomic_write_text(path, text: str, newline: str | None = "\n", *,
                 fd = os.open(target, os.O_WRONLY | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0)
                              | getattr(os, "O_BINARY", 0))
                 with os.fdopen(fd, "w", encoding="utf-8", newline=newline) as f:
-                    f.write(text)
+                    _put(f, text)
                 return
             existing = False    # the link's mode and target are not the new file's
     if not keep_mode:
@@ -115,7 +137,7 @@ def atomic_write_text(path, text: str, newline: str | None = "\n", *,
             continue
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline=newline) as f:
-            f.write(text)
+            _put(f, text)
         if existing:
             shutil.copymode(target, tmp)
         try:

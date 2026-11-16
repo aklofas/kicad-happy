@@ -13,6 +13,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 ### Fixed
 
 - A schematic whose sheets are placed hundreds of times is read much faster: the time no longer grows with the square of the instance count. Results are unchanged.
+- Writing a large analysis with `--output` needs much less memory (a 470 MB schematic result peaked at 3 GB, now under 1 GB); the file is unchanged.
 
 ### Documentation
 
