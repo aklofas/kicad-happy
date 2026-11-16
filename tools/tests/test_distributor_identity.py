@@ -38,6 +38,11 @@ PAIRS = (
     ("ESP32-C3FH4", "ESP32-C3FH4X", False, True),
     ("NE555P", "NE555", False, False),
     ("LM358", "LM358DR", False, True),
+    ("LM358", "LM3580", False, False),
+    ("NE555", "NE5550", False, False),
+    ("LM1117", "LM1117-3.3", False, True),
+    ("TL07", "TL072", False, True),
+    ("ATMEGA328", "ATMEGA328P-AU", False, True),
 )
 
 
@@ -97,6 +102,14 @@ class SamePart(unittest.TestCase):
         self.assertFalse(same_part("STM32G4", "STM32G071RB", allow_family=True))
         self.assertTrue(same_part("STM32G4", "STM32G431CBU6", allow_family=True))
         self.assertTrue(same_part("LM358", "LM358DR", allow_family=True))
+
+    def test_digit_continuation_needs_a_full_part_number(self):
+        # A series name ending in one or two digits continues with digits; a full part
+        # number (LM358, 2N7002) continues only after a non-digit.
+        from distributor_core.verify import same_part
+        self.assertTrue(same_part("STM32G4", "STM32G431CBU6", allow_family=True))
+        self.assertFalse(same_part("2N7002", "2N70020", allow_family=True))
+        self.assertTrue(same_part("2N7002", "2N7002-7-F", allow_family=True))
 
     def test_other_part_checks_the_mpn_of_a_pn_hit_without_a_pn(self):
         from distributor_core.verify import other_part

@@ -52,6 +52,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Issue bodies from `export_issues` escape `|` in summaries, descriptions and recommendations, and a component value starting with `#`, so analyzer text cannot form a table or a heading on GitHub.
 - `diff_analysis --analysis-dir` diffs the run the manifest marks current against the run before it, instead of the two newest folder names; the review instructions point at the project's own `analysis/` folder.
 - Deep Review's datasheet check no longer uses a stray `<MPN>_*.pdf` (or `<MPN>.pdf`) for a part the datasheet manifest records as not found or failed.
+- Datasheet search by a symbol's Value no longer takes a part whose number continues with a digit (`LM358` no longer matches `LM3580`); `LM358DR`, `LM1117-3.3` and the `STM32G4` series still match.
 
 ### Documentation
 

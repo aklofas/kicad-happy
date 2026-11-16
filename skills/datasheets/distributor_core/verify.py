@@ -52,7 +52,8 @@ def same_part(requested: str, hit: str, *, allow_family: bool = False,
     only case, whitespace and ``-_/,()`` are ignored (lifecycle status belongs to one
     orderable number: a ``G4`` or ``+`` variant can be obsolete while the base is active).
     With ``allow_family`` a hit that extends the requested string
-    also counts (``LM358`` -> ``LM358DR``); use it only when the request is a generic name,
+    also counts (``LM358`` -> ``LM358DR``); a name ending in a full part number continues
+    only after a non-digit (not ``LM3580``). Use it only when the request is a generic name,
     such as an MPN read from a symbol's Value field. Distributor part numbers are compared
     exactly by the caller, never here.
     """
@@ -66,7 +67,16 @@ def same_part(requested: str, hit: str, *, allow_family: bool = False,
         return False
     # The family name keeps its tail: G4 in STM32G4 is part of the name, not a finish code.
     name = _MPN_PUNCT_RE.sub("", (requested or "").upper())
-    return len(name) >= 4 and _MPN_PUNCT_RE.sub("", hit.upper()).startswith(name)
+    hit_key = _MPN_PUNCT_RE.sub("", hit.upper())
+    if len(name) < 4 or not hit_key.startswith(name):
+        return False
+    # A series digit (STM32G4, TL07) continues with digits; a full part number does not.
+    if not re.search(r"\d{3}$", name):
+        return True
+    # Read the boundary with punctuation kept, so LM1117-3.3 continues after the "-"
+    req_raw, hit_raw = ("".join(s.upper().split()) for s in (requested, hit))
+    rest = hit_raw[len(req_raw):] if hit_raw.startswith(req_raw) else hit_key[len(name):]
+    return not rest[:1].isdigit()
 
 
 def pick_requested(results, requested: str, mpn_of, *, allow_family: bool = False):
