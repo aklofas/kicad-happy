@@ -6,7 +6,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "skills" / "kicad" / "scripts"))
 
 from kicad_types import build_analysis_context  # noqa: E402
-from signal_detectors import audit_rail_sources, detect_power_regulators  # noqa: E402
+from signal_detectors import (audit_rail_sources, detect_decoupling, detect_design_observations,  # noqa: E402
+                              detect_power_regulators)
 from validation_detectors import validate_power_sequencing  # noqa: E402
 from schematic.system_analyses import analyze_power_sequencing  # noqa: E402
 
@@ -97,8 +98,13 @@ class TwoInductorStepDown(unittest.TestCase):
                 "GND": [("C1", "2", "", "passive")]}
         parts = (("L1", "inductor", "10nH", "Device:L"), ("L2", "inductor", "10uH", "Device:L"),
                  ("C1", "capacitor", "4.7uF", "Device:C"))
-        regs = detect_power_regulators(_stm32(pins, parts), [])
+        ctx = _stm32(pins, parts)
+        regs = detect_power_regulators(ctx, [])
         self.assertEqual([(r.get("sw_net"), r.get("output_rail")) for r in regs], [("SMPSLX", "SMPSFB")])
+        obs = detect_design_observations(ctx, {"power_regulators": regs,
+                                               "decoupling_analysis": detect_decoupling(ctx)})
+        self.assertEqual([o["missing_caps"].get("output") for o in obs if o["category"] == "regulator_caps"],
+                         [None])
 
 
 class SmpsNotInUse(unittest.TestCase):

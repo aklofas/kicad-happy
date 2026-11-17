@@ -44,6 +44,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A regulator is no longer hidden, or marked inverting, by the name of the library it sits in: a project library named after its board or main part (an ESP32 Feather, an ADS1262 board, an inverter) no longer drops its LDOs and converters or flips a buck's output negative. ADC detection likewise reads the part, not its library's name.
 - DACs (DAC53401, DAC8551), GaN power stages (EPC2310x) and MOSFET gate drivers (NCP81155, ADP3110A, LTC7061) are no longer listed as regulators.
 - A regulator's switch node is no longer reported as a rail with no source (RS-001), and a regulator is no longer listed as a sequencing-sensitive load of its own output (PS-001).
+- A regulator whose output net is unnamed or not named like a rail is no longer reported as missing output capacitors when a capacitor to ground sits on that net.
 - TV-001 counts a stacked via column (vias at one point on one net, layer to layer) as one via, weighted by its narrowest drill, so an HDI thermal pad is no longer graded as if each layer pair were a separate via.
 - A schematic whose sheets are placed hundreds of times is read much faster: the time no longer grows with the square of the instance count. Results are unchanged.
 - Writing a large analysis with `--output` needs much less memory (a 470 MB schematic result peaked at 3 GB, now under 1 GB); the file is unchanged.
