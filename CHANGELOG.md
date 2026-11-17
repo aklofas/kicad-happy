@@ -112,6 +112,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - ESD arrays whose only return is Earth or chassis name it as their clamp net, and an array pin on Earth is no longer listed as a protected line.
 - Net names that end in a monitor, feedback, enable or sense word (`PWR_OK2`, `5V_FAULT`, `5V_ISENSE`, `12V_{FB}`, `VBAT_ADC`, `VBUS_DIV`, `VBAT_READ`) and power-LED nodes (`PWR_LED`) are no longer read as power rails. Rail-source, decoupling and trace-width checks stop firing on them, and a battery or bus sense divider through such a node is now reported. `VDD_ADC`, `+3V3_ADC`, `3V3_LED` and filtered rails such as `VBAT_FLT` stay rails.
 - An LED driver whose switch sits on a net named like a rail (`IR-_GND`, `0VCC`, a sub-sheet port named `3V3`) is read as an LED driver again when the LED is in the switched path and the net carries no power symbol or supply pin.
+- A sub-ohm shunt or link between two rails no longer gets a power-derating error computed from the difference of the rail voltages.
 
 ### Documentation
 

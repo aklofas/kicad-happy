@@ -972,7 +972,9 @@ def analyze_voltage_derating(ctx: AnalysisContext, signal_analysis: dict,
         if not pwr_net or not gnd_net:
             v1 = _get_rail_voltage(n1) if n1 and is_power_net(n1) else None
             v2 = _get_rail_voltage(n2) if n2 and is_power_net(n2) else None
-            if v1 is not None and v2 is not None and v1 != v2:
+            # A sub-ohm part between two rails is a series shunt or link: its drop is I*R, not
+            # the difference of the rail voltages.
+            if v1 is not None and v2 is not None and v1 != v2 and pv >= 1.0:
                 v_across = abs(v1 - v2)
             elif pwr_net and gnd_net:
                 v_across = _get_rail_voltage(pwr_net)
