@@ -62,15 +62,46 @@ def _led_lib_evidence(lib_low: str, val_low: str) -> bool:
     return bool(_LED_WORD.search(nick))
 
 
-_DEVICE_PASSIVE_SYMBOL = re.compile(
-    r'^device:(c|cp|c_small|cp_small|c_polarized|c_polarized_small|c_us|cp_us|'
-    r'r|r_small|r_us|l|l_small|l_us)$')
 _IC_LIB_PREFIXES = ("analog_", "audio", "battery_management",
                     "comparator", "converter_",
                     "driver_", "display_", "fpga_", "interface_",
                     "logic_", "mcu_", "memory_", "motor_",
                     "multiplexer", "power_management", "power_supervisor",
                     "regulator_", "sensor_", "timer", "rf_")
+_SYMBOL_DESIGNATOR = (
+    (re.compile(r'^led(?![a-z])'), "D"),
+    (re.compile(r'^cp?(_|$)'), "C"),
+    (re.compile(r'^r(_|$)'), "R"),
+    (re.compile(r'^l(_|$)'), "L"),
+    (re.compile(r'^(d(_|$)|diode)'), "D"),
+    (re.compile(r'^q(_|$)|(?<![a-z])(npn|pnp|nmos|pmos|n?jfet|pjfet|mosfet|bjt)(?![a-z])'), "Q"),
+)
+_NOT_A_DESIGNATOR_SYMBOL = re.compile(r'varistor|thermistor|ntc|ptc|fuse|ldr')
+
+
+def _symbol_name(lib_low: str) -> tuple[str, str]:
+    """(library nickname, symbol name); a KiCad 5 rescue copy (CP-Device) loses its suffix."""
+    nick, _, sym = lib_low.rpartition(":")
+    if "-" in sym and (sym.endswith("-device") or nick.endswith(("-rescue", "_rescue"))):
+        sym = sym.rsplit("-", 1)[0]
+    return nick, sym
+
+
+def _symbol_designator(lib_low: str) -> str | None:
+    """The reference letter a symbol's own name stands for: C for Device:C or C_0402, D for a
+    diode or LED_Small, Q for Q_NPN_BEC or BJT_NPN, R and L for the resistor and inductor
+    symbols. None when the name does not say."""
+    nick, sym = _symbol_name(lib_low)
+    if _NOT_A_DESIGNATOR_SYMBOL.search(sym):
+        return None
+    for rx, letter in _SYMBOL_DESIGNATOR:
+        if rx.search(sym):
+            return letter
+    if nick.startswith("diode") or nick == "led":
+        return "D"
+    if nick.startswith("transistor"):
+        return "Q"
+    return None
 
 
 def classify_component(ref: str, lib_id: str, value: str, is_power: bool = False,
@@ -400,12 +431,14 @@ def classify_component(ref: str, lib_id: str, value: str, is_power: bool = False
         result = type_map.get(prefix[0])
         if result:
             fp_lower = footprint.lower() if footprint else ""
-            # A stock Device R/C/L symbol outranks an R or L first letter (RF-C10 on
-            # Device:C is a capacitor). A C first letter stays: C-prefixed parts on a
-            # resistor symbol carry capacitor values.
-            device_passive = _DEVICE_PASSIVE_SYMBOL.match(lib_lower)
-            if device_passive and result in ("resistor", "inductor"):
-                return {"c": "capacitor", "r": "resistor", "l": "inductor"}[device_passive.group(1)[0]]
+            # The symbol's own name outranks the first letter (RF-C10 on Device:C is a
+            # capacitor, LD4 on Device:LED an LED, PD1 on R_Small a resistor). A C first
+            # letter stays: C-prefixed parts on a resistor symbol carry capacitor values.
+            # A V first letter is left to the varistor checks below.
+            letter = _symbol_designator(lib_lower)
+            if letter and result not in ("capacitor", "varistor"):
+                return classify_component(letter + "1", lib_id, value, False, footprint,
+                                          in_bom, description, pins)
             if result == "transformer":
                 if "tvs" in lib_lower or "tvs" in val_lower:
                     return "diode"

@@ -1,7 +1,7 @@
 # tools/tests/test_stock_passive_symbol_type.py
-"""A part on a stock Device R, C or L symbol keeps the symbol's type when its reference
-prefix is unknown and starts with R or L. A C first letter is left as it is: C-prefixed
-parts on a resistor symbol carry capacitor values."""
+"""A part on an R, C or L symbol keeps the symbol's type when its reference prefix is
+unknown, on a stock Device symbol or any other library's. A C first letter is left as it
+is: C-prefixed parts on a resistor symbol carry capacitor values."""
 import sys, unittest
 from pathlib import Path
 SCRIPTS = Path(__file__).resolve().parents[2] / "skills" / "kicad" / "scripts"
@@ -31,8 +31,12 @@ class StockPassiveSymbolOutranksPrefix(unittest.TestCase):
     def test_c_prefix_on_resistor_symbol_is_unchanged(self):
         self.assertEqual(classify_component("CX1", "Device:R", "51pF"), "capacitor")
 
+    def test_non_stock_capacitor_symbol_is_capacitor(self):
+        self.assertEqual(classify_component("RF-C10", "MyLib:C", "5pF"), "capacitor")
+        self.assertEqual(classify_component("LC28", "Mars_Library:C_0402", "0.1uF"), "capacitor")
+        self.assertEqual(classify_component("RF-C20", "C64B-rescue:CP-Device", "10uF"), "capacitor")
+
     def test_unknown_prefix_on_other_symbols_is_unchanged(self):
-        self.assertEqual(classify_component("RF-C10", "MyLib:C", "5pF"), "resistor")
         self.assertEqual(classify_component("RX1", "Device:R_Pack04", "10k"), "resistor")
         self.assertEqual(classify_component("LX1", "Device:L", "10u"), "inductor")
 
