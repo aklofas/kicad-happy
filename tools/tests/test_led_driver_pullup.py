@@ -195,6 +195,10 @@ class NpnCollectorOnARail(unittest.TestCase):
                 drv = self._follower(**q1)
                 self.assertEqual((drv["led_ref"], drv["current_resistor"]), ("D1", "R1"))
 
+    def test_library_nickname_does_not_read_npn(self):
+        drv = self._follower(lib_id="my_npn_parts:BC857", value="BC857")
+        self.assertEqual(drv and (drv["led_ref"], drv["current_resistor"]), ("D1", "R1"))
+
     def test_npn_follower_keeps_the_led_on_its_emitter(self):
         nets = {"+5V": [("Q1", "3", "C"), ("R1", "1", "~")],
                 "LEDA": [("R1", "2", "~"), ("D1", "1", "A"), ("Q1", "2", "E")],

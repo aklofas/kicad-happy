@@ -38,7 +38,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - P-channel MOSFETs named only by their part number (IRLML6402, AO3401A, DMG2305UX and others) or described as P-CH are read as P-channel.
 - A diode across a MOSFET counts as its flyback diode only when it points the right way and is not a zener or TVS; a P-channel switch's flyback diode is the one from ground to its drain.
 - Two MOSFETs stacked in a logic gate are no longer reported as a half bridge; their own transistor records come back.
-- A transistor is no longer reported as driving an LED that only shares a supply rail with it: not through a pull-up from its drain or collector to that rail, and not when its drain or collector is ground, an N-channel MOSFET's drain is the rail itself, or an NPN transistor's collector is (an emitter follower). That LED is now checked by the LED audit like any other.
+- A transistor is no longer reported as driving an LED that only shares a supply rail with it: not through a pull-up from its drain or collector to that rail, and not when its drain or collector is ground, an N-channel MOSFET's drain is the rail itself, or the collector of an NPN transistor (an emitter follower) is the rail. That LED is now checked by the LED audit like any other.
 - ESP32 and ESP8266 modules named only WROOM or WROVER (for example ES-WROOM-32, WROOM32) are recognised as wireless modules and get the FCC suggestion.
 - FCC and CE radio suggestions name the RF transceiver, or the RF chain's parts, instead of an empty name.
 - The low-impedance allowance for LM2596 and LM2576 feedback dividers now applies to the adjustable versions only.

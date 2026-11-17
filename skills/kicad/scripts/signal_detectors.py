@@ -3661,13 +3661,14 @@ _PNP_WORD = re.compile(r"(?<![a-z])pnp(?![a-z])")
 
 
 def _names_npn(comp: dict) -> bool:
-    """An NPN transistor by its lib_id, keywords, description or value text, or by a known NPN
-    part number. A part whose text also names PNP (a complementary pair) reads neither."""
-    text = " ".join(comp.get(k) or "" for k in ("lib_id", "keywords", "description", "value")).lower()
+    """An NPN transistor by its symbol name, keywords, description or value text, or by a known
+    NPN part number; the library nickname is not read. A part whose text also names PNP (a
+    complementary pair) reads neither."""
+    sym = symbol_name(comp.get("lib_id", ""))
+    text = " ".join([sym] + [comp.get(k) or "" for k in ("keywords", "description", "value")]).lower()
     if _PNP_WORD.search(text):
         return False
-    return bool(_NPN_WORD.search(text)) or names_npn_bjt(
-        comp.get("value", ""), comp.get("mpn", ""), symbol_name(comp.get("lib_id", "")))
+    return bool(_NPN_WORD.search(text)) or names_npn_bjt(comp.get("value", ""), comp.get("mpn", ""), sym)
 
 
 def detect_transistor_circuits(ctx: AnalysisContext, matched_fets: set, fet_pins: dict) -> list[dict]:
