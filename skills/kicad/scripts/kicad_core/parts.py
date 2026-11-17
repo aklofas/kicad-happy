@@ -1,5 +1,6 @@
 """Known-part knowledge tables: regulator Vref and switching frequencies (kicad_core). Sources and verification dates are in the table comments. Also holds typical MLCC ESL/ESR by package and LED forward voltage by colour."""
 import re
+from collections.abc import Iterable
 
 
 # Load-switch and power-distribution-switch part families (lowercase substrings of lib_id + value).
@@ -641,3 +642,42 @@ _SENSE_AMP_PN = re.compile(
 def names_sense_amp(*names: str) -> bool:
     """True when a value, MPN or library symbol name is a current-sense amplifier part number."""
     return any(_SENSE_AMP_PN.search((n or "").lower()) for n in names)
+
+
+# Instrumentation amplifiers a schematic names by part number, matched where a part number
+# starts (each family is cited in tools/tests/test_instrumentation_amps.py): AD620-AD625 and
+# AD627 (the AD626 is a difference amp), AD8220-AD8229, AD8230-AD8233 and AD8235-AD8237
+# (AD8232/AD8233 are ECG front ends built on one), AD8250/51/53, AD8293/95,
+# AD8420/21/22/26/28/29, AD8553 (the AD8551/52/54 are op amps); TI INA101/103, INA110/111,
+# INA114-116, INA118 (the INA117 is a difference amp), INA121/122, INA125/126, INA128/129,
+# INA163/166, INA188, INA217, INA321/322, INA326/327, INA331-333, INA350/351, INA818/819,
+# INA821, INA823, INA826-828, INA848/849, INA851, a leading 2 being the dual (INA2128);
+# LT1101/02, LT1167/68, LT1789, LTC1100, LTC2053, LTC6800, LTC6915; MAX4194-97, MAX4208/09,
+# MAX4460-62; PGA204-207, PGA280/281. A whole part number is not followed by another digit.
+_INAMP_PN = re.compile(
+    r"(?<![a-z0-9])(?:"
+    r"ad62[0-57]|ad822\d|ad823[0-35-7]|ad825[013]|ad829[35]|ad842[012689]|ad8553"
+    r"|ina2?(?:10[13]|11[014-68]|12[125689]|16[36]|188|217|32[1267]|33[1-3]|35[01]"
+    r"|8(?:1[89]|2[136-8]|4[89]|51))"
+    r"|lt110[12]|lt116[78]|lt1789|ltc1100|ltc2053|ltc6800|ltc6915"
+    r"|max419[4-7]|max420[89]|max446[0-2]|pga20[4-7]|pga28[01]"
+    r")(?!\d)")
+# KiCad's own descriptions spell it "Instumentation" on some symbols.
+_INAMP_WORDS = re.compile(r"\binstr?umentation amp|\bin-amp\b")
+
+
+def is_instrumentation_amp(*names: str, library: str = "", description: str = "",
+                           pin_names: Iterable[str] = ()) -> bool:
+    """True for an instrumentation amplifier: from KiCad's Amplifier_Instrumentation library
+    (``library`` is the lib_id's nickname), described as one, named by a known part number in
+    a value, MPN or library symbol name, or with a pair of gain-resistor (RG) pins. Its gain
+    is set by RG, not by op-amp feedback."""
+    if (library or "").lower() == "amplifier_instrumentation":
+        return True
+    if _INAMP_WORDS.search((description or "").lower()):
+        return True
+    if any(_INAMP_PN.search((n or "").lower()) for n in names):
+        return True
+    rg = [n for n in pin_names
+          if re.sub(r"[^a-z0-9]", "", (n or "").lower()) in ("rg", "rg1", "rg2", "rgp", "rgn")]
+    return len(rg) >= 2

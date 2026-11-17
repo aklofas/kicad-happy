@@ -127,7 +127,7 @@ Read the JSON report and incorporate findings into the design review. Each findi
 | **Thermal-EMC** | TH-001, TH-002 | MLCC DC bias derating (SRF shift), ferrite near heat source |
 | **Shielding** | SH-001 | Connector aperture slot resonance near emission source |
 | **Emission estimates** | EE-001, EE-002 | Board cavity resonance, switching harmonic envelope |
-| **Inductor leakage** | ML-001 | Unshielded or unknown-shielding switching inductor within 15 mm of an ADC, op-amp, crystal or RF part |
+| **Inductor leakage** | ML-001 | Unshielded or unknown-shielding switching inductor within 15 mm of an ADC, op-amp, instrumentation amplifier, crystal or RF part |
 
 **Advisory outputs** (not findings):
 - **Pre-compliance test plan** — frequency band prioritization, interface risk ranking, near-field probe points

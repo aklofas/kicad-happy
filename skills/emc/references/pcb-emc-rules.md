@@ -373,7 +373,7 @@ Source: Goldfarb, E. & Pucha, R. "Modeling Via Grounds in Microstrip." IEEE Micr
 
 ### ML-001: Switching inductor near sensitive circuit
 - **Severity:** error (closer than 8mm and known unshielded), warning (otherwise; heuristic confidence)
-- **Threshold:** An inductor of a switching regulator (switching, buck, boost, buck-boost or SEPIC) that is unshielded, or of unknown shielding (treated as unshielded), within 15mm of an ADC, op-amp, crystal (or the IC it drives) or RF-chain part that has a PCB position. Inductors classified as shielded are skipped.
+- **Threshold:** An inductor of a switching regulator (switching, buck, boost, buck-boost or SEPIC) that is unshielded, or of unknown shielding (treated as unshielded), within 15mm of an ADC, op-amp, instrumentation amplifier, crystal (or the IC it drives) or RF-chain part that has a PCB position. Inductors classified as shielded are skipped.
 - **Rationale:** Leakage flux from an unshielded switching inductor couples into high-impedance analog nodes and injects switching noise. The finding reports a magnetic-dipole H-field estimate at the measured distance (1 A peak current and a 5mm package assumed); it is context, not a threshold.
 - **Source:** Ott, *EMC Engineering*, Ch. 11 — near-field coupling from switching inductor leakage flux.
 - **Fix:** Use a shielded inductor or increase separation beyond 15mm. Orient the inductor axis perpendicular to sensitive traces.

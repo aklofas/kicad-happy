@@ -34,6 +34,7 @@ from emc_formulas import (
     parallel_cap_impedance, polygon_area,
 )
 from kicad_core.parts import (
+    is_instrumentation_amp,
     lookup_switching_freq as _estimate_switching_freq,
     default_switching_freq as _default_switching_freq,
 )
@@ -4622,7 +4623,8 @@ def check_inductor_leakage(pcb: Dict, schematic: Dict) -> List[Dict]:
     """ML-001: Flag unshielded switching inductors near sensitive circuits.
 
     Checks proximity of unshielded/unknown-shielding power inductors to
-    sensitive analog components (ADCs, opamps, crystals, RF chains).
+    sensitive analog components (ADCs, opamps, instrumentation amps, crystals,
+    RF chains).
     Uses magnetic dipole H-field estimate to quantify coupling risk.
 
     Ref: Ott, "EMC Engineering" Ch. 11 — near-field coupling from
@@ -4683,11 +4685,18 @@ def check_inductor_leakage(pcb: Dict, schematic: Dict) -> List[Dict]:
         r = adc.get('ic', {}).get('ref') or adc.get('reference', '')
         if r:
             sensitive_refs.add(r)
-    # Opamps
+    # Opamps, and instrumentation amps (not reported as op-amp stages)
     for op in get_findings(schematic, Det.OPAMP_CIRCUITS):
         r = op.get('ic', {}).get('ref') or op.get('reference', '')
         if r:
             sensitive_refs.add(r)
+    for comp in schematic.get('components', []):
+        lib_id = comp.get('lib_id') or ''
+        if comp.get('type') == 'ic' and comp.get('reference') and is_instrumentation_amp(
+                comp.get('mpn'), comp.get('value'), lib_id.split(':', 1)[-1],
+                library=lib_id.split(':', 1)[0] if ':' in lib_id else '',
+                description=comp.get('description')):
+            sensitive_refs.add(comp['reference'])
     # Crystal oscillators
     for xtal in get_findings(schematic, Det.CRYSTAL_CIRCUITS):
         r = xtal.get('reference', '')

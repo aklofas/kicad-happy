@@ -15,6 +15,7 @@ from kicad_core.parts import (
     names_load_switch,
     names_pchannel_fet,
     names_sense_amp,
+    is_instrumentation_amp,
     lookup_regulator_vref as _lookup_regulator_vref,
     lookup_switching_freq,
     default_switching_freq,
@@ -1370,6 +1371,15 @@ _SENSE_AMP_INPUT_PINS = frozenset({"IN+", "IN-", "VIN+", "VIN-", "RS+", "RS-"})
 
 def _is_sense_amp(comp: dict) -> bool:
     return names_sense_amp(comp.get("mpn", ""), comp.get("value", ""), symbol_name(comp.get("lib_id", "")))
+
+
+def _is_instrumentation_amp(comp: dict) -> bool:
+    lib_id = comp.get("lib_id") or ""
+    return is_instrumentation_amp(
+        comp.get("mpn", ""), comp.get("value", ""), symbol_name(lib_id),
+        library=lib_id.split(":", 1)[0] if ":" in lib_id else "",
+        description=comp.get("description", ""),
+        pin_names=[p.get("name", "") for p in comp.get("pins", [])])
 
 
 def _sense_ics_across(ctx: AnalysisContext, net_a: str, net_b: str,
@@ -2934,6 +2944,9 @@ def detect_opamp_circuits(ctx: AnalysisContext) -> list[dict]:
         # via description keywords like "instrumentation"
         _pm_val = (val + " " + lib_part).lower()
         if any(_pm_val.startswith(k) for k in ("ina2", "ina8", "ina90")):
+            continue
+        # An instrumentation amp sets its gain with RG, not with op-amp feedback.
+        if _is_instrumentation_amp(ic):
             continue
 
         ref = ic["reference"]
