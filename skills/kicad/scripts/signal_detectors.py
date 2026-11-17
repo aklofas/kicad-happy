@@ -4175,7 +4175,8 @@ def _reference_net(ctx: AnalysisContext, net_name: str, regulator_outputs: set) 
 def _has_cap_to_ground(ctx: AnalysisContext, net: str, ref: str) -> bool:
     """*net* carries a valued capacitor whose other pin is on ground or on *ref*'s own GND-pin
     net (a regulator's output cap on a net the decoupling detector does not read as a rail).
-    A GND pin on a voltage-named rail (+5V) is a wiring fault, not the part's ground."""
+    A GND pin on a voltage-named net (+5V, or an inverting converter's -5V output) is not the
+    part's ground."""
     own_ground = {pin_net for pin_net, _ in ctx.ref_pins.get(ref, {}).values()
                   if _parse_voltage_from_net_name(pin_net) is None
                   and any(p["component"] == ref and (p.get("pin_name") or "").upper()
