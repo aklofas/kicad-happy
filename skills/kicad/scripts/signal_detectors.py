@@ -1761,11 +1761,16 @@ def _screen_regulator_candidate(ctx: AnalysisContext, ic: dict) -> _RegulatorCan
     # Allow keyword-matched PMICs through even without pins (legacy format)
     _no_pins = not ic.get("pins")
 
-    # Skip known non-regulator IC families
+    # Skip known non-regulator IC families. A part stem or board name is read from the value and
+    # symbol name (a project library is often named after its board or main part); a category
+    # word from the whole lib_id (KiCad's Memory_EEPROM, Interface_UART libraries).
     _lib_val_check = (ic.get("lib_id", "") + " " + ic.get("value", "")).lower()
-    _non_reg_exclude = ("eeprom", "flash", "spi_flash", "rtc", "uart",
-                        "usb_uart", "buffer", "logic_", "encoder",
-                        "w25q", "at24c", "24c0", "pcf85", "ht42b", "ch340",
+    _part_text = (ic.get("value", "") + " " + symbol_name(ic.get("lib_id", ""))).lower()
+    _non_reg_categories = ("eeprom", "flash", "spi_flash", "rtc", "uart",
+                           "usb_uart", "buffer", "logic_", "encoder")
+    if any(k in _lib_val_check for k in _non_reg_categories):
+        return None
+    _non_reg_exclude = ("w25q", "at24c", "24c0", "pcf85", "ht42b", "ch340",
                         "cp210", "ft232", "74lvc", "74hc",
                         # WiFi/BT modules with filter inductors
                         "ap6212", "ap6236", "ap6256", "esp32", "esp8266",
@@ -1773,7 +1778,7 @@ def _screen_regulator_candidate(ctx: AnalysisContext, ic: dict) -> _RegulatorCan
                         # Dev board modules (not regulators)
                         "nucleo", "arduino", "raspberry", "teensy",
                         "feather", "pico")
-    if any(k in _lib_val_check for k in _non_reg_exclude):
+    if any(k in _part_text for k in _non_reg_exclude):
         return None
 
     ic_pins = {}  # pin_name -> (net_name, pin_number)
@@ -1890,15 +1895,16 @@ def _screen_regulator_candidate(ctx: AnalysisContext, ic: dict) -> _RegulatorCan
     # Exclude RF amplifiers/LNAs that have VIN/VOUT but aren't regulators
     _rf_exclude = ("lna", "mmic", "mga-", "bga-", "bgb7", "trf37",
                    "sga-", "tqp3", "sky67", "gali-", "bfp7", "bfr5")
-    if any(k in lib_val_lower for k in _rf_exclude):
+    if any(k in _part_text for k in _rf_exclude):
         return None
 
     # Exclude power multiplexers/load switches/ideal diode controllers
-    _power_mux_exclude = ("power_mux", "load_switch", "tps211", "tps212",
-                          "ltc441", "ideal_diode",
+    if any(k in lib_val_lower for k in ("power_mux", "load_switch", "ideal_diode")):
+        return None
+    _power_mux_exclude = ("tps211", "tps212", "ltc441",
                           # Ideal diode OR controllers
                           "lm6620", "lm6610", "ltc435", "ltc430")
-    if any(k in lib_val_lower for k in _power_mux_exclude):
+    if any(k in _part_text for k in _power_mux_exclude):
         return None
     if is_load_switch_part(ic.get("value", ""), symbol_name(lib_id_raw), ic.get("mpn") or ""):
         return None
@@ -1907,12 +1913,13 @@ def _screen_regulator_candidate(ctx: AnalysisContext, ic: dict) -> _RegulatorCan
         return None
 
     # Exclude op-amps, instrumentation amps, and ADCs with FB-like pins
+    if any(k in lib_val_lower for k in ("comparator", "op_amp", "opamp")):
+        return None
     _opamp_adc_exclude = ("ada48", "ad8", "opa", "lm358", "lm324",
                           "lmv3", "tlv9", "mcp60", "mcp61",
                           "hx711", "ads1", "mcp3", "max11",
-                          "ina21", "ina22", "ina23",
-                          "comparator", "op_amp", "opamp")
-    if any(k in lib_val_lower for k in _opamp_adc_exclude):
+                          "ina21", "ina22", "ina23")
+    if any(k in _part_text for k in _opamp_adc_exclude):
         return None
 
     if not fb_pin and not boot_pin:
@@ -2103,10 +2110,14 @@ def _build_regulator_record(ctx: AnalysisContext, cand: _RegulatorCandidate,
     if total_pins > 10 and reg_pin_count < total_pins * 0.2:
         reg_info["topology"] = "ic_with_internal_regulator"
 
-    # Detect inverting topology from part name/description or output net name
+    # Detect inverting topology from part name/description or output net name. A library name
+    # counts only when it says "inverting" (Inverting_switching_regulator); a logic-inverter
+    # library or a motor-inverter project's library does not.
     inverting_kw = ("invert", "inv_", "_inv", "negative output", "neg_out")
-    is_inverting = any(k in lib_val_lower for k in inverting_kw) or \
-                   any(k in desc_lower for k in inverting_kw)
+    part_lower = (ic.get("value", "") + " " + symbol_name(ic.get("lib_id", ""))).lower()
+    is_inverting = any(k in part_lower for k in inverting_kw) or \
+                   any(k in desc_lower for k in inverting_kw) or \
+                   "inverting" in ic.get("lib_id", "").rpartition(":")[0].lower()
 
     # Extract input/output rails
     if vin_pin:

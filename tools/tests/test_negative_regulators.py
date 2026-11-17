@@ -126,5 +126,32 @@ class LdoDissipationSign(unittest.TestCase):
         self.assertEqual(self._rail("+12V", "+5V", 5.0)["ldo_dissipation"]["dropout"], 7.0)
 
 
+class InvertingWordInTheLibraryName(unittest.TestCase):
+    def test_inverting_regulator_library_marks_the_part_inverting(self):
+        ctx = _ctx([("U1", "Inverting_switching_regulator:LT1617", "LT1617",
+                     {"1": ("SW", "SW_NODE"), "2": ("GND", "GND"), "3": ("FB", "FB"),
+                      "4": ("~{SHDN}", "+5V"), "5": ("VIN", "+5V")}),
+                    ("L1", "Device:L", "10uH", {"1": ("1", "+5V"), "2": ("2", "SW_NODE")})])
+        reg = detect_power_regulators(ctx, [])[0]
+        self.assertTrue(reg.get("inverting"))
+
+    def test_project_library_named_for_an_inverter_does_not(self):
+        ctx = _ctx([("U1", "inverter-altium-import:root_0_LM2675", "LM2675M-5.0",
+                     {"1": ("CB", "BOOT"), "2": ("VIN", "+12V"), "3": ("ON/OFF", "+12V"),
+                      "4": ("GND", "GND"), "5": ("FB", "+5V1"), "6": ("VOUT", "__unnamed_16")}),
+                    ("L1", "Device:L", "33uH", {"1": ("1", "__unnamed_16"), "2": ("2", "+5V1")}),
+                    ("C1", "Device:C", "68u", {"1": ("1", "+5V1"), "2": ("2", "GND")})])
+        reg = detect_power_regulators(ctx, [])[0]
+        self.assertNotIn("inverting", reg)
+        self.assertEqual(reg["estimated_vout"], 5.0)
+
+    def test_logic_inverter_library_does_not(self):
+        ctx = _ctx([("U1", "74xx_Logic-Gates-and-Inverters:LM317", "LM317",
+                     {"1": ("ADJ", "ADJ"), "2": ("VO", "+3V3"), "3": ("VI", "+5V")}),
+                    ("C1", "Device:C", "10u", {"1": ("1", "+3V3"), "2": ("2", "GND")})])
+        reg = detect_power_regulators(ctx, [])[0]
+        self.assertNotIn("inverting", reg)
+
+
 if __name__ == "__main__":
     unittest.main()

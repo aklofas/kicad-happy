@@ -3160,7 +3160,7 @@ def detect_adc_circuits(ctx: AnalysisContext,
             continue
         ref = comp["reference"]
         val = comp.get("value", "").lower()
-        lib = comp.get("lib_id", "").lower()
+        lib = symbol_name(comp.get("lib_id", "")).lower()
         combined = val + " " + lib
 
         if not any(kw in combined for kw in _VREF_IC_KEYWORDS):
@@ -3239,7 +3239,7 @@ def detect_adc_circuits(ctx: AnalysisContext,
         if ref in matched_refs:
             continue
         val = comp.get("value", "").lower()
-        lib = comp.get("lib_id", "").lower()
+        lib = symbol_name(comp.get("lib_id", "")).lower()
         combined = val + " " + lib
 
         if not any(kw in combined for kw in _ADC_IC_KEYWORDS):
@@ -3271,7 +3271,7 @@ def detect_adc_circuits(ctx: AnalysisContext,
         input_channels.sort()
 
         # Infer resolution and interface
-        resolution = _infer_adc_resolution(comp.get("value", ""), comp.get("lib_id", ""))
+        resolution = _infer_adc_resolution(comp.get("value", ""), symbol_name(comp.get("lib_id", "")))
         interface = _infer_interface(all_pin_names)
 
         # Find VREF source
