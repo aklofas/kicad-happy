@@ -41,6 +41,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A transistor is no longer reported as driving an LED that only shares a supply rail with it: not through a pull-up from its drain or collector to that rail, and not when its drain or collector is ground or an N-channel MOSFET's drain is the rail itself. That LED is now checked by the LED audit like any other.
 - ESP32 and ESP8266 modules named only WROOM or WROVER (for example ES-WROOM-32, WROOM32) are recognised as wireless modules and get the FCC suggestion.
 - FCC and CE radio suggestions name the RF transceiver, or the RF chain's parts, instead of an empty name.
+- The low-impedance allowance for LM2596 and LM2576 feedback dividers now applies to the adjustable versions only.
 - Wireless-module, RF-chain, certification and isolation detection read a rescued symbol by its own part name: a charger, key switch or crystal rescued from a board named after its radio (ESP32, nRF52) is no longer reported as a wireless module or RF transceiver.
 - A regulator is no longer hidden, or marked inverting, by the name of the library it sits in: a project library named after its board or main part (an ESP32 Feather, an ADS1262 board, an inverter) no longer drops its LDOs and converters or flips a buck's output negative. ADC detection likewise reads the part, not its library's name.
 - DACs (DAC53401, DAC8551), GaN power stages (EPC2310x) and MOSFET gate drivers (NCP81155, ADP3110A, LTC7061) are no longer listed as regulators.

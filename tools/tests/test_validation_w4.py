@@ -167,6 +167,21 @@ class FeedbackImpedance(unittest.TestCase):
         (f,) = self._simple_switcher("LM2596S-ADJ", 680, 220)
         self.assertEqual(f["summary"], "Regulator U1: feedback divider impedance too low (166R)")
 
+    def test_lm2596_fixed_version_gets_low_impedance_info(self):
+        (f,) = self._simple_switcher("LM2596S-12", 10000, 1000)
+        self.assertEqual(f["summary"], "Regulator U1: feedback divider impedance too low (909R)")
+
+    def test_lm2596_fixed_version_with_datasheet_range_r1_still_gets_info(self):
+        (f,) = self._simple_switcher("LM2596S-5.0", 1000, 1000)
+        self.assertEqual(f["summary"], "Regulator U1: feedback divider impedance too low (500R)")
+
+    def test_fixed_min_load_family_part_gets_low_impedance_info(self):
+        (f,) = self._run("AMS1117-3.3")
+        self.assertEqual(f["summary"], "Regulator U1: feedback divider impedance too low (180R)")
+
+    def test_lm317_out_adj_divider_stays_exempt(self):
+        self.assertEqual(self._run("LM317", "out_adj"), [])
+
 
 VM_NETS_POWER = {"+5V": [("U5", "1", "VDD", "power_in")],
                  "+3V3": [("U6", "1", "VDD", "power_in"), ("U7", "1", "VIN", "power_in")],

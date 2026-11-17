@@ -15,7 +15,7 @@ import re
 
 from kicad_types import AnalysisContext
 from kicad_core.netnames import is_usb_data_net_name, is_usb_signal_net_name, parse_voltage_from_net_name
-from kicad_core.parts import is_load_switch_part, names_load_switch
+from kicad_core.parts import is_load_switch_part, lookup_regulator_vref, names_load_switch
 
 try:
     import os as _os, sys as _sys
@@ -1508,10 +1508,14 @@ def validate_feedback_stability(
         # facts probe is informational — confidence stays heuristic regardless.
 
         comp = ctx.comp_lookup.get(ref)
+        # The datasheet dividers are the adjustable versions'; a fixed version ties FB to its output.
+        adjustable = bool(comp) and lookup_regulator_vref(
+            comp.get('value', ''), comp.get('lib_id', ''), mpn)[1] != 'fixed_suffix'
         min_load_adj = (fb_div.get('reference') == 'out_adj'
-                        or bool(comp and match_ic_keywords(comp, _MIN_LOAD_ADJ_KEYWORDS))
-                        or bool(comp and any(match_ic_keywords(comp, (kw,)) and lo <= r_bottom <= hi
-                                             for kw, lo, hi in _LOW_DIVIDER_R1_RANGE)))
+                        or (adjustable and (
+                            match_ic_keywords(comp, _MIN_LOAD_ADJ_KEYWORDS)
+                            or any(match_ic_keywords(comp, (kw,)) and lo <= r_bottom <= hi
+                                   for kw, lo, hi in _LOW_DIVIDER_R1_RANGE))))
         if parallel_impedance < _FB_IMPEDANCE_MIN and not min_load_adj:
             findings.append(make_finding(
                 detector='validate_feedback_stability', rule_id='FS-001', category='power_integrity',
