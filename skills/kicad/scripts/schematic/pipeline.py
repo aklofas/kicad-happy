@@ -559,7 +559,7 @@ def run_domain_detectors(ctx: AnalysisContext, topo: dict) -> dict:
     shorted_two_pin_components = detect_shorted_two_pin_components(ctx)
     rail_source_audit = audit_rail_sources(
         ctx, power_regulators=power_regulators, solder_jumpers=solder_jumpers,
-        bridge_facts=bridge_facts)
+        bridge_facts=bridge_facts, transistor_circuits=transistor_circuits)
     label_aliases = detect_label_aliases(ctx)
     power_pin_dc_paths = audit_power_pin_dc_paths(
         ctx, solder_jumpers=solder_jumpers, bridge_facts=bridge_facts,

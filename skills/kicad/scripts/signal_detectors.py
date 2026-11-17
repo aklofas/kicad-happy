@@ -4907,10 +4907,54 @@ _SWITCH_INPUT_PINS = frozenset({"VIN", "IN", "INPUT", "VI"})
 _SWITCH_OUTPUT_PINS = frozenset({"VOUT", "OUT", "OUTPUT", "VO"})
 
 
+def _pchannel_switch_pins(ctx: AnalysisContext, transistor_circuits: list[dict]) -> list[tuple[str, str]]:
+    """(source net, drain net) of each P-channel MOSFET high-side switch: its drain rail is
+    fed from its source rail.
+
+    Only a gate driven by a logic output or pulled up to the source counts. A gate tied to
+    ground or a rail, pulled toward ground by a resistor, or driven by a controller's GATE
+    pin belongs to a reverse-polarity, ideal-diode or power-path FET, whose drain is
+    usually the input; so is a drain that is USB bus power (named VBUS, or on an IC's VBUS
+    pin), as in the Arduino USB / VIN selector.
+    """
+    def letters(pin: dict) -> str:
+        return re.sub(r"[^A-Z]", "", (pin.get("pin_name") or "").upper())
+
+    def part_type(pin: dict) -> str | None:
+        return ctx.comp_lookup.get(pin.get("component"), {}).get("type")
+
+    def pulled_to_ground(pin: dict, gate: str) -> bool:
+        if part_type(pin) != "resistor":
+            return False
+        n1, n2 = ctx.get_two_pin_nets(pin.get("component"))
+        return ctx.is_ground(n2 if n1 == gate else n1)
+
+    pairs = []
+    for tc in transistor_circuits:
+        if tc.get("type") != "mosfet" or not tc.get("is_pchannel"):
+            continue
+        src, drn, gate = tc.get("source_net"), tc.get("drain_net"), tc.get("gate_net")
+        if (not (src and drn and gate) or len({src, drn, gate}) < 3 or ctx.is_ground(src)
+                or ctx.is_ground(gate) or ctx.is_power_net(gate)):
+            continue
+        if net_leaf(drn).upper() == "VBUS" or any(
+                part_type(p) == "ic" and letters(p) == "VBUS"
+                for p in ctx.nets.get(drn, {}).get("pins", [])):
+            continue
+        gate_pins = [p for p in ctx.nets.get(gate, {}).get("pins", [])
+                     if p.get("component") != tc["reference"]]
+        if any((part_type(p) == "ic" and letters(p).startswith("GATE")) or pulled_to_ground(p, gate)
+               for p in gate_pins):
+            continue
+        pairs.append((src, drn))
+    return pairs
+
+
 def audit_rail_sources(ctx: AnalysisContext,
                        power_regulators: list[dict] | None = None,
                        solder_jumpers: list[dict] | None = None,
-                       bridge_facts=None) -> list[dict]:
+                       bridge_facts=None,
+                       transistor_circuits: list[dict] | None = None) -> list[dict]:
     """Audit every power-classified net for a declared source.
 
     A rail with no `power_out` pin, no `PWR_FLAG` / `#FLG`, and no
@@ -4979,8 +5023,9 @@ def audit_rail_sources(ctx: AnalysisContext,
                 return True
         return net_name in reg_output_nets or net_name in switch_output_nets
 
-    # A load or USB power switch passes its input rail on: its output net is
-    # sourced when its input conductor is. Chains of switches settle in a few passes.
+    # A load or USB power switch, or a P-channel high-side switch, passes its input
+    # rail on: its output net is sourced when its input conductor is. Chains of
+    # switches settle in a few passes.
     switch_pins: list[tuple[str, str]] = []  # (input net, output net)
     switch_refs = {c["reference"] for c in ctx.components
                    if c.get("type") == "ic"
@@ -5004,6 +5049,7 @@ def audit_rail_sources(ctx: AnalysisContext,
         for sides in by_ref.values():
             switch_pins += sorted({(i, o) for i, ci in sides["in"] for o, co in sides["out"]
                                    if not (ci and co and ci != co)})
+    switch_pins += _pchannel_switch_pins(ctx, transistor_circuits or [])
     switch_output_nets: set[str] = set()
 
     def _input_sourced(in_net: str) -> bool:
