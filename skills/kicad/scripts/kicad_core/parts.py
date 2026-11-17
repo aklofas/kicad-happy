@@ -99,7 +99,8 @@ _REGULATOR_VREF: dict[str, float] = {
     # TI LMR family
     "LMR51410": 0.6,   "LMR51420": 0.6,   "LMR51430": 0.6,       # LMR51410/20/30 Vref = 0.6V
     "LMR51440": 0.8,   "LMR51460": 0.8,                          # LMR51440/60 Vref = 0.8V
-    "LMR51610": 0.6,   "LMR51620": 0.6,   "LMR51630": 0.6,       # LMR51610/20/30 Vref = 0.6V
+    "LMR51606": 0.8,   "LMR51610": 0.8,                          # LMR51606/10 VFB = 0.8 V (SLUSEY1B §6.5 p5)
+    "LMR51620": 0.6,   "LMR51630": 0.6,                          # LMR51620/30 Vref = 0.6V
     "LMR51640": 0.8,   "LMR51660": 0.8,                          # LMR51640/60 Vref = 0.8V
     "LMR336": 1.0,     "LMR338": 1.0,                            # LMR33630/60 Vref = 1.0V
     "LMR33640": 1.0,                                              # VFB = 1 V, ADJ option (SNVSB99C p6)
@@ -458,9 +459,10 @@ def is_label_like_value(value: str) -> bool:
 # A key that is itself a fixed-output part name (LD33 is a 3.3 V part) names no part's Vref.
 _FIXED_PART_KEYS = frozenset({"LD33"})
 # Keys whose order codes carry an X option letter (TPS560430XDBVR; LM2731XMF and LM27313XMF,
-# SNVS217G / SNVS487E ordering tables): there an X after the key is part of the part number,
-# elsewhere it is a family wildcard (LM259X).
-_X_OPTION_KEYS = frozenset({"TPS560430", "LM2731", "LM27313"})
+# SNVS217G / SNVS487E ordering tables; LMR51606X / LMR51610X, the 400 kHz option, SLUSEY1B §4
+# p3): there an X after the key is part of the part number, elsewhere it is a family wildcard
+# (LM259X).
+_X_OPTION_KEYS = frozenset({"TPS560430", "LM2731", "LM27313", "LMR51606", "LMR51610"})
 
 
 def vref_key_covers_part(key: str, part: str) -> bool:

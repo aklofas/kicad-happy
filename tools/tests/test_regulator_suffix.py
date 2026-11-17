@@ -173,6 +173,16 @@ class FeedbackReference(unittest.TestCase):
             key, matched = regulator_vref_key(part, "")
             self.assertTrue(vref_key_covers_part(key, matched), part)
 
+    def test_lmr5161x_reference_is_0v8_for_every_order_option(self):
+        # TI "LMR516xx SIMPLE SWITCHER Power Converter, 4-V to 65-V, 0.6-A/1-A Buck Converter in a
+        # SOT-23 Package", SLUSEY1B (Dec 2023): Vfb 0.8 V typ (6.5, p5); X = 400 kHz, Y = 1.1 MHz,
+        # F = FPWM, every orderable adjustable (4, p3)
+        for part in ["LMR51610", "LMR51610X", "LMR51610XDBVR", "LMR51610YFDBVR", "LMR51606X",
+                     "LMR51606YDBVR"]:
+            self.assertEqual(lookup_regulator_vref(part, ""), (0.8, "lookup"), part)
+            key, matched = regulator_vref_key(part, "")
+            self.assertTrue(vref_key_covers_part(key, matched), part)
+
     def test_other_rows_unchanged(self):
         for part, vref in [("TPS62912", 0.8), ("TPS73601", 1.204), ("LM22676", 1.285),
                            ("LM317", 1.25)]:
@@ -339,7 +349,8 @@ class KeyCover(unittest.TestCase):
 
     def test_x_option_letter_is_part_of_the_order_code(self):
         for key, part in [("TPS560430", "TPS560430X"), ("TPS560430", "TPS560430XDBVR"),
-                          ("LM2731", "LM2731XMF"), ("LM2731", "LM2731X"), ("LM27313", "LM27313X")]:
+                          ("LM2731", "LM2731XMF"), ("LM2731", "LM2731X"), ("LM27313", "LM27313X"),
+                          ("LMR51610", "LMR51610X"), ("LMR51606", "LMR51606X")]:
             self.assertTrue(vref_key_covers_part(key, part), part)
 
     def test_fixed_part_key_covers_nothing(self):
