@@ -268,7 +268,61 @@ _FIXED_SUFFIX_FAMILIES: dict[str, dict[str, float]] = {
     "NCP1117": {"12": 12.0, "15": 1.5},              # onsemi NCP1117 ordering table: ST12T3G 12 V, ST15T3G 1.5 V
     "XL1509": {"12": 12.0},                          # XLSEMI XL1509: 3.3 V, 5 V, 12 V and adjustable versions
     "AP7361": {"10": 1.0, "12": 1.2, "15": 1.5},     # DS37274: AP7361C-10 1.0 V, -12 1.2 V, -15 1.5 V
+    "LM2678": {"12": 12.0},                          # SNVS029L p1: 3.3 V, 5 V and 12 V fixed output and adjustable
+    "LM2676": {"12": 12.0},                          # SNVS031N p1: 3.3 V, 5 V, 12 V fixed output and adjustable
+    "LM2575": {"12": 12.0, "15": 15.0},              # SNVS106E p1 (LM2575/LM2575HV): 3.3 V, 5 V, 12 V, 15 V and adjustable
+    "LM1085": {"12": 12.0},                          # SNVS038H p1: 3.3 V, 5.0 V, 12 V and adjustable
+    "LM340": {"12": 12.0, "15": 15.0},               # SNOSBT0L p1: fixed 5 V, 12 V and 15 V options
 }
+# Fixed-output members of families whose adjustable members have a Vref key (part-number prefix -> Vout).
+_FIXED_OUTPUT_PARTS: dict[str, float] = {
+    "TPS61024": 3.0, "TPS61025": 3.3, "TPS61026": 5.0, "TPS61027": 5.0,  # SLVS451G p3 ordering table
+    "TPS61031": 3.3, "TPS61032": 5.0,                                    # SLUS534G p3 device comparison table
+}
+# onsemi NCP1117 / NCV1117 / NCP1117LP order codes: ST (SOT-223) or DT (DPAK) and a voltage code
+# (NCP1117/D Rev. 31 p12-13 ordering tables; NCP1117LP/D Rev. 6 p1 marking, p12 ordering table).
+_NCP1117_CODE = re.compile(r"NC[PV]1117(LP)?(?:ST|DT)(285|\d{2})")
+_NCP1117_VOLTS = {"12": 12.0, "15": 1.5, "18": 1.8, "19": 1.9, "20": 2.0, "25": 2.5, "285": 2.85,
+                  "33": 3.3, "50": 5.0}
+_NCP1117LP_VOLTS = {"15": 1.5, "18": 1.8, "25": 2.5, "33": 3.3, "50": 5.0}
+# RECOM R-78 modules: R-78<series><Vout>-<Iout> (R-78E5.0-0.5 is 5 V at 0.5 A). Model Numbering, p1 of
+# R-78xx-0.5 REV 6/2023, R-78xx-1.0 REV 5/2023, R-78B-1.5 REV 5/2020, R-78B-2.0 REV 5/2021,
+# R-78C-1.0 REV 3/2019, R-78CK-0.5 Rev 1-2025, R-78E-0.5 REV 9/2025, R-78E-1.0 REV 9/2024,
+# R-78HB-0.5 REV 5/2019; R-78K-1.0 Rev 6-2025 p2.
+_R78_NAME = re.compile(r"R-78[A-Z]{0,2}\d")
+_R78_CODE = re.compile(r"R-78(?:CK|HB|[BCEK])?(\d{1,2}(?:\.\d)?)(?![\d.])")
+
+
+def is_r78_module(value: str, lib_id: str) -> bool:
+    """True for a RECOM R-78 module, a switching regulator ("The R-78Cxx-1.0 series switching
+    regulators", R-78C-1.0 REV 3/2019 p1; R-78E-0.5 REV 9/2025 p1; R-78xx-0.5 REV 6/2023 p1), named by
+    its value or, under a value that names no other part, by its symbol."""
+    v = (value or "").upper()
+    if _R78_NAME.match(v):
+        return True
+    return bool(_R78_NAME.match((lib_id or "").split(":")[-1].upper())) and not (
+        part_number_core(v) and not is_label_like_value(v))
+
+
+def _fixed_part_vout(candidates: list[str]) -> float | None:
+    """The output voltage a fixed-output part number names (TPS61025, NCP1117ST33T3G, R-78E5.0-0.5),
+    or None. A later candidate (the lib_id part name) counts only when the earlier ones name no other
+    part and read no voltage themselves: a symbol borrowed for another regulator (TC2117 or LDO_5V0
+    on an NCP1117ST33T3G symbol) says nothing."""
+    for i, candidate in enumerate(candidates):
+        if i and any((part_number_core(c) and not is_label_like_value(c))
+                     or _lookup_vref([c])[1] == "fixed_suffix" for c in candidates[:i]):
+            return None
+        m = _NCP1117_CODE.match(candidate)
+        if m:
+            return (_NCP1117LP_VOLTS if m.group(1) else _NCP1117_VOLTS).get(m.group(2))
+        m = _R78_CODE.match(candidate)
+        if m:
+            return float(m.group(1))
+        key = next((k for k in _FIXED_OUTPUT_PARTS if re.match(k + r"(?!\d)", candidate)), None)
+        if key is not None:
+            return _FIXED_OUTPUT_PARTS[key]
+    return None
 
 
 def fixed_vout_is_explicit(value: str, lib_id: str, mpn: str = "") -> bool:
@@ -291,10 +345,16 @@ def _lookup_vref(candidates: list[str], bare_codes: bool = True) -> tuple[float 
             v = int(m.group(2))
             if v in (5, 6, 8, 9, 10, 12, 15, 18, 24):
                 return (-float(v) if m.group(1) == "9" else float(v)), "fixed_suffix"
+    fixed_v = _fixed_part_vout(candidates)
+    if fixed_v is not None:
+        return fixed_v, "fixed_suffix"
     # Check for fixed-output voltage suffix (e.g., AMS1117-3.3, TLV1117LV-33,
     # RT9013-18GV — patterns: -3.3, -33, -3V3, -1V8)
     ambiguous = set()
     for candidate in candidates:
+        # an R-78 module's -<Iout> suffix is its current (R-78E5.0-0.5)
+        if _R78_NAME.match(candidate):
+            continue
         raw = candidate
         candidate = _PACKAGE_TOKEN.sub("", candidate)
         m = re.search(r'[-_](\d+)V(\d+)', candidate)
@@ -307,7 +367,7 @@ def _lookup_vref(candidates: list[str], bare_codes: bool = True) -> tuple[float 
                 return fixed_v, "fixed_suffix"
         m = re.search(r'[-_](\d{2})(?=[^0-9.]|$)', candidate)
         if m and m.group(1) in _AMBIGUOUS_SUFFIXES:
-            family = next((f for f in _FIXED_SUFFIX_FAMILIES if candidate.startswith(f)), None)
+            family = next((f for f in _FIXED_SUFFIX_FAMILIES if re.match(f + r"(?!\d)", candidate)), None)
             if family and m.group(1) in _FIXED_SUFFIX_FAMILIES[family]:
                 return _FIXED_SUFFIX_FAMILIES[family][m.group(1)], "fixed_suffix"
             # A fixed part of unknown voltage has no adjustable Vref either; a

@@ -18,6 +18,7 @@ from kicad_core.parts import (
     is_instrumentation_amp,
     lookup_regulator_vref as _lookup_regulator_vref,
     fixed_vout_is_explicit,
+    is_r78_module,
     lookup_switching_freq,
     default_switching_freq,
     match_known_switching as _match_known_switching,
@@ -2193,6 +2194,8 @@ def _build_regulator_record(ctx: AnalysisContext, cand: _RegulatorCandidate,
            any(k in lib_val_lower for k in _switching_kw):
             reg_info["topology"] = "switching"
         elif _match_known_switching(ic.get("value", ""), ic.get("lib_id", "")):
+            reg_info["topology"] = "switching"
+        elif is_r78_module(ic.get("value", ""), ic.get("lib_id", "")):
             reg_info["topology"] = "switching"
         else:
             reg_info["topology"] = "LDO"

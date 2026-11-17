@@ -108,6 +108,15 @@ class RegulatorPhases(unittest.TestCase):
         self.assertEqual(r["input_rail"], "+5V")
         self.assertEqual(r["output_rail"], "+3V3")
 
+    def test_recom_r78_module_on_a_plain_symbol_is_switching(self):
+        # R-78 modules are switching regulators (RECOM R-78C-1.0 REV 3/2019 p1)
+        ctx = _ctx([("U1", "lsts-regul:REG_Recom", "R-78C3.3-1.0",
+                     {"1": ("Vin", "+12V"), "2": ("GND", "GND"), "3": ("Vout", "+3V3")})])
+        r = detect_power_regulators(ctx, [])[0]
+        self.assertEqual(r["topology"], "switching")
+        self.assertEqual(r["estimated_vout"], 3.3)
+        self.assertEqual(r["output_rail"], "+3V3")
+
     def test_inverting_regulator_negates_vout_and_fb_at_top_cross_reference(self):
         ctx = _ctx([("U3", "Regulator_Switching:LT3581", "LT3581", _BUCK_PINS), _INDUCTOR])
         r = detect_power_regulators(ctx, [_divider("FB", "X", "GND")])[0]

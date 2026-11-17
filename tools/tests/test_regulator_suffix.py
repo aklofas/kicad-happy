@@ -5,7 +5,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "skills" / "kicad" / "scripts"))
 
 from kicad_core.parts import (  # noqa: E402
-    fixed_vout_is_explicit, lookup_regulator_vref, regulator_vref_key, vref_key_covers_part)
+    fixed_vout_is_explicit, is_r78_module, lookup_regulator_vref, regulator_vref_key, vref_key_covers_part)
 
 
 class FixedSuffix(unittest.TestCase):
@@ -17,11 +17,11 @@ class FixedSuffix(unittest.TestCase):
 
     def test_library_ambiguous_suffixes_give_no_value(self):
         # KiCad's library reads these both ways: AP7361C-12E is 1.2 V, LM1085-12 is 12 V.
-        for name in ["LM1085-12", "AP1117-15", "LM3480-15",
+        for name in ["AP1117-15", "LM3480-15",
                      "LM341T-05", "RAC04-09", "NID30S48-24", "APE8865-24", "MCP1700-12"]:
             vref, source = lookup_regulator_vref(name, "")
             self.assertNotEqual(source, "fixed_suffix", name)
-        self.assertEqual(lookup_regulator_vref("LM1085-12", ""), (None, ""))
+        self.assertEqual(lookup_regulator_vref("LM3480-15", ""), (None, ""))
 
     def test_family_data_sheet_gives_the_ambiguous_suffix(self):
         for name, volts in [("AP7361C-10E", 1.0), ("AP7361C-12E", 1.2), ("AP7361C-15E", 1.5),
@@ -31,8 +31,22 @@ class FixedSuffix(unittest.TestCase):
                             ("LM2940-15", 15.0),
                             ("TL780-05KCS", 5.0), ("TL780-12", 12.0), ("TL780-15", 15.0),
                             ("NCP1117-12", 12.0), ("NCP1117-12_SOT223", 12.0), ("NCP1117-15", 1.5),
-                            ("XL1509-12", 12.0)]:
+                            ("XL1509-12", 12.0),
+                            # LM2678 SNVS029L p1, LM2676 SNVS031N p1, LM2575/LM2575HV SNVS106E p1,
+                            # LM1085 SNVS038H p1, LM340 SNOSBT0L p1
+                            ("LM2678S-12", 12.0), ("LM2676SX-12/NOPB", 12.0),
+                            ("LM2575HVS-12_C347430", 12.0), ("LM2575T-15", 15.0),
+                            ("LM1085-12", 12.0), ("LM1085-12V", 12.0),
+                            ("LM340-12", 12.0), ("LM340T-15", 15.0)]:
             self.assertEqual(lookup_regulator_vref(name, ""), (volts, "fixed_suffix"), name)
+
+    def test_family_suffix_needs_the_whole_family_number(self):
+        # LM3405 is an LED driver, not an LM340 regulator
+        self.assertEqual(lookup_regulator_vref("LM3405-12", ""), (None, ""))
+
+    def test_integer_volts_in_a_name_or_range_give_no_value(self):
+        for name in ["Boost-converter-9-48V", "POE-RT5400-12V"]:
+            self.assertEqual(lookup_regulator_vref(name, ""), (None, ""), name)
 
     def test_fixed_part_of_unknown_voltage_has_no_adjustable_vref(self):
         # NCP1117 has a table Vref, but a -10 part is a fixed part the data sheet does not list.
@@ -116,9 +130,21 @@ class FeedbackReference(unittest.TestCase):
         self.assertEqual(lookup_regulator_vref("TPS61030PWPR", ""), (0.5, "lookup"))
 
     def test_fixed_output_member_does_not_take_the_adjustable_reference(self):
-        # TPS61032 is the fixed 5 V member: the TPS61030 feedback voltage is not its Vref
-        self.assertEqual(lookup_regulator_vref("TPS61032PWPR", ""), (None, ""))
-        self.assertEqual(lookup_regulator_vref("TPS61025DRCR", ""), (None, ""))
+        # the fixed members give their output voltage, not the adjustable members' feedback voltage
+        # (TPS6102x SLVS451G p3 ordering table; TPS6103x SLUS534G p3 device comparison table)
+        for part, volts in [("TPS61024DRCR", 3.0), ("TPS61025DRCR", 3.3), ("TPS61026DRCR", 5.0),
+                            ("TPS61027DRCT", 5.0), ("TPS61031PWPR", 3.3), ("TPS61032PWPR", 5.0),
+                            ("TPS61032RSAR", 5.0)]:
+            self.assertEqual(lookup_regulator_vref(part, ""), (volts, "fixed_suffix"), part)
+            self.assertTrue(fixed_vout_is_explicit(part, ""), part)
+
+    def test_fixed_member_symbol_under_a_label_value(self):
+        self.assertEqual(lookup_regulator_vref("3.3V-Regulator", "Regulator_Switching:TPS61025DRCR"),
+                         (3.3, "fixed_suffix"))
+
+    def test_fixed_member_prefix_needs_the_whole_part_number(self):
+        # TPS610333 is not a TPS61033x relative of the TPS61031/32 table rows
+        self.assertEqual(lookup_regulator_vref("TPS610333DRLR", ""), (None, ""))
 
     def test_tps6102x_members_have_their_own_reference(self):
         for part, vref in [("TPS61021ADSGR", 0.795), ("TPS61022RWUR", 0.6),
@@ -152,6 +178,69 @@ class FeedbackReference(unittest.TestCase):
 
     def test_ltc3558_feedback_is_0v8(self):
         self.assertEqual(lookup_regulator_vref("LTC3558", ""), (0.8, "lookup"))
+
+
+class OrderCodes(unittest.TestCase):
+    def test_onsemi_ncp1117_order_codes(self):
+        # NCP1117/D Rev. 31 p12 (NCP1117) and p13 (NCV1117) ordering tables;
+        # NCP1117LP/D Rev. 6 p1 marking (xx = 15, 18, 25, 33, 50, AD) and p12 ordering table
+        for part, volts in [("NCP1117ST33T3G", 3.3), ("NCP1117DT33RKG", 3.3),
+                            ("NCP1117ST12T3G", 12.0), ("NCP1117ST15T3G", 1.5),
+                            ("NCP1117DT285RKG", 2.85), ("NCP1117DT19RKG", 1.9),
+                            ("NCP1117DT15G_MountingTab", 1.5), ("NCV1117ST50T3G", 5.0),
+                            ("NCP1117LPST33T3G", 3.3), ("NCP1117LPDT18RKG", 1.8)]:
+            self.assertEqual(lookup_regulator_vref(part, ""), (volts, "fixed_suffix"), part)
+            self.assertTrue(fixed_vout_is_explicit(part, ""), part)
+
+    def test_ncp1117_adjustable_order_codes_keep_the_reference(self):
+        for part in ["NCP1117STAT3G", "NCP1117DTARKG", "NCP1117LPSTADT3G", "NCP1117-ADJ_SOT223"]:
+            self.assertEqual(lookup_regulator_vref(part, ""), (1.25, "lookup"), part)
+
+    def test_borrowed_order_code_symbol_says_nothing_about_another_part(self):
+        for value in ["TC2117", "LDL1117S30R"]:
+            self.assertEqual(lookup_regulator_vref(value, "X:NCP1117ST33T3G"), (1.25, "lookup"), value)
+
+    def test_voltage_in_a_label_value_outranks_a_borrowed_order_code_symbol(self):
+        for value, lib_id, volts in [("DCDC_3V3", "Regulator_Switching:R-78E5.0-0.5", 3.3),
+                                     ("LDO_3V3", "Regulator_Switching:R-78E5.0-0.5", 3.3),
+                                     ("REG-3.3", "X:NCP1117ST50T3G", 3.3),
+                                     ("LDO_5V0", "X:NCP1117ST33T3G", 5.0),
+                                     ("BUCK-12V0", "Converter_DCDC:R-78B5.0-2.0", 12.0),
+                                     ("DCDC_3V3", "X:TPS61032PWPR", 3.3)]:
+            self.assertEqual(lookup_regulator_vref(value, lib_id), (volts, "fixed_suffix"), value)
+
+
+class RecomR78(unittest.TestCase):
+    # RECOM model numbering R-78<series><Vout>-<Iout>: R-78xx-0.5 REV 6/2023 p1, R-78xx-1.0 REV 5/2023 p1,
+    # R-78B-1.5 REV 5/2020 p1, R-78B-2.0 REV 5/2021 p1, R-78C-1.0 REV 3/2019 p1, R-78CK-0.5 Rev 1-2025 p1,
+    # R-78E-0.5 REV 9/2025 p1, R-78E-1.0 REV 9/2024 p1, R-78HB-0.5 REV 5/2019 p1, R-78K-1.0 Rev 6-2025 p2
+    def test_r78_name_gives_the_output_voltage_not_the_current(self):
+        for name, volts in [("R-78E3.3-1.0", 3.3), ("R-78E5.0-0.5", 5.0), ("R-78E12-1.0/X9", 12.0),
+                            ("R-78K3.3-1.0", 3.3), ("R-78B12-2.0", 12.0), ("R-78B3.3-1.5L", 3.3),
+                            ("R-78C5.0-1.0", 5.0), ("R-78CK3.3-0.5", 3.3), ("R-78HB6.5-0.5", 6.5),
+                            ("R-783.3-0.5", 3.3), ("R-7812-0.5", 12.0), ("R-785.0-1.0", 5.0),
+                            ("R-78E5", 5.0), ("R-78B3.3-1.0 (Recom)", 3.3)]:
+            self.assertEqual(lookup_regulator_vref(name, ""), (volts, "fixed_suffix"), name)
+            self.assertTrue(fixed_vout_is_explicit(name, ""), name)
+
+    def test_r78_symbol_under_a_label_value(self):
+        self.assertEqual(lookup_regulator_vref("U2", "Regulator_Switching:R-78E5.0-0.5"), (5.0, "fixed_suffix"))
+
+    def test_r78_current_suffix_is_never_read_as_a_voltage(self):
+        # a series outside the cited data sheets, and R-78 symbols borrowed for other parts
+        for value, lib_id in [("R-78AA5.0-1.0", ""), ("VXO7803-1000", "X:R-78C3.3-1.0"),
+                              ("L7805CV", "X:R-78B5.0-2.0"), ("BP5293-5", "X:R-78E5")]:
+            self.assertNotEqual(lookup_regulator_vref(value, lib_id)[1], "fixed_suffix", value)
+
+    def test_voltage_written_outside_the_model_number_is_still_read(self):
+        self.assertEqual(lookup_regulator_vref("R-78B_9.0V-1.0A", ""), (9.0, "fixed_suffix"))
+
+    def test_r78_module_is_recognised_by_value_or_symbol(self):
+        self.assertTrue(is_r78_module("R-78C3.3-1.0", "lsts-regul:REG_Recom"))
+        self.assertTrue(is_r78_module("U2", "Regulator_Switching:R-78E5.0-0.5"))
+        # a symbol borrowed for another part says nothing
+        self.assertFalse(is_r78_module("L7805CV", "Regulator_Switching:R-78B5.0-2.0"))
+        self.assertFalse(is_r78_module("AMS1117-3.3", "Regulator_Linear:AMS1117-3.3"))
 
 
 class KeyCover(unittest.TestCase):
