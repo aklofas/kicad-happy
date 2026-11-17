@@ -586,3 +586,34 @@ def led_color(comp: dict) -> str | None:
             if color in words or (color == "ir" and _LED_IR_WORD.search(text.lower())):
                 return color
     return None
+
+
+# P-channel MOSFETs a schematic may name only by part number. Every entry is a P-channel
+# part in KiCad's Transistor_FET library or in its maker's datasheet (cited in
+# tools/tests/test_pchannel_parts.py). Families mix the two channels (AO3400 N / AO3401 P,
+# DMG2302 N / DMG2305 P, Si2302 N / Si2301 P), so an entry is a whole part number, never a
+# family prefix; it may carry up to six ordering letters (A, UX, PBF, TRPBF) before a
+# separator or the end.
+_PCHANNEL_FET_PARTS = (
+    # KiCad Transistor_FET library
+    "AO3401", "AON6411", "BS250", "BSS83P", "BSS84", "CSD25302Q2", "CSD25402Q3A", "CSD25480F3",
+    "DMG2301L", "DMP3013SFV", "DMP3099L", "DMP6050SSD", "FDN340P", "FDS9435A", "FQP27P06",
+    "IRF4905", "IRF7324", "IRF7404", "IRF7606", "IRF9383M", "IRF9394M", "IRF9395M", "IRF9540N",
+    "IRFTS9342", "IRLML5203", "IRLML6401", "IRLML6402", "IRLML9301", "NTR2101P", "PMN48XP",
+    "QM6015D", "SI2319CDS", "SI2371EDS", "SI7141DP", "SI7617DN", "SIA449DJ", "SIA453EDJ",
+    "SIS415DNT", "SIS443DN", "SISS27DN", "SQJQ131EL", "SUD08P06-155L", "SUD09P10-195",
+    "SUD19P06-60", "SUD45P03-09", "SUD50P04-08", "SUD50P06-15", "SUD50P08-25L", "SUD50P10-43L",
+    "TP0610", "TSM2301ACX", "VP0610", "ZXMP4A16G",
+    # maker datasheets
+    "AO3407", "AO3415", "AO3423", "AO4407A", "DMG2305UX", "FDN302P", "FDN360P", "FDS6673BZ",
+    "FDV304P", "FQD5P20", "FQU5P20", "IRF5305", "IRFR5305", "IRFU5305", "IRLML2244", "NDT456P",
+    "NTD25P03L", "NTR4171P", "SI2301CDS",
+)
+_PCHANNEL_FET_RE = re.compile(
+    "(?:" + "|".join(re.escape(p) for p in sorted(_PCHANNEL_FET_PARTS, key=len, reverse=True))
+    + r")[A-Z]{0,6}(?![A-Z0-9])")
+
+
+def names_pchannel_fet(*names: str) -> bool:
+    """True when a value, MPN or library symbol name starts with a known P-channel part number."""
+    return any(_PCHANNEL_FET_RE.match((n or "").strip().upper()) for n in names)

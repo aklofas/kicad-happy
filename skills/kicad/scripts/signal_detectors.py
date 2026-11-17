@@ -13,6 +13,7 @@ from kicad_core.parts import (
     _LOAD_TYPE_KEYWORDS,
     LOAD_SWITCH_KEYWORDS,
     names_load_switch,
+    names_pchannel_fet,
     lookup_regulator_vref as _lookup_regulator_vref,
     lookup_switching_freq,
     default_switching_freq,
@@ -30,7 +31,7 @@ from kicad_core.netnames import (
 from kicad_core.netquery import build_bridge_facts, build_ref_pins, conductor_of, tie_conductors
 from kicad_types import AnalysisContext
 from finding_schema import make_provenance, make_finding, Det
-from detector_helpers import index_two_pin_components, get_components_by_type, get_unique_ics, is_tvs_diode
+from detector_helpers import index_two_pin_components, get_components_by_type, get_unique_ics, is_tvs_diode, symbol_name
 from detector_helpers import group_members, group_part, group_reps, group_value, parallel_groups
 
 from lookup_helpers import get_facts, has_data, best, facts_trusted
@@ -3473,6 +3474,25 @@ def _diode_terminal_nets(ctx: AnalysisContext, ref: str) -> tuple[str | None, st
     return anode, cathode
 
 
+# Generic P-channel symbol and value names ("MOSFET_P", "MOS_P", "PFET", "P-MOSFET") and the
+# "P-CH" / "Pch" description shorthand; a description naming both channels is a complementary pair.
+_PCH_NAME = re.compile(r"mosfet[_-]p\b|\bmos[_-]p\b|\bp[-_]?fet\b|p-mos|^p-?ch$")
+_PCH_DESC = re.compile(r"\bp-?ch\b")
+_NCH_DESC = re.compile(r"\bn-?ch\b|n-channel")
+
+
+def _names_pchannel(comp: dict) -> bool:
+    """A P-channel MOSFET by part number, generic symbol or value name, or "P-CH" description."""
+    value = comp.get("value", "")
+    sym = symbol_name(comp.get("lib_id", ""))
+    if names_pchannel_fet(value, comp.get("mpn", ""), sym):
+        return True
+    if any(_PCH_NAME.search(t.lower()) for t in (value, sym)):
+        return True
+    desc = comp.get("description", "").lower()
+    return bool(_PCH_DESC.search(desc)) and not _NCH_DESC.search(desc)
+
+
 def detect_transistor_circuits(ctx: AnalysisContext, matched_fets: set, fet_pins: dict) -> list[dict]:
     """Detect transistor circuit configurations (MOSFETs and BJTs)."""
     transistor_circuits: list[dict] = []
@@ -3525,6 +3545,8 @@ def detect_transistor_circuits(ctx: AnalysisContext, matched_fets: set, fet_pins
             desc_lower = comp.get("description", "").lower()
             is_pchannel = any(k in desc_lower for k in
                              ("p-channel", "p-mosfet", "pmos", "p-mos"))
+        if not is_pchannel:
+            is_pchannel = _names_pchannel(comp)
 
         # Gate drive analysis
         gate_comps = ctx.nq.components_on_net(gate_net, exclude_refs={ref}) if gate_net else []

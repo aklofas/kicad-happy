@@ -29,6 +29,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Addressable LEDs (WS2812, SK6812, SK6803, APA102 and similar) no longer get an LR-001 "no current-limiting resistor" error: they set their own current, as the LED audit already assumed.
 - A part with an unusual reference prefix (PD1, LD4, POT1, DS1, RF-C10) takes its type from its symbol (resistor, capacitor, inductor, LED, diode or transistor) instead of the prefix's first letter.
 - Ferrite beads written as an impedance at a frequency (`330 OHM@100MHZ`, `120 Ohm @ 100 MHz`, `33Ω @ 100MHz`, `600OHM/2A`) are typed as ferrites, not inductors.
+- P-channel MOSFETs named only by their part number (IRLML6402, AO3401A, DMG2305UX and others) or described as P-CH are read as P-channel.
 - Wireless-module, RF-chain, certification and isolation detection read a rescued symbol by its own part name: a charger, key switch or crystal rescued from a board named after its radio (ESP32, nRF52) is no longer reported as a wireless module or RF transceiver.
 - TV-001 counts a stacked via column (vias at one point on one net, layer to layer) as one via, weighted by its narrowest drill, so an HDI thermal pad is no longer graded as if each layer pair were a separate via.
 - A schematic whose sheets are placed hundreds of times is read much faster: the time no longer grows with the square of the instance count. Results are unchanged.
