@@ -92,9 +92,58 @@ class ValueNotation(unittest.TestCase):
             self.assertIsNone(parse_value(text), msg=text)
 
     def test_a_comma_between_fields_is_not_a_decimal_mark(self):
-        for text in ("100nF,50V", "10k,1%", "X7R, 50V"):
+        self.assertIsNone(parse_value("X7R, 50V", component_type="capacitor"))
+        self.check([("100nF,50V", "capacitor", 1e-7), ("10k,1%", "resistor", 1e4),
+                    ("4,7uF,50V", "capacitor", 4.7e-6), ("4.7uF 10%", "capacitor", 4.7e-6)])
+
+    def test_comma_field_list_without_a_space_on_a_typed_passive(self):
+        self.check([("10k,1%,63mW", "resistor", 1e4), ("6.8uH,5.2A,8A(Isat)", "inductor", 6.8e-6),
+                    ("20p,0603", "capacitor", 2e-11), ("470nH,15mOhm", "inductor", 4.7e-7)])
+
+    def test_comma_field_lists_that_stay_unparsed(self):
+        for text, ctype in (("50V,10uF", "capacitor"), ("0603,68nF,50V,X7R", "capacitor"),
+                            ("1,000", "resistor"), ("40V,10A", "diode"), ("100nF,50V", None)):
+            self.assertIsNone(parse_value(text, component_type=ctype), msg=(text, ctype))
+
+    def test_uppercase_prefix_on_typed_capacitor_and_inductor(self):
+        self.check([("100N", "capacitor", 1e-7), ("1U", "capacitor", 1e-6), ("4U7", "capacitor", 4.7e-6),
+                    ("22P", "capacitor", 22e-12), ("100NF", "capacitor", 1e-7), ("0.1U", "capacitor", 1e-7),
+                    ("1P5", "capacitor", 1.5e-12), ("10UF", "capacitor", 1e-5),
+                    ("2U2", "inductor", 2.2e-6), ("2.2UH 4.7A", "inductor", 2.2e-6),
+                    ("3.5N", "inductor", 3.5e-9), ("4U7H", "inductor", 4.7e-6)])
+
+    def test_part_numbers_with_N_U_P_stay_unparsed(self):
+        for text, ctype in (("1N4148", None), ("1N4148", "diode"), ("1N4148", "capacitor"),
+                            ("2N7002", "capacitor"), ("1N60", "diode"), ("50N06", "transistor"),
+                            ("4N35", "ic"), ("7406N", "ic"), ("1U", "switch"), ("100N", None),
+                            ("100N", "resistor"), ("22P", "inductor"), ("1U", "ferrite_bead")):
+            self.assertIsNone(parse_value(text, component_type=ctype), msg=(text, ctype))
+
+    def test_uppercase_prefix_with_a_voltage_field_reads_the_capacitance(self):
+        self.check([("10U/16V", "capacitor", 1e-5), ("100N 50V", "capacitor", 1e-7),
+                    ("100N,50V", "capacitor", 1e-7), ("100P NP0", "capacitor", 1e-10)])
+
+    def test_uppercase_prefix_with_a_glued_voltage_stays_unparsed(self):
+        for text in ("1N50V", "10U16V", "100N50V"):
             self.assertIsNone(parse_value(text, component_type="capacitor"), msg=text)
-        self.check([("4.7uF 10%", "capacitor", 4.7e-6)])
+
+    def test_lowercase_prefixes_unchanged_on_a_capacitor(self):
+        self.check([("100n", "capacitor", 1e-7), ("4u7", "capacitor", 4.7e-6), ("1M", "capacitor", 1e6),
+                    ("22p", "capacitor", 22e-12)])
+
+    def test_resistor_with_a_current_rating_keeps_its_value(self):
+        self.check([("1R/2A", "resistor", 1.0), ("10R/0.5A", "resistor", 10.0)])
+        for text, ctype in (("600R/100MHz", "resistor"), ("600R/2A", "ferrite_bead"),
+                            ("1R/2A", "inductor"), ("1R/2A", None)):
+            self.assertIsNone(parse_value(text, component_type=ctype), msg=(text, ctype))
+
+    def test_grouped_mantissa_with_a_prefix_or_unit(self):
+        self.check([("1 000k", "resistor", 1e6), ("4 700pF", "capacitor", 4.7e-9),
+                    ("1 000 000pF", "capacitor", 1e-6), ("4 700R", "resistor", 4700.0)])
+
+    def test_grouped_digits_before_a_rating_do_not_join(self):
+        self.check([("100 750mW", "resistor", 100.0), ("600 200ma", "ferrite_bead", 600.0),
+                    ("47 100V", "capacitor", 47e-12)])
 
     def test_inductor_with_impedance_value_makes_no_lc_filter(self):
         from signal_detectors import detect_lc_filters
@@ -123,6 +172,7 @@ class CrystalFrequency(unittest.TestCase):
             self.assertIsNotNone(got, msg=text)
             self.assertAlmostEqual(got / want, 1.0, places=9, msg=text)
         self.assertIsNone(_parse_crystal_frequency("X7R, 50V"))
+        self.assertIsNone(parse_value("20pF,16MHz"))
 
     def test_package_code_before_a_comma_is_not_the_integer_part(self):
         from signal_detectors import _parse_crystal_frequency

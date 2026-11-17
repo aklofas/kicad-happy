@@ -36,6 +36,25 @@ _IMPEDANCE_SLASH = re.compile(
 _LOW_OHM_RATED = re.compile(
     r"\s*(?:0*[.,][0-9]+|0+)\s*(?:[RrΩ]|[Oo][Hh][Mm][Ss]?)\s*/\s*[0-9][0-9.,]*\s*[mu]?A(?![A-Za-z])")
 _IMPEDANCE_AT = re.compile(r"[0-9]\s*(?:[RrΩ]|[Oo][Hh][Mm][Ss]?)\s*@\s*[0-9][0-9.,]*\s*[kKMG]?[Hh][Zz]")
+# A resistor with its current rating ("1R/2A", "10R/0.5A") is a resistance, not ferrite notation.
+_RESISTOR_RATED = re.compile(
+    r"\s*[0-9][0-9.,]*\s*(?:[RrΩ]|[Oo][Hh][Mm][Ss]?)\s*/\s*[0-9][0-9.,]*\s*[mu]?A(?![A-Za-z])")
+# A 3-digit mantissa group that ends the value with an SI prefix or a unit ("1 000k", "4 700R").
+# V, A and W stay out: "47 100V" and "100 750mW" are a value and a rating.
+_LAST_GROUP = re.compile(r"\d{3}(?:[.,]\d+)?(?:[pnumkKMGRr]?(?:[FHΩ]|[Oo]hms?)?)")
+# A resistor, capacitor or inductor value followed by a comma and more fields with no space
+# ("100nF,50V", "10k,1%"): the value needs a prefix or unit letter and at most one separator,
+# so "1,000", "50V,10uF" and "0603,68nF" are left alone. Untyped, "20pF,16MHz" stays None so
+# a crystal's frequency is still found.
+_VALUE_THEN_FIELDS = re.compile(
+    r"([+-]?(?:[0-9]{1,3}(?:[.,][0-9]+)?|[0-9]+(?:\.[0-9]+)?|[.,][0-9]+)"
+    r"(?:[pnumkKMGRrNUP][0-9]*(?:[FHΩ]|[Oo]hms?)?|[FHΩ]|[Oo]hms?)),")
+# Uppercase N, U and P read as nano, micro and pico on a capacitor ("100N", "4U7", "22P") and
+# N and U on an inductor ("2U2"); on other parts "1N4148" or "50N06" is a part number. At most
+# two digits may follow the letter, so "1N4148" stays a part number even on a capacitor.
+# KiCad reads P as peta; no capacitor is petafarads.
+_UPPER_PREFIX = re.compile(r"([0-9.]*[0-9])([NUP])([0-9]{0,2})")
+_UPPER_PREFIX_TYPES = {"capacitor": "NUP", "inductor": "NU"}
 _MANTISSA = re.compile(r"[+-]?[0-9][0-9.,]*|[+-]?[.,][0-9][0-9.,]*")
 
 
@@ -101,7 +120,8 @@ def parse_value(value_str: str, component_type: str | None = None) -> float | No
     (no unit letter, no exponent), treat it as picofarads when >= 1.0 and as
     microfarads below (legacy KiCad 5 convention). An explicit F ("1F") or an
     exponent ("1e-6") is already in farads. A lowercase f is femto when a unit
-    follows ("10fF") or the part is typed and not a capacitor.
+    follows ("10fF") or the part is typed and not a capacitor. Uppercase N/U/P
+    are nano/micro/pico on a capacitor and N/U on an inductor ("100N", "4U7").
     """
     try:
         return _parse_value(value_str, component_type)
@@ -125,8 +145,10 @@ def _parse_value(value_str: str, component_type: str | None) -> float | None:
     value_str = value_str.translate(_MICRO_SIGNS).translate(_OHM_SIGNS)
     # A ferrite's impedance with its test frequency or rated current ("600R/200mA",
     # "220Ω/100MHz") is not a resistance: None, like "120R@100MHz" below. A link or shunt
-    # below 1 ohm with its current rating ("0R/2A", "0.1R/3A") keeps its value.
-    if _IMPEDANCE_SLASH.match(value_str) and not _LOW_OHM_RATED.match(value_str):
+    # below 1 ohm with its current rating ("0R/2A", "0.1R/3A") keeps its value, as does any
+    # resistor-typed part with a current rating ("1R/2A").
+    if (_IMPEDANCE_SLASH.match(value_str) and not _LOW_OHM_RATED.match(value_str)
+            and not (component_type == "resistor" and _RESISTOR_RATED.match(value_str))):
         return None
     # The split on spaces below would leave "600 Ohm @ 100MHz" as 600.
     if _IMPEDANCE_AT.search(value_str):
@@ -142,14 +164,17 @@ def _parse_value(value_str: str, component_type: str | None) -> float | None:
     if parts and re.fullmatch(r"[+-]?\d{1,3}", parts[0]):
         while len(parts) >= 2 and re.fullmatch(r"\d{3}", parts[1]):
             parts[0:2] = [parts[0] + parts[1]]
-        if len(parts) >= 2 and re.fullmatch(r"\d{3}[.,]\d+", parts[1]):
+        if len(parts) >= 2 and _LAST_GROUP.fullmatch(parts[1]):
             parts[0:2] = [parts[0] + parts[1]]
     if len(parts) >= 2 and parts[1] and (parts[1][0] in "pnumkKMGRr" or parts[1] in ("F", "f", "fF", "fH")):
         s = parts[0] + parts[1]
     else:
         s = parts[0] if parts else ""
-    # A comma-separated field list ("0.1uF, 50V") keeps its leading value.
+    # A comma-separated field list ("0.1uF, 50V", "100nF,50V") keeps its leading value.
     s = s.rstrip(",")
+    fields = _VALUE_THEN_FIELDS.match(s) if component_type in ("resistor", "capacitor", "inductor") else None
+    if fields:
+        s = fields.group(1)
     # SPICE "Meg" is mega.
     s = re.sub(r"(?<=[0-9.,])[mM][eE][gG]", "M", s)
     m = _MANTISSA.match(s)
@@ -172,10 +197,17 @@ def _parse_value(value_str: str, component_type: str | None) -> float | None:
 
     # Strip trailing unit words (mOhm, Ohm, ohm, ohms) before single-char stripping
     s = re.sub(r'[Oo]hms?$', '', s)
+    unit_tail = s
     s = s.rstrip("FHΩVfhv%")         # strip trailing unit letters
+    unit_tail = unit_tail[len(s):]
 
     if not s:
         return None
+    upper = _UPPER_PREFIX.fullmatch(s)
+    # Digits glued to a voltage ("1N50V", "10U16V") are the rating, not fraction digits.
+    if (upper and upper.group(2) in _UPPER_PREFIX_TYPES.get(component_type, "")
+            and not (upper.group(3) and "V" in unit_tail.upper())):
+        s = upper.group(1) + upper.group(2).lower() + upper.group(3)
 
     # Multiplier map (SI prefixes used in EE)
     multipliers = {
