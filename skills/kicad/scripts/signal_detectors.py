@@ -1778,23 +1778,30 @@ def _drives_smps_inductor(ctx: AnalysisContext, ref: str, net: str | None) -> bo
     return bool(ctx.nq and ctx.nq.inductors_on_net(net, exclude_ref=ref))
 
 
+def _pin_leaf(pin: dict) -> str:
+    return (pin.get("pin_name") or "").upper().rstrip("0123456789").rstrip("_")
+
+
+def _own_ground_nets(ctx: AnalysisContext, ref: str) -> set[str]:
+    """Nets on *ref*'s GND pins, except a net that is not ground and is named for a voltage
+    (+5V, or an inverting converter's -5V output)."""
+    return {pin_net for pin_net, _ in ctx.ref_pins.get(ref, {}).values()
+            if (ctx.is_ground(pin_net) or _parse_voltage_from_net_name(pin_net) is None)
+            and any(p["component"] == ref and _pin_leaf(p) in _SWITCH_OUT_GND_PINS
+                    for p in ctx.nets.get(pin_net, {}).get("pins", []))}
+
+
 def _is_switch_output(ctx: AnalysisContext, ref: str, net: str | None) -> bool:
     """*net* carries an inductor and a diode besides *ref*, no capacitor to ground, and is not a
     named power rail or one of *ref*'s own input or ground nets. A capacitor to the net of
-    *ref*'s GND pin counts as one to ground, whatever that net is called."""
+    *ref*'s GND pin counts as one to ground, unless that net is a voltage-named non-ground one."""
     if (not net or net not in ctx.nets or ctx.is_ground(net)
             or (ctx.is_power_net(net) and not net.startswith("__unnamed_"))):
         return False
-    own_ground = set()
-    for pin_net, _ in ctx.ref_pins.get(ref, {}).values():
-        for p in ctx.nets.get(pin_net, {}).get("pins", []):
-            if p["component"] != ref:
-                continue
-            name = p.get("pin_name", "").upper().rstrip("0123456789").rstrip("_")
-            if name in _SWITCH_OUT_GND_PINS:
-                own_ground.add(pin_net)
-            if pin_net == net and (name in _SWITCH_OUT_GND_PINS or name in _SWITCH_OUT_VIN_PINS):
-                return False
+    if any(p["component"] == ref and _pin_leaf(p) in (_SWITCH_OUT_GND_PINS | _SWITCH_OUT_VIN_PINS)
+           for p in ctx.nets[net]["pins"]):
+        return False
+    own_ground = _own_ground_nets(ctx, ref)
     kinds = set()
     for p in ctx.nets[net]["pins"]:
         other = p["component"]
@@ -4178,11 +4185,7 @@ def _has_cap_to_ground(ctx: AnalysisContext, net: str, ref: str) -> bool:
     net (a regulator's output cap on a net the decoupling detector does not read as a rail).
     A GND pin on a voltage-named net (+5V, or an inverting converter's -5V output) is not the
     part's ground."""
-    own_ground = {pin_net for pin_net, _ in ctx.ref_pins.get(ref, {}).values()
-                  if _parse_voltage_from_net_name(pin_net) is None
-                  and any(p["component"] == ref and (p.get("pin_name") or "").upper()
-                         .rstrip("0123456789").rstrip("_") in _SWITCH_OUT_GND_PINS
-                         for p in ctx.nets.get(pin_net, {}).get("pins", []))}
+    own_ground = _own_ground_nets(ctx, ref)
     for p in ctx.nets.get(net, {}).get("pins", []):
         cap = p["component"]
         if ((ctx.comp_lookup.get(cap) or {}).get("type") != "capacitor"
