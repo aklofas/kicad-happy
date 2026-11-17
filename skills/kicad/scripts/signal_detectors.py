@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 from kicad_core.parts import (
     _LOAD_TYPE_KEYWORDS,
-    LOAD_SWITCH_KEYWORDS,
+    is_load_switch_part,
     names_load_switch,
     names_pchannel_fet,
     names_sense_amp,
@@ -1895,11 +1895,12 @@ def _screen_regulator_candidate(ctx: AnalysisContext, ic: dict) -> _RegulatorCan
 
     # Exclude power multiplexers/load switches/ideal diode controllers
     _power_mux_exclude = ("power_mux", "load_switch", "tps211", "tps212",
-                          "tps205",  # load switches (more in LOAD_SWITCH_KEYWORDS)
                           "ltc441", "ideal_diode",
                           # Ideal diode OR controllers
                           "lm6620", "lm6610", "ltc435", "ltc430")
-    if any(k in lib_val_lower for k in _power_mux_exclude + LOAD_SWITCH_KEYWORDS):
+    if any(k in lib_val_lower for k in _power_mux_exclude):
+        return None
+    if is_load_switch_part(ic.get("value", ""), symbol_name(lib_id_raw), ic.get("mpn") or ""):
         return None
     # Exclude components with load/power switch descriptions
     if names_load_switch(desc_lower):
@@ -4788,8 +4789,8 @@ def audit_rail_sources(ctx: AnalysisContext,
     switch_pins: list[tuple[str, str]] = []  # (input net, output net)
     switch_refs = {c["reference"] for c in ctx.components
                    if c.get("type") == "ic"
-                   and any(k in (c.get("lib_id", "") + " " + c.get("value", "")).lower()
-                           for k in LOAD_SWITCH_KEYWORDS)}
+                   and is_load_switch_part(c.get("value", ""), symbol_name(c.get("lib_id", "")),
+                                           c.get("mpn") or "")}
     if switch_refs:
         # (net, channel): a dual switch numbers its channels (VIN1 -> VOUT1, VIN2 -> VOUT2);
         # an unnumbered side pairs with every channel.

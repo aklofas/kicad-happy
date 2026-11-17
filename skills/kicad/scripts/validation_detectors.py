@@ -15,7 +15,7 @@ import re
 
 from kicad_types import AnalysisContext
 from kicad_core.netnames import is_usb_data_net_name, is_usb_signal_net_name, parse_voltage_from_net_name
-from kicad_core.parts import LOAD_SWITCH_KEYWORDS, names_load_switch
+from kicad_core.parts import is_load_switch_part, names_load_switch
 
 try:
     import os as _os, sys as _sys
@@ -523,9 +523,6 @@ def _closest_threshold(voltage: float) -> tuple:
 # (the pull-up, not the regulator's supply, sets the power-good level).
 _EN_PIN_PATTERNS = ('EN', 'ENABLE', 'CE', 'SHDN', 'NSHDN', 'ON', 'ON_OFF', 'RUN')
 _PG_PIN_PATTERNS = ('PG', 'PGOOD', 'PWRGD', 'NPG')
-# Load-switch families whose symbols often carry no description (Vishay SiP32xxx, TI TPS205x,
-# Diodes AP2280x / AP2261x / AP2265x / AP255x, Microchip MIC20xx, onsemi FPFxxxx).
-_LOAD_SWITCH_FAMILIES = ('sip32', 'tps205', 'ap2280', 'ap2261', 'ap2265', 'ap255', 'mic20', 'fpf')
 
 
 def _is_regulator_like(ctx: AnalysisContext, ref: str) -> bool:
@@ -539,9 +536,9 @@ def _is_regulator_like(ctx: AnalysisContext, ref: str) -> bool:
             'MP23', 'MP15', 'XL40', 'RT8', 'SY8', 'MIC29', 'NCP',
             'LDO', 'BOOST', 'BUCK', 'REG')):
         return True
-    text = (val_mpn + ' ' + symbol_name(comp.get('lib_id') or '')).lower()
-    return (any(k in text for k in LOAD_SWITCH_KEYWORDS + _LOAD_SWITCH_FAMILIES)
-            or names_load_switch(text + ' ' + (comp.get('description') or '')))
+    symbol = symbol_name(comp.get('lib_id') or '')
+    return (is_load_switch_part(comp.get('value') or '', symbol, comp.get('mpn') or '')
+            or names_load_switch((val_mpn + ' ' + symbol).lower() + ' ' + (comp.get('description') or '')))
 
 
 def _en_endpoint_compatible(ctx: AnalysisContext, p: dict, net_name: str, v_min: float) -> bool:

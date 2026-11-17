@@ -5,7 +5,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "skills" / "kicad" / "scripts"))
 
 from kicad_types import build_analysis_context  # noqa: E402
+from kicad_core.parts import is_load_switch_part  # noqa: E402
+from domain_detectors import detect_power_path  # noqa: E402
 from signal_detectors import audit_rail_sources, detect_power_regulators  # noqa: E402
+from validation_detectors import _is_regulator_like  # noqa: E402
 
 
 def _regulators(value, lib_id, pins, description=""):
@@ -143,6 +146,77 @@ class DualSwitchChannels(unittest.TestCase):
 
     def test_both_channels_sourced_report_nothing(self):
         self.assertEqual(_dual_switch_sources("power_out"), [])
+
+
+# A load switch and an LDO share this pinout: VIN, VOUT, EN, GND.
+_PINS = (("1", "VIN", "+5V"), ("2", "GND", "GND"), ("3", "EN", "EN_SW"), ("4", "VOUT", "+5V_SW"))
+
+
+def _switch_ctx(value, lib_id, mpn=""):
+    comp = {"reference": "U1", "type": "ic", "value": value, "lib_id": lib_id,
+            "pins": [{"number": n, "name": name} for n, name, _ in _PINS]}
+    if mpn:
+        comp["mpn"] = mpn
+    nets = {net: {"name": net, "pins": [{"component": "U1", "pin_number": n, "pin_name": name}]}
+            for n, name, net in _PINS}
+    return build_analysis_context([comp], nets, {}, known_power_rails={"+5V", "+5V_SW", "GND"})
+
+
+def _regulator_refs(value, lib_id, mpn=""):
+    return [r["ref"] for r in detect_power_regulators(_switch_ctx(value, lib_id, mpn), [])]
+
+
+def _power_path_types(value, lib_id, mpn=""):
+    return [(e["ref"], e["type"]) for e in detect_power_path(_switch_ctx(value, lib_id, mpn))]
+
+
+class LoadSwitchFamilies(unittest.TestCase):
+    def test_vm001_families_are_load_switches(self):
+        for value in ("AP22653W6-7", "SiP32509", "MIC2025-1YMM", "AP22802AW5-7",
+                      "AP22615AWU-7", "FPF2123", "TPS2051BDBVR"):
+            with self.subTest(value=value):
+                self.assertEqual(_regulator_refs(value, "Power_Management:LoadSwitch"), [])
+                self.assertEqual(_power_path_types(value, "Power_Management:LoadSwitch"),
+                                 [("U1", "load_switch")])
+
+    def test_an_ldo_with_the_same_pinout_stays_a_regulator(self):
+        self.assertEqual(_regulator_refs("AP2112K-3.3", "Regulator_Linear:AP2112K-3.3"), ["U1"])
+        self.assertEqual(_power_path_types("AP2112K-3.3", "Regulator_Linear:AP2112K-3.3"), [])
+
+
+class ValueDecidesOverTheSymbol(unittest.TestCase):
+    def test_value_names_the_part_not_the_symbol(self):
+        self.assertEqual(_regulator_refs("LP5907MFX-1.2/NOPB", "X:MIC20XX"), ["U1"])
+        self.assertEqual(_power_path_types("LP5907MFX-1.2/NOPB", "X:MIC20XX"), [])
+        self.assertFalse(_is_regulator_like(_switch_ctx("TDA2002", "Power_Management:FPF2002"), "U1"))
+
+    def test_mpn_names_the_part_when_the_value_does_not(self):
+        self.assertTrue(is_load_switch_part("LOADSW", "LoadSwitch", "TPS22918DBVR"))
+        self.assertFalse(is_load_switch_part("~", "FPF2195", "LM1117-3.3"))
+
+    def test_family_prefix_needs_a_boundary(self):
+        self.assertFalse(is_load_switch_part("SAP2171", ""))
+        self.assertTrue(is_load_switch_part("U_MIC2025", ""))
+
+    def test_symbol_name_decides_for_an_empty_or_label_value(self):
+        self.assertTrue(is_load_switch_part("~", "MIC2025-1YM"))
+        self.assertTrue(is_load_switch_part("", "MIC2025-1YM"))
+        self.assertTrue(is_load_switch_part("LDO1", "FPF2195"))
+        self.assertEqual(_power_path_types("~", "Power_Management:MIC2025-1YM"), [("U1", "load_switch")])
+        self.assertEqual(_power_path_types("LDO1", "lib:FPF2195"), [("U1", "load_switch")])
+
+    def test_value_naming_a_regulator_is_not_a_switch_on_a_switch_symbol(self):
+        self.assertFalse(is_load_switch_part("LM1117", "TPS2051"))
+        self.assertEqual(_power_path_types("LM1117", "lib:TPS2051"), [])
+        self.assertEqual(_regulator_refs("LM1117", "lib:TPS2051"), ["U1"])
+
+    def test_switch_output_from_a_sourced_rail_is_sourced_for_every_family(self):
+        for value in ("AP22653W6-7", "SiP32509", "MIC2025-1YMM", "FPF2123", "TPS2051BDBVR"):
+            self.assertEqual(_switch_sources(value, "power_out"), [], value)
+
+    def test_library_nickname_is_not_the_symbol(self):
+        self.assertEqual(_power_path_types("~", "fpf_parts:Generic_IC"), [])
+
 
 if __name__ == "__main__":
     unittest.main()

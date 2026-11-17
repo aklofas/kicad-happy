@@ -3,19 +3,39 @@ import re
 from collections.abc import Iterable
 
 
-# Load-switch and power-distribution-switch part families (lowercase substrings of lib_id + value).
-# Shared by the power-path detector and the regulator screen, which must not record them as LDOs.
+# Load-switch and power-distribution-switch part-number prefixes (lowercase), matched by
+# is_load_switch_part. Shared by the power-path detector, the rail-source switch chain, VM-001 and
+# the regulator screen, which must not record them as LDOs.
 LOAD_SWITCH_KEYWORDS = (
     "tps229", "tps2291", "tps2293", "tps2295",
     "tps2281", "tps2283", "tps2285",
     "tps2211", "tps2219", "tps2221",
     "tps22918", "tps22919", "tps22810",
-    "tps206", "ap217", "mt9700",
+    "tps205", "tps206", "ap217", "mt9700",
     "sy628",
     "rt9742", "rt9701", "ap2281", "ap2191",
     "stmps2", "ncp380", "ncp381",
-    "mic205", "mic209",
+    "mic20",                                   # Microchip MIC20xx power-distribution switches
+    "sip32",                                   # Vishay SiP32xxx load switches
+    "ap2280", "ap2261", "ap2265", "ap255",     # Diodes AP2280x / AP2261x / AP2265x / AP255x
+    "fpf",                                     # onsemi FPFxxxx load switches
 )
+# A family prefix where a part number starts: "AP22653W6", "U_MIC2025", not "SAP2171" or "TDA2002".
+_LOAD_SWITCH_PREFIX = re.compile(r"(?<![a-z0-9])(?:" + "|".join(LOAD_SWITCH_KEYWORDS) + ")")
+
+
+def is_load_switch_part(value: str, symbol: str, mpn: str = "") -> bool:
+    """True when the value or MPN starts a load-switch family part number. The symbol name
+    (a lib_id without its library nickname) decides only when neither names a part: an
+    LP5907 drawn on a MIC20XX symbol is an LDO."""
+    named = False
+    for text in (value or "", mpn or ""):
+        if _LOAD_SWITCH_PREFIX.search(text.lower()):
+            return True
+        # the core, not the whole value: a '/NOPB' ordering suffix does not make a label
+        core = part_number_core(text)
+        named = named or (bool(core) and not is_label_like_value(core))
+    return not named and bool(_LOAD_SWITCH_PREFIX.search((symbol or "").lower()))
 
 # "load switching" (a buck's light-load mode) does not name a load switch.
 _LOAD_SWITCH_WORDS = re.compile(r"\b(?:load|power|power distribution) switch(?:es)?\b", re.I)

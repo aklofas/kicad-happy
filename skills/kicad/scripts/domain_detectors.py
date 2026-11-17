@@ -17,7 +17,7 @@ from collections import Counter
 from kicad_types import AnalysisContext
 from schematic.erc_pins import pin_kind
 from kicad_core.classify import is_active_low_enable
-from kicad_core.parts import LED_VF_BY_COLOR, LOAD_SWITCH_KEYWORDS, led_color, lookup_regulator_vref
+from kicad_core.parts import LED_VF_BY_COLOR, is_load_switch_part, led_color, lookup_regulator_vref
 from kicad_core.values import format_frequency, parse_value
 from kicad_core.netnames import is_vss_name, parse_voltage_from_net_name
 from detector_helpers import (is_addressable_led, is_led_rail, led_forward_voltage, led_string,
@@ -2844,7 +2844,8 @@ def detect_power_path(ctx: AnalysisContext) -> list[dict]:
 
         # Classify device type
         device_type = None
-        if any(kw in combined for kw in LOAD_SWITCH_KEYWORDS):
+        if is_load_switch_part(comp.get("value", ""), symbol_name(comp.get("lib_id", "")),
+                               comp.get("mpn") or ""):
             device_type = "load_switch"
         elif any(kw in combined for kw in _IDEAL_DIODE_KEYWORDS):
             # Distinguish ideal diode from power MUX by pin count/keywords

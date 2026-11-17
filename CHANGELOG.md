@@ -84,6 +84,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Capacitor and inductor values written with an uppercase prefix (`100N`, `4U7`, `22P`), resistor values with a current rating (`1R/2A`), values with grouped digits (`1 000k`), and values followed by comma-separated fields (`100nF,50V`, `10k,1%`) now read correctly, so filters, dividers, decoupling and crystal load checks include these parts.
 - RF matching findings are identified by their antenna, so adding or removing one no longer changes the `finding_id` of the others. Every RF matching `finding_id` changes once with this release.
 - Switching regulators on `Regulator_Switching` symbols with a non-U reference (REG1, PS1, VR1) are detected as regulators instead of switches.
+- Load and power-distribution switches (Diodes AP2265x/AP2280x/AP2261x/AP255x, Vishay SiP32xxx, Microchip MIC20xx, onsemi FPFxxxx, TI TPS205x) are reported as power-path switches, not LDOs; the part number in the value decides over a borrowed symbol name.
 
 ### Documentation
 
