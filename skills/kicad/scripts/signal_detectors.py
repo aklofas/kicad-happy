@@ -3594,32 +3594,36 @@ def detect_transistor_circuits(ctx: AnalysisContext, matched_fets: set, fet_pins
         else:
             load_type = _classify_load(ctx, drain_net, ref) if drain_net else "unknown"
 
-        # Flyback diode check
+        # Flyback diode check. A zener/TVS clamp is not a flyback diode. A diode across
+        # drain and source is reverse-biased in the off state: cathode on the drain of an
+        # N-channel part, on the source of a P-channel one. A low-side N-channel switch's
+        # flyback diode has its cathode on the supply and its anode on the drain; a
+        # P-channel high-side switch's has its cathode on the drain and its anode on ground.
         has_flyback = False
         flyback_ref = None
         for dc in drain_comps:
-            if dc["type"] == "diode":
-                d_n1, d_n2 = ctx.get_two_pin_nets(dc["reference"])
-                # Drain-to-source topology
-                if (d_n1 == source_net and d_n2 == drain_net) or \
-                   (d_n1 == drain_net and d_n2 == source_net):
-                    has_flyback = True
-                    flyback_ref = dc["reference"]
-                    break
-                # Drain-to-supply topology (low-side switch flyback)
-                d_other = d_n2 if d_n1 == drain_net else (d_n1 if d_n2 == drain_net else None)
-                if d_other and ctx.is_power_net(d_other) and not ctx.is_ground(d_other):
-                    if not is_pchannel:
-                        # A zener/TVS clamp is not a flyback diode, and a flyback diode
-                        # has its cathode on the supply and its anode on the drain.
-                        if _is_clamp_diode(ctx.comp_lookup.get(dc["reference"]) or dc):
-                            continue
-                        anode, cathode = _diode_terminal_nets(ctx, dc["reference"])
-                        if anode is not None and (anode, cathode) != (drain_net, d_other):
-                            continue
-                    has_flyback = True
-                    flyback_ref = dc["reference"]
-                    break
+            if dc["type"] != "diode":
+                continue
+            d_n1, d_n2 = ctx.get_two_pin_nets(dc["reference"])
+            d_other = d_n2 if d_n1 == drain_net else (d_n1 if d_n2 == drain_net else None)
+            if not d_other:
+                continue
+            if d_other == source_net:
+                want = (drain_net, source_net) if is_pchannel else (source_net, drain_net)
+            elif not is_pchannel and ctx.is_power_net(d_other) and not ctx.is_ground(d_other):
+                want = (drain_net, d_other)
+            elif is_pchannel and ctx.is_ground(d_other):
+                want = (d_other, drain_net)
+            else:
+                continue
+            if _is_clamp_diode(ctx.comp_lookup.get(dc["reference"]) or dc):
+                continue
+            anode, cathode = _diode_terminal_nets(ctx, dc["reference"])
+            if anode is not None and (anode, cathode) != want:
+                continue
+            has_flyback = True
+            flyback_ref = dc["reference"]
+            break
 
         # Snubber check — detect R+C from drain to source via intermediate net
         has_snubber = False
