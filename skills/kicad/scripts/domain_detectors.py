@@ -5618,16 +5618,24 @@ def suggest_certifications(ctx: AnalysisContext, signal_analysis: dict) -> list[
     # Wireless modules / RF → FCC/CE/IC
     rf_chains = signal_analysis.get("rf_chains", [])
     if rf_chains:
+        # Each chain is named by its transceivers, or by its parts when it has none.
+        rf_parts: list[str] = []
+        for chain in rf_chains[:3]:
+            refs = [t["reference"] for t in chain.get("transceivers", []) if t.get("reference")]
+            for ref in refs or chain.get("components", []):
+                if ref not in rf_parts:
+                    rf_parts.append(ref)
         suggestions.append({
             "standard": "FCC Part 15",
             "region": "US",
             "reason": f"RF transceiver detected ({len(rf_chains)} chain(s))",
-            "components": [c.get("reference", c.get("ref", "")) for c in rf_chains[:3]],
+            "components": rf_parts,
         })
         suggestions.append({
             "standard": "CE RED (Radio Equipment Directive)",
             "region": "EU",
             "reason": "RF transceiver detected",
+            "components": list(rf_parts),
         })
 
     # WiFi/BT modules, by value or symbol name (the library nickname and a rescue suffix name
@@ -5636,7 +5644,7 @@ def suggest_certifications(ctx: AnalysisContext, signal_analysis: dict) -> list[
     # as the module. A part whose value names the radio, or that WL-001 found, is named first;
     # then WL-001's module; then a part matched by its symbol name alone.
     radio_words = ("esp32", "esp8266", "nrf52", "cc254", "wl18", "cyw43", "ap621", "bcm43",
-                   "esp-wroom", "esp-01", "esp-12", "esp-32", "wt32", "ttgo")
+                   "esp-wroom", "esp-01", "esp-12", "esp-32", "wt32", "ttgo", "wroom", "wrover")
 
     def _radio_word(text):
         return any(k in text.lower() for k in radio_words)
@@ -5746,7 +5754,7 @@ def suggest_certifications(ctx: AnalysisContext, signal_analysis: dict) -> list[
 
 _WIFI_BLE_KEYWORDS = (
     'esp32', 'esp8266', 'esp32s', 'esp32c', 'esp32h',
-    'esp-wroom', 'esp-01', 'esp-12', 'esp-32', 'wt32', 'ttgo',
+    'esp-wroom', 'esp-01', 'esp-12', 'esp-32', 'wt32', 'ttgo', 'wroom', 'wrover',
     'nrf52', 'nrf53', 'nrf91', 'nrf7002',
     'cc2640', 'cc2652', 'cc1352', 'cc3220',
     'cyw43', 'cyw20',
