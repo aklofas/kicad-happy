@@ -49,6 +49,45 @@ class GroundName(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertFalse(is_virtual_ground_name(name))
 
+    def test_control_tails_are_not_ground(self):
+        for name in ("GND_EN", "GROUND_FAULT", "GNDDETECT", "/GNDDetect", "VSS_SW_EN", "VSSA_MON",
+                     "GND-DETECT", "GND_REC_OFF"):
+            with self.subTest(name=name):
+                self.assertFalse(is_ground_name(name))
+
+    def test_domain_grounds_keep_ground(self):
+        for name in ("GND_FB", "GND_CTRL", "GND_LORA_SENSE", "AGND_SENSE", "12VGND", "24V_GND",
+                     "12V_PWRGND", "5V_GND", "Board_0-GNDA"):
+            with self.subTest(name=name):
+                self.assertTrue(is_ground_name(name))
+
+    def test_supply_before_bkgnd(self):
+        self.assertFalse(is_ground_name("+12V_F19_BKGND"))
+
+    def test_battery_minus_both_spellings(self):
+        for name in ("-BATT", "-BAT", "-VBAT", "BATT-"):
+            with self.subTest(name=name):
+                self.assertTrue(is_ground_name(name))
+        for name in ("-VA", "-VEE", "-12V", "V-"):
+            with self.subTest(name=name):
+                self.assertFalse(is_ground_name(name))
+
+    def test_zero_volt(self):
+        for name in ("0VCC", "0VDD"):
+            self.assertFalse(is_ground_name(name), name)
+        for name in ("0VA", "0VANA", "0V_AUX"):
+            self.assertTrue(is_ground_name(name), name)
+        self.assertTrue(is_ground_name("0V_24V", {"0V_24V"}))
+        self.assertFalse(is_ground_name("0V_24V"))
+        self.assertFalse(is_ground_name("0V_10V"))
+
+    def test_dash_splits_virtual_ground(self):
+        self.assertTrue(is_virtual_ground_name("HP-VGND"))
+        self.assertFalse(is_ground_name("HP-VGND"))
+        self.assertTrue(is_ground_name("AGND{slash}VGND"))
+        self.assertFalse(is_virtual_ground_name("Net-(U1-VGND)"))
+        self.assertFalse(is_ground_name("Net-(U1-VGND)"))
+
     def test_avss_and_dvss_are_vss(self):
         self.assertTrue(is_vss_name("AVSS"))
         self.assertTrue(is_vss_name("/ADC/DVSS"))

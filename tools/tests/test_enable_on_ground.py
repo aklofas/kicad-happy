@@ -15,11 +15,11 @@ from schematic.system_analyses import analyze_power_sequencing  # noqa: E402
 # ref -> (enable pin name, enable net)
 ENABLES = {"U1": ("EN", "GND"), "U2": ("~{EN}", "GND"), "U3": ("~{SHDN}", "GND"),
            "U4": ("EN", "+5V"), "U5": ("EN", "EN_FLOAT"), "U6": ("~{ON}/OFF", "GND"),
-           "U7": ("EN", "VSS_SW_EN"), "U8": ("EN", "VSS_DRV")}
+           "U7": ("EN", "VSS_AUX"), "U8": ("EN", "VSS_DRV")}
 
 
 def _ctx():
-    comps, nets = [], {"+5V": [], "GND": [], "EN_FLOAT": [], "VSS_SW_EN": [], "VSS_DRV": []}
+    comps, nets = [], {"+5V": [], "GND": [], "EN_FLOAT": [], "VSS_AUX": [], "VSS_DRV": []}
     for ref, (en_name, en_net) in ENABLES.items():
         comps.append({"reference": ref, "type": "ic", "value": "REG", "lib_id": "Regulator:REG",
                       "footprint": "", "properties": {},

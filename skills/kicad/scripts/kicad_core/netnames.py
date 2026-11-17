@@ -305,18 +305,34 @@ def is_pin_guarded_signal(net_name: str | None, pins) -> bool:
 _GROUND_TOKEN = re.compile(r'^[ADPSF]?GND[A-Z0-9]*$|^GROUND$')
 # A virtual ground (VGND, HP_VGND, VIRTUAL_GND) sits at mid-rail, not at 0 V.
 _VIRTUAL_GROUND_TOKEN = re.compile(r'^(?:VGND|VIRT)')
+# A ground name ending in one of these (GND_EN, GROUND_FAULT, GNDDETECT, VSS_SW_EN) is a
+# control or status line, not the ground. FB, CTRL and SENSE are left out: GND_FB is the
+# ground behind a ferrite bead, GND_CTRL an isolated side's ground, GND_LORA_SENSE a
+# module's switched return.
+_GROUND_SIGNAL_TAILS = frozenset({"EN", "ENABLE", "NEN", "ON", "OFF", "OK", "DET", "DETECT",
+                                  "MON", "PG", "PGOOD", "PWRGD", "PGD", "GOOD", "SHDN",
+                                  "RESET", "RST", "FAULT", "FLT"})
+# A leading supply voltage (+12V_F19_BKGND) names a supply; a GND glued into a later word
+# (BKGND) does not make it a ground.
+_LEADING_VOLTAGE_TOKEN = re.compile(r'\+\d+(?:V\d*|\.\d+V)')
 
 
 def _name_tokens(leaf_upper: str) -> list[str]:
-    return [t for t in re.split(r'[_.\s]+', leaf_upper) if t]
+    # An escaped {slash} is part of the label (AGND{slash}VGND is one token), a dash is not.
+    return [t for t in re.split(r'[-_.\s]+', leaf_upper) if t]
+
+
+def _is_virtual_ground_leaf(leaf_upper: str, tokens: list[str]) -> bool:
+    # A pin-named net (Net-(U1-VGND)) names a pin, not a virtual ground.
+    return "(" not in leaf_upper and any(_VIRTUAL_GROUND_TOKEN.match(t) for t in tokens)
 
 
 def is_virtual_ground_name(net_name: str | None) -> bool:
-    """True for a virtual ground (VGND, VGND1, HP_VGND, Virtual_Ground): a mid-rail node."""
+    """True for a virtual ground (VGND, VGND1, HP_VGND, HP-VGND, Virtual_Ground): a mid-rail node."""
     if not net_name:
         return False
     leaf = unescape_string(net_name.rsplit("/", 1)[-1]).upper()
-    return any(_VIRTUAL_GROUND_TOKEN.match(t) for t in _name_tokens(leaf))
+    return _is_virtual_ground_leaf(leaf, _name_tokens(leaf))
 
 
 def is_ground_name(net_name: str | None, power_rails: set[str] | None = None) -> bool:
@@ -338,7 +354,10 @@ def is_ground_name(net_name: str | None, power_rails: set[str] | None = None) ->
     if nu == "COM":
         return bool(power_rails) and full_name in power_rails
     tokens = _name_tokens(nu)
-    if any(_VIRTUAL_GROUND_TOKEN.match(t) for t in tokens):
+    if _is_virtual_ground_leaf(nu, tokens):
+        return False
+    if tokens and (tokens[-1] in _GROUND_SIGNAL_TAILS and len(tokens) > 1
+                   or tokens[-1].startswith("GND") and tokens[-1][3:] in _GROUND_SIGNAL_TAILS):
         return False
     # Exact matches
     if nu in ("GND", "VSS", "AGND", "DGND", "PGND", "GNDPWR", "GNDA", "GNDD",
@@ -349,17 +368,25 @@ def is_ground_name(net_name: str | None, power_rails: set[str] | None = None) ->
     # 0V5) is a sub-1V rail under the nnVn convention, not ground, and a
     # second voltage (0V_10V, 0V_32V) names a 0-10 V interface signal.
     m = re.match(r'^\+?0+V(?!\d)([A-Z_][A-Z0-9_]*)?$', nu)
+    if m and re.match(r'(?:CC|DD)', m.group(1) or ""):
+        return False  # 0VCC, 0VDD: a supply spelled with a zero for the letter O
     if m:
-        return not re.search(r'\d(?:\.\d+)?V', m.group(1) or "")
+        # A power symbol naming it makes 0V_24V the return of a 24 V supply.
+        return (not re.search(r'\d(?:\.\d+)?V', m.group(1) or "")
+                or bool(power_rails) and full_name in power_rails)
     # Battery-negative rails used as circuit ground in single-supply designs.
     # Narrow exact-match set — deliberately excludes V-/VEE which are
     # legitimate bipolar negative supply rails, not ground.
     if nu in ("BATT-", "BAT-", "VBAT-", "VBATT-", "BATTERY-",
-              "BATT_N", "BAT_N", "VBAT_N"):
+              "BATT_N", "BAT_N", "VBAT_N",
+              "-BATT", "-BAT", "-VBAT", "-VBATT", "-BATTERY"):
         return True
     # Prefix/suffix patterns: GND_ISO, GND_SEC, GNDISO, etc.
-    if nu.startswith("GND") or nu.endswith("GND"):
+    if nu.startswith("GND"):
         return True
+    if nu.endswith("GND"):
+        return not (len(tokens) > 1 and _LEADING_VOLTAGE_TOKEN.fullmatch(tokens[0])
+                    and not _GROUND_TOKEN.match(tokens[-1]))
     # VSS variants
     if nu.startswith("VSS"):
         return True

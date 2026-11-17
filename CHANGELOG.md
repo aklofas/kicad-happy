@@ -102,6 +102,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - RF matching findings are identified by their antenna, so adding or removing one no longer changes the `finding_id` of the others. Every RF matching `finding_id` changes once with this release.
 - Switching regulators on `Regulator_Switching` symbols with a non-U reference (REG1, PS1, VR1) are detected as regulators instead of switches.
 - Load and power-distribution switches (Diodes AP2265x/AP2280x/AP2261x/AP255x, Vishay SiP32xxx, Microchip MIC20xx, onsemi FPFxxxx, TI TPS205x) are reported as power-path switches, not LDOs; the part number in the value decides over a borrowed symbol name.
+- `-BATT` is read as a battery return like `BATT-`. Names such as `GND_EN`, `GNDDETECT` or `+12V_F19_BKGND` are no longer taken for ground, `0VCC` is a supply, and a dash splits a net name into words (`HP-VGND` is a virtual ground).
 
 ### Documentation
 
