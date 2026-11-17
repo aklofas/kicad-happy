@@ -17,6 +17,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Datasheet extraction quality scores no longer give free credit: MCU, op-amp, transistor, diode and crystal extractions are scored on their own required fields, the reserved 30 points are gone (an extraction with no part category is scored on its pinout and base alone), and an unnamed pin counts against a legacy extraction.
 - Existing datasheet extraction caches are re-scored with the current rubric when read; a score can only go down.
 - The Codex plugin listing has an icon. (#21)
+- RF matching networks are found from antenna, SMA, U.FL and MMCX connectors, not from small capacitors, resistors and inductors whose symbol name contains "Small". Most earlier matching-network reports came from those parts and are gone.
 
 ### Fixed
 

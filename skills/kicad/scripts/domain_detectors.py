@@ -1334,6 +1334,14 @@ def _check_rf_reference_values(target_comp: dict,
     }
 
 
+# "sma" as a word of the library id (SMA_EDGE, Conn_SMA, SMA-J-P-H): an SMA connector.
+# A letter on either side makes another word (C_Small, SMAJ TVS diodes).
+_SMA_WORD = re.compile(r"(?<![a-z])sma(?![a-z])")
+# KiCad's coaxial footprint library: an SMA, U.FL or MMCX footprint is an RF port
+# (a BNC is not taken: scope and audio inputs use it).
+_RF_COAX_FOOTPRINT = re.compile(r"connector_coaxial:(?:sma|u\.fl|mmcx)(?![a-z])")
+
+
 def detect_rf_matching(ctx: AnalysisContext) -> list[dict]:
     """Detect RF antenna matching networks (pi-match, L-match, T-match)."""
     rf_matching: list[dict] = []
@@ -1341,7 +1349,7 @@ def detect_rf_matching(ctx: AnalysisContext) -> list[dict]:
     # Find antenna connectors
     _ant_prefixes = ("AE", "ANT")
     _ant_keywords = ("antenna", "u.fl", "ufl", "ipex", "mhf", "rf_conn")
-    _ant_lib_keywords = ("antenna", "u.fl", "ufl", "sma", "ipex", "mhf", "rf_conn")
+    _ant_lib_keywords = ("antenna", "u.fl", "ufl", "ipex", "mhf", "rf_conn")
     antennas = []
     for comp in ctx.components:
         ref_prefix = "".join(c for c in comp["reference"] if c.isalpha())
@@ -1349,7 +1357,9 @@ def detect_rf_matching(ctx: AnalysisContext) -> list[dict]:
         lib_lower = comp.get("lib_id", "").lower()
         if (ref_prefix in _ant_prefixes
                 or any(kw in val_lower for kw in _ant_keywords)
-                or any(kw in lib_lower for kw in _ant_lib_keywords)):
+                or any(kw in lib_lower for kw in _ant_lib_keywords)
+                or _SMA_WORD.search(lib_lower)
+                or _RF_COAX_FOOTPRINT.match(comp.get("footprint", "").lower())):
             antennas.append(comp)
 
     for ant in antennas:
