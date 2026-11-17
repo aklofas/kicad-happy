@@ -3889,6 +3889,13 @@ def enrich_transistor_led_drivers(ctx: AnalysisContext, transistor_circuits: lis
         load_net = tc.get("drain_net") if is_mosfet else tc.get("collector_net")
         if not load_net:
             continue
+        # A drain or collector on ground, or an N-channel drain on a supply (a high-side
+        # NMOS, a drain tied to the rail), is not an LED's switch: the resistors there
+        # belong to that rail's own power LED. A P-channel drain may be a switched rail
+        # (a high-side load switch and its indicator). BJT polarity is not read here.
+        if ctx.is_ground(load_net) or (is_mosfet and not tc.get("is_pchannel")
+                                       and ctx.is_power_net(load_net)):
+            continue
         # Look at components on the load net for a resistor
         load_comps = ctx.nq.components_on_net(load_net, exclude_refs={tc["reference"]})
         for dc in load_comps:
@@ -3907,8 +3914,18 @@ def enrich_transistor_led_drivers(ctx: AnalysisContext, transistor_circuits: lis
             other_net = r_n2 if r_n1 == load_net else r_n1
             if not other_net or other_net == load_net:
                 continue
-            # Check if an LED is on that net
             other_comps = ctx.nq.components_on_net(other_net, exclude_refs={dc["reference"]})
+            # A series LED resistor's far end is the LED's own node. One that ends on a
+            # supply or ground rail is a pull-up/pull-down, and an LED elsewhere on that
+            # rail is unrelated. A node with no power symbol that holds only LEDs,
+            # connectors and test points is the LED's, even when its name reads as a
+            # rail (PWR_LED_K).
+            if ((ctx.is_power_net(other_net) or ctx.is_ground(other_net))
+                    and (other_net in ctx.known_power_rails
+                         or any(oc["type"] not in ("led", "connector", "test_point")
+                                for oc in other_comps))):
+                continue
+            # Check if an LED is on that net
             for oc in other_comps:
                 if oc["type"] == "led":
                     # Verify LED actually has a pin on other_net

@@ -59,7 +59,8 @@ class NoFacades(unittest.TestCase):
             c for c in on_net.get(net, []) if c["reference"] not in exclude_refs])
         ctx = SimpleNamespace(nq=nq, parsed_values={"R1": 330.0},
                               get_two_pin_nets=lambda ref: two_pin[ref], comp_lookup=comps,
-                              is_power_net=lambda net: net == "VCC")
+                              is_power_net=lambda net: net == "VCC",
+                              is_ground=lambda net: False, known_power_rails={"VCC"})
         tc = {"type": "mosfet", "reference": "Q1", "drain_net": "DRAIN"}
         signal_detectors.enrich_transistor_led_drivers(ctx, [tc])
         self.assertEqual(tc["detector"], "detect_led_drivers")

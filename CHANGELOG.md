@@ -32,6 +32,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - P-channel MOSFETs named only by their part number (IRLML6402, AO3401A, DMG2305UX and others) or described as P-CH are read as P-channel.
 - A diode across a MOSFET counts as its flyback diode only when it points the right way and is not a zener or TVS; a P-channel switch's flyback diode is the one from ground to its drain.
 - Two MOSFETs stacked in a logic gate are no longer reported as a half bridge; their own transistor records come back.
+- A transistor is no longer reported as driving an LED that only shares a supply rail with it: not through a pull-up from its drain or collector to that rail, and not when its drain or collector is ground or an N-channel MOSFET's drain is the rail itself. That LED is now checked by the LED audit like any other.
 - Wireless-module, RF-chain, certification and isolation detection read a rescued symbol by its own part name: a charger, key switch or crystal rescued from a board named after its radio (ESP32, nRF52) is no longer reported as a wireless module or RF transceiver.
 - TV-001 counts a stacked via column (vias at one point on one net, layer to layer) as one via, weighted by its narrowest drill, so an HDI thermal pad is no longer graded as if each layer pair were a separate via.
 - A schematic whose sheets are placed hundreds of times is read much faster: the time no longer grows with the square of the instance count. Results are unchanged.
