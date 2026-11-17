@@ -21,6 +21,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Fixed
 
+- Ferrite beads written as an impedance at a frequency (`330 OHM@100MHZ`, `120 Ohm @ 100 MHz`, `33Ω @ 100MHz`, `600OHM/2A`) are typed as ferrites, not inductors.
 - Wireless-module, RF-chain, certification and isolation detection read a rescued symbol by its own part name: a charger, key switch or crystal rescued from a board named after its radio (ESP32, nRF52) is no longer reported as a wireless module or RF transceiver.
 - TV-001 counts a stacked via column (vias at one point on one net, layer to layer) as one via, weighted by its narrowest drill, so an HDI thermal pad is no longer graded as if each layer pair were a separate via.
 - A schematic whose sheets are placed hundreds of times is read much faster: the time no longer grows with the square of the instance count. Results are unchanged.

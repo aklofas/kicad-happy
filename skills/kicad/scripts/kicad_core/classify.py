@@ -242,8 +242,10 @@ def classify_component(ref: str, lib_id: str, value: str, is_power: bool = False
         if result == "inductor":
             if any(x in lib_low or x in val_low for x in ("ferrite", "bead")):
                 return "ferrite_bead"
-            # Ferrite bead impedance notation (600R/200mA, 120R@100MHz)
-            if re.search(r'\d+[Rr]\s*[/@]\s*\d', value):
+            # Ferrite bead impedance notation (600R/200mA, 120R@100MHz, 330 OHM@100MHZ)
+            # A value that states an inductance is an inductor, whatever DCR or rating follows.
+            if (re.search(r'\d\s*(r|\u03c9|ohms?)\s*[/@]\s*\d', val_low)
+                    and not re.search(r'\d\s*[pnu\u00b5\u03bcm]?h\b', val_low)):
                 return "ferrite_bead"
         # MX/Cherry/Kailh keyboard switches (K prefix maps to relay)
         if result == "relay":
