@@ -2626,6 +2626,42 @@ def detect_integrated_ldos(ctx: AnalysisContext, power_regulators: list[dict]) -
     return integrated
 
 
+def _clamp_array_nets(ctx: AnalysisContext, comp: dict, *, keep_rails: bool):
+    """(protected nets, protected_net, clamp_net) of a multi-pin TVS/ESD array.
+
+    The clamp net is the ground the array returns to. A pin whose net reaches nothing else
+    (no other part, no label) protects nothing, unless nothing else is left to list. A TVS diode
+    array's cathode on a supply rail clamps that rail (*keep_rails*), but only once a ground is
+    found: without one, a rail pin may be the array's own return. An ESD IC's supply pin is its
+    reference, not a protected line.
+    """
+    ref = comp["reference"]
+    lines, rails, grounds, open_lines = set(), set(), set(), set()
+    for pin in comp.get("pins", []):
+        net_name, _ = ctx.pin_net.get((ref, pin["number"]), (None, None))
+        if not net_name:
+            continue
+        if ctx.is_ground(net_name):
+            grounds.add(net_name)
+            continue
+        info = ctx.nets.get(net_name, {})
+        if not info.get("labels") and all(p["component"] == ref for p in info.get("pins", [])):
+            if not ctx.is_power_net(net_name):
+                open_lines.add(net_name)
+            continue
+        if ctx.is_power_net(net_name):
+            rails.add(net_name)
+        else:
+            lines.add(net_name)
+    nets = sorted(lines | rails) if keep_rails and grounds else sorted(lines)
+    if not nets:
+        # A part not wired up yet is still the clamp it was placed as.
+        lines = open_lines
+        nets = sorted(lines)
+    protected_net = min(lines) if lines else (nets[0] if nets else None)
+    return nets, protected_net, (min(grounds) if grounds else None)
+
+
 def detect_protection_devices(ctx: AnalysisContext) -> list[dict]:
     """Detect protection devices (TVS, ESD, Schottky, fuses, etc.)."""
     protection_devices: list[dict] = []
@@ -2650,21 +2686,16 @@ def detect_protection_devices(ctx: AnalysisContext) -> list[dict]:
         if len(comp_pins) > 2 and is_tvs:
             if any(p["ref"] == comp["reference"] for p in protection_devices):
                 continue
-            protected = []
-            for pin in comp_pins:
-                net_name, _ = ctx.pin_net.get((comp["reference"], pin["number"]), (None, None))
-                if net_name and not ctx.is_power_net(net_name) and not ctx.is_ground(net_name):
-                    protected.append(net_name)
+            sorted_nets, protected_net, clamp_net = _clamp_array_nets(ctx, comp, keep_rails=True)
             # One entry per component, collect all protected nets
-            if protected:
-                sorted_nets = sorted(set(protected))
+            if sorted_nets:
                 protection_devices.append({
                     "ref": comp["reference"],
                     "value": comp.get("value", ""),
                     "type": "esd_ic",
-                    "protected_net": sorted_nets[0],
+                    "protected_net": protected_net,
                     "protected_nets": sorted_nets,
-                    "clamp_net": None,
+                    "clamp_net": clamp_net,
                     "detector": "detect_protection_devices",
                     "rule_id": "PD-DET",
                     "category": "protection",
@@ -2827,21 +2858,16 @@ def detect_protection_devices(ctx: AnalysisContext) -> list[dict]:
             continue
         if any(p["ref"] == comp["reference"] for p in protection_devices):
             continue
-        protected = []
-        for pin in comp.get("pins", []):
-            net_name, _ = ctx.pin_net.get((comp["reference"], pin["number"]), (None, None))
-            if net_name and not ctx.is_power_net(net_name) and not ctx.is_ground(net_name):
-                protected.append(net_name)
+        sorted_nets, protected_net, clamp_net = _clamp_array_nets(ctx, comp, keep_rails=False)
         # One entry per component, collect all protected nets
-        if protected:
-            sorted_nets = sorted(set(protected))
+        if sorted_nets:
             protection_devices.append({
                 "ref": comp["reference"],
                 "value": comp.get("value", ""),
                 "type": "esd_ic",
-                "protected_net": sorted_nets[0],
+                "protected_net": protected_net,
                 "protected_nets": sorted_nets,
-                "clamp_net": None,
+                "clamp_net": clamp_net,
                 "detector": "detect_protection_devices",
                 "rule_id": "PD-DET",
                 "category": "protection",

@@ -23,6 +23,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 ### Fixed
 
 - TVS diodes named by their series (SMF, SM6T, SM712, P4KE and others) or described as TVS in the symbol are detected as protection devices, so a USB VBUS with one is no longer reported unprotected.
+- ESD arrays report the ground they clamp to and the supply rails a diode array protects, and no longer list unconnected pins as protected lines.
 - An LED's colour is read from whole words, the value first and then the symbol name: `Infrared` and `Ultraviolet` are read, `LEDRED`, `BlueLED` and `PCAmber` still are, and a library nickname such as `mirrored` or `Shared` no longer makes an LED red. A value `Green` on a red symbol reads green.
 - Addressable LEDs (WS2812, SK6812, SK6803, APA102 and similar) no longer get an LR-001 "no current-limiting resistor" error: they set their own current, as the LED audit already assumed.
 - A part with an unusual reference prefix (PD1, LD4, POT1, DS1, RF-C10) takes its type from its symbol (resistor, capacitor, inductor, LED, diode or transistor) instead of the prefix's first letter.
