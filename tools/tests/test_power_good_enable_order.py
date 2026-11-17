@@ -1,5 +1,6 @@
 """A power-good output wired to another regulator's enable is a sequencing edge whichever
-regulator the schematic lists first."""
+regulator the schematic lists first; a regulator whose power-good drives its own enable is
+not sequenced after itself."""
 import sys, unittest
 from pathlib import Path
 
@@ -9,7 +10,7 @@ from kicad_types import build_analysis_context  # noqa: E402
 from schematic.system_analyses import analyze_power_sequencing  # noqa: E402
 
 
-def _ctx():
+def _ctx(pins=None):
     # U1 enable on PG_3V3; U2 power-good on PG_3V3; U3 power-good on PG_LED, which only an LED reads
     pins = {"U1": [("1", "VIN", "+5V"), ("2", "EN", "PG_3V3"), ("3", "VOUT", "+1V8")],
             "U2": [("1", "VIN", "+5V"), ("2", "EN", "+5V"), ("3", "VOUT", "+3V3"),
@@ -17,7 +18,7 @@ def _ctx():
             "U3": [("1", "VIN", "+5V"), ("2", "EN", "EN_3"), ("3", "VOUT", "+2V5"),
                    ("4", "PGOOD", "PG_LED")],
             "D1": [("1", "A", "PG_LED")],
-            "R1": [("1", "1", "EN_3")]}
+            "R1": [("1", "1", "EN_3")]} if pins is None else pins
     comps, nets = [], {}
     for ref, plist in pins.items():
         kind = {"D": "led", "R": "resistor"}.get(ref[0], "ic")
@@ -54,6 +55,26 @@ class PowerGoodToEnable(unittest.TestCase):
             for ref in ("U2", "U3"):
                 self.assertNotIn("sequenced_after", deps[ref], (order, ref))
                 self.assertNotIn("sequence_signal", deps[ref], (order, ref))
+
+
+class PowerGoodToItsOwnEnable(unittest.TestCase):
+    def setUp(self):
+        # U4's power-good and enable share PG_SELF, pulled up by R2; U5 enables from PG_SELF too
+        pins = {"U4": [("1", "VIN", "+5V"), ("2", "EN", "PG_SELF"), ("3", "VOUT", "+3V3"),
+                       ("4", "PG", "PG_SELF")],
+                "U5": [("1", "VIN", "+5V"), ("2", "EN", "PG_SELF"), ("3", "VOUT", "+1V8")],
+                "R2": [("1", "1", "PG_SELF"), ("2", "2", "+5V")]}
+        regs = [{"ref": "U4", "output_rail": "+3V3"}, {"ref": "U5", "output_rail": "+1V8"}]
+        out = analyze_power_sequencing(_ctx(pins), {"power_regulators": regs})
+        self.deps = {d["regulator"]: d for d in out["dependencies"]}
+
+    def test_regulator_is_not_sequenced_after_itself(self):
+        self.assertNotIn("sequenced_after", self.deps["U4"])
+        self.assertNotIn("sequence_signal", self.deps["U4"])
+
+    def test_another_regulator_on_that_power_good_keeps_its_edge(self):
+        self.assertEqual(self.deps["U5"].get("sequenced_after"), "U4")
+        self.assertEqual(self.deps["U5"].get("sequence_signal"), "power_good")
 
 
 if __name__ == "__main__":

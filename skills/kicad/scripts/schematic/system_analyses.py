@@ -1793,7 +1793,7 @@ def analyze_power_sequencing(ctx: AnalysisContext,
         if not pg_entry.get("connected_to"):
             continue
         for dep in dependencies:
-            if dep.get("en_net") == pg_entry["pg_net"]:
+            if dep.get("en_net") == pg_entry["pg_net"] and dep["regulator"] != pg_entry["regulator"]:
                 dep["sequenced_after"] = pg_entry["regulator"]
                 dep["sequence_signal"] = "power_good"
 
