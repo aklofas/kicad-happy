@@ -85,7 +85,9 @@ _REGULATOR_VREF: dict[str, float] = {
     "TPS564247": 0.6,                                             # VREF = 600 mV (SLUSEN2 p5)
     "TPS564257": 0.6,                                             # VREF = 600 mV (TPS56425x SLUSEQ6A p5)
     "TPS5633": 0.8,                                               # TPS563300 = 0.8V
-    "TPS5652": 0.6,    "TPS5654": 0.6,                           # TPS565208/564247 = 0.6V
+    "TPS5652": 0.6,                                               # TPS565242 VREF = 600 mV (SLUSEN1A p5)
+    "TPS565201": 0.76,                                            # VFBTH = 760 mV (SLVSE71 p5)
+    "TPS565208": 0.76,                                            # VFBTH = 760 mV (SLVSE72B p5)
     "TPS566": 0.6,                                                # TPS566238 = 0.6V
     "TPS56A": 0.6,                                                # TPS56A37 = 0.6V
     # TPS63 buck-boost
@@ -119,10 +121,22 @@ _REGULATOR_VREF: dict[str, float] = {
     "TPS7A16": 1.2,                                               # TPS7A1601 VFB = 1.2V
     "TLV759": 0.55,                                               # TLV759P (adjustable) FB = 0.55V
     "TPS736": 1.204,                                              # TPS73601/TPS736xx VFB = 1.204V
+    "TPS73101": 1.204,                                            # VFB = 1.204 V (TPS731 SBVS034P p5)
+    "TPS79301": 1.225,                                            # VFB = 1.225 V (TPS793 SLVS348L p6)
+    "LM5122": 1.2,                                                # VREF = 1.2 V (LM5122 SNVS954H p8)
     # Analog Devices / Linear Tech
-    "LT361": 0.6,      "LT362": 0.6,                             # LTC3610/3620 VFB = 0.6V
-    "LT810": 0.97,     "LT811": 0.97,                            # LT8610/8614 VFB = 0.970V
-    "LT860": 0.97,     "LT862": 0.97,                            # LT8640/8620 VFB = 0.970V
+    "LTC3610": 0.6,                                               # VFB = 0.600 V (LTC3610 Rev. F p2)
+    "LTC3620": 0.6,                                               # VFB = 0.6 V (LTC3620 Rev. A p2)
+    "LT8610": 0.97,                                               # VFB = 0.970 V (LT8610 Rev. A p2; LT8610A/LT8610AB Rev. C p3)
+    "LT8614": 0.97,                                               # VFB = 0.970 V (LT8614 Rev. H p3)
+    "LT8640": 0.97,                                               # VFB = 0.970 V (LT8640/LT8640-1 Rev. F p3; LT8640A Rev. A p3; LT8640S/LT8643S Rev. C p3)
+    "LT862": 0.97,                                                # LT8620 VFB = 0.970 V (LT8620 Rev. A p3)
+    "LT8606": 0.778,                                              # VFB = 0.778 V (LT8606/LT8606B Rev. D p3)
+    "LT8607": 0.778,                                              # VFB = 0.778 V (LT8607/LT8607B Rev. D p3)
+    "LT8608": 0.778,                                              # VFB = 0.778 V (LT8608/LT8608B Rev. D p3)
+    "LT8608S": 0.774,                                             # VFB = 0.774 V (LT8608S Rev. 0 p2)
+    "LT8609": 0.782,                                              # VFB = 0.782 V (LT8609/LT8609A/LT8609B Rev. J p4)
+    "LT8609S": 0.774,                                             # VFB = 0.774 V (LT8609S Rev. D p3)
     "LT871": 1.213,                                               # LT8710 FBX = 1.213V
     "LTM46": 0.6,                                                 # LTM4600 VFB = 0.6V
     "LTC3558": 0.8,                                               # LTC3558 VFB1/VFB2 = 800 mV (3558f)
@@ -278,7 +292,15 @@ _FIXED_SUFFIX_FAMILIES: dict[str, dict[str, float]] = {
 _FIXED_OUTPUT_PARTS: dict[str, float] = {
     "TPS61024": 3.0, "TPS61025": 3.3, "TPS61026": 5.0, "TPS61027": 5.0,  # SLVS451G p3 ordering table
     "TPS61031": 3.3, "TPS61032": 5.0,                                    # SLUS534G p3 device comparison table
+    "LMR36506MSC5": 5.0, "LMR36506MSC3": 3.3,                            # LMR36506-Q1 SNVSB91C p3 device comparison table
 }
+# Analog Devices fixed-output order codes with a one-digit voltage code (part-number prefix -> {code: Vout}):
+# LT8607EMSE-5 (LT8607 Rev. D p2), LT8609AEDDM-5 (LT8609 Rev. J p3), LT8610AEMSE-5 / LT8610ABEMSE-5
+# (LT8610A/LT8610AB Rev. C p2) are 5 V; LTC3620-1 is 1.1 V (LTC3620 Rev. A p1). LT8640-1 is adjustable.
+_ADI_FIXED_CODES: dict[str, dict[str, float]] = {
+    "LT8607": {"5": 5.0}, "LT8609A": {"5": 5.0}, "LT8610A": {"5": 5.0}, "LTC3620": {"1": 1.1},
+}
+_ADI_FIXED_CODE = re.compile("(" + "|".join(_ADI_FIXED_CODES) + r")[A-Z0-9.]*-(\d)(?![\d.])")
 # onsemi NCP1117 / NCV1117 / NCP1117LP order codes: ST (SOT-223) or DT (DPAK) and a voltage code
 # (NCP1117/D Rev. 31 p12-13 ordering tables; NCP1117LP/D Rev. 6 p1 marking, p12 ordering table).
 _NCP1117_CODE = re.compile(r"NC[PV]1117(LP)?(?:ST|DT)(285|\d{2})")
@@ -319,6 +341,9 @@ def _fixed_part_vout(candidates: list[str]) -> float | None:
         m = _R78_CODE.match(candidate)
         if m:
             return float(m.group(1))
+        m = _ADI_FIXED_CODE.match(candidate)
+        if m and m.group(2) in _ADI_FIXED_CODES[m.group(1)]:
+            return _ADI_FIXED_CODES[m.group(1)][m.group(2)]
         key = next((k for k in _FIXED_OUTPUT_PARTS if re.match(k + r"(?!\d)", candidate)), None)
         if key is not None:
             return _FIXED_OUTPUT_PARTS[key]
@@ -384,9 +409,12 @@ def _lookup_vref(candidates: list[str], bare_codes: bool = True) -> tuple[float 
             fixed_v = float(m.group(1)[0] + "." + m.group(1)[1])
             if fixed_v >= 0.5:
                 return fixed_v, "fixed_suffix"
-    for candidate in candidates:
+    for i, candidate in enumerate(candidates):
         if candidate in ambiguous:
             continue
+        # a symbol borrowed for another part (TPS54202 on a TPS563200 symbol) says nothing about its Vref
+        if i and any(part_number_core(c) and not is_label_like_value(c) for c in candidates[:i]):
+            break
         key = _longest_vref_key(candidate)
         if key is not None:
             return _REGULATOR_VREF[key], "lookup"

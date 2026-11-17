@@ -158,6 +158,11 @@ class FeedbackReference(unittest.TestCase):
                            ("TPS563240DDC", 0.6), ("TPS564247DRLR", 0.6)]:
             self.assertEqual(lookup_regulator_vref(part, ""), (vref, "lookup"), part)
 
+    def test_tps56520x_members_have_their_own_reference(self):
+        # VFBTH = 760 mV (TPS565201 SLVSE71 p5, TPS565208 SLVSE72B p5); TPS565242 VREF = 600 mV (SLUSEN1A p5)
+        for part, vref in [("TPS565201DDCR", 0.76), ("TPS565208DDC", 0.76), ("TPS565242DRLR", 0.6)]:
+            self.assertEqual(lookup_regulator_vref(part, ""), (vref, "lookup"), part)
+
     def test_unlisted_family_member_takes_no_family_reference(self):
         # no member key: the divider estimate falls back to the heuristic sweep
         self.assertEqual(lookup_regulator_vref("TPS562231DRLR", ""), (None, ""))
@@ -170,8 +175,52 @@ class FeedbackReference(unittest.TestCase):
 
     def test_other_rows_unchanged(self):
         for part, vref in [("TPS62912", 0.8), ("TPS73601", 1.204), ("LM22676", 1.285),
-                           ("LM317", 1.25), ("LT8606", 0.97)]:
+                           ("LM317", 1.25)]:
             self.assertEqual(lookup_regulator_vref(part, ""), (vref, "lookup"), part)
+
+    def test_lt860x_members_have_their_own_reference(self):
+        # LT8606/LT8606B Rev. D p3, LT8607/LT8607B Rev. D p3, LT8608/LT8608B Rev. D p3, LT8608S Rev. 0 p2,
+        # LT8609/LT8609A/LT8609B Rev. J p4, LT8609S Rev. D p3 (Feedback Reference Voltage, typ.)
+        for part, vref in [("LT8606EMSE", 0.778), ("LT8607", 0.778), ("LT8608.MSE", 0.778),
+                           ("LT8608S", 0.774), ("LT8609AIMSE_PBF", 0.782), ("LT8609SEV", 0.774)]:
+            self.assertEqual(lookup_regulator_vref(part, ""), (vref, "lookup"), part)
+            key, matched = regulator_vref_key(part, "")
+            self.assertTrue(vref_key_covers_part(key, matched), part)
+
+    def test_lt860x_parts_without_a_row_take_no_reference(self):
+        for part in ["LT8601.UJ", "LT8602.UJ"]:
+            self.assertEqual(lookup_regulator_vref(part, ""), (None, ""), part)
+
+    def test_reference_rows_name_the_parts_they_cover(self):
+        # LT8610 Rev. A p2 and LT8610A/LT8610AB Rev. C p3, LT8614 Rev. H p3, LT8640/LT8640-1 Rev. F p3,
+        # LTC3610 Rev. F p2, LTC3620 Rev. A p2
+        for part, vref in [("LT8610", 0.97), ("LT8610AB.MSE", 0.97), ("LT8614EUDC", 0.97),
+                           ("LT8640.UDC", 0.97), ("LTC3610EWP", 0.6), ("LTC3620EDC", 0.6)]:
+            self.assertEqual(lookup_regulator_vref(part, ""), (vref, "lookup"), part)
+            key, matched = regulator_vref_key(part, "")
+            self.assertTrue(vref_key_covers_part(key, matched), part)
+
+    def test_adjustable_ldo_and_boost_controller_rows(self):
+        # TPS731 SBVS034P p5, TPS793 SLVS348L p6, LM5122 SNVS954H p8
+        for part, vref in [("TPS73101DBV", 1.204), ("TPS79301-EP", 1.225), ("LM5122MHX/NOPB", 1.2)]:
+            self.assertEqual(lookup_regulator_vref(part, ""), (vref, "lookup"), part)
+            key, matched = regulator_vref_key(part, "")
+            self.assertTrue(vref_key_covers_part(key, matched), part)
+
+    def test_fixed_members_of_the_new_rows_give_their_output_voltage(self):
+        # one-digit fixed-output codes: LT8607 Rev. D p2 order information (LT8607EMSE-5), LT8609 Rev. J
+        # p3 (LT8609AEDDM-5), LT8610A/LT8610AB Rev. C p2 (LT8610ABEMSE-5), LTC3620 Rev. A p1 (LTC3620-1
+        # is programmed to 1.1 V); a -3.3 code reads as written
+        for part, volts in [("LT8607EMSE-5#PBF", 5.0), ("LT8609AEDDM-5#PBF", 5.0),
+                            ("LT8610ABEMSE-5_TRPBF", 5.0), ("LT8610AB.MSE-5", 5.0),
+                            ("LTC3620EDC-1#TRMPBF", 1.1), ("LT8609AEDDM-3.3#PBF", 3.3)]:
+            self.assertEqual(lookup_regulator_vref(part, ""), (volts, "fixed_suffix"), part)
+        # LT8640-1 is an adjustable part (LT8640/LT8640-1 Rev. F p3)
+        self.assertEqual(lookup_regulator_vref("LT8640EUDC-1#PBF", ""), (0.97, "lookup"))
+
+    def test_fixed_ldo_members_take_no_adjustable_reference(self):
+        for part in ["TPS79333DBVRG4Q1", "TPS79318-EP", "TPS73133DBVR"]:
+            self.assertEqual(lookup_regulator_vref(part, ""), (None, ""), part)
 
     def test_tps61023_reference_unchanged(self):
         self.assertEqual(lookup_regulator_vref("TPS61023DRLR", ""), (0.595, "lookup"))
@@ -197,8 +246,39 @@ class OrderCodes(unittest.TestCase):
             self.assertEqual(lookup_regulator_vref(part, ""), (1.25, "lookup"), part)
 
     def test_borrowed_order_code_symbol_says_nothing_about_another_part(self):
-        for value in ["TC2117", "LDL1117S30R"]:
-            self.assertEqual(lookup_regulator_vref(value, "X:NCP1117ST33T3G"), (1.25, "lookup"), value)
+        self.assertEqual(lookup_regulator_vref("TC2117", "X:NCP1117ST33T3G"), (None, ""))
+        self.assertEqual(lookup_regulator_vref("LDL1117S30R", "X:NCP1117ST33T3G"), (1.25, "lookup"))
+
+    def test_lmr36506_fixed_order_codes(self):
+        # LMR36506-Q1 SNVSB91C p3 Device Comparison Table: MSC5 5-V fixed, MSC3 3.3-V fixed, MSCQ adjustable
+        for part, volts in [("LMR36506MSC5RPERQ1", 5.0), ("LMR36506MSC3RPERQ1", 3.3)]:
+            self.assertEqual(lookup_regulator_vref(part, ""), (volts, "fixed_suffix"), part)
+            self.assertTrue(fixed_vout_is_explicit(part, ""), part)
+        self.assertEqual(lookup_regulator_vref("LMR36506MSCQRPERQ1", ""), (None, ""))
+
+
+class BorrowedSymbol(unittest.TestCase):
+    def test_value_naming_another_part_does_not_take_the_symbol_reference(self):
+        for value, lib_id in [
+                ("TPS54202", "MidiLedController-rescue:TPS563200-Regulator_Switching-MidiDrumTeacherModule-rescue"),
+                ("TPS564208DDCT", "Custom_Parts:TPS54308DDC"),
+                ("LM338_TO220", "Regulator_Linear:LM337_TO220")]:
+            self.assertEqual(lookup_regulator_vref(value, lib_id), (None, ""), value)
+            self.assertIsNone(regulator_vref_key(value, lib_id), value)
+
+    def test_value_naming_no_part_takes_the_symbol_reference(self):
+        for value, lib_id, vref in [("", "Regulator_Switching:TPS54308", 0.596),
+                                    ("LDO1", "Regulator_Linear:LM317_TO220", 1.25),
+                                    ("DNP/TPS54302", "Regulator_Switching:TPS54302", 0.596)]:
+            self.assertEqual(lookup_regulator_vref(value, lib_id), (vref, "lookup"), value)
+
+    def test_own_reference_still_wins_over_the_symbol(self):
+        self.assertEqual(lookup_regulator_vref("TPS564247DRLR", "Regulator_Switching:TPS562202"),
+                         (0.6, "lookup"))
+
+    def test_mpn_still_gives_the_reference_when_the_value_has_none(self):
+        self.assertEqual(lookup_regulator_vref("TPS54202", "X:TPS563200", "TPS54308DDCR"),
+                         (0.596, "lookup"))
 
     def test_voltage_in_a_label_value_outranks_a_borrowed_order_code_symbol(self):
         for value, lib_id, volts in [("DCDC_3V3", "Regulator_Switching:R-78E5.0-0.5", 3.3),

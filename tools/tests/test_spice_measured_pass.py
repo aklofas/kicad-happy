@@ -106,18 +106,25 @@ class RegulatorVrefTest(unittest.TestCase):
         self.assertEqual(r["status"], "info")
 
     def test_carrier_board_lm338_does_not_fail(self):
-        # cl3m3nt0n1 Bridge---Canyon-on-Hardware carrier_board, as the analyzer reports it:
-        # Vout = 1.25 * (1 + 820/270) = 5.05 V, the +5V rail. The 1.25 V is the LM337 symbol's
-        # (a negative regulator); the value names an LM338, so it is not this part's criterion.
+        # cl3m3nt0n1 Bridge---Canyon-on-Hardware carrier_board: an LM338 value on the LM337 symbol
+        # (a negative regulator). The value names another part, so the symbol's 1.25 V is not
+        # taken and the analyzer's Vref is its heuristic sweep, not a criterion.
+        from kicad_core.parts import lookup_regulator_vref
+        self.assertEqual(lookup_regulator_vref("LM338_TO220", "Regulator_Linear:LM337_TO220"), (None, ""))
         det = {"ref": "U2", "value": "LM338_TO220", "lib_id": "Regulator_Linear:LM337_TO220",
                "topology": "LDO", "output_rail": "+5V",
-               "assumed_vref": 1.25, "vref_source": "lookup", "estimated_vout": 5.046,
+               "assumed_vref": 1.25, "vref_source": "heuristic", "estimated_vout": 5.046,
                "feedback_divider": {"r_top": {"ref": "R1", "ohms": 270.0, "value": "270"},
                                     "r_bottom": {"ref": "R3", "ohms": 820.0, "value": "820"},
                                     "ratio": 0.752294, "reference": "out_adj"}}
         r = self._eval(det)
         self.assertEqual(r["status"], "info")
-        self.assertIn("Vref from the symbol; the value names another part", r["note"])
+        self.assertIn("Vref is not from the part", r["note"])
+        self.assertNotIn("vfb_vs_vref_pct", r["delta"])
+        # an analysis written before the symbol stopped lending its Vref still reads it as a lookup
+        det["vref_source"] = "lookup"
+        r = self._eval(det)
+        self.assertEqual(r["status"], "info")
         self.assertNotIn("vfb_vs_vref_pct", r["delta"])
 
     def test_value_and_symbol_naming_the_same_part_is_judged(self):
@@ -175,19 +182,27 @@ class RegulatorVrefTest(unittest.TestCase):
         self.assertTrue(vref_key_covers_part("TPS61023", "TPS61023DRLR"))
         self.assertTrue(vref_key_covers_part("RT6150", "RT6150AGQW"))
         self.assertFalse(vref_key_covers_part("LMR336", "LMR33630ADDAR"))
-        self.assertFalse(vref_key_covers_part("LT860", "LT8606"))
+        self.assertTrue(vref_key_covers_part("LT8606", "LT8606EMSE"))
 
     def test_shorter_table_key_is_info(self):
-        # LMR33630 on the 'LMR336' family row; LT8606 (FB 0.778 V) on 'LT860' 0.97 V: a family
-        # row is not the part's own value, so the divider stays unjudged instead of failing
+        # LMR33630 on the 'LMR336' family row: a family row is not the part's own value, so the
+        # divider stays unjudged instead of failing
         from kicad_core.parts import regulator_vref_key
-        for value, key, vref, r_top, r_bot in (("LMR33630ADDAR", "LMR336", 1.0, 90.9e3, 10e3),
-                                               ("LT8606EMSE", "LT860", 0.97, 324e3, 100e3)):
-            self.assertEqual(regulator_vref_key(value, ""), (key, value))
-            r = self._eval(_regulator(r_top, r_bot, "+5V", vref, "lookup", value=value))
-            self.assertEqual(r["status"], "info", value)
-            self.assertIn(f"family default ({key})", r["note"])
-            self.assertNotIn("vfb_vs_vref_pct", r["delta"])
+        value = "LMR33630ADDAR"
+        self.assertEqual(regulator_vref_key(value, ""), ("LMR336", value))
+        r = self._eval(_regulator(90.9e3, 10e3, "+5V", 1.0, "lookup", value=value))
+        self.assertEqual(r["status"], "info")
+        self.assertIn("family default (LMR336)", r["note"])
+        self.assertNotIn("vfb_vs_vref_pct", r["delta"])
+
+    def test_lt8606_is_judged_on_its_own_reference(self):
+        # LT8606/LT8606B Rev. D p3: FB 0.778 V; 3.3 * 100k/424k = 0.7783 V
+        from kicad_core.parts import lookup_regulator_vref, regulator_vref_key
+        self.assertEqual(regulator_vref_key("LT8606EMSE", ""), ("LT8606", "LT8606EMSE"))
+        vref, source = lookup_regulator_vref("LT8606EMSE", "")
+        r = self._eval(_regulator(324e3, 100e3, "+3V3", vref, source, value="LT8606EMSE"))
+        self.assertEqual(r["status"], "pass")
+        self.assertAlmostEqual(r["delta"]["vfb_vs_vref_pct"], 0.04, delta=0.01)
 
     def test_family_default_reference_is_info(self):
         # 'SY8' names a family by one member's 0.6 V, not this part's datasheet value:
