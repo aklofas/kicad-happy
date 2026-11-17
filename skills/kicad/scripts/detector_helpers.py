@@ -383,3 +383,16 @@ def led_forward_voltage(comp: dict) -> float:
     """Nominal forward voltage for the LED's colour word, else LED_VF_DEFAULT."""
     color = led_color(comp)
     return LED_VF_BY_COLOR[color][0] if color else LED_VF_DEFAULT
+
+
+_ADDRESSABLE_LED_WORDS = ("ws2812", "ws2813", "ws2815", "sk6812", "sk6805", "sk6803",
+                          "apa102", "apa104", "sk9822", "ws2811", "neopixel", "dotstar")
+
+
+def is_addressable_led(comp: dict) -> bool:
+    """An LED with its own driver (WS2812, SK6812, APA102, ...): one of the family words
+    appears anywhere in its value or its whole lib_id, library nickname included. Such an
+    LED sets its own current from its supply pins, so it has no series resistor."""
+    val = (comp.get("value") or "").lower()
+    lib = (comp.get("lib_id") or "").lower()
+    return any(k in val or k in lib for k in _ADDRESSABLE_LED_WORDS)

@@ -32,7 +32,7 @@ except ImportError:
 
 from detector_helpers import (
     get_components_by_type, get_pin_net, get_unique_ics, index_two_pin_components,
-    is_led_rail, led_forward_voltage, led_string, match_ic_keywords, symbol_name,
+    is_addressable_led, is_led_rail, led_forward_voltage, led_string, match_ic_keywords, symbol_name,
 )
 from finding_schema import make_finding, make_provenance
 from lookup_helpers import get_facts, has_data, best
@@ -1220,6 +1220,8 @@ def validate_led_resistors(ctx: AnalysisContext) -> list[dict]:
     cache_dir = getattr(ctx, 'cache_dir', None)
 
     for led in leds:
+        if is_addressable_led(led):
+            continue
         ref = led['reference']
         mpn = led.get('mpn') or led.get('value') or ''
         facts = get_facts(mpn, cache_dir=cache_dir, diagnostics=getattr(ctx, "diagnostics", None)) if mpn else None

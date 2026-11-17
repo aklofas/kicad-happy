@@ -305,6 +305,36 @@ class LedForwardVoltage(unittest.TestCase):
         self.assertEqual(led_forward_voltage({"value": "rgbled kira", "lib_id": "Device:LED"}), 2.0)
 
 
+class AddressableLeds(unittest.TestCase):
+    """A WS2812/SK6812/APA102-style LED regulates its own current from its supply pins:
+    neither LR-001 nor the LED audit asks it for a series resistor."""
+
+    def _strip(self, ref, value, lib_id):
+        # VDD, DOUT, VSS, DIN on a 5 V rail, no resistor anywhere.
+        led = {"reference": ref, "type": "led", "value": value, "lib_id": lib_id}
+        return _ctx([led], {"+5V": [_p(ref, "1", "power_in")], "DOUT": [_p(ref, "2", "output")],
+                            "GND": [_p(ref, "3", "power_in")], "DIN": [_p(ref, "4", "input")]},
+                    {"+5V", "GND"})
+
+    def test_addressable_leds_get_no_lr001(self):
+        cases = [("SLED1", "SK6803 MINI-E", "BFS9000:LED_SK6803MINI_E"),
+                 ("D1", "WS2812B", "LED:WS2812B"),
+                 ("LED1", "APA102-2020", "MyLib:APA102"),
+                 ("D2", "LED", "LED:SK6812MINI")]
+        for ref, value, lib_id in cases:
+            self.assertEqual(_lr(self._strip(ref, value, lib_id)), [], value)
+
+    def test_addressable_leds_get_no_led_audit(self):
+        from domain_detectors import audit_led_circuits
+        ctx = self._strip("SLED1", "SK6803 MINI-E", "BFS9000:LED_SK6803MINI_E")
+        self.assertEqual([f for f in audit_led_circuits(ctx, []) if f.get("ref") == "SLED1"], [])
+
+    def test_plain_led_without_a_resistor_keeps_its_error(self):
+        ctx = _ctx([_led("D1", "RED")], {"+5V": [_p("D1", "2")], "GND": [_p("D1", "1")]},
+                   {"+5V", "GND"})
+        self.assertEqual([f["summary"] for f in _lr(ctx)], ["LED D1: no current-limiting resistor found"])
+
+
 class RescueDiodes(unittest.TestCase):
     def test_types(self):
         cases = [("LED_driver-rescue:D_Zener", "D_Zener", "diode"),

@@ -19,8 +19,8 @@ from kicad_core.classify import is_active_low_enable
 from kicad_core.parts import LED_VF_BY_COLOR, LOAD_SWITCH_KEYWORDS, led_color, lookup_regulator_vref
 from kicad_core.values import format_frequency, parse_value
 from kicad_core.netnames import is_vss_name, parse_voltage_from_net_name
-from detector_helpers import (is_led_rail, led_forward_voltage, led_string, match_family,
-                              match_ic_keywords, get_unique_ics, get_pin_net, symbol_name)
+from detector_helpers import (is_addressable_led, is_led_rail, led_forward_voltage, led_string,
+                              match_family, match_ic_keywords, get_unique_ics, get_pin_net, symbol_name)
 from finding_schema import make_finding, make_provenance
 
 
@@ -4836,10 +4836,6 @@ def audit_led_circuits(ctx: AnalysisContext,
             if led_ref:
                 driven_led_refs.add(led_ref)
 
-    # Also exclude addressable LEDs (type will be "led" but value matches WS2812 etc.)
-    addr_keywords = ("ws2812", "ws2813", "ws2815", "sk6812", "sk6805", "sk6803",
-                     "apa102", "apa104", "sk9822", "ws2811", "neopixel", "dotstar")
-
     _seen_refs = set()
     for comp in ctx.components:
         if comp["type"] != "led":
@@ -4851,10 +4847,7 @@ def audit_led_circuits(ctx: AnalysisContext,
         if ref in driven_led_refs:
             continue
 
-        # Skip addressable LEDs
-        val_lower = comp.get("value", "").lower()
-        lib_lower = comp.get("lib_id", "").lower()
-        if any(k in val_lower or k in lib_lower for k in addr_keywords):
+        if is_addressable_led(comp):
             continue
 
         # Skip multi-pin LEDs (RGB, RAGB) — they need per-channel analysis
