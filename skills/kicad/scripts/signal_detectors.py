@@ -2072,6 +2072,18 @@ def _heuristic_vref(ratio: float, rail: str | None) -> tuple[float | None, str]:
     return None, ""
 
 
+def _top_has_dc_path(ctx: AnalysisContext, vd: dict) -> bool:
+    """False when the divider's top net reaches its own top resistor and capacitors only
+    (a resistor-capacitor compensation leg); a power net or a net that leaves the sheet
+    counts as a path."""
+    own = set(vd["r_top"].get("parallel_refs") or [vd["r_top"]["ref"]])
+    others = [p["component"] for p in ctx.nets.get(vd["top_net"], {}).get("pins", [])
+              if p["component"] not in own]
+    if not others or ctx.is_power_net(vd["top_net"]):
+        return True
+    return any((ctx.comp_lookup.get(r) or {}).get("type") != "capacitor" for r in others)
+
+
 def _feedback_arm(arm: dict) -> dict:
     """A divider arm as a regulator's ``feedback_divider`` records it."""
     out = {"ref": arm["ref"], "ohms": arm["ohms"], "value": arm["value"]}
@@ -2306,48 +2318,51 @@ def _build_regulator_record(ctx: AnalysisContext, cand: _RegulatorCandidate,
         # A three-terminal adjustable (LM317 family) has no ground pin: its ADJ pin floats on the divider
         three_terminal = "ADJ" in {p.strip() for p in fb_pin[0].split("/")} and not any(
             net and ctx.is_ground(net) for pname, (net, _) in ic_pins.items() if pname != fb_pin[0])
-        # Find matching voltage divider
-        for vd in voltage_dividers:
-            if vd["mid_net"] == fb_net:
-                ratio = vd["ratio"]
-                if ratio <= 0:
-                    break
-                vref_ratio = ratio
-                if three_terminal:
-                    # A trimmer's end stop is not the operating point
-                    if any(_is_potentiometer(ctx, ref) for arm in ("r_top", "r_bottom")
-                           for ref in vd[arm].get("parallel_refs") or [vd[arm]["ref"]]):
-                        break
-                    # LM317 datasheet: Vref sits across the OUT-ADJ (top) resistor, Vout = Vref x (1 + Rbot/Rtop)
-                    vref_ratio = 1 - ratio
-                    if vref_ratio <= 0:
-                        break
-                if known_vref is not None:
-                    vref, prov_source = known_vref, "divider_plus_" + vref_source
-                elif three_terminal:
-                    # LM317/LM338/LM350/LT1085/LM1086/AZ1117-ADJ datasheets: 1.25 V across OUT-ADJ
-                    vref, prov_source = 1.25, "divider_plus_heuristic"
-                    vref_source = "heuristic"
-                else:
-                    vref, prov_source = _heuristic_vref(
-                        vref_ratio, reg_info.get("output_rail") or vd.get("top_net"))
-                    vref_source = "heuristic"
-                if vref is not None and 0.5 < vref / vref_ratio < 60:
-                    reg_info["estimated_vout"] = round(vref / vref_ratio, 3)
-                    reg_info["_estimated_vout_provenance"] = {
-                        "source": prov_source,
-                        "confidence": "deterministic" if vref_source == "datasheet" else "heuristic",
-                    }
-                    reg_info["assumed_vref"] = vref
-                    reg_info["vref_source"] = vref_source
-                    reg_info["feedback_divider"] = {
-                        "r_top": _feedback_arm(vd["r_top"]),
-                        "r_bottom": _feedback_arm(vd["r_bottom"]),
-                        "ratio": ratio,
-                    }
-                    if three_terminal:
-                        reg_info["feedback_divider"]["reference"] = "out_adj"
+        # Find the feedback divider: the one topped by the output rail first; a top net that
+        # reaches only capacitors is a compensation leg, not a divider
+        fb_vds = sorted((vd for vd in voltage_dividers
+                         if vd["mid_net"] == fb_net and _top_has_dc_path(ctx, vd)),
+                        key=lambda vd: vd["top_net"] != reg_info.get("output_rail"))
+        for vd in fb_vds:
+            ratio = vd["ratio"]
+            if ratio <= 0:
                 break
+            vref_ratio = ratio
+            if three_terminal:
+                # A trimmer's end stop is not the operating point
+                if any(_is_potentiometer(ctx, ref) for arm in ("r_top", "r_bottom")
+                       for ref in vd[arm].get("parallel_refs") or [vd[arm]["ref"]]):
+                    break
+                # LM317 datasheet: Vref sits across the OUT-ADJ (top) resistor, Vout = Vref x (1 + Rbot/Rtop)
+                vref_ratio = 1 - ratio
+                if vref_ratio <= 0:
+                    break
+            if known_vref is not None:
+                vref, prov_source = known_vref, "divider_plus_" + vref_source
+            elif three_terminal:
+                # LM317/LM338/LM350/LT1085/LM1086/AZ1117-ADJ datasheets: 1.25 V across OUT-ADJ
+                vref, prov_source = 1.25, "divider_plus_heuristic"
+                vref_source = "heuristic"
+            else:
+                vref, prov_source = _heuristic_vref(
+                    vref_ratio, reg_info.get("output_rail") or vd.get("top_net"))
+                vref_source = "heuristic"
+            if vref is not None and 0.5 < vref / vref_ratio < 60:
+                reg_info["estimated_vout"] = round(vref / vref_ratio, 3)
+                reg_info["_estimated_vout_provenance"] = {
+                    "source": prov_source,
+                    "confidence": "deterministic" if vref_source == "datasheet" else "heuristic",
+                }
+                reg_info["assumed_vref"] = vref
+                reg_info["vref_source"] = vref_source
+                reg_info["feedback_divider"] = {
+                    "r_top": _feedback_arm(vd["r_top"]),
+                    "r_bottom": _feedback_arm(vd["r_bottom"]),
+                    "ratio": ratio,
+                }
+                if three_terminal:
+                    reg_info["feedback_divider"]["reference"] = "out_adj"
+            break
 
     # The boost output is the regulated rail at the top of the feedback divider
     if far_side_is_input and not reg_info.get("output_rail"):

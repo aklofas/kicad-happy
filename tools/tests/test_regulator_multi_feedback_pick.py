@@ -48,6 +48,34 @@ _DUAL_ONE_FIXED = {"1": ("IN", "+5V"), "2": ("OUT", "+3V3"), "3": ("ADJ1", "ADJ1
                    "4": ("ADJ2", "+3V3"), "5": ("GND", "GND")}
 
 
+_TYPES = {"U": "ic", "L": "inductor", "R": "resistor", "C": "capacitor"}
+
+
+def _record(parts):
+    """The U1 record for ``(ref, value, {pin_num: (pin_name, net)})`` parts, dividers found from the nets."""
+    comps, nets = [], {}
+    for ref, value, pins in parts:
+        comps.append({"reference": ref, "lib_id": "", "value": value, "type": _TYPES[ref.rstrip("0123456789")],
+                      "pins": [{"number": n, "name": name} for n, (name, _) in pins.items()]})
+        for num, (name, net) in pins.items():
+            nets.setdefault(net, {"pins": []})["pins"].append(
+                {"component": ref, "pin_number": num, "pin_name": name})
+    ctx = build_analysis_context(comps, nets, {})
+    vds = detect_voltage_dividers(ctx)["voltage_dividers"]
+    return next(r for r in detect_power_regulators(ctx, vds) if r["ref"] == "U1")
+
+
+def _two_pin(ref, value, net1, net2):
+    return (ref, value, {"1": ("", net1), "2": ("", net2)})
+
+
+# LTC3558 buck: L1 from SW to the +4V output; FB also carries a resistor-capacitor compensation leg
+# (R15 to COMP_NODE, C18 from COMP_NODE to VC)
+_LTC3558 = ("U1", "LTC3558", {"1": ("VIN", "+5V"), "2": ("SW", "SW"), "3": ("FB", "FB"),
+                              "4": ("VC", "VC"), "5": ("GND", "GND")})
+_COMP_LEG = [_two_pin("R15", "15k", "COMP_NODE", "FB"), _two_pin("C18", "10p", "COMP_NODE", "VC")]
+
+
 class MultiFeedbackPick(unittest.TestCase):
     def test_feedback_pin_tied_to_the_output_rail_takes_no_other_channels_divider(self):
         for reverse in (False, True):
@@ -92,6 +120,24 @@ class MultiFeedbackPick(unittest.TestCase):
                 self.assertEqual(reg.get("fb_net"), "FB_NET")
                 self.assertIsNotNone(reg.get("estimated_vout"))
                 self.assertEqual(reg["feedback_divider"]["r_top"]["ref"], "R1")
+
+    def test_divider_topped_by_output_rail_wins(self):
+        reg = _record([_LTC3558, _two_pin("L1", "2.2uH", "SW", "+4V"), *_COMP_LEG,
+                       _two_pin("R11", "270k", "+4V", "FB"), _two_pin("R14", "68k", "FB", "GND")])
+        self.assertEqual(reg["feedback_divider"]["r_top"]["ref"], "R11")
+        self.assertEqual(reg["estimated_vout"], 3.976)       # 0.8 V x (1 + 270k / 68k)
+
+    def test_compensation_leg_is_not_a_divider(self):
+        reg = _record([_LTC3558, _two_pin("L1", "2.2uH", "SW", "+4V"), *_COMP_LEG,
+                       _two_pin("R14", "68k", "FB", "GND")])
+        self.assertNotIn("feedback_divider", reg)
+        self.assertIsNone(reg.get("estimated_vout"))
+
+    def test_single_divider_from_unnamed_top_is_kept(self):
+        reg = _record([_LTC3558, _two_pin("L1", "2.2uH", "SW", "Net-(L1-Pad2)"),
+                       _two_pin("R1", "100k", "Net-(L1-Pad2)", "FB"), _two_pin("R2", "22k", "FB", "GND")])
+        self.assertEqual(reg["feedback_divider"]["r_top"]["ref"], "R1")
+        self.assertEqual(reg["estimated_vout"], 4.436)       # 0.8 V x (1 + 100k / 22k)
 
 
 if __name__ == "__main__":
