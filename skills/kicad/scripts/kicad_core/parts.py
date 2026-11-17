@@ -537,7 +537,7 @@ MLCC_ESR = {
 }
 
 
-# LED forward voltage by colour word in the value or lib_id: (nominal V, floor V).
+# LED forward voltage by colour word in the value or the symbol name: (nominal V, floor V).
 # Nominal is the datasheet typical at the rated current; floor is the lowest datasheet
 # minimum sampled, below which the LED does not light (None: no floor check).
 # Sources: Wurth 150060/150080, Kingbright APT2012, Lite-On LTST-C170/C190/C191/C193,
@@ -556,12 +556,33 @@ LED_VF_DEFAULT = 2.0
 _LED_IR_WORD = re.compile(r"(?<![a-z])ir(?!q|nas)")
 
 
+# Words of a value or symbol name: split at separators, digits and CamelCase ("BlueLED",
+# "PCAmber", "warmWhite", "LED_Red_0805").
+_LED_WORD = re.compile(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+")
+_LED_COLOR_ALIAS = {"infrared": "ir", "ultraviolet": "uv"}
+
+
+def _led_color_words(text: str) -> set[str]:
+    """Colour candidates of *text*; a word may carry an "LED" prefix or suffix ("LEDRED", "redled")."""
+    words = set()
+    for word in _LED_WORD.findall(text):
+        word = word.lower()
+        if word != "led":
+            if word.startswith("led"):
+                word = word[3:]
+            elif word.endswith("led"):
+                word = word[:-3]
+        words.add(_LED_COLOR_ALIAS.get(word, word))
+    return words
+
+
 def led_color(comp: dict) -> str | None:
-    """First colour of LED_VF_BY_COLOR named by the LED's value or lib_id, or None."""
-    value, lib_id = comp.get("value", ""), comp.get("lib_id", "")
-    combined = (value + " " + lib_id).lower()
-    part_name = (value + " " + lib_id.rpartition(":")[2]).lower()
-    for color in LED_VF_BY_COLOR:
-        if (_LED_IR_WORD.search(part_name) if color == "ir" else color in combined):
-            return color
+    """First colour of LED_VF_BY_COLOR named by the LED's value, else its symbol name, or None.
+
+    Colours are whole words, so "mirrored" is not red; the library nickname is not searched."""
+    for text in (comp.get("value", ""), comp.get("lib_id", "").rpartition(":")[2]):
+        words = _led_color_words(text)
+        for color in LED_VF_BY_COLOR:
+            if color in words or (color == "ir" and _LED_IR_WORD.search(text.lower())):
+                return color
     return None

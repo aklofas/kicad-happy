@@ -22,6 +22,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Fixed
 
+- An LED's colour is read from whole words, the value first and then the symbol name: `Infrared` and `Ultraviolet` are read, `LEDRED`, `BlueLED` and `PCAmber` still are, and a library nickname such as `mirrored` or `Shared` no longer makes an LED red. A value `Green` on a red symbol reads green.
 - Addressable LEDs (WS2812, SK6812, SK6803, APA102 and similar) no longer get an LR-001 "no current-limiting resistor" error: they set their own current, as the LED audit already assumed.
 - A part with an unusual reference prefix (PD1, LD4, POT1, DS1, RF-C10) takes its type from its symbol (resistor, capacitor, inductor, LED, diode or transistor) instead of the prefix's first letter.
 - Ferrite beads written as an impedance at a frequency (`330 OHM@100MHZ`, `120 Ohm @ 100 MHz`, `33Ω @ 100MHz`, `600OHM/2A`) are typed as ferrites, not inductors.

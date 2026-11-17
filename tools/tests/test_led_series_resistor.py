@@ -305,6 +305,36 @@ class LedForwardVoltage(unittest.TestCase):
         self.assertEqual(led_forward_voltage({"value": "rgbled kira", "lib_id": "Device:LED"}), 2.0)
 
 
+class LedColourWords(unittest.TestCase):
+    """The colour is a whole word of the value (then of the symbol name), not a substring."""
+
+    def test_colour_words(self):
+        from kicad_core.parts import led_color
+        cases = [({"value": "Infrared", "lib_id": "Device:LED"}, "ir"),
+                 ({"value": "LED", "lib_id": "LED:LED_Infrared"}, "ir"),
+                 ({"value": "Ultraviolet", "lib_id": "Device:LED"}, "uv"),
+                 ({"value": "Green", "lib_id": "MyLib:LED_Red_0805"}, "green"),
+                 ({"value": "LED", "lib_id": "1-altium-import:root_3_mirrored_LED"}, None),
+                 ({"value": "LED", "lib_id": "shared:LED"}, None),
+                 ({"value": "Bluetooth", "lib_id": "Device:LED"}, None),
+                 ({"value": "Redundant", "lib_id": "Device:LED"}, None),
+                 ({"value": "Pump UVLO", "lib_id": "Device:LED"}, None),
+                 ({"value": "wiring", "lib_id": "Device:LED"}, None),
+                 ({"value": "LTST-C190KRKT", "lib_id": "Device:LED"}, None),
+                 ({"value": "0603_WHITE", "lib_id": "Lib:0603_GREEN"}, "white"),
+                 ({"value": "LEDRED", "lib_id": "Device:LED"}, "red"),
+                 ({"value": "BlueLED", "lib_id": "Device:LED"}, "blue"),
+                 ({"value": "PCAmber", "lib_id": "Device:LED"}, "amber"),
+                 ({"value": "warmWhite", "lib_id": "Device:LED"}, "white"),
+                 ({"value": "greenled", "lib_id": "Device:LED"}, "green"),
+                 ({"value": "YellowLED", "lib_id": "Device:LED"}, "yellow"),
+                 ({"value": "LED", "lib_id": "Device:LED_0805_Blue"}, "blue"),
+                 ({"value": "IR204A", "lib_id": "LED:IR204A"}, "ir"),
+                 ({"value": "Yellow-Green", "lib_id": "Device:LED"}, "yellow")]
+        for comp, want in cases:
+            self.assertEqual(led_color(comp), want, comp)
+
+
 class AddressableLeds(unittest.TestCase):
     """A WS2812/SK6812/APA102-style LED regulates its own current from its supply pins:
     neither LR-001 nor the LED audit asks it for a series resistor."""
