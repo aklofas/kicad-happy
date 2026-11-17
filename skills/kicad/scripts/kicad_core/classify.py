@@ -65,6 +65,12 @@ def _led_lib_evidence(lib_low: str, val_low: str) -> bool:
 _DEVICE_PASSIVE_SYMBOL = re.compile(
     r'^device:(c|cp|c_small|cp_small|c_polarized|c_polarized_small|c_us|cp_us|'
     r'r|r_small|r_us|l|l_small|l_us)$')
+_IC_LIB_PREFIXES = ("analog_", "audio", "battery_management",
+                    "comparator", "converter_",
+                    "driver_", "display_", "fpga_", "interface_",
+                    "logic_", "mcu_", "memory_", "motor_",
+                    "multiplexer", "power_management", "power_supervisor",
+                    "regulator_", "sensor_", "timer", "rf_")
 
 
 def classify_component(ref: str, lib_id: str, value: str, is_power: bool = False,
@@ -348,6 +354,9 @@ def classify_component(ref: str, lib_id: str, value: str, is_power: bool = False
                    "HDMI", "EXT", "GPIO", "CAN", "SWD", "JTAG",
                    "ANT", "RJ", "SUPPLY"):
         return "connector"
+    # A Regulator_Switching symbol is a regulator, whatever its library name contains
+    if lib_prefix.startswith("regulator_"):
+        return "ic"
     # Catch MX/Cherry/Kailh keyboard switches before relay detection
     if "switch" in lib_lower or "button" in lib_lower:
         return "switch"
@@ -363,13 +372,7 @@ def classify_component(ref: str, lib_id: str, value: str, is_power: bool = False
     if "led" in lib_lower and "diode" in lib_lower:
         return "led"
     # IC detection from KiCad stdlib library prefixes (Analog_ADC, MCU_*, Regulator_*, etc.)
-    _ic_lib_prefixes = ("analog_", "audio", "battery_management",
-                        "comparator", "converter_",
-                        "driver_", "display_", "fpga_", "interface_",
-                        "logic_", "mcu_", "memory_", "motor_",
-                        "multiplexer", "power_management", "power_supervisor",
-                        "regulator_", "sensor_", "timer", "rf_")
-    if any(lib_prefix.startswith(p) for p in _ic_lib_prefixes):
+    if lib_prefix.startswith(_IC_LIB_PREFIXES):
         return "ic"
     if "transistor" in lib_lower or "mosfet" in lib_lower:
         return "transistor"
