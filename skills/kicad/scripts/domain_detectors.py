@@ -3067,6 +3067,11 @@ _I2C_PIN_NAMES = {"SDA", "SCL"}
 # one resolution (manufacturer datasheets; MCP3301/02/04 13-bit, MCP3550/51/53 22-bit,
 # MAX1192 dual 8-bit, AD7705..AD7709 16-bit, ADS1262/63 32-bit). Families that split
 # without a resolution suffix (LTC23xx, LTC24xx, ADS126x) get no stem of their own.
+# MAX11610/11611 are 10-bit (MAX11606-MAX11611 data sheet, 19-4560 Rev 5, 2/19, page 1
+# title and general description). MAX11612..11617 are 12-bit (MAX11612-MAX11617 data
+# sheet, 19-4561 Rev 4, 5/12, page 1 title and general description).
+# AD7606C-18 is 18-bit while AD7606 and AD7606C-16 are 16-bit (AD7606C-18 data sheet
+# Rev. B, Table 1 "Pin-to-Pin Compatible Family of Devices", page 5).
 _ADC_RESOLUTION_MAP = {
     "ads111": 16, "ads101": 12, "ads131": 24, "ads868": 16,
     "ads1260": 24, "ads1261": 24, "ads1262": 32, "ads1263": 32,
@@ -3074,11 +3079,13 @@ _ADC_RESOLUTION_MAP = {
     "mcp3421": 18, "mcp3422": 18, "mcp3423": 18, "mcp3424": 18,
     "mcp3425": 16, "mcp3426": 16, "mcp3427": 16, "mcp3428": 16,
     "mcp346": 16, "mcp356": 24, "mcp355": 22,
-    "max1161": 12, "max11632": 12, "max11633": 12, "max11634": 12, "max11635": 12,
+    "max11610": 10, "max11611": 10, "max11612": 12, "max11613": 12,
+    "max11614": 12, "max11615": 12, "max11616": 12, "max11617": 12,
+    "max11632": 12, "max11633": 12, "max11634": 12, "max11635": 12,
     "max11638": 8, "max11639": 8,
     "max1198": 8, "max1192": 8,
     "ltc2440": 24, "ltc2485": 24, "ltc2451": 16, "ltc2308": 12, "ltc2309": 12,
-    "ad7605": 16, "ad7606": 16, "ad7607": 14, "ad7608": 18, "ad7609": 18,
+    "ad7605": 16, "ad7606": 16, "ad7606c-18": 18, "ad7607": 14, "ad7608": 18, "ad7609": 18,
     "ad7705": 16, "ad7706": 16, "ad7707": 16, "ad7708": 16, "ad7709": 16,
     "ad7991": 12, "ad7995": 10, "ad7999": 8,
     "adc081": 8, "adc082": 8, "adc121": 12, "adc122": 12,

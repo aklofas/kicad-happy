@@ -45,6 +45,13 @@ class AdcResolution(unittest.TestCase):
     def test_mcp3304_is_13_bit(self):
         self.assertEqual(_infer_adc_resolution("MCP3304", "Analog_ADC:MCP3304"), 13)
 
+    def test_per_part_resolution(self):
+        for part, bits in (("MAX11611EEET", 10), ("MAX11610EEE", 10),
+                           ("MAX11614EEE", 12), ("MAX11617EEE", 12),
+                           ("AD7606C-18BSTZ", 18), ("AD7606C-16BSTZ", 16),
+                           ("AD7606BSTZ", 16)):
+            self.assertEqual(_infer_adc_resolution(part, ""), bits, part)
+
     def test_ltc23xx_without_suffix_has_no_resolution(self):
         self.assertIsNone(_infer_adc_resolution("LTC2323", "Analog_ADC:LTC2323"))
 
