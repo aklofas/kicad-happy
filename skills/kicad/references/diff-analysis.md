@@ -197,7 +197,7 @@ Each detection type maps to `(identity_fields, value_fields)` where both are lis
 | `transistor_circuits` | `reference` | `type` |
 | `protection_devices` | `reference`, `type` | `protected_net` |
 | `bridge_circuits` | `topology` | (none) |
-| `rf_matching` | `antenna_ref` | (none) |
+| `rf_matching` | `antenna` | (none) |
 | `bms_systems` | `bms_reference` | `cell_count` |
 | `decoupling_analysis` | `rail_net` | (none) |
 | `rf_chains` | (none) | (none) |

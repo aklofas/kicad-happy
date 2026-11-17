@@ -407,7 +407,7 @@ SCHEMAS = {
         primary_metric="vth_low_side_V",
     ),
     "rf_matching": DetectionSchema(
-        identity_fields=["antenna_ref"],
+        identity_fields=["antenna"],
         value_fields=[],
         primary_metric="z_min_ohms",
     ),

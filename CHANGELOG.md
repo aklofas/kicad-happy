@@ -65,6 +65,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The lifecycle part-number lookup reports a skipped search hit only when no hit matched, and names it as the search hit.
 - `lifecycle_audit --suggest-alternatives` no longer crashes on an end-of-life part with two or more suggested replacements, and a row for an MPN field that lists alternatives keeps naming the part numbers it checked.
 - Capacitor and inductor values written with an uppercase prefix (`100N`, `4U7`, `22P`), resistor values with a current rating (`1R/2A`), values with grouped digits (`1 000k`), and values followed by comma-separated fields (`100nF,50V`, `10k,1%`) now read correctly, so filters, dividers, decoupling and crystal load checks include these parts.
+- RF matching findings are identified by their antenna, so adding or removing one no longer changes the `finding_id` of the others. Every RF matching `finding_id` changes once with this release.
 
 ### Documentation
 
