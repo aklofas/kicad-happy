@@ -63,6 +63,9 @@ class GroundName(unittest.TestCase):
 
     def test_supply_before_bkgnd(self):
         self.assertFalse(is_ground_name("+12V_F19_BKGND"))
+        for name in ("+12V_GND", "+12V_PWRGND", "+12V_ISOGND", "+5V_SIGGND"):
+            with self.subTest(name=name):
+                self.assertTrue(is_ground_name(name))
 
     def test_battery_minus_both_spellings(self):
         for name in ("-BATT", "-BAT", "-VBAT", "BATT-"):

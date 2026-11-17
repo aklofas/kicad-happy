@@ -315,6 +315,8 @@ _GROUND_SIGNAL_TAILS = frozenset({"EN", "ENABLE", "NEN", "ON", "OFF", "OK", "DET
 # A leading supply voltage (+12V_F19_BKGND) names a supply; a GND glued into a later word
 # (BKGND) does not make it a ground.
 _LEADING_VOLTAGE_TOKEN = re.compile(r'\+\d+(?:V\d*|\.\d+V)')
+# The GND words a supply-prefixed name still reads as ground (+12V_PWRGND, +5V_ISOGND).
+_DOMAIN_GROUND_WORD = re.compile(r'^(?:[ADPSF]|PWR|ISO|SIG)?GND[A-Z0-9]*$')
 
 
 def _name_tokens(leaf_upper: str) -> list[str]:
@@ -386,7 +388,7 @@ def is_ground_name(net_name: str | None, power_rails: set[str] | None = None) ->
         return True
     if nu.endswith("GND"):
         return not (len(tokens) > 1 and _LEADING_VOLTAGE_TOKEN.fullmatch(tokens[0])
-                    and not _GROUND_TOKEN.match(tokens[-1]))
+                    and not _DOMAIN_GROUND_WORD.match(tokens[-1]))
     # VSS variants
     if nu.startswith("VSS"):
         return True
