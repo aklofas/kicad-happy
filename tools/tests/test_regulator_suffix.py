@@ -5,7 +5,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "skills" / "kicad" / "scripts"))
 
 from kicad_core.parts import (  # noqa: E402
-    lookup_regulator_vref, regulator_vref_key, vref_key_covers_part)
+    fixed_vout_is_explicit, lookup_regulator_vref, regulator_vref_key, vref_key_covers_part)
 
 
 class FixedSuffix(unittest.TestCase):
@@ -70,6 +70,45 @@ class FixedSuffix(unittest.TestCase):
     def test_lm78xx_unchanged(self):
         self.assertEqual(lookup_regulator_vref("LM7812", ""), (12.0, "fixed_suffix"))
         self.assertEqual(lookup_regulator_vref("LM78L05", ""), (5.0, "fixed_suffix"))
+
+    def test_diodes_reel_code_is_not_a_voltage(self):
+        # Diodes Inc. orders tape and reel as -7 / -13: AP64501SP-13 is the adjustable AP64501
+        # (DS41980 Rev. 5-2, Ordering Information; VFB 0.8 V, Electrical Characteristics)
+        for name in ["AP64501SP-13", "AP2152SG-13", "AL8861Y-13"]:
+            self.assertNotEqual(lookup_regulator_vref(name, "")[1], "fixed_suffix", name)
+        self.assertEqual(lookup_regulator_vref("AP64501SP-13", ""), (None, ""))
+        # a voltage code ahead of the reel code is still read
+        self.assertEqual(lookup_regulator_vref("AP7361C-33E-13", ""), (3.3, "fixed_suffix"))
+        self.assertEqual(lookup_regulator_vref("AP1509-50SG-13", ""), (5.0, "fixed_suffix"))
+
+
+class ExplicitFixedVoltage(unittest.TestCase):
+    def test_explicit_forms_state_the_output_voltage(self):
+        for value, lib_id, mpn in [("LM1117-3.3", "", ""), ("AMS1117-3.3_SOT-223", "", ""),
+                                   ("LDO-3V3", "", ""), ("LM7805", "", ""), ("LM2596S-12", "", ""),
+                                   ("XL1509-12", "", ""), ("MIC4680", "", "MIC4680-5.0YM"),
+                                   ("LM2586S", "Regulator_Switching:LM2586S-5.0", "")]:
+            self.assertEqual(lookup_regulator_vref(value, lib_id, mpn)[1], "fixed_suffix", value)
+            self.assertTrue(fixed_vout_is_explicit(value, lib_id, mpn), value)
+
+    def test_reel_code_states_no_output_voltage(self):
+        # Diodes Inc. orders tape and reel as -7 / -13 (AP64501 DS41980 Rev. 5-2, Ordering Information)
+        for name in ["AP64501SP-13", "AP66200FVBW-13", "AP64200SP-13"]:
+            self.assertFalse(fixed_vout_is_explicit(name, ""), name)
+
+    def test_bare_two_digit_suffix_is_read_but_not_explicit(self):
+        for name in ["LP2985-33", "AP1117-33", "TLV1117LV-33"]:
+            self.assertEqual(lookup_regulator_vref(name, ""), (3.3, "fixed_suffix"), name)
+            self.assertFalse(fixed_vout_is_explicit(name, ""), name)
+
+    def test_part_without_a_fixed_suffix_is_not_explicit(self):
+        for name in ["LM317", "TPS54040", "LM2596S-ADJ"]:
+            self.assertFalse(fixed_vout_is_explicit(name, ""), name)
+
+    def test_explicit_form_elsewhere_does_not_vouch_for_a_bare_code(self):
+        # the bare -33 in the value is what is read; the 5.0 in the symbol name is another voltage
+        self.assertEqual(lookup_regulator_vref("AP1117-33", "Custom:LDO-5.0"), (3.3, "fixed_suffix"))
+        self.assertFalse(fixed_vout_is_explicit("AP1117-33", "Custom:LDO-5.0"))
 
 
 class FeedbackReference(unittest.TestCase):

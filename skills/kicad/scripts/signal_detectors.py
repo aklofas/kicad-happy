@@ -17,6 +17,7 @@ from kicad_core.parts import (
     names_sense_amp,
     is_instrumentation_amp,
     lookup_regulator_vref as _lookup_regulator_vref,
+    fixed_vout_is_explicit,
     lookup_switching_freq,
     default_switching_freq,
     match_known_switching as _match_known_switching,
@@ -2308,7 +2309,11 @@ def _build_regulator_record(ctx: AnalysisContext, cand: _RegulatorCandidate,
         # Vref from a trusted datasheet extraction, then the part-number table, then a heuristic sweep
         known_vref, vref_source = _lookup_regulator_vref(
             ic.get("value", ""), ic.get("lib_id", ""), ic.get("mpn") or "")
-        # Skip feedback divider analysis for fixed-output parts
+        # A part number that writes out its output voltage sets Vout: a divider on its FB pin is
+        # listed, not used. A bare two-digit suffix does not outrank the divider (AP64501SP-13:
+        # -13 is the reel).
+        fixed_part = vref_source == "fixed_suffix" and fixed_vout_is_explicit(
+            ic.get("value", ""), ic.get("lib_id", ""), ic.get("mpn") or "")
         if vref_source == "fixed_suffix":
             known_vref = None
         else:
@@ -2326,6 +2331,13 @@ def _build_regulator_record(ctx: AnalysisContext, cand: _RegulatorCandidate,
         for vd in fb_vds:
             ratio = vd["ratio"]
             if ratio <= 0:
+                break
+            if fixed_part:
+                reg_info["feedback_divider"] = {
+                    "r_top": _feedback_arm(vd["r_top"]),
+                    "r_bottom": _feedback_arm(vd["r_bottom"]),
+                    "ratio": ratio,
+                }
                 break
             vref_ratio = ratio
             if three_terminal:

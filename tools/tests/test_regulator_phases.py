@@ -76,6 +76,15 @@ def _three_terminal(value, out, vin="VIN_RAW"):
 
 
 _BUCK_PINS = {"1": ("SW", "SW_NODE"), "2": ("FB", "FB"), "3": ("VIN", "+12V")}
+
+
+def _switcher(value, out):
+    """A buck on a custom symbol: SW drives L2 to *out*, FB on the "FB" net."""
+    return [("U1", "Custom:" + value, value,
+             {"1": ("VIN", "+24V"), "2": ("SW", "SW_NODE"), "3": ("FB", "FB"), "4": ("GND", "GND")}),
+            ("L2", "Device:L", "33uH", {"1": ("1", "SW_NODE"), "2": ("2", out)})]
+
+
 _INDUCTOR = ("L1", "Device:L", "10uH", {"1": ("1", "SW_NODE")})
 
 
@@ -133,6 +142,25 @@ class RegulatorPhases(unittest.TestCase):
         self.assertEqual(r["estimated_vout"], 3.323)
         self.assertEqual(r["vref_source"], "lookup")
         self.assertEqual(r["_estimated_vout_provenance"]["source"], "divider_plus_lookup")
+
+    def test_fixed_suffix_part_keeps_vout_with_divider_on_fb(self):
+        # LM2596S-12 is the fixed 12 V part (SNVS124E); a divider on its FB pin is listed, not used
+        r = detect_power_regulators(_ctx(_switcher("LM2596S-12", "+12V")),
+                                    [_fb_divider("+12V", 10000.0, 1000.0)])[0]
+        self.assertEqual(r["estimated_vout"], 12.0)
+        self.assertEqual(r["vref_source"], "fixed_suffix")
+        self.assertEqual(r["_estimated_vout_provenance"]["source"], "fixed_suffix")
+        self.assertEqual(r["feedback_divider"]["r_top"]["ref"], "R1")
+        self.assertNotIn("assumed_vref", r)
+
+    def test_reel_code_suffix_keeps_divider_estimate(self):
+        # AP64501SP-13 is the adjustable AP64501 on a 13-inch reel (DS41980 Rev. 5-2, Ordering
+        # Information): 0.8 V x (1 + 31.6k / 10k) = 3.328 V, not 1.3 V
+        r = detect_power_regulators(_ctx(_switcher("AP64501SP-13", "+3V3")),
+                                    [_fb_divider("+3V3", 31600.0, 10000.0)])[0]
+        self.assertNotEqual(r["vref_source"], "fixed_suffix")
+        self.assertEqual(r["estimated_vout"], 3.328)
+        self.assertEqual(r["assumed_vref"], 0.8)
 
     def test_unknown_part_vref_chosen_by_rail_name(self):
         # 0.6 V would give 2.493 V; 0.8 V gives 3.323 V, within 10 % of the 3V3 name

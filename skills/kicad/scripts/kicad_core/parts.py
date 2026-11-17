@@ -253,7 +253,16 @@ _FIXED_SUFFIX_FAMILIES: dict[str, dict[str, float]] = {
 }
 
 
-def _lookup_vref(candidates: list[str]) -> tuple[float | None, str]:
+def fixed_vout_is_explicit(value: str, lib_id: str, mpn: str = "") -> bool:
+    """True when the fixed output voltage lookup_regulator_vref reads is written out in the part
+    number: -3.3, 3V3, an LM78xx/LM79xx code or a family's data-sheet suffix (LM2596S-12). A bare
+    two-digit suffix read as an implied decimal (AP1117-33) is not: the same form is an order or
+    reel code on adjustable parts (AP64501SP-13, -13 = 13-inch reel)."""
+    candidates, result = _regulator_candidates(value, lib_id, mpn)
+    return result[1] == "fixed_suffix" and _lookup_vref(candidates, bare_codes=False) == result
+
+
+def _lookup_vref(candidates: list[str], bare_codes: bool = True) -> tuple[float | None, str]:
     # LM78xx/LM79xx fixed-output convention: voltage digits embedded without
     # separator. LM7805=5V, LM78L12=12V, LM78M05CT=5V, LM7805_TO220=5V; the
     # LM79xx parts are negative regulators (LM7905=-5V).
@@ -287,10 +296,13 @@ def _lookup_vref(candidates: list[str]) -> tuple[float | None, str]:
             # suffix after a space is part of a description (LM317 (7-12V)).
             if " " not in candidate[:m.start()]:
                 ambiguous.add(raw)
-        elif m:
+        elif m and bare_codes and m.group(1) != "13":
             # A two-digit suffix is an implied decimal, as in KiCad's library:
             # AP1117-33 is 3.3 V, LDK130-08 is 0.8 V. No fixed part is below
-            # 0.5 V, so LC78_03-05 (a 3.3 V module) gives no value.
+            # 0.5 V, so LC78_03-05 (a 3.3 V module) gives no value. -13 is
+            # Diodes Inc.'s 13-inch reel code, not 1.3 V: AP64501SP-13 is the
+            # adjustable AP64501 (DS41980 Rev. 5-2, Ordering Information); a
+            # voltage code ahead of it is still read (AP7361C-33E-13 is 3.3 V).
             fixed_v = float(m.group(1)[0] + "." + m.group(1)[1])
             if fixed_v >= 0.5:
                 return fixed_v, "fixed_suffix"
