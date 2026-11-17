@@ -32,7 +32,7 @@ except ImportError:
 
 from detector_helpers import (
     get_components_by_type, get_pin_net, get_unique_ics, index_two_pin_components,
-    is_led_rail, led_forward_voltage, led_string, match_ic_keywords,
+    is_led_rail, led_forward_voltage, led_string, match_ic_keywords, symbol_name,
 )
 from finding_schema import make_finding, make_provenance
 from lookup_helpers import get_facts, has_data, best
@@ -539,7 +539,7 @@ def _is_regulator_like(ctx: AnalysisContext, ref: str) -> bool:
             'MP23', 'MP15', 'XL40', 'RT8', 'SY8', 'MIC29', 'NCP',
             'LDO', 'BOOST', 'BUCK', 'REG')):
         return True
-    text = (val_mpn + ' ' + (comp.get('lib_id') or '')).lower()
+    text = (val_mpn + ' ' + symbol_name(comp.get('lib_id') or '')).lower()
     return (any(k in text for k in LOAD_SWITCH_KEYWORDS + _LOAD_SWITCH_FAMILIES)
             or names_load_switch(text + ' ' + (comp.get('description') or '')))
 

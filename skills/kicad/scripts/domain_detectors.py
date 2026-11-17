@@ -20,7 +20,7 @@ from kicad_core.parts import LED_VF_BY_COLOR, LOAD_SWITCH_KEYWORDS, led_color, l
 from kicad_core.values import format_frequency, parse_value
 from kicad_core.netnames import is_vss_name, parse_voltage_from_net_name
 from detector_helpers import (is_led_rail, led_forward_voltage, led_string, match_family,
-                              match_ic_keywords, get_unique_ics, get_pin_net)
+                              match_ic_keywords, get_unique_ics, get_pin_net, symbol_name)
 from finding_schema import make_finding, make_provenance
 
 
@@ -295,17 +295,21 @@ def detect_isolation_barriers(ctx: AnalysisContext) -> list[dict]:
             ground_domains.setdefault(domain, []).append(gn)
 
         if len(ground_domains) >= 2:
+            # Part-number stems are read from the value and symbol name; category words and
+            # maker names (Converter_DCDC_Isolated, recom) from the whole lib_id.
             iso_keywords = (
                 "adum", "iso7", "iso15", "adm268", "adm248",
-                "optocoupl", "opto_isolat", "pc817", "tlp",
-                "isolated", "isol_dc", "traco", "recom", "murata",
-                "dcdc_iso", "r1sx", "am1s", "tmu", "iec",
+                "pc817", "tlp", "r1sx", "am1s", "tmu", "iec",
             )
+            iso_words = ("optocoupl", "opto_isolat", "isolated", "isol_dc", "dcdc_iso",
+                         "traco", "recom", "murata")
 
             isolation_components = []
             for c in ctx.components:
+                part = (c.get("value", "") + " " + symbol_name(c.get("lib_id", ""))).lower()
                 val = (c.get("value", "") + " " + c.get("lib_id", "")).lower()
-                if any(k in val for k in iso_keywords) or c["type"] == "optocoupler":
+                if (any(k in part for k in iso_keywords) or any(k in val for k in iso_words)
+                        or c["type"] == "optocoupler"):
                     isolation_components.append({
                         "reference": c["reference"],
                         "value": c["value"],
@@ -5621,11 +5625,11 @@ def suggest_certifications(ctx: AnalysisContext, signal_analysis: dict) -> list[
             "reason": "RF transceiver detected",
         })
 
-    # WiFi/BT modules, by value or symbol name (the library nickname names a library).
-    # A rescue power symbol, connector or passive can carry the radio word in its symbol
-    # name: it marks the sheet but is never named as the module. A part whose value names
-    # the radio, or that WL-001 found, is named first; then WL-001's module; then a part
-    # matched by its symbol name alone (a KiCad 5 rescue name carries the board's name).
+    # WiFi/BT modules, by value or symbol name (the library nickname and a rescue suffix name
+    # a library or project, not the part). A power symbol, connector or passive can carry the
+    # radio word in its symbol name (WIFI_ANT_ESP8266): it marks the sheet but is never named
+    # as the module. A part whose value names the radio, or that WL-001 found, is named first;
+    # then WL-001's module; then a part matched by its symbol name alone.
     radio_words = ("esp32", "esp8266", "nrf52", "cc254", "wl18", "cyw43", "ap621", "bcm43",
                    "esp-wroom", "esp-01", "esp-12", "esp-32", "wt32", "ttgo")
 
@@ -5633,7 +5637,7 @@ def suggest_certifications(ctx: AnalysisContext, signal_analysis: dict) -> list[
         return any(k in text.lower() for k in radio_words)
 
     matches = [c for c in ctx.components
-               if _radio_word(c.get("value", "") + " " + c.get("lib_id", "").split(":", 1)[-1])]
+               if _radio_word(c.get("value", "") + " " + symbol_name(c.get("lib_id", "")))]
     if matches and not any(s["standard"] == "FCC Part 15" for s in suggestions):
         found = [w["reference"] for w in signal_analysis.get("wireless_modules", []) if w.get("reference")]
         radios = [c for c in matches if not c["reference"].startswith("#")

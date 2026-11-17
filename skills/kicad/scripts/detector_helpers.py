@@ -102,20 +102,39 @@ def match_ic_keywords(component: dict, keywords: list[str] | tuple[str, ...]) ->
     return any(k in val_lib for k in keywords)
 
 
+def symbol_name(lib_id: str) -> str:
+    """The symbol part of a lib_id, without its library nickname or a rescue library's suffix.
+
+    KiCad's rescue renames a symbol after where it came from: ``<name>-RESCUE-<project>`` (KiCad 4/5),
+    or ``<name>-<library>`` in a ``<project>-rescue`` library. A symbol rescued twice also carries the
+    earlier rescue library, named after the project (``<name>-<library>-<project>-rescue``); the
+    project name can hold dashes, so only the text before the first dash is kept. The nickname
+    ends at the first ``:``, as in KiCad. The original case is kept; callers lowercase.
+    """
+    sym = (lib_id or "").split(":", 1)[-1]
+    if "-RESCUE-" in sym:
+        return sym.split("-RESCUE-", 1)[0]
+    if sym.lower().endswith("-rescue"):
+        return sym.split("-", 1)[0]
+    return sym
+
+
 def match_family(comp: dict, families: dict[str, Iterable[str]]) -> str | None:
     """Return the family of a part's longest keyword, or None.
 
     Reads the first of ``mpn``, ``value``, ``lib_id`` that contains any keyword
-    (case-insensitive substring); of ``lib_id`` only the symbol name counts, since the
-    library nickname names a library, not the part. A tie in length between two
+    (case-insensitive substring); of ``lib_id`` only the symbol name counts (see
+    ``symbol_name``), since the library nickname and a rescue suffix name a library or
+    project, not the part. A tie in length between two
     families is None.
     ``families`` holds one detector's own tables; never pool families across
     detectors, since a part can belong to one family in each.
     """
     for field in ("mpn", "value", "lib_id"):
-        text = (comp.get(field) or "").lower()
+        text = comp.get(field) or ""
         if field == "lib_id":
-            text = text.split(":", 1)[-1]
+            text = symbol_name(text)
+        text = text.lower()
         if not text:
             continue
         best: dict[str, int] = {}
