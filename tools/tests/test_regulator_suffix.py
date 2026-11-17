@@ -114,7 +114,38 @@ class ExplicitFixedVoltage(unittest.TestCase):
 class FeedbackReference(unittest.TestCase):
     def test_tps61030_feedback_is_half_a_volt(self):
         self.assertEqual(lookup_regulator_vref("TPS61030PWPR", ""), (0.5, "lookup"))
-        self.assertEqual(lookup_regulator_vref("TPS61032PWPR", ""), (0.5, "lookup"))
+
+    def test_fixed_output_member_does_not_take_the_adjustable_reference(self):
+        # TPS61032 is the fixed 5 V member: the TPS61030 feedback voltage is not its Vref
+        self.assertEqual(lookup_regulator_vref("TPS61032PWPR", ""), (None, ""))
+        self.assertEqual(lookup_regulator_vref("TPS61025DRCR", ""), (None, ""))
+
+    def test_tps6102x_members_have_their_own_reference(self):
+        for part, vref in [("TPS61021ADSGR", 0.795), ("TPS61022RWUR", 0.6),
+                           ("TPS61023DRLR", 0.595), ("TPS61020DRCR", 0.5)]:
+            self.assertEqual(lookup_regulator_vref(part, ""), (vref, "lookup"), part)
+
+    def test_tps56x_members_have_their_own_reference(self):
+        for part, vref in [("TPS561201DDCR", 0.768), ("TPS561243DRLR", 0.6),
+                           ("TPS562212DRLR", 0.6), ("TPS562202SDRLR", 0.804),
+                           ("TPS563200DDCR", 0.765), ("TPS563202SDRLR", 0.806),
+                           ("TPS563240DDC", 0.6), ("TPS564247DRLR", 0.6)]:
+            self.assertEqual(lookup_regulator_vref(part, ""), (vref, "lookup"), part)
+
+    def test_unlisted_family_member_takes_no_family_reference(self):
+        # no member key: the divider estimate falls back to the heuristic sweep
+        self.assertEqual(lookup_regulator_vref("TPS562231DRLR", ""), (None, ""))
+
+    def test_lm2731_and_lmr33640_rows(self):
+        for part, vref in [("LM27313XMFX/NOPB", 1.23), ("LM2731XMF", 1.23), ("LMR33640ADDAR", 1.0)]:
+            self.assertEqual(lookup_regulator_vref(part, ""), (vref, "lookup"), part)
+            key, matched = regulator_vref_key(part, "")
+            self.assertTrue(vref_key_covers_part(key, matched), part)
+
+    def test_other_rows_unchanged(self):
+        for part, vref in [("TPS62912", 0.8), ("TPS73601", 1.204), ("LM22676", 1.285),
+                           ("LM317", 1.25), ("LT8606", 0.97)]:
+            self.assertEqual(lookup_regulator_vref(part, ""), (vref, "lookup"), part)
 
     def test_tps61023_reference_unchanged(self):
         self.assertEqual(lookup_regulator_vref("TPS61023DRLR", ""), (0.595, "lookup"))
@@ -132,6 +163,15 @@ class KeyCover(unittest.TestCase):
         for key, part in [("NCP1117", "NCP1117ST33T3G"), ("LD1117", "LD1117AV33"),
                           ("LD1117", "LD1117DT18TR")]:
             self.assertFalse(vref_key_covers_part(key, part), part)
+
+    def test_wildcard_x_does_not_name_a_part(self):
+        for part in ["LM259X", "LM259x", "LM259XX"]:
+            self.assertFalse(vref_key_covers_part("LM259", part), part)
+
+    def test_x_option_letter_is_part_of_the_order_code(self):
+        for key, part in [("TPS560430", "TPS560430X"), ("TPS560430", "TPS560430XDBVR"),
+                          ("LM2731", "LM2731XMF"), ("LM2731", "LM2731X"), ("LM27313", "LM27313X")]:
+            self.assertTrue(vref_key_covers_part(key, part), part)
 
     def test_fixed_part_key_covers_nothing(self):
         self.assertFalse(vref_key_covers_part("LD33", "LD33"))

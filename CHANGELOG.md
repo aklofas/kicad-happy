@@ -48,6 +48,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A regulator whose output net is unnamed or not named like a rail is no longer reported as missing output capacitors when a capacitor to ground sits on that net.
 - When a regulator's FB pin sees more than one resistor divider, the one fed from the regulator's output sets the output-voltage estimate; a resistor-capacitor compensation leg is no longer read as the divider.
 - A regulator whose part number states its output voltage (LM2596S-12, MIC4680-5.0) keeps that voltage when its FB pin also carries a resistor divider; the divider is still listed. A bare two-digit suffix (AP1117-33) does not outrank the divider, and Diodes' `-13` reel code (AP64501SP-13, AL8861Y-13, AP2152SG-13) is no longer read as a 1.3 V output.
+- Output-voltage estimates use each part's own feedback reference for the TPS6102x, TPS561/562/563/564 families, LM2731/LM27313 and LMR33640, taken from their data sheets.
 - TV-001 counts a stacked via column (vias at one point on one net, layer to layer) as one via, weighted by its narrowest drill, so an HDI thermal pad is no longer graded as if each layer pair were a separate via.
 - A schematic whose sheets are placed hundreds of times is read much faster: the time no longer grows with the square of the instance count. Results are unchanged.
 - Writing a large analysis with `--output` needs much less memory (a 470 MB schematic result peaked at 3 GB, now under 1 GB); the file is unchanged.

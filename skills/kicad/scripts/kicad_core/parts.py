@@ -55,8 +55,13 @@ def names_load_switch(text: str) -> bool:
 _REGULATOR_VREF: dict[str, float] = {
     # TI switching regulators — verified against TI datasheets + DigiKey 2026-04-12
     "TPS6100": 0.5,                                               # TPS61000/01 FB = 0.5V
-    "TPS6102": 0.595,                                             # TPS61023 VREF = 595 mV (SLVSF14B)
-    "TPS6103": 0.5,                                               # TPS61030 VFB = 500 mV (SLUS534G); TPS61031/32 are fixed 3.3/5 V
+    # TPS6102x/3x members differ: one key per adjustable member, no family key (the fixed
+    # TPS61024-27 and TPS61031/32 have no feedback reference)
+    "TPS61020": 0.5,   "TPS61028": 0.5,   "TPS61029": 0.5,       # VFB = 500 mV (TPS6102x SLVS451G p5, Electrical Characteristics)
+    "TPS61021": 0.795,                                            # TPS61021A VREF = 795 mV PWM mode (SLVSDM0 p5)
+    "TPS61022": 0.6,                                              # VREF = 600 mV PWM mode (SLVSDX7D p5)
+    "TPS61023": 0.595,                                            # VREF = 595 mV PWM mode (SLVSF14B p5)
+    "TPS61030": 0.5,                                              # VFB = 500 mV (TPS6103x SLUS534G p5)
     "TPS5430": 1.221,  "TPS5450": 1.221,  "TPS5410": 1.221,     # TPS5430/50/10 Vref = 1.221V
     "TPS54160": 0.8,   "TPS54260": 0.8,   "TPS54360": 0.8,      # TPS541x0/542x0/543x0 FB = 0.8V
     "TPS54040": 0.8,   "TPS54060": 0.8,                          # TPS54040/60 Vref = 0.8V
@@ -65,9 +70,20 @@ _REGULATOR_VREF: dict[str, float] = {
     "TPS56339": 0.8,   "TPS56637": 0.6,                          # TPS56339 = 0.8V, TPS56637 = 0.6V
     "TPS560200": 0.8,                                             # TPS560200 VSENSE = 0.8V
     "TPS560430": 1.0,                                             # TPS560430 VOUT accuracy (integrated FB)
-    "TPS561": 0.6,                                                # TPS561201/243 = 0.6-0.76V, use 0.6
-    "TPS562": 0.768,                                              # TPS562201/08 = 0.768V
-    "TPS5632": 0.76,                                              # TPS563200 = 0.76V
+    # TPS561/562/563/564 members differ: one key per member, no family key
+    "TPS561201": 0.768, "TPS561208": 0.768,                       # VFBTH = 768 mV continuous mode (SLVSC95A p5)
+    "TPS561243": 0.6,                                             # VFB = 600 mV (SLUSFG9A p5)
+    "TPS562200": 0.765, "TPS563200": 0.765,                       # VFB(TH) = 765 mV continuous mode (TPS56x200 SLVSCB0E p7)
+    "TPS562201": 0.768, "TPS562208": 0.768,                       # VFBTH = 768 mV continuous mode (SLVSD91D p5)
+    "TPS562202": 0.804,                                           # VFBTH = 804 mV continuous mode (SLUSE28 p6; TPS562202S SLUSED6 p5)
+    "TPS562207": 0.804,                                           # VFBTH = 804 mV (SLUSDR7B p6)
+    "TPS562212": 0.6,                                             # VFB = 0.6 V (SLUSEI0 p5)
+    "TPS563201": 0.768, "TPS563208": 0.768,                       # VFBTH = 768 mV continuous mode (SLVSD90B p6)
+    "TPS563202S": 0.806,                                          # VFBTH = 806 mV continuous mode (SLUSED8 p6)
+    "TPS563240": 0.6,                                             # VFB = 600 mV continuous mode (SLVSE74A p5)
+    "TPS563249": 0.6,                                             # VFB = 600 mV (SLVSE54A p5)
+    "TPS564247": 0.6,                                             # VREF = 600 mV (SLUSEN2 p5)
+    "TPS564257": 0.6,                                             # VREF = 600 mV (TPS56425x SLUSEQ6A p5)
     "TPS5633": 0.8,                                               # TPS563300 = 0.8V
     "TPS5652": 0.6,    "TPS5654": 0.6,                           # TPS565208/564247 = 0.6V
     "TPS566": 0.6,                                                # TPS566238 = 0.6V
@@ -84,6 +100,8 @@ _REGULATOR_VREF: dict[str, float] = {
     "LMR51610": 0.6,   "LMR51620": 0.6,   "LMR51630": 0.6,       # LMR51610/20/30 Vref = 0.6V
     "LMR51640": 0.8,   "LMR51660": 0.8,                          # LMR51640/60 Vref = 0.8V
     "LMR336": 1.0,     "LMR338": 1.0,                            # LMR33630/60 Vref = 1.0V
+    "LMR33640": 1.0,                                              # VFB = 1 V, ADJ option (SNVSB99C p6)
+    "LM2731": 1.23,    "LM27313": 1.23,                           # VFB = 1.230 V (LM2731 SNVS217G p5; LM27313 SNVS487E p5)
     "LMR380": 1.0,                                                # LMR38010 VFB = 1.0V
     "LM258": 1.23,     "LM259": 1.23,                            # LM2596/LM2585 VFB = 1.23V (adj variants)
     "LMZ2": 0.795,                                                # LMZ23610 VFB = 0.795V
@@ -351,17 +369,24 @@ def is_label_like_value(value: str) -> bool:
 
 # A key that is itself a fixed-output part name (LD33 is a 3.3 V part) names no part's Vref.
 _FIXED_PART_KEYS = frozenset({"LD33"})
+# Keys whose order codes carry an X option letter (TPS560430XDBVR; LM2731XMF and LM27313XMF,
+# SNVS217G / SNVS487E ordering tables): there an X after the key is part of the part number,
+# elsewhere it is a family wildcard (LM259X).
+_X_OPTION_KEYS = frozenset({"TPS560430", "LM2731", "LM27313"})
 
 
 def vref_key_covers_part(key: str, part: str) -> bool:
     """True when a _REGULATOR_VREF key names the whole part number of *part*
     (its value for that part), not a shorter family prefix: 'TPS61023' covers
-    TPS61023DRLR, 'TPS6102' does not cover TPS61025. A fixed-voltage code after
-    the key (NCP1117ST33T3G, LD1117AV33) names another part."""
+    TPS61023DRLR, 'LMR336' does not cover LMR33630. A fixed-voltage code after
+    the key (NCP1117ST33T3G, LD1117AV33) names another part, and a wildcard X
+    (LM259X) names none."""
     core = part_number_core(part)
     if not (core and part.upper().startswith(key.upper()) and len(key) >= len(core)):
         return False
     if key.upper() in _FIXED_PART_KEYS:
+        return False
+    if key.upper() not in _X_OPTION_KEYS and re.match(r"[Xx]{1,2}(?![A-Za-z0-9])", part[len(key):]):
         return False
     return not re.match(r"[A-Za-z]{1,2}\d{2}(?!\d)", part[len(key):])
 

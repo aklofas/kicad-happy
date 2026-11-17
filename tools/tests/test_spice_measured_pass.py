@@ -174,17 +174,19 @@ class RegulatorVrefTest(unittest.TestCase):
         from kicad_core.parts import vref_key_covers_part
         self.assertTrue(vref_key_covers_part("TPS61023", "TPS61023DRLR"))
         self.assertTrue(vref_key_covers_part("RT6150", "RT6150AGQW"))
-        self.assertFalse(vref_key_covers_part("TPS6103", "TPS61032"))
-        self.assertFalse(vref_key_covers_part("TPS6102", "TPS61025"))
+        self.assertFalse(vref_key_covers_part("LMR336", "LMR33630ADDAR"))
         self.assertFalse(vref_key_covers_part("LT860", "LT8606"))
 
     def test_shorter_table_key_is_info(self):
-        # TPS61032 (FB 0.5 V) on the 'TPS6103' 0.595 V row; LT8606 (FB 0.778 V) on 'LT860' 0.97 V:
-        # a design correct for its part stays unjudged instead of failing
-        for value, vref, r_top, r_bot in (("TPS61032PWPR", 0.595, 90.9e3, 10e3),
-                                          ("LT8606EMSE", 0.97, 324e3, 100e3)):
+        # LMR33630 on the 'LMR336' family row; LT8606 (FB 0.778 V) on 'LT860' 0.97 V: a family
+        # row is not the part's own value, so the divider stays unjudged instead of failing
+        from kicad_core.parts import regulator_vref_key
+        for value, key, vref, r_top, r_bot in (("LMR33630ADDAR", "LMR336", 1.0, 90.9e3, 10e3),
+                                               ("LT8606EMSE", "LT860", 0.97, 324e3, 100e3)):
+            self.assertEqual(regulator_vref_key(value, ""), (key, value))
             r = self._eval(_regulator(r_top, r_bot, "+5V", vref, "lookup", value=value))
             self.assertEqual(r["status"], "info", value)
+            self.assertIn(f"family default ({key})", r["note"])
             self.assertNotIn("vfb_vs_vref_pct", r["delta"])
 
     def test_family_default_reference_is_info(self):
