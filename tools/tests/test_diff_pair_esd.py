@@ -120,7 +120,7 @@ class DiffPairEsdCredit(unittest.TestCase):
             self.assertEqual(pairs[key]["esd_protection"], ["U4"])
 
     def test_spice_source_on_a_pair_is_not_protection(self):
-        # Simulation_SPICE:VSIN classifies as a varistor by its V reference; it is a source.
+        # A Simulation_SPICE:VSIN typed varistor (as older outputs have it) is a source.
         srcs = [dict(_comp(r, "varistor", "VSIN", "Simulation_SPICE:VSIN",
                            [("1", "~", "passive"), ("2", "~", "passive")]), in_bom=False)
                 for r in ("V1", "V2")]

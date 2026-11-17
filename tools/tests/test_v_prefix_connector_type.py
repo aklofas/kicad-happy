@@ -1,6 +1,6 @@
 # tools/tests/test_v_prefix_connector_type.py
-"""A V reference reads as a varistor, but a V-prefixed header, connector or jumper is the
-part its library and footprint say it is. A real varistor stays a varistor."""
+"""A V-prefixed header, connector or jumper is the part its library and footprint say it
+is. A real varistor stays a varistor."""
 import sys, unittest
 from pathlib import Path
 SCRIPTS = Path(__file__).resolve().parents[2] / "skills" / "kicad" / "scripts"

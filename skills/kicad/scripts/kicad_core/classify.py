@@ -77,6 +77,13 @@ _SYMBOL_DESIGNATOR = (
     (re.compile(r'^q(_|$)|(?<![a-z])(npn|pnp|nmos|pmos|n?jfet|pjfet|mosfet|bjt)(?![a-z])'), "Q"),
 )
 _NOT_A_DESIGNATOR_SYMBOL = re.compile(r'varistor|thermistor|ntc|ptc|fuse|ldr')
+# Varistor words and part-number families: EPCOS S14K/B722, Panasonic ERZ-V/ERZE and ZNR,
+# TVR, Littelfuse V..LA, Bourns CG0603MLC, and the nDnnnK disc code (07D471K, 7D471K).
+_VARISTOR_WORD = re.compile(r'varistor|voltage.dependent|(?<![a-z])(mov|vdr|tmov|znr)(?![a-z])'
+                            r'|(?<![a-z0-9])(\d{1,2}d\d{3}k|s\d{2}k\d{2,3}|b722\d|erz-?[ve]\d|tvr\d'
+                            r'|v\d{2,4}la\d|cg\d{4}mlc)')
+_SPICE_SOURCE_SYMBOL = re.compile(r'^[vi](dc|ac|sin|pulse|pwl|am|exp|sffm|trnoise|trrandom|source)(?![a-z])')
+_LOGIC_IC_VALUE = re.compile(r'^(sn|mc|cd|hef|hc|hd|m)?(74|40|45)[a-z]{0,3}\d{2,}(?!\s*m?a\b)')
 
 
 def _symbol_name(lib_low: str) -> tuple[str, str]:
@@ -102,6 +109,36 @@ def _symbol_designator(lib_low: str) -> str | None:
     if nick.startswith("transistor"):
         return "Q"
     return None
+
+
+def _v_letter_part(prefix: str, lib_low: str, val_low: str, fp_low: str, desc_low: str,
+                   pins: list | None) -> str | None:
+    """What a part whose type comes from a bare V reference letter is. The letter alone does
+    not make a varistor (KiCad's varistor is RV, its V symbols are sources): a varistor word
+    in the symbol, value, footprint or description does (None keeps varistor). Otherwise a
+    SPICE source is "other"; a symbol that names a letter returns that letter; a logic,
+    protection or other IC library or a 74/40/45-family value is "ic"; GOST VD and VT name a
+    diode and a transistor on a part with at most 4 and 6 pins; an ESD/TVS/protection
+    nickname or value left over is "ic". A part nothing names is "other"."""
+    nick, sym = _symbol_name(lib_low)
+    if _VARISTOR_WORD.search(" ".join((lib_low, val_low, fp_low, desc_low))) or sym == "vr":
+        return None
+    if _SPICE_SOURCE_SYMBOL.match(sym):
+        return "other"
+    letter = _symbol_designator(lib_low)
+    if letter:
+        return letter
+    if (nick in ("74xx", "4xxx", "reference_voltage", "power_protection")
+            or nick.startswith(_IC_LIB_PREFIXES) or _LOGIC_IC_VALUE.match(val_low)):
+        return "ic"
+    if prefix == "VD" and (pins is None or len(pins) <= 4):
+        return "D"
+    if prefix == "VT" and (pins is None or len(pins) <= 6):
+        return "Q"
+    # An ESD / TVS array (USBLC6-2 on a VD reference) is an IC, as on a U reference
+    if any(w in nick or w in val_low for w in ("esd", "tvs", "protection")):
+        return "ic"
+    return "other"
 
 
 def classify_component(ref: str, lib_id: str, value: str, is_power: bool = False,
@@ -241,6 +278,14 @@ def classify_component(ref: str, lib_id: str, value: str, is_power: bool = False
                     or any(x in val_low for x in ("ams1117", "lm78", "lm317",
                                                    "ld1117", "lm1117", "ap1117"))):
                 return "ic"
+            if prefix == "V":
+                part = _v_letter_part(prefix, lib_low, val_low, fp_low,
+                                      (description or "").lower(), pins)
+                if part in type_map:
+                    return classify_component(part + "1", lib_id, value, False, footprint,
+                                              in_bom, description, pins)
+                if part:
+                    return part
         if result == "transformer":
             # Common-mode chokes — classify as inductor, not transformer
             if any(x in val_low for x in ("cmc", "common mode", "common_mode",
@@ -289,7 +334,7 @@ def classify_component(ref: str, lib_id: str, value: str, is_power: bool = False
         # an IC, not a fuse — PP-001 must not bridge it.
         if result == "fuse":
             if (lib_low.startswith(("74xx", "4xxx", "logic", "amplifier", "interface"))
-                    or re.match(r'^(sn|mc|cd|hef|hc|hd|m)?(74|40|45)[a-z]{0,3}\d{2,}(?!\s*m?a\b)', val_low)):
+                    or _LOGIC_IC_VALUE.match(val_low)):
                 return "ic"
         return result
 
@@ -458,7 +503,7 @@ def classify_component(ref: str, lib_id: str, value: str, is_power: bool = False
                 # An F-prefixed logic/analog IC (74LS32 as F1, seen in the
                 # corpus) is an IC, not a fuse — PP-001 must not bridge it.
                 if (lib_lower.startswith(("74xx", "4xxx", "logic", "amplifier", "interface"))
-                        or re.match(r'^(sn|mc|cd|hef|hc|hd|m)?(74|40|45)[a-z]{0,3}\d{2,}(?!\s*m?a\b)', val_lower)):
+                        or _LOGIC_IC_VALUE.match(val_lower)):
                     return "ic"
             if result == "capacitor":
                 if "shield" in lib_lower or "clip" in lib_lower:
@@ -476,6 +521,13 @@ def classify_component(ref: str, lib_id: str, value: str, is_power: bool = False
                         or any(x in val_lower for x in ("ams1117", "lm78", "lm317",
                                                          "ld1117", "lm1117", "ap1117"))):
                     return "ic"
+                part = _v_letter_part(prefix, lib_lower, val_lower, fp_lower,
+                                      (description or "").lower(), pins)
+                if part in type_map:
+                    return classify_component(part + "1", lib_id, value, False, footprint,
+                                              in_bom, description, pins)
+                if part:
+                    return part
             if result == "ic":
                 if "bjt" in lib_lower or "transistor" in lib_lower:
                     return "transistor"

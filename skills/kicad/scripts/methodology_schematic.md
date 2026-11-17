@@ -523,7 +523,7 @@ Pin names are normalized (trailing digits stripped: `FB1` → `FB`, `SW2` → `S
 
 Identifies:
 - **TVS diodes**: Diode type with `"tvs"`, `"esd"`, `"transient"` in lib_id/value
-- **Varistors/MOVs**: Varistor type or `V` prefix
+- **Varistors/MOVs**: Varistor type: an RV, VAR or MOV reference, or a V reference whose symbol, value, footprint or description names a varistor
 - **Polyfuses/PTCs**: Thermistor type with `"fuse"`, `"polyfuse"`, `"pptc"` keywords
 - **ESD protection ICs**: IC type with ESD-related keywords (TI TPD series, ON Semi, etc.)
 - **Series termination resistors**: R ≤ 100Ω on high-speed nets (USB, CAN, Ethernet)

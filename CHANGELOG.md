@@ -18,6 +18,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Existing datasheet extraction caches are re-scored with the current rubric when read; a score can only go down.
 - The Codex plugin listing has an icon. (#21)
 - RF matching networks are found from antenna, SMA, U.FL and MMCX connectors, not from small capacitors, resistors and inductors whose symbol name contains "Small". Most earlier matching-network reports came from those parts and are gone.
+- Parts with a V reference (V1, VD1, VT1, VIC5) are typed from their symbol. SPICE voltage sources are no longer reported as varistors or protection devices. Diodes, transistors, LEDs and logic ICs keep their own type. A part counts as a varistor only when its symbol, value, footprint or description says so.
 
 ### Fixed
 
