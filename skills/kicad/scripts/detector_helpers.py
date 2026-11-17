@@ -6,6 +6,7 @@ domain_detectors.py to eliminate boilerplate and reduce copy-paste risk.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 
 from kicad_core.classify import classify_ic_function
@@ -396,3 +397,23 @@ def is_addressable_led(comp: dict) -> bool:
     val = (comp.get("value") or "").lower()
     lib = (comp.get("lib_id") or "").lower()
     return any(k in val or k in lib for k in _ADDRESSABLE_LED_WORDS)
+
+
+# TVS series named without a protection word: Vishay/ST SMF, ST SM4T-SM15T, P4KE, SMCJ/SMDJ/SMLJ,
+# 1.5SMC, 5KP and Vishay TPSMA-TPSMP. Not a bare SMA/SMB/SMC: those name rectifier packages too.
+_TVS_FAMILIES = re.compile(r"(?<![a-z0-9])(?:smf\d|sm[468]t\d|sm15t\d|p4ke\d|smcj\d|smdj\d|smlj\d"
+                           r"|1\.5smc\d|5kp\d|tpsm[abcp]\d)")
+# What a description or symbol keywords call a clamp diode. Not a bare "ESD": "ESD sensitive"
+# describes the part being protected.
+_TVS_WORDS = re.compile(r"\btvs\b|transient[- ]?voltage[- ]?suppress|\btransil\b|transzorb"
+                        r"|\besd (?:protection|suppress|diode)")
+
+
+def is_tvs_diode(comp: dict) -> bool:
+    """A TVS or ESD clamp diode: a protection name in its value, lib_id or MPN, a TVS series,
+    or a description or symbol keywords that call it one."""
+    name = " ".join((comp.get("value") or "", comp.get("lib_id") or "", comp.get("mpn") or "")).lower()
+    if any(k in name for k in _PROTECTION_KEYWORDS) or _TVS_FAMILIES.search(name):
+        return True
+    words = " ".join((comp.get("description") or "", comp.get("keywords") or "")).lower()
+    return bool(_TVS_WORDS.search(words))

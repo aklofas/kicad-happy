@@ -5,6 +5,7 @@ import math
 import re
 import sys
 from kicad_core.diagnostics import record
+from detector_helpers import is_tvs_diode
 from kicad_core.classify import is_active_low_enable, is_touch_pad
 from kicad_types import (
     AnalysisContext,
@@ -2602,10 +2603,7 @@ def analyze_usb_compliance(ctx: AnalysisContext,
                 if not pc:
                     continue
                 if pc["type"] == "diode":
-                    val_lower = pc.get("value", "").lower()
-                    lib_lower = pc.get("lib_id", "").lower()
-                    if any(k in val_lower or k in lib_lower
-                           for k in ("tvs", "esd", "smaj", "smbj", "p6ke")):
+                    if is_tvs_diode(pc):
                         has_esd = True
                 elif pc["type"] == "ic":
                     # ESD arrays (USBLC6 etc.) protect VBUS through

@@ -30,7 +30,7 @@ from kicad_core.netnames import (
 from kicad_core.netquery import build_bridge_facts, build_ref_pins, conductor_of, tie_conductors
 from kicad_types import AnalysisContext
 from finding_schema import make_provenance, make_finding, Det
-from detector_helpers import index_two_pin_components, get_components_by_type, get_unique_ics
+from detector_helpers import index_two_pin_components, get_components_by_type, get_unique_ics, is_tvs_diode
 from detector_helpers import group_members, group_part, group_reps, group_value, parallel_groups
 
 from lookup_helpers import get_facts, has_data, best, facts_trusted
@@ -2630,18 +2630,15 @@ def detect_protection_devices(ctx: AnalysisContext) -> list[dict]:
     """Detect protection devices (TVS, ESD, Schottky, fuses, etc.)."""
     protection_devices: list[dict] = []
     protection_types = ("diode", "varistor", "surge_arrester")
-    tvs_keywords = ("tvs", "esd", "pesd", "prtr", "usblc", "sp0", "tpd", "ip4", "rclamp",
-                     "smaj", "smbj", "p6ke", "1.5ke", "lesd", "nup")
     schottky_keywords = ("schottky", "d_schottky")
 
     for comp in ctx.components:
         if comp["type"] not in protection_types:
             continue
-        val = comp.get("value", "").lower()
         lib = comp.get("lib_id", "").lower()
         desc = comp.get("description", "").lower()
 
-        is_tvs = comp["type"] == "diode" and any(k in val or k in lib for k in tvs_keywords)
+        is_tvs = comp["type"] == "diode" and is_tvs_diode(comp)
         is_schottky = comp["type"] == "diode" and any(k in lib or k in desc for k in schottky_keywords)
         is_non_diode_protection = comp["type"] in ("varistor", "surge_arrester")
 
@@ -3418,9 +3415,10 @@ _ZENER_1N53 = re.compile(r"1n53[3-8]\d")
 
 
 def _is_clamp_diode(comp: dict) -> bool:
-    """A zener or TVS by its value or lib_id."""
+    """A zener by its value or lib_id, or a TVS (``is_tvs_diode``)."""
     text = (comp.get("value", "") + " " + comp.get("lib_id", "")).lower()
-    return any(w in text for w in _CLAMP_DIODE_WORDS) or bool(_ZENER_1N53.search(text))
+    return (any(w in text for w in _CLAMP_DIODE_WORDS) or bool(_ZENER_1N53.search(text))
+            or is_tvs_diode(comp))
 
 
 def _diode_terminal_nets(ctx: AnalysisContext, ref: str) -> tuple[str | None, str | None]:
