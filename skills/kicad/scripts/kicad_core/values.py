@@ -55,6 +55,18 @@ _VALUE_THEN_FIELDS = re.compile(
 # KiCad reads P as peta; no capacitor is petafarads.
 _UPPER_PREFIX = re.compile(r"([0-9.]*[0-9])([NUP])([0-9]{0,2})")
 _UPPER_PREFIX_TYPES = {"capacitor": "NUP", "inductor": "NU"}
+# A value written the way KiCad's library symbols are named: the type letter, then the value,
+# then package or rating fields ("R_5k1_0402", "R-5k1-0402", "R5k1", "C_100n_0402"), or a value
+# with package fields and no letter ("10k_0603"). The value field needs a prefix or unit letter,
+# so a package code ("R_0603") or a plain number ("R_100") is not read as a value.
+_TYPE_LETTER = {"resistor": "R", "capacitor": "C", "inductor": "L"}
+_FIELD_VALUE = {
+    "resistor": re.compile(r"[0-9]+(?:\.[0-9]+)?(?:[kKMmR][0-9]*R?|Ω|[Oo]hms?)(?:Ω|[Oo]hms?)?"),
+    "capacitor": re.compile(r"[0-9]+(?:\.[0-9]+)?(?:[pnuNUP][0-9]*F?|F)"),
+    "inductor": re.compile(r"[0-9]+(?:\.[0-9]+)?(?:[pnumNU][0-9]*H?|H)"),
+}
+# "10kR", "4k7R", "100mR": an SI prefix followed by R for ohms.
+_PREFIX_THEN_R = re.compile(r"([0-9.]*[0-9][kKmMG][0-9]*)[Rr]")
 _MANTISSA = re.compile(r"[+-]?[0-9][0-9.,]*|[+-]?[.,][0-9][0-9.,]*")
 
 
@@ -122,6 +134,9 @@ def parse_value(value_str: str, component_type: str | None = None) -> float | No
     exponent ("1e-6") is already in farads. A lowercase f is femto when a unit
     follows ("10fF") or the part is typed and not a capacitor. Uppercase N/U/P
     are nano/micro/pico on a capacitor and N/U on an inductor ("100N", "4U7").
+    A typed resistor, capacitor or inductor written like a library symbol name
+    reads its value field ("R_5k1_0402", "C_100n_0402", "10k_0603"); an SI prefix
+    followed by R is ohms ("10kR", "100mR") on any part but a capacitor or inductor.
     """
     try:
         return _parse_value(value_str, component_type)
@@ -136,6 +151,30 @@ def ambiguous_separator(value_str: str) -> bool:
     except AmbiguousValueSeparator:
         return True
     return False
+
+
+def _symbol_field_value(value: str, component_type: str | None) -> str:
+    """The value field of a symbol-style value ("R_5k1_0402" -> "5k1"), else *value*."""
+    letter = _TYPE_LETTER.get(component_type)
+    if not letter:
+        return value
+    glued = False
+    sep, body = "_", value
+    if len(value) > 1 and value[0] == letter:
+        if value[1] in "_-":
+            sep, body = value[1], value[2:]
+        else:
+            glued, body = True, value[1:]
+    elif "_" not in value:
+        return value
+    field = body.split(sep)[0]
+    if not _FIELD_VALUE[component_type].fullmatch(field):
+        return value
+    # Without a separator the letter may be the decimal mark of a European value ("R330" is
+    # 0.33 ohm), so "R5k1" needs an SI prefix after the letter.
+    if glued and not re.search(r"[kKMmpnuNUP]", field):
+        return value
+    return field
 
 
 def _parse_value(value_str: str, component_type: str | None) -> float | None:
@@ -153,6 +192,8 @@ def _parse_value(value_str: str, component_type: str | None) -> float | None:
     # The split on spaces below would leave "600 Ohm @ 100MHz" as 600.
     if _IMPEDANCE_AT.search(value_str):
         return None
+
+    value_str = _symbol_field_value(value_str.strip(), component_type)
 
     # Strip tolerance, voltage rating, package, and other suffixes
     # Common formats: "680K 1%", "220k/R0402", "22uF/6.3V/20%/X5R/C0603"
@@ -201,8 +242,13 @@ def _parse_value(value_str: str, component_type: str | None) -> float | None:
     s = s.rstrip("FHΩVfhv%")         # strip trailing unit letters
     unit_tail = unit_tail[len(s):]
 
-    if not s:
+    if not s or "_" in s:
+        # float() reads "330_0402" as 3300402: an underscore separates fields, never digits.
         return None
+    if component_type not in ("capacitor", "inductor"):
+        prefix_r = _PREFIX_THEN_R.fullmatch(s)
+        if prefix_r:
+            s = prefix_r.group(1)
     upper = _UPPER_PREFIX.fullmatch(s)
     # Digits glued to a voltage ("1N50V", "10U16V") are the rating, not fraction digits.
     if (upper and upper.group(2) in _UPPER_PREFIX_TYPES.get(component_type, "")

@@ -145,6 +145,44 @@ class ValueNotation(unittest.TestCase):
         self.check([("100 750mW", "resistor", 100.0), ("600 200ma", "ferrite_bead", 600.0),
                     ("47 100V", "capacitor", 47e-12)])
 
+    def test_symbol_name_value_forms(self):
+        self.check([("R5k1", "resistor", 5100.0), ("R_5k1_0402", "resistor", 5100.0),
+                    ("R-5k1-0402", "resistor", 5100.0), ("R10K", "resistor", 1e4),
+                    ("R_100R_0603", "resistor", 100.0), ("R_0R01_1206", "resistor", 0.01),
+                    ("10k_0603", "resistor", 1e4), ("C_100n_0402", "capacitor", 1e-7),
+                    ("100n_0402", "capacitor", 1e-7), ("C10nF", "capacitor", 1e-8),
+                    ("C_22u_10V_0402", "capacitor", 22e-6), ("0.1uF_0603_16V", "capacitor", 1e-7),
+                    ("L_10u", "inductor", 1e-5), ("6.8uH_0.6A_4018", "inductor", 6.8e-6)])
+
+    def test_prefix_then_ohm_R(self):
+        self.check([("5.1kR", "resistor", 5100.0), ("5k1R 1%", "resistor", 5100.0),
+                    ("12kR 1%", "resistor", 12000.0), ("4k7R", "resistor", 4700.0),
+                    ("100mR", "resistor", 0.1), ("1MR", "resistor", 1e6), ("12kR", None, 12000.0)])
+
+    def test_symbol_name_forms_that_stay_unread(self):
+        for text, ctype in (("R_0603", "resistor"), ("R_100", "resistor"), ("R_Small", "resistor"),
+                            ("R2R", "resistor"), ("C0G", "capacitor"), ("R_10k_0402", "capacitor"),
+                            ("C_100n", "resistor"), ("9_R_01X10", "resistor"), ("9_R_01X10", None)):
+            self.assertIsNone(parse_value(text, component_type=ctype), msg=(text, ctype))
+        # Without a separator the letter is a European decimal mark unless an SI prefix follows.
+        self.check([("R330Ω", "resistor", 0.33), ("R47", "resistor", 0.47)])
+
+    def test_package_only_symbol_names_read_no_value(self):
+        for text, ctype in (("R_0603", "resistor"), ("C_0805_2012Metric", "capacitor"),
+                            ("L_1210", "inductor")):
+            self.assertIsNone(parse_value(text, component_type=ctype), msg=(text, ctype))
+
+    def test_underscore_is_not_a_digit_separator(self):
+        for text, ctype in (("330_0402", "resistor"), ("4_100K", "resistor_network"),
+                            ("32768_1206_12.5pF", "crystal"), ("1_3", "test_point"), ("1_3", None)):
+            self.assertIsNone(parse_value(text, component_type=ctype), msg=(text, ctype))
+
+    def test_notations_the_symbol_name_reader_leaves_alone(self):
+        self.check([("10k", "resistor", 1e4), ("4k7", "resistor", 4700.0), ("600R", "ferrite_bead", 600.0),
+                    ("4.7uF/16V", "capacitor", 4.7e-6), ("100nF,50V", "capacitor", 1e-7),
+                    ("10k", None, 1e4), ("4R7", "resistor", 4.7)])
+        self.assertEqual(parse_value("0R", component_type="resistor"), 0.0)
+
     def test_inductor_with_impedance_value_makes_no_lc_filter(self):
         from signal_detectors import detect_lc_filters
         comps = [{"reference": "L2", "type": "inductor", "value": "120Ohm / 100Mhz", "lib_id": "Device:L"},
