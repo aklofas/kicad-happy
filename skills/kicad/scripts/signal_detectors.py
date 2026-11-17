@@ -3350,7 +3350,13 @@ def detect_bridge_circuits(ctx: AnalysisContext) -> tuple[list[dict], set, dict]
                 continue
             if hi["source"] == lo["drain"]:
                 mid_net = hi["source"]
-                if ctx.is_power_net(hi["drain"]) or ctx.is_ground(lo["source"]):
+                # A half bridge drives a load from its middle node. Two FETs stacked in a
+                # logic gate (an NMOS NAND pull-down) share a node nothing else reaches.
+                mid = ctx.nets.get(mid_net, {})
+                if ((ctx.is_power_net(hi["drain"]) or ctx.is_ground(lo["source"]))
+                        and (mid.get("labels")
+                             or any(p["component"] not in (hi_ref, lo_ref)
+                                    for p in mid.get("pins", [])))):
                     half_bridges.append({
                         "high_side": hi_ref,
                         "low_side": lo_ref,
