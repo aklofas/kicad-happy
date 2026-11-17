@@ -21,6 +21,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Parts with a V reference (V1, VD1, VT1, VIC5) are typed from their symbol. SPICE voltage sources are no longer reported as varistors or protection devices. Diodes, transistors, LEDs and logic ICs keep their own type. A part counts as a varistor only when its symbol, value, footprint or description says so.
 - Converters whose switch pin is named OUT or VOUT (LM2596, LM2576, XL1509, LM2675 families) now report the inductor's output side as their output rail and are typed as switching regulators; on a custom symbol with no regulator word in its name they are now recognised as regulators.
 - MCU internal step-down converters (an STM32 VLXSMPS pin driving an inductor) are recorded as regulators, with their VFBSMPS net as the output rail; a microcontroller's port-G GPIOs (PG1, PG6) are no longer read as power-good pins.
+- The HX711's analog-supply regulator (an external PNP driven from its BASE pin) is recorded as an LDO with AVDD as its output, set by the 1.25 V bandgap and the feedback divider; its drop is not counted as the HX711's own dissipation, and an HX711 with the regulator unused is not listed as a regulator.
 
 ### Fixed
 

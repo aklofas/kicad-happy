@@ -158,6 +158,9 @@ _REGULATOR_VREF: dict[str, float] = {
     "LM317": 1.25,     "LM337": 1.25,
     "AMS1117": 1.25,   "AMS1085": 1.25,
     "LM1117": 1.25,
+    # Avia Semiconductor HX711 "24-Bit Analog-to-Digital Converter (ADC) for Weigh Scales" (English,
+    # no revision number): analog-supply regulator VAVDD = VBG x (R1 + R2) / R1 (p.4)
+    "HX711": 1.25,                                                 # VBG 1.25 V (Table 2 Key Electrical Characteristics, p.3)
     # REMOVED: LM78, LM79 — fixed-output only, suffix parser handles them
     # REMOVED: AP73 broad prefix — split into AP7335/AP7362/AP7363/AP7365/AP7366
     # REMOVED: AP736 broad prefix — split into AP7365/AP7366

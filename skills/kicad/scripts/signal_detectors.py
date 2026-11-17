@@ -1725,6 +1725,7 @@ class _RegulatorCandidate:
     lib_val_lower: str
     has_reg_keyword: bool
     fb_candidates: tuple = ()  # every FB/ADJ pin as (name, net), in natural name order
+    pass_controller: bool = False  # drives an external pass transistor from its BASE pin
 
 
 def detect_power_regulators(ctx: AnalysisContext, voltage_dividers: list[dict]) -> list[dict]:
@@ -1803,6 +1804,17 @@ def _is_switch_output(ctx: AnalysisContext, ref: str, net: str | None) -> bool:
             return False
         kinds.add(kind)
     return "inductor" in kinds and "diode" in kinds
+
+
+def _drives_external_pass(ctx: AnalysisContext, ref: str) -> bool:
+    """*ref*'s BASE pin drives another part: an LDO controller's external pass transistor (HX711),
+    which carries the regulator's drop instead of the IC."""
+    for pin_num, (net, _) in ctx.ref_pins.get(ref, {}).items():
+        pins = ctx.nets[net]["pins"] if net in ctx.nets else []
+        if any(p["component"] == ref and p["pin_number"] == pin_num
+               and p.get("pin_name", "").upper() == "BASE" for p in pins):
+            return any(p["component"] != ref for p in pins)
+    return False
 
 
 def _screen_regulator_candidate(ctx: AnalysisContext, ic: dict) -> _RegulatorCandidate | dict | None:
@@ -1902,6 +1914,18 @@ def _screen_regulator_candidate(ctx: AnalysisContext, ic: dict) -> _RegulatorCan
             and not vout_pin and (ic_pins.get("VFBSMPS") or (None,))[0]):
         vout_pin = ("VFBSMPS", ic_pins["VFBSMPS"][0])
 
+    # An LDO controller drives an external pass transistor from its BASE pin and senses its output
+    # through VFB (HX711: VSUP in, BASE, AVDD out, VFB). Its regulator is unused when VFB is
+    # grounded or BASE drives nothing; the part is then not a regulator.
+    pass_controller = False
+    if fb_pin and not sw_pin and "BASE" in ic_pins and "AVDD" in ic_pins:
+        if not fb_pin[1] or ctx.is_ground(fb_pin[1]) or not _drives_external_pass(ctx, ref):
+            return None
+        pass_controller = True
+        vout_pin = ("AVDD", ic_pins["AVDD"][0])
+        if not vin_pin and "VSUP" in ic_pins:
+            vin_pin = ("VSUP", ic_pins["VSUP"][0])
+
     if not fb_pin and not sw_pin and not vout_pin:
         # For pin-less ICs (legacy format), check keywords before
         # giving up — PMICs like AXP803 won't have pin data
@@ -1988,7 +2012,7 @@ def _screen_regulator_candidate(ctx: AnalysisContext, ic: dict) -> _RegulatorCan
         return None
     _opamp_adc_exclude = ("ada48", "ad8", "opa", "lm358", "lm324",
                           "lmv3", "tlv9", "mcp60", "mcp61",
-                          "hx711", "ads1", "mcp3", "max11",
+                          "ads1", "mcp3", "max11",
                           "ina21", "ina22", "ina23")
     if any(k in _part_text for k in _opamp_adc_exclude):
         return None
@@ -2022,7 +2046,7 @@ def _screen_regulator_candidate(ctx: AnalysisContext, ic: dict) -> _RegulatorCan
         ic=ic, ref=ref, ic_pins=ic_pins, fb_pin=fb_pin, sw_pin=sw_pin, vin_pin=vin_pin,
         vout_pin=vout_pin, boot_pin=boot_pin, lib_part_name=lib_part_name,
         desc_lower=desc_lower, lib_val_lower=lib_val_lower, has_reg_keyword=has_reg_keyword,
-        fb_candidates=tuple(fb_candidates),
+        fb_candidates=tuple(fb_candidates), pass_controller=pass_controller,
     )
 
 
@@ -2178,7 +2202,9 @@ def _build_regulator_record(ctx: AnalysisContext, cand: _RegulatorCandidate,
         "EN", "ENABLE", "BST", "BOOT", "PGOOD", "PG", "SS", "COMP",
         "INPUT", "OUTPUT",
     ))
-    if total_pins > 10 and reg_pin_count < total_pins * 0.2:
+    if cand.pass_controller:
+        reg_info["topology"] = "LDO"
+    elif total_pins > 10 and reg_pin_count < total_pins * 0.2:
         reg_info["topology"] = "ic_with_internal_regulator"
 
     # Detect inverting topology from part name/description or output net name. A library name
@@ -2566,7 +2592,7 @@ def _estimate_regulator_dissipation(ctx: AnalysisContext, power_regulators: list
         v_cfg = ctx.config_rail_voltage(reg.get("output_rail"))
         if v_cfg is not None:
             vout = v_cfg
-        if topology == "LDO" and vin_rail and vout:
+        if topology == "LDO" and vin_rail and vout and not _drives_external_pass(ctx, reg["ref"]):
             vin = ctx.rail_voltage_or(vin_rail, _infer_rail_voltage)
             # A negative LDO (-12 V in, -5 V out) drops |Vin| - |Vout|; both rails share a sign.
             if vin and vin * vout > 0 and abs(vin) > abs(vout):
