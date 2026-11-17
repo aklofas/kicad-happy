@@ -781,6 +781,27 @@ def names_pchannel_fet(*names: str) -> bool:
     return any(_PCHANNEL_FET_RE.match((n or "").strip().upper()) for n in names)
 
 
+# NPN bipolar transistors, each described as NPN in KiCad's Transistor_BJT library (cited in
+# tools/tests/test_led_driver_pullup.py). A whole part number is not followed by another
+# digit, nor by "BP" (the BC846BPN / BC847BPN complementary pairs).
+_NPN_BJT_PARTS = (
+    "2N2219", "2N3055", "2N3904", "2SC1815", "BC107", "BC108", "BC109", "BC237", "BC337",
+    "BC338", "BC546", "BC547", "BC548", "BC549", "BC550", "BC817", "BC818", "BC846", "BC847",
+    "BC848", "BC849", "BC850", "BCP56", "BCX56", "BD433", "BD435", "BD437", "BD441", "DTC114E",
+    "DTC143Z", "DTC144E", "MJE13003", "MMBT2222", "MMBT3904", "MMBT5550", "MMBT5551", "MMBTA06",
+    "MMBTA42", "MPSA42", "PMBT2222", "PN2222", "PZT2222", "PZT3904", "S8050", "SS8050",
+    "TIP120", "TIP121", "TIP122", "TIP3055", "TIP41",
+)
+_NPN_BJT_RE = re.compile(
+    "(?:" + "|".join(re.escape(p) for p in sorted(_NPN_BJT_PARTS, key=len, reverse=True))
+    + r")(?![0-9])(?!BP)")
+
+
+def names_npn_bjt(*names: str) -> bool:
+    """True when a value, MPN or library symbol name starts with a known NPN part number."""
+    return any(_NPN_BJT_RE.match((n or "").strip().upper()) for n in names)
+
+
 # Current-sense amplifiers a schematic names by part number, matched where a part number
 # starts (each family is cited in tools/tests/test_sense_amp_names.py). TI's INA bases
 # INA138/139, INA168-170, INA18x-19x, INA2xx, INA30x-31x and INA38x are current-sense

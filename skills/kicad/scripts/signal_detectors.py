@@ -13,6 +13,7 @@ from kicad_core.parts import (
     _LOAD_TYPE_KEYWORDS,
     is_load_switch_part,
     names_load_switch,
+    names_npn_bjt,
     names_pchannel_fet,
     names_sense_amp,
     is_instrumentation_amp,
@@ -3655,6 +3656,20 @@ def _names_pchannel(comp: dict) -> bool:
     return bool(_PCH_DESC.search(desc)) and not _NCH_DESC.search(desc)
 
 
+_NPN_WORD = re.compile(r"(?<![a-z])npn(?![a-z])")
+_PNP_WORD = re.compile(r"(?<![a-z])pnp(?![a-z])")
+
+
+def _names_npn(comp: dict) -> bool:
+    """An NPN transistor by its lib_id, keywords, description or value text, or by a known NPN
+    part number. A part whose text also names PNP (a complementary pair) reads neither."""
+    text = " ".join(comp.get(k) or "" for k in ("lib_id", "keywords", "description", "value")).lower()
+    if _PNP_WORD.search(text):
+        return False
+    return bool(_NPN_WORD.search(text)) or names_npn_bjt(
+        comp.get("value", ""), comp.get("mpn", ""), symbol_name(comp.get("lib_id", "")))
+
+
 def detect_transistor_circuits(ctx: AnalysisContext, matched_fets: set, fet_pins: dict) -> list[dict]:
     """Detect transistor circuit configurations (MOSFETs and BJTs)."""
     transistor_circuits: list[dict] = []
@@ -4048,10 +4063,18 @@ def enrich_transistor_led_drivers(ctx: AnalysisContext, transistor_circuits: lis
         # A drain or collector on ground, or an N-channel drain on a supply (a high-side
         # NMOS, a drain tied to the rail), is not an LED's switch: the resistors there
         # belong to that rail's own power LED. A P-channel drain may be a switched rail
-        # (a high-side load switch and its indicator). BJT polarity is not read here.
+        # (a high-side load switch and its indicator). An NPN collector on a supply is an
+        # emitter follower: only an LED on its emitter is its own. A BJT whose polarity is
+        # not read keeps the collector reading.
         if ctx.is_ground(load_net) or (is_mosfet and not tc.get("is_pchannel")
                                        and ctx.is_power_net(load_net)):
             continue
+        emitter_led_only = None
+        if (is_bjt and ctx.is_power_net(load_net)
+                and _names_npn(ctx.comp_lookup.get(tc["reference"], {}))):
+            emitter_led_only = tc.get("emitter_net")
+            if not emitter_led_only or ctx.is_ground(emitter_led_only):
+                continue
         # Look at components on the load net for a resistor
         load_comps = ctx.nq.components_on_net(load_net, exclude_refs={tc["reference"]})
         for dc in load_comps:
@@ -4087,6 +4110,8 @@ def enrich_transistor_led_drivers(ctx: AnalysisContext, transistor_circuits: lis
                     # Verify LED actually has a pin on other_net
                     led_n1, led_n2 = ctx.get_two_pin_nets(oc["reference"])
                     if led_n1 != other_net and led_n2 != other_net:
+                        continue
+                    if emitter_led_only and emitter_led_only not in (led_n1, led_n2):
                         continue
                     led_comp = ctx.comp_lookup.get(oc["reference"], {})
                     # Find what power rail the LED's other pin connects to
