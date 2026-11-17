@@ -720,14 +720,14 @@ _LED_IR_WORD = re.compile(r"(?<![a-z])ir(?!q|nas)")
 
 # Words of a value or symbol name: split at separators, digits and CamelCase ("BlueLED",
 # "PCAmber", "warmWhite", "LED_Red_0805").
-_LED_WORD = re.compile(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+")
+_WORD_TOKEN = re.compile(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+")
 _LED_COLOR_ALIAS = {"infrared": "ir", "ultraviolet": "uv"}
 
 
 def _led_color_words(text: str) -> set[str]:
     """Colour candidates of *text*; a word may carry an "LED" prefix or suffix ("LEDRED", "redled")."""
     words = set()
-    for word in _LED_WORD.findall(text):
+    for word in _WORD_TOKEN.findall(text):
         word = word.lower()
         if word != "led":
             if word.startswith("led"):
