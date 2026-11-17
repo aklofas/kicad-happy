@@ -20,6 +20,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - RF matching networks are found from antenna, SMA, U.FL and MMCX connectors, not from small capacitors, resistors and inductors whose symbol name contains "Small". Most earlier matching-network reports came from those parts and are gone.
 - Parts with a V reference (V1, VD1, VT1, VIC5) are typed from their symbol. SPICE voltage sources are no longer reported as varistors or protection devices. Diodes, transistors, LEDs and logic ICs keep their own type. A part counts as a varistor only when its symbol, value, footprint or description says so.
 - Converters whose switch pin is named OUT or VOUT (LM2596, LM2576, XL1509, LM2675 families) now report the inductor's output side as their output rail and are typed as switching regulators; on a custom symbol with no regulator word in its name they are now recognised as regulators.
+- MCU internal step-down converters (an STM32 VLXSMPS pin driving an inductor) are recorded as regulators, with their VFBSMPS net as the output rail; a microcontroller's port-G GPIOs (PG1, PG6) are no longer read as power-good pins.
 
 ### Fixed
 
@@ -42,6 +43,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Wireless-module, RF-chain, certification and isolation detection read a rescued symbol by its own part name: a charger, key switch or crystal rescued from a board named after its radio (ESP32, nRF52) is no longer reported as a wireless module or RF transceiver.
 - A regulator is no longer hidden, or marked inverting, by the name of the library it sits in: a project library named after its board or main part (an ESP32 Feather, an ADS1262 board, an inverter) no longer drops its LDOs and converters or flips a buck's output negative. ADC detection likewise reads the part, not its library's name.
 - DACs (DAC53401, DAC8551), GaN power stages (EPC2310x) and MOSFET gate drivers (NCP81155, ADP3110A, LTC7061) are no longer listed as regulators.
+- A regulator's switch node is no longer reported as a rail with no source (RS-001), and a regulator is no longer listed as a sequencing-sensitive load of its own output (PS-001).
 - TV-001 counts a stacked via column (vias at one point on one net, layer to layer) as one via, weighted by its narrowest drill, so an HDI thermal pad is no longer graded as if each layer pair were a separate via.
 - A schematic whose sheets are placed hundreds of times is read much faster: the time no longer grows with the square of the instance count. Results are unchanged.
 - Writing a large analysis with `--output` needs much less memory (a 470 MB schematic result peaked at 3 GB, now under 1 GB); the file is unchanged.

@@ -1154,6 +1154,8 @@ def validate_power_sequencing(
             if net_name != output_rail:
                 continue
             for p in net_info.get('pins', []):
+                if p['component'] == ref:
+                    continue  # a regulator is not sequenced by its own output
                 comp = ctx.comp_lookup.get(p['component'])
                 if comp and match_ic_keywords(comp, _SEQUENCING_SENSITIVE_KEYWORDS):
                     sensitive_loads.append(p['component'])

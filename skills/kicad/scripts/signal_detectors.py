@@ -21,7 +21,7 @@ from kicad_core.parts import (
     default_switching_freq,
     match_known_switching as _match_known_switching,
 )
-from kicad_core.classify import classify_jumper_default_state
+from kicad_core.classify import classify_jumper_default_state, gpio_port_pins
 from kicad_core.values import format_frequency as _format_frequency, parse_value
 from kicad_core.netnames import (
     is_power_net_name,
@@ -1762,6 +1762,18 @@ _SWITCH_OUT_GND_PINS = frozenset({"GND", "PGND", "AGND", "VSS"})
 _SWITCH_OUT_VIN_PINS = frozenset({"VIN", "VI", "IN", "PVIN", "AVIN", "INPUT"})
 
 
+def _drives_smps_inductor(ctx: AnalysisContext, ref: str, net: str | None) -> bool:
+    """An MCU's internal-SMPS switch pin in use: its net carries an inductor, is not a supply
+    rail and holds no other pin of the part (with the SMPS bypassed, VLXSMPS is tied to VDD)."""
+    if (not net or ctx.is_ground(net) or _parse_voltage_from_net_name(net) is not None
+            or ctx.is_power_net(net, by_pins=False)):
+        return False
+    if any(p["component"] == ref and not (p.get("pin_name") or "").upper().startswith("VLX")
+           for p in ctx.nets.get(net, {}).get("pins", [])):
+        return False
+    return bool(ctx.nq and ctx.nq.inductors_on_net(net, exclude_ref=ref))
+
+
 def _is_switch_output(ctx: AnalysisContext, ref: str, net: str | None) -> bool:
     """*net* carries an inductor and a diode besides *ref*, no capacitor to ground, and is not a
     named power rail or one of *ref*'s own input or ground nets. A capacitor to the net of
@@ -1844,6 +1856,7 @@ def _screen_regulator_candidate(ctx: AnalysisContext, ic: dict) -> _RegulatorCan
     fb_candidates = []
 
     has_gpio_ports = any(_GPIO_PORT_PIN.match(n) for n in ic_pins)
+    is_mcu = bool(gpio_port_pins(ic_pins))
     for pname, (net, pnum) in ic_pins.items():
         # Use startswith for pins that may have numeric suffixes (FB1, SW2, etc.)
         pn_base = pname.rstrip("0123456789").rstrip("_")  # Strip trailing digits and underscores (FB_1→FB)
@@ -1856,17 +1869,20 @@ def _screen_regulator_candidate(ctx: AnalysisContext, ic: dict) -> _RegulatorCan
             # Composite names like "FB/VOUT" also set vout_pin
             if not vout_pin and pn_parts & _VOUT_PIN_NAMES:
                 vout_pin = (pname, net)
-        elif pn_parts & {"SW", "PH", "LX"}:
+        elif pn_parts & {"SW", "PH", "LX"} or (pn_base in ("VLX", "VLXSMPS")
+                                               and _drives_smps_inductor(ctx, ref, net)):
             if not sw_pin:
                 sw_pin = (pname, net)
         elif pname in ("EN", "ENABLE", "ON", "~{SHDN}", "SHDN", "~{EN}") or \
              (pn_base == "EN" and len(pname) <= 4):
             en_pin = (pname, net)
-        elif pn_parts & {"VIN", "VI", "IN", "PVIN", "AVIN", "INPUT"}:
+        elif pn_parts & {"VIN", "VI", "IN", "PVIN", "AVIN", "INPUT"} or pname == "VDDSMPS":
             vin_pin = (pname, net)
         elif pn_parts & _VOUT_PIN_NAMES:
             vout_pin = (pname, net)
-        elif pn_parts & _BOOTSTRAP_PIN_TOKENS:
+        elif pn_parts & _BOOTSTRAP_PIN_TOKENS and not is_mcu:
+            # On a microcontroller a BOOTn pin selects the boot mode or bootstraps a gate
+            # driver (STSPIN32); it is not the regulator's bootstrap
             boot_pin = (pname, net)
 
     # Order several FB pins by name (ADJ1 before ADJ2), not by net enumeration order
@@ -1879,6 +1895,12 @@ def _screen_regulator_candidate(ctx: AnalysisContext, ic: dict) -> _RegulatorCan
     if (vout_pin and not sw_pin and vout_pin not in fb_candidates
             and _is_switch_output(ctx, ref, vout_pin[1])):
         sw_pin, vout_pin = vout_pin, None
+
+    # An MCU SMPS senses its output on VFBSMPS, past every inductor of its filter (STM32WB:
+    # VLXSMPS -> 10 nH -> 10 uH -> VFBSMPS)
+    if (sw_pin and sw_pin[0].rstrip("0123456789").rstrip("_") in ("VLX", "VLXSMPS")
+            and not vout_pin and (ic_pins.get("VFBSMPS") or (None,))[0]):
+        vout_pin = ("VFBSMPS", ic_pins["VFBSMPS"][0])
 
     if not fb_pin and not sw_pin and not vout_pin:
         # For pin-less ICs (legacy format), check keywords before
@@ -4804,6 +4826,9 @@ def audit_rail_sources(ctx: AnalysisContext,
         out = reg.get("output_rail") or reg.get("vout_net")
         if out:
             reg_output_nets.add(out)
+        # a regulator drives its own switch node
+        if reg.get("sw_net"):
+            reg_output_nets.add(reg["sw_net"])
 
     # Build a quick map of net → list of (neighbour, state, jumper_ref) tuples
     # for solder jumpers that straddle the net.

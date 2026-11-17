@@ -6,7 +6,7 @@ import re
 import sys
 from kicad_core.diagnostics import record
 from detector_helpers import is_tvs_diode
-from kicad_core.classify import is_active_low_enable, is_touch_pad
+from kicad_core.classify import gpio_port_pins, is_active_low_enable, is_touch_pad
 from kicad_types import (
     AnalysisContext,
 )
@@ -1739,11 +1739,13 @@ def analyze_power_sequencing(ctx: AnalysisContext,
 
             dependencies.append(dep_entry)
 
-        # Find PG/PGOOD pin (exclude ground pads like PGND, AGND, EP/GND)
+        # Find PG/PGOOD pin (exclude ground pads like PGND, AGND, EP/GND, and a
+        # microcontroller's port-G GPIOs)
+        gpio_pins = gpio_port_pins(ic_pins)
         for pname, (net, pnum) in ic_pins.items():
             pn_upper = pname.upper()
             # Skip ground/pad pins that false-match on "PG" substring
-            if any(g in pn_upper for g in ("GND", "GROUND", "PAD", "EP")):
+            if any(g in pn_upper for g in ("GND", "GROUND", "PAD", "EP")) or pname in gpio_pins:
                 continue
             if any(k in pn_upper for k in ("PG", "PGOOD", "POWER_GOOD", "POK")):
                 pg_entry: dict = {

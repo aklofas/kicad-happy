@@ -34,6 +34,18 @@ def is_active_low_enable(pin_name: str) -> bool:
     return pin_name.startswith("~") and "SHDN" not in pin_name and "SHUTDOWN" not in pin_name
 
 
+# A GPIO pin on a port other than H (PA0, PG12); H is left out because a multi-phase
+# regulator's PH1/PH2 would match it.
+_GPIO_PORT_PIN_LETTER = re.compile(r"^P([A-GI-K])\d{1,2}$")
+
+
+def gpio_port_pins(pin_names) -> set[str]:
+    """The GPIO-named pins of a part whose such pins span two or more ports (PA0 + PB1): a
+    microcontroller. A regulator's power-good pins PG1/PG2 sit on one letter and are not GPIOs."""
+    by_name = {n: m.group(1) for n in pin_names if (m := _GPIO_PORT_PIN_LETTER.match(n.upper()))}
+    return set(by_name) if len(set(by_name.values())) >= 2 else set()
+
+
 def is_touch_pad(reference: str, value: str, footprint: str) -> bool:
     """A capacitive touch electrode: a touch marker in the footprint or value, or a TOUCH/TCH
     reference. A test-point footprint is never one, whatever its value says."""
