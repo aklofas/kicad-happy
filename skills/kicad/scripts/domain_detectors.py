@@ -15,6 +15,7 @@ import re
 from collections import Counter
 
 from kicad_types import AnalysisContext
+from schematic.erc_pins import pin_kind
 from kicad_core.classify import is_active_low_enable
 from kicad_core.parts import LED_VF_BY_COLOR, LOAD_SWITCH_KEYWORDS, led_color, lookup_regulator_vref
 from kicad_core.values import format_frequency, parse_value
@@ -2472,9 +2473,10 @@ def _classify_connector_interface(comp: dict) -> tuple[str, str]:
 
 
 def _nc_pins_only(net_info: dict | None) -> bool:
-    """True when every pin on the net is typed no-connect (an unused connector pin)."""
+    """True when every pin on the net is typed no-connect (an unused connector pin); KiCad 5
+    spells the type 'unconnected'."""
     pins = (net_info or {}).get("pins") or []
-    return bool(pins) and all(p.get("pin_type") == "no_connect" for p in pins)
+    return bool(pins) and all(pin_kind(p.get("pin_type")) == "no_connect" for p in pins)
 
 
 def audit_esd_protection(ctx: AnalysisContext,

@@ -30,6 +30,7 @@ from kicad_core.netnames import (RAIL_SIGNAL_SUFFIXES, _VOLTAGE_SIGNAL_SUFFIXES,
                                  is_pin_guarded_signal, is_power_net_name, net_leaf)
 from kicad_core.netquery import build_net_id_map as _build_net_id_map
 from kicad_core.pairing import pair_by_path
+from schematic.erc_pins import pin_kind
 from envelopes.cross_analysis import CrossAnalysisEnvelope
 from schema_codec import emit_schema
 from inputs_builder import build_inputs, build_upstream_artifact, build_compat
@@ -402,7 +403,7 @@ def check_esd_coverage_gaps(schematic: dict, pcb: dict | None, recorder=None) ->
                     or is_ground_name(net) or (is_power_net_name(net) and net not in pin_signals)):
                 continue
             nc_pins = (all_nets.get(net) or {}).get('pins') or []
-            if nc_pins and all(p.get('pin_type') == 'no_connect' for p in nc_pins):
+            if nc_pins and all(pin_kind(p.get('pin_type')) == 'no_connect' for p in nc_pins):
                 continue  # an unused pin typed no-connect, alone on its net
             if net not in protected_nets and net not in via_series:
                 unprotected_nets.append(net)
