@@ -5258,18 +5258,22 @@ def audit_rail_sources(ctx: AnalysisContext,
         power_in_pins = [p.get("component", "") + "." + p.get("pin_number", "")
                          for p in net_info.get("pins", [])
                          if p.get("pin_type") == "power_in"]
-        # A bootstrap pin on a real part is power_in but is fed by its own
-        # capacitor, not the rail; a power symbol named for the net is not one.
-        if any(p.get("pin_type") == "power_in"
-               and (p.get("component", "").startswith("#")
-                    or not _is_bootstrap_pin_name(p.get("pin_name") or ""))
-               for p in net_info.get("pins", [])):
+        # A power symbol's hidden pin is not a load, and a bootstrap pin is
+        # fed by its own capacitor, not the rail.
+        part_power_in = [p for p in net_info.get("pins", [])
+                         if p.get("pin_type") == "power_in"
+                         and not p.get("component", "").startswith("#")]
+        if any(not _is_bootstrap_pin_name(p.get("pin_name") or "")
+               for p in part_power_in):
             rs_confidence = "deterministic"
             rs_load = "carries power_in pins"
-        elif power_in_pins:
+        elif part_power_in:
             rs_confidence = "heuristic"
             rs_load = ("is named like a power rail (its only power_in pins "
                        "are bootstrap pins)")
+        elif power_in_pins:
+            rs_confidence = "heuristic"
+            rs_load = "carries only power-symbol pins (no part's power input)"
         else:
             # Admitted by its name alone (is_power_net_name): no pin on it
             # is power_in, so whether it needs a source is a guess.

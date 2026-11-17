@@ -33,6 +33,21 @@ class BootstrapOnlyRail(unittest.TestCase):
 
     def test_power_symbol_pin_named_after_a_boot_net_is_not_bootstrap(self):
         f = _rs001({"+5V_USB_BOOT": [("#PWR1", "1", "+5V_USB_BOOT", "power_in")]})["+5V_USB_BOOT"]
+        self.assertEqual(f["confidence"], "heuristic")
+        self.assertIn("carries only power-symbol pins (no part's power input)", f["description"])
+        self.assertNotIn("bootstrap", f["description"])
+
+    def test_power_symbol_only_rail_is_heuristic(self):
+        f = _rs001({"+5V": [("#PWR1", "1", "+5V", "power_in"),
+                            ("R1", "1", "1", "passive")]})["+5V"]
+        self.assertEqual(f["confidence"], "heuristic")
+        self.assertEqual(f["provenance"]["confidence"], "heuristic")
+        self.assertIn("carries only power-symbol pins (no part's power input)", f["description"])
+        self.assertEqual(f["pins"], ["#PWR1.1"])
+
+    def test_real_power_in_pin_stays_deterministic(self):
+        f = _rs001({"+5V": [("#PWR1", "1", "+5V", "power_in"),
+                            ("U1", "1", "VDD", "power_in")]})["+5V"]
         self.assertEqual(f["confidence"], "deterministic")
         self.assertIn("carries power_in pins", f["description"])
 
