@@ -1748,6 +1748,11 @@ def detect_power_regulators(ctx: AnalysisContext, voltage_dividers: list[dict]) 
     return power_regulators
 
 
+# Part-number prefixes of non-regulators with regulator-like pins: TI DACs (DAC53401, DAC8551;
+# OUT + FB), EPC ePower stages (EPC23101-EPC23104) and MOSFET gate drivers (NCP81155, ADP3110A,
+# LTC7061; SW + BST + an inductor)
+_NON_REGULATOR_PREFIX = re.compile(r"(dac\d|epc23\d|ncp8115\d|adp311\d|ltc706\d)")
+
 # A GPIO on a port other than H (PA0, PB12). On a part with such pins, PH0/PH1 are port H GPIOs,
 # not switch pins. H is left out because a multi-phase regulator's PH1/PH2 would match it.
 _GPIO_PORT_PIN = re.compile(r"^P[A-GI-K]\d{1,2}$")
@@ -1779,6 +1784,9 @@ def _screen_regulator_candidate(ctx: AnalysisContext, ic: dict) -> _RegulatorCan
                         "nucleo", "arduino", "raspberry", "teensy",
                         "feather", "pico")
     if any(k in _part_text for k in _non_reg_exclude):
+        return None
+    if any(_NON_REGULATOR_PREFIX.match(t.strip().lower())
+           for t in (ic.get("value", ""), symbol_name(ic.get("lib_id", "")))):
         return None
 
     ic_pins = {}  # pin_name -> (net_name, pin_number)
