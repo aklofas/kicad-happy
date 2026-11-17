@@ -9,6 +9,7 @@ from kicad_core.parts import lookup_regulator_vref  # noqa: E402
 from kicad_types import build_analysis_context  # noqa: E402
 from schematic.pipeline import build_rail_map  # noqa: E402
 from signal_detectors import detect_power_regulators  # noqa: E402
+from validation_detectors import validate_feedback_stability  # noqa: E402
 from what_if import _scan_fixable  # noqa: E402
 from lookup_helpers import get_facts  # noqa: E402
 from detection_schema import _recalc_regulator_feedback  # noqa: E402
@@ -118,11 +119,12 @@ class RegulatorPhases(unittest.TestCase):
         self.assertEqual(r["output_rail"], "+3V3")
 
     def test_inverting_regulator_negates_vout_and_fb_at_top_cross_reference(self):
+        # the divider's mid net X never returns to U3: FB senses its top rail, the divider is not feedback
         ctx = _ctx([("U3", "Regulator_Switching:LT3581", "LT3581", _BUCK_PINS), _INDUCTOR])
         r = detect_power_regulators(ctx, [_divider("FB", "X", "GND")])[0]
         self.assertEqual(r["topology"], "switching")
         self.assertEqual(r["inductor"], "L1")
-        self.assertEqual(r["feedback_divider"]["topology"], "fb_at_top")
+        self.assertNotIn("feedback_divider", r)
         self.assertEqual(r["output_rail"], "FB")
 
         ctx = _ctx([("U3", "Regulator_Switching:LT3581", "LT3581 inverting", _BUCK_PINS), _INDUCTOR])
@@ -345,9 +347,40 @@ class RegulatorPhases(unittest.TestCase):
                       "4": ("SHDN", "+5V"), "5": ("VIN", "+5V")}),
                     ("L1", "Device:L", "22uH", {"1": ("1", "+5V"), "2": ("2", "SW")})])
         r = detect_power_regulators(ctx, [_divider("FB", "X", "GND")])[0]
-        self.assertEqual(r["feedback_divider"]["topology"], "fb_at_top")
+        self.assertNotIn("feedback_divider", r)
         self.assertFalse(r.get("output_rail"))
         self.assertNotIn("_far_side_is_input", r)
+
+    def test_divider_hanging_from_sensed_rail_is_not_feedback(self):
+        # FB tied to +1V5; R1/R2 1k/1k make the DDR reference for U2, not U1's feedback
+        ctx = _ctx([("U1", "Custom:Buck", "TPS54202",
+                     {"1": ("VIN", "+12V"), "2": ("SW", "SW_NODE"), "3": ("FB", "+1V5"), "4": ("GND", "GND")}),
+                    ("L1", "Device:L", "4.7uH", {"1": ("1", "SW_NODE"), "2": ("2", "+1V5")}),
+                    ("R1", "Device:R", "1k", {"1": ("~", "+1V5"), "2": ("~", "DDR_VREF")}),
+                    ("R2", "Device:R", "1k", {"1": ("~", "DDR_VREF"), "2": ("~", "GND")}),
+                    ("U2", "Memory_RAM:MT41K256M16", "MT41K256M16",
+                     {"M8": ("VREFCA", "DDR_VREF"), "A9": ("VSS", "GND")})])
+        regs = detect_power_regulators(ctx, [_fb_divider("+1V5", 1000.0, 1000.0, mid="DDR_VREF")])
+        r = next(r for r in regs if r["ref"] == "U1")
+        self.assertNotIn("feedback_divider", r)
+        self.assertEqual(r["output_rail"], "+1V5")
+        self.assertEqual([f for f in validate_feedback_stability(ctx, regs) if f["rule_id"] == "FS-001"], [])
+
+    def test_def_pin_divider_is_fb_at_top_feedback(self):
+        # TPS62410 (SLVS737A pin functions): FB1 connects directly to VOUT1; DEF_1 takes the
+        # external resistor network that sets the adjustable output
+        ctx = _ctx([("U5", "Regulator_Switching:TPS62410", "TPS62410",
+                     {"1": ("VIN", "+5V"), "2": ("SW1", "SW_NODE"), "3": ("FB1", "VCC"),
+                      "4": ("DEF_1", "DEF1"), "5": ("GND", "GND")}),
+                    ("L1", "Device:L", "2.2uH", {"1": ("1", "SW_NODE"), "2": ("2", "VCC")}),
+                    ("R1", "Device:R", "100k", {"1": ("~", "VCC"), "2": ("~", "DEF1")}),
+                    ("R2", "Device:R", "56k", {"1": ("~", "DEF1"), "2": ("~", "GND")})])
+        divider = _fb_divider("VCC", 100000.0, 56000.0, mid="DEF1")
+        r = detect_power_regulators(ctx, [divider])[0]
+        self.assertEqual(r["feedback_divider"]["topology"], "fb_at_top")
+        self.assertEqual((r["feedback_divider"]["r_top"]["ref"], r["feedback_divider"]["r_bottom"]["ref"]),
+                         ("R1", "R2"))
+        self.assertEqual(r["output_rail"], "VCC")
 
     def test_three_terminal_adjustable_uses_the_out_adj_resistor(self):
         # LM317 datasheet: Vout = 1.25 V x (1 + R2/R1), R1 between OUT and ADJ

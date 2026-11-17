@@ -1744,7 +1744,7 @@ def detect_power_regulators(ctx: AnalysisContext, voltage_dividers: list[dict]) 
             continue
         power_regulators.append(_build_regulator_record(ctx, cand, voltage_dividers))
 
-    _cross_reference_feedback_dividers(power_regulators, voltage_dividers)
+    _cross_reference_feedback_dividers(ctx, power_regulators, voltage_dividers)
     _attach_regulator_capacitors(ctx, power_regulators)
     _estimate_regulator_dissipation(ctx, power_regulators)
 
@@ -2470,9 +2470,10 @@ def _build_regulator_record(ctx: AnalysisContext, cand: _RegulatorCandidate,
         return reg_info
 
 
-def _cross_reference_feedback_dividers(power_regulators: list[dict], voltage_dividers: list[dict]) -> None:
-    """Give each regulator without a feedback divider the divider whose top net is its FB net (FB-at-top),
-    and an output rail when it has none, in place."""
+def _cross_reference_feedback_dividers(ctx: AnalysisContext, power_regulators: list[dict],
+                                       voltage_dividers: list[dict]) -> None:
+    """Give each regulator without a feedback divider the divider whose top net is its FB net and whose
+    mid net comes back to the regulator (FB-at-top), and an output rail when it has none, in place."""
     # Cross-reference feedback dividers with regulators.
     # For dividers whose top_net matches a regulator's output_rail, mark as feedback.
     for reg in power_regulators:
@@ -2484,6 +2485,14 @@ def _cross_reference_feedback_dividers(power_regulators: list[dict], voltage_div
         # Check if FB net connects to divider top_net (FB-at-top topology)
         for vd in voltage_dividers:
             if vd["top_net"] == fb_net:
+                # FB on a divider's top net senses that rail directly: it is the output rail
+                if not reg.get("output_rail") and not far_side_is_input:
+                    reg["output_rail"] = fb_net
+                # a divider hanging from the sensed rail (a DDR reference, an ADC tap) is not the
+                # feedback: its mid net must come back to another pin of the same regulator
+                if not any(p["component"] == reg.get("ref")
+                           for p in ctx.nets.get(vd["mid_net"], {}).get("pins", [])):
+                    continue
                 ratio = vd["ratio"]
                 # In FB-at-top, Vout = Vfb (the top of the divider IS the output)
                 reg["feedback_divider"] = {
@@ -2492,8 +2501,6 @@ def _cross_reference_feedback_dividers(power_regulators: list[dict], voltage_div
                     "ratio": ratio,
                     "topology": "fb_at_top",
                 }
-                if not reg.get("output_rail") and not far_side_is_input:
-                    reg["output_rail"] = fb_net
                 break
 
 
