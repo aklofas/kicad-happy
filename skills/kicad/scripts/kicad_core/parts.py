@@ -583,7 +583,20 @@ _KNOWN_FREQS = {
     'XL6009': 400e3,   # XL6009: 400kHz
     'XL4015': 180e3,   # XL4015: 180kHz
     'MT3608': 1.2e6,   # MT3608: 1.2MHz
+    'LM2675': 260e3,   # "LM2675 SIMPLE SWITCHER Power Converter" SNVS129G p7, Electrical Characteristics: fO 260kHz typ
+    'MIC23050': 4.0e6, # "MIC23050 4MHz PWM Buck Regulator" M9999-092211-E p3, Electrical Characteristics: 4MHz typ
 }
+
+# Keys that name one part rather than a family prefix: a digit after the key (LM26750,
+# MIC230500) makes it another part number.
+_SINGLE_PART_FREQ_KEYS = frozenset({'LM2675', 'MIC23050'})
+
+
+def _starts_with_freq_key(text: str, key: str) -> bool:
+    """True when upper-case ``text`` starts with ``key`` (a ``_KNOWN_FREQS`` key)."""
+    if not text.startswith(key):
+        return False
+    return key not in _SINGLE_PART_FREQ_KEYS or not text[len(key):len(key) + 1].isdigit()
 
 
 def lookup_switching_freq(part_value: str) -> float | None:
@@ -597,7 +610,7 @@ def lookup_switching_freq(part_value: str) -> float | None:
     val = part_value.upper()
     # Sort prefixes longest-first so 'TPS54331' matches before 'TPS54'
     for prefix in sorted(_KNOWN_FREQS, key=len, reverse=True):
-        if val.startswith(prefix.upper()):
+        if _starts_with_freq_key(val, prefix.upper()):
             return _KNOWN_FREQS[prefix]
     return None
 
@@ -624,7 +637,7 @@ def match_known_switching(value: str, lib_id: str) -> bool:
     lib_part = lib_id.split(":")[-1].upper() if ":" in lib_id else ""
     for prefix in _KNOWN_FREQS:
         pu = prefix.upper()
-        if val_upper.startswith(pu) or lib_part.startswith(pu):
+        if _starts_with_freq_key(val_upper, pu) or _starts_with_freq_key(lib_part, pu):
             return True
     return False
 

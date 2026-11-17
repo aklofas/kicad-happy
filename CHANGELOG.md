@@ -52,6 +52,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Output-voltage estimates use each part's own feedback reference for the TPS6102x, TPS561/562/563/564 families, LM2731/LM27313 and LMR33640, taken from their data sheets.
 - onsemi NCP1117 / NCV1117 / NCP1117LP order codes (NCP1117ST33T3G, NCP1117DT12G, …), the 12 V and 15 V LM2678, LM2676, LM2575, LM1085 and LM340 parts, and the fixed-output TPS61024-27 / TPS61031-32 now give their fixed output voltage. RECOM R-78 modules (R-78E5.0-0.5, R-78B12-2.0) give their output voltage instead of their output current, and are typed as switching regulators on any symbol.
 - A resistor divider hanging from a regulator's sensed output (a DDR reference, an ADC tap, another chip's threshold pin) is no longer reported as its feedback divider, which also removes the 'feedback divider impedance too low' notes it caused.
+- MIC23050 is analyzed at its 4 MHz switching frequency, and LM2675 is recognized as a switching regulator (260 kHz), not an LDO.
 - TV-001 counts a stacked via column (vias at one point on one net, layer to layer) as one via, weighted by its narrowest drill, so an HDI thermal pad is no longer graded as if each layer pair were a separate via.
 - A schematic whose sheets are placed hundreds of times is read much faster: the time no longer grows with the square of the instance count. Results are unchanged.
 - Writing a large analysis with `--output` needs much less memory (a 470 MB schematic result peaked at 3 GB, now under 1 GB); the file is unchanged.
