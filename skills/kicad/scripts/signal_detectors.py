@@ -14,6 +14,7 @@ from kicad_core.parts import (
     LOAD_SWITCH_KEYWORDS,
     names_load_switch,
     names_pchannel_fet,
+    names_sense_amp,
     lookup_regulator_vref as _lookup_regulator_vref,
     lookup_switching_freq,
     default_switching_freq,
@@ -1367,8 +1368,12 @@ def detect_decoupling(ctx: AnalysisContext) -> list[dict]:
 _SENSE_AMP_INPUT_PINS = frozenset({"IN+", "IN-", "VIN+", "VIN-", "RS+", "RS-"})
 
 
+def _is_sense_amp(comp: dict) -> bool:
+    return names_sense_amp(comp.get("mpn", ""), comp.get("value", ""), symbol_name(comp.get("lib_id", "")))
+
+
 def _sense_ics_across(ctx: AnalysisContext, net_a: str, net_b: str,
-                      keywords: frozenset, exclude: frozenset) -> set[str]:
+                      exclude: frozenset) -> set[str]:
     """Known sense-amplifier ICs with a pin on both nets."""
     def ics_on(net):
         return {p["component"] for p in ctx.nets.get(net, {}).get("pins", [])}
@@ -1378,7 +1383,7 @@ def _sense_ics_across(ctx: AnalysisContext, net_a: str, net_b: str,
         if not comp or comp["type"] != "ic":
             continue
         val = (comp.get("value", "") + " " + comp.get("lib_id", "")).lower()
-        if any(kw in val for kw in keywords) and not any(kw in val for kw in exclude):
+        if _is_sense_amp(comp) and not any(kw in val for kw in exclude):
             found.add(ref)
     return found
 
@@ -1416,14 +1421,6 @@ def detect_current_sense(ctx: AnalysisContext) -> list[dict]:
         "CS", "CSP", "CSN", "ISNS", "ISENSE", "IMON", "IOUT",
         "SEN", "SENSE", "VSENSE", "VSEN", "VS", "INP", "INN",
         "IS", "IAVG", "ISET",
-    })
-    _SENSE_IC_KEYWORDS = frozenset({
-        "ina", "acs7", "ad8210", "ad8217", "ad8218", "max9938",
-        "max4080", "max4081", "max471", "ltc6101", "ltc6102",
-        "ltc6103", "ltc4151", "ina226", "ina233", "ina180",
-        "ina181", "ina190", "ina199", "ina200", "ina210",
-        "ina240", "ina250", "ina260", "ina300", "ina381",
-        "pam2401", "zxct", "acs71", "acs72", "asc",
     })
     # IC families that are never current sense amplifiers
     _SENSE_IC_EXCLUDE = frozenset({
@@ -1464,7 +1461,7 @@ def detect_current_sense(ctx: AnalysisContext) -> list[dict]:
             # sense amplifier has pins on both of them.
             if ctx.is_ground(s_n1) or ctx.is_ground(s_n2):
                 continue
-            rail_sense_ics = _sense_ics_across(ctx, s_n1, s_n2, _SENSE_IC_KEYWORDS, _SENSE_IC_EXCLUDE)
+            rail_sense_ics = _sense_ics_across(ctx, s_n1, s_n2, _SENSE_IC_EXCLUDE)
             if not rail_sense_ics:
                 continue
 
@@ -1521,7 +1518,7 @@ def detect_current_sense(ctx: AnalysisContext) -> list[dict]:
                 # Skip excluded IC families
                 if any(kw in val_lower for kw in _SENSE_IC_EXCLUDE):
                     continue
-                if any(kw in val_lower for kw in _SENSE_IC_KEYWORDS):
+                if _is_sense_amp(ic_comp):
                     sense_ics_set.add(cref)
                     continue
                 # Check if the IC's pin on this net has a sense-related name
@@ -1635,7 +1632,7 @@ def detect_current_sense(ctx: AnalysisContext) -> list[dict]:
                 pn = _sense_pin_key(p.get("pin_name", ""))
                 if pn in _integrated_csa_pins or (
                         pn in _SENSE_AMP_INPUT_PINS
-                        and any(kw in _val_lower2 for kw in _SENSE_IC_KEYWORDS)
+                        and _is_sense_amp(ic_comp)
                         and _opposite_input_reaches(
                             ctx, p["component"], pn, s_n2 if net_name == s_n1 else s_n1,
                             group_members(ctx, shunt["reference"]))):

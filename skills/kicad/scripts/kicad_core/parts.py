@@ -617,3 +617,27 @@ _PCHANNEL_FET_RE = re.compile(
 def names_pchannel_fet(*names: str) -> bool:
     """True when a value, MPN or library symbol name starts with a known P-channel part number."""
     return any(_PCHANNEL_FET_RE.match((n or "").strip().upper()) for n in names)
+
+
+# Current-sense amplifiers a schematic names by part number, matched where a part number
+# starts (each family is cited in tools/tests/test_sense_amp_names.py). TI's INA bases
+# INA138/139, INA168-170, INA18x-19x, INA2xx, INA30x-31x and INA38x are current-sense
+# amplifiers and current/power monitors, bar the INA188 and INA217 instrumentation amps; a
+# leading 2/3/4 is the dual/triple/quad of the same base (INA2180, INA3221, INA4181). The
+# other INA bases (INA128, INA333, INA82x) are instrumentation or difference amplifiers, or
+# monitors with an integrated shunt (INA7xx) that no external shunt reaches. Its digits
+# keep INA out of words ("Trinamic"), so a letter may precede it (ModuleINA3221). Then
+# Allegro ACS7xx Hall sensors, AD8210/17/18, MAX9938, MAX4080/81, MAX471, LTC6101-03,
+# LTC4151 and Diodes ZXCT monitors; a whole part number is not followed by another digit
+# (MAX4714 is an analog switch).
+_SENSE_AMP_PN = re.compile(
+    r"(?<![0-9])ina(?:[234](?=\d{3}(?!\d)))?(?!188|217)(?:1(?:3[89]|6[89]|70|[89]\d)|2\d\d|3(?:[01]\d|8\d))(?!\d)"
+    r"|(?<![a-z0-9])(?:"
+    r"(?:ad821[078]|max9938|max408[01]|max471|ltc610[123]|ltc4151)(?!\d)"
+    r"|acs7|zxct"
+    r")")
+
+
+def names_sense_amp(*names: str) -> bool:
+    """True when a value, MPN or library symbol name is a current-sense amplifier part number."""
+    return any(_SENSE_AMP_PN.search((n or "").lower()) for n in names)
