@@ -1758,6 +1758,41 @@ _NON_REGULATOR_PREFIX = re.compile(r"(dac\d|epc23\d|ncp8115\d|adp311\d|ltc706\d)
 _GPIO_PORT_PIN = re.compile(r"^P[A-GI-K]\d{1,2}$")
 
 
+_SWITCH_OUT_GND_PINS = frozenset({"GND", "PGND", "AGND", "VSS"})
+_SWITCH_OUT_VIN_PINS = frozenset({"VIN", "VI", "IN", "PVIN", "AVIN", "INPUT"})
+
+
+def _is_switch_output(ctx: AnalysisContext, ref: str, net: str | None) -> bool:
+    """*net* carries an inductor and a diode besides *ref*, no capacitor to ground, and is not a
+    named power rail or one of *ref*'s own input or ground nets. A capacitor to the net of
+    *ref*'s GND pin counts as one to ground, whatever that net is called."""
+    if (not net or net not in ctx.nets or ctx.is_ground(net)
+            or (ctx.is_power_net(net) and not net.startswith("__unnamed_"))):
+        return False
+    own_ground = set()
+    for pin_net, _ in ctx.ref_pins.get(ref, {}).values():
+        for p in ctx.nets.get(pin_net, {}).get("pins", []):
+            if p["component"] != ref:
+                continue
+            name = p.get("pin_name", "").upper().rstrip("0123456789").rstrip("_")
+            if name in _SWITCH_OUT_GND_PINS:
+                own_ground.add(pin_net)
+            if pin_net == net and (name in _SWITCH_OUT_GND_PINS or name in _SWITCH_OUT_VIN_PINS):
+                return False
+    kinds = set()
+    for p in ctx.nets[net]["pins"]:
+        other = p["component"]
+        if other == ref:
+            continue
+        kind = (ctx.comp_lookup.get(other) or {}).get("type")
+        if kind == "capacitor" and any(
+                n != net and (ctx.is_ground(n) or n in own_ground)
+                for n, _ in ctx.ref_pins.get(other, {}).values()):
+            return False
+        kinds.add(kind)
+    return "inductor" in kinds and "diode" in kinds
+
+
 def _screen_regulator_candidate(ctx: AnalysisContext, ic: dict) -> _RegulatorCandidate | dict | None:
     """Reject non-regulators; return the keyword-only PMIC record finished, else the candidate."""
     ref = ic["reference"]
@@ -1838,6 +1873,12 @@ def _screen_regulator_candidate(ctx: AnalysisContext, ic: dict) -> _RegulatorCan
     fb_candidates.sort(key=lambda c: [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", c[0])])
     if fb_candidates:
         fb_pin = fb_candidates[0]
+
+    # A pin named as an output that drives an inductor and a catch diode with no capacitor to
+    # ground is a non-synchronous converter's switch pin (LM2596's OUT, LM2675's VOUT)
+    if (vout_pin and not sw_pin and vout_pin not in fb_candidates
+            and _is_switch_output(ctx, ref, vout_pin[1])):
+        sw_pin, vout_pin = vout_pin, None
 
     if not fb_pin and not sw_pin and not vout_pin:
         # For pin-less ICs (legacy format), check keywords before

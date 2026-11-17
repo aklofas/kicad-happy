@@ -19,6 +19,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The Codex plugin listing has an icon. (#21)
 - RF matching networks are found from antenna, SMA, U.FL and MMCX connectors, not from small capacitors, resistors and inductors whose symbol name contains "Small". Most earlier matching-network reports came from those parts and are gone.
 - Parts with a V reference (V1, VD1, VT1, VIC5) are typed from their symbol. SPICE voltage sources are no longer reported as varistors or protection devices. Diodes, transistors, LEDs and logic ICs keep their own type. A part counts as a varistor only when its symbol, value, footprint or description says so.
+- Converters whose switch pin is named OUT or VOUT (LM2596, LM2576, XL1509, LM2675 families) now report the inductor's output side as their output rail and are typed as switching regulators; on a custom symbol with no regulator word in its name they are now recognised as regulators.
 
 ### Fixed
 
