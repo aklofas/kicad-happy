@@ -632,6 +632,8 @@ def analyze_sleep_current(ctx: AnalysisContext,
                 else:
                     e["likely_state"] = "always-on"
                     e["realistic_uA"] = e["current_uA"]
+                    if e.get("has_enable_pin"):
+                        e["note"] = "estimated Iq (always-on, EN not switched)"
             elif etype == "resistor_to_gnd":
                 if rail in _disableable_rails:
                     e["likely_state"] = "rail disabled during sleep"
@@ -1654,6 +1656,8 @@ def analyze_power_sequencing(ctx: AnalysisContext,
     dependencies = []
     floating_en = []
     pg_connections = []
+    # A regulator's input or output rail is a supply even when its name does not say so.
+    supply_nets = {n for r in regulators for n in (r.get("input_rail"), r.get("output_rail")) if n}
 
     for reg in regulators:
         ref = reg["ref"]
@@ -1724,12 +1728,33 @@ def analyze_power_sequencing(ctx: AnalysisContext,
                         dc = comp_lookup.get(dr["component"])
                         if dc:
                             driver_types.append(dc["type"])
-                    # Check if EN is connected to a power rail via resistor
-                    has_pull_up = any(
-                        comp_lookup.get(d["component"], {}).get("type") == "resistor"
-                        for d in drivers
-                    )
-                    dep_entry["en_source"] = "controlled"
+                    # A resistor pulls EN up when its far end is a supply, down when it is
+                    # ground; a capacitor to ground is a start-up delay. Anything else drives EN.
+                    pulls = []
+                    for d in drivers:
+                        dtype = comp_lookup.get(d["component"], {}).get("type")
+                        n1, n2 = ctx.get_two_pin_nets(d["component"])
+                        far = n2 if n1 == en_net else n1 if n2 == en_net else None
+                        if not far or dtype not in ("resistor", "capacitor"):
+                            pulls.append(None)
+                        elif dtype == "capacitor":
+                            pulls.append("cap" if is_ground(far) else None)
+                        elif is_ground(far) and not is_vss_name(far):
+                            pulls.append("down")
+                        elif far in supply_nets or (is_power_net(far) and not is_ground(far)):
+                            pulls.append("up")
+                        else:
+                            pulls.append(None)
+                    has_pull_up = "up" in pulls
+                    # A hierarchical or global label may bring a driver from another sheet.
+                    labelled = any(lb.get("type") in ("hierarchical_label", "global_label")
+                                   for lb in nets[en_net].get("labels") or [])
+                    # A pull-down alone stays controlled: an enable named without an overbar
+                    # can still be active low (CE, EN on some converters).
+                    if has_pull_up and all(pulls) and not labelled:
+                        dep_entry["en_source"] = "always_on"
+                    else:
+                        dep_entry["en_source"] = "controlled"
                     dep_entry["en_driven_by"] = driver_refs
                     if has_pull_up:
                         dep_entry["has_pull_up"] = True

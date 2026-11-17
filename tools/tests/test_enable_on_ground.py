@@ -2,7 +2,8 @@
 
 An overbar (active-low) enable on ground is enabled by it and stays always on; any other
 enable's polarity is not known from its name. A VSS net that no regulator drives is ground
-like GND.
+like GND. An enable held only by pull-ups to a supply (a UVLO divider, a delay capacitor
+beside it) is always on too; a pull-down is not a pull-up.
 """
 import sys, unittest
 from pathlib import Path
@@ -11,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "skills" / "kicad" 
 
 from domain_detectors import build_power_sequencing_graph  # noqa: E402
 from kicad_types import build_analysis_context  # noqa: E402
-from schematic.system_analyses import analyze_power_sequencing  # noqa: E402
+from schematic.system_analyses import analyze_power_sequencing, analyze_sleep_current  # noqa: E402
 
 # ref -> (enable pin name, enable net)
 ENABLES = {"U1": ("EN", "GND"), "U2": ("~{EN}", "GND"), "U3": ("~{SHDN}", "GND"),
@@ -102,6 +103,125 @@ class PowerTreeEnableType(unittest.TestCase):
         for ref in ("U7", "U8"):
             self.assertEqual(self.tree[ref]["enable_type"], "tied_to_ground", ref)
             self.assertEqual(self.tree[ref]["enabled_by"], ENABLES[ref][1], ref)
+
+
+def _pull_ctx():
+    """Enables held by resistors and capacitors. Pin 1 of each two-pin part sits on the EN net."""
+    regs = {"U1": ("+12V", "EN1"), "U2": ("+12V", "EN2"), "U3": ("+12V", "EN3"),
+            "U4": ("+48V", "EN4"), "U5": ("+5V", "EN5"), "U6": ("+5V", "EN6"),
+            "U7": ("__unnamed_7", "EN7")}
+    # ref -> (type, value, far-end net); the near end (pin 1) is the EN net named alongside
+    parts = {"R1": ("resistor", "100k", "EN1", "+12V"),
+             "R2": ("resistor", "10k", "EN2", "GND"),
+             "R3": ("resistor", "10k", "EN3", "GND"),
+             "R4": ("resistor", "560k", "EN4", "+48V"), "R5": ("resistor", "33k", "EN4", "GND"),
+             "R6": ("resistor", "10k", "EN5", "+5V"), "C1": ("capacitor", "1u", "EN5", "GND"),
+             "R7": ("resistor", "10k", "EN6", "+5V"),
+             "R8": ("resistor", "100k", "EN7", "__unnamed_7")}
+    comps, nets = [], {}
+
+    def add(net, ref, num, name, ptype):
+        nets.setdefault(net, []).append(dict(component=ref, pin_number=num, pin_name=name,
+                                             pin_type=ptype))
+
+    for ref, (vin, en) in regs.items():
+        comps.append({"reference": ref, "type": "ic", "value": "REG", "lib_id": "Regulator:REG",
+                      "footprint": "", "properties": {},
+                      "pins": [{"number": "1", "name": "VIN"}, {"number": "2", "name": "GND"},
+                               {"number": "3", "name": "EN"}, {"number": "4", "name": "VOUT"}]})
+        add(vin, ref, "1", "VIN", "power_in")
+        add("GND", ref, "2", "GND", "power_in")
+        add(en, ref, "3", "EN", "input")
+        add("OUT_" + ref, ref, "4", "VOUT", "power_out")
+    for ref, (kind, value, near, far) in parts.items():
+        comps.append({"reference": ref, "type": kind, "value": value, "lib_id": "Device:" + ref[0],
+                      "footprint": "", "properties": {},
+                      "pins": [{"number": "1", "name": "~"}, {"number": "2", "name": "~"}]})
+        add(near, ref, "1", "~", "passive")
+        add(far, ref, "2", "~", "passive")
+    # U2's enable is also driven by a microcontroller GPIO
+    comps.append({"reference": "U9", "type": "ic", "value": "MCU", "lib_id": "MCU:MCU",
+                  "footprint": "", "properties": {}, "pins": [{"number": "7", "name": "PA7"}]})
+    add("EN2", "U9", "7", "PA7", "bidirectional")
+    full = {n: {"name": n, "pins": ps, "point_count": 0, "no_connect": False, "has_pwr_flag": False,
+                "labels": []} for n, ps in nets.items()}
+    # U6's enable net leaves the sheet through a global label
+    full["EN6"]["labels"] = [{"name": "EN6", "type": "global_label"}]
+    ctx = build_analysis_context(comps, full, {}, known_power_rails={"+12V", "+48V", "+5V", "GND"},
+                                 source="test")
+    return ctx, [{"ref": ref, "input_rail": vin, "output_rail": "OUT_" + ref}
+                 for ref, (vin, _) in regs.items()]
+
+
+class EnableHeldByResistors(unittest.TestCase):
+    def setUp(self):
+        ctx, regs = _pull_ctx()
+        out = analyze_power_sequencing(ctx, {"power_regulators": regs})
+        self.deps = {d["regulator"]: d for d in out["dependencies"]}
+
+    def test_pull_up_to_the_input_alone_is_always_on(self):
+        self.assertEqual(self.deps["U1"]["en_source"], "always_on")
+        self.assertTrue(self.deps["U1"].get("has_pull_up"))
+        self.assertEqual(self.deps["U1"]["en_driven_by"], ["R1"])
+
+    def test_pull_down_beside_a_gpio_is_controlled_and_not_a_pull_up(self):
+        self.assertEqual(self.deps["U2"]["en_source"], "controlled")
+        self.assertNotIn("has_pull_up", self.deps["U2"])
+
+    def test_pull_down_alone_stays_controlled(self):
+        # an enable named without an overbar may still be active low
+        self.assertEqual(self.deps["U3"]["en_source"], "controlled")
+        self.assertNotIn("has_pull_up", self.deps["U3"])
+
+    def test_uvlo_divider_from_the_input_is_always_on(self):
+        self.assertEqual(self.deps["U4"]["en_source"], "always_on")
+        self.assertTrue(self.deps["U4"].get("has_pull_up"))
+
+    def test_pull_up_with_a_delay_capacitor_is_always_on(self):
+        self.assertEqual(self.deps["U5"]["en_source"], "always_on")
+        self.assertTrue(self.deps["U5"].get("has_pull_up"))
+
+    def test_labelled_enable_net_stays_controlled(self):
+        # a global or hierarchical label may bring a driver from another sheet
+        self.assertEqual(self.deps["U6"]["en_source"], "controlled")
+        self.assertTrue(self.deps["U6"].get("has_pull_up"))
+
+    def test_pull_up_to_an_unnamed_net_carrying_the_input_is_a_pull_up(self):
+        self.assertTrue(self.deps["U7"].get("has_pull_up"))
+        self.assertEqual(self.deps["U7"]["en_source"], "always_on")
+
+
+class SleepNoteForAnEnableThatIsNotSwitched(unittest.TestCase):
+    def _iq(self):
+        ctx, regs = _pull_ctx()
+        for r in regs:
+            r.update(value="AP2112K-3.3", topology="LDO")
+        seq = analyze_power_sequencing(ctx, {"power_regulators": regs})
+        rails = analyze_sleep_current(ctx, {"power_regulators": regs}, seq)["rails"]
+        return {p["ref"]: p for r in rails.values() for p in r["current_paths"]
+                if p["type"] == "regulator_iq"}
+
+    def test_always_on_regulator_with_an_enable_pin_says_its_enable_is_not_switched(self):
+        iq = self._iq()["U1"]
+        self.assertEqual(iq["likely_state"], "always-on")
+        self.assertEqual(iq["note"], "estimated Iq (always-on, EN not switched)")
+        self.assertEqual(iq["realistic_uA"], iq["current_uA"])
+
+    def test_enable_tied_to_the_input_says_its_enable_is_not_switched(self):
+        regs = [dict(r, value="AP2112K-3.3", topology="LDO") for r in _regs()]
+        ctx = _ctx()
+        seq = analyze_power_sequencing(ctx, {"power_regulators": regs})
+        rails = analyze_sleep_current(ctx, {"power_regulators": regs}, seq)["rails"]
+        iq = next(p for p in rails["OUT_U4"]["current_paths"] if p["type"] == "regulator_iq")
+        self.assertEqual(iq["likely_state"], "always-on")
+        self.assertEqual(iq["note"], "estimated Iq (always-on, EN not switched)")
+        self.assertEqual(iq["realistic_uA"], 55)
+
+    def test_controlled_regulator_keeps_the_disable_note(self):
+        iq = self._iq()["U2"]
+        self.assertEqual(iq["likely_state"], "can be disabled via EN")
+        self.assertEqual(iq["note"], "estimated Iq (can be disabled via EN)")
+        self.assertEqual(iq["realistic_uA"], 0.0)
 
 
 if __name__ == "__main__":

@@ -131,6 +131,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A value with an underscore is no longer read as one long number (`330_0402` was 3.3 MΩ).
 - USB-C CC checks pick the 5.1 kΩ pull-down when a CC pin has more than one resistor, no longer pass a 5.1 kΩ resistor that does not go to ground, and treat CYPD3175 and FUSB303 as controllers that terminate CC themselves.
 - A sub-ohm shunt or link between two rails no longer gets a power-derating error computed from the difference of the rail voltages.
+- A regulator enable pin held only by a pull-up resistor (or a UVLO divider) now reads as always on, and a pull-down is no longer reported as a pull-up; the sleep audit no longer says such a regulator can be disabled.
 
 ### Documentation
 
