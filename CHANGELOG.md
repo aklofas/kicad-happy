@@ -133,6 +133,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A sub-ohm shunt or link between two rails no longer gets a power-derating error computed from the difference of the rail voltages.
 - A regulator enable pin held only by a pull-up resistor (or a UVLO divider) now reads as always on, and a pull-down is no longer reported as a pull-up; the sleep audit no longer says such a regulator can be disabled.
 - A regulator whose power-good drives its own enable is no longer listed as sequenced after itself.
+- The sleep audit counts power LEDs wired straight to ground, and reads a battery rail's voltage from the battery symbol (2xAA, coin cells, stacked cells) instead of always assuming 3.7 V.
 
 ### Documentation
 

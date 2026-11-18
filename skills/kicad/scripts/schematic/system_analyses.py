@@ -253,6 +253,90 @@ def analyze_pdn_impedance(ctx: AnalysisContext, signal_analysis: dict | None = N
 SLEEP_PULL_MIN_OHM = 100.0
 
 
+# Nominal cell voltages by the chemistry a battery symbol's value names.
+_CELL_V = ((re.compile(r"lifepo|lfp\b"), 3.2),
+           (re.compile(r"li-?ion|li-?po|lipo|18650|21700|14500|\blg mj1\b|\b\ds\d?p?\b"), 3.7),
+           (re.compile(r"\b(?:cr|br|bu)\d{4}\b|ms621|\bcoin\b"), 3.0),
+           (re.compile(r"ni-?mh|ni-?cd"), 1.2),
+           (re.compile(r"(?<![a-wyz])aaa?\b|alkaline"), 1.5))
+_CELL_COUNT = re.compile(r"(\d)\s*[x\u00d7]\s*(?:aa|aaa|cell)\b|\b(\d)s\d?p?\b|\b(\d)\s*cells?\b")
+_EXPLICIT_V = re.compile(r"(?<![\d.])(\d{1,2}(?:\.\d+)?)\s*v\b")
+_LI_ION_NOMINAL_V = 3.7
+
+
+def _battery_value_voltage(comp: dict) -> float | None:
+    """Nominal voltage a battery symbol states in its value (else its symbol name): an
+    explicit voltage, else the cell count times the named chemistry's cell voltage; a
+    dual-cell symbol is two cells."""
+    for text in ((comp.get("value") or "").lower(),
+                 (comp.get("lib_id") or "").rpartition(":")[2].lower()):
+        m = _EXPLICIT_V.search(text.replace("_", " "))
+        if m:
+            return float(m.group(1))
+        cell_v = next((v for rx, v in _CELL_V if rx.search(text)), None)
+        if cell_v is None:
+            continue
+        m = _CELL_COUNT.search(text)
+        if m:
+            cells = int(next(g for g in m.groups() if g))
+        elif "dual" in (comp.get("lib_id") or "").lower():
+            cells = 2
+        else:
+            cells = 1
+        return round(cells * cell_v, 2)
+    return None
+
+
+def _batteries_on(ctx: AnalysisContext, batteries: list, used: set, nets: set) -> list:
+    return [c for c in batteries if c["reference"] not in used
+            and nets & {n for n, _ in ctx.ref_pins.get(c["reference"], {}).values()}]
+
+
+def _battery_rail_voltage(ctx: AnalysisContext, rail: str) -> float:
+    """A battery-named rail's voltage: the sum of the battery symbols stacked in series from
+    the rail (or from one series part away: a reverse-polarity FET or diode, a fuse, a
+    switch); else one Li-ion cell, 3.7 V."""
+    starts = {rail}
+    for p in ctx.nets.get(rail, {}).get("pins", []):
+        comp = ctx.comp_lookup.get(p["component"])
+        if comp and comp["type"] != "battery":
+            starts.update(n for n, _ in ctx.ref_pins.get(p["component"], {}).values()
+                          if n and not ctx.is_ground(n))
+    batteries = [c for c in ctx.components if c["type"] == "battery"]
+    found = set()
+    for start in starts:
+        net, total, used = start, 0.0, set()
+        while net and not ctx.is_ground(net):
+            here = _batteries_on(ctx, batteries, used, {net})
+            if not here and total:
+                # cells joined through a jumper, switch or FET
+                hop = {n for p in ctx.nets.get(net, {}).get("pins", [])
+                       if ctx.comp_lookup.get(p["component"], {}).get("type") != "battery"
+                       for n, _ in ctx.ref_pins.get(p["component"], {}).values() if n and n != net}
+                here = _batteries_on(ctx, batteries, used, hop)
+                if len(here) == 1:
+                    net = next(n for n, _ in ctx.ref_pins.get(here[0]["reference"], {}).values() if n in hop)
+            if len(here) != 1:
+                break
+            v = _battery_value_voltage(here[0])
+            if not v:
+                total = 0.0
+                break
+            bref = here[0]["reference"]
+            # the far terminal; a net only this symbol touches links its own cells
+            others = {n for n, _ in ctx.ref_pins.get(bref, {}).values() if n and n != net
+                      and any(p["component"] != bref for p in ctx.nets.get(n, {}).get("pins", []))}
+            if len(others) != 1:
+                total = 0.0  # a battery symbol with more than two terminals
+                break
+            used.add(bref)
+            total += v
+            net = others.pop()
+        if total:
+            found.add(round(total, 2))
+    return found.pop() if len(found) == 1 else _LI_ION_NOMINAL_V
+
+
 def analyze_sleep_current(ctx: AnalysisContext,
                           signal_analysis: dict | None = None,
                           power_sequencing: dict | None = None) -> dict:
@@ -293,7 +377,7 @@ def analyze_sleep_current(ctx: AnalysisContext,
         if v is None:
             v = _reg_vout_by_rail.get(name)
         if v is None and name and _battery_rail_re.match(name):
-            v = 3.7
+            v = _battery_rail_voltage(ctx, name)
         return v
 
     def _rail_voltage(name: str) -> float | None:
@@ -474,6 +558,9 @@ def analyze_sleep_current(ctx: AnalysisContext,
                             v_led = 2.0
                             if v_rail > v_led:
                                 current_a = (v_rail - v_led) / r_val
+                                led_far = [n for n, _ in ref_pins.get(ref, {}).values()
+                                           if n and n != net_name]
+                                hardwired = bool(led_far) and all(is_ground(n) for n in led_far)
                                 rail_currents.setdefault(rn, []).append({
                                     "ref": ref,
                                     "value": comp.get("value", "LED"),
@@ -483,6 +570,7 @@ def analyze_sleep_current(ctx: AnalysisContext,
                                     "rail_voltage": v_rail,
                                     "current_uA": round(current_a * 1e6, 2),
                                     "note": "assuming ~2V forward drop, always-on if no switch",
+                                    "_hardwired": hardwired,
                                 })
 
     # Drop pull_up entries that are actually LED current-limit
@@ -614,9 +702,17 @@ def analyze_sleep_current(ctx: AnalysisContext,
                 e["likely_state"] = "worst-case (signal driven low)"
                 e["realistic_uA"] = e["current_uA"]
             elif etype == "led_indicator":
-                # LEDs are typically GPIO-controlled
-                e["likely_state"] = "GPIO off during sleep"
-                e["realistic_uA"] = 0.0
+                # Only an LED whose far side is ground stays lit; one that returns
+                # through an IC pin, a transistor or a switch is driven off.
+                if not e.pop("_hardwired", False):
+                    e["likely_state"] = "GPIO off during sleep"
+                    e["realistic_uA"] = 0.0
+                elif rail in _disableable_rails:
+                    e["likely_state"] = "rail disabled during sleep"
+                    e["realistic_uA"] = 0.0
+                else:
+                    e["likely_state"] = "always conducting"
+                    e["realistic_uA"] = e["current_uA"]
             elif etype == "regulator_iq":
                 # with real EN connectivity available, only a
                 # regulator whose EN is actually driven (en_source ==
