@@ -79,7 +79,7 @@ class BatteryVoltage(unittest.TestCase):
         self.assertEqual(_bleeder_voltage([b, _part("R2", "resistor", "1k")], nets), 3.7)
 
 
-def _led_rail(cathode_net, seq=None):
+def _led_rail(cathode_net, seq=None, dnp=(), off_board=()):
     comps = [_part("R1", "resistor", "330"), _part("D1", "led", "LED", "Device:LED"),
              _part("U1", "ic", "MCU", "MCU:X", 3)]
     nets = {"+3V3": [("R1", "1", "passive")], "N1": [("R1", "2", "passive"), ("D1", "2", "passive")],
@@ -87,6 +87,9 @@ def _led_rail(cathode_net, seq=None):
     nets.setdefault(cathode_net, []).append(("D1", "1", "passive"))
     if cathode_net != "GND":
         nets[cathode_net].append(("U1", "1", "output"))
+    for c in comps:
+        c["dnp"] = c["reference"] in dnp
+        c["on_board"] = c["reference"] not in off_board
     out = analyze_sleep_current(_ctx(comps, nets, {"+3V3", "GND"}), {}, seq)
     return [p for p in out["rails"]["+3V3"]["current_paths"] if p["type"] == "led_indicator"][0]
 
@@ -108,6 +111,13 @@ class IndicatorLeds(unittest.TestCase):
         p = _led_rail("GND", seq)
         self.assertEqual(p["likely_state"], "rail disabled during sleep")
         self.assertEqual(p["realistic_uA"], 0.0)
+
+    def test_unfitted_led_or_resistor_is_not_counted(self):
+        for dnp in ({"D1"}, {"R1"}):
+            p = _led_rail("GND", dnp=dnp)
+            self.assertEqual(p["realistic_uA"], 0.0, dnp)
+            p = _led_rail("GND", off_board=dnp)
+            self.assertEqual(p["realistic_uA"], 0.0, dnp)
 
     def test_working_flag_is_not_exposed(self):
         self.assertNotIn("_hardwired", _led_rail("GND"))

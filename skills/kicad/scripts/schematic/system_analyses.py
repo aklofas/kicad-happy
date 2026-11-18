@@ -560,7 +560,9 @@ def analyze_sleep_current(ctx: AnalysisContext,
                                 current_a = (v_rail - v_led) / r_val
                                 led_far = [n for n, _ in ref_pins.get(ref, {}).values()
                                            if n and n != net_name]
-                                hardwired = bool(led_far) and all(is_ground(n) for n in led_far)
+                                hardwired = (bool(led_far) and all(is_ground(n) for n in led_far)
+                                             and not any(c.get("dnp") or c.get("on_board") is False
+                                                         for c in (comp, r_comp)))
                                 rail_currents.setdefault(rn, []).append({
                                     "ref": ref,
                                     "value": comp.get("value", "LED"),
