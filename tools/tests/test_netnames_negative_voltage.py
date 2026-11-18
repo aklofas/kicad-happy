@@ -44,6 +44,23 @@ class SeparatorsDecimalsAndPinNames(unittest.TestCase):
         for name in ["R39P1", "J1P2", "USB3P0", "A1P8"]:
             self.assertIsNone(parse_voltage_from_net_name(name), name)
 
+    def test_current_rating_in_p_notation_is_not_the_voltage(self):
+        from schematic.net_analysis import _estimate_rail_voltage
+        for name, want in [("+5V_1P5A", 5.0), ("5V_1P5A", 5.0), ("12V_2P5A", 12.0), ("VIN_5V_0P5A", 5.0)]:
+            self.assertEqual(parse_voltage_from_net_name(name), want, name)
+        self.assertIsNone(parse_voltage_from_net_name("VBUS_1P5A"))
+        self.assertEqual(_estimate_rail_voltage("VBUS_1P5A"), 5.0)
+        # after a supply word the A/D letter is a domain
+        for name, want in [("V3P3A", 3.3), ("V1P8A", 1.8), ("V3P3D", 3.3)]:
+            self.assertEqual(parse_voltage_from_net_name(name), want, name)
+
+    def test_sheet_stem_counts_only_the_voltages_the_parser_reads(self):
+        from schematic.pipeline import _sheet_stem_voltage
+        self.assertEqual(_sheet_stem_voltage("/ESP32P4_3V3/VOUT"), 3.3)
+        self.assertEqual(_sheet_stem_voltage("/RP2040P1_3V3/OUT"), 3.3)
+        self.assertEqual(_sheet_stem_voltage("/1P8V_reg/OUT"), 1.8)
+        self.assertIsNone(_sheet_stem_voltage("/LDO_3V3_1P8/OUT"))
+
     def test_names_read_before_keep_their_values(self):
         for name, want in [("+3V3", 3.3), ("-5V", -5.0), ("NEG12V", -12.0), ("(-)5V", -5.0),
                            ("VCC_3V3", 3.3)]:

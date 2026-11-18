@@ -57,9 +57,9 @@ def parse_voltage_from_net_name(net_name: str) -> float | None:
     sign = -1.0 if re.match(r'(-|NEG|\(-\))', net_name, re.IGNORECASE) else 1.0
     name = _COMMA_DECIMAL.sub(r'\1.\2', net_name)
     # Pattern: digits V digits  (e.g. 3V3 → 3.3, 1V8 → 1.8)
-    m = re.search(r'(\d+)V(\d+)', name, re.IGNORECASE) or _P_DECIMAL.search(name)
+    m = re.search(r'(?P<i>\d+)V(?P<f>\d+)', name, re.IGNORECASE) or _P_DECIMAL.search(name)
     if m:
-        return _signed(name, m, sign) * float(f"{m.group(1)}.{m.group(2)}")
+        return _signed(name, m, sign) * float(f"{m['i']}.{m['f']}")
     # Pattern: digits.digits V  or  digits V  (e.g. 3.3V, 5V, 12V)
     m = re.search(r'(\d+(?:\.\d+)?)V', name, re.IGNORECASE)
     if m:
@@ -68,11 +68,11 @@ def parse_voltage_from_net_name(net_name: str) -> float | None:
 
 
 _COMMA_DECIMAL = re.compile(r'(\d),(\d+)(?=V)', re.IGNORECASE)
-# <n>P<n> as a whole word, alone or after a supply word, with nothing after it but V or an
-# A/D domain letter (1P2V, V1P8, VDD3P3, P3P3V, V3P3D); a reference (R39P1, J1P2) or a
-# USB version (USB3P0) is not a voltage.
-_P_DECIMAL = re.compile(r'(?:^|(?<=[_\-\s+]))(?:V|P|POS|VDD|VCC|AVDD|DVDD|VDDA|VDDIO|VIO)?'
-                        r'(\d+)P(\d+)(?:V|[AD])?(?=$|[_\-\s])', re.IGNORECASE)
+# <n>P<n> as a whole word, alone or after a supply word, with nothing after it but V, or an
+# A/D domain letter after a supply word (1P2V, V1P8, VDD3P3, P3P3V, V3P3D); a reference
+# (R39P1, J1P2), a USB version (USB3P0) or a current rating (5V_1P5A) is not a voltage.
+_P_DECIMAL = re.compile(r'(?:^|(?<=[_\-\s+]))(?P<word>V|P|POS|VDD|VCC|AVDD|DVDD|VDDA|VDDIO|VIO)?'
+                        r'(?P<i>\d+)P(?P<f>\d+)(?:V|(?(word)[AD]))?(?=$|[_\-\s])', re.IGNORECASE)
 
 
 def _signed(name: str, m: re.Match, sign: float) -> float:

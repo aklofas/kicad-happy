@@ -27,7 +27,7 @@ from kicad_core.diagnostics import merge, record
 from kicad_core.sexp import parse_file_checked
 from kicad_core.project import parse_input_problem
 from kicad_core.values import snap_to_mil_grid as _snap_mil
-from kicad_core.netnames import (_clean_hierarchical_name, is_vss_name, names_own_pin,
+from kicad_core.netnames import (_P_DECIMAL, _clean_hierarchical_name, is_vss_name, names_own_pin,
                                   net_leaf, parse_voltage_from_net_name, split_rail_voltages)
 from kicad_core.netquery import (
     build_bridge_facts,
@@ -302,8 +302,14 @@ def _build_net_classifications(results: dict) -> dict[str, dict]:
     return classifications
 
 
-# The voltage spellings parse_voltage_from_net_name reads: 3V3, 1P8, and 3.3V / 3,3V / 5V.
-_VOLTAGE_TOKEN = re.compile(r"\d+V\d+|\d+P\d+|\d+(?:[.,]\d+)?V", re.IGNORECASE)
+# The voltage spellings parse_voltage_from_net_name reads: 3V3 and 3.3V / 3,3V / 5V, plus
+# P-notation (_P_DECIMAL: 1P8, V1P8).
+_VOLTAGE_TOKEN = re.compile(r"\d+V\d+|\d+(?:[.,]\d+)?V", re.IGNORECASE)
+
+
+def _voltage_token_count(name: str) -> int:
+    """How many voltages *name* spells; a P-notation voltage (1P8V) counts once."""
+    return len(_P_DECIMAL.findall(name)) + len(_VOLTAGE_TOKEN.findall(_P_DECIMAL.sub(" ", name)))
 
 
 def _sheet_stem_voltage(net: str) -> float | None:
@@ -315,7 +321,7 @@ def _sheet_stem_voltage(net: str) -> float | None:
     parts = net.split("/")
     if not net.startswith("/") or len(parts) < 3 or parse_voltage_from_net_name(net) is not None:
         return None
-    if len(_VOLTAGE_TOKEN.findall(parts[-2])) > 1:
+    if _voltage_token_count(parts[-2]) > 1:
         return None
     return parse_voltage_from_net_name(parts[-2])
 
