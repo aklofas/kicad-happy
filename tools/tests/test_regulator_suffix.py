@@ -254,6 +254,8 @@ class FeedbackReference(unittest.TestCase):
                             ("LMR50410Y5FQDBVRQ1", 5.0)]:
             self.assertEqual(lookup_regulator_vref(part, ""), (volts, "fixed_suffix"), part)
         self.assertEqual(lookup_regulator_vref("LMR50410YFQDBVRQ1", ""), (1.0, "lookup"))
+        # a code the ordering table does not list is not read as a voltage
+        self.assertEqual(lookup_regulator_vref("SPX1117M3-L-1-2/TR", ""), (None, ""))
 
     def test_keys_do_not_reach_other_parts(self):
         # LM3509 / LM35000 are not LM350; LMR51620 / LMR51630 / LMR51640 / LMR51660 have no data sheet

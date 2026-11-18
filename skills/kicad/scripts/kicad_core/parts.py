@@ -303,7 +303,9 @@ _FIXED_OUTPUT_PARTS: dict[str, float] = {
 }
 # SPX1117M3-L-<volts with the point written as a dash>/TR: -1-5, -1-8, -2-5, -3-3, -5-0 (MaxLinear
 # SPX1117 Rev. 2.2.0 p3 ordering table); the bare SPX1117M3-L/TR is the adjustable part.
-_SPX1117_CODE = re.compile(r"SPX1117[A-Z0-9]*-L-(\d)-(\d)(?!\d)")
+_SPX1117_CODE = re.compile(r"SPX1117[A-Z0-9]*-L-(1-5|1-8|2-5|3-3|5-0)(?!\d)")
+# any other -L-<d>-<d> is a fixed part of unknown voltage: it has no adjustable reference either
+_SPX1117_FIXED_NAME = re.compile(r"SPX1117[A-Z0-9]*-L-\d-\d")
 # Table keys that name a part only when no digit follows: LM3509 and LM35000 are not LM350.
 _WHOLE_NUMBER_KEYS = frozenset({"LM338", "LM350"})
 # Analog Devices fixed-output order codes with a one-digit voltage code (part-number prefix -> {code: Vout}):
@@ -355,7 +357,7 @@ def _fixed_part_vout(candidates: list[str]) -> float | None:
             return float(m.group(1))
         m = _SPX1117_CODE.match(candidate)
         if m:
-            return float(m.group(1) + "." + m.group(2))
+            return float(m.group(1).replace("-", "."))
         m = _ADI_FIXED_CODE.match(candidate)
         if m and m.group(2) in _ADI_FIXED_CODES[m.group(1)]:
             return _ADI_FIXED_CODES[m.group(1)][m.group(2)]
@@ -441,6 +443,8 @@ def _longest_vref_key(candidate: str) -> str | None:
     best = None
     for prefix in _REGULATOR_VREF:
         if candidate.startswith(prefix.upper()) and len(prefix) > len(best or ""):
+            if prefix == "SPX1117" and _SPX1117_FIXED_NAME.match(candidate):
+                continue
             if prefix in _WHOLE_NUMBER_KEYS and candidate[len(prefix):len(prefix) + 1].isdigit():
                 continue
             best = prefix
