@@ -232,11 +232,60 @@ def _estimate_all_power_dissipation(schematic: dict) -> tuple:
     power_budget = schematic.get("power_budget", {})
     seen_refs = set()
 
+    budget_rails = power_budget.get("rails", {}) if isinstance(power_budget, dict) else {}
+    regs_by_ref = {r.get("ref"): r for r in regulators if r.get("ref")}
+
+    def _rail_load_a(rail: str, seen: frozenset, counted: set) -> float:
+        """The rail's power-budget load. A regulator fed from the rail is listed there at a flat
+        per-IC estimate; it draws its own output load instead (through its efficiency, for a
+        switcher). seen holds the rails already on the chain, so a loop is counted once; counted
+        holds the ICs already charged, so an IC on two rails of one tree is charged once."""
+        rail_data = budget_rails.get(rail)
+        if not isinstance(rail_data, dict):
+            return 0.0
+        load_ma = rail_data.get("estimated_load_mA") or 0
+        seen = seen | {rail}
+        fresh = []
+        for ic in rail_data.get("ics") or []:
+            if ic.get("ref") in counted:
+                load_ma -= ic.get("estimated_mA") or 0
+            else:
+                fresh.append(ic)
+        counted.update(ic.get("ref") for ic in fresh)
+        for ic in fresh:
+            down = regs_by_ref.get(ic.get("ref"))
+            if (not down or down.get("input_rail") != rail
+                    or down.get("output_rail") in seen):
+                continue
+            out_a = _rail_load_a(down.get("output_rail", ""), seen, counted)
+            if out_a <= 0:
+                continue
+            topology = (down.get("topology") or "").lower()
+            if topology in ("ldo", "linear", "ic_with_internal_regulator"):
+                # A regulator inside a larger IC (an LT3094 in MSOP-12) is costed as linear.
+                in_a = out_a
+            elif topology == "switching":
+                pd = down.get("power_dissipation")
+                vin = pd.get("vin_estimated_V") if isinstance(pd, dict) else None
+                vout = down.get("estimated_vout")
+                if not isinstance(vin, (int, float)) or not vin or not isinstance(vout, (int, float)):
+                    continue
+                in_a = abs(vout) * out_a / (SWITCHING_EFFICIENCY["switching"] * abs(vin))
+            else:
+                continue
+            load_ma += in_a * 1000.0 - (ic.get("estimated_mA") or 0)
+        return load_ma / 1000.0
+
     def _budget_load_a(reg: dict) -> float:
-        rail_data = power_budget.get("rails", {}).get(reg.get("output_rail", ""))
-        if isinstance(rail_data, dict):
-            return (rail_data.get("estimated_load_mA") or 0) / 1000.0
-        return 0.0
+        out_rail = reg.get("output_rail", "")
+        # Only a linear or switching regulator passes its rail's current; one read as feeding
+        # its own input rail, or of another kind, takes the rail's own budget load.
+        if ((reg.get("topology") or "").lower() not in ("ldo", "linear", "switching")
+                or out_rail == reg.get("input_rail")):
+            rail_data = budget_rails.get(out_rail)
+            return ((rail_data.get("estimated_load_mA") or 0) / 1000.0
+                    if isinstance(rail_data, dict) else 0.0)
+        return _rail_load_a(out_rail, frozenset(), set())
 
     # 1. Linear regulators (LDOs): the drop times the output rail's power-budget load. Without a
     # budget load, the regulator detector's estimate, whose load is sized from output capacitance
@@ -308,13 +357,7 @@ def _estimate_all_power_dissipation(schematic: dict) -> tuple:
         if topology in ("ldo", "linear", ""):
             continue
 
-        # Get output current estimate from power_budget
-        output_rail = reg.get("output_rail", "")
-        iout_a = 0
-        for rail_name, rail_data in power_budget.get("rails", {}).items():
-            if isinstance(rail_data, dict) and rail_name == output_rail:
-                iout_a = rail_data.get("estimated_load_mA", 0) / 1000.0
-                break
+        iout_a = _budget_load_a(reg)
 
         vout = reg.get("estimated_vout")
         if not vout:

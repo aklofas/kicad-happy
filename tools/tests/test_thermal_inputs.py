@@ -165,7 +165,8 @@ class RegulatorLoadFromPowerBudget(unittest.TestCase):
 
     def run_thermal(self, regulators, rail_loads_mA, footprints):
         sch = {"analyzer_type": "schematic", "inputs": {"source_files": []}, "findings": regulators,
-               "power_budget": {"rails": {r: {"estimated_load_mA": ma} for r, ma in rail_loads_mA.items()}}}
+               "power_budget": {"rails": {r: (ma if isinstance(ma, dict) else {"estimated_load_mA": ma})
+                                          for r, ma in rail_loads_mA.items()}}}
         pcb = {"analyzer_type": "pcb", "footprints": footprints}
         with tempfile.TemporaryDirectory() as tmp:
             d = Path(tmp)
@@ -248,6 +249,109 @@ class RegulatorLoadFromPowerBudget(unittest.TestCase):
         self.assertAlmostEqual(a6["pdiss_w"], 0.8824)
         self.assertIn(("TS-001", "error"), findings6)
 
+
+    def test_ldo_feeding_another_ldo_carries_its_load(self):
+        # U3 12 V -> 5 V feeds U4 (5 V -> 3.3 V, 130 mA on +3V3). The budget lists U4 on +5V as a 10 mA
+        # IC; U3 really passes 130 + 5 mA: 7 V x 0.135 A = 0.945 W in SOT-223, no thermal vias.
+        u3 = _ldo("U3", "AMS1117-5.0", 12.0, 5.0, [10e-6], "+5V")
+        u4 = _ldo("U4", "AMS1117-3.3", 5.0, 3.3, [10e-6], "+3V3")
+        u4["input_rail"] = "+5V"
+        out = self.run_thermal(
+            [u3, u4],
+            {"+5V": {"estimated_load_mA": 15, "ics": [{"ref": "U4", "value": "AMS1117-3.3", "estimated_mA": 10}],
+                     "other_loads": [{"ref": "D1", "type": "led", "estimated_mA": 5}]},
+             "+3V3": 130},
+            [_fp("U3", "Package_TO_SOT_SMD:SOT-223-3_TabPin2"),
+             _fp("U4", "Package_TO_SOT_SMD:SOT-223-3_TabPin2", x=40.0)])
+        a, findings = self.of(out, "U3")
+        self.assertAlmostEqual(a["pdiss_w"], 0.945)
+        self.assertIn(("TS-004", "warning"), findings)
+        u4a, _ = self.of(out, "U4")
+        self.assertAlmostEqual(u4a["pdiss_w"], 0.221)
+
+    def test_ldo_feeding_a_switcher_carries_its_input_current(self):
+        # U7 buck 5 V -> 1.8 V at 1 A draws 1.8 x 1 / (0.85 x 5) = 0.4235 A from +5V, not its 10 mA IC entry:
+        # U3 drops 7 V x 0.4235 A = 2.965 W.
+        u3 = _ldo("U3", "AMS1117-5.0", 12.0, 5.0, [10e-6], "+5V")
+        u7 = _buck("U7", 5.0, 1.8, 0.2, "+1V8")
+        u7["input_rail"] = "+5V"
+        out = self.run_thermal(
+            [u3, u7],
+            {"+5V": {"estimated_load_mA": 10, "ics": [{"ref": "U7", "value": "BUCK1", "estimated_mA": 10}]},
+             "+1V8": 1000},
+            [_fp("U3", "Package_TO_SOT_SMD:SOT-223-3_TabPin2"),
+             _fp("U7", "Package_TO_SOT_SMD:SOT-23-6", x=40.0)])
+        a, findings = self.of(out, "U3")
+        self.assertAlmostEqual(a["pdiss_w"], 2.9647)
+        self.assertIn(("TS-001", "error"), findings)
+
+    def test_regulators_feeding_each_other_are_counted_once(self):
+        # A mis-read loop: U1 feeds +B (U2's input) and U2 feeds +A (U1's input). U1 carries +A's 20 mA
+        # with U2's entry replaced by +B's load (20 mA, where U1 itself stays at its flat 10 mA): 30 mA.
+        u1 = _ldo("U1", "LDO1", 12.0, 5.0, [1e-6], "+A")
+        u1["input_rail"] = "+B"
+        u2 = _ldo("U2", "LDO2", 12.0, 5.0, [1e-6], "+B")
+        u2["input_rail"] = "+A"
+        out = self.run_thermal(
+            [u1, u2],
+            {"+A": {"estimated_load_mA": 20, "ics": [{"ref": "U2", "value": "LDO2", "estimated_mA": 10}]},
+             "+B": {"estimated_load_mA": 20, "ics": [{"ref": "U1", "value": "LDO1", "estimated_mA": 10}]}},
+            [_fp("U1", "Package_TO_SOT_SMD:SOT-223-3_TabPin2"),
+             _fp("U2", "Package_TO_SOT_SMD:SOT-223-3_TabPin2", x=40.0)])
+        self.assertAlmostEqual(self.of(out, "U1")[0]["pdiss_w"], 0.21)
+        self.assertAlmostEqual(self.of(out, "U2")[0]["pdiss_w"], 0.21)
+
+    def test_an_ic_on_two_rails_of_one_tree_is_charged_once(self):
+        # U3 feeds U4 (+3V3) and U5 (+3V3A); the MCU U9 sits on both, listed at 100 mA on each.
+        # U3 carries 100 + 20 (+3V3) + 30 (+3V3A without U9 again) = 150 mA: 7 V x 0.15 A = 1.05 W.
+        u3 = _ldo("U3", "AMS1117-5.0", 12.0, 5.0, [10e-6], "+5V")
+        u4 = _ldo("U4", "AMS1117-3.3", 5.0, 3.3, [10e-6], "+3V3")
+        u5 = _ldo("U5", "AMS1117-3.3", 5.0, 3.3, [10e-6], "+3V3A")
+        u4["input_rail"] = u5["input_rail"] = "+5V"
+        mcu = {"ref": "U9", "value": "MCU", "estimated_mA": 100}
+        out = self.run_thermal(
+            [u3, u4, u5],
+            {"+5V": {"estimated_load_mA": 20, "ics": [{"ref": "U4", "value": "AMS1117-3.3", "estimated_mA": 10},
+                                                       {"ref": "U5", "value": "AMS1117-3.3", "estimated_mA": 10}]},
+             "+3V3": {"estimated_load_mA": 120, "ics": [mcu, {"ref": "U10", "value": "FLASH", "estimated_mA": 20}]},
+             "+3V3A": {"estimated_load_mA": 130, "ics": [mcu, {"ref": "U11", "value": "ADC", "estimated_mA": 30}]}},
+            [_fp("U3", "Package_TO_SOT_SMD:SOT-223-3_TabPin2")])
+        self.assertAlmostEqual(self.of(out, "U3")[0]["pdiss_w"], 1.05)
+
+    def test_only_a_linear_or_switching_regulator_feeding_another_rail_takes_its_load(self):
+        # U1 is read with its output on its own input rail, U2 is a surge stopper: both take +12V's
+        # own 50 mA, not the 300 mA that U3 passes on to +3V3.
+        u1 = _ldo("U1", "LDO1", 24.0, 12.0, [1e-6], "+12V")
+        u1["input_rail"] = "+12V"
+        u2 = _buck("U2", 24.0, 12.0, 0.2, "+12V")
+        u2["topology"] = "ic_with_internal_regulator"
+        u3 = _ldo("U3", "LDO3", 12.0, 3.3, [1e-6], "+3V3")
+        u3["input_rail"] = "+12V"
+        out = self.run_thermal(
+            [u1, u2, u3],
+            {"+12V": {"estimated_load_mA": 50, "ics": [{"ref": "U3", "value": "LDO3", "estimated_mA": 10}]},
+             "+3V3": 300},
+            [_fp("U1", "Package_TO_SOT_SMD:SOT-223-3_TabPin2"),
+             _fp("U2", "Package_TO_SOT_SMD:SOT-223-3_TabPin2", x=40.0),
+             _fp("U3", "Package_TO_SOT_SMD:SOT-223-3_TabPin2", x=70.0)])
+        self.assertAlmostEqual(self.of(out, "U1")[0]["pdiss_w"], 0.6)
+        self.assertAlmostEqual(self.of(out, "U2")[0]["pdiss_w"], 0.1059)
+
+    def test_negative_ldo_feeding_a_regulator_ic_carries_its_load(self):
+        # U11 -15 V -> -8 V feeds U1, an LT3094 read as an IC with an internal regulator, whose V- rail
+        # draws 150 mA: 7 V x 0.15 A = 1.05 W in TO-220, no thermal vias.
+        u11 = _ldo("U11", "LM7908", -15.0, -8.0, [1e-6], "-8V")
+        u11["power_dissipation"]["dropout_V"] = 7.0
+        u1 = {"detector": "detect_power_regulators", "ref": "U1", "value": "LT3094xMSE",
+              "topology": "ic_with_internal_regulator", "input_rail": "-8V", "output_rail": "V-"}
+        out = self.run_thermal(
+            [u11, u1],
+            {"-8V": {"estimated_load_mA": 10, "ics": [{"ref": "U1", "value": "LT3094xMSE", "estimated_mA": 10}]},
+             "V-": 150},
+            [_fp("U11", "Package_TO_SOT_THT:TO-220-3_Vertical")])
+        a, findings = self.of(out, "U11")
+        self.assertAlmostEqual(a["pdiss_w"], 1.05)
+        self.assertIn(("TS-004", "warning"), findings)
 
 if __name__ == "__main__":
     unittest.main()
