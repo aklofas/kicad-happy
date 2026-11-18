@@ -419,6 +419,15 @@ class TypeCRpTable(unittest.TestCase):
         self.assertIsNone(type_c_rp(12000, None))
         self.assertEqual(type_c_rp(12000, None, any_rail=True)[2], "source_1_5A")
 
+    def test_rail_windows(self):
+        # A pull-up rail outside the 5 V and 3.3 V windows has no Rp table.
+        from detector_helpers import TYPE_C_RP_BY_RAIL, type_c_rp_rows
+        self.assertIs(type_c_rp_rows(5.0), TYPE_C_RP_BY_RAIL[5.0])
+        self.assertIs(type_c_rp_rows(3.3), TYPE_C_RP_BY_RAIL[3.3])
+        self.assertIsNone(type_c_rp_rows(12.0))
+        self.assertIsNone(type_c_rp_rows(None))
+        self.assertEqual(len(type_c_rp_rows(None, any_rail=True)), 6)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -22,7 +22,7 @@ from kicad_core.values import format_frequency, parse_value
 from kicad_core.netnames import parse_voltage_from_net_name
 from detector_helpers import (is_addressable_led, is_led_rail, led_forward_voltage, led_string,
                               match_family, match_ic_keywords, get_unique_ics, get_pin_net, symbol_name,
-                              type_c_rp)
+                              type_c_rp, type_c_rp_rows)
 from finding_schema import make_finding, make_provenance
 
 
@@ -2980,7 +2980,7 @@ def detect_power_path(ctx: AnalysisContext) -> list[dict]:
                     if not ctx.is_power_net(other_net):
                         continue
                     rail_v = ctx.rail_voltage(other_net)
-                    if rail_v is None or not (4.5 <= rail_v <= 5.5 or 3.0 <= rail_v <= 3.6):
+                    if type_c_rp_rows(rail_v) is None:
                         continue
                     hit = type_c_rp(r, rail_v)
                     if hit:

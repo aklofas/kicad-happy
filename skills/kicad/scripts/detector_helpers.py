@@ -419,8 +419,9 @@ def is_tvs_diode(comp: dict) -> bool:
     return bool(_TVS_WORDS.search(words))
 
 
-# USB Type-C source Rp by pull-up rail, per the Type-C specification: (nominal ohms, tolerance,
-# status, text) for default USB, 1.5 A and 3 A current. A sink's Rd is 5.1 kohm.
+# USB Type-C source Rp by pull-up rail: (nominal ohms, tolerance, status, text) for default USB,
+# 1.5 A and 3 A current. USB Type-C Cable and Connector Specification Release 2.5 (March 2026),
+# Table 4-27 Source CC Termination (Rp) Requirements; a sink's Rd is 5.1 kohm (Table 4-28).
 TYPE_C_RP_BY_RAIL = {
     5.0: ((56000, 0.20, "source_default", "default USB current"),
           (22000, 0.05, "source_1_5A", "1.5A advertisement"),
@@ -431,15 +432,20 @@ TYPE_C_RP_BY_RAIL = {
 }
 
 
+def type_c_rp_rows(rail_v: float | None, any_rail: bool = False) -> tuple | None:
+    """The Rp rows for a pull-up rail of *rail_v* volts, or None for a rail outside the 5 V and
+    3.3 V windows. An unknown rail takes both tables when *any_rail* is set."""
+    if rail_v is None:
+        return TYPE_C_RP_BY_RAIL[5.0] + TYPE_C_RP_BY_RAIL[3.3] if any_rail else None
+    if 4.5 <= rail_v <= 5.5:
+        return TYPE_C_RP_BY_RAIL[5.0]
+    if 3.0 <= rail_v <= 3.6:
+        return TYPE_C_RP_BY_RAIL[3.3]
+    return None
+
+
 def type_c_rp(ohms: float, rail_v: float | None, any_rail: bool = False) -> tuple | None:
     """The Rp row matching a pull-up of *ohms* to a *rail_v* rail, else None. An unknown rail
     matches either table when *any_rail* is set."""
-    if rail_v is None:
-        rows = TYPE_C_RP_BY_RAIL[5.0] + TYPE_C_RP_BY_RAIL[3.3] if any_rail else ()
-    elif 4.5 <= rail_v <= 5.5:
-        rows = TYPE_C_RP_BY_RAIL[5.0]
-    elif 3.0 <= rail_v <= 3.6:
-        rows = TYPE_C_RP_BY_RAIL[3.3]
-    else:
-        rows = ()
+    rows = type_c_rp_rows(rail_v, any_rail) or ()
     return next((r for r in rows if r[0] * (1 - r[1]) <= ohms <= r[0] * (1 + r[1])), None)
