@@ -3859,7 +3859,7 @@ def detect_transistor_circuits(ctx: AnalysisContext, matched_fets: set, fet_pins
                     r_n1, r_n2 = ctx.get_two_pin_nets(sc["reference"])
                     other = r_n2 if r_n1 == source_net else r_n1
                     if ctx.is_ground(other):
-                        pv = parse_value(sc["value"])
+                        pv = parse_value(sc["value"], component_type="resistor")
                         if pv is not None and pv <= 1.0:
                             source_sense = {
                                 "reference": sc["reference"],

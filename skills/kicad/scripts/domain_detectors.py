@@ -3537,7 +3537,7 @@ def detect_reset_supervisors(ctx: AnalysisContext) -> list[dict]:
             if not comp:
                 continue
             if comp["type"] == "resistor":
-                r_val = parse_value(comp.get("value", ""))
+                r_val = parse_value(comp.get("value", ""), component_type="resistor")
                 if r_val and r_val >= 1000:  # at least 1k for reset RC
                     resistors.append({"ref": comp["reference"], "ohms": r_val})
             elif comp["type"] == "capacitor":
@@ -3612,7 +3612,7 @@ def _find_series_termination(ctx: AnalysisContext, net_name: str,
         comp = ctx.comp_lookup.get(p["component"])
         if not comp or comp["type"] != "resistor" or p["component"] == source_ref:
             continue
-        r_val = parse_value(comp.get("value", ""))
+        r_val = parse_value(comp.get("value", ""), component_type="resistor")
         if r_val and 22 <= r_val <= 100:
             return {"ref": comp["reference"], "ohms": r_val}
     return None
@@ -4305,7 +4305,7 @@ def detect_level_shifters(ctx: AnalysisContext) -> list[dict]:
                 rc = ctx.comp_lookup.get(p["component"])
                 if not rc or rc["type"] != "resistor":
                     continue
-                r_val = parse_value(rc.get("value", ""))
+                r_val = parse_value(rc.get("value", ""), component_type="resistor")
                 if r_val and 1000 <= r_val <= 100000:  # 1k-100k typical pull-up
                     # Check other side goes to a power rail
                     rn1, _ = ctx.pin_net.get((rc["reference"], "1"), (None, None))
@@ -4624,7 +4624,7 @@ def detect_led_driver_ics(ctx: AnalysisContext) -> list[dict]:
                             continue
                         rc = ctx.comp_lookup.get(p["component"])
                         if rc and rc["type"] == "resistor":
-                            r_val = parse_value(rc.get("value", ""))
+                            r_val = parse_value(rc.get("value", ""), component_type="resistor")
                             current_set = {"ref": rc["reference"], "net": net}
                             if r_val:
                                 current_set["ohms"] = r_val
@@ -5215,7 +5215,7 @@ def detect_thermocouple_rtd(ctx: AnalysisContext) -> list[dict]:
                                 continue
                             rc = ctx.comp_lookup.get(p["component"])
                             if rc and rc["type"] == "resistor":
-                                r_val = parse_value(rc.get("value", ""))
+                                r_val = parse_value(rc.get("value", ""), component_type="resistor")
                                 ref_resistor = {"ref": rc["reference"]}
                                 if r_val:
                                     ref_resistor["ohms"] = r_val

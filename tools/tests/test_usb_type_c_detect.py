@@ -193,6 +193,20 @@ class CcResistorValues(unittest.TestCase):
         self.assertNotIn("wrong_cc_value", c["usb_c_cc_status"]["issues"])
         self.assertEqual(_uc003(r), [])
 
+    def test_rd_written_in_the_symbol_name_is_read(self):
+        r = _type_c_with(("R1", "R_5k1_0402", "GND"), ("R2", "5.1k,1%", "GND"))
+        c = self._conn(r)
+        self.assertNotIn("unread_resistors", c["usb_c_cc_status"])
+        self.assertEqual(c["usb_c_cc_status"]["role"], "sink")
+        self.assertEqual((c["checks"]["cc1_pulldown_5k1"], c["checks"]["cc2_pulldown_5k1"]),
+                         ("pass", "pass"))
+        self.assertEqual(_uc003(r), [])
+
+    def test_plain_rd_value_is_unchanged(self):
+        c = self._conn(_type_c_with(("R1", "5.1k", "GND"), ("R2", "5.1k", "GND")))
+        self.assertEqual(c["usb_c_cc_status"]["role"], "sink")
+        self.assertEqual(c["checks"]["cc1_pulldown_5k1"], "pass")
+
     def test_part_number_value_is_one_info(self):
         # ERA-6ARW512V is a Panasonic 5.1 kOhm part number: no number to read.
         r = _type_c_with(("R1", "5.1k", "GND"), ("R2", "ERA-6ARW512V", "GND"))

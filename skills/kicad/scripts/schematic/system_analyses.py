@@ -311,7 +311,7 @@ def analyze_sleep_current(ctx: AnalysisContext,
         if ref in _seen_refs:
             continue
         _seen_refs.add(ref)
-        r_val = parse_value(comp.get("value", ""))
+        r_val = parse_value(comp.get("value", ""), component_type="resistor")
         if not r_val or r_val <= 0:
             continue
         n1, n2 = _get_two_pin_nets(ref)
@@ -384,7 +384,7 @@ def analyze_sleep_current(ctx: AnalysisContext,
                 if o_type == "resistor":
                     o1, o2 = _get_two_pin_nets(oc["reference"])
                     o_other = o2 if o1 == sig_net else o1
-                    o_val = parse_value(oc.get("value", ""))
+                    o_val = parse_value(oc.get("value", ""), component_type="resistor")
                     if o_other and is_ground(o_other) and o_val and o_val > 0:
                         if divider_r2_ref is None:
                             divider_r2_ref = oc["reference"]
@@ -461,7 +461,7 @@ def analyze_sleep_current(ctx: AnalysisContext,
                 r_comp = comp_lookup.get(p["component"])
                 if not r_comp or r_comp["type"] != "resistor":
                     continue
-                r_val = parse_value(r_comp.get("value", ""))
+                r_val = parse_value(r_comp.get("value", ""), component_type="resistor")
                 if not r_val or r_val <= 0:
                     continue
                 # Find what power rail this LED circuit connects to
@@ -1831,7 +1831,7 @@ def analyze_bom_optimization(components: list[dict]) -> dict:
     resistors = by_type.get("resistor", [])
     r_values: dict[float, list[str]] = {}  # parsed_value -> [refs]
     for r in resistors:
-        val = parse_value(r.get("value", ""))
+        val = parse_value(r.get("value", ""), component_type="resistor")
         if val and val > 0:
             r_values.setdefault(val, []).append(r["reference"])
 
@@ -2406,7 +2406,7 @@ def analyze_usb_compliance(ctx: AnalysisContext,
                         continue
                     if rc.get("dnp") or rc.get("value", "").strip().upper() in ("DNI", "DNP"):
                         continue
-                    r_val = parse_value(rc.get("value", ""))
+                    r_val = parse_value(rc.get("value", ""), component_type="resistor")
                     if r_val is None:
                         cc_unread["CC1" if is_cc1 else "CC2"].append(
                             {"ref": rc["reference"], "value": rc.get("value", "")})
@@ -2569,7 +2569,7 @@ def analyze_usb_compliance(ctx: AnalysisContext,
                 rc = comp_lookup.get(p["component"])
                 if not rc or rc["type"] != "resistor":
                     continue
-                r_val = parse_value(rc.get("value", ""))
+                r_val = parse_value(rc.get("value", ""), component_type="resistor")
                 if r_val and 20 <= r_val <= 33:
                     if is_dp:
                         dp_series_r = True
