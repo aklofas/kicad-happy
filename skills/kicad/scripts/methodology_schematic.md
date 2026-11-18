@@ -698,7 +698,7 @@ Checks for label type mismatches:
 
 ### 10.5 PWR_FLAG Audit
 
-Identifies nets with a power input pin and no power output pin or PWR_FLAG symbol, power-symbol rails and other nets alike. KiCad's ERC requires PWR_FLAG on nets driven only by power pins (e.g., a connector providing power) — without it, ERC reports "power pin not driven." A power input pin with a no-connect flag on it is not checked, and a net flagged no-connect is reported only when it is a power-symbol rail. When a sub-sheet is read on its own, a net that leaves it through a hierarchical or global label is skipped, since another sheet can drive it.
+Identifies nets with a power input pin and no power output pin or PWR_FLAG symbol, power-symbol rails and other nets alike. KiCad's ERC requires PWR_FLAG on nets driven only by power pins (e.g., a connector providing power) — without it, ERC reports "power pin not driven." A power input pin with a no-connect flag on it is not checked, and a net flagged no-connect is reported only when it is a power-symbol rail. When a sub-sheet is read on its own, a net that leaves it is skipped, since another sheet can drive it: one with a hierarchical or global label, a global power symbol, or a hidden power input pin.
 
 ### 10.6 Footprint Filter Validation
 

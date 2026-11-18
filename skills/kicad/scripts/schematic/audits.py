@@ -129,8 +129,9 @@ def audit_pwr_flags(components: list[dict], nets: dict, known_power_rails: set,
     lone pin of a net flagged no-connect: the flag sits on its stub). Another net flagged
     no-connect is reported only when it is a power-symbol rail: whether KiCad checks it
     depends on how it groups the flag with the net. When the file is a sub-sheet read on
-    its own, a net that leaves the sheet through a hierarchical or global label can be
-    driven on another sheet, so it is not checked there.
+    its own, a net that leaves the sheet can be driven on another sheet, so it is not
+    checked there: one with a hierarchical or global label, a global power symbol, or a
+    hidden power input (KiCad joins it to every net of the pin's name).
     """
     warnings = []
     power_symbols = {c["reference"] for c in components if c.get("type") == "power_symbol"}
@@ -139,6 +140,11 @@ def audit_pwr_flags(components: list[dict], nets: dict, known_power_rails: set,
                for c in components for p in c.get("pins") or []
                if p.get("type") == "power_in"
                and (c.get("_sheet", 0), to_iu(p["x"]), to_iu(p["y"])) in nc_points}
+    global_symbols = {c["reference"] for c in components
+                      if c.get("type") == "power_symbol" and c.get("_power_scope") != "local"}
+    global_pins = {(c["reference"], p.get("number"), p.get("name")) for c in components
+                   if c.get("type") != "power_symbol" for p in c.get("pins") or []
+                   if p.get("type") == "power_in" and p.get("hidden")}
 
     # Sorted: dict order must not leak into pwr_flag_warnings (byte-stable runs).
     for net_name in sorted(nets):
@@ -151,9 +157,12 @@ def audit_pwr_flags(components: list[dict], nets: dict, known_power_rails: set,
                    or any(p["component"] in power_symbols for p in net_info["pins"]))
         if net_info.get("no_connect") and not is_rail:
             continue
-        if (standalone_sheet and not is_rail
-                and any(lbl.get("type") in ("hierarchical_label", "global_label")
-                        for lbl in net_info.get("labels") or [])):
+        if standalone_sheet and (
+                any(lbl.get("type") in ("hierarchical_label", "global_label")
+                    for lbl in net_info.get("labels") or [])
+                or any(p["component"] in global_symbols
+                       or (p["component"], p["pin_number"], p["pin_name"]) in global_pins
+                       for p in net_info["pins"])):
             continue
         pin_types = set(p["pin_type"] for p in net_info["pins"])
 

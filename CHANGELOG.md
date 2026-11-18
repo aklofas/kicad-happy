@@ -36,6 +36,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A capacitor to ground whose value cannot be read (for example `C`, `C_Small` or a part number) now counts as decoupling present; it still adds no capacitance to the rail totals.
 - The USB-PD controller record names the controller's own value and lists each CC net once.
 - A capacitor value with its voltage glued on (`220u25V`, `1n50V`) reads as the capacitance; part numbers such as `7406N` on a capacitor symbol and a value such as `1e3` are no longer read as capacitances.
+- A sub-sheet analysed on its own no longer warns about a missing PWR_FLAG on a global power rail or on a net joined by a hidden power pin, which another sheet can drive; analysing the root sheet still checks them.
 - The PWR_FLAG audit now checks every net with a power input pin, as KiCad's ERC does, not only nets with a power symbol; pins marked no-connect are skipped, and a sub-sheet analysed on its own does not report nets that leave the sheet.
 - Power-sequencing warnings name each sensitive load once instead of once per supply pin.
 - An IC's internal-regulator output pin (VCAP, VDDCORE, VREG, VDD_DR) wired only to its decoupling capacitor is reported as information, not as an unpowered supply pin.

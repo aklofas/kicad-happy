@@ -2,8 +2,8 @@
 power input pin and no power output or PWR_FLAG is reported, not only power-symbol rails.
 A power input with a no-connect flag on it is not checked. A sub-sheet read on its own does
 not report a net that leaves the sheet through a hierarchical or global label, since another
-sheet can drive it; a root file read with --no-hierarchy still reads all its sheets and stays
-strict."""
+sheet can drive it, nor a net that a global power symbol or a hidden power input joins to other
+sheets; a root file read with --no-hierarchy still reads all its sheets and stays strict."""
 import os, sys, tempfile, unittest
 from contextlib import redirect_stderr
 from io import StringIO
@@ -171,6 +171,33 @@ class StandaloneSheetTest(unittest.TestCase):
         self.assertEqual(warned(audit_pwr_flags([], nets, set(), standalone_sheet=True)), ["VBUS"])
 
 
+class StandaloneSheetRailTest(unittest.TestCase):
+    def test_sub_sheet_read_alone_skips_global_power_rails(self):
+        nets = {"+3V3": net(pin("#PWR01", "1", "power_in"), pin("U1", "4", "power_in", "VDD")),
+                "GND": net(pin("#GND01", "1", "power_in"), pin("U1", "5", "power_in", "VSS"))}
+        parts = [power_symbol("#PWR01"), power_symbol("#GND01")]
+        self.assertEqual(audit_pwr_flags(parts, nets, {"+3V3"}, standalone_sheet=True), [])
+        self.assertEqual(warned(audit_pwr_flags(parts, nets, {"+3V3"})), ["+3V3", "GND"])
+
+    def test_hidden_power_input_joins_other_sheets(self):
+        # KiCad joins a hidden power-input pin to every same-name net (a global power pin).
+        nets = {"GND": net(pin("D11", "10", "power_in", "GND"),
+                           labels=[{"name": "GND", "type": "label"}])}
+        parts = [{"reference": "D11", "type": "ic",
+                  "pins": [{"number": "10", "name": "GND", "type": "power_in", "hidden": True,
+                            "x": 0, "y": 0}]}]
+        self.assertEqual(audit_pwr_flags(parts, nets, set(), standalone_sheet=True), [])
+        self.assertEqual(warned(audit_pwr_flags(parts, nets, set())), ["GND"])
+        parts[0]["pins"][0].pop("hidden")
+        self.assertEqual(warned(audit_pwr_flags(parts, nets, set(), standalone_sheet=True)), ["GND"])
+
+    def test_local_power_symbol_rail_still_warns(self):
+        nets = {"VLOC": net(pin("#PWR03", "1", "power_in"), pin("U1", "4", "power_in", "VDD"))}
+        w = audit_pwr_flags([power_symbol("#PWR03", "local")], nets, {"VLOC"}, standalone_sheet=True)
+        self.assertEqual(warned(w), ["VLOC"])
+        self.assertTrue(w[0]["message"].startswith("Power rail 'VLOC'"))
+
+
 # U: pin 1 a visible power input VCC at (0, -5.08) from the anchor, pin 2 passive A at (-5.08, 0).
 U_LIB = ('(symbol "t:U" (in_bom yes) (on_board yes)'
          ' (property "Reference" "U" (at 0 0 0)) (property "Value" "U" (at 0 0 0))'
@@ -224,6 +251,11 @@ class NoHierarchyReadTest(unittest.TestCase):
         self.assertEqual(net_of(r, "U1", "1"), "VBUS")
         self.assertNotIn("VBUS", warned(r["pwr_flag_warnings"]))
         self.assertIn(net_of(r, "U3", "1"), warned(r["pwr_flag_warnings"]))
+
+    def test_sub_sheet_read_alone_skips_its_power_symbol_rail(self):
+        r = analyze(as_root=False)
+        self.assertEqual(net_of(r, "U2", "1"), "+3V3")
+        self.assertEqual(warned(r["pwr_flag_warnings"]), [net_of(r, "U3", "1")])
 
 
 if __name__ == "__main__":
