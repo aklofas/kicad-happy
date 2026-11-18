@@ -70,8 +70,10 @@ class PowerPinPaths(unittest.TestCase):
         for comp, expect in (
             ({"reference": "R1", "type": "resistor", "value": "0R"}, 0),
             ({"reference": "R1", "type": "resistor", "value": "1"}, 0),
-            ({"reference": "R1", "type": "resistor", "value": "1.1"}, 1),
+            ({"reference": "R1", "type": "resistor", "value": "1.1"}, 0),
+            ({"reference": "R1", "type": "resistor", "value": "1k5"}, 1),
             ({"reference": "R1", "type": "resistor", "value": "DNP"}, 1),
+            ({"reference": "R1", "type": "resistor", "value": "100", "dnp": True}, 1),
             ({"reference": "L1", "type": "inductor", "value": "10u"}, 0),
             ({"reference": "FB1", "type": "ferrite_bead", "value": "600R"}, 0),
             ({"reference": "F1", "type": "fuse", "value": "1A"}, 0),

@@ -5476,7 +5476,8 @@ def audit_power_pin_dc_paths(ctx: AnalysisContext,
       - solder jumpers with default_state='bridged'    (bridge)
     and REJECT crossing capacitors. If no named power rail is reachable
     within 2 hops, emit PP-001 at severity=error (info on module-internal LDO rails).
-    A regulator's output net is a rail even when it has no power name.
+    A regulator's output net is a rail even when it has no power name. A resistor above
+    1 Ω and up to 1 kΩ whose other end is a rail feeds the pin; the walk does not cross it.
     A net known as a rail only from its pins (a supply pin and a capacitor to ground)
     counts as reached unless it is AC-coupled: only IC pins and capacitors sit on it,
     a two-pin capacitor joins it to another rail, and it shows no source of its own
@@ -5542,6 +5543,22 @@ def audit_power_pin_dc_paths(ctx: AnalysisContext,
         if fact.kind == "jumper":
             return fact.default_state == "bridged"
         return fact.kind == "net_tie"
+
+    def _feeds_from_rail(ref: str, cur_net: str) -> bool:
+        # A series supply-filter resistor (10-1000 ohm RC filters on supply pins) straight to
+        # a rail is a DC path. The walk does not go on past it: beyond a resistor, a capacitor
+        # is a filter or a reference, not the pin's supply.
+        fact = bridge_facts.by_ref.get(ref)
+        if fact is None or fact.kind != "resistor" or fact.resistance is None:
+            return False
+        if not 1.0 < fact.resistance <= 1000.0:
+            return False
+        c = components.get(ref) or {}
+        if c.get("dnp") or c.get("on_board") is False:
+            return False
+        return any(n != cur_net and not ctx.is_ground(n)
+                   and (_is_dc_rail(n) or n in nets_with_connector)
+                   for _pn, n, _pt in ref_pins.get(ref, []))
 
     def _is_capacitor(ref: str) -> bool:
         c = components.get(ref) or {}
@@ -5625,6 +5642,9 @@ def audit_power_pin_dc_paths(ctx: AnalysisContext,
                             continue
                         if _is_capacitor(cref):
                             saw_capacitor_on_path = True
+                            continue
+                        if _feeds_from_rail(cref, cur_net):
+                            reached_rail = True
                             continue
                         if not _bridges_dc(cref):
                             continue

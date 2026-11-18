@@ -52,5 +52,46 @@ class RegulatorOutputRail(unittest.TestCase):
         self.assertEqual(len(_pp001(self.PARTS, nets, power_regulators=[{"output_rail": "GND"}])), 1)
 
 
+class SeriesResistorSupply(unittest.TestCase):
+    def _fed_through(self, r):
+        nets = {"+5V": [("R1", "1", "passive")],
+                "N_U1": [("U1", "1", "power_in"), ("R1", "2", "passive"), ("C1", "1", "passive")],
+                "GND": [("C1", "2", "passive")]}
+        return _pp001([U, C, dict({"reference": "R1", "type": "resistor"}, **r)], nets)
+
+    def test_a_filter_resistor_straight_from_a_rail_feeds_the_pin(self):
+        for value in ("10", "100", "1k"):
+            self.assertEqual(self._fed_through({"value": value}), [], value)
+
+    def test_a_large_resistor_from_a_rail_does_not(self):
+        self.assertEqual(len(self._fed_through({"value": "10k"})), 1)
+
+    def test_an_unfitted_resistor_does_not(self):
+        self.assertEqual(len(self._fed_through({"value": "100", "dnp": True})), 1)
+        self.assertEqual(len(self._fed_through({"value": "100", "on_board": False})), 1)
+
+    def test_the_walk_does_not_go_on_past_the_resistor(self):
+        # The pin's own net has no capacitor; one sits past the 240 ohm resistor.
+        nets = {"N_ZQ": [("U1", "1", "power_in"), ("R1", "2", "passive")],
+                "N_FAR": [("R1", "1", "passive"), ("C1", "1", "passive")],
+                "GND": [("C1", "2", "passive")]}
+        self.assertEqual(_pp001([U, C, {"reference": "R1", "type": "resistor", "value": "240"}], nets), [])
+
+    def test_a_resistor_to_ground_does_not_feed_even_with_a_connector_on_ground(self):
+        parts = [U, C, {"reference": "J1", "type": "connector", "value": "Conn_01x02"},
+                 {"reference": "R1", "type": "resistor", "value": "470"}]
+        nets = {"N_U1": [("U1", "1", "power_in"), ("R1", "2", "passive"), ("C1", "1", "passive")],
+                "GND": [("R1", "1", "passive"), ("C1", "2", "passive"), ("J1", "2", "passive")]}
+        self.assertEqual(len(_pp001(parts, nets)), 1)
+
+    def test_a_resistor_to_a_net_that_is_not_a_rail_does_not_feed(self):
+        parts = [U, C, {"reference": "C2", "type": "capacitor", "value": "1u"},
+                 {"reference": "R1", "type": "resistor", "value": "100"}]
+        nets = {"N_FAR": [("R1", "1", "passive"), ("C2", "1", "passive")],
+                "N_U1": [("U1", "1", "power_in"), ("R1", "2", "passive"), ("C1", "1", "passive")],
+                "GND": [("C1", "2", "passive"), ("C2", "2", "passive")]}
+        self.assertEqual(len(_pp001(parts, nets)), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
