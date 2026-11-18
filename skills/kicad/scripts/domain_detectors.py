@@ -2931,6 +2931,9 @@ def detect_power_path(ctx: AnalysisContext) -> list[dict]:
                 if pname in _VBUS_PINS or pname.startswith("VBUS"):
                     vbus_net = net
                 elif pname in _CC_PINS or pname.startswith("CC"):
+                    # CC1DB/CC2DB are the dead-battery pins of the same CC lines
+                    if pname.endswith("DB") or net in cc_nets:
+                        continue
                     cc_nets.append(net)
                 elif pname in _SBU_PINS or pname.startswith("SBU"):
                     sbu_nets.append(net)
@@ -2947,8 +2950,8 @@ def detect_power_path(ctx: AnalysisContext) -> list[dict]:
                 if cc_net not in ctx.nets:
                     continue
                 for pin in ctx.nets[cc_net].get("pins", []):
-                    comp = ctx.comp_lookup.get(pin["component"])
-                    if not comp or comp["type"] != "resistor":
+                    r_comp = ctx.comp_lookup.get(pin["component"])
+                    if not r_comp or r_comp["type"] != "resistor":
                         continue
                     r = ctx.parsed_values.get(pin["component"])
                     if r is None:
@@ -2958,7 +2961,7 @@ def detect_power_path(ctx: AnalysisContext) -> list[dict]:
                     if not other_net:
                         continue
                     r_ref = pin["component"]
-                    label = f"{r_ref} ({comp.get('value', '')})"
+                    label = f"{r_ref} ({r_comp.get('value', '')})"
                     if ctx.is_ground(other_net):
                         if 4590 <= r <= 5610:  # 5.1kΩ ±10%
                             cc_resistor_findings.append({

@@ -76,6 +76,30 @@ class UsbPdCcResistors(unittest.TestCase):
         # The record still names the controller, not the resistor.
         self.assertEqual(entry["components"], ["U1"])
 
+    def test_summary_names_the_controller_not_a_cc_resistor(self):
+        ctx = pd_board("STUSB4500QTR", "5.1k")
+        ctx.nets["CC2"]["pins"].append(
+            dict(component="D1", pin_number="1", pin_name="A", pin_type="passive"))
+        ctx.comp_lookup["D1"] = {"reference": "D1", "type": "diode", "value": "D_Schottky"}
+        entry = pd_entry(ctx, "U1")
+        self.assertEqual(entry["summary"],
+                         "Power path U1 (STUSB4500QTR) [usb_pd_controller]")
+
+    def test_dead_battery_pins_do_not_repeat_the_cc_nets(self):
+        comps = [ic("U1", "STUSB4500QTR"), res("R1", "5.1k")]
+        nets = {"CC1": [("U1", "1", "CC1", "bidirectional"),
+                        ("U1", "5", "CC1DB", "bidirectional"),
+                        ("R1", "1", "~", "passive")],
+                "CC2": [("U1", "2", "CC2", "bidirectional"),
+                        ("U1", "6", "CC2DB", "bidirectional")],
+                "VBUS": [("U1", "3", "VBUS", "power_in")],
+                "GND": [("U1", "4", "GND", "power_in"), ("R1", "2", "~", "passive")]}
+        ctx = ctx_of(comps, nets, ("GND", "VBUS"), {"VBUS": 5.0, "GND": 0.0})
+        entry = pd_entry(ctx, "U1")
+        self.assertEqual(entry["cc_nets"], ["CC1", "CC2"])
+        (check,) = entry["cc_resistor_check"]
+        self.assertEqual(check["ref"], "R1")
+
     def test_56k_to_5v_is_source_default(self):
         (check,) = pd_entry(pd_board("STUSB4500QTR", "56k", to_net="+5V"), "U1")["cc_resistor_check"]
         self.assertEqual(check["status"], "source_default")
