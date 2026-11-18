@@ -108,6 +108,27 @@ class UsbPdCcResistors(unittest.TestCase):
                        rail_voltages={"+12V": 12.0})
         self.assertNotIn("cc_resistor_check", pd_entry(ctx, "U1"))
 
+    def test_rp_tolerance_follows_the_type_c_table(self):
+        # Default-current Rp is +-20 %, so 45k to 5 V is still a default-USB source.
+        (check,) = pd_entry(pd_board("STUSB4500QTR", "45k", to_net="+5V"), "U1")["cc_resistor_check"]
+        self.assertEqual(check["status"], "source_default")
+        # 1.5 A and 3 A rows are +-5 %: 24k to 5 V is no Rp.
+        (check,) = pd_entry(pd_board("STUSB4500QTR", "24k", to_net="+5V"), "U1")["cc_resistor_check"]
+        self.assertEqual(check["status"], "unexpected_value")
+
+    def test_a_4v6_rail_uses_the_5v_table(self):
+        ctx = pd_board("STUSB4500QTR", "22k", to_net="+5V", rail_voltages={"+5V": 4.6})
+        (check,) = pd_entry(ctx, "U1")["cc_resistor_check"]
+        self.assertEqual(check["status"], "source_1_5A")
+
+    def test_cypd3175_is_a_pd_controller(self):
+        # CYPD3171/3174/3175/3177 are the CCG3PA family.
+        for value in ("CYPD3175-24LQXQ", "CYPD3177-24LQXQ"):
+            with self.subTest(value=value):
+                entry = pd_entry(pd_board(value), "U1")
+                self.assertEqual(entry["type"], "usb_pd_controller")
+                self.assertEqual(entry["cc_nets"], ["CC1", "CC2"])
+
 
 def eth_board(connector_value, connector_lib="", magnetics=False):
     comps = [ic("U1", "LAN8720A"),

@@ -5,7 +5,7 @@ import math
 import re
 import sys
 from kicad_core.diagnostics import record
-from detector_helpers import is_tvs_diode
+from detector_helpers import is_tvs_diode, type_c_rp
 from kicad_core.classify import gpio_port_pins, is_active_low_enable, is_touch_pad
 from kicad_types import (
     AnalysisContext,
@@ -2227,11 +2227,6 @@ def analyze_assembly_complexity(components: list[dict]) -> dict:
     return result
 
 
-# USB Type-C Rp (nominal, tolerance) by pull-up rail, per the Type-C spec; Rd is 5.1k.
-_TYPE_C_RP_BY_RAIL = {
-    5.0: ((56000, 0.20), (22000, 0.05), (10000, 0.05)),
-    3.3: ((36000, 0.20), (12000, 0.05), (4700, 0.05)),
-}
 _RD_BAND = (4800, 5600)
 
 
@@ -2239,15 +2234,13 @@ def _is_type_c_rp(ohms: float, rail_v: float | None) -> bool:
     """Rp to a rail of *rail_v* volts; an unknown rail accepts either table."""
     if _RD_BAND[0] <= ohms <= _RD_BAND[1]:
         return False
-    if rail_v is None:
-        table = _TYPE_C_RP_BY_RAIL[5.0] + _TYPE_C_RP_BY_RAIL[3.3]
-    elif 4.5 <= rail_v <= 5.5:
-        table = _TYPE_C_RP_BY_RAIL[5.0]
-    elif 3.0 <= rail_v <= 3.6:
-        table = _TYPE_C_RP_BY_RAIL[3.3]
-    else:
-        return False
-    return any(n * (1 - tol) <= ohms <= n * (1 + tol) for n, tol in table)
+    return type_c_rp(ohms, rail_v, any_rail=True) is not None
+
+
+def _cc_termination(r_info: dict) -> bool:
+    """A sink Rd to ground or a source Rp to a supply."""
+    return bool((r_info["to_ground"] and _RD_BAND[0] <= r_info["ohms"] <= _RD_BAND[1])
+                or (r_info["to_power"] and _is_type_c_rp(r_info["ohms"], r_info["rail_v"])))
 
 
 _TYPE_C_NAME = re.compile(r"(?<![A-Z0-9])(?:USB[_-]?C|TYPE[-_]?C)(?![A-Z0-9])")
@@ -2360,7 +2353,7 @@ def analyze_usb_compliance(ctx: AnalysisContext,
             }
         elif conn["is_type_c"]:
             _PD_CONTROLLER_KEYWORDS = (
-                "fusb302", "stusb4500", "cypd3177", "husb238",
+                "fusb302", "fusb303", "stusb4500", "cypd317", "husb238",
                 "tps65987", "tps65988", "ccg3", "ccg6",
                 "max77958", "max20342",
             )
@@ -2426,6 +2419,10 @@ def analyze_usb_compliance(ctx: AnalysisContext,
                                      if not is_ground(other) else False),
                         "rail_v": 5.0 if to_vbus else ctx.rail_voltage(other),
                     }
+                    # Several resistors on one CC pin: the termination (Rd or Rp) is judged.
+                    held = cc1_resistor if is_cc1 else cc2_resistor
+                    if held is not None and _cc_termination(held) and not _cc_termination(r_info):
+                        continue
                     if is_cc1:
                         cc1_resistor = r_info
                     else:
@@ -2491,11 +2488,12 @@ def analyze_usb_compliance(ctx: AnalysisContext,
                             issues.append("missing_cc1_resistor")
                         if not cc2_unread:
                             issues.append("missing_cc2_resistor")
-                    if cc1_resistor and not (4800 <= cc1_resistor["ohms"] <= 5600 or
-                                             cc1_resistor["_rp"]):
+                    # A 5.1k that does not return to ground is not a sink's Rd.
+                    if cc1_resistor and not ((4800 <= cc1_resistor["ohms"] <= 5600
+                                              and cc1_resistor["to_ground"]) or cc1_resistor["_rp"]):
                         issues.append("wrong_cc_value")
-                    if cc2_resistor and not (4800 <= cc2_resistor["ohms"] <= 5600 or
-                                             cc2_resistor["_rp"]):
+                    if cc2_resistor and not ((4800 <= cc2_resistor["ohms"] <= 5600
+                                              and cc2_resistor["to_ground"]) or cc2_resistor["_rp"]):
                         issues.append("wrong_cc_value")
             for r_info in (cc1_resistor, cc2_resistor):
                 if r_info:

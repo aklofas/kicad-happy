@@ -21,7 +21,8 @@ from kicad_core.parts import LED_VF_BY_COLOR, is_load_switch_part, led_color, lo
 from kicad_core.values import format_frequency, parse_value
 from kicad_core.netnames import parse_voltage_from_net_name
 from detector_helpers import (is_addressable_led, is_led_rail, led_forward_voltage, led_string,
-                              match_family, match_ic_keywords, get_unique_ics, get_pin_net, symbol_name)
+                              match_family, match_ic_keywords, get_unique_ics, get_pin_net, symbol_name,
+                              type_c_rp)
 from finding_schema import make_finding, make_provenance
 
 
@@ -2793,7 +2794,7 @@ _IDEAL_DIODE_KEYWORDS = (
 )
 
 _USB_PD_KEYWORDS = (
-    "fusb302", "stusb4500", "cypd3177", "husb238",
+    "fusb302", "stusb4500", "cypd317", "husb238",
     "tps65987", "tps65988", "max77958",
     "ccg3", "ccg6",
 )
@@ -2805,25 +2806,6 @@ _ENABLE_PINS = {"EN", "ENABLE", "ON", "ON_OFF", "CTRL", "CE", "SHDN", "SHUTDOWN"
 _VBUS_PINS = {"VBUS", "V_BUS"}
 _CC_PINS = {"CC1", "CC2", "CC"}
 _SBU_PINS = {"SBU1", "SBU2", "SBU"}
-
-# USB Type-C source Rp (nominal ohms) by pull-up rail: default USB / 1.5 A / 3 A.
-_CC_RP_5V = ((56000, "source_default", "default USB current"),
-             (22000, "source_1_5A", "1.5A advertisement"),
-             (10000, "source_3A", "3A advertisement"))
-_CC_RP_3V3 = ((36000, "source_default", "default USB current"),
-              (12000, "source_1_5A", "1.5A advertisement"),
-              (4700, "source_3A", "3A advertisement"))
-
-
-def _cc_rp_table(rail_v: float | None):
-    """The Rp table for a pull-up rail at *rail_v* (5 V or 3.3 V), else None."""
-    if rail_v is None:
-        return None
-    if 4.75 <= rail_v <= 5.5:
-        return _CC_RP_5V
-    if 3.0 <= rail_v <= 3.6:
-        return _CC_RP_3V3
-    return None
 
 
 def detect_power_path(ctx: AnalysisContext) -> list[dict]:
@@ -2997,15 +2979,15 @@ def detect_power_path(ctx: AnalysisContext) -> list[dict]:
                         continue
                     if not ctx.is_power_net(other_net):
                         continue
-                    table = _cc_rp_table(ctx.rail_voltage(other_net))
-                    if table is None:
+                    rail_v = ctx.rail_voltage(other_net)
+                    if rail_v is None or not (4.5 <= rail_v <= 5.5 or 3.0 <= rail_v <= 3.6):
                         continue
-                    hit = next((t for t in table if t[0] * 0.9 <= r <= t[0] * 1.1), None)
+                    hit = type_c_rp(r, rail_v)
                     if hit:
                         cc_resistor_findings.append({
                             "net": cc_net, "ref": r_ref, "ohms": r,
-                            "status": hit[1],
-                            "message": f"{label} — DFP source, {hit[2]}",
+                            "status": hit[2],
+                            "message": f"{label} — DFP source, {hit[3]}",
                         })
                     else:
                         cc_resistor_findings.append({

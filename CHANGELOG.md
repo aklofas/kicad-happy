@@ -116,6 +116,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Resistor, capacitor and inductor values written the way KiCad library symbols are named (`R_5k1_0402`, `R-5k1-0402`, `R5k1`, `C_100n_0402`, `10k_0603`) or with an ohm R after the prefix (`5.1kR`, `12kR 1%`, `100mR`) are read, so filter, divider, decoupling and current-sense checks see them.
 - Resistor, capacitor and inductor values written the way KiCad library symbols are named (`R_5k1_0402`, `R-5k1-0402`, `R5k1`, `C_100n_0402`, `10k_0603`) or with an ohm R after the prefix (`5.1kR`, `12kR 1%`, `100mR`) are read, so filter, divider, decoupling, current-sense, USB Type-C, level-shifter and sleep-current checks see them.
 - A value with an underscore is no longer read as one long number (`330_0402` was 3.3 MΩ).
+- USB-C CC checks pick the 5.1 kΩ pull-down when a CC pin has more than one resistor, no longer pass a 5.1 kΩ resistor that does not go to ground, and treat CYPD3175 and FUSB303 as controllers that terminate CC themselves.
 - A sub-ohm shunt or link between two rails no longer gets a power-derating error computed from the difference of the rail voltages.
 
 ### Documentation

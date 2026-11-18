@@ -308,5 +308,117 @@ class CcResistorValues(unittest.TestCase):
         self.assertEqual(len(_uc003(r)), 2)
 
 
+def _type_c_cc(cc1, cc2, ics=(), rails=None):
+    """USB4105 whose CC1/CC2 nets carry the resistors in *cc1* / *cc2*, in net order, each
+    (ref, value, far_net); *ics* are (ref, value) parts with a CC pin on each CC net."""
+    j = _conn("J1", "USB4105-GF-A", "Connector:USB_C_Receptacle_USB2.0",
+              pins=(*USB2_PINS, ("A5", "CC1"), ("B5", "CC2")))
+    comps, nets = [j], _usb2_nets("J1")
+    for pin, num, specs in (("CC1", "A5", cc1), ("CC2", "B5", cc2)):
+        nets[pin] = [("J1", num, pin)]
+        for ref, value, far in specs:
+            comps.append(_res(ref, value))
+            nets[pin].append((ref, "1", "~"))
+            nets.setdefault(far, []).append((ref, "2", "~"))
+    for ref, value in ics:
+        comps.append({"reference": ref, "type": "ic", "value": value, "lib_id": "MyLib:" + value,
+                      "footprint": "", "pins": [{"number": "1", "name": "CC1"},
+                                                {"number": "2", "name": "CC2"}]})
+        nets["CC1"].append((ref, "1", "CC1"))
+        nets["CC2"].append((ref, "2", "CC2"))
+    return _run(comps, nets, rails)
+
+
+class CcTermination(unittest.TestCase):
+    """Several resistors on one CC pin: the Rd (or Rp) is the one judged, whichever order the
+    net lists them in. A 5.1 kOhm that does not return to ground is no sink Rd."""
+
+    def _status(self, r):
+        return r["connectors"][0]["usb_c_cc_status"]
+
+    def test_rd_with_a_sense_resistor_is_a_sink(self):
+        rd1, rd2 = ("R1", "5.1k", "GND"), ("R2", "5.1k", "GND")
+        sense1, sense2 = ("R3", "100k", "CC1_SENSE"), ("R4", "100k", "CC2_SENSE")
+        for cc1, cc2 in (((rd1, sense1), (rd2, sense2)), ((sense1, rd1), (sense2, rd2))):
+            with self.subTest(order=cc1[0][0]):
+                r = _type_c_cc(cc1, cc2)
+                st = self._status(r)
+                self.assertEqual((st["role"], st["status"], st["issues"]), ("sink", "pass", []))
+                self.assertEqual((st["cc1_resistor"]["ref"], st["cc2_resistor"]["ref"]),
+                                 ("R1", "R2"))
+                checks = r["connectors"][0]["checks"]
+                self.assertEqual((checks["cc1_pulldown_5k1"], checks["cc2_pulldown_5k1"]),
+                                 ("pass", "pass"))
+                self.assertEqual(_uc003(r), [])
+
+    def test_rd_to_a_supply_fails(self):
+        rails = {"VBUS": 5.0, "+5V": 5.0}
+        r = _type_c_cc((("R1", "5.1k", "+5V"),), (("R2", "5.1k", "+5V"),), rails=rails)
+        st = self._status(r)
+        self.assertEqual(st["status"], "fail")
+        self.assertIn("wrong_cc_value", st["issues"])
+        checks = r["connectors"][0]["checks"]
+        self.assertEqual((checks["cc1_pulldown_5k1"], checks["cc2_pulldown_5k1"]),
+                         ("fail", "fail"))
+
+    def test_rd_to_a_signal_fails(self):
+        r = _type_c_cc((("R1", "5.1k", "CC1_SENSE"),), (("R2", "5.1k", "CC2_SENSE"),))
+        st = self._status(r)
+        self.assertEqual(st["status"], "fail")
+        self.assertIn("wrong_cc_value", st["issues"])
+
+    def test_plain_rd_sink_still_passes(self):
+        r = _type_c_cc((("R1", "5.1k", "GND"),), (("R2", "5.1k", "GND"),))
+        st = self._status(r)
+        self.assertEqual((st["role"], st["status"], st["issues"]), ("sink", "pass", []))
+
+    def test_source_with_a_sense_resistor_stays_a_source(self):
+        # A host's Rp is not replaced by a resistor that is no termination, so the port is not
+        # read as a device.
+        rp1, rp2 = ("R1", "56k", "VBUS"), ("R2", "56k", "VBUS")
+        extra1, extra2 = ("R3", "5.1k", "CC1_SENSE"), ("R4", "1M", "GND")
+        for cc1, cc2 in (((rp1, extra1), (rp2, extra2)), ((extra1, rp1), (extra2, rp2))):
+            with self.subTest(order=cc1[0][0]):
+                st = self._status(_type_c_cc(cc1, cc2))
+                self.assertEqual((st["role"], st["status"], st["issues"]),
+                                 ("source", "pass", []))
+
+    def test_self_terminating_cc_controllers(self):
+        # CYPD3175 is a CCG3PA part; FUSB303B is an autonomous Type-C port controller. Both
+        # present Rd/Rp on CC themselves.
+        for value in ("CYPD3175-24LQXQ", "CYPD3171-24LQXQ", "FUSB303BTMX"):
+            with self.subTest(value=value):
+                r = _type_c_cc((), (), ics=(("U1", value),))
+                st = self._status(r)
+                self.assertEqual((st["role"], st["pd_controller"], st["status"]),
+                                 ("pd_controlled", "U1", "pass"))
+                self.assertEqual(_uc003(r), [])
+
+    def test_hub_with_an_unlisted_part_on_cc_is_not_a_controller(self):
+        r = _type_c_cc((), (), ics=(("U1", "STM32F072CBT6"),))
+        st = self._status(r)
+        self.assertEqual((st["role"], st["pd_controller"]), ("unknown", None))
+        self.assertEqual(len(_uc003(r)), 2)
+
+
+class TypeCRpTable(unittest.TestCase):
+    """Type-C source Rp: 56k / 22k / 10k to 5 V and 36k / 12k / 4.7k to 3.3 V (default USB,
+    1.5 A, 3 A); default-current rows are +-20 %, the others +-5 %."""
+
+    def test_rows(self):
+        from detector_helpers import type_c_rp
+        self.assertEqual(type_c_rp(22000, 5.0)[2:], ("source_1_5A", "1.5A advertisement"))
+        self.assertIsNone(type_c_rp(20000, 5.0))
+        self.assertEqual(type_c_rp(45000, 5.0)[2], "source_default")
+        self.assertEqual(type_c_rp(4700, 3.3)[2], "source_3A")
+        self.assertIsNone(type_c_rp(4700, 5.0))
+        self.assertIsNone(type_c_rp(10000, 1.1))
+
+    def test_unknown_rail(self):
+        from detector_helpers import type_c_rp
+        self.assertIsNone(type_c_rp(12000, None))
+        self.assertEqual(type_c_rp(12000, None, any_rail=True)[2], "source_1_5A")
+
+
 if __name__ == "__main__":
     unittest.main()
