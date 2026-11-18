@@ -26,7 +26,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from finding_schema import make_finding, compute_trust_summary, assign_finding_ids, show_decoded_names
 from kicad_core.fileio import atomic_write_text, json_load
 from kicad_core.fields import merge_unit_fields
-from kicad_core.netnames import (RAIL_SIGNAL_SUFFIXES, _VOLTAGE_SIGNAL_SUFFIXES, is_ground_name,
+from kicad_core.netnames import (RAIL_SIGNAL_SUFFIXES, _VOLTAGE_SIGNAL_SUFFIXES,
+                                 _clean_hierarchical_name, is_ground_name,
                                  is_pin_guarded_signal, is_power_net_name, net_leaf)
 from kicad_core.netquery import build_net_id_map as _build_net_id_map
 from kicad_core.pairing import pair_by_path
@@ -362,6 +363,9 @@ def check_esd_coverage_gaps(schematic: dict, pcb: dict | None, recorder=None) ->
     connectors = [c for c in components if c.get('type') == 'connector']
     comp_type = {c.get('reference'): c.get('type') for c in components}
     all_nets = schematic.get('nets') or {}
+    # The schematic gives every net it reads as ground a 0 V rail entry, also one whose name
+    # does not say so (the SPICE ground 0, a board ground a label renames).
+    zero_volt = {n for n, v in (schematic.get('rail_voltages') or {}).items() if v == 0}
     # A clamp behind one series resistor, ferrite or inductor still protects the pin; the
     # far side must be a clamped signal (a pull-up to a clamped rail protects nothing, and a
     # fuse or a reverse-polarity diode is no ESD clamp).
@@ -400,7 +404,8 @@ def check_esd_coverage_gaps(schematic: dict, pcb: dict | None, recorder=None) ->
         pin_nets = conn.get('pin_nets') or {}
         for _, net in sorted(pin_nets.items()):
             if (not net or _is_power_net(net) or is_cross_analysis_ground_name(net)
-                    or is_ground_name(net) or (is_power_net_name(net) and net not in pin_signals)):
+                    or is_ground_name(net) or _clean_hierarchical_name(net) in zero_volt
+                    or (is_power_net_name(net) and net not in pin_signals)):
                 continue
             nc_pins = (all_nets.get(net) or {}).get('pins') or []
             if nc_pins and all(pin_kind(p.get('pin_type')) == 'no_connect' for p in nc_pins):

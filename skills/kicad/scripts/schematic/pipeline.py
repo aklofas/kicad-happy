@@ -27,8 +27,8 @@ from kicad_core.diagnostics import merge, record
 from kicad_core.sexp import parse_file_checked
 from kicad_core.project import parse_input_problem
 from kicad_core.values import snap_to_mil_grid as _snap_mil
-from kicad_core.netnames import (_clean_hierarchical_name, negative_split_rails,
-                                  parse_voltage_from_net_name)
+from kicad_core.netnames import (_clean_hierarchical_name, is_vss_name, negative_split_rails,
+                                  net_leaf, parse_voltage_from_net_name)
 from kicad_core.netquery import (
     build_bridge_facts,
     build_ref_pins,
@@ -326,7 +326,8 @@ def build_rail_map(ctx: AnalysisContext, power_regulators: list[dict]) -> dict[s
     A pass fills only nets no earlier pass set: a regulator's estimated output on
     its output net (the last regulator on a net wins), then, for a regulator with
     no estimate, the voltage in the name of the sheet holding its output net (the
-    regulator records it as ``_output_rail_voltage_provenance``), then
+    regulator records it as ``_output_rail_voltage_provenance``), then 0 V for every
+    net ``ctx.is_ground`` accepts (of the VSS family only ``VSS`` itself), then
     the voltage in the name of a power or ground net (negative on the ``4V5_N`` half of a
     split supply, ``negative_split_rails``) or of a regulator output (another
     net that is a supply only by its pins gets none from its name, and a VSS net a regulator drives, ``vss_supply_rails``,
@@ -364,7 +365,12 @@ def build_rail_map(ctx: AnalysisContext, power_regulators: list[dict]) -> dict[s
     for net_name in sorted(ctx.nets):
         if net_name in by_net or net_name in ctx.vss_supply_rails:
             continue
-        if ctx.is_power_net(net_name, by_pins=False) or ctx.is_ground(net_name):
+        if ctx.is_ground(net_name) and not (is_vss_name(net_name)
+                                             and net_leaf(net_name).upper() != "VSS"):
+            # Every net the context reads as ground (a COM return, the SPICE ground 0), not
+            # only a ground name; AVSS and VSSA can name a negative supply, so only VSS is 0 V.
+            v = 0
+        elif ctx.is_power_net(net_name, by_pins=False) or ctx.is_ground(net_name):
             v = _estimate_rail_voltage(net_name)
             if v is not None and net_name in split_negative:
                 v = -abs(v)

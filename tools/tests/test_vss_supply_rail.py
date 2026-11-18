@@ -10,6 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "skills" / "kicad" / "scripts"))
 
+import cross_analysis  # noqa: E402
 from kicad_types import build_analysis_context, vss_supply_rail_nets  # noqa: E402
 from schematic.pipeline import build_rail_map  # noqa: E402
 from signal_detectors import (  # noqa: E402
@@ -122,6 +123,61 @@ class GroundVss(unittest.TestCase):
         nets = {"VSS": [_pin("U1", "1", "OUT", "power_out")],
                 "+5V": [_pin("U1", "2", "IN", "power_in")]}
         self.assertEqual(_ctx(comps, nets, {"VSS", "+5V"}).vss_supply_rails, frozenset())
+
+
+class GroundByEvidence(unittest.TestCase):
+    def test_rail_map_gives_com_and_spice_ground_zero(self):
+        # An isolated converter's COM return and the SPICE ground 0 are ground by what sits
+        # on them, not by name; the rail map lists both at 0 V. AVSS stays out: it can name
+        # a negative supply.
+        comps = [_part("U1", "ic", "MGJ2", "Converter_DCDC:MGJ2",
+                       [("1", "VIN+"), ("2", "VIN-"), ("5", "VOUT-"), ("6", "COM"), ("7", "VOUT+")]),
+                 _part("U2", "ic", "ADC", "Analog_ADC:ADC", [("1", "AVSS")]),
+                 _part("#GND01", "power_symbol", "0", "Simulation_SPICE:0", [("1", "~")]),
+                 _cap("C1"), _cap("C2"), _cap("C3")]
+        nets = {
+            "COM": [_pin("U1", "6", "COM", "power_out"), _pin("C1", "2", "~", "passive"),
+                    _pin("C2", "2", "~", "passive")],
+            "+VCC": [_pin("U1", "7", "VOUT+", "power_out"), _pin("C1", "1", "~", "passive")],
+            "-VEE": [_pin("U1", "5", "VOUT-", "power_out"), _pin("C2", "1", "~", "passive")],
+            "0": [_pin("#GND01", "1", "~", "power_in"), _pin("C3", "2", "~", "passive")],
+            "IN": [_pin("C3", "1", "~", "passive")],
+            "AVSS": [_pin("U2", "1", "AVSS", "power_in")],
+        }
+        full = {n: {"name": n, "pins": ps, "point_count": 0, "no_connect": False,
+                    "has_pwr_flag": False, "labels": []} for n, ps in nets.items()}
+        ctx = build_analysis_context(comps, full, {}, source="test")
+        by_net = build_rail_map(ctx, [])
+        self.assertEqual(by_net["COM"], 0)
+        self.assertEqual(by_net["0"], 0)
+        self.assertNotIn("AVSS", by_net)
+        self.assertNotIn("IN", by_net)
+
+
+class EsdGapOnAZeroVoltNet(unittest.TestCase):
+    """The ESD gap check reads nets by name; the schematic's 0 V rail entry tells it a net
+    named otherwise (the SPICE ground 0, a board ground a label renames) is ground."""
+
+    def _gaps(self, pin_nets, rail_voltages):
+        nets = {}
+        for pin, net in pin_nets.items():
+            nets.setdefault(net, {"pins": []})["pins"].append(
+                {"component": "J1", "pin_number": pin, "pin_type": "passive"})
+        sch = {"components": [{"reference": "J1", "type": "connector",
+                               "value": "Screw_Terminal_01x03",
+                               "lib_id": "Connector:Screw_Terminal_01x03", "pin_nets": pin_nets}],
+               "nets": nets, "findings": [], "rail_voltages": rail_voltages}
+        return [f["nets"] for f in cross_analysis.check_esd_coverage_gaps(sch, None)]
+
+    def test_zero_volt_net_is_not_an_unprotected_signal(self):
+        self.assertEqual(self._gaps({"1": "IN", "2": "0"}, {"0": 0}), [["IN"]])
+
+    def test_sheet_net_matches_its_uuid_stripped_entry(self):
+        self.assertEqual(self._gaps({"1": "IN", "2": "/2bafda84-de20-41a8-97b9-3c9a21aaa27c/RET"},
+                                    {"RET": 0}), [["IN"]])
+
+    def test_net_without_a_zero_volt_entry_is_still_a_signal(self):
+        self.assertEqual(self._gaps({"1": "IN", "2": "0"}, {"0": None, "IN": 3.3}), [["IN", "0"]])
 
 
 class NotAVssSupply(unittest.TestCase):
