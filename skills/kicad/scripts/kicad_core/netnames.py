@@ -118,6 +118,8 @@ _RAIL_SENSE_TAILS = frozenset({"MEAS", "MEASURE", "MESURE", "DIV", "DIVIDED", "R
 # Rail words whose _ADC tail is a sense tap (VBAT_ADC); VDD_ADC and +3V3_ADC supply an ADC.
 _ADC_TAP_RAILS = frozenset({"VBAT", "VBATT", "VBUS", "VIN", "VSYS"})
 # A power-indicator LED's node (PWR_LED, POWER_LED_K); 3V3_LED or PWR_LED_24V supplies LEDs.
+# Words that make a spaced name describe a signal or a node at a voltage, not a rail.
+_SPACED_NOT_RAIL_WORDS = frozenset({"FOR", "SIGNAL", "DATA", "RETURN"})
 _POWER_LED_NODE = re.compile(r'(?:PWR|POWER)_LED\d*(?:_(?:K|A|AN))?')
 
 
@@ -216,7 +218,13 @@ def is_power_net_name(net_name: str | None, power_rails: set[str] | None = None)
         # is one (5V{slash}3V3); SDIO_CMD{slash}3V3 is a signal at 3.3 V.
         parts = [p for p in net_name.split("/") if p]
         return bool(parts) and all(is_power_net_name(p) for p in parts)
-    nu = net_name.upper()
+    nu = net_name.strip().upper()
+    if re.search(r'\s', nu):
+        # Spaces separate words as '_' does (5V PCIE, 3.3v from USB). A description of a
+        # node at a voltage (5V Reference, 1.65V for 12VDC, 5v tach signal) is not a rail.
+        nu = re.sub(r'\s+', '_', nu)
+        if any(t.startswith("REF") or t in _SPACED_NOT_RAIL_WORDS for t in nu.split("_")):
+            return False
     # Zero-volt ground spellings (0V, 0VA, 0VANA, 0VCC, 0V_A, +0V, ...) are
     # never rails, no matter what pattern rule below would otherwise match.
     # Excludes 0V<digit> (0V9, 0V85, 0V95, 0V5) — those are
