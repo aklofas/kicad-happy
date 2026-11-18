@@ -36,6 +36,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A capacitor to ground whose value cannot be read (for example `C`, `C_Small` or a part number) now counts as decoupling present; it still adds no capacitance to the rail totals.
 - The USB-PD controller record names the controller's own value and lists each CC net once.
 - A capacitor value with its voltage glued on (`220u25V`, `1n50V`) reads as the capacitance; part numbers such as `7406N` on a capacitor symbol and a value such as `1e3` are no longer read as capacitances.
+- Power-sequencing warnings name each sensitive load once instead of once per supply pin.
 - An IC's internal-regulator output pin (VCAP, VDDCORE, VREG, VDD_DR) wired only to its decoupling capacitor is reported as information, not as an unpowered supply pin.
 - An IC supply pin fed from a battery, from a regulator output on an unnamed net, or through a series filter resistor up to 1 kΩ is no longer reported as having no DC path.
 - TVS diodes named by their series (SMF, SM6T, SM712, P4KE and others) or described as TVS in the symbol are detected as protection devices, so a USB VBUS with one is no longer reported unprotected.

@@ -1157,7 +1157,8 @@ def validate_power_sequencing(
                 if p['component'] == ref:
                     continue  # a regulator is not sequenced by its own output
                 comp = ctx.comp_lookup.get(p['component'])
-                if comp and match_ic_keywords(comp, _SEQUENCING_SENSITIVE_KEYWORDS):
+                if (comp and p['component'] not in sensitive_loads
+                        and match_ic_keywords(comp, _SEQUENCING_SENSITIVE_KEYWORDS)):
                     sensitive_loads.append(p['component'])
         if not sensitive_loads:
             continue
