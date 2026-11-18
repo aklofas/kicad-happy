@@ -97,7 +97,9 @@ def build_bridge_facts(components: list[dict],
 
     Acceptance stays with each audit: RS accepts two-net jumpers in state
     bridged/open and net ties; PP accepts inductors, ferrite beads, fuses,
-    resistors <= 1 Ω, bridged jumpers and net ties. This function only records facts.
+    resistors <= 1 Ω, bridged jumpers and net ties; a fitted resistor above 1 Ω and up
+    to 1 kΩ whose other end is a rail also feeds a pin, without the walk crossing it.
+    This function only records facts.
     A net tie keeps its nets apart in names, as KiCad does, but is one conductor.
     """
     detections = {}
