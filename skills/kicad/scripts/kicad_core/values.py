@@ -415,8 +415,18 @@ def snap_to_e_series(value: float, series: str = "E96") -> tuple:
     return (snapped, round(error_pct, 2))
 
 
-# Regex for rated voltage in value strings: "100nF/16V", "10uF 6.3V", etc.
-_RATED_V_RE = re.compile(r'(\d+\.?\d*)\s*V(?:DC)?(?:\b|[^a-zA-Z0-9])', re.IGNORECASE)
+# Regex for rated voltage in value strings: "100nF/16V", "10uF 6.3V", "1nF/2kV", "4n7 300VAC".
+_RATED_V_RE = re.compile(r'(\d+\.?\d*)\s*(k?)V(DC|AC)?(?:\b|[^a-zA-Z0-9])', re.IGNORECASE)
+
+
+def _voltage_ratings(value_str):
+    """(volts, plain, in_word) for each voltage rating in *value_str*: plain = written in V or
+    VDC; in_word = its digits follow a letter, as in a part number ("ERJ-3EKF1001V")."""
+    value_str = value_str or ""
+    for m in _RATED_V_RE.finditer(value_str):
+        volts = float(m.group(1)) * (1e3 if m.group(2) else 1)
+        plain = not m.group(2) and (m.group(3) or "").upper() != "AC"
+        yield volts, plain, m.start() > 0 and value_str[m.start() - 1].isalpha()
 
 
 def parse_rated_voltage(value_str):
@@ -431,11 +441,13 @@ def parse_rated_voltage(value_str):
     Returns:
         Rated voltage in volts (float), or None if not found
     """
-    if not value_str:
-        return None
-    m = _RATED_V_RE.search(value_str)
-    if m:
-        v = float(m.group(1))
-        if 1.0 <= v <= 100:
-            return v
+    v = next((v for v, plain, _ in _voltage_ratings(value_str) if plain), None)
+    if v is not None and 1.0 <= v <= 100:
+        return v
     return None
+
+
+def highest_rated_voltage(value_str):
+    """The highest voltage rating written in a value string ("1nF/2kV" → 2000.0), or None.
+    Digits inside a part number are not a rating."""
+    return max((v for v, _, in_word in _voltage_ratings(value_str) if not in_word), default=None)

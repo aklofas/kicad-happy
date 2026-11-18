@@ -12,6 +12,7 @@ from collections.abc import Iterable
 from kicad_core.classify import classify_ic_function
 from kicad_core.netnames import net_leaf
 from kicad_core.parts import LED_VF_BY_COLOR, LED_VF_DEFAULT, led_color
+from kicad_core.values import highest_rated_voltage
 from kicad_types import AnalysisContext
 
 
@@ -175,6 +176,18 @@ def _only_this_part_drives(ctx: AnalysisContext, ref: str, net: str) -> bool:
 def is_fitted(comp: dict) -> bool:
     """False for a part marked DNP or excluded from the board."""
     return not (comp.get("dnp") or comp.get("on_board") is False)
+
+
+# IEC 60384-14 safety class: Y1 / Y2 (or X1Y2) capacitors bridge an isolation barrier.
+_SAFETY_CLASS_RE = re.compile(r"(?<![A-Za-z0-9])(?:X1)?Y[12](?![A-Za-z0-9])", re.IGNORECASE)
+
+
+def is_safety_rated_cap(comp: dict) -> bool:
+    """A Y-class or isolation-barrier capacitor: its value names a rating of 1 kV or more or a
+    Y1/Y2 safety class."""
+    value = comp.get("value") or ""
+    rating = highest_rated_voltage(value)
+    return (rating is not None and rating >= 1000) or bool(_SAFETY_CLASS_RE.search(value))
 
 
 def is_protection_part(comp: dict, ctx: AnalysisContext, pair_suffixes) -> bool:

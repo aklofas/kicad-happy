@@ -1,7 +1,8 @@
 # tools/tests/test_decoupling_census.py
 """Decoupling, regulator-capacitor, inrush and RC-filter census: only fitted parts count. A
 capacitor marked DNP or excluded from the board is not decoupling or inrush load, an unfitted IC
-or regulator needs no capacitors, and unfitted parts form no RC filter."""
+or regulator needs no capacitors, and unfitted parts form no RC filter. A safety-rated capacitor
+(1 kV or more, or a Y1/Y2 class) is not decoupling."""
 import sys, unittest
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "skills" / "kicad" / "scripts"))
@@ -10,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "skills" / "spice" 
 from kicad_types import build_analysis_context  # noqa: E402
 from signal_detectors import detect_decoupling, detect_design_observations, detect_rc_filters  # noqa: E402
 from schematic.system_analyses import analyze_inrush_current  # noqa: E402
+from kicad_core import values  # noqa: E402
 
 
 def _ctx(comps, wiring, rails=("+3V3", "+5V")):
@@ -149,6 +151,44 @@ class RcFilterFittedPartsOnly(unittest.TestCase):
         rc = detect_rc_filters(_ctx(comps, wiring), [], [], [])
         self.assertEqual([f["components"] for f in rc], [["R1", "C1"]])
         self.assertAlmostEqual(rc[0]["capacitor"]["farads"], 1e-7)
+
+
+class SafetyCapacitor(unittest.TestCase):
+    def test_1kV_rated_cap_is_not_decoupling(self):
+        for value in ("1000pF/3kV", "1n 2000V", "1nF/2kV/X7R", "4.7nF 2KVAC"):
+            with self.subTest(value=value):
+                self.assertEqual(_ic_with_caps([{}, {"value": value}])[0][0]["components"], ["C1"])
+                self.assertEqual(_ic_with_caps([{"value": value}]), ([], [["+3V3"]]))
+
+    def test_y_class_cap_is_not_decoupling(self):
+        for value in ("1nF Y2 300VAC", "4.7nF X1Y2", "2n2/Y1", "10nF X1/Y2"):
+            with self.subTest(value=value):
+                self.assertEqual(_ic_with_caps([{"value": value}]), ([], [["+3V3"]]))
+
+    def test_ordinary_voltage_ratings_stay_decoupling(self):
+        for value in ("100nF 50V", "10uF/16V", "470u 400V", "100n Y5V", "10n X7R 630V", "4u7 25VAC"):
+            with self.subTest(value=value):
+                dc, missing = _ic_with_caps([{"value": value}])
+                self.assertEqual([d["components"] for d in dc], [["C1"]])
+                self.assertEqual(missing, [])
+
+    def test_safety_cap_is_not_a_regulator_input_cap(self):
+        self.assertEqual(_regulator(in_cap={"value": "1nF/2kV"}, out_cap={})[2], [{"input": "+5V"}])
+
+
+class RatedVoltageReader(unittest.TestCase):
+    def test_highest_rating_reads_kilovolts_and_ac(self):
+        for value, volts in (("1nF/2kV", 2000.0), ("1n 2000V", 2000.0), ("4n7 1.5KVAC", 1500.0),
+                             ("1nF Y2 300VAC", 300.0), ("100n/16V", 16.0), ("100n", None),
+                             ("ERJ-3EKF1001V", None), ("ATmega2560V-8AU", None)):
+            with self.subTest(value=value):
+                self.assertEqual(values.highest_rated_voltage(value), volts)
+
+    def test_derating_rating_is_still_the_first_plain_rating_up_to_100V(self):
+        for value, volts in (("100nF/16V/X7R", 16.0), ("1nF/2kV", None), ("1n 2kV/50V", 50.0),
+                             ("4u7 25VAC", None), ("470u 400V", None)):
+            with self.subTest(value=value):
+                self.assertEqual(values.parse_rated_voltage(value), volts)
 
 
 class DecouplingBenchModelNote(unittest.TestCase):

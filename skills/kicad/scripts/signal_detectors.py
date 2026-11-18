@@ -39,6 +39,7 @@ from kicad_types import AnalysisContext
 from finding_schema import make_provenance, make_finding, Det
 from detector_helpers import index_two_pin_components, get_components_by_type, get_unique_ics, is_tvs_diode, symbol_name
 from detector_helpers import group_members, group_part, group_reps, group_value, is_fitted, parallel_groups
+from detector_helpers import is_safety_rated_cap
 
 from lookup_helpers import get_facts, has_data, best, facts_trusted
 
@@ -1311,8 +1312,8 @@ def detect_crystal_circuits(ctx: AnalysisContext) -> list[dict]:
 
 
 def _is_decoupling_cap(comp: dict) -> bool:
-    """A capacitor that is fitted on the board."""
-    return comp["type"] == "capacitor" and is_fitted(comp)
+    """A capacitor that is fitted on the board and is not a safety (Y-class) part."""
+    return comp["type"] == "capacitor" and is_fitted(comp) and not is_safety_rated_cap(comp)
 
 
 def detect_decoupling(ctx: AnalysisContext) -> list[dict]:
