@@ -1,9 +1,10 @@
-"""A VSS-named net that a regulator output drives is a supply below ground.
+"""A VSS-named net that a regulator output drives is a supply, not ground.
 
 The regulator keeps it as its output rail, the rail map gives it no 0 V (and no positive
-part-number voltage), and the regulator-capacitor observation makes no claim on it. The
-parts on the net still read it as their ground. A VSS net with only IC VSS pins stays
-ground at 0 V.
+part-number voltage), its capacitors are decoupling, and a missing output capacitor is
+reported as on any other rail. A project config that gives a VSS net a negative voltage makes
+it a supply too. A VSS net with only IC VSS pins stays ground at 0 V, and so does a VSS net
+that carries a ground symbol: the symbol ties it to the board ground.
 """
 import sys, unittest
 from pathlib import Path
@@ -31,24 +32,31 @@ def _cap(ref):
     return _part(ref, "capacitor", "10u", "Device:C", [("1", "~"), ("2", "~")])
 
 
-def _ctx(comps, nets, rails):
+def _ctx(comps, nets, rails, power_rails_config=None):
     full = {n: {"name": n, "pins": ps, "point_count": 0, "no_connect": False,
                 "has_pwr_flag": False, "labels": []} for n, ps in nets.items()}
-    return build_analysis_context(comps, full, {}, known_power_rails=rails, source="test")
+    return build_analysis_context(comps, full, {}, known_power_rails=rails, source="test",
+                                  power_rails_config=power_rails_config)
 
 
-def _negative_ldo(out_net="VSS", value="LM2990S-5.0"):
+def _negative_ldo(out_net="VSS", value="LM2990S-5.0", output_cap=True, extra=()):
     """A negative LDO from -12V onto *out_net*, both decoupled; the default is a -5 V fixed
-    part whose part number carries the voltage without its sign."""
+    part whose part number carries the voltage without its sign. *extra* adds parts and pins
+    as ``(part, net, pin)`` triples."""
     comps = [_part("U1", "ic", value, "Regulator_Linear:" + value,
                    [("1", "GND"), ("2", "IN"), ("3", "OUT")]),
-             _cap("C1"), _cap("C2")]
+             _cap("C1")] + ([_cap("C2")] if output_cap else [])
     nets = {
-        "GND": [_pin("U1", "1", "GND", "power_in"), _pin("C1", "2", "~", "passive"),
-                _pin("C2", "2", "~", "passive")],
+        "GND": [_pin("U1", "1", "GND", "power_in"), _pin("C1", "2", "~", "passive")],
         "-12V": [_pin("U1", "2", "IN", "power_in"), _pin("C1", "1", "~", "passive")],
-        out_net: [_pin("U1", "3", "OUT", "power_out"), _pin("C2", "1", "~", "passive")],
+        out_net: [_pin("U1", "3", "OUT", "power_out")],
     }
+    if output_cap:
+        nets["GND"].append(_pin("C2", "2", "~", "passive"))
+        nets[out_net].append(_pin("C2", "1", "~", "passive"))
+    for part, net, pin in extra:
+        comps.append(part)
+        nets[net].append(pin)
     return _ctx(comps, nets, {"GND", "-12V", out_net})
 
 
@@ -69,10 +77,11 @@ class RegulatorDrivenVss(unittest.TestCase):
         self.ctx = _negative_ldo()
         self.regs = detect_power_regulators(self.ctx, [])
 
-    def test_vss_is_a_supply_rail_and_still_ground_to_its_parts(self):
+    def test_vss_is_a_supply_rail_not_ground(self):
         self.assertEqual(self.ctx.vss_supply_rails, {"VSS"})
         self.assertEqual(vss_supply_rail_nets(self.ctx), {"VSS"})
-        self.assertTrue(self.ctx.is_ground("VSS"))
+        self.assertFalse(self.ctx.is_ground("VSS"))
+        self.assertTrue(self.ctx.is_power_net("VSS"))
 
     def test_regulator_keeps_the_vss_output_rail(self):
         self.assertEqual([r["output_rail"] for r in self.regs], ["VSS"])
@@ -87,6 +96,19 @@ class RegulatorDrivenVss(unittest.TestCase):
         results = {"power_regulators": self.regs, "decoupling_analysis": detect_decoupling(self.ctx)}
         obs = detect_design_observations(self.ctx, results)
         self.assertEqual([o for o in obs if o["category"] == "regulator_caps"], [])
+
+    def test_its_capacitor_is_decoupling_on_the_vss_rail(self):
+        rails = {d["rail"]: d for d in detect_decoupling(self.ctx)}
+        self.assertIn("VSS", rails)
+        self.assertEqual([c["ref"] for c in rails["VSS"]["capacitors"]], ["C2"])
+
+    def test_a_missing_output_capacitor_is_reported(self):
+        ctx = _negative_ldo(output_cap=False)
+        regs = detect_power_regulators(ctx, [])
+        results = {"power_regulators": regs, "decoupling_analysis": detect_decoupling(ctx)}
+        obs = [o for o in detect_design_observations(ctx, results)
+               if o["category"] == "regulator_caps"]
+        self.assertEqual([o["missing_caps"] for o in obs], [{"output": "VSS"}])
 
     def test_vssa_output_is_read_the_same_way(self):
         ctx = _negative_ldo("VSSA")
@@ -117,12 +139,72 @@ class GroundVss(unittest.TestCase):
                 "+5V": [_pin("U1", "3", "VIN", "power_in")]}
         self.assertEqual(_ctx(comps, nets, {"VSS", "GND", "+5V"}).vss_supply_rails, frozenset())
 
+    def test_vss_carrying_a_ground_symbol_stays_ground_though_a_regulator_drives_it(self):
+        # A GND symbol on the VSS net joins it to the board ground: it is 0 V whatever
+        # drives it, and every part on it keeps its ground.
+        gnd = _part("#PWR01", "power_symbol", "GND", "power:GND", [("1", "GND")])
+        ctx = _negative_ldo(extra=[(gnd, "VSS", _pin("#PWR01", "1", "GND", "power_in"))])
+        self.assertEqual(ctx.vss_supply_rails, frozenset())
+        self.assertTrue(ctx.is_ground("VSS"))
+
+    def test_a_vss_symbol_is_no_ground_symbol(self):
+        vss = _part("#PWR01", "power_symbol", "VSS", "power:VSS", [("1", "VSS")])
+        ctx = _negative_ldo(extra=[(vss, "VSS", _pin("#PWR01", "1", "VSS", "power_in"))])
+        self.assertEqual(ctx.vss_supply_rails, {"VSS"})
+
+    def test_single_output_isolated_converter_return_stays_ground(self):
+        # -Vout of a converter with no common pin is its output's own return (a gate
+        # driver's VSSA); the -Vin input return on GND is not its reference.
+        comps = [_part("U1", "ic", "TBA2-2413", "Converter_DCDC:TBA2-2413",
+                       [("1", "+Vin"), ("2", "-Vin"), ("4", "-Vout"), ("6", "+Vout")])]
+        nets = {"+24V": [_pin("U1", "1", "+Vin", "power_in")],
+                "GND": [_pin("U1", "2", "-Vin", "power_in")],
+                "VSSA": [_pin("U1", "4", "-Vout", "power_out")],
+                "VDDA": [_pin("U1", "6", "+Vout", "power_out")]}
+        ctx = _ctx(comps, nets, {"+24V", "GND", "VSSA", "VDDA"})
+        self.assertEqual(ctx.vss_supply_rails, frozenset())
+        self.assertTrue(ctx.is_ground("VSSA"))
+
     def test_power_out_without_another_ground_does_not_make_a_supply(self):
         # no reference ground on the part: nothing says VSS sits away from its ground
         comps = [_part("U1", "ic", "REG", "R:R", [("1", "OUT"), ("2", "IN")])]
         nets = {"VSS": [_pin("U1", "1", "OUT", "power_out")],
                 "+5V": [_pin("U1", "2", "IN", "power_in")]}
         self.assertEqual(_ctx(comps, nets, {"VSS", "+5V"}).vss_supply_rails, frozenset())
+
+
+class DualOutputConverter(unittest.TestCase):
+    def test_negative_output_beside_a_common_pin_is_a_supply(self):
+        # A +/-15 V isolated converter: -Vout sits below its 0V common on GND.
+        comps = [_part("PS1", "ic", "IA0515D", "Converter_DCDC:IA0515D",
+                       [("1", "-Vin"), ("3", "+Vin"), ("4", "-Vout"), ("5", "+Vout"),
+                        ("6", "0V")])]
+        nets = {"GND": [_pin("PS1", "1", "-Vin", "power_in"), _pin("PS1", "6", "0V", "power_out")],
+                "+5V": [_pin("PS1", "3", "+Vin", "power_in")],
+                "VSS": [_pin("PS1", "4", "-Vout", "power_out")],
+                "VCC": [_pin("PS1", "5", "+Vout", "power_out")]}
+        ctx = _ctx(comps, nets, {"GND", "+5V", "VSS", "VCC"})
+        self.assertEqual(ctx.vss_supply_rails, {"VSS"})
+        self.assertFalse(ctx.is_ground("VSS"))
+
+
+class ConfiguredVss(unittest.TestCase):
+    def test_a_negative_override_makes_a_vss_net_a_supply(self):
+        comps = [_part("U1", "ic", "ADC", "A:A", [("1", "AVDD"), ("2", "VSSA")])]
+        nets = {"+5V": [_pin("U1", "1", "AVDD", "power_in")],
+                "VSSA": [_pin("U1", "2", "VSSA", "power_in")]}
+        ctx = _ctx(comps, nets, {"+5V", "VSSA"}, {"voltage_overrides": {"VSSA": -5}})
+        self.assertEqual(ctx.vss_supply_rails, {"VSSA"})
+        self.assertFalse(ctx.is_ground("VSSA"))
+        self.assertEqual(build_rail_map(ctx, [])["VSSA"], -5)
+
+    def test_a_zero_override_keeps_it_ground(self):
+        comps = [_part("U1", "ic", "ADC", "A:A", [("1", "AVDD"), ("2", "VSS")])]
+        nets = {"+5V": [_pin("U1", "1", "AVDD", "power_in")],
+                "VSS": [_pin("U1", "2", "VSS", "power_in")]}
+        ctx = _ctx(comps, nets, {"+5V", "VSS"}, {"voltage_overrides": {"VSS": 0}})
+        self.assertEqual(ctx.vss_supply_rails, frozenset())
+        self.assertTrue(ctx.is_ground("VSS"))
 
 
 class GroundByEvidence(unittest.TestCase):

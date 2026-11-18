@@ -1,7 +1,8 @@
 """A regulator enable pin held on ground is reported as tied to ground, not as always enabled.
 
 An overbar (active-low) enable on ground is enabled by it and stays always on; any other
-enable's polarity is not known from its name.
+enable's polarity is not known from its name. A VSS net that no regulator drives is ground
+like GND.
 """
 import sys, unittest
 from pathlib import Path
@@ -64,11 +65,10 @@ class DependencyEnSource(unittest.TestCase):
     def test_floating_enable_is_floating(self):
         self.assertEqual(self.deps["U5"]["en_source"], "floating")
 
-    def test_enable_on_a_vss_named_net_is_not_tied_to_ground(self):
-        # VSS can be a negative supply: the enable keeps its pre-ground-test reading
+    def test_enable_on_a_vss_ground_is_tied_to_ground(self):
         for ref in ("U7", "U8"):
-            self.assertEqual(self.deps[ref]["en_source"], "disabled", ref)
-            self.assertEqual(self.deps[ref]["en_net"], ENABLES[ref][1], ref)
+            self.assertEqual(self.deps[ref]["en_source"], "tied_to_ground", ref)
+            self.assertEqual(self.deps[ref]["en_driven_by"], ENABLES[ref][1], ref)
 
     def test_observation_lists_only_the_always_on_regulators(self):
         self.assertIn("2 regulator(s) always enabled: U2, U4", self.out["observations"])
@@ -98,10 +98,10 @@ class PowerTreeEnableType(unittest.TestCase):
     def test_floating_enable_is_floating(self):
         self.assertEqual(self.tree["U5"]["enable_type"], "floating")
 
-    def test_enable_on_a_vss_named_net_is_not_tied_to_ground(self):
-        self.assertEqual(self.tree["U7"]["enable_type"], "floating")
-        self.assertEqual(self.tree["U8"]["enable_type"], "gpio_controlled")
-        self.assertEqual(self.tree["U8"]["enabled_by"], "J1")
+    def test_enable_on_a_vss_ground_is_tied_to_ground(self):
+        for ref in ("U7", "U8"):
+            self.assertEqual(self.tree[ref]["enable_type"], "tied_to_ground", ref)
+            self.assertEqual(self.tree[ref]["enabled_by"], ENABLES[ref][1], ref)
 
 
 if __name__ == "__main__":

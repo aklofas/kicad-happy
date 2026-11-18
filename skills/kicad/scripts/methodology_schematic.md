@@ -347,6 +347,8 @@ A net is considered a power net if **any** of the three methods matches, except 
 
 `is_ground()` on the context also accepts a net by what sits on it (`ground_evidence_nets()`), whatever it is called: a one-pin ground symbol (`power:GND`, the SPICE ground `0`) on a net another label names (a global label `THERMISTOR_B` on the board ground, or a board ground KiCad names `Earth`), unless the name reads as a supply; an earth-class symbol (`power:Earth`, `Earth_Protective`, `Chassis`) is never evidence; and a `COM` net that carries a ground label, an IC ground pin (`GND1`) or the `COM` pin of an isolated converter (a part with `VOUT+` / `VOUT-` pins). A relay, multiplexer or switch `COM` stays a common, and a reference two symbols share (`#PWR?`) is no evidence.
 
+A VSS net that a regulator output drives (its part's own ground is on another net; a converter's `-Vout` only beside its `COM` or `0V` pin, else it is the output's own return), or that the project config gives a negative voltage, is a supply and not ground to `is_ground()` (`vss_supply_rail_nets()`), unless a ground symbol other than VSS (`power:GND`) sits on it and joins it to the board ground.
+
 ---
 
 ## 8. AnalysisContext

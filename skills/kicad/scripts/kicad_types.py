@@ -79,6 +79,7 @@ _SYMBOL_TYPES = ("power_symbol", "power_flag", "flag")
 # An isolated converter's output pins carry a sign (VOUT+, -VOUT, VO-): a part with those and
 # a COM pin returns its output to COM.
 _CONVERTER_OUTPUT_PIN = re.compile(r'^[+-]V_?OUT$|^V_?OUT[+-]$|^[+-]VO$|^VO[+-]$')
+_NEGATIVE_CONVERTER_OUTPUT_PIN = re.compile(r'^-V_?OUT$|^V_?OUT-$|^-VO$|^VO-$')
 
 
 def _is_ground_symbol_pin(pin: dict, comp: dict) -> bool:
@@ -194,7 +195,7 @@ class AnalysisContext:
         is_power_net(name): True if *name* is a known power rail or matches
             common power net name patterns (VCC, +3V3, VBUS, etc.).
         is_ground(name): True if *name* matches ground patterns (GND, VSS, etc.) or the
-            net is in ``ground_evidence``.
+            net is in ``ground_evidence``, and is not in ``vss_supply_rails``.
         rail_voltage(net): The configured voltage, else the exact net's entry in
             ``rail_by_net``; None for an ignored rail.
         config_rail_voltage(net): The user's override for *net*, or None.
@@ -240,8 +241,10 @@ class AnalysisContext:
             or (by_pins and (name in self.topology_rails or name in self.pin_gated_rails)))
 
     def is_ground(self, name: str | None) -> bool:
-        """Ground by name or by what sits on the net (``ground_evidence``)."""
-        return name in self.ground_evidence or is_ground_name(name, self.ground_name_rails)
+        """Ground by name or by what sits on the net (``ground_evidence``); a VSS net a
+        regulator drives (``vss_supply_rails``) is a supply, not ground."""
+        return name not in self.vss_supply_rails and (
+            name in self.ground_evidence or is_ground_name(name, self.ground_name_rails))
 
     def rail_voltage(self, net: str | None) -> float | None:
         """Voltage of the exact net *net* (full hierarchical name) from the rail map.
@@ -314,23 +317,42 @@ def pin_gated_rail_nets(nets: dict[str, dict], comp_lookup: dict[str, dict]) -> 
 
 
 def vss_supply_rail_nets(ctx: AnalysisContext) -> frozenset[str]:
-    """Ground-named VSS nets that a regulator output drives: a supply below ground, though
-    the parts on it still read it as their ground.
+    """Ground-named VSS nets that are a supply, not ground: a regulator output drives them or
+    the project config gives them a negative voltage.
 
     A power output pin not itself named ground or VSS sits on the net, and its part has a
-    pin on another, ground-named net (its own reference): a negative LDO's OUT on VSS, an
-    isolated converter's -Vout on VSSA."""
+    pin on another, ground-named net (its own reference): a negative LDO's OUT on VSS. A
+    converter's -Vout counts only beside its common pin (``COM``, ``0V``) on ground: without
+    one, -Vout is the output's own return. A ground symbol other than VSS (``power:GND``) on
+    the net joins it to the board ground, so it stays ground whatever drives it."""
+    shared_refs = {ref for ref, n in Counter(c["reference"] for c in ctx.components).items()
+                   if n > 1}
     found = set()
     for name, info in ctx.nets.items():
-        if not (is_vss_name(name) and ctx.is_ground(name)):
+        if not (is_vss_name(name) and is_ground_name(name, ctx.ground_name_rails)):
+            continue
+        override = ctx.config_rail_voltage(name)
+        if override is not None and override < 0 and not ctx.rail_ignored(name):
+            found.add(name)
+            continue
+        symbols = ((p, ctx.comp_lookup.get(p["component"]) or {}) for p in info.get("pins", [])
+                   if p["component"] not in shared_refs)
+        if any(_is_ground_symbol_pin(p, comp) and not is_vss_name(str(comp.get("value") or ""))
+               for p, comp in symbols):
             continue
         for p in info.get("pins", []):
             pin_name = p.get("pin_name") or ""
             if (str(p.get("pin_type") or "").split("+")[0] != "power_out"
                     or is_ground_name(pin_name) or is_vss_name(pin_name)):
                 continue
-            if any(n != name and ctx.is_ground(n) and not is_vss_name(n)
-                   for n, _ in ctx.ref_pins.get(p.get("component"), {}).values()):
+            ref = p.get("component")
+            part_pins = [(q.get("pin_name") or "", n)
+                         for n in {n for n, _ in ctx.ref_pins.get(ref, {}).values()}
+                         for q in ctx.nets.get(n, {}).get("pins", []) if q.get("component") == ref]
+            if _NEGATIVE_CONVERTER_OUTPUT_PIN.match(pin_name.upper()):
+                part_pins = [(q, n) for q, n in part_pins
+                             if q.upper() in ("COM", "COMMON") or is_ground_name(q)]
+            if any(n != name and ctx.is_ground(n) and not is_vss_name(n) for _, n in part_pins):
                 found.add(name)
                 break
     return frozenset(found)
@@ -371,13 +393,13 @@ def build_analysis_context(components: list[dict], nets: dict[str, dict], lib_sy
         pin_guarded_signals=pin_guarded_signal_nets(nets, comp_lookup, rails),
         pin_gated_rails=pin_gated_rail_nets(nets, comp_lookup),
     )
-    ctx.vss_supply_rails = vss_supply_rail_nets(ctx)
     if power_rails_config:
         ctx.rail_overrides = {
             k: v for k, v in (power_rails_config.get("voltage_overrides") or {}).items()
             if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)}
         ctx.rail_ignore = tuple(
             p for p in (power_rails_config.get("ignore") or ()) if isinstance(p, str))
+    ctx.vss_supply_rails = vss_supply_rail_nets(ctx)
     from schematic.net_analysis import topology_rail_nets  # local: net_analysis imports this module
     ctx.topology_rails = topology_rail_nets(
         nets, comp_lookup, ctx.ref_pins, ctx.is_power_net, ctx.is_ground)
