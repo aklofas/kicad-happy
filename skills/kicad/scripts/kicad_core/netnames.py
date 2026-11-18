@@ -110,6 +110,33 @@ _V_NUMBER_RAIL_WORDS = frozenset({"V", "REG", "SW", "USB", "BAT", "SB", "AUX"})
 # V1A, V2OUT are channels.
 _V_NUMBER_VOLTAGE_SUFFIXES = frozenset({"IO", "IN", "OUT", "O", "A", "D", "N", "P"})
 _V_NUMBER = re.compile(r'^V(\d+)([VP]\d*|\.\d+)?')
+# A rail's monitor or feedback line by its last word (5V_FAULT, 5V_ISENSE, 12V_{FBM}).
+_RAIL_MONITOR_TAILS = frozenset({"FAULT", "ISENSE", "ISNS", "FBM", "PWRGOOD"})
+# A divider or ADC tap on a rail (VBAT_MEAS, VBUS_DIV, VIN_SENSED); after a supply word the
+# same tail names a supply pin's rail (VCC_DIV, a synthesizer's divider supply).
+_RAIL_SENSE_TAILS = frozenset({"MEAS", "MEASURE", "MESURE", "DIV", "DIVIDED", "READ", "SENSED"})
+# Rail words whose _ADC tail is a sense tap (VBAT_ADC); VDD_ADC and +3V3_ADC supply an ADC.
+_ADC_TAP_RAILS = frozenset({"VBAT", "VBATT", "VBUS", "VIN", "VSYS"})
+# A power-indicator LED's node (PWR_LED, POWER_LED_K); 3V3_LED or PWR_LED_24V supplies LEDs.
+_POWER_LED_NODE = re.compile(r'(?:PWR|POWER)_LED\d*(?:_(?:K|A|AN))?')
+
+
+def is_rail_signal_name(nu: str) -> bool:
+    """A signal about a rail by the last word of its upper-cased leaf *nu*: a control or
+    status suffix (VCC_EN, 3V3_PG, PWR_OK2, 3V3_{FB}, 3V3_~{SHDN}), a monitor tail, a sense
+    tap, or a power-LED node."""
+    if _POWER_LED_NODE.fullmatch(nu):
+        return True
+    tokens = nu.split("_")
+    if len(tokens) < 2:
+        return False
+    last = tokens[-1].replace("~", "").strip("{}#").rstrip("0123456789")
+    if last in RAIL_SIGNAL_SUFFIXES or last in _RAIL_MONITOR_TAILS:
+        return True
+    first = tokens[0].lstrip("+")
+    if last in _RAIL_SENSE_TAILS:
+        return first not in _SUPPLY_TAILS
+    return last == "ADC" and first in _ADC_TAP_RAILS
 
 
 def _is_v_number_rail(nu: str) -> bool:
@@ -196,7 +223,7 @@ def is_power_net_name(net_name: str | None, power_rails: set[str] | None = None)
     # sub-1V rails under the nnVn convention, not ground.
     if re.match(r'^\+?0+(\.0+)?V(?!\d)', nu):
         return False
-    if "_" in nu and nu.rsplit("_", 1)[-1] in RAIL_SIGNAL_SUFFIXES:
+    if is_rail_signal_name(nu):
         return False
     # Negative rails (-12V, -2V5, -5V_F, -BATT, -VIN). A leading '-' also marks an
     # active-low signal (-RESET, -CS), so the rest must be a voltage or a supply name.

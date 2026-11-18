@@ -103,6 +103,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Switching regulators on `Regulator_Switching` symbols with a non-U reference (REG1, PS1, VR1) are detected as regulators instead of switches.
 - Load and power-distribution switches (Diodes AP2265x/AP2280x/AP2261x/AP255x, Vishay SiP32xxx, Microchip MIC20xx, onsemi FPFxxxx, TI TPS205x) are reported as power-path switches, not LDOs; the part number in the value decides over a borrowed symbol name.
 - `-BATT` is read as a battery return like `BATT-`. Names such as `GND_EN`, `GNDDETECT` or `+12V_F19_BKGND` are no longer taken for ground, `0VCC` is a supply, and a dash splits a net name into words (`HP-VGND` is a virtual ground).
+- Net names that end in a monitor, feedback, enable or sense word (`PWR_OK2`, `5V_FAULT`, `5V_ISENSE`, `12V_{FB}`, `VBAT_ADC`, `VBUS_DIV`, `VBAT_READ`) and power-LED nodes (`PWR_LED`) are no longer read as power rails. Rail-source, decoupling and trace-width checks stop firing on them, and a battery or bus sense divider through such a node is now reported. `VDD_ADC`, `+3V3_ADC`, `3V3_LED` and filtered rails such as `VBAT_FLT` stay rails.
 
 ### Documentation
 

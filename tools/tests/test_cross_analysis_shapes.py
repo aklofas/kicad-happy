@@ -138,7 +138,7 @@ class Shapes(unittest.TestCase):
             def record(self, check, ran, reason, items, n):
                 rec.append((check, ran, items, n))
         self.assertEqual(ca.check_decoupling_adequacy(self.sch, None, recorder=R()), [])
-        self.assertEqual(rec, [("DA-001", True, 4, 0)])
+        self.assertEqual(rec, [("DA-001", True, 3, 0)])
 
         sch = copy.deepcopy(self.sch)
         for f in sch["findings"]:

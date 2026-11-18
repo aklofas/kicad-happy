@@ -39,8 +39,8 @@ from kicad_core.parts import (
     default_switching_freq as _default_switching_freq,
 )
 from kicad_core.classify import classify_component
-from kicad_core.netnames import (is_ground_name, is_power_net_name, net_leaf,
-                                 RAIL_SIGNAL_SUFFIXES)
+from kicad_core.netnames import (is_ground_name, is_power_net_name, is_rail_signal_name,
+                                 net_leaf)
 from kicad_core.netquery import build_net_id_map
 from kicad_core.diagnostics import record
 from kicad_core.hotloop import triangle_loop_area
@@ -104,7 +104,7 @@ def _is_power_or_ground(name: str) -> bool:
     if is_ground_name(name) or is_emc_ground_name(name) or is_power_net_name(name):
         return True
     leaf = net_leaf(unescape_string(name)).upper()
-    if leaf.rsplit('_', 1)[-1] in RAIL_SIGNAL_SUFFIXES:
+    if is_rail_signal_name(re.sub(r'\s+', '_', leaf.strip())):
         return False
     return _is_power_or_ground_prefix(name)
 

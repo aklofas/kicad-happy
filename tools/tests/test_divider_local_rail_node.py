@@ -1,5 +1,5 @@
 # tools/tests/test_divider_local_rail_node.py
-"""A voltage divider continues through a node named like a rail (12V_FBM) when only
+"""A voltage divider continues through a node named like a rail (12V_PRE) when only
 local labels name it, two resistors are its only parts and every IC in the design has
 mapped pins. A global or hierarchical label, a power symbol or an IC without pins keeps
 the node a chain end; a ground node always ends the chain."""
@@ -34,8 +34,8 @@ def _ctx(components, nets, labels):
 
 def _mp2459(mid_label_type="label", extra_parts=(), mid_power_symbol=False,
             bottom_mid="FB"):
-    """+12V - R220 100k - 12V_FBM - R221 47k - FB - R222 10k - GND, MP2459 (VFB 0.81 V).
-    ``mid_label_type`` names the 12V_FBM label kinds, "+"-joined.
+    """+12V - R220 100k - 12V_PRE - R221 47k - FB - R222 10k - GND, MP2459 (VFB 0.81 V).
+    ``mid_label_type`` names the 12V_PRE label kinds, "+"-joined.
     ``bottom_mid`` other than FB puts a second 10k (R223) between FB and that node."""
     comps = [{"reference": "U220", "type": "ic", "value": "MP2459",
               "lib_id": "Regulator_Switching:MP2459"},
@@ -46,7 +46,7 @@ def _mp2459(mid_label_type="label", extra_parts=(), mid_power_symbol=False,
             "SW": [("U220", "3", "SW", "output"), _p("L220", "1")],
             "IN": [("U220", "1", "IN", "power_in"), ("#PWR02", "1", "IN", "power_in")],
             "GND": [("U220", "2", "GND", "power_in"), ("#PWR03", "1", "GND", "power_in")],
-            "12V_FBM": [_p("R220", "2"), _p("R221", "1")],
+            "12V_PRE": [_p("R220", "2"), _p("R221", "1")],
             "FB": [("U220", "4", "FB", "input"), _p("R221", "2"), _p("R222", "1")]}
     if bottom_mid == "FB":
         nets["GND"].append(_p("R222", "2"))
@@ -55,8 +55,8 @@ def _mp2459(mid_label_type="label", extra_parts=(), mid_power_symbol=False,
         nets[bottom_mid] = [_p("R222", "2"), _p("R223", "1")]
         nets["GND"].append(_p("R223", "2"))
     if mid_power_symbol:
-        nets["12V_FBM"].append(("#PWR04", "1", "12V_FBM", "power_in"))
-    labels = {"12V_FBM": [{"name": "12V_FBM", "type": t} for t in mid_label_type.split("+")]}
+        nets["12V_PRE"].append(("#PWR04", "1", "12V_PRE", "power_in"))
+    labels = {"12V_PRE": [{"name": "12V_PRE", "type": t} for t in mid_label_type.split("+")]}
     if bottom_mid != "FB":
         labels[bottom_mid] = [{"name": bottom_mid, "type": "label"}]
     return _ctx(comps, nets, labels)
@@ -90,7 +90,7 @@ class LocalRailNamedNode(unittest.TestCase):
         self.assertEqual(len(fb), 1)
         self.assertEqual(fb[0]["r_top"]["ohms"], 47000.0)
         self.assertNotIn("chain_resistors", fb[0]["r_top"])
-        self.assertEqual(fb[0]["top_net"], "12V_FBM")
+        self.assertEqual(fb[0]["top_net"], "12V_PRE")
 
     def test_global_label_node_ends_the_chain(self):
         self._assert_unchanged(_mp2459(mid_label_type="global_label"))
@@ -103,7 +103,7 @@ class LocalRailNamedNode(unittest.TestCase):
 
     def test_power_symbol_node_ends_the_chain(self):
         ctx = _mp2459(mid_power_symbol=True)
-        self.assertIn("12V_FBM", ctx.known_power_rails)
+        self.assertIn("12V_PRE", ctx.known_power_rails)
         self._assert_unchanged(ctx)
 
     def test_an_ic_without_mapped_pins_keeps_the_node_a_chain_end(self):
