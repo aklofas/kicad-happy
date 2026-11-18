@@ -3,8 +3,8 @@
 A one-pin ground symbol (``power:GND``, the SPICE ground ``0``) on a net that another label
 names makes that net ground: KiCad connects them, so the net is the ground. A ``COM`` net is
 ground when a ground label or an IC ground pin is on it, or when it is the common return of an
-isolated converter. A relay, multiplexer or switch ``COM`` stays a common, and protective
-earth stays out.
+isolated converter. A relay, multiplexer or switch ``COM`` stays a common, and an
+earth-class symbol (Earth, Chassis) is never evidence.
 """
 import sys, unittest
 from pathlib import Path
@@ -114,16 +114,28 @@ class GroundSymbolEvidence(unittest.TestCase):
                    {"N1": [_sym_pin("#PWR01")]})
         self.assertFalse(ctx.is_ground("N1"))
 
-    def test_earth_named_net_with_a_ground_symbol_stays_earth(self):
-        # Protective earth stays out of the signal ground even when a GND symbol is drawn on it.
+    def test_earth_named_net_with_only_earth_symbols_stays_earth(self):
+        # An earth-class symbol (Earth, Earth_Protective, Chassis) is never ground evidence.
+        for name, value in (("Earth", "Earth"), ("Earth_Protective", "Earth_Protective"),
+                            ("PE", "Earth_Protective"), ("/power/CHASSIS", "Chassis")):
+            with self.subTest(name=name):
+                ctx = _ctx([_symbol("#PWR01", value, "power:" + value),
+                            _part("U1", "ic", "STM32F103", "MCU:STM32F103", [("1", "VSS")])],
+                           {name: [_sym_pin("#PWR01"), _pin("U1", "1", "VSS", "power_in")]},
+                           labels={name: [name]})
+                self.assertFalse(ctx.is_ground(name))
+
+    def test_earth_named_net_with_a_ground_symbol_is_ground(self):
+        # A GND symbol makes the net the circuit ground, whatever KiCad names it.
         for name in ("Earth", "Earth_Protective", "PE", "/power/CHASSIS"):
             with self.subTest(name=name):
                 ctx = _ctx([_symbol("#PWR01", "Earth", "power:Earth"),
                             _symbol("#PWR02", "GND", "power:GND"),
                             _part("U1", "ic", "STM32F103", "MCU:STM32F103", [("1", "VSS")])],
                            {name: [_sym_pin("#PWR01"), _sym_pin("#PWR02"),
-                                   _pin("U1", "1", "VSS", "power_in")]})
-                self.assertFalse(ctx.is_ground(name))
+                                   _pin("U1", "1", "VSS", "power_in")]},
+                           labels={name: [name]})
+                self.assertTrue(ctx.is_ground(name))
 
     def test_earth_symbol_is_no_evidence(self):
         ctx = _ctx([_symbol("#PWR01", "Earth", "power:Earth"), _cap("C1")],

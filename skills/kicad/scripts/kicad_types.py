@@ -84,13 +84,14 @@ _CONVERTER_OUTPUT_PIN = re.compile(r'^[+-]V_?OUT$|^V_?OUT[+-]$|^[+-]VO$|^VO[+-]$
 def _is_ground_symbol_pin(pin: dict, comp: dict) -> bool:
     """*pin* is the pin of a one-pin power symbol drawn as a ground: the symbol's value and its
     library symbol both read as ground (``power:GND``, ``power:GNDREF``) or are the SPICE ground
-    ``0`` (``Simulation_SPICE:0``, ``pspice:0``), and the pin itself carries no other name."""
+    ``0`` (``Simulation_SPICE:0``, ``pspice:0``), and the pin itself carries no other name. An
+    earth-class symbol (``power:Earth``, ``Earth_Protective``, ``Chassis``) is not one."""
     if comp.get("type") != "power_symbol" or len(comp.get("pins") or ()) > 1:
         return False
     pin_name = str(pin.get("pin_name") or "")
     names = (str(comp.get("value") or ""), str(comp.get("lib_id") or "").rsplit(":", 1)[-1])
     return ((pin_name in ("", "~", "0") or is_ground_name(pin_name))
-            and all(n == "0" or is_ground_name(n) for n in names))
+            and all(n == "0" or is_ground_name(n) and not is_earth_name(n) for n in names))
 
 
 def ground_evidence_nets(nets: dict[str, dict], comp_lookup: dict[str, dict],
@@ -98,9 +99,9 @@ def ground_evidence_nets(nets: dict[str, dict], comp_lookup: dict[str, dict],
     """Nets that are ground by what sits on them, whatever they are called.
 
     A ground power symbol (``GND``, or the SPICE ground ``0``) on a net another label names
-    makes that net ground (a global label ``THERMISTOR_B`` drawn on the board ground), unless
-    the name reads as a supply or as protective earth or chassis (``Earth``, ``PE``), or nothing
-    but power symbols sits on the net. A ``COM`` net is
+    makes that net ground (a global label ``THERMISTOR_B`` drawn on the board ground, or a board
+    ground KiCad names ``Earth``), unless the name reads as a supply or nothing but power
+    symbols sits on the net. A ``COM`` net is
     ground when a ground label is also on it, an IC ground pin (``GND1``, ``AGND``) sits on
     it, or it is the common pin of an isolated converter (a part with ``VOUT+`` / ``VOUT-``
     pins); a relay, switch, multiplexer or transformer ``COM`` is a common, not a return. A
@@ -109,7 +110,7 @@ def ground_evidence_nets(nets: dict[str, dict], comp_lookup: dict[str, dict],
     found = set()
     for name, info in nets.items():
         pins = info.get("pins", [])
-        if (not is_power_net_name(name) and not is_earth_name(name)
+        if (not is_power_net_name(name)
                 and any(p["component"] not in shared_refs
                         and _is_ground_symbol_pin(p, comp_lookup.get(p["component"]) or {})
                         for p in pins)
