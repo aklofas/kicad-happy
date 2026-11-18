@@ -123,9 +123,26 @@ class ValueNotation(unittest.TestCase):
         self.check([("10U/16V", "capacitor", 1e-5), ("100N 50V", "capacitor", 1e-7),
                     ("100N,50V", "capacitor", 1e-7), ("100P NP0", "capacitor", 1e-10)])
 
-    def test_uppercase_prefix_with_a_glued_voltage_stays_unparsed(self):
-        for text in ("1N50V", "10U16V", "100N50V"):
+    def test_glued_voltage_is_a_rating(self):
+        self.check([("1n50V", "capacitor", 1e-9), ("10u16V", "capacitor", 1e-5),
+                    ("220u25V", "capacitor", 2.2e-4), ("10U16V", "capacitor", 1e-5),
+                    ("100N50V", "capacitor", 1e-7), ("0.1u16v", "capacitor", 1e-7),
+                    ("2.2u100v", "capacitor", 2.2e-6)])
+        self.assertIsNone(parse_value("1n50V", component_type="resistor"))
+        self.assertAlmostEqual(parse_value("1n50V") / 1.5e-9, 1.0)
+        self.check([("4u7V", "capacitor", 4.7e-6), ("10u16", "capacitor", 1.016e-5)])
+
+    def test_part_numbers_on_a_capacitor(self):
+        for text in ("7406N", "50N06", "600R/200mA"):
             self.assertIsNone(parse_value(text, component_type="capacitor"), msg=text)
+        self.check([("1000U", "capacitor", 1e-3), ("2200U", "capacitor", 2.2e-3),
+                    ("1U0", "capacitor", 1e-6), ("100N", "capacitor", 1e-7)])
+
+    def test_exponent_capacitor_plausibility(self):
+        self.assertIsNone(parse_value("1e3", component_type="capacitor"))
+        self.check([("1e3F", "capacitor", 1000.0), ("1e-6", "capacitor", 1e-6),
+                    ("10e-12", "capacitor", 1e-11), ("1F", "capacitor", 1.0),
+                    ("0.47F", "capacitor", 0.47), ("1e3", "resistor", 1000.0)])
 
     def test_lowercase_prefixes_unchanged_on_a_capacitor(self):
         self.check([("100n", "capacitor", 1e-7), ("4u7", "capacitor", 4.7e-6), ("1M", "capacitor", 1e6),

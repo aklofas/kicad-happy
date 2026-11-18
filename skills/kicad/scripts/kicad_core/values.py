@@ -55,6 +55,9 @@ _VALUE_THEN_FIELDS = re.compile(
 # KiCad reads P as peta; no capacitor is petafarads.
 _UPPER_PREFIX = re.compile(r"([0-9.]*[0-9])([NUP])([0-9]{0,2})")
 _UPPER_PREFIX_TYPES = {"capacitor": "NUP", "inductor": "NU"}
+# A capacitance with its voltage rating glued on ("1n50V", "220u25V", "10U16V"): the two or
+# more digits after the prefix letter are the rating.
+_GLUED_RATING = re.compile(r"([0-9.]*[0-9])([pnuNUP])([0-9]{2,})")
 # A value written the way KiCad's library symbols are named: the type letter, then the value,
 # then package or rating fields ("R_5k1_0402", "R-5k1-0402", "R5k1", "C_100n_0402"), or a value
 # with package fields and no letter ("10k_0603"). The value field needs a prefix or unit letter,
@@ -249,8 +252,21 @@ def _parse_value(value_str: str, component_type: str | None) -> float | None:
         prefix_r = _PREFIX_THEN_R.fullmatch(s)
         if prefix_r:
             s = prefix_r.group(1)
-    upper = _UPPER_PREFIX.fullmatch(s)
-    # Digits glued to a voltage ("1N50V", "10U16V") are the rating, not fraction digits.
+    glued = _GLUED_RATING.fullmatch(s) if "V" in unit_tail.upper() else None
+    if glued:
+        if component_type is None:
+            glued = None
+        elif component_type != "capacitor":
+            return None
+        else:
+            s = glued.group(1) + glued.group(2).lower()
+    upper = None if glued else _UPPER_PREFIX.fullmatch(s)
+    # A part number ("7406N", "50N06") has more than three significant digits before the
+    # letter or a two-digit group with a leading zero after it; "1000U" and "1U0" are values.
+    if upper and (len(upper.group(1).replace(".", "").strip("0")) > 3
+                  or (len(upper.group(3)) == 2 and upper.group(3)[0] == "0")):
+        upper = None
+    # Digits glued to a voltage with no capacitor type ("1N50V") are not fraction digits.
     if (upper and upper.group(2) in _UPPER_PREFIX_TYPES.get(component_type, "")
             and not (upper.group(3) and "V" in unit_tail.upper())):
         s = upper.group(1) + upper.group(2).lower() + upper.group(3)
@@ -294,6 +310,10 @@ def _parse_value(value_str: str, component_type: str | None) -> float | None:
     # Plain number: "100", "47", "0.1"
     try:
         result = float(s)
+        if component_type == "capacitor" and explicit_si and not unit_tail.startswith("F") \
+                and result >= 1.0:
+            # An exponent with no F ("1e3") is not a capacitance in farads.
+            return None
         if component_type == "capacitor" and not explicit_si:
             # Bare integers >= 1 are picofarads in legacy schematics.
             # Bare decimals < 1 (0.1, 0.47, 0.22) are microfarads —
