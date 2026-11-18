@@ -4204,11 +4204,22 @@ def _is_reference_net_name(net_name: str) -> bool:
                for t in re.findall(r"[A-Z]+|[0-9]+", net_leaf(net_name).upper()))
 
 
-def _ic_supply_pin(pin: dict) -> bool:
-    """A power input named as a supply (VCC, VDDA, VS, V+), not a reference input (VREF)."""
-    name = re.sub(r"[^0-9A-Z+]", "", str(pin.get("pin_name") or "").upper())
-    return (pin.get("pin_type") == "power_in" and "REF" not in name
-            and ("VCC" in name or "VDD" in name or name in ("VS", "V+", "VIN")))
+# Pin names of a supply input. An output-typed pin named like this is a symbol typing
+# error, not a source.
+_SUPPLY_INPUT_PIN = re.compile(r"[ADP]?V(?:CC|DD)(?:IO|Q)?\d*|VIO|VIN|IN|VS")
+_SUPPLY_PIN_NAMES = frozenset({"VS", "V+", "VIN", "V-", "VEE", "VBAT", "VIO", "VL", "PVIN"})
+
+
+def _ic_supply_pin(pin: dict, comp_type: str | None = None) -> bool:
+    """A supply pin (VCC, VDDA, VS, V+, V-, VEE, VBAT, VIO, PVIN), not a reference input
+    (VREF): typed power_in, or typed passive on an IC (connector pins named VCC stay out)."""
+    raw = re.sub(r"[^0-9A-Z+\-]", "", str(pin.get("pin_name") or "").upper())
+    name = raw.replace("-", "")
+    if "REF" in name or not ("VCC" in name or "VDD" in name or name in ("VS", "V+", "VIN")
+                             or raw.rstrip("0123456789") in _SUPPLY_PIN_NAMES):
+        return False
+    return pin.get("pin_type") == "power_in" or (pin.get("pin_type") == "passive"
+                                                 and comp_type == "ic")
 
 
 def _reference_net(ctx: AnalysisContext, net_name: str, regulator_outputs: set) -> bool:
@@ -4218,7 +4229,7 @@ def _reference_net(ctx: AnalysisContext, net_name: str, regulator_outputs: set) 
         return False
     return not any((p.get("pin_type") in ("power_out", "output")
                     and (ctx.comp_lookup.get(p.get("component")) or {}).get("type") in ("ic", "diode"))
-                   or _ic_supply_pin(p)
+                   or _ic_supply_pin(p, (ctx.comp_lookup.get(p.get("component")) or {}).get("type"))
                    for p in (ctx.nets.get(net_name) or {}).get("pins", []))
 
 
@@ -5085,6 +5096,14 @@ def audit_rail_sources(ctx: AnalysisContext,
             comp = p.get("component") or ""
             if comp.startswith("#FLG"):
                 return True
+            # An IC or reference-diode output drives the net (a reference, a charge pump,
+            # a regulator whose symbol types its output as output). A load switch's
+            # output is sourced only when its input is (below).
+            if (p.get("pin_type") == "output" and comp not in switch_refs
+                    and (ctx.comp_lookup.get(comp) or {}).get("type") in ("ic", "diode")
+                    and not _SUPPLY_INPUT_PIN.fullmatch(
+                        re.sub(r"[^0-9A-Z]", "", str(p.get("pin_name") or "").upper()))):
+                return True
         return net_name in reg_output_nets or net_name in switch_output_nets
 
     # A load or USB power switch, or a P-channel high-side switch, passes its input
@@ -5143,7 +5162,8 @@ def audit_rail_sources(ctx: AnalysisContext,
         # its supply from it.
         if net_name.startswith("__unnamed_") or (
                 _is_reference_net_name(net_name)
-                and not any(_ic_supply_pin(p) for p in net_info.get("pins", []))):
+                and not any(_ic_supply_pin(p, (ctx.comp_lookup.get(p.get("component")) or {}).get("type"))
+                            for p in net_info.get("pins", []))):
             return False
         if is_power_net_name(net_name, None) and net_name not in ctx.pin_guarded_signals:
             return True

@@ -69,13 +69,13 @@ class LoadSwitchWordsInDescription(unittest.TestCase):
         self.assertFalse(names_load_switch(""))
 
 
-def _switch_sources(value, vin_pin_type, vin_net="+5V"):
+def _switch_sources(value, vin_pin_type, vin_net="+5V", vout_pin_type="output"):
     """RS-001 nets for a switch fed from *vin_net*, with a 5 V rail pin on it of *vin_pin_type*."""
     comps = [{"reference": "U1", "type": "ic", "value": value, "lib_id": "Power_Management:" + value},
              {"reference": "J1", "type": "connector", "value": "Conn"},
              {"reference": "U2", "type": "ic", "value": "MCU"}]
     pins = {vin_net: [("J1", "1", "J1", vin_pin_type), ("U1", "1", "VIN", "power_in")],
-            "+5V_SW": [("U1", "2", "VOUT", "output"), ("U2", "1", "VDD", "power_in")],
+            "+5V_SW": [("U1", "2", "VOUT", vout_pin_type), ("U2", "1", "VDD", "power_in")],
             "GND": [("U1", "3", "GND", "power_in")]}
     nets = {n: {"name": n, "point_count": 0, "no_connect": False, "has_pwr_flag": False, "labels": [],
                 "pins": [dict(component=r, pin_number=num, pin_name=name, pin_type=t) for r, num, name, t in ps]}
@@ -92,7 +92,7 @@ class SwitchOutputIsSourced(unittest.TestCase):
         self.assertEqual(_switch_sources("MT9700", "passive"), ["+5V", "+5V_SW"])
 
     def test_output_of_a_part_that_is_not_a_switch_is_not(self):
-        self.assertEqual(_switch_sources("XYZ123", "power_out"), ["+5V_SW"])
+        self.assertEqual(_switch_sources("XYZ123", "power_out", vout_pin_type="passive"), ["+5V_SW"])
 
 
 def _switch_behind_jumper(state):

@@ -76,6 +76,8 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The `--no-hierarchy` help says what the flag does: a sub-sheet is analyzed as given instead of from its project root.
 - An inductor marked `NON SHIELDED` or `SEMI SHIELDED` (with a space) is no longer treated as shielded by the EMC inductor-leakage check.
 - A `.kicad_dru` rule that sets one constraint under its old and new name (`hole` and `hole_size`, `mechanical_clearance` and `physical_clearance`) refuses the file, as in KiCad.
+- A rail driven by an IC or reference output pin (a reference, charge pump or regulator output typed as an output) is no longer reported as having no source.
+- A reference-named net that powers an IC through a V-, VEE, VBAT, VIO or passive supply pin is treated as a supply rail.
 - More `.kicad_dru` files are read as KiCad 10 reads them. A negated or arithmetic bound without a unit (`-0.1`, `2*0.25`, `solder_paste_rel_margin (opt -0.1)`) no longer refuses the file. A bound KiCad cannot read now does: a unit in the wrong case (`0.1MM`), a unit on `via_count`, time units outside `length` and `skew`, bounds in different units, a `min_resolved_spokes` bound, a value without its `(min …)`, a tab or line break inside an expression, a unitless decimal-comma bound such as `(min 0,1)`.
 - A `.kicad_dru` whose condition KiCad cannot parse (a missing operand, unbalanced parentheses, a lone number without a unit, a character outside the expression language), or that uses a text variable the board and project do not define, is refused as KiCad refuses it.
 - A custom rule whose `(layer …)` names a copper layer by the board's own name for it now applies to that layer's tracks, vias and annular rings, not only to holes.
