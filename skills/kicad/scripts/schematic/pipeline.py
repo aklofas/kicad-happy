@@ -1198,8 +1198,10 @@ class SchematicAnalyses:
     protocol_compliance: Any
 
 
-def run_analyses(ctx: AnalysisContext, parsed: dict, path: str, nets: dict) -> SchematicAnalyses:
-    """Project-level analyses, in their historical call order."""
+def run_analyses(ctx: AnalysisContext, parsed: dict, path: str, nets: dict,
+                 standalone_sheet: bool = False) -> SchematicAnalyses:
+    """Project-level analyses, in their historical call order. ``standalone_sheet``: the file
+    is a sub-sheet read without its root, so nets that leave it are only partly seen."""
     all_components = parsed["components"]
     all_wires = parsed["wires"]
     all_labels = parsed["labels"]
@@ -1235,7 +1237,9 @@ def run_analyses(ctx: AnalysisContext, parsed: dict, path: str, nets: dict) -> S
 
     annotation_issues = check_annotation_completeness(all_components)
     label_shape_warnings = validate_label_shapes(all_labels, nets)
-    pwr_flag_warnings = audit_pwr_flags(all_components, nets, known_power_rails)
+    pwr_flag_warnings = audit_pwr_flags(all_components, nets, known_power_rails,
+                                        standalone_sheet=standalone_sheet,
+                                        no_connects=parsed["no_connects"])
     fp_filter_warnings = validate_footprint_filters(all_components, all_lib_symbols)
     sourcing_audit = audit_sourcing_fields(all_components)
     datasheet_coverage_findings = audit_datasheet_coverage(
@@ -1455,7 +1459,8 @@ def analyze_schematic(path: str, project_root: str | None = None,
         source=ANALYZER_SOURCE, cache_dir=_cache_dir, project_dir=str(Path(path).parent),
         power_rails_config=power_rails_config)
 
-    analyses = run_analyses(ctx, parsed, path, nets)
+    analyses = run_analyses(ctx, parsed, path, nets,
+                            standalone_sheet=hierarchy_warning is not None)
     result = assemble_result(ctx, parsed, nets, bom, analyses, path=path,
                              sheets_parsed=sheets_parsed,
                              hierarchy_warning=hierarchy_warning,

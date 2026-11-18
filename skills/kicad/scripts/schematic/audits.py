@@ -6,6 +6,7 @@ import re
 from pathlib import (
     Path,
 )
+from kicad_core.coords import to_iu
 from kicad_core.fileio import json_loads
 from kicad_core.classify import NON_COMPONENT_TYPES
 from kicad_core.sexp import unescape_string
@@ -118,35 +119,57 @@ def validate_label_shapes(labels: list[dict], nets: dict) -> list[dict]:
     return warnings
 
 
-def audit_pwr_flags(components: list[dict], nets: dict, known_power_rails: set) -> list[dict]:
-    """Audit power rails for missing PWR_FLAG symbols.
+def audit_pwr_flags(components: list[dict], nets: dict, known_power_rails: set,
+                    standalone_sheet: bool = False, no_connects: list[dict] = ()) -> list[dict]:
+    """Audit nets for a missing PWR_FLAG, as KiCad's ERC "power pin not driven" check does.
 
-    KiCad requires PWR_FLAG on power nets that are only driven by power_in pins
-    (e.g., a connector supplying power). Without PWR_FLAG, ERC reports "power pin
-    not driven" errors.
+    KiCad requires a power_out pin or a PWR_FLAG on every net that carries a power_in pin
+    (e.g., a connector or battery supplying power). Without one, ERC reports "power pin not
+    driven" on that net. A power_in pin with a no-connect flag on it is not checked (nor the
+    lone pin of a net flagged no-connect: the flag sits on its stub). Another net flagged
+    no-connect is reported only when it is a power-symbol rail: whether KiCad checks it
+    depends on how it groups the flag with the net. When the file is a sub-sheet read on
+    its own, a net that leaves the sheet through a hierarchical or global label can be
+    driven on another sheet, so it is not checked there.
     """
     warnings = []
+    power_symbols = {c["reference"] for c in components if c.get("type") == "power_symbol"}
+    nc_points = {(nc.get("_sheet", 0), to_iu(nc["x"]), to_iu(nc["y"])) for nc in no_connects}
+    nc_pins = {(c["reference"], p.get("number"), p.get("name"))
+               for c in components for p in c.get("pins") or []
+               if p.get("type") == "power_in"
+               and (c.get("_sheet", 0), to_iu(p["x"]), to_iu(p["y"])) in nc_points}
 
-    # Check each power rail (sorted: set order is hash-randomized per
-    # process and pwr_flag_warnings must be byte-stable across runs)
-    for net_name in sorted(known_power_rails):
-        if net_name not in nets:
-            continue
+    # Sorted: dict order must not leak into pwr_flag_warnings (byte-stable runs).
+    for net_name in sorted(nets):
         net_info = nets[net_name]
         # PWR_FLAG pins never appear in pins[] (build_net_map
         # registers them as source points) — credit the net-level flag.
         if net_info.get("has_pwr_flag"):
             continue
+        is_rail = (net_name in known_power_rails
+                   or any(p["component"] in power_symbols for p in net_info["pins"]))
+        if net_info.get("no_connect") and not is_rail:
+            continue
+        if (standalone_sheet and not is_rail
+                and any(lbl.get("type") in ("hierarchical_label", "global_label")
+                        for lbl in net_info.get("labels") or [])):
+            continue
         pin_types = set(p["pin_type"] for p in net_info["pins"])
 
         # If the net has only power_in pins (no power_out), it needs PWR_FLAG
         has_power_out = "power_out" in pin_types
-        has_power_in = "power_in" in pin_types
+        lone_nc = net_info.get("no_connect") and len(net_info["pins"]) <= 1
+        has_power_in = not lone_nc and any(
+            p["pin_type"] == "power_in"
+            and (p["component"], p["pin_number"], p["pin_name"]) not in nc_pins
+            for p in net_info["pins"])
 
         if has_power_in and not has_power_out:
+            kind = "Power rail" if is_rail else "Net"
             warnings.append({
                 "net": net_name,
-                "message": f"Power rail '{net_name}' has power_in pins but no power_out or PWR_FLAG — ERC will flag this",
+                "message": f"{kind} '{net_name}' has power_in pins but no power_out or PWR_FLAG — ERC will flag this",
                 "pin_types": sorted(pin_types),
             })
 
