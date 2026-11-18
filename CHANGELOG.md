@@ -42,6 +42,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Power-sequencing warnings name each sensitive load once instead of once per supply pin.
 - An IC's internal-regulator output pin (VCAP, VDDCORE, VREG, VDD_DR) wired only to its decoupling capacitor is reported as information, not as an unpowered supply pin.
 - An IC supply pin fed from a battery, from a regulator output on an unnamed net, or through a series filter resistor up to 1 kΩ is no longer reported as having no DC path.
+- Trace-width checks run on boards whose regulators have no current estimate, using the power budget.
 - The power budget counts each die of an RGB or bicolour LED through its own resistor, finds every addressable LED on its supply pin, and counts loads behind a fuse on the fused rail. Unfitted and off-board LEDs and series resistors add no load.
 - TVS diodes named by their series (SMF, SM6T, SM712, P4KE and others) or described as TVS in the symbol are detected as protection devices, so a USB VBUS with one is no longer reported unprotected.
 - ESD arrays report the ground they clamp to and the supply rails a diode array protects, and no longer list unconnected pins as protected lines.

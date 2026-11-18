@@ -986,15 +986,26 @@ def check_trace_width_power(schematic, pcb, recorder=None):
     regulators = [f for f in schematic.get('findings', [])
                   if f.get('detector') == 'detect_power_regulators']
     net_current = {}
+    unestimated = []
     for reg in regulators:
         output_rail = reg.get('output_rail', '')
         iout = _reg_iout(reg)
         if output_rail and iout > 0:
             net_current[output_rail] = max(net_current.get(output_rail, 0), iout)
+        elif output_rail:
+            unestimated.append(output_rail)
         input_rail = reg.get('input_rail', '')
         iin = _reg_iin(reg)
         if input_rail and iin > 0:
             net_current[input_rail] = net_current.get(input_rail, 0) + iin
+    # a regulator without an estimate carries its output rail's power-budget load
+    budget_rails = (schematic.get('power_budget') or {}).get('rails') or {}
+    from_budget = set()
+    for rail in unestimated:
+        load = ((budget_rails.get(rail) or {}).get('estimated_load_mA') or 0) / 1000.0
+        if load > net_current.get(rail, 0):
+            net_current[rail] = load
+            from_budget.add(rail)
     if not net_current:
         _record(recorder, 'TW-001', False, 'no power regulator current estimates in schematic analysis', 0, findings)
         return findings
@@ -1016,7 +1027,7 @@ def check_trace_width_power(schematic, pcb, recorder=None):
                 detector='check_trace_width_power', rule_id='TW-001',
                 category='current_capacity',
                 summary=f'Power net {net_name}: trace {trace_w:.2f}mm too narrow for ~{current:.1f}A (est.)',
-                description=f'Power net {net_name} carries ~{current:.1f}A (estimated from regulator output capacitance) but narrowest trace is {trace_w:.2f}mm. IPC-2152 recommends >= {min_w:.2f}mm.',
+                description=f'Power net {net_name} carries ~{current:.1f}A (estimated from {"the power budget" if net_name in from_budget else "regulator output capacitance"}) but narrowest trace is {trace_w:.2f}mm. IPC-2152 recommends >= {min_w:.2f}mm.',
                 severity='warning', confidence='heuristic', evidence_source='topology',
                 nets=[net_name],
                 recommendation=f'Widen {net_name} traces to >= {min_w:.1f}mm or use copper pour.',

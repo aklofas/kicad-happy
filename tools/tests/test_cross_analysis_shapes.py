@@ -187,6 +187,23 @@ class Shapes(unittest.TestCase):
         self.assertEqual([f["rule_id"] for f in fired], ["TW-001"])
         self.assertEqual(ca.check_trace_width_power(sch, self._pcb(0.4, "+3V3")), [])
 
+    def test_tw001_falls_back_to_the_rail_power_budget(self):
+        sch = self._sch(None, "VBUS", "+3V3")
+        del sch["findings"][0]["power_dissipation"]
+        self.assertEqual(ca.check_trace_width_power(sch, self._pcb(0.1, "+3V3")), [])
+        sch["power_budget"] = {"rails": {"+3V3": {"estimated_load_mA": 900}}}
+        out = ca.check_trace_width_power(sch, self._pcb(0.1, "+3V3"))
+        self.assertEqual([f["rule_id"] for f in out], ["TW-001"])
+        self.assertIn("estimated from the power budget", out[0]["description"])
+        self.assertEqual(ca.check_trace_width_power(sch, self._pcb(0.4, "+3V3")), [])
+
+    def test_tw001_regulator_estimate_wins_over_the_power_budget(self):
+        sch = self._sch(0.9, "VBUS", "+3V3")
+        sch["power_budget"] = {"rails": {"+3V3": {"estimated_load_mA": 50}}}
+        out = ca.check_trace_width_power(sch, self._pcb(0.3, "+3V3"))
+        self.assertEqual([f["rule_id"] for f in out], ["TW-001"])
+        self.assertIn("regulator output capacitance", out[0]["description"])
+
     _CONN = {"reference": "J1", "courtyard": {"min_x": 0, "min_y": 0, "max_x": 5, "max_y": 5},
              "pad_nets": {"1": {"net": "+24V"}, "2": {"net": "+24V"},
                           "3": {"net": "+24V"}, "4": {"net": "GND"}}}
