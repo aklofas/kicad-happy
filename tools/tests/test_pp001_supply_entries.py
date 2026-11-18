@@ -33,5 +33,24 @@ class BatteryEntry(unittest.TestCase):
         self.assertEqual(_pp001([U, C, bt, fb], nets), [])
 
 
+class RegulatorOutputRail(unittest.TestCase):
+    NETS = {"__unnamed_4": [("U3", "2", "output"), ("F1", "1", "passive")],
+            "N_U1": [("U1", "1", "power_in"), ("F1", "2", "passive"), ("C1", "1", "passive")],
+            "GND": [("C1", "2", "passive")]}
+    PARTS = [U, C, {"reference": "U3", "type": "ic", "value": "LM317"},
+             {"reference": "F1", "type": "fuse", "value": "500mA"}]
+
+    def test_unnamed_regulator_output_feeds_the_pin_through_a_fuse(self):
+        self.assertEqual(_pp001(self.PARTS, self.NETS, power_regulators=[{"output_rail": "__unnamed_4"}]), [])
+
+    def test_the_same_net_without_a_regulator_record_is_not_a_rail(self):
+        self.assertEqual(len(_pp001(self.PARTS, self.NETS)), 1)
+
+    def test_a_regulator_record_naming_ground_does_not_make_ground_a_rail(self):
+        nets = {"GND": [("U3", "2", "output"), ("F1", "1", "passive"), ("C1", "2", "passive")],
+                "N_U1": [("U1", "1", "power_in"), ("F1", "2", "passive"), ("C1", "1", "passive")]}
+        self.assertEqual(len(_pp001(self.PARTS, nets, power_regulators=[{"output_rail": "GND"}])), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

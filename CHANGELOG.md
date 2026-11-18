@@ -37,7 +37,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The USB-PD controller record names the controller's own value and lists each CC net once.
 - A capacitor value with its voltage glued on (`220u25V`, `1n50V`) reads as the capacitance; part numbers such as `7406N` on a capacitor symbol and a value such as `1e3` are no longer read as capacitances.
 - An IC's internal-regulator output pin (VCAP, VDDCORE, VREG, VDD_DR) wired only to its decoupling capacitor is reported as information, not as an unpowered supply pin.
-- An IC supply pin fed from a battery is no longer reported as having no DC path.
+- An IC supply pin fed from a battery or from a regulator output on an unnamed net is no longer reported as having no DC path.
 - TVS diodes named by their series (SMF, SM6T, SM712, P4KE and others) or described as TVS in the symbol are detected as protection devices, so a USB VBUS with one is no longer reported unprotected.
 - ESD arrays report the ground they clamp to and the supply rails a diode array protects, and no longer list unconnected pins as protected lines.
 - KiCad 5 no-connect pins no longer count as unprotected connector signals in the ESD audits.

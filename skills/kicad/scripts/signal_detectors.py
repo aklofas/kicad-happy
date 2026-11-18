@@ -5476,6 +5476,7 @@ def audit_power_pin_dc_paths(ctx: AnalysisContext,
       - solder jumpers with default_state='bridged'    (bridge)
     and REJECT crossing capacitors. If no named power rail is reachable
     within 2 hops, emit PP-001 at severity=error (info on module-internal LDO rails).
+    A regulator's output net is a rail even when it has no power name.
     A net known as a rail only from its pins (a supply pin and a capacitor to ground)
     counts as reached unless it is AC-coupled: only IC pins and capacitors sit on it,
     a two-pin capacitor joins it to another rail, and it shows no source of its own
@@ -5520,6 +5521,8 @@ def audit_power_pin_dc_paths(ctx: AnalysisContext,
         return to_rail
 
     def _is_dc_rail(net: str) -> bool:
+        if net in reg_output_nets and not ctx.is_ground(net):
+            return True
         if ctx.is_ground(net) or not ctx.is_power_net(net):
             return False
         if ctx.is_power_net(net, by_pins=False):
