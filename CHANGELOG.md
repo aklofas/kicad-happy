@@ -30,6 +30,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Fixed
 
+- A regulator whose output net has a dash between words (TPS-VOUT-3.3V, 5Vout-50V, INJ-2-OUT) is no longer marked inverting, so its output estimate keeps its positive sign.
 - V1P / V2P (an energy meter's voltage-channel inputs) are no longer read as power rails beside their V1N / V2N twins.
 - Decoupling, inrush and RC-filter results leave out capacitors and resistors marked DNP or excluded from the board. An IC whose only decoupling capacitor is unfitted is now reported as missing decoupling, and unfitted ICs and regulators get no capacitor observations.
 - A regulator with an input capacitor on an unnamed or non-rail net is no longer reported as missing input capacitors.

@@ -119,6 +119,26 @@ class BoostDividerTop(unittest.TestCase):
             self.assertNotIn("inverting", self._boost(top), top)
 
 
+class InvertingOutputName(unittest.TestCase):
+    def _reg(self, out, twin=None):
+        parts = [("U1", "Regulator_Linear:LM337_TO220", "LM337",
+                  {"1": ("ADJ", "ADJ"), "2": ("VI", "+12V"),
+                   "3": ("VO", out)}),
+                 ("C1", "Device:C", "10u", {"1": ("1", out), "2": ("2", "GND")})]
+        if twin:
+            parts.append(("C2", "Device:C", "10u", {"1": ("1", twin), "2": ("2", "GND")}))
+        return detect_power_regulators(_ctx(parts), [])[0]
+
+    def test_dash_between_words_is_not_inverting(self):
+        for out in ("TPS-VOUT-3.3V", "5Vout-50V", "INJ-2-OUT"):
+            self.assertNotIn("inverting", self._reg(out), out)
+
+    def test_negative_names_stay_inverting(self):
+        for out in ("-5V", "-VOUT", "AV-", "GENERATED -5V", "5V_NEG"):
+            self.assertTrue(self._reg(out).get("inverting"), out)
+        self.assertTrue(self._reg("F-15V", "F+15V").get("inverting"))
+
+
 class LdoDissipationSign(unittest.TestCase):
     def _rail(self, v_in_net, v_out_net, vout):
         ctx = _ctx([("U1", "Regulator_Linear:LM337_TO220", "LM337",
