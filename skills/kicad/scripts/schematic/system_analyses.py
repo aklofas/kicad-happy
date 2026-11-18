@@ -2244,6 +2244,12 @@ def _cc_termination(r_info: dict) -> bool:
 
 
 _TYPE_C_NAME = re.compile(r"(?<![A-Z0-9])(?:USB[_-]?C|TYPE[-_]?C)(?![A-Z0-9])")
+# Non-Type-C receptacles that are device ports, and the dual-role ones among them.
+_USB_DEVICE_PORT = re.compile(
+    r"(?<![A-Z0-9])(?:USB[_-]?(?:MICRO|MINI)?[_-]?B|(?:MICRO|MINI)[_-]?B|USB[_-]?B)(?![A-Z0-9])")
+_USB_DUAL_ROLE = re.compile(r"OTG|(?<![A-Z0-9])(?:MICRO|MINI)?[_-]?AB(?![A-Z0-9])|[-_]AB[-_]|-AB$")
+# USB 2.0 Specification section 7.2.4.1: a device presents at most 10 uF at attach.
+_USB_DEVICE_VBUS_MAX_UF = 10.0
 
 
 def _connector_pin_names(ctx: AnalysisContext, ref: str) -> set[str]:
@@ -2315,6 +2321,8 @@ def analyze_usb_compliance(ctx: AnalysisContext,
                 "has_cc_pins": bool(cc_sides),
                 # A plug carries one CC pin; the check then covers that one side.
                 "single_cc": not (cc_sides & {"CC1", "CC2"}) and bool(cc_sides),
+                "is_device_port": (not _USB_DUAL_ROLE.search(combined)
+                                   and bool(_USB_DEVICE_PORT.search(combined))),
             })
 
     if not usb_connectors:
@@ -2325,6 +2333,7 @@ def analyze_usb_compliance(ctx: AnalysisContext,
 
     for conn in usb_connectors:
         ref = conn["ref"]
+        role = None
         conn_checks: dict = {
             "connector": ref,
             "value": conn["value"],
@@ -2613,6 +2622,12 @@ def analyze_usb_compliance(ctx: AnalysisContext,
                 if pc["type"] == "capacitor":
                     has_decoupling = True
                     cap_val = parse_value(pc.get("value", ""), component_type="capacitor")
+                    if pc.get("dnp") or pc.get("on_board") is False:
+                        continue
+                    returns = [n for pn, (n, _) in ref_pins.get(pc["reference"], {}).items()
+                               if n and n != vbus_net]
+                    if not any(is_ground(n) for n in returns):
+                        continue
                     if cap_val and cap_val > 0:
                         vbus_caps.append({
                             "ref": pc["reference"],
@@ -2636,6 +2651,16 @@ def analyze_usb_compliance(ctx: AnalysisContext,
                         "recommended_min_uf": 1.0,
                         "detail": (f"VBUS decoupling may be insufficient: {total_uf:.1f}\u00b5F total "
                                    f"(recommended \u22651\u00b5F for USB 2.0, \u226510\u00b5F for USB 3.x)"),
+                    }
+                elif (total_uf > _USB_DEVICE_VBUS_MAX_UF
+                      and (role == "sink" or (not conn["is_type_c"]
+                                              and conn["is_device_port"]))):
+                    conn_checks["checks"]["vbus_capacitance"] = "warning"
+                    conn_checks["vbus_capacitance_detail"] = {
+                        "total_uf": round(total_uf, 2),
+                        "detail": (f"VBUS capacitance may exceed the USB limit: {total_uf:.1f}\u00b5F "
+                                   f"on a device port (USB 2.0 allows \u226410\u00b5F at attach "
+                                   f"unless inrush is limited)"),
                     }
                 else:
                     conn_checks["checks"]["vbus_capacitance"] = "pass"
@@ -2727,23 +2752,28 @@ def analyze_usb_compliance(ctx: AnalysisContext,
             ))
         if conn_checks["checks"].get("vbus_capacitance") == "warning":
             _detail = conn_checks.get("vbus_capacitance_detail", {})
+            _over = (_detail.get("total_uf") or 0) > _USB_DEVICE_VBUS_MAX_UF
             usb_findings.append(make_finding(
                 detector="analyze_usb_compliance",
                 rule_id="UC-004",
                 category="usb_compliance",
-                summary=(f"VBUS decoupling may be undersized at {ref} "
+                summary=(f"VBUS capacitance may exceed the USB limit at {ref} "
+                         f"({_detail.get('total_uf')}uF total)" if _over else
+                         f"VBUS decoupling may be undersized at {ref} "
                          f"({_detail.get('total_uf')}uF total)"),
                 description=_detail.get(
                     "detail", "VBUS capacitance below recommended minimum."),
                 severity="warning",
-                confidence="deterministic",
+                confidence="heuristic" if _over else "deterministic",
                 evidence_source="topology",
                 components=[ref],
                 nets=[vbus_net] if vbus_net else [],
-                recommendation=(f"Increase VBUS bulk capacitance at {ref} "
+                recommendation=(f"Limit VBUS capacitance at {ref} to <=10uF or add "
+                                f"inrush limiting (USB 2.0)." if _over else
+                                f"Increase VBUS bulk capacitance at {ref} "
                                 f"to >=1uF (USB 2.0)."),
                 report_section="USB Compliance",
-                impact="VBUS droop on connect",
+                impact="VBUS inrush on connect" if _over else "VBUS droop on connect",
                 check="vbus_capacitance",
                 schema_era="v3.0",
             ))

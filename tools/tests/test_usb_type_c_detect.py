@@ -428,6 +428,90 @@ class TypeCRpTable(unittest.TestCase):
         self.assertIsNone(type_c_rp_rows(None))
         self.assertEqual(len(type_c_rp_rows(None, any_rail=True)), 6)
 
+def _cap(ref, value, dnp=False):
+    return {"reference": ref, "type": "capacitor", "value": value, "lib_id": "Device:C",
+            "footprint": "", "dnp": dnp,
+            "pins": [{"number": "1", "name": "~"}, {"number": "2", "name": "~"}]}
+
+
+class VbusCapacitanceBound(unittest.TestCase):
+    """USB 2.0 Specification section 7.2.4.1: a device presents at most 10 uF at attach."""
+
+    def _port(self, value, lib_id, caps, cc=True, far="GND", rd=True):
+        pins = (*USB2_PINS, ("A5", "CC1"), ("B5", "CC2")) if cc else USB2_PINS
+        comps = [_conn("J1", value, lib_id, pins=pins)]
+        nets = _usb2_nets("J1")
+        if cc:
+            nets["CC1"] = [("J1", "A5", "CC1")]
+            nets["CC2"] = [("J1", "B5", "CC2")]
+            if rd:
+                for i, cc_net in enumerate(("CC1", "CC2")):
+                    comps.append(_res("R%d" % (i + 1), "5.1k"))
+                    nets[cc_net].append(("R%d" % (i + 1), "1", "~"))
+                    nets["GND"].append(("R%d" % (i + 1), "2", "~"))
+        for i, v in enumerate(caps):
+            ref = "C%d" % (i + 1)
+            comps.append(_cap(ref, v))
+            nets["VBUS"].append((ref, "1", "~"))
+            nets.setdefault(far, []).append((ref, "2", "~"))
+        return _run(comps, nets)
+
+    def _uc004(self, r):
+        return [f for f in r.get("findings", []) if f["rule_id"] == "UC-004"]
+
+    def _sink(self, caps, **kw):
+        return self._port("USB4105-GF-A", "Connector:USB_C_Receptacle_USB2.0", caps, **kw)
+
+    def test_sink_at_10uf_passes(self):
+        r = self._sink(["10u"])
+        self.assertEqual(r["connectors"][0]["checks"]["vbus_capacitance"], "pass")
+        self.assertEqual(self._uc004(r), [])
+
+    def test_sink_above_10uf_warns(self):
+        r = self._sink(["10u", "100n"])
+        self.assertEqual(r["connectors"][0]["checks"]["vbus_capacitance"], "warning")
+        f = self._uc004(r)
+        self.assertEqual(len(f), 1)
+        self.assertIn("exceed", f[0]["summary"])
+        self.assertEqual(f[0]["confidence"], "heuristic")
+
+    def test_sink_with_4u7_and_100n_passes(self):
+        self.assertEqual(self._uc004(self._sink(["4.7u", "100n"])), [])
+
+    def test_22uf_on_a_sink_warns(self):
+        self.assertEqual(len(self._uc004(self._sink(["22u"]))), 1)
+
+    def test_micro_b_with_22uf_warns(self):
+        r = self._port("USB_B_Micro", "Connector:USB_B_Micro", ["22u"], cc=False)
+        self.assertEqual(len(self._uc004(r)), 1)
+
+    def test_type_a_host_never_warns(self):
+        r = self._port("USB_A", "Connector:USB_A", ["100u"], cc=False)
+        self.assertEqual(self._uc004(r), [])
+
+    def test_otg_port_never_warns(self):
+        for val, lib in (("USB_OTG", "Connector:USB_OTG"),
+                         ("ZX62-AB-5PA", "Connector:USB_B_Micro")):
+            r = self._port(val, lib, ["47u"], cc=False)
+            self.assertEqual(self._uc004(r), [], val)
+
+    def test_source_never_warns(self):
+        r = self._sink(["47u"], rd=False)
+        self.assertEqual(self._uc004(r), [])
+
+    def test_cap_not_returning_to_ground_is_not_counted(self):
+        r = self._sink(["10u", "100n"], far="RESET")
+        self.assertEqual(self._uc004(r), [])
+
+    def test_unfitted_cap_is_not_counted(self):
+        comps = [_conn("J1", "USB_B_Micro", "Connector:USB_B_Micro", pins=USB2_PINS),
+                 _cap("C1", "10u"), _cap("C2", "10u", dnp=True)]
+        nets = _usb2_nets("J1")
+        for ref in ("C1", "C2"):
+            nets["VBUS"].append((ref, "1", "~"))
+            nets["GND"].append((ref, "2", "~"))
+        self.assertEqual(self._uc004(_run(comps, nets)), [])
+
 
 if __name__ == "__main__":
     unittest.main()
