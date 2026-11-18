@@ -340,14 +340,23 @@ def is_r78_module(value: str, lib_id: str) -> bool:
         part_number_core(v) and not is_label_like_value(v))
 
 
+def _names_another_part(earlier: list[str], later: str) -> bool:
+    """True when one of the *earlier* candidates (the value) names a part that *later* (the lib_id
+    part name) is not: the symbol is then borrowed for another part and says nothing about it (LF33CV
+    on an LM7805 symbol, TPS54202 on a TPS563200 symbol). A value the symbol name starts with names
+    the same part (LM2586S on LM2586S-5.0)."""
+    return any(part_number_core(c) and not is_label_like_value(c) and not later.startswith(c)
+               for c in earlier)
+
+
 def _fixed_part_vout(candidates: list[str]) -> float | None:
     """The output voltage a fixed-output part number names (TPS61025, NCP1117ST33T3G, R-78E5.0-0.5),
     or None. A later candidate (the lib_id part name) counts only when the earlier ones name no other
     part and read no voltage themselves: a symbol borrowed for another regulator (TC2117 or LDO_5V0
     on an NCP1117ST33T3G symbol) says nothing."""
     for i, candidate in enumerate(candidates):
-        if i and any((part_number_core(c) and not is_label_like_value(c))
-                     or _lookup_vref([c])[1] == "fixed_suffix" for c in candidates[:i]):
+        if i and (_names_another_part(candidates[:i], candidate)
+                  or any(_lookup_vref([c])[1] == "fixed_suffix" for c in candidates[:i])):
             return None
         m = _NCP1117_CODE.match(candidate)
         if m:
@@ -381,7 +390,9 @@ def _lookup_vref(candidates: list[str], bare_codes: bool = True) -> tuple[float 
     # separator. LM7805=5V, LM78L12=12V, LM78M05CT=5V, LM7805_TO220=5V; the
     # LM79xx parts are negative regulators (LM7905=-5V).
     # These families ONLY exist as fixed-output — no adjustable variant.
-    for candidate in candidates:
+    for i, candidate in enumerate(candidates):
+        if i and _names_another_part(candidates[:i], candidate):
+            break
         m = re.match(r'LM7([89])[A-Z]?(\d{2})', candidate)
         if m:
             v = int(m.group(2))
@@ -393,7 +404,9 @@ def _lookup_vref(candidates: list[str], bare_codes: bool = True) -> tuple[float 
     # Check for fixed-output voltage suffix (e.g., AMS1117-3.3, TLV1117LV-33,
     # RT9013-18GV — patterns: -3.3, -33, -3V3, -1V8)
     ambiguous = set()
-    for candidate in candidates:
+    for i, candidate in enumerate(candidates):
+        if i and _names_another_part(candidates[:i], candidate):
+            break
         # an R-78 module's -<Iout> suffix is its current (R-78E5.0-0.5)
         if _R78_NAME.match(candidate):
             continue
@@ -429,8 +442,7 @@ def _lookup_vref(candidates: list[str], bare_codes: bool = True) -> tuple[float 
     for i, candidate in enumerate(candidates):
         if candidate in ambiguous:
             continue
-        # a symbol borrowed for another part (TPS54202 on a TPS563200 symbol) says nothing about its Vref
-        if i and any(part_number_core(c) and not is_label_like_value(c) for c in candidates[:i]):
+        if i and _names_another_part(candidates[:i], candidate):
             break
         key = _longest_vref_key(candidate)
         if key is not None:

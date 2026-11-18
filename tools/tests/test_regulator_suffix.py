@@ -332,6 +332,39 @@ class BorrowedSymbol(unittest.TestCase):
                                      ("DCDC_3V3", "X:TPS61032PWPR", 3.3)]:
             self.assertEqual(lookup_regulator_vref(value, lib_id), (volts, "fixed_suffix"), value)
 
+    def test_fixed_voltage_of_a_borrowed_symbol_is_not_read(self):
+        for value, lib_id in [("LF33CV", "Regulator_Linear:LM7805_TO220"),
+                              ("CJ78M09", "Regulator_Linear:LM78M05_TO252"),
+                              ("AMS1117-5", "Regulator_Linear:AMS1117-3.3"),
+                              ("LM323-K", "Regulator_Linear:LM7812_TO220"),
+                              ("TPS7A0309", "Regulator_Linear:MIC5365-1.8YC5"),
+                              ("CL9293A33", "Regulator_Linear:AP2127K-1.2"),
+                              ("AMS1117", "X:SPX1117M3-L-3-3")]:
+            self.assertNotEqual(lookup_regulator_vref(value, lib_id)[1], "fixed_suffix", value)
+            self.assertFalse(fixed_vout_is_explicit(value, lib_id), value)
+
+    def test_divider_sets_vout_under_a_borrowed_fixed_symbol(self):
+        self.assertEqual(lookup_regulator_vref("LM2596S-ADJ", "Regulator_Switching:LM2596S-12"), (1.23, "lookup"))
+
+    def test_own_fixed_voltage_beats_a_borrowed_lm78xx_symbol(self):
+        self.assertEqual(lookup_regulator_vref("LP2950CZ-3.3G", "Regulator_Linear:LM78L05_TO92"),
+                         (3.3, "fixed_suffix"))
+
+    def test_value_naming_no_part_still_takes_the_symbol_voltage(self):
+        for value in ("", "7805", "LDO1"):
+            self.assertEqual(lookup_regulator_vref(value, "Regulator_Linear:LM7805_TO220"), (5.0, "fixed_suffix"),
+                             value)
+
+    def test_value_the_symbol_name_starts_with_names_the_same_part(self):
+        for value, lib_id, expected in [("LM2586S", "X:LM2586S-5.0", (5.0, "fixed_suffix")),
+                                        ("AMS1117", "Regulator_Linear:AMS1117-3.3", (3.3, "fixed_suffix")),
+                                        ("SPX1117", "X:SPX1117M3-L-3-3", (3.3, "fixed_suffix")),
+                                        ("LD1117", "Regulator_Linear:LD1117S33TR_SOT223", None)]:
+            got = lookup_regulator_vref(value, lib_id)
+            self.assertEqual(got, lookup_regulator_vref("", lib_id), value)
+            if expected:
+                self.assertEqual(got, expected, value)
+
 
 class RecomR78(unittest.TestCase):
     # RECOM model numbering R-78<series><Vout>-<Iout>: R-78xx-0.5 REV 6/2023 p1, R-78xx-1.0 REV 5/2023 p1,

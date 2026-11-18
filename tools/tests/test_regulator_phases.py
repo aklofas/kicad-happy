@@ -164,6 +164,16 @@ class RegulatorPhases(unittest.TestCase):
         self.assertEqual(r["feedback_divider"]["r_top"]["ref"], "R1")
         self.assertNotIn("assumed_vref", r)
 
+    def test_adjustable_value_on_a_fixed_symbol_takes_its_divider(self):
+        # the adjustable LM2596 drawn with the LM2596S-12 symbol: 1.23 V x (1 + 3k / 1k) = 4.92 V
+        ctx = _ctx([("U1", "Regulator_Switching:LM2596S-12", "LM2596S-ADJ",
+                     {"1": ("VIN", "+24V"), "2": ("SW", "SW_NODE"), "3": ("FB", "FB"), "4": ("GND", "GND")}),
+                    ("L2", "Device:L", "33uH", {"1": ("1", "SW_NODE"), "2": ("2", "+5V")})])
+        r = detect_power_regulators(ctx, [_fb_divider("+5V", 3000.0, 1000.0)])[0]
+        self.assertEqual(r["estimated_vout"], 4.92)
+        self.assertEqual(r["vref_source"], "lookup")
+        self.assertEqual(r["_estimated_vout_provenance"]["source"], "divider_plus_lookup")
+
     def test_reel_code_suffix_keeps_divider_estimate(self):
         # AP64501SP-13 is the adjustable AP64501 on a 13-inch reel (DS41980 Rev. 5-2, Ordering
         # Information): 0.8 V x (1 + 31.6k / 10k) = 3.328 V, not 1.3 V

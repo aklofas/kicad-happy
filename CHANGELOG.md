@@ -140,6 +140,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A regulator whose power-good drives its own enable is no longer listed as sequenced after itself.
 - The sleep audit counts power LEDs wired straight to ground, and reads a battery rail's voltage from the battery symbol (2xAA, coin cells, stacked cells) instead of always assuming 3.7 V.
 - TPS54202, TPS54560, LM338, LM350, SPX1117, LMR50410 and LMR51625/LMR51635 take their datasheet feedback reference; two table entries for regulators that do not exist are gone.
+- A regulator whose Value names a different part no longer takes a fixed output voltage from the symbol it was drawn with.
 
 ### Documentation
 
