@@ -498,12 +498,12 @@ def is_vss_name(net_name: str | None) -> bool:
 
 # The negative half of a split supply named in pairs, and the twin that must be in the design
 # for the name to count: alone, 1V5_N, 230V_N (mains neutral) or F-15V (a word and a voltage)
-# are only names.
+# are only names. 5V_NEG beside 5V_POS is not a form: the pair also names the two terminals of
+# one input (a DC jack's return beside its supply pin).
 _SPLIT_RAIL_TWINS = (
     (re.compile(r"(\d+V\d*)_N(?:_.+)?"), lambda m: f"{m[1]}_P"),     # 4V5_N, 7V0_N_1 beside 4V5_P, 7V0_P
     (re.compile(r"(\d+V\d+)_N"), lambda m: m[1]),                    # 5V0_N beside 5V0
     (re.compile(r"(\d+V\d+)N"), lambda m: f"{m[1]}P"),               # 3V3N beside 3V3P
-    (re.compile(r"(\d+V\d*)_NEG"), lambda m: f"{m[1]}_POS"),         # 5V_NEG beside 5V_POS
     (re.compile(r"V(\d{2,})N"), lambda m: f"V{m[1]}P"),               # V12N beside V12P
     (re.compile(r"([A-Z][A-Z0-9_]*)-(\d.*)"), lambda m: f"{m[1]}+{m[2]}"),  # F-15V beside F+15V
 )
@@ -513,7 +513,7 @@ _V_NUMBER_PAIR = re.compile(r"V(\d{2,})[NP]")
 
 def split_rail_voltages(net_names: Iterable[str]) -> dict[str, float]:
     """Signed voltages of the split-supply nets of *net_names* named in pairs: the negative half
-    (4V5_N, 7V0_N_1, 5V_NEG, F-15V, V12N) when its positive twin is in the design, and both
+    (4V5_N, 7V0_N_1, F-15V, V12N) when its positive twin is in the design, and both
     halves of a V<nn>N / V<nn>P pair, whose names carry no V after the number. Ground and
     VSS-family names are never in it."""
     by_leaf: dict[str, list[str]] = {}

@@ -213,10 +213,13 @@ class NegativeRailTest(unittest.TestCase):
                 self.assertNotIn("vee_repaired", info)
 
     def test_other_split_supply_pairs_read_their_negative_half(self):
-        for vcc, vee, want in (("5V_POS", "5V_NEG", (5, -5)), ("7V0_P", "7V0_N_1", (7, -7)),
-                               ("A+5V", "A-5V", (5, -5))):
+        for vcc, vee, want in (("7V0_P", "7V0_N_1", (7, -7)), ("A+5V", "A-5V", (5, -5))):
             with self.subTest(vee=vee):
                 self.assertEqual(T._infer_opamp_rails({"reference": "U1"}, _rails(vcc, vee)), want)
+
+    def test_neg_beside_pos_keeps_its_reading(self):
+        # 5V_NEG beside 5V_POS can be a DC jack's return: read as its name alone
+        self.assertEqual(T._infer_opamp_rails({"reference": "U1"}, _rails("5V_POS", "5V_NEG")), (5, 0))
 
     def test_n_suffix_rail_without_a_p_twin_keeps_its_positive_reading(self):
         # a '1V5_N' made by a positive buck is just a name: no '_P' half, no sign

@@ -106,7 +106,7 @@ class BoostDividerTop(unittest.TestCase):
             self.assertLess(reg["estimated_vout"], 0, top)
 
     def test_boost_with_negative_divider_top_is_inverting(self):
-        for top, twin in [("-15V", None), ("F-15V", "F+15V"), ("7V0_N", "7V0_P"), ("5V_NEG", "5V_POS")]:
+        for top, twin in [("-15V", None), ("F-15V", "F+15V"), ("7V0_N", "7V0_P"), ("5V_NEG", None)]:
             reg = self._boost(top, twin)
             self.assertEqual(reg["output_rail"], top)
             self.assertTrue(reg.get("inverting"), top)

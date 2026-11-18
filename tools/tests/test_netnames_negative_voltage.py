@@ -249,7 +249,6 @@ class SplitSupplyNegativeHalf(unittest.TestCase):
                 (["12V0_N_UNFUSED", "12V0_P"], {"12V0_N_UNFUSED": -12.0}),
                 (["/afe/5V0_N", "5V0"], {"/afe/5V0_N": -5.0}),
                 (["3V3N", "3V3P"], {"3V3N": -3.3}),
-                (["5V_NEG", "5V_POS"], {"5V_NEG": -5.0}),
                 (["V12N", "V12P"], {"V12N": -12.0, "V12P": 12.0}),
                 (["F-15V", "F+15V"], {"F-15V": -15.0}),
                 (["A-5V", "/psu/A+5V"], {"A-5V": -5.0})]:
@@ -259,7 +258,9 @@ class SplitSupplyNegativeHalf(unittest.TestCase):
         from kicad_core.netnames import split_rail_voltages
         for names in [["230V_N", "230V_L", "230V_PE"], ["1V5_N"], ["SNS5V0_N", "SNS5V0_P"],
                       ["PTT_3V3_N", "PTT_3V3"], ["1VN", "1V"], ["V1N", "V1P"], ["USB-5V"],
-                      ["D-1", "D+1"], ["GND-5V", "GND+5V"], ["VSS-5V", "VSS+5V"]]:
+                      ["D-1", "D+1"], ["GND-5V", "GND+5V"], ["VSS-5V", "VSS+5V"],
+                      # also a DC jack's return beside its supply pin
+                      ["5V_NEG", "5V_POS"]]:
             self.assertEqual(split_rail_voltages(names), {}, names)
 
     def test_a_named_pair_keeps_both_halves(self):
@@ -277,7 +278,8 @@ class SplitSupplyNegativeHalf(unittest.TestCase):
         nets = {n: {"name": n, "pins": [_pin("C1", "1", "~", "passive")], "point_count": 0,
                     "no_connect": False, "has_pwr_flag": False, "labels": []} for n in names}
         ctx = build_analysis_context(comps, nets, {}, known_power_rails=set(names))
-        want = {"7V0_N_1": -7.0, "7V0_P": 7.0, "5V_NEG": -5.0, "5V_POS": 5.0, "V12N": -12.0, "V12P": 12.0,
+        # 5V_NEG beside 5V_POS keeps the reading of its name
+        want = {"7V0_N_1": -7.0, "7V0_P": 7.0, "5V_NEG": 5.0, "5V_POS": 5.0, "V12N": -12.0, "V12P": 12.0,
                 "A-5V": -5.0, "A+5V": 5.0, "230V_N": 230.0, "230V_L": 230.0}
         rails = _rails(ctx, [])
         self.assertEqual({n: rails.get(n) for n in names}, want)

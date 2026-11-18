@@ -781,7 +781,7 @@ def _infer_opamp_rails(det, context, info=None):
     vcc_named = False
     vee_named = False
 
-    # a split rail named in pairs ('4V5_P' / '4V5_N', '5V_POS' / '5V_NEG'): the negative half
+    # a split rail named in pairs ('4V5_P' / '4V5_N', 'F+15V' / 'F-15V'): the negative half
     # counts only when its positive twin is in the design too (alone, '1V5_N' is just a name)
     split_negative = negative_split_rails(nets)
 
