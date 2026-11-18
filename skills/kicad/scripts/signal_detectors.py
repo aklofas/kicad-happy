@@ -556,9 +556,9 @@ def detect_rc_filters(ctx: AnalysisContext, voltage_dividers: list[dict],
     results_rc: list[dict] = []
 
     # A potentiometer on three distinct nets is not a two-terminal filter resistor; one
-    # wired as a rheostat (two of its pins on one net) is.
-    resistors = [r for r in group_reps(ctx, get_components_by_type(ctx, "resistor", with_parsed_values=True))
-                 if not _is_three_net_pot(ctx, r["reference"])]
+    # wired as a rheostat (two of its pins on one net) is. Unfitted parts form no filter.
+    fitted_resistors = [c for c in get_components_by_type(ctx, "resistor", with_parsed_values=True) if is_fitted(c)]
+    resistors = [r for r in group_reps(ctx, fitted_resistors) if not _is_three_net_pot(ctx, r["reference"])]
     resistor_nets, _ = index_two_pin_components(ctx, resistors)
     for r in resistors:
         rheostat_nets = _part_nets(ctx, r["reference"])
@@ -619,7 +619,8 @@ def detect_rc_filters(ctx: AnalysisContext, voltage_dividers: list[dict],
         elif isinstance(fb, str) and fb:
             crystal_refs.add(fb)
 
-    capacitors = group_reps(ctx, get_components_by_type(ctx, "capacitor", with_parsed_values=True))
+    capacitors = group_reps(ctx, [c for c in get_components_by_type(ctx, "capacitor", with_parsed_values=True)
+                                  if is_fitted(c)])
     cap_nets, net_to_caps = index_two_pin_components(ctx, capacitors)
 
     def _in(refs: set[str], ref: str) -> bool:

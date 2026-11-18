@@ -30,6 +30,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 - V1P / V2P (an energy meter's voltage-channel inputs) are no longer read as power rails beside their V1N / V2N twins.
 - Decoupling and inrush results leave out capacitors marked DNP or excluded from the board. An IC whose only decoupling capacitor is unfitted is now reported as missing decoupling, and unfitted ICs and regulators get no capacitor observations.
+- Decoupling, inrush and RC-filter results leave out capacitors and resistors marked DNP or excluded from the board. An IC whose only decoupling capacitor is unfitted is now reported as missing decoupling, and unfitted ICs and regulators get no capacitor observations.
 - The USB-PD controller record names the controller's own value and lists each CC net once.
 - A capacitor value with its voltage glued on (`220u25V`, `1n50V`) reads as the capacitance; part numbers such as `7406N` on a capacitor symbol and a value such as `1e3` are no longer read as capacitances.
 - TVS diodes named by their series (SMF, SM6T, SM712, P4KE and others) or described as TVS in the symbol are detected as protection devices, so a USB VBUS with one is no longer reported unprotected.

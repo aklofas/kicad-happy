@@ -1,14 +1,14 @@
 # tools/tests/test_decoupling_census.py
-"""Decoupling, regulator-capacitor and inrush census: only fitted parts count. A capacitor
-marked DNP or excluded from the board is not decoupling or inrush load, and an unfitted IC or
-regulator needs no capacitors."""
+"""Decoupling, regulator-capacitor, inrush and RC-filter census: only fitted parts count. A
+capacitor marked DNP or excluded from the board is not decoupling or inrush load, an unfitted IC
+or regulator needs no capacitors, and unfitted parts form no RC filter."""
 import sys, unittest
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "skills" / "kicad" / "scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "skills" / "spice" / "scripts"))
 
 from kicad_types import build_analysis_context  # noqa: E402
-from signal_detectors import detect_decoupling, detect_design_observations  # noqa: E402
+from signal_detectors import detect_decoupling, detect_design_observations, detect_rc_filters  # noqa: E402
 from schematic.system_analyses import analyze_inrush_current  # noqa: E402
 
 
@@ -113,6 +113,42 @@ class InrushFittedCapsOnly(unittest.TestCase):
         ctx, regs, _ = _regulator(in_cap={}, out_cap={})
         rails = analyze_inrush_current(ctx, {"power_regulators": regs})["rails"]
         self.assertEqual(rails[0]["total_output_capacitance_uF"], 22.0)
+
+
+class RcFilterFittedPartsOnly(unittest.TestCase):
+    def _rc(self, r_extra, c_extra):
+        """R1 from SENSE_IN to ADC0, C1 from ADC0 to GND, ADC0 into U1."""
+        comps = [dict({"reference": "R1", "type": "resistor", "value": "10k"}, **r_extra),
+                 dict({"reference": "C1", "type": "capacitor", "value": "100n"}, **c_extra),
+                 {"reference": "U1", "type": "ic", "value": "MCP3008"}]
+        wiring = [("SENSE_IN", [("R1", "1", "", "passive")]),
+                  ("ADC0", [("R1", "2", "", "passive"), ("C1", "1", "", "passive"), ("U1", "1", "CH0", "input")]),
+                  ("GND", [("C1", "2", "", "passive")])]
+        return detect_rc_filters(_ctx(comps, wiring), [], [], [])
+
+    def test_fitted_rc_is_a_filter(self):
+        self.assertEqual(len(self._rc({}, {})), 1)
+
+    def test_dnp_capacitor_or_resistor_forms_no_filter(self):
+        self.assertEqual(self._rc({}, {"dnp": True}), [])
+        self.assertEqual(self._rc({"dnp": True}, {}), [])
+
+    def test_part_excluded_from_the_board_forms_no_filter(self):
+        self.assertEqual(self._rc({}, {"on_board": False}), [])
+        self.assertEqual(self._rc({"on_board": False}, {}), [])
+
+    def test_merged_filter_leaves_out_its_dnp_capacitor(self):
+        comps = [{"reference": "R1", "type": "resistor", "value": "10k"},
+                 {"reference": "C1", "type": "capacitor", "value": "100n"},
+                 {"reference": "C2", "type": "capacitor", "value": "1u", "dnp": True},
+                 {"reference": "U1", "type": "ic", "value": "MCP3008"}]
+        wiring = [("SENSE_IN", [("R1", "1", "", "passive")]),
+                  ("ADC0", [("R1", "2", "", "passive"), ("C1", "1", "", "passive"), ("C2", "1", "", "passive"),
+                            ("U1", "1", "CH0", "input")]),
+                  ("GND", [("C1", "2", "", "passive")]), ("AGND", [("C2", "2", "", "passive")])]
+        rc = detect_rc_filters(_ctx(comps, wiring), [], [], [])
+        self.assertEqual([f["components"] for f in rc], [["R1", "C1"]])
+        self.assertAlmostEqual(rc[0]["capacitor"]["farads"], 1e-7)
 
 
 class DecouplingBenchModelNote(unittest.TestCase):
