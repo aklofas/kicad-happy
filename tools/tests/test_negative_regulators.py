@@ -84,10 +84,15 @@ class RailNameSign(unittest.TestCase):
 
 
 class BoostDividerTop(unittest.TestCase):
-    def _boost(self, top):
-        ctx = _ctx([("U1", "Regulator_Switching:LT3581", "LT3581",
-                     {"1": ("SW", "SW_NODE"), "2": ("FB", "FB"), "3": ("VIN", "+12V")}),
-                    ("L1", "Device:L", "10uH", {"1": ("1", "SW_NODE"), "2": ("2", "+12V")})])
+    def _boost(self, top, twin=None):
+        parts = [("U1", "Regulator_Switching:LT3581", "LT3581",
+                  {"1": ("SW", "SW_NODE"), "2": ("FB", "FB"), "3": ("VIN", "+12V")}),
+                 ("L1", "Device:L", "10uH", {"1": ("1", "SW_NODE"), "2": ("2", "+12V")})]
+        if twin:
+            # the output and its positive twin, each with a capacitor to ground
+            parts += [("C1", "Device:C", "10u", {"1": ("1", twin), "2": ("2", "GND")}),
+                      ("C2", "Device:C", "10u", {"1": ("1", top), "2": ("2", "GND")})]
+        ctx = _ctx(parts)
         vd = {"r_top": {"ref": "R1", "ohms": 10000.0, "value": "10k"},
               "r_bottom": {"ref": "R2", "ohms": 10000.0, "value": "10k"},
               "top_net": top, "mid_net": "FB", "bottom_net": "GND", "ratio": 0.5}
@@ -99,6 +104,15 @@ class BoostDividerTop(unittest.TestCase):
             self.assertEqual(reg["output_rail"], top)
             self.assertTrue(reg.get("inverting"), top)
             self.assertLess(reg["estimated_vout"], 0, top)
+
+    def test_boost_with_negative_divider_top_is_inverting(self):
+        for top, twin in [("-15V", None), ("F-15V", "F+15V"), ("7V0_N", "7V0_P"), ("5V_NEG", "5V_POS")]:
+            reg = self._boost(top, twin)
+            self.assertEqual(reg["output_rail"], top)
+            self.assertTrue(reg.get("inverting"), top)
+
+    def test_word_dash_voltage_top_without_its_twin_is_not_inverting(self):
+        self.assertNotIn("inverting", self._boost("F-15V"))
 
     def test_positive_top_is_not_inverting(self):
         for top in ("VCC-5V", "+24V", "VOUT"):

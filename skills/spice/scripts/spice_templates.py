@@ -19,7 +19,7 @@ import re
 
 import _core_path  # noqa: F401
 from kicad_core.diagnostics import record
-from kicad_core.netnames import is_ground_name
+from kicad_core.netnames import is_ground_name, negative_split_rails
 from spice_results import crystal_load_legs
 from spice_models import (
     get_generic_models,
@@ -781,9 +781,9 @@ def _infer_opamp_rails(det, context, info=None):
     vcc_named = False
     vee_named = False
 
-    # a split rail named by suffix ('4V5_P' / '4V5_N'): the _N half is the negative
-    # rail only when its _P twin is in the design too (alone, '1V5_N' is just a name)
-    leaves = {n.rsplit("/", 1)[-1].upper().lstrip("+") for n in nets}
+    # a split rail named in pairs ('4V5_P' / '4V5_N', '5V_POS' / '5V_NEG'): the negative half
+    # counts only when its positive twin is in the design too (alone, '1V5_N' is just a name)
+    split_negative = negative_split_rails(nets)
 
     for net_name, net_data in nets.items():
         pins = net_data.get("pins", [])
@@ -795,8 +795,7 @@ def _infer_opamp_rails(det, context, info=None):
         leaf = _PLUS_MINUS_SLASH.sub("\u00b1", net_name).rsplit("/", 1)[-1].replace("+-", "\u00b1")
         named_pos = _leaf_voltage(leaf.replace("\u00b1", "+"))
         named_neg = _leaf_voltage(leaf.replace("\u00b1", "-"))
-        split = re.fullmatch(r"\+?(\d+V\d+)_N", leaf.upper())
-        if split and named_neg and named_neg > 0 and f"{split.group(1)}_P" in leaves:
+        if net_name in split_negative and named_neg and named_neg > 0:
             named_neg = -named_neg
         for pin in pins:
             if pin.get("component") != ref:

@@ -142,6 +142,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - TPS54202, TPS54560, LM338, LM350, SPX1117, LMR50410 and LMR51625/LMR51635 take their datasheet feedback reference; two table entries for regulators that do not exist are gone.
 - A regulator whose Value names a different part no longer takes a fixed output voltage from the symbol it was drawn with.
 - Rail voltages read from net names understand comma decimals (`3,3V`), P-notation (`1P2V`, `V1P8`, `VDD3P3`) and a minus after a space or underscore (`VEE_-12V`, `GENERATED -5V`); a dash between words (`USB-5V`) is still no sign, and a net named after a part's own pin (`V2P3` on pin 3 of V2) gets no voltage.
+- The negative half of a split supply named in pairs reads negative in rail voltages, power rails, regulator outputs and op-amp benches: `7V0_N_1` beside `7V0_P`, `5V_NEG` beside `5V_POS`, `F-15V` beside `F+15V`, and `V12N` / `V12P` (-12 V / +12 V). A name without its twin (`230V_N`, `1V5_N`, `USB-5V`) keeps its positive reading.
 
 ### Documentation
 

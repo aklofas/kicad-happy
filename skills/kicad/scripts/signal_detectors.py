@@ -2399,9 +2399,11 @@ def _build_regulator_record(ctx: AnalysisContext, cand: _RegulatorCandidate,
         for vd in voltage_dividers:
             if fb_pin and vd["mid_net"] == fb_pin[1] and not ctx.is_ground(vd["top_net"]):
                 reg_info["output_rail"] = vd["top_net"]
-                # only a leading minus, V-, VEE or NEG: a boost's VCC-5V is positive
+                # only a leading minus, V-, VEE, NEG or the negative half of a split supply
+                # named in pairs: a boost's VCC-5V is positive
                 top_leaf = net_leaf(vd["top_net"]).upper()
-                if top_leaf.startswith(("-", "V-", "VEE")) or "NEG" in top_leaf:
+                if (top_leaf.startswith(("-", "V-", "VEE")) or "NEG" in top_leaf
+                        or vd["top_net"] in negative_split_rails(ctx.nets)):
                     reg_info["inverting"] = True
                 break
         else:

@@ -7,8 +7,8 @@ from kicad_core.netnames import (
     is_pin_guarded_signal as _is_pin_guarded_signal,
     is_power_net_name as _is_power_net_name,
     names_own_pin,
-    negative_split_rails,
     parse_voltage_from_net_name as _parse_voltage_from_net_name,
+    split_rail_voltages,
 )
 
 
@@ -129,7 +129,7 @@ def compute_statistics(components: list[dict], nets: dict, bom: list[dict],
                 power_rail_names.append(clean)
     power_rail_names = sorted(set(power_rail_names))
 
-    split_negative = {_clean_hierarchical_name(n) for n in negative_split_rails(nets)}
+    split = {_clean_hierarchical_name(n): v for n, v in split_rail_voltages(nets).items()}
     pin_named = {_clean_hierarchical_name(n) for n, info in nets.items() if names_own_pin(n, info.get("pins"))}
     power_rails = []
     for name in power_rail_names:
@@ -137,9 +137,8 @@ def compute_statistics(components: list[dict], nets: dict, bom: list[dict],
         # Skip PWR_FLAG — it's an ERC directive, not a physical rail.
         if clean == "PWR_FLAG":
             continue
-        v = None if clean in pin_named else _parse_voltage_from_net_name(clean)
-        if v is not None and clean in split_negative:
-            v = -abs(v)
+        v = (split[clean] if clean in split else None if clean in pin_named
+             else _parse_voltage_from_net_name(clean))
         power_rails.append({"name": clean, "voltage": v})
 
     # Missing properties

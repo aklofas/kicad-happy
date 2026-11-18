@@ -28,7 +28,7 @@ from kicad_core.sexp import parse_file_checked
 from kicad_core.project import parse_input_problem
 from kicad_core.values import snap_to_mil_grid as _snap_mil
 from kicad_core.netnames import (_clean_hierarchical_name, is_vss_name, names_own_pin,
-                                  negative_split_rails, net_leaf, parse_voltage_from_net_name)
+                                  net_leaf, parse_voltage_from_net_name, split_rail_voltages)
 from kicad_core.netquery import (
     build_bridge_facts,
     build_ref_pins,
@@ -328,8 +328,8 @@ def build_rail_map(ctx: AnalysisContext, power_regulators: list[dict]) -> dict[s
     no estimate, the voltage in the name of the sheet holding its output net (the
     regulator records it as ``_output_rail_voltage_provenance``), then 0 V for every
     net ``ctx.is_ground`` accepts (of the VSS family only ``VSS`` itself), then
-    the voltage in the name of a power or ground net (negative on the ``4V5_N`` half of a
-    split supply, ``negative_split_rails``) or of a regulator output (another
+    the voltage in the name of a power or ground net (signed on a split supply named in
+    pairs, ``split_rail_voltages``) or of a regulator output (another
     net that is a supply only by its pins gets none from its name, and a VSS net a regulator drives, ``vss_supply_rails``,
     gets none from its name and no positive estimate). The project config has the
     last word: an ignored rail is dropped and an override is set on every net it names.
@@ -361,7 +361,7 @@ def build_rail_map(ctx: AnalysisContext, power_regulators: list[dict]) -> dict[s
         if reg.get("output_rail"):
             inverting_out[reg["output_rail"]] = (inverting_out.get(reg["output_rail"], False)
                                                  or bool(reg.get("inverting")))
-    split_negative = negative_split_rails(ctx.nets)
+    split = split_rail_voltages(ctx.nets)
     for net_name in sorted(ctx.nets):
         if net_name in by_net or net_name in ctx.vss_supply_rails:
             continue
@@ -374,11 +374,9 @@ def build_rail_map(ctx: AnalysisContext, power_regulators: list[dict]) -> dict[s
             # V2P3 carrying pin 3 of V2 (a valve circuit) is a pin's net, not 2.3 V
             v = None
         elif ctx.is_power_net(net_name, by_pins=False) or ctx.is_ground(net_name):
-            v = _estimate_rail_voltage(net_name)
-            if v is not None and net_name in split_negative:
-                v = -abs(v)
+            v = split[net_name] if net_name in split else _estimate_rail_voltage(net_name)
         elif net_name in inverting_out:
-            v = parse_voltage_from_net_name(net_name)
+            v = split[net_name] if net_name in split else parse_voltage_from_net_name(net_name)
             if v is not None and (v < 0) != inverting_out[net_name]:
                 v = None
         else:

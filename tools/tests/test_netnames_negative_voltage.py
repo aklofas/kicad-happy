@@ -240,7 +240,49 @@ class SplitSupplyNegativeHalf(unittest.TestCase):
         self.assertEqual(negative_split_rails(["4V5_N", "/psu/4V5_P", "GND"]), {"4V5_N"})
         self.assertEqual(negative_split_rails(["/afe/+5V0_N", "5V0_P"]), {"/afe/+5V0_N"})
         self.assertEqual(negative_split_rails(["4V5_P", "1V5_N", "7V0_N_1", "7V0_P", "V5N", "V5P"]),
-                         set())
+                         {"7V0_N_1"})
+
+    def test_split_rail_twins(self):
+        from kicad_core.netnames import split_rail_voltages
+        for names, want in [
+                (["7V0_N_1", "7V0_N_2", "7V0_P", "7V0_P_1"], {"7V0_N_1": -7.0, "7V0_N_2": -7.0}),
+                (["12V0_N_UNFUSED", "12V0_P"], {"12V0_N_UNFUSED": -12.0}),
+                (["/afe/5V0_N", "5V0"], {"/afe/5V0_N": -5.0}),
+                (["3V3N", "3V3P"], {"3V3N": -3.3}),
+                (["5V_NEG", "5V_POS"], {"5V_NEG": -5.0}),
+                (["V12N", "V12P"], {"V12N": -12.0, "V12P": 12.0}),
+                (["F-15V", "F+15V"], {"F-15V": -15.0}),
+                (["A-5V", "/psu/A+5V"], {"A-5V": -5.0})]:
+            self.assertEqual(split_rail_voltages(names), want, names)
+
+    def test_names_without_their_twin_are_not_split_rails(self):
+        from kicad_core.netnames import split_rail_voltages
+        for names in [["230V_N", "230V_L", "230V_PE"], ["1V5_N"], ["SNS5V0_N", "SNS5V0_P"],
+                      ["PTT_3V3_N", "PTT_3V3"], ["1VN", "1V"], ["V1N", "V1P"], ["USB-5V"],
+                      ["D-1", "D+1"], ["GND-5V", "GND+5V"], ["VSS-5V", "VSS+5V"]]:
+            self.assertEqual(split_rail_voltages(names), {}, names)
+
+    def test_a_named_pair_keeps_both_halves(self):
+        # over-reach: the 4V5_P / 4V5_N pair read before keeps -4.5 / +4.5
+        from kicad_core.netnames import split_rail_voltages
+        self.assertEqual(split_rail_voltages(["4V5_N", "4V5_P"]), {"4V5_N": -4.5})
+        _, _, ctx = _split_supply()
+        rails = _rails(ctx, [])
+        self.assertEqual((rails["4V5_N"], rails["4V5_P"]), (-4.5, 4.5))
+
+    def test_twins_in_rail_voltages_and_statistics(self):
+        names = ["7V0_N_1", "7V0_P", "5V_NEG", "5V_POS", "V12N", "V12P", "A-5V", "A+5V", "230V_N", "230V_L"]
+        comps = [_part("C1", "capacitor", "1u", "device:C", [("1", "~"), ("2", "~")])]
+        comps += [_part(f"#PWR0{i}", "power_symbol", n, f"power:{n}", [("1", n)]) for i, n in enumerate(names)]
+        nets = {n: {"name": n, "pins": [_pin("C1", "1", "~", "passive")], "point_count": 0,
+                    "no_connect": False, "has_pwr_flag": False, "labels": []} for n in names}
+        ctx = build_analysis_context(comps, nets, {}, known_power_rails=set(names))
+        want = {"7V0_N_1": -7.0, "7V0_P": 7.0, "5V_NEG": -5.0, "5V_POS": 5.0, "V12N": -12.0, "V12P": 12.0,
+                "A-5V": -5.0, "A+5V": 5.0, "230V_N": 230.0, "230V_L": 230.0}
+        rails = _rails(ctx, [])
+        self.assertEqual({n: rails.get(n) for n in names}, want)
+        stats = _stats_rails(comps, nets)
+        self.assertEqual({n: stats.get(n) for n in names}, want)
 
     def test_regulator_on_the_negative_half_is_inverting_with_no_ldo_drop(self):
         _, _, ctx = _split_supply()

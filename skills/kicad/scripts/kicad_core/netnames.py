@@ -496,21 +496,53 @@ def is_vss_name(net_name: str | None) -> bool:
     return unescape_string(net_name.rsplit("/", 1)[-1]).upper().startswith(("VSS", "AVSS", "DVSS"))
 
 
-_SPLIT_RAIL_N_LEAF = re.compile(r"(\d+V\d+)_N")
+# The negative half of a split supply named in pairs, and the twin that must be in the design
+# for the name to count: alone, 1V5_N, 230V_N (mains neutral) or F-15V (a word and a voltage)
+# are only names.
+_SPLIT_RAIL_TWINS = (
+    (re.compile(r"(\d+V\d*)_N(?:_.+)?"), lambda m: f"{m[1]}_P"),     # 4V5_N, 7V0_N_1 beside 4V5_P, 7V0_P
+    (re.compile(r"(\d+V\d+)_N"), lambda m: m[1]),                    # 5V0_N beside 5V0
+    (re.compile(r"(\d+V\d+)N"), lambda m: f"{m[1]}P"),               # 3V3N beside 3V3P
+    (re.compile(r"(\d+V\d*)_NEG"), lambda m: f"{m[1]}_POS"),         # 5V_NEG beside 5V_POS
+    (re.compile(r"V(\d{2,})N"), lambda m: f"V{m[1]}P"),               # V12N beside V12P
+    (re.compile(r"([A-Z][A-Z0-9_]*)-(\d.*)"), lambda m: f"{m[1]}+{m[2]}"),  # F-15V beside F+15V
+)
+# V<nn>N / V<nn>P: the voltage is the number (no V after it).
+_V_NUMBER_PAIR = re.compile(r"V(\d{2,})[NP]")
+
+
+def split_rail_voltages(net_names: Iterable[str]) -> dict[str, float]:
+    """Signed voltages of the split-supply nets of *net_names* named in pairs: the negative half
+    (4V5_N, 7V0_N_1, 5V_NEG, F-15V, V12N) when its positive twin is in the design, and both
+    halves of a V<nn>N / V<nn>P pair, whose names carry no V after the number. Ground and
+    VSS-family names are never in it."""
+    by_leaf: dict[str, list[str]] = {}
+    for name in net_names:
+        if is_ground_name(name) or is_vss_name(name):
+            continue
+        by_leaf.setdefault(unescape_string(net_leaf(name)).upper().lstrip("+"), []).append(name)
+    found: dict[str, float] = {}
+    for leaf, names in by_leaf.items():
+        for pattern, twin in _SPLIT_RAIL_TWINS:
+            m = pattern.fullmatch(leaf)
+            if not m or twin(m) not in by_leaf:
+                continue
+            pair = _V_NUMBER_PAIR.fullmatch(leaf)
+            v = float(pair[1]) if pair else parse_voltage_from_net_name(names[0])
+            if v:
+                for name in names:
+                    found[name] = -abs(v)
+                if pair:
+                    for name in by_leaf[twin(m)]:
+                        found[name] = abs(v)
+            break
+    return found
 
 
 def negative_split_rails(net_names: Iterable[str]) -> set[str]:
-    """The nets of *net_names* whose leaf is ``<n>V<n>_N`` (4V5_N) beside a ``<n>V<n>_P``
-    twin: the negative half of a split supply. Alone, ``1V5_N`` is only a name."""
-    by_leaf: dict[str, list[str]] = {}
-    for name in net_names:
-        by_leaf.setdefault(unescape_string(net_leaf(name)).upper().lstrip("+"), []).append(name)
-    found: set[str] = set()
-    for leaf, names in by_leaf.items():
-        m = _SPLIT_RAIL_N_LEAF.fullmatch(leaf)
-        if m and f"{m.group(1)}_P" in by_leaf:
-            found.update(names)
-    return found
+    """The nets of *net_names* that are the negative half of a split supply named in pairs
+    (``split_rail_voltages``)."""
+    return {n for n, v in split_rail_voltages(net_names).items() if v < 0}
 
 
 _UUID_RE = re.compile(
