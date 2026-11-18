@@ -3678,6 +3678,14 @@ def _names_npn(comp: dict) -> bool:
     return bool(_NPN_WORD.search(text)) or names_npn_bjt(comp.get("value", ""), comp.get("mpn", ""), sym)
 
 
+def _names_pnp(comp: dict) -> bool:
+    """A PNP transistor by its symbol name, keywords, description or value text (not a
+    complementary pair that also names NPN)."""
+    sym = symbol_name(comp.get("lib_id", ""))
+    text = " ".join([sym] + [comp.get(k) or "" for k in ("keywords", "description", "value")]).lower()
+    return bool(_PNP_WORD.search(text)) and not _NPN_WORD.search(text)
+
+
 def detect_transistor_circuits(ctx: AnalysisContext, matched_fets: set, fet_pins: dict) -> list[dict]:
     """Detect transistor circuit configurations (MOSFETs and BJTs)."""
     transistor_circuits: list[dict] = []
@@ -4074,9 +4082,17 @@ def enrich_transistor_led_drivers(ctx: AnalysisContext, transistor_circuits: lis
         # (a high-side load switch and its indicator). An NPN collector on a supply is an
         # emitter follower: only an LED on its emitter is its own. A BJT whose polarity is
         # not read keeps the collector reading.
-        if ctx.is_ground(load_net) or (is_mosfet and not tc.get("is_pchannel")
-                                       and ctx.is_power_net(load_net)):
+        # A load net that reads as a rail or ground by its name alone (no power symbol, no
+        # supply pin: IR-_GND, 0VCC, a sub-sheet port named 3V3) can be the switch's own
+        # node: an LED there counts when it sits in the switched path (its far side off
+        # ground for an N-channel or NPN switch, on ground for a P-channel or PNP one).
+        on_rail = ctx.is_ground(load_net) or (
+            is_mosfet and not tc.get("is_pchannel") and ctx.is_power_net(load_net))
+        path_only = on_rail and not _rail_by_symbol_or_pins(ctx, load_net)
+        if on_rail and not path_only:
             continue
+        high_side = bool(tc.get("is_pchannel")) if is_mosfet else _names_pnp(
+            ctx.comp_lookup.get(tc["reference"], {}))
         emitter_led_only = None
         if (is_bjt and ctx.is_power_net(load_net)
                 and _names_npn(ctx.comp_lookup.get(tc["reference"], {}))):
@@ -4124,6 +4140,10 @@ def enrich_transistor_led_drivers(ctx: AnalysisContext, transistor_circuits: lis
                     led_comp = ctx.comp_lookup.get(oc["reference"], {})
                     # Find what power rail the LED's other pin connects to
                     led_other = led_n2 if led_n1 == other_net else led_n1
+                    if path_only and not (
+                            ctx.is_ground(led_other) if high_side
+                            else bool(led_other) and not ctx.is_ground(led_other)):
+                        continue
                     led_power = led_other if led_other and ctx.is_power_net(led_other) else None
                     tc["led_driver"] = {
                         "led_ref": oc["reference"],
@@ -4153,6 +4173,16 @@ def enrich_transistor_led_drivers(ctx: AnalysisContext, transistor_circuits: lis
                     break
             if "led_driver" in tc:
                 break
+
+
+def _rail_by_symbol_or_pins(ctx: AnalysisContext, net: str) -> bool:
+    """*net* is a rail or ground by a power symbol, by its pins (topology or a pin-gated
+    name), or carries a supply pin; not by its name alone."""
+    if (net in ctx.known_power_rails or net in ctx.ground_name_rails
+            or net in ctx.topology_rails or net in ctx.pin_gated_rails):
+        return True
+    return any(str(p.get("pin_type") or "").split("+")[0] in ("power_in", "power_out")
+               for p in (ctx.nets.get(net) or {}).get("pins", []))
 
 
 def _is_reference_net_name(net_name: str) -> bool:
