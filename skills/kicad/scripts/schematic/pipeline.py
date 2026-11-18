@@ -1263,7 +1263,8 @@ def run_analyses(ctx: AnalysisContext, parsed: dict, path: str, nets: dict,
     # power_sequencing must run before sleep_current so the sleep
     # audit can consult real EN connectivity (en_source) instead of just
     # EN-pin-name presence.
-    power_sequencing = analyze_power_sequencing(ctx, signal_analysis)
+    power_sequencing = analyze_power_sequencing(ctx, signal_analysis,
+                                                standalone_sheet=standalone_sheet)
     sleep_current = analyze_sleep_current(ctx, signal_analysis, power_sequencing)
     voltage_derating = analyze_voltage_derating(ctx, signal_analysis,
                                                  project_dir=str(Path(path).parent))

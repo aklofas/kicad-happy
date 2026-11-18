@@ -3,16 +3,21 @@
 An overbar (active-low) enable on ground is enabled by it and stays always on; any other
 enable's polarity is not known from its name. A VSS net that no regulator drives is ground
 like GND. An enable held only by pull-ups to a supply (a UVLO divider, a delay capacitor
-beside it) is always on too; a pull-down is not a pull-up.
+beside it) is always on too; a pull-down is not a pull-up. A sub-sheet read on its own keeps a
+labelled enable net controlled, since its driver can be on a sheet that was not read.
 """
 import sys, unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "skills" / "kicad" / "scripts"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from domain_detectors import build_power_sequencing_graph  # noqa: E402
 from kicad_types import build_analysis_context  # noqa: E402
+from schematic import pipeline  # noqa: E402
 from schematic.system_analyses import analyze_power_sequencing, analyze_sleep_current  # noqa: E402
+from tools.tests.test_pwr_flag_audit import analyze  # noqa: E402
 
 # ref -> (enable pin name, enable net)
 ENABLES = {"U1": ("EN", "GND"), "U2": ("~{EN}", "GND"), "U3": ("~{SHDN}", "GND"),
@@ -183,14 +188,37 @@ class EnableHeldByResistors(unittest.TestCase):
         self.assertEqual(self.deps["U5"]["en_source"], "always_on")
         self.assertTrue(self.deps["U5"].get("has_pull_up"))
 
-    def test_labelled_enable_net_stays_controlled(self):
-        # a global or hierarchical label may bring a driver from another sheet
-        self.assertEqual(self.deps["U6"]["en_source"], "controlled")
+    def test_labelled_enable_net_in_a_root_file_reads_by_its_pins(self):
+        # a root file reads all its sheets, so a driver behind the label would be on the net
+        self.assertEqual(self.deps["U6"]["en_source"], "always_on")
         self.assertTrue(self.deps["U6"].get("has_pull_up"))
+
+    def test_labelled_enable_net_in_a_sub_sheet_read_alone_stays_controlled(self):
+        # a global or hierarchical label may bring a driver from a sheet that was not read
+        ctx, regs = _pull_ctx()
+        out = analyze_power_sequencing(ctx, {"power_regulators": regs}, standalone_sheet=True)
+        deps = {d["regulator"]: d for d in out["dependencies"]}
+        self.assertEqual(deps["U6"]["en_source"], "controlled")
+        self.assertTrue(deps["U6"].get("has_pull_up"))
+        self.assertEqual(deps["U1"]["en_source"], "always_on")
 
     def test_pull_up_to_an_unnamed_net_carrying_the_input_is_a_pull_up(self):
         self.assertTrue(self.deps["U7"].get("has_pull_up"))
         self.assertEqual(self.deps["U7"]["en_source"], "always_on")
+
+
+class SheetModeReachesTheEnableCheck(unittest.TestCase):
+    def _standalone(self, as_root):
+        with mock.patch.object(pipeline, "analyze_power_sequencing",
+                               wraps=analyze_power_sequencing) as seq:
+            analyze(as_root=as_root)
+        return seq.call_args.kwargs.get("standalone_sheet")
+
+    def test_sub_sheet_read_alone_is_read_as_standalone(self):
+        self.assertIs(self._standalone(as_root=False), True)
+
+    def test_root_file_is_not_standalone(self):
+        self.assertIs(self._standalone(as_root=True), False)
 
 
 class EnableHeldToAVssGround(unittest.TestCase):

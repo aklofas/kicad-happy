@@ -1823,11 +1823,13 @@ def analyze_power_budget(ctx: AnalysisContext,
 
 
 def analyze_power_sequencing(ctx: AnalysisContext,
-                             signal_analysis: dict) -> dict:
+                             signal_analysis: dict, standalone_sheet: bool = False) -> dict:
     """Power sequencing dependency analysis.
 
     For each regulator, finds what drives its EN pin and PG (power-good) output,
-    builds a dependency graph, and flags floating EN pins.
+    builds a dependency graph, and flags floating EN pins. ``standalone_sheet``: the
+    file is a sub-sheet read without its root, so a labelled EN net may have its
+    driver on a sheet that was not read.
     """
     components = ctx.components
     nets = ctx.nets
@@ -1933,9 +1935,11 @@ def analyze_power_sequencing(ctx: AnalysisContext,
                         else:
                             pulls.append(None)
                     has_pull_up = "up" in pulls
-                    # A hierarchical or global label may bring a driver from another sheet.
-                    labelled = any(lb.get("type") in ("hierarchical_label", "global_label")
-                                   for lb in nets[en_net].get("labels") or [])
+                    # In a sub-sheet read alone, a hierarchical or global label may bring a
+                    # driver from a sheet that was not read.
+                    labelled = standalone_sheet and any(
+                        lb.get("type") in ("hierarchical_label", "global_label")
+                        for lb in nets[en_net].get("labels") or [])
                     # A pull-down alone stays controlled: an enable named without an overbar
                     # can still be active low (CE, EN on some converters).
                     if has_pull_up and all(pulls) and not labelled:
