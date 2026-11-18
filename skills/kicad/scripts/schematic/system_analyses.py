@@ -10,7 +10,7 @@ from detector_helpers import (
 )
 from kicad_core.classify import gpio_port_pins, is_active_low_enable, is_touch_pad
 from kicad_types import (
-    AnalysisContext,
+    AnalysisContext, vss_fed_from_negative_rail,
 )
 from pathlib import (
     Path,
@@ -876,6 +876,8 @@ def analyze_voltage_derating(ctx: AnalysisContext, signal_analysis: dict,
             gnd_net = n1
         if n2 and is_ground(n2):
             gnd_net = gnd_net or n2
+        if pwr_net and gnd_net and vss_fed_from_negative_rail(ctx, gnd_net, _get_rail_voltage(pwr_net)):
+            gnd_net = None
         return pwr_net, gnd_net, n1, n2
 
     def _read_ic_abs_max(mpn: str) -> dict | None:

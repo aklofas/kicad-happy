@@ -319,6 +319,30 @@ def pin_gated_rail_nets(nets: dict[str, dict], comp_lookup: dict[str, dict]) -> 
             for p in info.get("pins", [])))
 
 
+def _shared_refs(ctx: AnalysisContext) -> set[str]:
+    return {ref for ref, n in Counter(c["reference"] for c in ctx.components).items() if n > 1}
+
+
+def _carries_board_ground_symbol(ctx: AnalysisContext, info: dict, shared_refs: set[str]) -> bool:
+    """A ground symbol other than VSS (``power:GND``) sits on the net."""
+    for p in info.get("pins", []):
+        if p["component"] in shared_refs:
+            continue
+        comp = ctx.comp_lookup.get(p["component"]) or {}
+        if _is_ground_symbol_pin(p, comp) and not is_vss_name(str(comp.get("value") or "")):
+            return True
+    return False
+
+
+def vss_fed_from_negative_rail(ctx: AnalysisContext, name: str | None, feed_v: float | None) -> bool:
+    """A ground-named VSS net that a part ties to a rail of *feed_v* < 0 is that negative supply
+    as the part sees it (an AVSS fed from -2V5 through a filter resistor), not 0 V. As in
+    ``vss_supply_rail_nets``, a ground symbol other than VSS on the net keeps it board ground."""
+    return (feed_v is not None and feed_v < 0 and bool(name) and is_vss_name(name)
+            and is_ground_name(name, ctx.ground_name_rails)
+            and not _carries_board_ground_symbol(ctx, ctx.nets.get(name) or {}, _shared_refs(ctx)))
+
+
 def vss_supply_rail_nets(ctx: AnalysisContext) -> frozenset[str]:
     """Ground-named VSS nets that are a supply, not ground: a regulator output drives them or
     the project config gives them a negative voltage.
@@ -330,8 +354,7 @@ def vss_supply_rail_nets(ctx: AnalysisContext) -> frozenset[str]:
     return, and a pin such as ``GND`` or ``-Vin`` is its input return. A ground symbol other
     than VSS (``power:GND``) on the net joins it to the board ground, so it stays ground
     whatever drives it."""
-    shared_refs = {ref for ref, n in Counter(c["reference"] for c in ctx.components).items()
-                   if n > 1}
+    shared_refs = _shared_refs(ctx)
     found = set()
     for name, info in ctx.nets.items():
         if not (is_vss_name(name) and is_ground_name(name, ctx.ground_name_rails)):
@@ -340,10 +363,7 @@ def vss_supply_rail_nets(ctx: AnalysisContext) -> frozenset[str]:
         if override is not None and override < 0 and not ctx.rail_ignored(name):
             found.add(name)
             continue
-        symbols = ((p, ctx.comp_lookup.get(p["component"]) or {}) for p in info.get("pins", [])
-                   if p["component"] not in shared_refs)
-        if any(_is_ground_symbol_pin(p, comp) and not is_vss_name(str(comp.get("value") or ""))
-               for p, comp in symbols):
+        if _carries_board_ground_symbol(ctx, info, shared_refs):
             continue
         for p in info.get("pins", []):
             pin_name = p.get("pin_name") or ""
