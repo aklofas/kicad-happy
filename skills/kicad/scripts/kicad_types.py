@@ -16,8 +16,8 @@ from typing import TYPE_CHECKING
 from kicad_core.model import PinNetEntry
 from kicad_core.netquery import build_pin_to_net_map
 from kicad_core.netnames import (
-    configured_rail_voltage, is_ground_name, is_pin_guarded_signal, is_power_net_name, is_vss_name,
-    net_leaf, rail_matches,
+    configured_rail_voltage, is_ground_name, is_pin_gated_rail_name, is_pin_guarded_signal,
+    is_power_net_name, is_vss_name, net_leaf, rail_matches,
 )
 from kicad_core.diagnostics import record
 from kicad_core.values import AmbiguousValueSeparator, ambiguous_separator, parse_value
@@ -156,6 +156,7 @@ class AnalysisContext:
     diagnostics: list = field(default_factory=list, repr=False)
     pin_guarded_signals: frozenset = field(default_factory=frozenset, repr=False)
     topology_rails: frozenset = field(default_factory=frozenset, repr=False)
+    pin_gated_rails: frozenset = field(default_factory=frozenset, repr=False)
     vss_supply_rails: frozenset = field(default_factory=frozenset, repr=False)
     rail_by_net: dict[str, float] = field(default_factory=dict, repr=False)
     rail_overrides: dict[str, float] = field(default_factory=dict, repr=False)
@@ -163,10 +164,11 @@ class AnalysisContext:
     parallel_group_cache: dict = field(default_factory=dict, init=False, repr=False, compare=False)
 
     def is_power_net(self, name: str | None, *, by_pins: bool = True) -> bool:
-        """*by_pins* False leaves out the rails known only by their pins (``topology_rails``)."""
+        """*by_pins* False leaves out the rails known only by their pins (``topology_rails``,
+        ``pin_gated_rails``)."""
         return name not in self.pin_guarded_signals and (
             is_power_net_name(name, self.known_power_rails)
-            or (by_pins and name in self.topology_rails))
+            or (by_pins and (name in self.topology_rails or name in self.pin_gated_rails)))
 
     def is_ground(self, name: str | None) -> bool:
         return is_ground_name(name, self.ground_name_rails)
@@ -228,6 +230,19 @@ def pin_guarded_signal_nets(nets: dict[str, dict], comp_lookup: dict[str, dict],
             for p in info.get("pins", [])]))
 
 
+def pin_gated_rail_nets(nets: dict[str, dict], comp_lookup: dict[str, dict]) -> frozenset[str]:
+    """Nets whose name is a rail only beside a supply pin (``is_pin_gated_rail_name``) and
+    that carry a power_in or power_out pin of a part other than a power symbol or flag."""
+    return frozenset(
+        name for name, info in nets.items()
+        if is_pin_gated_rail_name(name) and any(
+            str(p.get("pin_type") or "").split("+")[0] in ("power_in", "power_out")
+            and not str(p.get("component") or "").startswith("#")
+            and (comp_lookup.get(p.get("component")) or {}).get("type")
+            not in ("power_symbol", "power_flag", "flag")
+            for p in info.get("pins", [])))
+
+
 def vss_supply_rail_nets(ctx: AnalysisContext) -> frozenset[str]:
     """Ground-named VSS nets that a regulator output drives: a supply below ground, though
     the parts on it still read it as their ground.
@@ -281,6 +296,7 @@ def build_analysis_context(components: list[dict], nets: dict[str, dict], lib_sy
         source=source,
         cache_dir=cache_dir, project_dir=project_dir, diagnostics=diagnostics,
         pin_guarded_signals=pin_guarded_signal_nets(nets, comp_lookup, rails),
+        pin_gated_rails=pin_gated_rail_nets(nets, comp_lookup),
     )
     ctx.vss_supply_rails = vss_supply_rail_nets(ctx)
     if power_rails_config:

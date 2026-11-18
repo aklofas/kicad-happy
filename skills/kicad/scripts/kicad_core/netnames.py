@@ -315,6 +315,20 @@ def is_power_net_name(net_name: str | None, power_rails: set[str] | None = None)
     return False
 
 
+def is_pin_gated_rail_name(net_name: str | None) -> bool:
+    """True for a name that is a rail only when a supply pin sits on the net: a bare PWR or
+    POWER (often a power button or power-LED line), V<n>+ / V<n>- (an op-amp supply, also a
+    meter's sense input) and a rail switched on or off (5V_ON, 12VON, 3V3_POWER_ON; a bare
+    PWR_ON is an enable)."""
+    if not net_name:
+        return False
+    nu = re.sub(r'\s+', '_', unescape_string(net_name.rsplit("/", 1)[-1]).strip().upper())
+    if nu in ("PWR", "POWER") or re.fullmatch(r'V\d+[+-]', nu):
+        return True
+    m = re.fullmatch(r'(.+)_(?:ON|OFF)|(\d+V\d*)(?:ON|OFF)', nu)
+    return bool(m) and is_power_net_name(m.group(1) or m.group(2))
+
+
 # Supply-pin names that also name signals: a PIC's MCLR/VPP line, a measured node "VM".
 PIN_GUARDED_RAIL_NAMES = frozenset({"VPP", "VM"})
 IC_SIGNAL_PIN_TYPES = frozenset({"input", "output", "bidirectional", "tri_state",
