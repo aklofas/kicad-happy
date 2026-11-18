@@ -130,11 +130,12 @@ class InvertingOutputName(unittest.TestCase):
         return detect_power_regulators(_ctx(parts), [])[0]
 
     def test_dash_between_words_is_not_inverting(self):
-        for out in ("TPS-VOUT-3.3V", "5Vout-50V", "INJ-2-OUT"):
+        for out in ("TPS-VOUT-3.3V", "5Vout-50V", "INJ-2-OUT", "USB-5V", "FTDI-3.3V"):
             self.assertNotIn("inverting", self._reg(out), out)
 
     def test_negative_names_stay_inverting(self):
-        for out in ("-5V", "-VOUT", "AV-", "GENERATED -5V", "5V_NEG"):
+        for out in ("-5V", "-VOUT", "AV-", "GENERATED -5V", "5V_NEG",
+                    "V-5V", "VEE-12V", "AVEE-5V", "VSS-5V"):
             self.assertTrue(self._reg(out).get("inverting"), out)
         self.assertTrue(self._reg("F-15V", "F+15V").get("inverting"))
 

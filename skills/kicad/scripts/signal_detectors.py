@@ -1739,6 +1739,10 @@ class _RegulatorCandidate:
     pass_controller: bool = False  # drives an external pass transistor from its BASE pin
 
 
+# A dash between a negative-supply word and a digit is a sign there (V-5V, VEE-12V), not a word separator.
+_NEG_SUPPLY_DASH = re.compile(r'(?:^|[_\s])(?:V|VEE|AVEE|VSS|AVSS|VNEG)-\d')
+
+
 def detect_power_regulators(ctx: AnalysisContext, voltage_dividers: list[dict]) -> list[dict]:
     """Detect power regulator topology. Takes voltage_dividers for feedback matching."""
     power_regulators: list[dict] = []
@@ -2257,8 +2261,9 @@ def _build_regulator_record(ctx: AnalysisContext, cand: _RegulatorCandidate,
         # the 4V5_N half of a 4V5_P / 4V5_N split supply); a sheet path is not part of it
         # (a UUID path holds "-<digit>")
         out_net_u = net_leaf(vout_pin[1]).upper()
-        out_v = _parse_voltage_from_net_name(vout_pin[1])
-        if (out_v is not None and out_v < 0) or "NEG" in out_net_u or out_net_u.startswith("-") \
+        out_v = _parse_voltage_from_net_name(out_net_u)
+        if (out_v is not None and out_v < 0) or _NEG_SUPPLY_DASH.search(out_net_u) \
+                or "NEG" in out_net_u or out_net_u.startswith("-") \
                 or out_net_u.endswith("-") or vout_pin[1] in negative_split_rails(ctx.nets):
             is_inverting = True
     if is_inverting:
