@@ -27,6 +27,7 @@ from kicad_core.parts import (
 from kicad_core.classify import classify_jumper_default_state, gpio_port_pins
 from kicad_core.values import format_frequency as _format_frequency, parse_value
 from kicad_core.netnames import (
+    is_earth_name,
     is_power_net_name,
     is_usb_data_net_name,
     negative_split_rails,
@@ -2790,20 +2791,24 @@ def detect_integrated_ldos(ctx: AnalysisContext, power_regulators: list[dict]) -
 def _clamp_array_nets(ctx: AnalysisContext, comp: dict, *, keep_rails: bool):
     """(protected nets, protected_net, clamp_net) of a multi-pin TVS/ESD array.
 
-    The clamp net is the ground the array returns to. A pin whose net reaches nothing else
-    (no other part, no label) protects nothing, unless nothing else is left to list. A TVS diode
-    array's cathode on a supply rail clamps that rail (*keep_rails*), but only once a ground is
-    found: without one, a rail pin may be the array's own return. An ESD IC's supply pin is its
-    reference, not a protected line.
+    The clamp net is the ground the array returns to, else protective earth or chassis (an
+    array drawn returning only to Earth); an earth pin is a return, never a protected line. A
+    pin whose net reaches nothing else (no other part, no label) protects nothing, unless
+    nothing else is left to list. A TVS diode array's cathode on a supply rail clamps that rail
+    (*keep_rails*), but only once a return is found: without one, a rail pin may be the array's
+    own return. An ESD IC's supply pin is its reference, not a protected line.
     """
     ref = comp["reference"]
-    lines, rails, grounds, open_lines = set(), set(), set(), set()
+    lines, rails, grounds, earths, open_lines = set(), set(), set(), set(), set()
     for pin in comp.get("pins", []):
         net_name, _ = ctx.pin_net.get((ref, pin["number"]), (None, None))
         if not net_name:
             continue
         if ctx.is_ground(net_name):
             grounds.add(net_name)
+            continue
+        if is_earth_name(net_name):
+            earths.add(net_name)
             continue
         info = ctx.nets.get(net_name, {})
         if not info.get("labels") and all(p["component"] == ref for p in info.get("pins", [])):
@@ -2814,13 +2819,14 @@ def _clamp_array_nets(ctx: AnalysisContext, comp: dict, *, keep_rails: bool):
             rails.add(net_name)
         else:
             lines.add(net_name)
-    nets = sorted(lines | rails) if keep_rails and grounds else sorted(lines)
+    returns = grounds or earths
+    nets = sorted(lines | rails) if keep_rails and returns else sorted(lines)
     if not nets:
         # A part not wired up yet is still the clamp it was placed as.
         lines = open_lines
         nets = sorted(lines)
     protected_net = min(lines) if lines else (nets[0] if nets else None)
-    return nets, protected_net, (min(grounds) if grounds else None)
+    return nets, protected_net, (min(returns) if returns else None)
 
 
 def detect_protection_devices(ctx: AnalysisContext) -> list[dict]:

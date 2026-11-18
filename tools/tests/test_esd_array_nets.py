@@ -1,5 +1,6 @@
 """ESD arrays (multi-pin TVS diode arrays and ESD ICs) report the ground they clamp to, list the
-supply rails a diode array's cathodes sit on, and leave out pins that reach nothing."""
+supply rails a diode array's cathodes sit on, and leave out pins that reach nothing. An array whose
+only return is protective earth or chassis clamps to it; Earth stays out of ground everywhere else."""
 import sys, unittest
 from pathlib import Path
 
@@ -16,15 +17,16 @@ def _part(ref, ctype, value, lib_id, pins):
             "pins": [{"number": n, "name": nm} for n, nm in pins]}
 
 
-def _ctx(components, nets):
-    """nets: name -> (pins [(ref, pin)], labelled, no_connect)."""
+def _ctx(components, nets, rails=RAILS):
+    """nets: name -> (pins [(ref, pin)], labelled, no_connect). ``rails=None`` reads the power
+    symbols and the ground evidence on the nets, as a real schematic does."""
     full = {}
     for name, (pins, labelled, nc) in nets.items():
         full[name] = {"name": name, "point_count": 0, "no_connect": nc,
                       "labels": [{"name": name, "type": "global_label"}] if labelled else [],
                       "pins": [dict(component=r, pin_number=p, pin_name="", pin_type="passive")
                                for r, p in pins]}
-    return build_analysis_context(components, full, {}, known_power_rails=RAILS)
+    return build_analysis_context(components, full, {}, known_power_rails=rails)
 
 
 def _record(ctx, ref):
@@ -91,14 +93,66 @@ class DiodeArray(unittest.TestCase):
                               "+5V": ([("D1", "4")], False, False)})
         self.assertEqual(_record(ctx, "D1"), ("esd_ic", ["PA0", "PA1"], "PA0", "GND"))
 
-    def test_array_without_a_ground_does_not_list_its_return_as_a_rail(self):
+    def test_array_whose_only_return_is_earth_clamps_to_earth(self):
         d1 = _part("D1", "diode", "PESD1CAN", "Diode:PESD1CAN", [("1", "K"), ("2", "K"), ("3", "O")])
         u2 = _part("U2", "ic", "TJA1051", "Interface_CAN_LIN:TJA1051T-3", [("6", "CANL"), ("7", "CANH")])
         j1 = _part("J1", "connector", "CAN", "Connector:Conn_01x03", [("1", "1"), ("2", "2"), ("3", "3")])
         ctx = _ctx([d1, u2, j1], {"CANL": ([("D1", "1"), ("U2", "6"), ("J1", "1")], False, False),
                                   "CANH": ([("D1", "2"), ("U2", "7"), ("J1", "2")], False, False),
                                   "Earth": ([("D1", "3"), ("J1", "3")], False, False)})
+        self.assertEqual(_record(ctx, "D1"), ("esd_ic", ["CANH", "CANL"], "CANH", "Earth"))
+        self.assertFalse(ctx.is_ground("Earth"))
+
+    def test_array_without_any_return_has_no_clamp_net(self):
+        d1 = _part("D1", "diode", "PESD1CAN", "Diode:PESD1CAN", [("1", "K"), ("2", "K"), ("3", "O")])
+        u2 = _part("U2", "ic", "TJA1051", "Interface_CAN_LIN:TJA1051T-3",
+                   [("6", "CANL"), ("7", "CANH"), ("3", "VCC")])
+        ctx = _ctx([d1, u2], {"CANL": ([("D1", "1"), ("U2", "6")], False, False),
+                              "CANH": ([("D1", "2"), ("U2", "7")], False, False),
+                              "+5V": ([("D1", "3"), ("U2", "3")], False, False)})
         self.assertEqual(_record(ctx, "D1"), ("esd_ic", ["CANH", "CANL"], "CANH", None))
+
+    def test_ground_beats_earth(self):
+        d1 = _part("D1", "diode", "SRV05-4", "Power_Protection:SRV05-4",
+                   [("1", "IO1"), ("2", "GND"), ("3", "IO2"), ("4", "IO3"), ("5", "VP"), ("6", "IO4")])
+        u2 = _part("U2", "ic", "MCU", "MCU:Generic", [("1", "PA0"), ("2", "PA1"), ("3", "GND")])
+        j1 = _part("J1", "connector", "Conn", "Connector:Conn_01x02", [("1", "1"), ("2", "2")])
+        ctx = _ctx([d1, u2, j1], {"PA0": ([("D1", "1"), ("U2", "1")], False, False),
+                                  "PA1": ([("D1", "3"), ("U2", "2")], False, False),
+                                  "GND": ([("D1", "2"), ("U2", "3")], False, False),
+                                  "Earth": ([("D1", "4"), ("J1", "2")], False, False),
+                                  "+5V": ([("D1", "5"), ("J1", "1")], False, False),
+                                  "__unnamed_6": ([("D1", "6")], False, True)})
+        self.assertEqual(_record(ctx, "D1"), ("esd_ic", ["+5V", "PA0", "PA1"], "PA0", "GND"))
+
+    def test_earth_that_carries_a_ground_symbol_is_a_ground_like_any_other(self):
+        # A board whose ground KiCad names Earth_Protective (a GND symbol sits on it) and a
+        # signal that happens to be named like a ground: the array clamps to the board ground.
+        d1 = _part("D1", "diode", "ESDA5V3L", "Power_Protection:ESDA5V3L",
+                   [("1", "K"), ("2", "K"), ("3", "A")])
+        gnd = _part("#PWR01", "power_symbol", "GND", "power:GND", [("1", "~")])
+        u2 = _part("U2", "ic", "ULN2002A", "Transistor_Array:ULN2002A",
+                   [("1", "I1"), ("2", "I2"), ("8", "GND")])
+        nets = {"FHGND": ([("D1", "1"), ("U2", "1")], True, False),
+                "IN2": ([("D1", "2"), ("U2", "2")], False, False),
+                "Earth_Protective": ([("D1", "3"), ("U2", "8"), ("#PWR01", "1")], False, False)}
+        ctx = _ctx([d1, gnd, u2], nets, rails=None)
+        self.assertTrue(ctx.is_ground("Earth_Protective"))
+        self.assertEqual(_record(ctx, "D1")[3], "Earth_Protective")
+
+    def test_capacitor_to_earth_is_still_not_decoupling(self):
+        from signal_detectors import detect_decoupling
+        d1 = _part("D1", "diode", "PESD1CAN", "Diode:PESD1CAN", [("1", "K"), ("2", "K"), ("3", "O")])
+        c1 = _part("C1", "capacitor", "4.7n", "Device:C", [("1", "~"), ("2", "~")])
+        u2 = _part("U2", "ic", "TJA1051", "Interface_CAN_LIN:TJA1051T-3",
+                   [("6", "CANL"), ("7", "CANH"), ("3", "VCC")])
+        ctx = _ctx([d1, c1, u2], {"CANL": ([("D1", "1"), ("U2", "6")], False, False),
+                                  "CANH": ([("D1", "2"), ("U2", "7")], False, False),
+                                  "Earth": ([("D1", "3"), ("C1", "2")], False, False),
+                                  "+5V": ([("C1", "1"), ("U2", "3")], False, False)})
+        self.assertEqual(_record(ctx, "D1")[3], "Earth")
+        self.assertFalse(ctx.is_ground("Earth"))
+        self.assertEqual([d["rail"] for d in detect_decoupling(ctx)], [])
 
 
 class EsdIc(unittest.TestCase):
