@@ -26,11 +26,11 @@ class SpacedNames(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertFalse(is_power_net_name(name))
 
-    def test_underscore_names_with_those_words_are_unchanged(self):
-        for name in ["5V_REF", "VREF_5V", "5V_DATA", "5V_RETURN"]:
+    def test_underscore_names_with_those_words_keep_their_reading(self):
+        for name, expected in [("5V_REF", True), ("VREF_5V", False), ("5V_DATA", True),
+                               ("5V_RETURN", True), ("5V_SIGNAL", True), ("VCC_FOR_IO", True)]:
             with self.subTest(name=name):
-                self.assertEqual(is_power_net_name(name), is_power_net_name(name.upper()))
-        self.assertTrue(is_power_net_name("VCC_FOR_IO"))
+                self.assertEqual(is_power_net_name(name), expected)
 
 
 if __name__ == "__main__":

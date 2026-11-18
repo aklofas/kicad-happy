@@ -117,9 +117,9 @@ _RAIL_MONITOR_TAILS = frozenset({"FAULT", "ISENSE", "ISNS", "FBM", "PWRGOOD"})
 _RAIL_SENSE_TAILS = frozenset({"MEAS", "MEASURE", "MESURE", "DIV", "DIVIDED", "READ", "SENSED"})
 # Rail words whose _ADC tail is a sense tap (VBAT_ADC); VDD_ADC and +3V3_ADC supply an ADC.
 _ADC_TAP_RAILS = frozenset({"VBAT", "VBATT", "VBUS", "VIN", "VSYS"})
-# A power-indicator LED's node (PWR_LED, POWER_LED_K); 3V3_LED or PWR_LED_24V supplies LEDs.
 # Words that make a spaced name describe a signal or a node at a voltage, not a rail.
 _SPACED_NOT_RAIL_WORDS = frozenset({"FOR", "SIGNAL", "DATA", "RETURN"})
+# A power-indicator LED's node (PWR_LED, POWER_LED_K); 3V3_LED or PWR_LED_24V supplies LEDs.
 _POWER_LED_NODE = re.compile(r'(?:PWR|POWER)_LED\d*(?:_(?:K|A|AN))?')
 
 
