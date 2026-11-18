@@ -9,15 +9,16 @@ from kicad_types import build_analysis_context  # noqa: E402
 from signal_detectors import detect_decoupling, detect_design_observations  # noqa: E402
 
 
-def _missing(out_net, cap_other_net, ground_pin_net="GND"):
+def _missing(out_net, cap_other_net, ground_pin_net="GND", in_net="+5V", in_cap_other="GND"):
     """missing_caps of LDO U1 (+5V in with C1, a passive VO pin on *out_net*) with C2 from
-    *out_net* to *cap_other_net*; U1's GND pin sits on *ground_pin_net*."""
+    *out_net* to *cap_other_net*; U1's GND pin sits on *ground_pin_net*. C1 runs from the input net
+    *in_net* to *in_cap_other*."""
     comps = [{"reference": "U1", "type": "ic", "value": "AMS1117-3.3", "lib_id": "Regulator_Linear:AMS1117-3.3"},
              {"reference": "C1", "type": "capacitor", "value": "10uF", "lib_id": "Device:C"},
              {"reference": "C2", "type": "capacitor", "value": "22uF", "lib_id": "Device:C"},
              {"reference": "R1", "type": "resistor", "value": "1k", "lib_id": "Device:R"}]
-    wiring = [("+5V", [("U1", "3", "VI", "power_in"), ("C1", "1", "", "passive")]),
-              ("GND", [("C1", "2", "", "passive")]),
+    wiring = [(in_net, [("U1", "3", "VI", "power_in"), ("C1", "1", "", "passive")]),
+              (in_cap_other, [("C1", "2", "", "passive")]),
               (ground_pin_net, [("U1", "1", "GND", "power_in")]),
               (out_net, [("U1", "2", "VO", "passive"), ("C2", "1", "", "passive")]),
               (cap_other_net, [("C2", "2", "", "passive"), ("R1", "1", "", "passive")])]
@@ -30,7 +31,7 @@ def _missing(out_net, cap_other_net, ground_pin_net="GND"):
             entry["pins"].append({"component": ref, "pin_number": num, "pin_name": name, "pin_type": ptype})
             by_ref[ref]["pins"].append({"number": num, "name": name})
     ctx = build_analysis_context(list(by_ref.values()), nets, {}, known_power_rails={"+5V"})
-    regs = [{"ref": "U1", "value": "AMS1117-3.3", "input_rail": "+5V", "output_rail": out_net}]
+    regs = [{"ref": "U1", "value": "AMS1117-3.3", "input_rail": in_net, "output_rail": out_net}]
     obs = detect_design_observations(ctx, {"power_regulators": regs,
                                            "decoupling_analysis": detect_decoupling(ctx)})
     return [o["missing_caps"] for o in obs if o["category"] == "regulator_caps"]
@@ -55,6 +56,26 @@ class OutputCapacitorOnAnyNet(unittest.TestCase):
 
     def test_cap_to_a_signal_named_output_is_not_an_output_cap(self):
         self.assertEqual(_missing("SYS", "SENSE"), [{"output": "SYS"}])
+
+
+class RegulatorInputCapacitor(unittest.TestCase):
+    """Input side, with the output carrying a good capacitor to ground."""
+
+    def _input(self, in_net, in_cap_other, ground_pin_net="GND"):
+        return [m for m in _missing("__unnamed_4", "GND", ground_pin_net, in_net, in_cap_other)
+                if "input" in m]
+
+    def test_cap_to_ground_on_an_unnamed_input_net_counts(self):
+        self.assertEqual(self._input("__unnamed_9", "GND"), [])
+
+    def test_cap_to_ground_on_a_signal_named_input_net_counts(self):
+        self.assertEqual(self._input("VUSB", "GND"), [])
+
+    def test_cap_to_the_regulators_own_ground_pin_net_counts(self):
+        self.assertEqual(self._input("__unnamed_9", "-BATT", ground_pin_net="-BATT"), [])
+
+    def test_series_cap_to_a_signal_net_is_not_an_input_cap(self):
+        self.assertEqual(self._input("__unnamed_9", "AUDIO_IN"), [{"input": "__unnamed_9"}])
 
 
 if __name__ == "__main__":

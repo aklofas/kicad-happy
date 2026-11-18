@@ -4224,7 +4224,7 @@ def _reference_net(ctx: AnalysisContext, net_name: str, regulator_outputs: set) 
 
 def _has_cap_to_ground(ctx: AnalysisContext, net: str, ref: str) -> bool:
     """*net* carries a fitted, valued capacitor whose other pin is on ground or on *ref*'s own GND-pin
-    net (a regulator's output cap on a net the decoupling detector does not read as a rail).
+    net (a regulator's input or output cap on a net the decoupling detector does not read as a rail).
     A GND pin on a voltage-named net (+5V, or an inverting converter's -5V output) is not the
     part's ground."""
     own_ground = _own_ground_nets(ctx, ref)
@@ -4298,7 +4298,8 @@ def detect_design_observations(ctx: AnalysisContext, results: dict) -> list[dict
         in_rail = reg.get("input_rail")
         out_rail = reg.get("output_rail")
         missing = {}
-        if in_rail and in_rail not in decoupled_rails:
+        if (in_rail and in_rail not in decoupled_rails
+                and not _has_cap_to_ground(ctx, in_rail, reg["ref"])):
             missing["input"] = in_rail
         if (out_rail and out_rail not in decoupled_rails
                 and not _has_cap_to_ground(ctx, out_rail, reg["ref"])):
