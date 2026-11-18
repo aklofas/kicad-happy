@@ -422,7 +422,7 @@ def _merge_series_dividers(voltage_dividers: list[dict], ctx: AnalysisContext) -
 
     def _is_passthrough(net_name):
         """A pass-through node connects exactly 2 resistors (a parallel group counts once)
-        and no active components. A node named like a rail (12V_FBM) passes only when local
+        and no active components. A node named like a rail (12V_PRE) passes only when local
         labels alone name it."""
         if ctx.is_ground(net_name):
             return False
@@ -4106,7 +4106,7 @@ def enrich_transistor_led_drivers(ctx: AnalysisContext, transistor_circuits: lis
             # supply or ground rail is a pull-up/pull-down, and an LED elsewhere on that
             # rail is unrelated. A node with no power symbol that holds only LEDs,
             # connectors and test points is the LED's, even when its name reads as a
-            # rail (PWR_LED_K).
+            # rail (3V3_LED).
             if ((ctx.is_power_net(other_net) or ctx.is_ground(other_net))
                     and (other_net in ctx.known_power_rails
                          or any(oc["type"] not in ("led", "connector", "test_point")
