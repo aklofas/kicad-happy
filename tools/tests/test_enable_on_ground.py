@@ -105,7 +105,7 @@ class PowerTreeEnableType(unittest.TestCase):
             self.assertEqual(self.tree[ref]["enabled_by"], ENABLES[ref][1], ref)
 
 
-def _pull_ctx():
+def _pull_ctx(extra_regs=None, extra_parts=None):
     """Enables held by resistors and capacitors. Pin 1 of each two-pin part sits on the EN net."""
     regs = {"U1": ("+12V", "EN1"), "U2": ("+12V", "EN2"), "U3": ("+12V", "EN3"),
             "U4": ("+48V", "EN4"), "U5": ("+5V", "EN5"), "U6": ("+5V", "EN6"),
@@ -118,6 +118,8 @@ def _pull_ctx():
              "R6": ("resistor", "10k", "EN5", "+5V"), "C1": ("capacitor", "1u", "EN5", "GND"),
              "R7": ("resistor", "10k", "EN6", "+5V"),
              "R8": ("resistor", "100k", "EN7", "__unnamed_7")}
+    regs.update(extra_regs or {})
+    parts.update(extra_parts or {})
     comps, nets = [], {}
 
     def add(net, ref, num, name, ptype):
@@ -189,6 +191,26 @@ class EnableHeldByResistors(unittest.TestCase):
     def test_pull_up_to_an_unnamed_net_carrying_the_input_is_a_pull_up(self):
         self.assertTrue(self.deps["U7"].get("has_pull_up"))
         self.assertEqual(self.deps["U7"]["en_source"], "always_on")
+
+
+class EnableHeldToAVssGround(unittest.TestCase):
+    """A VSS net that no regulator drives is ground: a resistor to it is a pull-down."""
+
+    def _deps(self, parts):
+        ctx, regs = _pull_ctx({"U10": ("+12V", "EN10")}, parts)
+        out = analyze_power_sequencing(ctx, {"power_regulators": regs})
+        return {d["regulator"]: d for d in out["dependencies"]}["U10"]
+
+    def test_uvlo_divider_to_vss_is_always_on(self):
+        dep = self._deps({"R10": ("resistor", "560k", "EN10", "+12V"),
+                          "R11": ("resistor", "33k", "EN10", "VSS")})
+        self.assertEqual(dep["en_source"], "always_on")
+        self.assertTrue(dep.get("has_pull_up"))
+
+    def test_pull_down_to_vss_alone_stays_controlled(self):
+        dep = self._deps({"R11": ("resistor", "10k", "EN10", "VSS")})
+        self.assertEqual(dep["en_source"], "controlled")
+        self.assertNotIn("has_pull_up", dep)
 
 
 class SleepNoteForAnEnableThatIsNotSwitched(unittest.TestCase):

@@ -1924,7 +1924,7 @@ def analyze_power_sequencing(ctx: AnalysisContext,
                             pulls.append(None)
                         elif dtype == "capacitor":
                             pulls.append("cap" if is_ground(far) else None)
-                        elif is_ground(far) and not is_vss_name(far):
+                        elif is_ground(far):
                             pulls.append("down")
                         elif far in supply_nets or (is_power_net(far) and not is_ground(far)):
                             pulls.append("up")
