@@ -9,6 +9,8 @@ construction.
 from __future__ import annotations
 
 import math
+import re
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -16,8 +18,8 @@ from typing import TYPE_CHECKING
 from kicad_core.model import PinNetEntry
 from kicad_core.netquery import build_pin_to_net_map
 from kicad_core.netnames import (
-    configured_rail_voltage, is_ground_name, is_pin_gated_rail_name, is_pin_guarded_signal,
-    is_power_net_name, is_vss_name, net_leaf, rail_matches,
+    configured_rail_voltage, is_earth_name, is_ground_name, is_pin_gated_rail_name,
+    is_pin_guarded_signal, is_power_net_name, is_vss_name, net_leaf, rail_matches,
 )
 from kicad_core.diagnostics import record
 from kicad_core.values import AmbiguousValueSeparator, ambiguous_separator, parse_value
@@ -73,6 +75,67 @@ def power_symbol_com_nets(nets: dict[str, dict], comp_lookup: dict[str, dict]) -
                     for p in info.get("pins", []))}
 
 
+_SYMBOL_TYPES = ("power_symbol", "power_flag", "flag")
+# An isolated converter's output pins carry a sign (VOUT+, -VOUT, VO-): a part with those and
+# a COM pin returns its output to COM.
+_CONVERTER_OUTPUT_PIN = re.compile(r'^[+-]V_?OUT$|^V_?OUT[+-]$|^[+-]VO$|^VO[+-]$')
+
+
+def _is_ground_symbol_pin(pin: dict, comp: dict) -> bool:
+    """*pin* is the pin of a one-pin power symbol drawn as a ground: the symbol's value and its
+    library symbol both read as ground (``power:GND``, ``power:GNDREF``) or are the SPICE ground
+    ``0`` (``Simulation_SPICE:0``, ``pspice:0``), and the pin itself carries no other name."""
+    if comp.get("type") != "power_symbol" or len(comp.get("pins") or ()) > 1:
+        return False
+    pin_name = str(pin.get("pin_name") or "")
+    names = (str(comp.get("value") or ""), str(comp.get("lib_id") or "").rsplit(":", 1)[-1])
+    return ((pin_name in ("", "~", "0") or is_ground_name(pin_name))
+            and all(n == "0" or is_ground_name(n) for n in names))
+
+
+def ground_evidence_nets(nets: dict[str, dict], comp_lookup: dict[str, dict],
+                         shared_refs: set[str]) -> frozenset[str]:
+    """Nets that are ground by what sits on them, whatever they are called.
+
+    A ground power symbol (``GND``, or the SPICE ground ``0``) on a net another label names
+    makes that net ground (a global label ``THERMISTOR_B`` drawn on the board ground), unless
+    the name reads as a supply or as protective earth or chassis (``Earth``, ``PE``), or nothing
+    but power symbols sits on the net. A ``COM`` net is
+    ground when a ground label is also on it, an IC ground pin (``GND1``, ``AGND``) sits on
+    it, or it is the common pin of an isolated converter (a part with ``VOUT+`` / ``VOUT-``
+    pins); a relay, switch, multiplexer or transformer ``COM`` is a common, not a return. A
+    reference two parts share (``#PWR?``) does not say which part sits on the net, so it is
+    no evidence."""
+    found = set()
+    for name, info in nets.items():
+        pins = info.get("pins", [])
+        if (not is_power_net_name(name) and not is_earth_name(name)
+                and any(p["component"] not in shared_refs
+                        and _is_ground_symbol_pin(p, comp_lookup.get(p["component"]) or {})
+                        for p in pins)
+                and (info.get("labels") or any(
+                    (comp_lookup.get(p["component"]) or {}).get("type") not in _SYMBOL_TYPES
+                    for p in pins))):
+            found.add(name)
+            continue
+        if net_leaf(name).upper() != "COM":
+            continue
+        if any(is_ground_name(lab.get("name")) for lab in info.get("labels", [])):
+            found.add(name)
+            continue
+        for p in pins:
+            comp = {} if p["component"] in shared_refs else comp_lookup.get(p["component"]) or {}
+            if comp.get("type") != "ic":
+                continue
+            pin_name = (p.get("pin_name") or "").upper()
+            if is_ground_name(pin_name) or pin_name == "COM" and any(
+                    _CONVERTER_OUTPUT_PIN.match(str(q.get("name") or "").upper())
+                    for q in comp.get("pins", [])):
+                found.add(name)
+                break
+    return frozenset(found)
+
+
 def index_ref_pins(pin_net: dict) -> dict[str, dict[str, PinNetEntry]]:
     rp: dict[str, dict[str, PinNetEntry]] = {}
     for (comp_ref, pin_num), val in pin_net.items():
@@ -108,6 +171,9 @@ class AnalysisContext:
         ground_name_rails: The rail set ``is_ground()`` reads (it decides ``COM`` and
             ``0``): ``known_power_rails`` plus every ``COM`` net a ``power_symbol``-typed
             part names, whatever its reference. Built by ``build_analysis_context``.
+        ground_evidence: Nets ``is_ground()`` accepts whatever they are called, by the
+            ground symbol or ground pins on them (``ground_evidence_nets``). Built by
+            ``build_analysis_context`` from the power-symbol scan.
         ref_pins: Per-component pin map.  ``{ref: {pin_number: (net_name, net_record)}}``.
             Derived from *pin_net* for quick per-component pin enumeration.
         no_connects: List of no-connect markers from the schematic.
@@ -126,7 +192,8 @@ class AnalysisContext:
     Methods:
         is_power_net(name): True if *name* is a known power rail or matches
             common power net name patterns (VCC, +3V3, VBUS, etc.).
-        is_ground(name): True if *name* matches ground patterns (GND, VSS, etc.).
+        is_ground(name): True if *name* matches ground patterns (GND, VSS, etc.) or the
+            net is in ``ground_evidence``.
         rail_voltage(net): The configured voltage, else the exact net's entry in
             ``rail_by_net``; None for an ignored rail.
         config_rail_voltage(net): The user's override for *net*, or None.
@@ -147,6 +214,7 @@ class AnalysisContext:
     parsed_values: dict[str, float] = field(default_factory=dict)
     known_power_rails: set[str] = field(default_factory=set)
     ground_name_rails: frozenset = field(default_factory=frozenset, repr=False)
+    ground_evidence: frozenset = field(default_factory=frozenset, repr=False)
     ref_pins: dict[str, dict[str, PinNetEntry]] = field(default_factory=dict)
     no_connects: list[dict] = field(default_factory=list)
     source: str = "unknown"
@@ -171,7 +239,8 @@ class AnalysisContext:
             or (by_pins and (name in self.topology_rails or name in self.pin_gated_rails)))
 
     def is_ground(self, name: str | None) -> bool:
-        return is_ground_name(name, self.ground_name_rails)
+        """Ground by name or by what sits on the net (``ground_evidence``)."""
+        return name in self.ground_evidence or is_ground_name(name, self.ground_name_rails)
 
     def rail_voltage(self, net: str | None) -> float | None:
         """Voltage of the exact net *net* (full hierarchical name) from the rail map.
@@ -276,14 +345,15 @@ def build_analysis_context(components: list[dict], nets: dict[str, dict], lib_sy
 
     Builds ``pin_net`` and every index, installs the ``NetlistQueries`` layer and
     returns a context no detector has to complete. ``known_power_rails`` overrides
-    the power-symbol scan (synthetic fixtures); an explicit set (including an empty
-    one) is used as given; ``no_connects`` is kept by reference. ``power_rails_config``
+    the power-symbol scan and the ground evidence it brings (synthetic fixtures); an
+    explicit set (including an empty one) is used as given; ``no_connects`` is kept by reference. ``power_rails_config``
     is the project config's ``analysis.power_rails`` (its ``voltage_overrides`` and
     ``ignore`` reach every detector).
     """
     pin_net = build_pin_to_net_map(nets)
     diagnostics: list = []
     comp_lookup, parsed_values = index_components(components, diagnostics)
+    shared_refs = {ref for ref, n in Counter(c["reference"] for c in components).items() if n > 1}
     rails = scan_power_rails(nets) if known_power_rails is None else known_power_rails
     ground_rails = frozenset(rails if known_power_rails is not None
                              else rails | power_symbol_com_nets(nets, comp_lookup))
@@ -291,6 +361,8 @@ def build_analysis_context(components: list[dict], nets: dict[str, dict], lib_sy
         components=components, nets=nets, lib_symbols=lib_symbols, pin_net=pin_net,
         comp_lookup=comp_lookup, parsed_values=parsed_values, known_power_rails=rails,
         ground_name_rails=ground_rails,
+        ground_evidence=(ground_evidence_nets(nets, comp_lookup, shared_refs)
+                         if known_power_rails is None else frozenset()),
         ref_pins=index_ref_pins(pin_net),
         no_connects=no_connects if no_connects is not None else [],
         source=source,

@@ -444,6 +444,18 @@ def is_ground_name(net_name: str | None, power_rails: set[str] | None = None) ->
     return "(" not in nu and any(_GROUND_TOKEN.match(t) for t in tokens)
 
 
+_EARTH_NAMES = frozenset({"EARTH", "EARTH_PROTECTIVE", "PROTECTIVE_EARTH", "PE", "CHASSIS"})
+
+
+def is_earth_name(net_name: str | None) -> bool:
+    """True for protective earth or chassis (``power:Earth``, ``Earth_Protective``, PE,
+    CHASSIS; sheet path stripped). It is a return for surge and ESD current, not the
+    circuit's signal ground."""
+    if not net_name:
+        return False
+    return unescape_string(net_leaf(net_name)).upper() in _EARTH_NAMES
+
+
 def is_vss_name(net_name: str | None) -> bool:
     """True for a VSS-family net name (VSS*, AVSS, DVSS; sheet path stripped); VSS can be a
     negative supply."""
