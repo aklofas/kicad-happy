@@ -261,9 +261,9 @@ def _parse_value(value_str: str, component_type: str | None) -> float | None:
         else:
             s = glued.group(1) + glued.group(2).lower()
     upper = None if glued else _UPPER_PREFIX.fullmatch(s)
-    # A part number ("7406N", "50N06") has more than three significant digits before the
-    # letter or a two-digit group with a leading zero after it; "1000U" and "1U0" are values.
-    if upper and (len(upper.group(1).replace(".", "").strip("0")) > 3
+    # A part number ("7406N", "50N06") has more than three significant integer digits before
+    # the letter or a two-digit group with a leading zero after it; "1000U" and "1U0" are values.
+    if upper and (len(upper.group(1).split(".")[0].strip("0")) > 3
                   or (len(upper.group(3)) == 2 and upper.group(3)[0] == "0")):
         upper = None
     # Digits glued to a voltage with no capacitor type ("1N50V") are not fraction digits.

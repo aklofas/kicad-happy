@@ -138,6 +138,13 @@ class ValueNotation(unittest.TestCase):
         self.check([("1000U", "capacitor", 1e-3), ("2200U", "capacitor", 2.2e-3),
                     ("1U0", "capacitor", 1e-6), ("100N", "capacitor", 1e-7)])
 
+    def test_decimal_mantissa_with_uppercase_prefix_on_a_capacitor(self):
+        self.check([("1.234N", "capacitor", 1.234e-9), ("2.205U", "capacitor", 2.205e-6),
+                    ("10000U", "capacitor", 1e-2), ("4700N", "capacitor", 4.7e-6),
+                    ("1050P", "capacitor", 1.05e-9)])
+        for text in ("1234U", "10N05", "10U05"):
+            self.assertIsNone(parse_value(text, component_type="capacitor"), msg=text)
+
     def test_exponent_capacitor_plausibility(self):
         self.assertIsNone(parse_value("1e3", component_type="capacitor"))
         self.check([("1e3F", "capacitor", 1000.0), ("1e-6", "capacitor", 1e-6),
