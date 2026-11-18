@@ -5,7 +5,9 @@ import math
 import re
 import sys
 from kicad_core.diagnostics import record
-from detector_helpers import is_fitted, is_tvs_diode, type_c_rp
+from detector_helpers import (
+    is_addressable_led, is_fitted, is_tvs_diode, led_forward_voltage, type_c_rp,
+)
 from kicad_core.classify import gpio_port_pins, is_active_low_enable, is_touch_pad
 from kicad_types import (
     AnalysisContext,
@@ -28,6 +30,7 @@ from finding_schema import (
     make_finding,
 )
 from kicad_core.parts import (
+    LED_VF_BY_COLOR,
     MLCC_ESL,
     MLCC_ESR,
 )
@@ -1519,6 +1522,21 @@ def analyze_protocol_compliance(components: list[dict], nets: dict,
             "total_issues": sum(len(f.get("issues", []) or []) for f in findings)}
 
 
+_LED_NON_TERMINAL_NAMES = {"MNT", "MT", "SH", "SHLD", "SHIELD", "TAB", "NC", "N/C", "EP", "GND_TAB"}
+
+
+def _is_led_non_terminal(nets: dict, ref: str, pnum, net_name) -> bool:
+    pin = next((p for p in nets.get(net_name, {}).get("pins", [])
+                if p["component"] == ref and str(p.get("pin_number")) == str(pnum)), None)
+    if pin is None:
+        return False
+    return (str(pin.get("pin_name", "")).upper() in _LED_NON_TERMINAL_NAMES
+            or pin.get("pin_type") in ("no_connect", "unconnected"))
+
+
+_LED_DATA_PINS = {"DIN", "DI", "DOUT", "DO", "SDI", "SDO", "CI", "CO", "CKI", "CKO"}
+
+
 def analyze_power_budget(ctx: AnalysisContext,
                          signal_analysis: dict) -> dict:
     """Power budget estimation per rail.
@@ -1564,6 +1582,17 @@ def analyze_power_budget(ctx: AnalysisContext,
     # Rails of interest: power-named nets, plus regulator output rails.
     candidate_rails = {n for n in nets if is_power_net(n) and not is_ground(n)} | set(reg_by_rail)
 
+    # A fuse passes its rail through: loads on its unnamed far side draw from the rail.
+    fed_through: dict[str, str] = {}
+    for comp in components:
+        if comp["type"] != "fuse":
+            continue
+        fn1, fn2 = ctx.get_two_pin_nets(comp["reference"])
+        for a, b in ((fn1, fn2), (fn2, fn1)):
+            if (a in candidate_rails and not is_ground(a) and b
+                    and b not in candidate_rails and not is_ground(b)):
+                fed_through.setdefault(b, a)
+
     # Build power domain mapping: rail -> list of ICs
     rail_ics: dict[str, list[dict]] = {}
     for comp in components:
@@ -1571,7 +1600,7 @@ def analyze_power_budget(ctx: AnalysisContext,
             continue
         ref = comp["reference"]
         for pnum, (net_name, _) in ref_pins.get(ref, {}).items():
-            if net_name and net_name in candidate_rails:
+            if net_name and (net_name in candidate_rails or net_name in fed_through):
                 # Look up THE ITERATED PIN specifically: this used
                 # to check the first pin `nets[net_name]["pins"]` listed for
                 # this component and `break`, which could be a non-power pin
@@ -1600,7 +1629,7 @@ def analyze_power_budget(ctx: AnalysisContext,
                                 est_ma = ma
                                 break
                         ic_entry["estimated_mA"] = est_ma
-                        rail_ics.setdefault(net_name, []).append(ic_entry)
+                        rail_ics.setdefault(fed_through.get(net_name, net_name), []).append(ic_entry)
 
     # Deduplicate ICs per rail (an IC may have multiple power pins on same rail)
     for rail in rail_ics:
@@ -1619,7 +1648,7 @@ def analyze_power_budget(ctx: AnalysisContext,
     resistor_nets: dict[str, tuple[str | None, str | None]] = {}
     net_to_resistors: dict[str, list[str]] = {}
     for comp in components:
-        if comp["type"] != "resistor":
+        if comp["type"] != "resistor" or comp.get("dnp") or comp.get("on_board") is False:
             continue
         rref = comp["reference"]
         rn1, rn2 = ctx.get_two_pin_nets(rref)
@@ -1628,14 +1657,62 @@ def analyze_power_budget(ctx: AnalysisContext,
             if n:
                 net_to_resistors.setdefault(n, []).append(rref)
 
-    # Non-IC loads: LEDs draw real current; 5 mA nominal each.
+    _die_color = {"R": "red", "G": "green", "B": "blue", "W": "white"}
+
+    def _channel_mA(led: dict, rail: str, channels: list) -> float:
+        """A multi-die LED draws (Vrail - Vf) / R through each channel's resistor; Vf by the
+        die colour its pin names (RK, GA, ...) else the LED's own colour. 5 mA for a channel
+        with no resistor or no rail voltage."""
+        v = ctx.rail_voltage_or(rail, _estimate_rail_voltage)
+        total = 0.0
+        for rref, led_net in channels:
+            pname = next((str(p.get("pin_name", "")).upper() for p in nets.get(led_net, {}).get("pins", [])
+                          if p["component"] == led["reference"]), "")
+            color = _die_color.get(pname[:1]) if len(pname) == 2 and pname[1] in "AK" else None
+            vf = LED_VF_BY_COLOR[color][0] if color else led_forward_voltage(led)
+            ohms = ctx.parsed_values.get(rref) if rref else None
+            if v is None or not ohms or ohms <= 0 or abs(v) <= vf:
+                total += 5
+            else:
+                total += (abs(v) - vf) / ohms * 1000
+        return round(total, 1)
+
+    # Non-IC loads: LEDs draw real current; 5 mA nominal each, or per channel
+    # through its resistor for a multi-die (RGB, bicolour) LED.
     rail_other: dict[str, list[dict]] = {}
     for comp in components:
-        if comp["type"] != "led":
+        if comp["type"] != "led" or comp.get("dnp") or comp.get("on_board") is False:
             continue
+        # mounting tabs, shields and no-connect pins are not LED terminals
+        led_pins = {k: v for k, v in ref_pins.get(comp["reference"], {}).items()
+                    if not _is_led_non_terminal(nets, comp["reference"], k, v[0])}
+        led_nets = [n for n, _ in led_pins.values() if n]
+        multi = len(led_pins) > 2
+        # an addressable LED (a family name, or a data-in / data-out pin) sets its own
+        # current: no series resistor, a flat 5 mA
+        addressable = multi and (is_addressable_led(comp) or any(
+            str(p.get("pin_name", "")).upper() in _LED_DATA_PINS
+            for n in led_nets for p in nets.get(n, {}).get("pins", [])
+            if p["component"] == comp["reference"]))
         n1, n2 = ctx.get_two_pin_nets(comp["reference"])
-        direct_rail = next((n for n in (n1, n2)
-                            if n in candidate_rails and not is_ground(n)), None)
+        if multi:
+            n1, n2 = None, None
+            direct_rail = next((fed_through.get(n, n) for n in sorted(set(led_nets))
+                                if (n in candidate_rails or n in fed_through) and not is_ground(n)), None)
+        else:
+            direct_rail = next((fed_through.get(n, n) for n in (n1, n2)
+                                if (n in candidate_rails or n in fed_through) and not is_ground(n)), None)
+        if direct_rail and multi and not addressable:
+            # common-anode / common-cathode: one resistor per die on the other pins
+            channels = []
+            for n in sorted(set(led_nets)):
+                if fed_through.get(n, n) == direct_rail or is_ground(n) or n in candidate_rails:
+                    continue
+                channels.extend((r, n) for r in net_to_resistors.get(n, []) or [None])
+            rail_other.setdefault(direct_rail, []).append(
+                {"ref": comp["reference"], "type": "led",
+                 "estimated_mA": _channel_mA(comp, direct_rail, channels) if channels else 5})
+            continue
         if direct_rail:
             rail_other.setdefault(direct_rail, []).append(
                 {"ref": comp["reference"], "type": "led", "estimated_mA": 5})
@@ -1649,20 +1726,22 @@ def analyze_power_budget(ctx: AnalysisContext,
         # attribute the LED to any unrelated resistor that happens to sit
         # between GND and some rail (e.g. a bleeder resistor) even when the
         # LED has no series resistor of its own.
-        reachable_via: dict[str, str] = {}
-        for n in (n1, n2):
+        reachable_via: dict[str, list] = {}
+        for n in (sorted(set(led_nets)) if multi else (n1, n2)):
             if not n or is_ground(n) or n in candidate_rails:
                 continue
             for rref in net_to_resistors.get(n, []):
                 rn1, rn2 = resistor_nets[rref]
                 other_net = rn2 if rn1 == n else rn1
                 if other_net and other_net in candidate_rails and not is_ground(other_net):
-                    reachable_via.setdefault(other_net, rref)
+                    reachable_via.setdefault(other_net, []).append((rref, n))
         if reachable_via:
             rail = sorted(reachable_via)[0]
             rail_other.setdefault(rail, []).append(
-                {"ref": comp["reference"], "type": "led", "estimated_mA": 5,
-                 "via": reachable_via[rail]})
+                {"ref": comp["reference"], "type": "led",
+                 "estimated_mA": (_channel_mA(comp, rail, reachable_via[rail])
+                                  if multi and not addressable else 5),
+                 "via": reachable_via[rail][0][0]})
 
     if not rail_ics and not reg_by_rail and not rail_other:
         return {}
