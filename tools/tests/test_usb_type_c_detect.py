@@ -513,5 +513,43 @@ class VbusCapacitanceBound(unittest.TestCase):
         self.assertEqual(self._uc004(_run(comps, nets)), [])
 
 
+    def test_port_fed_by_a_switch_output_never_warns(self):
+        j = _conn("J1", "USB_B_Micro", "Connector:USB_B_Micro", pins=USB2_PINS)
+        sw = {"reference": "U1", "type": "ic", "value": "AP22653", "lib_id": "Lib:AP22653",
+              "footprint": "", "pins": [{"number": "1", "name": "OUT"}]}
+        comps = [j, sw, _cap("C1", "47u"), _cap("C2", "100u")]
+        nets = _usb2_nets("J1")
+        nets["VBUS"].append(("U1", "1", "OUT"))
+        for ref in ("C1", "C2"):
+            nets["VBUS"].append((ref, "1", "~"))
+            nets["GND"].append((ref, "2", "~"))
+        ctx_nets = {n: {"name": n, "pins": [dict(component=r, pin_number=pn, pin_name=nm,
+                                                 pin_type="power_out" if r == "U1" else "passive")
+                                            for r, pn, nm in pins],
+                        "point_count": 0, "no_connect": False, "labels": []}
+                    for n, pins in nets.items()}
+        ctx = build_analysis_context(comps, ctx_nets, {}, known_power_rails={"VBUS"})
+        self.assertEqual(self._uc004(analyze_usb_compliance(ctx, {})), [])
+
+    def test_port_without_data_lines_never_warns(self):
+        comps = [_conn("J1", "USB_C_Receptacle_PowerOnly_6P", "Connector:USB_C_Receptacle_PowerOnly_6P",
+                       pins=(("1", "VBUS"), ("2", "GND"), ("A5", "CC1"), ("B5", "CC2"))),
+                 _cap("C1", "22u"), _res("R1", "5.1k"), _res("R2", "5.1k")]
+        nets = {"VBUS": [("J1", "1", "VBUS"), ("C1", "1", "~")],
+                "GND": [("J1", "2", "GND"), ("C1", "2", "~"), ("R1", "2", "~"), ("R2", "2", "~")],
+                "CC1": [("J1", "A5", "CC1"), ("R1", "1", "~")],
+                "CC2": [("J1", "B5", "CC2"), ("R2", "1", "~")]}
+        self.assertEqual(self._uc004(_run(comps, nets)), [])
+
+    def test_cap_to_the_connectors_own_ground_pin_is_counted(self):
+        comps = [_conn("J1", "USB_B_Micro", "Connector:USB_B_Micro", pins=USB2_PINS),
+                 _cap("C1", "22u")]
+        nets = _usb2_nets("J1")
+        nets["Gusb"] = nets.pop("GND")
+        nets["VBUS"].append(("C1", "1", "~"))
+        nets["Gusb"].append(("C1", "2", "~"))
+        self.assertEqual(len(self._uc004(_run(comps, nets))), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -2248,6 +2248,7 @@ _TYPE_C_NAME = re.compile(r"(?<![A-Z0-9])(?:USB[_-]?C|TYPE[-_]?C)(?![A-Z0-9])")
 _USB_DEVICE_PORT = re.compile(
     r"(?<![A-Z0-9])(?:USB[_-]?(?:MICRO|MINI)?[_-]?B|(?:MICRO|MINI)[_-]?B|USB[_-]?B)(?![A-Z0-9])")
 _USB_DUAL_ROLE = re.compile(r"OTG|(?<![A-Z0-9])(?:MICRO|MINI)?[_-]?AB(?![A-Z0-9])|[-_]AB[-_]|-AB$")
+_USB_DATA_PIN = re.compile(r"(?:USB_?)?D(?:[PMN]|\d?[+-]|_[PMN])_?\d?")
 # USB 2.0 Specification section 7.2.4.1: a device presents at most 10 uF at attach.
 _USB_DEVICE_VBUS_MAX_UF = 10.0
 
@@ -2604,6 +2605,15 @@ def analyze_usb_compliance(ctx: AnalysisContext,
             has_esd = False
             has_decoupling = False
             vbus_caps: list[dict] = []
+            # A cap to the connector's own ground or shield pin returns to ground even when
+            # that net's name is not one (Gusb, Earth).
+            own_ground = {n for pn, n in conn_pin_nets.items()
+                          if any(k in pn for k in ("GND", "SHIELD", "SHELL"))}
+            # A switch or regulator output on the net makes this a supplied port, not an attach.
+            vbus_driven = any(
+                p.get("pin_type") in ("power_out", "output")
+                and (comp_lookup.get(p["component"]) or {}).get("type") == "ic"
+                for p in nets[vbus_net]["pins"])
             for p in nets[vbus_net]["pins"]:
                 pc = comp_lookup.get(p["component"])
                 if not pc:
@@ -2626,7 +2636,7 @@ def analyze_usb_compliance(ctx: AnalysisContext,
                         continue
                     returns = [n for pn, (n, _) in ref_pins.get(pc["reference"], {}).items()
                                if n and n != vbus_net]
-                    if not any(is_ground(n) for n in returns):
+                    if not any(is_ground(n) or n in own_ground for n in returns):
                         continue
                     if cap_val and cap_val > 0:
                         vbus_caps.append({
@@ -2653,6 +2663,8 @@ def analyze_usb_compliance(ctx: AnalysisContext,
                                    f"(recommended \u22651\u00b5F for USB 2.0, \u226510\u00b5F for USB 3.x)"),
                     }
                 elif (total_uf > _USB_DEVICE_VBUS_MAX_UF
+                      and not vbus_driven
+                      and any(_USB_DATA_PIN.fullmatch(pn) for pn in conn_pin_nets)
                       and (role == "sink" or (not conn["is_type_c"]
                                               and conn["is_device_port"]))):
                     conn_checks["checks"]["vbus_capacitance"] = "warning"
