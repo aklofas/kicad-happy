@@ -5444,7 +5444,7 @@ def _is_module_internal_rail(net_name: str) -> bool:
 # Pin names of an IC's own internal-regulator output (STM32 VCAP_1, ST25R3916 VDD_DR,
 # MPR121 VREG, SAM VDDCORE): the IC drives the pin and it needs only its decoupling
 # capacitor. VREG_IN / VREGIN / VREG_VIN / VREG_AVDD are the regulator's supply inputs.
-_INTERNAL_REG_PIN = re.compile(r"VCAP\w*|VDD_?CORE\w*|VDD_DR|VREG(?:_?OUT|A_OUT|\d*)")
+_INTERNAL_REG_PIN = re.compile(r"(?:VCAP|VDD_?CORE)\w*?(?<!IN)|VDD_DR|VREG(?:_?OUT|A_OUT|\d*)")
 
 
 def _is_internal_regulator_pin(pin_name: str) -> bool:

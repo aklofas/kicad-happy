@@ -27,7 +27,8 @@ class InternalRegulatorPin(unittest.TestCase):
             self.assertEqual([x["severity"] for x in f], ["info"], name)
 
     def test_regulator_supply_inputs_keep_the_error(self):
-        for name in ("VREG_VIN", "VREG_IN", "VREGIN", "VREG_AVDD", "VREG_PGND", "VDD"):
+        for name in ("VREG_VIN", "VREG_IN", "VREGIN", "VREG_AVDD", "VREG_PGND", "VDD",
+                     "VDDCORE_IN", "VDD_CORE_VIN", "VCAP_IN", "VCAPIN"):
             f = _pp001(name)
             self.assertEqual([x["severity"] for x in f], ["error"], name)
 
