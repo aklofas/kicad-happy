@@ -36,9 +36,9 @@ class RegulatorOutputNameVoltageTest(unittest.TestCase):
         by_net = build_rail_map(_ctx(["-15V_OUT"]), [_reg("-15V_OUT", inverting=True)])
         self.assertEqual(by_net.get("-15V_OUT"), -15.0)
 
-    def test_comma_decimal_is_skipped(self):
+    def test_comma_decimal_is_read(self):
         by_net = build_rail_map(_ctx(["3,3V"]), [_reg("3,3V")])
-        self.assertNotIn("3,3V", by_net)
+        self.assertEqual(by_net.get("3,3V"), 3.3)
 
     def test_non_regulator_net_is_unchanged(self):
         by_net = build_rail_map(_ctx(["3V3_OFF"]), [])

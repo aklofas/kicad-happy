@@ -41,25 +41,57 @@ def rail_matches(patterns, net: str | None) -> bool:
 def parse_voltage_from_net_name(net_name: str) -> float | None:
     """Try to extract a voltage value from a power net name's own name (its leaf).
 
-    A leading '-', 'NEG' or '(-)' makes the rail negative.
+    A leading '-', 'NEG' or '(-)' makes the rail negative, as does a '-' right before the
+    voltage after a space or '_' (VEE_-12V, GENERATED -5V). After a letter or digit a '-'
+    separates words (USB-5V, FTDI-3.3V), so it is no sign. A comma between digits is a
+    decimal point (3,3V); <n>P<n> is a decimal too (1P2V, V1P8, VDD3P3).
 
     Examples: '+3V3' → 3.3, '+5V' → 5.0, '+12V' → 12.0, '+1V8' → 1.8,
     'VCC_3V3' → 3.3, '+2.5V' → 2.5, '-5V' → -5.0, 'NEG12V' → -12.0,
-    '/Analog/-5V' → -5.0, '(-)5V' → -5.0, '/3v3_buck/SW' → None, 'VBAT' → None
+    '/Analog/-5V' → -5.0, '(-)5V' → -5.0, 'VEE_-12V' → -12.0, '+3,3V' → 3.3,
+    'AVDD1P2V' → 1.2, '/3v3_buck/SW' → None, 'VBAT' → None
     """
     if not net_name:
         return None
     net_name = unescape_string(net_leaf(net_name))
     sign = -1.0 if re.match(r'(-|NEG|\(-\))', net_name, re.IGNORECASE) else 1.0
+    name = _COMMA_DECIMAL.sub(r'\1.\2', net_name)
     # Pattern: digits V digits  (e.g. 3V3 → 3.3, 1V8 → 1.8)
-    m = re.search(r'(\d+)V(\d+)', net_name, re.IGNORECASE)
+    m = re.search(r'(\d+)V(\d+)', name, re.IGNORECASE) or _P_DECIMAL.search(name)
     if m:
-        return sign * float(f"{m.group(1)}.{m.group(2)}")
+        return _signed(name, m, sign) * float(f"{m.group(1)}.{m.group(2)}")
     # Pattern: digits.digits V  or  digits V  (e.g. 3.3V, 5V, 12V)
-    m = re.search(r'(\d+(?:\.\d+)?)V', net_name, re.IGNORECASE)
+    m = re.search(r'(\d+(?:\.\d+)?)V', name, re.IGNORECASE)
     if m:
-        return sign * float(m.group(1))
+        return _signed(name, m, sign) * float(m.group(1))
     return None
+
+
+_COMMA_DECIMAL = re.compile(r'(\d),(\d+)(?=V)', re.IGNORECASE)
+# <n>P<n> as a whole word, alone or after a supply word, with nothing after it but V or an
+# A/D domain letter (1P2V, V1P8, VDD3P3, P3P3V, V3P3D); a reference (R39P1, J1P2) or a
+# USB version (USB3P0) is not a voltage.
+_P_DECIMAL = re.compile(r'(?:^|(?<=[_\-\s+]))(?:V|P|POS|VDD|VCC|AVDD|DVDD|VDDA|VDDIO|VIO)?'
+                        r'(\d+)P(\d+)(?:V|[AD])?(?=$|[_\-\s])', re.IGNORECASE)
+
+
+def _signed(name: str, m: re.Match, sign: float) -> float:
+    """*sign*, or -1 when a '-' right before the voltage follows a space or '_'."""
+    before = name[:m.start()]
+    if before.endswith("-") and len(before) >= 2 and before[-2] in " _\t":
+        return -1.0
+    return sign
+
+
+_PIN_NAMED_NET = re.compile(r'([A-Z]+\d+)P(\d+)')
+
+
+def names_own_pin(net_name: str | None, pins) -> bool:
+    """True when *net_name* is ``<ref>P<pin>`` and pin <pin> of <ref> is on the net: a valve
+    circuit's V2P3 is pin 3 of V2, not 2.3 V. *pins* are the net's pin dicts."""
+    m = _PIN_NAMED_NET.fullmatch(unescape_string(net_leaf(net_name or "")).upper())
+    return bool(m) and any(str(p.get("component", "")).upper() == m[1] and str(p.get("pin_number")) == m[2]
+                           for p in pins or ())
 
 
 # USB data lines (D+/D-) must not inherit the 5V VBUS fallback —

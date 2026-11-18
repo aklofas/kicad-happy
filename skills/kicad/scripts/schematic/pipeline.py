@@ -27,8 +27,8 @@ from kicad_core.diagnostics import merge, record
 from kicad_core.sexp import parse_file_checked
 from kicad_core.project import parse_input_problem
 from kicad_core.values import snap_to_mil_grid as _snap_mil
-from kicad_core.netnames import (_clean_hierarchical_name, is_vss_name, negative_split_rails,
-                                  net_leaf, parse_voltage_from_net_name)
+from kicad_core.netnames import (_clean_hierarchical_name, is_vss_name, names_own_pin,
+                                  negative_split_rails, net_leaf, parse_voltage_from_net_name)
 from kicad_core.netquery import (
     build_bridge_facts,
     build_ref_pins,
@@ -302,8 +302,8 @@ def _build_net_classifications(results: dict) -> dict[str, dict]:
     return classifications
 
 
-# The two voltage spellings parse_voltage_from_net_name reads: 3V3, and 3.3V / 5V.
-_VOLTAGE_TOKEN = re.compile(r"\d+V\d+|\d+(?:\.\d+)?V", re.IGNORECASE)
+# The voltage spellings parse_voltage_from_net_name reads: 3V3, 1P8, and 3.3V / 3,3V / 5V.
+_VOLTAGE_TOKEN = re.compile(r"\d+V\d+|\d+P\d+|\d+(?:[.,]\d+)?V", re.IGNORECASE)
 
 
 def _sheet_stem_voltage(net: str) -> float | None:
@@ -370,12 +370,14 @@ def build_rail_map(ctx: AnalysisContext, power_regulators: list[dict]) -> dict[s
             # Every net the context reads as ground (a COM return, the SPICE ground 0), not
             # only a ground name; AVSS and VSSA can name a negative supply, so only VSS is 0 V.
             v = 0
+        elif names_own_pin(net_name, (ctx.nets[net_name] or {}).get("pins")):
+            # V2P3 carrying pin 3 of V2 (a valve circuit) is a pin's net, not 2.3 V
+            v = None
         elif ctx.is_power_net(net_name, by_pins=False) or ctx.is_ground(net_name):
             v = _estimate_rail_voltage(net_name)
             if v is not None and net_name in split_negative:
                 v = -abs(v)
-        elif net_name in inverting_out and not re.search(r"\d,\d", net_name):
-            # The name parser takes only a dot as the decimal point: 3,3V would read 3.0.
+        elif net_name in inverting_out:
             v = parse_voltage_from_net_name(net_name)
             if v is not None and (v < 0) != inverting_out[net_name]:
                 v = None

@@ -30,6 +30,58 @@ class ParseSign(unittest.TestCase):
         self.assertEqual(parse_voltage_from_net_name("VNEG_5V"), 5.0)
 
 
+class SeparatorsDecimalsAndPinNames(unittest.TestCase):
+    def test_separator_names_stay_positive(self):
+        for name, want in [("USB-5V", 5.0), ("FTDI-3.3V", 3.3), ("CAMERA-2V8", 2.8), ("EURO-5V_F", 5.0),
+                           ("DI-1-DSP-3.3V", 3.3), ("TPS-VOUT-3.3V", 3.3)]:
+            self.assertEqual(parse_voltage_from_net_name(name), want, name)
+
+    def test_comma_and_p_notation(self):
+        for name, want in [("3,3V", 3.3), ("2,75V", 2.75), ("+3,3V-FAILURE", 3.3), ("AVDD1P2V", 1.2),
+                           ("V1P8", 1.8), ("P1P8V_VCC", 1.8), ("VDD3P3", 3.3), ("PMU_RSTB_1P8V", 1.8),
+                           ("VDDAR_0P85_CORE", 0.85), ("PWR_3,3-5V", 5.0)]:
+            self.assertEqual(parse_voltage_from_net_name(name), want, name)
+        for name in ["R39P1", "J1P2", "USB3P0", "A1P8"]:
+            self.assertIsNone(parse_voltage_from_net_name(name), name)
+
+    def test_names_read_before_keep_their_values(self):
+        for name, want in [("+3V3", 3.3), ("-5V", -5.0), ("NEG12V", -12.0), ("(-)5V", -5.0),
+                           ("VCC_3V3", 3.3)]:
+            self.assertEqual(parse_voltage_from_net_name(name), want, name)
+
+    def test_sign_after_space_or_underscore(self):
+        self.assertEqual(parse_voltage_from_net_name("GENERATED -5V"), -5.0)
+        self.assertEqual(parse_voltage_from_net_name("VEE_-12V"), -12.0)
+        self.assertEqual(parse_voltage_from_net_name("/psu/VEE_-1V8"), -1.8)
+
+    def test_valve_pin_net_is_no_rail(self):
+        # a valve circuit names the net on pin 3 of V2 "V2P3": not a 2.3 V rail
+        comps = [_part("V2", "other", "ECC83", "Valve:ECC83", [("3", "A")]),
+                 _part("U1", "ic", "X", "X:X", [("5", "VDD")])]
+        nets = {"V2P3": [("V2", "3", "passive")], "V1P8": [("U1", "5", "power_in")]}
+        ctx = _ctx(comps, nets, {"V2P3", "V1P8"})
+        rails = _rails(ctx, [])
+        self.assertNotIn("V2P3", rails)
+        self.assertEqual(rails["V1P8"], 1.8)
+        self.assertIsNone(ctx.rail_voltage_or("V2P3", parse_voltage_from_net_name))
+        self.assertEqual(ctx.rail_voltage_or("V1P8", parse_voltage_from_net_name), 1.8)
+        stats = _stats_rails(comps, ctx.nets)
+        self.assertIsNone(stats["V2P3"])
+        self.assertEqual(stats["V1P8"], 1.8)
+
+    def test_connector_and_ic_pin_nets_read_no_voltage(self):
+        for name in ["Net-(J2-P3)", "U1P2", "J2P3"]:
+            self.assertIsNone(parse_voltage_from_net_name(name), name)
+        # a connector P2 names the net on its pin 3 "P2P3"
+        comps = [_part("P2", "connector", "Conn_01x04", "Connector:Conn_01x04", [("2", "Pin_2"), ("3", "Pin_3")])]
+        ctx = _ctx(comps, {"P2P3": [("P2", "3", "passive")], "U1P2": [("P2", "2", "passive")]},
+                   {"P2P3", "U1P2"})
+        rails = _rails(ctx, [])
+        self.assertNotIn("P2P3", rails)
+        self.assertNotIn("U1P2", rails)
+        self.assertIsNone(ctx.rail_voltage_or("P2P3", parse_voltage_from_net_name))
+
+
 class Callers(unittest.TestCase):
     def test_opposite_polarity_rails_are_not_compatible(self):
         from schematic.net_analysis import _rails_voltage_compatible

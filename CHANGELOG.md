@@ -141,6 +141,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The sleep audit counts power LEDs wired straight to ground, and reads a battery rail's voltage from the battery symbol (2xAA, coin cells, stacked cells) instead of always assuming 3.7 V.
 - TPS54202, TPS54560, LM338, LM350, SPX1117, LMR50410 and LMR51625/LMR51635 take their datasheet feedback reference; two table entries for regulators that do not exist are gone.
 - A regulator whose Value names a different part no longer takes a fixed output voltage from the symbol it was drawn with.
+- Rail voltages read from net names understand comma decimals (`3,3V`), P-notation (`1P2V`, `V1P8`, `VDD3P3`) and a minus after a space or underscore (`VEE_-12V`, `GENERATED -5V`); a dash between words (`USB-5V`) is still no sign, and a net named after a part's own pin (`V2P3` on pin 3 of V2) gets no voltage.
 
 ### Documentation
 

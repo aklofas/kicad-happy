@@ -19,7 +19,7 @@ from kicad_core.model import PinNetEntry
 from kicad_core.netquery import build_pin_to_net_map
 from kicad_core.netnames import (
     configured_rail_voltage, is_earth_name, is_ground_name, is_pin_gated_rail_name,
-    is_pin_guarded_signal, is_power_net_name, is_vss_name, net_leaf, rail_matches,
+    is_pin_guarded_signal, is_power_net_name, is_vss_name, names_own_pin, net_leaf, rail_matches,
 )
 from kicad_core.diagnostics import record
 from kicad_core.values import AmbiguousValueSeparator, ambiguous_separator, parse_value
@@ -274,12 +274,15 @@ class AnalysisContext:
         return {}
 
     def rail_voltage_or(self, net: str | None, estimate) -> float | None:
-        """None for an ignored rail, else the configured voltage, else ``estimate(net)``."""
+        """None for an ignored rail, else the configured voltage, else ``estimate(net)``; a net
+        named after a pin on it (``names_own_pin``: V2P3 on pin 3 of V2) has no estimate."""
         if not net:
             return None
         if self.rail_ignored(net):
             return None
         v = self.config_rail_voltage(net)
+        if v is None and names_own_pin(net, (self.nets.get(net) or {}).get("pins")):
+            return None
         return v if v is not None else estimate(net)
 
     def get_two_pin_nets(self, ref: str) -> tuple[str | None, str | None]:
