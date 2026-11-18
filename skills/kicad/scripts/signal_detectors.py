@@ -5545,10 +5545,10 @@ def audit_power_pin_dc_paths(ctx: AnalysisContext,
         return (c.get("type") or "").lower() == "capacitor"
 
     def _is_connector(ref: str) -> bool:
-        """Return True if ref looks like a connector (external supply entry point)."""
+        """Return True if ref looks like a connector or a battery (a supply entry point)."""
         c = components.get(ref) or {}
         t = (c.get("type") or "").lower()
-        if t in ("connector",):
+        if t in ("connector", "battery"):
             return True
         # J<digit> / P<digit> reference prefixes are conservative connector
         # heuristics; other connector refs must carry type="connector" in the
