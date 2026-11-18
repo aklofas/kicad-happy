@@ -80,6 +80,7 @@ _SYMBOL_TYPES = ("power_symbol", "power_flag", "flag")
 # a COM pin returns its output to COM.
 _CONVERTER_OUTPUT_PIN = re.compile(r'^[+-]V_?OUT$|^V_?OUT[+-]$|^[+-]VO$|^VO[+-]$')
 _NEGATIVE_CONVERTER_OUTPUT_PIN = re.compile(r'^-V_?OUT$|^V_?OUT-$|^-VO$|^VO-$')
+_POSITIVE_CONVERTER_OUTPUT_PIN = re.compile(r'^\+V_?OUT$|^V_?OUT\+$|^\+VO$|^VO\+$')
 
 
 def _is_ground_symbol_pin(pin: dict, comp: dict) -> bool:
@@ -192,8 +193,9 @@ class AnalysisContext:
         parallel_group_cache: ``detector_helpers.parallel_groups`` results per part type.
 
     Methods:
-        is_power_net(name): True if *name* is a known power rail or matches
-            common power net name patterns (VCC, +3V3, VBUS, etc.).
+        is_power_net(name): True if *name* is a known power rail, matches
+            common power net name patterns (VCC, +3V3, VBUS, etc.) or is in
+            ``vss_supply_rails``.
         is_ground(name): True if *name* matches ground patterns (GND, VSS, etc.) or the
             net is in ``ground_evidence``, and is not in ``vss_supply_rails``.
         rail_voltage(net): The configured voltage, else the exact net's entry in
@@ -235,9 +237,10 @@ class AnalysisContext:
 
     def is_power_net(self, name: str | None, *, by_pins: bool = True) -> bool:
         """*by_pins* False leaves out the rails known only by their pins (``topology_rails``,
-        ``pin_gated_rails``)."""
+        ``pin_gated_rails``). A VSS net a regulator drives (``vss_supply_rails``) is a rail
+        whatever its name."""
         return name not in self.pin_guarded_signals and (
-            is_power_net_name(name, self.known_power_rails)
+            is_power_net_name(name, self.known_power_rails) or name in self.vss_supply_rails
             or (by_pins and (name in self.topology_rails or name in self.pin_gated_rails)))
 
     def is_ground(self, name: str | None) -> bool:
@@ -321,10 +324,12 @@ def vss_supply_rail_nets(ctx: AnalysisContext) -> frozenset[str]:
     the project config gives them a negative voltage.
 
     A power output pin not itself named ground or VSS sits on the net, and its part has a
-    pin on another, ground-named net (its own reference): a negative LDO's OUT on VSS. A
-    converter's -Vout counts only beside its common pin (``COM``, ``0V``) on ground: without
-    one, -Vout is the output's own return. A ground symbol other than VSS (``power:GND``) on
-    the net joins it to the board ground, so it stays ground whatever drives it."""
+    pin on another, ground-named net (its own reference): a negative LDO's OUT on VSS, a
+    charge pump's -VOUT beside its GND. A converter with both +Vout and -Vout counts only
+    beside its common pin (``COM``, ``0V``) on ground: without one, -Vout is the output's own
+    return, and a pin such as ``GND`` or ``-Vin`` is its input return. A ground symbol other
+    than VSS (``power:GND``) on the net joins it to the board ground, so it stays ground
+    whatever drives it."""
     shared_refs = {ref for ref, n in Counter(c["reference"] for c in ctx.components).items()
                    if n > 1}
     found = set()
@@ -349,9 +354,9 @@ def vss_supply_rail_nets(ctx: AnalysisContext) -> frozenset[str]:
             part_pins = [(q.get("pin_name") or "", n)
                          for n in {n for n, _ in ctx.ref_pins.get(ref, {}).values()}
                          for q in ctx.nets.get(n, {}).get("pins", []) if q.get("component") == ref]
-            if _NEGATIVE_CONVERTER_OUTPUT_PIN.match(pin_name.upper()):
-                part_pins = [(q, n) for q, n in part_pins
-                             if q.upper() in ("COM", "COMMON") or is_ground_name(q)]
+            if (_NEGATIVE_CONVERTER_OUTPUT_PIN.match(pin_name.upper())
+                    and any(_POSITIVE_CONVERTER_OUTPUT_PIN.match(q.upper()) for q, _ in part_pins)):
+                part_pins = [(q, n) for q, n in part_pins if q.upper() in ("COM", "COMMON", "0V")]
             if any(n != name and ctx.is_ground(n) and not is_vss_name(n) for _, n in part_pins):
                 found.add(name)
                 break

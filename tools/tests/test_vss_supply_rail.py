@@ -110,6 +110,23 @@ class RegulatorDrivenVss(unittest.TestCase):
                if o["category"] == "regulator_caps"]
         self.assertEqual([o["missing_caps"] for o in obs], [{"output": "VSS"}])
 
+    def test_vss_supply_without_a_power_symbol_is_a_power_net_with_decoupling(self):
+        # AVSS is a power name only by its regulator: no power symbol sits on it.
+        comps = [_part("U1", "ic", "TPS72325", "Regulator_Linear:TPS72325",
+                       [("1", "GND"), ("2", "IN"), ("5", "OUT")]),
+                 _part("U2", "ic", "ADS1299", "Analog_ADC:ADS1299", [("1", "AVDD"), ("2", "AVSS")]),
+                 _cap("C1")]
+        nets = {"GNDA": [_pin("U1", "1", "GND", "power_in"), _pin("C1", "2", "~", "passive")],
+                "-RAW": [_pin("U1", "2", "IN", "power_in")],
+                "AVSS": [_pin("U1", "5", "OUT", "power_out"), _pin("U2", "2", "AVSS", "power_in"),
+                         _pin("C1", "1", "~", "passive")],
+                "+2V5": [_pin("U2", "1", "AVDD", "power_in")]}
+        ctx = _ctx(comps, nets, {"GNDA", "-RAW", "+2V5"})
+        self.assertEqual(ctx.vss_supply_rails, {"AVSS"})
+        self.assertTrue(ctx.is_power_net("AVSS"))
+        rails = {d["rail"]: d for d in detect_decoupling(ctx)}
+        self.assertEqual([c["ref"] for c in rails["AVSS"]["capacitors"]], ["C1"])
+
     def test_vssa_output_is_read_the_same_way(self):
         ctx = _negative_ldo("VSSA")
         regs = detect_power_regulators(ctx, [])
@@ -164,6 +181,29 @@ class GroundVss(unittest.TestCase):
         ctx = _ctx(comps, nets, {"+24V", "GND", "VSSA", "VDDA"})
         self.assertEqual(ctx.vss_supply_rails, frozenset())
         self.assertTrue(ctx.is_ground("VSSA"))
+
+    def test_single_output_module_with_a_gnd_named_input_return_stays_ground(self):
+        # The input return named GND is not the output's common: -Vout is still the
+        # output's own return.
+        comps = [_part("U1", "ic", "MOD", "Custom:MOD",
+                       [("1", "+Vin"), ("2", "GND"), ("4", "-Vout"), ("6", "+Vout")])]
+        nets = {"+24V": [_pin("U1", "1", "+Vin", "power_in")],
+                "GND": [_pin("U1", "2", "GND", "power_in")],
+                "VSSA": [_pin("U1", "4", "-Vout", "power_out")],
+                "VDDA": [_pin("U1", "6", "+Vout", "power_out")]}
+        ctx = _ctx(comps, nets, {"+24V", "GND", "VSSA", "VDDA"})
+        self.assertEqual(ctx.vss_supply_rails, frozenset())
+        self.assertTrue(ctx.is_ground("VSSA"))
+
+    def test_charge_pump_negative_output_beside_its_ground_is_a_supply(self):
+        # One negative output and no positive one: the part's GND is its reference.
+        comps = [_part("U1", "ic", "LT1054", "Custom:LT1054",
+                       [("1", "VIN"), ("2", "GND"), ("3", "-VOUT")])]
+        nets = {"+5V": [_pin("U1", "1", "VIN", "power_in")],
+                "GND": [_pin("U1", "2", "GND", "power_in")],
+                "VSS": [_pin("U1", "3", "-VOUT", "power_out")]}
+        ctx = _ctx(comps, nets, {"+5V", "GND", "VSS"})
+        self.assertEqual(ctx.vss_supply_rails, {"VSS"})
 
     def test_power_out_without_another_ground_does_not_make_a_supply(self):
         # no reference ground on the part: nothing says VSS sits away from its ground
