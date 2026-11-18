@@ -42,6 +42,18 @@ class SignalTails(unittest.TestCase):
         self.assertFalse(is_rail_signal_name("FAULT"))
 
 
+class VoltageChannelNames(unittest.TestCase):
+    def test_v_n_p_channel_inputs_are_signals(self):
+        for name in ["V1P", "V2P", "V3P", "V1P_IN", "V2P_SW", "V1N"]:
+            with self.subTest(name=name):
+                self.assertFalse(is_power_net_name(name))
+
+    def test_voltage_in_p_notation_stays_a_rail(self):
+        for name in ["V1P8", "V3P3", "V1P2", "V18P", "V12P0", "V3P3D", "V1P8_SW"]:
+            with self.subTest(name=name):
+                self.assertTrue(is_power_net_name(name))
+
+
 class EmcSharesTheTailTest(unittest.TestCase):
     def test_tails_are_signals_for_emc(self):
         for name in ["PWR_LED", "PWR_LED_K", "VBAT_READ", "5V_FAULT", "12V_{FBM}", "PWR_OK2",

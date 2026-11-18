@@ -109,7 +109,7 @@ _V_NUMBER_RAIL_WORDS = frozenset({"V", "REG", "SW", "USB", "BAT", "SB", "AUX"})
 # ... and by one of these only after a voltage or two digits (V3P3D, V33IO, V36IN):
 # V1A, V2OUT are channels.
 _V_NUMBER_VOLTAGE_SUFFIXES = frozenset({"IO", "IN", "OUT", "O", "A", "D", "N", "P"})
-_V_NUMBER = re.compile(r'^V(\d+)([VP]\d*|\.\d+)?')
+_V_NUMBER = re.compile(r'^V(\d+)(V\d*|P\d+|\.\d+)?')
 # A rail's monitor or feedback line by its last word (5V_FAULT, 5V_ISENSE, 12V_{FBM}).
 _RAIL_MONITOR_TAILS = frozenset({"FAULT", "ISENSE", "ISNS", "FBM", "PWRGOOD"})
 # A divider or ADC tap on a rail (VBAT_MEAS, VBUS_DIV, VIN_SENSED); after a supply word the
