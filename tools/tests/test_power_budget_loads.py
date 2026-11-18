@@ -94,6 +94,58 @@ class LedLoads(unittest.TestCase):
         self.assertNotIn("+5V", _loads(comps, nets))
 
 
+class LedFalseLoads(unittest.TestCase):
+    def _led(self, pins, nets_extra, value="LED", lib="Device:LED", resistors=()):
+        comps = [_part("D3", "led", value, lib, n=len(pins))] + [_part(r, "resistor", v) for r, v in resistors]
+        nets = {"+5V": [("D3", "1", pins[0], "passive")]}
+        nets.update(nets_extra)
+        return comps, nets
+
+    def test_thermal_pad_is_not_a_die(self):
+        for pad in ("PAD", "HEAT"):
+            comps = [_part("D3", "led", "LED_1W", n=3), _part("R1", "resistor", "0.1")]
+            nets = {"+5V": [("D3", "1", "A", "passive"), ("R1", "1", "~", "passive")],
+                    "N1": [("D3", "2", "K", "passive"), ("R1", "2", "~", "passive")],
+                    "GND": [("D3", "3", pad, "passive")]}
+            loads = _loads(comps, nets)["+5V"]["other_loads"]
+            self.assertEqual([(o["ref"], o["estimated_mA"]) for o in loads], [("D3", 5)], pad)
+
+    def test_pad_net_does_not_become_the_leds_rail(self):
+        comps = [_part("D3", "led", "LED_Pad", n=3), _part("R1", "resistor", "330")]
+        nets = {"+5V": [("R1", "1", "~", "passive")],
+                "N1": [("R1", "2", "~", "passive"), ("D3", "1", "A", "passive")],
+                "N2": [("D3", "2", "K", "passive")],
+                "Earth": [("D3", "3", "PAD", "passive")]}
+        rails = _loads(comps, nets, rails=("+5V", "Earth", "GND"))
+        self.assertEqual([(o["ref"], o["estimated_mA"]) for o in rails["+5V"]["other_loads"]], [("D3", 5)])
+        self.assertNotIn("Earth", rails)
+
+    def test_resistor_pack_counts_once_per_die(self):
+        # a multi-unit pack arrives as one component entry per unit under the same reference
+        def board(units):
+            comps = [_part("D1", "led", "LED_RGB", "Device:LED_RGB", n=4)]
+            comps += [_part("R27", "resistor", "33", "Device:R_Pack04_Split") for _ in range(units)]
+            nets = {"+3V3": [("D1", "1", "A", "passive")],
+                    "N1": [("D1", "2", "RK", "passive"), ("R27", "1", "~", "passive")],
+                    "N2": [("D1", "3", "GK", "passive")], "N3": [("D1", "4", "BK", "passive")],
+                    "GND": [("R27", "2", "~", "passive")]}
+            return _loads(comps, nets, rails=("+3V3", "GND"))["+3V3"]["other_loads"][0]["estimated_mA"]
+        self.assertEqual(board(3), board(1))
+
+    def test_part_typed_led_without_diode_pins_keeps_the_flat_load(self):
+        comps = [_part("RGB0", "led", "Conn_01x04", "Connector_Generic:Conn_01x04", n=4)]
+        nets = {"+5V": [("RGB0", "1", "Pin_1", "passive")], "N1": [("RGB0", "2", "Pin_2", "passive")],
+                "N2": [("RGB0", "3", "Pin_3", "passive")], "N3": [("RGB0", "4", "Pin_4", "passive")]}
+        loads = _loads(comps, nets)["+5V"]["other_loads"]
+        self.assertEqual([o["estimated_mA"] for o in loads], [5])
+
+    def test_milliohm_shunt_is_not_a_series_resistor(self):
+        comps, nets = _rgb_board()
+        comps[1]["value"] = "0.1"
+        led = _loads(comps, nets)["+5V"]["other_loads"][0]
+        self.assertAlmostEqual(led["estimated_mA"], 5 + 2 * (5 - 3.2) / 110 * 1000, delta=0.5)
+
+
 class FusePassThrough(unittest.TestCase):
     def _fused(self, far):
         comps = [_part("F1", "fuse", "500mA"),

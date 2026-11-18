@@ -1522,7 +1522,7 @@ def analyze_protocol_compliance(components: list[dict], nets: dict,
             "total_issues": sum(len(f.get("issues", []) or []) for f in findings)}
 
 
-_LED_NON_TERMINAL_NAMES = {"MNT", "MT", "SH", "SHLD", "SHIELD", "TAB", "NC", "N/C", "EP", "GND_TAB"}
+_LED_NON_TERMINAL_NAMES = {"MNT", "MT", "SH", "SHLD", "SHIELD", "TAB", "NC", "N/C", "EP", "EPAD", "PAD", "HEAT", "THERMAL", "GND_TAB"}
 
 
 def _is_led_non_terminal(nets: dict, ref: str, pnum, net_name) -> bool:
@@ -1533,6 +1533,11 @@ def _is_led_non_terminal(nets: dict, ref: str, pnum, net_name) -> bool:
     return (str(pin.get("pin_name", "")).upper() in _LED_NON_TERMINAL_NAMES
             or pin.get("pin_type") in ("no_connect", "unconnected"))
 
+
+# a pin that marks a part typed as an LED as a diode: A, K, K1, RK, GA, COM_A, K_RED, ...
+_LED_TERMINAL_PIN = re.compile(r"^(?:[RGBWY]?[AK]\d?|ANODE\d?|CATHODE\d?|COM_?[AK]|[AK]_?(?:RED|GREEN|BLUE|WHITE)\w*)$")
+# below this a resistor is a current-sense shunt or a jumper, not an LED series resistor
+_MIN_LED_SERIES_OHMS = 10.0
 
 _LED_DATA_PINS = {"DIN", "DI", "DOUT", "DO", "SDI", "SDO", "CI", "CO", "CKI", "CKO"}
 
@@ -1654,7 +1659,7 @@ def analyze_power_budget(ctx: AnalysisContext,
         rn1, rn2 = ctx.get_two_pin_nets(rref)
         resistor_nets[rref] = (rn1, rn2)
         for n in (rn1, rn2):
-            if n:
+            if n and rref not in net_to_resistors.get(n, []):
                 net_to_resistors.setdefault(n, []).append(rref)
 
     _die_color = {"R": "red", "G": "green", "B": "blue", "W": "white"}
@@ -1671,7 +1676,7 @@ def analyze_power_budget(ctx: AnalysisContext,
             color = _die_color.get(pname[:1]) if len(pname) == 2 and pname[1] in "AK" else None
             vf = LED_VF_BY_COLOR[color][0] if color else led_forward_voltage(led)
             ohms = ctx.parsed_values.get(rref) if rref else None
-            if v is None or not ohms or ohms <= 0 or abs(v) <= vf:
+            if v is None or not ohms or ohms < _MIN_LED_SERIES_OHMS or abs(v) <= vf:
                 total += 5
             else:
                 total += (abs(v) - vf) / ohms * 1000
@@ -1687,13 +1692,16 @@ def analyze_power_budget(ctx: AnalysisContext,
         led_pins = {k: v for k, v in ref_pins.get(comp["reference"], {}).items()
                     if not _is_led_non_terminal(nets, comp["reference"], k, v[0])}
         led_nets = [n for n, _ in led_pins.values() if n]
-        multi = len(led_pins) > 2
+        # a part typed as an LED that has no diode pin (a trimmer, a header) keeps the two-pin read
+        led_pin_names = {str(p.get("pin_name", "")).upper()
+                         for n in led_nets for p in nets.get(n, {}).get("pins", [])
+                         if p["component"] == comp["reference"]}
+        multi = len(led_pins) > 2 and (
+            is_addressable_led(comp)
+            or any(_LED_TERMINAL_PIN.match(nm) or nm in _LED_DATA_PINS for nm in led_pin_names))
         # an addressable LED (a family name, or a data-in / data-out pin) sets its own
         # current: no series resistor, a flat 5 mA
-        addressable = multi and (is_addressable_led(comp) or any(
-            str(p.get("pin_name", "")).upper() in _LED_DATA_PINS
-            for n in led_nets for p in nets.get(n, {}).get("pins", [])
-            if p["component"] == comp["reference"]))
+        addressable = multi and (is_addressable_led(comp) or bool(led_pin_names & _LED_DATA_PINS))
         n1, n2 = ctx.get_two_pin_nets(comp["reference"])
         if multi:
             n1, n2 = None, None
