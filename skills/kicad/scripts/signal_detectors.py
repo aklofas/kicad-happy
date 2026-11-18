@@ -5441,6 +5441,18 @@ def _is_module_internal_rail(net_name: str) -> bool:
     return any(base.startswith(pat) for pat in _MODULE_INTERNAL_RAIL_PATTERNS)
 
 
+# Pin names of an IC's own internal-regulator output (STM32 VCAP_1, ST25R3916 VDD_DR,
+# MPR121 VREG, SAM VDDCORE): the IC drives the pin and it needs only its decoupling
+# capacitor. VREG_IN / VREGIN / VREG_VIN / VREG_AVDD are the regulator's supply inputs.
+_INTERNAL_REG_PIN = re.compile(r"VCAP\w*|VDD_?CORE\w*|VDD_DR|VREG(?:_?OUT|A_OUT|\d*)")
+
+
+def _is_internal_regulator_pin(pin_name: str) -> bool:
+    """True for an IC pin named as its internal regulator's output."""
+    return any(_INTERNAL_REG_PIN.fullmatch(part.strip())
+               for part in (pin_name or "").upper().split("/"))
+
+
 def _is_bootstrap_pin_name(pin_name: str) -> bool:
     """True for BST, BOOT, CBST, BOOT1, BST_A, ... (any _ or / token)."""
     tokens = re.split(r"[_/]", (pin_name or "").upper())
@@ -5641,7 +5653,8 @@ def audit_power_pin_dc_paths(ctx: AnalysisContext,
             # Module-internal LDO rails (VDDPLL_*, VDDA_INT_*, VDDCORE_*, etc.)
             # are driven by an INTERNAL regulator inside the IC — they don't
             # need an external DC source, only decoupling. Demote to info.
-            _is_internal_rail = _is_module_internal_rail(net_name)
+            _is_internal_rail = (_is_module_internal_rail(net_name)
+                                 or _is_internal_regulator_pin(pin_name))
             _severity = 'info' if _is_internal_rail else 'error'
             _summary_prefix = (
                 f"IC power pin {pin_label} on internal-LDO rail "
@@ -5660,8 +5673,8 @@ def audit_power_pin_dc_paths(ctx: AnalysisContext,
                 "summary": _summary_prefix,
                 "description": (
                     f"Pin {pin_label} is type=power_in on net {net_name!r} "
-                    f"which matches a module-internal LDO rail naming "
-                    f"convention. The IC supplies this rail from an "
+                    f"which is an internal-LDO rail by its net or pin name. "
+                    f"The IC supplies this rail from an "
                     f"internal regulator; only external decoupling is "
                     f"required. No external DC source needed."
                     if _is_internal_rail else
