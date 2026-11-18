@@ -1390,7 +1390,7 @@ def generate_decoupling(det, output_file, context=None, parasitics=None):
 
     # Build cap models: each cap is series R_esr + L_par + C
     cap_lines = []
-    using_pdn = False
+    from_pdn = 0
     for i, c in enumerate(valid_caps):
         ref = c["ref"]
         farads = c["farads"]
@@ -1401,7 +1401,7 @@ def generate_decoupling(det, output_file, context=None, parasitics=None):
         if pdn and pdn.get("esr_ohm") is not None:
             esr = pdn["esr_ohm"]
             l_par = pdn.get("esl_nH", 1.0) * 1e-9  # nH → H
-            using_pdn = True
+            from_pdn += 1
         else:
             # ESR estimate: ceramic <10µF → 10mΩ, ≥10µF → 5mΩ, elec ≥100µF → 100mΩ
             if farads >= 1e-4:
@@ -1425,7 +1425,13 @@ def generate_decoupling(det, output_file, context=None, parasitics=None):
 
     cap_netlist = "\n".join(cap_lines)
     n_caps = len(valid_caps)
-    model_note = "ESR/ESL from pdn_impedance (package-based)" if using_pdn else "estimated ESR + parasitic L from SRF"
+    if from_pdn == n_caps:
+        model_note = "ESR/ESL from pdn_impedance (package-based)"
+    elif from_pdn:
+        model_note = (f"ESR/ESL from pdn_impedance for {from_pdn} of {n_caps} capacitors, "
+                      "estimated ESR + parasitic L from SRF for the rest")
+    else:
+        model_note = "estimated ESR + parasitic L from SRF"
 
     circuit = f"""\
 * Auto-generated testbench for decoupling analysis: {spice_text(rail)} rail

@@ -38,7 +38,7 @@ from kicad_core.netquery import build_bridge_facts, build_ref_pins, conductor_of
 from kicad_types import AnalysisContext
 from finding_schema import make_provenance, make_finding, Det
 from detector_helpers import index_two_pin_components, get_components_by_type, get_unique_ics, is_tvs_diode, symbol_name
-from detector_helpers import group_members, group_part, group_reps, group_value, parallel_groups
+from detector_helpers import group_members, group_part, group_reps, group_value, is_fitted, parallel_groups
 
 from lookup_helpers import get_facts, has_data, best, facts_trusted
 
@@ -1309,6 +1309,11 @@ def detect_crystal_circuits(ctx: AnalysisContext) -> list[dict]:
     return crystal_circuits
 
 
+def _is_decoupling_cap(comp: dict) -> bool:
+    """A capacitor that is fitted on the board."""
+    return comp["type"] == "capacitor" and is_fitted(comp)
+
+
 def detect_decoupling(ctx: AnalysisContext) -> list[dict]:
     """Detect decoupling capacitors per power rail."""
     # EQ-069: f_SRF = 1/(2π√(ESL×C)) (decoupling SRF)
@@ -1328,7 +1333,7 @@ def detect_decoupling(ctx: AnalysisContext) -> list[dict]:
         rail_caps = []
         for p in rail_info["pins"]:
             comp = ctx.comp_lookup.get(p["component"])
-            if comp and comp["type"] == "capacitor":
+            if comp and _is_decoupling_cap(comp):
                 cap_val = ctx.parsed_values.get(p["component"])
                 if cap_val:
                     # Check if other pin goes to ground
@@ -4216,15 +4221,15 @@ def _reference_net(ctx: AnalysisContext, net_name: str, regulator_outputs: set) 
 
 
 def _has_cap_to_ground(ctx: AnalysisContext, net: str, ref: str) -> bool:
-    """*net* carries a valued capacitor whose other pin is on ground or on *ref*'s own GND-pin
+    """*net* carries a fitted, valued capacitor whose other pin is on ground or on *ref*'s own GND-pin
     net (a regulator's output cap on a net the decoupling detector does not read as a rail).
     A GND pin on a voltage-named net (+5V, or an inverting converter's -5V output) is not the
     part's ground."""
     own_ground = _own_ground_nets(ctx, ref)
     for p in ctx.nets.get(net, {}).get("pins", []):
         cap = p["component"]
-        if ((ctx.comp_lookup.get(cap) or {}).get("type") != "capacitor"
-                or not ctx.parsed_values.get(cap)):
+        comp = ctx.comp_lookup.get(cap)
+        if not comp or not _is_decoupling_cap(comp) or not ctx.parsed_values.get(cap):
             continue
         n1, n2 = ctx.get_two_pin_nets(cap)
         other = n2 if n1 == net else n1
@@ -4256,6 +4261,8 @@ def detect_design_observations(ctx: AnalysisContext, results: dict) -> list[dict
     regulator_outputs = {r.get("output_rail") for r in results.get("power_regulators", [])}
     for ic in unique_ics:
         ref = ic["reference"]
+        if not is_fitted(ic):
+            continue
         ic_power_nets = {net for net, _ in ctx.ref_pins.get(ref, {}).values()
                          if net and ctx.is_power_net(net) and not ctx.is_ground(net)
                          and not _reference_net(ctx, net, regulator_outputs)}
@@ -4284,6 +4291,8 @@ def detect_design_observations(ctx: AnalysisContext, results: dict) -> list[dict
 
     # 2. Regulator capacitor status
     for reg in results.get("power_regulators", []):
+        if not is_fitted(ctx.comp_lookup.get(reg["ref"]) or {}):
+            continue
         in_rail = reg.get("input_rail")
         out_rail = reg.get("output_rail")
         missing = {}

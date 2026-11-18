@@ -172,6 +172,11 @@ def _only_this_part_drives(ctx: AnalysisContext, ref: str, net: str) -> bool:
             and not any(p.get("pin_type") == "input" for p in pins if p["component"] == ref))
 
 
+def is_fitted(comp: dict) -> bool:
+    """False for a part marked DNP or excluded from the board."""
+    return not (comp.get("dnp") or comp.get("on_board") is False)
+
+
 def is_protection_part(comp: dict, ctx: AnalysisContext, pair_suffixes) -> bool:
     """True when *comp* is a clamp (TVS/ESD diode or array, varistor), not a protected device.
 

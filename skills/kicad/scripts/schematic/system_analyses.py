@@ -5,7 +5,7 @@ import math
 import re
 import sys
 from kicad_core.diagnostics import record
-from detector_helpers import is_tvs_diode, type_c_rp
+from detector_helpers import is_fitted, is_tvs_diode, type_c_rp
 from kicad_core.classify import gpio_port_pins, is_active_low_enable, is_touch_pad
 from kicad_types import (
     AnalysisContext,
@@ -2847,7 +2847,7 @@ def analyze_inrush_current(ctx: AnalysisContext,
         output_caps = []
         for p in nets[out_rail]["pins"]:
             comp = comp_lookup.get(p["component"])
-            if not comp or comp["type"] != "capacitor":
+            if not comp or comp["type"] != "capacitor" or not is_fitted(comp):
                 continue
             # Use pre-computed parsed_values (has component_type context)
             cap_val = ctx.parsed_values.get(comp["reference"])
