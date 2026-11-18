@@ -1537,7 +1537,7 @@ def _is_led_non_terminal(nets: dict, ref: str, pnum, net_name) -> bool:
 # a pin that marks a part typed as an LED as a diode: A, K, K1, RK, GA, COM_A, K_RED, ...
 _LED_TERMINAL_PIN = re.compile(r"^(?:[RGBWY]?[AK]\d?|ANODE\d?|CATHODE\d?|COM_?[AK]|[AK]_?(?:RED|GREEN|BLUE|WHITE)\w*)$")
 # below this a resistor is a current-sense shunt or a jumper, not an LED series resistor
-_MIN_LED_SERIES_OHMS = 10.0
+_MIN_LED_SERIES_OHMS = 1.0
 
 _LED_DATA_PINS = {"DIN", "DI", "DOUT", "DO", "SDI", "SDO", "CI", "CO", "CKI", "CKO"}
 

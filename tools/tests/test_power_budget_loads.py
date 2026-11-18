@@ -139,6 +139,12 @@ class LedFalseLoads(unittest.TestCase):
         loads = _loads(comps, nets)["+5V"]["other_loads"]
         self.assertEqual([o["estimated_mA"] for o in loads], [5])
 
+    def test_low_value_series_resistor_is_computed(self):
+        comps, nets = _rgb_board()
+        comps[1]["value"] = "4R7"
+        led = _loads(comps, nets)["+5V"]["other_loads"][0]
+        self.assertAlmostEqual(led["estimated_mA"], (5 - 2.0) / 4.7 * 1000 + 2 * (5 - 3.2) / 110 * 1000, delta=1)
+
     def test_milliohm_shunt_is_not_a_series_resistor(self):
         comps, nets = _rgb_board()
         comps[1]["value"] = "0.1"
