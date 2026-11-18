@@ -1,5 +1,6 @@
 """Thermal reads the keys the analyzers write and does not invent shunt currents."""
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -133,6 +134,119 @@ class CrossVerify(unittest.TestCase):
             {"findings": [{"detector": "analyze_thermal_pad_vias", "component": "U1", "via_count": 1}]})
         self.assertEqual(len(out), 1)
         self.assertEqual(out[0]["status"], "fail")
+
+
+def _ldo(ref, value, vin, vout, cout_farads, out_rail):
+    iout = min(sum(cout_farads) * 1e4, 1.0) if cout_farads else 0.1
+    return {"detector": "detect_power_regulators", "ref": ref, "value": value, "topology": "LDO",
+            "input_rail": "+VIN", "output_rail": out_rail, "estimated_vout": vout,
+            "output_capacitors": [{"ref": f"C{ref}{i}", "farads": f} for i, f in enumerate(cout_farads)],
+            "power_dissipation": {"vin_estimated_V": vin, "vout_V": vout, "dropout_V": round(vin - vout, 3),
+                                  "estimated_iout_A": round(iout, 3),
+                                  "estimated_pdiss_W": round((vin - vout) * iout, 3)}}
+
+
+def _buck(ref, vin, vout, iout, out_rail):
+    pout = vout * iout
+    return {"detector": "detect_power_regulators", "ref": ref, "value": "BUCK1", "topology": "switching",
+            "input_rail": "+VIN", "output_rail": out_rail, "estimated_vout": vout,
+            "power_dissipation": {"vin_estimated_V": vin, "vout_V": vout, "efficiency_assumed": 0.85,
+                                  "estimated_iout_A": iout, "estimated_pdiss_W": round(pout / 0.85 - pout, 3),
+                                  "topology": "switching", "sub_topology": "buck"}}
+
+
+def _fp(ref, library, x=10.0, y=10.0, value=""):
+    return {"reference": ref, "value": value, "library": library, "x": x, "y": y}
+
+
+class RegulatorLoadFromPowerBudget(unittest.TestCase):
+    """An output capacitor sizes stability, not the load: the regulator's load is its output rail's
+    power-budget load, and a load guessed from output capacitance raises at most an info."""
+
+    def run_thermal(self, regulators, rail_loads_mA, footprints):
+        sch = {"analyzer_type": "schematic", "inputs": {"source_files": []}, "findings": regulators,
+               "power_budget": {"rails": {r: {"estimated_load_mA": ma} for r, ma in rail_loads_mA.items()}}}
+        pcb = {"analyzer_type": "pcb", "footprints": footprints}
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            (d / "schematic.json").write_text(json.dumps(sch), encoding="utf-8")
+            (d / "pcb.json").write_text(json.dumps(pcb), encoding="utf-8")
+            r = subprocess.run([sys.executable, str(SCRIPTS / "analyze_thermal.py"), "-s", str(d / "schematic.json"),
+                                "-p", str(d / "pcb.json"), "-o", str(d / "thermal.json")],
+                               capture_output=True, text=True, cwd=tmp)
+            self.assertEqual(r.returncode, 0, r.stderr[-600:])
+            return json.loads((d / "thermal.json").read_text(encoding="utf-8"))
+
+    @staticmethod
+    def of(out, ref):
+        assessed = {a["ref"]: a for a in out["assessments"]}.get(ref)
+        findings = sorted((f["rule_id"], f["severity"]) for f in out["findings"] if ref in f["components"])
+        return assessed, findings
+
+    def test_ldo_with_large_output_caps_and_a_light_load_runs_cool(self):
+        # 12 V to 5 V with 4 x 47 uF on the output and 10 mA of budget load: 7 V x 10 mA = 0.07 W.
+        out = self.run_thermal([_ldo("U10", "NCP1117-5.0", 12.0, 5.0, [47e-6] * 4, "AVDD")], {"AVDD": 10},
+                               [_fp("U10", "Package_TO_SOT_SMD:SOT-223-3_TabPin2"),
+                                _fp("C1", "Capacitor_SMD:C_0805", x=12.0, value="10u")])
+        a, findings = self.of(out, "U10")
+        self.assertAlmostEqual(a["pdiss_w"], 0.07)
+        self.assertAlmostEqual(a["tj_estimated_c"], 29.2)
+        self.assertIn("power budget", a["pdiss_source"])
+        self.assertEqual(findings, [])
+
+    def test_light_rail_ldo_is_cool_and_the_heavy_rail_ldo_keeps_its_error(self):
+        # Two 1117s from 12 V in DPAK: U5's rail draws 10 mA, U4's 260 mA (8.7 V x 0.26 A = 2.262 W).
+        out = self.run_thermal(
+            [_ldo("U4", "AZ1117CD-3.3TRG1", 12.0, 3.3, [22e-6, 10e-6, 10e-6, 10e-6, 10e-6], "+3V3"),
+             _ldo("U5", "AZ1117CD-3.3TRG1", 12.0, 3.3, [22e-6, 10e-6, 0.1e-6], "+3.3VA")],
+            {"+3V3": 260, "+3.3VA": 10},
+            [_fp("U4", "Package_TO_SOT_SMD:TO-252-2"), _fp("U5", "Package_TO_SOT_SMD:TO-252-2", x=40.0),
+             _fp("C12", "Capacitor_SMD:C_0805", x=13.0, value="22u"),
+             _fp("C13", "Capacitor_SMD:C_0805", x=43.0, value="22u")])
+        u5, u5_findings = self.of(out, "U5")
+        self.assertAlmostEqual(u5["pdiss_w"], 0.087)
+        self.assertEqual(u5_findings, [])
+        u4, u4_findings = self.of(out, "U4")
+        self.assertAlmostEqual(u4["pdiss_w"], 2.262)
+        self.assertIn(("TS-002", "error"), u4_findings)
+        self.assertIn(("TS-004", "warning"), u4_findings)
+
+    def test_budget_load_keeps_the_error_on_a_small_package(self):
+        # 240 mA through a SOT-23 LDO from 5 V: 1.7 V x 0.24 A = 0.408 W x 250 C/W -> Tj 127 C.
+        out = self.run_thermal([_ldo("U1", "AP2112K-3.3", 5.0, 3.3, [1e-6], "+3V3")], {"+3V3": 240},
+                               [_fp("U1", "Package_TO_SOT_SMD:SOT-23-5")])
+        a, findings = self.of(out, "U1")
+        self.assertAlmostEqual(a["pdiss_w"], 0.408)
+        self.assertIn(("TS-001", "error"), findings)
+
+    def test_ldo_without_a_budget_load_raises_only_info(self):
+        # No budget load: the 47 uF output proxy (0.47 A) is all there is, so nothing above info.
+        out = self.run_thermal([_ldo("U2", "LDO1", 5.0, 3.3, [47e-6], "+3V3")], {"+3V3": 0},
+                               [_fp("U2", "Package_TO_SOT_SMD:SOT-23-5"),
+                                _fp("C7", "Capacitor_THT:CP_Radial_D5.0mm", x=14.0, value="100u elec")])
+        a, findings = self.of(out, "U2")
+        self.assertAlmostEqual(a["pdiss_w"], 0.799)
+        rules = {r for r, _ in findings}
+        self.assertTrue({"TS-001", "TS-004", "TP-002"} <= rules, findings)
+        self.assertEqual({s for _, s in findings}, {"info"})
+        self.assertEqual(out["summary"]["by_severity"]["error"], 0)
+
+    def test_switcher_without_a_budget_load_is_assessed_from_its_proxy_at_info(self):
+        # U3: no budget load, so the regulator's own estimate, 5 V x 2 A x (1/0.85 - 1) = 1.765 W, at info.
+        # U6: 1 A of budget load, 5 V x 1 A x (1/0.85 - 1) = 0.882 W x 250 C/W -> Tj 245 C, an error as before.
+        out = self.run_thermal([_buck("U3", 12.0, 5.0, 2.0, "+5V"), _buck("U6", 12.0, 5.0, 0.2, "+5VA")],
+                               {"+5V": 0, "+5VA": 1000},
+                               [_fp("U3", "Package_TO_SOT_SMD:SOT-23-6"),
+                                _fp("U6", "Package_TO_SOT_SMD:SOT-23-6", x=60.0)])
+        a, findings = self.of(out, "U3")
+        self.assertIsNotNone(a)
+        self.assertAlmostEqual(a["pdiss_w"], 1.7647)
+        self.assertNotIn("U3", [s["ref"] for s in out.get("skipped_components", [])])
+        self.assertTrue(findings)
+        self.assertEqual({s for _, s in findings}, {"info"})
+        a6, findings6 = self.of(out, "U6")
+        self.assertAlmostEqual(a6["pdiss_w"], 0.8824)
+        self.assertIn(("TS-001", "error"), findings6)
 
 
 if __name__ == "__main__":

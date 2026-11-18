@@ -232,7 +232,15 @@ def _estimate_all_power_dissipation(schematic: dict) -> tuple:
     power_budget = schematic.get("power_budget", {})
     seen_refs = set()
 
-    # 1. Linear regulators (LDOs) — use pre-computed power_dissipation
+    def _budget_load_a(reg: dict) -> float:
+        rail_data = power_budget.get("rails", {}).get(reg.get("output_rail", ""))
+        if isinstance(rail_data, dict):
+            return (rail_data.get("estimated_load_mA") or 0) / 1000.0
+        return 0.0
+
+    # 1. Linear regulators (LDOs): the drop times the output rail's power-budget load. Without a
+    # budget load, the regulator detector's estimate, whose load is sized from output capacitance
+    # (marked load_proxy so its findings stay at info).
     for reg in regulators:
         ref = reg.get("ref", "")
         topology = reg.get("topology", "").lower()
@@ -240,7 +248,29 @@ def _estimate_all_power_dissipation(schematic: dict) -> tuple:
 
         if topology in ("ldo", "linear"):
             p_w = pdiss.get("estimated_pdiss_W") if isinstance(pdiss, dict) else None
-            if p_w is None:
+            load_a = _budget_load_a(reg)
+            dropout = pdiss.get("dropout_V") if isinstance(pdiss, dict) else None
+            if p_w is not None and load_a > 0 and isinstance(dropout, (int, float)):
+                p_w = dropout * load_a
+                if p_w > MIN_PDISS_W:
+                    results.append({
+                        "ref": ref,
+                        "value": reg.get("value", ""),
+                        "type": "ldo",
+                        "pdiss_w": round(p_w, 4),
+                        "pdiss_source": (f"({pdiss.get('vin_estimated_V', '?')}V - "
+                                         f"{pdiss.get('vout_V', '?')}V) × "
+                                         f"{load_a:.3f}A power budget load"),
+                        "pdiss_confidence": "heuristic",
+                        "vin_v": pdiss.get("vin_estimated_V"),
+                        "vout_v": pdiss.get("vout_V"),
+                        "iout_a": round(load_a, 4),
+                    })
+                else:
+                    skipped.append({"ref": ref, "value": reg.get("value", ""),
+                                     "reason": "below_min_pdiss"})
+                seen_refs.add(ref)
+            elif p_w is None:
                 # The upstream regulator detector never produced an
                 # estimate (no power_dissipation block, or no estimated_pdiss_W
                 # in it) — distinct from a real sub-threshold estimate.
@@ -260,6 +290,7 @@ def _estimate_all_power_dissipation(schematic: dict) -> tuple:
                     "vin_v": pdiss.get("vin_estimated_V"),
                     "vout_v": pdiss.get("vout_V"),
                     "iout_a": pdiss.get("estimated_iout_A"),
+                    "load_proxy": True,
                 })
                 seen_refs.add(ref)
             else:
@@ -267,7 +298,8 @@ def _estimate_all_power_dissipation(schematic: dict) -> tuple:
                                  "reason": "below_min_pdiss"})
                 seen_refs.add(ref)
 
-    # 2. Switching regulators — estimate from efficiency
+    # 2. Switching regulators — estimate from efficiency, at the output rail's power-budget
+    # load, else at the regulator detector's estimate (a load_proxy, as for LDOs)
     for reg in regulators:
         ref = reg.get("ref", "")
         if ref in seen_refs:
@@ -289,6 +321,11 @@ def _estimate_all_power_dissipation(schematic: dict) -> tuple:
             skipped.append({"ref": ref, "value": reg.get("value", ""),
                              "reason": "no_vout"})
             continue
+        proxy = False
+        if not iout_a or iout_a <= 0:
+            pd = reg.get("power_dissipation")
+            iout_a = pd.get("estimated_iout_A") if isinstance(pd, dict) else None
+            proxy = True
         if not iout_a or iout_a <= 0:
             skipped.append({"ref": ref, "value": reg.get("value", ""),
                              "reason": "no_load_estimate"})
@@ -309,6 +346,7 @@ def _estimate_all_power_dissipation(schematic: dict) -> tuple:
                 "pdiss_confidence": "heuristic",
                 "vout_v": vout,
                 "iout_a": iout_a,
+                **({"load_proxy": True} if proxy else {}),
             })
             seen_refs.add(ref)
         else:
@@ -1079,6 +1117,12 @@ def main(argv: list[str] | None = None) -> int:
         cache_dir=extract_dir,
         diagnostics=diagnostics,
     ))
+
+    # A load sized from output capacitance is too rough to raise more than an info.
+    proxy_refs = {c["ref"] for c in power_comps if c.get("load_proxy")}
+    for f in findings:
+        if f.get("severity") != "info" and proxy_refs & set(f.get("components") or []):
+            f["severity"] = "info"
 
     # Apply suppressions
     try:
