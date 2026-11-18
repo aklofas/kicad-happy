@@ -66,6 +66,8 @@ _REGULATOR_VREF: dict[str, float] = {
     "TPS54160": 0.8,   "TPS54260": 0.8,   "TPS54360": 0.8,      # TPS541x0/542x0/543x0 FB = 0.8V
     "TPS54040": 0.8,   "TPS54060": 0.8,                          # TPS54040/60 Vref = 0.8V
     "TPS54302": 0.596, "TPS54308": 0.596,                        # TPS54302/08 FB = 0.596V (verified)
+    "TPS54202": 0.596,                                            # VFB = 0.596 V (SLVSD26C p5; TPS54202H SLVSDG7A p5)
+    "TPS54560": 0.8,                                              # reference = 0.8 V (SLVSBN0A p5; TPS54560B SLVSF00 p5)
     # TPS56 family — split per DigiKey verification (was single 'TPS56': 0.6)
     "TPS56339": 0.8,   "TPS56637": 0.6,                          # TPS56339 = 0.8V, TPS56637 = 0.6V
     "TPS560200": 0.8,                                             # TPS560200 VSENSE = 0.8V
@@ -100,8 +102,8 @@ _REGULATOR_VREF: dict[str, float] = {
     "LMR51410": 0.6,   "LMR51420": 0.6,   "LMR51430": 0.6,       # LMR51410/20/30 Vref = 0.6V
     "LMR51440": 0.8,   "LMR51460": 0.8,                          # LMR51440/60 Vref = 0.8V
     "LMR51606": 0.8,   "LMR51610": 0.8,                          # LMR51606/10 VFB = 0.8 V (SLUSEY1B §6.5 p5)
-    "LMR51620": 0.6,   "LMR51630": 0.6,                          # LMR51620/30 Vref = 0.6V
-    "LMR51640": 0.8,   "LMR51660": 0.8,                          # LMR51640/60 Vref = 0.8V
+    "LMR51625": 0.8,   "LMR51635": 0.8,                          # VFB = 0.8 V (SLUSF64B p5)
+    "LMR50410": 1.0,                                              # VFB = 1 V (SLUSDW3A p5; -Q1 SLUSDW4A p5)
     "LMR336": 1.0,     "LMR338": 1.0,                            # LMR33630/60 Vref = 1.0V
     "LMR33640": 1.0,                                              # VFB = 1 V, ADJ option (SNVSB99C p6)
     "LM2731": 1.23,    "LM27313": 1.23,                           # VFB = 1.230 V (LM2731 SNVS217G p5; LM27313 SNVS487E p5)
@@ -189,6 +191,9 @@ _REGULATOR_VREF: dict[str, float] = {
     "LM2267": 1.285,                                               # LM22676 VFB = 1.285V (adj variant)
     # Generic adjustable regulators
     "LM317": 1.25,     "LM337": 1.25,
+    "LM338": 1.24,                                                # VREF = 1.24 V typ (SNVS771D p7)
+    "LM350": 1.25,                                                # VREF = 1.25 V (SNVS772B p2)
+    "SPX1117": 1.25,                                              # VREF = 1.250 V (MaxLinear Rev. 2.2.0 p2)
     "AMS1117": 1.25,   "AMS1085": 1.25,
     "LM1117": 1.25,
     # Avia Semiconductor HX711 "24-Bit Analog-to-Digital Converter (ADC) for Weigh Scales" (English,
@@ -294,7 +299,13 @@ _FIXED_OUTPUT_PARTS: dict[str, float] = {
     "TPS61024": 3.0, "TPS61025": 3.3, "TPS61026": 5.0, "TPS61027": 5.0,  # SLVS451G p3 ordering table
     "TPS61031": 3.3, "TPS61032": 5.0,                                    # SLUS534G p3 device comparison table
     "LMR36506MSC5": 5.0, "LMR36506MSC3": 3.3,                            # LMR36506-Q1 SNVSB91C p3 device comparison table
+    "LMR50410Y3": 3.3, "LMR50410Y5": 5.0,                                # LMR50410-Q1 SLUSDW4A p3 device comparison table
 }
+# SPX1117M3-L-<volts with the point written as a dash>/TR: -1-5, -1-8, -2-5, -3-3, -5-0 (MaxLinear
+# SPX1117 Rev. 2.2.0 p3 ordering table); the bare SPX1117M3-L/TR is the adjustable part.
+_SPX1117_CODE = re.compile(r"SPX1117[A-Z0-9]*-L-(\d)-(\d)(?!\d)")
+# Table keys that name a part only when no digit follows: LM3509 and LM35000 are not LM350.
+_WHOLE_NUMBER_KEYS = frozenset({"LM338", "LM350"})
 # Analog Devices fixed-output order codes with a one-digit voltage code (part-number prefix -> {code: Vout}):
 # LT8607EMSE-5 (LT8607 Rev. D p2), LT8609AEDDM-5 (LT8609 Rev. J p3), LT8610AEMSE-5 / LT8610ABEMSE-5
 # (LT8610A/LT8610AB Rev. C p2) are 5 V; LTC3620-1 is 1.1 V (LTC3620 Rev. A p1). LT8640-1 is adjustable.
@@ -342,6 +353,9 @@ def _fixed_part_vout(candidates: list[str]) -> float | None:
         m = _R78_CODE.match(candidate)
         if m:
             return float(m.group(1))
+        m = _SPX1117_CODE.match(candidate)
+        if m:
+            return float(m.group(1) + "." + m.group(2))
         m = _ADI_FIXED_CODE.match(candidate)
         if m and m.group(2) in _ADI_FIXED_CODES[m.group(1)]:
             return _ADI_FIXED_CODES[m.group(1)][m.group(2)]
@@ -427,6 +441,8 @@ def _longest_vref_key(candidate: str) -> str | None:
     best = None
     for prefix in _REGULATOR_VREF:
         if candidate.startswith(prefix.upper()) and len(prefix) > len(best or ""):
+            if prefix in _WHOLE_NUMBER_KEYS and candidate[len(prefix):len(prefix) + 1].isdigit():
+                continue
             best = prefix
     return best
 

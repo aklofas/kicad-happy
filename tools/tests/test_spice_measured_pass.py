@@ -105,13 +105,13 @@ class RegulatorVrefTest(unittest.TestCase):
         r = self._eval(_regulator(31.6e3, 10e3, "+3V3", 0.8, "heuristic"))
         self.assertEqual(r["status"], "info")
 
-    def test_carrier_board_lm338_does_not_fail(self):
-        # cl3m3nt0n1 Bridge---Canyon-on-Hardware carrier_board: an LM338 value on the LM337 symbol
-        # (a negative regulator). The value names another part, so the symbol's 1.25 V is not
+    def test_carrier_board_lt1085_does_not_fail(self):
+        # an LT1085 value on the LM337 symbol (a negative regulator). The value names another part
+        # with no table row, so the symbol's 1.25 V is not
         # taken and the analyzer's Vref is its heuristic sweep, not a criterion.
         from kicad_core.parts import lookup_regulator_vref
-        self.assertEqual(lookup_regulator_vref("LM338_TO220", "Regulator_Linear:LM337_TO220"), (None, ""))
-        det = {"ref": "U2", "value": "LM338_TO220", "lib_id": "Regulator_Linear:LM337_TO220",
+        self.assertEqual(lookup_regulator_vref("LT1085CT", "Regulator_Linear:LM337_TO220"), (None, ""))
+        det = {"ref": "U2", "value": "LT1085CT", "lib_id": "Regulator_Linear:LM337_TO220",
                "topology": "LDO", "output_rail": "+5V",
                "assumed_vref": 1.25, "vref_source": "heuristic", "estimated_vout": 5.046,
                "feedback_divider": {"r_top": {"ref": "R1", "ohms": 270.0, "value": "270"},

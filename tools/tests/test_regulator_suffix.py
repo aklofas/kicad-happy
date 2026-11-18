@@ -235,6 +235,32 @@ class FeedbackReference(unittest.TestCase):
     def test_tps61023_reference_unchanged(self):
         self.assertEqual(lookup_regulator_vref("TPS61023DRLR", ""), (0.595, "lookup"))
 
+    def test_rows_take_their_datasheet_reference(self):
+        # typ column of each Electrical Characteristics table: TPS54202 SLVSD26C p5 and TPS54202H
+        # SLVSDG7A p5 VFB 0.596; TPS54560 SLVSBN0A p5 / TPS54560B SLVSF00 p5 0.8; LM338 SNVS771D p7
+        # VREF 1.24; LM350 SNVS772B p2 1.25; SPX1117 Rev. 2.2.0 p2 1.25; LMR50410 SLUSDW3A p5 VFB 1.0;
+        # LMR51625 SLUSF64B p5 0.8
+        for part, vref in [("TPS54202DDCR", 0.596), ("TPS54202HDDCR", 0.596),
+                           ("TPS54560BDDAR", 0.8), ("TPS54560DDA", 0.8), ("LM338T", 1.24),
+                           ("LM350T", 1.25), ("SPX1117M3-L/TR", 1.25), ("LMR50410XDBVR", 1.0),
+                           ("LMR51625YDDCR", 0.8), ("LMR51635YDDCR", 0.8)]:
+            self.assertEqual(lookup_regulator_vref(part, ""), (vref, "lookup"), part)
+
+    def test_fixed_members_of_the_new_rows(self):
+        # SPX1117 Rev. 2.2.0 p3 ordering table; LMR50410-Q1 SLUSDW4A p3 device comparison table
+        for part, volts in [("SPX1117M3-L-1-5/TR", 1.5), ("SPX1117M3-L-1-8/TR", 1.8),
+                            ("SPX1117M3-L-2-5/TR", 2.5), ("SPX1117M3-L-3-3/TR", 3.3),
+                            ("SPX1117M3-L-5-0/TR", 5.0), ("LMR50410Y3FQDBVRQ1", 3.3),
+                            ("LMR50410Y5FQDBVRQ1", 5.0)]:
+            self.assertEqual(lookup_regulator_vref(part, ""), (volts, "fixed_suffix"), part)
+        self.assertEqual(lookup_regulator_vref("LMR50410YFQDBVRQ1", ""), (1.0, "lookup"))
+
+    def test_keys_do_not_reach_other_parts(self):
+        # LM3509 / LM35000 are not LM350; LMR51620 / LMR51630 / LMR51640 / LMR51660 have no data sheet
+        for part in ["LM3509", "LM35000", "LM3380", "LMR51620", "LMR51630", "LMR51640", "LMR51660"]:
+            self.assertEqual(lookup_regulator_vref(part, ""), (None, ""), part)
+        self.assertEqual(lookup_regulator_vref("LMR51430", ""), (0.6, "lookup"))
+
     def test_ltc3558_feedback_is_0v8(self):
         self.assertEqual(lookup_regulator_vref("LTC3558", ""), (0.8, "lookup"))
 
@@ -270,11 +296,16 @@ class OrderCodes(unittest.TestCase):
 class BorrowedSymbol(unittest.TestCase):
     def test_value_naming_another_part_does_not_take_the_symbol_reference(self):
         for value, lib_id in [
-                ("TPS54202", "MidiLedController-rescue:TPS563200-Regulator_Switching-MidiDrumTeacherModule-rescue"),
+                ("TPS54331", "MidiLedController-rescue:TPS563200-Regulator_Switching-MidiDrumTeacherModule-rescue"),
                 ("TPS564208DDCT", "Custom_Parts:TPS54308DDC"),
-                ("LM338_TO220", "Regulator_Linear:LM337_TO220")]:
+                ("LT1085CT", "Regulator_Linear:LM337_TO220")]:
             self.assertEqual(lookup_regulator_vref(value, lib_id), (None, ""), value)
             self.assertIsNone(regulator_vref_key(value, lib_id), value)
+
+    def test_value_with_its_own_row_keeps_it_on_a_borrowed_symbol(self):
+        self.assertEqual(lookup_regulator_vref(
+            "TPS54202", "MidiLedController-rescue:TPS563200-Regulator_Switching-MidiDrumTeacherModule-rescue"),
+            (0.596, "lookup"))
 
     def test_value_naming_no_part_takes_the_symbol_reference(self):
         for value, lib_id, vref in [("", "Regulator_Switching:TPS54308", 0.596),
