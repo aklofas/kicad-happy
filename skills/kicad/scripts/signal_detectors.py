@@ -4207,7 +4207,7 @@ def _is_reference_net_name(net_name: str) -> bool:
 # Pin names of a supply input. An output-typed pin named like this is a symbol typing
 # error, not a source.
 _SUPPLY_INPUT_PIN = re.compile(r"[ADP]?V(?:CC|DD)(?:IO|Q)?\d*|VIO|VIN|IN|VS")
-_SUPPLY_PIN_NAMES = frozenset({"VS", "V+", "VIN", "V-", "VEE", "VBAT", "VIO", "VL", "PVIN"})
+_REF_NET_SUPPLY_PINS = frozenset({"VS", "V+", "VIN", "V-", "VEE", "VBAT", "VIO", "VL", "PVIN"})
 
 
 def _ic_supply_pin(pin: dict, comp_type: str | None = None) -> bool:
@@ -4216,7 +4216,7 @@ def _ic_supply_pin(pin: dict, comp_type: str | None = None) -> bool:
     raw = re.sub(r"[^0-9A-Z+\-]", "", str(pin.get("pin_name") or "").upper())
     name = raw.replace("-", "")
     if "REF" in name or not ("VCC" in name or "VDD" in name or name in ("VS", "V+", "VIN")
-                             or raw.rstrip("0123456789") in _SUPPLY_PIN_NAMES):
+                             or raw.rstrip("0123456789") in _REF_NET_SUPPLY_PINS):
         return False
     return pin.get("pin_type") == "power_in" or (pin.get("pin_type") == "passive"
                                                  and comp_type == "ic")

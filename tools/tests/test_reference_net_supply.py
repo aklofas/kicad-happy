@@ -44,6 +44,7 @@ class ReferenceNetSupplyPin(unittest.TestCase):
                                              ("U1", "3", "REF+", "input")]},
                       _COMPS + [_part("U2", "ic", "TXB0108")])
         self.assertIn("5V_REF", rs)
+        self.assertEqual(do["U2"], ["5V_REF"])
 
     def test_passive_supply_pin_on_a_connector_leaves_a_reference_node(self):
         rs, do = _run({**_SUPPLY, "2V5_REF": [("J1", "1", "VCC", "passive"),
