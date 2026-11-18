@@ -29,7 +29,6 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 ### Fixed
 
 - V1P / V2P (an energy meter's voltage-channel inputs) are no longer read as power rails beside their V1N / V2N twins.
-- Decoupling and inrush results leave out capacitors marked DNP or excluded from the board. An IC whose only decoupling capacitor is unfitted is now reported as missing decoupling, and unfitted ICs and regulators get no capacitor observations.
 - Decoupling, inrush and RC-filter results leave out capacitors and resistors marked DNP or excluded from the board. An IC whose only decoupling capacitor is unfitted is now reported as missing decoupling, and unfitted ICs and regulators get no capacitor observations.
 - A regulator with an input capacitor on an unnamed or non-rail net is no longer reported as missing input capacitors.
 - A capacitor rated 1 kV or more or marked Y1/Y2 (Y-capacitors, Ethernet shield and isolation-barrier capacitors) is no longer counted as decoupling.
@@ -120,7 +119,6 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - ESD arrays whose only return is Earth or chassis name it as their clamp net, and an array pin on Earth is no longer listed as a protected line.
 - Net names that end in a monitor, feedback, enable or sense word (`PWR_OK2`, `5V_FAULT`, `5V_ISENSE`, `12V_{FB}`, `VBAT_ADC`, `VBUS_DIV`, `VBAT_READ`) and power-LED nodes (`PWR_LED`) are no longer read as power rails. Rail-source, decoupling and trace-width checks stop firing on them, and a battery or bus sense divider through such a node is now reported. `VDD_ADC`, `+3V3_ADC`, `3V3_LED` and filtered rails such as `VBAT_FLT` stay rails.
 - An LED driver whose switch sits on a net named like a rail (`IR-_GND`, `0VCC`, a sub-sheet port named `3V3`) is read as an LED driver again when the LED is in the switched path and the net carries no power symbol or supply pin.
-- Resistor, capacitor and inductor values written the way KiCad library symbols are named (`R_5k1_0402`, `R-5k1-0402`, `R5k1`, `C_100n_0402`, `10k_0603`) or with an ohm R after the prefix (`5.1kR`, `12kR 1%`, `100mR`) are read, so filter, divider, decoupling and current-sense checks see them.
 - Resistor, capacitor and inductor values written the way KiCad library symbols are named (`R_5k1_0402`, `R-5k1-0402`, `R5k1`, `C_100n_0402`, `10k_0603`) or with an ohm R after the prefix (`5.1kR`, `12kR 1%`, `100mR`) are read, so filter, divider, decoupling, current-sense, USB Type-C, level-shifter and sleep-current checks see them.
 - A value with an underscore is no longer read as one long number (`330_0402` was 3.3 MΩ).
 - USB-C CC checks pick the 5.1 kΩ pull-down when a CC pin has more than one resistor, no longer pass a 5.1 kΩ resistor that does not go to ground, and treat CYPD3175 and FUSB303 as controllers that terminate CC themselves.
