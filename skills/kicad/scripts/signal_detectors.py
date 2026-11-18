@@ -4222,16 +4222,29 @@ def _reference_net(ctx: AnalysisContext, net_name: str, regulator_outputs: set) 
                    for p in (ctx.nets.get(net_name) or {}).get("pins", []))
 
 
-def _has_cap_to_ground(ctx: AnalysisContext, net: str, ref: str) -> bool:
-    """*net* carries a fitted, valued capacitor whose other pin is on ground or on *ref*'s own GND-pin
-    net (a regulator's input or output cap on a net the decoupling detector does not read as a rail).
-    A GND pin on a voltage-named net (+5V, or an inverting converter's -5V output) is not the
-    part's ground."""
-    own_ground = _own_ground_nets(ctx, ref)
+def _is_unvalued_capacitor(ctx: AnalysisContext, pin: dict, comp: dict) -> bool:
+    """A capacitor whose value cannot be read is still one when it has two pins, *pin* (its pin
+    on the rail) is not a power pin, and its value does not open with a not-fitted mark ("NC",
+    "DNP - 220p", "NI", "NOPOP"). A logic IC or connector typed as a capacitor from its reference
+    alone (a board grid square, "C12" or "VC22") has more pins or power pins."""
+    first_word = re.split(r"[\s/,;-]+", (comp.get("value") or "").replace(".", "").strip().upper())[0]
+    return (len(ctx.ref_pins.get(pin["component"], {})) == 2
+            and pin.get("pin_type") not in ("power_in", "power_out")
+            and first_word not in ("NC", "DNP", "DNF", "DNI", "NP", "NI", "NOPOP"))
+
+
+def _has_cap_to_ground(ctx: AnalysisContext, net: str, ref: str | None = None) -> bool:
+    """*net* carries a fitted capacitor, valued or not, whose other pin is on ground or on *ref*'s
+    own GND-pin net (a regulator's input or output cap on a net the decoupling detector does not
+    read as a rail). A GND pin on a voltage-named net (+5V, or an inverting converter's -5V
+    output) is not the part's ground."""
+    own_ground = _own_ground_nets(ctx, ref) if ref else set()
     for p in ctx.nets.get(net, {}).get("pins", []):
         cap = p["component"]
         comp = ctx.comp_lookup.get(cap)
-        if not comp or not _is_decoupling_cap(comp) or not ctx.parsed_values.get(cap):
+        if not comp or not _is_decoupling_cap(comp):
+            continue
+        if not ctx.parsed_values.get(cap) and not _is_unvalued_capacitor(ctx, p, comp):
             continue
         n1, n2 = ctx.get_two_pin_nets(cap)
         other = n2 if n1 == net else n1
@@ -4268,14 +4281,15 @@ def detect_design_observations(ctx: AnalysisContext, results: dict) -> list[dict
         ic_power_nets = {net for net, _ in ctx.ref_pins.get(ref, {}).values()
                          if net and ctx.is_power_net(net) and not ctx.is_ground(net)
                          and not _reference_net(ctx, net, regulator_outputs)}
-        undecoupled = sorted([r for r in ic_power_nets if r not in decoupled_rails])
+        undecoupled = sorted([r for r in ic_power_nets
+                              if r not in decoupled_rails and not _has_cap_to_ground(ctx, r)])
         if undecoupled:
             design_observations.append({
                 "category": "decoupling",
                 "component": ref,
                 "value": ic["value"],
                 "rails_without_caps": undecoupled,
-                "rails_with_caps": sorted([r for r in ic_power_nets if r in decoupled_rails]),
+                "rails_with_caps": sorted([r for r in ic_power_nets if r not in undecoupled]),
                 "detector": "detect_design_observations",
                 "rule_id": "DO-DET",
                 "severity": "info",

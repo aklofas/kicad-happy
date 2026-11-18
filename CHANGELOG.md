@@ -33,6 +33,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Decoupling, inrush and RC-filter results leave out capacitors and resistors marked DNP or excluded from the board. An IC whose only decoupling capacitor is unfitted is now reported as missing decoupling, and unfitted ICs and regulators get no capacitor observations.
 - A regulator with an input capacitor on an unnamed or non-rail net is no longer reported as missing input capacitors.
 - A capacitor rated 1 kV or more or marked Y1/Y2 (Y-capacitors, Ethernet shield and isolation-barrier capacitors) is no longer counted as decoupling.
+- A capacitor to ground whose value cannot be read (for example `C`, `C_Small` or a part number) now counts as decoupling present; it still adds no capacitance to the rail totals.
 - The USB-PD controller record names the controller's own value and lists each CC net once.
 - A capacitor value with its voltage glued on (`220u25V`, `1n50V`) reads as the capacitance; part numbers such as `7406N` on a capacitor symbol and a value such as `1e3` are no longer read as capacitances.
 - TVS diodes named by their series (SMF, SM6T, SM712, P4KE and others) or described as TVS in the symbol are detected as protection devices, so a USB VBUS with one is no longer reported unprotected.

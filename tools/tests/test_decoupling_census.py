@@ -2,7 +2,8 @@
 """Decoupling, regulator-capacitor, inrush and RC-filter census: only fitted parts count. A
 capacitor marked DNP or excluded from the board is not decoupling or inrush load, an unfitted IC
 or regulator needs no capacitors, and unfitted parts form no RC filter. A safety-rated capacitor
-(1 kV or more, or a Y1/Y2 class) is not decoupling."""
+(1 kV or more, or a Y1/Y2 class) is not decoupling. A fitted two-terminal capacitor to ground
+whose value cannot be read still counts as present, without adding capacitance to the rail."""
 import sys, unittest
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "skills" / "kicad" / "scripts"))
@@ -86,6 +87,73 @@ def _regulator(in_net="+5V", in_cap=None, out_cap=None, reg=None, out_net="+3V3"
     regs = [{"ref": "U1", "value": "AMS1117-3.3", "topology": "LDO", "input_rail": in_net, "output_rail": out_net}]
     obs = detect_design_observations(ctx, {"power_regulators": regs, "decoupling_analysis": detect_decoupling(ctx)})
     return ctx, regs, [o["missing_caps"] for o in obs if o["category"] == "regulator_caps"]
+
+
+class UnvaluedCapacitorCountsAsPresent(unittest.TestCase):
+    def test_cap_to_ground_without_a_readable_value_is_present_without_a_dc_record(self):
+        for value in ("C", "C_Small", "", "GRM155R60J226ME11D", "X", "?nF", "CL05B104KB54PNC"):
+            with self.subTest(value=value):
+                self.assertEqual(_ic_with_caps([{"value": value}]), ([], []))
+
+    def test_unvalued_cap_beside_a_valued_one_adds_nothing_to_the_rail_total(self):
+        dc, missing = _ic_with_caps([{}, {"value": "C"}])
+        self.assertEqual([(d["components"], d["total_capacitance_uF"]) for d in dc], [(["C1"], 0.1)])
+        self.assertEqual(missing, [])
+
+    def test_unvalued_unfitted_or_safety_cap_is_still_missing(self):
+        for cap in ({"value": "C", "dnp": True}, {"value": "C", "on_board": False}, {"value": "X1Y2"}):
+            with self.subTest(cap=cap):
+                self.assertEqual(_ic_with_caps([cap]), ([], [["+3V3"]]))
+
+    def test_cap_whose_value_marks_it_unfitted_is_still_missing(self):
+        for value in ("NC", "N.C.", "DNP", "dnf", "DNI", "NI", "NOPOP", "DNP - 220p X7R 50V", "NC/1uF"):
+            with self.subTest(value=value):
+                self.assertEqual(_ic_with_caps([{"value": value}]), ([], [["+3V3"]]))
+
+    def test_rail_with_an_unvalued_cap_is_listed_with_caps(self):
+        comps = [{"reference": "U1", "type": "ic", "value": "ATTINY25"},
+                 {"reference": "C1", "type": "capacitor", "value": "C"}]
+        wiring = [("+3V3", [("U1", "8", "VCC", "power_in"), ("C1", "1", "", "passive")]),
+                  ("+5V", [("U1", "7", "AVCC", "power_in")]),
+                  ("GND", [("U1", "4", "GND", "power_in"), ("C1", "2", "", "passive")])]
+        ctx = _ctx(comps, wiring)
+        obs = [o for o in detect_design_observations(ctx, {"decoupling_analysis": detect_decoupling(ctx)})
+               if o["category"] == "decoupling"]
+        self.assertEqual([(o["rails_without_caps"], o["rails_with_caps"]) for o in obs], [(["+5V"], ["+3V3"])])
+
+    def test_unvalued_cap_to_a_signal_net_does_not_count(self):
+        comps = [{"reference": "U1", "type": "ic", "value": "ATTINY25"},
+                 {"reference": "C1", "type": "capacitor", "value": "C"}]
+        wiring = [("+3V3", [("U1", "8", "VCC", "power_in"), ("C1", "1", "", "passive")]),
+                  ("SENSE", [("C1", "2", "", "passive"), ("U1", "3", "PB3", "input")]),
+                  ("GND", [("U1", "4", "GND", "power_in")])]
+        ctx = _ctx(comps, wiring)
+        obs = detect_design_observations(ctx, {"decoupling_analysis": detect_decoupling(ctx)})
+        self.assertEqual([o["rails_without_caps"] for o in obs if o["category"] == "decoupling"], [["+3V3"]])
+
+    def test_ic_typed_as_a_capacitor_by_its_grid_reference_does_not_count(self):
+        comps = [{"reference": "U1", "type": "ic", "value": "74LS00"},
+                 {"reference": "C12", "type": "capacitor", "value": "27C512"}]
+        wiring = [("+5V", [("U1", "14", "VCC", "power_in"), ("C12", "1", "A15", "input")]),
+                  ("GND", [("U1", "7", "GND", "power_in"), ("C12", "2", "A12", "input"),
+                           ("C12", "14", "GND", "power_in")])]
+        ctx = _ctx(comps, wiring)
+        obs = detect_design_observations(ctx, {"decoupling_analysis": detect_decoupling(ctx)})
+        self.assertEqual([o["rails_without_caps"] for o in obs if o["category"] == "decoupling"], [["+5V"]])
+
+    def test_ic_typed_as_a_capacitor_with_only_its_supply_pins_on_the_sheet_does_not_count(self):
+        comps = [{"reference": "U1", "type": "ic", "value": "74LS86"},
+                 {"reference": "VC22", "type": "capacitor", "value": "74LS32"}]
+        wiring = [("VCC", [("U1", "14", "VCC", "power_in"), ("VC22", "14", "VCC", "power_in")]),
+                  ("GND", [("U1", "7", "GND", "power_in"), ("VC22", "7", "VSS", "power_in")])]
+        ctx = _ctx(comps, wiring, rails=("VCC",))
+        obs = detect_design_observations(ctx, {"decoupling_analysis": detect_decoupling(ctx)})
+        self.assertEqual([o["rails_without_caps"] for o in obs if o["category"] == "decoupling"], [["VCC"]])
+
+    def test_unvalued_regulator_caps_count(self):
+        self.assertEqual(_regulator(in_cap={"value": "C"}, out_cap={"value": "C_Small"})[2], [])
+        self.assertEqual(_regulator(in_cap={"value": "C", "dnp": True}, out_cap={"value": "C"})[2],
+                         [{"input": "+5V"}])
 
 
 class RegulatorCapacitors(unittest.TestCase):

@@ -9,13 +9,14 @@ from kicad_types import build_analysis_context  # noqa: E402
 from signal_detectors import detect_decoupling, detect_design_observations  # noqa: E402
 
 
-def _missing(out_net, cap_other_net, ground_pin_net="GND", in_net="+5V", in_cap_other="GND"):
+def _missing(out_net, cap_other_net, ground_pin_net="GND", in_net="+5V", in_cap_other="GND",
+             in_cap_value="10uF", out_cap_value="22uF"):
     """missing_caps of LDO U1 (+5V in with C1, a passive VO pin on *out_net*) with C2 from
     *out_net* to *cap_other_net*; U1's GND pin sits on *ground_pin_net*. C1 runs from the input net
     *in_net* to *in_cap_other*."""
     comps = [{"reference": "U1", "type": "ic", "value": "AMS1117-3.3", "lib_id": "Regulator_Linear:AMS1117-3.3"},
-             {"reference": "C1", "type": "capacitor", "value": "10uF", "lib_id": "Device:C"},
-             {"reference": "C2", "type": "capacitor", "value": "22uF", "lib_id": "Device:C"},
+             {"reference": "C1", "type": "capacitor", "value": in_cap_value, "lib_id": "Device:C"},
+             {"reference": "C2", "type": "capacitor", "value": out_cap_value, "lib_id": "Device:C"},
              {"reference": "R1", "type": "resistor", "value": "1k", "lib_id": "Device:R"}]
     wiring = [(in_net, [("U1", "3", "VI", "power_in"), ("C1", "1", "", "passive")]),
               (in_cap_other, [("C1", "2", "", "passive")]),
@@ -57,6 +58,12 @@ class OutputCapacitorOnAnyNet(unittest.TestCase):
     def test_cap_to_a_signal_named_output_is_not_an_output_cap(self):
         self.assertEqual(_missing("SYS", "SENSE"), [{"output": "SYS"}])
 
+    def test_unvalued_output_cap_counts(self):
+        self.assertEqual(_missing("__unnamed_4", "GND", out_cap_value="C"), [])
+
+    def test_unvalued_series_cap_is_not_an_output_cap(self):
+        self.assertEqual(_missing("__unnamed_4", "AUDIO_OUT", out_cap_value="C"), [{"output": "__unnamed_4"}])
+
 
 class RegulatorInputCapacitor(unittest.TestCase):
     """Input side, with the output carrying a good capacitor to ground."""
@@ -76,6 +83,10 @@ class RegulatorInputCapacitor(unittest.TestCase):
 
     def test_series_cap_to_a_signal_net_is_not_an_input_cap(self):
         self.assertEqual(self._input("__unnamed_9", "AUDIO_IN"), [{"input": "__unnamed_9"}])
+
+    def test_unvalued_input_cap_counts(self):
+        self.assertEqual([m for m in _missing("__unnamed_4", "GND", in_net="__unnamed_9", in_cap_value="C")
+                          if "input" in m], [])
 
 
 if __name__ == "__main__":
