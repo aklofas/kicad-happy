@@ -2304,6 +2304,12 @@ def _build_regulator_record(ctx: AnalysisContext, cand: _RegulatorCandidate,
     fixed_vout, fixed_source = _lookup_regulator_vref(
         ic.get("value", ""), ic.get("lib_id", ""), ic.get("mpn") or "")
     if fixed_source == "fixed_suffix" and fixed_vout is not None:
+        # A negative regulator's part number writes its voltage without the sign (LM2990SX-5.0,
+        # LT3015EQ-2.5): fed from a negative rail, a fixed part makes a negative one.
+        in_rail = reg_info.get("input_rail")
+        if fixed_vout > 0 and in_rail and ((_parse_voltage_from_net_name(in_rail) or 0) < 0
+                                            or in_rail in negative_split_rails(ctx.nets)):
+            fixed_vout = -fixed_vout
         reg_info["estimated_vout"] = round(fixed_vout, 3)
         reg_info["vref_source"] = "fixed_suffix"
         reg_info["_estimated_vout_provenance"] = {

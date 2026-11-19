@@ -1,8 +1,8 @@
 """A VSS-named net that a regulator output drives is a supply, not ground.
 
-The regulator keeps it as its output rail, the rail map gives it no 0 V (and no positive
-part-number voltage), its capacitors are decoupling, and a missing output capacitor is
-reported as on any other rail. A project config that gives a VSS net a negative voltage makes
+The regulator keeps it as its output rail, the rail map gives it no 0 V and no positive
+part-number voltage (a negative one counts), its capacitors are decoupling, and a missing
+output capacitor is reported as on any other rail. A project config that gives a VSS net a negative voltage makes
 it a supply too. A VSS net with only IC VSS pins stays ground at 0 V, and so does a VSS net
 that carries a ground symbol: the symbol ties it to the board ground.
 """
@@ -86,11 +86,16 @@ class RegulatorDrivenVss(unittest.TestCase):
     def test_regulator_keeps_the_vss_output_rail(self):
         self.assertEqual([r["output_rail"] for r in self.regs], ["VSS"])
 
-    def test_rail_map_gives_it_no_voltage_and_ignores_the_positive_estimate(self):
-        self.assertEqual(self.regs[0]["estimated_vout"], 5.0)
+    def test_rail_map_gives_it_the_negative_estimate(self):
+        # LM2990S-5.0 on -12V: the part number's 5 V takes the input's sign
+        self.assertEqual(self.regs[0]["estimated_vout"], -5.0)
         by_net = build_rail_map(self.ctx, self.regs)
-        self.assertNotIn("VSS", by_net)
+        self.assertEqual(by_net["VSS"], -5.0)
         self.assertEqual(by_net["GND"], 0)
+
+    def test_rail_map_ignores_a_positive_estimate(self):
+        by_net = build_rail_map(self.ctx, [{"ref": "U1", "output_rail": "VSS", "estimated_vout": 5.0}])
+        self.assertNotIn("VSS", by_net)
 
     def test_no_missing_capacitor_claim_on_the_regulator(self):
         results = {"power_regulators": self.regs, "decoupling_analysis": detect_decoupling(self.ctx)}
@@ -132,7 +137,7 @@ class RegulatorDrivenVss(unittest.TestCase):
         regs = detect_power_regulators(ctx, [])
         self.assertEqual(ctx.vss_supply_rails, {"VSSA"})
         self.assertEqual(regs[0]["output_rail"], "VSSA")
-        self.assertNotIn("VSSA", build_rail_map(ctx, regs))
+        self.assertEqual(build_rail_map(ctx, regs)["VSSA"], -5.0)
 
     def test_adjustable_regulator_keeps_the_vss_output_rail(self):
         ctx = _negative_ldo(value="LT3094")

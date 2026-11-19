@@ -367,6 +367,21 @@ _ST78_CODES: dict[str, dict[str, float]] = {
     "9": {"05": -5.0, "08": -8.0, "12": -12.0, "15": -15.0},
     "9L": {"05": -5.0, "08": -8.0, "12": -12.0, "15": -15.0},
 }
+# onsemi and TI 79xx negative regulators, prefix + series -> codes (Vout = minus the code): MC7900/D
+# Rev. 21 electrical characteristics pp2-7 (MC7905.2 is -5.2 V and is not read); MC79L00/D Rev. 12
+# pp2-4; MC79M00/D Rev. 16 p1; µA7900 SLVS058H p1; µA79M SLVS060K p1. A bare code (79L05, 7912) is
+# any of these makers' or ST's L79 / L79L (above) parts with that code. L7xxx and LM7xxx are read above.
+_NEGATIVE_79XX = re.compile(r"(MC|UA)?79([LM]?)(\d{2})(?![\d.])")
+_NEGATIVE_79XX_CODES: dict[str, frozenset[str]] = {
+    "MC": frozenset({"05", "06", "08", "12", "15", "18", "24"}),
+    "MCL": frozenset({"05", "12", "15", "18", "24"}),
+    "MCM": frozenset({"05", "08", "12", "15"}),
+    "UA": frozenset({"05", "08", "12"}),
+    "UAM": frozenset({"05", "08"}),
+    "": frozenset({"05", "06", "08", "12", "15", "18", "24"}),
+    "L": frozenset({"05", "08", "12", "15", "18", "24"}),
+    "M": frozenset({"05", "08", "12", "15"}),
+}
 # RECOM R-78 modules: R-78<series><Vout>-<Iout> (R-78E5.0-0.5 is 5 V at 0.5 A). Model Numbering, p1 of
 # R-78xx-0.5 REV 6/2023, R-78xx-1.0 REV 5/2023, R-78B-1.5 REV 5/2020, R-78B-2.0 REV 5/2021,
 # R-78C-1.0 REV 3/2019, R-78CK-0.5 Rev 1-2025, R-78E-0.5 REV 9/2025, R-78E-1.0 REV 9/2024,
@@ -420,6 +435,9 @@ def _fixed_part_vout(candidates: list[str]) -> float | None:
         m = _ST78_CODE.match(candidate)
         if m and m.group(2) in _ST78_CODES.get(m.group(1), {}):
             return _ST78_CODES[m.group(1)][m.group(2)]
+        m = _NEGATIVE_79XX.match(candidate)
+        if m and m.group(3) in _NEGATIVE_79XX_CODES[(m.group(1) or "") + m.group(2)]:
+            return -float(m.group(3))
         m = _R78_CODE.match(candidate)
         if m:
             return float(m.group(1))

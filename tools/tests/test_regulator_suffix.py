@@ -384,6 +384,28 @@ class OrderCodes(unittest.TestCase):
         for value in ["MC7809CTG", "UA7805UC", "AIP78M05"]:
             self.assertEqual(lookup_regulator_vref(value, "Regulator_Linear:LM7805_TO220"), (None, ""), value)
 
+    def test_other_makers_79xx_codes_read_negative(self):
+        # onsemi MC7900/D Rev. 21 pp2-7, MC79L00/D Rev. 12 pp2-4, MC79M00/D Rev. 16 p1; TI uA7900
+        # SLVS058H p1, uA79M SLVS060K p1; a bare code is any maker's part with that code
+        for part, volts in [("L7905CV", -5.0), ("MC7912", -12.0), ("MC7912CTG", -12.0),
+                            ("MC7924BTG", -24.0), ("MC79L05ACPG", -5.0), ("MC79L15ACDR", -15.0),
+                            ("MC79M05CDTG", -5.0), ("MC79M12_TO252", -12.0), ("UA7905CKCS", -5.0),
+                            ("UA79M08CKTPR", -8.0), ("79L05", -5.0), ("79L05_SOT89", -5.0),
+                            ("7912", -12.0), ("7915", -15.0), ("79M12", -12.0)]:
+            self.assertEqual(lookup_regulator_vref(part, ""), (volts, "fixed_suffix"), part)
+            self.assertTrue(fixed_vout_is_explicit(part, ""), part)
+        # L7987 is an ST buck; MC7905.2 is -5.2 V; MC79L08, MC79M24 and uA79M12 are not in their tables
+        for part in ["L7987", "MC7905.2CT", "MC79L08", "MC79M24", "UA79M12", "79L09", "7987", "790512"]:
+            self.assertNotEqual(lookup_regulator_vref(part, "")[1], "fixed_suffix", part)
+
+    def test_79xx_value_on_another_parts_symbol_reads_its_own_code(self):
+        self.assertEqual(lookup_regulator_vref("79L05", "Regulator_Linear:L79L05_SO8"),
+                         (-5.0, "fixed_suffix"))
+        self.assertEqual(lookup_regulator_vref("7915", "Regulator_Linear:LM7915_TO220", "MC7915CTG"),
+                         (-15.0, "fixed_suffix"))
+        # a value naming another part takes nothing from a 79xx symbol
+        self.assertEqual(lookup_regulator_vref("TA7900S", "Custom:MC7905"), (None, ""))
+
 
 class BorrowedSymbol(unittest.TestCase):
     def test_value_naming_another_part_does_not_take_the_symbol_reference(self):

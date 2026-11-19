@@ -161,6 +161,36 @@ class LdoDissipationSign(unittest.TestCase):
         self.assertEqual(self._rail("+12V", "+5V", 5.0)["ldo_dissipation"]["dropout"], 7.0)
 
 
+class FixedPartOnANegativeInput(unittest.TestCase):
+    """A negative regulator's part number writes its voltage without the sign: the input rail
+    gives it."""
+
+    def _reg(self, value, vin, twin=None):
+        parts = [("U1", "Regulator_Linear:" + value, value,
+                  {"1": ("GND", "GND"), "2": ("IN", vin), "3": ("OUT", "VOUT")}),
+                 ("C1", "Device:C", "10u", {"1": ("1", "VOUT"), "2": ("2", "GND")})]
+        if twin:
+            parts.append(("C2", "Device:C", "10u", {"1": ("1", twin), "2": ("2", "GND")}))
+        return detect_power_regulators(_ctx(parts), [])[0]
+
+    def test_fixed_part_on_a_negative_input_is_negative(self):
+        for value, vin, volts in [("LM2990SX-5.0", "-12V", -5.0), ("LT3015EQ-2.5", "-5VA", -2.5),
+                                  ("LM2990S-5.0", "/Power/-12V", -5.0)]:
+            reg = self._reg(value, vin)
+            self.assertEqual((reg["input_rail"], reg["estimated_vout"]), (vin, volts), value)
+
+    def test_negative_half_of_a_split_pair_is_a_negative_input(self):
+        self.assertEqual(self._reg("LM2990S-5.0", "F-15V", twin="F+15V")["estimated_vout"], -5.0)
+
+    def test_fixed_part_on_a_positive_input_stays_positive(self):
+        for vin in ("+12V", "VIN-12V", "USB-5V", "F-15V"):
+            self.assertEqual(self._reg("LM2990S-5.0", vin)["estimated_vout"], 5.0, vin)
+
+    def test_negative_code_is_not_negated_twice(self):
+        self.assertEqual(self._reg("79L05", "-12V")["estimated_vout"], -5.0)
+        self.assertEqual(self._reg("MC7912CTG", "-15V")["estimated_vout"], -12.0)
+
+
 class InvertingWordInTheLibraryName(unittest.TestCase):
     def test_inverting_regulator_library_marks_the_part_inverting(self):
         ctx = _ctx([("U1", "Inverting_switching_regulator:LT1617", "LT1617",
