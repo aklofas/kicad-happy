@@ -804,7 +804,11 @@ def _infer_opamp_rails(det, context, info=None):
             ptype = (pin.get("pin_type") or "").lower()
             on_vee = pname in _VEE_PIN_NAMES
             named_v = named_neg if on_vee else named_pos
-            v = named_v if named_v is not None else _signed_supply_voltage(net_name, default=None)
+            # a negative voltage anywhere in the name (VEE_-12V) keeps its sign; a negative
+            # rail named without one (-VCC) is left to the mirror below
+            signed = parse_voltage_from_net_name(net_name)
+            v = named_v if named_v is not None else (
+                signed if signed is not None and signed < 0 else _infer_voltage(net_name, default=None))
             # VCC/VDD/V+ pins
             if pname in ("VCC", "VDD", "V+", "VS+", "V_P", "VP", "AVDD", "DVDD") or \
                (ptype == "power_in" and not found_vcc and v is not None and v > 0):
@@ -944,7 +948,7 @@ def _infer_voltage(net_name, default=3.3):
 
 def _signed_supply_voltage(net_name, default=3.3):
     """_infer_voltage, but a negative supply keeps its sign: '-12V' -> -12.0,
-    'NEG5V' -> -5.0, '-VBAT' -> -3.7. A name that does not read negative gives
+    'NEG5V' -> -5.0, '-VCC' -> -3.3. A name that does not read negative gives
     what _infer_voltage gives."""
     if net_name is None:
         return default

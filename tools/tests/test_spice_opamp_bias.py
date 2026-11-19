@@ -121,8 +121,8 @@ class NegativeRailTest(unittest.TestCase):
             with self.subTest(vee=vee):
                 self.assertEqual(T._infer_opamp_rails({"reference": "U1"}, _rails(vcc, vee)), want)
 
-    def test_battery_rails_keep_their_sign(self):
-        self.assertEqual(T._infer_opamp_rails({"reference": "U1"}, _rails("+VBAT", "-VBAT")), (3.7, -3.7))
+    def test_battery_return_on_the_negative_pin_is_single_supply(self):
+        self.assertEqual(T._infer_opamp_rails({"reference": "U1"}, _rails("+VBAT", "-VBAT")), (3.7, 0))
 
     def test_rail_voltage_is_read_from_the_leaf_of_the_name(self):
         for vcc, vee, want in (("VCC_1V8", "GND", (1.8, 0)), ("/Analog/+1V8", "GND", (1.8, 0)),
@@ -170,6 +170,13 @@ class NegativeRailTest(unittest.TestCase):
         info = {}
         self.assertEqual(T._infer_opamp_rails({"reference": "U1"}, _rails("+15V", "VEE"), info), (15, -15))
         self.assertEqual(info, {"vee_assumed": True, "rails_named": False})
+
+    def test_negative_rail_named_without_a_voltage_mirrors_vcc(self):
+        for vee in ("-VCC", "-VDD"):
+            with self.subTest(vee=vee):
+                info = {}
+                self.assertEqual(T._infer_opamp_rails({"reference": "U1"}, _rails("+15V", vee), info), (15, -15))
+                self.assertEqual(info, {"vee_assumed": True, "rails_named": False})
 
     def test_vee_pin_on_ground_is_single_supply(self):
         info = {}
