@@ -1,5 +1,6 @@
 """Known-part knowledge tables: regulator Vref and switching frequencies (kicad_core). Sources and verification dates are in the table comments. Also holds typical MLCC ESL/ESR by package and LED forward voltage by colour."""
 import re
+import unicodedata
 from collections.abc import Iterable
 
 
@@ -172,8 +173,8 @@ _REGULATOR_VREF: dict[str, float] = {
     "AP7365": 0.8,     "AP7366": 0.8,                            # AP7365/66 adjustable VFB = 0.8V
     "AP2112": 0.8,                                                # AP2112 adjustable Vref = 0.8V
     "AP3015": 1.23,                                               # AP3015A VFB = 1.23V
-    # ST
-    "LD1117": 1.25,    "LDL1117": 1.25,   "LD33": 1.25,         # LD1117 family Vref = 1.25V
+    # ST (the LDL1117 has fixed members only, DS12022 Rev 7 Table 7 p18)
+    "LD1117": 1.25,                                               # adjustable versions (DocID2572 Rev 38 Table 8 p14)
     # ON Semi
     "NCP1117": 1.25,                                              # NCP1117 Vref = 1.25V
     # SY (Silergy) — kept as-is, SY8088/8113 all 0.6V (verified clean)
@@ -235,12 +236,23 @@ _OUTPUT_DRIVE_KEYWORDS: tuple[str, ...] = (
 )
 
 
+def _strip_marks(text: str) -> str:
+    """*text* without surrounding spaces and invisible format characters (U+200E / U+200F direction marks)."""
+    text = text or ""
+    while text and (text[0].isspace() or unicodedata.category(text[0]) == "Cf"):
+        text = text[1:]
+    while text and (text[-1].isspace() or unicodedata.category(text[-1]) == "Cf"):
+        text = text[:-1]
+    return text
+
+
 def _regulator_candidates(value: str, lib_id: str, mpn: str) -> tuple[list[str], tuple[float | None, str]]:
     """The candidate names the Vref was taken from, and the lookup result.
 
     Value and lib_id part name come first; the MPN is consulted only when they
     give nothing, or when it names a longer table key (RT6150 over RT6).
     """
+    value, lib_id, mpn = _strip_marks(value), _strip_marks(lib_id), _strip_marks(mpn)
     candidates = [value.upper()]
     if ":" in lib_id:
         candidates.append(lib_id.split(":")[-1].upper())
@@ -281,8 +293,8 @@ _PACKAGE_TOKEN = re.compile(
 _AMBIGUOUS_SUFFIXES = frozenset({"05", "09", "10", "12", "15", "24", "48"})
 # Families whose data sheet gives the voltage of such a suffix (part-number prefix -> {suffix: V}).
 _FIXED_SUFFIX_FAMILIES: dict[str, dict[str, float]] = {
-    "LM2596": {"12": 12.0},                          # SNVS124E: 3.3-V, 5-V, 12-V and adjustable versions
-    "LM2576": {"12": 12.0, "15": 15.0},              # SNVS107G: 3.3-V, 5-V, 12-V, 15-V and adjustable
+    "LM2596": {"5": 5.0, "12": 12.0},                # SNVS124E: 3.3-V, 5-V, 12-V and adjustable versions
+    "LM2576": {"5": 5.0, "12": 12.0, "15": 15.0},    # SNVS107G: 3.3-V, 5-V, 12-V, 15-V and adjustable
     "LM2940": {"10": 10.0, "12": 12.0, "15": 15.0},  # SNVS769J ordering table: -5.0, -8.0, -9.0, -10, -12, -15
     "TL780": {"05": 5.0, "12": 12.0, "15": 15.0},    # SLVS055M: TL780-05, -12, -15
     "NCP1117": {"12": 12.0, "15": 1.5},              # onsemi NCP1117 ordering table: ST12T3G 12 V, ST15T3G 1.5 V
@@ -290,7 +302,12 @@ _FIXED_SUFFIX_FAMILIES: dict[str, dict[str, float]] = {
     "AP7361": {"10": 1.0, "12": 1.2, "15": 1.5},     # DS37274: AP7361C-10 1.0 V, -12 1.2 V, -15 1.5 V
     "LM2678": {"12": 12.0},                          # SNVS029L p1: 3.3 V, 5 V and 12 V fixed output and adjustable
     "LM2676": {"12": 12.0},                          # SNVS031N p1: 3.3 V, 5 V, 12 V fixed output and adjustable
-    "LM2575": {"12": 12.0, "15": 15.0},              # SNVS106E p1 (LM2575/LM2575HV): 3.3 V, 5 V, 12 V, 15 V and adjustable
+    "LM2575": {"5": 5.0, "12": 12.0, "15": 15.0},    # SNVS106E p1 (LM2575/LM2575HV): 3.3 V, 5 V, 12 V, 15 V and adjustable
+    "LM2595": {"5": 5.0},                            # SNVS122C p1: 3.3-V, 5-V, 12-V, and adjustable output versions
+    "LM2574": {"5": 5.0},                            # SNVS104F p1: 3.3-V, 5-V, 12-V, 15-V, and adjustable output versions
+    "LM2675": {"5": 5.0},                            # SNVS129G p1: 3.3V, 5V, 12V, and adjustable output versions
+    "LM22676": {"5": 5.0},                           # SNVS587L p1: -5.0 (output fixed to 5 V)
+    "LM22678": {"5": 5.0},                           # SNVS585M p1: -5.0 (output fixed to 5 V)
     "LM1085": {"12": 12.0},                          # SNVS038H p1: 3.3 V, 5.0 V, 12 V and adjustable
     "LM340": {"12": 12.0, "15": 15.0},               # SNOSBT0L p1: fixed 5 V, 12 V and 15 V options
 }
@@ -299,6 +316,8 @@ _FIXED_OUTPUT_PARTS: dict[str, float] = {
     "TPS61024": 3.0, "TPS61025": 3.3, "TPS61026": 5.0, "TPS61027": 5.0,  # SLVS451G p3 ordering table
     "TPS61031": 3.3, "TPS61032": 5.0,                                    # SLUS534G p3 device comparison table
     "LMR36506MSC5": 5.0, "LMR36506MSC3": 3.3,                            # LMR36506-Q1 SNVSB91C p3 device comparison table
+    "LMR36506RS3Q": 3.3,                                                 # LMR36506-Q1 SNVSB91C p3 device comparison table
+    "LMR36506R3": 3.3, "LMR36506RF3": 3.3, "LMR36506R5": 5.0,            # LMR36506 SNVSBB6C p3 device comparison table
     "LMR50410Y3": 3.3, "LMR50410Y5": 5.0,                                # LMR50410-Q1 SLUSDW4A p3 device comparison table
 }
 # SPX1117M3-L-<volts with the point written as a dash>/TR: -1-5, -1-8, -2-5, -3-3, -5-0 (MaxLinear
@@ -315,12 +334,25 @@ _ADI_FIXED_CODES: dict[str, dict[str, float]] = {
     "LT8607": {"5": 5.0}, "LT8609A": {"5": 5.0}, "LT8610A": {"5": 5.0}, "LTC3620": {"1": 1.1},
 }
 _ADI_FIXED_CODE = re.compile("(" + "|".join(_ADI_FIXED_CODES) + r")[A-Z0-9.]*-(\d)(?![\d.])")
-# onsemi NCP1117 / NCV1117 / NCP1117LP order codes: ST (SOT-223) or DT (DPAK) and a voltage code
-# (NCP1117/D Rev. 31 p12-13 ordering tables; NCP1117LP/D Rev. 6 p1 marking, p12 ordering table).
-_NCP1117_CODE = re.compile(r"NC[PV]1117(LP)?(?:ST|DT)(285|\d{2})")
+# onsemi NCP1117 / NCP1117I / NCV1117 / NCP1117LP order codes: ST (SOT-223) or DT (DPAK) and a voltage
+# code (NCP1117/D Rev. 31 p12-13 ordering tables; NCP1117LP/D Rev. 6 p1 marking, p12 ordering table).
+_NCP1117_CODE = re.compile(r"NC[PV]1117(LP|I)?(?:ST|DT)(285|\d{2})")
 _NCP1117_VOLTS = {"12": 12.0, "15": 1.5, "18": 1.8, "19": 1.9, "20": 2.0, "25": 2.5, "285": 2.85,
                   "33": 3.3, "50": 5.0}
 _NCP1117LP_VOLTS = {"15": 1.5, "18": 1.8, "25": 2.5, "33": 3.3, "50": 5.0}
+_NCP1117I_VOLTS = {"18": 1.8, "33": 3.3, "50": 5.0}
+# ST LD1117 / LD1117A order codes: package (S, D, DT, V) and a voltage code (LD1117 DocID2572 Rev 38
+# Table 26 p44; LD1117A DocID7194 Rev 26 Table 1 p1). LD1117STR, LD1117DTTR, LD1117V, LD1117SC-R and
+# LD1117ADT-TR are the adjustable versions.
+_LD1117_CODE = re.compile(r"LD1117(A?)(?:DT|D|S|V)(\d{2})(?!\d)")
+_LD1117_VOLTS = {"12": 1.2, "18": 1.8, "25": 2.5, "33": 3.3, "50": 5.0}
+_LD1117A_VOLTS = {"12": 1.2, "18": 1.8, "33": 3.3}
+# ST LDL1117 order codes (DS12022 Rev 7 Table 7 p18; S12R is 1.185 V)
+_LDL1117_CODE = re.compile(r"LDL1117S(\d{2})(?!\d)")
+_LDL1117_VOLTS = {"12": 1.185, "15": 1.5, "18": 1.8, "25": 2.5, "30": 3.0, "33": 3.3, "50": 5.0}
+# Microchip MIC23050 fixed members (M9999-092211-E p2 ordering information)
+_MIC23050_CODE = re.compile(r"MIC23050[-_]?([C4GS])YML")
+_MIC23050_VOLTS = {"C": 1.0, "4": 1.2, "G": 1.8, "S": 3.3}
 # ST L78 / L78L / L78M / L78S positive and L79 / L79L negative regulators, series -> {code: Vout}: L78
 # DS0422 Rev 38 Table 27 p50; L78L DS0424 Rev 30 Table 29 p34; L78M DocID2147 Rev 9 Table 14 p27; L78S
 # DocID2148 Rev 8 Table 1 p1; L79 DocID2149 Rev 21 Table 1 p1; L79L DocID2511 Rev 18 Table 14 p22.
@@ -338,9 +370,9 @@ _ST78_CODES: dict[str, dict[str, float]] = {
 # RECOM R-78 modules: R-78<series><Vout>-<Iout> (R-78E5.0-0.5 is 5 V at 0.5 A). Model Numbering, p1 of
 # R-78xx-0.5 REV 6/2023, R-78xx-1.0 REV 5/2023, R-78B-1.5 REV 5/2020, R-78B-2.0 REV 5/2021,
 # R-78C-1.0 REV 3/2019, R-78CK-0.5 Rev 1-2025, R-78E-0.5 REV 9/2025, R-78E-1.0 REV 9/2024,
-# R-78HB-0.5 REV 5/2019; R-78K-1.0 Rev 6-2025 p2.
-_R78_NAME = re.compile(r"R-78[A-Z]{0,2}\d")
-_R78_CODE = re.compile(r"R-78(?:CK|HB|[BCEK])?(\d{1,2}(?:\.\d)?)(?![\d.])")
+# R-78HB-0.5 REV 5/2019; R-78K-1.0 Rev 6-2025 p2; R-78AA-0.5 REV.: 5/2019 p1. Some libraries write R_78.
+_R78_NAME = re.compile(r"R[-_]78[A-Z]{0,2}\d")
+_R78_CODE = re.compile(r"R[-_]78(?:AA|CK|HB|[BCEK])?(\d{1,2}(?:\.\d)?)(?![\d.])")
 
 
 def is_r78_module(value: str, lib_id: str) -> bool:
@@ -374,7 +406,17 @@ def _fixed_part_vout(candidates: list[str]) -> float | None:
             return None
         m = _NCP1117_CODE.match(candidate)
         if m:
-            return (_NCP1117LP_VOLTS if m.group(1) else _NCP1117_VOLTS).get(m.group(2))
+            return {"LP": _NCP1117LP_VOLTS, "I": _NCP1117I_VOLTS}.get(m.group(1), _NCP1117_VOLTS).get(m.group(2))
+        m = _LD1117_CODE.match(candidate)
+        volts = m and (_LD1117A_VOLTS if m.group(1) else _LD1117_VOLTS).get(m.group(2))
+        if volts:
+            return volts
+        m = _LDL1117_CODE.match(candidate)
+        if m and m.group(1) in _LDL1117_VOLTS:
+            return _LDL1117_VOLTS[m.group(1)]
+        m = _MIC23050_CODE.match(candidate)
+        if m:
+            return _MIC23050_VOLTS[m.group(1)]
         m = _ST78_CODE.match(candidate)
         if m and m.group(2) in _ST78_CODES.get(m.group(1), {}):
             return _ST78_CODES[m.group(1)][m.group(2)]
@@ -446,6 +488,14 @@ def _lookup_vref(candidates: list[str], bare_codes: bool = True) -> tuple[float 
             # suffix after a space is part of a description (LM317 (7-12V)).
             if " " not in candidate[:m.start()]:
                 ambiguous.add(raw)
+        elif not m:
+            # a one-digit code is a voltage only where the family's data sheet lists it (LM2596S-5),
+            # and only in the part number, not in a description after a space
+            m = re.search(r'[-_](\d)(?=[^0-9.]|$)', candidate)
+            family = m and " " not in candidate[:m.start()] and next(
+                (f for f in _FIXED_SUFFIX_FAMILIES if re.match(f + r"(?!\d)", candidate)), None)
+            if family and m.group(1) in _FIXED_SUFFIX_FAMILIES[family]:
+                return _FIXED_SUFFIX_FAMILIES[family][m.group(1)], "fixed_suffix"
         elif m and bare_codes and m.group(1) != "13":
             # A two-digit suffix is an implied decimal, as in KiCad's library:
             # AP1117-33 is 3.3 V, LDK130-08 is 0.8 V. No fixed part is below
@@ -505,8 +555,6 @@ def is_label_like_value(value: str) -> bool:
     return bool(m) and m.group(1) in _LABEL_WORDS
 
 
-# A key that is itself a fixed-output part name (LD33 is a 3.3 V part) names no part's Vref.
-_FIXED_PART_KEYS = frozenset({"LD33"})
 # Keys whose order codes carry an X option letter (TPS560430XDBVR; LM2731XMF and LM27313XMF,
 # SNVS217G / SNVS487E ordering tables; LMR51606X / LMR51610X, the 400 kHz option, SLUSEY1B §4
 # p3): there an X after the key is part of the part number, elsewhere it is a family wildcard
@@ -522,8 +570,6 @@ def vref_key_covers_part(key: str, part: str) -> bool:
     (LM259X) names none."""
     core = part_number_core(part)
     if not (core and part.upper().startswith(key.upper()) and len(key) >= len(core)):
-        return False
-    if key.upper() in _FIXED_PART_KEYS:
         return False
     if key.upper() not in _X_OPTION_KEYS and re.match(r"[Xx]{1,2}(?![A-Za-z0-9])", part[len(key):]):
         return False

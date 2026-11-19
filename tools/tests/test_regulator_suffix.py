@@ -66,8 +66,7 @@ class FixedSuffix(unittest.TestCase):
         self.assertEqual(lookup_regulator_vref("AP7361C-33E-13", ""), (3.3, "fixed_suffix"))
 
     def test_package_names_give_no_value(self):
-        for name in ["LDO_SOT-23", "REG_SOT-89-10", "AXP209(QFN-48)", "LM2675-5-WSON-16",
-                     "XYZ_TO-92", "REG_SOT-223"]:
+        for name in ["LDO_SOT-23", "REG_SOT-89-10", "AXP209(QFN-48)", "XYZ_TO-92", "REG_SOT-223"]:
             self.assertNotEqual(lookup_regulator_vref(name, "")[1], "fixed_suffix", name)
 
     def test_more_package_names_give_no_value(self):
@@ -77,6 +76,20 @@ class FixedSuffix(unittest.TestCase):
     def test_package_name_does_not_hide_a_real_suffix(self):
         self.assertEqual(lookup_regulator_vref("AMS1117-3.3_SOT-223", ""), (3.3, "fixed_suffix"))
         self.assertEqual(lookup_regulator_vref("XC6206P332MR(SOT-23)", ""), (None, ""))
+
+    def test_one_digit_family_codes(self):
+        # each data sheet lists the 5 V version: LM2596 SNVS124G p1, LM2576 SNVS107G p1, LM2575 SNVS106E p1,
+        # LM2595 SNVS122C p1, LM2574 SNVS104F p1, LM2675 SNVS129G p1, LM22676 SNVS587L p1, LM22678 SNVS585M p1
+        for name in ["LM2596S-5", "LM2596T-5", "LM2576HVS-5", "LM2575-5", "LM2595S-5", "LM2574N-5",
+                     "LM2675M-5", "LM2675-5-WSON-16", "LM22676MR-5", "LM22678TJ-5"]:
+            self.assertEqual(lookup_regulator_vref(name, ""), (5.0, "fixed_suffix"), name)
+            self.assertTrue(fixed_vout_is_explicit(name, ""), name)
+        # a one-digit code outside these families is not a voltage
+        for name in ["LT8640EUDC-1#PBF", "AOZ1282CI-1", "LM3405-5", "LM2596S-ADJ", "LM2940-5",
+                     "LM2596 Buck 12V-5V"]:
+            self.assertNotEqual(lookup_regulator_vref(name, "")[0], 5.0, name)
+        self.assertEqual(lookup_regulator_vref("LM2596S-ADJ", ""), (1.23, "lookup"))
+        self.assertEqual(lookup_regulator_vref("LT8640EUDC-1#PBF", ""), (0.97, "lookup"))
 
     def test_lm2596_12_is_the_fixed_12v_part(self):
         self.assertEqual(lookup_regulator_vref("LM2596S-12", ""), (12.0, "fixed_suffix"))
@@ -285,7 +298,7 @@ class OrderCodes(unittest.TestCase):
 
     def test_borrowed_order_code_symbol_says_nothing_about_another_part(self):
         self.assertEqual(lookup_regulator_vref("TC2117", "X:NCP1117ST33T3G"), (None, ""))
-        self.assertEqual(lookup_regulator_vref("LDL1117S30R", "X:NCP1117ST33T3G"), (1.25, "lookup"))
+        self.assertEqual(lookup_regulator_vref("LDL1117S30R", "X:NCP1117ST33T3G"), (3.0, "fixed_suffix"))
 
     def test_lmr36506_fixed_order_codes(self):
         # LMR36506-Q1 SNVSB91C p3 Device Comparison Table: MSC5 5-V fixed, MSC3 3.3-V fixed, MSCQ adjustable
@@ -293,6 +306,58 @@ class OrderCodes(unittest.TestCase):
             self.assertEqual(lookup_regulator_vref(part, ""), (volts, "fixed_suffix"), part)
             self.assertTrue(fixed_vout_is_explicit(part, ""), part)
         self.assertEqual(lookup_regulator_vref("LMR36506MSCQRPERQ1", ""), (None, ""))
+
+    def test_lmr36506_codes(self):
+        # LMR36506-Q1 SNVSB91C p3 and LMR36506 SNVSBB6C p3 device comparison tables
+        for part, volts in [("LMR36506RS3QRPERQ1", 3.3), ("LMR36506R3RPER", 3.3), ("LMR36506RF3RPER", 3.3),
+                            ("LMR36506R5RPER", 5.0)]:
+            self.assertEqual(lookup_regulator_vref(part, ""), (volts, "fixed_suffix"), part)
+            self.assertTrue(fixed_vout_is_explicit(part, ""), part)
+        for part in ["LMR36506RRPER", "LMR36506RFRPER"]:
+            self.assertNotEqual(lookup_regulator_vref(part, "")[1], "fixed_suffix", part)
+
+    def test_st_ld1117_order_codes(self):
+        # LD1117 DocID2572 Rev 38 Table 26 p44; LD1117A DocID7194 Rev 26 Table 1 p1
+        for part, volts in [("LD1117S33TR", 3.3), ("LD1117DT18TR", 1.8), ("LD1117V33C", 3.3),
+                            ("LD1117D33TR", 3.3), ("LD1117S50CTR", 5.0), ("LD1117S25TR_SOT223", 2.5),
+                            ("LD1117AS12TR", 1.2), ("LD1117ADT33TR", 3.3), ("LD1117AV33", 3.3)]:
+            self.assertEqual(lookup_regulator_vref(part, ""), (volts, "fixed_suffix"), part)
+            self.assertTrue(fixed_vout_is_explicit(part, ""), part)
+        # the adjustable versions keep the 1.25 V reference (DocID2572 Rev 38 Table 8 p14)
+        for part in ["LD1117STR", "LD1117DTTR", "LD1117V", "LD1117SC-R", "LD1117ADT-TR", "LD1117ASTR"]:
+            self.assertEqual(lookup_regulator_vref(part, ""), (1.25, "lookup"), part)
+
+    def test_ldl1117_has_fixed_members_only(self):
+        # DS12022 Rev 7 Table 7 p18: fixed members only, S12R is 1.185 V
+        for part, volts in [("LDL1117S12R", 1.185), ("LDL1117S15R", 1.5), ("LDL1117S30R", 3.0),
+                            ("LDL1117S33R", 3.3), ("LDL1117S50R", 5.0)]:
+            self.assertEqual(lookup_regulator_vref(part, ""), (volts, "fixed_suffix"), part)
+        self.assertEqual(lookup_regulator_vref("LDL1117", ""), (None, ""))
+        self.assertIsNone(regulator_vref_key("LDL1117", ""))
+
+    def test_ncp1117i_codes(self):
+        # NCP1117/D Rev. 31 p12, ordering information (NCP1117I)
+        for part, volts in [("NCP1117IST18T3G", 1.8), ("NCP1117IST33T3G", 3.3), ("NCP1117IST50T3G", 5.0),
+                            ("NCP1117IDT33T4G", 3.3), ("NCP1117IDT50T4G", 5.0)]:
+            self.assertEqual(lookup_regulator_vref(part, ""), (volts, "fixed_suffix"), part)
+        for part in ["NCP1117ISTAT3G", "NCP1117IDTAT4G"]:
+            self.assertEqual(lookup_regulator_vref(part, ""), (1.25, "lookup"), part)
+
+    def test_mic23050_codes(self):
+        # M9999-092211-E p2 ordering information
+        for part, volts in [("MIC23050-CYML", 1.0), ("MIC23050-4YML", 1.2), ("MIC23050_GYML", 1.8),
+                            ("MIC23050-SYML-TR", 3.3)]:
+            self.assertEqual(lookup_regulator_vref(part, ""), (volts, "fixed_suffix"), part)
+            self.assertTrue(fixed_vout_is_explicit(part, ""), part)
+        self.assertEqual(lookup_regulator_vref("MIC23050", ""), (None, ""))
+
+    def test_invisible_marks_around_a_part_number(self):
+        self.assertEqual(lookup_regulator_vref("\u200f\u200eNCV1117ST25T3G", ""), (2.5, "fixed_suffix"))
+        self.assertEqual(lookup_regulator_vref("LINEAR_LDO", "X:LINEAR_LDO", "LD1117AS12TR\u200e\u200f"),
+                         (1.2, "fixed_suffix"))
+
+    def test_reg_label_text_is_not_read(self):
+        self.assertEqual(lookup_regulator_vref("Reg.3.3V 1A", "lsts-regul:REG_Recom"), (None, ""))
 
     def test_st_l78_l79_codes(self):
         # ST order codes: L78 DS0422 Rev 38 Table 27 p50; L78L DS0424 Rev 30 Table 29 p34; L78M DocID2147
@@ -409,11 +474,19 @@ class RecomR78(unittest.TestCase):
 
     def test_r78_current_suffix_is_never_read_as_a_voltage(self):
         # a series outside the cited data sheets, and R-78 symbols borrowed for other parts
-        for value, lib_id in [("R-78AA5.0-1.0", ""), ("VXO7803-1000", "X:R-78C3.3-1.0"),
+        for value, lib_id in [("R-78S3.3-0.1", ""), ("VXO7803-1000", "X:R-78C3.3-1.0"),
                               ("BP5293-5", "X:R-78E5")]:
             self.assertNotEqual(lookup_regulator_vref(value, lib_id)[1], "fixed_suffix", value)
         # an ST order code on an R-78 symbol gives its own voltage, not the module's
         self.assertEqual(lookup_regulator_vref("L7812CV", "X:R-78B5.0-2.0"), (12.0, "fixed_suffix"))
+
+    def test_r78aa_and_underscore_spelling(self):
+        # R-78AA-0.5 REV.: 5/2019 p1 selection guide and model numbering; some libraries write R_78
+        for name, volts in [("R-78AA5.0-0.5SMD", 5.0), ("R-78AA3.3-0.5SMD-R", 3.3), ("R_783.3-0.5", 3.3),
+                            ("R_78E5.0-0.5", 5.0)]:
+            self.assertEqual(lookup_regulator_vref(name, ""), (volts, "fixed_suffix"), name)
+        self.assertTrue(is_r78_module("R_783.3-0.5", ""))
+        self.assertEqual(lookup_regulator_vref("R-78S3.3-0.1", ""), (None, ""))
 
     def test_voltage_written_outside_the_model_number_is_still_read(self):
         self.assertEqual(lookup_regulator_vref("R-78B_9.0V-1.0A", ""), (9.0, "fixed_suffix"))
@@ -446,9 +519,11 @@ class KeyCover(unittest.TestCase):
                           ("LMR51610", "LMR51610X"), ("LMR51606", "LMR51606X")]:
             self.assertTrue(vref_key_covers_part(key, part), part)
 
-    def test_fixed_part_key_covers_nothing(self):
-        self.assertFalse(vref_key_covers_part("LD33", "LD33"))
-        self.assertEqual(lookup_regulator_vref("LD33", ""), (1.25, "lookup"))
+    def test_ld33_takes_no_reference(self):
+        # no cited data sheet names an LD33 part (LD1117 DocID2572 Rev 38 Table 26 lists no LD33 code)
+        for part in ["LD33", "LD33CV", "LD33V"]:
+            self.assertEqual(lookup_regulator_vref(part, ""), (None, ""), part)
+            self.assertIsNone(regulator_vref_key(part, ""), part)
 
 
 class LongestKey(unittest.TestCase):

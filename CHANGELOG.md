@@ -147,6 +147,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - Rail voltages read from net names understand comma decimals (`3,3V`), P-notation (`1P2V`, `V1P8`, `VDD3P3`) and a minus after a space or underscore (`VEE_-12V`, `GENERATED -5V`); a dash between words (`USB-5V`) is still no sign, and a net named after a part's own pin (`V2P3` on pin 3 of V2) gets no voltage.
 - The negative half of a split supply named in pairs reads negative in rail voltages, power rails, regulator outputs and op-amp benches: `7V0_N_1` beside `7V0_P`, `F-15V` beside `F+15V`, and `V12N` / `V12P` (-12 V / +12 V). A name without its twin (`230V_N`, `1V5_N`, `USB-5V`) keeps its positive reading.
 - ST L78, L78L, L78M, L78S, L79 and L79L regulators (L7805CV, L78L33ACZ, L7912CV) report the fixed output voltage of their order code, also when drawn on a generic 78xx symbol.
+- Fixed-output regulators read their voltage from more order codes: ST LD1117 and LDL1117, onsemi NCP1117I, Microchip MIC23050, the TI LMR36506 fixed versions, RECOM R-78AA (and R-78 names written `R_78`), and the `-5` versions of LM2596, LM2576, LM2575, LM2595, LM2574, LM2675, LM22676 and LM22678; invisible direction marks around a part number no longer hide it. Fixed versions no longer report the adjustable versions' reference (1.25 V for LD1117 and NCP1117I, 1.23 V for LM2596-5), and LD33, which no cited data sheet lists, gets none.
 
 ### Documentation
 
