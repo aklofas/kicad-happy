@@ -70,9 +70,20 @@ class ZeroSpanSweepTest(unittest.TestCase):
         # +5V on the emitter: VBE sweeps 0 to -1 V
         self._assert_simulated(_simulate(_pnp("+5V"))[0])
 
-    def test_pnp_on_a_negative_rail_is_not_skipped(self):
-        # a negative rail name does not read as 0 V, so its sweep keeps a span
-        self._assert_simulated(_simulate(_pnp("-5V"))[0])
+    def test_pnp_on_a_negative_rail_is_skipped_with_the_reason(self):
+        res = _simulate(_pnp("-5V"))[0]
+        self.assertEqual([r["status"] for r in res], ["skip"])
+        self.assertEqual(res[0]["note"], "testbench generation failed: ValueError: "
+                                         "emitter supply -5.0 V from net '-5V' is negative")
+
+    def test_npn_and_fets_on_a_negative_rail_are_skipped(self):
+        npn = dict(_pnp("E"), lib_id="Device:Q_NPN_BEC", collector_net="-12V")
+        nfet = dict(_pfet("GND"), is_pchannel=False, drain_net="-VBAT")
+        for det, note in ((npn, "collector supply -12.0 V from net '-12V' is negative"),
+                          (nfet, "drain supply -3.7 V from net '-VBAT' is negative")):
+            res = _simulate(det)[0]
+            self.assertEqual(res[0]["status"], "skip")
+            self.assertTrue(res[0]["note"].endswith(note), res[0]["note"])
 
 
 if __name__ == "__main__":

@@ -19,7 +19,7 @@ import re
 
 import _core_path  # noqa: F401
 from kicad_core.diagnostics import record
-from kicad_core.netnames import is_ground_name, negative_split_rails
+from kicad_core.netnames import is_ground_name, negative_split_rails, parse_voltage_from_net_name
 from spice_results import crystal_load_legs
 from spice_models import (
     get_generic_models,
@@ -804,7 +804,7 @@ def _infer_opamp_rails(det, context, info=None):
             ptype = (pin.get("pin_type") or "").lower()
             on_vee = pname in _VEE_PIN_NAMES
             named_v = named_neg if on_vee else named_pos
-            v = named_v if named_v is not None else _infer_voltage(net_name, default=None)
+            v = named_v if named_v is not None else _signed_supply_voltage(net_name, default=None)
             # VCC/VDD/V+ pins
             if pname in ("VCC", "VDD", "V+", "VS+", "V_P", "VP", "AVDD", "DVDD") or \
                (ptype == "power_in" and not found_vcc and v is not None and v > 0):
@@ -896,10 +896,14 @@ def _rail_name_voltage(net_name):
     '-5V', 'USB2VBUS' -> None. Only the leaf's '_'/'-'-separated tokens that
     begin with the number count, so a number that is not a voltage is not
     read as one; a '-' right before the voltage at the start of the name or
-    after '_', '-' or a space ('-5V', 'ATX_-5V') is a negative rail -> None."""
+    after '_', '-' or a space ('-5V', 'ATX_-5V') is a negative rail -> None;
+    so is a name that starts with '-', 'NEG' or '(-)' ('-VCC_5V'). A letter run
+    glued to the '+' before the number ('F+15V') starts the voltage."""
     leaf = (net_name or "").rsplit("/", 1)[-1].upper().strip()
+    if re.match(r"-|NEG(?![A-Z])|\(-\)", leaf):
+        return None
     for tok_m in re.finditer(r"[^_\s-]+", leaf):
-        tok, at = tok_m.group(0), tok_m.start()
+        tok, at = re.sub(r"^[A-Z]+(?=\+\d)", "", tok_m.group(0)), tok_m.start()
         signed = at > 0 and leaf[at - 1] == "-" and (at == 1 or leaf[at - 2] in "_- \t")
         m = re.fullmatch(r"\+?(\d+)V(\d*)[A-Z]*", tok)
         v = float(f"{m.group(1)}.{m.group(2) or 0}") if m else None
@@ -936,6 +940,24 @@ def _infer_voltage(net_name, default=3.3):
     if name in ("VCC", "VDD", "+V"):
         return 3.3
     return default
+
+
+def _signed_supply_voltage(net_name, default=3.3):
+    """_infer_voltage, but a negative supply keeps its sign: '-12V' -> -12.0,
+    'NEG5V' -> -5.0, '-VBAT' -> -3.7. A name that does not read negative gives
+    what _infer_voltage gives."""
+    if net_name is None:
+        return default
+    named = parse_voltage_from_net_name(net_name)
+    if named is not None and named < 0:
+        return named
+    leaf = net_name.rsplit("/", 1)[-1].strip()
+    m = re.match(r"(?:-|NEG_?|\(-\))(?=[A-Za-z])", leaf, re.IGNORECASE)
+    if m:
+        v = _infer_voltage(leaf[m.end():], default=None)
+        if v is not None:
+            return -v
+    return _infer_voltage(net_name, default=default)
 
 
 def generate_feedback_network(det, output_file, vin=3.3, context=None, parasitics=None):
@@ -1058,12 +1080,15 @@ def _generate_mosfet_testbench(det, output_file, context=None, parasitics=None):
     # Determine supply voltage
     if is_p:
         # P-channel: source is usually at VDD
-        vdd = _infer_voltage(det.get("source_net"), default=3.3)
+        vdd = _signed_supply_voltage(det.get("source_net"), default=3.3)
     else:
         # N-channel: drain load connects to VDD
-        vdd = _infer_voltage(det.get("drain_net"), default=3.3)
-        if drain_is_pwr:
-            vdd = _infer_voltage(det.get("drain_net"), default=3.3)
+        vdd = _signed_supply_voltage(det.get("drain_net"), default=3.3)
+    # a negative supply has no bench at the generic positive threshold
+    if vdd < 0:
+        supply = "source" if is_p else "drain"
+        net = det.get("source_net") if is_p else det.get("drain_net")
+        raise ValueError(f"{supply} supply {vdd} V from net '{net}' is negative")
     # a 0 V supply makes the gate sweep zero-span, which ngspice never completes
     if vdd <= 0:
         supply = "source" if is_p else "drain"
@@ -1171,7 +1196,12 @@ def _generate_bjt_testbench(det, output_file, context=None, parasitics=None):
         raise ValueError("collector on ground (load on ground): no switching bench")
     polarity = "PNP" if is_pnp else "NPN"
 
-    vcc = _infer_voltage(det.get("collector_net") if not is_pnp else det.get("emitter_net"), default=3.3)
+    supply_net = det.get("emitter_net") if is_pnp else det.get("collector_net")
+    vcc = _signed_supply_voltage(supply_net, default=3.3)
+    # a negative supply has no bench at the generic positive polarity
+    if vcc < 0:
+        raise ValueError(f"{'emitter' if is_pnp else 'collector'} supply {vcc} V "
+                         f"from net '{supply_net}' is negative")
     # the PNP emitter sits on the supply; a 0 V supply leaves the collector no headroom
     if is_pnp and vcc <= 0:
         raise ValueError(f"emitter supply {vcc} V from net '{det.get('emitter_net')}' leaves no base sweep")

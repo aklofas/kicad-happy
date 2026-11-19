@@ -488,10 +488,21 @@ class RailNameVoltageTest(unittest.TestCase):
             "VBUS": None, "VCC": None,
             "ATX_-5V": None, "analog_-15V": None,   # '-' before the voltage after a separator
             "3V3-5V": 3.3, "+5V-ISO": 5.0, "VCC-IO": None,
+            "F+15V": 15.0, "F+8V": 8.0,   # a letter run glued to the '+' starts the voltage
+            "-VCC_5V": None, "NEG12V": None,
             "F-15V": 15.0,      # a bare letter before '-' is ambiguous (like VCC-5V): read as a separator
         }
         for name, volts in cases.items():
             self.assertEqual(T._rail_name_voltage(name), volts, name)
+
+
+class SignedSupplyVoltageTest(unittest.TestCase):
+    def test_a_negative_supply_keeps_its_sign(self):
+        cases = {"-12V": -12.0, "NEG5V": -5.0, "-VBAT": -3.7, "/Power/-5V": -5.0, "-USB": -5.0,
+                 "+5V": 5.0, "VBAT": 3.7, "-BATT": 3.3, "0V": 0.0}
+        for name, volts in cases.items():
+            self.assertEqual(T._signed_supply_voltage(name), volts, name)
+        self.assertIsNone(T._signed_supply_voltage(None, default=None))
 
 
 class NoExpectedValueTest(unittest.TestCase):

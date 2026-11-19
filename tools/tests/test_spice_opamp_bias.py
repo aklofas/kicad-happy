@@ -121,6 +121,9 @@ class NegativeRailTest(unittest.TestCase):
             with self.subTest(vee=vee):
                 self.assertEqual(T._infer_opamp_rails({"reference": "U1"}, _rails(vcc, vee)), want)
 
+    def test_battery_rails_keep_their_sign(self):
+        self.assertEqual(T._infer_opamp_rails({"reference": "U1"}, _rails("+VBAT", "-VBAT")), (3.7, -3.7))
+
     def test_rail_voltage_is_read_from_the_leaf_of_the_name(self):
         for vcc, vee, want in (("VCC_1V8", "GND", (1.8, 0)), ("/Analog/+1V8", "GND", (1.8, 0)),
                                ("A+2V5", "A-2V5", (2.5, -2.5)), ("/A/+12V", "/A/-12V", (12, -12)),
