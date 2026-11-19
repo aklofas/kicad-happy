@@ -110,8 +110,9 @@ class PowerTreeEnableType(unittest.TestCase):
             self.assertEqual(self.tree[ref]["enabled_by"], ENABLES[ref][1], ref)
 
 
-def _pull_ctx(extra_regs=None, extra_parts=None):
-    """Enables held by resistors and capacitors. Pin 1 of each two-pin part sits on the EN net."""
+def _pull_ctx(extra_regs=None, extra_parts=None, en_pins=None):
+    """Enables held by resistors and capacitors. Pin 1 of each two-pin part sits on the EN net.
+    *en_pins* names a regulator's enable pin other than EN."""
     regs = {"U1": ("+12V", "EN1"), "U2": ("+12V", "EN2"), "U3": ("+12V", "EN3"),
             "U4": ("+48V", "EN4"), "U5": ("+5V", "EN5"), "U6": ("+5V", "EN6"),
             "U7": ("__unnamed_7", "EN7")}
@@ -132,13 +133,14 @@ def _pull_ctx(extra_regs=None, extra_parts=None):
                                              pin_type=ptype))
 
     for ref, (vin, en) in regs.items():
+        en_pin = (en_pins or {}).get(ref, "EN")
         comps.append({"reference": ref, "type": "ic", "value": "REG", "lib_id": "Regulator:REG",
                       "footprint": "", "properties": {},
                       "pins": [{"number": "1", "name": "VIN"}, {"number": "2", "name": "GND"},
-                               {"number": "3", "name": "EN"}, {"number": "4", "name": "VOUT"}]})
+                               {"number": "3", "name": en_pin}, {"number": "4", "name": "VOUT"}]})
         add(vin, ref, "1", "VIN", "power_in")
         add("GND", ref, "2", "GND", "power_in")
-        add(en, ref, "3", "EN", "input")
+        add(en, ref, "3", en_pin, "input")
         add("OUT_" + ref, ref, "4", "VOUT", "power_out")
     for ref, (kind, value, near, far) in parts.items():
         comps.append({"reference": ref, "type": kind, "value": value, "lib_id": "Device:" + ref[0],
@@ -205,6 +207,24 @@ class EnableHeldByResistors(unittest.TestCase):
     def test_pull_up_to_an_unnamed_net_carrying_the_input_is_a_pull_up(self):
         self.assertTrue(self.deps["U7"].get("has_pull_up"))
         self.assertEqual(self.deps["U7"]["en_source"], "always_on")
+
+
+class ActiveLowEnableHeldByAPullUp(unittest.TestCase):
+    """A pull-up holds an overbar enable off, so the regulator waits for a driver."""
+
+    def _dep(self, pin):
+        ctx, regs = _pull_ctx({"U10": ("+12V", "EN10")},
+                              {"R10": ("resistor", "100k", "EN10", "+12V")}, {"U10": pin})
+        out = analyze_power_sequencing(ctx, {"power_regulators": regs})
+        return {d["regulator"]: d for d in out["dependencies"]}["U10"]
+
+    def test_overbar_enable_pulled_up_is_controlled(self):
+        dep = self._dep("~{EN}")
+        self.assertEqual(dep["en_source"], "controlled")
+        self.assertTrue(dep.get("has_pull_up"))
+
+    def test_overbar_shutdown_pulled_up_is_always_on(self):
+        self.assertEqual(self._dep("~{SHDN}")["en_source"], "always_on")
 
 
 class SheetModeReachesTheEnableCheck(unittest.TestCase):

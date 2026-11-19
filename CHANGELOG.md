@@ -138,7 +138,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - USB-C CC checks pick the 5.1 kΩ pull-down when a CC pin has more than one resistor, no longer pass a 5.1 kΩ resistor that does not go to ground, and treat CYPD3175 and FUSB303 as controllers that terminate CC themselves.
 - A sub-ohm shunt or link between two rails no longer gets a power-derating error computed from the difference of the rail voltages.
 - A resistor between a negative supply and a VSS-named net such as AVSS or VSSA is no longer rated as if that net were 0 V. A net named VSS, or one that carries a GND symbol, is still read as 0 V.
-- A regulator enable pin held only by a pull-up resistor (or a UVLO divider) now reads as always on, and a pull-down is no longer reported as a pull-up; the sleep audit no longer says such a regulator can be disabled.
+- A regulator enable pin held only by a pull-up resistor (or a UVLO divider) now reads as always on (an overbar enable such as `~{EN}`, which the pull-up holds off, stays controlled), and a pull-down is no longer reported as a pull-up; the sleep audit no longer says such a regulator can be disabled.
 - In a root schematic, which reads all its sheets, an enable net that carries a hierarchical or global label is read by what is on it like any other enable net; only a sub-sheet read on its own keeps such an enable as controlled, since its driver can be on a sheet that was not read.
 - A regulator whose power-good drives its own enable is no longer listed as sequenced after itself.
 - The sleep audit counts power LEDs wired straight to ground, and reads a battery rail's voltage from the battery symbol (2xAA, coin cells, stacked cells) instead of always assuming 3.7 V.

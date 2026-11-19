@@ -1941,8 +1941,10 @@ def analyze_power_sequencing(ctx: AnalysisContext,
                         lb.get("type") in ("hierarchical_label", "global_label")
                         for lb in nets[en_net].get("labels") or [])
                     # A pull-down alone stays controlled: an enable named without an overbar
-                    # can still be active low (CE, EN on some converters).
-                    if has_pull_up and all(pulls) and not labelled:
+                    # can still be active low (CE, EN on some converters). A pull-up holds an
+                    # overbar enable off.
+                    if (has_pull_up and all(pulls) and not labelled
+                            and not is_active_low_enable(en_pin_name)):
                         dep_entry["en_source"] = "always_on"
                     else:
                         dep_entry["en_source"] = "controlled"
