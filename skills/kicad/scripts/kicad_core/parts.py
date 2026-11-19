@@ -462,7 +462,16 @@ def fixed_vout_is_explicit(value: str, lib_id: str, mpn: str = "") -> bool:
     return result[1] == "fixed_suffix" and _lookup_vref(candidates, bare_codes=False) == result
 
 
-def _lookup_vref(candidates: list[str], bare_codes: bool = True) -> tuple[float | None, str]:
+def fixed_vout_is_table_code(value: str, lib_id: str, mpn: str = "") -> bool:
+    """True when the fixed output voltage lookup_regulator_vref reads comes from a data-sheet
+    table (an LM78xx/LM79xx or order code, a family's suffix: L78L33, LM2596S-12), which gives
+    its sign, rather than from a bare suffix (LM2990SX-5.0, AP1117-33), which does not."""
+    candidates, result = _regulator_candidates(value, lib_id, mpn)
+    return result[1] == "fixed_suffix" and _lookup_vref(candidates, bare_suffixes=False) == result
+
+
+def _lookup_vref(candidates: list[str], bare_codes: bool = True,
+                 bare_suffixes: bool = True) -> tuple[float | None, str]:
     # LM78xx/LM79xx fixed-output convention: voltage digits embedded without
     # separator. LM7805=5V, LM78L12=12V, LM78M05CT=5V, LM7805_TO220=5V; the
     # LM79xx parts are negative regulators (LM7905=-5V).
@@ -490,10 +499,10 @@ def _lookup_vref(candidates: list[str], bare_codes: bool = True) -> tuple[float 
         raw = candidate
         candidate = _PACKAGE_TOKEN.sub("", candidate)
         m = re.search(r'[-_](\d+)V(\d+)', candidate)
-        if m:
+        if m and bare_suffixes:
             return float(f"{m.group(1)}.{m.group(2)}"), "fixed_suffix"
         m = re.search(r'[-_](\d+\.\d+)(?:V)?(?=[^0-9]|$)', candidate)
-        if m:
+        if m and bare_suffixes:
             fixed_v = float(m.group(1))
             if 0.5 <= fixed_v <= 60:
                 return fixed_v, "fixed_suffix"
@@ -514,7 +523,7 @@ def _lookup_vref(candidates: list[str], bare_codes: bool = True) -> tuple[float 
                 (f for f in _FIXED_SUFFIX_FAMILIES if re.match(f + r"(?!\d)", candidate)), None)
             if family and m.group(1) in _FIXED_SUFFIX_FAMILIES[family]:
                 return _FIXED_SUFFIX_FAMILIES[family][m.group(1)], "fixed_suffix"
-        elif m and bare_codes and m.group(1) != "13":
+        elif m and bare_codes and bare_suffixes and m.group(1) != "13":
             # A two-digit suffix is an implied decimal, as in KiCad's library:
             # AP1117-33 is 3.3 V, LDK130-08 is 0.8 V. No fixed part is below
             # 0.5 V, so LC78_03-05 (a 3.3 V module) gives no value. -13 is

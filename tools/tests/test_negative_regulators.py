@@ -186,6 +186,12 @@ class FixedPartOnANegativeInput(unittest.TestCase):
         for vin in ("+12V", "VIN-12V", "USB-5V", "F-15V"):
             self.assertEqual(self._reg("LM2990S-5.0", vin)["estimated_vout"], 5.0, vin)
 
+    def test_positive_data_sheet_code_on_a_negative_input_gets_no_estimate(self):
+        # an L78L33 or LM7805 fed from a negative rail is wired outside its data sheet
+        for value, vin in [("L78L33_SO8", "-3V3"), ("LM7805", "-12V"), ("LM2596S-12", "-15V")]:
+            self.assertNotIn("estimated_vout", self._reg(value, vin), value)
+        self.assertEqual(self._reg("L78L33_SO8", "+5V")["estimated_vout"], 3.3)
+
     def test_unlisted_79l_series_code_reads_nothing(self):
         self.assertNotIn("estimated_vout", self._reg("uA79L05", "-12V"))
 

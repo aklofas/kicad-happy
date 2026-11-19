@@ -5,7 +5,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "skills" / "kicad" / "scripts"))
 
 from kicad_core.parts import (  # noqa: E402
-    fixed_vout_is_explicit, is_r78_module, lookup_regulator_vref, regulator_vref_key, vref_key_covers_part)
+    fixed_vout_is_explicit, fixed_vout_is_table_code, is_r78_module, lookup_regulator_vref, regulator_vref_key,
+    vref_key_covers_part)
 
 
 class FixedSuffix(unittest.TestCase):
@@ -399,13 +400,23 @@ class OrderCodes(unittest.TestCase):
                      "UA79L05", "uA79L12ACD"]:
             self.assertNotEqual(lookup_regulator_vref(part, "")[1], "fixed_suffix", part)
 
-    def test_79xx_value_on_another_parts_symbol_reads_its_own_code(self):
+    def test_bare_79xx_value_on_a_symbol_of_the_same_code(self):
         self.assertEqual(lookup_regulator_vref("79L05", "Regulator_Linear:L79L05_SO8"),
                          (-5.0, "fixed_suffix"))
         self.assertEqual(lookup_regulator_vref("7915", "Regulator_Linear:LM7915_TO220", "MC7915CTG"),
                          (-15.0, "fixed_suffix"))
         # a value naming another part takes nothing from a 79xx symbol
         self.assertEqual(lookup_regulator_vref("TA7900S", "Custom:MC7905"), (None, ""))
+
+
+class TableCode(unittest.TestCase):
+    def test_data_sheet_codes_give_their_sign(self):
+        for part in ["L78L33_SO8", "LM7805", "MC7912CTG", "LM2596S-12", "NCP1117ST33T3G", "R-78E5.0-0.5"]:
+            self.assertTrue(fixed_vout_is_table_code(part, ""), part)
+
+    def test_bare_suffixes_carry_no_sign(self):
+        for part in ["LM2990SX-5.0", "LT3015EQ-2.5", "AP1117-33", "AMS1117-3V3", "LM317"]:
+            self.assertFalse(fixed_vout_is_table_code(part, ""), part)
 
 
 class BorrowedSymbol(unittest.TestCase):
