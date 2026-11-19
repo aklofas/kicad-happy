@@ -46,7 +46,7 @@ class OutputCapacitorOnAnyNet(unittest.TestCase):
         self.assertEqual(_missing("SYS", "GND"), [])
 
     def test_cap_to_the_regulators_own_ground_pin_net_counts(self):
-        self.assertEqual(_missing("__unnamed_4", "-BATT", ground_pin_net="-BATT"), [])
+        self.assertEqual(_missing("__unnamed_4", "__unnamed_7", ground_pin_net="__unnamed_7"), [])
 
     def test_cap_to_a_supply_rail_the_ground_pin_is_miswired_to_does_not_count(self):
         self.assertEqual(_missing("__unnamed_4", "+5V", ground_pin_net="+5V"),
@@ -79,7 +79,7 @@ class RegulatorInputCapacitor(unittest.TestCase):
         self.assertEqual(self._input("VUSB", "GND"), [])
 
     def test_cap_to_the_regulators_own_ground_pin_net_counts(self):
-        self.assertEqual(self._input("__unnamed_9", "-BATT", ground_pin_net="-BATT"), [])
+        self.assertEqual(self._input("__unnamed_9", "__unnamed_7", ground_pin_net="__unnamed_7"), [])
 
     def test_series_cap_to_a_signal_net_is_not_an_input_cap(self):
         self.assertEqual(self._input("__unnamed_9", "AUDIO_IN"), [{"input": "__unnamed_9"}])
