@@ -326,6 +326,11 @@ def _sheet_stem_voltage(net: str) -> float | None:
     return parse_voltage_from_net_name(parts[-2])
 
 
+# How far a regulator estimate may sit from the voltage in its output net's name before the
+# name is taken as the rail's voltage (DO-DET reports a mismatch at the same 15 %).
+_NAME_VOLTAGE_TOLERANCE = 0.15
+
+
 def build_rail_map(ctx: AnalysisContext, power_regulators: list[dict]) -> dict[str, float]:
     """Rail voltages keyed by full net name, one source per pass in priority order.
 
@@ -341,12 +346,21 @@ def build_rail_map(ctx: AnalysisContext, power_regulators: list[dict]) -> dict[s
     last word: an ignored rail is dropped and an override is set on every net it names.
     """
     by_net: dict[str, float] = {}
+    split = split_rail_voltages(ctx.nets)
     for reg in power_regulators:
         out_rail = reg.get("output_rail")
         v_out = reg.get("estimated_vout")
         # A VSS-named supply sits below ground: a positive estimate (a part-number voltage
         # without its sign) is not its voltage.
         if out_rail and v_out is not None and not (out_rail in ctx.vss_supply_rails and v_out > 0):
+            # The output net's own voltage beats an estimate that differs in sign or by more
+            # than the tolerance DO-DET reports a mismatch at.
+            v_name = (split[out_rail] if out_rail in split
+                      else parse_voltage_from_net_name(out_rail))
+            if (v_name and out_rail not in ctx.vss_supply_rails
+                    and ((v_name < 0) != (v_out < 0)
+                         or abs(v_out - v_name) / abs(v_name) > _NAME_VOLTAGE_TOLERANCE)):
+                v_out = v_name
             by_net[out_rail] = v_out
     # A switch node or an input is never an output, and an IC's internal regulator
     # output (a core-voltage pin) has nothing to do with its sheet's name.
@@ -367,7 +381,6 @@ def build_rail_map(ctx: AnalysisContext, power_regulators: list[dict]) -> dict[s
         if reg.get("output_rail"):
             inverting_out[reg["output_rail"]] = (inverting_out.get(reg["output_rail"], False)
                                                  or bool(reg.get("inverting")))
-    split = split_rail_voltages(ctx.nets)
     for net_name in sorted(ctx.nets):
         if net_name in by_net or net_name in ctx.vss_supply_rails:
             continue

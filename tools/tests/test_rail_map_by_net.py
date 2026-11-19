@@ -126,3 +126,49 @@ class RailMapByNet(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _single_supply_ctx(out_net):
+    comps = [_ic("U1", "REG", [("1", "GND"), ("2", "VO")]),
+             {"reference": "R1", "type": "resistor", "value": "10k"}]
+    nets = {"GND": [_pin("U1", "1", "GND", "power_in"), _pin("R1", "2", "", "passive")],
+            out_net: [_pin("U1", "2", "VO", "power_out"), _pin("R1", "1", "", "passive")]}
+    full = {n: {"name": n, "pins": ps, "point_count": 0, "no_connect": False, "has_pwr_flag": False,
+                "labels": []} for n, ps in nets.items()}
+    return build_analysis_context(comps, full, {}, known_power_rails={"GND"}, source="test")
+
+
+class NameVoltageWins(unittest.TestCase):
+    def _rail(self, net, estimate):
+        from schematic.pipeline import build_rail_map
+        ctx = _single_supply_ctx(net)
+        return build_rail_map(ctx, [{"ref": "U1", "output_rail": net, "estimated_vout": estimate}]).get(net)
+
+    def test_name_voltage_replaces_a_distant_estimate(self):
+        self.assertEqual(self._rail("+1.2V", 12.0), 1.2)
+        self.assertEqual(self._rail("3V3", 1.8), 3.3)
+
+    def test_estimate_within_tolerance_of_the_name_is_kept(self):
+        self.assertEqual(self._rail("+3V3", 3.315), 3.315)
+
+    def test_name_sign_replaces_an_estimate_of_the_other_sign(self):
+        self.assertEqual(self._rail("-3V3", 3.3), -3.3)
+
+    def test_regulator_record_and_mismatch_report_keep_the_estimate(self):
+        from schematic.pipeline import build_rail_map
+        from signal_detectors import detect_design_observations
+        net = "3V3"
+        ctx = _single_supply_ctx(net)
+        reg = {"ref": "U1", "value": "REG", "output_rail": net, "estimated_vout": 1.8}
+        self.assertEqual(build_rail_map(ctx, [reg])[net], 3.3)
+        self.assertEqual(reg["estimated_vout"], 1.8)
+        obs = detect_design_observations(ctx, {"power_regulators": [reg]})
+        mism = [o for o in obs if o.get("vout_net_mismatch")]
+        self.assertEqual(mism[0]["vout_net_mismatch"]["estimated_vout"], 1.8)
+
+    def test_vss_supply_with_a_positive_estimate_stays_absent(self):
+        from schematic.pipeline import build_rail_map
+        ctx = _single_supply_ctx("+5V")
+        object.__setattr__(ctx, "vss_supply_rails", frozenset({"+5V"}))
+        regs = [{"ref": "U1", "output_rail": "+5V", "estimated_vout": 12.0}]
+        self.assertNotIn("+5V", build_rail_map(ctx, regs))

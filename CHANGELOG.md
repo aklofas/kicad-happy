@@ -30,6 +30,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Fixed
 
+- A regulator output net named for a voltage (3V3, +5V, -12V) keeps that voltage in `rail_voltages` when the regulator's estimated output differs from it in sign or by more than 15 %; the output-voltage mismatch observation still reports the disagreement.
 - SPICE transistor benches on a negative supply (-12V, -15V, NEG5V) are skipped with the reason instead of being simulated at +3.3 V, and a regulator output named F+15V or F+8V is read as 15 V or 8 V, so its feedback divider is checked against it.
 - A regulator whose output net has a dash between words (TPS-VOUT-3.3V, 5Vout-50V, INJ-2-OUT) is no longer marked inverting, so its output estimate keeps its positive sign.
 - V1P / V2P (an energy meter's voltage-channel inputs) are no longer read as power rails beside their V1N / V2N twins.
