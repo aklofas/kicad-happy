@@ -354,8 +354,10 @@ def build_rail_map(ctx: AnalysisContext, power_regulators: list[dict]) -> dict[s
         # without its sign) is not its voltage.
         if out_rail and v_out is not None and not (out_rail in ctx.vss_supply_rails and v_out > 0):
             # The output net's own voltage beats an estimate that differs in sign or by more
-            # than the tolerance DO-DET reports a mismatch at.
-            v_name = (split[out_rail] if out_rail in split
+            # than the tolerance DO-DET reports a mismatch at. A name that spells two voltages
+            # (12V_TO_5V) does not say which one is the output.
+            v_name = (None if _voltage_token_count(net_leaf(out_rail)) > 1
+                      else split[out_rail] if out_rail in split
                       else parse_voltage_from_net_name(out_rail))
             # A negative estimate stays when the name carries no sign (VEE_12V, 12V_NEG).
             if (v_name and out_rail not in ctx.vss_supply_rails and not (v_out < 0 < v_name)

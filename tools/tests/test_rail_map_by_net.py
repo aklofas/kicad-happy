@@ -170,6 +170,10 @@ class NameVoltageWins(unittest.TestCase):
         regs = [{"ref": "U1", "output_rail": "+5V", "estimated_vout": 12.0}]
         self.assertNotIn("+5V", build_rail_map(ctx, regs))
 
+    def test_estimate_stays_when_the_name_spells_two_voltages(self):
+        for net, v in (("12V_TO_5V", 5.0), ("VIN_24V_VOUT_5V", 5.0), ("5V0_3V3", 3.3), ("/PSU/5V-3V3", 5.0)):
+            self.assertEqual(self._rail(net, v), v, net)
+
     def test_negative_estimate_stays_when_the_name_has_no_sign(self):
         for net, v in (("VEE_12V", -12.0), ("12V_NEG", -12.0), ("MINUS_12V", -12.0), ("VNEG_5V", -5.0)):
             self.assertEqual(self._rail(net, v), v, net)
