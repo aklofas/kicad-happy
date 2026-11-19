@@ -293,7 +293,7 @@ _PACKAGE_TOKEN = re.compile(
 _AMBIGUOUS_SUFFIXES = frozenset({"05", "09", "10", "12", "15", "24", "48"})
 # Families whose data sheet gives the voltage of such a suffix (part-number prefix -> {suffix: V}).
 _FIXED_SUFFIX_FAMILIES: dict[str, dict[str, float]] = {
-    "LM2596": {"5": 5.0, "12": 12.0},                # SNVS124E: 3.3-V, 5-V, 12-V and adjustable versions
+    "LM2596": {"5": 5.0, "12": 12.0},                # SNVS124G p1: 3.3-V, 5-V, 12-V and adjustable versions
     "LM2576": {"5": 5.0, "12": 12.0, "15": 15.0},    # SNVS107G: 3.3-V, 5-V, 12-V, 15-V and adjustable
     "LM2940": {"10": 10.0, "12": 12.0, "15": 15.0},  # SNVS769J ordering table: -5.0, -8.0, -9.0, -10, -12, -15
     "TL780": {"05": 5.0, "12": 12.0, "15": 15.0},    # SLVS055M: TL780-05, -12, -15
