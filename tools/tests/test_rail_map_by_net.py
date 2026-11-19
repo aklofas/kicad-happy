@@ -124,9 +124,6 @@ class RailMapByNet(unittest.TestCase):
         self.assertEqual(draw, {"R1": 500.0, "R2": 330.0})
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 def _single_supply_ctx(out_net):
     comps = [_ic("U1", "REG", [("1", "GND"), ("2", "VO")]),
@@ -172,3 +169,11 @@ class NameVoltageWins(unittest.TestCase):
         object.__setattr__(ctx, "vss_supply_rails", frozenset({"+5V"}))
         regs = [{"ref": "U1", "output_rail": "+5V", "estimated_vout": 12.0}]
         self.assertNotIn("+5V", build_rail_map(ctx, regs))
+
+    def test_negative_estimate_stays_when_the_name_has_no_sign(self):
+        for net, v in (("VEE_12V", -12.0), ("12V_NEG", -12.0), ("MINUS_12V", -12.0), ("VNEG_5V", -5.0)):
+            self.assertEqual(self._rail(net, v), v, net)
+
+
+if __name__ == "__main__":
+    unittest.main()

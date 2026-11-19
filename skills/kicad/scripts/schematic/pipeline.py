@@ -357,7 +357,8 @@ def build_rail_map(ctx: AnalysisContext, power_regulators: list[dict]) -> dict[s
             # than the tolerance DO-DET reports a mismatch at.
             v_name = (split[out_rail] if out_rail in split
                       else parse_voltage_from_net_name(out_rail))
-            if (v_name and out_rail not in ctx.vss_supply_rails
+            # A negative estimate stays when the name carries no sign (VEE_12V, 12V_NEG).
+            if (v_name and out_rail not in ctx.vss_supply_rails and not (v_out < 0 < v_name)
                     and ((v_name < 0) != (v_out < 0)
                          or abs(v_out - v_name) / abs(v_name) > _NAME_VOLTAGE_TOLERANCE)):
                 v_out = v_name
