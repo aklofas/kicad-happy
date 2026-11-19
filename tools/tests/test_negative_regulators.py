@@ -186,6 +186,9 @@ class FixedPartOnANegativeInput(unittest.TestCase):
         for vin in ("+12V", "VIN-12V", "USB-5V", "F-15V"):
             self.assertEqual(self._reg("LM2990S-5.0", vin)["estimated_vout"], 5.0, vin)
 
+    def test_unlisted_79l_series_code_reads_nothing(self):
+        self.assertNotIn("estimated_vout", self._reg("uA79L05", "-12V"))
+
     def test_negative_code_is_not_negated_twice(self):
         self.assertEqual(self._reg("79L05", "-12V")["estimated_vout"], -5.0)
         self.assertEqual(self._reg("MC7912CTG", "-15V")["estimated_vout"], -12.0)

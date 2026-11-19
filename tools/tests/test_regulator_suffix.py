@@ -395,7 +395,8 @@ class OrderCodes(unittest.TestCase):
             self.assertEqual(lookup_regulator_vref(part, ""), (volts, "fixed_suffix"), part)
             self.assertTrue(fixed_vout_is_explicit(part, ""), part)
         # L7987 is an ST buck; MC7905.2 is -5.2 V; MC79L08, MC79M24 and uA79M12 are not in their tables
-        for part in ["L7987", "MC7905.2CT", "MC79L08", "MC79M24", "UA79M12", "79L09", "7987", "790512"]:
+        for part in ["L7987", "MC7905.2CT", "MC79L08", "MC79M24", "UA79M12", "79L09", "7987", "790512",
+                     "UA79L05", "uA79L12ACD"]:
             self.assertNotEqual(lookup_regulator_vref(part, "")[1], "fixed_suffix", part)
 
     def test_79xx_value_on_another_parts_symbol_reads_its_own_code(self):

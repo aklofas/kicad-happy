@@ -436,7 +436,7 @@ def _fixed_part_vout(candidates: list[str]) -> float | None:
         if m and m.group(2) in _ST78_CODES.get(m.group(1), {}):
             return _ST78_CODES[m.group(1)][m.group(2)]
         m = _NEGATIVE_79XX.match(candidate)
-        if m and m.group(3) in _NEGATIVE_79XX_CODES[(m.group(1) or "") + m.group(2)]:
+        if m and m.group(3) in _NEGATIVE_79XX_CODES.get((m.group(1) or "") + m.group(2), ()):
             return -float(m.group(3))
         m = _R78_CODE.match(candidate)
         if m:
