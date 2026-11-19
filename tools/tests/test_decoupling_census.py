@@ -110,6 +110,13 @@ class UnvaluedCapacitorCountsAsPresent(unittest.TestCase):
             with self.subTest(value=value):
                 self.assertEqual(_ic_with_caps([{"value": value}]), ([], [["+3V3"]]))
 
+    def test_other_not_fitted_conventions_are_still_missing(self):
+        for value in ("NA(100nF/10V/10%/X7R/C0402)", "NA_2.2uF", "N~{C}1pF", "DNL", "DNM", "DNS",
+                      "NM", "N/F", "N/P", "N/U", "Not used", "do not mount", "not mounted",
+                      "no stuff", "NOLOAD"):
+            with self.subTest(value=value):
+                self.assertEqual(_ic_with_caps([{"value": value}]), ([], [["+3V3"]]))
+
     def test_rail_with_an_unvalued_cap_is_listed_with_caps(self):
         comps = [{"reference": "U1", "type": "ic", "value": "ATTINY25"},
                  {"reference": "C1", "type": "capacitor", "value": "C"}]

@@ -4254,12 +4254,18 @@ def _reference_net(ctx: AnalysisContext, net_name: str, regulator_outputs: set) 
 def _is_unvalued_capacitor(ctx: AnalysisContext, pin: dict, comp: dict) -> bool:
     """A capacitor whose value cannot be read is still one when it has two pins, *pin* (its pin
     on the rail) is not a power pin, and its value does not open with a not-fitted mark ("NC",
-    "DNP - 220p", "NI", "NOPOP"). A logic IC or connector typed as a capacitor from its reference
-    alone (a board grid square, "C12" or "VC22") has more pins or power pins."""
-    first_word = re.split(r"[\s/,;-]+", (comp.get("value") or "").replace(".", "").strip().upper())[0]
+    "DNP - 220p", "NI", "NOPOP", "NA(100nF)", "N/F", "N~{C}1pF", "Not used"). A logic IC or
+    connector typed as a capacitor from its reference alone (a board grid square, "C12" or
+    "VC22") has more pins or power pins."""
+    # an overbar (N~{C}) ends the mark it is part of
+    value = re.sub(r"~\{([^}]*)\}", r"\1 ", comp.get("value") or "")
+    words = re.split(r"[\s/,;()_-]+", value.replace(".", "").strip().upper()) + [""]
     return (len(ctx.ref_pins.get(pin["component"], {})) == 2
             and pin.get("pin_type") not in ("power_in", "power_out")
-            and first_word not in ("NC", "DNP", "DNF", "DNI", "NP", "NI", "NOPOP"))
+            and words[0] not in ("NC", "DNP", "DNF", "DNI", "DNL", "DNM", "DNS", "NP", "NI", "NM",
+                                 "NA", "N", "NOPOP", "NOSTUFF", "NOLOAD")
+            and " ".join(words[:2]) not in ("DO NOT", "NO POP", "NO STUFF", "NO LOAD", "NOT USED",
+                                            "NOT FITTED", "NOT MOUNTED", "NOT POPULATED"))
 
 
 def _has_cap_to_ground(ctx: AnalysisContext, net: str, ref: str | None = None) -> bool:
