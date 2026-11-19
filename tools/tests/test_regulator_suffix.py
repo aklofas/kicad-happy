@@ -294,6 +294,31 @@ class OrderCodes(unittest.TestCase):
             self.assertTrue(fixed_vout_is_explicit(part, ""), part)
         self.assertEqual(lookup_regulator_vref("LMR36506MSCQRPERQ1", ""), (None, ""))
 
+    def test_st_l78_l79_codes(self):
+        # ST order codes: L78 DS0422 Rev 38 Table 27 p50; L78L DS0424 Rev 30 Table 29 p34; L78M DocID2147
+        # Rev 9 Table 14 p27; L78S DocID2148 Rev 8 Table 1 p1; L79 DocID2149 Rev 21 Table 1 p1; L79L
+        # DocID2511 Rev 18 Table 14 p22
+        for part, volts in [("L7805CV", 5.0), ("L7885CV", 8.5), ("L7824ABD2T-TR", 24.0),
+                            ("L78L33ACZ", 3.3), ("L78L10ACUTR", 10.0), ("L78M05CDT", 5.0),
+                            ("L78M10ABDT-TR", 10.0), ("L78S75CV", 7.5), ("L78S05CV_TO220", 5.0),
+                            ("L7912CV", -12.0), ("L7908CV", -8.0), ("L79L05", -5.0), ("L79L15ACUTR", -15.0)]:
+            self.assertEqual(lookup_regulator_vref(part, ""), (volts, "fixed_suffix"), part)
+            self.assertTrue(fixed_vout_is_explicit(part, ""), part)
+        # L7987 and L7983 are ST step-down converters; L7833, L78M33 and L79L09 are not in the tables
+        for part in ["L7987", "L7983", "L7833", "L78M33", "L78S33CV", "L79L09"]:
+            self.assertNotEqual(lookup_regulator_vref(part, "")[1], "fixed_suffix", part)
+
+    def test_st_order_code_on_a_generic_78xx_symbol_reads_its_own_code(self):
+        for value, lib_id, volts in [("L7808CV", "Regulator_Linear:LM7808_TO220", 8.0),
+                                     ("L78M05ABDT-TR", "Regulator_Linear:LM78M05_TO252", 5.0),
+                                     ("L7805CV", "rti-rescue:LM7805CT-regul", 5.0),
+                                     ("L7805", "Regulator_Linear:LM7812_TO220", 5.0),
+                                     ("", "Regulator_Linear:L7805", 5.0)]:
+            self.assertEqual(lookup_regulator_vref(value, lib_id), (volts, "fixed_suffix"), value)
+        # an MC, uA or AIP 78xx code is not an ST order code
+        for value in ["MC7809CTG", "UA7805UC", "AIP78M05"]:
+            self.assertEqual(lookup_regulator_vref(value, "Regulator_Linear:LM7805_TO220"), (None, ""), value)
+
 
 class BorrowedSymbol(unittest.TestCase):
     def test_value_naming_another_part_does_not_take_the_symbol_reference(self):
@@ -385,8 +410,10 @@ class RecomR78(unittest.TestCase):
     def test_r78_current_suffix_is_never_read_as_a_voltage(self):
         # a series outside the cited data sheets, and R-78 symbols borrowed for other parts
         for value, lib_id in [("R-78AA5.0-1.0", ""), ("VXO7803-1000", "X:R-78C3.3-1.0"),
-                              ("L7805CV", "X:R-78B5.0-2.0"), ("BP5293-5", "X:R-78E5")]:
+                              ("BP5293-5", "X:R-78E5")]:
             self.assertNotEqual(lookup_regulator_vref(value, lib_id)[1], "fixed_suffix", value)
+        # an ST order code on an R-78 symbol gives its own voltage, not the module's
+        self.assertEqual(lookup_regulator_vref("L7812CV", "X:R-78B5.0-2.0"), (12.0, "fixed_suffix"))
 
     def test_voltage_written_outside_the_model_number_is_still_read(self):
         self.assertEqual(lookup_regulator_vref("R-78B_9.0V-1.0A", ""), (9.0, "fixed_suffix"))

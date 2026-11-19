@@ -321,6 +321,20 @@ _NCP1117_CODE = re.compile(r"NC[PV]1117(LP)?(?:ST|DT)(285|\d{2})")
 _NCP1117_VOLTS = {"12": 12.0, "15": 1.5, "18": 1.8, "19": 1.9, "20": 2.0, "25": 2.5, "285": 2.85,
                   "33": 3.3, "50": 5.0}
 _NCP1117LP_VOLTS = {"15": 1.5, "18": 1.8, "25": 2.5, "33": 3.3, "50": 5.0}
+# ST L78 / L78L / L78M / L78S positive and L79 / L79L negative regulators, series -> {code: Vout}: L78
+# DS0422 Rev 38 Table 27 p50; L78L DS0424 Rev 30 Table 29 p34; L78M DocID2147 Rev 9 Table 14 p27; L78S
+# DocID2148 Rev 8 Table 1 p1; L79 DocID2149 Rev 21 Table 1 p1; L79L DocID2511 Rev 18 Table 14 p22.
+# L7987 and L7983 are step-down converters and match no code.
+_ST78_CODE = re.compile(r"L7([89][LMS]?)(\d{2})(?!\d)")
+_ST78_CODES: dict[str, dict[str, float]] = {
+    "8": {"05": 5.0, "06": 6.0, "08": 8.0, "85": 8.5, "09": 9.0, "12": 12.0, "15": 15.0, "18": 18.0, "24": 24.0},
+    "8L": {"33": 3.3, "05": 5.0, "06": 6.0, "08": 8.0, "09": 9.0, "10": 10.0, "12": 12.0, "15": 15.0, "18": 18.0,
+           "24": 24.0},
+    "8M": {"05": 5.0, "06": 6.0, "08": 8.0, "09": 9.0, "10": 10.0, "12": 12.0, "15": 15.0, "24": 24.0},
+    "8S": {"05": 5.0, "75": 7.5, "09": 9.0, "10": 10.0, "12": 12.0, "15": 15.0, "18": 18.0, "24": 24.0},
+    "9": {"05": -5.0, "08": -8.0, "12": -12.0, "15": -15.0},
+    "9L": {"05": -5.0, "08": -8.0, "12": -12.0, "15": -15.0},
+}
 # RECOM R-78 modules: R-78<series><Vout>-<Iout> (R-78E5.0-0.5 is 5 V at 0.5 A). Model Numbering, p1 of
 # R-78xx-0.5 REV 6/2023, R-78xx-1.0 REV 5/2023, R-78B-1.5 REV 5/2020, R-78B-2.0 REV 5/2021,
 # R-78C-1.0 REV 3/2019, R-78CK-0.5 Rev 1-2025, R-78E-0.5 REV 9/2025, R-78E-1.0 REV 9/2024,
@@ -361,6 +375,9 @@ def _fixed_part_vout(candidates: list[str]) -> float | None:
         m = _NCP1117_CODE.match(candidate)
         if m:
             return (_NCP1117LP_VOLTS if m.group(1) else _NCP1117_VOLTS).get(m.group(2))
+        m = _ST78_CODE.match(candidate)
+        if m and m.group(2) in _ST78_CODES.get(m.group(1), {}):
+            return _ST78_CODES[m.group(1)][m.group(2)]
         m = _R78_CODE.match(candidate)
         if m:
             return float(m.group(1))
