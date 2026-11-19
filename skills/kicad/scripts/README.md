@@ -281,7 +281,7 @@ A label's net name is its shown text with `/` escaped as `{slash}` (KiCad's net-
 | `"0.3mOhm"` | 0.0003 | Ohm suffix stripped (also Ω / Ω signs) |
 | `"1Meg"` | 1e6 | SPICE mega |
 | `"100"` (capacitor) | 1e-10 | A plain number on a capacitor keeps the legacy reading: >= 1 is pF, < 1 is µF (`"0.1"` gives 1e-7) |
-| `"1F"`, `"1 F"`, `"10e-12"` (capacitor) | 1.0, 1.0, 1e-11 | An uppercase `F` or a bare exponent is SI farads; a lowercase `f` keeps the legacy reading (`"1f"` gives 1e-12) |
+| `"1F"`, `"1 F"`, `"10e-12"` (capacitor) | 1.0, 1.0, 1e-11 | An uppercase `F` or a bare exponent below 1 is SI farads (`"1e3"` gives None); a lowercase `f` keeps the legacy reading (`"1f"` gives 1e-12) |
 | `"10 μF"` | 1e-5 | Space before the unit is allowed |
 | `"1fF"`, `"1fH"` | 1e-15 | `f` is femto when a unit follows |
 | `"4,7k"` | 4700.0 | Decimal comma, separators inferred as KiCad does |
@@ -289,6 +289,10 @@ A label's net name is its shown text with `/` escaped as `{slash}` (KiCad's net-
 | `"0.1uF, 50V"` | 1e-7 | Leading value of a comma-separated list |
 | `"220k/R0402"` | 220000.0 | Splits on "/" first |
 | `"4.7k 1%"` | 4700.0 | Tolerance stripped |
+| `"R_5k1_0402"`, `"R_0603"` (resistor) | 5100.0, None | A symbol-name field reads a value only from a field with a prefix or unit letter; a package-only name has none |
+| `"220u25V"` (capacitor) | 2.2e-4 | A voltage rating glued to the value is dropped |
+| `"4k7R"`, `"50mR"` | 4700.0, 0.05 | `R` after an SI prefix is the ohm unit |
+| `"7406N"` (capacitor), `"330_0402"` | None, None | A part number on a capacitor, or a number followed by an `_` field, reads no value |
 | `"DNP"` | None | Not parseable |
 
 **Pitfall**: The parser is generous — it will parse the first numeric-looking thing it finds. Value fields like "FDMT80080DC" (a MOSFET part number) may parse to a number. Always check `c["type"]` before using parsed values.

@@ -342,8 +342,8 @@ A net is considered a power net if **any** of the three methods matches, except 
 
 `is_ground_name()` checks:
 - **Exact matches**: `GND`, `VSS`, `AGND`, `DGND`, `PGND`, `GNDPWR`, `GNDA`, `GNDD`, `SGND`, `0V`, `AVSS`, `DVSS`, `GROUND` (any case)
-- **Patterns**: Starts or ends with `GND`, starts with `VSS`, a zero-volt name (`0VA`, `0V_A`; not `0V5` or `0V_10V`), a battery negative (`BATT-`, `VBAT_N`), or a ground word as one part of the name (`AGND_CODEC`, `PGND_3V3`, `HEATER_GND_1`; not a pin-named `Net-(U1-GND)`)
-- **Not ground**: `COM` unless a power symbol names it (a switch, relay or transformer common), and a virtual ground (`VGND`, `HP_VGND`, `Virtual_Ground`), which sits at mid-rail
+- **Patterns**: Starts or ends with `GND`, starts with `VSS`, a zero-volt name (`0VA`, `0V_A`; not `0V5`, or `0V_10V` unless a power symbol names it), a battery negative (`BATT-`, `VBAT_N`, `-BATT`, `-VBAT`), or a ground word as one part of the name (`AGND_CODEC`, `PGND_3V3`, `HEATER_GND_1`; not a pin-named `Net-(U1-GND)`)
+- **Not ground**: `COM` unless a power symbol names it (a switch, relay or transformer common); a virtual ground (`VGND`, `HP_VGND`, `Virtual_Ground`), which sits at mid-rail; a ground name ending in a control or status word (`GND_EN`, `GNDDETECT`, `GND_PG`); a supply voltage followed by a word that ends in `GND` (`+12V_F19_BKGND`); and `0VCC` / `0VDD`, which are supplies
 
 `is_ground()` on the context also accepts a net by what sits on it (`ground_evidence_nets()`), whatever it is called: a one-pin ground symbol (`power:GND`, the SPICE ground `0`) on a net another label names (a global label `THERMISTOR_B` on the board ground, or a board ground KiCad names `Earth`), unless the name reads as a supply; an earth-class symbol (`power:Earth`, `Earth_Protective`, `Chassis`) is never evidence; and a `COM` net that carries a ground label, an IC ground pin (`GND1`) or the `COM` pin of an isolated converter (a part with `VOUT+` / `VOUT-` pins). A relay, multiplexer or switch `COM` stays a common, and a reference two symbols share (`#PWR?`) is no evidence.
 

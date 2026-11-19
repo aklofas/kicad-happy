@@ -555,7 +555,7 @@ python3 <skill-path>/scripts/analyze_thermal.py -s schematic.json -p pcb.json --
 python3 <skill-path>/scripts/analyze_thermal.py -s schematic.json -p pcb.json --ambient 40 -o thermal.json
 ```
 
-Models each power component (LDO, switching regulator, shunt resistor) as a point heat source. Computes Tj = T_ambient + P_diss × Rθ_JA_effective, where Rθ_JA comes from a package lookup table (SOT-223: 60°C/W, QFN-5x5: 25°C/W, etc.) and is corrected for PCB thermal vias and copper pour. Rules:
+Models each power component (LDO, switching regulator, shunt resistor) as a point heat source. Computes Tj = T_ambient + P_diss × Rθ_JA_effective, where Rθ_JA comes from a package lookup table (SOT-223: 60°C/W, QFN-5x5: 25°C/W, etc.) and is corrected for PCB thermal vias and copper pour. A component whose load is only guessed from its output capacitance reports at most info. Rules:
 
 | Rule | Condition | Severity |
 |------|-----------|----------|

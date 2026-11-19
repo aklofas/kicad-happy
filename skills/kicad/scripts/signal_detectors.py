@@ -5056,8 +5056,9 @@ def audit_rail_sources(ctx: AnalysisContext,
                        transistor_circuits: list[dict] | None = None) -> list[dict]:
     """Audit every power-classified net for a declared source.
 
-    A rail with no `power_out` pin, no `PWR_FLAG` / `#FLG`, and no
-    regulator output mapping is source-less on paper. The solder-jumper
+    A rail with no `power_out` pin, no `PWR_FLAG` / `#FLG`, no IC or
+    reference-diode output pin, and no regulator output mapping is
+    source-less on paper. The solder-jumper
     aware trace: a bridged-by-default jumper joins two nets electrically;
     if the other side has a source, the audited rail is sourced via the
     jumper (INFO). A rail reached only through an *open* jumper is an
@@ -5109,7 +5110,8 @@ def audit_rail_sources(ctx: AnalysisContext,
 
     def _has_direct_source(net_info: dict, net_name: str) -> bool:
         # Direct power_out pin anywhere on the net, OR an explicit PWR_FLAG
-        # tied to it, OR the rail is a regulator output.
+        # tied to it, OR an IC or reference-diode output pin on it, OR the
+        # rail is a regulator output.
         # NOTE: #PWR symbols are KiCad power port instances; they appear as
         # power_in in the analyzer and are NOT treated as sources here.
         if net_info.get("has_pwr_flag"):
