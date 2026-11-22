@@ -147,5 +147,43 @@ class CustomBodyStyleTest(unittest.TestCase):
         self.assertEqual(self._pins("(body_style 2)"), [("1", 93, 100), ("2", 100, 95)])
 
 
+# M: unit 1 pin 1 at (-5,0), unit 2 pin 2 at (5,0), unit 3 (power) pin 9 at (0,5).
+M_LIB = _lib("t:M", [("1_1", _pin(1, -5, 0)), ("2_1", _pin(2, 5, 0)), ("3_1", _pin(9, 0, 5, "power_in"))])
+
+
+class UnitlessPlacementTest(unittest.TestCase):
+    """A symbol placed with no (unit N) token is unit 1, as KiCad reads it."""
+
+    def _comps(self, libs, body):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = _sch(tmp, libs, body)
+            return parse_single_sheet(path).components, _analyze(path)
+
+    def test_unitless_placements_carry_unit_one_pins_only(self):
+        body = _placed("t:M", "U1", 1, x=100) + _placed("t:M", "U1", 2, x=200)
+        comps, r = self._comps([M_LIB], body)
+        self.assertEqual([_pins(c) for c in comps],
+                         [[("1", 95, 100)], [("1", 195, 100)]])
+        self.assertTrue(all(c.get("unit") is None for c in comps))
+        self.assertTrue(all(c.get("unit") is None for c in r["components"]))
+        self.assertEqual(r["pwr_flag_warnings"], [])
+
+    def test_a_placement_with_a_unit_is_unchanged(self):
+        body = _placed("t:M", "U1", 1, x=100) + _placed("t:M", "U1", 2, "(unit 2)", x=200)
+        comps, _ = self._comps([M_LIB], body)
+        self.assertEqual(_pins(comps[1]), [("2", 205, 100)])
+
+    def test_single_unit_symbol_without_a_unit_keeps_its_pins(self):
+        lib = _lib("t:R", [("0_1", ""), ("1_1", _pin(1, 0, 5) + _pin(2, 0, -5))])
+        comps, _ = self._comps([lib], _placed("t:R", "R1", 1))
+        self.assertEqual(_pins(comps[0]), [("1", 100, 95), ("2", 100, 105)])
+        self.assertEqual([p["number"] for p in comps[0]["pins"]], ["1", "2"])
+
+    def test_pins_in_the_common_unit_only_are_kept(self):
+        lib = _lib("t:C", [("0_1", _pin(1, 0, 5) + _pin(2, 0, -5))])
+        comps, _ = self._comps([lib], _placed("t:C", "J1", 1))
+        self.assertEqual(_pins(comps[0]), [("1", 100, 95), ("2", 100, 105)])
+
+
 if __name__ == "__main__":
     unittest.main()

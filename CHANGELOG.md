@@ -37,6 +37,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A single-supply SN74LVC or SN74AVC buffer or gate is no longer reported as a level shifter; one with separate VCCA and VCCB pins, or an input or open-drain output pulled up above its own supply, still is. Its nets stay exempt from the voltage-mismatch check.
 - ERC pin-conflict records name each PWR_FLAG by its own reference and pick the nearest pin as KiCad does; two PWR_FLAGs on one net are reported as a power-output conflict.
 - A no-connect flag placed on a hierarchical label or a sheet pin no longer raises "no-connect connected"; KiCad reads it as marking the port unused.
+- A sub-sheet from an early KiCad 6 project, read on its own, no longer gives each placement of a multi-unit part the pins of every unit; a symbol with no unit in the file is read as unit 1, as KiCad does.
 - A control, status or clock pin tied to a power rail (an enable, reset or clock-select strap whose symbol types it as an output) no longer counts as the rail's source, and a logic output behind an open solder jumper is no longer reported as the rail's missing supply path (RS-002).
 - A `CSENSE` net is classified as analog, not as a chip select.
 - Net classes: a KiCad 5 label that holds a `/` is classified by its whole name, not the part after the last `/`.

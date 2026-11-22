@@ -262,6 +262,8 @@ def compute_pin_positions(component: dict, lib_symbols: dict) -> list[Pin]:
     # In KiCad, sub-symbol _0_1 contains pins shared by all units (e.g., power pins).
     # A symbol placed with body style 2 (De Morgan) takes the alternate body's pins.
     unit_num = component.get("unit")
+    if unit_num is None:
+        unit_num = 1  # a symbol placed without a unit token is unit 1, as in KiCad
     body_style = component.get("_body_style", 1)
     alt_body = body_style == 2 and "alt_pins" in sym_def
     unit_pins_map = sym_def.get("alt_unit_pins") if alt_body else sym_def.get("unit_pins")
