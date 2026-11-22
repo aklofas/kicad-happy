@@ -26,6 +26,12 @@ from detector_helpers import (is_addressable_led, is_led_rail, is_type_c_rd, led
 from finding_schema import make_finding, make_provenance
 
 
+def _is_rail_switch(ctx: AnalysisContext, tc: dict) -> bool:
+    """True when the transistor's emitter or source sits on ground or a supply rail."""
+    ref_net = tc.get("emitter_net") or tc.get("source_net")
+    return bool(ref_net) and (ctx.is_ground(ref_net) or ctx.is_power_net(ref_net))
+
+
 def detect_buzzer_speakers(ctx: AnalysisContext, transistor_circuits: list[dict]) -> list[dict]:
     """Detect buzzer/speaker driver circuits."""
     buzzer_speaker_circuits: list[dict] = []
@@ -43,13 +49,16 @@ def detect_buzzer_speakers(ctx: AnalysisContext, transistor_circuits: list[dict]
         ref = comp["reference"]
         # Find signal nets via direct pin lookup (buzzers/speakers are 2-pin)
         n1, n2 = ctx.get_two_pin_nets(ref)
-        signal_net = None
-        for net in (n1, n2):
-            if net and not ctx.is_ground(net) and not ctx.is_power_net(net):
-                signal_net = net
-                break
-        if not signal_net:
+        candidates = [net for net in (n1, n2)
+                      if net and not ctx.is_ground(net) and not ctx.is_power_net(net)]
+        if not candidates:
             continue
+        # With neither pin on a rail (the supply side sits behind a jumper, a resistor or a
+        # diode), the driven side is the one a transistor switches: the collector or drain
+        # net of a transistor whose emitter or source is on ground or a rail.
+        signal_net = next((net for net in candidates
+                           if any(_is_rail_switch(ctx, tc) for tc in tc_by_output_net.get(net, []))),
+                          candidates[0])
         net_comps = ctx.nq.components_on_net(signal_net, exclude_refs={ref})
         driver_ic_ref = None
         series_resistor = None
