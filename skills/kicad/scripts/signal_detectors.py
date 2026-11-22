@@ -4225,6 +4225,23 @@ def _is_reference_net_name(net_name: str) -> bool:
 # Pin names of a supply input. An output-typed pin named like this is a symbol typing
 # error, not a source.
 _SUPPLY_INPUT_PIN = re.compile(r"[ADP]?V(?:CC|DD)(?:IO|Q)?\d*|VIO|VIN|IN|VS")
+# Control, status and clock pin names. An output-typed pin named like this on a net named
+# like a power rail is strapped to the rail, not driving it.
+_STRAP_OUTPUT_PIN = frozenset({"EN", "OE", "CLR", "RESET", "NRST", "LATCH", "SEL", "CLKSEL",
+                               "CLKOUT", "PGFB", "OD", "VSENSE", "FLG", "OVRCUR", "DIS", "COM"})
+# Serial data outputs: on a rail that also feeds a supply pin they are tied there, not driving it.
+_DATA_OUTPUT_PIN = frozenset({"SDO", "SDI", "SO", "ASCX"})
+
+
+def _pin_name_tokens(pin_name: str | None) -> list[str]:
+    return [t.rstrip("0123456789") for t in re.split(r"[^0-9A-Z]+", str(pin_name or "").upper())]
+
+
+def _strap_output_pin(pin_name: str | None) -> bool:
+    """A pin name with a control, status or clock token (EN, ~{OVRCUR1}, XOUT32/CLKSEL1)."""
+    return any(t in _STRAP_OUTPUT_PIN for t in _pin_name_tokens(pin_name))
+
+
 _REF_NET_SUPPLY_PINS = frozenset({"VS", "V+", "VIN", "V-", "VEE", "VBAT", "VIO", "VL", "PVIN"})
 
 
@@ -5107,12 +5124,14 @@ def audit_rail_sources(ctx: AnalysisContext,
     # A net tie joins its nets into one conductor: a rail tied to a sourced net is sourced.
     ties = tie_conductors(bridge_facts)
 
-    def _has_direct_source(net_info: dict, net_name: str) -> bool:
+    def _has_direct_source(net_info: dict, net_name: str, output_pins: bool = True) -> bool:
         # Direct power_out pin anywhere on the net, OR an explicit PWR_FLAG
         # tied to it, OR an IC or reference-diode output pin on it, OR the
         # rail is a regulator output.
         # NOTE: #PWR symbols are KiCad power port instances; they appear as
         # power_in in the analyzer and are NOT treated as sources here.
+        # output_pins=False: only power sources count (the far side of an open jumper).
+        rail_named = is_power_net_name(net_name, None) and net_name not in ctx.pin_guarded_signals
         if net_info.get("has_pwr_flag"):
             return True
         for p in net_info.get("pins", []):
@@ -5124,10 +5143,16 @@ def audit_rail_sources(ctx: AnalysisContext,
             # An IC or reference-diode output drives the net (a reference, a charge pump,
             # a regulator whose symbol types its output as output). A load switch's
             # output is sourced only when its input is (below).
-            if (p.get("pin_type") == "output" and comp not in switch_refs
+            if (output_pins and p.get("pin_type") == "output" and comp not in switch_refs
                     and (ctx.comp_lookup.get(comp) or {}).get("type") in ("ic", "diode")
                     and not _SUPPLY_INPUT_PIN.fullmatch(
-                        re.sub(r"[^0-9A-Z]", "", str(p.get("pin_name") or "").upper()))):
+                        re.sub(r"[^0-9A-Z]", "", str(p.get("pin_name") or "").upper()))
+                    and not (rail_named and _strap_output_pin(p.get("pin_name")))
+                    and not (rail_named
+                             and any(t in _DATA_OUTPUT_PIN for t in _pin_name_tokens(p.get("pin_name")))
+                             and any(q.get("pin_type") == "power_in"
+                                     and not (q.get("component") or "").startswith("#")
+                                     for q in net_info.get("pins", [])))):
                 return True
         return net_name in reg_output_nets or net_name in switch_output_nets
 
@@ -5213,7 +5238,10 @@ def audit_rail_sources(ctx: AnalysisContext,
             neighbour_info = nets.get(neighbour, {})
             if not neighbour_info:
                 continue
-            if any(_has_direct_source(nets.get(n, {}), n) for n in conductor_of(ties, neighbour)):
+            # An open jumper is reported as the rail's missing supply path only when a
+            # power source lies behind it: a logic or signal output there is no supply.
+            if any(_has_direct_source(nets.get(n, {}), n, output_pins=state == "bridged")
+                   for n in conductor_of(ties, neighbour)):
                 if state == "bridged":
                     bridged_sources.append((neighbour, jref))
                 else:  # open
