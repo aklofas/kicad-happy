@@ -182,6 +182,39 @@ class EsdIc(unittest.TestCase):
                          "DGND": ([("U4", "2")], False, False), "AGND": ([("U4", "4")], False, False)})
         self.assertEqual(_record(ctx, "U4"), ("esd_ic", ["IO_A", "IO_B"], "IO_A", "AGND"))
 
+class RailOnlyEsdIc(unittest.TestCase):
+    def _tvs(self, rail, ret):
+        u = _part("U2", "ic", "TVS2200DRVR", "Power_Protection:TVS2200DRV",
+                  [("1", "IN"), ("2", "IN"), ("3", "IN"), ("4", "GND"), ("5", "GND"),
+                   ("6", "GND"), ("7", "GND")])
+        j = _part("J1", "connector", "Conn", "Connector:Conn_01x02", [("1", "1"), ("2", "2")])
+        return _ctx([u, j], {rail: ([("U2", "1"), ("U2", "2"), ("U2", "3"), ("J1", "1")], False, False),
+                             ret: ([("U2", p) for p in "4567"] + [("J1", "2")], False, False)},
+                    rails=RAILS | {rail})
+
+    def test_rail_only_tvs_ic_protects_its_rail(self):
+        self.assertEqual(_record(self._tvs("+12V", "GND"), "U2"), ("esd_ic", ["+12V"], "+12V", "GND"))
+
+    def test_rail_only_tvs_ic_returning_to_earth_protects_its_rail(self):
+        self.assertEqual(_record(self._tvs("+12V", "Earth"), "U2"),
+                         ("esd_ic", ["+12V"], "+12V", "Earth"))
+
+    def test_esd_array_supply_pin_is_not_a_protected_line(self):
+        rec = _record(_usblc6(vbus="VBUS"), "U5")
+        self.assertEqual(rec[1], ["USB_DM", "USB_DP"])
+
+    def test_unwired_ic_keeps_the_open_line_reading(self):
+        u = _part("U3", "ic", "TPD2E2U06", "Power_Protection:TPD2E2U06",
+                  [("1", "IO1"), ("2", "GND"), ("3", "IO2"), ("4", "VCC")])
+        m = _part("U4", "ic", "MCU", "MCU:Generic", [("1", "VDD"), ("2", "GND")])
+        ctx = _ctx([u, m], {"__unnamed_1": ([("U3", "1")], False, False),
+                            "__unnamed_3": ([("U3", "3")], False, False),
+                            "GND": ([("U3", "2"), ("U4", "2")], False, False),
+                            "+5V": ([("U3", "4"), ("U4", "1")], False, False)})
+        self.assertEqual(_record(ctx, "U3"),
+                         ("esd_ic", ["__unnamed_1", "__unnamed_3"], "__unnamed_1", "GND"))
+
+
 class UnwiredArray(unittest.TestCase):
     def test_unwired_array_keeps_its_record_and_clamps_only_to_a_ground(self):
         rec = _record(_usblc6(wired=False), "U5")

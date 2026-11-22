@@ -2822,7 +2822,8 @@ def _clamp_array_nets(ctx: AnalysisContext, comp: dict, *, keep_rails: bool):
     pin whose net reaches nothing else (no other part, no label) protects nothing, unless
     nothing else is left to list. A TVS diode array's cathode on a supply rail clamps that rail
     (*keep_rails*), but only once a return is found: without one, a rail pin may be the array's
-    own return. An ESD IC's supply pin is its reference, not a protected line.
+    own return. An ESD IC's supply pin is its reference, not a protected line, unless the rail
+    is all it reaches besides its return (a single-line TVS on a supply).
     """
     ref = comp["reference"]
     lines, rails, grounds, earths, open_lines = set(), set(), set(), set(), set()
@@ -2847,6 +2848,9 @@ def _clamp_array_nets(ctx: AnalysisContext, comp: dict, *, keep_rails: bool):
             lines.add(net_name)
     returns = grounds or earths
     nets = sorted(lines | rails) if keep_rails and returns else sorted(lines)
+    if not nets and not open_lines and rails and returns:
+        # Every line pin sits on a supply rail: a single-line clamp on that rail.
+        nets = sorted(rails)
     if not nets:
         # A part not wired up yet is still the clamp it was placed as.
         lines = open_lines
