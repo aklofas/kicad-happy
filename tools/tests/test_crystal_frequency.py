@@ -29,7 +29,8 @@ class ParseCrystalFrequency(unittest.TestCase):
             self.assertAlmostEqual(got / want, 1.0, places=9, msg=text)
 
     def test_numbers_that_cannot_be_a_crystal_frequency_are_dropped(self):
-        for text in ("830108313809", "100nF", "0", "400 P", "32768MHz", "", "X7R, 50V"):
+        for text in ("830108313809", "100nF", "0", "400 P", "32768MHz", "", "X7R, 50V",
+                     "3225_12.5pF", "2016_20pF", "2520_10pF"):
             self.assertIsNone(sd._parse_crystal_frequency(text), msg=text)
 
     def test_readings_that_were_right_keep_their_value(self):

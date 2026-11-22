@@ -146,9 +146,11 @@ def _parse_crystal_frequency(value_str: str) -> float | None:
             result = _crystal_range(parse_value(field))
             if result is not None:
                 return result
-    result = _crystal_range(parse_value(fields[0]))
-    if result is not None:
-        return result
+    # package sizes are four digits (3225, 2016), so a bare first field must have five
+    if re.match(r'\d{5}', fields[0]):
+        result = _crystal_range(parse_value(fields[0]))
+        if result is not None:
+            return result
     s = value_str.strip()
     m = _BARE_DECIMAL.match(s)
     if m:
