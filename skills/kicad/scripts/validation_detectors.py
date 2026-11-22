@@ -622,6 +622,17 @@ def _pull_up_voltage(ctx: AnalysisContext, net_name: str) -> float | None:
     return best
 
 
+# Pin types that can drive a net; a symbol with none of them does not tell its inputs from
+# its outputs (many hand-drawn and converted symbols type every pin input).
+_DRIVING_PIN_TYPES = frozenset({'output', 'bidirectional', 'tri_state', 'open_collector', 'open_emitter'})
+
+
+def _refs_typing_outputs(ctx: AnalysisContext) -> set[str]:
+    """Parts whose symbol types at least one pin as an output of some kind."""
+    return {p['component'] for info in ctx.nets.values() for p in info.get('pins', [])
+            if p.get('pin_type') in _DRIVING_PIN_TYPES}
+
+
 def validate_voltage_levels(ctx: AnalysisContext, level_shifters: list[dict] | None = None) -> list[dict]:
     """VM-001: Detect signal nets crossing power domain boundaries without level shifting."""
     findings: list[dict] = []
@@ -652,6 +663,11 @@ def validate_voltage_levels(ctx: AnalysisContext, level_shifters: list[dict] | N
                     shifted_nets.add(net)
 
     checked_nets: set[str] = set()
+    typed_refs = _refs_typing_outputs(ctx)
+
+    def cannot_drive(p):
+        """An input pin of a symbol that types its outputs: it has no output stage."""
+        return p['pin_type'] == 'input' and p['ref'] in typed_refs
 
     for net_name, net_info in ctx.nets.items():
         if net_name in checked_nets or ctx.is_power_net(net_name) or ctx.is_ground(net_name):
@@ -709,6 +725,16 @@ def validate_voltage_levels(ctx: AnalysisContext, level_shifters: list[dict] | N
                 continue
             v_max = max(voltages)
             v_min = min(voltages)
+
+        # Only an endpoint that can drive, or a pull-up, sets the level the others see; a
+        # pull-up never raises it above the endpoints' own levels.
+        drivers = [p['voltage'] for p in ic_pins_on_net if not cannot_drive(p)]
+        v_pu = _pull_up_voltage(ctx, net_name)
+        if v_pu:
+            drivers.append(min(v_pu, v_max))
+        if not drivers:
+            continue
+        v_max = max(drivers)
 
         # An open-drain output only pulls the net low: it is never the input that a
         # higher domain overdrives.
