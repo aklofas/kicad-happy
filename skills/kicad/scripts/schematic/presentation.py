@@ -26,6 +26,7 @@ def _nets_for_output(nets):
         info.pop("_nc_marker", None)
         info.pop("_nc_touched", None)
         info.pop("_pwr_flags", None)
+        info.pop("_nc_on_port", None)
     return nets
 
 

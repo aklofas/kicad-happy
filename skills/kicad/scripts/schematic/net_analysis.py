@@ -1700,7 +1700,7 @@ def _no_connect_connected(pins: list[dict], net_info: dict, positions: dict) -> 
     """
     if any(erc_pins.pin_kind(p.get("pin_type")) == "no_connect" for p in pins):
         return bool(net_info.get("_nc_touched"))
-    if not net_info.get("_nc_marker"):
+    if not net_info.get("_nc_marker") or net_info.get("_nc_on_port"):
         return False
     unique: list[dict] = []
     for p in pins:

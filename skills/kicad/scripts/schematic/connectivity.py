@@ -1273,6 +1273,14 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
         pwr_flags = [(i["component"], i.get("pin_number", "1"), *m)
                      for m in members if m[0] != "bus" and m not in nc_keys
                      for i in point_info.get(m, ()) if i["source"] == "pwr_flag"]
+        # KiCad reports no "no-connect connected" for a marker placed on a hierarchical
+        # label or a sheet pin: it marks the port itself as unused.
+        nc_points = [m for m in members
+                     if any(i["source"] == "no_connect" for i in point_info.get(m, ()))]
+        nc_on_port = bool(nc_points) and root_k not in nc_marked and all(
+            any(i["source"] == "label" and (i.get("label_type") == "hierarchical_label"
+                                            or i.get("is_sheet_pin"))
+                for i in point_info.get(m, ())) for m in nc_points)
 
         if net_name is None:
             # Only create unnamed nets if they have component pins
@@ -1305,6 +1313,7 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
                 "has_pwr_flag": has_pwr_flag,
                 "pwr_flags": pwr_flags,
                 "nc_marker": nc_marker,
+                "nc_on_port": nc_on_port,
                 "nc_touched": root_k in nc_touched,
                 "labels": net_labels,
             })
@@ -1348,6 +1357,8 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
                 entry["_pwr_flags"] = e["pwr_flags"]
             if e["nc_marker"]:
                 entry["_nc_marker"] = True  # a no-connect marker, not only an NC-type pin
+            if e["nc_on_port"]:
+                entry["_nc_on_port"] = True  # every no-connect marker sits on a port
             if e["nc_touched"]:
                 entry["_nc_touched"] = True  # something else sits on this NC-type pin
             # The key keeps KiCad's escaped name; display_name is the name KiCad shows.
