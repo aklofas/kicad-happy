@@ -206,6 +206,12 @@ class OpenDrainStatus(unittest.TestCase):
         (f,) = vm001(board("+12V", self.FAULT, value="DRV8873"))
         self.assertEqual(f["severity"], "error")
 
+    def test_fault_flag_typed_input_with_a_pull_up_keeps_its_supply_level(self):
+        ctx = board("+12V", [("3", "nFAULT", "input", "SIG")], sig_extra=[("R1", "1", "~", "passive")],
+                    parts=[res("R1")], extra_nets={"+3V3": [("R1", "2", "~", "passive")]},
+                    value="DRV8873")
+        self.assertEqual(len(vm001(ctx)), 1)
+
     def test_charger_standby_pin_is_open_drain(self):
         ctx = board("+5V", [("3", "~{STDBY}", "output", "SIG")], sig_extra=[("R1", "1", "~", "passive")],
                     parts=[res("R1")], extra_nets={"+3V3": [("R1", "2", "~", "passive")]}, value="TP4056")
