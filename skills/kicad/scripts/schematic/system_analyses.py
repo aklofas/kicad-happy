@@ -2476,6 +2476,29 @@ def _cc_termination(r_info: dict) -> bool:
                 or (r_info["to_power"] and _is_type_c_rp(r_info["ohms"], r_info["rail_v"])))
 
 
+def _series_rd(ctx, first: dict, node: str | None, grounds) -> float | None:
+    """Ohms of *first* plus the one other fitted resistor that takes *node* to ground: an Rd
+    built from two resistors (the total resistance into the CC pin is what the table judges).
+    None when the node holds another resistor or none to ground."""
+    if not node or node not in ctx.nets or ctx.is_ground(node) or ctx.is_power_net(node):
+        return None
+    others = {p["component"] for p in ctx.nets[node]["pins"]
+              if p["component"] != first["reference"]
+              and (ctx.comp_lookup.get(p["component"]) or {}).get("type") == "resistor"}
+    if len(others) != 1:
+        return None
+    second = ctx.comp_lookup[others.pop()]
+    if not is_fitted(second):
+        return None
+    n1, n2 = ctx.get_two_pin_nets(second["reference"])
+    far = n2 if n1 == node else n1
+    r1 = parse_value(first.get("value", ""), component_type="resistor")
+    r2 = parse_value(second.get("value", ""), component_type="resistor")
+    if not r1 or not r2 or not far or not (ctx.is_ground(far) or far in grounds):
+        return None
+    return r1 + r2
+
+
 def _dead_battery_rd(ic: dict, pin: dict, net_pins: list) -> bool:
     """A TPD6S300 / TPD8S300 port protector whose RPD_G pin is tied to the same CC line: its
     dead-battery Rd is on that line (TPD8S300 data sheet SLVSDD6B and TPD6S300 SLVSDK3C, pin
@@ -2664,6 +2687,10 @@ def analyze_usb_compliance(ctx: AnalysisContext,
                     # The connector's own VBUS pin net is a 5 V pull-up rail even unnamed.
                     to_vbus = other is not None and other == conn_vbus
                     to_ground = is_ground(other) or other in conn_gnd_nets
+                    if not to_ground and not to_vbus:
+                        series = _series_rd(ctx, rc, other, conn_gnd_nets)
+                        if series is not None and is_type_c_rd(series):
+                            r_val, to_ground = series, True
                     r_info = {
                         "ref": rc["reference"],
                         "ohms": r_val,

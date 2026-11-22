@@ -573,6 +573,50 @@ class CcReturnNet(unittest.TestCase):
         self.assertIn("wrong_cc_value", st["issues"])
 
 
+class SeriesRd(unittest.TestCase):
+    """Table 4-28 Note 2: the Rd is the total resistance into the CC pin."""
+
+    def _board(self, first, second, extra_on_node=()):
+        pins = (("1", "VBUS"), ("2", "D-"), ("3", "D+"), ("4", "GND"),
+                ("A5", "CC1"), ("B5", "CC2"))
+        j = _conn("J1", "USB4105-GF-A", "Connector:USB_C_Receptacle_USB2.0", pins=pins)
+        comps = [j, _res("R1", first), _res("R3", second), _res("R2", "5.1k")]
+        nets = {"VBUS": [("J1", "1", "VBUS")], "USB_DM": [("J1", "2", "D-")],
+                "USB_DP": [("J1", "3", "D+")],
+                "GND": [("J1", "4", "GND"), ("R3", "2", "~"), ("R2", "2", "~")],
+                "CC1": [("J1", "A5", "CC1"), ("R1", "1", "~")],
+                "CC2": [("J1", "B5", "CC2"), ("R2", "1", "~")],
+                "MID": [("R1", "2", "~"), ("R3", "1", "~")]}
+        for ref, value in extra_on_node:
+            comps.append(_res(ref, value))
+            nets["MID"].append((ref, "1", "~"))
+            nets["GND"].append((ref, "2", "~"))
+        return _run(comps, nets)
+
+    def _cc1(self, r):
+        return r["connectors"][0]["usb_c_cc_status"]["cc1_resistor"]
+
+    def test_series_rd_sums(self):
+        r = self._board("4k99", "120R")
+        st = r["connectors"][0]["usb_c_cc_status"]
+        self.assertEqual((st["role"], st["status"], st["issues"]), ("sink", "pass", []))
+        self.assertEqual(self._cc1(r)["ohms"], 5110)
+        self.assertTrue(self._cc1(r)["to_ground"])
+        self.assertEqual(_uc003(r), [])
+
+    def test_series_pair_outside_the_band_is_left_alone(self):
+        r = self._board("5.1k", "100k")
+        st = r["connectors"][0]["usb_c_cc_status"]
+        self.assertEqual(st["status"], "fail")
+        self.assertEqual(self._cc1(r)["ohms"], 5100)
+        self.assertFalse(self._cc1(r)["to_ground"])
+
+    def test_series_node_with_two_resistors_is_left_alone(self):
+        r = self._board("4k99", "120R", extra_on_node=(("R4", "47k"),))
+        self.assertEqual(r["connectors"][0]["usb_c_cc_status"]["status"], "fail")
+        self.assertEqual(self._cc1(r)["ohms"], 4990)
+
+
 class RdBand(unittest.TestCase):
     def test_rd_band_is_one_table(self):
         from detector_helpers import is_type_c_rd
