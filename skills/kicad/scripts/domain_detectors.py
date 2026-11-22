@@ -22,7 +22,7 @@ from kicad_core.values import format_frequency, parse_value
 from kicad_core.netnames import parse_voltage_from_net_name
 from detector_helpers import (is_addressable_led, is_led_rail, led_forward_voltage, led_string,
                               match_family, match_ic_keywords, get_unique_ics, get_pin_net, symbol_name,
-                              type_c_rp, type_c_rp_rows)
+                              type_c_cc_controller, type_c_rp, type_c_rp_rows)
 from finding_schema import make_finding, make_provenance
 
 
@@ -2793,12 +2793,6 @@ _IDEAL_DIODE_KEYWORDS = (
     "sm74611",
 )
 
-_USB_PD_KEYWORDS = (
-    "fusb302", "stusb4500", "cypd317", "husb238",
-    "tps65987", "tps65988", "max77958",
-    "ccg3", "ccg6",
-)
-
 # Pin name patterns for classification
 _POWER_IN_PINS = {"VIN", "IN", "V_IN", "VINA", "VINB", "VIN1", "VIN2", "SUP", "VS"}
 _POWER_OUT_PINS = {"VOUT", "OUT", "V_OUT", "VOUTA", "VOUTB", "VOUT1", "VOUT2"}
@@ -2835,7 +2829,7 @@ def detect_power_path(ctx: AnalysisContext) -> list[dict]:
                 device_type = "power_mux"
             else:
                 device_type = "ideal_diode"
-        elif any(kw in combined for kw in _USB_PD_KEYWORDS):
+        elif type_c_cc_controller(comp):
             device_type = "usb_pd_controller"
 
         if not device_type:

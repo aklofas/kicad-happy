@@ -663,3 +663,38 @@ def type_c_rp(ohms: float, rail_v: float | None, any_rail: bool = False) -> tupl
     matches either table when *any_rail* is set."""
     rows = type_c_rp_rows(rail_v, any_rail) or ()
     return next((r for r in rows if r[0] * (1 - r[1]) <= ohms <= r[0] * (1 + r[1])), None)
+
+
+# Parts that terminate the Type-C CC lines themselves, by part-number stem: True for a USB PD
+# controller, False for a CC-only port controller or a charger / PMIC with CC detection. A stem is
+# listed only when the manufacturer data sheet shows the Rd (or, for a source-only part, the Rp)
+# inside the part: TUSB320 (SLLSEN9F p. 6 R(CC_D), p. 11), TUSB321 (SLLSEO6C p. 5, p. 10),
+# TUSB322I (SLLSEO5D p. 5, p. 10), HD3SS3220 (SLLSES1E p. 6, p. 15), TPS25730 (SLVSGP9 p. 1,
+# p. 15 R(SNK)), TPS25750 (SLVSFR7A p. 17 R(SNK)), TPS25751 (SLVSH93A p. 14-15), PTN5110
+# (Rev. 1.6 p. 2), HUSB237 (Rev. 1.0 p. 5 Rd, p. 8), STUSB4700 (source only, DS11977 Rev 5 p. 9),
+# CH224K / CH224A / CH224Q (CH224 data sheet V2.1 sections 6.1 and 6.2, p. 8-9: CC wired straight
+# to the receptacle), nPM1300 (PS v1.1 p. 20), nPM1304 (v1.0 p. 15), MAX77751 (19-100802 Rev 4
+# p. 9 R(PD_UFP)). AP33772 and IP2721 are left out on purpose: their data sheets show an external
+# Rd.
+TYPE_C_CC_CONTROLLERS = {
+    "fusb302": True, "fusb303": False, "stusb4500": True, "cypd317": True, "husb238": True,
+    "tps65987": True, "tps65988": True, "ccg3": True, "ccg6": True, "max77958": True,
+    "max20342": False,
+    "tusb320": False, "tusb321": False, "tusb322": False, "hd3ss3220": False,
+    "tps25730": True, "tps25750": True, "tps25751": True, "ptn5110": True, "husb237": True,
+    "stusb4700": True, "ch224k": True, "ch224a": True, "ch224q": True,
+    "npm1300": False, "npm1304": False, "max77751": False,
+}
+# Parts of the same families whose data sheet shows external 5.1 kohm resistors on CC (CH224
+# data sheet V2.1 sections 6.3 and 6.4, p. 9-10): a symbol of a listed part reused for one of
+# these is not a controller.
+_CC_NEEDS_EXTERNAL_RD = ("ch221", "ch224d")
+
+
+def type_c_cc_controller(comp: dict) -> bool | None:
+    """True for a listed USB PD controller, False for a listed CC-only controller, None for any
+    other part. Read from the value and the whole lib_id."""
+    name = ((comp.get("value") or "") + " " + (comp.get("lib_id") or "")).lower()
+    if any(k in name for k in _CC_NEEDS_EXTERNAL_RD):
+        return None
+    return next((pd for stem, pd in TYPE_C_CC_CONTROLLERS.items() if stem in name), None)

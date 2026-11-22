@@ -329,6 +329,36 @@ def _type_c_cc(cc1, cc2, ics=(), rails=None):
     return _run(comps, nets, rails)
 
 
+def _pp_det_types(value):
+    from domain_detectors import detect_power_path
+    comp = {"reference": "U1", "type": "ic", "value": value, "lib_id": "MyLib:" + value,
+            "footprint": "", "pins": [{"number": "1", "name": "CC1"}]}
+    nets = {"CC1": {"name": "CC1", "pins": [{"component": "U1", "pin_number": "1",
+                                              "pin_name": "CC1"}]}}
+    ctx = build_analysis_context([comp], nets, {}, known_power_rails={"GND"})
+    return [(e["ref"], e["type"]) for e in detect_power_path(ctx)]
+
+
+def _tpd_board(value, tied):
+    """A port protector between the receptacle and the PD side: C_CC1 / C_CC2 on the connector
+    nets; RPD_G1 / RPD_G2 on the same nets when *tied*, else on their own nets."""
+    j = _conn("J1", "USB4105-GF-A", "Connector:USB_C_Receptacle_USB2.0",
+              pins=(*USB2_PINS, ("A5", "CC1"), ("B5", "CC2")))
+    u = {"reference": "U1", "type": "ic", "value": value, "lib_id": "MyLib:" + value,
+         "footprint": "", "pins": [{"number": "1", "name": "C_CC1"}, {"number": "2", "name": "C_CC2"},
+                                   {"number": "3", "name": "RPD_G1"}, {"number": "4", "name": "RPD_G2"}]}
+    nets = _usb2_nets("J1")
+    nets["CC1"] = [("J1", "A5", "CC1"), ("U1", "1", "C_CC1")]
+    nets["CC2"] = [("J1", "B5", "CC2"), ("U1", "2", "C_CC2")]
+    if tied:
+        nets["CC1"].append(("U1", "3", "RPD_G1"))
+        nets["CC2"].append(("U1", "4", "RPD_G2"))
+    else:
+        nets["RPD1"] = [("U1", "3", "RPD_G1")]
+        nets["RPD2"] = [("U1", "4", "RPD_G2")]
+    return _run([j, u], nets)
+
+
 class CcTermination(unittest.TestCase):
     """Several resistors on one CC pin: the Rd (or Rp) is the one judged, whichever order the
     net lists them in. A 5.1 kOhm that does not return to ground is no sink Rd."""
@@ -393,6 +423,77 @@ class CcTermination(unittest.TestCase):
                 self.assertEqual((st["role"], st["pd_controller"], st["status"]),
                                  ("pd_controlled", "U1", "pass"))
                 self.assertEqual(_uc003(r), [])
+
+    def test_listed_controllers_terminate_cc_themselves(self):
+        # One part per listed stem; each family's data sheet shows the Rd / Rp inside the part.
+        for value in ("TUSB320LAIRWBR", "TUSB321AI", "TUSB322I", "HD3SS3220IRNHT",
+                      "TPS25730SRSMR", "TPS25750DRJKR", "TPS25751DREFR", "PTN5110NHQ",
+                      "HUSB237", "STUSB4700YQTR", "CH224K", "CH224A", "CH224Q", "nPM1300",
+                      "nPM1304", "MAX77751"):
+            with self.subTest(value=value):
+                r = _type_c_cc((), (), ics=(("U1", value),))
+                st = self._status(r)
+                self.assertEqual((st["role"], st["pd_controller"], st["status"]),
+                                 ("pd_controlled", "U1", "pass"))
+                self.assertEqual(_uc003(r), [])
+
+    def test_ch221k_on_a_ch224k_symbol_needs_its_rd(self):
+        # CH221K and CH224D show external 5.1k resistors on CC; the CH224K symbol is reused.
+        for value in ("CH221K", "CH224D"):
+            with self.subTest(value=value):
+                r = _type_c_cc((), (), ics=(("U1", value),))
+                self.assertEqual(self._status(r)["pd_controller"], None)
+                self.assertEqual(len(_uc003(r)), 2)
+
+    def test_ap33772_needs_external_rd(self):
+        for value in ("AP33772", "AP33772S", "IP2721"):
+            with self.subTest(value=value):
+                r = _type_c_cc((), (), ics=(("U1", value),))
+                self.assertIsNone(self._status(r)["pd_controller"])
+                self.assertEqual(len(_uc003(r)), 2)
+
+    def test_hd3ss3202_is_not_a_cc_controller(self):
+        from detector_helpers import type_c_cc_controller
+        self.assertIsNone(type_c_cc_controller({"value": "HD3SS3202", "lib_id": "Lib:HD3SS3202"}))
+        self.assertIs(type_c_cc_controller({"value": "HD3SS3220", "lib_id": "Lib:HD3SS3220"}),
+                      False)
+        r = _type_c_cc((), (), ics=(("U1", "HD3SS3202"),))
+        self.assertEqual(len(_uc003(r)), 2)
+
+    def test_one_controller_table(self):
+        # usb_compliance and the power-path detector read the same table: CC-only parts are
+        # controllers for the first and make no power-path record in the second.
+        from detector_helpers import type_c_cc_controller
+        for value, pd in (("FUSB303BTMX", False), ("MAX20342", False), ("TUSB320", False),
+                          ("nPM1300", False), ("FUSB302B", True), ("TPS25750D", True),
+                          ("CH224K", True)):
+            with self.subTest(value=value):
+                self.assertIs(type_c_cc_controller({"value": value, "lib_id": "L:" + value}), pd)
+        self.assertEqual(_pp_det_types("FUSB303BTMX"), [])
+        self.assertEqual(_pp_det_types("FUSB302B"), [("U1", "usb_pd_controller")])
+
+    def test_cc_only_controller_makes_no_pp_det(self):
+        for value in ("TUSB320LAIRWBR", "HD3SS3220IRNHT", "nPM1300", "MAX77751"):
+            with self.subTest(value=value):
+                self.assertEqual(_pp_det_types(value), [])
+
+    def test_pd_controller_makes_a_pp_det(self):
+        for value in ("TPS25750DRJKR", "CH224K", "PTN5110NHQ", "HUSB237", "STUSB4700YQTR"):
+            with self.subTest(value=value):
+                self.assertEqual(_pp_det_types(value), [("U1", "usb_pd_controller")])
+
+    def test_tpd8s300_counts_only_with_rpd_tied(self):
+        # TPD8S300 / TPD6S300: RPD_Gx shorted to C_CCx puts the dead-battery Rd on that line.
+        for value in ("TPD8S300A", "TPD6S300A"):
+            with self.subTest(value=value, rpd="tied"):
+                r = _tpd_board(value, tied=True)
+                st = self._status(r)
+                self.assertEqual((st["role"], st["pd_controller"]), ("pd_controlled", "U1"))
+                self.assertEqual(_uc003(r), [])
+            with self.subTest(value=value, rpd="open"):
+                r = _tpd_board(value, tied=False)
+                self.assertIsNone(self._status(r)["pd_controller"])
+                self.assertEqual(len(_uc003(r)), 2)
 
     def test_hub_with_an_unlisted_part_on_cc_is_not_a_controller(self):
         r = _type_c_cc((), (), ics=(("U1", "STM32F072CBT6"),))

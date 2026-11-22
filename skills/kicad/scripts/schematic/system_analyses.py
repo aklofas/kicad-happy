@@ -6,7 +6,8 @@ import re
 import sys
 from kicad_core.diagnostics import record
 from detector_helpers import (
-    can_line, can_pin_pair, is_addressable_led, is_fitted, is_tvs_diode, led_forward_voltage, type_c_rp,
+    can_line, can_pin_pair, is_addressable_led, is_fitted, is_tvs_diode, led_forward_voltage,
+    type_c_cc_controller, type_c_rp,
 )
 from kicad_core.classify import gpio_port_pins, is_active_low_enable, is_touch_pad
 from kicad_types import (
@@ -2479,6 +2480,16 @@ def _cc_termination(r_info: dict) -> bool:
                 or (r_info["to_power"] and _is_type_c_rp(r_info["ohms"], r_info["rail_v"])))
 
 
+def _dead_battery_rd(ic: dict, pin: dict, net_pins: list) -> bool:
+    """A TPD6S300 / TPD8S300 port protector whose RPD_G pin is tied to the same CC line: its
+    dead-battery Rd is on that line (TPD8S300 data sheet SLVSDD6B and TPD6S300 SLVSDK3C, pin
+    functions RPD_G1 / RPD_G2, p. 3)."""
+    name = ((ic.get("value") or "") + " " + (ic.get("lib_id") or "")).lower()
+    return (("tpd8s300" in name or "tpd6s300" in name)
+            and any(q["component"] == pin["component"]
+                    and (q.get("pin_name") or "").upper().startswith("RPD_G") for q in net_pins))
+
+
 _TYPE_C_NAME = re.compile(r"(?<![A-Z0-9])(?:USB[_-]?C|TYPE[-_]?C)(?![A-Z0-9])")
 # Non-Type-C receptacles that are device ports, and the dual-role ones among them.
 _USB_DEVICE_PORT = re.compile(
@@ -2598,12 +2609,6 @@ def analyze_usb_compliance(ctx: AnalysisContext,
                 "note": "no pin named CC/CC1/CC2 on this symbol; CC checks skipped",
             }
         elif conn["is_type_c"]:
-            _PD_CONTROLLER_KEYWORDS = (
-                "fusb302", "fusb303", "stusb4500", "cypd317", "husb238",
-                "tps65987", "tps65988", "ccg3", "ccg6",
-                "max77958", "max20342",
-            )
-
             cc1_net = None
             cc2_net = None
             cc1_resistor = None  # {ref, ohms, to_ground, to_power, rail_v}
@@ -2633,8 +2638,8 @@ def analyze_usb_compliance(ctx: AnalysisContext,
                         ic = comp_lookup.get(p["component"])
                         if not ic or ic["type"] != "ic":
                             continue
-                        ic_combined = (ic.get("value", "") + " " + ic.get("lib_id", "")).lower()
-                        if any(kw in ic_combined for kw in _PD_CONTROLLER_KEYWORDS):
+                        if (type_c_cc_controller(ic) is not None
+                                or _dead_battery_rd(ic, p, nets[net_name]["pins"])):
                             pd_controller = p["component"]
                             break
 
