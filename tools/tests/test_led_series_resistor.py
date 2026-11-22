@@ -224,6 +224,92 @@ class LedStrings(unittest.TestCase):
                          ["LED resistor R1: power dissipation 640mW"])
 
 
+def _named_ctx(components, nets, rails):
+    """Like _ctx, with a pin written (ref, number, name)."""
+    full = {n: {"name": n, "pins": [dict(component=r, pin_number=p, pin_name=nm, pin_type="passive")
+                                    for r, p, nm in pins],
+                "point_count": 0, "no_connect": False, "has_pwr_flag": False, "labels": []}
+            for n, pins in nets.items()}
+    return build_analysis_context(components, full, {}, known_power_rails=set(rails))
+
+
+_IC = {"reference": "U1", "type": "ic", "value": "MCU", "lib_id": "MCU:Chip"}
+
+
+class LedAcrossSupply(unittest.TestCase):
+    def test_led_straight_across_a_supply_is_reported_beside_an_ic(self):
+        ctx = _named_ctx([_led("D1"), _IC],
+                         {"+5V": [("D1", "2", "A"), ("U1", "1", "VDD")],
+                          "GND": [("D1", "1", "K"), ("U1", "2", "VSS")]}, {"+5V", "GND"})
+        self.assertEqual([(f["severity"], f["summary"]) for f in _lr(ctx)],
+                         [("error", "LED D1: no current-limiting resistor found")])
+
+    def test_led_driven_by_an_ic_sink_has_no_error(self):
+        ctx = _named_ctx([_led("D1"), _IC],
+                         {"+5V": [("D1", "2", "A")], "SINK": [("D1", "1", "K"), ("U1", "3", "OUT")],
+                          "GND": [("U1", "2", "VSS")]}, {"+5V", "GND"})
+        self.assertEqual(_lr(ctx), [])
+
+    def test_cathode_on_the_rail_is_silent(self):
+        ctx = _named_ctx([_led("D1"), _IC],
+                         {"+5V": [("D1", "1", "K"), ("U1", "1", "VDD")],
+                          "GND": [("D1", "2", "A"), ("U1", "2", "VSS")]}, {"+5V", "GND"})
+        self.assertEqual(_lr(ctx), [])
+
+    def test_rail_without_a_power_symbol_is_silent(self):
+        ctx = _named_ctx([_led("D1"), _IC],
+                         {"+5V": [("D1", "2", "A"), ("U1", "1", "VDD")],
+                          "GND": [("D1", "1", "K"), ("U1", "2", "VSS")]}, {"GND"})
+        self.assertEqual(_lr(ctx), [])
+
+    def test_three_pin_led_is_silent(self):
+        led = _led("D1", "LED_RGB")
+        ctx = _named_ctx([led, _IC],
+                         {"+5V": [("D1", "2", "A"), ("U1", "1", "VDD")],
+                          "GND": [("D1", "1", "K"), ("U1", "2", "VSS")], "N3": [("D1", "3", "K2")]},
+                         {"+5V", "GND"})
+        self.assertEqual(_lr(ctx), [])
+
+    def test_led_with_an_unconnected_pin_stays_silenced_by_an_ic_on_ground(self):
+        ctx = _named_ctx([_led("D1"), _IC],
+                         {"+5V": [("D1", "2", "A")], "GND": [("U1", "2", "VSS")]}, {"+5V", "GND"})
+        self.assertEqual(_lr(ctx), [])
+
+
+def _parallel(n, ohms="100", anti=False):
+    """+12V -> R1 -> node -> n LEDs -> GND; with anti, one more LED the other way round."""
+    leds = [_led(f"D{i}") for i in range(1, n + 1)]
+    pins_node = [_p("R1", "2")] + [_p(f"D{i}", "2") for i in range(1, n + 1)]
+    pins_gnd = [_p(f"D{i}", "1") for i in range(1, n + 1)]
+    if anti:
+        leds.append(_led("D9"))
+        pins_node.append(_p("D9", "1"))
+        pins_gnd.append(_p("D9", "2"))
+    return _ctx(leds + [_r("R1", ohms)],
+                {"+12V": [_p("R1", "1")], "N0": pins_node, "GND": pins_gnd}, {"+12V", "GND"})
+
+
+class ParallelStrings(unittest.TestCase):
+    def test_two_leds_share_the_resistor_current(self):
+        lr = _lr(_parallel(2))
+        # (12 V - 2.0 V) / 100 Ohm = 100 mA in R1, 50 mA each
+        self.assertEqual(sorted(f["summary"] for f in lr if f["severity"] == "warning"),
+                         ["LED D1: current too high (50mA via R1)", "LED D2: current too high (50mA via R1)"])
+        # the resistor dissipates 0.1^2 x 100 = 1000 mW, once
+        self.assertEqual([f["summary"] for f in lr if f["severity"] == "info"],
+                         ["LED resistor R1: power dissipation 1000mW"])
+
+    def test_three_leds_in_parallel_are_under_the_limit(self):
+        lr = _lr(_parallel(3))
+        self.assertEqual([f["summary"] for f in lr if f["severity"] == "warning"], [])
+
+    def test_anti_parallel_led_keeps_the_full_resistor_current(self):
+        lr = _lr(_parallel(1, anti=True))
+        self.assertEqual(sorted(f["summary"] for f in lr if f["severity"] == "warning"),
+                         ["LED D1: current too high (100mA via R1)",
+                          "LED D9: current too high (100mA via R1)"])
+
+
 class SharedLedNode(unittest.TestCase):
     def test_power_named_led_node_is_not_a_rail(self):
         from detector_helpers import is_led_rail

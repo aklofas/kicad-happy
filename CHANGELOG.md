@@ -57,6 +57,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The ESD ground-via check counts vias on the protection device's own ground net when that net is not named GND.
 - The LED audit no longer gives an LED the resistor of a parallel branch: a chain walk goes on only through an LED that meets the last one anode to cathode, and a power-named net of LEDs with no resistor to a rail or ground (or only pull-ups to signals) is the rail, not an LED node.
 - The LED audit reads a current-limit resistor whose value carries a package suffix (`1k_0402`, `330R_0603`) as that resistor, so the LED is judged as resistor-limited instead of "resistor value unparsed" or as driven straight from an IC.
+- An LED wired straight from a supply rail to ground is reported as having no current-limiting resistor even when ICs share the rail. LEDs in parallel on one resistor share its current, and the resistor's dissipation is reported once.
 - Crystal values written without a unit (`32.768`, `7.3728`, `8m`, `32768Hz`) read as the frequency they mean, and a number that cannot be a crystal frequency (a part number, a capacitance) is no longer reported as one.
 - A `CSENSE` net is classified as analog, not as a chip select.
 - The I2C low-level voltage check judges the SCL pull-up as well as SDA: a strong SCL pull-up (or a mixed-rail pair on SCL) below the UM10204 minimum for a 3 mA sink is reported, and the worse line fills the check.

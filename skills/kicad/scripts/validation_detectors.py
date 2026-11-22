@@ -1481,6 +1481,29 @@ _LED_IF_MAX_DEFAULT_MA = 20
 _LED_IF_RECOMMENDED_MA = 10
 
 
+def _parallel_strings(ctx: AnalysisContext, net: str, string: list[str]) -> int:
+    """How many LED strings end on *net* the same way round as *string* does (anode or
+    cathode first): they share the resistor on that net.  An anti-parallel LED conducts on
+    the other half-cycle and is not counted."""
+    pins = [p for p in ctx.nets.get(net, {}).get('pins', [])
+            if ctx.comp_lookup.get(p['component'], {}).get('type') == 'led']
+    own = next((p.get('pin_number') for p in pins if p['component'] in string), None)
+    return max(1, sum(1 for p in pins if p.get('pin_number') == own))
+
+
+def _across_supply(ctx: AnalysisContext, ref: str, e1: str, e2: str) -> bool:
+    """True when a two-pin LED's string runs straight from a rail that has a power symbol
+    to ground, anode side on the rail: no part on the sheet can limit its current."""
+    if len(ctx.ref_pins.get(ref, {})) != 2:
+        return False
+    for rail, gnd in ((e1, e2), (e2, e1)):
+        if rail in ctx.known_power_rails and not ctx.is_ground(rail) and ctx.is_ground(gnd):
+            names = {str(p.get('pin_name', '')).upper() for p in ctx.nets.get(rail, {}).get('pins', [])
+                     if p['component'] == ref}
+            return not names & {'K', 'C', 'CATHODE'}   # cathode on the rail: reverse-biased
+    return False
+
+
 def validate_led_resistors(ctx: AnalysisContext) -> list[dict]:
     """LR-001: Check LED current-limiting resistor values."""
     findings: list[dict] = []
@@ -1492,6 +1515,7 @@ def validate_led_resistors(ctx: AnalysisContext) -> list[dict]:
     resistor_nets, net_to_resistors = index_two_pin_components(ctx, resistors)
 
     cache_dir = getattr(ctx, 'cache_dir', None)
+    dissipation_reported: set[str] = set()
 
     for led in leds:
         if is_addressable_led(led):
@@ -1553,7 +1577,8 @@ def validate_led_resistors(ctx: AnalysisContext) -> list[dict]:
                     continue  # through a transistor or IC: the current is not computable
                 ohms = ctx.parsed_values.get(rref)
                 if ohms is not None and ohms > 0:
-                    series_resistors.append({'ref': rref, 'ohms': ohms, 'rail': rail})
+                    series_resistors.append({'ref': rref, 'ohms': ohms, 'rail': rail,
+                                             'parallel': _parallel_strings(ctx, net, string)})
         if not has_series_r:
             has_series_r = any(ctx.comp_lookup.get(p['component'], {}).get('type') == 'resistor_network'
                                for net in own_nets for p in ctx.nets.get(net, {}).get('pins', []))
@@ -1562,7 +1587,7 @@ def validate_led_resistors(ctx: AnalysisContext) -> list[dict]:
 
         if not series_resistors:
             has_driver = False
-            for net in (n1, n2):
+            for net in (() if _across_supply(ctx, ref, e1, e2) else (n1, n2)):
                 for p in ctx.nets.get(net, {}).get('pins', []):
                     comp = ctx.comp_lookup.get(p['component'])
                     if comp and comp['type'] in ('transistor', 'ic'):
@@ -1605,7 +1630,9 @@ def validate_led_resistors(ctx: AnalysisContext) -> list[dict]:
             rail_v = abs(rail_v) if rail_v is not None else None
             if rail_v is None or rail_v <= vf:
                 continue
-            current_ma = (rail_v - vf) / sr['ohms'] * 1000
+            # Strings in parallel on one resistor share its current.
+            resistor_ma = (rail_v - vf) / sr['ohms'] * 1000
+            current_ma = resistor_ma / sr['parallel']
             config_extra = ctx.rail_source_fields(sr['rail'])
 
             if current_ma > if_max_ma * 2:
@@ -1623,8 +1650,9 @@ def validate_led_resistors(ctx: AnalysisContext) -> list[dict]:
                     source=ctx.source,
                     **config_extra))
 
-            power_w = (current_ma / 1000) ** 2 * sr['ohms']
-            if power_w > 0.25 and ref == min(string):  # once per string, whichever LED starts it
+            power_w = (resistor_ma / 1000) ** 2 * sr['ohms']
+            if power_w > 0.25 and sr['ref'] not in dissipation_reported:  # once per resistor
+                dissipation_reported.add(sr['ref'])
                 findings.append(make_finding(
                     detector='validate_led_resistors', rule_id='LR-001', category='component_integrity',
                     summary=f'LED resistor {sr["ref"]}: power dissipation {power_w*1000:.0f}mW',
