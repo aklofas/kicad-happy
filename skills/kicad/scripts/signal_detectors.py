@@ -4476,7 +4476,7 @@ def detect_design_observations(ctx: AnalysisContext, results: dict) -> list[dict
                     break
         ic_refs = [p["component"] for p in net_info["pins"]
                    if ctx.comp_lookup.get(p["component"], {}).get("type") == "ic"]
-        if ic_refs and not has_pullup and not_i2c_despite_name(ctx, net_name):
+        if ic_refs and not_i2c_despite_name(ctx, net_name):
             continue
         if ic_refs:
             design_observations.append({

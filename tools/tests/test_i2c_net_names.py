@@ -17,8 +17,8 @@ def _comp(ref, ctype, value, lib_id, pins=()):
             "pins": [{"number": n, "name": nm, "type": t} for n, nm, t in pins]}
 
 
-def _res(ref):
-    return _comp(ref, "resistor", "4.7k", "Device:R", [("1", "~", "passive"), ("2", "~", "passive")])
+def _res(ref, value="4.7k"):
+    return _comp(ref, "resistor", value, "Device:R", [("1", "~", "passive"), ("2", "~", "passive")])
 
 
 MCU = _comp("U1", "ic", "STM32F103C8Tx", "MCU_ST_STM32F1:STM32F103C8Tx",
@@ -31,17 +31,18 @@ DISPLAY = _comp("U3", "ic", "GC9A01", "Display:GC9A01",
                  ("4", "DC", "input")])
 
 
-def _ctx(nets, components=(MCU, SENSOR), pullups=()):
+def _ctx(nets, components=(MCU, SENSOR), pullups=(), value="4.7k", rail="+3V3"):
     """``nets`` maps a net name to (ref, pin, pin name) rows; each net in ``pullups``
-    gets a resistor to +3V3."""
+    gets a resistor of ``value`` to ``rail``."""
     comps = list(components)
     rows = {n: [(r, p, pn) for r, p, pn in pins] for n, pins in nets.items()}
     rows.setdefault("+3V3", [])
+    rows.setdefault(rail, [])
     for i, net in enumerate(pullups, start=1):
         ref = f"R{i}"
-        comps.append(_res(ref))
+        comps.append(_res(ref, value))
         rows[net].append((ref, "1", "~"))
-        rows["+3V3"].append((ref, "2", "~"))
+        rows[rail].append((ref, "2", "~"))
     full = {n: {"name": n, "pins": [dict(component=r, pin_number=p, pin_name=pn, pin_type="bidirectional")
                                     for r, p, pn in pins],
                 "point_count": 0, "no_connect": False, "labels": []}
@@ -124,6 +125,15 @@ class DisplaySpiLinesNamedLikeI2c(unittest.TestCase):
                 "IMU_CS": [("U1", "5", "PB5"), ("U2", "3", "CSB")]}
         self.assertEqual(sorted(_i2c_obs(_ctx(nets))), ["IMU_SDA"])
 
+    def test_sheet_name_does_not_make_a_sensor_family_a_display(self):
+        for sheet in ("/Display/", "/Sensors/"):
+            with self.subTest(sheet=sheet):
+                nets = {f"{sheet}IMU_SDA": [("U1", "7", "PB7"), ("U2", "1", "SDA/SDI")],
+                        f"{sheet}IMU_CS": [("U1", "5", "PB5"), ("U2", "3", "CSB")]}
+                ctx = _ctx(nets)
+                self.assertEqual(sorted(_i2c_obs(ctx)), [f"{sheet}IMU_SDA"])
+                self.assertEqual(sorted(_i2c_bus_entries(ctx)), [f"{sheet}IMU_SDA"])
+
     def test_numbered_bus_beside_a_chip_select_is_i2c(self):
         nets = {"MCU_SCL2": [("U1", "6", "PB6"), ("U2", "2", "SCK")],
                 "MCU_SDA2": [("U1", "7", "PB7"), ("U2", "1", "SDI")],
@@ -184,6 +194,18 @@ class BusAnalysisLeavesOutTheSameNets(unittest.TestCase):
     def test_display_lines_with_a_pull_up_keep_their_bus_entries(self):
         ctx = _ctx(_display_nets("LCD"), components=(MCU, DISPLAY), pullups=("LCD_SDA", "LCD_SCL"))
         self.assertEqual(sorted(_i2c_bus_entries(ctx)), ["LCD_SCL", "LCD_SDA"])
+
+    def test_observation_and_bus_entry_agree_on_a_pull_up_with_no_value(self):
+        ctx = _ctx(_display_nets("LCD"), components=(MCU, DISPLAY),
+                   pullups=("LCD_SDA", "LCD_SCL"), value="R")
+        self.assertEqual(sorted(_i2c_obs(ctx)), ["LCD_SCL", "LCD_SDA"])
+        self.assertEqual(sorted(_i2c_bus_entries(ctx)), ["LCD_SCL", "LCD_SDA"])
+
+    def test_a_resistor_to_ground_is_not_a_pull_up_for_either(self):
+        ctx = _ctx(_display_nets("LCD"), components=(MCU, DISPLAY),
+                   pullups=("LCD_SDA", "LCD_SCL"), rail="GND")
+        self.assertEqual(_i2c_obs(ctx), {})
+        self.assertEqual(_i2c_bus_entries(ctx), {})
 
     def test_bare_and_i2c_prefixed_names_keep_their_bus_entries(self):
         nets = {"SDA": [("U1", "7", "PB7"), ("U2", "1", "SDI")],

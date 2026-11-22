@@ -801,7 +801,7 @@ def _detect_i2c_buses(ctx: AnalysisContext) -> list[dict]:
                                 "to_rail": other_net,
                             })
             # Still counted as seen, so the pin-name pass below does not list it either
-            if devices and not pullups and not_i2c_despite_name(ctx, net_name):
+            if devices and not_i2c_despite_name(ctx, net_name):
                 continue
             if devices:  # Skip connector-only routing with no ICs
                 load_count = len(devices)
