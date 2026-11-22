@@ -15,7 +15,7 @@ import re
 
 from kicad_types import AnalysisContext
 from kicad_core.netnames import is_usb_data_net_name, is_usb_signal_net_name, parse_voltage_from_net_name
-from kicad_core.parts import is_load_switch_part, lookup_regulator_vref, names_load_switch
+from kicad_core.parts import is_load_switch_part, lookup_regulator_vref, names_analog_switch, names_load_switch
 
 try:
     import os as _os, sys as _sys
@@ -627,6 +627,10 @@ def _pull_up_voltage(ctx: AnalysisContext, net_name: str) -> float | None:
 _DRIVING_PIN_TYPES = frozenset({'output', 'bidirectional', 'tri_state', 'open_collector', 'open_emitter'})
 
 
+# Serial data outputs of switch parts with a digital interface (ADG715, ADG1414, MAX14662).
+_SERIAL_OUT_PIN = re.compile(r'(?:SDO|DOUT|MISO|SDA)\d*$')
+
+
 def _refs_typing_outputs(ctx: AnalysisContext) -> set[str]:
     """Parts whose symbol types at least one pin as an output of some kind."""
     return {p['component'] for info in ctx.nets.values() for p in info.get('pins', [])
@@ -665,8 +669,21 @@ def validate_voltage_levels(ctx: AnalysisContext, level_shifters: list[dict] | N
     checked_nets: set[str] = set()
     typed_refs = _refs_typing_outputs(ctx)
 
+    switch_refs: dict[str, bool] = {}
+
+    def is_analog_switch(ref):
+        if ref not in switch_refs:
+            comp = ctx.comp_lookup.get(ref, {})
+            switch_refs[ref] = names_analog_switch(
+                comp.get('value', ''), comp.get('mpn', ''), symbol_name(comp.get('lib_id') or ''))
+        return switch_refs[ref]
+
     def cannot_drive(p):
-        """An input pin of a symbol that types its outputs: it has no output stage."""
+        """A pin that puts no level of its own on the net: an input of a symbol that types its
+        outputs (no output stage), or a channel of an analog switch, which passes the level it
+        is given. A switch's serial data output does drive."""
+        if is_analog_switch(p['ref']):
+            return not _SERIAL_OUT_PIN.match(_bare_pin_name(p.get('pin')))
         return p['pin_type'] == 'input' and p['ref'] in typed_refs
 
     for net_name, net_info in ctx.nets.items():

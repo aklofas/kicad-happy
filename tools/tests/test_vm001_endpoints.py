@@ -141,5 +141,59 @@ class DriverPins(unittest.TestCase):
         self.assertEqual(f["summary"], "Net SIG: 5.0V / 3.3V domain crossing without level shifter")
 
 
+
+class AnalogSwitchPins(unittest.TestCase):
+    # One example and its evidence per family of analog_switch regex.
+    CITATIONS = {
+        "4xxx": (("CD4051B", "4066", "MC14053"),
+                 "KiCad 4xxx:4016/4051/4052/4053/4066 'Analog Switches/Multiplexer'; Analog_Switch:CD4051B..CD4097B, HEF4051BT..HEF4067BT"),
+        "74HC/HCT/LV": (("74HCT4053D", "CD74HC4067SM96", "74HC4851"),
+                        "KiCad 74xx:74HC4051, CD74HC4067M; TI CD74HC405x SCHS122O p. 1; CD74HC4067 SCHS209D p. 1; SN74HC4851 SCLS542C p. 1"),
+        "74LVC/AUC single gate": (("74LVC1G3157", "74AUC2G66", "NC7SB3157", "FSA3357L8X"),
+                                  "KiCad 74xGxx:74LVC1G3157, 74LVC1G66, 74AUC2G53/2G66; Analog_Switch:NC7SB3157, FSA3157; TI SN74LVC1G3157 SCES424O p. 1; onsemi FSA3357"),
+        "TI muxes": (("TMUX4051PWR", "TMUXHS4212IRKSR", "TS5A23166", "TS3A27518E", "TS3USB221RSER", "MUX508"),
+                     "TI TMUX405x SCDS445E, TMUXHS4212 SLASEP7A, TS5A23166 SCDS196J, TS3A27518E SCDS260F, TS3USB221 SCDS220M, MUX508/509 SBAS758C, all p. 1"),
+        "DG": (("DG442DY-T1-E3", "DG468"),
+               "Vishay DG467/DG468 doc. 74413 S12-2269 Rev. D p. 1; DG408/409 doc. 70062 p. 1; KiCad Analog_Switch:DG308..DG9422"),
+        "ADG": (("ADG1408YRUZ", "ADG506A"),
+                "ADI ADG441/442/444 Rev. B p. 1; ADG506A/507A Rev. C p. 1; KiCad Analog_Switch:ADG1207..ADG884"),
+        "MAX": (("MAX306", "MAX314CSE", "MAX4678"),
+                "Maxim MAX306/307 19-0270 Rev 5 p. 1; MAX4677-4679 19-1713 Rev 1 p. 1; KiCad Analog_Switch:MAX312..MAX394"),
+    }
+    NOT_SWITCHES = ("MAX4080", "MAX4466", "MAX4410", "MAX471", "MAX40200AUK", "MAX485", "ADG3304",
+                    "74HCT157", "74HC138", "74HC4050", "CD4050", "CD4060", "LTC4053", "XC4016", "LM4051")
+
+    def test_channel_pin_is_not_a_driver_even_on_an_untyped_symbol(self):
+        ctx = board("+15V", [("3", "COM", "input", "SIG"), ("4", "NO", "input", "NO")], value="DG468")
+        self.assertEqual(vm001(ctx), [])
+
+    def test_channel_pin_is_not_a_driver_even_when_typed_as_an_output(self):
+        ctx = board("+15V", [("3", "COM", "output", "SIG"), ("4", "NO", "passive", "NO")], value="DG468")
+        self.assertEqual(vm001(ctx), [])
+
+    def test_serial_data_output_of_a_switch_still_drives(self):
+        (f,) = vm001(board("+5V", [("3", "SDO", "output", "SIG")], value="ADG1414"))
+        self.assertEqual(f["summary"], "Net SIG: 5.0V / 3.3V domain crossing without level shifter")
+
+    def test_higher_level_into_a_switch_is_still_reported(self):
+        comps = [ic("U1", "TS5A3159"), ic("U2", "MCU5V")]
+        nets = {"+3V3": [("U1", "1", "V+", "power_in")], "+5V": [("U2", "1", "VDD", "power_in")],
+                "SIG": [("U1", "3", "IN", "input"), ("U2", "3", "PA0", "output")]}
+        (f,) = vm001(ctx_of(comps, nets, {"+3V3", "+5V"}))
+        self.assertEqual(f["summary"], "Net SIG: 5.0V / 3.3V domain crossing without level shifter")
+
+    def test_family_names(self):
+        from kicad_core.parts import names_analog_switch
+        for family, (names, _evidence) in self.CITATIONS.items():
+            for name in names:
+                self.assertTrue(names_analog_switch(name), f"{family}: {name}")
+        for name in self.NOT_SWITCHES:
+            self.assertFalse(names_analog_switch(name), name)
+
+    def test_symbol_name_names_the_part(self):
+        from kicad_core.parts import names_analog_switch
+        self.assertTrue(names_analog_switch("~", "", "DG468"))
+
+
 if __name__ == "__main__":
     unittest.main()

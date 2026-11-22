@@ -153,6 +153,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - onsemi and TI negative fixed regulators (MC7912, MC79L05, MC79M05CDTG, uA7905) and bare 79xx values (79L05, 7912) report a negative output voltage, and a fixed part whose part number gives no sign, fed from a negative rail (LM2990SX-5.0 on -12V, LT3015EQ-2.5 on -5VA), is read as negative instead of positive, so a VSS or VSSA supply it drives gets its -5 V in `rail_voltages`. A positive regulator's order code on a negative rail (an L78L33 fed from -3V3) gives no output voltage.
 - The "Single-pin nets" design observation lists its net names in `nets`; the list was always empty.
 - VM-001 no longer reports a crossing where the higher-voltage part only has an input on the net (gate-driver, motor-driver and logic inputs, memory address lines); the level on a net comes from the pins that can drive it, or a pull-up. A symbol that types every pin `input` is read as before.
+- VM-001 no longer reads the channel pins of an analog switch or multiplexer (CD4051, 74HC4066, DG4xx, ADG, TMUX, TS5A, MAX306 families) as drivers: such a part passes the level it is given, so a higher-supply switch does not put its own level on the net. A higher level driven into a lower-supply switch is still reported.
 
 ### Documentation
 

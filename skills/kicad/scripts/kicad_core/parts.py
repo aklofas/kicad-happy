@@ -926,6 +926,27 @@ def names_npn_bjt(*names: str) -> bool:
     return any(_NPN_BJT_RE.match((n or "").strip().upper()) for n in names)
 
 
+# Analog switches and multiplexers a schematic names by part number, matched where a part
+# number starts (each family is cited in tools/tests/test_vm001_endpoints.py). A level
+# translator (ADG3xxx), a buffer (74HC4050, CD4050), a counter (CD4060), a charger (LTC4053)
+# or a current monitor (MAX4080) shares digits with these families and is not one.
+_ANALOG_SWITCH_PN = re.compile(
+    r"(?<![a-z0-9])(?:"
+    r"(?:cd|hef|mc1)?40(?:16|5[123]|6[67]|97)"
+    r"|(?:cd|sn)?74(?:hct?|lv)(?:405[123]|406[67]|485[12])"
+    r"|(?:sn)?74(?:lvc|auc)(?:[12]g66|1g3157|2g53)|nc7sb3157|fsa3[13]57"
+    r"|tmux(?:hs)?\d+|ts5a\d+|ts3a\d+|ts3usb\d+|mux50[6-9]"
+    r"|dg[2-69]\d\d\d?"
+    r"|adg(?!3\d{3})\d{3,4}"
+    r"|max(?:30[6-9]|31[2-4]|31[7-9]|32[3-5]|333|394|467[789])"
+    r")(?!\d)")
+
+
+def names_analog_switch(*names: str) -> bool:
+    """True when a value, MPN or library symbol name is an analog switch or multiplexer part number."""
+    return any(_ANALOG_SWITCH_PN.search((n or "").lower()) for n in names)
+
+
 # Current-sense amplifiers a schematic names by part number, matched where a part number
 # starts (each family is cited in tools/tests/test_sense_amp_names.py). TI's INA bases
 # INA138/139, INA168-170, INA18x-19x, INA2xx, INA30x-31x and INA38x are current-sense
