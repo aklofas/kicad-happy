@@ -4234,7 +4234,7 @@ _DATA_OUTPUT_PIN = frozenset({"SDO", "SDI", "SO", "ASCX"})
 
 
 def _pin_name_tokens(pin_name: str | None) -> list[str]:
-    return [t.rstrip("0123456789") for t in re.split(r"[^0-9A-Z]+", str(pin_name or "").upper())]
+    return [t.rstrip("0123456789") for t in re.split(r"[^0-9A-Z]+", str(pin_name or "").upper()) if t]
 
 
 def _strap_output_pin(pin_name: str | None) -> bool:

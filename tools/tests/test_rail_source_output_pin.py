@@ -77,13 +77,13 @@ class StrapAndJumperSources(unittest.TestCase):
     def test_strap_named_output_tied_to_a_rail_is_not_its_source(self):
         comps = [_part("U1", "ic", "BNO086"), _part("U2", "ic", "MCU")]
         for name in ("XOUT32/CLKSEL1", "EN", "OE", "~{CLR}", "~{RESET}", "LATCH", "SEL1", "CLKOUT",
-                     "PGFB", "*OD", "VSENSE", "FLG1", "~{OVRCUR1}", "~DIS", "COM", "COM1"):
+                     "PGFB", "*OD", "VSENSE", "FLG1", "~{OVRCUR1}", "~DIS", "COM", "COM1", "~{COM}", "~COM"):
             self.assertEqual(_unsourced(comps, {"+3V3": [("U1", "1", name, "output"), _LOAD], **_GND}),
                              ["+3V3"], name)
 
     def test_output_with_com_inside_a_longer_name_still_sources_the_rail(self):
         comps = [_part("U1", "ic", "REG"), _part("U2", "ic", "MCU")]
-        for name in ("VOUT_COM", "V_COM", "OUT_COM"):
+        for name in ("VOUT_COM", "V_COM", "OUT_COM", "COM_1"):
             self.assertEqual(_unsourced(comps, {"+3V3": [("U1", "1", name, "output"), _LOAD], **_GND}),
                              [], name)
 
