@@ -7,7 +7,7 @@ from kicad_types import (
 )
 from kicad_core.classify import classify_ic_function
 from kicad_core.coords import to_iu
-from detector_helpers import is_protection_part
+from detector_helpers import is_protection_part, not_i2c_despite_name
 from kicad_core.sexp import unescape_string
 from schematic import erc_pins
 from validation_detectors import _en_endpoint_compatible, _is_open_drain_endpoint, _pull_up_rails
@@ -800,6 +800,9 @@ def _detect_i2c_buses(ctx: AnalysisContext) -> list[dict]:
                                 "ohms": r_val,
                                 "to_rail": other_net,
                             })
+            # Still counted as seen, so the pin-name pass below does not list it either
+            if devices and not pullups and not_i2c_despite_name(ctx, net_name):
+                continue
             if devices:  # Skip connector-only routing with no ICs
                 load_count = len(devices)
                 # Typical I2C input capacitance: ~5pF per device pin

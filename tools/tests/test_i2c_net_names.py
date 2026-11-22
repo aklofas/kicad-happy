@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "skills" / "kicad" / "scripts"))
 from finding_schema import make_provenance  # noqa: E402
 from kicad_types import build_analysis_context  # noqa: E402
+from schematic.net_analysis import _detect_i2c_buses  # noqa: E402
 from signal_detectors import detect_design_observations  # noqa: E402
 
 
@@ -51,6 +52,10 @@ def _ctx(nets, components=(MCU, SENSOR), pullups=()):
 def _i2c_obs(ctx):
     obs = detect_design_observations(ctx, {"decoupling_analysis": [], "power_regulators": []})
     return {o["net"]: o for o in obs if o["category"] == "i2c_bus"}
+
+
+def _i2c_bus_entries(ctx):
+    return {e["net"]: e for e in _detect_i2c_buses(ctx)}
 
 
 def _bus(sda, scl, sda_pin="SDI", scl_pin="SCK"):
@@ -153,6 +158,53 @@ class BareNamesUnchanged(unittest.TestCase):
         self.assertEqual(obs, {"SDA": _expected_obs("SDA", "SDA", ["U1", "U2"], "R1"),
                                "SCL": _expected_obs("SCL", "SCL", ["U1", "U2"]),
                                "I2C1_SDA": _expected_obs("I2C1_SDA", "SDA", ["U1"])})
+
+
+class BusAnalysisLeavesOutTheSameNets(unittest.TestCase):
+    def test_display_family_has_no_observation_and_no_bus_entry(self):
+        ctx = _ctx(_display_nets("LCD"), components=(MCU, DISPLAY))
+        self.assertEqual(_i2c_obs(ctx), {})
+        self.assertEqual(_i2c_bus_entries(ctx), {})
+
+    def test_display_family_across_sheet_paths_has_no_bus_entry(self):
+        nets = {"/LCD_SDA": [("U1", "1", "PB1"), ("U3", "1", "SDA")],
+                "/LCD_SCL": [("U1", "2", "PB2"), ("U3", "2", "SCL")],
+                "/display/LCD_CS": [("U1", "3", "PB3"), ("U3", "3", "CS")]}
+        self.assertEqual(_i2c_bus_entries(_ctx(nets, components=(MCU, DISPLAY))), {})
+        nets = {"/55E94587/LCD_SDA": [("U1", "1", "PB1"), ("U3", "1", "SDA")],
+                "/55E94587/LCD_SCL": [("U1", "2", "PB2"), ("U3", "2", "SCL")],
+                "/55E94588/LCD_DC": [("U1", "4", "PB4"), ("U3", "4", "DC")]}
+        self.assertEqual(_i2c_bus_entries(_ctx(nets, components=(MCU, DISPLAY))), {})
+
+    def test_address_line_has_no_bus_entry(self):
+        z80 = _comp("U4", "ic", "Z80", "CPU:Z80CPU", [("1", "A12", "output")])
+        nets = {"SDA12": [("U1", "1", "PB1"), ("U4", "1", "A12")]}
+        self.assertEqual(_i2c_bus_entries(_ctx(nets, components=(MCU, z80))), {})
+
+    def test_display_lines_with_a_pull_up_keep_their_bus_entries(self):
+        ctx = _ctx(_display_nets("LCD"), components=(MCU, DISPLAY), pullups=("LCD_SDA", "LCD_SCL"))
+        self.assertEqual(sorted(_i2c_bus_entries(ctx)), ["LCD_SCL", "LCD_SDA"])
+
+    def test_bare_and_i2c_prefixed_names_keep_their_bus_entries(self):
+        nets = {"SDA": [("U1", "7", "PB7"), ("U2", "1", "SDI")],
+                "SCL": [("U1", "6", "PB6"), ("U2", "2", "SCK")],
+                "I2C1_SDA": [("U1", "5", "PB5")]}
+        entries = _i2c_bus_entries(_ctx(nets, pullups=("SDA",)))
+
+        def entry(net, line, refs, pull_ups):
+            devices = [{"ref": r, "value": v, "lib_id": lib}
+                       for r, v, lib in ((c["reference"], c["value"], c["lib_id"])
+                                         for c in (MCU, SENSOR)) if r in refs]
+            ohms = pull_ups[0]["ohms"] if pull_ups else None
+            return {"net": net, "line": line, "devices": devices, "load_count": len(devices),
+                    "estimated_bus_capacitance_pF": 5 * len(devices), "pull_ups": pull_ups,
+                    "has_pull_up": bool(pull_ups), "speed_mode": "fast" if pull_ups else None,
+                    "voltage_level_V": 3.3 if pull_ups else None, "pull_up_ohms": ohms,
+                    "controller": None}
+        r1 = [{"ref": "R1", "value": "4.7k", "ohms": 4700.0, "to_rail": "+3V3"}]
+        self.assertEqual(entries, {"SDA": entry("SDA", "SDA", ("U1", "U2"), r1),
+                                   "SCL": entry("SCL", "SCL", ("U1", "U2"), []),
+                                   "I2C1_SDA": entry("I2C1_SDA", "SDA", ("U1",), [])})
 
 
 if __name__ == "__main__":
