@@ -72,3 +72,26 @@ class EsdPathDnpConnector(unittest.TestCase):
         conns = [{"reference": "J1", "value": "USB_C", "x": 0, "y": 0, "dnp": True}]
         self.assertEqual(_findings(conns, tvs_x=40), [("ES-002", ("D1",))])
         self.assertEqual(_findings(conns, tvs_x=60), [])
+
+
+def _ic_findings(clamp_net, net_class, via_net):
+    """An ESD IC 20 mm from a connector with two vias beside it on *via_net*."""
+    pcb = {"footprints": [{"reference": "J1", "value": "Conn", "x": 0, "y": 0},
+                          {"reference": "U37", "value": "TVS0500", "x": 10, "y": 0}],
+           "nets": {"1": "GND", "2": via_net},
+           "vias": {"vias": [{"x": 11, "y": 0, "net": 2}, {"x": 10, "y": 1, "net": 2},
+                             {"x": 90, "y": 90, "net": 1}]}}
+    schematic = {"findings": [{"detector": Det.PROTECTION_DEVICES, "reference": "U37",
+                               "type": "esd_ic", "clamp_net": clamp_net}],
+                 "design_analysis": {"net_classification": {clamp_net: net_class}}}
+    return [(f["rule_id"], f["severity"]) for f in check_esd_protection_path(pcb, schematic)]
+
+
+class EsdPathOwnReturnNet(unittest.TestCase):
+    def test_vias_on_the_devices_own_ground_count(self):
+        self.assertEqual(_ic_findings("-BATT", "ground", "-BATT"), [])
+
+    def test_vias_on_a_signal_clamp_net_do_not_count(self):
+        rec = _ic_findings("DP_HDMI_HPD", "signal", "DP_HDMI_HPD")
+        self.assertEqual([r for r, _ in rec], ["ES-002"])
+        self.assertEqual(rec[0][1], "error")

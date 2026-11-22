@@ -3221,6 +3221,7 @@ def check_esd_protection_path(pcb: Dict,
         return findings
 
     net_id_map = build_net_id_map(pcb)
+    net_class = (schematic.get('design_analysis') or {}).get('net_classification') or {}
     footprints = pcb.get('footprints', [])
     # DNP connectors stay in the proximity search: a device placed for an
     # unfitted connector must not be paired with a farther, fitted one.
@@ -3296,6 +3297,9 @@ def check_esd_protection_path(pcb: Dict,
         # ES-002: Check ground via count near TVS. A discrete TVS diode or a varistor
         # clamping to a supply rail or another line has no ground return to count.
         clamp_net = pd.get('clamp_net')
+        # The device's own return net is its ground when the schematic classes it so
+        # (GLV-, AVSS, -BATT), whatever its name.
+        clamp_is_ground = bool(clamp_net) and net_class.get(clamp_net) == 'ground'
         if all_vias and not (ptype in ('diode', 'varistor') and clamp_net
                              and not is_emc_ground_name(clamp_net)):
             gnd_vias_near = 0
@@ -3309,7 +3313,8 @@ def check_esd_protection_path(pcb: Dict,
                         net_name = net_id_map.get(net_id, '')
                     else:
                         net_name = via.get('net_name', '') if isinstance(via.get('net_name'), str) else ''
-                    if is_emc_ground_name(net_name):
+                    if is_emc_ground_name(net_name) or (
+                            clamp_is_ground and net_leaf(net_name) == net_leaf(clamp_net)):
                         gnd_vias_near += 1
 
             if gnd_vias_near == 0:
