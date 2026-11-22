@@ -6,14 +6,22 @@ from fnmatch import fnmatch
 from kicad_core.sexp import unescape_string
 
 
+# Sheet instances in a net's path: KiCad 5 sheet timestamps or KiCad 6+ sheet uuids
+_SHEET_ID_PATH = re.compile(
+    r'(?:/(?:[0-9A-Fa-f]{8}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}))+/')
+
+
 def net_leaf(name: str) -> str:
     """The net's own name: a sheet path (``/<sheet>/<label>``) names the sheet, not the net.
 
     Only a name starting with '/' carries a path, and an escaped ``{slash}`` is part of
-    the label; a legacy root label such as ``1V/Oct`` is returned whole.
+    the label; a legacy root label such as ``1V/Oct`` is returned whole.  Behind a path
+    of sheet ids everything is the label: a KiCad 5 label can hold a '/'
+    (``/55E94587/ARD_AN4/SDA`` is ``ARD_AN4/SDA``).
     """
     if name.startswith("/"):
-        return name.rsplit("/", 1)[-1]
+        ids = _SHEET_ID_PATH.match(name)
+        return name[ids.end():] if ids else name.rsplit("/", 1)[-1]
     return name
 
 

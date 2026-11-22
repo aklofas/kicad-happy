@@ -389,6 +389,17 @@ def topology_rail_nets(nets: dict[str, dict], comp_lookup: dict[str, dict], ref_
     return frozenset(found)
 
 
+def _own_net_name(net_name: str, net_info: dict) -> str:
+    """The net's own name. A KiCad 5 label can hold a '/', so a label of the net that
+    the name ends with is the whole name (``/Power/VBUS/3.1A`` labelled ``VBUS/3.1A``)."""
+    leaf = net_leaf(net_name)
+    for lbl in net_info.get("labels", ()):
+        text = lbl.get("_bare_name") or lbl.get("name") or ""
+        if len(text) > len(leaf) and net_name.endswith("/" + text):
+            leaf = text
+    return leaf
+
+
 def _classify_nets(ctx: AnalysisContext) -> dict:
     """Classify all nets by type (ground, power, clock, data, etc.)."""
     nets = ctx.nets
@@ -413,7 +424,7 @@ def _classify_nets(ctx: AnalysisContext) -> dict:
             net_classes[net_name] = "power"
         else:
             # A sheet path names the sheet, not the net
-            cls = _keyword_class(net_leaf(net_name))
+            cls = _keyword_class(_own_net_name(net_name, net_info))
             if cls == "signal" and _is_ic_supply_input_net(net_info, ctx.comp_lookup, ctx.ref_pins):
                 cls = "power"
             net_classes[net_name] = cls
