@@ -4228,7 +4228,7 @@ _SUPPLY_INPUT_PIN = re.compile(r"[ADP]?V(?:CC|DD)(?:IO|Q)?\d*|VIO|VIN|IN|VS")
 # Control, status and clock pin names. An output-typed pin named like this on a net named
 # like a power rail is strapped to the rail, not driving it.
 _STRAP_OUTPUT_PIN = frozenset({"EN", "OE", "CLR", "RESET", "NRST", "LATCH", "SEL", "CLKSEL",
-                               "CLKOUT", "PGFB", "OD", "VSENSE", "FLG", "OVRCUR", "DIS", "COM"})
+                               "CLKOUT", "PGFB", "OD", "VSENSE", "FLG", "OVRCUR", "DIS"})
 # Serial data outputs: on a rail that also feeds a supply pin they are tied there, not driving it.
 _DATA_OUTPUT_PIN = frozenset({"SDO", "SDI", "SO", "ASCX"})
 
@@ -4239,7 +4239,9 @@ def _pin_name_tokens(pin_name: str | None) -> list[str]:
 
 def _strap_output_pin(pin_name: str | None) -> bool:
     """A pin name with a control, status or clock token (EN, ~{OVRCUR1}, XOUT32/CLKSEL1)."""
-    return any(t in _STRAP_OUTPUT_PIN for t in _pin_name_tokens(pin_name))
+    tokens = _pin_name_tokens(pin_name)
+    # COM is the clamp-diode common only as the whole name; VOUT_COM and OUT_COM are outputs.
+    return tokens == ["COM"] or any(t in _STRAP_OUTPUT_PIN for t in tokens)
 
 
 _REF_NET_SUPPLY_PINS = frozenset({"VS", "V+", "VIN", "V-", "VEE", "VBAT", "VIO", "VL", "PVIN"})
