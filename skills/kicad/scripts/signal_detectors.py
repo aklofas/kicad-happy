@@ -4408,7 +4408,7 @@ def detect_design_observations(ctx: AnalysisContext, results: dict) -> list[dict
         design_observations.append({
             "category": "single_pin_nets",
             "count": len(single_pin_nets),
-            "nets": single_pin_nets,
+            "nets": [n["net"] for n in single_pin_nets],
             "detector": "detect_design_observations",
             "rule_id": "DO-DET",
             "severity": "info",
@@ -4417,7 +4417,6 @@ def detect_design_observations(ctx: AnalysisContext, results: dict) -> list[dict
             "summary": f"Single-pin nets ({len(single_pin_nets)} nets)",
             "description": "Signal nets connected to only one pin",
             "components": [n["component"] for n in single_pin_nets],
-            "nets": [],
             "pins": [],
             "recommendation": "",
             "report_context": {"section": "Design Observations", "impact": "", "standard_ref": ""},

@@ -149,6 +149,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - ST L78, L78L, L78M, L78S, L79 and L79L regulators (L7805CV, L78L33ACZ, L7912CV) report the fixed output voltage of their order code, also when drawn on a generic 78xx symbol.
 - Fixed-output regulators read their voltage from more order codes: ST LD1117 and LDL1117, onsemi NCP1117I, Microchip MIC23050, the TI LMR36506 fixed versions, RECOM R-78AA (and R-78 names written `R_78`), and the `-5` versions of LM2596, LM2576, LM2575, LM2595, LM2574, LM2675, LM22676 and LM22678; invisible direction marks around a part number no longer hide it. Fixed versions no longer report the adjustable versions' reference (1.25 V for LD1117 and NCP1117I, 1.23 V for LM2596-5), and LD33, which no cited data sheet lists, gets none.
 - onsemi and TI negative fixed regulators (MC7912, MC79L05, MC79M05CDTG, uA7905) and bare 79xx values (79L05, 7912) report a negative output voltage, and a fixed part whose part number gives no sign, fed from a negative rail (LM2990SX-5.0 on -12V, LT3015EQ-2.5 on -5VA), is read as negative instead of positive, so a VSS or VSSA supply it drives gets its -5 V in `rail_voltages`. A positive regulator's order code on a negative rail (an L78L33 fed from -3V3) gives no output voltage.
+- The "Single-pin nets" design observation lists its net names in `nets`; the list was always empty.
 
 ### Documentation
 
