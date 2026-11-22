@@ -35,6 +35,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 - The STAT pin of an MCP73831 charger is read as a driven output at the charger's supply, not as an open-drain pin at its pull-up: a 5 V STAT into a 3.3 V input is reported as a voltage mismatch and as a level-shifter crossing. The open-drain MCP73832 is unchanged.
 - A single-supply SN74LVC or SN74AVC buffer or gate is no longer reported as a level shifter; one with separate VCCA and VCCB pins, or an input or open-drain output pulled up above its own supply, still is. Its nets stay exempt from the voltage-mismatch check.
+- ERC pin-conflict records name each PWR_FLAG by its own reference and pick the nearest pin as KiCad does; two PWR_FLAGs on one net are reported as a power-output conflict.
 - A control, status or clock pin tied to a power rail (an enable, reset or clock-select strap whose symbol types it as an output) no longer counts as the rail's source, and a logic output behind an open solder jumper is no longer reported as the rail's missing supply path (RS-002).
 - A `CSENSE` net is classified as analog, not as a chip select.
 - Net classes: a KiCad 5 label that holds a `/` is classified by its whole name, not the part after the last `/`.

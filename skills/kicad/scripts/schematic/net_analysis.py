@@ -1610,7 +1610,8 @@ def _detect_differential_pairs(ctx: AnalysisContext) -> list:
     return diff_pairs
 
 
-# PWR_FLAG symbols are not net pins here; KiCad counts their one power output pin.
+# PWR_FLAG symbols are not net pins here; KiCad counts their one power output pin. A net
+# whose flags were not collected falls back to one flag with no position.
 _PWR_FLAG_PIN = {"component": "#FLG", "pin_number": "1", "pin_name": "pwr", "pin_type": "power_out"}
 
 
@@ -1628,7 +1629,15 @@ def _check_erc_warnings(ctx: AnalysisContext) -> list:
     for net_name, net_info in ctx.nets.items():
         pins = net_info["pins"]
         if net_info.get("has_pwr_flag"):
-            pins = pins + [_PWR_FLAG_PIN]
+            flags = net_info.get("_pwr_flags")
+            if flags:
+                # every PWR_FLAG is a power output pin of its own, at its own place
+                for ref, number, sheet, x, y in flags:
+                    positions.setdefault((ref, number), (sheet, x, y, "pwr"))
+                pins = pins + [{"component": ref, "pin_number": number, "pin_name": "pwr",
+                                "pin_type": "power_out"} for ref, number, *_ in flags]
+            else:
+                pins = pins + [_PWR_FLAG_PIN]
         shown = unescape_string(net_name)
         all_pins = pins
         pins = [p for p in pins if erc_pins.pin_kind(p.get("pin_type")) != "no_connect"]

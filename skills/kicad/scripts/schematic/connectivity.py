@@ -689,6 +689,7 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
                 add_point(pin["x"], pin["y"], {
                     "source": "pwr_flag",
                     "component": comp["reference"],
+                    "pin_number": pin["number"],
                 }, sheet)
             else:
                 k = add_point(pin["x"], pin["y"], {
@@ -1268,6 +1269,10 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
         )
 
         has_pwr_flag = any(i["source"] == "pwr_flag" for i in all_info)
+        # (reference, pin number, sheet, x, y) of every PWR_FLAG pin on the net
+        pwr_flags = [(i["component"], i.get("pin_number", "1"), *m)
+                     for m in members if m[0] != "bus" and m not in nc_keys
+                     for i in point_info.get(m, ()) if i["source"] == "pwr_flag"]
 
         if net_name is None:
             # Only create unnamed nets if they have component pins
@@ -1298,6 +1303,7 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
                 "point_count": len([m for m in members if m[0] != "bus"]),
                 "no_connect": has_nc_marker,
                 "has_pwr_flag": has_pwr_flag,
+                "pwr_flags": pwr_flags,
                 "nc_marker": nc_marker,
                 "nc_touched": root_k in nc_touched,
                 "labels": net_labels,
@@ -1338,6 +1344,8 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
                 "has_pwr_flag": e["has_pwr_flag"],
                 "labels": e["labels"],
             }
+            if e["pwr_flags"]:
+                entry["_pwr_flags"] = e["pwr_flags"]
             if e["nc_marker"]:
                 entry["_nc_marker"] = True  # a no-connect marker, not only an NC-type pin
             if e["nc_touched"]:

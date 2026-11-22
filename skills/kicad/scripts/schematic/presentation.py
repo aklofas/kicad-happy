@@ -25,6 +25,7 @@ def _nets_for_output(nets):
     for info in nets.values():
         info.pop("_nc_marker", None)
         info.pop("_nc_touched", None)
+        info.pop("_pwr_flags", None)
     return nets
 
 
