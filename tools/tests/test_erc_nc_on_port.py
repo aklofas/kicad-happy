@@ -54,6 +54,42 @@ class NcOnPortTest(unittest.TestCase):
         s.items.append(NC.format(x=60))
         self.assertEqual(_recs(run({"t.kicad_sch": s.text(LIBS)})), [])
 
+    def test_marker_on_a_global_label_still_raises(self):
+        s = _two_pins()
+        s.label("global_label", "SIG", 60, 50)
+        s.items.append(NC.format(x=60))
+        self.assertEqual(len(_recs(run({"t.kicad_sch": s.text(LIBS)}))), 1)
+
+    def test_one_marker_on_a_port_and_one_on_a_part_pin_still_raises(self):
+        s = _two_pins()
+        s.label("hierarchical_label", "SIG", 60, 50)
+        s.items.append(NC.format(x=60))
+        s.items.append(NC.format(x=70))
+        r = run({"t.kicad_sch": s.text(LIBS)})
+        self.assertEqual(len(_recs(r)), 1)
+        self.assertTrue(all("_nc_on_port" not in n for n in r["nets"].values()))
+
+    def test_no_driver_stays_silent_for_every_marker_place(self):
+        def hier(s):
+            s.label("hierarchical_label", "SIG", 60, 50)
+            s.items.append(NC.format(x=60))
+
+        def sheet_pin(s):
+            s.items.append(sheet_block("Sub", "sub.kicad_sch", 70, 40, [("SIG", 60, 50)]))
+            s.items.append(NC.format(x=60))
+
+        def part_pin(s):
+            s.items.append(NC.format(x=70))
+
+        for name, mark in (("hierarchical label", hier), ("sheet pin", sheet_pin),
+                           ("part pin", part_pin)):
+            with self.subTest(name):
+                s = _two_pins()
+                mark(s)
+                r = run({"t.kicad_sch": s.text(LIBS)})
+                self.assertEqual([w for w in r["design_analysis"]["erc_warnings"]
+                                  if w["type"] == "no_driver"], [])
+
 
 if __name__ == "__main__":
     unittest.main()
