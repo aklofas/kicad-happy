@@ -256,6 +256,27 @@ class DriveMethod(unittest.TestCase):
         self.assertEqual(_audit(ctx, "D1").get("driver_source"), "U1")
 
 
+def _audit_low_side(ohms, ref_type="resistor"):
+    r = _r("R1", ohms)
+    r["type"] = ref_type
+    return _audit(_ctx([_led("D1"), r],
+                       {"+5V": [_p("D1", "2")], "N1": [_p("D1", "1"), _p("R1", "1")],
+                        "GND": [_p("R1", "2")]}, {"+5V", "GND"}), "D1")
+
+
+class TypedResistorRead(unittest.TestCase):
+    def test_value_with_a_package_suffix_is_read(self):
+        for value, ohms in (("1k_0402", 1000), ("330R_0603", 330), ("4k7", 4700)):
+            with self.subTest(value=value):
+                e = _audit_low_side(value)
+                self.assertEqual(e["drive_method"], "resistor_limited")
+                self.assertEqual(e["series_resistor"]["ohms"], ohms)
+
+    def test_resistor_network_keeps_the_untyped_read(self):
+        e = _audit_low_side("1k_0402", ref_type="resistor_network")
+        self.assertEqual(e["drive_method"], "resistor_unparsed")
+
+
 def _low_side(value, rail="+5V", ohms="47"):
     return _ctx([_led("D1", value), _r("R1", ohms)],
                 {rail: [_p("D1", "2")], "N1": [_p("D1", "1"), _p("R1", "1")],

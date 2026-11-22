@@ -5061,7 +5061,7 @@ def audit_led_circuits(ctx: AnalysisContext,
                         continue
                     return {"ref": rc["reference"], "ohms": r_val}, False
                 if rc["type"] == "resistor":
-                    r_val = parse_value(rc.get("value", ""))
+                    r_val = parse_value(rc.get("value", ""), component_type="resistor")
                     if r_val is None:
                         found_unparsed = True
                         continue
