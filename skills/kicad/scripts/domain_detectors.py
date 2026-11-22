@@ -20,7 +20,7 @@ from kicad_core.classify import is_active_low_enable
 from kicad_core.parts import LED_VF_BY_COLOR, is_load_switch_part, led_color, lookup_regulator_vref
 from kicad_core.values import format_frequency, parse_value
 from kicad_core.netnames import parse_voltage_from_net_name
-from detector_helpers import (is_addressable_led, is_led_rail, led_forward_voltage, led_string,
+from detector_helpers import (is_addressable_led, is_led_rail, is_type_c_rd, led_forward_voltage, led_string,
                               match_family, match_ic_keywords, get_unique_ics, get_pin_net, symbol_name,
                               type_c_cc_controller, type_c_rp, type_c_rp_rows)
 from finding_schema import make_finding, make_provenance
@@ -2957,7 +2957,7 @@ def detect_power_path(ctx: AnalysisContext) -> list[dict]:
                     r_ref = pin["component"]
                     label = f"{r_ref} ({r_comp.get('value', '')})"
                     if ctx.is_ground(other_net):
-                        if 4590 <= r <= 5610:  # 5.1kΩ ±10%
+                        if is_type_c_rd(r):
                             cc_resistor_findings.append({
                                 "net": cc_net,
                                 "ref": r_ref,

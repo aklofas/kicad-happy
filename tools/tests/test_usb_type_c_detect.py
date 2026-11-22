@@ -524,6 +524,83 @@ class CcTermination(unittest.TestCase):
         self.assertEqual(len(_uc003(r)), 2)
 
 
+def _own_ground_board(gnd_net, rd_far, shield_net=None, cc_value="5.1k"):
+    """USB4105 whose GND pin sits on *gnd_net*, with Rd on each CC to *rd_far*. A SHIELD pin on
+    *shield_net* when given."""
+    pins = (("1", "VBUS"), ("2", "D-"), ("3", "D+"), ("4", "GND"),
+            ("A5", "CC1"), ("B5", "CC2"))
+    if shield_net:
+        pins += (("S1", "SHIELD"),)
+    j = _conn("J1", "USB4105-GF-A", "Connector:USB_C_Receptacle_USB2.0", pins=pins)
+    comps = [j, _res("R1", cc_value), _res("R2", cc_value)]
+    nets = {"VBUS": [("J1", "1", "VBUS")], "USB_DM": [("J1", "2", "D-")],
+            "USB_DP": [("J1", "3", "D+")], gnd_net: [("J1", "4", "GND")],
+            "CC1": [("J1", "A5", "CC1"), ("R1", "1", "~")],
+            "CC2": [("J1", "B5", "CC2"), ("R2", "1", "~")]}
+    nets.setdefault(rd_far, []).extend([("R1", "2", "~"), ("R2", "2", "~")])
+    if shield_net:
+        nets.setdefault(shield_net, []).append(("J1", "S1", "SHIELD"))
+    return _run(comps, nets)
+
+
+class CcReturnNet(unittest.TestCase):
+    def _status(self, r):
+        return r["connectors"][0]["usb_c_cc_status"]
+
+    def test_rd_to_the_connector_ground_net_is_a_sink(self):
+        for net in ("Earth", "Net-(J1-GND)"):
+            with self.subTest(net=net):
+                r = _own_ground_board(net, net)
+                st = self._status(r)
+                self.assertEqual((st["role"], st["status"], st["issues"]), ("sink", "pass", []))
+                self.assertTrue(st["cc1_resistor"]["to_ground"])
+                self.assertEqual(_uc003(r), [])
+
+    def test_rd_to_the_shield_net_still_fails(self):
+        r = _own_ground_board("GND", "Earth", shield_net="Earth")
+        st = self._status(r)
+        self.assertEqual(st["status"], "fail")
+        self.assertIn("wrong_cc_value", st["issues"])
+
+    def test_ground_net_shared_with_vbus_is_not_a_return(self):
+        j = _conn("J1", "USB4105-GF-A", "Connector:USB_C_Receptacle_USB2.0",
+                  pins=(("1", "VBUS"), ("4", "GND"), ("A5", "CC1"), ("B5", "CC2")))
+        nets = {"X": [("J1", "1", "VBUS"), ("J1", "4", "GND"), ("R1", "2", "~"), ("R2", "2", "~")],
+                "CC1": [("J1", "A5", "CC1"), ("R1", "1", "~")],
+                "CC2": [("J1", "B5", "CC2"), ("R2", "1", "~")]}
+        st = self._status(_run([j, _res("R1", "5.1k"), _res("R2", "5.1k")], nets))
+        self.assertEqual(st["status"], "fail")
+        self.assertIn("wrong_cc_value", st["issues"])
+
+
+class RdBand(unittest.TestCase):
+    def test_rd_band_is_one_table(self):
+        from detector_helpers import is_type_c_rd
+        for ohms, ok in ((4500, False), (4590, True), (4700, True), (5100, True),
+                         (5600, True), (5610, True), (5700, False)):
+            with self.subTest(ohms=ohms):
+                self.assertEqual(is_type_c_rd(ohms), ok)
+                value = "%gk" % (ohms / 1000)
+                c = _type_c_with(("R1", value, "GND"), ("R2", value, "GND"))["connectors"][0]
+                self.assertEqual(c["checks"]["cc1_pulldown_5k1"] == "pass", ok)
+                self.assertEqual(c["usb_c_cc_status"]["role"] == "sink", ok)
+                kinds = [e["status"] for e in _pp_cc_resistors(value)]
+                self.assertEqual(kinds, ["correct_sink" if ok else "unexpected_value"])
+
+
+def _pp_cc_resistors(value):
+    from domain_detectors import detect_power_path
+    ic = {"reference": "U1", "type": "ic", "value": "FUSB302", "lib_id": "MyLib:FUSB302",
+          "footprint": "", "pins": [{"number": "1", "name": "CC1"}]}
+    nets = {"CC1": {"name": "CC1", "pins": [
+                {"component": "U1", "pin_number": "1", "pin_name": "CC1"},
+                {"component": "R1", "pin_number": "1", "pin_name": "~"}]},
+            "GND": {"name": "GND", "pins": [{"component": "R1", "pin_number": "2",
+                                             "pin_name": "~"}]}}
+    ctx = build_analysis_context([ic, _res("R1", value)], nets, {}, known_power_rails={"GND"})
+    return [r for e in detect_power_path(ctx) for r in e.get("cc_resistor_check") or []]
+
+
 class TypeCRpTable(unittest.TestCase):
     """Type-C source Rp: 56k / 22k / 10k to 5 V and 36k / 12k / 4.7k to 3.3 V (default USB,
     1.5 A, 3 A); default-current rows are +-20 %, the others +-5 %."""

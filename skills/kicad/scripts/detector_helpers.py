@@ -706,3 +706,13 @@ def type_c_cc_controller(comp: dict) -> bool | None:
         return None
     return next((pd for stem, pd in TYPE_C_CC_CONTROLLERS.items()
                  if _CC_STEM_RES[stem].search(name)), None)
+
+
+# A sink's Rd: 5.1 kohm +/-10 %, the resistor row of Table 4-28 Sink CC Termination (Rd)
+# Requirements of the same specification (USB Type-C Release 2.5). The value is the total
+# resistance into the CC pin (Note 2 of the table).
+TYPE_C_RD_OHMS = (4590.0, 5610.0)
+
+
+def is_type_c_rd(ohms: float) -> bool:
+    return TYPE_C_RD_OHMS[0] <= ohms <= TYPE_C_RD_OHMS[1]

@@ -6,7 +6,8 @@ import re
 import sys
 from kicad_core.diagnostics import record
 from detector_helpers import (
-    can_line, can_pin_pair, is_addressable_led, is_fitted, is_tvs_diode, led_forward_voltage,
+    can_line, can_pin_pair, is_addressable_led, is_fitted, is_tvs_diode, is_type_c_rd,
+    led_forward_voltage,
     type_c_cc_controller, type_c_rp,
 )
 from kicad_core.classify import gpio_port_pins, is_active_low_enable, is_touch_pad
@@ -2464,19 +2465,14 @@ def analyze_assembly_complexity(components: list[dict]) -> dict:
     return result
 
 
-_RD_BAND = (4800, 5600)
-
-
 def _is_type_c_rp(ohms: float, rail_v: float | None) -> bool:
     """Rp to a rail of *rail_v* volts; an unknown rail accepts either table."""
-    if _RD_BAND[0] <= ohms <= _RD_BAND[1]:
-        return False
     return type_c_rp(ohms, rail_v, any_rail=True) is not None
 
 
 def _cc_termination(r_info: dict) -> bool:
     """A sink Rd to ground or a source Rp to a supply."""
-    return bool((r_info["to_ground"] and _RD_BAND[0] <= r_info["ohms"] <= _RD_BAND[1])
+    return bool((r_info["to_ground"] and is_type_c_rd(r_info["ohms"]))
                 or (r_info["to_power"] and _is_type_c_rp(r_info["ohms"], r_info["rail_v"])))
 
 
@@ -2616,6 +2612,11 @@ def analyze_usb_compliance(ctx: AnalysisContext,
             cc_unread: dict[str, list[dict]] = {"CC1": [], "CC2": []}
             conn_vbus = next((n for pn, n in conn_pin_nets.items()
                               if pn in ("VBUS", "V+", "VCC", "VUSB")), None)
+            # The net of the connector's own GND pins is its return even when not named one,
+            # unless another of its pins (VBUS, a data line) shares that net.
+            conn_gnd_nets = {n for pn, n in conn_pin_nets.items() if "GND" in pn}
+            conn_gnd_nets -= {n for pn, n in conn_pin_nets.items()
+                              if not any(k in pn for k in ("GND", "SHIELD", "SHELL"))}
             pd_controller = None
 
             single_cc = conn["single_cc"]
@@ -2662,12 +2663,13 @@ def analyze_usb_compliance(ctx: AnalysisContext,
                     other = rn2 if rn1 == net_name else rn1
                     # The connector's own VBUS pin net is a 5 V pull-up rail even unnamed.
                     to_vbus = other is not None and other == conn_vbus
+                    to_ground = is_ground(other) or other in conn_gnd_nets
                     r_info = {
                         "ref": rc["reference"],
                         "ohms": r_val,
-                        "to_ground": is_ground(other),
+                        "to_ground": to_ground,
                         "to_power": ((to_vbus or ctx.is_power_net(other))
-                                     if not is_ground(other) else False),
+                                     if not to_ground else False),
                         "rail_v": 5.0 if to_vbus else ctx.rail_voltage(other),
                     }
                     # Several resistors on one CC pin: the termination (Rd or Rp) is judged.
@@ -2693,9 +2695,9 @@ def analyze_usb_compliance(ctx: AnalysisContext,
                 role = "pd_controlled"
             else:
                 # Check for sink (5.1k pull-down) vs source (56k pull-up)
-                cc1_sink = (cc1_resistor and 4800 <= cc1_resistor["ohms"] <= 5600
+                cc1_sink = (cc1_resistor and is_type_c_rd(cc1_resistor["ohms"])
                             and cc1_resistor["to_ground"])
-                cc2_sink = (cc2_resistor and 4800 <= cc2_resistor["ohms"] <= 5600
+                cc2_sink = (cc2_resistor and is_type_c_rd(cc2_resistor["ohms"])
                             and cc2_resistor["to_ground"])
                 cc1_source = cc1_resistor and cc1_resistor["_rp"]
                 cc2_source = cc2_resistor and cc2_resistor["_rp"]
@@ -2740,10 +2742,10 @@ def analyze_usb_compliance(ctx: AnalysisContext,
                         if not cc2_unread:
                             issues.append("missing_cc2_resistor")
                     # A 5.1k that does not return to ground is not a sink's Rd.
-                    if cc1_resistor and not ((4800 <= cc1_resistor["ohms"] <= 5600
+                    if cc1_resistor and not ((is_type_c_rd(cc1_resistor["ohms"])
                                               and cc1_resistor["to_ground"]) or cc1_resistor["_rp"]):
                         issues.append("wrong_cc_value")
-                    if cc2_resistor and not ((4800 <= cc2_resistor["ohms"] <= 5600
+                    if cc2_resistor and not ((is_type_c_rd(cc2_resistor["ohms"])
                                               and cc2_resistor["to_ground"]) or cc2_resistor["_rp"]):
                         issues.append("wrong_cc_value")
             for r_info in (cc1_resistor, cc2_resistor):
@@ -2778,7 +2780,7 @@ def analyze_usb_compliance(ctx: AnalysisContext,
 
             # Legacy check keys for summary compatibility
             if single_cc:
-                cc_ok = (cc1_resistor and 4800 <= cc1_resistor["ohms"] <= 5600
+                cc_ok = (cc1_resistor and is_type_c_rd(cc1_resistor["ohms"])
                          and cc1_resistor["to_ground"])
                 conn_checks["checks"]["cc_pulldown_5k1"] = (
                     "pass" if pd_controller or cc_ok else "info"
@@ -2791,9 +2793,9 @@ def analyze_usb_compliance(ctx: AnalysisContext,
                 conn_checks["checks"]["cc1_pulldown_5k1"] = "info"
                 conn_checks["checks"]["cc2_pulldown_5k1"] = "info"
             else:
-                cc1_ok = (cc1_resistor and 4800 <= cc1_resistor["ohms"] <= 5600
+                cc1_ok = (cc1_resistor and is_type_c_rd(cc1_resistor["ohms"])
                           and cc1_resistor["to_ground"])
-                cc2_ok = (cc2_resistor and 4800 <= cc2_resistor["ohms"] <= 5600
+                cc2_ok = (cc2_resistor and is_type_c_rd(cc2_resistor["ohms"])
                           and cc2_resistor["to_ground"])
                 conn_checks["checks"]["cc1_pulldown_5k1"] = (
                     "pass" if cc1_ok else "info" if cc1_unread else "fail")
