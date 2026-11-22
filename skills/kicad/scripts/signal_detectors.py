@@ -138,8 +138,15 @@ def _parse_crystal_frequency(value_str: str) -> float | None:
     m = re.search(r'[-_](\d+)[Mm]\d', value_str)
     if m:
         return _crystal_range(float(m.group(1)) * 1e6)
-    # the first field of a value that carries no unit: "32768_1206_12.5pF", "8M_HS49S_20pF"
-    result = _crystal_range(parse_value(value_str.split("_")[0]))
+    # a `_` field that carries a unit wins over a bare number (a package code):
+    # "3225_16M", "2520_26M_10pF"; else the first field: "32768_1206_12.5pF"
+    fields = value_str.split("_")
+    for field in fields:
+        if re.search(r'[A-Za-z]', field):
+            result = _crystal_range(parse_value(field))
+            if result is not None:
+                return result
+    result = _crystal_range(parse_value(fields[0]))
     if result is not None:
         return result
     s = value_str.strip()
