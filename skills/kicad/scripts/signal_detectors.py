@@ -94,30 +94,64 @@ def _classify_load(ctx: AnalysisContext, net_name, exclude_ref):
     return "other"
 
 
+# Quartz tuning forks start near 10 kHz; SAW resonators and clock oscillators reach hundreds of MHz.
+_CRYSTAL_MIN_HZ = 1e3
+_CRYSTAL_MAX_HZ = 1e9
+# A decimal that stands alone or leads the value, with no unit: "7.3728", "27.145 3OT", "32,768 Hz".
+_BARE_DECIMAL = re.compile(r'(\d{1,3})[.,](\d+)\s*(hz)?(?:\s|$)', re.IGNORECASE)
+
+
+def _crystal_range(freq_hz: float | None) -> float | None:
+    """*freq_hz* when it is a frequency a crystal, resonator or clock oscillator can have."""
+    if freq_hz is not None and _CRYSTAL_MIN_HZ <= freq_hz <= _CRYSTAL_MAX_HZ:
+        return freq_hz
+    return None
+
+
 def _parse_crystal_frequency(value_str: str) -> float | None:
     """Parse crystal frequency from value string or part number.
 
-    Tries parse_value() first, then regex for embedded MHz/kHz patterns
-    like "YIC-12M20P2" → 12e6, "ABM8-25.000MHZ" → 25e6.
+    Tries parse_value() first, then regex for embedded MHz/kHz/Hz patterns
+    like "YIC-12M20P2" → 12e6, "ABM8-25.000MHZ" → 25e6.  A reading outside
+    1 kHz-1 GHz is not a crystal frequency (a part number, a capacitance, a
+    count) and is dropped.  A decimal with no unit is in MHz ("7.3728"),
+    except 32.768, which is the 32.768 kHz watch crystal.
     """
-    result = parse_value(value_str)
-    if result is not None:
-        return result
     if not value_str:
         return None
-    # Explicit MHz/kHz in value. A comma between digits is a decimal mark ("9,84375 MHz")
+    result = _crystal_range(parse_value(value_str))
+    if result is not None:
+        return result
+    # Explicit MHz/kHz/Hz in value. A comma between digits is a decimal mark ("9,84375 MHz")
     # only in a number that stands alone with at most three integer digits; in
     # "HC49,16MHz" and "3225,16MHz" the digits before the comma are a package code.
-    for unit, scale in (('[Mm][Hh][Zz]', 1e6), ('[Kk][Hh][Zz]', 1e3)):
-        m = re.search(r'(?<![A-Za-z0-9.,])(\d{1,3},\d+)\.?\s*' + unit, value_str)
+    for unit, scale in (('[Mm][Hh][Zz]', 1e6), ('[Kk][Hh][Zz]', 1e3), ('[Hh][Zz]', 1.0)):
+        m = re.search(r'(?<![A-Za-z0-9.,])(\d{1,3},\d+)\.?[\s_]*' + unit, value_str)
         if not m:
-            m = re.search(r'(\d+\.?\d*)\s*' + unit, value_str)
+            m = re.search(r'(\d+\.?\d*)[\s_]*' + unit, value_str)
         if m:
-            return float(m.group(1).replace(",", ".")) * scale
+            result = _crystal_range(float(m.group(1).replace(",", ".")) * scale)
+            if result is not None:
+                return result
     # MPN patterns: "YIC-12M20P2" → 12MHz, "-25M000" → 25MHz
     m = re.search(r'[-_](\d+)[Mm]\d', value_str)
     if m:
-        return float(m.group(1)) * 1e6
+        return _crystal_range(float(m.group(1)) * 1e6)
+    # the first field of a value that carries no unit: "32768_1206_12.5pF", "8M_HS49S_20pF"
+    result = _crystal_range(parse_value(value_str.split("_")[0]))
+    if result is not None:
+        return result
+    s = value_str.strip()
+    m = _BARE_DECIMAL.match(s)
+    if m:
+        if (m.group(1), m.group(2)) == ("32", "768"):
+            return 32768.0
+        if not m.group(3):
+            return _crystal_range(float(f"{m.group(1)}.{m.group(2)}") * 1e6)
+    # "8m": a lone lower-case m is mega here, a crystal has no millihertz
+    m = re.fullmatch(r'(\d+\.?\d*)\s*m', s)
+    if m:
+        return _crystal_range(float(m.group(1)) * 1e6)
     return None
 
 

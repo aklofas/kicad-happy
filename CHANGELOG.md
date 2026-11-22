@@ -55,6 +55,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A part with an empty Value is named by its symbol in power-path summaries and pull-up findings instead of `()`.
 - A TVS or ESD IC whose only protected line is a supply rail (TVS2200, a single-line PESD on VBUS) is listed as a protection device again.
 - The ESD ground-via check counts vias on the protection device's own ground net when that net is not named GND.
+- Crystal values written without a unit (`32.768`, `7.3728`, `8m`, `32768Hz`) read as the frequency they mean, and a number that cannot be a crystal frequency (a part number, a capacitance) is no longer reported as one.
 - A `CSENSE` net is classified as analog, not as a chip select.
 - The I2C low-level voltage check judges the SCL pull-up as well as SDA: a strong SCL pull-up (or a mixed-rail pair on SCL) below the UM10204 minimum for a 3 mA sink is reported, and the worse line fills the check.
 - Pull-ups that reach their rail through a solder jumper bridged as built are found, so I2C buses and enable or chip-select pins pulled up that way no longer report missing pull-ups.
