@@ -219,6 +219,51 @@ class DiffPairEsdCredit(unittest.TestCase):
             self.assertFalse(pairs[key]["has_esd"], key)
             self.assertNotIn("esd_protection", pairs[key])
 
+    def _switch_pair(self, comp, steered=True):
+        r = comp["reference"]
+        nets = _usb([(r, "1", "D+", "bidirectional")], [(r, "2", "D-", "bidirectional")],
+                    [(r, "3", "GND", "power_in")])
+        if steered:
+            nets["LED"].append((r, "4", "SEL", "input"))
+        return _pairs([MCU, comp], nets)[("USB_D+", "USB_D-")]
+
+    def test_usb_switch_with_esd_protection_in_its_description_is_not_a_clamp(self):
+        gt = dict(_comp("U8", "ic", "GT4227", "project:GT4227",
+                        [("1", "D+", "bidirectional"), ("2", "D-", "bidirectional"),
+                         ("3", "GND", "power_in")]),
+                  description="USB 2.0 high speed switch with ESD protection")
+        p = self._switch_pair(gt)
+        self.assertFalse(p["has_esd"])
+        self.assertNotIn("esd_protection", p)
+
+    def test_power_protection_library_part_is_a_clamp(self):
+        arr = _comp("U9", "ic", "D3V3XA4B10LP", "Power_Protection:D3V3XA4B10LP",
+                    [("1", "IO1", "passive"), ("2", "IO2", "passive"), ("3", "GND", "passive")])
+        nets = _usb([("U9", "1", "IO1", "passive")], [("U9", "2", "IO2", "passive")],
+                    [("U9", "3", "GND", "passive")])
+        p = _pairs([MCU, arr], nets)[("USB_D+", "USB_D-")]
+        self.assertTrue(p["has_esd"])
+        self.assertEqual(p["esd_protection"], ["U9"])
+
+    def test_tvs_array_by_description_is_a_clamp(self):
+        arr = dict(_comp("U10", "ic", "XA4", "custom:XA4",
+                         [("1", "IO1", "passive"), ("2", "IO2", "passive"), ("3", "GND", "passive")]),
+                   description="Transient voltage suppressor array, 2 lines")
+        nets = _usb([("U10", "1", "IO1", "passive")], [("U10", "2", "IO2", "passive")],
+                    [("U10", "3", "GND", "passive")])
+        p = _pairs([MCU, arr], nets)[("USB_D+", "USB_D-")]
+        self.assertTrue(p["has_esd"])
+        self.assertEqual(p["esd_protection"], ["U10"])
+
+    def test_mux_on_the_pair_is_not_an_unnamed_array(self):
+        mux = dict(_comp("U11", "ic", "74HC4052", "74xx:74HC4052",
+                         [("1", "1Y0", "passive"), ("2", "1Y1", "passive"), ("3", "GND", "passive")]),
+                   description="Dual 4-channel analog multiplexer")
+        # Only ground and the two pair lines touch it, as for an array; its name says otherwise.
+        p = self._switch_pair(mux, steered=False)
+        self.assertFalse(p["has_esd"])
+        self.assertNotIn("esd_protection", p)
+
 
 if __name__ == "__main__":
     unittest.main()

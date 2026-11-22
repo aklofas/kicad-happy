@@ -391,6 +391,25 @@ def is_safety_rated_cap(comp: dict) -> bool:
     return (rating is not None and rating >= 1000) or bool(_SAFETY_CLASS_RE.search(value))
 
 
+# What a description calls a clamp IC. "... with ESD protection" or "overvoltage protection"
+# describes a transceiver, switch or regulator, so the bare word does not count.
+_CLAMP_IC_WORDS = re.compile(r"\btvs\b|transient[- ]?voltage[- ]?suppress|\btransil\b"
+                             r"|\besd (?:protection |suppression )?(?:diode|array|device)"
+                             r"|\bprotection (?:diode|array)|data[- ]?line protection")
+
+
+def _names_clamp_ic(comp: dict) -> bool:
+    """An IC a protection library holds (Power_Protection and the like), or one whose
+    description or symbol keywords call it a TVS / ESD clamp."""
+    lib = (comp.get("lib_id") or "").lower()
+    if "protection" in lib.split(":", 1)[0] or any(
+            k in lib + " " + (comp.get("value") or "").lower()
+            for k in ("esd_protection", "tvs_array", "sn65220")):
+        return True
+    words = " ".join((comp.get("description") or "", comp.get("keywords") or "")).lower()
+    return bool(_CLAMP_IC_WORDS.search(words))
+
+
 def is_protection_part(comp: dict, ctx: AnalysisContext, pair_suffixes) -> bool:
     """True when *comp* is a clamp (TVS/ESD diode or array, varistor), not a protected device.
 
@@ -418,9 +437,12 @@ def is_protection_part(comp: dict, ctx: AnalysisContext, pair_suffixes) -> bool:
     if any(p.get("type") in _DRIVER_PIN_TYPES
            for c in ctx.components if c.get("reference") == ref for p in c.get("pins") or []):
         return False
-    if classify_ic_function(comp.get("lib_id", ""), comp.get("value", ""),
-                            comp.get("description", "")) == "protection":
+    if _names_clamp_ic(comp):
         return True
+    if classify_ic_function(comp.get("lib_id", ""), comp.get("value", ""),
+                            comp.get("description", "")) not in ("protection", "other_ic"):
+        # Named as something else (a transceiver, an MCU, a bridge): not an unnamed array.
+        return False
     nets = {net for net, _ in ctx.ref_pins.get(ref, {}).values() if net}
     if not any(ctx.is_ground(n) for n in nets):
         return False
