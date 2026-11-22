@@ -41,6 +41,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A no-connect flag placed on a hierarchical label or a sheet pin no longer raises "no-connect connected"; KiCad reads it as marking the port unused.
 - A sub-sheet from an early KiCad 6 project, read on its own, no longer gives each placement of a multi-unit part the pins of every unit; a symbol with no unit in the file is read as unit 1, as KiCad does.
 - A control, status or clock pin tied to a power rail (an enable, reset or clock-select strap whose symbol types it as an output) no longer counts as the rail's source, and a logic output behind an open solder jumper is no longer reported as the rail's missing supply path (RS-002).
+- I2C bus observations now cover numbered and prefixed names (`SDA2`, `SCL_1`, `OLED_SDA`). A display's SPI lines named `LCD_SDA` / `LCD_SCL` are no longer listed as I2C.
 - A `CSENSE` net is classified as analog, not as a chip select.
 - Net classes: a KiCad 5 label that holds a `/` is classified by its whole name, not the part after the last `/`.
 - A regulator output net named for a voltage (3V3, +5V, -12V) keeps that voltage in `rail_voltages` when the regulator's estimated output differs from it by more than 15 %, or the name is negative and the estimate positive; a negative estimate on a name without a sign (VEE_12V) and a name with two voltages (12V_TO_5V) keep the estimate. The output-voltage mismatch observation still reports a difference in magnitude.

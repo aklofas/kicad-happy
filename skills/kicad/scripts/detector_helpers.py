@@ -62,6 +62,74 @@ def get_pin_net(ctx: AnalysisContext, ref: str, pin_names: tuple[str, ...]) -> s
     return None
 
 
+# SDA / SCL as a word of a net name, with an optional bus number: SDA, SDA2, SCL_2,
+# OLED_SDA, SDA_3V3. SDAT, SCLK and ESDA are other signals.
+I2C_SDA_WORD = re.compile(r'(?<![A-Z0-9])SDA\d*(?![A-Z0-9])')
+I2C_SCL_WORD = re.compile(r'(?<![A-Z0-9])SCL\d*(?![A-Z0-9])')
+_I2C_LINE_WORD = re.compile(r'(?<![A-Z0-9])(SDA|SCL)(\d*)(?![A-Z0-9])')
+# A serial audio interface names its data line SDA too (SAI2_SDA).
+_SAI_WORD = re.compile(r'(?<![A-Z])SAI\d*(?![A-Z])')
+_SPI_SELECT_WORD = re.compile(r'^(?:N?CS[NB]?\d*|NSS|SS|SSEL|DC|D~?C~?)$')
+_SPI_CLOCK_WORD = re.compile(r'^(?:SCK|SCLK|CLK)$')
+_SPI_DATA_IN_WORD = re.compile(r'^(?:MOSI|SDI|DIN|SI|COPI)$')
+_I2C_PIN_WORD = re.compile(r'^(?:SDA|SCL)\d*$|^I2C|^TWI|^SMB')
+_DISPLAY_NET_WORD = re.compile(r'LCD|TFT|DISP|OLED|SCREEN|EPD|EINK|ST77|ILI9|GC9A|SSD1')
+
+
+def not_i2c_despite_name(ctx: AnalysisContext, net_name: str) -> bool:
+    """A net with SDA / SCL in its name that is another kind of signal. Call it only for
+    a net with no pull-up: a pulled-up SDA / SCL net is I2C.
+
+    - A 3-wire SPI line: a display's ``LCD_SDA`` / ``LCD_SCL`` next to ``LCD_CS`` or
+      ``LCD_DC``. The net's family is every net whose own name (sheet path aside) has
+      the same text around the SDA / SCL word. A chip-select or data/command sibling
+      makes the family SPI, unless it has its own SPI clock and data-in nets as well
+      (then SDA / SCL are a separate I2C bus). Outside display names, an IC pin named
+      SDA / SCL keeps the net I2C (a sensor with a strapped CS).
+    - A numbered word with no partner line in the design (``SDA12`` on a sound CPU's
+      address bus, no SCL net anywhere) and no IC pin named SDA / SCL.
+    - A serial audio data line (``SAI2_SDA``).
+    """
+    upper = net_name.upper()
+    leaf = net_leaf(net_name).upper()
+    word = None
+    for word in _I2C_LINE_WORD.finditer(leaf):
+        pass
+    if word is None:
+        return False
+    if _SAI_WORD.search(upper):
+        return True
+
+    def i2c_pin_on_net():
+        return any(
+            ctx.comp_lookup.get(p["component"], {}).get("type") == "ic" and any(
+                _I2C_PIN_WORD.match(w)
+                for w in re.split(r"[^A-Z0-9]+", (p.get("pin_name") or "").upper()) if w)
+            for p in ctx.nets.get(net_name, {}).get("pins", []))
+
+    if word.group(2):
+        if "I2C" not in upper:
+            partner = I2C_SCL_WORD if word.group(1) == "SDA" else I2C_SDA_WORD
+            if not any(partner.search(n.upper()) for n in ctx.nets) and not i2c_pin_on_net():
+                return True
+        return False  # a numbered bus (MCU_SCL2) is not a display's serial line
+    prefix, suffix = leaf[:word.start()], leaf[word.end():]
+    if not (prefix or suffix):
+        return False  # a bare SDA / SCL has no family
+    siblings = []
+    for other in ctx.nets:
+        o = net_leaf(other).upper()
+        if (other != net_name and len(o) > len(prefix) + len(suffix)
+                and o.startswith(prefix) and o.endswith(suffix)):
+            siblings.append(o[len(prefix):len(o) - len(suffix)])
+    if not any(_SPI_SELECT_WORD.match(w) for w in siblings):
+        return False
+    if (any(_SPI_CLOCK_WORD.match(w) for w in siblings)
+            and any(_SPI_DATA_IN_WORD.match(w) for w in siblings)):
+        return False
+    return bool(_DISPLAY_NET_WORD.search(upper)) or not i2c_pin_on_net()
+
+
 def get_components_by_type(
     ctx: AnalysisContext,
     comp_type: str | tuple[str, ...],

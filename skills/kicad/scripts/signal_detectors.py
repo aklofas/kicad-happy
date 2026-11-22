@@ -41,6 +41,7 @@ from finding_schema import make_provenance, make_finding, Det
 from detector_helpers import index_two_pin_components, get_components_by_type, get_unique_ics, is_tvs_diode, symbol_name
 from detector_helpers import group_members, group_part, group_reps, group_value, is_fitted, parallel_groups
 from detector_helpers import is_safety_rated_cap
+from detector_helpers import I2C_SCL_WORD, I2C_SDA_WORD, not_i2c_despite_name
 
 from lookup_helpers import get_facts, has_data, best, facts_trusted
 
@@ -4453,9 +4454,8 @@ def detect_design_observations(ctx: AnalysisContext, results: dict) -> list[dict
         # Exclude SPI nets — sensors with dual-function SDA/SCL pin names
         if "SPI" in nn or "MOSI" in nn or "MISO" in nn:
             continue
-        # Tighten SDA regex to exclude SDAT (I2S serial data)
-        is_sda = bool(re.search(r'\bSDA\b(?!T)', nn) or re.search(r'I2C.*SDA|SDA.*I2C', nn))
-        is_scl = bool(re.search(r'\bSCL\b', nn) or re.search(r'I2C.*SCL|SCL.*I2C', nn))
+        is_sda = bool(I2C_SDA_WORD.search(nn) or re.search(r'I2C.*SDA|SDA.*I2C', nn))
+        is_scl = bool(I2C_SCL_WORD.search(nn) or re.search(r'I2C.*SCL|SCL.*I2C', nn))
         if "SCLK" in nn or "SCK" in nn:
             is_scl = False
         if not (is_sda or is_scl):
@@ -4476,6 +4476,8 @@ def detect_design_observations(ctx: AnalysisContext, results: dict) -> list[dict
                     break
         ic_refs = [p["component"] for p in net_info["pins"]
                    if ctx.comp_lookup.get(p["component"], {}).get("type") == "ic"]
+        if ic_refs and not has_pullup and not_i2c_despite_name(ctx, net_name):
+            continue
         if ic_refs:
             design_observations.append({
                 "category": "i2c_bus",
