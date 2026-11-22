@@ -71,7 +71,8 @@ def detect_buzzer_speakers(ctx: AnalysisContext, transistor_circuits: list[dict]
                 # Follow resistor to see if IC is on the other side
                 r_n1, r_n2 = ctx.get_two_pin_nets(nc["reference"])
                 r_other = r_n2 if r_n1 == signal_net else r_n1
-                if r_other:
+                # an IC on a rail behind the resistor only draws from it
+                if r_other and not ctx.is_ground(r_other) and not ctx.is_power_net(r_other):
                     for rc in ctx.nq.components_on_net(r_other, exclude_refs={nc["reference"]}):
                         if rc["type"] == "ic":
                             driver_ic_ref = rc["reference"]

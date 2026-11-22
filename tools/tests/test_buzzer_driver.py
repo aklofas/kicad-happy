@@ -98,5 +98,38 @@ class BuzzerDrivenSideTest(unittest.TestCase):
         self.assertTrue(b["has_transistor_driver"])
 
 
+class BuzzerDriverTest(unittest.TestCase):
+    def test_ic_on_the_supply_rail_behind_the_resistor_is_not_the_driver(self):
+        parts = {
+            "BZ1": ("buzzer", {"1": "+5V", "2": "SIG"}),
+            "R1": ("resistor", {"1": "SIG", "2": "+5V"}),
+            "U1": ("ic", {"VIN": "+5V"}),
+            "Q1": ("transistor", {"B": "D", "C": "SIG", "E": "GND"}),
+        }
+        (b,) = _run(parts, [_npn("SIG", "GND")])
+        self.assertNotIn("driver_ic", b)
+        self.assertNotIn("direct_gpio_drive", b)
+        self.assertEqual(b["series_resistor"]["reference"], "R1")
+
+    def test_ic_on_a_signal_net_behind_the_resistor_is_the_driver(self):
+        parts = {
+            "BZ1": ("buzzer", {"1": "SIG", "2": "GND"}),
+            "R1": ("resistor", {"1": "SIG", "2": "PIN"}),
+            "U1": ("ic", {"IO1": "PIN"}),
+        }
+        (b,) = _run(parts, [])
+        self.assertEqual(b["driver_ic"], "U1")
+        self.assertTrue(b["direct_gpio_drive"])
+
+    def test_ic_behind_a_resistor_to_ground_is_not_the_driver(self):
+        parts = {
+            "BZ1": ("buzzer", {"1": "SIG", "2": "GND"}),
+            "R1": ("resistor", {"1": "SIG", "2": "GND"}),
+            "U1": ("ic", {"GND": "GND"}),
+        }
+        (b,) = _run(parts, [])
+        self.assertNotIn("driver_ic", b)
+
+
 if __name__ == "__main__":
     unittest.main()
