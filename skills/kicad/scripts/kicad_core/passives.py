@@ -285,3 +285,18 @@ def estimate_dc_bias_derating(dielectric, package, voltage_ratio):
             t = (voltage_ratio - v0) / (v1 - v0) if v1 > v0 else 0
             return f0 + t * (f1 - f0)
     return curve[-1][1]
+
+
+def crystal_load_legs(load_caps):
+    """Load caps grouped per crystal pin (net), legs in first-seen order:
+    ``[{"net", "refs", "farads"}]``; parallel caps on one leg sum."""
+    legs = {}
+    seen = set()
+    for lc in load_caps:
+        if lc["ref"] in seen:
+            continue
+        seen.add(lc["ref"])
+        leg = legs.setdefault(lc["net"], {"net": lc["net"], "refs": [], "farads": 0.0})
+        leg["refs"].append(lc["ref"])
+        leg["farads"] += lc["farads"]
+    return list(legs.values())

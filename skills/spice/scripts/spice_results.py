@@ -10,6 +10,7 @@ import math
 
 import _core_path  # noqa: F401
 from kicad_core.parts import regulator_vref_key, vref_key_covers_part
+from kicad_core.passives import crystal_load_legs
 
 # Measurements taken with ngspice vp(), which returns radians. The other
 # backends' parsers pass their values through unconverted.
@@ -365,21 +366,6 @@ def evaluate_opamp_circuit(det, sim_results):
             result["note"] = f"{result.get('note') or ''} {supply_note}".strip()
 
     return result
-
-
-def crystal_load_legs(load_caps):
-    """Load caps grouped per crystal pin (net), legs in first-seen order:
-    ``[{"net", "refs", "farads"}]``; parallel caps on one leg sum."""
-    legs = {}
-    seen = set()
-    for lc in load_caps:
-        if lc["ref"] in seen:
-            continue
-        seen.add(lc["ref"])
-        leg = legs.setdefault(lc["net"], {"net": lc["net"], "refs": [], "farads": 0.0})
-        leg["refs"].append(lc["ref"])
-        leg["farads"] += lc["farads"]
-    return list(legs.values())
 
 
 def evaluate_crystal_circuit(det, sim_results):

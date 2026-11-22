@@ -56,5 +56,19 @@ class CrystalTargetLoad(unittest.TestCase):
         self.assertEqual(xl[0]["target_load_pF"], 12.5)
 
 
+class CrystalLoadLegs(unittest.TestCase):
+    def test_caps_group_per_net_in_first_seen_order_and_each_ref_counts_once(self):
+        from kicad_core.passives import crystal_load_legs
+        caps = [{"ref": "C1", "net": "XI", "farads": 12e-12},
+                {"ref": "C2", "net": "XO", "farads": 10e-12},
+                {"ref": "C3", "net": "XI", "farads": 5e-12},
+                {"ref": "C1", "net": "XI", "farads": 12e-12}]
+        legs = crystal_load_legs(caps)
+        self.assertEqual([leg["net"] for leg in legs], ["XI", "XO"])
+        self.assertEqual(legs[0]["refs"], ["C1", "C3"])
+        self.assertAlmostEqual(legs[0]["farads"], 17e-12)
+        self.assertAlmostEqual(sd._load_legs(caps)[1], 10e-12)
+
+
 if __name__ == "__main__":
     unittest.main()

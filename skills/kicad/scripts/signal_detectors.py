@@ -36,6 +36,7 @@ from kicad_core.netnames import (
     parse_voltage_from_net_name as _parse_voltage_from_net_name,
 )
 from kicad_core.netquery import build_bridge_facts, build_ref_pins, conductor_of, tie_conductors
+from kicad_core.passives import crystal_load_legs
 from kicad_types import AnalysisContext
 from finding_schema import make_provenance, make_finding, Det
 from detector_helpers import index_two_pin_components, get_components_by_type, get_unique_ics, is_tvs_diode, symbol_name
@@ -1013,13 +1014,7 @@ def detect_lc_filters(ctx: AnalysisContext) -> list[dict]:
 
 def _load_legs(load_caps: list[dict]) -> list[float]:
     """Load capacitance per oscillator leg (net), legs in first-seen order."""
-    legs: dict[str, float] = {}
-    seen: set[str] = set()
-    for lc in load_caps:
-        if lc["ref"] not in seen:
-            seen.add(lc["ref"])
-            legs[lc["net"]] = legs.get(lc["net"], 0.0) + lc["farads"]
-    return list(legs.values())
+    return [leg["farads"] for leg in crystal_load_legs(load_caps)]
 
 
 def _dnp_cap_beside_fitted(ctx: AnalysisContext, ref: str) -> bool:
