@@ -1259,32 +1259,40 @@ def analyze_protocol_compliance(components: list[dict], nets: dict,
                         issues.append(f"Pull-up rail {pu_rail} ({pu_voltage}V) but device(s) on "
                                       f"{', '.join(f'{v}V' for v in mismatched)} — voltage mismatch")
             # UM10204 eq. 1 and Table 10: Rp(min) = (VDD - 0.4 V) / 3 mA in Standard and
-            # Fast mode. The fitted pull-ups on the line sink together, so they combine
-            # as one Thevenin source.
-            vol_pullups = [pu for pu in sda_pullups if ctx and pu.get("ohms", 0) > 0
-                           and not ctx.comp_lookup.get(pu.get("ref"), {}).get("dnp")]
-            vol_rails = [_pull_up_rail_voltage(ctx, pu.get("to_rail")) for pu in vol_pullups]
-            if vol_pullups and all(v is not None for v in vol_rails):
+            # Fast mode. The fitted pull-ups on a line sink together, so they combine
+            # as one Thevenin source. Each line is judged; the worse one is reported.
+            iol_ma = 3
+            worst = None
+            for line_name, line_pullups in (("sda", sda_pullups), ("scl", scl_pullups)):
+                vol_pullups = [pu for pu in line_pullups if ctx and pu.get("ohms", 0) > 0
+                               and not ctx.comp_lookup.get(pu.get("ref"), {}).get("dnp")]
+                vol_rails = [_pull_up_rail_voltage(ctx, pu.get("to_rail")) for pu in vol_pullups]
+                if not vol_pullups or any(v is None for v in vol_rails):
+                    continue
                 g_total = sum(1 / pu["ohms"] for pu in vol_pullups)
                 r_pu = 1 / g_total
                 v_pu = r_pu * sum(v / pu["ohms"] for v, pu in zip(vol_rails, vol_pullups))
-                iol_ma = 3
-                speed = "fast" if checks.get("rise_time", {}).get("sda", {}).get("valid_400khz") else "standard"
                 # UM10204 specifies buses up to 5.5 V; a higher pull-up voltage is a bad rail estimate.
-                if 0.4 < v_pu <= 5.5:
-                    r_min = (v_pu - 0.4) / (iol_ma * 1e-3)
-                    if r_pu < r_min:
-                        issues.append(
-                            f"SDA pull-up {r_pu:.0f}\u03a9 to {v_pu:g}V is below the "
-                            f"{r_min:.0f}\u03a9 minimum for VOL \u2264 0.4V at {iol_ma}mA sink")
-                        checks["vol_compatibility"] = {
+                if not 0.4 < v_pu <= 5.5:
+                    continue
+                r_min = (v_pu - 0.4) / (iol_ma * 1e-3)
+                if r_pu < r_min:
+                    issues.append(
+                        f"{line_name.upper()} pull-up {r_pu:.0f}\u03a9 to {v_pu:g}V is below the "
+                        f"{r_min:.0f}\u03a9 minimum for VOL \u2264 0.4V at {iol_ma}mA sink")
+                    if worst is None or r_pu / r_min < worst[0]:
+                        speed = ("fast" if checks.get("rise_time", {}).get(line_name, {}).get("valid_400khz")
+                                 else "standard")
+                        worst = (r_pu / r_min, {
                             "status": "warning",
                             "pull_up_ohms": round(r_pu),
                             "min_for_vol": round(r_min),
                             "pull_up_voltage": round(v_pu, 3),
                             "iol_ma": iol_ma,
                             "speed_mode": speed,
-                        }
+                        })
+            if worst:
+                checks["vol_compatibility"] = worst[1]
 
             # I2C bus current budget
             # Each device on the bus contributes leakage current (typically 1-10µA)

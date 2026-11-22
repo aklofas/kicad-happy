@@ -44,6 +44,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The I2C bus analysis and its protocol checks leave out the same lines: a display's SPI lines named `LCD_SDA` / `LCD_SCL`, and numbered address lines such as `SDA12` with no SCL partner, no longer get "missing pull-up" issues.
 - I2C bus observations now cover numbered and prefixed names (`SDA2`, `SCL_1`, `OLED_SDA`). A display's SPI lines named `LCD_SDA` / `LCD_SCL` are no longer listed as I2C.
 - A `CSENSE` net is classified as analog, not as a chip select.
+- The I2C low-level voltage check judges the SCL pull-up as well as SDA: a strong SCL pull-up (or a mixed-rail pair on SCL) below the UM10204 minimum for a 3 mA sink is reported, and the worse line fills the check.
 - Net classes: a KiCad 5 label that holds a `/` is classified by its whole name, not the part after the last `/`.
 - A regulator output net named for a voltage (3V3, +5V, -12V) keeps that voltage in `rail_voltages` when the regulator's estimated output differs from it by more than 15 %, or the name is negative and the estimate positive; a negative estimate on a name without a sign (VEE_12V) and a name with two voltages (12V_TO_5V) keep the estimate. The output-voltage mismatch observation still reports a difference in magnitude.
 - SPICE transistor benches on a negative supply (-12V, -15V, NEG5V) are skipped with the reason instead of being simulated at +3.3 V, and a regulator output named F+15V or F+8V is read as 15 V or 8 V, so its feedback divider is checked against it.

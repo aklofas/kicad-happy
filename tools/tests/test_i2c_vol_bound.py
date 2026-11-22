@@ -25,12 +25,18 @@ def _res(ref, value, dnp=False):
     return comp
 
 
-def _vol(sda_pullups, scl_rail="+3V3", power_rails_config=None, regulators=()):
-    """VOL record for a sensor whose SDA pull-ups are ``[(value, rail[, dnp])]`` (SCL: 4.7k)."""
-    comps = [SENSOR, _res("R9", "4.7k")]
+def _vol(sda_pullups, scl_rail="+3V3", power_rails_config=None, regulators=(), scl_pullups=None,
+         want_issues=False):
+    """VOL record for a sensor whose SDA pull-ups are ``[(value, rail[, dnp])]``; the SCL
+    pull-ups default to one 4.7k to ``scl_rail`` and are ``scl_pullups`` when given."""
+    scl_pullups = scl_pullups or [("4.7k", scl_rail)]
+    comps = [SENSOR]
     nets = {"SDA": [("U1", "1", "SDA", "bidirectional")],
-            "SCL": [("U1", "2", "SCL", "input"), ("R9", "1", "~", "passive")],
-            scl_rail: [("R9", "2", "~", "passive")]}
+            "SCL": [("U1", "2", "SCL", "input")]}
+    for i, (value, rail, *dnp) in enumerate(scl_pullups, 20):
+        comps.append(_res(f"R{i}", value, dnp=bool(dnp and dnp[0])))
+        nets["SCL"].append((f"R{i}", "1", "~", "passive"))
+        nets.setdefault(rail, []).append((f"R{i}", "2", "~", "passive"))
     for i, (value, rail, *dnp) in enumerate(sda_pullups, 1):
         comps.append(_res(f"R{i}", value, dnp=bool(dnp and dnp[0])))
         nets["SDA"].append((f"R{i}", "1", "~", "passive"))
@@ -39,13 +45,15 @@ def _vol(sda_pullups, scl_rail="+3V3", power_rails_config=None, regulators=()):
                                     for r, p, pn, t in pins],
                 "point_count": 0, "no_connect": False, "labels": []}
             for n, pins in nets.items()}
-    rails = {r for _, r, *_ in sda_pullups} | {scl_rail}
+    rails = {r for _, r, *_ in sda_pullups} | {r for _, r, *_ in scl_pullups}
     ctx = build_analysis_context(comps, full, {}, known_power_rails=rails,
                                  power_rails_config=power_rails_config)
     ctx.rail_by_net = build_rail_map(ctx, list(regulators))
     design = {"bus_analysis": {"i2c": _detect_i2c_buses(ctx)}}
     out = analyze_protocol_compliance(comps, ctx.nets, design, {}, ctx.pin_net, ctx=ctx)
     i2c = [f for f in out.get("findings", []) if f["protocol"] == "i2c"]
+    if want_issues:
+        return i2c[0].get("issues", []) if i2c else []
     return i2c[0]["checks"].get("vol_compatibility") if i2c else None
 
 
@@ -80,6 +88,37 @@ class I2cVolLowerBound(unittest.TestCase):
 
     def test_unfitted_pull_up_is_not_in_parallel(self):
         self.assertIsNone(_vol([("1.5k", "+3V3"), ("1.5k", "+3V3", True)]))  # 750 if both fitted
+
+    def test_strong_scl_pull_up_is_flagged_beside_a_standard_sda(self):
+        args = dict(scl_pullups=[("680", "+3V3")])
+        vc = _vol([("4.7k", "+3V3")], **args)
+        self.assertEqual(vc["pull_up_ohms"], 680)
+        self.assertEqual(vc["min_for_vol"], 967)  # (3.3 - 0.4) / 3 mA
+        issues = _vol([("4.7k", "+3V3")], want_issues=True, **args)
+        self.assertEqual(len([i for i in issues if "minimum for VOL" in i]), 1)
+        self.assertTrue(any(i.startswith("SCL pull-up 680") for i in issues))
+
+    def test_mixed_rail_pull_ups_combine_to_a_thevenin_source(self):
+        vc = _vol([("2.2k", "+3V3"), ("2.2k", "+5V")])
+        self.assertEqual(vc["pull_up_ohms"], 1100)
+        self.assertEqual(vc["pull_up_voltage"], 4.15)
+        self.assertEqual(vc["min_for_vol"], 1250)  # (4.15 - 0.4) / 3 mA
+
+    def test_the_worse_line_is_reported_and_both_are_named(self):
+        sda = [("820", "+3V3")]  # 0.85 of Rp(min)
+        scl = [("500", "+3V3")]  # 0.52 of Rp(min)
+        vc = _vol(sda, scl_pullups=scl)
+        self.assertEqual(vc["pull_up_ohms"], 500)
+        issues = _vol(sda, scl_pullups=scl, want_issues=True)
+        self.assertEqual([i[:3] for i in issues if "minimum for VOL" in i], ["SDA", "SCL"])
+
+    def test_both_lines_at_4k7_give_no_record(self):
+        self.assertIsNone(_vol([("4.7k", "+3V3")], scl_pullups=[("4.7k", "+3V3")]))
+
+    def test_unfitted_scl_pull_up_is_not_counted(self):
+        # 1.5k alone meets Rp(min) = 967; in parallel with the unfitted twin it would be 750
+        self.assertIsNone(_vol([("4.7k", "+3V3")],
+                               scl_pullups=[("1.5k", "+3V3"), ("1.5k", "+3V3", True)]))
 
     def test_rail_voltage_override_reaches_the_check(self):
         cfg = {"voltage_overrides": {"VDD_IO": 1.8}}
