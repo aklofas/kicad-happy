@@ -460,6 +460,28 @@ class CcTermination(unittest.TestCase):
         r = _type_c_cc((), (), ics=(("U1", "HD3SS3202"),))
         self.assertEqual(len(_uc003(r)), 2)
 
+    def test_a_digit_after_a_stem_is_another_part(self):
+        from detector_helpers import type_c_cc_controller
+        for value in ("TUSB3200A", "TUSB3210", "HD3SS32201", "TPS257500", "STUSB47001"):
+            with self.subTest(value=value):
+                self.assertIsNone(type_c_cc_controller({"value": value, "lib_id": "L:" + value}))
+
+    def test_corpus_part_names_still_match(self):
+        from detector_helpers import type_c_cc_controller
+        for value, lib, pd in (
+                ("TUSB320LAIRWBR", "", False), ("TUSB320", "", False), ("TUSB321", "", False),
+                ("TUSB322I", "", False), ("HD3SS3220RNHR", "", False),
+                ("HD3SS3220IRNHT", "", False), ("TPS25730SRSMR", "", True),
+                ("TPS25750DRJKR", "", True), ("TPS25750D", "", True),
+                ("TPS25751DREFR", "", True), ("PTPS25751DREFR", "", True),
+                ("TPS2575S", "TPS25751S", True), ("PTN5110NHQ", "", True),
+                ("PTN5110NHQZ", "", True), ("HUSB237", "", True), ("STUSB4700YQTR", "", True),
+                ("CH224K", "", True), ("CH224A", "", True), ("CH224Q", "", True),
+                ("CH244A", "CH224A", True), ("nPM1300", "", False), ("nPM1300 stamp", "", False),
+                ("nPM1304", "", False), ("MAX77751", "", False)):
+            with self.subTest(value=value, lib=lib):
+                self.assertIs(type_c_cc_controller({"value": value, "lib_id": "L:" + lib}), pd)
+
     def test_one_controller_table(self):
         # usb_compliance and the power-path detector read the same table: CC-only parts are
         # controllers for the first and make no power-path record in the second.

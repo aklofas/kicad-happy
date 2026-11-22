@@ -691,10 +691,18 @@ TYPE_C_CC_CONTROLLERS = {
 _CC_NEEDS_EXTERNAL_RD = ("ch221", "ch224d")
 
 
+# A stem ends a part number's family digits, so another digit after it is a different part
+# (TUSB3200A and TUSB3210 are not TUSB320 / TUSB321). CYPD317 is the family prefix of
+# CYPD3171 / CYPD3175 and takes a digit.
+_CC_STEM_RES = {stem: re.compile(re.escape(stem) + ("" if stem == "cypd317" else r"(?!\d)"))
+                for stem in TYPE_C_CC_CONTROLLERS}
+
+
 def type_c_cc_controller(comp: dict) -> bool | None:
     """True for a listed USB PD controller, False for a listed CC-only controller, None for any
     other part. Read from the value and the whole lib_id."""
     name = ((comp.get("value") or "") + " " + (comp.get("lib_id") or "")).lower()
     if any(k in name for k in _CC_NEEDS_EXTERNAL_RD):
         return None
-    return next((pd for stem, pd in TYPE_C_CC_CONTROLLERS.items() if stem in name), None)
+    return next((pd for stem, pd in TYPE_C_CC_CONTROLLERS.items()
+                 if _CC_STEM_RES[stem].search(name)), None)
