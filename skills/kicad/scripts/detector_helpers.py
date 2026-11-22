@@ -317,6 +317,11 @@ def symbol_name(lib_id: str) -> str:
     return sym
 
 
+def part_label(comp: dict) -> str:
+    """What names a part in finding text: its Value, else its symbol name, else the empty string."""
+    return (comp.get("value") or "").strip() or symbol_name(comp.get("lib_id") or "").strip()
+
+
 def match_family(comp: dict, families: dict[str, Iterable[str]]) -> str | None:
     """Return the family of a part's longest keyword, or None.
 

@@ -48,6 +48,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - More Type-C controllers that terminate CC themselves are recognised (TUSB320/321/322, HD3SS3220, TPS25730/50/51, PTN5110, HUSB237, STUSB4700, CH224K/A/Q, nPM1300/1304, MAX77751, and a TPD6S300/TPD8S300 with its dead-battery resistor pin tied to CC), so their ports no longer report a missing 5.1 kΩ pull-down; the PD controllers among them are listed as power-path parts.
 - A USB Type-C pull-down that returns to the net of the connector's own GND pins counts as a sink Rd when that net is not named as a ground (`Earth`, an unnamed net). The Rd range is 5.1 kΩ ±10 % everywhere, so a 4.7 kΩ pull-down no longer reads as missing.
 - A Type-C Rd made of two resistors in series (4.99 kΩ + 120 Ω) is read as one pull-down.
+- A part with an empty Value is named by its symbol in power-path summaries and pull-up findings instead of `()`.
 - A `CSENSE` net is classified as analog, not as a chip select.
 - The I2C low-level voltage check judges the SCL pull-up as well as SDA: a strong SCL pull-up (or a mixed-rail pair on SCL) below the UM10204 minimum for a 3 mA sink is reported, and the worse line fills the check.
 - Pull-ups that reach their rail through a solder jumper bridged as built are found, so I2C buses and enable or chip-select pins pulled up that way no longer report missing pull-ups.

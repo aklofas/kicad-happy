@@ -33,10 +33,10 @@ except ImportError:
 
 from domain_detectors import is_single_supply_lvc
 from detector_helpers import (
-    CAN_H_PIN_NAMES, CAN_L_PIN_NAMES, can_split_termination, get_components_by_type, get_pin_net,
-    get_unique_ics, index_two_pin_components,
-    is_addressable_led, is_led_rail, led_forward_voltage, led_string, match_ic_keywords,
-    rail_behind_bridged_jumper, symbol_name,
+    CAN_H_PIN_NAMES, CAN_L_PIN_NAMES, can_split_termination, get_components_by_type,
+    get_pin_net, get_unique_ics, index_two_pin_components, is_addressable_led, is_led_rail,
+    led_forward_voltage, led_string, match_ic_keywords, part_label, rail_behind_bridged_jumper,
+    symbol_name,
 )
 from finding_schema import make_finding, make_provenance
 from lookup_helpers import get_facts, has_data, best
@@ -346,7 +346,7 @@ def validate_pullups(ctx: AnalysisContext) -> list[dict]:
                         category='signal_integrity',
                         summary=f'{ref} pin {pin_name} ({net}) missing pull-up resistor',
                         description=(
-                            f'Pin {pin_name} on {ref} ({ic.get("value", "")}) is '
+                            f'Pin {pin_name} on {ref} ({part_label(ic)}) is '
                             f'connected to net {net} but has no pull-up resistor. '
                             f'This pin type typically requires an external pull-up '
                             f'to a power rail for correct operation.'
@@ -425,7 +425,7 @@ def validate_pullups(ctx: AnalysisContext) -> list[dict]:
                         category='signal_integrity',
                         summary=f'{ref} pin {pin_name} ({net}) missing pull-down resistor',
                         description=(
-                            f'Pin {pin_name} on {ref} ({ic.get("value", "")}) is '
+                            f'Pin {pin_name} on {ref} ({part_label(ic)}) is '
                             f'connected to net {net} but has no pull-down resistor. '
                             f'This pin requires a defined logic level at startup.'
                         ),
