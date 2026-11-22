@@ -70,6 +70,19 @@ class KeywordTokens(unittest.TestCase):
         self.assertEqual((got["VBUS_SENSE"], got["ASSERT"]), ("signal", "signal"))
 
 
+class CurrentSenseNets(unittest.TestCase):
+    def test_csense_is_analog_not_chip_select(self):
+        names = ["CSENSE", "Csens", "CSENS1"]
+        got = _classes(PARTS, {n: _signal_pin("PA7") for n in names})
+        self.assertEqual({n: got[n] for n in names}, {n: "analog" for n in names})
+
+    def test_chip_select_and_sense_neighbours_keep_their_class(self):
+        want = {"SPI_CS": "chip_select", "~{CSE}": "chip_select", "CSE0": "chip_select",
+                "NRF_CSN": "chip_select", "ISENSE": "analog", "CSYNC": "signal"}
+        got = _classes(PARTS, {n: _signal_pin("PA7") for n in want})
+        self.assertEqual({n: got[n] for n in want}, want)
+
+
 class PowerInputNets(unittest.TestCase):
     def test_power_in_plus_ic_output_is_not_promoted(self):
         pins = [("U2", "1", "VDD", "power_in"), ("U4", "5", "OUT", "output")]

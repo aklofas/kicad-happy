@@ -193,7 +193,7 @@ _NET_CLASS_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("data", ("SDA", "MOSI", "MISO", "SDI", "SDO", "UART", "TXD", "RXD",
               "TXP", "TXN", "TXM", "RXP", "RXN", "RXM", "TX", "RX")),
     ("high_speed", ("USB", "CAN", "LVDS", "ETH")),
-    ("analog", ("ADC", "AIN", "VREF", "VSENSE", "ISENSE")),
+    ("analog", ("ADC", "AIN", "VREF", "VSENSE", "ISENSE", "CSENS")),
     ("control", ("RESET", "NRST", "RST", "EN", "ENABLE")),
     ("chip_select", ("CS", "SS", "NSS", "CE", "SEL")),
     ("interrupt", ("INT", "IRQ", "ALERT", "DRDY")),
