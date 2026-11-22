@@ -110,6 +110,16 @@ class DriverPins(unittest.TestCase):
         (f,) = vm001(ctx)
         self.assertEqual(f["summary"], "Net SIG: 5.0V / 3.3V domain crossing without level shifter")
 
+    def test_symbol_that_types_only_passive_and_input_pins_keeps_its_finding(self):
+        (f,) = vm001(board("+5V", [("3", "Y1", "input", "SIG"), ("4", "A1", "passive", "A1")],
+                           value="74HCT125"))
+        self.assertEqual(f["summary"], "Net SIG: 5.0V / 3.3V domain crossing without level shifter")
+
+    def test_symbol_typing_only_an_open_collector_pin_counts_as_typing_a_driver(self):
+        for kind in ("open_collector", "bidirectional"):
+            with self.subTest(kind=kind):
+                self.assertEqual(vm001(board("+12V", [("3", "HIN", "input", "SIG"), ("4", "ST", kind, "ST")])), [])
+
     def test_legacy_symbol_that_types_an_output_follows_the_driver_rule(self):
         pins = legacy_pins("IRS2304", "X VCC 1 -300 200 100 R 50 50 1 1 W\n"
                                       "X HIN 3 -300 0 100 R 50 50 1 1 I\n"
