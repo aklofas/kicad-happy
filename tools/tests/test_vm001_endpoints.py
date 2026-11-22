@@ -141,7 +141,6 @@ class DriverPins(unittest.TestCase):
         self.assertEqual(f["summary"], "Net SIG: 5.0V / 3.3V domain crossing without level shifter")
 
 
-
 class AnalogSwitchPins(unittest.TestCase):
     # One example and its evidence per family of analog_switch regex.
     CITATIONS = {
@@ -193,6 +192,26 @@ class AnalogSwitchPins(unittest.TestCase):
     def test_symbol_name_names_the_part(self):
         from kicad_core.parts import names_analog_switch
         self.assertTrue(names_analog_switch("~", "", "DG468"))
+
+
+class OpenDrainStatus(unittest.TestCase):
+    FAULT = [("3", "nFAULT", "output", "SIG"), ("4", "OUT1", "output", "OUT1")]
+
+    def test_fault_flag_with_a_pull_up_is_read_at_the_pull_up_rail(self):
+        ctx = board("+12V", self.FAULT, sig_extra=[("R1", "1", "~", "passive")], parts=[res("R1")],
+                    extra_nets={"+3V3": [("R1", "2", "~", "passive")]}, value="DRV8873")
+        self.assertEqual(vm001(ctx), [])
+
+    def test_fault_flag_without_a_pull_up_keeps_its_supply_level(self):
+        (f,) = vm001(board("+12V", self.FAULT, value="DRV8873"))
+        self.assertEqual(f["severity"], "error")
+
+    def test_charger_standby_pin_is_open_drain(self):
+        ctx = board("+5V", [("3", "~{STDBY}", "output", "SIG")], sig_extra=[("R1", "1", "~", "passive")],
+                    parts=[res("R1")], extra_nets={"+3V3": [("R1", "2", "~", "passive")]}, value="TP4056")
+        self.assertEqual(len(vm001(ctx)), 1)             # not known as a charger: read at its supply
+        ctx.charger_refs = frozenset({"U1"})
+        self.assertEqual(vm001(ctx), [])
 
 
 if __name__ == "__main__":

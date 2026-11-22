@@ -190,6 +190,7 @@ class AnalysisContext:
         rail_overrides: ``analysis.power_rails.voltage_overrides`` from the project
             config, ``{net_name: volts}``.
         rail_ignore: ``analysis.power_rails.ignore`` glob patterns.
+        charger_refs: Parts the battery-charger detector reported, filled by the pipeline.
         parallel_group_cache: ``detector_helpers.parallel_groups`` results per part type.
 
     Methods:
@@ -230,6 +231,7 @@ class AnalysisContext:
     topology_rails: frozenset = field(default_factory=frozenset, repr=False)
     pin_gated_rails: frozenset = field(default_factory=frozenset, repr=False)
     vss_supply_rails: frozenset = field(default_factory=frozenset, repr=False)
+    charger_refs: frozenset = field(default_factory=frozenset, repr=False)
     rail_by_net: dict[str, float] = field(default_factory=dict, repr=False)
     rail_overrides: dict[str, float] = field(default_factory=dict, repr=False)
     rail_ignore: tuple[str, ...] = field(default=(), repr=False)

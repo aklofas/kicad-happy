@@ -580,21 +580,25 @@ def _is_usb_dp_dm(net_name: str, nets) -> bool:
 
 
 # Charger status outputs are open-drain by convention (STAT, CHG, CHRG); a power-good pin
-# is when the part is a regulator.
+# is when the part is a regulator or a charger, and so is a charger's STDBY.
 _OD_STATUS_NAMES = frozenset({'STAT', 'STAT1', 'STAT2', 'CHG', 'CHRG'})
+# A fault flag is open-drain only when its net has a pull-up: a push-pull one needs none.
+_OD_WITH_PULL_UP_NAMES = frozenset({'FAULT', 'FLT'})
 
 
 def _bare_pin_name(name: str) -> str:
     """Upper-cased pin name without an active-low marker (~{PG}, nPG, NSTAT)."""
     n = re.sub(r'^~\{(.*)\}$', r'\1', (name or '').upper().strip()).lstrip('~/')
-    if n.startswith('N') and (n[1:] in _OD_STATUS_NAMES or n[1:] in _PG_PIN_PATTERNS):
+    if n.startswith('N') and (n[1:] in _OD_STATUS_NAMES or n[1:] in _PG_PIN_PATTERNS
+                              or n[1:] in _OD_WITH_PULL_UP_NAMES or n[1:] == 'STDBY'):
         return n[1:]
     return n
 
 
-def _is_open_drain_endpoint(ctx: AnalysisContext, p: dict) -> bool:
+def _is_open_drain_endpoint(ctx: AnalysisContext, p: dict, net_name: str | None = None) -> bool:
     """An open-collector / open-drain output: by pin type, a charger status pin by name,
-    or a power-good pin on a regulator."""
+    a power-good pin on a regulator or a charger, or a fault flag with a pull-up on
+    *net_name*."""
     if p.get('pin_type') == 'open_collector':
         return True
     if p.get('pin_type') == 'tri_state':
@@ -602,6 +606,11 @@ def _is_open_drain_endpoint(ctx: AnalysisContext, p: dict) -> bool:
     name = _bare_pin_name(p.get('pin'))
     if name in _OD_STATUS_NAMES:
         return True
+    if p['ref'] in ctx.charger_refs and (name in _PG_PIN_PATTERNS or name == 'STDBY'):
+        return True
+    if name in _OD_WITH_PULL_UP_NAMES:
+        return (p.get('pin_type') != 'input' and net_name is not None
+                and _pull_up_voltage(ctx, net_name) is not None)
     return name in _PG_PIN_PATTERNS and _is_regulator_like(ctx, p['ref'])
 
 
@@ -710,7 +719,7 @@ def validate_voltage_levels(ctx: AnalysisContext, level_shifters: list[dict] | N
                 })
         # An open-drain output swings to its pull-up, not to its IC's supply; with no
         # pull-up on the net it drives nothing high.
-        od = [q for q in ic_pins_on_net if _is_open_drain_endpoint(ctx, q)]
+        od = [q for q in ic_pins_on_net if _is_open_drain_endpoint(ctx, q, net_name)]
         if od and len(ic_pins_on_net) >= 2:
             v_pu = _pull_up_voltage(ctx, net_name)
             for q in od:

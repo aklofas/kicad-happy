@@ -533,6 +533,8 @@ def run_domain_detectors(ctx: AnalysisContext, topo: dict) -> dict:
     rf_matching = detect_rf_matching(ctx)
     bms_systems = detect_bms_systems(ctx)
     battery_chargers = detect_battery_chargers(ctx)
+    ctx.charger_refs = frozenset(c["charger_reference"] for c in battery_chargers
+                                 if c.get("charger_reference"))
     motor_drivers = detect_motor_drivers(ctx)
     addressable_led_chains = detect_addressable_leds(ctx)
     debug_interfaces = detect_debug_interfaces(ctx)
