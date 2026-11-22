@@ -5116,6 +5116,11 @@ def audit_led_circuits(ctx: AnalysisContext,
                 for net in frontier_nets:
                     if net not in ctx.nets:
                         continue
+                    # The chain goes on through an LED that meets the one it came from
+                    # anode to cathode; an LED on the same pin is a parallel branch whose
+                    # resistor is its own.
+                    came_by = {p.get("pin_number") for p in ctx.nets[net]["pins"]
+                               if p["component"] in visited_leds}
                     for p in ctx.nets[net]["pins"]:
                         if p["component"] in visited_leds:
                             continue
@@ -5123,6 +5128,8 @@ def audit_led_circuits(ctx: AnalysisContext,
                         if not pc:
                             continue
                         if pc["type"] == "led":
+                            if p.get("pin_number") in came_by:
+                                continue
                             # Follow through this LED to its other net
                             visited_leds.add(p["component"])
                             ln1, ln2 = ctx.get_two_pin_nets(p["component"])

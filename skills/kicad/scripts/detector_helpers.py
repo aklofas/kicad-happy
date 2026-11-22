@@ -574,12 +574,23 @@ def group_part(ctx: AnalysisContext, ref: str, unit_key: str) -> dict:
 _SUPPLY_PIN_TYPES = ("power_in", "power_out")
 
 
-def _is_led_node(ctx: AnalysisContext, pins: list[dict]) -> bool:
-    """True when every part on a net other than resistors is an LED and no pin takes or
-    gives power: the node LEDs share with their resistor, whatever its name."""
+def _is_led_node(ctx: AnalysisContext, net: str, pins: list[dict]) -> bool:
+    """True when every part on a net other than resistors is an LED, no pin takes or gives
+    power, and the net has a resistor that runs to a rail or to ground and none that runs
+    elsewhere: the node LEDs share with their resistor, whatever its name.  A net that
+    holds only LEDs, or LEDs and pull-ups to signals, is the rail itself."""
     types = [ctx.comp_lookup.get(p["component"], {}).get("type") for p in pins]
-    return ("led" in types and all(t in ("led", "resistor") for t in types)
-            and not any(p.get("pin_type") in _SUPPLY_PIN_TYPES for p in pins))
+    if not ("led" in types and "resistor" in types and all(t in ("led", "resistor") for t in types)
+            and not any(p.get("pin_type") in _SUPPLY_PIN_TYPES for p in pins)):
+        return False
+    for p in pins:
+        if ctx.comp_lookup.get(p["component"], {}).get("type") != "resistor":
+            continue
+        a, b = ctx.get_two_pin_nets(p["component"])
+        far = b if a == net else a
+        if not far or not (ctx.is_ground(far) or ctx.is_power_net(far)):
+            return False
+    return True
 
 
 def is_led_rail(ctx: AnalysisContext, net: str) -> bool:
@@ -589,7 +600,7 @@ def is_led_rail(ctx: AnalysisContext, net: str) -> bool:
     if net in ctx.known_power_rails:
         return True
     pins = ctx.nets.get(net, {}).get("pins", [])
-    return ctx.is_power_net(net) and len(pins) > 3 and not _is_led_node(ctx, pins)
+    return ctx.is_power_net(net) and len(pins) > 3 and not _is_led_node(ctx, net, pins)
 
 
 def led_string(ctx: AnalysisContext, ref: str) -> tuple[list[str], str | None, str | None]:

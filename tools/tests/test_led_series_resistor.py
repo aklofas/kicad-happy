@@ -238,6 +238,61 @@ class SharedLedNode(unittest.TestCase):
         self.assertTrue(is_led_rail(_shared_led_node(True), "+5V_LED"))
 
 
+class LedNodeNeedsItsResistor(unittest.TestCase):
+    def test_leds_with_a_pull_up_to_a_signal_are_a_rail(self):
+        from detector_helpers import is_led_rail
+        leds = [_led(f"D{i}") for i in range(1, 4)]
+        ctx = _ctx(leds + [_r("R9", "10k")],
+                   {"+3V3": [_p(f"D{i}", "2") for i in range(1, 4)] + [_p("R9", "1")],
+                    "SIG": [_p("R9", "2")], "GND": [_p(f"D{i}", "1") for i in range(1, 4)]}, {"GND"})
+        self.assertTrue(is_led_rail(ctx, "+3V3"))
+
+    def test_leds_alone_on_a_power_named_net_are_a_rail(self):
+        from detector_helpers import is_led_rail
+        leds = [_led(f"D{i}") for i in range(1, 5)]
+        ctx = _ctx(leds, {"+3V3": [_p(f"D{i}", "2") for i in range(1, 5)],
+                          "GND": [_p(f"D{i}", "1") for i in range(1, 5)]}, {"GND"})
+        self.assertTrue(is_led_rail(ctx, "+3V3"))
+
+    def test_resistor_to_ground_keeps_the_node_an_led_node(self):
+        from detector_helpers import is_led_rail
+        leds = [_led(f"D{i}") for i in range(1, 4)]
+        ctx = _ctx(leds + [_r("R1", "330")],
+                   {"VLED": [_p(f"D{i}", "2") for i in range(1, 4)] + [_p("R1", "1")],
+                    "GND": [_p(f"D{i}", "1") for i in range(1, 4)] + [_p("R1", "2")]}, {"GND"})
+        self.assertFalse(is_led_rail(ctx, "VLED"))
+
+
+class ChainWalk(unittest.TestCase):
+    def test_led_gets_its_own_resistor_not_a_parallel_branchs(self):
+        # D1 and D2 share the anode node NODE (driven by U1); D2 has R2 on its cathode.
+        ctx = _ctx([_led("D1"), _led("D2"), _r("R2", "330"),
+                    {"reference": "U1", "type": "ic", "value": "MCU"}],
+                   {"NODE": [_p("D1", "2"), _p("D2", "2"), _p("U1", "1", "output")],
+                    "N2": [_p("D2", "1"), _p("R2", "1")],
+                    "GND": [_p("D1", "1"), _p("R2", "2")]}, {"GND"})
+        e = _audit(ctx, "D1")
+        self.assertNotEqual(e["drive_method"], "resistor_limited")
+        self.assertEqual(_audit(ctx, "D2")["series_resistor"]["ref"], "R2")
+
+    def test_series_parallel_array_keeps_its_resistor(self):
+        # +5V - R1 - N0; D1, D2 on N0; D3 in series after D1, D4 after D2.
+        ctx = _ctx([_led(f"D{i}") for i in range(1, 5)] + [_r("R1", "220")],
+                   {"+5V": [_p("R1", "1")], "N0": [_p("R1", "2"), _p("D1", "2"), _p("D2", "2")],
+                    "N1": [_p("D1", "1"), _p("D3", "2")], "N2": [_p("D2", "1"), _p("D4", "2")],
+                    "GND": [_p("D3", "1"), _p("D4", "1")]}, {"+5V", "GND"})
+        for d in ("D3", "D4"):
+            self.assertEqual(_audit(ctx, d)["series_resistor"]["ref"], "R1", d)
+
+    def test_series_leds_with_a_test_point_keep_the_far_resistor(self):
+        tp = {"reference": "TP1", "type": "other", "value": "TestPoint"}
+        ctx = _ctx([_led("D1"), _led("D2"), _r("R1", "470"), tp],
+                   {"+12V": [_p("R1", "1")], "N0": [_p("R1", "2"), _p("D1", "2")],
+                    "N1": [_p("D1", "1"), _p("D2", "2"), _p("TP1", "1")],
+                    "GND": [_p("D2", "1")]}, {"+12V", "GND"})
+        self.assertEqual(_audit(ctx, "D2")["series_resistor"]["ref"], "R1")
+
+
 class DriveMethod(unittest.TestCase):
     def test_unparsed_resistor_before_transistor(self):
         ctx = _ctx([_led("D1"), _r("R1", "R"), {"reference": "Q1", "type": "transistor", "value": "2N7002"}],
