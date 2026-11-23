@@ -30,6 +30,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The voltage-mismatch check (VM-001) reads a part's logic level from its I/O supply pin and no longer reports a net when another supply of the part matches the other side. A part on a negative rail only, or whose I/O supply rail has no voltage in its name, is not judged. A module's VIN, VBAT, VUSB, VBUS or VSYS input is read as the input of its own regulator, not as its I/O level. Expect far fewer VM-001 findings on FPGAs, SoCs, translators and modules; a 5 V module that also has a 3.3 V output pin is no longer flagged against 3.3 V parts.
 - VM-001 no longer reads a supply-named pin (VIN, VCC, VDD, VBAT, VBUS, VSUP, VPWR) of a part whose symbol types no power pin as a logic endpoint: two regulator inputs on one unnamed net are no longer reported as a 5 V / 3.3 V crossing. Other pins of such a part are still judged.
 - FPGA banks drawn as separate units are judged at their own VCCIO rail.
+- `ic_pin_analysis[]` and `transistor_pin_analysis[]` now count and list pins that are wired to nothing (`unconnected_pins`, `unconnected_pin_list`); the fields were empty for every placed pin. The Action report's Unconnected column follows.
 
 ### Fixed
 

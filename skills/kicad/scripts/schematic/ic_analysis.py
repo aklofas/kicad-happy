@@ -255,6 +255,13 @@ def analyze_ic_pinouts(ctx: AnalysisContext,
                           to_iu(nc["x"]),
                           to_iu(nc["y"])))
 
+    # A pin number is one pad of the package: another copy of it (a shared power pin drawn
+    # on a second unit) that is wired makes the pin connected.
+    wired_pins = {(p["component"], p["pin_number"])
+                  for name, info in nets.items()
+                  if len(info["pins"]) > 1 or not name.startswith("__unnamed_")
+                  for p in info["pins"]}
+
     results = []
 
     # Analyze ICs and other complex components (connectors, crystals, oscillators, etc.).
@@ -411,7 +418,11 @@ def analyze_ic_pinouts(ctx: AnalysisContext,
             else:
                 signal_pins_detail.append(pin_entry)
 
-            if not net_name and not has_no_connect:
+            # A pin alone on an unnamed net is wired to nothing (KiCad names such a net
+            # "unconnected-(...)"); a PWR_FLAG on it is a second pin to KiCad.
+            alone = bool(net_name and net_name.startswith("__unnamed_") and net_pin_count == 1
+                         and not net_info.get("has_pwr_flag") and pin_key not in wired_pins)
+            if (not net_name or alone) and not has_no_connect:
                 unconnected.append(pin_entry)
 
             pin_analysis.append(pin_entry)
