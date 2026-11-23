@@ -255,12 +255,12 @@ def soc_with_internal_regulator():
 
 
 class DetectedRegulators(unittest.TestCase):
-    # XC6206P332MR is a part number the regulator-family prefixes do not name, so only the
-    # regulator detector's record makes it regulator-like; CE is a regulator enable name.
+    # XC6220 (a Torex LDO with a CE enable pin) is a part number the regulator-family prefixes
+    # do not name, so only the regulator detector's record makes it regulator-like.
     REG = [("5", "VOUT", "power_out", "+3V3"), ("3", "CE", "input", "SIG"), ("4", "VIN", "power_in", "+12V")]
 
     def test_enable_of_a_detected_regulator_is_a_compatible_endpoint(self):
-        ctx = board("+12V", [("3", "CE", "input", "SIG")], value="XC6206P332MR")
+        ctx = board("+12V", [("3", "CE", "input", "SIG")], value="XC6220B331MR")
         self.assertEqual(len(vm001(ctx)), 1)            # not known as a regulator: checked
         ctx.regulator_refs = frozenset({"U1"})
         self.assertEqual(vm001(ctx), [])
@@ -271,7 +271,7 @@ class DetectedRegulators(unittest.TestCase):
                 self.assertEqual(vm001(board("+12V", [("3", name, "input", "SIG")], value="TPS62130")), [])
 
     def test_pipeline_records_a_detected_regulator(self):
-        ctx = board("+12V", self.REG, value="XC6206P332MR")
+        ctx = board("+12V", self.REG, value="XC6220B331MR")
         (reg,) = detect_topologies(ctx)["power_regulators"]
         self.assertEqual(reg["topology"], "LDO")
         self.assertEqual(ctx.regulator_refs, frozenset({"U1"}))
@@ -320,6 +320,15 @@ class CrossDomainOpenDrain(unittest.TestCase):
     def test_push_pull_output_keeps_the_flag(self):
         self.assertTrue(self._needs("+3V3", value="LM393", pin=("3", "OUT", "output", "SIG")))
 
+    def test_two_open_drain_outputs_on_one_net_need_none(self):
+        # Neither part drives INT high: the pull-up alone sets its level.
+        ctx = board("+12V", [("3", "PG", "open_collector", "INT")], parts=[res("R1")], value="TPS62130",
+                    extra_nets={"INT": [("U2", "4", "~{INT}", "open_collector"), ("R1", "1", "~", "passive")],
+                                "+5V": [("R1", "2", "~", "passive")]})
+        ctx.known_power_rails.add("+5V")
+        pd = na._map_power_domains(ctx)["ic_power_rails"]
+        (entry,) = [e for e in na._detect_cross_domain_signals(ctx, pd) if e["net"] == "INT"]
+        self.assertFalse(entry["needs_level_shifter"])
 
 if __name__ == "__main__":
     unittest.main()
