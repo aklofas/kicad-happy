@@ -71,7 +71,7 @@ class SeriesCapacitorIsNotAFilter(unittest.TestCase):
                     "GND": [_p("J1", "2")]})
         self.assertEqual(_pairs(ctx), [])
 
-    def test_bootstrap_capacitor_to_an_unnamed_boot_net_is_not_a_filter(self):
+    def test_bootstrap_capacitor_to_a_boot_net_not_named_as_a_rail_is_not_a_filter(self):
         # SW -> L1 -> +5V; C5 from SW to the converter's BTST pin
         ctx = _ctx([_l("L1", "2.2u"), _c("C5", "47n"), _ic("U1", "BQ25798")],
                    {"SW": [_p("L1", "1"), _p("C5", "1"), ("U1", "1", "SW1", "power_out")],
