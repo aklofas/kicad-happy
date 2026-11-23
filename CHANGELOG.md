@@ -157,6 +157,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - VM-001 reads a fault flag (`FAULT`, `nFAULT`, `FLT`) that has a pull-up at the pull-up rail, so an open-drain flag pulled up to the logic supply is no longer reported against the driver's higher supply; a flag with no pull-up keeps its supply level. A charger's power-good and standby pins are read as open-drain.
 - VM-001 no longer treats an ESD protection array (USBLC6, SRV05-4, PRTR5V0U2X, TPD-family parts) as a logic endpoint: its clamp pins on a lower-voltage data line are no longer reported against the array's supply, as the cross-domain check already did. The other parts on the net are still compared.
 - VM-001 and `needs_level_shifter` treat the enable pin of any regulator the analyzer detects as a compatible endpoint, not only of regulators named in its part-family list, and read overbar-named enables (`~{SHDN}`, `~{EN}`, `/SHDN`) as enables. An IC that only contains a regulator (a microcontroller or radio module) keeps its checks.
+- `needs_level_shifter` reads an open-drain output (an open-collector pin, a power-good or charger status pin, a pulled-up fault flag) at its pull-up rail, as VM-001 does: a power-good pulled up above its reader's supply is now flagged, one pulled up to the reader's rail or below it is not, and an open-drain output with no pull-up is not compared.
 
 ### Documentation
 

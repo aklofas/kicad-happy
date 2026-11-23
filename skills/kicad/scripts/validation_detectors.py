@@ -617,7 +617,13 @@ def _is_open_drain_endpoint(ctx: AnalysisContext, p: dict, net_name: str | None 
 
 def _pull_up_voltage(ctx: AnalysisContext, net_name: str) -> float | None:
     """The highest rail a resistor on *net_name* ties it to, or None."""
-    best = None
+    return max((v for v in _pull_up_rails(ctx, net_name).values() if v is not None), default=None)
+
+
+def _pull_up_rails(ctx: AnalysisContext, net_name: str) -> dict[str, float | None]:
+    """The rails a resistor on *net_name* ties it to, with their voltages (None when
+    unknown); a rail at or below 0 V is no pull-up."""
+    rails: dict[str, float | None] = {}
     for q in ctx.nets.get(net_name, {}).get('pins', []):
         comp = ctx.comp_lookup.get(q['component'], {})
         if comp.get('type') != 'resistor':
@@ -627,9 +633,9 @@ def _pull_up_voltage(ctx: AnalysisContext, net_name: str) -> float | None:
         if not other or other == net_name or not ctx.is_power_net(other) or ctx.is_ground(other):
             continue
         v = ctx.rail_voltage_or(other, parse_voltage_from_net_name)
-        if v is not None and v > 0 and (best is None or v > best):
-            best = v
-    return best
+        if v is None or v > 0:
+            rails[other] = v
+    return rails
 
 
 # Pin types that can drive a net; a symbol with none of them does not tell its inputs from

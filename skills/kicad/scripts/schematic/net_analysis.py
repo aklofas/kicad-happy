@@ -10,7 +10,7 @@ from kicad_core.coords import to_iu
 from detector_helpers import is_protection_part
 from kicad_core.sexp import unescape_string
 from schematic import erc_pins
-from validation_detectors import _PG_PIN_PATTERNS, _en_endpoint_compatible, _is_regulator_like
+from validation_detectors import _en_endpoint_compatible, _is_open_drain_endpoint, _pull_up_rails
 from kicad_core.parts import (
     _OUTPUT_DRIVE_KEYWORDS,
 )
@@ -577,8 +577,7 @@ def _rails_voltage_compatible(rails_a: set, rails_b: set,
 def _en_tolerant_ref(ctx: AnalysisContext, ref: str, net_name: str, net_info: dict,
                      power_domains: dict) -> bool:
     """True when every pin of *ref* on the net is a regulator enable pin that the
-    voltage-level check (VM-001) accepts as a compatible endpoint, or a regulator
-    power-good pin (an open-drain output, whose level its pull-up sets)."""
+    voltage-level check (VM-001) accepts as a compatible endpoint."""
     pins = [p for p in net_info["pins"] if p["component"] == ref]
     if not pins:
         return False
@@ -588,11 +587,42 @@ def _en_tolerant_ref(ctx: AnalysisContext, ref: str, net_name: str, net_info: di
     volts = [v for v in volts if v is not None]
     # No parsed rail: 0.0 keeps the datasheet-threshold test conservative.
     v_min = min(volts) if volts else 0.0
-    pg_ok = _is_regulator_like(ctx, ref)
     return all(_en_endpoint_compatible(ctx, {"ref": ref, "pin": p.get("pin_name", "")},
                                        net_name, v_min)
-               or (pg_ok and (p.get("pin_name") or "").upper().strip() in _PG_PIN_PATTERNS)
                for p in pins)
+
+
+def _open_drain_ref(ctx: AnalysisContext, ref: str, net_name: str, net_info: dict) -> bool:
+    """True when every pin of *ref* on the net is an open-drain output as the
+    voltage-level check (VM-001) reads one: its pull-up, not its supply, sets its level."""
+    pins = [p for p in net_info["pins"] if p["component"] == ref]
+    return bool(pins) and all(
+        _is_open_drain_endpoint(ctx, {"ref": ref, "pin": p.get("pin_name", ""),
+                                      "pin_type": p.get("pin_type")}, net_name)
+        for p in pins)
+
+
+def _io_levels_compatible(ctx: AnalysisContext, a: str, b: str, open_drain: set,
+                          pull_ups: dict, power_domains: dict) -> bool:
+    """True when ICs *a* and *b* on a net need no level shifter. An open-drain output swings
+    to its pull-up rail, so the other IC must run from that rail or from a higher one; a
+    pull-up rail of unknown voltage that the other IC does not share is not known to fit."""
+    if a in open_drain and b in open_drain:
+        return True
+
+    def volt(rail):
+        return ctx.rail_voltage_or(rail, _parse_voltage_from_net_name)
+
+    a_io = _get_io_domains_for_refs({a}, power_domains, ctx.is_ground)
+    b_io = _get_io_domains_for_refs({b}, power_domains, ctx.is_ground)
+    if a in open_drain or b in open_drain:
+        reader_io = b_io if a in open_drain else a_io
+        if set(pull_ups) & reader_io:
+            return True
+        reader = [v for v in map(volt, reader_io) if v is not None]
+        return (None not in pull_ups.values() and bool(reader)
+                and max(reader) >= max(pull_ups.values()))
+    return _rails_voltage_compatible(a_io, b_io, volt)
 
 
 def _detect_cross_domain_signals(ctx: AnalysisContext, power_domains: dict,
@@ -677,14 +707,16 @@ def _detect_cross_domain_signals(ctx: AnalysisContext, power_domains: dict,
                     ic_list = sorted(functional_refs) if functional_refs else sorted(non_esd_refs)
                     ic_list = [r for r in ic_list
                                if not _en_tolerant_ref(ctx, r, net_name, net_info, power_domains)]
+                    # An open-drain output with no pull-up drives nothing high: left out.
+                    pull_ups = _pull_up_rails(ctx, net_name)
+                    open_drain = {r for r in ic_list if _open_drain_ref(ctx, r, net_name, net_info)}
+                    if not pull_ups:
+                        ic_list = [r for r in ic_list if r not in open_drain]
                     needs_shifter = False
                     for i_idx in range(len(ic_list)):
                         for j_idx in range(i_idx + 1, len(ic_list)):
-                            a_io = _get_io_domains_for_refs({ic_list[i_idx]}, power_domains, is_ground)
-                            b_io = _get_io_domains_for_refs({ic_list[j_idx]}, power_domains, is_ground)
-                            if not _rails_voltage_compatible(
-                                    a_io, b_io,
-                                    lambda r: ctx.rail_voltage_or(r, _parse_voltage_from_net_name)):
+                            if not _io_levels_compatible(ctx, ic_list[i_idx], ic_list[j_idx],
+                                                         open_drain, pull_ups, power_domains):
                                 needs_shifter = True
                                 break
                         if needs_shifter:

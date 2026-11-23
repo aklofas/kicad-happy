@@ -20,6 +20,7 @@ sys.path.insert(0, str(ROOT / "skills" / "kicad" / "scripts"))
 import validation_detectors as vd  # noqa: E402
 from kicad_types import build_analysis_context  # noqa: E402
 from schematic.legacy_reader import _parse_legacy_lib  # noqa: E402
+from schematic import net_analysis as na  # noqa: E402
 from schematic.pipeline import detect_topologies  # noqa: E402
 
 
@@ -282,6 +283,42 @@ class DetectedRegulators(unittest.TestCase):
         self.assertEqual(reg["topology"], "ic_with_internal_regulator")
         self.assertEqual(ctx.regulator_refs, frozenset())
         self.assertFalse(vd._is_regulator_like(ctx, "U1"))
+
+
+class CrossDomainOpenDrain(unittest.TestCase):
+    """``needs_level_shifter`` reads an open-drain output at its pull-up rail: the reader must
+    run from that rail or a higher one."""
+
+    def _needs(self, pull_up, value="TPS62130", pin=("3", "PG", "open_collector", "SIG")):
+        extra = {pull_up: [("R1", "2", "~", "passive")]} if pull_up else None
+        ctx = board("+12V", [pin], sig_extra=[("R1", "1", "~", "passive")], parts=[res("R1")],
+                    extra_nets=extra, value=value)
+        if pull_up:
+            ctx.known_power_rails.add(pull_up)
+        pd = na._map_power_domains(ctx)["ic_power_rails"]
+        (entry,) = [e for e in na._detect_cross_domain_signals(ctx, pd) if e["net"] == "SIG"]
+        return entry["needs_level_shifter"]
+
+    def test_power_good_pulled_above_its_reader_needs_a_shifter(self):
+        self.assertTrue(self._needs("+5V"))
+
+    def test_power_good_pulled_to_the_reader_rail_needs_none(self):
+        self.assertFalse(self._needs("+3V3"))
+
+    def test_power_good_pulled_below_its_reader_rail_needs_none(self):
+        self.assertFalse(self._needs("+2V5"))
+
+    def test_open_collector_output_pulled_to_the_reader_rail_needs_none(self):
+        self.assertFalse(self._needs("+3V3", value="LM393", pin=("3", "OUT", "open_collector", "SIG")))
+
+    def test_open_collector_output_with_no_pull_up_drives_nothing_high(self):
+        self.assertFalse(self._needs(None, value="LM393", pin=("3", "OUT", "open_collector", "SIG")))
+
+    def test_pull_up_to_a_rail_of_unknown_voltage_keeps_the_flag(self):
+        self.assertTrue(self._needs("VAUX", value="LM393", pin=("3", "OUT", "open_collector", "SIG")))
+
+    def test_push_pull_output_keeps_the_flag(self):
+        self.assertTrue(self._needs("+3V3", value="LM393", pin=("3", "OUT", "output", "SIG")))
 
 
 if __name__ == "__main__":
