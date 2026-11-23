@@ -45,6 +45,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - SPI chip-select conflicts no longer count a controller's select pin, a latch input (`RCLK`, `LOAD`) or a regulator's soft-start pin on a net named like a chip select. A resistor across a CAN differential pair counts as a terminator only when its value is read and below 1 kΩ.
 - The I2C bus analysis and its protocol checks leave out the same lines: a display's SPI lines named `LCD_SDA` / `LCD_SCL`, and numbered address lines such as `SDA12` with no SCL partner, no longer get "missing pull-up" issues.
 - I2C bus observations now cover numbered and prefixed names (`SDA2`, `SCL_1`, `OLED_SDA`). A display's SPI lines named `LCD_SDA` / `LCD_SCL` are no longer listed as I2C.
+- A BMS cell-voltage pin on a supply-named net (`VBAT_CELL4`, `+Cell12`) counts as a cell tap.
 - The Ethernet check recognises more jacks with built-in magnetics: by their centre-tap pins, by a magjack footprint or part number on a generic RJ45 symbol, and by a description that says so. A transformer elsewhere on the sheet no longer hides missing Ethernet magnetics.
 - A part is no longer taken for an Ethernet PHY because `phy` or `ethernet` appears inside another word of its symbol or library name.
 - A switch, isolator or transceiver whose description mentions its own ESD or overvoltage protection is no longer credited as the ESD clamp of a differential pair.

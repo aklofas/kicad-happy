@@ -1682,17 +1682,24 @@ def detect_bms_systems(ctx: AnalysisContext) -> list[dict]:
         # Only count VC pins that connect to non-power, non-I2C nets.
         cell_numbers = set()
         valid_cell_pins = []
+        rail_taps: set[str] = set()
         for cp in cell_pins:
             net = cp["net"]
             net_upper = net.upper()
-            # Skip pins connected to well-known non-cell nets
-            if ctx.is_power_net(net) or ctx.is_ground(net):
+            # Skip pins connected to well-known non-cell nets. A tap on a supply-named net
+            # (VBAT_CELL4, +Cell12) is a cell tap unless another cell pin shares the net.
+            if ctx.is_ground(net):
+                continue
+            on_rail = ctx.is_power_net(net)
+            if on_rail and sum(1 for other in cell_pins if other["net"] == net) > 1:
                 continue
             if any(k in net_upper for k in ("SDA", "SCL", "I2C", "CHG_EN",
                                              "DSG_EN", "ALERT", "TS", "REGOUT",
                                              "REGSRC")):
                 continue
             valid_cell_pins.append(cp)
+            if on_rail:
+                rail_taps.add(net)
             m = re.match(r'^VC(\d+)', cp["pin_name"])
             if m:
                 cell_numbers.add(int(m.group(1)))
@@ -1706,7 +1713,8 @@ def detect_bms_systems(ctx: AnalysisContext) -> list[dict]:
         balance_resistors = []
         cell_net_names = {cp["net"] for cp in valid_cell_pins}
         for net_name in sorted(cell_net_names):
-            if net_name not in ctx.nets:
+            # A rail carries resistors of every circuit on it; only a tap node's are balance parts.
+            if net_name not in ctx.nets or net_name in rail_taps:
                 continue
             for p in ctx.nets[net_name]["pins"]:
                 comp = ctx.comp_lookup.get(p["component"])
