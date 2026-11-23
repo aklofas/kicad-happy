@@ -430,6 +430,7 @@ Detectors share one netlist query method and one helper function:
 - Mid-point net has >4 pins and is a named power rail → bus, not divider output
 - Either resistor is 0Ω → wire jumper, not divider
 - Both non-shared nets are ground → not meaningful
+- Top net holds only IC inputs (and capacitors or diodes to ground) while the mid-point has a source of its own → a series resistor into the input, not a divider (dropped after RC filter detection, so its resistors still stay out of RC pairing)
 
 **Feedback network separation**: If the mid-point net connects to an IC pin named `"FB"`, `"ADJ"`, or `"COMP"`, the divider is tagged as a feedback network and separated from generic voltage dividers.
 

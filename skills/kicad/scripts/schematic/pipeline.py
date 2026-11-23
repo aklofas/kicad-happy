@@ -126,6 +126,7 @@ from signal_detectors import (
     detect_voltage_dividers,
     postfilter_vd_and_dedup,
     _merge_series_dividers,
+    drop_series_input_pairs,
 )
 from domain_detectors import (
     audit_connector_ground_distribution,
@@ -456,6 +457,7 @@ def detect_topologies(ctx: AnalysisContext) -> dict:
     # Pass crystal_circuits to exclude crystal R/C from RC filter detection
     # Pass opamp_circuits to exclude feedback R+C from RC filter detection
     rc_filters = detect_rc_filters(ctx, voltage_dividers, crystal_circuits, opamp_circuits)
+    voltage_dividers = drop_series_input_pairs(voltage_dividers)
     decoupling_analysis = detect_decoupling(ctx)
     current_sense = detect_current_sense(ctx)
     power_regulators = detect_power_regulators(ctx, voltage_dividers)

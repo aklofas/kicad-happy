@@ -384,6 +384,9 @@ def detect_voltage_dividers(ctx: AnalysisContext) -> dict:
                     # corpus gate tracks. Coordinate with the harness before
                     # changing it.
                     arm_refs = group_members(ctx, r_top_ref) + group_members(ctx, r_bot_ref)
+                    # Not a divider, but its resistors stay claimed (see drop_series_input_pairs)
+                    series_input = (not ctx.is_power_net(top_net)
+                                    and _divider_fed_at_mid(ctx, top_net, mid_net, arm_refs))
                     # The arms and any DNP part beside them are not mid-point connections
                     groups = parallel_groups(ctx, "resistor")
                     arm_nets = {groups[r]["nets"] for r in (r_top_ref, r_bot_ref) if r in groups}
@@ -396,7 +399,7 @@ def detect_voltage_dividers(ctx: AnalysisContext) -> dict:
                             divider["mid_point_connections"] = mid_pins
                             # If connected to an IC FB pin, this is likely a feedback network
                             for mp in mid_pins:
-                                if "FB" in mp.get("pin_name", "").upper():
+                                if "FB" in mp.get("pin_name", "").upper() and not series_input:
                                     divider["is_feedback"] = True
                                     divider["detector"] = "detect_voltage_dividers"
                                     divider["rule_id"] = "VD-DET"
@@ -431,15 +434,65 @@ def detect_voltage_dividers(ctx: AnalysisContext) -> dict:
                     divider["recommendation"] = ""
                     divider["report_context"] = {"section": "Voltage Dividers", "impact": "", "standard_ref": ""}
                     divider["provenance"] = make_provenance("vd_two_resistor", "deterministic", [r_top_ref, r_bot_ref])
+                    if series_input:
+                        divider["_series_input"] = True
 
                     voltage_dividers.append(divider)
 
     return {"voltage_dividers": voltage_dividers, "feedback_networks": feedback_networks}
 
 
+# An input-typed pin with one of these names may still source its net (a library that types
+# an output, a supply or a contact as an input): OUT, MICBIAS, VREF, a jack's TIP, VCC, V+.
+_SOURCE_LIKE_PIN = re.compile(r"OUT|BIAS|REF|TIP|RING|SLEEVE|^SW|^[AD]?V(?:CC|DD|IN|BAT|BUS|S|\+)")
+
+
+def _net_has_source(ctx: AnalysisContext, net: str, own_refs) -> bool:
+    """True when something on *net* besides *own_refs* could set its voltage. IC input pins
+    only read the net, and a capacitor or diode whose other end is ground only filters or
+    clamps it. A hierarchical label may bring a source from the parent sheet."""
+    info = ctx.nets.get(net, {})
+    if any(lbl.get("type") == "hierarchical_label" for lbl in info.get("labels") or []):
+        return True
+    for p in info.get("pins", []):
+        ref = p["component"]
+        if ref in own_refs or ref.startswith("#"):
+            continue
+        ctype = (ctx.comp_lookup.get(ref) or {}).get("type")
+        if ctype == "ic":
+            if (str(p.get("pin_type") or "").split("+")[0] != "input"
+                    or _SOURCE_LIKE_PIN.search((p.get("pin_name") or "").upper())):
+                return True
+        elif ctype in ("capacitor", "diode"):
+            n1, n2 = ctx.get_two_pin_nets(ref)
+            other = n2 if n1 == net else n1
+            if not other or not ctx.is_ground(other):
+                return True
+        else:
+            return True
+    return False
+
+
+def _divider_fed_at_mid(ctx: AnalysisContext, top_net: str, mid_net: str, arm_refs) -> bool:
+    """The "top" net only reads (an IC input, with nothing that could source it) while the
+    mid-point has a source of its own: no current flows in the top resistor, so it is a series
+    resistor into the input and the bottom one a load on the source, not a divider."""
+    reads = any((ctx.comp_lookup.get(p["component"]) or {}).get("type") == "ic"
+                for p in ctx.nets.get(top_net, {}).get("pins", []))
+    return (reads and not _net_has_source(ctx, top_net, arm_refs)
+            and _net_has_source(ctx, mid_net, arm_refs))
+
+
 def _divider_is_degenerate(ctx: AnalysisContext, top_net: str, bot_net: str) -> bool:
     """Both ends on one net, or both on ground: no voltage across the divider."""
     return top_net == bot_net or (ctx.is_ground(top_net) and ctx.is_ground(bot_net))
+
+
+def drop_series_input_pairs(voltage_dividers: list[dict]) -> list[dict]:
+    """Remove the pairs detect_voltage_dividers marked as a series resistor into an input.
+    Call it after detect_rc_filters: until then the pairs keep their resistors out of the
+    RC pairing, as a reported divider's would be."""
+    return [vd for vd in voltage_dividers if not vd.get("_series_input")]
 
 
 def _chain_link(ctx: AnalysisContext, ref: str, ohms: float) -> dict:
