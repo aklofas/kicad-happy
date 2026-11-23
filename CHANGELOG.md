@@ -42,6 +42,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A no-connect flag placed on a hierarchical label or a sheet pin no longer raises "no-connect connected"; KiCad reads it as marking the port unused.
 - A sub-sheet from an early KiCad 6 project, read on its own, no longer gives each placement of a multi-unit part the pins of every unit; a symbol with no unit in the file is read as unit 1, as KiCad does.
 - A control, status or clock pin tied to a power rail (an enable, reset or clock-select strap whose symbol types it as an output) no longer counts as the rail's source, and a logic output behind an open solder jumper is no longer reported as the rail's missing supply path (RS-002).
+- SPI chip-select conflicts no longer count a controller's select pin, a latch input (`RCLK`, `LOAD`) or a regulator's soft-start pin on a net named like a chip select. A resistor across a CAN differential pair counts as a terminator only when its value is read and below 1 kΩ.
 - The I2C bus analysis and its protocol checks leave out the same lines: a display's SPI lines named `LCD_SDA` / `LCD_SCL`, and numbered address lines such as `SDA12` with no SCL partner, no longer get "missing pull-up" issues.
 - I2C bus observations now cover numbered and prefixed names (`SDA2`, `SCL_1`, `OLED_SDA`). A display's SPI lines named `LCD_SDA` / `LCD_SCL` are no longer listed as I2C.
 - A `CSENSE` net is classified as analog, not as a chip select.

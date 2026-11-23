@@ -91,6 +91,40 @@ class SpiChipSelect(unittest.TestCase):
         self.assertEqual([c["devices"] for c in spi["cs_conflicts"]], [["U2", "U6"]])
 
 
+    def test_latch_and_load_inputs_on_a_cs_net_are_not_slaves(self):
+        # 74HC595 RCLK and MAX7219 LOAD are latch inputs, not chip selects.
+        sr = _comp("U6", "ic", "74HC595", "74xx:74HC595", [("1", "RCLK", "input")])
+        led = _comp("U7", "ic", "MAX7219", "Driver_LED:MAX7219", [("1", "LOAD", "input")])
+        nets = _spi_nets({"LATCH_CS": [("U1", "1", "PA4", "bidirectional"), ("U6", "1", "RCLK", "input"),
+                                       ("U7", "1", "LOAD", "input")]}, [])
+        spi = _spi([MCU, sr, led], nets)
+        self.assertNotIn("cs_conflicts", spi)
+
+    def test_select_named_pins_still_conflict_beside_a_latch(self):
+        sr = _comp("U6", "ic", "74HC595", "74xx:74HC595", [("1", "RCLK", "input")])
+        nets = _spi_nets({"CS0": [("U1", "1", "PA4", "bidirectional"), ("U6", "1", "RCLK", "input"),
+                                  ("U2", "1", "~{CS}", "input"), ("U3", "1", "~{CS}", "input")]},
+                         ["U2", "U3"])
+        spi = _spi([MCU, sr, _flash("U2"), _flash("U3")], nets)
+        self.assertEqual([c["devices"] for c in spi["cs_conflicts"]], [["U2", "U3"]])
+
+    def test_soft_start_net_is_not_a_chip_select(self):
+        reg1 = _comp("U6", "ic", "TPS54331", "Regulator_Switching:TPS54331", [("1", "SS/TR", "passive")])
+        reg2 = _comp("U7", "ic", "AP62600", "Regulator_Switching:AP62600", [("1", "SS", "power_in")])
+        nets = _spi_nets({"FLASH_CS": [("U1", "1", "PA4", "bidirectional"), ("U2", "1", "~{CS}", "input")],
+                          "CS_SS": [("U6", "1", "SS/TR", "passive"), ("U7", "1", "SS", "power_in")]},
+                         ["U2"])
+        spi = _spi([MCU, _flash("U2"), reg1, reg2], nets)
+        self.assertEqual(spi["chip_select_count"], 1)
+
+    def test_master_select_pin_typed_output_stays_a_chip_select(self):
+        ft = _comp("U6", "ic", "FT4222H", "Interface_USB:FT4222H", [("1", "SS", "output")])
+        nets = _spi_nets({"CS_N": [("U6", "1", "SS", "output"), ("U2", "1", "~{CS}", "input")]}, ["U2"])
+        spi = _spi([MCU, _flash("U2"), ft], nets)
+        self.assertEqual(spi["chip_select_count"], 1)
+        self.assertNotIn("cs_conflicts", spi)
+
+
 CAN_XCVR = [("1", "TXD", "input"), ("4", "RXD", "output"), ("7", "CANH", "bidirectional"),
             ("6", "CANL", "bidirectional")]
 
@@ -189,6 +223,20 @@ class CanTerminationPerBus(unittest.TestCase):
         _, findings = _can_findings([x1, dict(_res("R1", "60"), dnp=True)], nets)
         self.assertEqual(findings[0]["observations"],
                          ["CAN termination R1 (60) is DNP (fit it on the bus-end nodes)"])
+
+    def test_bias_resistor_across_the_pair_is_not_a_terminator(self):
+        x1 = _comp("U7", "ic", "MCP2562", "Interface_CAN_LIN:MCP2562", CAN_XCVR)
+        nets = {"CAN_P": [("U7", "7", "CANH", "bidirectional"), ("R1", "1", "~", "passive")],
+                "CAN_N": [("U7", "6", "CANL", "bidirectional"), ("R1", "2", "~", "passive")]}
+        _, findings = _can_findings([x1, _res("R1", "100k")], nets)
+        self.assertFalse(findings[0]["has_termination"])
+
+    def test_unparsed_value_across_the_pair_is_not_a_terminator(self):
+        x1 = _comp("U7", "ic", "MCP2562", "Interface_CAN_LIN:MCP2562", CAN_XCVR)
+        nets = {"CAN_P": [("U7", "7", "CANH", "bidirectional"), ("R1", "1", "~", "passive")],
+                "CAN_N": [("U7", "6", "CANL", "bidirectional"), ("R1", "2", "~", "passive")]}
+        _, findings = _can_findings([x1, _res("R1", "see note")], nets)
+        self.assertFalse(findings[0]["has_termination"])
 
     def test_fitted_beside_dnp_terminator_is_present(self):
         x1 = _comp("U7", "ic", "MCP2562", "Interface_CAN_LIN:MCP2562", CAN_XCVR)

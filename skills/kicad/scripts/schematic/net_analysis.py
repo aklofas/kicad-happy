@@ -1401,6 +1401,26 @@ def _detect_rs485_buses(ctx: AnalysisContext) -> list[dict]:
 
 
 _CS_TOKEN = re.compile(r"^N?(CS|SS|NSS|CSN|CSB|SSEL|CSEL)\d*N?$")
+_CS_PIN_WORD = re.compile(r"^N?(CS|SS|NSS|CSN|CSB|NCS|SCS|SSEL|CSEL|CE)\d*N?B?$")
+_NOT_SELECT_PIN = re.compile(r"^(SS|SS/TR|SS/TRK|TR/SS|TRK/SS|SSTR|SENSE.*|ISEN.*)$")
+
+
+def _is_chip_select_pin(pin_name: str) -> bool:
+    """The pin's own name carries a chip-select word (``~{CS}``, ``OE/~{CS}``, ``NSS``), so a
+    latch's ``RCLK`` or ``LOAD`` input on a net named CS is not a second slave."""
+    name = re.sub(r"[~{}#!*]", "", (pin_name or "").upper())
+    return any(_CS_PIN_WORD.match(t) for t in re.split(r"[^A-Z0-9]+", name) if t)
+
+
+def _soft_start_or_sense_net(ctx: AnalysisContext, net_name: str) -> bool:
+    """A net named like a chip select whose IC pins are all a regulator's soft-start pin
+    (``SS``, ``SS/TR``: no overbar, typed passive or power) or a driver's sense pin."""
+    ic_pins = [p for p in ctx.nets[net_name]["pins"]
+               if ctx.comp_lookup.get(p["component"], {}).get("type") == "ic"]
+    return bool(ic_pins) and all(
+        _NOT_SELECT_PIN.match((p.get("pin_name") or "").upper())
+        and (p.get("pin_type") or "") in ("passive", "power_in", "power_out")
+        for p in ic_pins)
 
 
 def _is_chip_select_net(net_name: str) -> bool:
@@ -1444,7 +1464,7 @@ def _analyze_bus_protocols(ctx: AnalysisContext) -> dict:
         bus_id = spi_entry.get("bus_id", "")
         for net_name in nets:
             nu = net_name.upper()
-            if _is_chip_select_net(net_name):
+            if _is_chip_select_net(net_name) and not _soft_start_or_sense_net(ctx, net_name):
                 if bus_id in ("0", "") or bus_id in nu.replace("_", ""):
                     cs_nets.append(net_name)
         spi_entry["chip_select_count"] = len(cs_nets)
@@ -1457,6 +1477,7 @@ def _analyze_bus_protocols(ctx: AnalysisContext) -> dict:
             for p in nets[net_name]["pins"]:
                 comp = comp_lookup.get(p["component"])
                 if (comp and comp["type"] == "ic" and (p.get("pin_type") or "") == "input"
+                        and _is_chip_select_pin(p.get("pin_name"))
                         and _ic_function(comp) not in ("mcu", "fpga")):
                     slaves.add(p["component"])
             if len(slaves) > 1:
@@ -1624,7 +1645,10 @@ def _detect_differential_pairs(ctx: AnalysisContext) -> list:
                                 r_n1 = pin_net.get((c["reference"], "1"), (None, None))[0]
                                 r_n2 = pin_net.get((c["reference"], "2"), (None, None))[0]
                                 if r_n1 and r_n2:
-                                    if ({r_n1, r_n2} == {pos_real, neg_real}):
+                                    r_ohms = parsed_values.get(c["reference"])
+                                    # a terminator is a low value: a bias resistor or an unparsed value is not
+                                    if ({r_n1, r_n2} == {pos_real, neg_real}
+                                            and r_ohms and r_ohms < 1000):
                                         term = {
                                             "ref": c["reference"],
                                             "value": c["value"],
