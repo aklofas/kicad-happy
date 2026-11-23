@@ -27,6 +27,8 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - MCU internal step-down converters (an STM32 VLXSMPS pin driving an inductor) are recorded as regulators, with their VFBSMPS net as the output rail; a microcontroller's port-G GPIOs (PG1, PG6) are no longer read as power-good pins.
 - The HX711's analog-supply regulator (an external PNP driven from its BASE pin) is recorded as an LDO with AVDD as its output, set by the 1.25 V bandgap and the feedback divider; its drop is not counted as the HX711's own dissipation, and an HX711 with the regulator unused is not listed as a regulator.
 - Thermal analysis estimates a linear regulator's load from the power budget of its output rail, counting a regulator it feeds at that regulator's own load; a load guessed from output capacitance alone now raises at most an info finding. A switching regulator with no power-budget load is now assessed at that guessed load instead of being skipped.
+- The voltage-mismatch check (VM-001) reads a part's logic level from its I/O supply pin and no longer reports a net when another supply of the part matches the other side. A part on a negative rail only, or whose I/O supply rail has no voltage in its name, is not judged. A module's VIN, VBAT, VUSB, VBUS or VSYS input is read as the input of its own regulator, not as its I/O level. Expect far fewer VM-001 findings on FPGAs, SoCs, translators and modules; a 5 V module that also has a 3.3 V output pin is no longer flagged against 3.3 V parts.
+- FPGA banks drawn as separate units are judged at their own VCCIO rail.
 
 ### Fixed
 

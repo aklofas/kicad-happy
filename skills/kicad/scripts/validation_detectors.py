@@ -11,6 +11,7 @@ returns a list of rich finding dicts via finding_schema.make_finding(
 
 from __future__ import annotations
 
+import itertools
 import re
 
 from kicad_types import AnalysisContext
@@ -456,29 +457,113 @@ _VOLTAGE_THRESHOLDS = {
 }
 
 
-def _estimate_rail_voltage_for_ic(ctx: AnalysisContext, ref: str) -> float | None:
-    """Estimate IC supply rail voltage. Regulators use VIN pin; others use first power net.
+# The supply pin that sets a part's logic levels, by its name without punctuation: IOVDD,
+# QSPI_IOVDD, VDDIO, VCCIO3, VCC_IO, DVDD_IO, VCCO_34, VDDQ, VCCQ, VIO, VL, VLOGIC, VDRIVE,
+# OVDD, DRVDD.
+_IO_SUPPLY_PIN = re.compile(
+    r'[A-Z]*IOV(?:DD|CC)\d*|[A-Z]*V(?:DD|CC)IO\w*|VCCO\d*|V(?:DD|CC)Q\d*|VIO\d*|VL|VLOGIC|VDRIVE|OVDD|DRVDD')
+# The two sides of a dual-supply translator; a lone VCCA is an analog supply.
+_SIDE_SUPPLY_PIN = re.compile(r'V(?:CC|DD)?([AB])')
+# An input that feeds the part's own regulator (VIN, VIN1, VIN_IN, VBAT, VUSB, VBUS, VSYS): a
+# module's I/O runs from the regulated rail, not from it.
+_SUPPLY_INPUT_PIN = re.compile(r'V(?:IN|BAT|USB|BUS|SYS)\d*(?:IN)?')
+# A supply by its name on a symbol that types no power pin: VCC, VDD, AVDD, VDDIO, or a module's
+# rail pin named for its voltage (3V3, 5V).
+_SUPPLY_PIN_NAME = re.compile(r'(?:[ADP]|IO)?V(?:CC|DD)[A-Z0-9]*|\d+V\d*')
 
-    Returns the magnitude so a +/- supplied IC does not read as a different
-    domain depending on pin order.
-    """
-    return _ic_rail_voltage(ctx, ref)[0]
+
+def _compact_pin_name(name: str) -> str:
+    return re.sub(r'[^A-Z0-9]', '', (name or '').upper())
 
 
-def _ic_rail_voltage(ctx: AnalysisContext, ref: str) -> tuple[float | None, bool]:
-    """``_estimate_rail_voltage_for_ic`` and whether the voltage is a config override."""
-    def pin_voltage(net):
-        return ctx.rail_voltage_or(net, parse_voltage_from_net_name)
+def _rail_pins(ctx: AnalysisContext, ref: str) -> list[tuple[str, str, int, float | None]]:
+    """``(pin number, compact pin name, rank, voltage)`` for the pins of *ref* that say what
+    levels it works at, in pin order.
 
-    # A rail known only by its pins is often a core or PLL supply; the first one by pin
-    # order is not the IC's I/O level.
-    pins = {num: entry for num, entry in ctx.ref_pins.get(ref, {}).items()
-            if entry[0] not in ctx.topology_rails}
+    Rank 0 is a supply input: a ``power_in`` pin, a pin named as the I/O supply, or any pin
+    on a rail when the symbol types no ``power_in`` pin at all (a legacy library types every
+    pin input). Rank 1 is the part's own regulated rail (``power_out``): a module's I/O may
+    run from it. Rank 2 is another pin of a typed symbol tied to a rail (a strapped input, a
+    reference, a feedback pin): not a supply, but a level the part is seen to accept. The
+    voltage is None for a rail whose name carries none.
+
+    A supply input named as a regulator input (``_SUPPLY_INPUT_PIN``) is left out when the
+    part has another supply or a regulated rail of its own: a Nano's VIN at 12 V is its
+    regulator's input, not its I/O level. On a symbol that types no ``power_in`` pin, another
+    rail pin counts as a supply only when it is typed ``power_out`` or named as one: a
+    strapped enable or a sense pin on a rail is not."""
+    rows = []
+    typed = False
+    for num, (net, info) in ctx.ref_pins.get(ref, {}).items():
+        meta = next((p for p in (info or {}).get('pins', [])
+                     if p.get('component') == ref and p.get('pin_number') == num), {})
+        ptype = str(meta.get('pin_type') or '').split('+')[0]
+        typed = typed or ptype == 'power_in'
+        if net and not ctx.is_ground(net):
+            rows.append((num, _compact_pin_name(meta.get('pin_name')), ptype, net))
+    out = []
+    regulator_inputs = set()
+    other_supply = False
+    for num, name, ptype, net in rows:
+        rail = ctx.is_power_net(net)
+        if not typed or ptype == 'power_in' or _IO_SUPPLY_PIN.fullmatch(name):
+            rank = 0
+        else:
+            rank = 1 if ptype == 'power_out' else 2
+        if not rail and (rank or not typed):
+            continue
+        if rank == 0 and _SUPPLY_INPUT_PIN.fullmatch(name):
+            regulator_inputs.add(num)
+        elif rank < 2 and rail and (typed or ptype == 'power_out' or _IO_SUPPLY_PIN.fullmatch(name)
+                                    or _SUPPLY_PIN_NAME.fullmatch(name)):
+            other_supply = True
+        # A rail known only by its pins is often a core or PLL supply: no voltage from it.
+        v = (ctx.rail_voltage_or(net, parse_voltage_from_net_name)
+             if rail and net not in ctx.topology_rails else None)
+        out.append((num, name, rank, v))
+    if other_supply and regulator_inputs:
+        out = [r for r in out if r[0] not in regulator_inputs]
+    return out
+
+
+def _logic_levels(rows: list[tuple[str, str, int, float | None]]) -> tuple[tuple[float, ...], frozenset]:
+    """``(levels, accepted)`` for a group of ``_rail_pins`` rows.
+
+    *levels* are the voltages the group's pins are judged at, in pin order: those of the
+    supplies named as the I/O supply (``_IO_SUPPLY_PIN``, or both sides of a translator),
+    else of every supply input and of the part's own regulated rail. Empty when an I/O
+    supply sits on a rail of unknown voltage, or when no positive voltage is known: a
+    negative rail sets no logic level. *accepted* adds the other positive voltages the
+    part touches; a peer at one of them is not a crossing."""
+    io = [r for r in rows if _IO_SUPPLY_PIN.fullmatch(r[1])]
+    if not io:
+        sides = {m.group(1) for r in rows if r[2] == 0 and (m := _SIDE_SUPPLY_PIN.fullmatch(r[1]))}
+        if sides == {'A', 'B'}:
+            io = [r for r in rows if r[2] == 0 and _SIDE_SUPPLY_PIN.fullmatch(r[1])]
+    if any(r[3] is None for r in io):
+        return (), frozenset()
+    levels: list[float] = []
+    for r in io or [r for r in rows if r[2] == 0] + [r for r in rows if r[2] == 1]:
+        if r[3] is not None and r[3] > 0 and r[3] not in levels:
+            levels.append(r[3])
+    if not levels:
+        return (), frozenset()
+    return tuple(levels), frozenset(r[3] for r in rows if r[3] is not None and r[3] > 0)
+
+
+def _ic_logic_domains(ctx: AnalysisContext, ref: str):
+    """``(levels, accepted, by_pin, from_config)`` for IC *ref* (see ``_logic_levels``).
+
+    *by_pin* maps the pins of a unit that carries its own I/O supply pins (an FPGA bank
+    drawn as a unit) to that unit's ``(levels, accepted)``; a placement with no unit number
+    holds every pin and is no bank. *from_config* is True when a project-config override
+    sets a voltage."""
+    pins = ctx.ref_pins.get(ref, {})
     # A supply on an ignored rail has an unknown voltage; the IC's other supply does not
     # stand in for it.
     if any(net and ctx.is_power_net(net) and not ctx.is_ground(net) and ctx.rail_ignored(net)
-           for net, _ in pins.values()):
-        return None, False
+           for net, _ in pins.values() if net not in ctx.topology_rails):
+        return (), frozenset(), {}, False
 
     comp = ctx.comp_lookup.get(ref, {})
     mpn = comp.get('mpn') or comp.get('value', '')
@@ -488,22 +573,37 @@ def _ic_rail_voltage(ctx: AnalysisContext, ref: str) -> tuple[float | None, bool
     if feat and feat.get('vin_pin'):
         vin_pin = str(feat['vin_pin'])
         for pnum, (net, _) in pins.items():
-            if str(pnum) == vin_pin and net and ctx.is_power_net(net) and not ctx.is_ground(net):
-                v = pin_voltage(net)
+            if (str(pnum) == vin_pin and net and net not in ctx.topology_rails
+                    and ctx.is_power_net(net) and not ctx.is_ground(net)):
+                v = ctx.rail_voltage_or(net, parse_voltage_from_net_name)
                 if v is not None:
-                    return abs(v), ctx.config_rail_voltage(net) is not None
+                    return (abs(v),), frozenset((abs(v),)), {}, ctx.config_rail_voltage(net) is not None
 
-    # The positive supply sets a split-supply IC's logic swing; a negative rail counts
-    # only for an IC that has no positive one.
-    negative = None
-    for pnum, (net, _) in pins.items():
-        if net and ctx.is_power_net(net) and not ctx.is_ground(net):
-            v = pin_voltage(net)
-            if v is not None and v > 0:
-                return v, ctx.config_rail_voltage(net) is not None
-            if v is not None and negative is None:
-                negative = (abs(v), ctx.config_rail_voltage(net) is not None)
-    return negative if negative is not None else (None, False)
+    rows = _rail_pins(ctx, ref)
+    from_config = any(net and ctx.config_rail_voltage(net) is not None for net, _ in pins.values())
+    levels, accepted = _logic_levels(rows)
+    by_pin: dict[str, tuple] = {}
+    units: dict = {}
+    for c in ctx.components:
+        if c.get('reference') == ref and c.get('unit') is not None and c.get('_unit_pins'):
+            units.setdefault(c['unit'], set()).update(c['_unit_pins'])
+    if len(units) > 1:
+        shared = set.intersection(*units.values())
+        supply_nums = {r[0] for r in rows if r[2] < 2}
+        for unit in units.values():
+            own = unit - shared
+            own_rows = [r for r in rows if r[0] in own]
+            if any(_IO_SUPPLY_PIN.fullmatch(r[1]) for r in own_rows):
+                unit_domain = _logic_levels(own_rows)
+                for num in own - supply_nums:
+                    by_pin[num] = unit_domain
+    return levels, accepted, by_pin, from_config
+
+
+def _estimate_rail_voltage_for_ic(ctx: AnalysisContext, ref: str) -> float | None:
+    """The first logic-level voltage of IC *ref* (``_ic_logic_domains``), or None."""
+    levels = _ic_logic_domains(ctx, ref)[0]
+    return levels[0] if levels else None
 
 
 def _closest_threshold(voltage: float) -> tuple:
@@ -653,19 +753,62 @@ def _refs_typing_outputs(ctx: AnalysisContext) -> set[str]:
             if p.get('pin_type') in _DRIVING_PIN_TYPES}
 
 
+def _levels_cross(v_a: float, v_b: float) -> bool:
+    """True when an output at the higher of two logic levels overdrives or under-drives
+    an input at the lower one (the VM-001 test)."""
+    v_high, v_low = max(v_a, v_b), min(v_a, v_b)
+    if v_high == v_low:
+        return False
+    low = _closest_threshold(v_low)
+    return v_high > low[4] or _closest_threshold(v_high)[1] < low[3]
+
+
+def _settle_endpoint_voltages(endpoints: list[dict]) -> None:
+    """Set the voltage each endpoint is judged at when a part accepts several levels.
+
+    If each part can take one of its accepted levels so that no two parts cross, the net
+    is at those levels (its own logic levels first). Otherwise a part with several logic
+    levels is judged at the one that crosses the fewest other parts."""
+    parts: dict[str, list[dict]] = {}
+    for p in endpoints:
+        parts.setdefault(p['ref'], []).append(p)
+    options = []
+    for group in parts.values():
+        common = frozenset.intersection(*(p['accepted'] for p in group)) or group[0]['accepted']
+        first = [v for v in group[0]['levels'] if v in common]
+        options.append(first + sorted(common - set(first), reverse=True))
+    if all(len(o) == 1 for o in options):
+        return
+    combos = 1
+    for o in options:
+        combos *= len(o)
+    if combos <= 256:
+        for pick in itertools.product(*options):
+            if not any(_levels_cross(a, b) for a, b in itertools.combinations(pick, 2)):
+                for group, v in zip(parts.values(), pick):
+                    for p in group:
+                        p['voltage'] = v
+                return
+    for p in endpoints:
+        others = [q['voltage'] for q in endpoints if q['ref'] != p['ref']]
+        if len(p['levels']) > 1 and others:
+            # The level that crosses the fewest other parts; the first one on a tie.
+            p['voltage'] = min(p['levels'], key=lambda v: sum(_levels_cross(v, o) for o in others))
+
+
 def validate_voltage_levels(ctx: AnalysisContext, level_shifters: list[dict] | None = None,
                             protection_devices: list[dict] | None = None) -> list[dict]:
     """VM-001: Detect signal nets crossing power domain boundaries without level shifting."""
     findings: list[dict] = []
     cache_dir = getattr(ctx, 'cache_dir', None)
 
-    ic_voltages: dict[str, float] = {}
+    ic_domains: dict[str, tuple] = {}
     config_voltage_ics: set[str] = set()
     for ic in get_unique_ics(ctx):
-        v = _estimate_rail_voltage_for_ic(ctx, ic['reference'])
-        if v is not None:
-            ic_voltages[ic['reference']] = v
-            if ctx.rail_overrides and _ic_rail_voltage(ctx, ic['reference'])[1]:
+        levels, accepted, by_pin, from_config = _ic_logic_domains(ctx, ic['reference'])
+        if levels or any(d[0] for d in by_pin.values()):
+            ic_domains[ic['reference']] = ((levels, accepted), by_pin)
+            if ctx.rail_overrides and from_config:
                 config_voltage_ics.add(ic['reference'])
             # Lookup probe (informational; the rail estimate is not yet checked
             # against facts.base.recommended_operating.VDD).
@@ -676,7 +819,7 @@ def validate_voltage_levels(ctx: AnalysisContext, level_shifters: list[dict] | N
     # An ESD array clamps the lines it sits on and drives none; it is no logic endpoint (the
     # cross-domain pass leaves it out the same way).
     esd_arrays = {pd['ref'] for pd in protection_devices or () if pd.get('type') == 'esd_ic'}
-    ic_voltages = {ref: v for ref, v in ic_voltages.items() if ref not in esd_arrays}
+    ic_domains = {ref: d for ref, d in ic_domains.items() if ref not in esd_arrays}
 
     shifted_nets: set[str] = set()
     if level_shifters:
@@ -720,14 +863,20 @@ def validate_voltage_levels(ctx: AnalysisContext, level_shifters: list[dict] | N
         ic_pins_on_net = []
         for p in net_info.get('pins', []):
             ref = p['component']
-            if ref in ic_voltages:
+            if ref in ic_domains:
                 # A supply pin on a non-power net is a rail feeding a regulator or a
                 # regulator output (L7809 OUT -> L7805 IN), not a logic level.
                 if p.get('pin_type') in ('power_in', 'power_out'):
                     continue
+                domain, by_pin = ic_domains[ref]
+                # A pin of a unit with its own supply pins is at that unit's level.
+                levels, accepted = by_pin.get(p['pin_number'], domain)
+                if not levels:
+                    continue
                 ic_pins_on_net.append({
                     'ref': ref, 'pin': p.get('pin_name', ''),
-                    'pin_number': p['pin_number'], 'voltage': ic_voltages[ref],
+                    'pin_number': p['pin_number'], 'voltage': levels[0],
+                    'levels': levels, 'accepted': accepted,
                     'pin_type': p.get('pin_type'),
                 })
         # An open-drain output swings to its pull-up, not to its IC's supply; with no
@@ -740,12 +889,15 @@ def validate_voltage_levels(ctx: AnalysisContext, level_shifters: list[dict] | N
                     ic_pins_on_net.remove(q)
                 else:
                     q['voltage'] = v_pu
+                    q['levels'] = (v_pu,)
+                    q['accepted'] = frozenset((v_pu,))
 
         # One part's own pins are not a domain crossing (MC34063 switch collectors tied to
         # its current-sense input).
         if len({p['ref'] for p in ic_pins_on_net}) < 2:
             continue
 
+        _settle_endpoint_voltages(ic_pins_on_net)
         voltages = set(p['voltage'] for p in ic_pins_on_net)
         if len(voltages) <= 1:
             continue
@@ -759,8 +911,11 @@ def validate_voltage_levels(ctx: AnalysisContext, level_shifters: list[dict] | N
         en_ok = [p for p in ic_pins_on_net if _en_endpoint_compatible(ctx, p, net_name, v_min)]
         if en_ok:
             ic_pins_on_net = [p for p in ic_pins_on_net if p not in en_ok]
+            if len({p['ref'] for p in ic_pins_on_net}) < 2:
+                continue
+            _settle_endpoint_voltages(ic_pins_on_net)
             voltages = set(p['voltage'] for p in ic_pins_on_net)
-            if len({p['ref'] for p in ic_pins_on_net}) < 2 or len(voltages) <= 1:
+            if len(voltages) <= 1:
                 continue
             v_max = max(voltages)
             v_min = min(voltages)

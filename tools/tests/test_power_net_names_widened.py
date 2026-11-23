@@ -74,10 +74,10 @@ class NegativeRailIsNotALogicDomain(unittest.TestCase):
         self.assertEqual(_estimate_rail_voltage_for_ic(ctx, "U1"), 5.0)
         self.assertEqual([f for f in validate_voltage_levels(ctx) if f["rule_id"] == "VM-001"], [])
 
-    def test_negative_only_ic_keeps_its_magnitude(self):
+    def test_negative_only_ic_sets_no_logic_level(self):
         comps = [{"reference": "U1", "type": "ic", "value": "MC10H116"}]
         nets = {"-5.2V": [("U1", "8", "VEE", "power_in")]}
-        self.assertEqual(_estimate_rail_voltage_for_ic(_ctx(comps, nets), "U1"), 5.2)
+        self.assertIsNone(_estimate_rail_voltage_for_ic(_ctx(comps, nets), "U1"))
 
 
 

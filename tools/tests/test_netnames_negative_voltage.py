@@ -145,11 +145,11 @@ class Callers(unittest.TestCase):
         self.assertEqual(_infer_voltage(None, "-5V"), 5.0)
         self.assertEqual(_infer_voltage(None, "+3V3"), 3.3)
 
-    def test_ic_rail_estimate_is_the_magnitude(self):
+    def test_negative_only_ic_sets_no_logic_level(self):
         from validation_detectors import _estimate_rail_voltage_for_ic
         ctx = _ctx([{"reference": "U1", "type": "ic", "value": "OPA"}],
                    {"-5V": [("U1", "4", "power_in")]}, {"-5V"})
-        self.assertEqual(_estimate_rail_voltage_for_ic(ctx, "U1"), 5.0)
+        self.assertIsNone(_estimate_rail_voltage_for_ic(ctx, "U1"))
 
     def test_i2c_device_on_a_negative_supply_is_not_a_logic_level_mismatch(self):
         from schematic.system_analyses import analyze_protocol_compliance
