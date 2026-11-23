@@ -56,6 +56,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A part with an empty Value is named by its symbol in power-path summaries and pull-up findings instead of `()`.
 - A TVS or ESD IC whose only protected line is a supply rail (TVS2200, a single-line PESD on VBUS) is listed as a protection device again.
 - The ESD ground-via check counts vias on the protection device's own ground net when that net is not named GND.
+- The power-pin and rail-source checks know the bootstrap pins named BTST, VBST and CBOOT (TI chargers and converters): they no longer report 'no DC path to a power rail' or 'no declared source' for them.
 - An LC filter is no longer hidden when a boot-mode pin is tied straight to ground.
 - RGB LEDs whose pins are only numbered count in the power budget, as a 5 mA load on the rail they touch.
 - The LED audit no longer gives an LED the resistor of a parallel branch: a chain walk goes on only through an LED that meets the last one anode to cathode, and a power-named net of LEDs with no resistor to a rail or ground (or only pull-ups to signals) is the rail, not an LED node.

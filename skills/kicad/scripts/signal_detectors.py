@@ -55,6 +55,10 @@ from lookup_helpers import get_facts, has_data, best, facts_trusted
 # so having no DC path to a rail is the datasheet circuit, not a fault. Many
 # vendor symbols type them power_in. Same names detect_power_regulators uses.
 _BOOTSTRAP_PIN_TOKENS = frozenset({"BST", "BOOT", "BOOTSTRAP", "CBST"})
+# The same pins under the names that mean nothing else (BTST on TI chargers, VBST on TI
+# D-CAP converters, CBOOT on LM5xxx / LM6xxxx). Regulator detection keeps the shorter set:
+# with these names BQ chargers would be read as regulators.
+_BOOTSTRAP_CAP_PIN_TOKENS = _BOOTSTRAP_PIN_TOKENS | {"BTST", "VBST", "CBOOT"}
 # Net names of a return that is not the board ground (POE_RTN, AD_RETURN)
 _RETURN_NET_TOKENS = frozenset({"RTN", "RET", "RETURN"})
 
@@ -921,7 +925,7 @@ def detect_lc_filters(ctx: AnalysisContext) -> list[dict]:
                 for p in ctx.nets[cap_other_net]["pins"]:
                     pn = p.get("pin_name", "").upper().rstrip("0123456789").rstrip("_")
                     pn_parts = {pp.strip() for pp in pn.split("/")}
-                    if pn_parts & _BOOTSTRAP_PIN_TOKENS:
+                    if pn_parts & _BOOTSTRAP_CAP_PIN_TOKENS:
                         is_bootstrap = True
                         break
             if is_bootstrap:
@@ -5571,9 +5575,9 @@ def _is_internal_regulator_pin(pin_name: str) -> bool:
 
 
 def _is_bootstrap_pin_name(pin_name: str) -> bool:
-    """True for BST, BOOT, CBST, BOOT1, BST_A, ... (any _ or / token)."""
+    """True for BST, BOOT, CBST, BTST, VBST, CBOOT, BOOT1, BST_A, ... (any _ or / token)."""
     tokens = re.split(r"[_/]", (pin_name or "").upper())
-    return any(t.rstrip("0123456789") in _BOOTSTRAP_PIN_TOKENS for t in tokens)
+    return any(t.rstrip("0123456789") in _BOOTSTRAP_CAP_PIN_TOKENS for t in tokens)
 
 
 def audit_power_pin_dc_paths(ctx: AnalysisContext,

@@ -79,6 +79,14 @@ class SeriesCapacitorIsNotAFilter(unittest.TestCase):
                     "VBOOT_5V": [_p("C5", "2"), ("U1", "2", "BTST1", "power_in")]})
         self.assertEqual(_pairs(ctx), [])
 
+    def test_bootstrap_capacitor_on_a_rail_named_boot_net_is_not_a_filter(self):
+        # The boot net is named like a rail, so only the pin name tells the capacitor apart
+        ctx = _ctx([_l("L1", "2.2u"), _c("C5", "47n"), _ic("U1", "BQ25798")],
+                   {"SW": [_p("L1", "1"), _p("C5", "1"), ("U1", "1", "SW1", "power_out")],
+                    "+5V": [_p("L1", "2")],
+                    "+5V_BST": [_p("C5", "2"), ("U1", "2", "BTST1", "power_in")]})
+        self.assertEqual(_pairs(ctx), [])
+
     def test_band_switched_tank_capacitor_is_dropped(self):
         # Known loss: the tank capacitor C1 reaches ground through the switching diode D1,
         # so its far net is not an AC ground by name and the tank L1 + C1 is not listed
