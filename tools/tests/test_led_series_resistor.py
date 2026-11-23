@@ -289,6 +289,14 @@ def _parallel(n, ohms="100", anti=False):
                 {"+12V": [_p("R1", "1")], "N0": pins_node, "GND": pins_gnd}, {"+12V", "GND"})
 
 
+def _separate_sinks(ohms="100"):
+    """+12V -> R1 -> node -> D1, D2 -> two different IC sink pins."""
+    return _ctx([_led("D1"), _led("D2"), _r("R1", ohms), _IC],
+                {"+12V": [_p("R1", "1")], "N0": [_p("R1", "2"), _p("D1", "2"), _p("D2", "2")],
+                 "S1": [_p("D1", "1"), _p("U1", "6")], "S2": [_p("D2", "1"), _p("U1", "7")],
+                 "GND": [_p("U1", "2")]}, {"+12V", "GND"})
+
+
 class ParallelStrings(unittest.TestCase):
     def test_two_leds_share_the_resistor_current(self):
         lr = _lr(_parallel(2))
@@ -535,6 +543,18 @@ class RescueDiodes(unittest.TestCase):
                  ("LED:IR204A", "IR204A", "led")]
         for lib_id, value, want in cases:
             self.assertEqual(classify_component("D1", lib_id, value), want, lib_id)
+
+
+class ParallelStringsNeedBothEnds(unittest.TestCase):
+    def test_leds_on_separate_driver_pins_each_keep_the_resistor_current(self):
+        lr = _lr(_separate_sinks())
+        self.assertEqual(sorted(f["summary"] for f in lr if f["severity"] == "warning"),
+                         ["LED D1: current too high (100mA via R1)", "LED D2: current too high (100mA via R1)"])
+
+    def test_leds_to_ground_still_share(self):
+        lr = _lr(_parallel(2))
+        self.assertEqual(sorted(f["summary"] for f in lr if f["severity"] == "warning"),
+                         ["LED D1: current too high (50mA via R1)", "LED D2: current too high (50mA via R1)"])
 
 
 if __name__ == "__main__":

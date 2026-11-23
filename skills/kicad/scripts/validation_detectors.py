@@ -1481,14 +1481,24 @@ _LED_IF_MAX_DEFAULT_MA = 20
 _LED_IF_RECOMMENDED_MA = 10
 
 
-def _parallel_strings(ctx: AnalysisContext, net: str, string: list[str]) -> int:
-    """How many LED strings end on *net* the same way round as *string* does (anode or
-    cathode first): they share the resistor on that net.  An anti-parallel LED conducts on
-    the other half-cycle and is not counted."""
+def _parallel_strings(ctx: AnalysisContext, net: str, string: list[str], far: str) -> int:
+    """How many LED strings run from *net* to *far* the same way round as *string* does
+    (anode or cathode first): they share the resistor on *net*.  An anti-parallel LED
+    conducts on the other half-cycle, and a string that ends on a different net (another
+    driver pin) is switched on its own; neither is counted."""
     pins = [p for p in ctx.nets.get(net, {}).get('pins', [])
             if ctx.comp_lookup.get(p['component'], {}).get('type') == 'led']
     own = next((p.get('pin_number') for p in pins if p['component'] in string), None)
-    return max(1, sum(1 for p in pins if p.get('pin_number') == own))
+    count = 0
+    for p in pins:
+        if p.get('pin_number') != own:
+            continue
+        if p['component'] not in string:
+            _, a, b = led_string(ctx, p['component'])
+            if (b if a == net else a) != far:
+                continue
+        count += 1
+    return max(1, count)
 
 
 def _across_supply(ctx: AnalysisContext, ref: str, e1: str, e2: str) -> bool:
@@ -1578,7 +1588,7 @@ def validate_led_resistors(ctx: AnalysisContext) -> list[dict]:
                 ohms = ctx.parsed_values.get(rref)
                 if ohms is not None and ohms > 0:
                     series_resistors.append({'ref': rref, 'ohms': ohms, 'rail': rail,
-                                             'parallel': _parallel_strings(ctx, net, string)})
+                                             'parallel': _parallel_strings(ctx, net, string, led_other)})
         if not has_series_r:
             has_series_r = any(ctx.comp_lookup.get(p['component'], {}).get('type') == 'resistor_network'
                                for net in own_nets for p in ctx.nets.get(net, {}).get('pins', []))
