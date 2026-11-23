@@ -668,9 +668,9 @@ def _row_layout(text: str) -> str | None:
     return None
 
 
-# A pad or body size in a footprint name (PAD_SMD_1x2.65, Keystone_1x12mm, 650X240X440P,
+# A pad or body size in a footprint name (PAD_SMD_1x2.65, Keystone_1x12mm,
 # 1_7X1_7X1_0MM) and a coin-cell count (Keystone_1060_1x2032) are not row counts.
-_FOOTPRINT_SIZE = re.compile(r'\d+x\d+x\d+|\d+_\d+x\d+_\d+x\d+_\d+'
+_FOOTPRINT_SIZE = re.compile(r'\d+_\d+x\d+_\d+x\d+_\d+'
                              r'|\d+x\d+(?:\.\d+|mm)|\d+x\d{4,}')
 
 
@@ -678,8 +678,8 @@ def _footprint_row_layout(footprint: str) -> str | None:
     """'single' or 'dual' from the row count in the footprint's own name (PinHeader_2x05,
     JST_PH_B4B-PH-K_1x04); the library nickname is left out."""
     name = _FOOTPRINT_SIZE.sub(" ", footprint.rsplit(":", 1)[-1].lower())
-    # An unpadded N x 1 count (CONN_3x1, PIN_ARRAY_2X1) is one row; KiCad's own 2x01 is two.
-    if re.search(r'[a-z_]\d+x1$', name):
+    # An N x 1 count (CONN_3x1, PIN_ARRAY_2X1, PinHeader_2x01) is one row of N pins.
+    if re.search(r'[a-z_]\d+x0?1(?=$|[_-])', name):
         return "single"
     return _row_layout(name)
 
