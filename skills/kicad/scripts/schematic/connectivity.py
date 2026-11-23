@@ -1277,7 +1277,7 @@ def build_net_map(components: list[dict], wires: list[dict], labels: list[dict],
         # label or a sheet pin: it marks the port itself as unused.
         nc_points = [m for m in members
                      if any(i["source"] == "no_connect" for i in point_info.get(m, ()))]
-        nc_on_port = bool(nc_points) and root_k not in nc_marked and all(
+        nc_on_port = bool(nc_points) and all(
             any(i["source"] == "label" and (i.get("label_type") == "hierarchical_label"
                                             or i.get("is_sheet_pin"))
                 for i in point_info.get(m, ())) for m in nc_points)
