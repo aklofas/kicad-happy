@@ -69,17 +69,16 @@ class NcOnPortTest(unittest.TestCase):
         self.assertEqual(len(_recs(r)), 1)
         self.assertTrue(all("_nc_on_port" not in n for n in r["nets"].values()))
 
-    def test_marked_nc_type_pin_keeps_the_reading_beside_a_marked_port(self):
+    def test_nc_type_pin_on_a_marked_port_keeps_the_reading(self):
+        # The port rule does apply to this net (its only marker sits on the port); the
+        # NC-type pin wired to the port is what keeps the reading.
         s = Sheet(20250114)
         s.symbol("t:I", "U1", "I", 50, 50, ("1",))
-        s.symbol("t:N", "U2", "N", 70, 50, ("1",))
-        s.wire(50, 50, 60, 50); s.wire(60, 50, 70, 50)
+        s.symbol("t:N", "U2", "N", 60, 50, ("1",))
+        s.wire(50, 50, 60, 50)
         s.label("hierarchical_label", "SIG", 60, 50)
         s.items.append(NC.format(x=60))
-        s.items.append(NC.format(x=70))
-        r = run({"t.kicad_sch": s.text(LIBS)})
-        self.assertEqual(len(_recs(r)), 1)
-        self.assertTrue(all("_nc_on_port" not in n for n in r["nets"].values()))
+        self.assertEqual(len(_recs(run({"t.kicad_sch": s.text(LIBS)}))), 1)
 
     def test_no_driver_stays_silent_for_every_marker_place(self):
         def hier(s):

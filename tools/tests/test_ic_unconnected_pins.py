@@ -85,6 +85,14 @@ class UnconnectedPinsTest(unittest.TestCase):
         rows = run({"t.kicad_sch": s.text([_one_pin_lib("P", "passive"), R_LIB])})["ic_pin_analysis"]
         self.assertEqual([r["unconnected_pins"] for r in rows], [0, 0])
 
+    def test_pin_wired_on_the_first_copy_of_the_reference_is_connected(self):
+        s = Sheet(20250114)
+        s.symbol("t:P", "U1", "P", 90, 50, ("1",))
+        s.r("R1", 90, 50)
+        s.symbol("t:P", "U1", "P", 50, 50, ("1",))
+        rows = run({"t.kicad_sch": s.text([_one_pin_lib("P", "passive"), R_LIB])})["ic_pin_analysis"]
+        self.assertEqual([r["unconnected_pins"] for r in rows], [0, 0])
+
     def test_lone_pin_with_a_power_flag_is_not_listed(self):
         s = Sheet(20250114)
         s.symbol("t:P", "U1", "P", 50, 50, ("1",))
