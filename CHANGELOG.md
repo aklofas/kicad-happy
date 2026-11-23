@@ -31,6 +31,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - VM-001 no longer reads a supply-named pin (VIN, VCC, VDD, VBAT, VBUS, VSUP, VPWR) of a part whose symbol types no power pin as a logic endpoint: two regulator inputs on one unnamed net are no longer reported as a 5 V / 3.3 V crossing. Other pins of such a part are still judged.
 - FPGA banks drawn as separate units are judged at their own VCCIO rail.
 - `ic_pin_analysis[]` and `transistor_pin_analysis[]` now count and list pins that are wired to nothing (`unconnected_pins`, `unconnected_pin_list`); the fields were empty for every placed pin. The Action report's Unconnected column follows.
+- DS-001 and DS-002 name a datasheets folder that holds no PDF instead of reporting that none was found, and set `datasheets_dir`. An empty `./datasheets` no longer hides a populated folder one or two levels up or under `docs/`.
 
 ### Fixed
 

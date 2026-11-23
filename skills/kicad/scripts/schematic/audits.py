@@ -329,15 +329,12 @@ def audit_datasheet_coverage(components: list[dict],
             candidates.append(_os.path.join(_base, _name, "extracted"))
         candidates.append(_os.path.join(_base, "docs", "datasheets"))
         candidates.append(_os.path.join(_base, "documentation", "datasheets"))
-    ds_dir_found = next(
-        (c for c in candidates if _os.path.isdir(c)), None)
-    ds_file_count = 0
-    if ds_dir_found:
+    def _pdf_count(ds_dir: str) -> int:
         # Each PDF once: a symlinked copy, and the JSON beside the PDFs
         # (extractions, the sync index), are not more datasheets.
         _pdfs: set[str] = set()
         try:
-            for _root, _dirs, _files in _os.walk(ds_dir_found):
+            for _root, _dirs, _files in _os.walk(ds_dir):
                 _dirs[:] = [d for d in _dirs if d != "extracted"]
                 for f in _files:
                     _p = _os.path.join(_root, f)
@@ -345,7 +342,27 @@ def audit_datasheet_coverage(components: list[dict],
                         _pdfs.add(_os.path.realpath(_p))
         except OSError:
             pass
-        ds_file_count = len(_pdfs)
+        return len(_pdfs)
+
+    # The first folder that holds a PDF: an empty ./datasheets does not hide
+    # a populated one further out.
+    existing = [c for c in candidates if _os.path.isdir(c)]
+    ds_dir_found, ds_file_count = None, 0
+    for c in existing:
+        n = _pdf_count(c)
+        if n:
+            ds_dir_found, ds_file_count = c, n
+            break
+    # With no PDF anywhere, the first existing folder is named, not
+    # reported as absent.
+    empty_dir = existing[0] if existing and not ds_dir_found else None
+    if empty_dir:
+        _rel = _os.path.relpath(empty_dir, pd).replace("\\", "/")
+        if not _rel.startswith("."):
+            _rel = "./" + _rel
+        no_ds = f"Datasheets directory {_rel} holds no PDF"
+    else:
+        no_ds = "No datasheets directory found"
 
     # Build finding.
     if ds_dir_found and ds_file_count > 0:
@@ -412,13 +429,13 @@ def audit_datasheet_coverage(components: list[dict],
             "confidence": "deterministic",
             "evidence_source": "bom",
             "category": "verification",
-            "summary": ("No datasheets directory found and no BOM parts "
+            "summary": (f"{no_ds} and no BOM parts "
                         "have MPNs. Review is a consistency check only — "
                         "manufacturer specs cannot be verified."),
             "components": [],
             "nets": [],
             "pins": [],
-            "datasheets_dir": None,
+            "datasheets_dir": empty_dir,
             "datasheet_file_count": 0,
             "bom_size": total,
             "mpn_coverage_percent": 0.0,
@@ -449,14 +466,14 @@ def audit_datasheet_coverage(components: list[dict],
             "confidence": "deterministic",
             "evidence_source": "bom",
             "category": "verification",
-            "summary": (f"No datasheets directory found ({mpn_count}/{total}"
+            "summary": (f"{no_ds} ({mpn_count}/{total}"
                         " parts have MPNs). Sync datasheets before making "
                         "pin-level claims."),
             "components": sorted(c.get("reference", "")
                                  for c in with_mpn)[:20],
             "nets": [],
             "pins": [],
-            "datasheets_dir": None,
+            "datasheets_dir": empty_dir,
             "datasheet_file_count": 0,
             "bom_size": total,
             "mpn_coverage_percent": round(mpn_pct, 1),
