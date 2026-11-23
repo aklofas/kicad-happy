@@ -10,7 +10,7 @@ sys.path.insert(0, str(ROOT))
 from tools.tests.test_erc_pins import _one_pin_lib  # noqa: E402
 from tools.tests.test_same_sheet_power_names import Sheet, run, sheet_block  # noqa: E402
 
-LIBS = [_one_pin_lib("I", "input")]
+LIBS = [_one_pin_lib("I", "input"), _one_pin_lib("N", "no_connect")]
 NC = '(no_connect (at {x} 50) (uuid "00000000-0000-0000-0000-00000000fffe"))'
 
 
@@ -62,6 +62,18 @@ class NcOnPortTest(unittest.TestCase):
 
     def test_one_marker_on_a_port_and_one_on_a_part_pin_still_raises(self):
         s = _two_pins()
+        s.label("hierarchical_label", "SIG", 60, 50)
+        s.items.append(NC.format(x=60))
+        s.items.append(NC.format(x=70))
+        r = run({"t.kicad_sch": s.text(LIBS)})
+        self.assertEqual(len(_recs(r)), 1)
+        self.assertTrue(all("_nc_on_port" not in n for n in r["nets"].values()))
+
+    def test_marked_nc_type_pin_keeps_the_reading_beside_a_marked_port(self):
+        s = Sheet(20250114)
+        s.symbol("t:I", "U1", "I", 50, 50, ("1",))
+        s.symbol("t:N", "U2", "N", 70, 50, ("1",))
+        s.wire(50, 50, 60, 50); s.wire(60, 50, 70, 50)
         s.label("hierarchical_label", "SIG", 60, 50)
         s.items.append(NC.format(x=60))
         s.items.append(NC.format(x=70))
