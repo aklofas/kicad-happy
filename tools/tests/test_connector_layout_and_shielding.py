@@ -58,6 +58,18 @@ class ConnectorLayout(unittest.TestCase):
                    "U-FL4P-SMD-1_7X1_7X1_0MM"):
             self.assertEqual(layout("x:Opaque", "", fp), "other", fp)
 
+    def test_unpadded_n_by_one_footprint_is_one_row(self):
+        for fp in ("complib:CONN_3x1", "PIN_ARRAY_2X1", "3.5MM_2X1", "PINHEADER_127_2X1"):
+            self.assertEqual(layout("x:Opaque", "", fp), "single", fp)
+        self.assertEqual(layout("x:Opaque", "", "PinHeader_2x01_P2.54mm_Vertical"), "dual")
+        self.assertEqual(layout("x:Opaque", "", "PinHeader_2x01"), "dual")
+
+    def test_footprint_nickname_is_not_read(self):
+        self.assertEqual(layout("x:Opaque", "", "Proj_2x5:Foo"), "other")
+
+    def test_body_size_triple_is_stripped(self):
+        self.assertEqual(layout("x:Opaque", "", "SHDR3W50P0X200_1X3_650X240X440P"), "single")
+
     def test_special_layouts_and_external_status_ignore_the_footprint(self):
         self.assertEqual(layout("Connector:USB_C_Receptacle", "", "PinHeader_2x05"), "usb_c")
         for lib, val in (("Connector:Conn_01x04", ""), ("Connector:USB_B", "")):
