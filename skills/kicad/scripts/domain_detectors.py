@@ -421,14 +421,91 @@ def detect_isolation_barriers(ctx: AnalysisContext) -> list[dict]:
 # Jacks with the 1:1 Ethernet transformers built in (HanRun HR911/HY911, Bel MagJack/SI-60/
 # SI-46/08B0, Pulse J0011D/J1011F/JXD, Amphenol ARJP/ARJM/RJMG, Abracon ARJC, Wurth RJLBC and
 # 7499010/7499111 LAN transformer jacks, Link-PP LPJ/LPJG, TM211, UDE J1B1, ... per the vendor
-# datasheets).
+# datasheets; HanRun HY931147C: "Single Port RJ45 Connector with LEDs and Integrated Magnetics",
+# REV.A/1 p. 1). Matched in the value, lib_id, footprint or MPN.
 _INTEGRATED_MAG_KEYWORDS = (
-    "magjack", "mag_jack", "hr911", "hr961", "hy911", "hfj11", "lpj0", "lpj1", "lpj4", "lpjg",
-    "arjp", "arjm", "arjc", "rjmg", "rjlbc", "7499010", "7499111", "tm211", "j1b1",
+    "magjack", "mag_jack", "hr911", "hr961", "hy911", "hy931147", "hfj11", "lpj0", "lpj1", "lpj4",
+    "lpjg", "arjp", "arjm", "arjc", "rjmg", "rjlbc", "7499010", "7499111", "tm211", "j1b1",
     "j0011d", "j1011f", "jxd0", "jxd1", "08b0", "rb1-1", "si-60", "si-46",
     "with_magnetics", "withmagnetics", "integrated_magnetics", "rj45_magnetic",
     "rj45+mag", "rj45-mag", "rj45-transfo",
 )
+# What a symbol description calls such a jack ("1 Port RJ45 Magjack Connector" in KiCad's
+# RJ45_JK0654219, "LAN Transformer Jack" for HanRun HR915340A), unless it says the opposite
+# ("... with LEDs, No Magnetics" for Amphenol RC01812).
+_MAG_JACK_WORDS = re.compile(r"magjack|lan transformer jack|(?:integrated|with|built-in) magnetics"
+                             r"|rj45[- ]?trafo|rj45[- ]?transfo")
+_NO_MAG_WORDS = re.compile(r"(?:no|without|w/o) (?:integrated )?magnetics|non-magnetic")
+# A jack with built-in magnetics brings the transformer centre taps out beside the line pairs
+# (HanRun HR913129A, REV 00 p. 1: 1CT:1CT taps between TD+/TD- and RD+/RD-), drawn as TCT, RCT,
+# CT1, MXCT2, TRCT0 beside TD+, RD-, MX1+, TRD0_P. A CT pin alone also names a timing capacitor
+# (TL7705A) or a current transformer, so the pairs are required.
+_CENTRE_TAP_PIN = re.compile(r"^(?:T|R|TX|RX|MX|TR|TD|RD|P\d)?_?CT_?\d?$")
+_ETH_PAIR_PIN = re.compile(r"^(?:TD|RD|TX|RX|TRD|MX|MDI?|P?D)\d?_?(?:\+|-|P|N)$")
+# Generic PHY words, matched as words of their own: not inside ESP32-WROOM-32_Phys,
+# "Electrophyiological" or StackedEthernet.
+_ETH_PHY_WORDS = re.compile(r"(?<![a-z])(?:phy|ethernet|10base|100base|1000base)(?![a-z])")
+
+
+def _wired_to(ctx: AnalysisContext, ref: str, targets: set[str], hops: int = 3) -> bool | None:
+    """Whether a signal net of *ref* reaches a part in *targets*, directly or through up to
+    *hops* resistors, capacitors, inductors or ferrite beads. None when *ref* has no pin on
+    any net (a symbol without pin data), so nothing can be said."""
+    nets = {n for n, _ in ctx.ref_pins.get(ref, {}).values() if n}
+    if not nets:
+        return None
+    frontier = {n for n in nets if not ctx.is_ground(n) and not ctx.is_power_net(n)}
+    seen_nets, seen_refs = set(frontier), {ref}
+    for _ in range(hops + 1):
+        nxt: set[str] = set()
+        for net in sorted(frontier):
+            for pin in ctx.nets.get(net, {}).get("pins", []):
+                other = pin["component"]
+                if other in targets:
+                    return True
+                if other in seen_refs:
+                    continue
+                seen_refs.add(other)
+                if (ctx.comp_lookup.get(other) or {}).get("type") not in (
+                        "resistor", "capacitor", "inductor", "ferrite_bead"):
+                    continue
+                for far, _ in ctx.ref_pins.get(other, {}).values():
+                    if (far and far not in seen_nets and not ctx.is_ground(far)
+                            and not ctx.is_power_net(far)):
+                        seen_nets.add(far)
+                        nxt.add(far)
+        frontier = nxt
+    return False
+
+
+def _has_integrated_magnetics(ctx: AnalysisContext, comp: dict) -> bool:
+    """An Ethernet jack with the transformers built in: a listed part number in its value,
+    lib_id, footprint or MPN, a description that says so, or a centre-tap pin beside two or
+    more line-pair pins (on any unit of the part)."""
+    name = " ".join((comp.get("value") or "", comp.get("lib_id") or "",
+                     comp.get("footprint") or "", comp.get("mpn") or "")).lower()
+    words = " ".join((comp.get("description") or "", comp.get("keywords") or "")).lower()
+    if _NO_MAG_WORDS.search(words):
+        return False
+    if any(k in name for k in _INTEGRATED_MAG_KEYWORDS) or _MAG_JACK_WORDS.search(words):
+        return True
+    ref = comp["reference"]
+    names = {(p.get("name") or "").upper() for c in ctx.components
+             if c.get("reference") == ref for p in c.get("pins") or []}
+    return (any(_CENTRE_TAP_PIN.match(n) for n in names)
+            and sum(1 for n in names if _ETH_PAIR_PIN.match(n)) >= 2)
+
+
+def _is_phy_by_word(comp: dict) -> bool:
+    """A PHY word in the value, the symbol name or the library nickname (Interface_Ethernet,
+    ETH-PHY). A library named just "ethernet" (or its rescue library) is a project's own and
+    holds every part of that board."""
+    lib_id = comp.get("lib_id") or ""
+    part = ((comp.get("value") or "") + " " + symbol_name(lib_id)).lower()
+    nickname = lib_id.split(":", 1)[0].lower() if ":" in lib_id else ""
+    return bool(_ETH_PHY_WORDS.search(part)
+                or (nickname not in ("ethernet", "ethernet-rescue")
+                    and _ETH_PHY_WORDS.search(nickname)))
 
 
 def detect_ethernet_interfaces(ctx: AnalysisContext) -> list[dict]:
@@ -438,8 +515,7 @@ def detect_ethernet_interfaces(ctx: AnalysisContext) -> list[dict]:
     eth_phy_keywords = (
         "lan87", "lan91", "lan83", "dp838", "ksz8", "ksz9",
         "rtl81", "rtl83", "rtl88", "w5500", "w5100", "w5200",
-        "enc28j60", "enc424", "dm9000", "ip101", "phy",
-        "ethernet", "10base", "100base", "1000base",
+        "enc28j60", "enc424", "dm9000", "ip101",
     )
     magnetics_keywords = (
         "magnetics", "pulse", "transformer", "lan_tr", "rj45_mag",
@@ -455,7 +531,8 @@ def detect_ethernet_interfaces(ctx: AnalysisContext) -> list[dict]:
         if c["reference"] in seen_eth_refs:
             continue
         val_lib = (c.get("value", "") + " " + c.get("lib_id", "")).lower()
-        if c["type"] == "ic" and any(k in val_lib for k in eth_phy_keywords):
+        if c["type"] == "ic" and (any(k in val_lib for k in eth_phy_keywords)
+                                  or _is_phy_by_word(c)):
             eth_phys.append(c)
             seen_eth_refs.add(c["reference"])
         elif c["type"] == "transformer" and any(k in val_lib for k in magnetics_keywords):
@@ -464,7 +541,7 @@ def detect_ethernet_interfaces(ctx: AnalysisContext) -> list[dict]:
         elif c["type"] == "connector":
             # Also detect by LAN reference prefix or integrated magnetics RJ45 part numbers
             if (any(k in val_lib for k in ("rj45", "8p8c", "ethernet"))
-                    or any(k in val_lib for k in _INTEGRATED_MAG_KEYWORDS)
+                    or _has_integrated_magnetics(ctx, c)
                     or c["reference"].upper().startswith("LAN")):
                 eth_connectors.append(c)
                 seen_eth_refs.add(c["reference"])
@@ -554,9 +631,13 @@ def detect_ethernet_interfaces(ctx: AnalysisContext) -> list[dict]:
                             pass  # already captured
                 frontier = next_frontier
 
-            # Fall back to global lists if BFS found nothing
+            # Fall back to the sheet's lists if the walk found nothing (it does not cross an
+            # ESD array or read every PHY pin name). A transformer then counts unless its own
+            # nets show it wired to neither this PHY nor an Ethernet jack.
             if not found_magnetics:
-                found_magnetics = eth_magnetics
+                wired_to = {phy["reference"]} | eth_conn_refs
+                found_magnetics = [m for m in eth_magnetics
+                                   if _wired_to(ctx, m["reference"], wired_to) is not False]
             if not found_connectors:
                 found_connectors = eth_connectors
 
@@ -620,9 +701,7 @@ def detect_ethernet_interfaces(ctx: AnalysisContext) -> list[dict]:
 
             # Impedance advisory: magnetics provide both isolation and 100Ω
             # differential impedance matching for Ethernet
-            integrated = [c for c in found_connectors
-                          if any(k in (c.get("value", "") + " " + c.get("lib_id", "")).lower()
-                                 for k in _INTEGRATED_MAG_KEYWORDS)]
+            integrated = [c for c in found_connectors if _has_integrated_magnetics(ctx, c)]
             if not found_magnetics and integrated:
                 impedance_advisory = {
                     "status": "pass",

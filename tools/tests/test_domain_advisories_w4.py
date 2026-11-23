@@ -6,6 +6,17 @@ Expected values come from the USB Type-C specification and vendor datasheets:
 - FUSB302, STUSB4500 and the other listed PD controllers present Rd/Rp internally
   (their datasheets), so a bare CC net on them is not a missing resistor.
 - HanRun HR911105A integrates the 1:1 Ethernet transformers in the jack (HR911105A datasheet).
+- A jack with built-in magnetics brings the transformer centre taps out beside the line pairs:
+  HanRun HR913129A ("Single Port RJ45 Connector with Integrated Magnetics and LED", REV 00,
+  p. 1 schematic: 1CT:1CT taps between TD+/TD- and RD+/RD-); the corpus symbol of that part
+  (LibrePLC32:HR913129A) names them TCT / RCT. A connector whose only such pin is CT is a
+  supervisor drawn as a connector (TL7705A: CT = timing capacitor, TL7705A datasheet pinout).
+- HanRun HY931147C is a jack with integrated magnetics ("Single Port RJ45 Connector with LEDs and
+  Integrated Magnetics for 10/100Base-TX PoE application", REV.A/1, p. 1).
+- Corpus jacks credited by footprint or description: Wurth 7499111446 footprint on the generic
+  Connector:RJ45_LED_Shielded symbol; HanRun HR915340A described "LAN Transformer Jack"; the
+  KiCad RJ45_JK0654219 symbol described "1 Port RJ45 Magjack Connector"; Amphenol RC01812
+  described "RJ45 Receptacle Connector, Low-Profile, with LEDs, No Magnetics".
 - A bootstrap capacitor sits between VB and VS (VB1 and VS1, ...); a pin named VBOOT has no VS partner.
 """
 import sys
@@ -168,6 +179,26 @@ def eth_board(connector_value, connector_lib="", magnetics=False):
     return ctx_of(comps, nets, ("GND",))
 
 
+ETH_NETS = {"TXP": [("U1", "1", "TXP", "output"), ("J9", "1", "TD+", "passive")],
+            "TXN": [("U1", "2", "TXN", "output"), ("J9", "2", "TD-", "passive")],
+            "RXP": [("U1", "3", "RXP", "input"), ("J9", "3", "RD+", "passive")],
+            "RXN": [("U1", "4", "RXN", "input"), ("J9", "6", "RD-", "passive")],
+            "GND": [("U1", "5", "GND", "power_in")]}
+
+
+def jack(ref, value, lib_id="", pin_names=(), **fields):
+    comp = {"reference": ref, "type": "connector", "value": value, "lib_id": lib_id,
+            "pins": [{"number": str(i), "name": n} for i, n in enumerate(pin_names, 1)]}
+    comp.update(fields)
+    return comp
+
+
+def jack_board(conn, more=()):
+    """A PHY wired straight to *conn* (no transformer on the sheet)."""
+    return ctx_of([ic("U1", "LAN8720A"), conn, *more], {n: list(p) for n, p in ETH_NETS.items()},
+                  ("GND",))
+
+
 class EthernetIntegratedMagnetics(unittest.TestCase):
     def test_hr911105a_counts_as_magnetics(self):
         (eth,) = dd.detect_ethernet_interfaces(eth_board("HR911105A", "Connector:RJ45_Hanrun_HR911105A"))
@@ -203,6 +234,132 @@ class EthernetIntegratedMagnetics(unittest.TestCase):
                 self.assertEqual(eth["impedance_advisory"],
                                  {"status": "pass", "detail": "Magnetics integrated in connector J9"})
                 self.assertEqual([c["reference"] for c in eth["connectors"]], ["J9"])
+
+    def test_jack_with_centre_tap_pins_counts_as_magnetics(self):
+        conn = jack("J9", "HR913129A", "LibrePLC32:HR913129A",
+                    ("TD+", "TD-", "RD+", "TCT", "RCT", "RD-", "NC", "CHSGND"))
+        (eth,) = dd.detect_ethernet_interfaces(jack_board(conn))
+        self.assertEqual(eth["impedance_advisory"],
+                         {"status": "pass", "detail": "Magnetics integrated in connector J9"})
+        self.assertEqual([c["reference"] for c in eth["connectors"]], ["J9"])
+
+    def test_centre_tap_pins_of_another_unit_count(self):
+        conn = jack("J9", "TRJG0926HENL", "custom:TRJG0926HENL", ("TRD0_P", "TRD0_N"))
+        conn["unit"] = 1
+        other = jack("J9", "TRJG0926HENL", "custom:TRJG0926HENL", ("TRD1_P", "TRD1_N", "TRCT0"))
+        other["unit"] = 2
+        (eth,) = dd.detect_ethernet_interfaces(jack_board(conn, [other]))
+        self.assertEqual(eth["impedance_advisory"]["status"], "pass")
+
+    def test_hy931147c_counts_as_magnetics(self):
+        (eth,) = dd.detect_ethernet_interfaces(eth_board("HY931147C", "custom:HY931147C"))
+        self.assertEqual(eth["impedance_advisory"],
+                         {"status": "pass", "detail": "Magnetics integrated in connector J9"})
+
+    def test_jack_by_footprint_and_by_description(self):
+        cases = (
+            jack("J9", "RJ45_LED_Shielded", "Connector:RJ45_LED_Shielded",
+                 footprint="Connector_RJ:RJ45_Wuerth_7499111446_Horizontal"),
+            jack("J9", "JD1_0001NL", "gkl_misc:JD1_0001NL", footprint="gkl_conn:MAGJACK"),
+            jack("J9", "RJ45", "Connector:RJ45_Shielded", mpn="7499111446"),
+            jack("J9", "HR915340A", "custom:HR915340A", description="LAN Transformer Jack"),
+            jack("J9", "RJ45_JK0654219", "Connector:RJ45_JK0654219",
+                 description="1 Port RJ45 Magjack Connector Through Hole 10/100/1000 Base-T"),
+        )
+        for conn in cases:
+            with self.subTest(value=conn["value"]):
+                (eth,) = dd.detect_ethernet_interfaces(jack_board(conn))
+                self.assertEqual(eth["impedance_advisory"],
+                                 {"status": "pass", "detail": "Magnetics integrated in connector J9"})
+                self.assertEqual([c["reference"] for c in eth["connectors"]], ["J9"])
+
+    def test_no_magnetics_description_still_warns(self):
+        conn = jack("J9", "ETHERNET", "BR_Connectors:RJ45_RC01812",
+                    ("TD+", "TD-", "RD+", "RD-", "CT"),
+                    description="RJ45 Receptacle Connector, Low-Profile, with LEDs, No Magnetics SMD+PTH")
+        (eth,) = dd.detect_ethernet_interfaces(jack_board(conn))
+        self.assertEqual(eth["impedance_advisory"]["status"], "warning")
+
+    def test_ct_pin_alone_is_not_a_jack(self):
+        sup = jack("J5", "TL7705A", "Power_Supervisor:TL7705A",
+                   ("CT", "REF", "~{RESIN}", "GND", "~{RESET}", "RESET", "SENSE", "VCC"))
+        ctx = ctx_of([ic("U1", "LAN8720A"), sup],
+                     {"TXP": [("U1", "1", "TXP", "output")],
+                      "TIMING": [("J5", "1", "CT", "passive")],
+                      "GND": [("U1", "5", "GND", "power_in"), ("J5", "4", "GND", "power_in")]},
+                     ("GND",))
+        (eth,) = dd.detect_ethernet_interfaces(ctx)
+        self.assertEqual(eth["connectors"], [])
+        self.assertEqual(eth["impedance_advisory"]["status"], "warning")
+
+    def test_unwired_transformer_does_not_pass(self):
+        # A sonar transformer elsewhere on the sheet is not the Ethernet magnetics.
+        ctx = ctx_of([ic("U1", "LAN8720A"),
+                      jack("J9", "RJ45", "Connector:RJ45_Shielded"),
+                      ic("U3", "TC4427"),
+                      {"reference": "T5", "type": "transformer", "value": "TRANSFORMER"}],
+                     {**ETH_NETS,
+                      "SONAR_A": [("T5", "1", "~", "passive"), ("U3", "7", "OUTA", "output")],
+                      "SONAR_B": [("T5", "2", "~", "passive"), ("U3", "5", "OUTB", "output")]},
+                     ("GND",))
+        (eth,) = dd.detect_ethernet_interfaces(ctx)
+        self.assertEqual(eth["impedance_advisory"]["status"], "warning")
+        self.assertEqual(eth["magnetics"], [])
+
+    def test_transformer_behind_an_esd_array_still_passes(self):
+        # The walk from the PHY stops at the flow-through ESD array; the transformer's line
+        # side reaches the jack through a series resistor.
+        ctx = ctx_of([ic("U1", "LAN8720A"), ic("U2", "TPD4E05U06"),
+                      {"reference": "T1", "type": "transformer", "value": "HX1188NL"},
+                      res("R1", "0"), jack("J9", "RJ45", "Connector:RJ45_Shielded")],
+                     {"TXP": [("U1", "1", "TXP", "output"), ("U2", "1", "IO1", "passive")],
+                      "TXP_P": [("U2", "10", "IO1_OUT", "passive"), ("T1", "1", "~", "passive")],
+                      "LINE_TX": [("T1", "16", "~", "passive"), ("R1", "1", "~", "passive")],
+                      "LINE_TX_J": [("R1", "2", "~", "passive"), ("J9", "1", "TD+", "passive")],
+                      "GND": [("U1", "5", "GND", "power_in")]},
+                     ("GND",))
+        (eth,) = dd.detect_ethernet_interfaces(ctx)
+        self.assertEqual(eth["impedance_advisory"]["status"], "pass")
+        self.assertEqual([m["reference"] for m in eth["magnetics"]], ["T1"])
+
+    def test_transformer_without_pin_data_still_counts(self):
+        ctx = ctx_of([ic("U1", "LAN8720A"), jack("J9", "RJ45", "Connector:RJ45_Shielded"),
+                      {"reference": "T1", "type": "transformer", "value": "HX1188NL"}],
+                     dict(ETH_NETS), ("GND",))
+        (eth,) = dd.detect_ethernet_interfaces(ctx)
+        self.assertEqual(eth["impedance_advisory"]["status"], "pass")
+        self.assertEqual([m["reference"] for m in eth["magnetics"]], ["T1"])
+
+
+class EthernetPhyWords(unittest.TestCase):
+    def phys(self, value, lib_id):
+        ctx = ctx_of([ic("U1", value, lib_id)],
+                     {"GND": [("U1", "5", "GND", "power_in")]}, ("GND",))
+        return [e["phy_reference"] for e in dd.detect_ethernet_interfaces(ctx)]
+
+    def test_phy_word_inside_another_word_is_not_a_phy(self):
+        for value, lib in (("ESP32-WROOM-32", "esp32node:ESP32-WROOM-32_Phys"),
+                           ("ESP32-WROOM-32", "esp32_physlayout:ESP32-WROOM-32"),
+                           ("", "Electrophyiological Specific Components:OPA322AID"),
+                           ("MAX9000", "PhysikIIIA:MAX9000"),
+                           ("", "DavideCustomSymbols:StackedEthernet")):
+            with self.subTest(lib=lib):
+                self.assertEqual(self.phys(value, lib), [])
+
+    def test_project_library_named_ethernet_is_not_a_phy(self):
+        for value, lib in (("OPA690IDBVR", "ethernet:OPA695"),
+                           ("LM78M05CT", "ethernet-rescue:LM78M05CT")):
+            with self.subTest(lib=lib):
+                self.assertEqual(self.phys(value, lib), [])
+
+    def test_interface_ethernet_library_part_is_a_phy(self):
+        for value, lib in (("AR8035", "Interface_Ethernet:AR8035"),
+                           ("ETH-PHY", "custom:ETH-PHY"),
+                           ("U_ETH", "custom:Ethernet_PHY"),
+                           ("100BASE-T1", "custom:TJA1101"),
+                           ("LAN8720A", "ethernet:LAN8720A")):
+            with self.subTest(lib=lib):
+                self.assertEqual(self.phys(value, lib), ["U1"])
 
 
 def driver_board(vb_pin):
