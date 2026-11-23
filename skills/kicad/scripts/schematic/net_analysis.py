@@ -1310,7 +1310,7 @@ def _detect_can_buses(ctx: AnalysisContext) -> list[dict]:
     return list(can_nets_found.values())
 
 
-_CAN_NUMBERED_SIDE = re.compile(r"(?<![A-Z0-9])M?CAN_?\d+_?(H(?:IGH)?|L(?:OW)?)(?![A-Z0-9])")
+_CAN_NUMBERED_SIDE = re.compile(r"(?<![A-Z0-9])(?:M|FD)?CAN_?\d+_?(H(?:IGH)?|L(?:OW)?)(?![A-Z0-9])")
 
 
 def can_pair_key(net_name: str) -> str | None:

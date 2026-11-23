@@ -336,6 +336,11 @@ class CanNumberedLineNames(unittest.TestCase):
         for name in ("SCAN1_H", "JTAG_SCAN3_L", "ISCAN2_H", "TCAN1_L"):
             self.assertFalse(can_line(name, "H") or can_line(name, "L"), name)
 
+    def test_fdcan_peripheral_names_are_bus_lines(self):
+        self.assertTrue(can_line("FDCAN1_H", "H"))
+        self.assertTrue(can_line("FDCAN1_L", "L"))
+        self.assertFalse(can_line("SCAN1_H", "H"))
+
     def test_high_and_low_words_after_a_bus_number_are_bus_lines(self):
         self.assertTrue(can_line("CAN1_HIGH", "H"))
         self.assertTrue(can_line("CAN1_LOW", "L"))

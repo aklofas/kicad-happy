@@ -187,7 +187,7 @@ def rail_behind_bridged_jumper(ctx: AnalysisContext, net: str | None) -> str | N
 _CAN_SPLIT_PIN_NAMES = ("SPLIT", "VSPLIT", "VREF", "REF")
 CAN_H_PIN_NAMES = ('CANH', 'CAN_H', 'CANHI', 'CAN_HIGH')
 CAN_L_PIN_NAMES = ('CANL', 'CAN_L', 'CANLO', 'CAN_LOW')
-_CAN_NUMBERED_LINE = re.compile(r"(?<![A-Z0-9])M?CAN_?\d+_?(H(?:IGH)?|L(?:OW)?)(?![A-Z0-9])")
+_CAN_NUMBERED_LINE = re.compile(r"(?<![A-Z0-9])(?:M|FD)?CAN_?\d+_?(H(?:IGH)?|L(?:OW)?)(?![A-Z0-9])")
 
 
 def can_pin_pair(ctx: AnalysisContext, ref: str) -> tuple[str, str] | None:

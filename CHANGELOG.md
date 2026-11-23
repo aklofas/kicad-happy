@@ -179,6 +179,8 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A CAN transceiver whose bus nets carry no bus-line name is judged on its own CANH and CANL pin nets: a terminator or split termination there is found, and the result names those nets.
 - CAN buses named with a bus number (`CAN1_H` / `CAN1_L`, `CAN1H`, `CAN_2_L`, `CAN1_HIGH`, `MCAN0_H`, `CAN2_H+` / `CAN2_L-`) are detected, paired by number and checked for termination; `CAN1_HS`, `CAN0_LED`, `CAN2_LOAD` and `TCAN1_L` are not bus lines.
 - A CAN transceiver whose bus nets carry no bus-line name is judged on its own CANH and CANL pin nets: a terminator or split termination there is found, and the result names those nets. A CAN controller with no bus pins, and a transceiver whose bus pins are unconnected, no longer add a bus of their own.
+- CAN buses named with a bus number (`CAN1_H` / `CAN1_L`, `CAN1H`, `CAN_2_L`, `CAN1_HIGH`, `MCAN0_H`, `FDCAN1_H`, `CAN2_H+` / `CAN2_L-`) are detected, paired by number and checked for termination; `CAN1_HS`, `CAN0_LED`, `CAN2_LOAD` and `TCAN1_L` are not bus lines.
+- A CAN transceiver whose bus nets carry no bus-line name is judged on its own CANH and CANL pin nets: a terminator or split termination there is found, and the result names those nets. A CAN controller with no bus pins adds no second bus beside a transceiver's bus, and a transceiver whose bus pins are unconnected adds no bus.
 
 ### Documentation
 
