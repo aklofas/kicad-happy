@@ -185,6 +185,19 @@ def rail_behind_bridged_jumper(ctx: AnalysisContext, net: str | None) -> str | N
 
 
 _CAN_SPLIT_PIN_NAMES = ("SPLIT", "VSPLIT", "VREF", "REF")
+CAN_H_PIN_NAMES = ('CANH', 'CAN_H', 'CANHI', 'CAN_HIGH')
+CAN_L_PIN_NAMES = ('CANL', 'CAN_L', 'CANLO', 'CAN_LOW')
+_CAN_NUMBERED_LINE = re.compile(r"CAN_?\d+_?([HL])(?![A-Z0-9])")
+
+
+def can_line(net_name: str, letter: str) -> bool:
+    """True for a CAN bus line net of the given side ('H' or 'L'): CANH, CAN_H and the
+    numbered forms CAN1H, CAN1_H, CAN_2_H. ``CAN1_HS`` and ``CAN0_LED`` are other signals."""
+    upper = net_name.upper()
+    if "CAN" + letter in upper or "CAN_" + letter in upper:
+        return True
+    m = _CAN_NUMBERED_LINE.search(upper)
+    return bool(m and m.group(1) == letter)
 
 
 def can_split_termination(ctx: AnalysisContext, canh_net: str, canl_net: str

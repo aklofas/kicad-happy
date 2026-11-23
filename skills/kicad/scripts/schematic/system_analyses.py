@@ -6,7 +6,7 @@ import re
 import sys
 from kicad_core.diagnostics import record
 from detector_helpers import (
-    is_addressable_led, is_fitted, is_tvs_diode, led_forward_voltage, type_c_rp,
+    can_line, is_addressable_led, is_fitted, is_tvs_diode, led_forward_voltage, type_c_rp,
 )
 from kicad_core.classify import gpio_port_pins, is_active_low_enable, is_touch_pad
 from kicad_types import (
@@ -1458,8 +1458,8 @@ def analyze_protocol_compliance(components: list[dict], nets: dict,
     diff_pairs = design_analysis.get("differential_pairs", [])
     can_entries = buses.get("can", [])
     can_names = [c.get("net", "") for c in can_entries]
-    canh = [n for n in can_names if "CANH" in n.upper() or "CAN_H" in n.upper()]
-    canl = [n for n in can_names if "CANL" in n.upper() or "CAN_L" in n.upper()]
+    canh = [n for n in can_names if can_line(n, "H")]
+    canl = [n for n in can_names if can_line(n, "L")]
     pairs = can_bus_pairs(canh, canl)
     can_dps = [dp for dp in diff_pairs if dp.get("type") == "CAN"]
     judged: set = set()

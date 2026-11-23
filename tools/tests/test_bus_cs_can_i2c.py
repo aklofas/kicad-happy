@@ -6,6 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "skills" / "kicad" / "scripts"))
 from kicad_types import build_analysis_context  # noqa: E402
+from detector_helpers import can_line  # noqa: E402
 from schematic.net_analysis import (  # noqa: E402
     _analyze_bus_protocols, _detect_can_buses, _detect_differential_pairs, _detect_i2c_buses)
 from schematic.system_analyses import analyze_protocol_compliance  # noqa: E402
@@ -316,6 +317,44 @@ class CanSplitTermination(unittest.TestCase):
         term, _ = _can_findings(comps, nets)
         self.assertEqual(term["CAN_H"], "120\u03a9 (R1)")
         self.assertEqual(_pr003(comps, nets), [])
+
+
+class CanNumberedLineNames(unittest.TestCase):
+    def test_numbered_names_are_bus_lines(self):
+        for name, side in (("CAN1_H", "H"), ("CAN1_L", "L"), ("CAN1H", "H"), ("CAN_2_L", "L"),
+                           ("MCU1_CAN2_H+", "H"), ("MCAN0_L-", "L"), ("CANH", "H"), ("CAN_H", "H"),
+                           ("CAN_HIGH", "H"), ("CANL", "L")):
+            self.assertTrue(can_line(name, side), name)
+            self.assertFalse(can_line(name, "L" if side == "H" else "H"), name)
+
+    def test_other_can_signals_are_not_bus_lines(self):
+        for name in ("CAN1_HS", "CAN0_LED", "CAN2_LOAD", "CAN_TX", "CAN1_TX"):
+            self.assertFalse(can_line(name, "H"), name)
+            self.assertFalse(can_line(name, "L"), name)
+
+    def test_numbered_pair_is_one_bus_with_its_terminator(self):
+        x1 = _comp("U7", "ic", "MCP2562", "Interface_CAN_LIN:MCP2562", CAN_XCVR)
+        nets = {"CAN1_H": [("U7", "7", "CANH", "bidirectional"), ("R1", "1", "~", "passive")],
+                "CAN1_L": [("U7", "6", "CANL", "bidirectional"), ("R1", "2", "~", "passive")],
+                "CAN0_LED": [("U1", "1", "PA4", "bidirectional")]}
+        term, findings = _can_findings([MCU, x1, _res("R1", "120")], nets)
+        self.assertEqual(term["CAN1_H"], "120Ω (R1)")
+        self.assertEqual(term["CAN1_L"], "120Ω (R1)")
+        self.assertNotIn("CAN0_LED", term)
+        self.assertEqual([f["nets"] for f in findings], [["CAN1_H", "CAN1_L"]])
+
+    def test_two_numbered_buses_are_paired_by_number(self):
+        x1 = _comp("U7", "ic", "MCP2562", "Interface_CAN_LIN:MCP2562", CAN_XCVR)
+        x2 = _comp("U8", "ic", "MCP2562", "Interface_CAN_LIN:MCP2562", CAN_XCVR)
+        nets = {"CAN1_H": [("U7", "7", "CANH", "bidirectional"), ("R1", "1", "~", "passive")],
+                "CAN1_L": [("U7", "6", "CANL", "bidirectional"), ("R1", "2", "~", "passive")],
+                "CAN2_H": [("U8", "7", "CANH", "bidirectional")],
+                "CAN2_L": [("U8", "6", "CANL", "bidirectional")]}
+        term, findings = _can_findings([x1, x2, _res("R1", "120")], nets)
+        self.assertEqual(term, {"CAN1_H": "120Ω (R1)", "CAN1_L": "120Ω (R1)",
+                                "CAN2_H": None, "CAN2_L": None})
+        self.assertEqual(sorted(tuple(f["nets"]) for f in findings),
+                         [("CAN1_H", "CAN1_L"), ("CAN2_H", "CAN2_L")])
 
 
 class CanNoTerminatorOnBoard(unittest.TestCase):

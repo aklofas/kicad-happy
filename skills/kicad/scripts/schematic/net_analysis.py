@@ -8,7 +8,7 @@ from kicad_types import (
 from kicad_core.classify import classify_ic_function
 from kicad_core.coords import to_iu
 from detector_helpers import (
-    can_split_termination, is_protection_part, not_i2c_despite_name, rail_behind_bridged_jumper,
+    can_line, can_split_termination, is_protection_part, not_i2c_despite_name, rail_behind_bridged_jumper,
 )
 from kicad_core.sexp import unescape_string
 from schematic import erc_pins
@@ -1220,7 +1220,7 @@ def _detect_can_buses(ctx: AnalysisContext) -> list[dict]:
     can_nets_found = {}
     for net_name, net_info in nets.items():
         nu = net_name.upper()
-        if any(kw in nu.lower() for kw in can_keywords):
+        if any(kw in nu.lower() for kw in can_keywords) or can_line(nu, "H") or can_line(nu, "L"):
             device_refs = [p["component"] for p in net_info["pins"]
                            if comp_lookup.get(p["component"], {}).get("type") == "ic"]
             can_nets_found[net_name] = {
@@ -1243,8 +1243,8 @@ def _detect_can_buses(ctx: AnalysisContext) -> list[dict]:
                 }
 
     # CAN termination per bus (ISO 11898-2): a 100-150 ohm resistor between that bus's CANH and CANL, or a split pair
-    canh_nets = [n for n in can_nets_found if "CANH" in n.upper() or "CAN_H" in n.upper()]
-    canl_nets = [n for n in can_nets_found if "CANL" in n.upper() or "CAN_L" in n.upper()]
+    canh_nets = [n for n in can_nets_found if can_line(n, "H")]
+    canl_nets = [n for n in can_nets_found if can_line(n, "L")]
     pairs = can_bus_pairs(canh_nets, canl_nets)
     term_by_net: dict = {}
     dnp_by_net: dict = {}
@@ -1289,6 +1289,9 @@ def _detect_can_buses(ctx: AnalysisContext) -> list[dict]:
     return list(can_nets_found.values())
 
 
+_CAN_NUMBERED_SIDE = re.compile(r"CAN_?\d+_?([HL])(?![A-Z0-9])")
+
+
 def can_pair_key(net_name: str) -> str | None:
     """A CANH or CANL net's bus key: the name with its last CANH/CANL (CAN_H/CAN_L) marker blanked."""
     u = net_name.upper()
@@ -1297,6 +1300,10 @@ def can_pair_key(net_name: str) -> str | None:
         i = u.rfind(marker)
         if i >= 0 and (best is None or i > best[0]):
             best = (i, u[:i] + blank + u[i + len(marker):])
+    if best is None:
+        m = _CAN_NUMBERED_SIDE.search(u)
+        if m:
+            return u[:m.start(1)] + "#" + u[m.end(1):]
     return best[1] if best else None
 
 
