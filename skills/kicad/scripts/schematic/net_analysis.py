@@ -8,7 +8,7 @@ from kicad_types import (
 from kicad_core.classify import classify_ic_function
 from kicad_core.coords import to_iu
 from detector_helpers import (
-    can_line, can_pin_pair, can_split_termination, is_protection_part, not_i2c_despite_name, rail_behind_bridged_jumper,
+    _CAN_NUMBERED_LINE, can_line, can_pin_pair, can_split_termination, is_protection_part, not_i2c_despite_name, rail_behind_bridged_jumper,
 )
 from kicad_core.sexp import unescape_string
 from schematic import erc_pins
@@ -1310,9 +1310,6 @@ def _detect_can_buses(ctx: AnalysisContext) -> list[dict]:
     return list(can_nets_found.values())
 
 
-_CAN_NUMBERED_SIDE = re.compile(r"(?<![A-Z0-9])(?:M|FD)?CAN_?\d+_?(H(?:IGH)?|L(?:OW)?)(?![A-Z0-9])")
-
-
 def can_pair_key(net_name: str) -> str | None:
     """A CANH or CANL net's bus key: the name with its last CANH/CANL (CAN_H/CAN_L) marker blanked."""
     u = net_name.upper()
@@ -1322,7 +1319,7 @@ def can_pair_key(net_name: str) -> str | None:
         if i >= 0 and (best is None or i > best[0]):
             best = (i, u[:i] + blank + u[i + len(marker):])
     if best is None:
-        m = _CAN_NUMBERED_SIDE.search(u)
+        m = _CAN_NUMBERED_LINE.search(u)
         if m:
             # the polarity suffix (CAN2_H+ / CAN2_L-) belongs to the side, not to the bus
             return u[:m.start(1)] + "#" + u[m.end(1):].rstrip("+-")
