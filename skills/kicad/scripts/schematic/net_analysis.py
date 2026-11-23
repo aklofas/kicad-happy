@@ -7,7 +7,9 @@ from kicad_types import (
 )
 from kicad_core.classify import classify_ic_function
 from kicad_core.coords import to_iu
-from detector_helpers import is_protection_part, not_i2c_despite_name, rail_behind_bridged_jumper
+from detector_helpers import (
+    can_split_termination, is_protection_part, not_i2c_despite_name, rail_behind_bridged_jumper,
+)
 from kicad_core.sexp import unescape_string
 from schematic import erc_pins
 from validation_detectors import _en_endpoint_compatible, _is_open_drain_endpoint, _pull_up_rails
@@ -1240,7 +1242,7 @@ def _detect_can_buses(ctx: AnalysisContext) -> list[dict]:
                     "devices": [_enrich_device_ref(comp["reference"], comp_lookup)],
                 }
 
-    # CAN termination per bus (ISO 11898-2): a 100-150 ohm resistor between that bus's CANH and CANL
+    # CAN termination per bus (ISO 11898-2): a 100-150 ohm resistor between that bus's CANH and CANL, or a split pair
     canh_nets = [n for n in can_nets_found if "CANH" in n.upper() or "CAN_H" in n.upper()]
     canl_nets = [n for n in can_nets_found if "CANL" in n.upper() or "CAN_L" in n.upper()]
     pairs = can_bus_pairs(canh_nets, canl_nets)
@@ -1264,6 +1266,12 @@ def _detect_can_buses(ctx: AnalysisContext) -> list[dict]:
                     continue
                 termination = f"{int(r_val)}\u03A9 ({p['component']})"
                 break
+        if termination is None:
+            split = can_split_termination(ctx, canh_net, canl_net)
+            if split and split[3]:
+                termination = f"{int(split[0])}\u03A9 split ({split[1]}+{split[2]})"
+            elif split:
+                dnp_ref = dnp_ref or split[1]
         term_by_net[canh_net] = termination
         dnp_by_net[canh_net] = dnp_ref
         if term_by_net.get(canl_net) is None:

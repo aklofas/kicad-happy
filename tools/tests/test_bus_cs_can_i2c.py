@@ -9,6 +9,7 @@ from kicad_types import build_analysis_context  # noqa: E402
 from schematic.net_analysis import (  # noqa: E402
     _analyze_bus_protocols, _detect_can_buses, _detect_differential_pairs, _detect_i2c_buses)
 from schematic.system_analyses import analyze_protocol_compliance  # noqa: E402
+from validation_detectors import validate_can_bus  # noqa: E402
 
 
 def _comp(ref, ctype, value, lib_id, pins=()):
@@ -118,7 +119,9 @@ class CanTerminationPerBus(unittest.TestCase):
         self.assertTrue(by_nets[("CANH1", "CANL1")]["has_termination"])
         self.assertIsNone(by_nets[("CANH1", "CANL1")]["issues"])
         self.assertFalse(by_nets[("CANH2", "CANL2")]["has_termination"])
-        self.assertEqual(by_nets[("CANH2", "CANL2")]["issues"], ["CAN bus missing 120Ω termination resistor"])
+        self.assertIsNone(by_nets[("CANH2", "CANL2")]["issues"])
+        self.assertEqual(by_nets[("CANH2", "CANL2")]["observations"],
+                         ["No CAN termination found on this board (a bus-end node needs 120Ω)"])
 
     def test_single_bus_logic_side_nets_keep_the_value_and_get_no_finding(self):
         x1 = _comp("U7", "ic", "MCP2562", "Interface_CAN_LIN:MCP2562", CAN_XCVR)
@@ -150,8 +153,9 @@ class CanTerminationPerBus(unittest.TestCase):
                 "CAN_TX": [("U1", "1", "PA4", "bidirectional"), ("U7", "1", "TXD", "input")],
                 "CAN_RX": [("U1", "2", "PA5", "bidirectional"), ("U7", "4", "RXD", "output")]}
         _, findings = _can_findings([MCU, x1], nets)
-        self.assertEqual([(f["nets"], f["issues"]) for f in findings],
-                         [(["CAN_P", "CAN_N"], ["CAN bus missing 120Ω termination resistor"])])
+        self.assertEqual([(f["nets"], f["issues"], f["observations"]) for f in findings],
+                         [(["CAN_P", "CAN_N"], None,
+                           ["No CAN termination found on this board (a bus-end node needs 120Ω)"])])
 
     def test_dnp_terminator_on_a_diff_pair_is_an_unfitted_option(self):
         # A placed-but-DNP 120 ohm is the per-node option (only the bus-end nodes fit it)
@@ -198,6 +202,113 @@ class CanTerminationPerBus(unittest.TestCase):
             self.assertIsNone(findings[0]["issues"], h)
             self.assertEqual(findings[0]["observations"],
                              ["CAN 120\u03a9 termination present (verify remote end has matching termination)"], h)
+
+
+def _cap(ref, value="100n"):
+    return _comp(ref, "capacitor", value, "Device:C", [("1", "~", "passive"), ("2", "~", "passive")])
+
+
+def _can_nets(extra=None, mid_pins=(("R1", "2", "~", "passive"), ("R2", "2", "~", "passive"),
+                                    ("C1", "1", "~", "passive"))):
+    nets = {"CAN_H": [("U7", "7", "CANH", "bidirectional"), ("R1", "1", "~", "passive")],
+            "CAN_L": [("U7", "6", "CANL", "bidirectional"), ("R2", "1", "~", "passive")],
+            "SPLIT_MID": list(mid_pins),
+            "GND": [("C1", "2", "~", "passive")]}
+    nets.update(extra or {})
+    return nets
+
+
+def _pr003(components, nets):
+    ctx = _ctx(components, nets)
+    return [f for f in validate_can_bus(ctx) if f["rule_id"] == "PR-003"]
+
+
+class CanSplitTermination(unittest.TestCase):
+    """Split termination: two 60 ohm resistors from the bus lines to a decoupled midpoint
+    (NXP TJA1042 data sheet, Rev. 12, section 7.3.1 on p. 7 and Figure 4 on p. 8, which draws
+    two 60 ohm resistors from CANH and CANL to the SPLIT pin of the transceiver)."""
+
+    def _xcvr(self):
+        return _comp("U7", "ic", "MCP2562", "Interface_CAN_LIN:MCP2562", CAN_XCVR)
+
+    def test_two_60_ohm_resistors_to_a_decoupled_midpoint_are_a_termination(self):
+        comps = [self._xcvr(), _res("R1", "60"), _res("R2", "60"), _cap("C1")]
+        term, findings = _can_findings(comps, _can_nets())
+        self.assertEqual(term, {"CAN_H": "120\u03a9 split (R1+R2)", "CAN_L": "120\u03a9 split (R1+R2)"})
+        self.assertTrue(findings[0]["has_termination"])
+        self.assertIsNone(findings[0]["issues"])
+        self.assertEqual(_pr003(comps, _can_nets()), [])
+
+    def test_midpoint_on_the_transceiver_split_pin_is_still_split(self):
+        split = _comp("U7", "ic", "TJA1042T", "Interface_CAN_LIN:TJA1042T",
+                      CAN_XCVR + [("5", "SPLIT", "output")])
+        nets = _can_nets(mid_pins=(("R1", "2", "~", "passive"), ("R2", "2", "~", "passive"),
+                                   ("C1", "1", "~", "passive"), ("U7", "5", "SPLIT", "output")))
+        comps = [split, _res("R1", "62"), _res("R2", "62"), _cap("C1", "4.7n")]
+        term, _ = _can_findings(comps, nets)
+        self.assertEqual(term["CAN_H"], "124\u03a9 split (R1+R2)")
+        self.assertEqual(_pr003(comps, nets), [])
+
+    def test_60_ohm_resistors_to_ground_are_not_split(self):
+        nets = {"CAN_H": [("U7", "7", "CANH", "bidirectional"), ("R1", "1", "~", "passive")],
+                "CAN_L": [("U7", "6", "CANL", "bidirectional"), ("R2", "1", "~", "passive")],
+                "GND": [("R1", "2", "~", "passive"), ("R2", "2", "~", "passive")]}
+        comps = [self._xcvr(), _res("R1", "60"), _res("R2", "60")]
+        term, _ = _can_findings(comps, nets)
+        self.assertEqual(term, {"CAN_H": None, "CAN_L": None})
+        self.assertEqual(len(_pr003(comps, nets)), 1)
+
+    def test_midpoint_with_a_bias_resistor_is_not_split(self):
+        nets = _can_nets(mid_pins=(("R1", "2", "~", "passive"), ("R2", "2", "~", "passive"),
+                                   ("R3", "1", "~", "passive")),
+                         extra={"+3V3": [("R3", "2", "~", "passive")]})
+        comps = [self._xcvr(), _res("R1", "60"), _res("R2", "60"), _res("R3", "1k")]
+        term, _ = _can_findings(comps, nets)
+        self.assertEqual(term, {"CAN_H": None, "CAN_L": None})
+
+    def test_midpoint_with_a_choke_pin_is_not_split(self):
+        choke = _comp("L1", "inductor", "CMC", "Device:L_Coupled", [("1", "1", "passive")])
+        nets = _can_nets(mid_pins=(("R1", "2", "~", "passive"), ("R2", "2", "~", "passive"),
+                                   ("L1", "1", "1", "passive")))
+        comps = [self._xcvr(), _res("R1", "60"), _res("R2", "60"), choke]
+        term, _ = _can_findings(comps, nets)
+        self.assertEqual(term, {"CAN_H": None, "CAN_L": None})
+
+    def test_unfitted_split_is_an_option_not_a_termination(self):
+        comps = [self._xcvr(), dict(_res("R1", "60"), dnp=True), _res("R2", "60"), _cap("C1")]
+        term, findings = _can_findings(comps, _can_nets())
+        self.assertEqual(term, {"CAN_H": None, "CAN_L": None})
+        self.assertEqual(findings[0]["observations"],
+                         ["CAN termination R1 (60) is DNP (fit it on the bus-end nodes)"])
+        (f,) = _pr003(comps, _can_nets())
+        self.assertIn("R1 is placed but not fitted", f["description"])
+
+    def test_fitted_120_ohm_keeps_its_value(self):
+        nets = {"CAN_H": [("U7", "7", "CANH", "bidirectional"), ("R1", "1", "~", "passive")],
+                "CAN_L": [("U7", "6", "CANL", "bidirectional"), ("R1", "2", "~", "passive")]}
+        comps = [self._xcvr(), _res("R1", "120")]
+        term, _ = _can_findings(comps, nets)
+        self.assertEqual(term["CAN_H"], "120\u03a9 (R1)")
+        self.assertEqual(_pr003(comps, nets), [])
+
+
+class CanNoTerminatorOnBoard(unittest.TestCase):
+    def test_transceiver_without_a_terminator_gets_an_info_note(self):
+        nets = {"CAN_H": [("U7", "7", "CANH", "bidirectional")],
+                "CAN_L": [("U7", "6", "CANL", "bidirectional")]}
+        comps = [_comp("U7", "ic", "MCP2562", "Interface_CAN_LIN:MCP2562", CAN_XCVR)]
+        (f,) = _pr003(comps, nets)
+        self.assertEqual(f["severity"], "info")
+        self.assertEqual(f["summary"], "CAN transceiver U7: no termination found on this board")
+
+    def test_dnp_120_ohm_is_named_and_not_counted_as_fitted(self):
+        nets = {"CAN_H": [("U7", "7", "CANH", "bidirectional"), ("R1", "1", "~", "passive")],
+                "CAN_L": [("U7", "6", "CANL", "bidirectional"), ("R1", "2", "~", "passive")]}
+        comps = [_comp("U7", "ic", "MCP2562", "Interface_CAN_LIN:MCP2562", CAN_XCVR),
+                 dict(_res("R1", "120"), dnp=True)]
+        (f,) = _pr003(comps, nets)
+        self.assertEqual(f["severity"], "info")
+        self.assertIn("R1 is placed but not fitted", f["description"])
 
 
 def _i2c_line(pullup_ohms, n_devices):

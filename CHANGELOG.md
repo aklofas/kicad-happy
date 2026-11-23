@@ -32,6 +32,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - FPGA banks drawn as separate units are judged at their own VCCIO rail.
 - `ic_pin_analysis[]` and `transistor_pin_analysis[]` now count and list pins that are wired to nothing (`unconnected_pins`, `unconnected_pin_list`); the fields were empty for every placed pin. The Action report's Unconnected column follows.
 - DS-001 and DS-002 name a datasheets folder that holds no PDF instead of reporting that none was found, and set `datasheets_dir`. An empty `./datasheets` no longer hides a populated folder one or two levels up or under `docs/`.
+- CAN split termination (two 60 Ω resistors to a shared midpoint) is recognised. A transceiver with no terminator on the board is now an info note ("no termination found on this board") instead of a warning, since only bus-end nodes carry one; an unfitted terminator is named.
 
 ### Fixed
 

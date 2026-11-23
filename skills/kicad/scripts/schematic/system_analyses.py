@@ -1475,7 +1475,8 @@ def analyze_protocol_compliance(components: list[dict], nets: dict,
             named = f"{dnp_ref} ({value})" if value else dnp_ref
             obs.append(f"CAN termination {named} is DNP (fit it on the bus-end nodes)")
         elif not has_term:
-            issues.append("CAN bus missing 120Ω termination resistor")
+            # A node in the middle of a bus, or one terminated in the cable, has none on the board
+            obs.append("No CAN termination found on this board (a bus-end node needs 120Ω)")
         elif term_value and abs(term_value - 120) > 12:
             issues.append(f"CAN termination is {term_value}Ω (expected 120Ω ±10%)")
         else:
@@ -1491,11 +1492,13 @@ def analyze_protocol_compliance(components: list[dict], nets: dict,
         judged.add(key)
         terms = [t for t in dp.get("termination") or [] if not t.get("dnp")]
         dnp = next((t.get("ref") for t in dp.get("termination") or [] if t.get("dnp")), None)
-        _judge(list(key), bool(terms), terms[0].get("ohms") if terms else None, dnp)
+        # a split termination is on the bus entry: the pair lists only a resistor across the lines
+        split = any(c.get("termination") for c in can_entries if c.get("net") in key)
+        _judge(list(key), bool(terms) or split, terms[0].get("ohms") if terms else None, dnp)
 
     def _judge_unnamed_bus(can):
         # One result, credited by a terminated CAN pair (fitted first, else a DNP option; a choke
-        # or connector can split one bus into two pairs); else "missing", naming the first pair
+        # or connector can split one bus into two pairs); else "not found", naming the first pair
         dp = (next((d for d in can_dps if d.get("has_termination")), None)
               or next((d for d in can_dps if d.get("termination")), None))
         if dp:

@@ -33,7 +33,7 @@ except ImportError:
 
 from domain_detectors import is_single_supply_lvc
 from detector_helpers import (
-    get_components_by_type, get_pin_net, get_unique_ics, index_two_pin_components,
+    can_split_termination, get_components_by_type, get_pin_net, get_unique_ics, index_two_pin_components,
     is_addressable_led, is_led_rail, led_forward_voltage, led_string, match_ic_keywords,
     rail_behind_bridged_jumper, symbol_name,
 )
@@ -1237,6 +1237,7 @@ def validate_can_bus(ctx: AnalysisContext) -> list[dict]:
         if not canh or not canl:
             continue
         term_found = False
+        unfitted = None
         for rref in net_to_resistors.get(canh, []):
             n1, n2 = resistor_nets.get(rref, (None, None))
             if not n1 or not n2:
@@ -1245,18 +1246,32 @@ def validate_can_bus(ctx: AnalysisContext) -> list[dict]:
             if other == canl:
                 ohms = ctx.parsed_values.get(rref)
                 if ohms is not None and 100 <= ohms <= 150:
+                    if ctx.comp_lookup.get(rref, {}).get('dnp'):
+                        unfitted = unfitted or rref
+                        continue
                     term_found = True
                     break
         if not term_found:
+            split = can_split_termination(ctx, canh, canl)
+            if split and split[3]:
+                term_found = True
+            elif split:
+                unfitted = unfitted or split[1]
+        if not term_found:
+            # Only bus-end nodes carry a terminator, and it may sit in the cable or connector
+            option = f' {unfitted} is placed but not fitted.' if unfitted else ''
             findings.append(make_finding(
                 detector='validate_can_bus', rule_id='PR-003', category='protocol_integrity',
-                summary=f'CAN transceiver {xcvr["ref"]}: no 120R termination',
-                description=f'CAN transceiver {xcvr["ref"]} ({xcvr["value"]}) has no 120R termination between CANH ({canh}) and CANL ({canl}).',
-                severity='warning', confidence='deterministic', evidence_source='topology',
+                summary=f'CAN transceiver {xcvr["ref"]}: no termination found on this board',
+                description=(f'CAN transceiver {xcvr["ref"]} ({xcvr["value"]}) has no fitted 120R resistor between '
+                             f'CANH ({canh}) and CANL ({canl}) and no split termination (two 60R resistors to a '
+                             f'shared midpoint). A bus needs 120R at each end; a node in the middle of the bus, '
+                             f'or one terminated in the cable, has none on the board.{option}'),
+                severity='info', confidence='deterministic', evidence_source='topology',
                 components=[xcvr['ref']], nets=[n for n in [canh, canl] if n],
-                recommendation=f'Add a 120R resistor between {canh} and {canl} if at bus end.',
-                fix_params={'type': 'add_component', 'components': [{'type': 'resistor', 'value': '120', 'net_from': canh, 'net_to': canl}], 'basis': 'ISO 11898 requires 120R termination'},
-                standard_ref='ISO 11898-2 section 7.3', impact='Bus reflections cause communication errors',
+                recommendation=f'Fit 120R between {canh} and {canl} if this node is at a bus end.',
+                fix_params={'type': 'add_component', 'components': [{'type': 'resistor', 'value': '120', 'net_from': canh, 'net_to': canl}], 'basis': 'ISO 11898 requires 120R termination at each bus end'},
+                standard_ref='ISO 11898-2 section 7.3', impact='An unterminated bus end causes reflections and communication errors',
                 provenance=make_provenance('pr_can_spec', 'deterministic'),
             
                 source=ctx.source, schema_era="v3.0",))

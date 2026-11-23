@@ -184,6 +184,44 @@ def rail_behind_bridged_jumper(ctx: AnalysisContext, net: str | None) -> str | N
     return None
 
 
+_CAN_SPLIT_PIN_NAMES = ("SPLIT", "VSPLIT", "VREF", "REF")
+
+
+def can_split_termination(ctx: AnalysisContext, canh_net: str, canl_net: str
+                          ) -> tuple[float, str, str, bool] | None:
+    """Split termination: one 50-75 ohm resistor from each bus line to a shared midpoint.
+
+    Returns ``(total ohms, CANH resistor, CANL resistor, fitted)``. The midpoint may carry
+    only capacitors and a transceiver's SPLIT / VREF pin; two such resistors into a rail,
+    a bias divider or any other part are not read as termination.
+    """
+    def legs(net):
+        out = []
+        for p in ctx.nets.get(net, {}).get("pins", []):
+            comp = ctx.comp_lookup.get(p["component"])
+            ohms = ctx.parsed_values.get(p["component"])
+            if comp and comp["type"] == "resistor" and ohms and 50 <= ohms <= 75:
+                n1, n2 = ctx.get_two_pin_nets(p["component"])
+                far = n2 if n1 == net else n1
+                if far and far not in (canh_net, canl_net):
+                    out.append((p["component"], ohms, far, bool(comp.get("dnp"))))
+        return out
+
+    for ref_h, ohms_h, mid, dnp_h in legs(canh_net):
+        if ctx.is_power_net(mid) or ctx.is_ground(mid):
+            continue
+        for ref_l, ohms_l, mid_l, dnp_l in legs(canl_net):
+            if mid_l != mid or ref_l == ref_h:
+                continue
+            others = [p for p in ctx.nets.get(mid, {}).get("pins", [])
+                      if p["component"] not in (ref_h, ref_l)]
+            if all(ctx.comp_lookup.get(p["component"], {}).get("type") == "capacitor"
+                   or (p.get("pin_name") or "").upper().strip("~{}") in _CAN_SPLIT_PIN_NAMES
+                   for p in others):
+                return ohms_h + ohms_l, ref_h, ref_l, not (dnp_h or dnp_l)
+    return None
+
+
 def get_components_by_type(
     ctx: AnalysisContext,
     comp_type: str | tuple[str, ...],
