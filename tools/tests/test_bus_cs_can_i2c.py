@@ -283,6 +283,32 @@ class CanSplitTermination(unittest.TestCase):
         (f,) = _pr003(comps, _can_nets())
         self.assertIn("R1 is placed but not fitted", f["description"])
 
+    def test_reference_pin_of_another_part_on_the_midpoint_is_not_split(self):
+        adc = _comp("U9", "ic", "ADS1115", "Analog_ADC:ADS1115", [("1", "REF", "input")])
+        nets = _can_nets(mid_pins=(("R1", "2", "~", "passive"), ("R2", "2", "~", "passive"),
+                                   ("C1", "1", "~", "passive"), ("U9", "1", "REF", "input")))
+        comps = [self._xcvr(), _res("R1", "60"), _res("R2", "60"), _cap("C1"), adc]
+        term, _ = _can_findings(comps, nets)
+        self.assertEqual(term, {"CAN_H": None, "CAN_L": None})
+
+    def test_dnp_pair_is_reported_unfitted_not_as_termination(self):
+        comps = [self._xcvr(), dict(_res("R1", "60"), dnp=True), dict(_res("R2", "60"), dnp=True),
+                 _cap("C1")]
+        ctx = _ctx(comps, _can_nets())
+        entries = _detect_can_buses(ctx)
+        self.assertTrue(all(e["termination"] is None and e["termination_dnp"] == "R1" for e in entries))
+
+    def test_fitted_pair_wins_over_an_unfitted_pair_on_the_same_lines(self):
+        nets = _can_nets(extra={"MID2": [("R3", "2", "~", "passive"), ("R4", "2", "~", "passive")],
+                                "CAN_H": [("U7", "7", "CANH", "bidirectional"), ("R3", "1", "~", "passive"),
+                                          ("R1", "1", "~", "passive")],
+                                "CAN_L": [("U7", "6", "CANL", "bidirectional"), ("R4", "1", "~", "passive"),
+                                          ("R2", "1", "~", "passive")]})
+        comps = [self._xcvr(), _res("R1", "60"), _res("R2", "60"), _cap("C1"),
+                 dict(_res("R3", "60"), dnp=True), dict(_res("R4", "60"), dnp=True)]
+        term, _ = _can_findings(comps, nets)
+        self.assertEqual(term["CAN_H"], "120\u03a9 split (R1+R2)")
+
     def test_fitted_120_ohm_keeps_its_value(self):
         nets = {"CAN_H": [("U7", "7", "CANH", "bidirectional"), ("R1", "1", "~", "passive")],
                 "CAN_L": [("U7", "6", "CANL", "bidirectional"), ("R1", "2", "~", "passive")]}

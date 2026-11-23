@@ -207,6 +207,9 @@ def can_split_termination(ctx: AnalysisContext, canh_net: str, canl_net: str
                     out.append((p["component"], ohms, far, bool(comp.get("dnp"))))
         return out
 
+    on_bus = {p["component"] for net in (canh_net, canl_net)
+              for p in ctx.nets.get(net, {}).get("pins", [])}
+    unfitted = None
     for ref_h, ohms_h, mid, dnp_h in legs(canh_net):
         if ctx.is_power_net(mid) or ctx.is_ground(mid):
             continue
@@ -215,11 +218,16 @@ def can_split_termination(ctx: AnalysisContext, canh_net: str, canl_net: str
                 continue
             others = [p for p in ctx.nets.get(mid, {}).get("pins", [])
                       if p["component"] not in (ref_h, ref_l)]
+            # a SPLIT / VREF pin counts only on the part that drives these bus lines
             if all(ctx.comp_lookup.get(p["component"], {}).get("type") == "capacitor"
-                   or (p.get("pin_name") or "").upper().strip("~{}") in _CAN_SPLIT_PIN_NAMES
+                   or (p["component"] in on_bus
+                       and (p.get("pin_name") or "").upper().strip("~{}") in _CAN_SPLIT_PIN_NAMES)
                    for p in others):
-                return ohms_h + ohms_l, ref_h, ref_l, not (dnp_h or dnp_l)
-    return None
+                found = (ohms_h + ohms_l, ref_h, ref_l, not (dnp_h or dnp_l))
+                if found[3]:
+                    return found
+                unfitted = unfitted or found
+    return unfitted
 
 
 def get_components_by_type(
