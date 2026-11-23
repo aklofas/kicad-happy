@@ -8,7 +8,7 @@ from kicad_types import (
 from kicad_core.classify import classify_ic_function
 from kicad_core.coords import to_iu
 from detector_helpers import (
-    can_line, can_split_termination, is_protection_part, not_i2c_despite_name, rail_behind_bridged_jumper,
+    CAN_H_PIN_NAMES, CAN_L_PIN_NAMES, can_line, can_split_termination, get_pin_net, is_protection_part, not_i2c_despite_name, rail_behind_bridged_jumper,
 )
 from kicad_core.sexp import unescape_string
 from schematic import erc_pins
@@ -1227,19 +1227,29 @@ def _detect_can_buses(ctx: AnalysisContext) -> list[dict]:
                 "net": net_name,
                 "devices": [_enrich_device_ref(r, comp_lookup) for r in device_refs],
             }
-    # Also detect by CAN transceiver IC presence -- add transceiver info to bus
+    # With no net named as a bus line, each transceiver's CANH / CANL pin nets are a bus
+    # (several transceivers on one pair share an entry); with none resolved, one placeholder.
+    named_lines = any(can_line(n, "H") or can_line(n, "L") for n in can_nets_found)
+    bare_bus: dict = {}
     for comp in components:
-        if comp["type"] != "ic":
+        if comp["type"] != "ic" or named_lines:
             continue
         val = comp.get("value", "").lower()
         lib = comp.get("lib_id", "").lower()
         if any(k in val or k in lib for k in can_transceiver_kw):
-            if not can_nets_found:
-                # No CAN nets found by name -- add a placeholder entry
-                can_nets_found["__can_transceiver__"] = {
+            ref = comp["reference"]
+            h_net = get_pin_net(ctx, ref, CAN_H_PIN_NAMES)
+            l_net = get_pin_net(ctx, ref, CAN_L_PIN_NAMES)
+            pair = (h_net, l_net) if h_net and l_net and h_net != l_net else None
+            if pair and pair in bare_bus.values():
+                continue
+            if pair or (not can_nets_found and not bare_bus):
+                key = "__can_transceiver__" + ("" if not bare_bus else ref)
+                bare_bus[key] = pair
+                can_nets_found[key] = {
                     "net": "CAN",
-                    "transceiver": comp["reference"],
-                    "devices": [_enrich_device_ref(comp["reference"], comp_lookup)],
+                    "transceiver": ref,
+                    "devices": [_enrich_device_ref(ref, comp_lookup)],
                 }
 
     # CAN termination per bus (ISO 11898-2): a 100-150 ohm resistor between that bus's CANH and CANL, or a split pair
@@ -1248,7 +1258,8 @@ def _detect_can_buses(ctx: AnalysisContext) -> list[dict]:
     pairs = can_bus_pairs(canh_nets, canl_nets)
     term_by_net: dict = {}
     dnp_by_net: dict = {}
-    for canh_net, canl_net in pairs:
+    bare_pairs = {key: pair for key, pair in bare_bus.items() if pair}
+    for canh_net, canl_net in pairs + list(bare_pairs.values()):
         termination = dnp_ref = None
         for p in (nets[canh_net]["pins"] if canh_net in nets else []):
             comp = comp_lookup.get(p["component"])
@@ -1281,6 +1292,12 @@ def _detect_can_buses(ctx: AnalysisContext) -> list[dict]:
     single = term_by_net[pairs[0][0]] if len(pairs) == 1 else None
     single_dnp = dnp_by_net.get(pairs[0][0]) if len(pairs) == 1 else None
     for key, entry in can_nets_found.items():
+        if key in bare_pairs:
+            entry["termination"] = term_by_net.get(bare_pairs[key][0])
+            dnp_ref = dnp_by_net.get(bare_pairs[key][0]) if entry["termination"] is None else None
+            if dnp_ref:
+                entry["termination_dnp"] = dnp_ref
+            continue
         entry["termination"] = term_by_net.get(key, single)
         dnp_ref = dnp_by_net.get(key, single_dnp) if entry["termination"] is None else None
         if dnp_ref:

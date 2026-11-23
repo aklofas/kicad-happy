@@ -33,7 +33,8 @@ except ImportError:
 
 from domain_detectors import is_single_supply_lvc
 from detector_helpers import (
-    can_split_termination, get_components_by_type, get_pin_net, get_unique_ics, index_two_pin_components,
+    CAN_H_PIN_NAMES, CAN_L_PIN_NAMES, can_split_termination, get_components_by_type, get_pin_net,
+    get_unique_ics, index_two_pin_components,
     is_addressable_led, is_led_rail, led_forward_voltage, led_string, match_ic_keywords,
     rail_behind_bridged_jumper, symbol_name,
 )
@@ -1085,8 +1086,6 @@ _CAN_IC_KEYWORDS = (
     'max3', 'max33',
     'adm3053',
 )
-_CAN_H_NAMES = ('CANH', 'CAN_H', 'CANHI', 'CAN_HIGH')
-_CAN_L_NAMES = ('CANL', 'CAN_L', 'CANLO', 'CAN_LOW')
 
 _USB_DP_NAMES = ('D+', 'DP', 'USB_DP', 'USB_D+', 'USBDP', 'D_P')
 _USB_DM_NAMES = ('D-', 'DM', 'USB_DM', 'USB_D-', 'USBDM', 'D_N')
@@ -1227,8 +1226,8 @@ def validate_can_bus(ctx: AnalysisContext) -> list[dict]:
     for ic in get_unique_ics(ctx):
         if match_ic_keywords(ic, _CAN_IC_KEYWORDS):
             ref = ic['reference']
-            canh = get_pin_net(ctx, ref, _CAN_H_NAMES)
-            canl = get_pin_net(ctx, ref, _CAN_L_NAMES)
+            canh = get_pin_net(ctx, ref, CAN_H_PIN_NAMES)
+            canl = get_pin_net(ctx, ref, CAN_L_PIN_NAMES)
             if canh or canl:
                 can_transceivers.append({'ref': ref, 'value': ic.get('value', ''), 'canh': canh, 'canl': canl})
 

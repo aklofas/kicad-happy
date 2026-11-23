@@ -176,6 +176,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - `needs_level_shifter` reads an open-drain output (an open-collector pin, a power-good or charger status pin, a pulled-up fault flag) at its pull-up rail, as VM-001 does: a power-good pulled up above its reader's supply is now flagged, one pulled up to the reader's rail or below it is not, and an open-drain output with no pull-up is not compared.
 - `components[].connector_layout` reads the row count in the footprint name when the symbol name gives none, and no longer reads the library nickname.
 - CAN buses named with a bus number (`CAN1_H` / `CAN1_L`, `CAN1H`, `CAN_2_L`, `MCU_CAN1_H+`) are detected, paired by number and checked for termination; `CAN1_HS`, `CAN0_LED` and `CAN2_LOAD` are not bus lines.
+- A CAN transceiver whose bus nets carry no bus-line name is judged on its own CANH and CANL pin nets: a terminator or split termination there is found, and the result names those nets.
 
 ### Documentation
 

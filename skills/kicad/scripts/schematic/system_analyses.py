@@ -6,7 +6,7 @@ import re
 import sys
 from kicad_core.diagnostics import record
 from detector_helpers import (
-    can_line, is_addressable_led, is_fitted, is_tvs_diode, led_forward_voltage, type_c_rp,
+    CAN_H_PIN_NAMES, CAN_L_PIN_NAMES, can_line, get_pin_net, is_addressable_led, is_fitted, is_tvs_diode, led_forward_voltage, type_c_rp,
 )
 from kicad_core.classify import gpio_port_pins, is_active_low_enable, is_touch_pad
 from kicad_types import (
@@ -1485,7 +1485,7 @@ def analyze_protocol_compliance(components: list[dict], nets: dict,
                          "has_termination": has_term, "termination_ohms": term_value,
                          "issues": issues or None, "observations": obs or None})
 
-    def _judge_dp(dp):
+    def _judge_dp(dp, bus_term=False):
         key = (dp.get("positive"), dp.get("negative"))
         if key in judged:
             return
@@ -1493,18 +1493,26 @@ def analyze_protocol_compliance(components: list[dict], nets: dict,
         terms = [t for t in dp.get("termination") or [] if not t.get("dnp")]
         dnp = next((t.get("ref") for t in dp.get("termination") or [] if t.get("dnp")), None)
         # a split termination is on the bus entry: the pair lists only a resistor across the lines
-        split = any(c.get("termination") for c in can_entries if c.get("net") in key)
+        split = bus_term or any(c.get("termination") for c in can_entries if c.get("net") in key)
         _judge(list(key), bool(terms) or split, terms[0].get("ohms") if terms else None, dnp)
 
     def _judge_unnamed_bus(can):
         # One result, credited by a terminated CAN pair (fitted first, else a DNP option; a choke
-        # or connector can split one bus into two pairs); else "not found", naming the first pair
+        # or connector can split one bus into two pairs); else judged on the transceiver's own
+        # bus pins, naming those nets
+        own = []
+        if ctx and can.get("transceiver"):
+            own = [n for n in (get_pin_net(ctx, can["transceiver"], CAN_H_PIN_NAMES),
+                               get_pin_net(ctx, can["transceiver"], CAN_L_PIN_NAMES)) if n]
         dp = (next((d for d in can_dps if d.get("has_termination")), None)
-              or next((d for d in can_dps if d.get("termination")), None))
+              or next((d for d in can_dps if d.get("termination")), None)
+              or next((d for d in can_dps if set(own) & {d.get("positive"), d.get("negative")}), None))
         if dp:
-            _judge_dp(dp)
-        else:
-            _judge([can_dps[0].get("positive"), can_dps[0].get("negative")] if can_dps else [],
+            _judge_dp(dp, bool(can.get("termination"))
+                      and set(own) == {dp.get("positive"), dp.get("negative")})
+        elif tuple(own) not in judged or not own:
+            judged.add(tuple(own))
+            _judge(own or ([can_dps[0].get("positive"), can_dps[0].get("negative")] if can_dps else []),
                    bool(can.get("termination")), None, can.get("termination_dnp"))
 
     for can in can_entries:
