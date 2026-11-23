@@ -43,9 +43,11 @@ def res(ref):
     return {"reference": ref, "type": "resistor", "value": "10k"}
 
 
-def vm001(ctx):
+def vm001(ctx, protection=None):
     with patch.object(vd, "get_regulator_features", return_value=None):
-        return [f for f in vd.validate_voltage_levels(ctx) if f["rule_id"] == "VM-001"]
+        found = (vd.validate_voltage_levels(ctx, None, protection) if protection
+                 else vd.validate_voltage_levels(ctx))
+        return [f for f in found if f["rule_id"] == "VM-001"]
 
 
 def board(high_rail, high_pins, sig_extra=(), parts=(), value="IRS2304", extra_nets=None):
@@ -218,6 +220,23 @@ class OpenDrainStatus(unittest.TestCase):
         self.assertEqual(len(vm001(ctx)), 1)             # not known as a charger: read at its supply
         ctx.charger_refs = frozenset({"U1"})
         self.assertEqual(vm001(ctx), [])
+
+
+class EsdArrays(unittest.TestCase):
+    # USBLC6-2 (ST DS2814): the I/O pins are clamp diodes to VBUS and GND; nothing drives them.
+    ESD = [{"ref": "U1", "type": "esd_ic"}]
+
+    def test_clamp_pin_of_an_esd_array_is_no_endpoint(self):
+        ctx = board("+5V", [("3", "I/O1", "passive", "SIG")], value="USBLC6-2SC6")
+        self.assertEqual(len(vm001(ctx)), 1)                 # without the protection record: checked
+        self.assertEqual(vm001(ctx, self.ESD), [])
+
+    def test_other_parts_on_the_net_are_still_compared(self):
+        ctx = board("+5V", [("3", "I/O1", "passive", "SIG")], value="USBLC6-2SC6",
+                    sig_extra=[("U3", "3", "TX", "output")], parts=[ic("U3", "MCU5V")],
+                    extra_nets={"+5V": [("U3", "1", "VDD", "power_in")]})
+        (f,) = vm001(ctx, self.ESD)
+        self.assertEqual(f["components"], ["U2", "U3"])
 
 
 if __name__ == "__main__":

@@ -155,6 +155,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - VM-001 no longer reports a crossing where the higher-voltage part only has an input on the net (gate-driver, motor-driver and logic inputs, memory address lines); the level on a net comes from the pins that can drive it, or a pull-up. A symbol that types every pin `input` is read as before.
 - VM-001 no longer reads the channel pins of an analog switch or multiplexer (CD4051, 74HC4066, DG4xx, ADG, TMUX, TS5A, MAX306 families) as drivers: such a part passes the level it is given, so a higher-supply switch does not put its own level on the net. A higher level driven into a lower-supply switch is still reported.
 - VM-001 reads a fault flag (`FAULT`, `nFAULT`, `FLT`) that has a pull-up at the pull-up rail, so an open-drain flag pulled up to the logic supply is no longer reported against the driver's higher supply; a flag with no pull-up keeps its supply level. A charger's power-good and standby pins are read as open-drain.
+- VM-001 no longer treats an ESD protection array (USBLC6, SRV05-4, PRTR5V0U2X, TPD-family parts) as a logic endpoint: its clamp pins on a lower-voltage data line are no longer reported against the array's supply, as the cross-domain check already did. The other parts on the net are still compared.
 
 ### Documentation
 

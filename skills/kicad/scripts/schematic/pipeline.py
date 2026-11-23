@@ -557,7 +557,7 @@ def run_domain_detectors(ctx: AnalysisContext, topo: dict) -> dict:
 
     # Validation detectors (rich findings)
     pullup_findings = validate_pullups(ctx)
-    voltage_level_findings = validate_voltage_levels(ctx, level_shifters)
+    voltage_level_findings = validate_voltage_levels(ctx, level_shifters, protection_devices)
     i2c_findings = validate_i2c_bus(ctx)
     spi_findings = validate_spi_bus(ctx)
     can_findings = validate_can_bus(ctx)

@@ -646,7 +646,8 @@ def _refs_typing_outputs(ctx: AnalysisContext) -> set[str]:
             if p.get('pin_type') in _DRIVING_PIN_TYPES}
 
 
-def validate_voltage_levels(ctx: AnalysisContext, level_shifters: list[dict] | None = None) -> list[dict]:
+def validate_voltage_levels(ctx: AnalysisContext, level_shifters: list[dict] | None = None,
+                            protection_devices: list[dict] | None = None) -> list[dict]:
     """VM-001: Detect signal nets crossing power domain boundaries without level shifting."""
     findings: list[dict] = []
     cache_dir = getattr(ctx, 'cache_dir', None)
@@ -664,6 +665,11 @@ def validate_voltage_levels(ctx: AnalysisContext, level_shifters: list[dict] | N
             mpn = ic.get('mpn') or ic.get('value') or ''
             facts = get_facts(mpn, cache_dir=cache_dir, diagnostics=getattr(ctx, "diagnostics", None)) if mpn else None
             # facts probe is informational — confidence stays heuristic regardless.
+
+    # An ESD array clamps the lines it sits on and drives none; it is no logic endpoint (the
+    # cross-domain pass leaves it out the same way).
+    esd_arrays = {pd['ref'] for pd in protection_devices or () if pd.get('type') == 'esd_ic'}
+    ic_voltages = {ref: v for ref, v in ic_voltages.items() if ref not in esd_arrays}
 
     shifted_nets: set[str] = set()
     if level_shifters:
