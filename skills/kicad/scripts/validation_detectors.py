@@ -1484,18 +1484,22 @@ _LED_IF_RECOMMENDED_MA = 10
 def _parallel_strings(ctx: AnalysisContext, net: str, string: list[str], far: str) -> int:
     """How many LED strings run from *net* to *far* the same way round as *string* does
     (anode or cathode first): they share the resistor on *net*.  An anti-parallel LED
-    conducts on the other half-cycle, and a string that ends on a different net (another
-    driver pin) is switched on its own; neither is counted."""
+    conducts on the other half-cycle, and a string that ends on a different signal net
+    (another driver pin) is switched on its own; neither is counted.  Any ground or rail
+    is an always-on return, so strings ending on different ones still conduct together."""
     pins = [p for p in ctx.nets.get(net, {}).get('pins', [])
             if ctx.comp_lookup.get(p['component'], {}).get('type') == 'led']
     own = next((p.get('pin_number') for p in pins if p['component'] in string), None)
+
+    def key(n):  # every ground and every rail is an always-on return
+        return 'static' if n and (ctx.is_ground(n) or ctx.is_power_net(n)) else n
     count = 0
     for p in pins:
         if p.get('pin_number') != own:
             continue
         if p['component'] not in string:
             _, a, b = led_string(ctx, p['component'])
-            if (b if a == net else a) != far:
+            if key(b if a == net else a) != key(far):
                 continue
         count += 1
     return max(1, count)

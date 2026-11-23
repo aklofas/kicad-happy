@@ -556,6 +556,16 @@ class ParallelStringsNeedBothEnds(unittest.TestCase):
         self.assertEqual(sorted(f["summary"] for f in lr if f["severity"] == "warning"),
                          ["LED D1: current too high (50mA via R1)", "LED D2: current too high (50mA via R1)"])
 
+    def test_leds_returning_to_different_grounds_or_rails_share(self):
+        for far_a, far_b, rails in (("GND", "AGND", {"+12V", "GND", "AGND"}),
+                                    ("+3V3", "+3V3_B", {"+12V", "+3V3", "+3V3_B"})):
+            ctx = _ctx([_led("D1"), _led("D2"), _r("R1", "100")],
+                       {"+12V": [_p("R1", "1")], "N0": [_p("R1", "2"), _p("D1", "2"), _p("D2", "2")],
+                        far_a: [_p("D1", "1")], far_b: [_p("D2", "1")]}, rails)
+            self.assertEqual(sorted(f["summary"] for f in _lr(ctx) if f["severity"] == "warning"),
+                             ["LED D1: current too high (50mA via R1)", "LED D2: current too high (50mA via R1)"],
+                             far_a)
+
 
 if __name__ == "__main__":
     unittest.main()
