@@ -526,9 +526,11 @@ _PG_PIN_PATTERNS = ('PG', 'PGOOD', 'PWRGD', 'NPG')
 
 
 def _is_regulator_like(ctx: AnalysisContext, ref: str) -> bool:
-    """A regulator-family part by its value or MPN, or typed power_regulator. A load switch
-    counts too (by family or by its text): its enable is a logic input rated independently
-    of its VIN."""
+    """A part the regulator detector reported, a regulator-family part by its value or MPN,
+    or one typed power_regulator. A load switch counts too (by family or by its text): its
+    enable is a logic input rated independently of its VIN."""
+    if ref in ctx.regulator_refs:
+        return True
     comp = ctx.comp_lookup.get(ref, {})
     val_mpn = ((comp.get('mpn') or '') + ' ' + (comp.get('value') or '')).upper()
     if comp.get('type') == 'power_regulator' or any(pfx in val_mpn for pfx in (
@@ -558,8 +560,7 @@ def _en_endpoint_compatible(ctx: AnalysisContext, p: dict, net_name: str, v_min:
                     return v_min >= 2 * en_ih
                 break
     if _is_regulator_like(ctx, p['ref']):
-        name = (p.get('pin') or '').upper().strip()
-        return name in _EN_PIN_PATTERNS
+        return _bare_pin_name(p.get('pin')) in _EN_PIN_PATTERNS   # ~{SHDN}, ~EN, /SHDN
     return False
 
 

@@ -20,6 +20,7 @@ sys.path.insert(0, str(ROOT / "skills" / "kicad" / "scripts"))
 import validation_detectors as vd  # noqa: E402
 from kicad_types import build_analysis_context  # noqa: E402
 from schematic.legacy_reader import _parse_legacy_lib  # noqa: E402
+from schematic.pipeline import detect_topologies  # noqa: E402
 
 
 def ctx_of(components, nets, rails):
@@ -237,6 +238,50 @@ class EsdArrays(unittest.TestCase):
                     extra_nets={"+5V": [("U3", "1", "VDD", "power_in")]})
         (f,) = vm001(ctx, self.ESD)
         self.assertEqual(f["components"], ["U2", "U3"])
+
+
+def soc_with_internal_regulator():
+    """U1, a 20-pin SoC with a VOUT pin and an EN input on SIG (an ESP32-class part: the regulator
+    detector records it as an IC with an internal regulator); U2, a 3.3 V MCU, on SIG."""
+    pins = [("1", "VIN", "power_in", "+5V"), ("2", "VOUT", "power_out", "+3V3"),
+            ("3", "EN", "input", "SIG"), ("4", "GND", "power_in", "GND")]
+    pins += [(str(5 + i), f"IO{i}", "bidirectional", f"IO{i}") for i in range(16)]
+    nets = {"+3V3": [("U2", "1", "VDD", "power_in")], "GND": [("U2", "2", "GND", "power_in")],
+            "SIG": [("U2", "3", "PA0", "bidirectional")]}
+    for number, name, pin_type, net in pins:
+        nets.setdefault(net, []).append(("U1", number, name, pin_type))
+    return ctx_of([ic("U1", "SOC_WIFI"), ic("U2", "MCU3V3")], nets, {"+5V", "+3V3", "GND"})
+
+
+class DetectedRegulators(unittest.TestCase):
+    # XC6206P332MR is a part number the regulator-family prefixes do not name, so only the
+    # regulator detector's record makes it regulator-like; CE is a regulator enable name.
+    REG = [("5", "VOUT", "power_out", "+3V3"), ("3", "CE", "input", "SIG"), ("4", "VIN", "power_in", "+12V")]
+
+    def test_enable_of_a_detected_regulator_is_a_compatible_endpoint(self):
+        ctx = board("+12V", [("3", "CE", "input", "SIG")], value="XC6206P332MR")
+        self.assertEqual(len(vm001(ctx)), 1)            # not known as a regulator: checked
+        ctx.regulator_refs = frozenset({"U1"})
+        self.assertEqual(vm001(ctx), [])
+
+    def test_overbar_enable_name(self):
+        for name in ("~{SHDN}", "~SHDN", "/SHDN", "~{EN}"):
+            with self.subTest(name=name):
+                self.assertEqual(vm001(board("+12V", [("3", name, "input", "SIG")], value="TPS62130")), [])
+
+    def test_pipeline_records_a_detected_regulator(self):
+        ctx = board("+12V", self.REG, value="XC6206P332MR")
+        (reg,) = detect_topologies(ctx)["power_regulators"]
+        self.assertEqual(reg["topology"], "LDO")
+        self.assertEqual(ctx.regulator_refs, frozenset({"U1"}))
+        self.assertEqual(vm001(ctx), [])
+
+    def test_ic_with_an_internal_regulator_is_not_regulator_like(self):
+        ctx = soc_with_internal_regulator()
+        (reg,) = detect_topologies(ctx)["power_regulators"]
+        self.assertEqual(reg["topology"], "ic_with_internal_regulator")
+        self.assertEqual(ctx.regulator_refs, frozenset())
+        self.assertFalse(vd._is_regulator_like(ctx, "U1"))
 
 
 if __name__ == "__main__":

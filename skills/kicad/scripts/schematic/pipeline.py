@@ -463,6 +463,9 @@ def detect_topologies(ctx: AnalysisContext) -> dict:
     power_regulators.extend(integrated_ldos)
 
     ctx.rail_by_net = build_rail_map(ctx, power_regulators)
+    ctx.regulator_refs = frozenset(
+        r["ref"] for r in power_regulators
+        if r.get("topology") not in ("integrated_ldo", "ic_with_internal_regulator"))
     rail_voltages = public_rail_voltages(ctx, power_regulators, ctx.rail_by_net)
 
     protection_devices = detect_protection_devices(ctx)
