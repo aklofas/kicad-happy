@@ -1066,7 +1066,7 @@ def extract_components(root: list, lib_symbols: dict, instance_uuid: str = "",
         # Enrich connectors with external status and layout
         if comp["type"] == "connector":
             pin_count = len(lib_pins or [])
-            is_ext, conn_layout = classify_connector(lib_id, value, pin_count)
+            is_ext, conn_layout = classify_connector(lib_id, value, pin_count, footprint)
             comp["is_external_connector"] = is_ext
             comp["connector_layout"] = conn_layout
 

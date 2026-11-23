@@ -668,7 +668,20 @@ def _row_layout(text: str) -> str | None:
     return None
 
 
-def classify_connector(lib_id: str, value: str, pin_count: int = 0) -> tuple[bool, str]:
+# A pad or body size in a footprint name (PAD_SMD_1x2.65, Keystone_1x12mm, 650X240X440P,
+# 1_7X1_7X1_0MM) and a coin-cell count (Keystone_1060_1x2032) are not row counts.
+_FOOTPRINT_SIZE = re.compile(r'\d+x\d+x\d+|\d+_\d+x\d+_\d+x\d+_\d+|\d*\.\d+x\d*\.?\d*'
+                             r'|\d+x\d+(?:\.\d+|mm)|\d+x\d{4,}')
+
+
+def _footprint_row_layout(footprint: str) -> str | None:
+    """'single' or 'dual' from the row count in the footprint's own name (PinHeader_2x05,
+    JST_PH_B4B-PH-K_1x04); the library nickname is left out."""
+    return _row_layout(_FOOTPRINT_SIZE.sub(" ", footprint.rsplit(":", 1)[-1].lower()))
+
+
+def classify_connector(lib_id: str, value: str, pin_count: int = 0,
+                       footprint: str = "") -> tuple[bool, str]:
     """Classify a connector's external status and layout type.
 
     Returns (is_external, layout) where:
@@ -691,8 +704,12 @@ def classify_connector(lib_id: str, value: str, pin_count: int = 0) -> tuple[boo
                                       "pluggable_terminal", "terminal_block")):
         layout = "screw_terminal"
     else:
-        # The symbol name outranks the value (a Conn_02x02 symbol valued Conn_01x02_Pin is dual).
-        layout = _row_layout(lib_id.lower()) or _row_layout(value.lower()) or "other"
+        # The symbol name outranks the value (a Conn_02x02 symbol valued Conn_01x02_Pin is dual);
+        # the library nickname names the library, not the part. When the symbol name gives
+        # no layout the footprint's row count does, ahead of the value.
+        symbol_name = lib_id.rsplit(":", 1)[-1]
+        layout = (_row_layout(symbol_name.lower()) or _footprint_row_layout(footprint)
+                  or _row_layout(value.lower()) or "other")
 
     # External classification
     # Explicitly external connectors

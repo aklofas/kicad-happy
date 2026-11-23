@@ -10,8 +10,8 @@ from kicad_core.classify import classify_connector  # noqa: E402
 from kicad_core.passives import classify_inductor_shielding  # noqa: E402
 
 
-def layout(lib_id, value=""):
-    return classify_connector(lib_id, value)[1]
+def layout(lib_id, value="", footprint=""):
+    return classify_connector(lib_id, value, 0, footprint)[1]
 
 
 class ConnectorLayout(unittest.TestCase):
@@ -36,6 +36,33 @@ class ConnectorLayout(unittest.TestCase):
     def test_value_names_the_layout_when_the_symbol_does_not(self):
         self.assertEqual(layout("MyLib:HEADER", "Conn_02x05"), "dual")
         self.assertEqual(layout("MyLib:HEADER", "Pin_Header_1x04"), "single")
+
+    def test_footprint_row_count_beats_a_value_when_the_symbol_is_silent(self):
+        self.assertEqual(layout("43650-0400", "Conn_01x04",
+                                "Connector_Molex:Molex_Micro-Fit_3.0_43045-0400_2x02_P3.00mm_Horizontal"), "dual")
+        self.assertEqual(layout("Connector:AVR-ISP-6", "AVR-ISP-6",
+                                "Connector_IDC:IDC-Header_2x03_P2.54mm_Vertical"), "dual")
+        self.assertEqual(layout("x:WireConnector", "WireConnector", "Wire_1x01_D40mil_OD80mil"), "single")
+
+    def test_library_nickname_is_not_read(self):
+        self.assertEqual(layout("Proj_2x5:Header", "HDR"), "other")
+
+    def test_symbol_name_still_outranks_the_footprint(self):
+        self.assertEqual(layout("Connector_Generic:Conn_01x10", "Conn_01x10",
+                                "PinSocket_2x05_P2.54mm_Vertical"), "single")
+        self.assertEqual(layout("Connector_Generic:Conn_02x02_Odd_Even", "Conn_01x02_Pin",
+                                "JST_SH_SM04B-SRSS-TB_1x04-1MP_P1.00mm_Horizontal"), "dual")
+
+    def test_pad_body_and_cell_sizes_are_not_row_counts(self):
+        for fp in ("PAD_SMD_1x2.65", "Keystone_1x12mm", "BatteryHolder_Keystone_1060_1x2032",
+                   "U-FL4P-SMD-1_7X1_7X1_0MM"):
+            self.assertEqual(layout("x:Opaque", "", fp), "other", fp)
+
+    def test_special_layouts_and_external_status_ignore_the_footprint(self):
+        self.assertEqual(layout("Connector:USB_C_Receptacle", "", "PinHeader_2x05"), "usb_c")
+        for lib, val in (("Connector:Conn_01x04", ""), ("Connector:USB_B", "")):
+            self.assertEqual(classify_connector(lib, val, 4)[0],
+                             classify_connector(lib, val, 4, "PinHeader_2x02")[0])
 
 
 class InductorShielding(unittest.TestCase):
