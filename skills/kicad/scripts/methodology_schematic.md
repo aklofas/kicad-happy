@@ -458,7 +458,7 @@ Detectors share one netlist query method and one helper function:
 
 #### 9.3 LC Filters
 
-**Pattern**: Inductor and capacitor sharing one non-power net.
+**Pattern**: Inductor and capacitor sharing one non-power net, with the capacitor's other end on ground, a supply rail, earth or a return net (the capacitor is the shunt element; a DC block, coupling or bootstrap capacitor is not paired).
 
 Same approach as RC filters but for L-C pairs. Computes resonant frequency: `f = 1 / (2π × √(L × C))` and characteristic impedance: `Z = √(L / C)`.
 

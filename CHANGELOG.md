@@ -10,6 +10,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Changed
 
+- An LC filter is reported only when its capacitor returns to ground, a supply rail, earth or a return net. A capacitor that leaves the inductor's node for another signal (a DC block, a coupling or feed-forward capacitor, a bootstrap capacitor) is no longer paired with the inductor; about half of the LC records on RF and converter designs go. A shunt capacitor that a larger series capacitor used to hide is now listed.
 - A net name with spaces (5V Out, 12V IN, Usb 5V) is read like the same name with underscores, so such rails now get rail-source, decoupling and trace-width checks; a name that describes a reference or a signal (5V Reference, 1.65V for 12VDC) stays a signal.
 - A net named PWR or POWER, V1+ / V2- style names, and a rail switched on (5V_ON) count as power rails when a power pin sits on the net.
 - USB VBUS capacitance above 10 µF on a device port (a USB-C sink or a Micro-B, Mini-B or Type-B receptacle) is reported as a warning, since USB 2.0 limits a device to 10 µF at attach. Only capacitors that return to ground are counted.
@@ -55,6 +56,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A part with an empty Value is named by its symbol in power-path summaries and pull-up findings instead of `()`.
 - A TVS or ESD IC whose only protected line is a supply rail (TVS2200, a single-line PESD on VBUS) is listed as a protection device again.
 - The ESD ground-via check counts vias on the protection device's own ground net when that net is not named GND.
+- An LC filter is no longer hidden when a boot-mode pin is tied straight to ground.
 - RGB LEDs whose pins are only numbered count in the power budget, as a 5 mA load on the rail they touch.
 - The LED audit no longer gives an LED the resistor of a parallel branch: a chain walk goes on only through an LED that meets the last one anode to cathode, and a power-named net of LEDs with no resistor to a rail or ground (or only pull-ups to signals) is the rail, not an LED node.
 - The LED audit reads a current-limit resistor whose value carries a package suffix (`1k_0402`, `330R_0603`) as that resistor, so the LED is judged as resistor-limited instead of "resistor value unparsed" or as driven straight from an IC.

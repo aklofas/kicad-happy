@@ -55,6 +55,8 @@ from lookup_helpers import get_facts, has_data, best, facts_trusted
 # so having no DC path to a rail is the datasheet circuit, not a fault. Many
 # vendor symbols type them power_in. Same names detect_power_regulators uses.
 _BOOTSTRAP_PIN_TOKENS = frozenset({"BST", "BOOT", "BOOTSTRAP", "CBST"})
+# Net names of a return that is not the board ground (POE_RTN, AD_RETURN)
+_RETURN_NET_TOKENS = frozenset({"RTN", "RET", "RETURN"})
 
 
 # Regulator output pin names (exact parts of a composite pin name).
@@ -842,6 +844,13 @@ def detect_rc_filters(ctx: AnalysisContext, voltage_dividers: list[dict],
     return merged_rc
 
 
+def _is_ac_ground(ctx: AnalysisContext, net: str) -> bool:
+    """Ground, a supply rail, earth / chassis, or a net named as a return (POE_RTN)."""
+    if ctx.is_ground(net) or ctx.is_power_net(net) or is_earth_name(net):
+        return True
+    return bool(_RETURN_NET_TOKENS & set(re.split(r"[^A-Z0-9]+", net_leaf(net).upper())))
+
+
 def detect_lc_filters(ctx: AnalysisContext) -> list[dict]:
     """Detect LC filters."""
     capacitors = group_reps(ctx, get_components_by_type(ctx, "capacitor", with_parsed_values=True))
@@ -897,11 +906,18 @@ def detect_lc_filters(ctx: AnalysisContext) -> list[dict]:
                 else:
                     continue
 
-            # Skip bootstrap capacitors: cap between BST/BOOT pin and SW/LX node.
-            # These are gate-drive charge pumps, not signal filters.
+            # The filter's capacitor is its shunt element: the far end returns to ground, to a
+            # supply rail or to another return (all AC grounds). A capacitor that leaves the
+            # node for another signal (a DC block, a coupling or feed-forward capacitor, a
+            # bootstrap or flying capacitor) is a series element, and its resonance with the
+            # inductor is not a filter corner.
             cap_other_net = (c_nets - {shared_net_lc}).pop()
+            if not _is_ac_ground(ctx, cap_other_net):
+                continue
+            # Skip bootstrap capacitors on a net named like a rail (VBST, BOOT_5V): cap between
+            # the BST/BOOT pin and the SW/LX node. A boot-mode pin strapped to ground is not one.
             is_bootstrap = False
-            if cap_other_net and cap_other_net in ctx.nets:
+            if not ctx.is_ground(cap_other_net) and cap_other_net in ctx.nets:
                 for p in ctx.nets[cap_other_net]["pins"]:
                     pn = p.get("pin_name", "").upper().rstrip("0123456789").rstrip("_")
                     pn_parts = {pp.strip() for pp in pn.split("/")}
