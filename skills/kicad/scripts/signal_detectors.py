@@ -399,7 +399,11 @@ def detect_voltage_dividers(ctx: AnalysisContext) -> dict:
                             divider["mid_point_connections"] = mid_pins
                             # If connected to an IC FB pin, this is likely a feedback network
                             for mp in mid_pins:
-                                if "FB" in mp.get("pin_name", "").upper() and not series_input:
+                                if "FB" in mp.get("pin_name", "").upper() and series_input:
+                                    # Not a feedback network, but the RC pairing claims it as one
+                                    divider["_series_input_fb"] = True
+                                    break
+                                if "FB" in mp.get("pin_name", "").upper():
                                     divider["is_feedback"] = True
                                     divider["detector"] = "detect_voltage_dividers"
                                     divider["rule_id"] = "VD-DET"
@@ -688,7 +692,7 @@ def detect_rc_filters(ctx: AnalysisContext, voltage_dividers: list[dict],
     junction_nets: dict[str, set[str]] = {}  # junction load resistor -> its junction nets
     for vd in voltage_dividers:
         load = (bottom_uses[(vd["mid_net"], vd["r_bottom"]["ref"])] > 1
-                and not vd.get("is_feedback")
+                and not vd.get("is_feedback") and not vd.get("_series_input_fb")
                 and "chain_resistors" not in vd["r_top"]
                 and _feeds_inputs_only(ctx, vd["top_net"], vd["r_top"]["ref"]))
         for arm in ("r_top", "r_bottom"):

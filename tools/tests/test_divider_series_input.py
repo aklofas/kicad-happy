@@ -8,13 +8,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "skills" / "kicad" 
 from kicad_types import build_analysis_context  # noqa: E402
 from schematic.pipeline import detect_topologies  # noqa: E402
 
-_LIB = {"resistor": "Device:R", "capacitor": "Device:C", "diode": "Device:D_Zener",
-        "inductor": "Device:L"}
-_TYPES = {"R": "resistor", "C": "capacitor", "D": "diode", "L": "inductor"}
-
-
-def _two_pin(ref, value, n1, n2):
-    return (ref, value, n1, n2)
+_LIB = {"resistor": "Device:R", "capacitor": "Device:C", "diode": "Device:D_Zener"}
+_TYPES = {"R": "resistor", "C": "capacitor", "D": "diode"}
 
 
 def _topo(two_pins, ics=(), labels=None, rails=("GND", "+3V3", "+5V", "VIN")):
@@ -52,12 +47,12 @@ def _dividers(topo):
 
 # A current-sense channel: three diode cathodes on VOUT_ISENSE, R41 develops the voltage,
 # R38 limits the current into the ADC input and its clamp zener
-_SENSE = [_two_pin("R38", "1k", "A5", "VOUT_ISENSE"),
-          _two_pin("R41", "330", "VOUT_ISENSE", "GND"),
-          _two_pin("D7", "3V3", "A5", "GND"),
-          _two_pin("D1", "BAT54", "VOUT_ISENSE", "SENSE_1"),
-          _two_pin("D2", "BAT54", "VOUT_ISENSE", "SENSE_2"),
-          _two_pin("D3", "BAT54", "VOUT_ISENSE", "SENSE_3")]
+_SENSE = [("R38", "1k", "A5", "VOUT_ISENSE"),
+          ("R41", "330", "VOUT_ISENSE", "GND"),
+          ("D7", "3V3", "A5", "GND"),
+          ("D1", "BAT54", "VOUT_ISENSE", "SENSE_1"),
+          ("D2", "BAT54", "VOUT_ISENSE", "SENSE_2"),
+          ("D3", "BAT54", "VOUT_ISENSE", "SENSE_3")]
 _ADC = [("U3", "ADS1115", "4", "AIN0", "A5", "input"),
         ("U3", "ADS1115", "8", "VDD", "+3V3", "power_in"),
         ("U3", "ADS1115", "3", "GND", "GND", "power_in")]
@@ -73,7 +68,7 @@ class SeriesResistorIntoAnInput(unittest.TestCase):
         self.assertEqual(_topo(_SENSE, _ADC)["rc_filters"], [])
 
     def test_series_resistor_stays_out_of_rc_pairing_with_a_cap_on_the_input(self):
-        topo = _topo(_SENSE + [_two_pin("C9", "100n", "A5", "GND")], _ADC)
+        topo = _topo(_SENSE + [("C9", "100n", "A5", "GND")], _ADC)
         self.assertNotIn("Voltage divider R38/R41", _dividers(topo))
         self.assertEqual([(f["resistor"]["ref"], f["capacitor"]["ref"]) for f in topo["rc_filters"]], [])
 
@@ -85,9 +80,9 @@ class SeriesResistorIntoAnInput(unittest.TestCase):
 
 # A charger's FB pin on the mid-point of R2 / R3 (R2 from its +5V output); R1 carries the
 # same node into a second controller's FB input
-_FEEDBACK = [_two_pin("R1", "20k", "U1_FB", "FB"),
-             _two_pin("R2", "4.64k", "+5V", "FB"),
-             _two_pin("R3", "1k", "FB", "GND")]
+_FEEDBACK = [("R1", "20k", "U1_FB", "FB"),
+             ("R2", "4.64k", "+5V", "FB"),
+             ("R3", "1k", "FB", "GND")]
 _CONVERTERS = [("U2", "TPS54331", "1", "VIN", "VIN", "power_in"),
                ("U2", "TPS54331", "2", "FB", "FB", "input"),
                ("U2", "TPS54331", "3", "GND", "GND", "power_in"),
@@ -105,16 +100,21 @@ class FeedbackThroughASeriesResistor(unittest.TestCase):
         self.assertEqual(sorted(f["summary"] for f in topo["feedback_networks"]),
                          ["Voltage divider R2/R3"])
 
+    def test_series_resistor_into_the_fb_input_stays_out_of_rc_pairing(self):
+        # R1/R3 shares R3 with R2/R3; R1 stays claimed instead of being freed as a junction load
+        topo = _topo(_FEEDBACK + [("C1", "100p", "U1_FB", "GND")], _CONVERTERS)
+        self.assertEqual([(f["resistor"]["ref"], f["capacitor"]["ref"]) for f in topo["rc_filters"]], [])
+
 
 class RealDividersStay(unittest.TestCase):
     def _sense_with_top(self, top_pins, labels=None):
         """R1 from the top net to MID, R2 from MID to GND, an IC output driving MID."""
-        parts = [_two_pin("R1", "10k", "TOP", "MID"), _two_pin("R2", "10k", "MID", "GND")]
+        parts = [("R1", "10k", "TOP", "MID"), ("R2", "10k", "MID", "GND")]
         ics = [("U9", "LM358", "1", "OUT", "MID", "output")] + list(top_pins)
         return _dividers(_topo(parts, ics, labels))
 
     def test_rail_on_top_stays(self):
-        parts = [_two_pin("R1", "10k", "+5V", "MID"), _two_pin("R2", "10k", "MID", "GND")]
+        parts = [("R1", "10k", "+5V", "MID"), ("R2", "10k", "MID", "GND")]
         ics = [("U1", "MCU", "1", "PA0", "MID", "input"), ("U1", "MCU", "2", "VDD", "+5V", "power_in")]
         self.assertEqual(_dividers(_topo(parts, ics)), ["Voltage divider R1/R2"])
 
@@ -134,7 +134,7 @@ class RealDividersStay(unittest.TestCase):
         self.assertEqual(self._sense_with_top(top), ["Voltage divider R1/R2"])
 
     def test_no_source_on_either_end_stays(self):
-        parts = [_two_pin("R1", "10k", "TOP", "MID"), _two_pin("R2", "10k", "MID", "GND")]
+        parts = [("R1", "10k", "TOP", "MID"), ("R2", "10k", "MID", "GND")]
         ics = [("U1", "MCU", "1", "PA0", "TOP", "input"), ("U1", "MCU", "2", "PA1", "MID", "input")]
         self.assertEqual(_dividers(_topo(parts, ics)), ["Voltage divider R1/R2"])
 
