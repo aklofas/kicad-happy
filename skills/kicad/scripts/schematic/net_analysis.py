@@ -7,7 +7,7 @@ from kicad_types import (
 )
 from kicad_core.classify import classify_ic_function
 from kicad_core.coords import to_iu
-from detector_helpers import is_protection_part, not_i2c_despite_name
+from detector_helpers import is_protection_part, not_i2c_despite_name, rail_behind_bridged_jumper
 from kicad_core.sexp import unescape_string
 from schematic import erc_pins
 from validation_detectors import _en_endpoint_compatible, _is_open_drain_endpoint, _pull_up_rails
@@ -793,6 +793,8 @@ def _detect_i2c_buses(ctx: AnalysisContext) -> list[dict]:
                     if r_val:
                         other_pin = "1" if p["pin_number"] == "2" else "2"
                         other_net, _ = pin_net.get((p["component"], other_pin), (None, None))
+                        if other_net and not is_power_net(other_net) and not is_ground(other_net):
+                            other_net = (rail_behind_bridged_jumper(ctx, other_net) or (None,))[0]
                         if other_net and is_power_net(other_net) and not is_ground(other_net):
                             pullups.append({
                                 "ref": p["component"],
@@ -878,6 +880,8 @@ def _detect_i2c_buses(ctx: AnalysisContext) -> list[dict]:
                         # Check if other end goes to a power rail
                         other_pin = "1" if p["pin_number"] == "2" else "2"
                         other_net, _ = pin_net.get((p["component"], other_pin), (None, None))
+                        if other_net and not is_power_net(other_net) and not is_ground(other_net):
+                            other_net = (rail_behind_bridged_jumper(ctx, other_net) or (None,))[0]
                         if other_net and is_power_net(other_net) and not is_ground(other_net):
                             pullups.append({
                                 "ref": p["component"],

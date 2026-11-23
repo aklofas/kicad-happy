@@ -34,7 +34,8 @@ except ImportError:
 from domain_detectors import is_single_supply_lvc
 from detector_helpers import (
     get_components_by_type, get_pin_net, get_unique_ics, index_two_pin_components,
-    is_addressable_led, is_led_rail, led_forward_voltage, led_string, match_ic_keywords, symbol_name,
+    is_addressable_led, is_led_rail, led_forward_voltage, led_string, match_ic_keywords,
+    rail_behind_bridged_jumper, symbol_name,
 )
 from finding_schema import make_finding, make_provenance
 from lookup_helpers import get_facts, has_data, best
@@ -60,7 +61,10 @@ def _find_pullups_on_net(
         if not n1 or not n2:
             continue
         other = n2 if n1 == net_name else n1
-        if ctx.is_power_net(other) and not ctx.is_ground(other):
+        if not ctx.is_power_net(other) and not ctx.is_ground(other):
+            # the far side on a jumper bridged to the rail as built
+            other = (rail_behind_bridged_jumper(ctx, other) or (None,))[0]
+        if other and ctx.is_power_net(other) and not ctx.is_ground(other):
             ohms = ctx.parsed_values.get(rref)
             pullups.append({'ref': rref, 'ohms': ohms, 'rail': other})
     return pullups

@@ -41,7 +41,7 @@ from finding_schema import make_provenance, make_finding, Det
 from detector_helpers import index_two_pin_components, get_components_by_type, get_unique_ics, is_tvs_diode, symbol_name
 from detector_helpers import group_members, group_part, group_reps, group_value, is_fitted, parallel_groups
 from detector_helpers import is_safety_rated_cap
-from detector_helpers import I2C_SCL_WORD, I2C_SDA_WORD, not_i2c_despite_name
+from detector_helpers import I2C_SCL_WORD, I2C_SDA_WORD, not_i2c_despite_name, rail_behind_bridged_jumper
 
 from lookup_helpers import get_facts, has_data, best, facts_trusted
 
@@ -4469,6 +4469,8 @@ def detect_design_observations(ctx: AnalysisContext, results: dict) -> list[dict
             if comp and comp["type"] == "resistor":
                 r_n1, r_n2 = ctx.get_two_pin_nets(p["component"])
                 other = r_n2 if r_n1 == net_name else r_n1
+                if other and not ctx.is_power_net(other) and not ctx.is_ground(other):
+                    other = (rail_behind_bridged_jumper(ctx, other) or (None,))[0]
                 if other and ctx.is_power_net(other):
                     has_pullup = True
                     pullup_ref = p["component"]

@@ -102,7 +102,8 @@ def not_i2c_despite_name(ctx: AnalysisContext, net_name: str) -> bool:
         comp = ctx.comp_lookup.get(p["component"])
         if comp and comp.get("type") == "resistor" and is_fitted(comp):
             far = [n for n in ctx.get_two_pin_nets(p["component"]) if n and n != net_name]
-            if far and ctx.is_power_net(far[0]) and not ctx.is_ground(far[0]):
+            if far and ((ctx.is_power_net(far[0]) and not ctx.is_ground(far[0]))
+                        or rail_behind_bridged_jumper(ctx, far[0])):
                 return False
     if _SAI_WORD.search(leaf):
         return True
@@ -135,6 +136,53 @@ def not_i2c_despite_name(ctx: AnalysisContext, net_name: str) -> bool:
             and any(_SPI_DATA_IN_WORD.match(w) for w in siblings)):
         return False
     return bool(_DISPLAY_NET_WORD.search(leaf)) or not i2c_pin_on_net()
+
+
+# SolderJumper_3_Bridged12, SolderJumper-3_P1.3mm_Bridged2Bar12_..., SolderJumper_2_Bridged
+_BRIDGED_PADS = re.compile(r"bridged(?:2bar)?(\d*)")
+
+
+def bridged_jumper_pads(comp: dict, pin_count: int) -> frozenset[str]:
+    """The pad numbers a jumper joins as built: ``SolderJumper_3_Bridged12`` joins pads 1
+    and 2, ``..._Bridged123`` all three, a two-pad ``..._Bridged`` both. The footprint
+    name is read first (it is the copper), then the symbol name; an ``_Open`` footprint
+    joins nothing whatever the symbol says. Empty for an open or unfitted jumper and for
+    a three-pad name that does not say which pads."""
+    if comp.get("type") != "jumper" or not is_fitted(comp):
+        return frozenset()
+    footprint = comp.get("footprint") or ""
+    if "_open" in footprint.lower():
+        return frozenset()
+    for name in (footprint, comp.get("lib_id") or ""):
+        m = _BRIDGED_PADS.search(name.rsplit(":", 1)[-1].lower())
+        if m:
+            if m.group(1):
+                return frozenset(m.group(1))
+            return frozenset(("1", "2")) if pin_count == 2 else frozenset()
+    return frozenset()
+
+
+def rail_behind_bridged_jumper(ctx: AnalysisContext, net: str | None) -> tuple[str, str] | None:
+    """``(rail, jumper ref)`` when *net* reaches a supply rail other than ground through
+    pads a jumper joins as built (a pull-up's far side on a cuttable I2C pull-up jumper);
+    else None. One hop only, and a pad the jumper leaves open is not followed, so a VCC /
+    GND select jumper bridged to VCC reaches VCC only."""
+    if not net:
+        return None
+    for p in ctx.nets.get(net, {}).get("pins", []):
+        ref = p["component"]
+        comp = ctx.comp_lookup.get(ref)
+        if not comp or comp.get("type") != "jumper":
+            continue
+        pins = ctx.ref_pins.get(ref) or {}
+        pads = bridged_jumper_pads(comp, len(pins))
+        if p["pin_number"] not in pads:
+            continue
+        for pad in sorted(pads):
+            other = (pins.get(pad) or (None, None))[0]
+            if other and other != net and ctx.is_power_net(other) and not ctx.is_ground(other):
+                return other, ref
+    return None
 
 
 def get_components_by_type(
