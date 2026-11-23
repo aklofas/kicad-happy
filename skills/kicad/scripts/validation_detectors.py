@@ -63,7 +63,7 @@ def _find_pullups_on_net(
         other = n2 if n1 == net_name else n1
         if not ctx.is_power_net(other) and not ctx.is_ground(other):
             # the far side on a jumper bridged to the rail as built
-            other = (rail_behind_bridged_jumper(ctx, other) or (None,))[0]
+            other = rail_behind_bridged_jumper(ctx, other)
         if other and ctx.is_power_net(other) and not ctx.is_ground(other):
             ohms = ctx.parsed_values.get(rref)
             pullups.append({'ref': rref, 'ohms': ohms, 'rail': other})

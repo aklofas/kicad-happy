@@ -162,10 +162,9 @@ def bridged_jumper_pads(comp: dict, pin_count: int) -> frozenset[str]:
     return frozenset()
 
 
-def rail_behind_bridged_jumper(ctx: AnalysisContext, net: str | None) -> tuple[str, str] | None:
-    """``(rail, jumper ref)`` when *net* reaches a supply rail other than ground through
-    pads a jumper joins as built (a pull-up's far side on a cuttable I2C pull-up jumper);
-    else None. One hop only, and a pad the jumper leaves open is not followed, so a VCC /
+def rail_behind_bridged_jumper(ctx: AnalysisContext, net: str | None) -> str | None:
+    """The supply rail other than ground that *net* reaches through pads a jumper joins
+    as built (a pull-up's far side on a cuttable I2C pull-up jumper); else None. One hop only, and a pad the jumper leaves open is not followed, so a VCC /
     GND select jumper bridged to VCC reaches VCC only."""
     if not net:
         return None
@@ -181,7 +180,7 @@ def rail_behind_bridged_jumper(ctx: AnalysisContext, net: str | None) -> tuple[s
         for pad in sorted(pads):
             other = (pins.get(pad) or (None, None))[0]
             if other and other != net and ctx.is_power_net(other) and not ctx.is_ground(other):
-                return other, ref
+                return other
     return None
 
 

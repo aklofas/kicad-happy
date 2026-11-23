@@ -794,7 +794,7 @@ def _detect_i2c_buses(ctx: AnalysisContext) -> list[dict]:
                         other_pin = "1" if p["pin_number"] == "2" else "2"
                         other_net, _ = pin_net.get((p["component"], other_pin), (None, None))
                         if other_net and not is_power_net(other_net) and not is_ground(other_net):
-                            other_net = (rail_behind_bridged_jumper(ctx, other_net) or (None,))[0]
+                            other_net = rail_behind_bridged_jumper(ctx, other_net)
                         if other_net and is_power_net(other_net) and not is_ground(other_net):
                             pullups.append({
                                 "ref": p["component"],
@@ -881,7 +881,7 @@ def _detect_i2c_buses(ctx: AnalysisContext) -> list[dict]:
                         other_pin = "1" if p["pin_number"] == "2" else "2"
                         other_net, _ = pin_net.get((p["component"], other_pin), (None, None))
                         if other_net and not is_power_net(other_net) and not is_ground(other_net):
-                            other_net = (rail_behind_bridged_jumper(ctx, other_net) or (None,))[0]
+                            other_net = rail_behind_bridged_jumper(ctx, other_net)
                         if other_net and is_power_net(other_net) and not is_ground(other_net):
                             pullups.append({
                                 "ref": p["component"],

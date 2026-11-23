@@ -4470,7 +4470,7 @@ def detect_design_observations(ctx: AnalysisContext, results: dict) -> list[dict
                 r_n1, r_n2 = ctx.get_two_pin_nets(p["component"])
                 other = r_n2 if r_n1 == net_name else r_n1
                 if other and not ctx.is_power_net(other) and not ctx.is_ground(other):
-                    other = (rail_behind_bridged_jumper(ctx, other) or (None,))[0]
+                    other = rail_behind_bridged_jumper(ctx, other)
                 if other and ctx.is_power_net(other):
                     has_pullup = True
                     pullup_ref = p["component"]

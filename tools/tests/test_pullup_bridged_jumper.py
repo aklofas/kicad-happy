@@ -112,7 +112,7 @@ class BridgedJumperPads(unittest.TestCase):
 class PullUpThroughBridgedJumper(unittest.TestCase):
     def test_pull_up_is_found_in_every_check(self):
         ctx = _sparkfun_board(BRIDGED_123)
-        self.assertEqual(rail_behind_bridged_jumper(ctx, "PU_A"), ("+3V3", "JP1"))
+        self.assertEqual(rail_behind_bridged_jumper(ctx, "PU_A"), "+3V3")
         bus = _bus(ctx)
         for net, ref in (("SDA", "R1"), ("SCL", "R2")):
             with self.subTest(net=net):
