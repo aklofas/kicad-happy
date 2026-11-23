@@ -8,7 +8,7 @@ from kicad_types import (
 from kicad_core.classify import classify_ic_function
 from kicad_core.coords import to_iu
 from detector_helpers import (
-    CAN_H_PIN_NAMES, CAN_L_PIN_NAMES, can_line, can_split_termination, get_pin_net, is_protection_part, not_i2c_despite_name, rail_behind_bridged_jumper,
+    can_line, can_pin_pair, can_split_termination, is_protection_part, not_i2c_despite_name, rail_behind_bridged_jumper,
 )
 from kicad_core.sexp import unescape_string
 from schematic import erc_pins
@@ -1238,9 +1238,7 @@ def _detect_can_buses(ctx: AnalysisContext) -> list[dict]:
         lib = comp.get("lib_id", "").lower()
         if any(k in val or k in lib for k in can_transceiver_kw):
             ref = comp["reference"]
-            h_net = get_pin_net(ctx, ref, CAN_H_PIN_NAMES)
-            l_net = get_pin_net(ctx, ref, CAN_L_PIN_NAMES)
-            pair = (h_net, l_net) if h_net and l_net and h_net != l_net else None
+            pair = can_pin_pair(ctx, ref)
             if pair and pair in bare_bus.values():
                 continue
             if pair or (not can_nets_found and not bare_bus):
@@ -1251,6 +1249,12 @@ def _detect_can_buses(ctx: AnalysisContext) -> list[dict]:
                     "transceiver": ref,
                     "devices": [_enrich_device_ref(ref, comp_lookup)],
                 }
+
+    # a controller with no bus pins is no bus of its own beside a transceiver's resolved pair
+    if any(bare_bus.values()):
+        for key in [k for k, pair in bare_bus.items() if not pair]:
+            del bare_bus[key]
+            del can_nets_found[key]
 
     # CAN termination per bus (ISO 11898-2): a 100-150 ohm resistor between that bus's CANH and CANL, or a split pair
     canh_nets = [n for n in can_nets_found if can_line(n, "H")]
@@ -1306,7 +1310,7 @@ def _detect_can_buses(ctx: AnalysisContext) -> list[dict]:
     return list(can_nets_found.values())
 
 
-_CAN_NUMBERED_SIDE = re.compile(r"CAN_?\d+_?([HL])(?![A-Z0-9])")
+_CAN_NUMBERED_SIDE = re.compile(r"(?<![A-Z0-9])M?CAN_?\d+_?(H(?:IGH)?|L(?:OW)?)(?![A-Z0-9])")
 
 
 def can_pair_key(net_name: str) -> str | None:
@@ -1320,7 +1324,8 @@ def can_pair_key(net_name: str) -> str | None:
     if best is None:
         m = _CAN_NUMBERED_SIDE.search(u)
         if m:
-            return u[:m.start(1)] + "#" + u[m.end(1):]
+            # the polarity suffix (CAN2_H+ / CAN2_L-) belongs to the side, not to the bus
+            return u[:m.start(1)] + "#" + u[m.end(1):].rstrip("+-")
     return best[1] if best else None
 
 

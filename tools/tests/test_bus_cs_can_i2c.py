@@ -332,6 +332,29 @@ class CanNumberedLineNames(unittest.TestCase):
             self.assertFalse(can_line(name, "H"), name)
             self.assertFalse(can_line(name, "L"), name)
 
+    def test_names_that_only_end_in_a_can_word_are_not_bus_lines(self):
+        for name in ("SCAN1_H", "JTAG_SCAN3_L", "ISCAN2_H", "TCAN1_L"):
+            self.assertFalse(can_line(name, "H") or can_line(name, "L"), name)
+
+    def test_high_and_low_words_after_a_bus_number_are_bus_lines(self):
+        self.assertTrue(can_line("CAN1_HIGH", "H"))
+        self.assertTrue(can_line("CAN1_LOW", "L"))
+        self.assertFalse(can_line("CAN1_HIGH", "L"))
+
+    def test_polarity_suffixed_numbered_buses_are_paired(self):
+        x1 = _comp("U7", "ic", "MCP2562", "Interface_CAN_LIN:MCP2562", CAN_XCVR)
+        x2 = _comp("U8", "ic", "MCP2562", "Interface_CAN_LIN:MCP2562", CAN_XCVR)
+        nets = {"CAN1_H+": [("U7", "7", "CANH", "bidirectional"), ("R1", "1", "~", "passive")],
+                "CAN1_L-": [("U7", "6", "CANL", "bidirectional"), ("R1", "2", "~", "passive")],
+                "CAN2_H+": [("U8", "7", "CANH", "bidirectional")],
+                "CAN2_L-": [("U8", "6", "CANL", "bidirectional")]}
+        term, findings = _can_findings([x1, x2, _res("R1", "120")], nets)
+        self.assertEqual(term["CAN1_H+"], "120Ω (R1)")
+        self.assertEqual(term["CAN1_L-"], "120Ω (R1)")
+        self.assertIsNone(term["CAN2_H+"])
+        self.assertEqual(sorted(tuple(f["nets"]) for f in findings),
+                         [("CAN1_H+", "CAN1_L-"), ("CAN2_H+", "CAN2_L-")])
+
     def test_numbered_pair_is_one_bus_with_its_terminator(self):
         x1 = _comp("U7", "ic", "MCP2562", "Interface_CAN_LIN:MCP2562", CAN_XCVR)
         nets = {"CAN1_H": [("U7", "7", "CANH", "bidirectional"), ("R1", "1", "~", "passive")],
@@ -385,8 +408,8 @@ class CanTransceiverOnUnnamedNets(unittest.TestCase):
         self.assertTrue(findings[0]["has_termination"])
 
     def test_unterminated_transceiver_names_its_own_pin_nets(self):
-        nets = {"Net-(U7-Pad7)": [("U7", "7", "CANH", "bidirectional")],
-                "Net-(U7-Pad6)": [("U7", "6", "CANL", "bidirectional")]}
+        nets = {"Net-(U7-Pad7)": [("U7", "7", "CANH", "bidirectional"), ("J1", "1", "1", "passive")],
+                "Net-(U7-Pad6)": [("U7", "6", "CANL", "bidirectional"), ("J1", "2", "2", "passive")]}
         term, findings = _can_findings([self._xcvr()], nets)
         self.assertEqual(term, {"CAN": None})
         self.assertEqual([f["nets"] for f in findings], [["Net-(U7-Pad7)", "Net-(U7-Pad6)"]])
@@ -404,12 +427,35 @@ class CanTransceiverOnUnnamedNets(unittest.TestCase):
         self.assertEqual(len(findings), 1)
 
     def test_two_transceivers_on_two_pairs_are_two_buses(self):
-        nets = self._nets({"Net-(U8-Pad7)": [("U8", "7", "CANH", "bidirectional")],
-                           "Net-(U8-Pad6)": [("U8", "6", "CANL", "bidirectional")]})
+        nets = self._nets({"Net-(U8-Pad7)": [("U8", "7", "CANH", "bidirectional"), ("J2", "1", "1", "passive")],
+                           "Net-(U8-Pad6)": [("U8", "6", "CANL", "bidirectional"), ("J2", "2", "2", "passive")]})
         _, findings = _can_findings([self._xcvr(), self._xcvr("U8"), _res("R1", "120")], nets)
         by_nets = {tuple(f["nets"]): f["has_termination"] for f in findings}
         self.assertEqual(by_nets, {("Net-(U7-Pad7)", "Net-(U7-Pad6)"): True,
                                    ("Net-(U8-Pad7)", "Net-(U8-Pad6)"): False})
+
+    def test_a_controller_without_bus_pins_is_not_a_second_bus(self):
+        ctl = _comp("U2", "ic", "MCP2515-I/SO", "Interface_CAN_LIN:MCP2515-xSO",
+                    [("1", "TXCAN", "output"), ("2", "RXCAN", "input")])
+        nets = {"Net-(U7-Pad7)": [("U7", "7", "CANH", "bidirectional"), ("J1", "1", "1", "passive")],
+                "Net-(U7-Pad6)": [("U7", "6", "CANL", "bidirectional"), ("J1", "2", "2", "passive")],
+                "CTL_TXD": [("U2", "1", "TXCAN", "output"), ("U7", "1", "TXD", "input")]}
+        for comps in ([ctl, self._xcvr()], [self._xcvr(), ctl]):
+            _, findings = _can_findings(comps, nets)
+            self.assertEqual([f["nets"] for f in findings], [["Net-(U7-Pad7)", "Net-(U7-Pad6)"]])
+
+    def test_transceiver_bus_pins_that_go_nowhere_are_no_bus(self):
+        nets = {"Net-(U7-Pad7)": [("U7", "7", "CANH", "bidirectional")],
+                "Net-(U7-Pad6)": [("U7", "6", "CANL", "bidirectional")]}
+        ctx = _ctx([self._xcvr()], nets)
+        ctx.nets["Net-(U7-Pad7)"]["no_connect"] = True
+        ctx.nets["Net-(U7-Pad6)"]["no_connect"] = True
+        can = _detect_can_buses(ctx)
+        self.assertEqual([(e["net"], e["termination"]) for e in can], [("CAN", None)])
+        pc = analyze_protocol_compliance([self._xcvr()], ctx.nets,
+                                         {"bus_analysis": {"can": can}, "differential_pairs": []},
+                                         {}, ctx.pin_net, ctx=ctx)
+        self.assertNotIn("Net-(U7-Pad7)", str(pc))
 
     def test_a_named_bus_line_keeps_the_bus_by_name(self):
         # a choke between the transceiver and the connector: the pin nets are not a second bus

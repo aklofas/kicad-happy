@@ -6,7 +6,7 @@ import re
 import sys
 from kicad_core.diagnostics import record
 from detector_helpers import (
-    CAN_H_PIN_NAMES, CAN_L_PIN_NAMES, can_line, get_pin_net, is_addressable_led, is_fitted, is_tvs_diode, led_forward_voltage, type_c_rp,
+    can_line, can_pin_pair, is_addressable_led, is_fitted, is_tvs_diode, led_forward_voltage, type_c_rp,
 )
 from kicad_core.classify import gpio_port_pins, is_active_low_enable, is_touch_pad
 from kicad_types import (
@@ -1502,8 +1502,7 @@ def analyze_protocol_compliance(components: list[dict], nets: dict,
         # bus pins, naming those nets
         own = []
         if ctx and can.get("transceiver"):
-            own = [n for n in (get_pin_net(ctx, can["transceiver"], CAN_H_PIN_NAMES),
-                               get_pin_net(ctx, can["transceiver"], CAN_L_PIN_NAMES)) if n]
+            own = list(can_pin_pair(ctx, can["transceiver"]) or ())
         dp = (next((d for d in can_dps if d.get("has_termination")), None)
               or next((d for d in can_dps if d.get("termination")), None)
               or next((d for d in can_dps if set(own) & {d.get("positive"), d.get("negative")}), None))

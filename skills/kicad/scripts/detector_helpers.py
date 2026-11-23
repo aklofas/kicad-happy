@@ -187,17 +187,32 @@ def rail_behind_bridged_jumper(ctx: AnalysisContext, net: str | None) -> str | N
 _CAN_SPLIT_PIN_NAMES = ("SPLIT", "VSPLIT", "VREF", "REF")
 CAN_H_PIN_NAMES = ('CANH', 'CAN_H', 'CANHI', 'CAN_HIGH')
 CAN_L_PIN_NAMES = ('CANL', 'CAN_L', 'CANLO', 'CAN_LOW')
-_CAN_NUMBERED_LINE = re.compile(r"CAN_?\d+_?([HL])(?![A-Z0-9])")
+_CAN_NUMBERED_LINE = re.compile(r"(?<![A-Z0-9])M?CAN_?\d+_?(H(?:IGH)?|L(?:OW)?)(?![A-Z0-9])")
+
+
+def can_pin_pair(ctx: AnalysisContext, ref: str) -> tuple[str, str] | None:
+    """A transceiver's (CANH net, CANL net) when both pins reach something else: a
+    no-connect or a pin alone on its net is no bus."""
+    h_net = get_pin_net(ctx, ref, CAN_H_PIN_NAMES)
+    l_net = get_pin_net(ctx, ref, CAN_L_PIN_NAMES)
+    if not h_net or not l_net or h_net == l_net:
+        return None
+    for net in (h_net, l_net):
+        info = ctx.nets.get(net, {})
+        if len(info.get("pins", [])) < 2 or info.get("no_connect"):
+            return None
+    return h_net, l_net
 
 
 def can_line(net_name: str, letter: str) -> bool:
     """True for a CAN bus line net of the given side ('H' or 'L'): CANH, CAN_H and the
-    numbered forms CAN1H, CAN1_H, CAN_2_H. ``CAN1_HS`` and ``CAN0_LED`` are other signals."""
+    numbered forms CAN1H, CAN1_H, CAN_2_H, CAN1_HIGH, MCAN0_H. ``CAN1_HS``, ``CAN0_LED`` and
+    ``TCAN1_L`` are other signals."""
     upper = net_name.upper()
     if "CAN" + letter in upper or "CAN_" + letter in upper:
         return True
     m = _CAN_NUMBERED_LINE.search(upper)
-    return bool(m and m.group(1) == letter)
+    return bool(m and m.group(1)[0] == letter)
 
 
 def can_split_termination(ctx: AnalysisContext, canh_net: str, canl_net: str
