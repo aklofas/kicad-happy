@@ -1562,6 +1562,13 @@ _LED_TERMINAL_PIN = re.compile(r"^(?:[RGBWY]?[AK]\d?|ANODE\d?|CATHODE\d?|COM_?[A
 _MIN_LED_SERIES_OHMS = 1.0
 
 _LED_DATA_PINS = {"DIN", "DI", "DOUT", "DO", "SDI", "SDO", "CI", "CO", "CKI", "CKO"}
+# "LED" or an RGB word as a word of its own in a symbol name: LED_RGB, FixLed307, XL-2012RGBC
+_NAME_WORD = re.compile(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+")
+
+
+def _names_an_led(*texts: str) -> bool:
+    words = {w.upper() for t in texts for w in _NAME_WORD.findall(t or "")}
+    return bool(words & {"LED", "LEDS", "ARGB"}) or any(w.startswith("RGB") for w in words)
 
 
 def analyze_power_budget(ctx: AnalysisContext,
@@ -1707,6 +1714,7 @@ def analyze_power_budget(ctx: AnalysisContext,
     # Non-IC loads: LEDs draw real current; 5 mA nominal each, or per channel
     # through its resistor for a multi-die (RGB, bicolour) LED.
     rail_other: dict[str, list[dict]] = {}
+    numbered_seen: set[str] = set()
     for comp in components:
         if comp["type"] != "led" or comp.get("dnp") or comp.get("on_board") is False:
             continue
@@ -1718,12 +1726,22 @@ def analyze_power_budget(ctx: AnalysisContext,
         led_pin_names = {str(p.get("pin_name", "")).upper()
                          for n in led_nets for p in nets.get(n, {}).get("pins", [])
                          if p["component"] == comp["reference"]}
+        # pins named by number only say nothing about the dies: the symbol name, value or
+        # description has to call the part an LED, and it then counts as one flat load
+        numbered = (len(led_pins) > 2 and all(nm.isdigit() or nm in ("", "~") for nm in led_pin_names)
+                    and _names_an_led((comp.get("lib_id") or "").split(":")[-1],
+                                      comp.get("value"), comp.get("description")))
+        if numbered:
+            if comp["reference"] in numbered_seen:   # one load per part, however many units
+                continue
+            numbered_seen.add(comp["reference"])
         multi = len(led_pins) > 2 and (
-            is_addressable_led(comp)
+            is_addressable_led(comp) or numbered
             or any(_LED_TERMINAL_PIN.match(nm) or nm in _LED_DATA_PINS for nm in led_pin_names))
         # an addressable LED (a family name, or a data-in / data-out pin) sets its own
         # current: no series resistor, a flat 5 mA
-        addressable = multi and (is_addressable_led(comp) or bool(led_pin_names & _LED_DATA_PINS))
+        addressable = multi and (is_addressable_led(comp) or numbered
+                                 or bool(led_pin_names & _LED_DATA_PINS))
         n1, n2 = ctx.get_two_pin_nets(comp["reference"])
         if multi:
             n1, n2 = None, None

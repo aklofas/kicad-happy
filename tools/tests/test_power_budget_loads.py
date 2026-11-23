@@ -139,6 +139,37 @@ class LedFalseLoads(unittest.TestCase):
         loads = _loads(comps, nets)["+5V"]["other_loads"]
         self.assertEqual([o["estimated_mA"] for o in loads], [5])
 
+    def _numbered(self, value, lib, desc="", ref="D1"):
+        comp = _part(ref, "led", value, lib, n=4)
+        comp["description"] = desc
+        nets = {"N0": [(ref, "1", "1", "passive")], "N1": [(ref, "2", "2", "passive")],
+                "+3V3": [(ref, "3", "3", "passive")], "N3": [(ref, "4", "4", "passive")],
+                "GND": []}
+        return [comp, _part("R1", "resistor", "330")], nets
+
+    def test_led_with_only_numbered_pins_is_one_flat_load_on_the_rail_it_touches(self):
+        comps, nets = self._numbered("LED_ARGB", "Device:LED_ARGB")
+        loads = _loads(comps, nets, rails=("+3V3", "GND"))["+3V3"]["other_loads"]
+        self.assertEqual([(o["ref"], o["estimated_mA"]) for o in loads], [("D1", 5)])
+
+    def test_numbered_pin_led_is_found_by_its_value_or_description(self):
+        for value, lib, desc in (("FixLed307", "Misc:Part", ""), ("XL-2012RGBC", "Misc:Part", ""),
+                                 ("Part", "Misc:Part", "RGB LED, common anode")):
+            comps, nets = self._numbered(value, lib, desc)
+            loads = _loads(comps, nets, rails=("+3V3", "GND"))["+3V3"]["other_loads"]
+            self.assertEqual([o["estimated_mA"] for o in loads], [5], value)
+
+    def test_numbered_trimmer_typed_led_adds_no_load(self):
+        comps, nets = self._numbered("10k", "Device:BOURNS_3362P")
+        rails = _loads(comps, nets, rails=("+3V3", "GND"))
+        self.assertEqual(rails.get("+3V3", {}).get("other_loads", []), [])
+
+    def test_two_unit_numbered_led_counts_once(self):
+        comps, nets = self._numbered("LED_ARGB", "Device:LED_ARGB")
+        comps.append(dict(comps[0]))
+        loads = _loads(comps, nets, rails=("+3V3", "GND"))["+3V3"]["other_loads"]
+        self.assertEqual(len(loads), 1)
+
     def test_low_value_series_resistor_is_computed(self):
         comps, nets = _rgb_board()
         comps[1]["value"] = "4R7"
