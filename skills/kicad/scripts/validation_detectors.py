@@ -229,6 +229,19 @@ def _names_open_drain(pin_name: str, sibling_names=()) -> bool:
     return not any(upper[:-1] + letter in sibling_names for letter in 'ABC')
 
 
+_OUTPUT_PIN_TYPES = frozenset(('output', 'open_collector', 'open_emitter'))
+
+
+def _divider_top_arms(voltage_dividers) -> set[tuple[str, str]]:
+    """(mid net, resistor) for the top arm of every detected divider."""
+    tops = set()
+    for vd in voltage_dividers or ():
+        top = vd.get('r_top') or {}
+        for ref in top.get('parallel_refs') or [top.get('ref')]:
+            tops.add((vd.get('mid_net'), ref))
+    return tops
+
+
 def _has_internal_en_pullup(ic: dict, pin_name: str) -> bool:
     """True when (ic, pin) matches a regulator whose datasheet says EN may
     be left floating (internal pull-up). Used to suppress PU-001 missing-
@@ -241,7 +254,7 @@ def _has_internal_en_pullup(ic: dict, pin_name: str) -> bool:
     return any(prefix in val_mpn for prefix in _INTERNAL_EN_PULLUP_REGULATOR_PREFIXES)
 
 
-def validate_pullups(ctx: AnalysisContext) -> list[dict]:
+def validate_pullups(ctx: AnalysisContext, voltage_dividers: list[dict] | None = None) -> list[dict]:
     """PU-001: Check for missing pull-up/pull-down resistors on logic pins.
 
     Scans IC pins with names matching known open-drain, reset, enable, and
@@ -256,6 +269,7 @@ def validate_pullups(ctx: AnalysisContext) -> list[dict]:
 
     ics = get_unique_ics(ctx)
     checked_nets: set[str] = set()
+    divider_tops = _divider_top_arms(voltage_dividers)
 
     cache_dir = getattr(ctx, 'cache_dir', None)
 
@@ -385,8 +399,14 @@ def validate_pullups(ctx: AnalysisContext) -> list[dict]:
                         schema_era='v1.4',
                         source=ctx.source,))
                 else:
-                    # Check pull-up value range
+                    # Check pull-up value range. The top resistor of a divider into an input
+                    # sets a threshold with the bottom one; it is not a pull-up to size.
+                    pin_type = next((str(np.get('pin_type') or '').split('+')[0]
+                                     for np in ctx.nets.get(net, {}).get('pins', [])
+                                     if np['component'] == ref and np['pin_number'] == pnum), '')
                     for pu in pullups:
+                        if (net, pu['ref']) in divider_tops and pin_type not in _OUTPUT_PIN_TYPES:
+                            continue
                         if pu['ohms'] is not None:
                             if pu['ohms'] < pu_min:
                                 findings.append(make_finding(

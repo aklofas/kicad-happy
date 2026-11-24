@@ -204,6 +204,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A buzzer or speaker switched by a transistor on its second pin is reported with that transistor as its driver, also when its first pin reaches the supply through a jumper, resistor or diode.
 - An IC on the supply rail or ground behind a buzzer's series resistor is no longer named as its driver, and no longer marks the buzzer as driven straight from a GPIO.
 - PU-001 no longer asks for a pull-up on pins whose name merely ends in OD (QOD quick-output-discharge, VOD, FOD, RF_MOD, a battery protector's OD gate drive); names that end in a separate OD word (`PWRONRSTN_OD`) and `…GOOD` pins are still checked.
+- PU-001 no longer calls the top resistor of an enable-threshold divider a pull-up that is too weak; on an output pin (an open-collector PG) the resistor is still the pull-up and is checked.
 
 ### Documentation
 

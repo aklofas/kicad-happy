@@ -561,7 +561,7 @@ def run_domain_detectors(ctx: AnalysisContext, topo: dict) -> dict:
     connector_ground_audit = audit_connector_ground_distribution(ctx)
 
     # Validation detectors (rich findings)
-    pullup_findings = validate_pullups(ctx)
+    pullup_findings = validate_pullups(ctx, topo["voltage_dividers"])
     voltage_level_findings = validate_voltage_levels(ctx, level_shifters, protection_devices)
     i2c_findings = validate_i2c_bus(ctx)
     spi_findings = validate_spi_bus(ctx)
