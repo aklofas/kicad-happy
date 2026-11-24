@@ -601,7 +601,7 @@ def _ic_logic_domains(ctx: AnalysisContext, ref: str):
 
     *by_pin* maps the pins of a unit that carries its own I/O supply pins (an FPGA bank
     drawn as a unit) to that unit's ``(levels, accepted)``; a placement with no unit number
-    holds every pin and is no bank. *from_config* is True when a project-config override
+    reads as unit 1 (its pins and the shared ones) but is no bank. *from_config* is True when a project-config override
     sets a voltage."""
     pins = ctx.ref_pins.get(ref, {})
     # A supply on an ignored rail has an unknown voltage; the IC's other supply does not

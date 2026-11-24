@@ -281,7 +281,7 @@ class SupplyNamedPins(unittest.TestCase):
 class UnitlessParts(unittest.TestCase):
 
     def test_part_without_a_unit_gets_no_per_unit_levels(self):
-        # A sub-sheet read alone has no unit for its placements: each holds every pin.
+        # A sub-sheet read alone has no unit for its placements: each reads as unit 1 and is no bank.
         fpga = [("1", "VCCIO1", "power_in", "+1V8"), ("2", "IO1", "bidirectional", "SIGA"),
                 ("3", "VCCIO2", "power_in", "+3V3"), ("4", "IO2", "bidirectional", "SIGB"), GND]
         peer = ("B3V3", [("1", "VDD", "power_in", "+3V3"), ("2", "OA", "output", "SIGA"), GND])
