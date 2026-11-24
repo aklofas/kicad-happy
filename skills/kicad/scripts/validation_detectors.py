@@ -174,7 +174,7 @@ _PULLUP_PIN_NAMES = (
     'INT', 'IRQ', 'ALERT', 'DRDY', 'BUSY', 'RDY',
     'INT1', 'INT2', 'IRQ1', 'IRQ2', 'ALERT1', 'ALERT2',
     'SDA', 'SCL', 'I2C_SDA', 'I2C_SCL',
-    'OD', 'OPEN_DRAIN',
+    'GOOD', 'OPEN_DRAIN',
     'PG', 'PGOOD', 'POWER_GOOD', 'nPG',
     'FAULT', 'nFAULT', 'FLAG', 'nFLAG',
     'STAT', 'STAT1', 'STAT2', 'CHG', 'nCHG',
@@ -215,6 +215,18 @@ _INTERNAL_EN_PULLUP_REGULATOR_PREFIXES = (
 _EN_PIN_PATTERN_SET = frozenset((
     'EN', 'ENABLE', 'CE', 'SHDN', 'SHUTDOWN', 'NSHDN', 'ON', 'ONOFF', 'RUN',
 ))
+
+
+def _names_open_drain(pin_name: str, sibling_names=()) -> bool:
+    """``OD`` as the last word of a longer pin name (``PWRONRSTN_OD``, ``INT/OD``). ``QOD``
+    (quick output discharge), ``VOD``, ``FOD``, ``RF_MOD`` and a bare ``OD`` (a battery
+    protector's over-discharge gate drive, a quad part's output D) are other words, and
+    ``V_OD`` beside ``V_OA`` / ``V_OB`` / ``V_OC`` is channel D of a multi-channel part."""
+    upper = pin_name.upper()
+    words = [w for w in re.split(r'[^A-Z0-9]+', upper) if w]
+    if len(words) < 2 or words[-1] != 'OD':
+        return False
+    return not any(upper[:-1] + letter in sibling_names for letter in 'ABC')
 
 
 def _has_internal_en_pullup(ic: dict, pin_name: str) -> bool:
@@ -287,6 +299,9 @@ def validate_pullups(ctx: AnalysisContext) -> list[dict]:
                 if pn.replace('-', '').replace('_', '') == pin_upper or pin_upper.endswith(pn.replace('-', '').replace('_', '')):
                     needs_pullup = True
                     break
+            if not needs_pullup and _names_open_drain(
+                    pin_name, {(p.get('name') or '').upper() for p in ic.get('pins', [])}):
+                needs_pullup = True
 
             # Also check if IC is a known open-drain type
             if not needs_pullup and match_ic_keywords(ic, _OPEN_DRAIN_IC_KEYWORDS):

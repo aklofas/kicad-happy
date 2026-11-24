@@ -203,6 +203,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - A CAN transceiver whose bus nets carry no bus-line name is judged on its own CANH and CANL pin nets: a terminator or split termination there is found, and the result names those nets. A CAN controller with no bus pins adds no second bus beside a transceiver's bus, and a transceiver whose bus pins are unconnected adds no bus.
 - A buzzer or speaker switched by a transistor on its second pin is reported with that transistor as its driver, also when its first pin reaches the supply through a jumper, resistor or diode.
 - An IC on the supply rail or ground behind a buzzer's series resistor is no longer named as its driver, and no longer marks the buzzer as driven straight from a GPIO.
+- PU-001 no longer asks for a pull-up on pins whose name merely ends in OD (QOD quick-output-discharge, VOD, FOD, RF_MOD, a battery protector's OD gate drive); names that end in a separate OD word (`PWRONRSTN_OD`) and `…GOOD` pins are still checked.
 
 ### Documentation
 
