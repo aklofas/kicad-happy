@@ -229,7 +229,7 @@ def _names_open_drain(pin_name: str, sibling_names=()) -> bool:
     return not any(upper[:-1] + letter in sibling_names for letter in 'ABC')
 
 
-_OUTPUT_PIN_TYPES = frozenset(('output', 'open_collector', 'open_emitter'))
+_PULLUP_DRIVER_PIN_TYPES = frozenset(('output', 'open_collector', 'open_emitter'))
 
 
 def _divider_top_arms(voltage_dividers) -> set[tuple[str, str]]:
@@ -405,7 +405,7 @@ def validate_pullups(ctx: AnalysisContext, voltage_dividers: list[dict] | None =
                                      for np in ctx.nets.get(net, {}).get('pins', [])
                                      if np['component'] == ref and np['pin_number'] == pnum), '')
                     for pu in pullups:
-                        if (net, pu['ref']) in divider_tops and pin_type not in _OUTPUT_PIN_TYPES:
+                        if (net, pu['ref']) in divider_tops and pin_type not in _PULLUP_DRIVER_PIN_TYPES:
                             continue
                         if pu['ohms'] is not None:
                             if pu['ohms'] < pu_min:
