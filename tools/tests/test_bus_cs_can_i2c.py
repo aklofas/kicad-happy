@@ -238,6 +238,13 @@ class CanTerminationPerBus(unittest.TestCase):
         _, findings = _can_findings([x1, _res("R1", "see note")], nets)
         self.assertFalse(findings[0]["has_termination"])
 
+    def test_unannotated_resistors_are_read_by_their_own_value(self):
+        x1 = _comp("U7", "ic", "MCP2562", "Interface_CAN_LIN:MCP2562", CAN_XCVR)
+        nets = {"CAN_P": [("U7", "7", "CANH", "bidirectional")] + [("R?", "1", "~", "passive")] * 2,
+                "CAN_N": [("U7", "6", "CANL", "bidirectional")] + [("R?", "2", "~", "passive")] * 2}
+        _, findings = _can_findings([x1, _res("R?", "120"), _res("R?", "100k")], nets)
+        self.assertTrue(findings[0]["has_termination"])
+
     def test_fitted_beside_dnp_terminator_is_present(self):
         x1 = _comp("U7", "ic", "MCP2562", "Interface_CAN_LIN:MCP2562", CAN_XCVR)
         for h, l in (("CAN_H", "CAN_L"), ("CAN_P", "CAN_N")):

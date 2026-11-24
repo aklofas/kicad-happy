@@ -11,6 +11,7 @@ from detector_helpers import (
     _CAN_NUMBERED_LINE, can_line, can_pin_pair, can_split_termination, is_protection_part, not_i2c_despite_name, rail_behind_bridged_jumper,
 )
 from kicad_core.sexp import unescape_string
+from kicad_core.values import parse_value
 from schematic import erc_pins
 from validation_detectors import _en_endpoint_compatible, _is_open_drain_endpoint, _pull_up_rails
 from kicad_core.parts import (
@@ -1645,7 +1646,7 @@ def _detect_differential_pairs(ctx: AnalysisContext) -> list:
                                 r_n1 = pin_net.get((c["reference"], "1"), (None, None))[0]
                                 r_n2 = pin_net.get((c["reference"], "2"), (None, None))[0]
                                 if r_n1 and r_n2:
-                                    r_ohms = parsed_values.get(c["reference"])
+                                    r_ohms = parse_value(c.get("value", ""), component_type="resistor")  # own value: unannotated refs collide
                                     # a terminator is a low value: a bias resistor or an unparsed value is not
                                     if ({r_n1, r_n2} == {pos_real, neg_real}
                                             and r_ohms and r_ohms < 1000):
