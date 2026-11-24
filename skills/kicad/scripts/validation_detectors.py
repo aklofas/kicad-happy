@@ -470,6 +470,10 @@ _SUPPLY_INPUT_PIN = re.compile(r'V(?:IN|BAT|USB|BUS|SYS)\d*(?:IN)?')
 # A supply by its name on a symbol that types no power pin: VCC, VDD, AVDD, VDDIO, or a module's
 # rail pin named for its voltage (3V3, 5V).
 _SUPPLY_PIN_NAME = re.compile(r'(?:[ADP]|IO)?V(?:CC|DD)[A-Z0-9]*|\d+V\d*')
+# Any pin named as a supply: the regulator-input and supply spellings above, plus VSUP, VPWR,
+# VBATT, AVIN, PVIN. VOUT is left out: a DAC output carries that name.
+_SUPPLY_NAMED_PIN = re.compile(
+    _SUPPLY_INPUT_PIN.pattern + '|' + _SUPPLY_PIN_NAME.pattern + r'|V(?:SUP|PWR|BATT)\d*|[AP]VIN\d*')
 
 
 def _compact_pin_name(name: str) -> str:
@@ -747,6 +751,12 @@ _DRIVING_PIN_TYPES = frozenset({'output', 'bidirectional', 'tri_state', 'open_co
 _SERIAL_OUT_PIN = re.compile(r'(?:SDO|DOUT|MISO|SDA)\d*$')
 
 
+def _refs_typing_power_in(ctx: AnalysisContext) -> set[str]:
+    """Parts whose symbol types at least one pin as a power input."""
+    return {p['component'] for info in ctx.nets.values() for p in info.get('pins', [])
+            if str(p.get('pin_type') or '').split('+')[0] == 'power_in'}
+
+
 def _refs_typing_outputs(ctx: AnalysisContext) -> set[str]:
     """Parts whose symbol types at least one pin as an output of some kind."""
     return {p['component'] for info in ctx.nets.values() for p in info.get('pins', [])
@@ -833,6 +843,7 @@ def validate_voltage_levels(ctx: AnalysisContext, level_shifters: list[dict] | N
 
     checked_nets: set[str] = set()
     typed_refs = _refs_typing_outputs(ctx)
+    power_typed_refs = _refs_typing_power_in(ctx)
 
     switch_refs: dict[str, bool] = {}
 
@@ -867,6 +878,11 @@ def validate_voltage_levels(ctx: AnalysisContext, level_shifters: list[dict] | N
                 # A supply pin on a non-power net is a rail feeding a regulator or a
                 # regulator output (L7809 OUT -> L7805 IN), not a logic level.
                 if p.get('pin_type') in ('power_in', 'power_out'):
+                    continue
+                # A legacy symbol types its VIN or VCC as an input: on a part that types no
+                # power pin, a supply-named pin is a supply, not a logic endpoint.
+                if (ref not in power_typed_refs
+                        and _SUPPLY_NAMED_PIN.fullmatch(_compact_pin_name(p.get('pin_name')))):
                     continue
                 domain, by_pin = ic_domains[ref]
                 # A pin of a unit with its own supply pins is at that unit's level.

@@ -236,6 +236,48 @@ class ModuleSupplyInputs(unittest.TestCase):
                 self.assertFalse(vd._SUPPLY_INPUT_PIN.fullmatch(vd._compact_pin_name(name)))
 
 
+class SupplyNamedPins(unittest.TestCase):
+
+    @staticmethod
+    def legacy(rail, supply_pin):
+        """A regulator whose symbol types every pin input."""
+        return ("REG", [("1", supply_pin, "input", "RAW"), ("2", "VOUT", "input", rail),
+                        ("9", "GND", "input", "GND")])
+
+    def test_two_regulator_inputs_on_one_net_are_not_a_crossing(self):
+        for pin in ("VIN", "VCC", "VBAT", "VPWR", "VSUP", "PVIN"):
+            with self.subTest(pin=pin):
+                ctx = ctx_of({"U1": self.legacy("+5V", pin), "U2": self.legacy("+3V3", pin)},
+                             {"+5V", "+3V3", "GND"})
+                self.assertEqual(vm001(ctx), [])
+
+    def test_untyped_part_gpio_is_still_judged(self):
+        ctx = ctx_of({"U1": ("A5V", [("1", "VCC", "input", "+5V"), ("2", "IO1", "input", "SIG"),
+                                     ("9", "GND", "input", "GND")]),
+                      "U2": ("B3V3", [("1", "VDD", "input", "+3V3"), ("2", "IO2", "input", "SIG"),
+                                      ("9", "GND", "input", "GND")])},
+                     {"+5V", "+3V3", "GND"})
+        (f,) = vm001(ctx)
+        self.assertEqual(crossing(f), "5.0V / 3.3V")
+
+    def test_output_named_pin_is_still_judged(self):
+        ctx = ctx_of({"U1": ("A5V", [("1", "VCC", "input", "+5V"), ("2", "VOUT", "input", "SIG"),
+                                     ("9", "GND", "input", "GND")]),
+                      "U2": ("B3V3", [("1", "VDD", "input", "+3V3"), ("2", "IO2", "input", "SIG"),
+                                      ("9", "GND", "input", "GND")])},
+                     {"+5V", "+3V3", "GND"})
+        self.assertEqual(len(vm001(ctx)), 1)
+
+    def test_typed_part_keeps_its_supply_named_pin_off_a_rail(self):
+        # A symbol that types a power pin is read by type: only power pins are skipped.
+        ctx = ctx_of({"U1": ("A5V", [("1", "VCC", "power_in", "+5V"), ("2", "VBAT", "input", "SIG"),
+                                     ("9", "GND", "power_in", "GND")]),
+                      "U2": ("B3V3", [("1", "VDD", "power_in", "+3V3"), ("2", "OUT", "output", "SIG"),
+                                      ("9", "GND", "power_in", "GND")])},
+                     {"+5V", "+3V3", "GND"})
+        self.assertEqual(len(vm001(ctx)), 1)
+
+
 class UnitlessParts(unittest.TestCase):
 
     def test_part_without_a_unit_gets_no_per_unit_levels(self):
