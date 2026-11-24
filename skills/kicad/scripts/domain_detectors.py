@@ -4121,6 +4121,13 @@ _LEVEL_SHIFTER_KEYWORDS = (
     "pca9306", "pca9517",             # NXP/TI I2C bus repeaters with level translation
 )
 
+# Single logic gates and gate symbols: never listed as level shifters.
+_LOGIC_GATE_PATTERNS = ("1g00", "1g02", "1g04", "1g08", "1g14", "1g32",
+                        "1g86", "2g00", "2g02", "2g04", "2g08", "2g14",
+                        "2g32", "2g86", "3g14",
+                        "inverter", "nand_gate", "nor_gate", "and_gate",
+                        "or_gate", "xor_gate", "schmitt")
+
 _VCCA_PINS = {"VCCA", "VA", "VCC_A", "VREF1", "VREF_A", "VIN_A", "VDDA"}
 _VCCB_PINS = {"VCCB", "VB", "VCC_B", "VREF2", "VREF_B", "VIN_B", "VDDB"}
 _LS_ENABLE_PINS = {"OE", "EN", "ENABLE", "DIR"}
@@ -4138,6 +4145,63 @@ def _infer_voltage(ctx: AnalysisContext, net_name: str | None) -> float | None:
     v = (parse_voltage_from_net_name(net_name) if ctx is None
          else ctx.rail_voltage_or(net_name, parse_voltage_from_net_name))
     return abs(v) if v is not None else None
+
+
+# Pin types that put a level on the net; every other signal pin of a buffer is an input.
+_OUTPUT_PIN_TYPES = frozenset({"output", "tri_state", "open_collector", "open_emitter"})
+
+
+# Translating transceivers by part number (SN74LVC1T45, 8T245, AVC4T774, LVC4245A): two supplies
+# whatever the symbol's pin names say.
+_DUAL_SUPPLY_PART = re.compile(r"\dt\d*45|\dt774|4245")
+
+
+def is_single_supply_lvc(ctx: AnalysisContext, comp: dict) -> bool:
+    """An SN74LVC / SN74AVC part with one supply: a buffer or gate with 5 V-tolerant
+    (LVC, TI SN74LVC1G11 SCES214 AA) or 3.6 V-tolerant (AVC) inputs, not a level shifter.
+
+    The family is read from the value and MPN (the lib_id only when both are empty), so a
+    translator drawn on an LVC symbol keeps its listing. A part with VCCA and VCCB pins, or
+    with an input tied through a resistor to a rail more than 0.3 V above its own supply,
+    translates and stays listed."""
+    if comp.get("type") != "ic":
+        return False
+    family = (comp.get("value", "") + " " + (comp.get("mpn") or "")).strip().lower()
+    if not family:
+        family = comp.get("lib_id", "").lower()
+    if "sn74lvc" not in family and "sn74avc" not in family:
+        return False
+    if any(kw in family for kw in _LEVEL_SHIFTER_KEYWORDS
+           if kw not in ("sn74lvc", "sn74avc")):
+        return False
+    combined = (comp.get("value", "") + " " + comp.get("lib_id", "")).lower()
+    if any(g in combined for g in _LOGIC_GATE_PATTERNS):
+        return False
+    ref = comp["reference"]
+    if _DUAL_SUPPLY_PART.search(family):
+        return False
+    pins = set(_build_pin_net_map(ctx, ref))
+    if pins & _VCCA_PINS and pins & _VCCB_PINS:
+        return False
+    # Symbols decorate the names: V_{CCA}, VCCB(3V), (5_V)_VCCA, VCCB_2.
+    squashed = {re.sub(r"[^A-Z0-9]", "", name.upper()) for name in pins}
+    if any("VCCA" in n for n in squashed) and any("VCCB" in n for n in squashed):
+        return False
+
+    from validation_detectors import _ic_logic_domains, _pull_up_rails
+    levels = _ic_logic_domains(ctx, ref)[0]
+    if levels:
+        vcc = max(levels)
+        for pnum, (net, _) in ctx.ref_pins.get(ref, {}).items():
+            if not net or ctx.is_power_net(net) or ctx.is_ground(net):
+                continue
+            ptype = next((p.get("pin_type") for p in ctx.nets.get(net, {}).get("pins", [])
+                          if p["component"] == ref and p["pin_number"] == pnum), None)
+            if ptype in _OUTPUT_PIN_TYPES:
+                continue
+            if any(v is not None and v > vcc + 0.3 for v in _pull_up_rails(ctx, net).values()):
+                return False
+    return True
 
 
 def detect_level_shifters(ctx: AnalysisContext) -> list[dict]:
@@ -4161,12 +4225,9 @@ def detect_level_shifters(ctx: AnalysisContext) -> list[dict]:
 
         # Exclude pure logic gates (not level shifters)
         _val_lib = (comp.get("value", "") + " " + comp.get("lib_id", "")).lower()
-        _logic_gate_patterns = ("1g00", "1g02", "1g04", "1g08", "1g14", "1g32",
-                                "1g86", "2g00", "2g02", "2g04", "2g08", "2g14",
-                                "2g32", "2g86", "3g14",
-                                "inverter", "nand_gate", "nor_gate", "and_gate",
-                                "or_gate", "xor_gate", "schmitt")
-        if any(g in _val_lib for g in _logic_gate_patterns):
+        if any(g in _val_lib for g in _LOGIC_GATE_PATTERNS):
+            continue
+        if is_single_supply_lvc(ctx, comp):
             continue
 
         matched_refs.add(ref)

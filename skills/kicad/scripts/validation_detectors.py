@@ -31,6 +31,7 @@ except ImportError:
     def get_regulator_features(mpn, **kw): return None
     def get_mcu_features(mpn, **kw): return None
 
+from domain_detectors import is_single_supply_lvc
 from detector_helpers import (
     get_components_by_type, get_pin_net, get_unique_ics, index_two_pin_components,
     is_addressable_led, is_led_rail, led_forward_voltage, led_string, match_ic_keywords, symbol_name,
@@ -832,6 +833,12 @@ def validate_voltage_levels(ctx: AnalysisContext, level_shifters: list[dict] | N
     ic_domains = {ref: d for ref, d in ic_domains.items() if ref not in esd_arrays}
 
     shifted_nets: set[str] = set()
+    # A single-supply SN74LVC / SN74AVC buffer has tolerant inputs: its nets are not judged.
+    for ic in get_unique_ics(ctx):
+        if is_single_supply_lvc(ctx, ic):
+            for net, _ in ctx.ref_pins.get(ic['reference'], {}).values():
+                if net and not ctx.is_power_net(net) and not ctx.is_ground(net):
+                    shifted_nets.add(net)
     if level_shifters:
         for ls in level_shifters:
             for net in ls.get('shifted_nets', []):
