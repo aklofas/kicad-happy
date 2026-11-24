@@ -399,11 +399,11 @@ def detect_voltage_dividers(ctx: AnalysisContext) -> dict:
                             divider["mid_point_connections"] = mid_pins
                             # If connected to an IC FB pin, this is likely a feedback network
                             for mp in mid_pins:
-                                if "FB" in mp.get("pin_name", "").upper() and series_input:
-                                    # Not a feedback network, but the RC pairing claims it as one
-                                    divider["_series_input_fb"] = True
-                                    break
                                 if "FB" in mp.get("pin_name", "").upper():
+                                    if series_input:
+                                        # Not a feedback network, but the RC pairing claims it as one
+                                        divider["_series_input_fb"] = True
+                                        break
                                     divider["is_feedback"] = True
                                     divider["detector"] = "detect_voltage_dividers"
                                     divider["rule_id"] = "VD-DET"
