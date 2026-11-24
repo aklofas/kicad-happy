@@ -33,7 +33,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 
 ### Fixed
 
-- A single-supply SN74LVC or SN74AVC buffer or gate is no longer reported as a level shifter; one with separate VCCA and VCCB pins, or an input pulled up above its own supply, still is. Its nets stay exempt from the voltage-mismatch check.
+- A single-supply SN74LVC or SN74AVC buffer or gate is no longer reported as a level shifter; one with separate VCCA and VCCB pins, or an input or open-drain output pulled up above its own supply, still is. Its nets stay exempt from the voltage-mismatch check.
 - A `CSENSE` net is classified as analog, not as a chip select.
 - Net classes: a KiCad 5 label that holds a `/` is classified by its whole name, not the part after the last `/`.
 - A regulator output net named for a voltage (3V3, +5V, -12V) keeps that voltage in `rail_voltages` when the regulator's estimated output differs from it by more than 15 %, or the name is negative and the estimate positive; a negative estimate on a name without a sign (VEE_12V) and a name with two voltages (12V_TO_5V) keep the estimate. The output-voltage mismatch observation still reports a difference in magnitude.

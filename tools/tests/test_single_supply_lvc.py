@@ -1,7 +1,7 @@
 """A single-supply SN74LVC or SN74AVC buffer is not a level shifter.
 
-TI SN74LVC1G11 (SCES214, rev. AA): inputs and outputs tolerate 5.5 V at any VCC.
-TI SN74AVC16244 (SCES135, rev. K): single VCC, 3.6 V-tolerant inputs. A dual-supply part
+TI SN74LVC1G11 (SCES487J, p. 4): VI 0 to 5.5 V at any VCC.
+TI SN74AVC16244 (SCES141N, p. 4): single VCC, VI 0 to 3.6 V. A dual-supply part
 (VCCA / VCCB) and a part whose input is pulled above its own VCC still translate.
 """
 import sys
@@ -87,9 +87,29 @@ class SingleSupplyLvc(unittest.TestCase):
         self.assertEqual(len(shifters(ctx)), 1)
 
     def test_translating_part_number_stays_without_supply_pins(self):
-        ctx = ctx_of({"U1": ("SN74LVC4245A", "", [
-            ("3", "A1", "bidirectional", "IN"), ("4", "B1", "bidirectional", "OUT"), GND])}, RAILS)
+        for mpn in ("SN74LVC4245A", "SN74LVCC3245A", "SN74AVC4T234", "SN74AVC2T244",
+                    "SN74AVC2T872", "SN74AVCA406", "SN74LVC1T45"):
+            with self.subTest(mpn=mpn):
+                ctx = ctx_of({"U1": (mpn, "", [
+                    ("3", "A1", "bidirectional", "IN"), ("4", "B1", "bidirectional", "OUT"),
+                    GND])}, RAILS)
+                self.assertEqual(len(shifters(ctx)), 1)
+
+    def test_open_drain_output_pulled_above_vcc_stays_a_shifter(self):
+        ctx = ctx_of({"U1": ("SN74LVC1G07", "", [("1", "A", "input", "IN"),
+                                                 ("2", "Y", "open_collector", "OUT"),
+                                                 ("3", "VCC", "power_in", "+3V3"), GND])},
+                     RAILS, pull_ups=[("R1", "OUT", "+5V")])
         self.assertEqual(len(shifters(ctx)), 1)
+        ctx = ctx_of({"U1": ("SN74LVC1G07", "", [("1", "A", "input", "IN"),
+                                                 ("2", "Y", "open_collector", "OUT"),
+                                                 ("3", "VCC", "power_in", "+3V3"), GND])},
+                     RAILS, pull_ups=[("R1", "OUT", "+3V3")])
+        self.assertEqual(shifters(ctx), [])
+
+    def test_push_pull_output_pulled_above_vcc_does_not_keep_it(self):
+        ctx = ctx_of({"U1": buffer("SN74LVC125")}, RAILS, pull_ups=[("R1", "OUT", "+5V")])
+        self.assertEqual(shifters(ctx), [])
 
     def test_lv1t126_on_an_lvc_symbol_stays_a_shifter(self):
         ctx = ctx_of({"U1": buffer("SN74LV1T126", lib_id="Logic:SN74LVC1G125DBV")}, RAILS)

@@ -4147,23 +4147,27 @@ def _infer_voltage(ctx: AnalysisContext, net_name: str | None) -> float | None:
     return abs(v) if v is not None else None
 
 
-# Pin types that put a level on the net; every other signal pin of a buffer is an input.
-_OUTPUT_PIN_TYPES = frozenset({"output", "tri_state", "open_collector", "open_emitter"})
+# Push-pull output pin types: they drive their own supply level. Inputs and open-drain
+# outputs (SN74LVC06, SN74LVC07) take the level of a pull-up.
+_OUTPUT_PIN_TYPES = frozenset({"output", "tri_state"})
 
 
-# Translating transceivers by part number (SN74LVC1T45, 8T245, AVC4T774, LVC4245A): two supplies
-# whatever the symbol's pin names say.
-_DUAL_SUPPLY_PART = re.compile(r"\dt\d*45|\dt774|4245")
+# Dual-supply parts by part number, whatever the symbol's pin names say: TI's digit-T-digit
+# form (SN74LVC1T45, SN74LVC8T245, SN74AVC4T774, SN74AVC2T244), the 3245 / 4245 transceivers
+# and the AVCA family. TI SN74LVC8T245 (SCES584D, May 2026), p. 1: "Dual-Supply Bus
+# Transceiver", VCCA and VCCB each 1.65 V to 5.5 V.
+_DUAL_SUPPLY_PART = re.compile(r"\dt\d|[34]245|avca\d")
 
 
 def is_single_supply_lvc(ctx: AnalysisContext, comp: dict) -> bool:
     """An SN74LVC / SN74AVC part with one supply: a buffer or gate with 5 V-tolerant
-    (LVC, TI SN74LVC1G11 SCES214 AA) or 3.6 V-tolerant (AVC) inputs, not a level shifter.
+    (LVC: TI SN74LVC1G11, SCES487J, p. 4, VI 0 to 5.5 V) or 3.6 V-tolerant (AVC: TI
+    SN74AVC16244, SCES141N, p. 4, VI 0 to 3.6 V) inputs, not a level shifter.
 
     The family is read from the value and MPN (the lib_id only when both are empty), so a
     translator drawn on an LVC symbol keeps its listing. A part with VCCA and VCCB pins, or
-    with an input tied through a resistor to a rail more than 0.3 V above its own supply,
-    translates and stays listed."""
+    with an input or open-drain output tied through a resistor to a rail more than 0.3 V
+    above its own supply, translates and stays listed."""
     if comp.get("type") != "ic":
         return False
     family = (comp.get("value", "") + " " + (comp.get("mpn") or "")).strip().lower()
@@ -4177,9 +4181,9 @@ def is_single_supply_lvc(ctx: AnalysisContext, comp: dict) -> bool:
     combined = (comp.get("value", "") + " " + comp.get("lib_id", "")).lower()
     if any(g in combined for g in _LOGIC_GATE_PATTERNS):
         return False
-    ref = comp["reference"]
     if _DUAL_SUPPLY_PART.search(family):
         return False
+    ref = comp["reference"]
     pins = set(_build_pin_net_map(ctx, ref))
     if pins & _VCCA_PINS and pins & _VCCB_PINS:
         return False
