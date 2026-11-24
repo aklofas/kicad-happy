@@ -243,6 +243,13 @@ class Mcp73831Status(unittest.TestCase):
         (entry,) = [e for e in na._detect_cross_domain_signals(ctx, pd) if e["net"] == "SIG"]
         self.assertTrue(entry["needs_level_shifter"])
 
+    def test_mcp73831_stat_typed_open_collector_is_still_judged_at_its_supply(self):
+        self.assertEqual(len(vm001(self._board("MCP73831", pin=("3", "STAT", "open_collector", "SIG")))), 1)
+
+    def test_part_number_match_is_anchored(self):
+        self.assertEqual(vm001(self._board("MCP738310")), [])
+        self.assertEqual(len(vm001(self._board("MCP73831-2-OT"))), 1)
+
     def test_mcp73832_stat_stays_open_drain(self):
         self.assertEqual(vm001(self._board("MCP73832T-2ACI/OT")), [])
 
