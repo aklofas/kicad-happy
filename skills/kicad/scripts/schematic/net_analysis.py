@@ -1224,6 +1224,9 @@ def _detect_can_buses(ctx: AnalysisContext) -> list[dict]:
         if any(kw in nu.lower() for kw in can_keywords) or can_line(nu, "H") or can_line(nu, "L"):
             device_refs = [p["component"] for p in net_info["pins"]
                            if comp_lookup.get(p["component"], {}).get("type") == "ic"]
+            if (not device_refs and len(net_info["pins"]) < 2
+                    and (can_line(nu, "H") or can_line(nu, "L"))):
+                continue  # a bus line name on a label or one series part alone is no bus
             can_nets_found[net_name] = {
                 "net": net_name,
                 "devices": [_enrich_device_ref(r, comp_lookup) for r in device_refs],
