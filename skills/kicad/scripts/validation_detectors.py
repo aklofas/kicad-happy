@@ -692,6 +692,17 @@ _OD_STATUS_NAMES = frozenset({'STAT', 'STAT1', 'STAT2', 'CHG', 'CHRG'})
 _OD_WITH_PULL_UP_NAMES = frozenset({'FAULT', 'FLT'})
 
 
+# MCP73831 STAT is a tri-state logic output that drives high to VDD (Microchip MCP73831/2,
+# DS20001984H, section 3.3 and Table 5-1); the MCP73832 variant is open-drain.
+_TRISTATE_STAT_PARTS = re.compile(r'mcp73831', re.IGNORECASE)
+
+
+def _is_tristate_status(ctx: AnalysisContext, ref: str, name: str) -> bool:
+    comp = ctx.comp_lookup.get(ref, {})
+    text = ' '.join(str(comp.get(k) or '') for k in ('value', 'mpn'))
+    return name in _OD_STATUS_NAMES and bool(_TRISTATE_STAT_PARTS.search(text))
+
+
 def _bare_pin_name(name: str) -> str:
     """Upper-cased pin name without an active-low marker (~{PG}, nPG, NSTAT)."""
     n = re.sub(r'^~\{(.*)\}$', r'\1', (name or '').upper().strip()).lstrip('~/')
@@ -710,6 +721,8 @@ def _is_open_drain_endpoint(ctx: AnalysisContext, p: dict, net_name: str | None 
     if p.get('pin_type') == 'tri_state':
         return False   # MCP73831 STAT drives high to its supply
     name = _bare_pin_name(p.get('pin'))
+    if _is_tristate_status(ctx, p['ref'], name):
+        return False
     if name in _OD_STATUS_NAMES:
         return True
     if p['ref'] in ctx.charger_refs and (name in _PG_PIN_PATTERNS or name == 'STDBY'):

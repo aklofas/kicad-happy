@@ -224,6 +224,32 @@ class OpenDrainStatus(unittest.TestCase):
         self.assertEqual(vm001(ctx), [])
 
 
+class Mcp73831Status(unittest.TestCase):
+    # Microchip MCP73831/2 (DS20001984H, section 3.3): STAT "is a tri-state logic output on the
+    # MCP73831 and an open-drain output on the MCP73832"; a high state drives to VDD.
+    PIN = ("3", "STAT", "output", "SIG")
+
+    def _board(self, value, pin=PIN, pull_up="+3V3"):
+        return board("+5V", [pin], sig_extra=[("R1", "1", "~", "passive")], parts=[res("R1")],
+                     extra_nets={pull_up: [("R1", "2", "~", "passive")]}, value=value)
+
+    def test_mcp73831_stat_is_judged_at_its_supply(self):
+        (f,) = vm001(self._board("MCP73831T-2ACI/OT"))
+        self.assertEqual(f["severity"], "error")
+
+    def test_mcp73831_stat_restores_the_level_shifter_flag(self):
+        ctx = self._board("MCP73831T-2ACI/OT")
+        pd = na._map_power_domains(ctx)["ic_power_rails"]
+        (entry,) = [e for e in na._detect_cross_domain_signals(ctx, pd) if e["net"] == "SIG"]
+        self.assertTrue(entry["needs_level_shifter"])
+
+    def test_mcp73832_stat_stays_open_drain(self):
+        self.assertEqual(vm001(self._board("MCP73832T-2ACI/OT")), [])
+
+    def test_tp4056_status_pin_stays_open_drain(self):
+        self.assertEqual(vm001(self._board("TP4056", pin=("3", "~{CHRG}", "output", "SIG"))), [])
+
+
 class EsdArrays(unittest.TestCase):
     # USBLC6-2 (ST DS2814): the I/O pins are clamp diodes to VBUS and GND; nothing drives them.
     ESD = [{"ref": "U1", "type": "esd_ic"}]
