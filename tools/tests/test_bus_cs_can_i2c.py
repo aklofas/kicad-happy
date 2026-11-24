@@ -561,8 +561,8 @@ class CanTransceiverOnUnnamedNets(unittest.TestCase):
                                          {}, ctx.pin_net, ctx=ctx)
         self.assertNotIn("Net-(U7-Pad7)", str(pc))
 
-    def test_bus_line_names_on_one_series_part_do_not_hide_the_real_pair(self):
-        # an unfitted transceiver's series resistors end on labels named as bus lines; the
+    def test_numbered_line_names_on_one_series_part_do_not_hide_the_real_pair(self):
+        # an unfitted transceiver's series resistors end on labels named as numbered bus lines; the
         # fitted transceiver's pair carries the board's unfitted terminator
         nets = {"CAN_2_H": [("R8", "1", "~", "passive")],
                 "CAN_2_L": [("R9", "1", "~", "passive")],
@@ -581,13 +581,20 @@ class CanTransceiverOnUnnamedNets(unittest.TestCase):
                          [(["BUS_A_CAN_P", "BUS_A_CAN_N"],
                            ["CAN termination R10 (120) is DNP (fit it on the bus-end nodes)"])])
 
-    def test_a_bus_line_name_on_a_device_pin_alone_is_a_bus(self):
-        # a sub-sheet read alone: the label leaves the sheet, the transceiver pin is the only pin
-        nets = {"CAN_H": [("U7", "7", "CANH", "bidirectional")],
-                "CAN_L": [("U7", "6", "CANL", "bidirectional")]}
-        term, findings = _can_findings([self._xcvr()], nets)
+    def test_an_unnumbered_bus_line_name_on_one_connector_pin_keeps_its_bus(self):
+        nets = {"CAN_H": [("J1", "1", "1", "passive")], "CAN_L": [("J1", "2", "2", "passive")]}
+        term, findings = _can_findings([_comp("J1", "connector", "Conn_01x02", "Connector:Conn_01x02",
+                                              [("1", "1", "passive"), ("2", "2", "passive")])], nets)
         self.assertEqual(term, {"CAN_H": None, "CAN_L": None})
         self.assertEqual([f["nets"] for f in findings], [["CAN_H", "CAN_L"]])
+
+    def test_a_bus_line_name_on_a_device_pin_alone_is_a_bus(self):
+        # a sub-sheet read alone: the label leaves the sheet, the transceiver pin is the only pin
+        nets = {"CAN1_H": [("U7", "7", "CANH", "bidirectional")],
+                "CAN1_L": [("U7", "6", "CANL", "bidirectional")]}
+        term, findings = _can_findings([self._xcvr()], nets)
+        self.assertEqual(term, {"CAN1_H": None, "CAN1_L": None})
+        self.assertEqual([f["nets"] for f in findings], [["CAN1_H", "CAN1_L"]])
 
     def test_a_named_bus_line_keeps_the_bus_by_name(self):
         # a choke between the transceiver and the connector: the pin nets are not a second bus
