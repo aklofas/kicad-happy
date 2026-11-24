@@ -1499,15 +1499,15 @@ def analyze_protocol_compliance(components: list[dict], nets: dict,
         _judge(list(key), bool(terms) or split, terms[0].get("ohms") if terms else None, dnp)
 
     def _judge_unnamed_bus(can):
-        # One result, credited by a terminated CAN pair (fitted first, else a DNP option; a choke
-        # or connector can split one bus into two pairs); else judged on the transceiver's own
-        # bus pins, naming those nets
+        # One result: on the CAN pair of the transceiver's own bus pins; with none, credited by a
+        # terminated CAN pair (fitted first, else a DNP option; a choke or connector can split one
+        # bus into two pairs); else judged on the transceiver's own bus pins, naming those nets
         own = []
         if ctx and can.get("transceiver"):
             own = list(can_pin_pair(ctx, can["transceiver"]) or ())
-        dp = (next((d for d in can_dps if d.get("has_termination")), None)
-              or next((d for d in can_dps if d.get("termination")), None)
-              or next((d for d in can_dps if set(own) & {d.get("positive"), d.get("negative")}), None))
+        dp = (next((d for d in can_dps if set(own) & {d.get("positive"), d.get("negative")}), None)
+              or next((d for d in can_dps if d.get("has_termination")), None)
+              or next((d for d in can_dps if d.get("termination")), None))
         if dp:
             _judge_dp(dp, bool(can.get("termination"))
                       and set(own) == {dp.get("positive"), dp.get("negative")})

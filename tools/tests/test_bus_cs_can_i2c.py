@@ -496,6 +496,27 @@ class CanTransceiverOnUnnamedNets(unittest.TestCase):
         self.assertEqual(by_nets, {("Net-(U7-Pad7)", "Net-(U7-Pad6)"): True,
                                    ("Net-(U8-Pad7)", "Net-(U8-Pad6)"): False})
 
+    def test_each_transceiver_on_its_own_terminated_pair_is_judged(self):
+        # the pin nets are a differential pair named by polarity only, with a terminator each
+        nets = {"CANA+": [("U7", "7", "CANH", "bidirectional"), ("R1", "1", "~", "passive")],
+                "CANA-": [("U7", "6", "CANL", "bidirectional"), ("R1", "2", "~", "passive")],
+                "CANB+": [("U8", "7", "CANH", "bidirectional"), ("R2", "1", "~", "passive")],
+                "CANB-": [("U8", "6", "CANL", "bidirectional"), ("R2", "2", "~", "passive")]}
+        comps = [self._xcvr(), self._xcvr("U8"), _res("R1", "120"), _res("R2", "120")]
+        for order in (comps, comps[::-1]):
+            _, findings = _can_findings(order, nets)
+            self.assertEqual(sorted((tuple(f["nets"]), f["has_termination"]) for f in findings),
+                             [(("CANA+", "CANA-"), True), (("CANB+", "CANB-"), True)])
+
+    def test_unterminated_transceiver_is_not_credited_by_another_pair(self):
+        nets = {"CANA+": [("U7", "7", "CANH", "bidirectional"), ("J1", "1", "1", "passive")],
+                "CANA-": [("U7", "6", "CANL", "bidirectional"), ("J1", "2", "2", "passive")],
+                "CANB+": [("U8", "7", "CANH", "bidirectional"), ("R2", "1", "~", "passive")],
+                "CANB-": [("U8", "6", "CANL", "bidirectional"), ("R2", "2", "~", "passive")]}
+        _, findings = _can_findings([self._xcvr(), self._xcvr("U8"), _res("R2", "120")], nets)
+        self.assertEqual(sorted((tuple(f["nets"]), f["has_termination"]) for f in findings),
+                         [(("CANA+", "CANA-"), False), (("CANB+", "CANB-"), True)])
+
     def test_a_controller_without_bus_pins_is_not_a_second_bus(self):
         ctl = _comp("U2", "ic", "MCP2515-I/SO", "Interface_CAN_LIN:MCP2515-xSO",
                     [("1", "TXCAN", "output"), ("2", "RXCAN", "input")])
