@@ -48,7 +48,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - I2C bus observations now cover numbered and prefixed names (`SDA2`, `SCL_1`, `OLED_SDA`). A display's SPI lines named `LCD_SDA` / `LCD_SCL` are no longer listed as I2C.
 - A BMS cell-voltage pin on a supply-named net (`VBAT_CELL4`, `+Cell12`) counts as a cell tap.
 - The Ethernet check recognises more jacks with built-in magnetics: by their centre-tap pins, by a magjack footprint or part number on a generic RJ45 symbol, and by a description that says so. A transformer elsewhere on the sheet no longer hides missing Ethernet magnetics.
-- A part is no longer taken for an Ethernet PHY because `phy` or `ethernet` appears inside another word of its symbol or library name.
+- A part is no longer taken for an Ethernet PHY because `phy` or `ethernet` appears inside another word of its symbol or library name, or because its symbol sits in a project library named `ethernet`.
 - A switch, isolator or transceiver whose description mentions its own ESD or overvoltage protection is no longer credited as the ESD clamp of a differential pair.
 - More Type-C controllers that terminate CC themselves are recognised (TUSB320/321/322, HD3SS3220, TPS25730/50/51, PTN5110, HUSB237, STUSB4700, CH224K/A/Q, nPM1300/1304, MAX77751, and a TPD6S300/TPD8S300 with its dead-battery resistor pin tied to CC), so their ports no longer report a missing 5.1 kΩ pull-down; the PD controllers among them are listed as power-path parts.
 - A USB Type-C pull-down that returns to the net of the connector's own GND pins counts as a sink Rd when that net is not named as a ground (`Earth`, an unnamed net). The Rd range is 5.1 kΩ ±10 % everywhere, so a 4.7 kΩ pull-down no longer reads as missing.
@@ -60,10 +60,10 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - The power-pin and rail-source checks know the bootstrap pins named BTST, VBST and CBOOT (TI chargers and converters): they no longer report 'no DC path to a power rail' or 'no declared source' for them.
 - An LC filter is no longer hidden when a boot-mode pin is tied straight to ground.
 - RGB LEDs whose pins are only numbered count in the power budget, as a 5 mA load on the rail they touch.
-- The LED audit no longer gives an LED the resistor of a parallel branch: a chain walk goes on only through an LED that meets the last one anode to cathode, and a power-named net of LEDs with no resistor to a rail or ground (or only pull-ups to signals) is the rail, not an LED node.
+- The LED audit no longer gives an LED the resistor of a parallel branch: a chain walk goes on only through an LED that meets the last one anode to cathode, and a power-named net that holds only LEDs, or LEDs and a resistor whose far end is not a rail or ground, is the rail, not an LED node.
 - The LED audit reads a current-limit resistor whose value carries a package suffix (`1k_0402`, `330R_0603`) as that resistor, so the LED is judged as resistor-limited instead of "resistor value unparsed" or as driven straight from an IC.
 - An LED wired straight from a supply rail to ground is reported as having no current-limiting resistor even when ICs share the rail. LEDs in parallel on one resistor share its current, and the resistor's dissipation is reported once.
-- Crystal values written without a unit (`32.768`, `7.3728`, `8m`, `32768Hz`) read as the frequency they mean, and a number that cannot be a crystal frequency (a part number, a capacitance) is no longer reported as one.
+- Crystal values written without a unit, with a bare `Hz` or with a lower-case `m` for MHz (`32.768`, `7.3728`, `32768Hz`, `8m`) read as the frequency they mean, and a number that cannot be a crystal frequency (a part number, a capacitance) is no longer reported as one.
 - A `CSENSE` net is classified as analog, not as a chip select.
 - The I2C low-level voltage check judges the SCL pull-up as well as SDA: a strong SCL pull-up (or a mixed-rail pair on SCL) below the UM10204 minimum for a 3 mA sink is reported, and the worse line fills the check.
 - Pull-ups that reach their rail through a solder jumper bridged as built are found, so I2C buses and enable or chip-select pins pulled up that way no longer report missing pull-ups.
@@ -195,16 +195,12 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 - VM-001 and `needs_level_shifter` treat the enable pin of any regulator the analyzer detects as a compatible endpoint, not only of regulators named in its part-family list, and read overbar-named enables (`~{SHDN}`, `~{EN}`, `/SHDN`) as enables. An IC that only contains a regulator (a microcontroller or radio module) keeps its checks.
 - `needs_level_shifter` reads an open-drain output (an open-collector pin, a power-good or charger status pin, a pulled-up fault flag) at its pull-up rail, as VM-001 does: a power-good pulled up above its reader's supply is now flagged, one pulled up to the reader's rail or below it is not, and an open-drain output with no pull-up is not compared.
 - `components[].connector_layout` reads the row count in the footprint name when the symbol name gives none, and no longer reads the library nickname.
-- CAN buses named with a bus number (`CAN1_H` / `CAN1_L`, `CAN1H`, `CAN_2_L`, `MCU_CAN1_H+`) are detected, paired by number and checked for termination; `CAN1_HS`, `CAN0_LED` and `CAN2_LOAD` are not bus lines.
-- A CAN transceiver whose bus nets carry no bus-line name is judged on its own CANH and CANL pin nets: a terminator or split termination there is found, and the result names those nets.
-- CAN buses named with a bus number (`CAN1_H` / `CAN1_L`, `CAN1H`, `CAN_2_L`, `CAN1_HIGH`, `MCAN0_H`, `CAN2_H+` / `CAN2_L-`) are detected, paired by number and checked for termination; `CAN1_HS`, `CAN0_LED`, `CAN2_LOAD` and `TCAN1_L` are not bus lines.
-- A CAN transceiver whose bus nets carry no bus-line name is judged on its own CANH and CANL pin nets: a terminator or split termination there is found, and the result names those nets. A CAN controller with no bus pins, and a transceiver whose bus pins are unconnected, no longer add a bus of their own.
 - CAN buses named with a bus number (`CAN1_H` / `CAN1_L`, `CAN1H`, `CAN_2_L`, `CAN1_HIGH`, `MCAN0_H`, `FDCAN1_H`, `CAN2_H+` / `CAN2_L-`) are detected, paired by number and checked for termination; `CAN1_HS`, `CAN0_LED`, `CAN2_LOAD` and `TCAN1_L` are not bus lines.
 - A CAN transceiver whose bus nets carry no bus-line name is judged on its own CANH and CANL pin nets: a terminator or split termination there is found, and the result names those nets. A CAN controller with no bus pins adds no second bus beside a transceiver's bus, and a transceiver whose bus pins are unconnected adds no bus.
 - A buzzer or speaker switched by a transistor on its second pin is reported with that transistor as its driver, also when its first pin reaches the supply through a jumper, resistor or diode.
 - An IC on the supply rail or ground behind a buzzer's series resistor is no longer named as its driver, and no longer marks the buzzer as driven straight from a GPIO.
 - PU-001 no longer asks for a pull-up on pins whose name merely ends in OD (QOD quick-output-discharge, VOD, FOD, RF_MOD, a battery protector's OD gate drive); names that end in a separate OD word (`PWRONRSTN_OD`) and `…GOOD` pins are still checked.
-- PU-001 no longer calls the top resistor of an enable-threshold divider a pull-up that is too weak; on an output pin (an open-collector PG) the resistor is still the pull-up and is checked.
+- PU-001 no longer sizes the top resistor of a divider into an input pin (an enable-threshold divider) as a pull-up, too strong or too weak; on an output pin (an open-collector PG) the resistor is still the pull-up and is checked.
 
 ### Documentation
 
