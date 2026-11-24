@@ -1315,19 +1315,26 @@ def _detect_can_buses(ctx: AnalysisContext) -> list[dict]:
 
 
 def can_pair_key(net_name: str) -> str | None:
-    """A CANH or CANL net's bus key: the name with its last CANH/CANL (CAN_H/CAN_L) marker blanked."""
+    """A CANH or CANL net's bus key: the name with its last CANH/CANL (CAN_H/CAN_L, CAN_HIGH/
+    CAN_LOW) marker blanked. The polarity suffix (CAN_H+ / CAN2_L-) belongs to the side, not
+    to the bus."""
     u = net_name.upper()
     best = None
-    for marker, blank in (("CANH", "CAN#"), ("CANL", "CAN#"), ("CAN_H", "CAN_#"), ("CAN_L", "CAN_#")):
+    for marker in ("CANH", "CANL", "CAN_H", "CAN_L"):
         i = u.rfind(marker)
         if i >= 0 and (best is None or i > best[0]):
-            best = (i, u[:i] + blank + u[i + len(marker):])
+            best = (i, marker)
     if best is None:
         m = _CAN_NUMBERED_LINE.search(u)
         if m:
-            # the polarity suffix (CAN2_H+ / CAN2_L-) belongs to the side, not to the bus
             return u[:m.start(1)] + "#" + u[m.end(1):].rstrip("+-")
-    return best[1] if best else None
+        return None
+    i, marker = best
+    rest = u[i + len(marker):]
+    word = "IGH" if marker.endswith("H") else "OW"
+    if rest.startswith(word):
+        rest = rest[len(word):]
+    return u[:i] + marker[:-1] + "#" + rest.rstrip("+-")
 
 
 def can_bus_pairs(canh_nets: list, canl_nets: list) -> list[tuple[str, str]]:

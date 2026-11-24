@@ -8,7 +8,7 @@ sys.path.insert(0, str(ROOT / "skills" / "kicad" / "scripts"))
 from kicad_types import build_analysis_context  # noqa: E402
 from detector_helpers import can_line  # noqa: E402
 from schematic.net_analysis import (  # noqa: E402
-    _analyze_bus_protocols, _detect_can_buses, _detect_differential_pairs, _detect_i2c_buses)
+    _analyze_bus_protocols, _detect_can_buses, _detect_differential_pairs, _detect_i2c_buses, can_bus_pairs)
 from schematic.system_analyses import analyze_protocol_compliance  # noqa: E402
 from validation_detectors import validate_can_bus  # noqa: E402
 
@@ -416,6 +416,27 @@ class CanNumberedLineNames(unittest.TestCase):
         self.assertIsNone(term["CAN2_H+"])
         self.assertEqual(sorted(tuple(f["nets"]) for f in findings),
                          [("CAN1_H+", "CAN1_L-"), ("CAN2_H+", "CAN2_L-")])
+
+    def test_unnumbered_polarity_and_word_forms_pair_beside_numbered_ones(self):
+        self.assertEqual(can_bus_pairs(["CAN_H+", "CAN2_H+"], ["CAN_L-", "CAN2_L-"]),
+                         [("CAN_H+", "CAN_L-"), ("CAN2_H+", "CAN2_L-")])
+        self.assertEqual(can_bus_pairs(["CAN_HIGH_1", "CAN_HIGH_2"], ["CAN_LOW_1", "CAN_LOW_2"]),
+                         [("CAN_HIGH_1", "CAN_LOW_1"), ("CAN_HIGH_2", "CAN_LOW_2")])
+        self.assertEqual(can_bus_pairs(["CANHIGH", "CAN2_H"], ["CANLOW", "CAN2_L"]),
+                         [("CANHIGH", "CANLOW"), ("CAN2_H", "CAN2_L")])
+
+    def test_unnumbered_polarity_bus_beside_a_numbered_one_is_judged(self):
+        x1 = _comp("U7", "ic", "MCP2562", "Interface_CAN_LIN:MCP2562", CAN_XCVR)
+        x2 = _comp("U8", "ic", "MCP2562", "Interface_CAN_LIN:MCP2562", CAN_XCVR)
+        nets = {"CAN_H+": [("U7", "7", "CANH", "bidirectional"), ("R1", "1", "~", "passive")],
+                "CAN_L-": [("U7", "6", "CANL", "bidirectional"), ("R1", "2", "~", "passive")],
+                "CAN2_H+": [("U8", "7", "CANH", "bidirectional")],
+                "CAN2_L-": [("U8", "6", "CANL", "bidirectional")]}
+        term, findings = _can_findings([x1, x2, _res("R1", "120")], nets)
+        self.assertEqual(term, {"CAN_H+": "120Ω (R1)", "CAN_L-": "120Ω (R1)",
+                                "CAN2_H+": None, "CAN2_L-": None})
+        self.assertEqual(sorted((tuple(f["nets"]), f["has_termination"]) for f in findings),
+                         [(("CAN2_H+", "CAN2_L-"), False), (("CAN_H+", "CAN_L-"), True)])
 
     def test_numbered_pair_is_one_bus_with_its_terminator(self):
         x1 = _comp("U7", "ic", "MCP2562", "Interface_CAN_LIN:MCP2562", CAN_XCVR)
