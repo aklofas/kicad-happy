@@ -156,6 +156,26 @@ class DatasheetCoverageCountsPdfs(unittest.TestCase):
             f = self._findings([_part("R1", "10k")])[0]
             self.assertIn("directory ../datasheets holds no PDF", f["summary"])
 
+    def test_folder_text_uses_the_spelling_on_disk(self):
+        # A case-insensitive filesystem (macOS, Windows) finds "datasheets" for "Datasheets/"
+        real = os.path.isdir
+
+        def isdir_any_case(path):
+            parent, name = os.path.split(os.path.normpath(path))
+            try:
+                entries = os.listdir(parent)
+            except OSError:
+                return False
+            match = next((e for e in entries if e.lower() == name.lower()), None)
+            return match is not None and real(os.path.join(parent, match))
+
+        self.ds.rmdir()
+        (self.proj / "Datasheets").mkdir()
+        with mock.patch("os.path.isdir", isdir_any_case):
+            f = self._findings([_part("R1", "10k")])[0]
+        self.assertIn("directory ./Datasheets holds no PDF", f["summary"])
+        self.assertEqual(f["datasheets_dir"], str(self.proj / "Datasheets"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -318,17 +318,32 @@ def audit_datasheet_coverage(components: list[dict],
         "datasheets", "Datasheets",
         "datasheet", "Datasheet",
     )
-    candidates: list[str] = []
+    candidates: list[tuple[str, ...]] = []
     _bases = [pd, _os.path.dirname(pd) or pd]
     _grand = _os.path.dirname(_bases[1]) if _bases[1] else pd
     if _grand and _grand != _bases[1]:
         _bases.append(_grand)
     for _base in _bases:
         for _name in _DS_DIR_NAMES:
-            candidates.append(_os.path.join(_base, _name))
-            candidates.append(_os.path.join(_base, _name, "extracted"))
-        candidates.append(_os.path.join(_base, "docs", "datasheets"))
-        candidates.append(_os.path.join(_base, "documentation", "datasheets"))
+            candidates.append((_base, _name))
+            candidates.append((_base, _name, "extracted"))
+        candidates.append((_base, "docs", "datasheets"))
+        candidates.append((_base, "documentation", "datasheets"))
+
+    def _on_disk(base: str, *names: str) -> str:
+        # Each folder as its directory entry is spelled: a case-insensitive filesystem
+        # (macOS, Windows) finds "datasheets" for a folder named "Datasheets".
+        path = base
+        for name in names:
+            try:
+                entries = _os.listdir(path)
+            except OSError:
+                entries = []
+            if name not in entries:
+                name = next((e for e in sorted(entries) if e.lower() == name.lower()), name)
+            path = _os.path.join(path, name)
+        return path
+
     def _pdf_count(ds_dir: str) -> int:
         # Each PDF once: a symlinked copy, and the JSON beside the PDFs
         # (extractions, the sync index), are not more datasheets.
@@ -346,7 +361,7 @@ def audit_datasheet_coverage(components: list[dict],
 
     # The first folder that holds a PDF: an empty ./datasheets does not hide
     # a populated one further out.
-    existing = [c for c in candidates if _os.path.isdir(c)]
+    existing = [_on_disk(*c) for c in candidates if _os.path.isdir(_os.path.join(*c))]
     ds_dir_found, ds_file_count = None, 0
     for c in existing:
         n = _pdf_count(c)
