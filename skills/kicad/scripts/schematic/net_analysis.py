@@ -1653,7 +1653,7 @@ def _detect_differential_pairs(ctx: AnalysisContext) -> list:
                                         term = {
                                             "ref": c["reference"],
                                             "value": c["value"],
-                                            "ohms": parsed_values.get(c["reference"]),
+                                            "ohms": r_ohms,
                                         }
                                         if c.get("dnp"):
                                             term["dnp"] = True

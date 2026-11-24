@@ -244,6 +244,8 @@ class CanTerminationPerBus(unittest.TestCase):
                 "CAN_N": [("U7", "6", "CANL", "bidirectional")] + [("R?", "2", "~", "passive")] * 2}
         _, findings = _can_findings([x1, _res("R?", "120"), _res("R?", "100k")], nets)
         self.assertTrue(findings[0]["has_termination"])
+        pair = _detect_differential_pairs(_ctx([x1, _res("R?", "120"), _res("R?", "100k")], nets))[0]
+        self.assertEqual([(t["value"], t["ohms"]) for t in pair["termination"]], [("120", 120.0)])
 
     def test_fitted_beside_dnp_terminator_is_present(self):
         x1 = _comp("U7", "ic", "MCP2562", "Interface_CAN_LIN:MCP2562", CAN_XCVR)
