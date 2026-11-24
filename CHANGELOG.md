@@ -38,7 +38,7 @@ This project follows [Semantic Versioning](https://semver.org/). Each release is
 ### Fixed
 
 - The STAT pin of an MCP73831 charger is read as a driven output at the charger's supply, not as an open-drain pin at its pull-up: a 5 V STAT into a 3.3 V input is reported as a voltage mismatch and as a level-shifter crossing. The open-drain MCP73832 is unchanged.
-- A single-supply SN74LVC or SN74AVC buffer or gate is no longer reported as a level shifter; one with separate VCCA and VCCB pins, or an input or open-drain output pulled up above its own supply, still is. Its nets stay exempt from the voltage-mismatch check.
+- A single-supply SN74LVC or SN74AVC buffer or gate is no longer reported as a level shifter; one with separate VCCA and VCCB pins, or an input or open-drain output pulled up above its own supply, still is. It is no longer listed as a level translator on the cross-domain signals it carries, and its nets stay exempt from the voltage-mismatch check and need no level shifter.
 - ERC pin-conflict records name each PWR_FLAG by its own reference and pick the nearest pin as KiCad does; two PWR_FLAGs on one net are reported as a power-output conflict.
 - A no-connect flag placed on a hierarchical label or a sheet pin no longer raises "no-connect connected"; KiCad reads it as marking the port unused.
 - A sub-sheet from an early KiCad 6 project, read on its own, no longer gives each placement of a multi-unit part the pins of every unit; a symbol with no unit in the file is read as unit 1, as KiCad does.

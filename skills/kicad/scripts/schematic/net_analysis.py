@@ -13,6 +13,7 @@ from detector_helpers import (
 from kicad_core.sexp import unescape_string
 from kicad_core.values import parse_value
 from schematic import erc_pins
+from domain_detectors import is_single_supply_lvc
 from validation_detectors import _en_endpoint_compatible, _is_open_drain_endpoint, _pull_up_rails
 from kicad_core.parts import (
     _OUTPUT_DRIVE_KEYWORDS,
@@ -658,7 +659,10 @@ def _detect_cross_domain_signals(ctx: AnalysisContext, power_domains: dict,
         "level translator", "level shifter", "level-shifting",
         "voltage translator", "voltage level",
     )
-    level_translator_refs = set()
+    # A single-supply SN74LVC / SN74AVC buffer's tolerant inputs bridge the domains (its nets
+    # need no shifter, as in VM-001), but it is not listed as a level translator: the
+    # level-shifter detector does not report it as one.
+    level_translator_refs, tolerant_buffers = set(), set()
     for ic in components:
         if ic["type"] != "ic":
             continue
@@ -669,6 +673,8 @@ def _detect_cross_domain_signals(ctx: AnalysisContext, power_domains: dict,
         if (any(k in val_low or k in lib_low for k in level_translator_keywords) or
                 any(k in desc_low or k in kw_low for k in level_translator_desc_keywords)):
             level_translator_refs.add(ic["reference"])
+            if is_single_supply_lvc(ctx, ic):
+                tolerant_buffers.add(ic["reference"])
     for net_name, net_info in nets.items():
         if is_power_net(net_name) or is_ground(net_name):
             continue
@@ -732,8 +738,8 @@ def _detect_cross_domain_signals(ctx: AnalysisContext, power_domains: dict,
                 "power_domains": sorted(domains_on_net),
                 "needs_level_shifter": needs_shifter,
             }
-            if has_translator:
-                entry["level_translators"] = sorted(translators_on_net)
+            if translators_on_net - tolerant_buffers:
+                entry["level_translators"] = sorted(translators_on_net - tolerant_buffers)
             cross_domain.append(entry)
 
     return cross_domain

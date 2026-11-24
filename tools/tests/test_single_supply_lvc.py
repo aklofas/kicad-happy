@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT / "skills" / "kicad" / "scripts"))
 import domain_detectors as dd  # noqa: E402
 import validation_detectors as vd  # noqa: E402
 from kicad_types import build_analysis_context  # noqa: E402
+from schematic.net_analysis import _detect_cross_domain_signals, _map_power_domains  # noqa: E402
 
 GND = ("9", "GND", "power_in", "GND")
 
@@ -137,6 +138,33 @@ class SingleSupplyLvc(unittest.TestCase):
         }, RAILS)
         self.assertEqual(shifters(ctx), [])
         self.assertEqual(vm001(ctx, shifters(ctx)), [])
+
+
+class CrossDomainTranslators(unittest.TestCase):
+    """The cross-domain entries list as a level translator what the level-shifter detector
+    reports as one."""
+
+    def _translators(self, middle):
+        ctx = ctx_of({
+            "U1": ("MCU5V", "", [("1", "VDD", "power_in", "+5V"), ("2", "IO", "output", "IN"), GND]),
+            "U2": middle,
+            "U3": ("MCU3V3", "", [("1", "VDD", "power_in", "+3V3"), ("2", "IO", "input", "IN"),
+                                  GND]),
+        }, RAILS)
+        with patch.object(vd, "get_regulator_features", return_value=None):
+            entries = _detect_cross_domain_signals(ctx, _map_power_domains(ctx)["ic_power_rails"])
+        (entry,) = [e for e in entries if e["net"] == "IN"]
+        return entry.get("level_translators"), entry["needs_level_shifter"]
+
+    def test_single_supply_sn74lvc_is_not_listed(self):
+        # its tolerant inputs still bridge the domains, as VM-001 reads its nets
+        self.assertEqual(self._translators(buffer("SN74LVC125")), (None, False))
+
+    def test_dual_supply_sn74lvc_is_listed(self):
+        self.assertEqual(self._translators(("SN74LVC8T245", "", [
+            ("1", "VCCA", "power_in", "+1V8"), ("2", "VCCB", "power_in", "+3V3"),
+            ("3", "A1", "bidirectional", "IN"), ("4", "B1", "bidirectional", "OUT"), GND])),
+            (["U2"], False))
 
 
 if __name__ == "__main__":
